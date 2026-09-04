@@ -503,9 +503,11 @@ oRPC errors. Failures after streaming starts travel as `error` parts.
 A query key is derived from the contract path, so it cannot drift from
 `packages/shared/src/rpc/contracts.ts`. Pass a `select` as a module-level function: TanStack
 memoises it by identity, and an inline arrow re-runs the transform on every render. Read a
-cache entry with `fetchQuery`: `ensureQueryData` returns whatever is cached without
-consulting staleness, so a read that must reflect a write you just made is correct only
-while something happens to be observing that entry.
+cache entry with `queryClient.query`, which honours the entry's own staleness. The same call
+at `staleTime: "static"` returns whatever is cached without consulting staleness, so a read
+that must reflect a write you just made is correct only while something happens to be
+observing that entry. `fetchQuery`, `prefetchQuery` and `ensureQueryData` are deprecated in
+TanStack Query 5.102 and are not written here.
 
 **All six `@orpc/*` packages move together, at one exact 2.x beta**, which is why the
 catalog holds all six. They cross-reference each other as exact-version dependencies with no

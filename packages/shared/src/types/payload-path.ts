@@ -32,10 +32,9 @@ type NonTraversable =
 /** Every dot-path into `TPayload`, descending into the objects it holds. */
 export type PayloadPath<TPayload> = TPayload extends JsonObject
   ? {
-      [Key in Extract<
-        keyof TPayload,
-        string
-      >]: TPayload[Key] extends NonTraversable
+      [
+        Key in Extract<keyof TPayload, string>
+      ]: TPayload[Key] extends NonTraversable
         ? Key
         : TPayload[Key] extends JsonObject
           ? Key | `${Key}.${PayloadPath<TPayload[Key]>}`

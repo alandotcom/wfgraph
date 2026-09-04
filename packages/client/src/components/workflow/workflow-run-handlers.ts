@@ -204,7 +204,7 @@ export function useWorkflowHandlers({
    */
   const rereadPublishedState = async (workflowId: string) => {
     await refreshWorkflowPublication(queryClient, workflowId);
-    const workflow = await queryClient.fetchQuery(
+    const workflow = await queryClient.query(
       orpcQuery.workflow.getById.queryOptions({ input: { workflowId } })
     );
     setCurrentWorkflowMode(workflow.mode);
@@ -335,14 +335,14 @@ export function useWorkflowHandlers({
    * The published version's own graph, read by version id.
    *
    * A published version is immutable (ADR-0012), so this is fetched once and
-   * kept: `fetchQuery` at an infinite stale time answers from the cache on
-   * every press after the first.
+   * kept: a `query` at an infinite stale time answers from the cache on every
+   * press after the first.
    */
   const readPublishedGraphFacts = async (
     versionId: string
   ): Promise<RunOverlayGraphFacts | null> => {
     try {
-      const payload = await queryClient.fetchQuery({
+      const payload = await queryClient.query({
         ...orpcQuery.workflow.getVersionGraph.queryOptions({
           input: { versionId },
         }),

@@ -36,25 +36,25 @@
     "dotenv": "^17.4.2"
   },
   "devDependencies": {
-    "@changesets/changelog-github": "0.7.0",
-    "@changesets/cli": "3.0.0",
-    "@effect/tsgo": "0.36.4",
+    "@changesets/changelog-github": "1.0.0",
+    "@changesets/cli": "3.0.1",
+    "@effect/tsgo": "0.40.0",
     "@effect/vitest": "catalog:",
-    "@tanstack/intent": "^0.3.7",
+    "@tanstack/intent": "^0.3.8",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "catalog:",
     "@types/d3-hierarchy": "^3.1.7",
     "@types/node": "^24.13.3",
     "@types/react": "catalog:",
-    "@types/react-dom": "^19.2.4",
-    "concurrently": "^9.2.4",
+    "@types/react-dom": "^19.2.7",
+    "concurrently": "^10.0.5",
     "drizzle-kit": "1.0.0-rc.4",
-    "esbuild": "^0.25.4",
+    "esbuild": "^0.28.2",
     "eslint-plugin-react-hooks": "^7.1.1",
-    "eslint-plugin-react-you-might-not-need-an-effect": "1.0.1",
-    "happy-dom": "^20.11.2",
-    "knip": "^6.32.0",
-    "oxfmt": "^0.62.0",
+    "eslint-plugin-react-you-might-not-need-an-effect": "1.0.2",
+    "happy-dom": "^20.13.2",
+    "knip": "^6.34.0",
+    "oxfmt": "^0.66.0",
     "oxlint": "^1.81.0",
     "oxlint-tsgolint": "^7.0.2001",
     "pkg-pr-new": "^0.0.88",
@@ -62,11 +62,11 @@
     "tsx": "catalog:",
     "typescript": "^7.0.2",
     "vite": "catalog:",
-    "vitest": "^4.1.10",
+    "vitest": "^4.1.11",
     "vitest-evals": "catalog:"
   },
   "optionalDependencies": {
-    "inngest-cli": "^1.41.1"
+    "inngest-cli": "^1.44.0"
   },
   "engines": {
     "node": ">=24"

@@ -27,18 +27,18 @@ catalog:
   "@effect/sql-sqlite-node": 4.0.0-rc.112
   "@effect/vitest": 4.0.0-rc.112
   # The backend and the editor both log through logtape.
-  "@logtape/logtape": ^2.3.0
-  "@marcbachmann/cel-js": ^7.6.1
-  "@orpc/client": 2.0.0-beta.21
-  "@orpc/contract": 2.0.0-beta.21
-  "@orpc/experimental-effect": 2.0.0-beta.21
-  "@orpc/openapi": 2.0.0-beta.21
-  "@orpc/server": 2.0.0-beta.21
-  "@orpc/tanstack-query": 2.0.0-beta.21
+  "@logtape/logtape": ^2.3.2
+  "@marcbachmann/cel-js": ^8.0.0
+  "@orpc/client": 2.0.0-beta.32
+  "@orpc/contract": 2.0.0-beta.32
+  "@orpc/experimental-effect": 2.0.0-beta.32
+  "@orpc/openapi": 2.0.0-beta.32
+  "@orpc/server": 2.0.0-beta.32
+  "@orpc/tanstack-query": 2.0.0-beta.32
   "@standard-schema/spec": ^1.1.0
-  "@testing-library/react": ^16.3.2
+  "@testing-library/react": ^16.3.3
   "@types/react": ^19.2.18
-  "@xyflow/react": ^12.11.2
+  "@xyflow/react": ^12.11.6
   # The second foreign Standard Schema library the schema tests are written
   # against, beside zod below.
   arktype: ^2.2.3
@@ -50,25 +50,25 @@ catalog:
   # reason: the peer range and the version the workspace resolves have to agree.
   # @hono/node-server names `hono: ^4` as its own peer, so it binds to whichever
   # copy this range resolves.
-  hono: ^4.13.1
+  hono: ^4.13.5
   # @wfgraph/core declares this as a peer dependency, so the host installs the
   # SDK and picks the version inside this range. The example app installs it the
   # way an adopter does, which means the peer range and the version the workspace
   # actually resolves have to agree; writing it once here is what makes that so.
   # pnpm rewrites `catalog:` inside peerDependencies at pack and publish time,
   # the same as it does in the other three dependency blocks.
-  inngest: ^4.18.0
-  nanoid: ^5.1.16
+  inngest: ^4.19.0
+  nanoid: ^6.0.1
   postgres: ^3.4.9
   react: 19.2.8
   react-dom: 19.2.8
-  tsx: ^4.23.1
-  vite: ^8.2.1
+  tsx: ^4.23.13
+  vite: ^8.2.2
   vitest-evals: ^0.16.1
   # The example app writes its Events and its custom action in it, and the schema
   # tests in packages/core and packages/shared use it as the foreign Standard
   # Schema library, beside arktype.
-  zod: ^4.4.3
+  zod: ^4.5.4
 
 # Pins one React copy through the whole graph, including transitive peers. The
 # catalog protocol is how pnpm keeps an override and the catalog entry from
@@ -80,19 +80,29 @@ overrides:
   # GHSA-xcpc-8h2w-3j85 (crafted ZIP triggers a 4GB allocation) is fixed in 0.6.0.
   adm-zip: "0.6.0"
   # GHSA-67mh-4wv8-2f99 (dev server answers any origin's request) is fixed at
-  # 0.24.3; pin the tree onto a current 0.25 line that drizzle-kit, tsx and vite
+  # 0.24.3; pin the tree onto a current 0.28 line that drizzle-kit, tsx and vite
   # already resolve within.
-  esbuild: "^0.25.4"
-  # fastify's JSON Schema stack resolves both fast-uri majors; GHSA-7p8r-x3mc-p8w7
-  # (host confusion via backslash authority introducer) is fixed in 3.1.5 / 4.1.2.
-  "fast-uri@^3": "3.1.5"
-  "fast-uri@^4": "4.1.2"
+  esbuild: "^0.28.2"
+  # fastify's JSON Schema stack resolves both fast-uri majors. Four advisories
+  # reach past the 3.1.5 / 4.1.2 this used to pin, all in how a URI's host is
+  # normalized: GHSA-f65p-4m7j-42xc and GHSA-fph4-wmhf-6fwf (request forgery
+  # through malformed IPv6 and through repeated percent-decoding),
+  # GHSA-jqff-g426-hqxp and GHSA-5jgf-p345-68v8 (host confusion through a
+  # percent-encoded scheme and a skipped IDN canonicalization). Fixed in
+  # 3.1.6 / 4.1.3, and these are the current releases of both lines.
+  "fast-uri@^3": "3.1.7"
+  "fast-uri@^4": "4.1.4"
   # eslint's minimatch pulls brace-expansion 5.x; GHSA-rgw5-rvv9-x895 (DoS via
   # unbounded intermediate arrays) is fixed in 5.0.9.
   "brace-expansion@^5": "5.0.9"
   # postcss pins nanoid to the 3.x line; GHSA-2v37-7h3g-55p8 (custom generators
   # loop when size is zero) is fixed in 3.3.17.
   "nanoid@^3": "3.3.18"
+  # qs arrives under express, through body-parser. GHSA-4mjr-xmp4-gh2g (denial
+  # of service through an attacker-controlled isBuffer) and GHSA-x5fp-wj9c-mxmx
+  # (array-limit bypass through comma parsing of a bracket key) are both fixed
+  # in 6.16.0.
+  qs: "6.16.0"
 
 # pnpm refuses to run a dependency's install scripts until the dependency is
 # named here, so a package that gains a postinstall arrives as a warning rather
@@ -119,29 +129,14 @@ allowBuilds:
   msgpackr-extract: false
   protobufjs: true
 
+# Each entry is a hole in pnpm 11's 1440-minute minimumReleaseAge default, held
+# open for a version the overrides above name outright. A routine dependency
+# refresh adds none: it takes the newest version that has already aged past the
+# window, and picks the fresher one up on the next sweep.
 minimumReleaseAgeExclude:
   - brace-expansion@2.1.3 || 5.0.9
   - fast-uri@3.1.5 || 4.1.2
   - nanoid@3.3.18
-  # The Changesets v3 line, published 2026-08-11 and installed the same day,
-  # under pnpm 11's 1440-minute minimumReleaseAge default. Each entry is a hole
-  # in that policy and a no-op once the version it names ages past the window:
-  # delete the block and re-run `pnpm install` to confirm it resolves without them.
-  - "@changesets/apply-release-plan@8.0.0"
-  - "@changesets/assemble-release-plan@7.0.0"
-  - "@changesets/changelog-git@1.0.0"
-  - "@changesets/cli@3.0.0"
-  - "@changesets/config@4.0.0"
-  - "@changesets/errors@1.0.0"
-  - "@changesets/get-dependents-graph@3.0.0"
-  - "@changesets/git@4.0.0"
-  - "@changesets/parse@1.0.0"
-  - "@changesets/pre@3.0.0"
-  - "@changesets/read@1.0.0"
-  - "@changesets/should-skip-package@1.0.0"
-  - "@changesets/types@7.0.0"
-  - "@changesets/write@1.0.0"
-  - shadcn@4.19.0
 
 patchedDependencies:
   # RC4 calls Effect's removed Schema.TaggedErrorClass API. Upstream replaced it
