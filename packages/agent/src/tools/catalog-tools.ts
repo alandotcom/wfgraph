@@ -199,6 +199,7 @@ export const ListEvents = Tool.make("list_events", {
         name: Schema.String,
         label: Schema.String,
         description: Schema.optionalKey(Schema.String),
+        integration: Schema.optionalKey(Schema.String),
         correlationPath: Schema.optionalKey(Schema.String),
         payloadFields: Schema.Array(referenceFieldSchema),
       })
@@ -285,6 +286,7 @@ export const catalogToolHandlers = Effect.gen(function* () {
             name: event.name,
             label: event.label,
             description: event.description,
+            integration: event.integration,
             correlationPath: event.correlationPath,
             payloadFields: event.payloadFields.map(toReferenceField),
           })

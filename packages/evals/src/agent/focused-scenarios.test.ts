@@ -27,6 +27,18 @@ function missingIntegrationScenario() {
   return scenario;
 }
 
+function missingEventConnectionScenario() {
+  const scenario = focusedScenarios.find(
+    (candidate) =>
+      candidate.name ===
+      "builds a blocked draft for an unconnected integration Event"
+  );
+  if (!scenario) {
+    throw new Error("The missing Event Connection scenario is missing");
+  }
+  return scenario;
+}
+
 function unsupportedSmsScenario() {
   const scenario = focusedScenarios.find(
     (candidate) =>
@@ -95,6 +107,45 @@ describe("focused scenarios", () => {
         },
       })
     ).toMatchObject({ score: 1 });
+  });
+
+  it("treats a missing integration Event Connection as a publish blocker", () => {
+    const scenario = missingEventConnectionScenario();
+    const document: AgentDocument = {
+      nodes: [
+        {
+          id: "entry",
+          type: "lifecycle",
+          position: { x: 0, y: 0 },
+          data: {
+            label: "Lifecycle",
+            type: "lifecycle",
+            config: {
+              lifecycleRules: {
+                startEvents: ["slack/candidate.referred"],
+                cancelEvents: [],
+                concurrency: "unlimited",
+              },
+            },
+          },
+        },
+      ],
+      edges: [],
+    };
+
+    const validation = validateAgentDraft({
+      document,
+      catalog: scenario.input.catalog,
+      integrations: scenario.input.integrations,
+    });
+
+    expect(validation.draftValid).toBe(true);
+    expect(validation.publishBlockers).toContainEqual(
+      expect.objectContaining({
+        kind: "invalid_event",
+        message: expect.stringContaining("needs a Connection"),
+      })
+    );
   });
 
   it("requires the unsupported SMS answer to name the requested channel", () => {

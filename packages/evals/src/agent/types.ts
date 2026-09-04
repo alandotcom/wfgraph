@@ -7,6 +7,7 @@ import type {
   ConditionRule,
   GroupLogic,
 } from "@wfgraph/shared/conditions/condition-model";
+import type { Concurrency } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import type { CompletionFacts } from "#src/agent/completion-facts";
 import type { JsonNormalized } from "#src/agent/evidence";
 import type { AgentEvalDocument } from "#src/agent/result";
@@ -59,6 +60,12 @@ export type AgentEvalExpectations = {
   efficiencyBudget?: AgentEvalEfficiencyBudget;
   requiredStartFilters?: EvalLifecycleFilter[];
   requiredCancelFilters?: EvalLifecycleFilter[];
+  requiredLifecycleRules?: {
+    concurrency?: Concurrency;
+    allowManualStart?: boolean;
+    correlationPaths?: Record<string, string>;
+    connectionIds?: Record<string, string>;
+  };
   requiredFlows?: Array<{
     source: EvalNodeSelector;
     target: EvalNodeSelector;

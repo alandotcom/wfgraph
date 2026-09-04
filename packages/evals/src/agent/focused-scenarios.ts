@@ -96,6 +96,92 @@ export const focusedScenarios: Array<{
     }),
   },
   {
+    name: "starts from a connected integration Event",
+    input: scenario({
+      messages: [
+        {
+          role: "user",
+          content:
+            "When a candidate referral arrives through Slack, score the applicant using its applicantId. Use our primary Slack connection.",
+        },
+      ],
+      document: emptyDocument,
+      integrations: connectedIntegrations,
+      expected: {
+        exactActions: { "score-applicant": 1 },
+        exactEvents: { start: ["slack/candidate.referred"], cancel: [] },
+        requiredLifecycleRules: {
+          connectionIds: { "slack/candidate.referred": "slack-primary" },
+        },
+        requiredFlows: [
+          {
+            source: { kind: "lifecycle" },
+            target: { kind: "action", actionId: "score-applicant" },
+            sourceHandle: "started",
+          },
+        ],
+        requiredReferences: [
+          {
+            node: { kind: "action", actionId: "score-applicant" },
+            key: "applicantId",
+            path: "applicantId",
+          },
+        ],
+      },
+      expectedCompletion: { outcome: "ready" },
+      intentCriteria: [
+        "The Slack candidate referral starts the workflow through the primary Slack connection.",
+        "The score step reads applicantId from the referral Event.",
+      ],
+    }),
+  },
+  {
+    name: "builds a blocked draft for an unconnected integration Event",
+    input: scenario({
+      messages: [
+        {
+          role: "user",
+          content:
+            "When a candidate referral arrives through Slack, score the applicant using its applicantId. Slack is not connected yet, so build the useful draft and tell me what remains.",
+        },
+      ],
+      document: emptyDocument,
+      integrations: [],
+      expected: {
+        exactActions: { "score-applicant": 1 },
+        exactEvents: { start: ["slack/candidate.referred"], cancel: [] },
+        requiredFlows: [
+          {
+            source: { kind: "lifecycle" },
+            target: { kind: "action", actionId: "score-applicant" },
+            sourceHandle: "started",
+          },
+        ],
+        requiredReferences: [
+          {
+            node: { kind: "action", actionId: "score-applicant" },
+            key: "applicantId",
+            path: "applicantId",
+          },
+        ],
+      },
+      expectedCompletion: {
+        outcome: "blocked",
+        answerMustMention: ["Slack"],
+        answerMustMentionOneOf: ["connect", "connection", "connected"],
+        requiredPublishBlocker: {
+          kind: "invalid_event",
+          messageMustMention: ["needs a Connection"],
+        },
+        allowedPublishBlockerKinds: ["invalid_event"],
+      },
+      intentCriteria: [
+        "The draft contains the requested workflow structure.",
+        "The answer says that a Slack connection is required before publication.",
+      ],
+    }),
+  },
+  {
     name: "does not invent an unavailable SMS action",
     input: scenario({
       messages: [
@@ -413,6 +499,31 @@ export const focusedScenarios: Array<{
           start: ["applicant.created"],
           cancel: ["applicant.withdrawn"],
         },
+        requiredLifecycleRules: {
+          concurrency: "newest-wins",
+          allowManualStart: true,
+          correlationPaths: { "applicant.created": "applicantId" },
+        },
+        requiredStartFilters: [
+          {
+            event: "applicant.created",
+            filter: {
+              groupLogic: "and",
+              groups: [
+                {
+                  logic: "and",
+                  rules: [
+                    {
+                      field: "email",
+                      fieldType: "string",
+                      operator: "is_set",
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        ],
         editSafety: {
           protectedNodeIds: ["score", "notify"],
           protectedEdgeIds: ["entry-score", "score-notify"],

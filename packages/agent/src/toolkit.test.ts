@@ -84,6 +84,29 @@ describe("the toolkit", () => {
     expect(schema.properties?.mode).toBeUndefined();
   });
 
+  it("presents Lifecycle Rules as an optional-field patch", () => {
+    const setLifecycleRules = tools.find(
+      (tool) => tool.name === "set_lifecycle_rules"
+    );
+    if (!setLifecycleRules) {
+      throw new Error("set_lifecycle_rules is missing");
+    }
+
+    const schema = Tool.getJsonSchema(setLifecycleRules) as {
+      required?: string[];
+      properties?: Record<string, unknown>;
+    };
+
+    expect(schema.required ?? []).toEqual([]);
+    expect(schema.properties).toMatchObject({
+      clearCancelFilters: expect.any(Object),
+      clearCorrelationPaths: expect.any(Object),
+      clearEventConnections: expect.any(Object),
+      clearStartFilters: expect.any(Object),
+      eventConnections: expect.any(Object),
+    });
+  });
+
   it("names only real tools as the ones that change the graph", () => {
     const names = new Set(tools.map((tool) => tool.name));
 

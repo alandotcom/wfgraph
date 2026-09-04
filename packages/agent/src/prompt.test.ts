@@ -121,6 +121,12 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain(
       "Finish capability discovery before calling set_lifecycle_rules or another write tool"
     );
+    expect(prompt).toContain(
+      "An integration-owned Event needs an eventConnections binding"
+    );
+    expect(prompt).toContain(
+      "Event-keyed entries update only the named Events"
+    );
   });
 
   it("limits Lifecycle Events to the user request", () => {

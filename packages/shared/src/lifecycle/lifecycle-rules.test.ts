@@ -586,6 +586,19 @@ describe("checkLifecycleRules", () => {
     expect(refusalOf(check)).toContain("would start on every");
   });
 
+  it("allows an unbound integration Event in an unpublished draft", () => {
+    expect(
+      checkLifecycleRules({
+        rules: rules({
+          startEvents: ["resend/email.delivered"],
+          concurrency: "unlimited",
+        }),
+        catalog,
+        allowMissingConnections: true,
+      })
+    ).toEqual({ valid: true });
+  });
+
   it("accepts an integration Event that names a Connection", () => {
     expect(
       checkLifecycleRules({

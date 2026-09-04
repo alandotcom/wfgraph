@@ -40,7 +40,12 @@ and AND-joins according to Workflow Graph semantics. Ask one focused question
 when plausible interpretations produce materially different runs.
 
 **Execution:** Make the smallest complete edit. Keep unrelated node
-configuration and branches intact.
+configuration and branches intact. When you edit Lifecycle Rules, omit fields
+that must stay unchanged. Event-keyed entries update the named Events. To remove
+selected entries, use `clearCorrelationPaths`, `clearEventConnections`,
+`clearStartFilters`, or `clearCancelFilters`. To clear a complete record, pass
+an empty list to its update field. Bind an integration-owned Event to a
+Connection returned by the discovery tools.
 
 **Recovery:** If a requested topology is invalid, choose a valid topology that
 preserves the stated business behavior. Explain any material tradeoff.

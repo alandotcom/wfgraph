@@ -483,6 +483,8 @@ export function pruneConnectionIds(rules: LifecycleRules): LifecycleRules {
 export function checkLifecycleRules(input: {
   rules: LifecycleRules;
   catalog: ExtensionCatalog;
+  /** Lets an authoring surface store an Event before its Connection is chosen. */
+  allowMissingConnections?: boolean | undefined;
 }): LifecycleRulesCheck {
   const { rules, catalog } = input;
 
@@ -506,7 +508,11 @@ export function checkLifecycleRules(input: {
     if (!event.integration && rules.connectionIds?.[name]) {
       return refuseLifecycleRules(hostEventConnectionMessage(name));
     }
-    if (event.integration && !rules.connectionIds?.[name]) {
+    if (
+      event.integration &&
+      !rules.connectionIds?.[name] &&
+      input.allowMissingConnections !== true
+    ) {
       return refuseLifecycleRules(
         missingConnectionMessage(name, event.integration, catalog, "start")
       );

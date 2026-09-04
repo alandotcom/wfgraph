@@ -1,6 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Effect } from "effect";
 import { parseConditionModel } from "@wfgraph/shared/conditions/condition-schema";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { readConfigString } from "@wfgraph/shared/graph/node-config";
 import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
 import { LIFECYCLE_STARTED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
@@ -37,6 +38,34 @@ const catalogWithTypeClash = {
       payloadFields: [{ path: "shared", type: "number" as const }],
     },
   ],
+};
+const catalogWithIntegrationEvents: ExtensionCatalog = {
+  ...catalog,
+  events: [
+    ...catalog.events,
+    {
+      name: "slack/message.received",
+      label: "Slack message received",
+      integration: "slack",
+      correlationPath: "channelId",
+      payloadFields: [{ path: "channelId", type: "string" }],
+    },
+    {
+      name: "slack/reaction.added",
+      label: "Slack reaction added",
+      integration: "slack",
+      correlationPath: "channelId",
+      payloadFields: [{ path: "channelId", type: "string" }],
+    },
+  ],
+};
+const catalogWithCancelPath: ExtensionCatalog = {
+  ...catalogWithIntegrationEvents,
+  events: catalogWithIntegrationEvents.events.map((event) =>
+    event.name === "applicant.withdrawn"
+      ? { ...event, correlationPath: "applicantId" }
+      : event
+  ),
 };
 
 const entry: WorkflowNode = {
@@ -291,6 +320,413 @@ describe("set_lifecycle_rules", () => {
       expect(failure.reason).toContain("Correlation Path");
       expect((yield* draft.current).nodes).toEqual([]);
     })
+  );
+
+  it.effect("preserves omitted rules while adding a Cancel Event", () =>
+    Effect.gen(function* () {
+      const lifecycle: WorkflowNode = {
+        ...filteredLifecycle,
+        data: {
+          ...filteredLifecycle.data,
+          config: {
+            lifecycleRules: {
+              ...readLifecycleRules(filteredLifecycle.data.config)!,
+              startEvents: ["applicant.created", "slack/message.received"],
+              concurrency: "newest-wins",
+              allowManualStart: true,
+              correlationPaths: { "applicant.created": "candidateId" },
+              connectionIds: { "slack/message.received": "slack-1" },
+            },
+          },
+        },
+      };
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [lifecycle],
+        catalog: catalogWithCancelPath,
+        integrations: [{ id: "slack-1", type: "slack" }],
+      });
+
+      yield* tools.set_lifecycle_rules({
+        cancelEvents: ["applicant.withdrawn"],
+      });
+
+      expect(
+        readLifecycleRules((yield* draft.current).nodes[0]?.data.config)
+      ).toEqual({
+        startEvents: ["applicant.created", "slack/message.received"],
+        cancelEvents: ["applicant.withdrawn"],
+        concurrency: "newest-wins",
+        allowManualStart: true,
+        correlationPaths: { "applicant.created": "candidateId" },
+        connectionIds: { "slack/message.received": "slack-1" },
+        startFilters: { "applicant.created": startFilter },
+      });
+    })
+  );
+
+  it.effect(
+    "clears correlation path overrides with an explicit empty list",
+    () =>
+      Effect.gen(function* () {
+        const lifecycle: WorkflowNode = {
+          ...entry,
+          data: {
+            ...entry.data,
+            config: {
+              lifecycleRules: {
+                startEvents: ["applicant.created"],
+                cancelEvents: [],
+                concurrency: "unlimited",
+                correlationPaths: { "applicant.created": "candidateId" },
+              },
+            },
+          },
+        };
+        const { tools, draft } = yield* agentToolsFor({
+          nodes: [lifecycle],
+          catalog,
+        });
+
+        yield* tools.set_lifecycle_rules({ correlationPaths: [] });
+
+        expect(
+          readLifecycleRules((yield* draft.current).nodes[0]?.data.config)
+            ?.correlationPaths
+        ).toBeUndefined();
+      })
+  );
+
+  it.effect("patches one Correlation Path and preserves the other", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [cancelFilteredLifecycle],
+        catalog: catalogWithCancelPath,
+      });
+
+      yield* tools.set_lifecycle_rules({
+        correlationPaths: [
+          { event: "applicant.withdrawn", path: "candidateId" },
+        ],
+      });
+
+      expect(
+        readLifecycleRules((yield* draft.current).nodes[0]?.data.config)
+          ?.correlationPaths
+      ).toEqual({
+        "applicant.created": "applicantId",
+        "applicant.withdrawn": "candidateId",
+      });
+    })
+  );
+
+  it.effect("clears one Correlation Path and preserves the other", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [cancelFilteredLifecycle],
+        catalog: catalogWithCancelPath,
+      });
+
+      yield* tools.set_lifecycle_rules({
+        clearCorrelationPaths: ["applicant.withdrawn"],
+      });
+
+      expect(
+        readLifecycleRules((yield* draft.current).nodes[0]?.data.config)
+          ?.correlationPaths
+      ).toEqual({ "applicant.created": "applicantId" });
+    })
+  );
+
+  it.effect("binds an integration Event to a matching Connection", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({
+        catalog: catalogWithIntegrationEvents,
+        integrations: [{ id: "slack-1", type: "slack" }],
+      });
+
+      yield* tools.set_lifecycle_rules({
+        startEvents: ["slack/message.received"],
+        eventConnections: [
+          { event: "slack/message.received", connectionId: "slack-1" },
+        ],
+      });
+
+      expect(
+        readLifecycleRules((yield* draft.current).nodes[0]?.data.config)
+          ?.connectionIds
+      ).toEqual({ "slack/message.received": "slack-1" });
+    })
+  );
+
+  it.effect(
+    "keeps an integration Event in a blocked draft when no Connection exists",
+    () =>
+      Effect.gen(function* () {
+        const { tools, draft } = yield* agentToolsFor({
+          catalog: catalogWithIntegrationEvents,
+        });
+
+        yield* tools.set_lifecycle_rules({
+          startEvents: ["slack/message.received"],
+        });
+
+        expect(
+          readLifecycleRules((yield* draft.current).nodes[0]?.data.config)
+        ).toMatchObject({
+          startEvents: ["slack/message.received"],
+        });
+      })
+  );
+
+  it.effect(
+    "keeps an integration Event unbound when several Connections match",
+    () =>
+      Effect.gen(function* () {
+        const { tools, draft } = yield* agentToolsFor({
+          catalog: catalogWithIntegrationEvents,
+          integrations: [
+            { id: "slack-1", type: "slack" },
+            { id: "slack-2", type: "slack" },
+          ],
+        });
+
+        yield* tools.set_lifecycle_rules({
+          startEvents: ["slack/message.received"],
+        });
+
+        expect(
+          readLifecycleRules((yield* draft.current).nodes[0]?.data.config)
+            ?.connectionIds
+        ).toBeUndefined();
+      })
+  );
+
+  it.effect("clears Event Connections with an explicit empty list", () =>
+    Effect.gen(function* () {
+      const lifecycle: WorkflowNode = {
+        ...entry,
+        data: {
+          ...entry.data,
+          config: {
+            lifecycleRules: {
+              startEvents: ["slack/message.received"],
+              cancelEvents: [],
+              concurrency: "unlimited",
+              connectionIds: { "slack/message.received": "slack-1" },
+            },
+          },
+        },
+      };
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [lifecycle],
+        catalog: catalogWithIntegrationEvents,
+        integrations: [{ id: "slack-1", type: "slack" }],
+      });
+
+      yield* tools.set_lifecycle_rules({ eventConnections: [] });
+
+      expect(
+        readLifecycleRules((yield* draft.current).nodes[0]?.data.config)
+          ?.connectionIds
+      ).toBeUndefined();
+    })
+  );
+
+  it.effect("patches one Event Connection and preserves the other", () =>
+    Effect.gen(function* () {
+      const lifecycle: WorkflowNode = {
+        ...entry,
+        data: {
+          ...entry.data,
+          config: {
+            lifecycleRules: {
+              startEvents: ["slack/message.received", "slack/reaction.added"],
+              cancelEvents: [],
+              concurrency: "unlimited",
+              connectionIds: {
+                "slack/message.received": "slack-1",
+                "slack/reaction.added": "slack-1",
+              },
+            },
+          },
+        },
+      };
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [lifecycle],
+        catalog: catalogWithIntegrationEvents,
+        integrations: [
+          { id: "slack-1", type: "slack" },
+          { id: "slack-2", type: "slack" },
+        ],
+      });
+
+      yield* tools.set_lifecycle_rules({
+        eventConnections: [
+          { event: "slack/reaction.added", connectionId: "slack-2" },
+        ],
+      });
+
+      expect(
+        readLifecycleRules((yield* draft.current).nodes[0]?.data.config)
+          ?.connectionIds
+      ).toEqual({
+        "slack/message.received": "slack-1",
+        "slack/reaction.added": "slack-2",
+      });
+    })
+  );
+
+  it.effect("clears one Event Connection and preserves the other", () =>
+    Effect.gen(function* () {
+      const lifecycle: WorkflowNode = {
+        ...entry,
+        data: {
+          ...entry.data,
+          config: {
+            lifecycleRules: {
+              startEvents: ["slack/message.received", "slack/reaction.added"],
+              cancelEvents: [],
+              concurrency: "unlimited",
+              connectionIds: {
+                "slack/message.received": "slack-1",
+                "slack/reaction.added": "slack-1",
+              },
+            },
+          },
+        },
+      };
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [lifecycle],
+        catalog: catalogWithIntegrationEvents,
+        integrations: [{ id: "slack-1", type: "slack" }],
+      });
+
+      yield* tools.set_lifecycle_rules({
+        clearEventConnections: ["slack/reaction.added"],
+      });
+
+      expect(
+        readLifecycleRules((yield* draft.current).nodes[0]?.data.config)
+          ?.connectionIds
+      ).toEqual({ "slack/message.received": "slack-1" });
+    })
+  );
+
+  it.effect(
+    "prunes Event-keyed values only for an Event that loses its role",
+    () =>
+      Effect.gen(function* () {
+        const lifecycle: WorkflowNode = {
+          ...entry,
+          data: {
+            ...entry.data,
+            config: {
+              lifecycleRules: {
+                startEvents: ["slack/message.received", "slack/reaction.added"],
+                cancelEvents: [],
+                concurrency: "unlimited",
+                correlationPaths: {
+                  "slack/message.received": "channelId",
+                  "slack/reaction.added": "channelId",
+                },
+                connectionIds: {
+                  "slack/message.received": "slack-1",
+                  "slack/reaction.added": "slack-1",
+                },
+              },
+            },
+          },
+        };
+        const { tools, draft } = yield* agentToolsFor({
+          nodes: [lifecycle],
+          catalog: catalogWithIntegrationEvents,
+          integrations: [{ id: "slack-1", type: "slack" }],
+        });
+
+        yield* tools.set_lifecycle_rules({
+          startEvents: ["slack/message.received"],
+        });
+
+        expect(
+          readLifecycleRules((yield* draft.current).nodes[0]?.data.config)
+        ).toMatchObject({
+          correlationPaths: { "slack/message.received": "channelId" },
+          connectionIds: { "slack/message.received": "slack-1" },
+        });
+      })
+  );
+
+  it.effect(
+    "inherits a preserved Connection for a new Event of the same integration",
+    () =>
+      Effect.gen(function* () {
+        const lifecycle: WorkflowNode = {
+          ...entry,
+          data: {
+            ...entry.data,
+            config: {
+              lifecycleRules: {
+                startEvents: ["slack/message.received"],
+                cancelEvents: [],
+                concurrency: "unlimited",
+                connectionIds: { "slack/message.received": "slack-1" },
+              },
+            },
+          },
+        };
+        const { tools, draft } = yield* agentToolsFor({
+          nodes: [lifecycle],
+          catalog: catalogWithIntegrationEvents,
+          integrations: [{ id: "slack-1", type: "slack" }],
+        });
+
+        yield* tools.set_lifecycle_rules({
+          startEvents: ["slack/message.received", "slack/reaction.added"],
+        });
+
+        expect(
+          readLifecycleRules((yield* draft.current).nodes[0]?.data.config)
+            ?.connectionIds
+        ).toEqual({
+          "slack/message.received": "slack-1",
+          "slack/reaction.added": "slack-1",
+        });
+      })
+  );
+
+  it.effect(
+    "refuses a missing or mistyped Event Connection before mutation",
+    () =>
+      Effect.gen(function* () {
+        const { tools, draft } = yield* agentToolsFor({
+          catalog: catalogWithIntegrationEvents,
+          integrations: [
+            { id: "slack-1", type: "slack" },
+            { id: "linear-1", type: "linear" },
+          ],
+        });
+
+        const missing = yield* Effect.flip(
+          tools.set_lifecycle_rules({
+            startEvents: ["slack/message.received"],
+            eventConnections: [
+              { event: "slack/message.received", connectionId: "missing" },
+            ],
+          })
+        );
+        expect(missing.reason).toContain("is not connected");
+
+        const mistyped = yield* Effect.flip(
+          tools.set_lifecycle_rules({
+            startEvents: ["slack/message.received"],
+            eventConnections: [
+              { event: "slack/message.received", connectionId: "linear-1" },
+            ],
+          })
+        );
+        expect(mistyped.reason).toContain("needs a slack Connection");
+        expect((yield* draft.current).nodes).toEqual([]);
+      })
   );
 });
 
@@ -810,23 +1246,84 @@ describe("set_lifecycle_rules and start filters", () => {
     })
   );
 
-  it.effect("replaces existing Start Filters when the edit supplies them", () =>
-    Effect.gen(function* () {
-      const { tools, draft } = yield* agentToolsFor({
-        nodes: [filteredLifecycle],
-        catalog,
-      });
+  it.effect(
+    "patches and clears one Start Filter without changing another",
+    () =>
+      Effect.gen(function* () {
+        const lifecycle: WorkflowNode = {
+          ...filteredLifecycle,
+          data: {
+            ...filteredLifecycle.data,
+            config: {
+              lifecycleRules: {
+                ...readLifecycleRules(filteredLifecycle.data.config)!,
+                startEvents: ["applicant.created", "applicant.withdrawn"],
+              },
+            },
+          },
+        };
+        const { tools, draft } = yield* agentToolsFor({
+          nodes: [lifecycle],
+          catalog,
+        });
 
-      yield* tools.set_lifecycle_rules({
-        startEvents: ["applicant.created"],
-        startFilters: [],
-      });
+        yield* tools.set_lifecycle_rules({
+          startFilters: [
+            {
+              event: "applicant.withdrawn",
+              groups: [
+                {
+                  rules: [
+                    {
+                      field: "applicantId",
+                      fieldType: "string",
+                      operator: "is_set",
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        });
 
-      const document = yield* draft.current;
-      expect(
-        readLifecycleRules(document.nodes[0]?.data.config)?.startFilters
-      ).toBeUndefined();
-    })
+        expect(
+          readLifecycleRules((yield* draft.current).nodes[0]?.data.config)
+            ?.startFilters
+        ).toMatchObject({
+          "applicant.created": startFilter,
+          "applicant.withdrawn": expect.any(String),
+        });
+
+        yield* tools.set_lifecycle_rules({
+          clearStartFilters: ["applicant.withdrawn"],
+        });
+
+        expect(
+          readLifecycleRules((yield* draft.current).nodes[0]?.data.config)
+            ?.startFilters
+        ).toEqual({ "applicant.created": startFilter });
+      })
+  );
+
+  it.effect(
+    "clears all Start Filters when the edit supplies an empty list",
+    () =>
+      Effect.gen(function* () {
+        const { tools, draft } = yield* agentToolsFor({
+          nodes: [filteredLifecycle],
+          catalog,
+        });
+
+        yield* tools.set_lifecycle_rules({
+          startEvents: ["applicant.created"],
+          startFilters: [],
+        });
+
+        const document = yield* draft.current;
+        expect(
+          readLifecycleRules(document.nodes[0]?.data.config)?.startFilters
+        ).toBeUndefined();
+      })
   );
 
   it.effect("drops the filter of a Start Event the edit removed", () =>
@@ -1043,51 +1540,49 @@ describe("set_lifecycle_rules and Cancel Filters", () => {
       })
   );
 
-  it.effect(
-    "replaces existing Cancel Filters when the edit supplies them",
-    () =>
-      Effect.gen(function* () {
-        const { tools, draft } = yield* agentToolsFor({
-          nodes: [cancelFilteredLifecycle],
-          catalog,
-        });
+  it.effect("updates an existing Cancel Filter when the edit supplies it", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [cancelFilteredLifecycle],
+        catalog,
+      });
 
-        yield* tools.set_lifecycle_rules({
-          startEvents: ["applicant.created"],
-          cancelEvents: ["applicant.withdrawn"],
-          correlationPaths: [
-            { event: "applicant.created", path: "applicantId" },
-            { event: "applicant.withdrawn", path: "applicantId" },
-          ],
-          cancelFilters: [
-            {
-              event: "applicant.withdrawn",
-              groups: [
-                {
-                  rules: [
-                    {
-                      field: "applicantId",
-                      fieldType: "string",
-                      operator: "is_not_set",
-                    },
-                  ],
-                },
-              ],
-            },
-          ],
-        });
+      yield* tools.set_lifecycle_rules({
+        startEvents: ["applicant.created"],
+        cancelEvents: ["applicant.withdrawn"],
+        correlationPaths: [
+          { event: "applicant.created", path: "applicantId" },
+          { event: "applicant.withdrawn", path: "applicantId" },
+        ],
+        cancelFilters: [
+          {
+            event: "applicant.withdrawn",
+            groups: [
+              {
+                rules: [
+                  {
+                    field: "applicantId",
+                    fieldType: "string",
+                    operator: "is_not_set",
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      });
 
-        const parsed = parseConditionModel(
-          readLifecycleRules((yield* draft.current).nodes[0]?.data.config)
-            ?.cancelFilters?.["applicant.withdrawn"]
-        );
-        expect(parsed.valid).toBe(true);
-        if (parsed.valid) {
-          expect(parsed.model.groups[0]?.conditions[0]).toMatchObject({
-            operator: "is_not_set",
-          });
-        }
-      })
+      const parsed = parseConditionModel(
+        readLifecycleRules((yield* draft.current).nodes[0]?.data.config)
+          ?.cancelFilters?.["applicant.withdrawn"]
+      );
+      expect(parsed.valid).toBe(true);
+      if (parsed.valid) {
+        expect(parsed.model.groups[0]?.conditions[0]).toMatchObject({
+          operator: "is_not_set",
+        });
+      }
+    })
   );
 
   it.effect("clears Cancel Filters when the edit supplies an empty list", () =>
@@ -1114,6 +1609,24 @@ describe("set_lifecycle_rules and Cancel Filters", () => {
     })
   );
 
+  it.effect("clears a named Cancel Filter", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [cancelFilteredLifecycle],
+        catalog,
+      });
+
+      yield* tools.set_lifecycle_rules({
+        clearCancelFilters: ["applicant.withdrawn"],
+      });
+
+      expect(
+        readLifecycleRules((yield* draft.current).nodes[0]?.data.config)
+          ?.cancelFilters
+      ).toBeUndefined();
+    })
+  );
+
   it.effect(
     "drops a Cancel Filter when the edit removes its Cancel Event",
     () =>
@@ -1125,6 +1638,7 @@ describe("set_lifecycle_rules and Cancel Filters", () => {
 
         yield* tools.set_lifecycle_rules({
           startEvents: ["applicant.created"],
+          cancelEvents: [],
         });
 
         expect(
