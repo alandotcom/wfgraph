@@ -237,11 +237,12 @@ describe("postWorkflowResume", () => {
             }),
         });
 
-        const attempts = yield* Effect.all(
+        const attempts = yield* Effect.forEach(
           [
             resumeWaitByToken({ token: RESUME_TOKEN, body: {}, source: "one" }),
             resumeWaitByToken({ token: RESUME_TOKEN, body: {}, source: "two" }),
-          ].map(Effect.exit),
+          ],
+          Effect.exit,
           { concurrency: "unbounded" }
         ).pipe(Effect.provide(seams.layer));
 

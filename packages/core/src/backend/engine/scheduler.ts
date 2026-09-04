@@ -554,10 +554,9 @@ export class NodeScheduler {
 
   /** Runs a set of nodes side by side, which is how every branch fans out. */
   runAll(nodeIds: readonly string[]): Effect.Effect<void[]> {
-    return Effect.all(
-      nodeIds.map((nodeId) => this.executeNode(nodeId)),
-      { concurrency: "unbounded" }
-    );
+    return Effect.forEach(nodeIds, (nodeId) => this.executeNode(nodeId), {
+      concurrency: "unbounded",
+    });
   }
 
   /**
