@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Effect } from "effect";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { LIFECYCLE_STARTED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import { emptyLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
@@ -75,6 +76,61 @@ describe("list_references", () => {
           type: "number",
         })
       );
+    })
+  );
+
+  it.effect("filters and limits reference results", () =>
+    Effect.gen(function* () {
+      const manyFields = Array.from({ length: 12 }, (_, index) => ({
+        path: `field${index}`,
+        type: "string" as const,
+        description: `Generated field ${index}`,
+      }));
+      const largeCatalog: ExtensionCatalog = {
+        ...catalog,
+        events: [
+          {
+            name: "large.started",
+            label: "Large started",
+            payloadFields: manyFields,
+          },
+        ],
+      };
+      const largeLifecycle: WorkflowNode = {
+        ...lifecycleNode([]),
+        data: {
+          ...lifecycleNode([]).data,
+          config: {
+            lifecycleRules: {
+              startEvents: ["large.started"],
+              cancelEvents: [],
+              concurrency: "unlimited",
+              allowManualStart: false,
+            },
+          },
+        },
+      };
+      const largeEntryToNotify: WorkflowEdge = {
+        id: "large-notify",
+        source: "entry",
+        target: "notify",
+        sourceHandle: LIFECYCLE_STARTED_HANDLE,
+      };
+      const { tools } = yield* agentToolsFor({
+        nodes: [largeLifecycle, slackNode],
+        edges: [largeEntryToNotify],
+        catalog: largeCatalog,
+      });
+
+      const result = yield* tools.list_references({
+        nodeId: "notify",
+        query: "field",
+        limit: 3,
+      });
+
+      expect(result.references).toHaveLength(3);
+      expect(result.totalMatches).toBe(12);
+      expect(result.truncated).toBe(true);
     })
   );
 

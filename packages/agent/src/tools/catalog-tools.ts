@@ -1,5 +1,5 @@
 /**
- * The four tools that answer "what can this workflow be built out of".
+ * The five tools that answer "what can this workflow be built out of".
  *
  * The catalog can hold hundreds of actions once a host registers its own, so
  * `list_actions` answers a filtered index of one line per action and
@@ -12,8 +12,10 @@ import { Effect, Schema } from "effect";
 import { Tool } from "effect/unstable/ai";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import {
-  actionsByCategory,
   findAction,
+  findEvent,
+  selectableActions,
+  selectableActionsByCategory,
 } from "@wfgraph/shared/extensions/catalog";
 import type {
   ActionMetadata,
@@ -23,6 +25,11 @@ import type { ReferenceField } from "@wfgraph/shared/graph/node-references";
 import { flattenConfigFields } from "@wfgraph/shared/plugins/action-fields";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { WorkflowDraft } from "#src/document";
+import {
+  pageResults,
+  resultLimitSchema,
+  resultOffsetSchema,
+} from "#src/tools/result-page";
 
 const actionSummarySchema = Schema.Struct({
   id: Schema.String,
@@ -55,6 +62,13 @@ const referenceFieldSchema = Schema.Struct({
   description: Schema.optionalKey(Schema.String),
   nullable: Schema.optionalKey(Schema.Boolean),
   enumValues: Schema.optionalKey(Schema.Array(Schema.String)),
+});
+
+const eventSummarySchema = Schema.Struct({
+  name: Schema.String,
+  label: Schema.String,
+  description: Schema.optionalKey(Schema.String),
+  integration: Schema.optionalKey(Schema.String),
 });
 
 const BUILT_IN_AUTHORING = new Map<
@@ -101,7 +115,7 @@ function toActionSummary(action: ActionMetadata) {
 
 /**
  * One output or Event payload field, in the shape `describe_action` and
- * `list_events` both return.
+ * `describe_event` both return.
  */
 function toReferenceField(field: ReferenceField) {
   return omitUndefined({
@@ -126,14 +140,14 @@ function matchesQuery(action: ActionMetadata, query: string): boolean {
 }
 
 function searchActions(
-  catalog: ExtensionCatalog,
+  actions: readonly ActionMetadata[],
   filter: {
     readonly query?: string | undefined;
     readonly category?: string | undefined;
     readonly integration?: string | undefined;
   }
 ): ActionMetadata[] {
-  return catalog.actions.filter((action) => {
+  return actions.filter((action) => {
     if (filter.category !== undefined && action.category !== filter.category) {
       return false;
     }
@@ -147,6 +161,28 @@ function searchActions(
   });
 }
 
+function matchesEventQuery(
+  event: ExtensionCatalog["events"][number],
+  query: string
+): boolean {
+  const needle = query.trim().toLowerCase();
+  return (
+    needle.length === 0 ||
+    [event.name, event.label, event.description ?? ""].some((field) =>
+      field.toLowerCase().includes(needle)
+    )
+  );
+}
+
+function toEventSummary(event: ExtensionCatalog["events"][number]) {
+  return omitUndefined({
+    name: event.name,
+    label: event.label,
+    description: event.description,
+    integration: event.integration,
+  });
+}
+
 export const ListActions = Tool.make("list_actions", {
   description:
     "Search the action catalog. Answers one summary line per match. Call describe_action for the config fields of an action you mean to add.",
@@ -156,18 +192,26 @@ export const ListActions = Tool.make("list_actions", {
         "Case-insensitive text matched against an action's id, label, description and category. Omit to list everything.",
     }),
     category: Schema.optionalKey(Schema.String).annotate({
-      description: "Exact category name, as listed in the categories field.",
+      description:
+        "Exact category name from the categories field or an action summary.",
     }),
     integration: Schema.optionalKey(Schema.String).annotate({
       description:
         "Exact integration type, to list only that integration's actions.",
     }),
+    offset: Schema.optionalKey(resultOffsetSchema),
+    limit: Schema.optionalKey(resultLimitSchema),
   }),
   success: Schema.Struct({
     actions: Schema.Array(actionSummarySchema),
-    /** Every category in the catalog, so a follow-up call can filter by one. */
+    /** A bounded index of selectable categories for follow-up filtering. */
     categories: Schema.Array(Schema.String),
+    totalCategories: Schema.Number,
+    categoriesTruncated: Schema.Boolean,
     totalInCatalog: Schema.Number,
+    totalMatches: Schema.Number,
+    truncated: Schema.Boolean,
+    nextOffset: Schema.optionalKey(Schema.Number),
   }),
 });
 
@@ -177,7 +221,7 @@ export const DescribeAction = Tool.make("describe_action", {
   parameters: Schema.Struct({
     actionId: Schema.String.annotate({
       description:
-        "The action id from the system prompt or exactly as list_actions returned it.",
+        "An action id returned by list_actions, or a built-in step named in the system instructions.",
     }),
   }),
   success: Schema.Struct({
@@ -195,19 +239,44 @@ export const DescribeAction = Tool.make("describe_action", {
 
 export const ListEvents = Tool.make("list_events", {
   description:
-    "Every Event the host has registered, with the payload fields each one carries. Events are what start and cancel a workflow through set_lifecycle_rules, and what a Wait node in event mode listens for.",
-  success: Schema.Struct({
-    events: Schema.Array(
-      Schema.Struct({
-        name: Schema.String,
-        label: Schema.String,
-        description: Schema.optionalKey(Schema.String),
-        integration: Schema.optionalKey(Schema.String),
-        correlationPath: Schema.optionalKey(Schema.String),
-        payloadFields: Schema.Array(referenceFieldSchema),
-      })
-    ),
+    "Search Event summaries registered by the host. Call describe_event for payload fields and correlation details before authoring with an Event.",
+  parameters: Schema.Struct({
+    query: Schema.optionalKey(Schema.String).annotate({
+      description:
+        "Case-insensitive text matched against an Event's name, label, and description.",
+    }),
+    integration: Schema.optionalKey(Schema.String).annotate({
+      description: "Exact integration type for integration-owned Events.",
+    }),
+    offset: Schema.optionalKey(resultOffsetSchema),
+    limit: Schema.optionalKey(resultLimitSchema),
   }),
+  success: Schema.Struct({
+    events: Schema.Array(eventSummarySchema),
+    totalMatches: Schema.Number,
+    truncated: Schema.Boolean,
+    nextOffset: Schema.optionalKey(Schema.Number),
+  }),
+});
+
+export const DescribeEvent = Tool.make("describe_event", {
+  description:
+    "The full definition of one Event, including payload fields, correlation path, and integration ownership. Read this before configuring Lifecycle rules or an Event Wait.",
+  parameters: Schema.Struct({
+    eventName: Schema.String.annotate({
+      description: "The exact Event name returned by list_events.",
+    }),
+  }),
+  success: Schema.Struct({
+    name: Schema.String,
+    label: Schema.String,
+    description: Schema.optionalKey(Schema.String),
+    integration: Schema.optionalKey(Schema.String),
+    correlationPath: Schema.optionalKey(Schema.String),
+    payloadFields: Schema.Array(referenceFieldSchema),
+  }),
+  failure: Schema.Struct({ reason: Schema.String }),
+  failureMode: "return",
 });
 
 export const ListIntegrations = Tool.make("list_integrations", {
@@ -235,12 +304,27 @@ export const catalogToolHandlers = Effect.gen(function* () {
       readonly query?: string | undefined;
       readonly category?: string | undefined;
       readonly integration?: string | undefined;
+      readonly offset?: number | undefined;
+      readonly limit?: number | undefined;
     }) =>
-      Effect.succeed({
-        actions: searchActions(catalog, input).map(toActionSummary),
-        categories: Object.keys(actionsByCategory(catalog)),
-        totalInCatalog: catalog.actions.length,
-      }),
+      Effect.succeed(
+        (() => {
+          const selectable = selectableActions(catalog);
+          const matches = searchActions(selectable, input);
+          const page = pageResults(matches, input);
+          const categories = Object.keys(selectableActionsByCategory(catalog));
+          return omitUndefined({
+            actions: page.items.map(toActionSummary),
+            categories: categories.slice(0, 50),
+            totalCategories: categories.length,
+            categoriesTruncated: categories.length > 50,
+            totalInCatalog: catalog.actions.length,
+            totalMatches: page.total,
+            truncated: page.nextOffset !== undefined,
+            nextOffset: page.nextOffset,
+          });
+        })()
+      ),
 
     describe_action: (input: { readonly actionId: string }) => {
       const action = findAction(catalog, input.actionId);
@@ -282,19 +366,45 @@ export const catalogToolHandlers = Effect.gen(function* () {
       );
     },
 
-    list_events: () =>
-      Effect.succeed({
-        events: catalog.events.map((event) =>
-          omitUndefined({
-            name: event.name,
-            label: event.label,
-            description: event.description,
-            integration: event.integration,
-            correlationPath: event.correlationPath,
-            payloadFields: event.payloadFields.map(toReferenceField),
-          })
-        ),
-      }),
+    list_events: (input: {
+      readonly query?: string | undefined;
+      readonly integration?: string | undefined;
+      readonly offset?: number | undefined;
+      readonly limit?: number | undefined;
+    }) => {
+      const matches = catalog.events.filter(
+        (event) =>
+          (input.integration === undefined ||
+            event.integration === input.integration) &&
+          matchesEventQuery(event, input.query ?? "")
+      );
+      const page = pageResults(matches, input);
+      return Effect.succeed(
+        omitUndefined({
+          events: page.items.map(toEventSummary),
+          totalMatches: page.total,
+          truncated: page.nextOffset !== undefined,
+          nextOffset: page.nextOffset,
+        })
+      );
+    },
+
+    describe_event: (input: { readonly eventName: string }) => {
+      const event = findEvent(catalog, input.eventName);
+      if (!event) {
+        return Effect.fail({
+          reason: `No Event named ${input.eventName}. Call list_events to see what exists.`,
+        });
+      }
+
+      return Effect.succeed(
+        omitUndefined({
+          ...toEventSummary(event),
+          correlationPath: event.correlationPath,
+          payloadFields: event.payloadFields.map(toReferenceField),
+        })
+      );
+    },
 
     list_integrations: () =>
       Effect.succeed({

@@ -18,7 +18,35 @@ describe("list_actions", () => {
         "score-applicant",
       ]);
       expect(result.totalInCatalog).toBe(3);
+      expect(result.totalMatches).toBe(3);
+      expect(result.truncated).toBe(false);
       expect(result.categories).toEqual(["Messaging", "Tracking", "Scoring"]);
+    })
+  );
+
+  it.effect("limits a large result and reports that more matches exist", () =>
+    Effect.gen(function* () {
+      const largeCatalog: ExtensionCatalog = {
+        ...catalog,
+        actions: Array.from({ length: 60 }, (_, index) => ({
+          id: `action-${index}`,
+          label: `Action ${index}`,
+          description: `Action number ${index}.`,
+          category: "Generated",
+          configFields: [],
+          outputFields: [],
+        })),
+      };
+      const { tools } = yield* agentToolsFor({ catalog: largeCatalog });
+
+      const defaultPage = yield* tools.list_actions({});
+      const result = yield* tools.list_actions({ limit: 5 });
+
+      expect(defaultPage.actions).toHaveLength(20);
+      expect(defaultPage.nextOffset).toBe(20);
+      expect(result.actions).toHaveLength(5);
+      expect(result.totalMatches).toBe(60);
+      expect(result.truncated).toBe(true);
     })
   );
 
@@ -58,6 +86,56 @@ describe("list_actions", () => {
     })
   );
 
+  it.effect("omits hidden actions and their categories", () =>
+    Effect.gen(function* () {
+      const hiddenCatalog: ExtensionCatalog = {
+        ...catalog,
+        actions: [
+          ...catalog.actions,
+          {
+            id: "legacy/action",
+            label: "Legacy action",
+            description: "Kept for existing workflows.",
+            category: "Legacy",
+            hidden: true,
+            configFields: [],
+            outputFields: [],
+          },
+        ],
+      };
+      const { tools } = yield* agentToolsFor({ catalog: hiddenCatalog });
+
+      const result = yield* tools.list_actions({ query: "legacy" });
+
+      expect(result.actions).toEqual([]);
+      expect(result.totalMatches).toBe(0);
+      expect(result.categories).not.toContain("Legacy");
+    })
+  );
+
+  it.effect("bounds the category index and reports omitted categories", () =>
+    Effect.gen(function* () {
+      const manyCategories: ExtensionCatalog = {
+        ...catalog,
+        actions: Array.from({ length: 51 }, (_, index) => ({
+          id: `action-${index}`,
+          label: `Action ${index}`,
+          description: `Action number ${index}.`,
+          category: `Category ${index}`,
+          configFields: [],
+          outputFields: [],
+        })),
+      };
+      const { tools } = yield* agentToolsFor({ catalog: manyCategories });
+
+      const result = yield* tools.list_actions({});
+
+      expect(result.categories).toHaveLength(50);
+      expect(result.totalCategories).toBe(51);
+      expect(result.categoriesTruncated).toBe(true);
+    })
+  );
+
   it.effect("leaves integration off a host-defined action", () =>
     Effect.gen(function* () {
       const { tools } = yield* agentToolsFor({ catalog });
@@ -71,6 +149,33 @@ describe("list_actions", () => {
 });
 
 describe("describe_action", () => {
+  it.effect("describes a hidden action already used by a workflow", () =>
+    Effect.gen(function* () {
+      const hiddenCatalog: ExtensionCatalog = {
+        ...catalog,
+        actions: [
+          ...catalog.actions,
+          {
+            id: "legacy/action",
+            label: "Legacy action",
+            description: "Kept for existing workflows.",
+            category: "Legacy",
+            hidden: true,
+            configFields: [],
+            outputFields: [],
+          },
+        ],
+      };
+      const { tools } = yield* agentToolsFor({ catalog: hiddenCatalog });
+
+      const result = yield* tools.describe_action({
+        actionId: "legacy/action",
+      });
+
+      expect(result.action.id).toBe("legacy/action");
+    })
+  );
+
   it.effect("describes how to author a built-in Event Split", () =>
     Effect.gen(function* () {
       const { tools } = yield* agentToolsFor({ catalog });
@@ -185,10 +290,10 @@ describe("describe_action", () => {
 });
 
 describe("list_events", () => {
-  it.effect("carries the payload fields and the correlation path", () =>
+  it.effect("returns searchable Event summaries", () =>
     Effect.gen(function* () {
       const { tools } = yield* agentToolsFor({ catalog });
-      const result = yield* tools.list_events();
+      const result = yield* tools.list_events({ query: "applicant" });
 
       expect(result.events.map((event) => event.name)).toEqual([
         "applicant.created",
@@ -196,16 +301,11 @@ describe("list_events", () => {
       ]);
 
       const [created, withdrawn] = result.events;
-      expect(created?.correlationPath).toBe("applicantId");
-      expect(created?.payloadFields.map((field) => field.path)).toEqual([
-        "applicantId",
-        "email",
-        "score",
-      ]);
-      // An Event that declares neither leaves both keys off rather than
-      // sending the model an empty string to reason about.
-      expect(withdrawn?.correlationPath).toBeUndefined();
+      expect(created).not.toHaveProperty("payloadFields");
+      expect(created).not.toHaveProperty("correlationPath");
       expect(withdrawn?.description).toBeUndefined();
+      expect(result.totalMatches).toBe(2);
+      expect(result.truncated).toBe(false);
     })
   );
 
@@ -225,14 +325,56 @@ describe("list_events", () => {
       };
       const { tools } = yield* agentToolsFor({ catalog: integrationCatalog });
 
-      const result = yield* tools.list_events();
+      const result = yield* tools.list_events({ integration: "slack" });
 
-      expect(
-        result.events.find((event) => event.name === "slack/message.received")
-      ).toMatchObject({ integration: "slack" });
-      expect(
-        result.events.find((event) => event.name === "applicant.created")
-      ).not.toHaveProperty("integration");
+      expect(result.events).toEqual([
+        expect.objectContaining({
+          name: "slack/message.received",
+          integration: "slack",
+        }),
+      ]);
+    })
+  );
+
+  it.effect("limits a large Event result", () =>
+    Effect.gen(function* () {
+      const largeCatalog: ExtensionCatalog = {
+        ...catalog,
+        events: Array.from({ length: 60 }, (_, index) => ({
+          name: `event.${index}`,
+          label: `Event ${index}`,
+          payloadFields: [],
+        })),
+      };
+      const { tools } = yield* agentToolsFor({ catalog: largeCatalog });
+
+      const defaultPage = yield* tools.list_events({});
+      const result = yield* tools.list_events({ limit: 4 });
+
+      expect(defaultPage.events).toHaveLength(20);
+      expect(defaultPage.nextOffset).toBe(20);
+      expect(result.events).toHaveLength(4);
+      expect(result.totalMatches).toBe(60);
+      expect(result.truncated).toBe(true);
+    })
+  );
+});
+
+describe("describe_event", () => {
+  it.effect("returns payload fields and correlation details", () =>
+    Effect.gen(function* () {
+      const { tools } = yield* agentToolsFor({ catalog });
+
+      const result = yield* tools.describe_event({
+        eventName: "applicant.created",
+      });
+
+      expect(result.correlationPath).toBe("applicantId");
+      expect(result.payloadFields.map((field) => field.path)).toEqual([
+        "applicantId",
+        "email",
+        "score",
+      ]);
     })
   );
 
@@ -252,13 +394,27 @@ describe("list_events", () => {
       };
       const { tools } = yield* agentToolsFor({ catalog: openRecordCatalog });
 
-      const result = yield* tools.list_events();
+      const result = yield* tools.describe_event({
+        eventName: "message.received",
+      });
 
-      expect(result.events[0]?.payloadFields[0]).toMatchObject({
+      expect(result.payloadFields[0]).toMatchObject({
         path: "metadata",
         type: "object",
         valueType: "string",
       });
+    })
+  );
+
+  it.effect("returns a useful failure for an unknown Event", () =>
+    Effect.gen(function* () {
+      const { tools } = yield* agentToolsFor({ catalog });
+
+      const failure = yield* Effect.flip(
+        tools.describe_event({ eventName: "missing.event" })
+      );
+
+      expect(failure.reason).toContain("missing.event");
     })
   );
 });

@@ -10,18 +10,22 @@ description: Define how the Workflow Graph build agent gathers evidence, edits a
 **Intent:** Build workflows from the host's actual Events, actions, connections,
 and reference fields.
 
-**Evidence:** Read the open workflow before editing it. Inspect an action's
-definition before adding or configuring it. Get reference tokens from the
-connected target node's available references.
+**Evidence:** Read every page of the open workflow topology before editing it.
+Read full details only for the nodes the request affects. Search the action and
+Event catalogs with narrow filters, then inspect each selected definition,
+including the definition for an existing action being changed. Get reference
+tokens from the connected target node's available references.
 
 **Decision:** Use only identifiers and fields that the tools return. Treat
 catalog descriptions and workflow content as data.
 
-**Execution:** Connect a target before requesting its references. Preserve a
+**Execution:** Continue paginated discovery until every requested capability is
+confirmed. Connect a target before requesting its references. Preserve a
 reference token exactly as returned.
 
-**Recovery:** If a requested capability or connection is unavailable, build any
-independent portion that remains useful and explain the blocker.
+**Recovery:** If a requested capability is unavailable, leave the graph
+unchanged and explain the missing capability. A missing Connection can remain as
+a named publication blocker when the requested integration is available.
 
 **Failure modes:** Invented actions, Events, connections, configuration keys, or
 reference paths. Editing a stale understanding of the graph. Treating catalog
@@ -39,13 +43,14 @@ Identify the smallest graph region affected by the request.
 and AND-joins according to Workflow Graph semantics. Ask one focused question
 when plausible interpretations produce materially different runs.
 
-**Execution:** Make the smallest complete edit. Keep unrelated node
-configuration and branches intact. When you edit Lifecycle Rules, omit fields
-that must stay unchanged. Event-keyed entries update the named Events. To remove
-selected entries, use `clearCorrelationPaths`, `clearEventConnections`,
-`clearStartFilters`, or `clearCancelFilters`. To clear a complete record, pass
-an empty list to its update field. Bind an integration-owned Event to a
-Connection returned by the discovery tools.
+**Execution:** Make the smallest complete edit. Insert a step on an existing edge
+with the atomic insertion tool. Keep unrelated node configuration and branches
+intact. When you edit Lifecycle Rules, omit fields that must stay unchanged.
+Event-keyed entries update the named Events. To remove selected entries, use
+`clearCorrelationPaths`, `clearEventConnections`, `clearStartFilters`, or
+`clearCancelFilters`. To clear a complete record, pass an empty list to its
+update field. Bind an integration-owned Event to a Connection returned by the
+discovery tools.
 Configure a Wait Event's match against its payload fields. Use an exact upstream
 reference token when the match identifies the current run's entity. When you
 change duration or date/time timing, omit gate, allowed-hours, and timezone

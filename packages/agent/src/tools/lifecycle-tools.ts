@@ -61,7 +61,7 @@ const UNPLACED = { x: 0, y: 0 };
 
 export const SetLifecycleRules = Tool.make("set_lifecycle_rules", {
   description:
-    "Declare when a run starts and when it is cancelled. A Start Filter checks an Event before a run opens. A Cancel Filter checks an Event before it cancels a run. Creates the Lifecycle Node if the workflow has none. Every Event name and filter field must come from list_events.",
+    "Declare when a run starts and when it is cancelled. A Start Filter checks an Event before a run opens. A Cancel Filter checks an Event before it cancels a run. Creates the Lifecycle Node if the workflow has none. Find exact Event names with list_events, then use describe_event for filter fields and field types.",
   parameters: Schema.Struct({
     startEvents: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
       description:
@@ -92,7 +92,7 @@ export const SetLifecycleRules = Tool.make("set_lifecycle_rules", {
           }),
           path: Schema.String.annotate({
             description:
-              "The payload path identifying the entity a run is about, for example applicantId.",
+              "The Event payload path from describe_event that identifies the entity a run is about, for example applicantId.",
           }),
         })
       )

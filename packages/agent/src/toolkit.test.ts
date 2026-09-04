@@ -125,7 +125,8 @@ describe("the toolkit", () => {
       expect(names, name).toContain(name);
     }
     // The read tools are the rest, and none of them may claim to write.
-    expect(WRITE_TOOL_NAMES.size).toBe(8);
+    expect(WRITE_TOOL_NAMES).toContain("insert_node_on_edge");
+    expect(WRITE_TOOL_NAMES.size).toBe(9);
   });
 
   it.effect("supplies a handler for every tool it declares, and no other", () =>
@@ -168,7 +169,12 @@ describe("the toolkit layer", () => {
 
       // The encoded half is what travels back to the model, so this is the
       // shape a success schema is judged on.
-      expect(encoded).toEqual({ nodes: [], edges: [] });
+      expect(encoded).toEqual({
+        nodes: [],
+        edges: [],
+        totalNodes: 0,
+        totalEdges: 0,
+      });
     })
   );
 });

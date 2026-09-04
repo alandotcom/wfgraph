@@ -49,27 +49,107 @@ const entryToSlack: WorkflowEdge = {
 };
 
 describe("read_workflow", () => {
-  it.effect("answers the graph without positions", () =>
+  it.effect("answers compact topology without positions or config", () =>
     Effect.gen(function* () {
       const { tools } = yield* agentToolsFor({
         nodes: [lifecycle, slackNode],
         edges: [entryToSlack],
         catalog,
       });
-      const result = yield* tools.read_workflow();
+      const result = yield* tools.read_workflow({});
 
       expect(result.nodes).toEqual([
         {
           id: "entry",
           label: "Lifecycle",
           type: "lifecycle",
-          config: {
-            lifecycleRules: {
-              ...emptyLifecycleRules,
-              startEvents: ["applicant.created"],
-            },
-          },
         },
+        {
+          id: "notify",
+          label: "Notify the team",
+          type: "action",
+          actionType: "slack/send-message",
+          description: "Tell #hiring about the applicant.",
+        },
+      ]);
+      expect(result.edges).toEqual([
+        {
+          id: "entry->notify",
+          source: "entry",
+          target: "notify",
+          sourceHandle: "started",
+        },
+      ]);
+    })
+  );
+
+  it.effect("pages large graph topology", () =>
+    Effect.gen(function* () {
+      const nodes = Array.from({ length: 25 }, (_, index): WorkflowNode => ({
+        ...slackNode,
+        id: `node-${index}`,
+        data: { ...slackNode.data, label: `Node ${index}` },
+      }));
+      const { tools } = yield* agentToolsFor({
+        nodes,
+        edges: [],
+        catalog,
+      });
+      const defaultPage = yield* tools.read_workflow({});
+      const result = yield* tools.read_workflow({ nodeOffset: 3, limit: 2 });
+
+      expect(defaultPage.nodes).toHaveLength(20);
+      expect(defaultPage.nextNodeOffset).toBe(20);
+      expect(result.nodes.map((node) => node.id)).toEqual(["node-3", "node-4"]);
+      expect(result.totalNodes).toBe(25);
+      expect(result.nextNodeOffset).toBe(5);
+    })
+  );
+
+  it.effect("leaves sourceHandle off an edge that names none", () =>
+    Effect.gen(function* () {
+      const { tools } = yield* agentToolsFor({
+        nodes: [lifecycle, slackNode],
+        edges: [{ id: "plain", source: "entry", target: "notify" }],
+        catalog,
+      });
+      const result = yield* tools.read_workflow({});
+
+      expect(result.edges[0]).toEqual({
+        id: "plain",
+        source: "entry",
+        target: "notify",
+      });
+    })
+  );
+
+  it.effect("answers an empty graph rather than refusing", () =>
+    Effect.gen(function* () {
+      const { tools } = yield* agentToolsFor({ catalog });
+      const result = yield* tools.read_workflow({});
+
+      expect(result).toEqual({
+        nodes: [],
+        edges: [],
+        totalNodes: 0,
+        totalEdges: 0,
+      });
+    })
+  );
+});
+
+describe("read_nodes", () => {
+  it.effect("returns full config for selected nodes", () =>
+    Effect.gen(function* () {
+      const { tools } = yield* agentToolsFor({
+        nodes: [lifecycle, slackNode],
+        edges: [entryToSlack],
+        catalog,
+      });
+
+      const result = yield* tools.read_nodes({ nodeIds: ["notify"] });
+
+      expect(result.nodes).toEqual([
         {
           id: "notify",
           label: "Notify the team",
@@ -84,68 +164,18 @@ describe("read_workflow", () => {
           },
         },
       ]);
-      expect(result.edges).toEqual([
-        {
-          id: "entry->notify",
-          source: "entry",
-          target: "notify",
-          sourceHandle: "started",
-        },
-      ]);
     })
   );
 
-  it.effect("drops config keys the operator cleared", () =>
+  it.effect("refuses an unknown requested node", () =>
     Effect.gen(function* () {
-      const cleared: WorkflowNode = {
-        ...slackNode,
-        data: {
-          ...slackNode.data,
-          config: {
-            actionType: "slack/send-message",
-            integrationId: undefined,
-            channel: "#hiring",
-          },
-        },
-      };
+      const { tools } = yield* agentToolsFor({ nodes: [lifecycle], catalog });
 
-      const { tools } = yield* agentToolsFor({
-        nodes: [cleared],
-        edges: [],
-        catalog,
-      });
-      const result = yield* tools.read_workflow();
+      const failure = yield* Effect.flip(
+        tools.read_nodes({ nodeIds: ["missing"] })
+      );
 
-      expect(result.nodes[0]?.config).toEqual({
-        actionType: "slack/send-message",
-        channel: "#hiring",
-      });
-    })
-  );
-
-  it.effect("leaves sourceHandle off an edge that names none", () =>
-    Effect.gen(function* () {
-      const { tools } = yield* agentToolsFor({
-        nodes: [lifecycle, slackNode],
-        edges: [{ id: "plain", source: "entry", target: "notify" }],
-        catalog,
-      });
-      const result = yield* tools.read_workflow();
-
-      expect(result.edges[0]).toEqual({
-        id: "plain",
-        source: "entry",
-        target: "notify",
-      });
-    })
-  );
-
-  it.effect("answers an empty graph rather than refusing", () =>
-    Effect.gen(function* () {
-      const { tools } = yield* agentToolsFor({ catalog });
-      const result = yield* tools.read_workflow();
-
-      expect(result).toEqual({ nodes: [], edges: [] });
+      expect(failure.reason).toContain("missing");
     })
   );
 });

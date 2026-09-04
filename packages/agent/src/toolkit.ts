@@ -11,12 +11,14 @@ import { Toolkit } from "effect/unstable/ai";
 import {
   catalogToolHandlers,
   DescribeAction,
+  DescribeEvent,
   ListActions,
   ListEvents,
   ListIntegrations,
 } from "#src/tools/catalog-tools";
 import {
   graphReadToolHandlers,
+  ReadNodes,
   ReadWorkflow,
   ValidateWorkflow,
 } from "#src/tools/graph-read-tools";
@@ -26,6 +28,7 @@ import {
   DeleteNode,
   DisconnectNodes,
   graphWriteToolHandlers,
+  InsertNodeOnEdge,
   UpdateNode,
 } from "#src/tools/graph-write-tools";
 import {
@@ -42,9 +45,11 @@ import { SetWait, waitToolHandlers } from "#src/tools/wait-tools";
 export const agentToolkit = Toolkit.make(
   ListActions,
   DescribeAction,
+  DescribeEvent,
   ListEvents,
   ListIntegrations,
   ReadWorkflow,
+  ReadNodes,
   ValidateWorkflow,
   ListReferences,
   AddNode,
@@ -52,6 +57,7 @@ export const agentToolkit = Toolkit.make(
   DeleteNode,
   ConnectNodes,
   DisconnectNodes,
+  InsertNodeOnEdge,
   SetLifecycleRules,
   SetCondition,
   SetWait
@@ -98,6 +104,7 @@ export const WRITE_TOOL_NAMES: ReadonlySet<string> = new Set([
   DeleteNode.name,
   ConnectNodes.name,
   DisconnectNodes.name,
+  InsertNodeOnEdge.name,
   SetLifecycleRules.name,
   SetCondition.name,
   SetWait.name,
