@@ -18,6 +18,7 @@ import {
   nodesAtom,
 } from "#src/lib/workflow-graph-store";
 import { viewportAnimationDuration } from "#src/lib/motion";
+import { workflowFitViewOptions } from "./workflow-viewport";
 
 /**
  * The width the layout spaces nodes inside: the graph's own box rather than the
@@ -78,10 +79,7 @@ export function useReflowLayout(): {
     window.requestAnimationFrame(() => {
       Promise.resolve(
         fitView({
-          maxZoom: 1,
-          minZoom: 0.5,
-          padding: 0.2,
-          duration: viewportAnimationDuration(),
+          ...workflowFitViewOptions(viewportAnimationDuration()),
         })
       ).catch(() => undefined);
     });

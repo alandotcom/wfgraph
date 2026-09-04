@@ -2,6 +2,11 @@ import { useRef } from "react";
 import { useAfterPaint, useBeforePaint } from "#src/hooks/effects";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import type { WorkflowGraphUpdate } from "#src/lib/workflow-ui-store";
+import {
+  initialWorkflowViewport,
+  workflowFitViewOptions,
+} from "./workflow-viewport";
+export { lifecycleAnchorViewport } from "./workflow-viewport";
 
 type InternalLifecycleAnchor = {
   userNode: WorkflowNode;
@@ -25,7 +30,7 @@ export function canvasFitViewKey({
   return `${workflowId}:${lifecycleNode.id}:${lifecycleNode.position.x}:${lifecycleNode.position.y}`;
 }
 
-export const keyboardFitViewOptions = { padding: 0.2, duration: 0 } as const;
+export const keyboardFitViewOptions = workflowFitViewOptions(0);
 
 export function synchronizedLifecycleAnchor(
   lifecycleNode: WorkflowNode | null,
@@ -45,29 +50,11 @@ export function synchronizedLifecycleAnchor(
   };
 }
 
-export function lifecycleAnchorViewport({
-  canvasWidth,
-  nodePosition,
-  nodeWidth,
-  top,
-  zoom,
-}: {
-  canvasWidth: number;
-  nodePosition: { x: number; y: number };
-  nodeWidth: number;
-  top: number;
-  zoom: number;
-}): { x: number; y: number; zoom: number } {
-  return {
-    x: canvasWidth / 2 - (nodePosition.x + nodeWidth / 2) * zoom,
-    y: top - nodePosition.y * zoom,
-    zoom,
-  };
-}
-
 export function useSynchronizedCanvas({
   presentation,
   synchronizePresentation,
+  viewportCorrection,
+  correctViewport,
   currentWorkflowId,
   lifecycleNode,
   internalNode,
@@ -75,6 +62,8 @@ export function useSynchronizedCanvas({
 }: {
   presentation: unknown;
   synchronizePresentation: () => void;
+  viewportCorrection: unknown;
+  correctViewport: () => void;
   currentWorkflowId: string | null;
   lifecycleNode: WorkflowNode | null;
   internalNode: InternalLifecycleAnchor | null;
@@ -84,6 +73,11 @@ export function useSynchronizedCanvas({
   fitViewKey: string | null;
 } {
   useBeforePaint(presentation, synchronizePresentation);
+  useBeforePaint(viewportCorrection, () => {
+    if (viewportCorrection !== null) {
+      correctViewport();
+    }
+  });
 
   const lifecycleAnchor = synchronizedLifecycleAnchor(
     lifecycleNode,
@@ -96,12 +90,43 @@ export function useSynchronizedCanvas({
 
   // Controlled props reach React Flow's internal store after this component
   // renders. Wait for its node identity so initial fitting never reads the
-  // outgoing graph. Presentation replacements own their viewport separately.
+  // outgoing graph. The canvas corrects a resolved replacement before paint.
   useBeforePaint(fitViewKey, () => {
     fitGenerationRef.current += 1;
   });
 
   return { lifecycleAnchor, fitViewKey };
+}
+
+/**
+ * Identifies a resolved workspace replacement that should relocate the canvas.
+ * Draft edge changes use a separate synchronization key, so editing a Draft
+ * never changes this value or resets the user's viewport.
+ */
+export function canvasViewportCorrectionKey({
+  workflowId,
+  workspaceView,
+  presentation,
+}: {
+  workflowId: string | null;
+  workspaceView: "draft" | "runs" | "changes";
+  presentation: unknown;
+}): {
+  workflowId: string;
+  workspaceView: "draft" | "runs" | "changes";
+  presentation: unknown;
+} | null {
+  if (!workflowId) {
+    return null;
+  }
+  if (workspaceView !== "draft" && presentation === null) {
+    return null;
+  }
+  return {
+    workflowId,
+    workspaceView,
+    presentation,
+  };
 }
 
 /** Fit the full canvas after React Flow has installed a complete graph update. */
@@ -138,9 +163,11 @@ export async function fitInitialWorkflowViewport({
   isCurrent: () => boolean;
   readAnchor: () => {
     canvasWidth: number;
+    canvasHeight: number;
+    graphBounds: { x: number; y: number; width: number; height: number };
     nodePosition: { x: number; y: number };
     nodeWidth: number;
-    zoom: number;
+    fittedViewport: { x: number; y: number; zoom: number };
   } | null;
   setViewport: (viewport: {
     x: number;
@@ -162,7 +189,19 @@ export async function fitInitialWorkflowViewport({
     if (!anchor) {
       return;
     }
-    await setViewport(lifecycleAnchorViewport({ ...anchor, top: 48 }));
+    const viewport = initialWorkflowViewport({
+      canvas: { width: anchor.canvasWidth, height: anchor.canvasHeight },
+      graphBounds: anchor.graphBounds,
+      lifecycle: {
+        nodePosition: anchor.nodePosition,
+        nodeWidth: anchor.nodeWidth,
+        top: 48,
+      },
+      fittedViewport: anchor.fittedViewport,
+    });
+    if (viewport !== anchor.fittedViewport) {
+      await setViewport(viewport);
+    }
   } finally {
     if (isCurrent()) {
       reveal();

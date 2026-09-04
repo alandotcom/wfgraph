@@ -7,9 +7,11 @@ export const WORKFLOW_NODE_WIDTH = 192;
 export const WORKFLOW_NODE_HEIGHT = 112;
 
 /** Gap between two siblings of one rank; dagre's `nodesep`. */
-export const NODE_SPACING = 132;
+export const NODE_SPACING = 108;
 /** Gap between one rank and the next; dagre's `ranksep`. */
-export const RANK_SPACING = 88;
+export const RANK_SPACING = 68;
+/** Cousins retain a little more separation than direct siblings. */
+export const COUSIN_SPACING_FACTOR = 1.5;
 
 /** Width and height of a standard workflow card. */
 export function workflowNodeSize(width: number = WORKFLOW_NODE_WIDTH): {

@@ -8,6 +8,7 @@ import type { ReactNode } from "react";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { useAfterCommit } from "#src/hooks/effects";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import { workflowZoomPresentation } from "#src/components/workflow/workflow-viewport";
 import "@xyflow/react/dist/style.css";
 
 // Every node on this canvas is a workflow node, so React Flow's node generic
@@ -28,7 +29,8 @@ type CanvasProps = {
 };
 
 /**
- * Mirrors the live canvas zoom onto the document as `--rf-zoom`.
+ * Mirrors the live canvas zoom and its discrete presentation state onto the
+ * document. Nodes use the state in CSS, so they do not each subscribe to zoom.
  *
  * Handle hit areas are drawn inside `.react-flow__viewport`, which carries the
  * zoom transform, so the flat 44px touch target measured 24.6px on a phone once
@@ -41,6 +43,7 @@ function ZoomPublisher() {
 
   useAfterCommit(zoom, () => {
     document.documentElement.style.setProperty("--rf-zoom", String(zoom));
+    document.documentElement.dataset.workflowZoom = workflowZoomPresentation(zoom);
   });
 
   return null;

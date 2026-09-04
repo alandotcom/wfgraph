@@ -387,6 +387,13 @@
   outline-offset: calc(3px / var(--rf-zoom, 1));
 }
 
+/* The canvas publishes a two-state zoom presentation once per viewport move.
+   Keeping the description line's space preserves every card's geometry while
+   its low-density overview keeps titles, icons, status, issues, and wires legible. */
+:root[data-workflow-zoom="overview"] .workflow-node-description {
+  visibility: hidden;
+}
+
 /* The editor's frame node is typed `group`, which is also one of React Flow's
    four built-in types, so the wrapper it renders picks up
    `.react-flow__node-group` and every default-node paint that class carries: a

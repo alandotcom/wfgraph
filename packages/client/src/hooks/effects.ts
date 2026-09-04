@@ -1,4 +1,5 @@
 import {
+  type RefCallback,
   type RefObject,
   useCallback,
   useEffect,
@@ -403,6 +404,52 @@ export function useMeasuredHeight(
   }, [ref, enabled]);
 
   return height;
+}
+
+/**
+ * Whether an element's rendered content exceeds its box, kept current as the
+ * content or box size changes. The callback ref measures the rendered element
+ * rather than guessing from text length, which varies with font and zoom.
+ */
+export function useElementOverflow(input: { enabled: boolean; key: unknown }): {
+  ref: RefCallback<HTMLElement>;
+  overflowing: boolean;
+} {
+  const [element, setElement] = useState<HTMLElement | null>(null);
+  const [overflowing, setOverflowing] = useState(false);
+
+  const ref = useCallback((next: HTMLElement | null) => {
+    setElement(next);
+  }, []);
+  const measure = useCallback(() => {
+    const next =
+      input.enabled &&
+      element !== null &&
+      (element.scrollWidth > element.clientWidth ||
+        element.scrollHeight > element.clientHeight);
+    setOverflowing((current) => (current === next ? current : next));
+  }, [element, input.enabled]);
+
+  useLayoutEffect(() => {
+    measure();
+  }, [input.key, measure]);
+
+  useLayoutEffect(() => {
+    if (!(input.enabled && element) || typeof ResizeObserver === "undefined") {
+      return undefined;
+    }
+
+    const observer = new ResizeObserver(() => {
+      const next =
+        element.scrollWidth > element.clientWidth ||
+        element.scrollHeight > element.clientHeight;
+      setOverflowing((current) => (current === next ? current : next));
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [element, input.enabled]);
+
+  return { ref, overflowing };
 }
 
 /** Focusable descendants, in tab order, skipping anything hidden or disabled. */
