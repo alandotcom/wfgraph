@@ -160,7 +160,7 @@ export async function fetchProviderFieldIssues(
   const questions = providerFieldQuestions(nodes, catalog);
   const answers = await Promise.allSettled(
     questions.map((question) =>
-      queryClient.fetchQuery({
+      queryClient.query({
         ...configOptionsQueryOptions({
           integrationId: question.integrationId,
           provider: question.provider,

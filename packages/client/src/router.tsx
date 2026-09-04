@@ -124,14 +124,15 @@ const workflowRoute = createRoute({
    * gone stale since the last save, and repairing it here is what keeps that
    * repair out of a render effect too.
    *
-   * `fetchQuery` and not `ensureQueryData`: the latter returns whatever is
-   * cached without consulting staleness, so the `staleTime: 0` below did
-   * nothing and reopening a workflow within the cache's lifetime rehydrated the
-   * canvas from the copy fetched on the first visit. Edits made in between
-   * vanished from the screen, and the next autosave wrote that older graph
-   * back. `fetchQuery` honours both settings: the workflow is refetched every
-   * time, and the connection list is refetched only when it has gone stale or a
-   * connection write invalidated it.
+   * A plain `query` and not a `query` at `staleTime: "static"`: a static read
+   * returns whatever is cached without consulting staleness, so the
+   * `staleTime: 0` this loader asks for would do nothing, and reopening a
+   * workflow within the cache's lifetime would rehydrate the canvas from the
+   * copy fetched on the first visit. Edits made in between would vanish from
+   * the screen, and the next autosave would write that older graph back. A
+   * plain `query` honours each entry's own setting: the workflow is refetched
+   * every time, and the connection list is refetched only when it has gone
+   * stale or a connection write invalidated it.
    *
    * Run selection is not a loader concern: hydrating on `executionId` cleared
    * the pinned-graph overlay and left the canvas on the live draft.
@@ -160,9 +161,9 @@ const workflowRoute = createRoute({
     }
 
     const [workflowResult, integrationsResult] = await Promise.allSettled([
-      queryClient.fetchQuery(workflowQueryOptions),
+      queryClient.query(workflowQueryOptions),
       can(WfGraphOperations.integrationGetAll.id)
-        ? queryClient.fetchQuery(integrationsQueryOptions())
+        ? queryClient.query(integrationsQueryOptions())
         : Promise.resolve([]),
     ]);
     const hasDeepLinkRunAccess =
@@ -195,7 +196,7 @@ const workflowRoute = createRoute({
         getSaveGeneration: () =>
           appStore.get(successfulSaveGenerationAtom).get(params.workflowId) ??
           0,
-        fetchWorkflow: () => queryClient.fetchQuery(workflowQueryOptions),
+        fetchWorkflow: () => queryClient.query(workflowQueryOptions),
         publishWorkflow: (workflowSnapshot) => {
           const workflow = toSavedWorkflow(workflowSnapshot.workflow);
           appStore.set(hydrateWorkflowAtom, {

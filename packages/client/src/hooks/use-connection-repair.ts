@@ -15,9 +15,10 @@ import { repairIntegrationsAtom } from "#src/lib/workflow-graph-store";
  * calls this. Refreshing the list on its own leaves each node's stored
  * connection id as it was, and that id is what validation and delivery read.
  *
- * `fetchQuery` and not `ensureQueryData`: the write has just invalidated that
- * entry, and `ensureQueryData` answers from the cache without consulting
- * staleness, so the repair would run against the list as it stood before.
+ * A plain `query` and not a `query` at `staleTime: "static"`: the write has
+ * just invalidated that entry, and a static read answers from the cache without
+ * consulting staleness, so the repair would run against the list as it stood
+ * before.
  */
 export function useConnectionRepair() {
   const queryClient = useQueryClient();
@@ -29,7 +30,7 @@ export function useConnectionRepair() {
       return;
     }
     repairIntegrations({
-      integrations: await queryClient.fetchQuery(integrationsQueryOptions()),
+      integrations: await queryClient.query(integrationsQueryOptions()),
       catalog,
     });
   }, [queryClient, repairIntegrations, catalog]);
