@@ -198,9 +198,13 @@ export type AgentEvalInput = {
   expectedCompletion: AgentEvalExpectedCompletion;
   /**
    * What the scenario means, in the words the deterministic expectations only
-   * approximate. `IntentAlignmentJudge` reads these, and it runs on the complex
-   * suite alone, so on the focused and capability suites they are documentation
-   * for whoever edits the scenario next rather than a check that runs.
+   * approximate.
+   *
+   * No judge reads these. They are for whoever edits the scenario next: the
+   * expectations below are one spelling of the requirement, and this is the
+   * requirement. A model-backed judge scored them until it was removed for
+   * having no measured agreement with a human, so a judge added here later
+   * needs that measurement first.
    */
   intentCriteria: string[];
   model?: string;

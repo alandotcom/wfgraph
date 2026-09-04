@@ -17,10 +17,6 @@ import {
   ValidationJudge,
 } from "#src/agent/judges/index";
 import {
-  IntentAlignmentJudge,
-  workflowIntentJudgeHarness,
-} from "#src/agent/judges/intent";
-import {
   capabilityScenarios,
   complexScenarios,
   focusedScenarios,
@@ -72,28 +68,17 @@ describeEval(
   {
     harness: workflowAgentHarness,
     judges: deterministicJudges,
-    judgeHarness: workflowIntentJudgeHarness,
     judgeThreshold: 1,
     skipIf: skipWithoutModelKey,
   },
   (it) => {
     it.for(complexTrials)(
       "$name (trial $trial)",
-      async ({ input, trial }, { run }) => {
+      async ({ input }, { run }) => {
         const result = await run(input);
 
         if (input.expected.efficiencyBudget !== undefined) {
           await expect(result).toSatisfyJudge(EfficiencyBudgetJudge, {
-            threshold: null,
-          });
-        }
-
-        // One verdict per scenario rather than one per trial: the judge is
-        // advisory and its agreement with a human has never been measured, so a
-        // second opinion from it adds no evidence. Widen this once it has a
-        // measured true-positive and true-negative rate.
-        if (trial === 1) {
-          await expect(result).toSatisfyJudge(IntentAlignmentJudge, {
             threshold: null,
           });
         }
