@@ -155,6 +155,7 @@ export function seedPublishedWorkflow(
         versionId,
         version: 1,
         expectedPublishedVersionId: null,
+        expectedDraftRevision: 1,
         graph: emptyGraph,
         draftGraph: emptyGraph,
         catalogFingerprint: "catalog",

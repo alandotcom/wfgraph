@@ -179,6 +179,7 @@ function createWorkflow(input: { rules: LifecycleRules }): Workflow {
       ],
       edges: [],
     }),
+    draftRevision: 1,
     isPaused: false,
     mode: "live",
     visibility: "private",

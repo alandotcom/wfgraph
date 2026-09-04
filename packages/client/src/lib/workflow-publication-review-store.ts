@@ -30,6 +30,7 @@ export type ReadyPublicationReview = {
   epoch: number;
   pending: false;
   graph: SerializedWorkflowGraph;
+  expectedDraftRevision: number;
   expectedPublishedVersionId: string | null;
   review: PublicationReview;
 };
@@ -85,7 +86,10 @@ export const publicationReviewAtom = atom<ReadyPublicationReview | null>(
 export const beginPublicationReviewAtom = atom(
   null,
   (get, set, workflowId: string) => {
-    if (get(currentWorkflowIdAtom) !== workflowId) {
+    if (
+      get(currentWorkflowIdAtom) !== workflowId ||
+      get(publicationReviewSessionsStateAtom)[workflowId] !== undefined
+    ) {
       return null;
     }
     const epoch =

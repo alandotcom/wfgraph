@@ -50,6 +50,7 @@ import type {
 import type { WfGraphLogger } from "@wfgraph/shared/types/logger";
 import { closeInOrder, failAfterClose } from "#src/backend/lib/close-in-order";
 import { resolvePublicUrl } from "#src/backend/lib/http/public-url";
+import type { WfGraphMcpOptions } from "#src/backend/agent/mcp-server";
 
 export type { EncryptionRuntimeConfig } from "#src/backend/services/integrations/cipher";
 export type { WfGraphInngestConfig } from "#src/backend/lib/inngest/client";
@@ -63,6 +64,7 @@ export {
 export type { WfGraphLogger } from "@wfgraph/shared/types/logger";
 export type { WfGraphExtensions } from "#src/backend/extensions/extension-set";
 export type { WfGraphPersistence } from "#src/backend/persistence/types";
+export type { WfGraphMcpOptions } from "#src/backend/agent/mcp-server";
 
 export type WfGraphAppOptions = {
   /**
@@ -114,6 +116,8 @@ export type WfGraphAppOptions = {
    * `process.env.OPENAI_API_KEY`.
    */
   agent?: WfGraphAgentConfig | undefined;
+  /** Enables the authenticated stateless MCP endpoint at `${basePath}/api/mcp`. */
+  mcp?: true | WfGraphMcpOptions | undefined;
   /**
    * The workflow editor, from `import { clientBundle } from "@wfgraph/client"`.
    *
@@ -298,6 +302,7 @@ async function assembleWfGraphApp(
     basePath: `${basePath}/api`,
     auth,
     runtime,
+    mcp: options.mcp,
     // Connect dials out; mounting `/inngest` would advertise a callback Inngest
     // cannot reach on a private network and is not how Connect syncs.
     inngestHandler: useConnect ? undefined : inngest.serve(functions),

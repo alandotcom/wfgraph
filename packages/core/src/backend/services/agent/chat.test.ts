@@ -99,10 +99,11 @@ describe("postAgentChat", () => {
               enabled: true,
               apiKey: "test-key",
               model: "unused-built-in-model",
+              reasoningEffort: "high",
             }),
             makeAgentRunnerLayer(runner),
             stubExtensions(),
-            stubIntegrationRepo({ listByType: () => Effect.succeed([]) }),
+            stubIntegrationRepo({ listIdentities: Effect.succeed([]) }),
             recording.layer
           )
         ),

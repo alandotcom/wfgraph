@@ -29,6 +29,47 @@ const API_KEY_ENV = "OPENAI_API_KEY";
  */
 export const DEFAULT_AGENT_MODEL = "gpt-5.6-luna";
 
+/**
+ * How hard the model thinks before it answers, every value the provider takes.
+ *
+ * Hand-mirrored from `OpenAiLanguageModel.Config`, because `config.ts` names no
+ * provider and `agent/model.ts` is the one file that does. Nothing checks the
+ * two against each other: the client sends the request body unencoded, so a
+ * value this union carries and the provider has dropped fails at the API rather
+ * than at the build. Re-read the provider's Config when it bumps.
+ *
+ * One declaration rather than a type beside a list, so the runtime set cannot
+ * fall behind the type. `packages/evals` validates an environment override
+ * against it.
+ */
+export const AGENT_REASONING_EFFORTS = [
+  "none",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+] as const;
+
+export type AgentReasoningEffort = (typeof AGENT_REASONING_EFFORTS)[number];
+
+/**
+ * The effort a turn runs at when the host names none.
+ *
+ * `medium` because nothing measured says otherwise, and every step above it
+ * bills an adopter latency and tokens. Twenty trials per arm gave the capability
+ * suite 16 of 20 at `high` against 12 of 20 here, which Fisher's exact test
+ * cannot separate from noise (p = 0.30), and the complex suite 21 of 21 against
+ * 19 of 21 (p = 0.49). Neither arm's failures were ones more thinking would fix.
+ * Separating an effect that size would take roughly a hundred trials per arm.
+ *
+ * It is named rather than left unset so a provider changing its own default
+ * cannot change how the agent behaves. `medium` is what `gpt-5.6` defaults to
+ * today, so this pins current behaviour rather than altering it.
+ */
+export const DEFAULT_AGENT_REASONING_EFFORT: AgentReasoningEffort = "medium";
+
 export type WfGraphAgentConfig = {
   /**
    * The OpenAI API key. Optional in the type so a host can pass
@@ -38,6 +79,8 @@ export type WfGraphAgentConfig = {
   readonly apiKey: string | undefined;
   /** Defaults to `DEFAULT_AGENT_MODEL`. */
   readonly model?: string | undefined;
+  /** Defaults to `DEFAULT_AGENT_REASONING_EFFORT`. */
+  readonly reasoningEffort?: AgentReasoningEffort | undefined;
   /** For an OpenAI-compatible endpoint that is not OpenAI's own. */
   readonly baseUrl?: string | undefined;
 };
@@ -47,6 +90,7 @@ export type EnabledAgentSettings = {
   readonly enabled: true;
   readonly apiKey: string;
   readonly model: string;
+  readonly reasoningEffort: AgentReasoningEffort;
   readonly baseUrl?: string | undefined;
 };
 
@@ -82,6 +126,7 @@ export function readAgentSettings(
     enabled: true,
     apiKey,
     model: config?.model?.trim() || DEFAULT_AGENT_MODEL,
+    reasoningEffort: config?.reasoningEffort ?? DEFAULT_AGENT_REASONING_EFFORT,
     // oxlint-disable-next-line wfgraph/no-conditional-spread -- an empty `baseUrl` counts as none, so the key is left off for both.
     ...(config?.baseUrl ? { baseUrl: config.baseUrl } : {}),
   };

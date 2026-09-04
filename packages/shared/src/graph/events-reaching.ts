@@ -28,7 +28,11 @@ import type {
   WorkflowEdge,
   WorkflowNode,
 } from "#src/graph/types";
-import { isEventWaitNode, isLifecycleNode } from "#src/graph/node-config";
+import {
+  isEventWaitNode,
+  isLifecycleNode,
+  readConfigString,
+} from "#src/graph/node-config";
 import { fieldsVisibleForConfig } from "#src/graph/node-references";
 import { upstreamNodeIds } from "#src/graph/upstream-nodes";
 import {
@@ -433,4 +437,76 @@ function intersectEventsByName(
 ): EventMetadata[] {
   const rightNames = new Set(right.map((event) => event.name));
   return left.filter((event) => rightNames.has(event.name));
+}
+
+/**
+ * Whether a run can reach this node carrying no Arriving Event.
+ *
+ * An event-mode Wait that continues past its timeout releases the run without
+ * an Event, and the engine writes an empty payload onto the Lifecycle Node for
+ * everything below it. Every path the Wait's Events declare is therefore absent
+ * on that run, which is exactly what `nullable` on a Reachable Field says. A
+ * Wait set to skip on timeout releases no such run, so it answers false.
+ *
+ * The question is asked per node rather than per field, because the timeout is
+ * a fact about the walk down to the node and not about any one payload path.
+ */
+export function arrivingEventCanBeAbsent(input: {
+  targetNodeId: string;
+  nodes: readonly WorkflowNode[];
+  edges: readonly WorkflowEdge[];
+}): boolean {
+  const nodeById = new Map(input.nodes.map((node) => [node.id, node]));
+  const incomingByTarget = new Map<string, WorkflowEdge[]>();
+  for (const edge of input.edges) {
+    const list = incomingByTarget.get(edge.target);
+    if (list) {
+      list.push(edge);
+    } else {
+      incomingByTarget.set(edge.target, [edge]);
+    }
+  }
+
+  const memo = new Map<string, boolean>();
+
+  const absentAt = (nodeId: string, seen: Set<string>): boolean => {
+    const cached = memo.get(nodeId);
+    if (cached !== undefined) {
+      return cached;
+    }
+    if (seen.has(nodeId)) {
+      return false;
+    }
+
+    const nextSeen = new Set(seen);
+    nextSeen.add(nodeId);
+
+    // Any one path that loses the Event is enough, because a run takes one path
+    // and the field is absent on that run.
+    const answer = (incomingByTarget.get(nodeId) ?? []).some((edge) => {
+      const parent = nodeById.get(edge.source);
+      if (!parent) {
+        return false;
+      }
+      if (isEventWaitNode(parent)) {
+        return continuesPastTimeout(parent);
+      }
+      // The Lifecycle Node is the other Event source, and a run entering there
+      // carries the Event that opened it.
+      if (isLifecycleNode(parent)) {
+        return false;
+      }
+      return absentAt(parent.id, nextSeen);
+    });
+
+    memo.set(nodeId, answer);
+    return answer;
+  };
+
+  return absentAt(input.targetNodeId, new Set());
+}
+
+/** Whether a timed-out run leaves this Wait, which is the default behavior. */
+function continuesPastTimeout(node: WorkflowNode): boolean {
+  return readConfigString(node.data.config, "waitTimeoutBehavior") !== "skip";
 }

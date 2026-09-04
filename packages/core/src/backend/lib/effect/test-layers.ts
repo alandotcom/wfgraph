@@ -287,7 +287,8 @@ const workflowRepoStubs: WorkflowRepo["Service"] = {
   insert: refuse("insert"),
   findPausedById: refuse("findPausedById"),
   setPaused: refuse("setPaused"),
-  update: refuse("update"),
+  updateMetadata: refuse("updateMetadata"),
+  writeDraft: refuse("writeDraft"),
   deleteById: refuse("deleteById"),
   findCurrent: refuse("findCurrent")(),
   insertCurrent: refuse("insertCurrent"),
@@ -381,6 +382,7 @@ export function stubApiKeyRepo(
 
 const integrationRepoStubs: IntegrationRepo["Service"] = {
   listByType: refuse("listByType"),
+  listIdentities: Effect.die("listIdentities is not part of this test"),
   findById: refuse("findById"),
   typesByIds: refuse("typesByIds"),
   insert: refuse("insert"),

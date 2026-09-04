@@ -63,6 +63,7 @@ function workflowRow(overrides: Partial<Workflow> = {}): Workflow {
     name: "Appointment Reminders",
     description: null,
     graph: graphWithRules(startRules),
+    draftRevision: 1,
     isPaused: false,
     mode: "live",
     visibility: "private",

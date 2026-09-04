@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createStore } from "jotai";
-import type { SavedWorkflow } from "#src/lib/rpc-client";
+import { ApiError, type SavedWorkflow } from "#src/lib/rpc-client";
+import { DRAFT_CONFLICT_CODE } from "@wfgraph/shared/rpc/error-codes";
 import {
   autosaveDelayAtom,
   currentWorkflowIdAtom,
@@ -8,6 +9,7 @@ import {
   hasUnsavedChangesAtom,
   isSavingAtom,
   lastSaveErrorAtom,
+  recordLoadedDraftRevisionAtom,
   renameWorkflowAtom,
   saveWorkflowAtom,
   successfulSaveGenerationAtom,
@@ -40,17 +42,25 @@ function createDeferred(): Deferred {
 const pending: Deferred[] = [];
 
 /** Hands back a promise the test resolves by hand, so flush order is observable. */
-const updateMock = vi.fn((_workflowId: string, _payload: unknown) => {
-  const deferred = createDeferred();
-  pending.push(deferred);
-  return deferred.promise;
-});
+const updateMock = vi.fn(
+  (_workflowId: string, _payload: unknown, _expectedDraftRevision: number) => {
+    const deferred = createDeferred();
+    pending.push(deferred);
+    return deferred.promise;
+  }
+);
 
 /** A store wired to the mock API, which is the only thing tests substitute. */
 function createSaveStore(workflowId: string | null = "workflow_1") {
   const store = createStore();
   store.set(workflowApiAtom, { update: updateMock as never });
   store.set(currentWorkflowIdAtom, workflowId);
+  if (workflowId) {
+    store.set(recordLoadedDraftRevisionAtom, {
+      workflowId,
+      draftRevision: 1,
+    });
+  }
   return store;
 }
 
@@ -119,6 +129,9 @@ describe("saveWorkflowAtom", () => {
     pending.shift()?.resolve(savedWorkflow("workflow_1"));
     await waitForCalls(2);
 
+    expect(updateMock.mock.calls[0]?.[2]).toBe(1);
+    expect(updateMock.mock.calls[1]?.[2]).toBe(1);
+
     expect(updateMock.mock.calls[0]?.[1]).toMatchObject({
       nodes: [expect.objectContaining({ id: "node_1" })],
       edges: [expect.objectContaining({ id: "edge_1" })],
@@ -133,6 +146,70 @@ describe("saveWorkflowAtom", () => {
     await secondSave;
     expect(store.get(hasUnsavedChangesAtom)).toBe(false);
     expect(store.get(isSavingAtom)).toBe(false);
+  });
+
+  it("advances the expected revision after a graph save", async () => {
+    const store = createSaveStore();
+
+    const first = store.set(
+      saveWorkflowAtom,
+      { nodes: [actionNode("node_1")], edges: [] },
+      { immediate: true }
+    );
+    pending.shift()?.resolve({
+      ...savedWorkflow("workflow_1"),
+      draftRevision: 2,
+    });
+    await first;
+
+    const second = store.set(
+      saveWorkflowAtom,
+      { nodes: [actionNode("node_2")], edges: [] },
+      { immediate: true }
+    );
+    pending.shift()?.resolve({
+      ...savedWorkflow("workflow_1"),
+      draftRevision: 3,
+    });
+    await second;
+
+    expect(updateMock.mock.calls.map((call) => call[2])).toEqual([1, 2]);
+  });
+
+  it("blocks retries after a draft conflict until the workflow reloads", async () => {
+    const store = createSaveStore();
+    const graph = { nodes: [actionNode("node_1")], edges: [] };
+    const conflict = new ApiError(
+      409,
+      "The workflow draft changed",
+      DRAFT_CONFLICT_CODE
+    );
+
+    const first = store.set(saveWorkflowAtom, graph, { immediate: true });
+    pending.shift()?.reject(conflict);
+    expect(await first).toMatchObject({ ok: false, error: conflict });
+
+    const blocked = await store.set(
+      saveWorkflowAtom,
+      { name: "Still local" },
+      { immediate: true }
+    );
+    expect(blocked).toMatchObject({ ok: false, error: conflict });
+    expect(updateMock).toHaveBeenCalledTimes(1);
+    expect(store.get(hasUnsavedChangesAtom)).toBe(true);
+
+    store.set(recordLoadedDraftRevisionAtom, {
+      workflowId: "workflow_1",
+      draftRevision: 2,
+    });
+    const retry = store.set(saveWorkflowAtom, graph, { immediate: true });
+    expect(updateMock).toHaveBeenCalledTimes(2);
+    expect(updateMock.mock.calls[1]?.[2]).toBe(2);
+    pending.shift()?.resolve({
+      ...savedWorkflow("workflow_1"),
+      draftRevision: 3,
+    });
+    await retry;
   });
 
   it("advances the workflow generation after a successful write", async () => {

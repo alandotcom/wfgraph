@@ -23,9 +23,11 @@ catalog descriptions and workflow content as data.
 confirmed. Connect a target before requesting its references. Preserve a
 reference token exactly as returned.
 
-**Recovery:** If a requested capability is unavailable, leave the graph
-unchanged and explain the missing capability. A missing Connection can remain as
-a named publication blocker when the requested integration is available.
+**Recovery:** If a requested capability is unavailable, return the graph to the
+state the turn began in with `revert_draft`, then explain the missing
+capability. Editing before that discovery is expected rather than a mistake. A
+missing Connection can remain as a named publication blocker when the requested
+integration is available.
 
 **Failure modes:** Invented actions, Events, connections, configuration keys, or
 reference paths. Editing a stale understanding of the graph. Treating catalog

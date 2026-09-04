@@ -43,6 +43,14 @@ export type EvalWaitMatchRule = {
 export type AgentEvalEditSafety = {
   protectedNodeIds?: string[];
   protectedEdgeIds?: string[];
+  /**
+   * `"all"` asks that the turn hand back the graph it started with. It permits
+   * editing and then reverting, which is what `BEHAVIOR.md` asks of a turn that
+   * finds mid-build that the request cannot be met.
+   *
+   * A list of tool names is the different question of which tool was used, for
+   * a scenario about reaching for `insert_node_on_edge` over add-and-connect.
+   */
   forbiddenMutations?: "all" | string[];
 };
 
@@ -135,8 +143,10 @@ export type AgentEvalExpectations = {
   }>;
   requiredConditionRules?: Array<{
     node: EvalNodeSelector;
-    field: string;
-    operator: string;
+    /** One path, or the set of paths any of which answers the same question. */
+    field: string | string[];
+    /** Omit to accept any operator, where either polarity describes the same run. */
+    operator?: string;
     value?: string | number;
   }>;
   requiredConditionLogic?: Array<{
@@ -149,6 +159,17 @@ export type AgentEvalExpectations = {
     key: string;
     path: string;
     allMatches?: boolean;
+  }>;
+  /**
+   * Paths a node's config must not reference, whatever key holds them. Names
+   * the one wrong value a scenario is about, where ResolvableReferencesJudge
+   * answers the general question of whether every token can be read at all.
+   */
+  forbiddenReferences?: Array<{
+    node: EvalNodeSelector;
+    paths: string[];
+    /** Restricts the ban to tokens reading from this node, such as lifecycle. */
+    fromNode?: EvalNodeSelector;
   }>;
   distinctConfigValues?: Array<{
     nodes: EvalNodeSelector;
@@ -183,6 +204,16 @@ export type AgentEvalInput = {
   integrations: Array<{ id: string; type: string }>;
   expected: AgentEvalExpectations;
   expectedCompletion: AgentEvalExpectedCompletion;
+  /**
+   * What the scenario means, in the words the deterministic expectations only
+   * approximate.
+   *
+   * No judge reads these. They are for whoever edits the scenario next: the
+   * expectations below are one spelling of the requirement, and this is the
+   * requirement. A model-backed judge scored them until it was removed for
+   * having no measured agreement with a human, so a judge added here later
+   * needs that measurement first.
+   */
   intentCriteria: string[];
   model?: string;
 };

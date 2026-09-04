@@ -23,6 +23,7 @@ const aWorkflow = (id: string) => ({
   id,
   name: id,
   graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+  draftRevision: 1,
   isPaused: false,
   mode: "live" as const,
   visibility: "private" as const,

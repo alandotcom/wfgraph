@@ -24,6 +24,7 @@ import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import { orpcQuery } from "#src/lib/rpc-query";
 import {
   extractRpcProcedurePath,
+  parseRpcRequestInput,
   rpcJsonResponse,
   rpcUrl,
 } from "#src/lib/rpc-fetch-test-support";
@@ -207,10 +208,12 @@ describe("useWorkflowComparisonActions", () => {
     const save = new Promise<void>((resolve) => {
       resolveSave = resolve;
     });
-    const fetch = vi.fn(async (url: RequestInfo | URL) => {
+    let restoreInput: unknown;
+    const fetch = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
       expect(extractRpcProcedurePath(rpcUrl(url))).toBe(
         "workflow/restoreVersion"
       );
+      restoreInput = await parseRpcRequestInput(init);
       return rpcJsonResponse(savedWorkflow("workflow_1"));
     });
     vi.stubGlobal("fetch", fetch);
@@ -219,7 +222,7 @@ describe("useWorkflowComparisonActions", () => {
     store.set(workflowApiAtom, {
       update: vi.fn(async () => {
         await save;
-        return savedWorkflow("workflow_1");
+        return { ...savedWorkflow("workflow_1"), draftRevision: 2 };
       }),
     } as never);
     const queryClient = new QueryClient({
@@ -241,6 +244,7 @@ describe("useWorkflowComparisonActions", () => {
       result.current.restore.mutate({
         workflowId: "workflow_1",
         versionId: "version_1",
+        expectedDraftRevision: 1,
       })
     );
     await waitFor(() =>
@@ -255,6 +259,12 @@ describe("useWorkflowComparisonActions", () => {
         )
       ).toBe(true)
     );
+    await waitFor(() => expect(result.current.restore.isSuccess).toBe(true));
+    expect(restoreInput).toEqual({
+      workflowId: "workflow_1",
+      versionId: "version_1",
+      expectedDraftRevision: 2,
+    });
   });
 
   it("suppresses restore when the immediate draft save fails", async () => {
@@ -288,6 +298,7 @@ describe("useWorkflowComparisonActions", () => {
       result.current.restore.mutate({
         workflowId: "workflow_1",
         versionId: "version_1",
+        expectedDraftRevision: 1,
       })
     );
     await waitFor(() => expect(result.current.restore.isError).toBe(true));
@@ -349,6 +360,7 @@ describe("useWorkflowComparisonActions", () => {
       result.current.restore.mutate({
         workflowId: "workflow_a",
         versionId: "version_1",
+        expectedDraftRevision: 1,
       })
     );
     await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledTimes(1));

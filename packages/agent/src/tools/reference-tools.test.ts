@@ -260,3 +260,121 @@ describe("list_references", () => {
     })
   );
 });
+
+describe("list_references below an Event wait", () => {
+  const eventWait: WorkflowNode = {
+    id: "wait",
+    position: { x: 0, y: 160 },
+    type: "action",
+    data: {
+      label: "Wait for withdrawal",
+      type: "action",
+      config: {
+        actionType: "Wait",
+        waitMode: "event",
+        waitFor: [{ event: "applicant.withdrawn" }],
+        waitTimeout: "7d",
+        waitTimeoutBehavior: "continue",
+      },
+    },
+  };
+
+  const skippingWait: WorkflowNode = {
+    ...eventWait,
+    data: {
+      ...eventWait.data,
+      config: { ...eventWait.data.config, waitTimeoutBehavior: "skip" },
+    },
+  };
+
+  const entryToWait: WorkflowEdge = {
+    id: "e1",
+    source: "entry",
+    target: "wait",
+    sourceHandle: LIFECYCLE_STARTED_HANDLE,
+  };
+  const waitToSlack: WorkflowEdge = {
+    id: "e2",
+    source: "wait",
+    target: "notify",
+  };
+
+  const belowTheWait = (wait: WorkflowNode) => ({
+    nodes: [lifecycleNode(["applicant.created"]), wait, slackNode],
+    edges: [entryToWait, waitToSlack],
+    catalog,
+  });
+
+  it.effect("names the Events a Lifecycle Node path came from", () =>
+    Effect.gen(function* () {
+      const { tools } = yield* agentToolsFor(belowTheWait(eventWait));
+      const result = yield* tools.list_references({ nodeId: "notify" });
+
+      expect(result.references).toContainEqual(
+        expect.objectContaining({
+          sourceNodeId: "entry",
+          path: "applicantId",
+          declaredBy: ["applicant.withdrawn"],
+        })
+      );
+    })
+  );
+
+  it.effect("drops the Start Event payload the wait replaced", () =>
+    Effect.gen(function* () {
+      const { tools } = yield* agentToolsFor(belowTheWait(eventWait));
+      const result = yield* tools.list_references({ nodeId: "notify" });
+
+      // `email` belongs to applicant.created alone, which no longer reaches here.
+      expect(
+        result.references.filter((reference) => reference.path === "email")
+      ).toEqual([]);
+    })
+  );
+
+  it.effect(
+    "marks every Lifecycle field nullable when the wait continues",
+    () =>
+      Effect.gen(function* () {
+        const { tools } = yield* agentToolsFor(belowTheWait(eventWait));
+        const result = yield* tools.list_references({ nodeId: "notify" });
+
+        expect(
+          result.references.find(
+            (reference) =>
+              reference.sourceNodeId === "entry" &&
+              reference.path === "applicantId"
+          )?.nullable
+        ).toBe(true);
+      })
+  );
+
+  it.effect("leaves them as declared when the wait skips on timeout", () =>
+    Effect.gen(function* () {
+      const { tools } = yield* agentToolsFor(belowTheWait(skippingWait));
+      const result = yield* tools.list_references({ nodeId: "notify" });
+
+      expect(
+        result.references.find(
+          (reference) =>
+            reference.sourceNodeId === "entry" &&
+            reference.path === "applicantId"
+        )?.nullable
+      ).toBeUndefined();
+    })
+  );
+
+  it.effect("names the Start Events above the wait", () =>
+    Effect.gen(function* () {
+      const { tools } = yield* agentToolsFor(belowTheWait(eventWait));
+      const result = yield* tools.list_references({ nodeId: "wait" });
+
+      expect(result.references).toContainEqual(
+        expect.objectContaining({
+          path: "email",
+          declaredBy: ["applicant.created"],
+        })
+      );
+    })
+  );
+});

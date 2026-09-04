@@ -1,10 +1,10 @@
 import { atom } from "jotai";
 import { isEmptyObject } from "es-toolkit/predicate";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
+import { DRAFT_CONFLICT_CODE } from "@wfgraph/shared/rpc/error-codes";
 import { getClientLogger } from "#src/lib/logger";
 import { queryClient } from "#src/lib/query-client";
-import type { SavedWorkflow } from "#src/lib/rpc-client";
-import { workflowApi } from "#src/lib/rpc-client";
+import { ApiError, type SavedWorkflow, workflowApi } from "#src/lib/rpc-client";
 import { cacheWorkflowPublication, orpcQuery } from "#src/lib/rpc-query";
 import type {
   WorkflowEdge,
@@ -35,6 +35,13 @@ export const currentWorkflowNameAtom = atom<string>("");
 export const currentWorkflowVisibilityAtom =
   atom<WorkflowVisibility>("private");
 export const currentWorkflowModeAtom = atom<WorkflowMode>("live");
+const workflowDraftRevisionsAtom = atom(new Map<string, number>());
+export const currentWorkflowDraftRevisionAtom = atom((get) => {
+  const workflowId = get(currentWorkflowIdAtom);
+  return workflowId
+    ? (get(workflowDraftRevisionsAtom).get(workflowId) ?? 0)
+    : 0;
+});
 export const workflowNotFoundAtom = atom(false);
 export const workflowLoadErrorAtom = atom<string | null>(null);
 
@@ -146,6 +153,7 @@ export type SaveOutcome =
 type PendingSave = {
   workflowId: string;
   patch: WorkflowPatch;
+  expectedDraftRevision: number;
   /** Resolved once the `update` carrying this patch comes back. */
   waiters: Array<(outcome: SaveOutcome) => void>;
 };
@@ -165,6 +173,8 @@ type SaveQueue = {
    * look clean while the failed graph fields are still absent on the server.
    */
   failedPatches: Map<string, WorkflowPatch>;
+  /** Draft conflicts block retries until a fresh workflow load resets the revision. */
+  blockedConflicts: Map<string, Error>;
   /** Rename state shared by overlapping callers until the last one settles. */
   renames: Map<
     string,
@@ -200,10 +210,28 @@ const saveQueueAtom = atom((): SaveQueue => ({
   timeoutId: null,
   pending: [],
   failedPatches: new Map(),
+  blockedConflicts: new Map(),
   renames: new Map(),
   nextRenameRequestId: 0,
   isFlushing: false,
 }));
+
+/** Installs a server revision and clears any stale-write block for that workflow. */
+export const recordLoadedDraftRevisionAtom = atom(
+  null,
+  (get, set, input: { workflowId: string; draftRevision: number }) => {
+    set(
+      workflowDraftRevisionsAtom,
+      new Map(get(workflowDraftRevisionsAtom)).set(
+        input.workflowId,
+        input.draftRevision
+      )
+    );
+    const queue = get(saveQueueAtom);
+    queue.blockedConflicts.delete(input.workflowId);
+    queue.failedPatches.delete(input.workflowId);
+  }
+);
 
 function toError(error: unknown): Error {
   return error instanceof Error
@@ -282,12 +310,32 @@ export const saveWorkflowAtom = atom(
 
           let outcome: SaveOutcome;
           try {
+            const blockedConflict = queue.blockedConflicts.get(next.workflowId);
+            if (blockedConflict) {
+              throw blockedConflict;
+            }
             // eslint-disable-next-line no-await-in-loop -- saves must remain sequential to preserve latest-write semantics.
             const workflow = await get(workflowApiAtom).update(
               next.workflowId,
-              toUpdatePayload(next.patch)
+              toUpdatePayload(next.patch),
+              next.expectedDraftRevision
             );
             outcome = { ok: true, workflow };
+            if (next.patch.nodes) {
+              const draftRevisions = get(workflowDraftRevisionsAtom);
+              set(
+                workflowDraftRevisionsAtom,
+                new Map(draftRevisions).set(
+                  next.workflowId,
+                  workflow.draftRevision
+                )
+              );
+              for (const pending of queue.pending) {
+                if (pending.workflowId === next.workflowId) {
+                  pending.expectedDraftRevision = workflow.draftRevision;
+                }
+              }
+            }
             const saveGenerations = get(successfulSaveGenerationAtom);
             set(
               successfulSaveGenerationAtom,
@@ -326,6 +374,12 @@ export const saveWorkflowAtom = atom(
             }
           } catch (error) {
             const saveError = toError(error);
+            if (
+              error instanceof ApiError &&
+              error.code === DRAFT_CONFLICT_CODE
+            ) {
+              queue.blockedConflicts.set(next.workflowId, saveError);
+            }
             outcome = { ok: false, error: saveError };
             set(lastSaveErrorAtom, saveError);
 
@@ -383,6 +437,8 @@ export const saveWorkflowAtom = atom(
       queue.pending.push({
         workflowId,
         patch: patchWithRetry,
+        expectedDraftRevision:
+          get(workflowDraftRevisionsAtom).get(workflowId) ?? 0,
         waiters: [resolve],
       });
     });

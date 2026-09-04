@@ -267,14 +267,19 @@ function usedAction(input: {
   return id ? { id, verb: "used" } : undefined;
 }
 
-/** Requires confirmed workflow and action evidence before graph mutations. */
+/**
+ * Requires confirmed workflow and action evidence before graph mutations.
+ *
+ * Each action and Event is held to having been described before it is used,
+ * which is what stops the agent inventing one. It is no longer held to being
+ * described before the turn's first write: `revert_draft` lets a turn undo
+ * everything it did, so finding partway through that a step is needed is a
+ * normal way to work rather than a violation.
+ */
 export function assessEvidenceUse(
   trajectory: AgentTrajectory,
   document: AgentDocument = { nodes: [], edges: [] }
 ): DeterministicAssessment {
-  const firstWrite = trajectory.calls.find((call) =>
-    WRITE_TOOL_NAMES.has(call.name)
-  );
   const actionIdsByNode = nodeActionIds(document, trajectory.calls);
 
   for (const call of trajectory.calls) {
@@ -326,12 +331,6 @@ export function assessEvidenceUse(
           rationale: `${action.id} was ${action.verb} before a successful describe_action result.`,
         };
       }
-      if (firstWrite && !actionWasDescribed(firstWrite)) {
-        return {
-          score: 0,
-          rationale: `${action.id} was ${action.verb} before capability discovery finished.`,
-        };
-      }
     }
 
     for (const eventName of configuredEventNames(call)) {
@@ -347,12 +346,6 @@ export function assessEvidenceUse(
         return {
           score: 0,
           rationale: `${eventName} was used before a successful describe_event result.`,
-        };
-      }
-      if (firstWrite && !eventWasDescribed(firstWrite)) {
-        return {
-          score: 0,
-          rationale: `${eventName} was used before capability discovery finished.`,
         };
       }
     }

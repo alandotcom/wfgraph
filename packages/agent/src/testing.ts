@@ -30,6 +30,7 @@ export type ToolTestInput = {
   readonly edges?: readonly WorkflowEdge[];
   readonly catalog: ExtensionCatalog;
   readonly integrations?: readonly ConnectedIntegration[];
+  readonly validateUpdate?: (document: AgentDocument) => string | null;
   readonly validateDraft?: (document: AgentDocument) => AgentDraftValidation;
 };
 
@@ -49,6 +50,7 @@ export function agentToolsFor(
       document: { nodes: input.nodes ?? [], edges: input.edges ?? [] },
       catalog: input.catalog,
       integrations: input.integrations ?? [],
+      validateUpdate: input.validateUpdate ?? (() => null),
       validateDraft:
         input.validateDraft ??
         (() => {

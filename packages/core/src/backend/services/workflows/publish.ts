@@ -7,6 +7,7 @@ import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { Extensions } from "#src/backend/lib/effect/extensions";
 import {
+  DraftConflict,
   NotFound,
   PublicationConflict,
 } from "#src/backend/lib/effect/failures";
@@ -49,7 +50,12 @@ const loggerFor = (workflowId: string) =>
  */
 export const publishWorkflow = Effect.fn("wfgraph.workflow.publish")(
   function* (input: WorkflowPublishInput) {
-    const { workflowId, graph, expectedPublishedVersionId } = input;
+    const {
+      workflowId,
+      graph,
+      expectedPublishedVersionId,
+      expectedDraftRevision,
+    } = input;
     yield* annotateServiceSpan({ workflowId });
     const repo = yield* WorkflowRepo;
     const { catalog } = yield* Extensions;
@@ -61,6 +67,12 @@ export const publishWorkflow = Effect.fn("wfgraph.workflow.publish")(
     }
     if (workflow.publishedVersionId !== expectedPublishedVersionId) {
       return yield* stalePublish();
+    }
+    if (workflow.draftRevision !== expectedDraftRevision) {
+      return yield* new DraftConflict({
+        error: "The workflow draft changed. Reload it before publishing again.",
+        currentDraftRevision: workflow.draftRevision,
+      });
     }
 
     const prepared = yield* prepareGraphSave({ graph }).pipe(
@@ -102,6 +114,7 @@ export const publishWorkflow = Effect.fn("wfgraph.workflow.publish")(
       versionId: generateId(),
       version: expectedVersion,
       expectedPublishedVersionId,
+      expectedDraftRevision,
       graph: prepared.graph,
       catalogFingerprint: fingerprint,
       graphDigest: digest,
@@ -113,6 +126,12 @@ export const publishWorkflow = Effect.fn("wfgraph.workflow.publish")(
         expectedVersion,
       });
       return yield* stalePublish();
+    }
+    if (published && "draftConflict" in published) {
+      return yield* new DraftConflict({
+        error: "The workflow draft changed. Reload it before publishing again.",
+        currentDraftRevision: published.draftConflict,
+      });
     }
     if (!published) {
       return yield* new NotFound({ error: "Workflow not found" });

@@ -52,6 +52,61 @@ describePostgres("PostgreSQL concurrency", () => {
     return [first, ...rest];
   };
 
+  it("allows only one graph write for a shared draft revision", async () => {
+    const racers = await openRacers(2);
+    await racers[0].run(
+      Effect.gen(function* () {
+        const workflows = yield* WorkflowRepo;
+        yield* workflows.insert({
+          id: "wf_1",
+          name: "Appointments",
+          graph: emptyGraph,
+          eventSubscriptions: [],
+        });
+      })
+    );
+
+    const write = (connection: ConformanceConnection, contender: string) =>
+      connection.run(
+        Effect.gen(function* () {
+          const workflows = yield* WorkflowRepo;
+          return yield* workflows.writeDraft({
+            workflowId: "wf_1",
+            expectedDraftRevision: 1,
+            updates: {
+              name: contender,
+              graph: createSerializedWorkflowGraph({
+                nodes: [],
+                edges: [],
+                attributes: { contender },
+              }),
+              updatedAt: new Date(),
+            },
+          });
+        })
+      );
+
+    const results = await Promise.all([
+      write(racers[0], "First"),
+      write(racers[1]!, "Second"),
+    ]);
+    expect(
+      results.filter((result) => result.status === "updated")
+    ).toHaveLength(1);
+    expect(results.filter((result) => result.status === "conflict")).toEqual([
+      { status: "conflict", currentDraftRevision: 2 },
+    ]);
+
+    const stored = await racers[0].run(
+      Effect.gen(function* () {
+        const workflows = yield* WorkflowRepo;
+        return yield* workflows.findById("wf_1");
+      })
+    );
+    expect(stored?.draftRevision).toBe(2);
+    expect(stored?.graph.attributes).toEqual({ contender: stored?.name });
+  });
+
   // `SERIALIZABLE` aborts one of two decisions that read and wrote the same
   // predicate, and `startForEntity` retries the whole decision when it does.
   // Six racers is enough that PostgreSQL really raises `40001`. A stubbed
@@ -173,6 +228,7 @@ describePostgres("PostgreSQL concurrency", () => {
             versionId,
             version,
             expectedPublishedVersionId: null,
+            expectedDraftRevision: 1,
             graph: emptyGraph,
             draftGraph: emptyGraph,
             catalogFingerprint: "catalog",
@@ -187,10 +243,12 @@ describePostgres("PostgreSQL concurrency", () => {
       publish(racers[1]!, "ver_b", 2),
     ]);
 
-    const won = results.filter((one) => one !== null && !("stale" in one));
-    const stale = results.filter((one) => one !== null && "stale" in one);
+    const won = results.filter((one) => one !== null && "workflow" in one);
+    const refused = results.filter(
+      (one) => one !== null && !("workflow" in one)
+    );
     expect(won).toHaveLength(1);
-    expect(stale).toHaveLength(1);
+    expect(refused).toHaveLength(1);
 
     const state = await racers[0].run(
       Effect.gen(function* () {
@@ -234,6 +292,7 @@ describePostgres("PostgreSQL concurrency", () => {
             versionId,
             version: 1,
             expectedPublishedVersionId: null,
+            expectedDraftRevision: 1,
             graph: emptyGraph,
             draftGraph: emptyGraph,
             catalogFingerprint: "catalog",
@@ -249,10 +308,10 @@ describePostgres("PostgreSQL concurrency", () => {
     ]);
 
     expect(
-      results.filter((one) => one !== null && !("stale" in one))
+      results.filter((one) => one !== null && "workflow" in one)
     ).toHaveLength(1);
     expect(
-      results.filter((one) => one !== null && "stale" in one)
+      results.filter((one) => one !== null && !("workflow" in one))
     ).toHaveLength(1);
 
     const history = await racers[0].run(

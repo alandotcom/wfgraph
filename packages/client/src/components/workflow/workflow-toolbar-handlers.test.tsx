@@ -18,6 +18,7 @@ import type { WorkflowToolbarState } from "#src/components/workflow/workflow-too
 import {
   deferred,
   expectedSnapshot,
+  nodes,
   PublishProbe,
   renderProbe,
   state,
@@ -34,8 +35,19 @@ import {
 } from "#src/lib/rpc-fetch-test-support";
 import { PREFLIGHT_BUSY_MESSAGE } from "#src/hooks/use-workflow-issue-preflight";
 import { orpcQuery } from "#src/lib/rpc-query";
-import { canvasEditingLockedAtom } from "#src/lib/workflow-graph-store";
-import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
+import {
+  canvasEditingLockedAtom,
+  loadWorkflowGraphAtom,
+  nodesAtom,
+  onNodesChangeAtom,
+} from "#src/lib/workflow-graph-store";
+import {
+  currentWorkflowDraftRevisionAtom,
+  currentWorkflowIdAtom,
+  saveWorkflowAtom,
+  workflowApiAtom,
+} from "#src/lib/workflow-save-store";
+import { savedWorkflow } from "#src/lib/workflow-save-test-support";
 import { toEditorNode } from "#src/lib/workflow-graph-types";
 import {
   createSerializedWorkflowGraph,
@@ -254,6 +266,7 @@ function savedWorkflowResponse(publication: {
     id: workflowId,
     name: "Workflow",
     graph: expectedSnapshot,
+    draftRevision: 2,
     isPaused: false,
     mode: "test",
     visibility: "private",
@@ -348,7 +361,11 @@ describe("useWorkflowActions Run graph selection", () => {
     // debounced, so without it the run would execute the previous graph.
     expect(requests[0]).toEqual({
       path: "workflow/update",
-      input: { workflowId, graph: expectedSnapshot },
+      input: {
+        workflowId,
+        graph: expectedSnapshot,
+        expectedDraftRevision: 1,
+      },
     });
     expect(requests[1]).toEqual({
       path: "workflow/execute",
@@ -765,6 +782,11 @@ describe("useWorkflowActions publication preflight", () => {
       async (url: RequestInfo | URL) => {
         const path = extractRpcProcedurePath(rpcUrl(url));
         requests.push(path);
+        if (path === "workflow/update") {
+          return rpcJsonResponse(
+            savedWorkflowResponse({ hasUnpublishedChanges: true })
+          );
+        }
         if (path === "integration/configOptions") {
           return answer.promise;
         }
@@ -784,7 +806,7 @@ describe("useWorkflowActions publication preflight", () => {
     fireEvent.click(publish);
     fireEvent.click(publish);
     await waitFor(() =>
-      expect(requests).toEqual(["integration/configOptions"])
+      expect(requests).toEqual(["workflow/update", "integration/configOptions"])
     );
     expect(view.getByText("idle")).toBeTruthy();
     // The second click is dropped, and says so. Cmd+Enter reaches this without
@@ -816,7 +838,7 @@ describe("useWorkflowActions publication preflight", () => {
       ).toBe("false")
     );
     expect(view.getByText("idle")).toBeTruthy();
-    expect(requests).toEqual(["integration/configOptions"]);
+    expect(requests).toEqual(["workflow/update", "integration/configOptions"]);
   });
 
   // A connection whose grant has expired refuses every provider question asked
@@ -829,6 +851,11 @@ describe("useWorkflowActions publication preflight", () => {
       async (url: RequestInfo | URL) => {
         const path = extractRpcProcedurePath(rpcUrl(url));
         requests.push(path);
+        if (path === "workflow/update") {
+          return rpcJsonResponse(
+            savedWorkflowResponse({ hasUnpublishedChanges: true })
+          );
+        }
         if (path === "workflow/compareVersion") {
           return rpcJsonResponse({
             baseVersion: {
@@ -860,6 +887,7 @@ describe("useWorkflowActions publication preflight", () => {
 
     await waitFor(() => expect(view.getByText("ready")).toBeTruthy());
     expect(requests).toEqual([
+      "workflow/update",
       "integration/configOptions",
       "workflow/compareVersion",
     ]);
@@ -917,6 +945,15 @@ describe("useWorkflowActions publication preflight", () => {
         const input = await parseRpcRequestInput(init);
         requests.push({ path, input });
 
+        if (path === "workflow/update") {
+          return rpcJsonResponse(
+            savedWorkflowResponse({
+              hasUnpublishedChanges: true,
+              publishedVersionId: "version_7",
+            })
+          );
+        }
+
         if (path === "workflow/compareVersion") {
           return rpcJsonResponse({
             baseVersion: {
@@ -939,6 +976,7 @@ describe("useWorkflowActions publication preflight", () => {
             id: workflowId,
             name: "Workflow",
             graph: expectedSnapshot,
+            draftRevision: 2,
             isPaused: false,
             mode: "test",
             visibility: "private",
@@ -955,7 +993,8 @@ describe("useWorkflowActions publication preflight", () => {
       }
     );
 
-    const view = renderProbe({ queryClient });
+    const store = workflowStore();
+    const view = renderProbe({ queryClient, store });
 
     await act(async () => {
       fireEvent.click(
@@ -965,6 +1004,14 @@ describe("useWorkflowActions publication preflight", () => {
 
     await waitFor(() => expect(view.getByText("ready")).toBeTruthy());
     expect(requests).toEqual([
+      {
+        path: "workflow/update",
+        input: {
+          workflowId,
+          graph: expectedSnapshot,
+          expectedDraftRevision: 1,
+        },
+      },
       {
         path: "workflow/compareVersion",
         input: {
@@ -976,13 +1023,14 @@ describe("useWorkflowActions publication preflight", () => {
     ]);
 
     fireEvent.click(view.getByRole("button", { name: "Confirm publish" }));
-    await waitFor(() => expect(requests).toHaveLength(2));
-    expect(requests[1]).toEqual({
+    await waitFor(() => expect(requests).toHaveLength(3));
+    expect(requests[2]).toEqual({
       path: "workflow/publish",
       input: {
         workflowId,
         graph: expectedSnapshot,
         expectedPublishedVersionId: "version_7",
+        expectedDraftRevision: 2,
       },
     });
     await waitFor(() =>
@@ -990,6 +1038,101 @@ describe("useWorkflowActions publication preflight", () => {
         true
       )
     );
+    expect(store.get(currentWorkflowDraftRevisionAtom)).toBe(2);
+  });
+
+  it("locks edits and publishes the revision returned after an in-flight autosave", async () => {
+    const firstSave = deferred<ReturnType<typeof savedWorkflow>>();
+    const update = vi.fn(
+      async (
+        _workflowId: string,
+        _patch: unknown,
+        expectedDraftRevision: number
+      ) => {
+        if (update.mock.calls.length === 1) {
+          return firstSave.promise;
+        }
+        return {
+          ...savedWorkflow(workflowId, { nodes, edges: [] }),
+          draftRevision: expectedDraftRevision + 1,
+        };
+      }
+    );
+    let publishInput: unknown;
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      async (url: RequestInfo | URL, init?: RequestInit) => {
+        const path = extractRpcProcedurePath(rpcUrl(url));
+        if (path === "workflow/compareVersion") {
+          return rpcJsonResponse({
+            baseVersion: {
+              id: "version_7",
+              version: 7,
+              publishedAt: "2026-08-23T15:00:00.000Z",
+              isCurrent: true,
+            },
+            proposedVersion: 8,
+            baseGraph: expectedSnapshot,
+            draftGraph: expectedSnapshot,
+            hasChanges: true,
+            nodeChanges: [],
+            edgeChanges: [],
+          });
+        }
+        if (path === "workflow/publish") {
+          publishInput = await parseRpcRequestInput(init);
+          return rpcJsonResponse(
+            savedWorkflowResponse({
+              hasUnpublishedChanges: false,
+              publishedVersionId: "version_8",
+            })
+          );
+        }
+        throw new Error(`Unexpected RPC procedure: ${path}`);
+      }
+    );
+    const store = workflowStore();
+    store.set(loadWorkflowGraphAtom, { nodes, edges: [] });
+    store.set(workflowApiAtom, { update } as never);
+    const autosave = store.set(
+      saveWorkflowAtom,
+      { nodes, edges: [] },
+      { immediate: true }
+    );
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+    const originalNodes = store.get(nodesAtom);
+    const view = renderProbe({ store });
+
+    fireEvent.click(await view.findByRole("button", { name: "Start publish" }));
+    await waitFor(() => expect(store.get(canvasEditingLockedAtom)).toBe(true));
+    store.set(onNodesChangeAtom, [
+      {
+        type: "position",
+        id: "lifecycle_1",
+        dragging: false,
+        position: { x: 100, y: 100 },
+      },
+    ]);
+    expect(store.get(nodesAtom)).toBe(originalNodes);
+    expect(update).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      firstSave.resolve({
+        ...savedWorkflow(workflowId, { nodes, edges: [] }),
+        draftRevision: 2,
+      });
+      await autosave;
+    });
+    await waitFor(() => expect(view.getByText("ready")).toBeTruthy());
+    expect(update).toHaveBeenNthCalledWith(
+      2,
+      workflowId,
+      expect.any(Object),
+      2
+    );
+
+    fireEvent.click(view.getByRole("button", { name: "Confirm publish" }));
+    await waitFor(() => expect(publishInput).toBeDefined());
+    expect(publishInput).toMatchObject({ expectedDraftRevision: 3 });
   });
 
   it("asks the server to compare a first publication with no base version", async () => {
@@ -999,6 +1142,19 @@ describe("useWorkflowActions publication preflight", () => {
         const path = extractRpcProcedurePath(rpcUrl(url));
         const input = await parseRpcRequestInput(init);
         requests.push({ path, input });
+        if (path === "workflow/update") {
+          return rpcJsonResponse(
+            savedWorkflowResponse({ hasUnpublishedChanges: true })
+          );
+        }
+        if (path === "workflow/publish") {
+          return rpcJsonResponse(
+            savedWorkflowResponse({
+              hasUnpublishedChanges: false,
+              publishedVersionId: "version_1",
+            })
+          );
+        }
         return rpcJsonResponse({
           baseVersion: null,
           proposedVersion: 1,
@@ -1023,8 +1179,16 @@ describe("useWorkflowActions publication preflight", () => {
     fireEvent.click(await view.findByRole("button", { name: "Start publish" }));
     await waitFor(() => expect(view.getByText("ready")).toBeTruthy());
     fireEvent.click(view.getByRole("button", { name: "Confirm publish" }));
-    await waitFor(() => expect(requests).toHaveLength(2));
+    await waitFor(() => expect(requests).toHaveLength(3));
     expect(requests).toEqual([
+      {
+        path: "workflow/update",
+        input: {
+          workflowId,
+          graph: expectedSnapshot,
+          expectedDraftRevision: 1,
+        },
+      },
       {
         path: "workflow/compareVersion",
         input: { workflowId, draftGraph: expectedSnapshot },
@@ -1035,6 +1199,7 @@ describe("useWorkflowActions publication preflight", () => {
           workflowId,
           graph: expectedSnapshot,
           expectedPublishedVersionId: null,
+          expectedDraftRevision: 2,
         },
       },
     ]);
@@ -1045,6 +1210,11 @@ describe("useWorkflowActions publication preflight", () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(
       async (url: RequestInfo | URL) => {
         const path = extractRpcProcedurePath(rpcUrl(url));
+        if (path === "workflow/update") {
+          return rpcJsonResponse(
+            savedWorkflowResponse({ hasUnpublishedChanges: true })
+          );
+        }
         if (path === "workflow/compareVersion") {
           return comparison.promise;
         }
@@ -1100,6 +1270,11 @@ describe("useWorkflowActions publication preflight", () => {
         const path = extractRpcProcedurePath(rpcUrl(url));
         const input = await parseRpcRequestInput(init);
         requests.push({ path, input });
+        if (path === "workflow/update") {
+          return rpcJsonResponse(
+            savedWorkflowResponse({ hasUnpublishedChanges: true })
+          );
+        }
         if (path === "workflow/compareVersion") {
           return comparison.promise;
         }
@@ -1113,7 +1288,7 @@ describe("useWorkflowActions publication preflight", () => {
     });
 
     fireEvent.click(await view.findByRole("button", { name: "Start publish" }));
-    await waitFor(() => expect(requests).toHaveLength(1));
+    await waitFor(() => expect(requests).toHaveLength(2));
     fireEvent.click(view.getByRole("button", { name: "Open workflow 2" }));
     await act(async () => {
       comparison.resolve(
@@ -1136,7 +1311,7 @@ describe("useWorkflowActions publication preflight", () => {
 
     await waitFor(() => expect(view.getByText("idle")).toBeTruthy());
     fireEvent.click(view.getByRole("button", { name: "Confirm publish" }));
-    expect(requests).toHaveLength(1);
+    expect(requests).toHaveLength(2);
     expect(store.get(canvasEditingLockedAtom)).toBe(false);
   });
 });

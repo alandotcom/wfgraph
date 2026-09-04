@@ -31,6 +31,7 @@ import {
   type WorkflowVersionKind,
 } from "@wfgraph/shared/graph/version-kinds";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 const SQLITE_IN_FLIGHT_EXECUTION_STATUSES = IN_FLIGHT_EXECUTION_STATUSES.map(
   (status) => `'${status}'`
@@ -80,6 +81,7 @@ export function sqliteWorkflow(row: typeof workflows.$inferSelect): Workflow {
     name: row.name,
     description: row.description,
     graph: workflowGraph(row.graph),
+    draftRevision: row.draftRevision,
     isPaused: workflowIsPaused(row.isPaused),
     mode: workflowMode(row.mode),
     visibility: workflowVisibility(row.visibility),
@@ -358,7 +360,7 @@ export function makeSqliteWorkflowRepo(
           .set({ isPaused: isPaused ? 1 : 0, updatedAt: Date.now() })
           .where(eq(workflows.id, workflowId))
       ),
-    update: ({ workflowId, updates, eventSubscriptions }) =>
+    updateMetadata: ({ workflowId, updates }) =>
       store.write((database) =>
         Effect.gen(function* () {
           const changes: Partial<typeof workflows.$inferInsert> = {
@@ -368,9 +370,6 @@ export function makeSqliteWorkflowRepo(
           if (updates.description !== undefined) {
             changes.description = updates.description;
           }
-          if (updates.graph !== undefined) {
-            changes.graph = encodeGraph(updates.graph);
-          }
           if (updates.mode !== undefined) changes.mode = updates.mode;
           const changed = yield* database
             .update(workflows)
@@ -379,14 +378,49 @@ export function makeSqliteWorkflowRepo(
             .returning({ id: workflows.id })
             .get();
           if (!changed) return null;
-          if (eventSubscriptions !== "unchanged") {
-            yield* replaceSubscriptions(
-              database,
-              workflowId,
-              eventSubscriptions
-            );
-          }
           return yield* findWorkflow(database, workflowId);
+        })
+      ),
+    writeDraft: ({ workflowId, expectedDraftRevision, updates }) =>
+      store.write((database) =>
+        Effect.gen(function* () {
+          const changed = yield* database
+            .update(workflows)
+            .set(
+              omitUndefined({
+                graph: encodeGraph(updates.graph),
+                draftRevision: sql`${workflows.draftRevision} + 1`,
+                updatedAt: updates.updatedAt.getTime(),
+                name: updates.name,
+                description: updates.description,
+                mode: updates.mode,
+              })
+            )
+            .where(
+              and(
+                eq(workflows.id, workflowId),
+                eq(workflows.draftRevision, expectedDraftRevision)
+              )
+            )
+            .returning({ id: workflows.id })
+            .get();
+          if (!changed) {
+            const current = yield* database
+              .select({ draftRevision: workflows.draftRevision })
+              .from(workflows)
+              .where(eq(workflows.id, workflowId))
+              .get();
+            return current
+              ? {
+                  status: "conflict" as const,
+                  currentDraftRevision: current.draftRevision,
+                }
+              : { status: "not_found" as const };
+          }
+
+          const workflow = yield* findWorkflow(database, workflowId);
+          if (!workflow) return { status: "not_found" as const };
+          return { status: "updated" as const, workflow };
         })
       ),
     deleteById: (workflowId) =>
@@ -610,7 +644,11 @@ export function makeSqliteWorkflowRepo(
     insertPublishedVersion: (input) =>
       store.write((database) =>
         Effect.gen(function* () {
-          if (!(yield* findWorkflow(database, input.workflowId))) return null;
+          const existing = yield* findWorkflow(database, input.workflowId);
+          if (!existing) return null;
+          if (existing.draftRevision !== input.expectedDraftRevision) {
+            return { draftConflict: existing.draftRevision };
+          }
           const publishedAt = Date.now();
           const inserted = yield* database
             .insert(workflowVersions)
@@ -642,18 +680,27 @@ export function makeSqliteWorkflowRepo(
             .set({
               publishedVersionId: input.versionId,
               graph: encodeGraph(input.draftGraph),
+              draftRevision: sql`${workflows.draftRevision} + 1`,
               updatedAt: Date.now(),
             })
-            .where(and(eq(workflows.id, input.workflowId), expectedPublication))
+            .where(
+              and(
+                eq(workflows.id, input.workflowId),
+                eq(workflows.draftRevision, input.expectedDraftRevision),
+                expectedPublication
+              )
+            )
             .returning({ id: workflows.id })
             .get();
           if (!changed) {
             yield* database
               .delete(workflowVersions)
               .where(eq(workflowVersions.id, input.versionId));
-            return (yield* findWorkflow(database, input.workflowId))
-              ? stalePublication()
-              : null;
+            const current = yield* findWorkflow(database, input.workflowId);
+            if (!current) return null;
+            return current.draftRevision !== input.expectedDraftRevision
+              ? { draftConflict: current.draftRevision }
+              : stalePublication();
           }
           yield* replaceSubscriptions(
             database,

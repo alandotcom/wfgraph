@@ -21,6 +21,7 @@ type WorkflowPayloadSource = Pick<
   | "name"
   | "description"
   | "graph"
+  | "draftRevision"
   | "isPaused"
   | "mode"
   | "visibility"
@@ -45,7 +46,7 @@ export type WorkflowUpdateData = Pick<Workflow, "updatedAt"> &
   Partial<Pick<Workflow, "name" | "description" | "graph" | "mode">>;
 
 export function toWorkflowSummaryPayload(
-  workflow: Omit<WorkflowPayloadSource, "graph">
+  workflow: Omit<WorkflowPayloadSource, "graph" | "draftRevision">
 ): WorkflowSummaryPayload {
   return omitUndefined({
     id: workflow.id,
@@ -80,6 +81,7 @@ export function toWorkflowApiPayload(
     publishedVersion: published?.version,
     publishedAt: published?.publishedAt.toISOString(),
     graph: workflow.graph,
+    draftRevision: workflow.draftRevision,
     hasUnpublishedChanges: draftDiffersFromPublished(
       workflow.graph,
       published?.graph ?? null

@@ -41,7 +41,7 @@ import {
   pruneCancelFilters,
 } from "@wfgraph/shared/lifecycle/cancel-filters";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
-import { WorkflowDraft } from "#src/document";
+import { type AgentDocument, WorkflowDraft } from "#src/document";
 import {
   conditionGroupsSchema,
   type ConditionGroupsInput,
@@ -49,12 +49,21 @@ import {
   readConditionModelInput,
 } from "#src/tools/condition-input";
 import { referencesForNode } from "#src/tools/reference-tools";
+import {
+  brokenReferenceWarning,
+  referencesBrokenBetween,
+} from "#src/tools/reference-diagnosis";
 
 const failureSchema = Schema.Struct({ reason: Schema.String });
 const writeResultSchema = Schema.Struct({ summary: Schema.String });
 const lifecycleWriteResultSchema = Schema.Struct({
   nodeId: Schema.String,
   summary: Schema.String,
+  /**
+   * Present when this edit stopped a token elsewhere in the graph resolving.
+   * Nothing else reports that before Publish, so act on it in the same turn.
+   */
+  warning: Schema.optionalKey(Schema.String),
 });
 
 const UNPLACED = { x: 0, y: 0 };
@@ -512,19 +521,33 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
           },
         };
 
+        const applyEdit = (current: AgentDocument): AgentDocument => ({
+          ...current,
+          nodes: created
+            ? [updated, ...current.nodes]
+            : current.nodes.map((node) =>
+                node.id === entry.id ? updated : node
+              ),
+        });
+
+        // Changing the Start Events changes what the whole graph below the
+        // Started outlet can address, so a token written against the old set
+        // can stop resolving without its own node being touched.
+        const warning = brokenReferenceWarning(
+          referencesBrokenBetween({
+            before: document,
+            after: applyEdit(document),
+            catalog: draft.catalog,
+          })
+        );
+
         return Effect.as(
-          draft.update((current) => ({
-            ...current,
-            nodes: created
-              ? [updated, ...current.nodes]
-              : current.nodes.map((node) =>
-                  node.id === entry.id ? updated : node
-                ),
-          })),
-          {
+          draft.update(applyEdit),
+          omitUndefined({
             nodeId: entry.id,
             summary: `${created ? "Created the Lifecycle Node and set" : "Set"} the rules: starts on ${rules.startEvents.join(", ") || "manual start only"}.`,
-          }
+            warning,
+          })
         );
       }),
 

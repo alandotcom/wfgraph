@@ -97,6 +97,10 @@ export const workflowComparisonInputSchema = Schema.Struct({
 export const workflowPublishInputSchema = Schema.Struct({
   workflowId: NonEmptyTrimmedString,
   graph: serializedWorkflowGraphSchema,
+  expectedDraftRevision: Schema.Finite.check(
+    Schema.isInt(),
+    Schema.isGreaterThan(0)
+  ),
   /** Null only when the review was for the workflow's first publication. */
   expectedPublishedVersionId: Schema.NullOr(NonEmptyTrimmedString),
 });
@@ -104,6 +108,10 @@ export const workflowPublishInputSchema = Schema.Struct({
 export const workflowRestoreVersionInputSchema = Schema.Struct({
   workflowId: NonEmptyTrimmedString,
   versionId: NonEmptyTrimmedString,
+  expectedDraftRevision: Schema.Finite.check(
+    Schema.isInt(),
+    Schema.isGreaterThan(0)
+  ),
 });
 
 export const workflowFieldChangeSchema = Schema.Struct({

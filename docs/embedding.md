@@ -285,6 +285,79 @@ operation calls `allows` once again when the operation runs. A custom asynchrono
 therefore tolerate concurrent bootstrap calls. The built-in roles and collection policies are
 local and perform no asynchronous fanout.
 
+## MCP authoring
+
+Set `mcp: true` to expose the authenticated Model Context Protocol (MCP)
+authoring endpoint for localhost development. For a deployed host, configure
+the hostnames that can address the endpoint:
+
+```ts
+const wfgraph = await createWfGraphApp({
+  // ...
+  mcp: {
+    allowedHostnames: ["workflows.example.com"],
+    allowedOriginHostnames: ["console.example.com"],
+  },
+});
+```
+
+The endpoint is `${basePath}/api/mcp`. With the default `basePath`, the endpoint
+is `/api/mcp`. The `mcp` option is disabled by default and works with both
+`createWfGraphApp` and `wfWorker`.
+
+List hostnames only, with no scheme or port. Every request must have an allowed
+`Host` header. Browser requests must also have an allowed `Origin` hostname.
+Requests from non-browser MCP clients can omit the `Origin` header. Workflow
+Graph rejects an invalid host or origin with HTTP 403 before reading the body.
+
+The endpoint supports only MCP protocol revision `2026-07-28`. Each `POST`
+request contains one independent JSON-RPC message. Each request must set the
+`MCP-Protocol-Version` and `Mcp-Method` headers, and include the client identity
+and capabilities in request `_meta`. A `tools/call` request must also set the
+`Mcp-Name` header. The endpoint doesn't support initialization, transport
+sessions, `Mcp-Session-Id`, `GET` streams, or `DELETE` session termination.
+
+Call `list_workflows` to list the workflows available through the host's
+workflow list. The result contains workflow IDs and summary metadata. It omits
+workflow graphs and integration credentials.
+
+Call `create_workflow` with a required `name` and an optional `description` to
+create a draft containing the default Lifecycle Node. The result contains only
+`workflowId` and `draftRevision`. Use those values with the workflow authoring
+tools. Creation is not idempotent. Do not automatically retry a creation request
+when the result is unknown.
+
+The remaining MCP tools read or edit an existing workflow draft. Each tool call
+requires a `workflowId`. Read tools return the persisted `draftRevision`. Write
+tools also require `expectedDraftRevision`, using the revision returned by the
+most recent read or write. A successful write increments the revision once and
+returns the new value.
+
+A stale write returns an error tool result with code
+`workflow_draft_stale` and the stored `draftRevision`. Call `read_workflow`
+again, evaluate the edit against the returned graph, and then send a new write
+with the updated revision. Don't automatically repeat the stale mutation.
+
+Host and Origin validation protects the HTTP boundary from DNS rebinding. The
+host authentication callback authenticates the caller. MCP tool calls use the
+following operation grants:
+
+- `list_workflows` requires `workflow.getAll`.
+- `create_workflow` requires `workflow.create`.
+- Every workflow-specific tool requires `workflow.getById`.
+- Graph-writing tools also require `workflow.update`.
+- `list_integrations` also requires `integration.getAll` because the result
+  contains Connection IDs.
+
+The authoring tools expose integration types and Connection IDs. They don't
+return or decrypt integration credentials.
+
+The MCP authoring surface supports draft creation and existing-draft edits. The
+unavailable operations are duplicate, restore, delete, run, and publish. MCP
+writes change the editable draft and leave the published workflow version
+unchanged. Reload an open editor to see an external MCP write. The endpoint does
+not send live external-edit updates to the editor.
+
 ## Built-in integrations
 
 The third-party SDKs stay in `@wfgraph/plugins`. Pass them and they turn on:
@@ -537,23 +610,25 @@ application's router serves static files.
 
 ## createWfGraphApp options
 
-| Option                    | Required | Description                                                                                                                                                    |
-| ------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `basePath`                | No       | Path the host mounts Workflow Graph at (default `/`)                                                                                                           |
-| `publicUrl`               | No       | External HTTPS origin. Required for OAuth callback and client metadata URLs, and to copy a Connection webhook URL. Loopback development can use HTTP           |
-| `auth`                    | Yes      | Authentication callback returning a request-scoped access policy or `null`                                                                                     |
-| `persistence`             | Yes      | A backend from `@wfgraph/core/postgres` or `@wfgraph/core/sqlite`                                                                                              |
-| `encryption.key`          | Yes      | 64-character hex string. It encrypts the integration secrets                                                                                                   |
-| `inngest.id`              | Yes      | Inngest application ID                                                                                                                                         |
-| `inngest.*`               | No       | isDev, baseUrl, eventKey, env, signingKey, signingKeyFallback, serveOrigin, servePath, connect, instanceId, gatewayUrl, maxWorkerConcurrency, connectTimeoutMs |
-| `extensions.events`       | No       | `defineEvent` values                                                                                                                                           |
-| `extensions.actions`      | No       | `defineAction` values                                                                                                                                          |
-| `extensions.integrations` | No       | `defineIntegration` values                                                                                                                                     |
-| `agent.apiKey`            | No       | OpenAI API key. Absent or blank turns the build agent off, and the editor then shows no chat panel                                                             |
-| `agent.model`             | No       | Model id the agent runs against. Defaults to a current OpenAI model                                                                                            |
-| `agent.baseUrl`           | No       | An OpenAI-compatible endpoint that is not OpenAI's own                                                                                                         |
-| `logger`                  | No       | A `WfGraphLogger` that takes every record. See Logging below                                                                                                   |
-| `client`                  | No       | The editor bundle to serve, from `@wfgraph/client`                                                                                                             |
+| Option                    | Required | Description                                                                                                                                                                                                           |
+| ------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `basePath`                | No       | Path the host mounts Workflow Graph at (default `/`)                                                                                                                                                                  |
+| `publicUrl`               | No       | External HTTPS origin. Required for OAuth callback and client metadata URLs, and to copy a Connection webhook URL. Loopback development can use HTTP                                                                  |
+| `auth`                    | Yes      | Authentication callback returning a request-scoped access policy or `null`                                                                                                                                            |
+| `persistence`             | Yes      | A backend from `@wfgraph/core/postgres` or `@wfgraph/core/sqlite`                                                                                                                                                     |
+| `encryption.key`          | Yes      | 64-character hex string. It encrypts the integration secrets                                                                                                                                                          |
+| `inngest.id`              | Yes      | Inngest application ID                                                                                                                                                                                                |
+| `inngest.*`               | No       | isDev, baseUrl, eventKey, env, signingKey, signingKeyFallback, serveOrigin, servePath, connect, instanceId, gatewayUrl, maxWorkerConcurrency, connectTimeoutMs                                                        |
+| `extensions.events`       | No       | `defineEvent` values                                                                                                                                                                                                  |
+| `extensions.actions`      | No       | `defineAction` values                                                                                                                                                                                                 |
+| `extensions.integrations` | No       | `defineIntegration` values                                                                                                                                                                                            |
+| `agent.apiKey`            | No       | OpenAI API key. Absent or blank turns the build agent off, and the editor then shows no chat panel                                                                                                                    |
+| `agent.model`             | No       | Model id the agent runs against. Defaults to a current OpenAI model                                                                                                                                                   |
+| `agent.reasoningEffort`   | No       | How hard the model thinks before answering: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`. Defaults to `medium`                                                                                       |
+| `agent.baseUrl`           | No       | An OpenAI-compatible endpoint that is not OpenAI's own                                                                                                                                                                |
+| `mcp`                     | No       | Enables the authenticated stateless MCP authoring endpoint at `${basePath}/api/mcp`. Pass `true` for localhost development. For deployed hosts, configure allowed hostnames and origin hostnames. Disabled by default |
+| `logger`                  | No       | A `WfGraphLogger` that takes every record. See Logging below                                                                                                                                                          |
+| `client`                  | No       | The editor bundle to serve, from `@wfgraph/client`                                                                                                                                                                    |
 
 Read these once:
 

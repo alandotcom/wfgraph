@@ -46,4 +46,13 @@ export const sqliteMigrations = [
     hash: "21374d36a973c1b1c08683952c586bed48b3bf1808a7bcea75e2ded51ad79d5a",
     name: "20260903064106_little_nebula",
   },
+  {
+    sql: [
+      "ALTER TABLE `workflows` ADD `draft_revision` integer DEFAULT 1 NOT NULL;",
+    ],
+    bps: true,
+    folderMillis: 1788473808000,
+    hash: "e6050af4b251ed2b8a8d6f9b747b45eea856879b093319bc4a43f853cd19b081",
+    name: "20260903221648_harsh_white_queen",
+  },
 ] satisfies readonly MigrationMeta[];

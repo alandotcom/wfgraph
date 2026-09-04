@@ -90,17 +90,14 @@ describe("buildSystemPrompt", () => {
     );
   });
 
-  it("preserves the graph when the requested action or Event is unavailable", () => {
+  it("reverts rather than leaving a half-built graph when a capability is missing", () => {
     const prompt = unwrapped(buildSystemPrompt());
 
     expect(prompt).toContain(
-      "When any requested action or Event is unavailable, make no graph changes. Do not build the supported parts of the request"
+      "When any requested action or Event is unavailable, call revert_draft and explain the missing capability. Do not leave the supported parts of the request built"
     );
     expect(prompt).toContain(
       "Treat a requested delivery channel as exact: SMS, email, and Slack are different capabilities"
-    );
-    expect(prompt).toContain(
-      "Finish all capability discovery before calling set_lifecycle_rules or another write tool"
     );
     expect(prompt).toContain(
       "An integration-owned Event needs an eventConnections binding"

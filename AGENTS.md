@@ -21,6 +21,32 @@ Read the code for structure. `README.md` is the short host entrypoint, `docs/emb
 `docs/events.md`, and `docs/integrations.md` hold the host manuals, `CONTEXT.md` the domain
 vocabulary, `docs/adr/` the decisions. What follows is what none of those say.
 
+## Clarifying specifications
+
+Before turning a request or an external specification into a design, identify each actor,
+which actor calls each interface, the system of record for each stateful value, and the
+observable result. Trace one representative operation from its initiator to its final read
+or write. If more than one ownership or interaction model fits, describe the alternatives
+and ask which model is intended before designing around one.
+
+Separate external requirements from product requirements. Protocol examples, recommended
+patterns, and implementation mechanisms do not create product features or architecture by
+themselves. Record which statements are normative, which are project decisions, and which
+are assumptions that still need confirmation.
+
+Use the repository's established domain terms and state owners. Before adding a store,
+handle, registry, lifecycle, event channel, adapter, or intermediate representation, verify
+that an existing concept does not already serve the same purpose. Do not create a second
+object for a concept that already has a canonical representation.
+
+Treat plans and conversation summaries as records of earlier understanding. A direct user
+clarification replaces conflicting assumptions in those records. Re-evaluate every design
+decision that depended on the invalid assumption, and remove obsolete machinery rather than
+adapting it to preserve the earlier design.
+
+When ambiguity can change architecture, present a small actor diagram or one concrete
+end-to-end example and ask the user to confirm it before implementation.
+
 ## Package management
 
 pnpm only, at the version the root `packageManager` field names (`corepack enable` gets

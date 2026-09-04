@@ -44,6 +44,51 @@ const protectedDocument: AgentDocument = {
   ],
 };
 
+/** The protected graph with one step added, so a revision differs from it. */
+const graphWithAnExtraStep: AgentDocument = {
+  ...protectedDocument,
+  nodes: [
+    ...protectedDocument.nodes,
+    {
+      id: "added",
+      type: "action",
+      position: { x: 0, y: 0 },
+      data: {
+        label: "Added",
+        type: "action",
+        config: { actionType: "score-applicant" },
+      },
+    },
+  ],
+};
+
+/** One revision per document, in order, as a turn that edited more than once. */
+function writeRevisions(documents: AgentDocument[]): AgentTraceEvent[] {
+  return documents.flatMap((document, index) => {
+    const step = index + 1;
+    const id = `write-${step}`;
+    return [
+      { type: "tool-call" as const, step, id, name: "update_node", input: {} },
+      {
+        type: "tool-result" as const,
+        step,
+        id,
+        name: "update_node",
+        result: {},
+        failed: false,
+        graphRevision: step,
+      },
+      {
+        type: "graph-revision" as const,
+        step,
+        toolCallId: id,
+        revision: step,
+        document,
+      },
+    ];
+  });
+}
+
 function writeRevision(document: AgentDocument): AgentTraceEvent[] {
   return [
     { type: "tool-call", step: 1, id: "write", name: "update_node", input: {} },
@@ -218,29 +263,37 @@ describe("assessEditSafety", () => {
     });
   });
 
-  it("rejects every write when forbiddenMutations is all", () => {
+  it("rejects a turn that keeps its edit when told to change nothing", () => {
     expect(
       assessEditSafety({
         document: protectedDocument,
         expected: { forbiddenMutations: "all" },
-        trajectory: buildAgentTrajectory([
-          {
-            type: "tool-call",
-            step: 1,
-            id: "update",
-            name: "update_node",
-            input: { nodeId: "notify" },
-          },
-        ]),
+        trajectory: buildAgentTrajectory(
+          writeRevisions([graphWithAnExtraStep])
+        ),
       })
     ).toMatchObject({
       score: 0,
-      rationale: expect.stringContaining("update_node"),
+      rationale: expect.stringContaining("change nothing"),
     });
   });
 
+  it("accepts a turn that edited and then put the graph back", () => {
+    expect(
+      assessEditSafety({
+        document: protectedDocument,
+        expected: { forbiddenMutations: "all" },
+        trajectory: buildAgentTrajectory(
+          writeRevisions([graphWithAnExtraStep, protectedDocument])
+        ),
+      })
+    ).toMatchObject({ score: 1 });
+  });
+
   it("leaves clarification graph mutation rejection to EditSafety", () => {
-    const trajectory = buildAgentTrajectory(writeRevision(protectedDocument));
+    const trajectory = buildAgentTrajectory(
+      writeRevisions([graphWithAnExtraStep])
+    );
 
     expect(
       assessExpectedCompletion({
@@ -260,7 +313,7 @@ describe("assessEditSafety", () => {
       })
     ).toMatchObject({
       score: 0,
-      rationale: expect.stringContaining("update_node"),
+      rationale: expect.stringContaining("change nothing"),
     });
   });
 });

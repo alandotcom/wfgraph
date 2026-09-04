@@ -59,6 +59,7 @@ export function describeIntegrationConformance({
             inserted,
             updated,
             found: yield* integrations.findById(inserted.id),
+            identities: yield* integrations.listIdentities,
             types: yield* integrations.typesByIds([inserted.id, "missing"]),
             listed: yield* integrations.listByType("linear"),
             deleteClaim: yield* integrations.claimRefresh({
@@ -86,6 +87,9 @@ export function describeIntegrationConformance({
         },
       });
       expect(result.found?.config).toEqual({ apiKey: "new-secret" });
+      expect(result.identities).toEqual([
+        { id: result.inserted.id, type: "linear" },
+      ]);
       expect(result.types).toEqual({ [result.inserted.id]: "linear" });
       expect(result.listed).toHaveLength(1);
       expect(result.deleteClaim).toEqual({ status: "acquired" });

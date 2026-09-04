@@ -9,6 +9,7 @@ export function savedWorkflow(
   return {
     id,
     name: id,
+    draftRevision: 1,
     graph: { nodes: [], edges: [] },
     nodes: graph?.nodes ?? [],
     edges: graph?.edges ?? [],

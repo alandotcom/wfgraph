@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import {
+  DRAFT_CONFLICT_CODE,
   INTEGRATION_VALIDATION_FAILED_CODE,
   PUBLICATION_CONFLICT_CODE_VALUES,
 } from "@wfgraph/shared/rpc/error-codes";
@@ -78,6 +79,7 @@ export type ServiceFailurePayload = {
   error: string;
   code?: string | undefined;
   invalidIntegrationIds?: readonly string[] | undefined;
+  currentDraftRevision?: number | undefined;
 };
 
 /** The caller's input, or the resource it points at, does not pass validation. */
@@ -158,6 +160,28 @@ export class Conflict extends Schema.TaggedError<Conflict>()("Conflict", {
   }
 }
 
+/** A graph write used an older editable draft revision. */
+export class DraftConflict extends Schema.TaggedError<DraftConflict>()(
+  "DraftConflict",
+  {
+    error: Schema.String,
+    currentDraftRevision: Schema.Finite.check(
+      Schema.isInt(),
+      Schema.isGreaterThan(0)
+    ),
+  }
+) {
+  readonly kind: Kind<"conflict"> = "conflict";
+
+  get payload(): ServiceFailurePayload {
+    return {
+      error: this.error,
+      code: DRAFT_CONFLICT_CODE,
+      currentDraftRevision: this.currentDraftRevision,
+    };
+  }
+}
+
 /**
  * A publish collided with the publication state it was reviewed against.
  *
@@ -213,5 +237,6 @@ export type ServiceFailure =
   | Unauthorized
   | NotFound
   | Conflict
+  | DraftConflict
   | PublicationConflict
   | InternalFailure;

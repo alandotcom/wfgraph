@@ -133,7 +133,13 @@ export function useWorkflowComparisonActions() {
       if (!saved?.ok) {
         throw saved?.error ?? new Error("Unable to save the current draft");
       }
-      return await restoreVersionOptions.mutationFn!(input, context);
+      return await restoreVersionOptions.mutationFn!(
+        {
+          ...input,
+          expectedDraftRevision: saved.workflow.draftRevision,
+        },
+        context
+      );
     },
     onSuccess: async (payload, variables) => {
       const workflow = toSavedWorkflow(payload);

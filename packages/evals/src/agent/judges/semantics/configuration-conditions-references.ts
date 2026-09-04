@@ -185,6 +185,9 @@ function missingConditionRules(context: SemanticsContext): string[] {
   return checkEach(
     context.input.expected.requiredConditionRules,
     (required) => {
+      const fields = Array.isArray(required.field)
+        ? required.field
+        : [required.field];
       const found = nodesMatching(context, required.node).some((node) => {
         const parsed = parseConditionModel(node.data.config?.conditionModel);
         if (!parsed.valid) {
@@ -193,8 +196,12 @@ function missingConditionRules(context: SemanticsContext): string[] {
         return parsed.model.groups.some((group) =>
           group.conditions.some(
             (rule) =>
-              rule.field === required.field &&
-              rule.operator === required.operator &&
+              fields.includes(rule.field) &&
+              // An omitted operator asks only that the rule tests this field,
+              // which is what a scenario wants where two operators and swapped
+              // outlets describe the same run.
+              (required.operator === undefined ||
+                rule.operator === required.operator) &&
               (required.value === undefined ||
                 ("value" in rule && rule.value === required.value))
           )
@@ -202,7 +209,7 @@ function missingConditionRules(context: SemanticsContext): string[] {
       });
       return found
         ? undefined
-        : `${selectorName(required.node)} is missing required rule ${required.field} ${required.operator}${required.value === undefined ? "" : ` ${required.value}`}`;
+        : `${selectorName(required.node)} is missing required rule on ${fields.join(" or ")}${required.operator === undefined ? "" : ` ${required.operator}`}${required.value === undefined ? "" : ` ${required.value}`}`;
     }
   );
 }
@@ -261,6 +268,45 @@ function missingReferences(context: SemanticsContext): string[] {
   });
 }
 
+/**
+ * A node reading a path the scenario says it must not, whichever key holds it.
+ *
+ * Every config value is searched rather than one named key, because the wrong
+ * value can land wherever the request happened to need it.
+ */
+function presentForbiddenReferences(context: SemanticsContext): string[] {
+  return checkEach(context.input.expected.forbiddenReferences, (forbidden) => {
+    const bannedToken = (token: { nodeId: string; fieldPath: string }) => {
+      if (!forbidden.paths.includes(token.fieldPath)) {
+        return false;
+      }
+      if (forbidden.fromNode === undefined) {
+        return true;
+      }
+      return matchesSelector(
+        context.nodeById.get(token.nodeId),
+        forbidden.fromNode
+      );
+    };
+
+    const readsForbiddenPath = (node: WorkflowNode) =>
+      Object.values(node.data.config ?? {}).some(
+        (value) =>
+          typeof value === "string" &&
+          findTemplateTokens(value).some(bannedToken)
+      );
+
+    // A forbidden path is a failure wherever it appears, so every matching node
+    // is asked rather than only enough of them to satisfy a quantifier.
+    const offenders = nodesMatching(context, forbidden.node).filter(
+      readsForbiddenPath
+    );
+    return offenders.length === 0
+      ? undefined
+      : `${selectorName(forbidden.node)} must not reference ${forbidden.paths.join(" or ")}${forbidden.fromNode ? ` from ${selectorName(forbidden.fromNode)}` : ""}`;
+  });
+}
+
 function wrongDistinctConfigValues(context: SemanticsContext): string[] {
   return checkEach(context.input.expected.distinctConfigValues, (required) => {
     const values = new Set(
@@ -293,6 +339,7 @@ export function assessConfigurationSemantics(
     ...missingConditionRules(context),
     ...wrongConditionLogic(context),
     ...missingReferences(context),
+    ...presentForbiddenReferences(context),
     ...wrongDistinctConfigValues(context),
   ];
 }

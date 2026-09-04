@@ -65,6 +65,7 @@ function workflowPayload(publishedVersionId = "version_7"): WorkflowApiPayload {
     id: workflowId,
     name: "Workflow",
     graph,
+    draftRevision: 1,
     isPaused: false,
     mode: "test",
     visibility: "private",
@@ -114,10 +115,18 @@ function conflictResponse(code: string, message: string): Response {
 /** Answers the comparison, then hands the publish attempt whatever is given. */
 function stubPublishFlow(publishAnswer: () => Response | Promise<Response>) {
   const requests: string[] = [];
+  let draftRevision = 1;
   vi.spyOn(globalThis, "fetch").mockImplementation(
     async (url: RequestInfo | URL) => {
       const path = extractRpcProcedurePath(rpcUrl(url));
       requests.push(path);
+      if (path === "workflow/update") {
+        draftRevision += 1;
+        return rpcJsonResponse({
+          ...workflowPayload(),
+          draftRevision,
+        });
+      }
       if (path === "workflow/compareVersion") {
         return comparisonResponse();
       }
@@ -204,7 +213,11 @@ describe("useWorkflowActions publication conflicts", () => {
       true
     );
     // One attempt. A publish the operator has not reviewed again is never sent.
-    expect(requests).toEqual(["workflow/compareVersion", "workflow/publish"]);
+    expect(requests).toEqual([
+      "workflow/update",
+      "workflow/compareVersion",
+      "workflow/publish",
+    ]);
     expect(errorToast).toHaveBeenCalledTimes(1);
     expect(errorToast).toHaveBeenCalledWith(
       "Someone published a newer version while you were reviewing. Publish again to compare against it."
@@ -218,6 +231,7 @@ describe("useWorkflowActions publication conflicts", () => {
     vi.spyOn(toast, "error").mockImplementation(() => "");
     const requests: Array<{ path: string; input: JsonObject }> = [];
     let currentVersionId = "version_7";
+    let draftRevision = 1;
     vi.spyOn(globalThis, "fetch").mockImplementation(
       async (url: RequestInfo | URL, init?: RequestInit) => {
         const path = extractRpcProcedurePath(rpcUrl(url));
@@ -225,6 +239,12 @@ describe("useWorkflowActions publication conflicts", () => {
         requests.push({ path, input });
 
         switch (path) {
+          case "workflow/update":
+            draftRevision += 1;
+            return rpcJsonResponse({
+              ...workflowPayload(currentVersionId),
+              draftRevision,
+            });
           case "workflow/getAll":
           case "integration/getAll":
             return rpcJsonResponse([]);

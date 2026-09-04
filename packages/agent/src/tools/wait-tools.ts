@@ -44,9 +44,21 @@ import {
   readWaitMatchModelInput,
 } from "#src/tools/condition-input";
 import { referencesForNode } from "#src/tools/reference-tools";
+import {
+  brokenReferenceWarning,
+  explainArrivingEventChange,
+  referencesBrokenBetween,
+} from "#src/tools/reference-diagnosis";
 
 const failureSchema = Schema.Struct({ reason: Schema.String });
-const writeResultSchema = Schema.Struct({ summary: Schema.String });
+const writeResultSchema = Schema.Struct({
+  summary: Schema.String,
+  /**
+   * Present when this edit stopped a token below this node resolving. Nothing
+   * else reports that before Publish, so act on it in the same turn.
+   */
+  warning: Schema.optionalKey(Schema.String),
+});
 
 const waitForSchema = Schema.Array(
   Schema.Struct({
@@ -167,7 +179,7 @@ const setWaitInputSchema = Schema.Struct({
 
 export const SetWait = Tool.make("set_wait", {
   description:
-    "Configure a Wait step for a duration, until a date/time, or for Event subscriptions. Use until timing when the request names a date/time from an earlier step, and call list_references first. Omitted optional fields preserve settings owned by the retained mode.",
+    "Configure a Wait step for a duration, until a date/time, or for Event subscriptions. Use until timing when the request names a date/time from an earlier step, and call list_references first. Omitted optional fields preserve settings owned by the retained mode. Event mode makes this Wait the Arriving Event for every node below it, which replaces the Start Event payload the Lifecycle Node offers there: a step that reads the Start Event payload belongs above this Wait, and any token below it that this edit breaks comes back as a warning.",
   parameters: setWaitInputSchema,
   success: writeResultSchema,
   failure: failureSchema,
@@ -424,9 +436,21 @@ export const waitToolHandlers = Effect.gen(function* () {
               catalog: draft.catalog,
             })?.find((candidate) => candidate.token === wait.timestamp);
             if (reference?.type !== "timestamp") {
+              // Naming only the tool that supplies tokens is no help when the
+              // token did come from it and the graph changed underneath, which
+              // is what an Event Wait added since then does.
+              const because =
+                reference === undefined
+                  ? explainArrivingEventChange({
+                      token: wait.timestamp,
+                      nodeId: input.nodeId,
+                      document,
+                      catalog: draft.catalog,
+                    })
+                  : `That token holds ${reference.type ?? "no declared type"} rather than a timestamp.`;
+
               return Effect.fail({
-                reason:
-                  "Until timing needs an exact timestamp token from list_references.",
+                reason: `Until timing needs a timestamp token this step can read, and ${wait.timestamp} is not one.${because ? ` ${because}` : ""} Call read_workflow, then list_references for this step, before writing again.`,
               });
             }
           } else if (
@@ -631,16 +655,29 @@ export const waitToolHandlers = Effect.gen(function* () {
             config: { ...baseConfig, ...waitConfig },
           },
         };
+        const applyEdit = (current: AgentDocument): AgentDocument => ({
+          ...current,
+          nodes: current.nodes.map((candidate) =>
+            candidate.id === input.nodeId ? updated : candidate
+          ),
+        });
+
+        // Switching a Wait into Event mode resets the Arriving Event below it,
+        // which can strand tokens already written into those configs.
+        const warning = brokenReferenceWarning(
+          referencesBrokenBetween({
+            before: document,
+            after: applyEdit(document),
+            catalog: draft.catalog,
+          })
+        );
+
         return Effect.as(
-          draft.update((current) => ({
-            ...current,
-            nodes: current.nodes.map((candidate) =>
-              candidate.id === input.nodeId ? updated : candidate
-            ),
-          })),
-          {
+          draft.update(applyEdit),
+          omitUndefined({
             summary: `Set ${node.data.label || node.id} to wait by ${wait.mode}.`,
-          }
+            warning,
+          })
         );
       }),
   };

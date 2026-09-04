@@ -504,6 +504,7 @@ export const rpcRouter = rpc.router({
           name: input.name,
           description: input.description,
           graph: input.graph,
+          expectedDraftRevision: input.expectedDraftRevision,
           mode: input.mode,
         })
       )
@@ -519,6 +520,7 @@ export const rpcRouter = rpc.router({
         publishWorkflow({
           workflowId: input.workflowId,
           graph: input.graph,
+          expectedDraftRevision: input.expectedDraftRevision,
           expectedPublishedVersionId: input.expectedPublishedVersionId,
         })
       )
@@ -542,6 +544,7 @@ export const rpcRouter = rpc.router({
       rpcEffectHandler(({ input }) =>
         postWorkflowsCurrent({
           graph: input.graph,
+          expectedDraftRevision: input.expectedDraftRevision,
         })
       )
     ),
