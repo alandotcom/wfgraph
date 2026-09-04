@@ -51,7 +51,10 @@ import {
   getWorkflowExecutions,
 } from "#src/backend/services/executions/list";
 import { getWorkflowExecutionsGlobal } from "#src/backend/services/executions/global";
-import { getWorkflows } from "#src/backend/services/workflows/list";
+import {
+  getWorkflows,
+  streamWorkflowSummaries,
+} from "#src/backend/services/workflows/list";
 import { postWorkflowsBulkLifecycle } from "#src/backend/services/workflows/bulk-actions";
 import { postWorkflowsCreate } from "#src/backend/services/workflows/create";
 import {
@@ -496,6 +499,9 @@ export const rpcRouter = rpc.router({
   },
   workflow: {
     getAll: rpc.workflow.getAll.handler(rpcEffectHandler(() => getWorkflows())),
+    subscribeList: rpc.workflow.subscribeList.handler(
+      rpcStreamHandler(() => streamWorkflowSummaries())
+    ),
     getById: rpc.workflow.getById.handler(
       rpcEffectHandler(({ input }) => getWorkflow(input.workflowId))
     ),

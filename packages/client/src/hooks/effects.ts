@@ -6,6 +6,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 
 /**
@@ -118,6 +119,23 @@ export function useAbortableSubscription<T>(
       void Promise.resolve(iterator?.return?.()).catch(() => undefined);
     };
   }, [input.key, enabled, subscribe, onValue, onError]);
+}
+
+const subscribeToDocumentVisibility = (onStoreChange: () => void) => {
+  document.addEventListener("visibilitychange", onStoreChange);
+  return () => document.removeEventListener("visibilitychange", onStoreChange);
+};
+
+const getDocumentVisibility = () => document.visibilityState;
+const getServerDocumentVisibility = (): DocumentVisibilityState => "visible";
+
+/** Tracks whether subscriptions should remain connected for the current tab. */
+export function useDocumentVisibility(): DocumentVisibilityState {
+  return useSyncExternalStore(
+    subscribeToDocumentVisibility,
+    getDocumentVisibility,
+    getServerDocumentVisibility
+  );
 }
 
 type AbortableTaskInput = {

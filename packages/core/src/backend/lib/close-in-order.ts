@@ -68,6 +68,63 @@ export async function runWithClose<A>(
   return result;
 }
 
+/** Keep request resources alive until an event-stream body ends or is canceled. */
+export async function runWithResponseClose(
+  run: () => Promise<Response>,
+  closes: readonly (() => Promise<void>)[]
+): Promise<Response> {
+  let response: Response;
+  try {
+    response = await run();
+  } catch (operationError) {
+    return await failWithCleanup(
+      operationError,
+      closes,
+      "The request and resource cleanup both failed"
+    );
+  }
+
+  if (
+    !response.body ||
+    !response.headers.get("content-type")?.startsWith("text/event-stream")
+  ) {
+    await closeInOrder(closes);
+    return response;
+  }
+
+  const reader = response.body.getReader();
+  let closePromise: Promise<void> | undefined;
+  const closeOnce = () => (closePromise ??= closeInOrder(closes));
+  const body = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const result = await reader.read();
+        if (result.done) {
+          await closeOnce();
+          controller.close();
+          return;
+        }
+        controller.enqueue(result.value);
+      } catch (operationError) {
+        try {
+          await failWithCleanup(
+            operationError,
+            [closeOnce],
+            "The response stream and resource cleanup both failed"
+          );
+        } catch (error) {
+          controller.error(error);
+        }
+      }
+    },
+    async cancel(reason) {
+      await runWithClose(() => reader.cancel(reason), [closeOnce]);
+    },
+  });
+
+  return new Response(body, response);
+}
+
 /** Release partially acquired resources before propagating a startup failure. */
 export function failAfterClose(
   operationError: unknown,

@@ -492,10 +492,14 @@ Reads and writes both go through `orpcQuery` from `#src/lib/rpc-query`: a read i
 `toSavedWorkflow`, and `workflowApi`, which exists only for the autosave queue in
 `workflow-save-store.ts`, because that runs outside React.
 
-**Two procedures stream.** `agent.chat` streams agent parts, and
-`workflow.subscribeDraft` streams persisted draft revisions. The draft stream uses each
-revision as its SSE event ID, and `RetryLinkPlugin` reconnects from the last received ID.
-Both handlers return an oRPC `AsyncIteratorClass`. The application owns the request's
+**Three procedures stream.** `agent.chat` streams agent parts,
+`workflow.subscribeDraft` streams persisted draft revisions, and
+`workflow.subscribeList` streams complete workflow-summary snapshots. The draft stream
+uses each revision as its SSE event ID, and `RetryLinkPlugin` reconnects from the last
+received ID. The list stream reads the database on each connection, suppresses unchanged
+snapshots, and emits the current list immediately. Its application-level browser subscriber
+updates the `workflow.getAll` query cache and disconnects while the page is hidden. All three
+handlers return an oRPC `AsyncIteratorClass`. The application owns the request's
 `ManagedRuntime`, and its fiber supervision owns the producer. The request `AbortSignal`
 and iterator cancellation interrupt the producer. The browser receives an async iterable
 through `RPCLink`. Construction failures map to oRPC errors. Agent failures after streaming

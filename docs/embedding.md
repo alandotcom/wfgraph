@@ -226,17 +226,17 @@ Workflow Graph's built-in permission vocabulary is fixed:
 
 The following table maps every operation ID to its permission:
 
-| Permission         | Operation IDs                                                                                                                                                                                                 |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `workflow.read`    | `workflow.getAll`, `workflow.getById`, `workflow.subscribeDraft`, `workflow.getVersionHistory`, `workflow.getVersionUsage`, `workflow.compareVersion`, `workflow.getCurrent`, `workflow.getVersionGraph`      |
-| `workflow.write`   | `workflow.create`, `workflow.update`, `workflow.delete`, `workflow.duplicate`, `workflow.publish`, `workflow.restoreVersion`, `workflow.saveCurrent`, `workflow.bulkLifecycle`                                |
-| `run.read`         | `workflow.getExecutions`, `workflow.getExecutionsGlobal`, `workflow.getExecutionLogs`, `workflow.getExecutionEvents`, `workflow.getExecutionStatus`                                                           |
-| `run.manage`       | `workflow.execute`, `workflow.deleteExecutions`, `workflow.resumeWait`, `workflow.cancelExecution`                                                                                                            |
-| `connection.read`  | `integration.getAll`, `integration.get`, `integration.configOptions`                                                                                                                                          |
-| `connection.write` | `integration.create`, `integration.update`, `integration.delete`, `integration.disconnectOAuth`, `integration.testConnection`, `integration.testCredentials`, `oauth.start`, `oauth.status`, `oauth.callback` |
-| `settings.read`    | `apiKey.getAll`                                                                                                                                                                                               |
-| `settings.write`   | `apiKey.create`, `apiKey.delete`                                                                                                                                                                              |
-| `agent.use`        | `agent.chat`                                                                                                                                                                                                  |
+| Permission         | Operation IDs                                                                                                                                                                                                                      |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `workflow.read`    | `workflow.getAll`, `workflow.getById`, `workflow.subscribeList`, `workflow.subscribeDraft`, `workflow.getVersionHistory`, `workflow.getVersionUsage`, `workflow.compareVersion`, `workflow.getCurrent`, `workflow.getVersionGraph` |
+| `workflow.write`   | `workflow.create`, `workflow.update`, `workflow.delete`, `workflow.duplicate`, `workflow.publish`, `workflow.restoreVersion`, `workflow.saveCurrent`, `workflow.bulkLifecycle`                                                     |
+| `run.read`         | `workflow.getExecutions`, `workflow.getExecutionsGlobal`, `workflow.getExecutionLogs`, `workflow.getExecutionEvents`, `workflow.getExecutionStatus`                                                                                |
+| `run.manage`       | `workflow.execute`, `workflow.deleteExecutions`, `workflow.resumeWait`, `workflow.cancelExecution`                                                                                                                                 |
+| `connection.read`  | `integration.getAll`, `integration.get`, `integration.configOptions`                                                                                                                                                               |
+| `connection.write` | `integration.create`, `integration.update`, `integration.delete`, `integration.disconnectOAuth`, `integration.testConnection`, `integration.testCredentials`, `oauth.start`, `oauth.status`, `oauth.callback`                      |
+| `settings.read`    | `apiKey.getAll`                                                                                                                                                                                                                    |
+| `settings.write`   | `apiKey.create`, `apiKey.delete`                                                                                                                                                                                                   |
+| `agent.use`        | `agent.chat`                                                                                                                                                                                                                       |
 
 The role policies contain these permissions:
 

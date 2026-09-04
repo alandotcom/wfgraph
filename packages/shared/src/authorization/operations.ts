@@ -89,6 +89,10 @@ const operationDefinitions = {
     "workflow.getById",
     WfGraphPermissions.workflowRead
   ),
+  workflowSubscribeList: operation(
+    "workflow.subscribeList",
+    WfGraphPermissions.workflowRead
+  ),
   workflowSubscribeDraft: operation(
     "workflow.subscribeDraft",
     WfGraphPermissions.workflowRead

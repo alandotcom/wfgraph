@@ -172,6 +172,85 @@ describe("wfWorker", () => {
     expect(closed).toBe(2);
   });
 
+  it("keeps request resources open until a streaming response is canceled", async () => {
+    let reads = 0;
+    let closed = 0;
+    const repositories = Layer.mergeAll(
+      stubApiKeyRepo(),
+      stubExecutionRepo(),
+      stubIntegrationRepo(),
+      stubWorkflowRepo({
+        listSummariesNewestFirst: Effect.sync(() => {
+          reads += 1;
+          return [
+            {
+              id: "wf_1",
+              name: reads === 1 ? "First" : "Second",
+              description: null,
+              isPaused: false,
+              mode: "live",
+              visibility: "private",
+              publishedVersionId: null,
+              createdAt: new Date("2026-09-04T09:00:00.000Z"),
+              updatedAt: new Date(
+                reads === 1
+                  ? "2026-09-04T09:00:00.000Z"
+                  : "2026-09-04T10:00:00.000Z"
+              ),
+            },
+          ];
+        }),
+      })
+    );
+    const persistence: WfGraphPersistence = {
+      open: async () => ({
+        repositories,
+        description: { backend: "test" },
+        close: async () => {
+          closed += 1;
+        },
+      }),
+    };
+    const worker = wfWorker({
+      request: () => ({
+        auth: trustWfGraphUpstream(),
+        persistence,
+        encryption: { key: "d".repeat(64) },
+        inngest: { id: "wfgraph-worker-test", isDev: true },
+      }),
+    });
+
+    const response = await worker.fetch(
+      new Request("https://example.test/api/rpc/workflow/subscribeList", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ json: {} }),
+      }),
+      {}
+    );
+    const reader = response.body?.getReader();
+    expect(reader).toBeDefined();
+    if (!reader) return;
+
+    const decoder = new TextDecoder();
+    let body = "";
+    while ((body.match(/event: message/g) ?? []).length < 2) {
+      // The list stream polls serially, so each response chunk must be read in order.
+      // eslint-disable-next-line no-await-in-loop
+      const chunk = await reader.read();
+      expect(chunk.done).toBe(false);
+      body += decoder.decode(chunk.value, { stream: true });
+    }
+
+    expect(closed).toBe(0);
+    expect(body).toContain('"name":"First"');
+    expect(body).toContain('"name":"Second"');
+
+    await reader.cancel();
+
+    expect(closed).toBe(1);
+  });
+
   it("closes persistence when runtime disposal fails", async () => {
     let closed = 0;
     const repositories = Layer.mergeAll(

@@ -32,6 +32,7 @@ function returnKnownOperationId(id: WfGraphOperationId): WfGraphOperationId {
     case "integration.testCredentials":
     case "workflow.getAll":
     case "workflow.getById":
+    case "workflow.subscribeList":
     case "workflow.subscribeDraft":
     case "workflow.getVersionHistory":
     case "workflow.getVersionUsage":
@@ -86,6 +87,7 @@ describe("Workflow Graph authorization operations", () => {
         "apiKey.getAll",
         "integration.getAll",
         "workflow.getAll",
+        "workflow.subscribeList",
         "workflow.execute",
         "oauth.start",
         "oauth.status",

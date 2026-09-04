@@ -312,6 +312,13 @@ export const workflowContract = {
   getAll: route("GET", "/workflows", WfGraphOperations.workflowGetAll)
     .input(noInput)
     .output(contractSchema(listOf(workflowSummarySchema))),
+  subscribeList: route(
+    "GET",
+    "/workflows/list-subscription",
+    WfGraphOperations.workflowSubscribeList
+  )
+    .input(noInput)
+    .output(asyncIteratorObject(contractSchema(listOf(workflowSummarySchema)))),
   getById: route(
     "GET",
     "/workflows/{workflowId}",
