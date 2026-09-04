@@ -7,7 +7,14 @@ import {
   expect,
   it,
 } from "@effect/vitest";
-import { Effect, Layer, ManagedRuntime } from "effect";
+import {
+  Effect,
+  Layer,
+  Logger,
+  ManagedRuntime,
+  References,
+  Stream,
+} from "effect";
 import { makeAgentConfigLayer } from "#src/backend/agent/config";
 import { NotFound } from "#src/backend/lib/effect/failures";
 import {
@@ -23,7 +30,7 @@ import { resetSync } from "@logtape/logtape";
 import { configureLoggingWithBridge } from "#src/backend/lib/log-config";
 import { createRequestEvent } from "#src/backend/lib/http/request-event";
 import type { WfGraphRuntime } from "#src/backend/runtime";
-import { rpcEffectHandler } from "#src/backend/rpc/router";
+import { rpcEffectHandler, rpcStreamHandler } from "#src/backend/rpc/router";
 import { makeAppContextLayer } from "#src/backend/lib/effect/app-context";
 import { createApiApp } from "#src/backend/api-app";
 import {
@@ -44,16 +51,22 @@ import { rpcContract } from "@wfgraph/shared/rpc/contracts";
  */
 function createStubRuntime({
   appContext = { apiBasePath: "/api" },
+  effectLoggerLayer,
+  startupLayer,
   integrationRepo,
   workflowRepo,
 }: {
   appContext?: Parameters<typeof makeAppContextLayer>[0] | undefined;
+  effectLoggerLayer?: Layer.Layer<never> | undefined;
+  startupLayer?: Layer.Layer<never> | undefined;
   integrationRepo?: Parameters<typeof stubIntegrationRepo>[0] | undefined;
   workflowRepo?: Parameters<typeof stubWorkflowRepo>[0] | undefined;
 } = {}): WfGraphRuntime {
   return ManagedRuntime.make(
     Layer.mergeAll(
       SilentAppLoggerLayer,
+      effectLoggerLayer ?? Layer.empty,
+      startupLayer ?? Layer.empty,
       makeAppContextLayer(appContext),
       stubExtensions(),
       stubApiKeyRepo(),
@@ -66,7 +79,7 @@ function createStubRuntime({
   );
 }
 
-function createContext(runtime: WfGraphRuntime) {
+function createContext(runtime: WfGraphRuntime, signal?: AbortSignal) {
   return {
     context: {
       auth: {
@@ -75,6 +88,7 @@ function createContext(runtime: WfGraphRuntime) {
       headers: new Headers(),
       runtime,
     },
+    ...(signal ? { signal } : {}),
   };
 }
 
@@ -190,6 +204,291 @@ describe("rpcEffectHandler", () => {
       },
     });
     assert.deepStrictEqual(logLines, []);
+  });
+});
+
+describe("rpcStreamHandler", () => {
+  it("runs stream effects and finalizers through the managed runtime", async () => {
+    const messages: unknown[] = [];
+    const logger = Logger.make<unknown, void>(({ message }) => {
+      messages.push(Array.isArray(message) ? message[0] : message);
+    });
+    await using runtime = createStubRuntime({
+      effectLoggerLayer: Layer.merge(
+        Logger.layer([logger]),
+        Layer.succeed(References.MinimumLogLevel, "All")
+      ),
+    });
+    const handler = rpcStreamHandler(() =>
+      Effect.succeed(
+        Stream.fromEffect(
+          Effect.logInfo("stream effect").pipe(
+            Effect.as("value"),
+            Effect.ensuring(Effect.logInfo("stream finalizer"))
+          )
+        )
+      )
+    );
+
+    const output = [];
+    for await (const value of handler(createContext(runtime))) {
+      output.push(value);
+    }
+
+    expect(output).toEqual(["value"]);
+    expect(messages).toEqual(["stream effect", "stream finalizer"]);
+  });
+
+  it("maps a handler construction failure to an oRPC error", async () => {
+    await using runtime = createStubRuntime();
+    const handler = rpcStreamHandler(() =>
+      Effect.fail(new NotFound({ error: "Workflow not found" }))
+    );
+
+    const rejection = await handler(createContext(runtime))
+      .next()
+      .then(
+        () => undefined,
+        (error: unknown) => error
+      );
+
+    assert.instanceOf(rejection, ORPCError);
+    assert.strictEqual(rejection.code, "NOT_FOUND");
+  });
+
+  it("rejects the active next call when the running stream dies", async () => {
+    await using runtime = createStubRuntime();
+    const defect = new Error("stream defect");
+    const handler = rpcStreamHandler(() =>
+      Effect.succeed(Stream.fromEffect(Effect.die(defect)))
+    );
+
+    const rejection = await handler(createContext(runtime))
+      .next()
+      .then(
+        () => undefined,
+        (error: unknown) => error
+      );
+
+    expect(rejection).toBe(defect);
+  });
+
+  it("cancels while next is waiting for a stream value", async () => {
+    await using runtime = createStubRuntime();
+    const started = Promise.withResolvers<void>();
+    const handler = rpcStreamHandler(() =>
+      Effect.succeed(
+        Stream.fromEffect(
+          Effect.sync(() => started.resolve()).pipe(
+            Effect.andThen(Effect.never)
+          )
+        )
+      )
+    );
+    const iterator = handler(createContext(runtime));
+    const pendingNext = iterator.next();
+    await started.promise;
+
+    const returnResult = await Promise.race([
+      iterator.return(),
+      new Promise<"timed-out">((resolve) => {
+        setTimeout(() => resolve("timed-out"), 500);
+      }),
+    ]);
+
+    expect(returnResult).toEqual({ done: true, value: undefined });
+    await expect(pendingNext).resolves.toEqual({
+      done: true,
+      value: undefined,
+    });
+  });
+
+  it("throws promptly while next is waiting for a stream value", async () => {
+    await using runtime = createStubRuntime();
+    const started = Promise.withResolvers<void>();
+    const handler = rpcStreamHandler(() =>
+      Effect.succeed(
+        Stream.fromEffect(
+          Effect.sync(() => started.resolve()).pipe(
+            Effect.andThen(Effect.never)
+          )
+        )
+      )
+    );
+    const iterator = handler(createContext(runtime));
+    const pendingNext = iterator.next();
+    const cancellation = new Error("client cancelled");
+    await started.promise;
+
+    const throwResult = await Promise.race([
+      iterator.throw(cancellation).catch((error: unknown) => error),
+      new Promise<"timed-out">((resolve) => {
+        setTimeout(() => resolve("timed-out"), 500);
+      }),
+    ]);
+
+    expect(throwResult).toBe(cancellation);
+    await expect(pendingNext).resolves.toEqual({
+      done: true,
+      value: undefined,
+    });
+  });
+
+  it("interrupts and finalizes a stream when the request aborts during next", async () => {
+    await using runtime = createStubRuntime();
+    const controller = new AbortController();
+    const started = Promise.withResolvers<void>();
+    const finalized = Promise.withResolvers<void>();
+    const handler = rpcStreamHandler(() =>
+      Effect.succeed(
+        Stream.fromEffect(
+          Effect.sync(() => started.resolve()).pipe(
+            Effect.andThen(Effect.never),
+            Effect.ensuring(Effect.sync(() => finalized.resolve()))
+          )
+        )
+      )
+    );
+    const iterator = handler(createContext(runtime, controller.signal));
+    const pendingNext = iterator.next();
+    await started.promise;
+
+    controller.abort();
+
+    await expect(
+      Promise.race([
+        pendingNext,
+        new Promise<"timed-out">((resolve) => {
+          setTimeout(() => resolve("timed-out"), 500);
+        }),
+      ])
+    ).resolves.toEqual({ done: true, value: undefined });
+    await finalized.promise;
+  });
+
+  it("does not start a producer for a request aborted before next", async () => {
+    await using runtime = createStubRuntime();
+    const controller = new AbortController();
+    controller.abort();
+    let producerStarted = false;
+    const handler = rpcStreamHandler(() => {
+      producerStarted = true;
+      return Effect.succeed(Stream.fromIterable(["value"]));
+    });
+    const iterator = handler(createContext(runtime, controller.signal));
+
+    await expect(iterator.next()).resolves.toEqual({
+      done: true,
+      value: undefined,
+    });
+    expect(producerStarted).toBe(false);
+  });
+
+  it("waits for each emitted value to be consumed", async () => {
+    await using runtime = createStubRuntime();
+    let produced = 0;
+    const handler = rpcStreamHandler(() =>
+      Effect.succeed(
+        Stream.fromEffectRepeat(
+          Effect.sync(() => {
+            produced += 1;
+            return produced;
+          })
+        )
+      )
+    );
+    const iterator = handler(createContext(runtime));
+
+    await expect(iterator.next()).resolves.toEqual({ done: false, value: 1 });
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
+
+    expect(produced).toBe(2);
+    await iterator.return();
+  });
+
+  it("runs the stream finalizer when the iterator is returned", async () => {
+    await using runtime = createStubRuntime();
+    const started = Promise.withResolvers<void>();
+    const finalized = Promise.withResolvers<void>();
+    const handler = rpcStreamHandler(() =>
+      Effect.succeed(
+        Stream.fromEffect(
+          Effect.sync(() => started.resolve()).pipe(
+            Effect.andThen(Effect.never),
+            Effect.ensuring(Effect.sync(() => finalized.resolve()))
+          )
+        )
+      )
+    );
+    const iterator = handler(createContext(runtime));
+    const pendingNext = iterator.next();
+    await started.promise;
+
+    await iterator.return();
+    await finalized.promise;
+    await pendingNext;
+  });
+
+  it("interrupts the stream when the managed runtime is disposed", async () => {
+    const runtime = createStubRuntime();
+    const started = Promise.withResolvers<void>();
+    const finalized = Promise.withResolvers<void>();
+    const handler = rpcStreamHandler(() =>
+      Effect.succeed(
+        Stream.fromEffect(
+          Effect.sync(() => started.resolve()).pipe(
+            Effect.andThen(Effect.never),
+            Effect.ensuring(Effect.sync(() => finalized.resolve()))
+          )
+        )
+      )
+    );
+    const iterator = handler(createContext(runtime));
+    const pendingNext = iterator.next();
+    const nextSettled = pendingNext.catch(() => undefined);
+    await started.promise;
+
+    await runtime.dispose();
+
+    await finalized.promise;
+    await nextSettled;
+  });
+
+  it("settles next when runtime disposal interrupts initial layer construction", async () => {
+    const runtime = createStubRuntime({
+      startupLayer: Layer.effectContext(Effect.never),
+    });
+    const handler = rpcStreamHandler(() =>
+      Effect.succeed(Stream.fromIterable(["value"]))
+    );
+    const pendingNext = handler(createContext(runtime)).next();
+
+    await runtime.dispose();
+
+    await expect(
+      Promise.race([
+        pendingNext,
+        new Promise<"timed-out">((resolve) => {
+          setTimeout(() => resolve("timed-out"), 500);
+        }),
+      ])
+    ).resolves.toEqual({ done: true, value: undefined });
+  });
+
+  it("settles next when initial layer construction fails", async () => {
+    const layerError = new Error("layer startup failed");
+    await using runtime = createStubRuntime({
+      startupLayer: Layer.effectContext(Effect.die(layerError)),
+    });
+    const handler = rpcStreamHandler(() =>
+      Effect.succeed(Stream.fromIterable(["value"]))
+    );
+
+    await expect(handler(createContext(runtime)).next()).rejects.toBe(
+      layerError
+    );
   });
 });
 

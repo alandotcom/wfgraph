@@ -140,4 +140,16 @@ export type AgentEvalOutput = {
   semantics: DeterministicAssessment;
   toolBehavior: DeterministicAssessment;
   completion: DeterministicAssessment;
+  traceSummary: {
+    modelCalls: number;
+    toolCalls: number;
+    refusals: number;
+    graphRevisions: number;
+    inputTokens: number;
+    outputTokens: number;
+    reasoningTokens: number;
+    totalTokens: number;
+    finishReason: string | null;
+    finishReasons: string[];
+  };
 };

@@ -3,6 +3,11 @@ import { Effect, Stream } from "effect";
 /** The maximum number of model calls one agent turn can make. */
 export const AGENT_TURN_STEP_LIMIT = 48;
 
+export type AgentStepCompletion = {
+  readonly calledTool: boolean;
+  readonly failure?: Error | undefined;
+};
+
 /**
  * Repeat one model step while its response calls a tool.
  *
@@ -11,8 +16,11 @@ export const AGENT_TURN_STEP_LIMIT = 48;
  */
 export function runAgentStepLoop<Part, Failure, Requirements>(input: {
   readonly limit: number;
-  readonly step: () => Stream.Stream<Part, Failure, Requirements>;
+  readonly step: (step: number) => Stream.Stream<Part, Failure, Requirements>;
   readonly calledTool: (part: Part) => boolean;
+  readonly stepCompletion: (part: Part) => AgentStepCompletion | undefined;
+  readonly stepFailure?: ((part: Part) => Error | undefined) | undefined;
+  readonly onStepStart?: ((step: number) => void) | undefined;
 }): Stream.Stream<Part, Failure | Error, Requirements> {
   const run = (
     remaining: number
@@ -26,16 +34,62 @@ export function runAgentStepLoop<Part, Failure, Requirements>(input: {
     }
 
     let calledTool = false;
-    return input.step().pipe(
+    let completion: AgentStepCompletion | undefined;
+    let completionCount = 0;
+    let stepFailure: Error | undefined;
+    const step = input.limit - remaining + 1;
+    return Stream.fromEffect(Effect.sync(() => input.onStepStart?.(step))).pipe(
+      Stream.flatMap(() => input.step(step)),
       Stream.tap((part) =>
         Effect.sync(() => {
           if (input.calledTool(part)) {
             calledTool = true;
           }
+          const partCompletion = input.stepCompletion(part);
+          if (partCompletion) {
+            completion = partCompletion;
+            completionCount += 1;
+          }
+          const partFailure = input.stepFailure?.(part);
+          if (partFailure && !stepFailure) {
+            stepFailure = partFailure;
+          }
         })
       ),
       Stream.concat(
-        Stream.suspend(() => (calledTool ? run(remaining - 1) : Stream.empty))
+        Stream.suspend(() => {
+          if (stepFailure) {
+            return Stream.fail(stepFailure);
+          }
+          if (!completion) {
+            return Stream.fail(
+              new Error(`Model step ${step} ended without a finish part.`)
+            );
+          }
+          if (completionCount > 1) {
+            return Stream.fail(
+              new Error(`Model step ${step} emitted more than one finish part.`)
+            );
+          }
+          if (completion.failure) {
+            return Stream.fail(completion.failure);
+          }
+          if (completion.calledTool && !calledTool) {
+            return Stream.fail(
+              new Error(
+                `Model step ${step} reported tool calls but emitted none.`
+              )
+            );
+          }
+          if (!completion.calledTool && calledTool) {
+            return Stream.fail(
+              new Error(
+                `Model step ${step} emitted a tool call but reported a completed response.`
+              )
+            );
+          }
+          return calledTool ? run(remaining - 1) : Stream.empty;
+        })
       )
     );
   };

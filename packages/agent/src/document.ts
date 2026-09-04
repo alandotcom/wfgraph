@@ -53,6 +53,11 @@ type DraftUpdateResult =
   | { readonly ok: true; readonly document: AgentDocument }
   | { readonly ok: false; readonly reason: string };
 
+type WorkflowDraftState = {
+  readonly document: AgentDocument;
+  readonly revisions: readonly AgentDocument[];
+};
+
 export type WorkflowDraftService = {
   /** The graph as it stands after every edit made so far in this turn. */
   readonly current: Effect.Effect<AgentDocument>;
@@ -60,6 +65,8 @@ export type WorkflowDraftService = {
   readonly update: (
     edit: (document: AgentDocument) => AgentDocument
   ) => Effect.Effect<AgentDocument, { readonly reason: string }>;
+  /** Read the immutable document stored after one successful update. */
+  readonly revision: (revision: number) => Effect.Effect<AgentDocument>;
   /** The extension surface, fixed for the turn. */
   readonly catalog: ExtensionCatalog;
   /** The connections the operator can bind an action to, fixed for the turn. */
@@ -79,31 +86,54 @@ export class WorkflowDraft extends Context.Service<
  * One draft per request.
  *
  * The service is built as a value rather than only as a Layer, because the
- * caller needs the same handle the tools write through: after each write tool
- * returns, the request handler reads `current` to send the editor the graph as
- * it now stands. A Layer alone would seal the `Ref` inside it.
+ * caller needs the same handle the tools write through. Each accepted update
+ * stores an ordered revision snapshot, which the request handler sends after
+ * the matching write result. A Layer alone would seal the `Ref` inside it.
  */
 export function makeWorkflowDraft(
   input: WorkflowDraftInput
 ): Effect.Effect<WorkflowDraftService> {
   return Effect.gen(function* () {
-    const state = yield* Ref.make(input.document);
+    const state = yield* Ref.make({
+      document: input.document,
+      revisions: [input.document] as readonly AgentDocument[],
+    });
 
     return {
-      current: Ref.get(state),
+      current: Ref.get(state).pipe(Effect.map((snapshot) => snapshot.document)),
       update: (edit) =>
-        Ref.modify(state, (current): [DraftUpdateResult, AgentDocument] => {
-          const candidate = edit(current);
-          const reason = workflowTopologyRefusalReason(candidate);
-          return reason
-            ? [{ ok: false as const, reason }, current]
-            : [{ ok: true as const, document: candidate }, candidate];
-        }).pipe(
+        Ref.modify(
+          state,
+          (current): [DraftUpdateResult, WorkflowDraftState] => {
+            const candidate = edit(current.document);
+            const reason = workflowTopologyRefusalReason(candidate);
+            return reason
+              ? [{ ok: false as const, reason }, current]
+              : [
+                  { ok: true as const, document: candidate },
+                  {
+                    document: candidate,
+                    revisions: [...current.revisions, candidate],
+                  },
+                ];
+          }
+        ).pipe(
           Effect.flatMap((result) =>
             result.ok
               ? Effect.succeed(result.document)
               : Effect.fail({ reason: result.reason })
           )
+        ),
+      revision: (revision) =>
+        Ref.get(state).pipe(
+          Effect.flatMap((snapshot) => {
+            const document = snapshot.revisions[revision];
+            return document
+              ? Effect.succeed(document)
+              : Effect.die(
+                  new Error(`Missing workflow draft revision ${revision}.`)
+                );
+          })
         ),
       catalog: input.catalog,
       integrations: input.integrations,

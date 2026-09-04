@@ -2,6 +2,10 @@ import { Cause, Effect, Stream } from "effect";
 import { createHarness, toJsonValue } from "vitest-evals";
 import { runAgentTurn } from "@wfgraph/core/backend/agent/chat";
 import { DEFAULT_AGENT_MODEL } from "@wfgraph/core/backend/agent/config";
+import {
+  summarizeAgentTrace,
+  type AgentTraceEvent,
+} from "@wfgraph/core/backend/agent/trace";
 import { getErrorMessage } from "@wfgraph/shared/utils";
 import type { AgentStreamPart } from "@wfgraph/shared/rpc/agent-stream";
 import {
@@ -46,7 +50,9 @@ export const workflowAgentHarness = createHarness<
 >({
   name: "workflow-build-agent",
   run: async ({ input, setArtifact }) => {
+    const startedAt = Date.now();
     const settings = readEvalModelSettings(input.model);
+    const trace: AgentTraceEvent[] = [];
     const stream = await Effect.runPromise(
       runAgentTurn({
         settings,
@@ -54,6 +60,7 @@ export const workflowAgentHarness = createHarness<
         integrations: input.integrations,
         document: input.document,
         messages: input.messages,
+        observeTrace: (event) => trace.push(event),
       })
     );
     const observed = stream.pipe(
@@ -84,6 +91,7 @@ export const workflowAgentHarness = createHarness<
     const publishability = assessPublishability(graphInput);
     const grounding = assessGraphGrounding(graphInput);
     const semantics = assessScenarioSemantics(input, result.finalDocument);
+    const traceSummary = summarizeAgentTrace(trace);
     const output: AgentEvalOutput = {
       finalDocumentJson: JSON.stringify(result.finalDocument),
       finalText: result.finalText,
@@ -101,6 +109,10 @@ export const workflowAgentHarness = createHarness<
         grounding,
         semantics,
       }),
+      traceSummary: {
+        ...traceSummary,
+        finishReason: traceSummary.finishReason ?? null,
+      },
     };
 
     setArtifact(
@@ -108,11 +120,28 @@ export const workflowAgentHarness = createHarness<
       toJsonValue(result.finalDocument) ?? { nodes: [], edges: [] }
     );
     setArtifact("streamParts", toJsonValue(parts) ?? []);
+    setArtifact("agentTrace", toJsonValue(trace) ?? []);
 
     return {
       output,
       events,
-      usage: { provider: "openai", model: settings.model },
+      usage: {
+        provider: "openai",
+        model: settings.model,
+        inputTokens: traceSummary.inputTokens,
+        outputTokens: traceSummary.outputTokens,
+        reasoningTokens: traceSummary.reasoningTokens,
+        totalTokens: traceSummary.totalTokens,
+        toolCalls: traceSummary.toolCalls,
+        metadata: {
+          modelCalls: traceSummary.modelCalls,
+          refusals: traceSummary.refusals,
+          graphRevisions: traceSummary.graphRevisions,
+          finishReason: traceSummary.finishReason ?? "missing",
+          finishReasons: traceSummary.finishReasons,
+        },
+      },
+      timings: { totalMs: Date.now() - startedAt },
       errors: result.errors.map((message) => ({ message })),
     };
   },

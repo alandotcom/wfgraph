@@ -467,11 +467,12 @@ Reads and writes both go through `orpcQuery` from `#src/lib/rpc-query`: a read i
 `workflow-save-store.ts`, because that runs outside React.
 
 **One procedure streams, and it is the agent's.** `agent.chat` declares an
-`eventIterator` output, so its handler is an async generator and `RPCLink` hands the
-browser an async iterable. `rpcStreamHandler` in `backend/rpc/router.ts` is the seam,
-beside `rpcEffectHandler`. A failure raised while building the stream becomes an oRPC
-error; a failure once it is running cannot, because the response has already begun, so
-the stream carries its own bad news as an `error` part.
+`eventIterator` output, and its handler returns an oRPC `AsyncIteratorClass`. The
+application owns the request's `ManagedRuntime`, and its fiber supervision owns the
+producer. The request `AbortSignal` and iterator cancellation interrupt the producer.
+The browser receives an async iterable through `RPCLink`. Construction failures map to
+oRPC errors. Failures after streaming starts travel as `error` parts.
+`rpcStreamHandler` in `backend/rpc/router.ts` is the seam beside `rpcEffectHandler`.
 
 A query key is derived from the contract path, so it cannot drift from
 `packages/shared/src/rpc/contracts.ts`. Pass a `select` as a module-level function: TanStack

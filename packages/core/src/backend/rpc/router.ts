@@ -1,5 +1,5 @@
-import { implement, ORPCError } from "@orpc/server";
-import { Effect, Schema, Stream } from "effect";
+import { AsyncIteratorClass, implement, ORPCError } from "@orpc/server";
+import { Cause, Effect, Exit, Fiber, Schema, Stream } from "effect";
 import type { ServiceFailure } from "#src/backend/lib/effect/failures";
 import { getAppLogger } from "#src/backend/lib/logger";
 import type { WfGraphServices } from "#src/backend/runtime";
@@ -184,51 +184,184 @@ export function rpcEffectHandler<
     );
 }
 
+type PendingStreamNext<T> = {
+  resolve: (result: IteratorResult<T, void>) => void;
+  reject: (error: unknown) => void;
+};
+
+type PendingStreamValue<T> = {
+  value: T;
+  resume: (effect: Effect.Effect<void>) => void;
+};
+
+type StreamTerminal =
+  | { readonly _tag: "End" }
+  | { readonly _tag: "Error"; readonly error: unknown };
+
 /**
- * The same, for a procedure whose output is an event iterator.
+ * Passes one value at a time from an Effect stream to an async iterator.
+ * The producer waits until the iterator consumes each value. Cancellation
+ * settles a waiting `next()` before the caller waits for Effect finalizers.
+ */
+class RpcStreamMailbox<T> {
+  private cancelled = false;
+  private pendingNext: PendingStreamNext<T> | undefined;
+  private pendingValue: PendingStreamValue<T> | undefined;
+  private terminal: StreamTerminal | undefined;
+
+  readonly offer = (value: T): Effect.Effect<void> =>
+    Effect.callback<void>((resume) => {
+      if (this.cancelled) {
+        resume(Effect.interrupt);
+        return Effect.void;
+      }
+
+      const pendingNext = this.pendingNext;
+      if (pendingNext) {
+        this.pendingNext = undefined;
+        pendingNext.resolve({ done: false, value });
+        resume(Effect.void);
+        return Effect.void;
+      }
+
+      const pendingValue = { value, resume };
+      this.pendingValue = pendingValue;
+      return Effect.sync(() => {
+        if (this.pendingValue === pendingValue) {
+          this.pendingValue = undefined;
+        }
+      });
+    });
+
+  readonly next = (): Promise<IteratorResult<T, void>> => {
+    if (this.cancelled) {
+      return Promise.resolve({ done: true, value: undefined });
+    }
+
+    const pendingValue = this.pendingValue;
+    if (pendingValue) {
+      this.pendingValue = undefined;
+      pendingValue.resume(Effect.void);
+      return Promise.resolve({ done: false, value: pendingValue.value });
+    }
+
+    if (this.terminal) {
+      return this.terminal._tag === "End"
+        ? Promise.resolve({ done: true, value: undefined })
+        : Promise.reject(this.terminal.error);
+    }
+
+    const pending = Promise.withResolvers<IteratorResult<T, void>>();
+    this.pendingNext = pending;
+    return pending.promise;
+  };
+
+  finish(exit: Exit.Exit<void, unknown>): void {
+    // ManagedRuntime reports disposal during first context construction as a
+    // "ManagedRuntime disposed" defect instead of an interrupt.
+    const terminal: StreamTerminal = Exit.isSuccess(exit)
+      ? { _tag: "End" }
+      : Cause.hasInterruptsOnly(exit.cause) ||
+          Cause.squash(exit.cause) === "ManagedRuntime disposed"
+        ? { _tag: "End" }
+        : { _tag: "Error", error: Cause.squash(exit.cause) };
+    this.terminal = terminal;
+
+    const pendingNext = this.pendingNext;
+    if (!pendingNext) {
+      return;
+    }
+
+    this.pendingNext = undefined;
+    if (terminal._tag === "End") {
+      pendingNext.resolve({ done: true, value: undefined });
+    } else {
+      pendingNext.reject(terminal.error);
+    }
+  }
+
+  cancel(): void {
+    this.cancelled = true;
+    this.terminal = { _tag: "End" };
+
+    const pendingNext = this.pendingNext;
+    this.pendingNext = undefined;
+    pendingNext?.resolve({ done: true, value: undefined });
+
+    const pendingValue = this.pendingValue;
+    this.pendingValue = undefined;
+    pendingValue?.resume(Effect.interrupt);
+  }
+}
+
+/**
+ * Runs a streaming procedure on the runtime carried by its request.
  *
- * oRPC takes an async generator, so the Effect is run once to build the stream
- * and the stream is then drained into yields. `Stream.toReadableStream` is the
- * bridge: a `ReadableStream` is async-iterable on Node, and abandoning the
- * `for await` cancels the reader, which is how a browser closing the connection
- * stops the turn.
- *
- * A failure while building the stream becomes an oRPC error the same way a
- * unary handler's does. A failure once the stream is running cannot, because the
- * response has already begun; the stream itself is expected to carry its own
- * bad news as a value.
+ * The managed runtime owns the producer fiber. The mailbox applies
+ * backpressure and lets oRPC interrupt that fiber while `next()` is waiting.
+ * A handler construction failure becomes an oRPC error. A running stream sends
+ * its own failure event after the response starts.
  */
 export function rpcStreamHandler<
-  TArgs extends [{ context: RpcContext }, ...unknown[]],
+  THandlerArgs extends [
+    { context: RpcContext; signal?: AbortSignal | undefined },
+    ...unknown[],
+  ],
   TOutput,
   TFailure extends ServiceFailure,
 >(
   handler: (
-    ...args: TArgs
+    ...args: THandlerArgs
   ) => Effect.Effect<Stream.Stream<TOutput>, TFailure, WfGraphServices>
-): (...args: TArgs) => AsyncGenerator<TOutput, void> {
-  return async function* (...args) {
-    const stream = await args[0].context.runtime.runPromise(
-      handler(...args).pipe(
-        Effect.tapError((failure) =>
-          Effect.sync(() => {
-            recordRpcFailure(
-              args[0].context,
-              "warn",
-              `RPC stream handler returned failure [${failure.kind}]`,
-              {
-                kind: failure.kind,
-                message: failure.payload.error,
-                input: summarizeRpcInput(args),
-              }
-            );
-          })
-        ),
-        Effect.mapError(toOrpcError)
-      )
-    );
+): (...args: THandlerArgs) => AsyncIteratorClass<TOutput, void> {
+  return (...args) => {
+    const mailbox = new RpcStreamMailbox<TOutput>();
+    let fiber: Fiber.Fiber<void, unknown> | undefined;
 
-    yield* Stream.toReadableStream(stream);
+    const startProducer = (): void => {
+      const signal = args[0].signal;
+      if (signal?.aborted) {
+        mailbox.cancel();
+        return;
+      }
+
+      fiber = args[0].context.runtime.runFork(
+        handler(...args).pipe(
+          Effect.tapError((failure) =>
+            Effect.sync(() => {
+              recordRpcFailure(
+                args[0].context,
+                "warn",
+                `RPC stream handler returned failure [${failure.kind}]`,
+                {
+                  kind: failure.kind,
+                  message: failure.payload.error,
+                  input: summarizeRpcInput(args),
+                }
+              );
+            })
+          ),
+          Effect.mapError(toOrpcError),
+          Effect.flatMap((stream) => Stream.runForEach(stream, mailbox.offer))
+        ),
+        { signal }
+      );
+      fiber.addObserver((exit) => mailbox.finish(exit));
+    };
+
+    const next = (): Promise<IteratorResult<TOutput, void>> => {
+      if (!fiber) {
+        startProducer();
+      }
+      return mailbox.next();
+    };
+
+    return new AsyncIteratorClass(next, async () => {
+      mailbox.cancel();
+      if (fiber) {
+        await Effect.runPromise(Fiber.interrupt(fiber));
+      }
+    });
   };
 }
 
