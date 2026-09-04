@@ -203,6 +203,9 @@ const wfgraph = await createWfGraphApp({
   agent: {
     apiKey: process.env.OPENAI_API_KEY,
   },
+  // The example exposes the authoring tools to local MCP clients. The same
+  // demo session used by the editor authenticates every tool request.
+  mcp: true,
   inngest: {
     id: process.env.INNGEST_APP_ID ?? "notifications-workflow",
     isDev: !isProduction,

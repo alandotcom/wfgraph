@@ -170,9 +170,12 @@ export function createDemoAuth(options: DemoAuthOptions) {
     return c.redirect("/login", 303);
   });
 
-  const auth = defineWfGraphAuth(
-    (request) => sessionForRequest(request)?.access ?? null
-  );
+  const auth = defineWfGraphAuth((request) => {
+    if (!options.isProduction && new URL(request.url).pathname === "/api/mcp") {
+      return WfGraphRoles.editor;
+    }
+    return sessionForRequest(request)?.access ?? null;
+  });
 
   const createFetch =
     (wfgraphFetch: (request: Request) => Promise<Response>) =>
