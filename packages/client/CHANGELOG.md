@@ -1,5 +1,177 @@
 # @wfgraph/client
 
+## 4.0.0
+
+### Major Changes
+
+- [#189](https://github.com/alandotcom/wfgraph/pull/189) [`880eccd`](https://github.com/alandotcom/wfgraph/commit/880eccdf67105f40063989f71133a6c2f943af77) Thanks [@alandotcom](https://github.com/alandotcom)! - Replace the host `auth` predicate with a principal-free access-policy contract. `defineWfGraphAuth` gives extracted callbacks contextual types; authentication returns `WfGraphRoles.viewer`, `.editor`, `.admin`, another `WfGraphAccess` policy, or `null`. Unrestricted access is explicit through `WfGraphAccess.all` or `trustWfGraphUpstream()`, and Node and Worker APIs no longer carry principal type parameters.
+
+  The authenticated extension bootstrap now carries every granted operation ID before the editor renders. The editor uses this page-lifetime snapshot synchronously to adapt controls and data requests. Account and policy changes require a page reload, and server-side authorization remains authoritative for every RPC, REST, and OAuth request. Authentication and policy callback failures now produce a sanitized 500 instead of being misreported as a 401 or 403.
+
+### Minor Changes
+
+- [#215](https://github.com/alandotcom/wfgraph/pull/215) [`a39fdbe`](https://github.com/alandotcom/wfgraph/commit/a39fdbee8ce9b2ec67a61cc4a82f0536142537f1) Thanks [@alandotcom](https://github.com/alandotcom)! - Render the agent's working-out with assistant-ui's own thread elements
+
+  The panel folded reasoning and tool calls into one hand-written "Thinking"
+  disclosure, which in practice held tool calls alone: the model request asked for
+  a reasoning effort but never for a reasoning summary, so no reasoning text was
+  ever streamed. Each row was named after the function that ran, so a turn that
+  searched the catalog five times drew five copies of "Read list_actions."
+
+  Reasoning now streams and is drawn by assistant-ui's step-panel design, vendored
+  under `components/agent/elements` from their Base UI registry: a "Thinking"
+  disclosure holding one titled step per passage, open while the turn runs and
+  settled to how long it took. Tool calls fold under a count beneath it, and each
+  row is named by what the call asked for ("Searched actions for "slack""),
+  derived from the tool and the arguments the model wrote. A write tool's own
+  sentence still wins once it settles.
+
+  The panel also gains an expand control that covers the editor with a centred,
+  reading-width card, and returns to the canvas on Escape, on a click outside, or
+  when the panel is closed.
+
+  A read tool's `tool-result` stream part now carries no `summary`, where it
+  previously carried a sentence built from the tool's own name. A turn that fails
+  mid-stream now reaches the panel as the message's own incomplete status rather
+  than as a synthetic tool call.
+
+- [#191](https://github.com/alandotcom/wfgraph/pull/191) [`85d931f`](https://github.com/alandotcom/wfgraph/commit/85d931fd65b004dec9d5d956e13b870af8fd22c3) Thanks [@alandotcom](https://github.com/alandotcom)! - Add read-only workflow version usage diagnostics for active runs, action availability, and catalog drift.
+
+- [#181](https://github.com/alandotcom/wfgraph/pull/181) [`cbd75a8`](https://github.com/alandotcom/wfgraph/commit/cbd75a8e57b27d242ffededcd1d866d92fa377f1) Thanks [@alandotcom](https://github.com/alandotcom)! - Show a connection's stored value as the placeholder for the config field that falls back to it. Resend's From, and Twilio's From Number and Messaging Service SID, are optional on the node and the handler reads the connection when they are blank; the editor now says which value that is instead of drawing a generic example.
+
+  An action config field declares the fallback with `connectionDefaultKey`, naming one of the integration's own credentials, held to that set by the type. `checkIntegration` refuses a key the integration does not declare and refuses a `password` one, since the browser holds a mask in place of a secret. That declaration is also the allowlist for the new `connectionDefaults` on a connection summary: a stored value no field names never reaches the editor.
+
+  Also fixes a template field redrawing only when its text changed, which left a stale placeholder on screen after the value behind it moved.
+
+- [#176](https://github.com/alandotcom/wfgraph/pull/176) [`ba1046a`](https://github.com/alandotcom/wfgraph/commit/ba1046a97333d6e0ab7989d828489673315a5944) Thanks [@alandotcom](https://github.com/alandotcom)! - A workflow version records which of two kinds it is. `workflow_versions` gains a `kind` column holding `published` or `draft_snapshot`, and its `version` number is nullable because a snapshot has none. A published version is what Publish creates and what `published_version_id` points at. A draft snapshot is the frozen canvas graph a draft run pins itself to; it stays out of the version history, out of the next-version number, and out of the Event subscription index. PostgreSQL needs a migration. A SQLite database migrates itself on open, rebuilding the table with its foreign keys intact.
+
+  `workflow.execute` takes an optional `graph` of `"published"` or `"draft"`. An absent field means published, which is what every existing caller sends and what every Event start runs.
+
+  Every run a client reads carries `versionKind` and `versionNumber`, on the two run-list procedures and on the run summary that `getExecutionLogs` returns. Run history can then name the graph a run executed: the draft, or the published version by its number.
+
+- [#204](https://github.com/alandotcom/wfgraph/pull/204) [`f45415e`](https://github.com/alandotcom/wfgraph/commit/f45415eb56b5383acf2aaa0f108f2ca5cdc4e211) Thanks [@alandotcom](https://github.com/alandotcom)! - Add a Cancel Filter to each Cancel Event. The filter checks the arriving payload before cancellation and before the Correlation Path is required.
+
+  A declined or unevaluable filter leaves active runs unchanged and records why cancellation did not occur. Wait Subscriptions still receive the Event.
+
+  The Lifecycle panel and build agent support shared or per-Event Cancel Filters with the same condition editor used by Start Filters.
+
+  The release adds workflow audit indexes for efficient Refused Starts and Cancellation Failures queries. PostgreSQL deployments must run migrations. SQLite migrates on open.
+
+- [#157](https://github.com/alandotcom/wfgraph/pull/157) [`dea6043`](https://github.com/alandotcom/wfgraph/commit/dea6043a2455cda99058ac23d6e4421751c1e606) Thanks [@alandotcom](https://github.com/alandotcom)! - Disconnecting OAuth now removes a connection the grant supplied on its own. Previously the row was kept with the grant stripped out, which left a connection holding no credential at all: it stayed in the node's connection picker, drew a check when a node selected it, and failed only at run time. A connection carrying a credential the operator entered themselves is still kept, which is the case the disconnect-as-escape-hatch exists for.
+
+  `integration.disconnectOAuth` answers `removed` alongside `success`, saying which of the two happened. The editor closes the dialog and repairs the nodes that named the connection when it is gone, taking the same path a delete takes.
+
+  Disconnecting confirms before it acts, and the confirmation says which of the two outcomes applies: it names the connection being removed when the grant is its only credential, and says the credentials the operator entered themselves survive when they do. Revoking the grant at the provider cannot be undone from the editor, so the click that starts it is no longer the click that does it.
+
+- [#157](https://github.com/alandotcom/wfgraph/pull/157) [`dea6043`](https://github.com/alandotcom/wfgraph/commit/dea6043a2455cda99058ac23d6e4421751c1e606) Thanks [@alandotcom](https://github.com/alandotcom)! - Add config fields whose shape the node's connection answers. Two field types join the vocabulary: `provider-select` draws a dropdown over what the connection lists, and `provider-fields` draws one input per value the current selection declares, stored as one JSON object under the one config key. An integration declares what each asks under `configOptions`, keyed by the name a field's `optionsSource` uses, and `checkIntegration` refuses a field wired to a provider that cannot answer it.
+
+  The editor asks over `integration.configOptions`, which resolves the connection's credentials server-side the way the connection test does. Credentials never reach the browser, and neither does a failed request's own exception text. A provider refusing is an answer rather than an error, so the sentence it wrote is what the panel shows. Every provider-backed field falls back to the plain control it replaces, so a missing connection, a grant too narrow to read, or a provider that is down never leaves a builder unable to type the value themselves.
+
+- [#157](https://github.com/alandotcom/wfgraph/pull/157) [`dea6043`](https://github.com/alandotcom/wfgraph/commit/dea6043a2455cda99058ac23d6e4421751c1e606) Thanks [@alandotcom](https://github.com/alandotcom)! - A node missing a value its template needs is now a blocking issue, so it carries a badge on the canvas, counts in the status strip, and stops a publish. Previously the config panel marked the empty input red while the canvas said the node was fine and publish let it through.
+
+  The shared collector cannot raise these: which variables a provider has no default for is the operator's own connection to answer. The editor asks that question for every node rather than only the open one. Passive badges and issue counts stay quiet while an answer is pending, because absence is not evidence that a value is missing. Run and Publish recheck the exact current nodes and wait for every answer; a failed check blocks the action instead of letting an unverified workflow through.
+
+- [#157](https://github.com/alandotcom/wfgraph/pull/157) [`dea6043`](https://github.com/alandotcom/wfgraph/commit/dea6043a2455cda99058ac23d6e4421751c1e606) Thanks [@alandotcom](https://github.com/alandotcom)! - Pick a Resend template from the connection instead of typing its id. The Send Email action's Template field lists the account's own templates, drafts labelled as such, and the Template Variables field draws one input per variable that template declares. A variable Resend has a fallback for is prefilled with it and left out of what is sent, so Resend applies it; a variable with no fallback is marked required, because Resend refuses the send without one.
+
+  Reading templates needs Resend's full-access grant, which its own scope vocabulary offers nothing narrower than. A send-only connection says so in the field and keeps the plain id input, so nothing that worked before stops working.
+
+  A provider may report a field as `required` on `ConfigOptionField`, which the editor draws as a required input.
+
+  Fixes an OAuth adapter's granted-access label being able to fail a token refresh: `grantedAccessLabel` is what a dialog draws, so a scope the adapter cannot word now answers nothing rather than turning a working grant into one an operator has to reauthorize.
+
+- [#176](https://github.com/alandotcom/wfgraph/pull/176) [`ba1046a`](https://github.com/alandotcom/wfgraph/commit/ba1046a97333d6e0ab7989d828489673315a5944) Thanks [@alandotcom](https://github.com/alandotcom)! - `workflow.execute` takes an optional `expected` of `{ versionId, mode }`. A
+  published run carries what the run dialog displayed, and the server refuses the
+  run with a `CONFLICT` when the published version or the workflow's Published
+  mode has moved since. Without it, a dialog left open across a publish or a mode
+  change starts a run against a graph or a set of recipients nobody saw. A draft
+  run sends no `expected`, because it reads the canvas. The editor sends the key
+  for every published run it offers.
+
+  A draft snapshot is reused for a repeated run of an unchanged canvas only once
+  an Execution references it. An unreferenced snapshot belongs to the request that
+  inserted it, which can still release it when a later gate refuses the start, so
+  handing that row to a concurrent request would let one run pin a version id the
+  other is about to delete.
+
+- [#193](https://github.com/alandotcom/wfgraph/pull/193) [`b54de05`](https://github.com/alandotcom/wfgraph/commit/b54de05181ee752cff7b9af7598abc715f2b2c19) Thanks [@alandotcom](https://github.com/alandotcom)! - Add a Start Filter to each Start Event: the condition an arrival must satisfy before a run opens. It is read after the Event is confirmed to hold the start role and before Concurrency, so an arrival the filter declines opens no Execution and displaces nothing under newest-wins. A Condition node behind the Started outlet cannot do this, because by the time it runs the Execution already exists and Concurrency has already superseded whatever was in flight (ADR-0016).
+
+  A declined arrival writes one `run_refused` audit row and appears in the Refused Starts panel; parked Wait nodes in the same workflow still receive the Event. A filter that cannot be evaluated against the payload declines the start too, on the same reasoning a Wait match uses, and says so on the row.
+
+  The Lifecycle panel collapses the filter onto the Start Events that agree, offering the fields all of them declare plus the row naming the arriving Event, and splits into one control per Event on request or when the filters diverge. Publishing refuses a filter that is unfinished, that reads a field its Start Event does not declare, or that compares against a value only a run would hold.
+
+- [#175](https://github.com/alandotcom/wfgraph/pull/175) [`351ff6b`](https://github.com/alandotcom/wfgraph/commit/351ff6bd22b8d007905beda8c1e564cbf173d962) Thanks [@alandotcom](https://github.com/alandotcom)! - A publish refused because publication moved now says so in a form the editor can act on. The two refusals carry a machine-readable code beside their sentence: `workflow_publish_stale` when the version the draft was reviewed against is no longer current, and `workflow_already_published` when the graph offered is the one already published. Each stays a 409 over oRPC and over HTTP, keeping the wording an operator reads. `@wfgraph/shared/rpc/error-codes` is the one home of those codes, which both ends import.
+
+  The editor branches on the code. A stale refusal closes the obsolete review, re-reads the workflow's publication state and version history, and asks the operator to review again, with the canvas still holding the draft. An already-published refusal closes the review and reports that there were no changes to publish. Every other publish failure behaves as before, including the toast it has always raised.
+
+  `ApiError` in `@wfgraph/client` carries the `code` an oRPC failure arrived with, alongside the status and message it has always had. `code` is set when the payload carries one as a non-empty string, and stays unset otherwise.
+
+- [#157](https://github.com/alandotcom/wfgraph/pull/157) [`dea6043`](https://github.com/alandotcom/wfgraph/commit/dea6043a2455cda99058ac23d6e4421751c1e606) Thanks [@alandotcom](https://github.com/alandotcom)! - Let a Resend connection be granted full access, which is what Resend requires to read templates. The client metadata document now registers both of Resend's scopes rather than `emails:send` alone. The registered set is the ceiling on what an operator may grant, so registering one scope was what grayed out "Full access" on Resend's consent page; registering both makes the page's own Permission chooser live. The authorization names no scope, which asks for the whole registered set and leaves the choice where it is made.
+
+  An `IntegrationOAuth` adapter can report `grantedAccessLabel` on its token set: how much access the provider granted, in the provider's own words, read off the token response rather than assumed from the request. Both `exchange` and `refresh` return it, so a provider that narrows a grant is recorded rather than left claiming the old access. The connection dialog shows it read-only beside the account, and offers Reconnect on a working connection, which is the only thing that can change a grant.
+
+### Patch Changes
+
+- [#198](https://github.com/alandotcom/wfgraph/pull/198) [`15e56eb`](https://github.com/alandotcom/wfgraph/commit/15e56eb40f4cc82b9a1bbb8c157078f8aa1ba579) Thanks [@alandotcom](https://github.com/alandotcom)! - Improve Lifecycle controls and let long canvas node titles wrap.
+
+- [#157](https://github.com/alandotcom/wfgraph/pull/157) [`dea6043`](https://github.com/alandotcom/wfgraph/commit/dea6043a2455cda99058ac23d6e4421751c1e606) Thanks [@alandotcom](https://github.com/alandotcom)! - Keep OAuth-provided credentials read-only while allowing other connection settings to be edited and tested with the saved OAuth grant, including Resend grants limited to email sending. A connection test now learns which credentials an OAuth grant issued, through a second `IntegrationTestContext` argument on the integration `test` function. The editor reports a credential field as configured from what the server actually stored, so a disconnected connection shows an empty field rather than a filled one, and it keeps offering the OAuth flow so a disconnect stays reversible. `slack({ oauthClient })` reads a pair that is blank on both sides as manual-only, which lets a host pass its environment straight through.
+
+- [#171](https://github.com/alandotcom/wfgraph/pull/171) [`3929461`](https://github.com/alandotcom/wfgraph/commit/39294610bdd5ba9d79123104c9b46235efc84093) Thanks [@alandotcom](https://github.com/alandotcom)! - Stop the command palette from highlighting the first row when the pointer is over a disabled command.
+
+- [#195](https://github.com/alandotcom/wfgraph/pull/195) [`a4ea00d`](https://github.com/alandotcom/wfgraph/commit/a4ea00dc09c27261e3c9db321fc4efc7fb3548fa) Thanks [@alandotcom](https://github.com/alandotcom)! - Bump es-toolkit to 1.52 and import it by subpath. The published option types now declare `| undefined` on their optional properties, which matters to an adopter compiling with `exactOptionalPropertyTypes`: a maybe-undefined value can now be passed straight into an optional field instead of being filtered out first.
+
+- [#186](https://github.com/alandotcom/wfgraph/pull/186) [`4aec2c5`](https://github.com/alandotcom/wfgraph/commit/4aec2c57e6b9f13c0384777f74d3f1577e713217) Thanks [@alandotcom](https://github.com/alandotcom)! - Settle the node configuration panel's controls.
+
+  Lifecycle Rules renders one mode instead of switching between a text summary and
+  its controls, and Concurrency became a dropdown. Template fields, reference
+  badges and the connection picker now share the height and type size of every
+  other control in the panel. A configured condition can be deleted: removing the
+  last rule clears the whole condition, where both trash buttons used to be
+  disabled with no way back.
+
+  Choosing a connection is a dropdown, and creating, editing and deleting one use
+  the Connections manager. Connection changes repair Action, Lifecycle, and Wait
+  bindings in the open graph, so a step stops naming a deleted connection.
+  Missing connections link directly to that manager, and read-only workflow panels
+  cannot open connection-editing controls. Provider-backed fields preserve their
+  value when switching input modes, and template inputs retain mobile-safe text.
+
+- [#181](https://github.com/alandotcom/wfgraph/pull/181) [`cbd75a8`](https://github.com/alandotcom/wfgraph/commit/cbd75a8e57b27d242ffededcd1d866d92fa377f1) Thanks [@alandotcom](https://github.com/alandotcom)! - Reopening the workflow already on screen no longer discards edits the server has not stored. The route loader refetched the workflow and hydrated it unconditionally, and selecting a run or leaving Runs re-runs that loader, so a graph the autosave queue was still holding could be replaced by the server's older copy.
+
+  The case this loses work in is a failed save. The dirty flag stays raised on that path by design, so the editor keeps showing the edit and the strip keeps reporting the failure. A route re-run then installed the server's graph and lowered the flag, taking the edit and the failure notice together and leaving nothing on screen to say the work had gone.
+
+  Hydration now keeps the local graph when the route resolves the workflow already open and the client is ahead of the server, meaning there are unsaved changes or a write in flight. Opening a different workflow still replaces the graph, and so does reopening this one once the save queue has drained.
+
+- [#182](https://github.com/alandotcom/wfgraph/pull/182) [`30d78c4`](https://github.com/alandotcom/wfgraph/commit/30d78c4e4c07e571ab84974aa987e9d8491846dc) Thanks [@alandotcom](https://github.com/alandotcom)! - Draw key-value Name and Value as matching compact inputs.
+
+- [#218](https://github.com/alandotcom/wfgraph/pull/218) [`9b06194`](https://github.com/alandotcom/wfgraph/commit/9b06194403dadd6c12c47ec7d7d7cb1471625832) Thanks [@alandotcom](https://github.com/alandotcom)! - Improve large workflow canvas fitting, navigation, layout spacing, and description access.
+
+- [#216](https://github.com/alandotcom/wfgraph/pull/216) [`66e79c9`](https://github.com/alandotcom/wfgraph/commit/66e79c9a4997f3df78ac92bd94d5850fe845c45b) Thanks [@alandotcom](https://github.com/alandotcom)! - Show external MCP edits live on a clean open workflow canvas, preserve local
+  edits when revisions conflict, and refresh workflow lists after MCP creation.
+
+- [#182](https://github.com/alandotcom/wfgraph/pull/182) [`30d78c4`](https://github.com/alandotcom/wfgraph/commit/30d78c4e4c07e571ab84974aa987e9d8491846dc) Thanks [@alandotcom](https://github.com/alandotcom)! - Keep waiting for an OAuth grant after the provider page severs the popup handle, so the connection list updates without a full refresh.
+
+- [#157](https://github.com/alandotcom/wfgraph/pull/157) [`dea6043`](https://github.com/alandotcom/wfgraph/commit/dea6043a2455cda99058ac23d6e4421751c1e606) Thanks [@alandotcom](https://github.com/alandotcom)! - Run and Publish no longer dead-end when a connection cannot answer for a provider-backed field. The click-time recheck asked every such field at once and rejected on the first refusal, so a single expired grant ended every Run and Publish at "Could not verify provider-backed fields", with nothing the operator could do to clear it. The missing-connection and required-field issues naming the node at fault were never collected at all. Each question now answers for itself: a refusal arrives as a warning naming its node and field, listed under "Unchecked Fields" with a Fix button, and the rest of the list reaches the reader. Run Anyway stays available, and Publish still goes to the server for the authoritative check.
+
+  A second Run or Publish while a check is already running says so instead of doing nothing, which is what Cmd+Enter had been doing on a slow provider.
+
+  Saving a connection, adding one, and completing OAuth no longer hold their dialog open for a round trip to the provider. The connection list is what those call sites wait on; the affected connection's provider options are refreshed alongside it.
+
+  `redactSensitiveData` and the workflow-graph redaction beneath it build their answer with `Object.fromEntries`, so a payload carrying an own `__proto__` key travels through as data rather than reaching `Object.prototype`'s setter.
+
+  `setValueByPath` in `@wfgraph/shared` answers a boolean saying whether the write landed, in place of the target it was handed. The test-payload form drops a field whose path names a reserved record key rather than drawing an input whose value would go nowhere.
+
+  The SQLite migration that added `integrations.refresh_state` spells its three values out instead of reading `INTEGRATION_REFRESH_STATES`. A database past that version never runs the migration again, so interpolating the shared list would have widened the CHECK on new databases alone. A test now holds the pair together.
+
+  A confirmation dialog's message keeps its line breaks, so a warning written as two paragraphs reads as two.
+
+- [#184](https://github.com/alandotcom/wfgraph/pull/184) [`6bedfee`](https://github.com/alandotcom/wfgraph/commit/6bedfeea1beef8e10d37d03f2fe922eb9a7c78f1) Thanks [@alandotcom](https://github.com/alandotcom)! - Keep Draft edges visible when leaving a workflow run and reloading the open workflow.
+
+- [#174](https://github.com/alandotcom/wfgraph/pull/174) [`1ff6282`](https://github.com/alandotcom/wfgraph/commit/1ff62820cae7e2311438e4d124f9cf1e74ecf9fc) Thanks [@alandotcom](https://github.com/alandotcom)! - Stop the template autocomplete from covering the caret when it would overflow the viewport.
+
+- [#201](https://github.com/alandotcom/wfgraph/pull/201) [`4acbfe8`](https://github.com/alandotcom/wfgraph/commit/4acbfe8e31ec5a85745a7790536c8a7492eb6116) Thanks [@alandotcom](https://github.com/alandotcom)! - Lay out and fit workflows after each agent edit. The build agent can write Lifecycle Start Filters and timestamp-based Wait steps. Larger workflows can finish in one turn.
+
+- [#176](https://github.com/alandotcom/wfgraph/pull/176) [`ba1046a`](https://github.com/alandotcom/wfgraph/commit/ba1046a97333d6e0ab7989d828489673315a5944) Thanks [@alandotcom](https://github.com/alandotcom)! - Drop the "Workflow Dashboard" heading from the workflows page and match the workflows table's column headers to the run history table's.
+
 ## 3.1.1
 
 ### Patch Changes
