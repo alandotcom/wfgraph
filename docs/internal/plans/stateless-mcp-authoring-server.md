@@ -1,12 +1,16 @@
 # Plan: add a stateless MCP authoring server
 
-Status: architecture and release scope approved on 2026-09-03.
-The repository is at commit `e5a4cf05` on `agent-quality/mcp-adapter`.
+Architecture and release scope were approved on 2026-09-03 against commit
+`e5a4cf05` on branch `agent-quality/mcp-adapter`.
 
 This plan replaces the turn-scoped MCP session design in commit `e5a4cf05` and
 the uncommitted custom-runner prototype. It preserves the direct tool path used
 by the built-in agent and exposes the same authoring behavior to external MCP
 clients.
+
+[ADR 0018](../../adr/0018-stateless-mcp-authoring-uses-persisted-draft-revisions.md)
+records the durable architecture decision. This document records the
+implementation sequence and its acceptance criteria.
 
 ## Goal
 
@@ -17,55 +21,6 @@ edit, and validate an existing workflow draft. The endpoint edits
 The built-in agent continues to run behind `agent.chat`. It invokes the
 canonical Effect toolkit directly against the graph supplied by the browser.
 The MCP endpoint invokes the same toolkit through a transport adapter.
-
-## Decisions
-
-The implementation uses the following decisions:
-
-- `@wfgraph/agent` remains the canonical owner of tool names, descriptions,
-  model-facing schemas, handlers, validation, and refusal meanings.
-- The built-in model loop calls the canonical toolkit directly through
-  `AgentToolSession`.
-- External agents call one public MCP endpoint at `${basePath}/api/mcp`.
-- The MCP endpoint is disabled unless the host opts in through
-  `WfGraphAppOptions.mcp`.
-- Each MCP request is independent. The implementation uses no protocol session,
-  `Mcp-Session-Id`, process-local draft registry, sticky routing, or
-  initialization handshake.
-- Each workflow-scoped MCP call carries `workflowId`. Each write also carries
-  `expectedDraftRevision`.
-- A stale write returns a recoverable tool error. The server does not replay the
-  mutation automatically.
-- A successful MCP graph write runs the shared automatic layout before saving.
-  Tool schemas do not expose node positions or a layout command.
-- Publication remains separate. The first release exposes `create_workflow`.
-  The excluded tools are delete, duplicate, restore, run, and publish.
-- The endpoint lists existing workflows through the same summary service and
-  authorization operation as the editor. `create_workflow` creates a new draft
-  through the existing workflow creation service.
-- The MCP endpoint supports the 2026-07-28 protocol only and rejects legacy
-  traffic.
-- An editor learns about an external MCP write on its next workflow load. The
-  first release adds conflict protection, not cross-client live collaboration.
-  Built-in agent graph parts continue to update the open canvas during a turn.
-- The rejected host-supplied custom-runner surface is removed. A future remote
-  runner can use the public MCP endpoint as an external client.
-
-The tool ownership, stateless request model, persisted draft ownership,
-automatic layout decisions, and the following release-scope assumptions are
-approved:
-
-- Hosts opt in with `WfGraphAppOptions.mcp`; the endpoint is disabled by
-  default.
-- The endpoint path is `${basePath}/api/mcp`.
-- The first release lists workflows, creates drafts, and edits existing
-  workflows. The excluded tools are duplicate, restore, delete, run, and
-  publish.
-- `create_workflow` is non-idempotent. A client does not automatically retry a
-  creation request when the result is unknown.
-- External MCP writes become visible in an open editor after a reload. The first
-  release does not add polling, server-sent events, or another cross-client
-  revision channel.
 
 ## Actors and state owners
 
@@ -229,8 +184,8 @@ successful canonical write and before `prepareGraphSave` and `writeDraft`.
 
 ### MCP protocol and HTTP behavior
 
-Use `createMcpHandler` from the current MCP TypeScript SDK integration and create
-a fresh server for each request. Configure `legacy: "reject"`.
+Use `createMcpHandler` from `@modelcontextprotocol/server` and create a fresh
+server for each request. Configure `legacy: "reject"`.
 
 The endpoint implements the following behavior:
 
@@ -471,35 +426,16 @@ Acceptance:
 ## Required checks
 
 Run focused tests after each RED, GREEN, REFACTOR cycle. Before the MCP pull
-request finishes, run:
-
-```bash
-pnpm run type-check
-pnpm run lint
-pnpm run test
-pnpm run build
-pnpm run knip
-pnpm run skills:validate
-pnpm run fix
-git diff --check
-```
-
-Because the plan changes workflow persistence and both schemas, also run:
-
-```bash
-docker compose up -d
-pnpm run test:postgres
-```
-
-Do not commit `vitest-results.json`. Do not modify or commit
-`scripts/dev-with-tunnel.sh`.
+request finishes, run the required checks in the root `AGENTS.md`. The
+persistence changes require the live PostgreSQL suite.
 
 ## Completion boundary
 
-The MCP pull request is complete when an authenticated external client can create
-a draft or edit an existing persisted draft through modern stateless MCP, direct
-and MCP calls pass the same tool-conformance cases, stale browser and MCP writes
-cannot overwrite each other, and the built-in agent retains its existing stream
-and undo behavior.
+The MCP pull request is complete when an authenticated external client can
+create a draft or edit an existing persisted draft through MCP protocol revision
+`2026-07-28`, direct and MCP calls pass the same tool-conformance cases, stale
+browser and MCP writes cannot overwrite each other, and the built-in agent
+retains its existing stream and undo behavior.
 
-PR 6 regression automation starts after this pull request is green and reviewed.
+A separate regression-automation pull request starts after the MCP pull request
+is green and reviewed.
