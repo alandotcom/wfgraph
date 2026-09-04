@@ -46,7 +46,7 @@
     "@linear/sdk": "^75.0.0",
     "effect": "catalog:",
     "es-toolkit": "catalog:",
-    "svix": "^2.1.0"
+    "svix": "^2.3.0"
   },
   "devDependencies": {
     "@types/react": "catalog:",
