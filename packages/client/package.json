@@ -38,7 +38,7 @@
   "devDependencies": {
     "@assistant-ui/react": "0.15.18",
     "@assistant-ui/react-markdown": "0.14.14",
-    "@babel/core": "^7.29.7",
+    "@babel/core": "^8.0.1",
     "@base-ui/react": "1.7.0",
     "@fontsource-variable/geist": "5.3.0",
     "@fontsource-variable/geist-mono": "5.3.0",
