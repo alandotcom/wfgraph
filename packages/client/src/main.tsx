@@ -17,6 +17,7 @@ import {
 } from "#src/components/catalog-boot";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
+import { WorkflowListSync } from "#src/components/workflow/workflow-list-sync";
 import { getBasePath } from "#src/lib/base-path";
 import { queryClient } from "#src/lib/query-client";
 import {
@@ -110,7 +111,10 @@ root.render(
     <ExtensionCatalogProvider value={getExtensionCatalog()}>
       <IntegrationUiProvider value={integrationUi}>
         <QueryClientProvider client={queryClient}>
-          <RouterProvider router={router} />
+          <>
+            <WorkflowListSync />
+            <RouterProvider router={router} />
+          </>
         </QueryClientProvider>
       </IntegrationUiProvider>
     </ExtensionCatalogProvider>

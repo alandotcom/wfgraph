@@ -2,7 +2,10 @@ import { createTanstackQueryUtils } from "@orpc/tanstack-query";
 import type { QueryClient } from "@tanstack/react-query";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { rpc } from "#src/lib/rpc-client";
-import type { WorkflowApiPayload } from "@wfgraph/shared/graph/api-contracts";
+import type {
+  WorkflowApiPayload,
+  WorkflowSummaryPayload,
+} from "@wfgraph/shared/graph/api-contracts";
 
 /**
  * TanStack Query bindings for the RPC contract.
@@ -49,13 +52,18 @@ export const configOptionsQueryOptions = (input: {
  * The procedure answers summaries, so there is no graph to deserialise and no
  * select to memoise: both screens draw names.
  */
-const WORKFLOW_LIST_POLL_MS = 1_000;
+export const workflowListQueryOptions = () =>
+  orpcQuery.workflow.getAll.queryOptions({ input: {} });
 
-export const workflowListQueryOptions = () => ({
-  ...orpcQuery.workflow.getAll.queryOptions({ input: {} }),
-  refetchInterval: WORKFLOW_LIST_POLL_MS,
-  refetchIntervalInBackground: false,
-});
+/** Replaces the workflow summary cache with one authoritative stream snapshot. */
+export function cacheWorkflowList(
+  queryClient: QueryClient,
+  workflows: WorkflowSummaryPayload[]
+): void {
+  const queryKey = orpcQuery.workflow.getAll.queryKey({ input: {} });
+  void queryClient.cancelQueries({ queryKey, exact: true });
+  queryClient.setQueryData(queryKey, workflows);
+}
 
 /** Module-level select: TanStack memoises by identity. */
 export function selectPublicationState(payload: WorkflowApiPayload): {

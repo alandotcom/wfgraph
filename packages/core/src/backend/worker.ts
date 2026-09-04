@@ -28,7 +28,7 @@ import {
 import { createWfGraphRuntime } from "#src/backend/runtime";
 import type { WfGraphPersistence } from "#src/backend/persistence/types";
 import type { WfGraphLogger } from "@wfgraph/shared/types/logger";
-import { runWithClose } from "#src/backend/lib/close-in-order";
+import { runWithResponseClose } from "#src/backend/lib/close-in-order";
 import { resolvePublicUrl } from "#src/backend/lib/http/public-url";
 import type { WfGraphMcpOptions } from "#src/backend/agent/mcp-server";
 
@@ -111,7 +111,7 @@ export function wfWorker<Env>(
       const persistence = await config.persistence.open(cipher);
       let runtime: ReturnType<typeof createWfGraphRuntime> | undefined;
 
-      return runWithClose(async () => {
+      return runWithResponseClose(async () => {
         const inngest = createInngestSurface(config.inngest, {
           connect: refuseConnect,
         });

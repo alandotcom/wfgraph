@@ -144,11 +144,8 @@ function isInvalidated(queryKey: readonly unknown[]): boolean {
 }
 
 describe("refreshWorkflowList", () => {
-  it("keeps workflow discovery live while a list is visible", () => {
-    expect(workflowListQueryOptions()).toMatchObject({
-      refetchInterval: 1_000,
-      refetchIntervalInBackground: false,
-    });
+  it("leaves live updates to the workflow list subscription", () => {
+    expect(workflowListQueryOptions()).not.toHaveProperty("refetchInterval");
   });
 
   it("marks the workflow list stale", async () => {
