@@ -5,7 +5,7 @@
  * belong to the tree pass; the dagre fallback holds no column open.
  */
 
-import dagre from "@dagrejs/dagre";
+import { Graph, type GraphLabel, layout } from "@dagrejs/dagre";
 import { hierarchy, tree } from "d3-hierarchy";
 import { orderBy, sortBy } from "es-toolkit/array";
 import type { ExtensionCatalog } from "#src/extensions/catalog";
@@ -51,8 +51,8 @@ type DagreNode = {
 /**
  * The label we hang on each dagre node.
  *
- * We hand dagre a width and a height; `dagre.layout` then writes the computed
- * centre back onto the very same label object, which is why x and y are
+ * We hand dagre a width and a height; `layout` then writes the computed centre
+ * back onto the very same label object, which is why x and y are
  * optional here. graphlib answers `undefined` for an id that was never added,
  * so that possibility belongs in the label type too.
  */
@@ -74,11 +74,7 @@ type DagreEdgeLabel = {
  * of them to `any`. Naming ours here gives `graph.node(id)` a real shape, so
  * reading a computed position back out is a plain property access.
  */
-type DagreLayoutGraph = dagre.graphlib.Graph<
-  dagre.GraphLabel,
-  DagreNodeLabel,
-  DagreEdgeLabel
->;
+type DagreLayoutGraph = Graph<GraphLabel, DagreNodeLabel, DagreEdgeLabel>;
 
 /** A node d3 places. `null` is a column held open, which no node ever fills. */
 type TreeNodeData = {
@@ -414,8 +410,8 @@ function layoutWorkflowNodesWithDagre(input: {
   model: LayoutModel;
   spacing: LayoutSpacing;
 }): Map<string, Position> {
-  const graph: DagreLayoutGraph = new dagre.graphlib.Graph<
-    dagre.GraphLabel,
+  const graph: DagreLayoutGraph = new Graph<
+    GraphLabel,
     DagreNodeLabel,
     DagreEdgeLabel
   >({
@@ -452,7 +448,7 @@ function layoutWorkflowNodesWithDagre(input: {
     }
   }
 
-  dagre.layout(graph);
+  layout(graph);
 
   const positions = new Map<string, Position>();
   for (const node of input.model.nodes) {
