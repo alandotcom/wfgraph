@@ -42,8 +42,8 @@
     "build": "tsdown"
   },
   "dependencies": {
-    "@clerk/backend": "^2.33.6",
-    "@linear/sdk": "^75.0.0",
+    "@clerk/backend": "^3.17.1",
+    "@linear/sdk": "^92.0.0",
     "effect": "catalog:",
     "es-toolkit": "catalog:",
     "svix": "^2.3.0"

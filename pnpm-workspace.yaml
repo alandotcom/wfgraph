@@ -28,7 +28,7 @@ catalog:
   "@effect/vitest": 4.0.0-rc.112
   # The backend and the editor both log through logtape.
   "@logtape/logtape": ^2.3.2
-  "@marcbachmann/cel-js": ^7.6.1
+  "@marcbachmann/cel-js": ^8.0.0
   "@orpc/client": 2.0.0-beta.32
   "@orpc/contract": 2.0.0-beta.32
   "@orpc/experimental-effect": 2.0.0-beta.32
@@ -58,7 +58,7 @@ catalog:
   # pnpm rewrites `catalog:` inside peerDependencies at pack and publish time,
   # the same as it does in the other three dependency blocks.
   inngest: ^4.19.0
-  nanoid: ^5.1.16
+  nanoid: ^6.0.1
   postgres: ^3.4.9
   react: 19.2.8
   react-dom: 19.2.8
