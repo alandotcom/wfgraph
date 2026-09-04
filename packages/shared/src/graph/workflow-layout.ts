@@ -22,6 +22,7 @@ import {
 } from "#src/lifecycle/lifecycle-outlets";
 import { isConditionNode, isLifecycleNode } from "#src/graph/node-config";
 import {
+  COUSIN_SPACING_FACTOR,
   eventSplitCardWidth,
   groupFrameSize,
   NODE_SPACING,
@@ -156,7 +157,7 @@ function getLayoutSpacing(availableWidth?: number): LayoutSpacing {
   }
 
   if (availableWidth < 1024) {
-    return { nodeSpacing: 96, rankSpacing: 72 };
+    return { nodeSpacing: 96, rankSpacing: 64 };
   }
 
   return { nodeSpacing: NODE_SPACING, rankSpacing: RANK_SPACING };
@@ -602,7 +603,7 @@ function layoutWorkflowNodesWithHierarchy(input: {
   // `nodeSize` is one size for every node, so a node wider than the rest asks
   // for its room through `separation`, which answers a centre-to-centre distance
   // in those units. Two default-width siblings come to 1, the pair of them a gap
-  // apart, and cousins to the same 1.4 that a fixed separation used to give. The
+  // apart, and cousins to the deliberate multiplier. The
   // height it takes is the pitch d3 writes onto every rank alike, which
   // `measureRanks` then replaces.
   const unitWidth = WORKFLOW_NODE_WIDTH + input.spacing.nodeSpacing;
@@ -612,7 +613,7 @@ function layoutWorkflowNodesWithHierarchy(input: {
       const gap =
         a.parent === b.parent
           ? input.spacing.nodeSpacing
-          : input.spacing.nodeSpacing * 2;
+          : input.spacing.nodeSpacing * COUSIN_SPACING_FACTOR;
 
       return (
         (widthOf(a.data.id) / 2 + widthOf(b.data.id) / 2 + gap) / unitWidth

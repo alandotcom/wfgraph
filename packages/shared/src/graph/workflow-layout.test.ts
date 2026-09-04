@@ -10,6 +10,7 @@ import type { ExtensionCatalog } from "#src/extensions/catalog";
 import { omitUndefined } from "#src/utils/omit-undefined";
 import { layoutWorkflowNodes } from "#src/graph/workflow-layout";
 import {
+  COUSIN_SPACING_FACTOR,
   eventSplitCardWidth,
   groupFrameSize,
   NODE_SPACING,
@@ -205,6 +206,28 @@ function centerX(nodes: WorkflowNode[], id: string, width: number): number {
 }
 
 describe("layoutWorkflowNodes", () => {
+  test("uses compact but distinct sibling, cousin, and rank spacing", () => {
+    expect(NODE_SPACING).toBe(108);
+    expect(RANK_SPACING).toBe(68);
+    expect(COUSIN_SPACING_FACTOR).toBe(1.5);
+  });
+
+  test("uses the compact rank gap for narrow editor layouts", async () => {
+    const result = await layoutWorkflowNodes({
+      availableWidth: 390,
+      catalog: layoutCatalog,
+      edges: [buildEdge("entry-action", "entry", "action", "started")],
+      nodes: [
+        buildNode("entry", { x: 0, y: 0 }, "lifecycle"),
+        buildNode("action", { x: 0, y: 300 }),
+      ],
+    });
+
+    expect(
+      positionY(result.nodes, "action") - positionY(result.nodes, "entry")
+    ).toBe(WORKFLOW_NODE_HEIGHT + 64);
+  });
+
   test("returns unchanged result when no nodes exist", async () => {
     const result = await layoutWorkflowNodes({
       catalog: layoutCatalog,

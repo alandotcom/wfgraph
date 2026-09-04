@@ -5,6 +5,7 @@
 
 import { atom } from "jotai";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
+import { mapOrSame } from "@wfgraph/shared/utils/map-or-same";
 import { inactiveBranch } from "#src/lib/inactive-branch";
 import {
   EMPTY_ISSUES,
@@ -19,6 +20,7 @@ import { lockGroupInteriorEdges } from "#src/lib/node-group";
 import {
   edgesStateAtom,
   executionOverlayGraphAtom,
+  selectedEdgeAtom,
   nodesStateAtom,
   selectedNodeAtom,
 } from "#src/lib/workflow-graph-cells";
@@ -183,7 +185,11 @@ export const displayEdgesAtom = atom((get) => {
   const comparison =
     view === "changes" ? get(comparisonDisplayGraphAtom) : null;
   if (comparison) {
-    return comparison.edges;
+    const selectedEdgeId = get(selectedEdgeAtom);
+    return mapOrSame(comparison.edges, (edge) => {
+      const selected = edge.id === selectedEdgeId;
+      return Boolean(edge.selected) === selected ? edge : { ...edge, selected };
+    });
   }
   const nodes = overlay?.nodes ?? get(nodesStateAtom);
   const edges = overlay?.edges ?? get(edgesStateAtom);
@@ -192,23 +198,31 @@ export const displayEdgesAtom = atom((get) => {
     displayEdgesForGroups(nodes, edges)
   );
   const { nodeIds, outletEdgeIds } = get(inactiveBranchAtom);
-  if (nodeIds.size === 0) {
-    return painted;
+  const withInactiveBranch =
+    nodeIds.size === 0
+      ? painted
+      : mapOrSame(painted, (edge) => {
+          if (!nodeIds.has(edge.target)) {
+            return edge;
+          }
+          return {
+            ...edge,
+            data: omitUndefined({
+              ...edge.data,
+              inactive: true,
+              displayLabel: outletEdgeIds.has(edge.id)
+                ? "No Cancel Event"
+                : undefined,
+            }),
+          };
+        });
+  if (!overlay) {
+    return withInactiveBranch;
   }
-  return painted.map((edge) => {
-    if (!nodeIds.has(edge.target)) {
-      return edge;
-    }
-    return {
-      ...edge,
-      data: omitUndefined({
-        ...edge.data,
-        inactive: true,
-        displayLabel: outletEdgeIds.has(edge.id)
-          ? "No Cancel Event"
-          : undefined,
-      }),
-    };
+  const selectedEdgeId = get(selectedEdgeAtom);
+  return mapOrSame(withInactiveBranch, (edge) => {
+    const selected = edge.id === selectedEdgeId;
+    return Boolean(edge.selected) === selected ? edge : { ...edge, selected };
   });
 });
 

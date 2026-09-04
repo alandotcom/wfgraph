@@ -1,9 +1,11 @@
 import { act, renderHook } from "@testing-library/react";
+import { useMemo } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { canvasNodeWithInitialDimensions } from "#src/components/workflow/workflow-canvas-accessibility";
 import {
   canvasFitViewKey,
   canvasSynchronizationKey,
+  canvasViewportCorrectionKey,
   fitInitialWorkflowViewport,
   keyboardFitViewOptions,
   lifecycleAnchorViewport,
@@ -12,6 +14,10 @@ import {
   useFitWorkflowGraph,
   useSynchronizedCanvas,
 } from "#src/components/workflow/workflow-canvas-synchronization";
+import {
+  presentationViewport,
+  workflowFitViewOptions,
+} from "#src/components/workflow/workflow-viewport";
 import { canvasInteractionState } from "#src/components/workflow/workflow-canvas";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 
@@ -102,6 +108,8 @@ describe("useSynchronizedCanvas", () => {
           synchronizePresentation: () => {
             setViewport({ x: -lifecycle.position.x, y: 0, zoom: 1 });
           },
+          viewportCorrection: draftPresentation,
+          correctViewport: setViewport,
           currentWorkflowId: "workflow_1",
           lifecycleNode: lifecycle,
           internalNode: internalNode(lifecycle),
@@ -121,14 +129,60 @@ describe("useSynchronizedCanvas", () => {
     expect(setViewport).not.toHaveBeenCalled();
   });
 
-  it("sets the viewport when the canvas presentation is replaced", () => {
-    const lifecycle = lifecycleNode(100);
+  it("synchronizes Draft edge edits without correcting the viewport, then corrects a resolved workspace switch", () => {
+    const draftLifecycle = lifecycleNode(100);
+    const runLifecycle = lifecycleNode(800);
+    const synchronizePresentation = vi.fn();
     const setViewport = vi.fn();
+    const initialDraftEdges: WorkflowEdge[] = [];
+    const addedDraftEdge: WorkflowEdge[] = [
+      { id: "new-edge", source: "lifecycle", target: "action" },
+    ];
+    const runGraph = {};
+    type Props = {
+      draftEdges: WorkflowEdge[];
+      executionOverlay: unknown;
+      lifecycle: WorkflowNode;
+      workspaceView: "draft" | "runs";
+    };
     const { rerender } = renderHook(
-      ({ presentation }) =>
+      ({ draftEdges, executionOverlay, lifecycle, workspaceView }: Props) => {
+        const viewportCorrection = useMemo(
+          () =>
+            canvasViewportCorrectionKey({
+              workflowId: "workflow_1",
+              workspaceView,
+              presentation: executionOverlay,
+            }),
+          [workspaceView, executionOverlay]
+        );
         useSynchronizedCanvas({
-          presentation,
-          synchronizePresentation: setViewport,
+          presentation: canvasSynchronizationKey({
+            workspaceView,
+            executionOverlay,
+            comparison: null,
+            draftEdges,
+          }),
+          synchronizePresentation,
+          viewportCorrection,
+          correctViewport: () =>
+            setViewport(
+              presentationViewport({
+                canvas: { width: 1_000, height: 800 },
+                currentViewport: { x: 100, y: 50, zoom: 0.5 },
+                graphBounds: {
+                  x: lifecycle.position.x,
+                  y: lifecycle.position.y,
+                  width: 192,
+                  height: 112,
+                },
+                lifecycle: {
+                  nodePosition: lifecycle.position,
+                  nodeWidth: 192,
+                  top: 48,
+                },
+              })
+            ),
           currentWorkflowId: "workflow_1",
           lifecycleNode: lifecycle,
           internalNode: {
@@ -137,14 +191,41 @@ describe("useSynchronizedCanvas", () => {
             width: 192,
           },
           fitGenerationRef: { current: 0 },
-        }),
-      { initialProps: { presentation: {} } }
+        });
+      },
+      {
+        initialProps: {
+          draftEdges: initialDraftEdges,
+          executionOverlay: null,
+          lifecycle: draftLifecycle,
+          workspaceView: "draft",
+        } as Props,
+      }
     );
+    synchronizePresentation.mockClear();
     setViewport.mockClear();
 
-    rerender({ presentation: {} });
+    rerender({
+      draftEdges: addedDraftEdge,
+      executionOverlay: null,
+      lifecycle: draftLifecycle,
+      workspaceView: "draft",
+    });
 
+    expect(synchronizePresentation).toHaveBeenCalledOnce();
+    expect(setViewport).not.toHaveBeenCalled();
+    synchronizePresentation.mockClear();
+
+    rerender({
+      draftEdges: addedDraftEdge,
+      executionOverlay: runGraph,
+      lifecycle: runLifecycle,
+      workspaceView: "runs",
+    });
+
+    expect(synchronizePresentation).toHaveBeenCalledOnce();
     expect(setViewport).toHaveBeenCalledOnce();
+    expect(setViewport).toHaveBeenCalledWith({ x: 52, y: 38, zoom: 0.5 });
   });
 });
 
@@ -175,6 +256,8 @@ describe("canvasSynchronizationKey", () => {
             draftEdges,
           }),
           synchronizePresentation,
+          viewportCorrection: null,
+          correctViewport: () => {},
           currentWorkflowId: "workflow_1",
           lifecycleNode: lifecycle,
           internalNode: {
@@ -342,6 +425,8 @@ describe("useSynchronizedCanvas lifecycle anchor", () => {
         useSynchronizedCanvas({
           presentation: {},
           synchronizePresentation: () => {},
+          viewportCorrection: null,
+          correctViewport: () => {},
           currentWorkflowId: "workflow_1",
           lifecycleNode: displayedNode,
           internalNode: installedNode,
@@ -447,9 +532,11 @@ describe("fitInitialWorkflowViewport", () => {
       isCurrent: () => current,
       readAnchor: () => ({
         canvasWidth: 1000,
+        canvasHeight: 800,
+        graphBounds: { x: 200, y: 80, width: 192, height: 112 },
         nodePosition: { x: 200, y: 80 },
         nodeWidth: 192,
-        zoom: 0.75,
+        fittedViewport: { x: 100, y: 80, zoom: 0.75 },
       }),
       setViewport: async () => {
         viewportWasSet = true;
@@ -471,6 +558,6 @@ describe("fitInitialWorkflowViewport", () => {
 
 describe("keyboardFitViewOptions", () => {
   it("fits immediately for the keyboard shortcut", () => {
-    expect(keyboardFitViewOptions).toEqual({ padding: 0.2, duration: 0 });
+    expect(keyboardFitViewOptions).toEqual(workflowFitViewOptions(0));
   });
 });

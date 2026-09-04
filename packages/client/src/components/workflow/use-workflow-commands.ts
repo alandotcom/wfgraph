@@ -8,6 +8,7 @@ import type { WorkflowToolbarActions } from "#src/components/workflow/workflow-t
 import type { WorkflowToolbarState } from "#src/components/workflow/workflow-toolbar-state";
 import { useWorkflowWorkspaceNavigation } from "#src/hooks/use-workflow-workspace-navigation";
 import { viewportAnimationDuration } from "#src/lib/motion";
+import { workflowFitViewOptions } from "./workflow-viewport";
 import {
   currentPlatform,
   editorShortcutLabels,
@@ -87,8 +88,9 @@ export function useWorkflowCommands({
         Boolean(state.currentWorkflowId) &&
         !state.isGenerating &&
         state.canUpdate,
-      canRunDraft: state.canExecute && state.canUpdate,
-      canRunPublished: state.canExecute && state.canReadVersionGraph,
+      canRunDraft: state.canExecute && state.canUpdate && !editingLocked,
+      canRunPublished:
+        state.canExecute && state.canReadVersionGraph && !editingLocked,
       canViewRuns: Boolean(state.currentWorkflowId) && state.canReadRuns,
       canViewChanges:
         Boolean(state.currentWorkflowId) &&
@@ -122,10 +124,7 @@ export function useWorkflowCommands({
       showChanges: workspaceNavigation.showChanges,
       publish: actions.handlePublish,
       fitView: () =>
-        void fitView({
-          padding: 0.2,
-          duration: viewportAnimationDuration(),
-        }),
+        void fitView(workflowFitViewOptions(viewportAnimationDuration())),
       copySelection: () => void copySelection(),
       pasteSelection: () => void pasteSelection(),
       duplicateSelection: () => void duplicateSelection(),

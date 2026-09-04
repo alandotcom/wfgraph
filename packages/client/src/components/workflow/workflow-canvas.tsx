@@ -13,8 +13,7 @@ import {
   type Edge as XYFlowEdge,
 } from "@xyflow/react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { useCallback, useRef, useState } from "react";
-import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Canvas } from "#src/components/flow-elements/canvas";
 import { Connection } from "#src/components/flow-elements/connection";
 import { Controls } from "#src/components/flow-elements/controls";
@@ -26,7 +25,6 @@ import { Edge } from "#src/components/flow-elements/edge";
 import { Panel } from "#src/components/flow-elements/panel";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { useAfterDelay, useAfterPaint, useDomEvent } from "#src/hooks/effects";
-import { useIsMobile } from "#src/hooks/use-mobile";
 import { isTextEntry } from "#src/lib/is-text-entry";
 import { viewportAnimationDuration } from "#src/lib/motion";
 import {
@@ -50,7 +48,6 @@ import {
 import {
   activeComparisonAtom,
   moveComparisonNodesAtom,
-  setComparisonSubviewAtom,
 } from "#src/lib/workflow-comparison-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
@@ -73,6 +70,7 @@ import { LifecycleNode } from "./nodes/lifecycle-node";
 import { useCanvasCopyPaste } from "./use-canvas-copy-paste";
 import { useReflowLayout } from "./use-reflow-layout";
 import { useCollectWorkflowIssues } from "#src/hooks/use-workflow-issues";
+import { useWorkflowNodeInspection } from "./use-workflow-node-inspection";
 import {
   type ContextMenuState,
   useContextMenuHandlers,
@@ -89,13 +87,18 @@ import {
 import { accessibleGraphElements } from "./workflow-canvas-accessibility";
 import {
   canvasSynchronizationKey,
+  canvasViewportCorrectionKey,
   fitInitialWorkflowViewport,
   keyboardFitViewOptions,
-  lifecycleAnchorViewport,
   synchronizeCanvasGraph,
   useFitWorkflowGraph,
   useSynchronizedCanvas,
 } from "./workflow-canvas-synchronization";
+import {
+  WORKFLOW_CANVAS_MIN_ZOOM,
+  presentationViewport,
+  workflowFitViewOptions,
+} from "./workflow-viewport";
 
 const edgeTypes = {
   [WORKFLOW_EDGE_TYPE]: Edge.Animated,
@@ -154,10 +157,6 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const workflowGraphUpdate = useAtomValue(workflowGraphUpdateAtom);
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
   const [showMinimap] = useAtom(showMinimapAtom);
-  // Below the mobile breakpoint the config rail is gone, so clicking a node has
-  // to open the bottom sheet instead.
-  const isMobile = useIsMobile();
-  const { openSheet } = useConfigurationSheet();
   const onNodesChange = useSetAtom(onNodesChangeAtom);
   const moveComparisonNodes = useSetAtom(moveComparisonNodesAtom);
   const onEdgesChange = useSetAtom(onEdgesChangeAtom);
@@ -169,9 +168,14 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const snapshotHistory = useSetAtom(snapshotHistoryAtom);
   const undo = useSetAtom(undoAtom);
   const redo = useSetAtom(redoAtom);
-  const setComparisonSubview = useSetAtom(setComparisonSubviewAtom);
-  const { screenToFlowPosition, fitView, getViewport, setViewport } =
-    useReactFlow();
+  const inspectNode = useWorkflowNodeInspection();
+  const {
+    screenToFlowPosition,
+    fitView,
+    getNodesBounds,
+    getViewport,
+    setViewport,
+  } = useReactFlow();
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const fittedWorkflowIdRef = useRef<string | null>(null);
   const fitGenerationRef = useRef(0);
@@ -185,20 +189,24 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
     comparison,
     draftEdges: storeEdges,
   });
+  const resolvedWorkspacePresentation =
+    workspaceView === "runs"
+      ? executionOverlay
+      : workspaceView === "changes"
+        ? comparison
+        : null;
+  const viewportCorrection = useMemo(
+    () =>
+      canvasViewportCorrectionKey({
+        workflowId: currentWorkflowId,
+        workspaceView,
+        presentation: resolvedWorkspacePresentation,
+      }),
+    [currentWorkflowId, workspaceView, resolvedWorkspacePresentation]
+  );
   const reactFlowStore = useStoreApi<WorkflowNode, WorkflowEdge>();
   const synchronizeGraph = () => {
     const state = reactFlowStore.getState();
-    const lifecycleNode = accessibleGraph.nodes.find(
-      (node) => node.data.type === "lifecycle"
-    );
-    const installedLifecycle = lifecycleNode
-      ? state.nodeLookup.get(lifecycleNode.id)?.internals.userNode
-      : undefined;
-    const repositionsLifecycle = lifecycleNode
-      ? !installedLifecycle ||
-        installedLifecycle.position.x !== lifecycleNode.position.x ||
-        installedLifecycle.position.y !== lifecycleNode.position.y
-      : false;
     synchronizeCanvasGraph({
       nodes: accessibleGraph.nodes,
       edges: accessibleGraph.edges,
@@ -207,26 +215,35 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
       setNodes: state.setNodes,
       setEdges: state.setEdges,
     });
+  };
+  const correctViewport = () => {
     const canvasWidth = canvasContainerRef.current?.clientWidth;
+    const canvasHeight = canvasContainerRef.current?.clientHeight;
+    const lifecycleNode = accessibleGraph.nodes.find(
+      (node) => node.data.type === "lifecycle"
+    );
     if (
       currentWorkflowId &&
       fittedWorkflowIdRef.current === currentWorkflowId &&
-      repositionsLifecycle &&
       lifecycleNode &&
-      canvasWidth
+      canvasWidth &&
+      canvasHeight
     ) {
       fitGenerationRef.current += 1;
       void setViewport(
-        lifecycleAnchorViewport({
-          canvasWidth,
-          nodePosition: lifecycleNode.position,
-          nodeWidth:
-            lifecycleNode.measured?.width ??
-            lifecycleNode.width ??
-            lifecycleNode.initialWidth ??
-            WORKFLOW_NODE_WIDTH,
-          top: 48,
-          zoom: getViewport().zoom,
+        presentationViewport({
+          canvas: { width: canvasWidth, height: canvasHeight },
+          currentViewport: getViewport(),
+          graphBounds: getNodesBounds(accessibleGraph.nodes),
+          lifecycle: {
+            nodePosition: lifecycleNode.position,
+            nodeWidth:
+              lifecycleNode.measured?.width ??
+              lifecycleNode.width ??
+              lifecycleNode.initialWidth ??
+              WORKFLOW_NODE_WIDTH,
+            top: 48,
+          },
         }),
         { duration: 0 }
       );
@@ -259,12 +276,14 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const rightClickSelectionRef = useRef<ReadonlySet<string>>(new Set());
   const { lifecycleAnchor, fitViewKey } = useSynchronizedCanvas({
     // React Flow applies controlled graph props in a passive effect. Install
-    // the same graph and viewport during the layout phase so a workspace
-    // change cannot paint the incoming view through the outgoing viewport.
+    // the incoming graph during the layout phase, then correct the viewport for
+    // a resolved workspace replacement before the browser can paint it.
     // Draft uses stored edge identity so route hydration also replaces React
     // Flow's graph, while node-only drag updates keep the key stable.
     presentation: canvasPresentation,
     synchronizePresentation: synchronizeGraph,
+    viewportCorrection,
+    correctViewport,
     currentWorkflowId,
     lifecycleNode: lifecycleNode ?? null,
     internalNode: internalLifecycleNode
@@ -284,9 +303,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
     },
     fitView: () =>
       fitView({
-        padding: 0.2,
-        maxZoom: 1,
-        duration: viewportAnimationDuration(),
+        ...workflowFitViewOptions(viewportAnimationDuration()),
       }),
   });
   useDomEvent(
@@ -328,10 +345,9 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
     }
   });
 
-  // Choose a useful zoom once when the workflow loads, then preserve it while
-  // anchoring its Lifecycle card at the top-centre point. This initial pass
-  // waits for React Flow's measurements; later workspace swaps use the
-  // before-paint correction above.
+  // Choose a useful zoom once when the workflow loads. This initial pass waits
+  // for React Flow's measurements; resolved workspace swaps preserve zoom and
+  // locate their incoming graph before paint.
   useAfterPaint(fitViewKey, () => {
     if (fitViewKey === null || !currentWorkflowId || !lifecycleAnchor) {
       return;
@@ -344,23 +360,23 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
     void fitInitialWorkflowViewport({
       fitView: () =>
         fitView({
-          maxZoom: 1,
-          minZoom: 0.5,
-          padding: 0.2,
-          duration: 0,
+          ...workflowFitViewOptions(0),
         }),
       isCurrent: () => fitGenerationRef.current === fitGeneration,
       readAnchor: () => {
         const canvasWidth = canvasContainerRef.current?.clientWidth;
-        if (!canvasWidth) {
+        const canvasHeight = canvasContainerRef.current?.clientHeight;
+        if (!canvasWidth || !canvasHeight) {
           return null;
         }
 
         return {
           canvasWidth,
+          canvasHeight,
+          graphBounds: getNodesBounds(accessibleGraph.nodes),
           nodePosition: lifecycleAnchor.position,
           nodeWidth: lifecycleAnchor.width,
-          zoom: getViewport().zoom,
+          fittedViewport: getViewport(),
         };
       },
       setViewport: (viewport) => setViewport(viewport, { duration: 0 }),
@@ -530,34 +546,8 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   );
 
   const onNodeClick: NodeMouseHandler = useCallback(
-    (_event, node) => {
-      setSelectedNode(node.id);
-      if (overlayActive) {
-        return;
-      }
-      if (comparisonActive && currentWorkflowId) {
-        setComparisonSubview({
-          workflowId: currentWorkflowId,
-          subview: "properties",
-        });
-      }
-      // Below the rail's breakpoint there is no panel mounted to receive the
-      // selection, so selecting a node used to look like nothing happening: the
-      // config lived behind an unlabelled toolbar icon a first-time user has no
-      // reason to find. On a narrow canvas the tap opens the sheet itself.
-      if (isMobile) {
-        openSheet();
-      }
-    },
-    [
-      comparisonActive,
-      currentWorkflowId,
-      isMobile,
-      openSheet,
-      overlayActive,
-      setComparisonSubview,
-      setSelectedNode,
-    ]
+    (_event, node) => inspectNode(node.id),
+    [inspectNode]
   );
 
   const onComparisonNodesChange = useCallback(
@@ -873,6 +863,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
         edgeTypes={edgeTypes}
         elementsSelectable={interaction.elementsSelectable}
         isValidConnection={isValidConnection}
+        minZoom={WORKFLOW_CANVAS_MIN_ZOOM}
         nodes={accessibleGraph.nodes}
         nodesConnectable={!graphEditingLocked && !interaction.comparisonVisible}
         nodesDraggable={interaction.nodesDraggable}
@@ -903,8 +894,10 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
         }
       >
         <Panel
-          className="border-none bg-transparent p-0"
+          className="[--workflow-controls-bottom:3.5rem] border-none bg-transparent p-0 md:[--workflow-controls-bottom:0px]"
+          data-slot="workflow-canvas-controls"
           position="bottom-left"
+          style={{ bottom: "var(--workflow-controls-bottom)" }}
         >
           <Controls
             canReflow={!graphEditingLocked && canReflow}
@@ -922,6 +915,8 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
             maskColor="color-mix(in oklch, var(--muted) 60%, transparent)"
             nodeColor="var(--muted-foreground)"
             nodeStrokeColor="var(--border)"
+            pannable
+            zoomable
           />
         )}
       </Canvas>

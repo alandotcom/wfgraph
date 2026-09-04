@@ -16,6 +16,7 @@ import { UserMenu } from "#src/components/workflows/user-menu";
 import {
   DashboardLink,
   CommandPaletteTrigger,
+  FindNodeTrigger,
   RunPublishMenuItems,
   ToolbarActions,
   ToolbarPublishControls,
@@ -222,6 +223,7 @@ function WorkflowTrailingControls({
       {workspace.views.length > 0 ? (
         <WorkspaceViewSwitcher {...workspace} />
       ) : null}
+      <FindNodeTrigger />
       <ToolbarPublishControls actions={actions} state={state} />
       {hasOverflowRows ? (
         <WorkflowActionsMenu {...workspace} actions={actions} state={state} />
@@ -246,7 +248,7 @@ export function WorkflowToolbarChrome({
           container at desktop widths. */}
       <div className="flex h-11 items-center gap-2 overflow-x-auto px-2.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <Menubar
-          className="flex min-w-max items-center gap-2 min-[70rem]:min-w-0 min-[70rem]:max-w-[calc(50%-10rem)] min-[70rem]:flex-1 min-[70rem]:overflow-x-auto min-[70rem]:overscroll-contain"
+          className="flex min-w-max items-center gap-2 pr-72 min-[70rem]:min-w-0 min-[70rem]:max-w-[calc(50%-10rem)] min-[70rem]:flex-1 min-[70rem]:overflow-x-auto min-[70rem]:overscroll-contain min-[70rem]:pr-0"
           data-slot="workflow-toolbar-left"
         >
           <DashboardLink />

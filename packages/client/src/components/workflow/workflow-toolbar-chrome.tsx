@@ -211,6 +211,26 @@ export function CommandPaletteTrigger() {
   );
 }
 
+/** A compact route into node search while the full command search field is hidden. */
+export function FindNodeTrigger() {
+  const openPalette = useSetAtom(openCommandPaletteAtom);
+  const refusal = useAtomValue(commandPaletteRefusalAtom);
+
+  return (
+    <Button
+      aria-label="Find a node"
+      className="min-[70rem]:hidden"
+      disabled={refusal !== null}
+      onClick={() => openPalette({ id: "find-node" })}
+      size="icon"
+      title={refusal ?? "Find a node"}
+      variant="outline"
+    >
+      <Search className="size-4" />
+    </Button>
+  );
+}
+
 /**
  * The state both run commands are gated on. The Actions menu and the command
  * palette read the same gate functions, so a new condition reaches every
@@ -218,7 +238,8 @@ export function CommandPaletteTrigger() {
  */
 function runEligibility(
   state: WorkflowToolbarState,
-  actions: WorkflowToolbarActions
+  actions: WorkflowToolbarActions,
+  editingLocked: boolean
 ) {
   return {
     currentWorkflowId: state.currentWorkflowId,
@@ -227,8 +248,9 @@ function runEligibility(
     isGenerating: state.isGenerating,
     hasNodes: state.nodes.some((node) => node.type !== "add"),
     publishedVersion: state.publication?.publishedVersion,
-    canRunDraft: state.canExecute && state.canUpdate,
-    canRunPublished: state.canExecute && state.canReadVersionGraph,
+    canRunDraft: state.canExecute && state.canUpdate && !editingLocked,
+    canRunPublished:
+      state.canExecute && state.canReadVersionGraph && !editingLocked,
   };
 }
 
@@ -256,9 +278,10 @@ type RunCommand = {
  */
 function runCommands(
   state: WorkflowToolbarState,
-  actions: WorkflowToolbarActions
+  actions: WorkflowToolbarActions,
+  editingLocked: boolean
 ): readonly [RunCommand, ...RunCommand[]] {
-  const eligibility = runEligibility(state, actions);
+  const eligibility = runEligibility(state, actions, editingLocked);
 
   return [
     {
@@ -339,7 +362,12 @@ export function RunSplitButton({
   actions: WorkflowToolbarActions;
   state: WorkflowToolbarState;
 }) {
-  const [face, ...behindTheChevron] = runCommands(state, actions);
+  const editingLocked = useAtomValue(canvasEditingLockedAtom);
+  const [face, ...behindTheChevron] = runCommands(
+    state,
+    actions,
+    editingLocked
+  );
 
   return (
     // The two halves are one control, so the group carries the name. Without
@@ -398,10 +426,11 @@ export function RunPublishMenuItems({
   state: WorkflowToolbarState;
 }) {
   const publish = usePublishGate(state, actions);
+  const editingLocked = useAtomValue(canvasEditingLockedAtom);
 
   return (
     <>
-      {runCommands(state, actions).map((command) => (
+      {runCommands(state, actions, editingLocked).map((command) => (
         <RunCommandMenuItem command={command} key={command.id} />
       ))}
       <DropdownMenuItem

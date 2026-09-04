@@ -43,27 +43,21 @@ describe("opening the command palette", () => {
     ]);
   });
 
-  // The palette writes to a draft the overlay is hiding, so a step added under
-  // it would appear only once the run was dismissed.
-  it("refuses while a past run is pinned to the canvas, and says so", () => {
+  it("opens root search but refuses Add step while a past run is pinned", () => {
     const store = editorStore();
     pinRunToCanvas(store);
 
-    expect(store.set(openCommandPaletteAtom, { id: "root" })).toBe(false);
-    expect(store.get(commandPaletteAtom)).toBeNull();
-    expect(store.get(commandPaletteRefusalAtom)).toMatch(/run on the canvas/);
+    expect(store.set(openCommandPaletteAtom, { id: "root" })).toBe(true);
+    expect(store.get(commandPaletteAtom)?.pages).toEqual([{ id: "root" }]);
+    expect(store.set(openCommandPaletteAtom, { id: "add-step" })).toBe(false);
   });
 
-  // Generation used to fall between the two locks: it opened a palette in which
-  // every single item was disabled, including the "Add step" the Actions menu
-  // refuses outright in that state.
-  it("refuses while generation is rewriting the graph, and says so", () => {
+  it("opens root search but refuses Add step while generation rewrites the graph", () => {
     const store = editorStore();
     store.set(isGeneratingAtom, true);
 
-    expect(store.set(openCommandPaletteAtom, { id: "root" })).toBe(false);
-    expect(store.get(commandPaletteAtom)).toBeNull();
-    expect(store.get(commandPaletteRefusalAtom)).toMatch(/generating/);
+    expect(store.set(openCommandPaletteAtom, { id: "root" })).toBe(true);
+    expect(store.set(openCommandPaletteAtom, { id: "add-step" })).toBe(false);
   });
 
   it("has nothing to say when it will open", () => {

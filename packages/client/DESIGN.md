@@ -258,7 +258,7 @@ All primitives are shadcn/ui on Base UI, refined and restrained: quiet at rest, 
 
 ### Workflow Node (signature component)
 
-The reason the product exists. A 192×112px rectangular card at 8px radius sitting on the React Flow canvas: a 16px integration icon, a 14px semibold title that wraps to two lines, and a one-line description at rest. Event Split is wider at 264px on purpose, because it carries two labelled outlets. Nested Group children are compact (188×56) with a single-line title so the frame reads as one step; parallel lookups sit side by side inside it. 192×112 remains the top-level card. The card is flat; elevation on the canvas would compete with the status border.
+The reason the product exists. A 192×112px rectangular card at 8px radius sitting on the React Flow canvas: a 16px integration icon, a 14px semibold title that wraps to two lines, and a one-line description at detail zoom. The overview presentation hides descriptions while retaining card geometry. Event Split is wider at 264px on purpose, because it carries two labelled outlets. Nested Group children are compact (188×56) with a single-line title so the frame reads as one step; parallel lookups sit side by side inside it. 192×112 remains the top-level card. The card is flat; elevation on the canvas would compete with the status border.
 
 At rest the border is 1.5px of Canvas Line. Status is worn on that same border, stepping up to 2px: Signal Green for success, Signal Red for failure, Signal Slate for cancelled, and an animated Signal Blue sweep while running. Every status also renders its word in a chip, so the border is never the only carrier. Focus shifts the border to Graphite Ink rather than the ring color, because the resting border already sits at the ring's lightness and the shift would otherwise read as nothing.
 
@@ -282,8 +282,9 @@ widths. Below `md` the three views sit at the top of the toolbar's overflow
 menu, the active one checked, above the run commands and **Publish**. The control
 remains available when the inspector is collapsed or dismissed. The canvas,
 inspector, editing lock, and status strip always follow the same active view.
-When the view changes, the canvas keeps its zoom and anchors the Lifecycle card
-at the same top-center point. Loading changes inspector status without fading,
+When a resolved view changes, the canvas keeps its zoom and anchors the Lifecycle
+card at the top center when the full graph fits. A graph that would clip is
+centered at the preserved zoom. Loading changes inspector status without fading,
 re-fitting, or replacing the last valid canvas; resolved content replaces it
 only when the next presentation is ready.
 
@@ -307,10 +308,11 @@ graph share the column height.
 The 44px editor toolbar spans the full editor shell. Workflow navigation,
 **Actions**, and **Settings** form the leading group. The 320px search control
 stays centered in the shell and hides at 70rem or narrower; its keyboard
-shortcut remains available. It sits between the two groups in DOM order, so Tab
-reaches it in the position it appears. The workspace control, the Run split
-button, and **Publish** form the trailing group, which sticks to the shell's
-right edge so a scrolling row never carries a write control out of reach. The
+shortcut remains available. A compact **Find a node** control stays in the
+trailing group while the search control is hidden. It sits between the two
+groups in DOM order, so Tab reaches it in the position it appears. The workspace
+control, the Run split button, and **Publish** form the trailing group, which
+sticks to the shell's right edge so a scrolling row never carries a write control out of reach. The
 split button's face is **Run draft**, which always sends to test recipients. Its
 menu holds the run of the published version, labelled with that version number
 and the Published mode. Below `md` the workspace control, both run commands and

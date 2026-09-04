@@ -2,7 +2,14 @@ import { Handle, Position } from "@xyflow/react";
 import { Ban, Check, Loader2, XCircle } from "lucide-react";
 import type { ComponentProps, CSSProperties, ReactNode } from "react";
 import { AnimatedBorder } from "#src/components/ui/animated-border";
-import { Card, CardDescription, CardTitle } from "#src/components/ui/card";
+import { Card, CardTitle } from "#src/components/ui/card";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "#src/components/ui/tooltip";
+import { useElementOverflow } from "#src/hooks/effects";
 import { cn } from "@wfgraph/shared/utils";
 
 export type NodeProps = ComponentProps<typeof Card> & {
@@ -181,17 +188,52 @@ export const NodeTitle = ({
   </CardTitle>
 );
 
-export type NodeDescriptionProps = ComponentProps<typeof CardDescription>;
+export type NodeDescriptionProps = ComponentProps<"div">;
 
 export const NodeDescription = ({
   className,
+  children,
   ...props
-}: NodeDescriptionProps) => (
-  <CardDescription
-    className={cn("w-full truncate text-xs", className)}
-    {...props}
-  />
-);
+}: NodeDescriptionProps) => {
+  const hasDescription =
+    children !== null && children !== undefined && children !== "";
+  const { ref, overflowing } = useElementOverflow({
+    enabled: hasDescription,
+    key: children,
+  });
+  const isTooltipTrigger = hasDescription && overflowing;
+  const description = (
+    <div
+      className={cn(
+        "workflow-node-description nodrag nowheel block w-full truncate text-xs/relaxed text-muted-foreground",
+        className
+      )}
+      ref={hasDescription ? ref : undefined}
+      tabIndex={isTooltipTrigger ? 0 : undefined}
+      {...props}
+    >
+      {children}
+    </div>
+  );
+
+  if (!isTooltipTrigger) {
+    return description;
+  }
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger render={description} />
+        <TooltipContent
+          className="block max-w-[min(20rem,calc(100vw-2rem))] whitespace-pre-wrap [overflow-wrap:anywhere]"
+          role="tooltip"
+        >
+          {children}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+};
 
 // `text-center` is what centres the words. The title and description are
 // full-width blocks, so `items-center` reaches only the icon, the one child
