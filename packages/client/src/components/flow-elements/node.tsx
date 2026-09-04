@@ -225,7 +225,7 @@ export const NodeDescription = ({
       <Tooltip>
         <TooltipTrigger render={description} />
         <TooltipContent
-          className="max-w-[min(20rem,calc(100vw-2rem))] whitespace-pre-wrap break-words"
+          className="block max-w-[min(20rem,calc(100vw-2rem))] whitespace-pre-wrap [overflow-wrap:anywhere]"
           role="tooltip"
         >
           {children}

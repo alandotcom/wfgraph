@@ -96,9 +96,13 @@ describe("NodeDescription", () => {
 
     fireEvent.focus(clipped);
 
-    expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(
-      description
-    );
+    const tooltip = document.querySelector('[role="tooltip"]');
+    expect(tooltip?.textContent).toBe(description);
+    expect(tooltip?.classList.contains("block")).toBe(true);
+    expect(
+      tooltip?.classList.contains("max-w-[min(20rem,calc(100vw-2rem))]")
+    ).toBe(true);
+    expect(tooltip?.classList.contains("[overflow-wrap:anywhere]")).toBe(true);
   });
 
   it("removes the tooltip trigger when a wider container fits the description", async () => {
