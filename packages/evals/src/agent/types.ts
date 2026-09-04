@@ -136,7 +136,8 @@ export type AgentEvalExpectations = {
   requiredConditionRules?: Array<{
     node: EvalNodeSelector;
     field: string;
-    operator: string;
+    /** Omit to accept any operator, where either polarity describes the same run. */
+    operator?: string;
     value?: string | number;
   }>;
   requiredConditionLogic?: Array<{

@@ -1127,15 +1127,16 @@ export const focusedScenarios: Array<{
         {
           role: "user",
           content:
-            "When an appointment is created, wait until one day before it starts and post the start time to #appointments in Slack. After that, wait up to 3 days for the payment to settle, and post to #billing in Slack when it does.",
+            "When an appointment is created, wait until one day before it starts and post the start time to #appointments in Slack. After that, wait up to 3 days for the payment to settle.",
         },
       ],
       document: emptyDocument,
       integrations: connectedIntegrations,
       expected: {
+        // One job: the ordering. Branching a timed-out Wait is its own scenario.
         exactActions: {
           [BUILT_IN_ACTION_IDS.wait]: 2,
-          "slack/send-message": 2,
+          "slack/send-message": 1,
         },
         exactEvents: { start: ["app/appointment.created"], cancel: [] },
         requiredWaitSubscriptions: [

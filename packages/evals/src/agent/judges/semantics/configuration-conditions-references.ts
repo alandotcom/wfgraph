@@ -194,7 +194,11 @@ function missingConditionRules(context: SemanticsContext): string[] {
           group.conditions.some(
             (rule) =>
               rule.field === required.field &&
-              rule.operator === required.operator &&
+              // An omitted operator asks only that the rule tests this field,
+              // which is what a scenario wants where two operators and swapped
+              // outlets describe the same run.
+              (required.operator === undefined ||
+                rule.operator === required.operator) &&
               (required.value === undefined ||
                 ("value" in rule && rule.value === required.value))
           )
@@ -202,7 +206,7 @@ function missingConditionRules(context: SemanticsContext): string[] {
       });
       return found
         ? undefined
-        : `${selectorName(required.node)} is missing required rule ${required.field} ${required.operator}${required.value === undefined ? "" : ` ${required.value}`}`;
+        : `${selectorName(required.node)} is missing required rule on ${required.field}${required.operator === undefined ? "" : ` ${required.operator}`}${required.value === undefined ? "" : ` ${required.value}`}`;
     }
   );
 }

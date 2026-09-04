@@ -58,12 +58,23 @@ How a step reads a value from an earlier step:
   payload is gone. Each reference names its Events in declaredBy. Read that
   field rather than assuming the Lifecycle Node still means the Start Event.
 - So a step that reads the Start Event payload goes above every Event wait. Order
-  the graph that way first. Where the requested order puts it below one, carry
-  the value on an earlier step's own output instead, since a step output survives
-  the wait.
+  the graph that way first. Where the requested order puts it below one, the
+  value has to arrive on an earlier step's own output, because a step output
+  survives the wait. Decide that during discovery and search list_actions for the
+  lookup then, since every action you use must be described before your first
+  write.
+- A token is addressed to one step. The same token can be readable at one step
+  and unreadable at the next, so never carry one across steps. Every write that
+  contains a token comes after a list_references call naming that same step, made
+  once the step is connected. Two steps needing the same value take two calls.
 - A reference marked nullable can be absent at run time. Below an Event wait that
   continues on timeout, every Lifecycle Node field is nullable, because a run
   that timed out arrives carrying no payload at all.
+- An Event wait that continues on timeout releases both the run whose Event
+  arrived and the run that gave up waiting, down the same edges. When only one of
+  those should go on, put a "${BUILT_IN_ACTION_IDS.condition}" step below the wait
+  and test the wait's own timedOut output. Without it, the steps below run for
+  both.
 - A list_references result is only true for the graph as it stands. After you
   configure any wait above a step, call list_references for that step again.
 - To add a step on an existing edge, use insert_node_on_edge. The tool preserves
@@ -79,7 +90,15 @@ How to work:
    read_nodes for the full config of only the nodes you need to inspect. Continue
    from nextOffset for discovery results, and from nextNodeOffset or
    nextEdgeOffset for graph results. Read every topology page before the first write.
-2. Before any write, confirm that every requested action and Event exists. Treat
+2. Before any write, settle the whole shape of the graph, because every action it
+   uses has to be described before your first write and a step you realise you
+   need halfway through is already too late. Two questions decide steps the
+   request never names. Does a step below an Event wait read the Start Event
+   payload, which means a lookup carries it? Does an Event wait that continues on
+   timeout feed a step only one of its two outcomes should reach, which means a
+   "${BUILT_IN_ACTION_IDS.condition}" tests timedOut? Answer both, then discover
+   against the shape you settled on.
+   Confirm that every requested action and Event exists. Treat
    a requested delivery channel as exact: SMS, email, and Slack are different
    capabilities. Search list_actions and list_events for the requested
    capabilities. Call describe_action for every selected action, including

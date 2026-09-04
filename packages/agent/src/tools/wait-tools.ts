@@ -450,7 +450,7 @@ export const waitToolHandlers = Effect.gen(function* () {
                   : `That token holds ${reference.type ?? "no declared type"} rather than a timestamp.`;
 
               return Effect.fail({
-                reason: `Until timing needs a timestamp token this step can read, and ${wait.timestamp} is not one.${because ? ` ${because}` : ""} Call list_references for this step to see what it can read.`,
+                reason: `Until timing needs a timestamp token this step can read, and ${wait.timestamp} is not one.${because ? ` ${because}` : ""} Call read_workflow, then list_references for this step, before writing again.`,
               });
             }
           } else if (

@@ -442,7 +442,7 @@ describe("assessScenarioSemantics", () => {
     expect(assessScenarioSemantics(conditionInput, document)).toEqual({
       score: 0,
       rationale:
-        "Condition is missing required rule score greater_or_equal 80.",
+        "Condition is missing required rule on score greater_or_equal 80.",
     });
   });
 
