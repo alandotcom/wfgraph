@@ -274,6 +274,11 @@ async function runMcpTool(testCase: ConformanceCase) {
     auth: { allows: async () => true },
     execute,
     listWorkflows: async () => ({ ok: true, workflows: [] }),
+    createWorkflow: async () => ({
+      ok: true,
+      workflowId: "wf_created",
+      draftRevision: 1,
+    }),
   });
   const [clientTransport, serverTransport] =
     InMemoryTransport.createLinkedPair();

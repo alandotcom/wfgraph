@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import { agentToolkit } from "@wfgraph/agent/toolkit";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { readJsonObject } from "@wfgraph/shared/types/json";
-import { DraftConflict } from "#src/backend/lib/effect/failures";
+import { Conflict, DraftConflict } from "#src/backend/lib/effect/failures";
 import type { AuthContext } from "#src/backend/lib/http/authorize";
 import {
   createAgentMcpHandler,
@@ -15,6 +15,7 @@ import {
   type CreateAgentMcpServerInput,
   type DraftToolExecution,
   type DraftToolExecutor,
+  type WorkflowCreateExecutor,
   type WorkflowListExecutor,
 } from "#src/backend/agent/mcp-server";
 
@@ -25,9 +26,17 @@ const listNoWorkflows: WorkflowListExecutor = async () => ({
 });
 
 function createTestMcpHandler(
-  input: Omit<CreateAgentMcpServerInput, "listWorkflows">
+  input: Omit<CreateAgentMcpServerInput, "listWorkflows" | "createWorkflow">
 ) {
-  return createAgentMcpHandler({ ...input, listWorkflows: listNoWorkflows });
+  return createAgentMcpHandler({
+    ...input,
+    listWorkflows: listNoWorkflows,
+    createWorkflow: async () => ({
+      ok: true,
+      workflowId: "wf_created",
+      draftRevision: 1,
+    }),
+  });
 }
 
 function localMcpRequest(
@@ -43,6 +52,7 @@ async function makeSubject(input?: {
   auth?: AuthContext;
   execute?: DraftToolExecutor;
   listWorkflows?: WorkflowListExecutor;
+  createWorkflow?: WorkflowCreateExecutor;
 }) {
   const execute =
     input?.execute ??
@@ -59,6 +69,13 @@ async function makeSubject(input?: {
     auth: input?.auth ?? allowAll,
     execute,
     listWorkflows: input?.listWorkflows ?? listNoWorkflows,
+    createWorkflow:
+      input?.createWorkflow ??
+      (async () => ({
+        ok: true as const,
+        workflowId: "wf_created",
+        draftRevision: 1,
+      })),
   });
   const [clientTransport, serverTransport] =
     InMemoryTransport.createLinkedPair();
@@ -80,6 +97,7 @@ describe("createAgentMcpServer", () => {
       expect(listed.tools.map((tool) => tool.name).toSorted()).toEqual(
         [
           "list_workflows",
+          "create_workflow",
           ...Object.values(agentToolkit.tools).map((tool) => tool.name),
         ].toSorted()
       );
@@ -91,6 +109,31 @@ describe("createAgentMcpServer", () => {
       });
       const read = listed.tools.find((tool) => tool.name === "read_workflow");
       const write = listed.tools.find((tool) => tool.name === "add_node");
+      const create = listed.tools.find(
+        (tool) => tool.name === "create_workflow"
+      );
+
+      expect(create).toMatchObject({
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: false,
+        },
+        inputSchema: {
+          type: "object",
+          required: ["name"],
+          additionalProperties: false,
+          properties: {
+            name: { type: "string" },
+            description: { type: "string" },
+          },
+        },
+        outputSchema: {
+          type: "object",
+          required: ["workflowId", "draftRevision"],
+          additionalProperties: false,
+        },
+      });
 
       expect(read).toMatchObject({
         description: expect.stringContaining("workflowId"),
@@ -198,6 +241,112 @@ describe("createAgentMcpServer", () => {
       expect(result).toMatchObject({
         isError: true,
         structuredContent: { reason: "Forbidden" },
+      });
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("creates a workflow through the create grant and returns its draft identity", async () => {
+    const checked: string[] = [];
+    const createWorkflow = vi.fn<WorkflowCreateExecutor>(async () => ({
+      ok: true,
+      workflowId: "wf_created",
+      draftRevision: 1,
+    }));
+    const { client, server } = await makeSubject({
+      auth: {
+        allows: async (operation) => {
+          checked.push(operation.id);
+          return true;
+        },
+      },
+      createWorkflow,
+    });
+    try {
+      const result = await client.callTool({
+        name: "create_workflow",
+        arguments: {
+          name: "  Send appointment reminders  ",
+          description: "Notify patients before an appointment.",
+        },
+      });
+
+      expect(checked).toEqual([WfGraphOperations.workflowCreate.id]);
+      expect(createWorkflow).toHaveBeenCalledWith(
+        {
+          name: "  Send appointment reminders  ",
+          description: "Notify patients before an appointment.",
+        },
+        expect.any(AbortSignal)
+      );
+      expect(result).toMatchObject({
+        isError: false,
+        structuredContent: { workflowId: "wf_created", draftRevision: 1 },
+      });
+      expect(result.structuredContent).toEqual({
+        workflowId: "wf_created",
+        draftRevision: 1,
+      });
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("refuses workflow creation before executing when the create grant is missing", async () => {
+    const checked: string[] = [];
+    const createWorkflow = vi.fn<WorkflowCreateExecutor>(async () => {
+      throw new Error("unexpected");
+    });
+    const { client, server } = await makeSubject({
+      auth: {
+        allows: async (operation) => {
+          checked.push(operation.id);
+          return false;
+        },
+      },
+      createWorkflow,
+    });
+    try {
+      const result = await client.callTool({
+        name: "create_workflow",
+        arguments: { name: "Send appointment reminders" },
+      });
+
+      expect(checked).toEqual([WfGraphOperations.workflowCreate.id]);
+      expect(createWorkflow).not.toHaveBeenCalled();
+      expect(result).toMatchObject({
+        isError: true,
+        structuredContent: { reason: "Forbidden" },
+      });
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("returns workflow creation failures as tool errors", async () => {
+    const { client, server } = await makeSubject({
+      createWorkflow: async () => ({
+        ok: false,
+        failure: new Conflict({
+          error: 'Workflow name "Send appointment reminders" already exists',
+        }),
+      }),
+    });
+    try {
+      const result = await client.callTool({
+        name: "create_workflow",
+        arguments: { name: "Send appointment reminders" },
+      });
+
+      expect(result).toMatchObject({
+        isError: true,
+        structuredContent: {
+          reason: 'Workflow name "Send appointment reminders" already exists',
+        },
       });
     } finally {
       await client.close();
@@ -380,6 +529,12 @@ describe("createAgentMcpHandler", () => {
         client.callTool({
           name: "list_workflows",
           arguments: { unexpected: true },
+        })
+      ).rejects.toMatchObject({ code: -32602 });
+      await expect(
+        client.callTool({
+          name: "create_workflow",
+          arguments: { name: "Reminders", graph: {} },
         })
       ).rejects.toMatchObject({ code: -32602 });
       expect(execute).not.toHaveBeenCalled();

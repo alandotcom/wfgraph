@@ -66,11 +66,14 @@ the editor.
   provider redirect does not. Slack/Resend on/off: wfgraph-plugins.
 - `mcp: true` enables the authenticated stateless MCP endpoint for localhost.
   For a deployed host, set `mcp.allowedHostnames` and
-  `mcp.allowedOriginHostnames`. The endpoint edits existing drafts only. Every
-  caller granted `workflow.getAll` can use `list_workflows` to discover available
-  workflow IDs. Authoring calls take a `workflowId`; writes also take the latest
-  `expectedDraftRevision`. After a `workflow_draft_stale` result, read the workflow
-  again before editing.
+  `mcp.allowedOriginHostnames`. `create_workflow` creates a draft containing the
+  default Lifecycle Node. It takes a required `name` and optional `description`,
+  requires `workflow.create`, and returns `workflowId` and `draftRevision`.
+  Creation is not idempotent; do not automatically retry after an unknown result.
+  Every caller granted `workflow.getAll` can use `list_workflows` to discover
+  available workflow IDs. Existing-draft authoring calls take a `workflowId`;
+  writes also take the latest `expectedDraftRevision`. After a
+  `workflow_draft_stale` result, read the workflow again before editing.
 
 ## Persistence
 

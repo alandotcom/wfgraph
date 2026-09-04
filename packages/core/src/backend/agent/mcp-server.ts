@@ -50,10 +50,24 @@ export type WorkflowListExecutor = (
   signal: AbortSignal
 ) => Promise<WorkflowListExecution>;
 
+export type WorkflowCreateExecution =
+  | {
+      readonly ok: true;
+      readonly workflowId: string;
+      readonly draftRevision: number;
+    }
+  | { readonly ok: false; readonly failure: ServiceFailure };
+
+export type WorkflowCreateExecutor = (
+  input: { readonly name: string; readonly description?: string | undefined },
+  signal: AbortSignal
+) => Promise<WorkflowCreateExecution>;
+
 export type CreateAgentMcpServerInput = {
   readonly auth: AuthContext;
   readonly execute: DraftToolExecutor;
   readonly listWorkflows: WorkflowListExecutor;
+  readonly createWorkflow: WorkflowCreateExecutor;
 };
 
 export type WfGraphMcpOptions = {
@@ -104,6 +118,36 @@ const DRAFT_REVISION_SCHEMA = {
 const LIST_WORKFLOWS_INPUT_SCHEMA = {
   type: "object",
   properties: {},
+  additionalProperties: false,
+} as const;
+
+const CREATE_WORKFLOW_INPUT_SCHEMA = {
+  type: "object",
+  properties: {
+    name: { type: "string", description: "Name of the workflow to create." },
+    description: {
+      type: "string",
+      description: "Optional description of the workflow.",
+    },
+  },
+  required: ["name"],
+  additionalProperties: false,
+} as const;
+
+const CREATE_WORKFLOW_OUTPUT_SCHEMA = {
+  type: "object",
+  properties: {
+    workflowId: {
+      type: "string",
+      description: "ID of the newly created workflow draft.",
+    },
+    draftRevision: {
+      type: "integer",
+      minimum: 1,
+      description: "Revision of the newly created workflow draft.",
+    },
+  },
+  required: ["workflowId", "draftRevision"],
   additionalProperties: false,
 } as const;
 
@@ -252,7 +296,7 @@ function failureResult(workflowId: string, failure: ServiceFailure) {
   });
 }
 
-function workflowListResult(result: JsonObject, isError: boolean) {
+function collectionToolResult(result: JsonObject, isError: boolean) {
   return {
     content: [{ type: "text" as const, text: JSON.stringify(result) }],
     structuredContent: result,
@@ -275,6 +319,12 @@ export function createAgentMcpServer(
   const listWorkflowsOutput = fromJsonSchema<Record<string, unknown>>(
     LIST_WORKFLOWS_OUTPUT_SCHEMA
   );
+  const createWorkflowInput = fromJsonSchema<Record<string, unknown>>(
+    CREATE_WORKFLOW_INPUT_SCHEMA
+  );
+  const createWorkflowOutput = fromJsonSchema<Record<string, unknown>>(
+    CREATE_WORKFLOW_OUTPUT_SCHEMA
+  );
   server.registerTool<typeof listWorkflowsOutput, typeof listWorkflowsInput>(
     "list_workflows",
     {
@@ -286,12 +336,12 @@ export function createAgentMcpServer(
     },
     async (_arguments, context) => {
       if (!(await input.auth.allows(WfGraphOperations.workflowGetAll))) {
-        return workflowListResult({ reason: "Forbidden" }, true);
+        return collectionToolResult({ reason: "Forbidden" }, true);
       }
 
       const outcome = await input.listWorkflows(context.mcpReq.signal);
       if (!outcome.ok) {
-        return workflowListResult(
+        return collectionToolResult(
           omitUndefined({
             reason: outcome.failure.error,
             code: outcome.failure.payload.code,
@@ -300,11 +350,66 @@ export function createAgentMcpServer(
         );
       }
 
-      return workflowListResult(
+      return collectionToolResult(
         {
           workflows: outcome.workflows.map((workflow) =>
             omitUndefined({ ...workflow })
           ),
+        },
+        false
+      );
+    }
+  );
+
+  server.registerTool<typeof createWorkflowOutput, typeof createWorkflowInput>(
+    "create_workflow",
+    {
+      description:
+        "Create a workflow draft with the default Lifecycle node. Use the returned workflow ID and draft revision with workflow authoring tools.",
+      inputSchema: createWorkflowInput,
+      outputSchema: createWorkflowOutput,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+      },
+    },
+    async (arguments_, context) => {
+      const argumentsObject = readJsonObject(arguments_) ?? {};
+      const name = argumentsObject.name;
+      if (typeof name !== "string") {
+        throw new Error("The validated workflow name is not a string");
+      }
+      const description = argumentsObject.description;
+      if (description !== undefined && typeof description !== "string") {
+        throw new Error("The validated workflow description is not a string");
+      }
+
+      if (!(await input.auth.allows(WfGraphOperations.workflowCreate))) {
+        return collectionToolResult({ reason: "Forbidden" }, true);
+      }
+
+      const outcome = await input.createWorkflow(
+        {
+          name,
+          ...(typeof description === "string" ? { description } : {}),
+        },
+        context.mcpReq.signal
+      );
+      if (!outcome.ok) {
+        return collectionToolResult(
+          omitUndefined({
+            reason: outcome.failure.error,
+            code: outcome.failure.payload.code,
+          }),
+          true
+        );
+      }
+
+      return collectionToolResult(
+        {
+          workflowId: outcome.workflowId,
+          draftRevision: outcome.draftRevision,
         },
         false
       );
@@ -435,12 +540,16 @@ export function createAgentMcpHandler(
 
             if (
               method === "tools/call" &&
-              (name === "list_workflows" || isAgentToolName(name))
+              (name === "list_workflows" ||
+                name === "create_workflow" ||
+                isAgentToolName(name))
             ) {
               const schema =
                 name === "list_workflows"
                   ? LIST_WORKFLOWS_INPUT_SCHEMA
-                  : inputSchemaFor(name);
+                  : name === "create_workflow"
+                    ? CREATE_WORKFLOW_INPUT_SCHEMA
+                    : inputSchemaFor(name);
               const validation = await fromJsonSchema<Record<string, unknown>>(
                 schema
               )["~standard"].validate(params?.arguments ?? {});

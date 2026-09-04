@@ -38,11 +38,11 @@ The implementation uses the following decisions:
   mutation automatically.
 - A successful MCP graph write runs the shared automatic layout before saving.
   Tool schemas do not expose node positions or a layout command.
-- Publication remains separate. The first release exposes no create, delete,
-  duplicate, restore, run, or publish tool.
+- Publication remains separate. The first release exposes `create_workflow`.
+  The excluded tools are delete, duplicate, restore, run, and publish.
 - The endpoint lists existing workflows through the same summary service and
-  authorization operation as the editor. Workflow creation remains outside the
-  MCP surface.
+  authorization operation as the editor. `create_workflow` creates a new draft
+  through the existing workflow creation service.
 - The MCP endpoint supports the 2026-07-28 protocol only and rejects legacy
   traffic.
 - An editor learns about an external MCP write on its next workflow load. The
@@ -58,8 +58,11 @@ approved:
 - Hosts opt in with `WfGraphAppOptions.mcp`; the endpoint is disabled by
   default.
 - The endpoint path is `${basePath}/api/mcp`.
-- The first release lists and edits existing workflows. It has no create,
-  restore, delete, run, or publish tools.
+- The first release lists workflows, creates drafts, and edits existing
+  workflows. The excluded tools are duplicate, restore, delete, run, and
+  publish.
+- `create_workflow` is non-idempotent. A client does not automatically retry a
+  creation request when the result is unknown.
 - External MCP writes become visible in an open editor after a reload. The first
   release does not add polling, server-sent events, or another cross-client
   revision channel.
@@ -162,10 +165,10 @@ The MCP adapter maps it to a recoverable tool result.
 
 ### MCP tool envelope
 
-The adapter extends each canonical input schema with transport state. It removes
-the transport fields before calling the canonical handler.
+The adapter extends each existing-draft canonical input schema with transport
+state. It removes the transport fields before calling the canonical handler.
 
-Every tool receives:
+Every existing-draft tool receives:
 
 ```ts
 {
@@ -174,7 +177,7 @@ Every tool receives:
 }
 ```
 
-Every write tool also receives:
+Every existing-draft write tool also receives:
 
 ```ts
 {
@@ -182,13 +185,15 @@ Every write tool also receives:
 }
 ```
 
-Each structured result includes `workflowId` and `draftRevision` beside the
-canonical result fields. The tool description tells the client to call
+Each existing-draft structured result includes `workflowId` and `draftRevision`
+beside the canonical result fields. The tool description tells the client to call
 `read_workflow` again after a draft conflict. The adapter preserves canonical
 failure fields such as `reason`.
 
-The MCP-only envelope is the transport contract. Canonical handlers remain
-unaware of workflow IDs, database revisions, HTTP, and MCP.
+`create_workflow` is MCP-only. It takes a required name and optional description,
+then returns the workflow ID and draft revision. It carries no graph, workflow
+ID, or draft revision input. Canonical handlers remain unaware of workflow IDs,
+database revisions, HTTP, and MCP.
 
 ### Authorization
 
@@ -199,6 +204,7 @@ checks grants before loading a workflow:
 - Graph writes require both `workflow.getById` and `workflow.update`.
 - `list_integrations` requires `integration.getAll` in addition to
   `workflow.getById` because its result contains Connection IDs.
+- `create_workflow` requires `workflow.create` only.
 
 The fixed `tools/list` response does not vary by caller. A refused tool call does
 not disclose whether an unauthorized workflow exists.
@@ -444,7 +450,8 @@ Acceptance:
 
 - A host can enable the endpoint and connect a current MCP client using only the
   published package and host authentication.
-- The documentation does not promise create or publish support.
+- The documentation describes `create_workflow`. Publish remains outside the
+  documented MCP surface.
 - The package contains no rejected session-registry or custom-runner surface.
 
 ## Test matrix
@@ -489,10 +496,10 @@ Do not commit `vitest-results.json`. Do not modify or commit
 
 ## Completion boundary
 
-The MCP pull request is complete when an authenticated external client can edit
-an existing persisted draft through modern stateless MCP, direct and MCP calls
-pass the same tool-conformance cases, stale browser and MCP writes cannot
-overwrite each other, and the built-in agent retains its existing stream and
-undo behavior.
+The MCP pull request is complete when an authenticated external client can create
+a draft or edit an existing persisted draft through modern stateless MCP, direct
+and MCP calls pass the same tool-conformance cases, stale browser and MCP writes
+cannot overwrite each other, and the built-in agent retains its existing stream
+and undo behavior.
 
 PR 6 regression automation starts after this pull request is green and reviewed.

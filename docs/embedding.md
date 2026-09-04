@@ -321,6 +321,12 @@ Call `list_workflows` to list the workflows available through the host's
 workflow list. The result contains workflow IDs and summary metadata. It omits
 workflow graphs and integration credentials.
 
+Call `create_workflow` with a required `name` and an optional `description` to
+create a draft containing the default Lifecycle Node. The result contains only
+`workflowId` and `draftRevision`. Use those values with the workflow authoring
+tools. Creation is not idempotent. Do not automatically retry a creation request
+when the result is unknown.
+
 The remaining MCP tools read or edit an existing workflow draft. Each tool call
 requires a `workflowId`. Read tools return the persisted `draftRevision`. Write
 tools also require `expectedDraftRevision`, using the revision returned by the
@@ -337,6 +343,7 @@ host authentication callback authenticates the caller. MCP tool calls use the
 following operation grants:
 
 - `list_workflows` requires `workflow.getAll`.
+- `create_workflow` requires `workflow.create`.
 - Every workflow-specific tool requires `workflow.getById`.
 - Graph-writing tools also require `workflow.update`.
 - `list_integrations` also requires `integration.getAll` because the result
@@ -345,10 +352,11 @@ following operation grants:
 The authoring tools expose integration types and Connection IDs. They don't
 return or decrypt integration credentials.
 
-The MCP authoring surface doesn't create, duplicate, restore, delete, run, or
-publish workflows. MCP writes change the editable draft and leave the published
-workflow version unchanged. Reload an open editor to see an external MCP write.
-The endpoint doesn't send live external-edit updates to the editor.
+The MCP authoring surface supports draft creation and existing-draft edits. The
+unavailable operations are duplicate, restore, delete, run, and publish. MCP
+writes change the editable draft and leave the published workflow version
+unchanged. Reload an open editor to see an external MCP write. The endpoint does
+not send live external-edit updates to the editor.
 
 ## Built-in integrations
 

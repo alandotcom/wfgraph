@@ -7,6 +7,7 @@ import {
 import { Effect } from "effect";
 import { fixtureCatalog } from "@wfgraph/agent/tools/catalog-fixture";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import { readJsonObject } from "@wfgraph/shared/types/json";
 import type { Workflow } from "#src/backend/lib/db/schema";
 import { createApiApp } from "#src/backend/api-app";
 import {
@@ -201,6 +202,100 @@ describe("the MCP route", () => {
       });
       expect(JSON.stringify(callRecord)).not.toContain('"arguments"');
       expect(JSON.stringify(callRecord)).not.toContain('"nodes"');
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("creates a draft that a later MCP call can read", async () => {
+    const created = new Map<string, Workflow>();
+    await using runtime = stubWfGraphRuntime({
+      extensions: { catalog: fixtureCatalog },
+      integrationRepo: { listIdentities: Effect.succeed([]) },
+      workflowRepo: {
+        hasWithName: () => Effect.succeed(false),
+        insert: (input) =>
+          Effect.sync(() => {
+            const saved: Workflow = {
+              ...workflow,
+              id: input.id,
+              name: input.name,
+              description: input.description ?? null,
+              graph: input.graph,
+              draftRevision: 1,
+            };
+            created.set(saved.id, saved);
+            return saved;
+          }),
+        findById: (workflowId) =>
+          Effect.succeed(created.get(workflowId) ?? null),
+      },
+    });
+    const app = createApiApp({
+      basePath,
+      auth: resolveAuth(trustWfGraphUpstream()),
+      runtime,
+      mcp: true,
+    });
+    const transport = new StreamableHTTPClientTransport(
+      new URL(`http://localhost${basePath}/mcp`),
+      {
+        fetch: async (input, init) => {
+          const request = new Request(input, init);
+          request.headers.set("host", "localhost");
+          return await app.fetch(request);
+        },
+      }
+    );
+    const client = new Client(
+      { name: "wfgraph-test", version: "1.0.0" },
+      { versionNegotiation: { mode: "auto" } }
+    );
+
+    await client.connect(transport);
+    try {
+      const createdResult = await client.callTool({
+        name: "create_workflow",
+        arguments: {
+          name: "  Send appointment reminders  ",
+          description: "Notify patients before an appointment.",
+        },
+      });
+      const createdContent = readJsonObject(createdResult.structuredContent);
+      if (!createdContent || typeof createdContent.workflowId !== "string") {
+        throw new Error("The create tool returned no workflow ID");
+      }
+      const createdWorkflowId = createdContent.workflowId;
+      const readResult = await client.callTool({
+        name: "read_workflow",
+        arguments: { workflowId: createdWorkflowId },
+      });
+
+      expect(createdResult).toMatchObject({
+        isError: false,
+        structuredContent: {
+          workflowId: createdWorkflowId,
+          draftRevision: 1,
+        },
+      });
+      expect(createdResult.structuredContent).toEqual({
+        workflowId: createdWorkflowId,
+        draftRevision: 1,
+      });
+      expect(created.get(createdWorkflowId)).toMatchObject({
+        name: "Send appointment reminders",
+        description: "Notify patients before an appointment.",
+        draftRevision: 1,
+      });
+      expect(created.get(createdWorkflowId)?.graph.nodes).toHaveLength(1);
+      expect(readResult).toMatchObject({
+        isError: false,
+        structuredContent: {
+          workflowId: createdWorkflowId,
+          draftRevision: 1,
+          totalNodes: 1,
+        },
+      });
     } finally {
       await client.close();
     }

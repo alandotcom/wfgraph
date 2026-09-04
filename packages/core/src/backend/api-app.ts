@@ -30,6 +30,7 @@ import { postWorkflowResume } from "#src/backend/services/workflows/lifecycle/re
 import { getWorkflows } from "#src/backend/services/workflows/list";
 import { receiveWebhook } from "#src/backend/services/integrations/webhook-intake";
 import { executeDraftTool } from "#src/backend/services/agent/draft-tool";
+import { postWorkflowsCreate } from "#src/backend/services/workflows/create";
 import { WfGraphAppContext } from "#src/backend/lib/effect/app-context";
 import {
   createOAuthRoutes,
@@ -46,6 +47,7 @@ import {
 import { getErrorMessage } from "@wfgraph/shared/utils";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
+import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 
 // A path segment is whatever the sender typed, so the refusal names the field
 // and the rule rather than echoing the value back into the response body.
@@ -589,6 +591,27 @@ export function createApiApp(options: CreateApiAppOptions) {
                 onSuccess: (workflows) => ({
                   ok: true as const,
                   workflows,
+                }),
+                onFailure: (failure) => ({
+                  ok: false as const,
+                  failure,
+                }),
+              })
+            ),
+            { signal }
+          ),
+        createWorkflow: async (input, signal) =>
+          await runtime.runPromise(
+            postWorkflowsCreate({
+              name: input.name,
+              description: input.description,
+              graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+            }).pipe(
+              Effect.match({
+                onSuccess: (workflow) => ({
+                  ok: true as const,
+                  workflowId: workflow.id,
+                  draftRevision: workflow.draftRevision,
                 }),
                 onFailure: (failure) => ({
                   ok: false as const,
