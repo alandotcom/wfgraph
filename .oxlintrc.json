@@ -214,6 +214,31 @@
       }
     },
     {
+      // assistant-ui's own thread elements, vendored from its Base UI registry
+      // at r.assistant-ui.com/base/*. Library source rather than code written
+      // here: it reaches useEffect and useLayoutEffect directly, reads a ref
+      // during render to decide a disclosure's initial open state, keys a list
+      // by index, and casts a CSS custom property onto CSSProperties, none of
+      // which this repo allows in what it writes. The exemption is the
+      // directory, so a file only belongs here if it came from that registry.
+      // Like the effects.ts override, this has to stay after the
+      // packages/client/src one, because oxlint takes the last match.
+      "files": [
+        "packages/client/src/components/agent/elements/*.ts",
+        "packages/client/src/components/agent/elements/*.tsx"
+      ],
+      "rules": {
+        "no-restricted-imports": "off",
+        "consistent-return": "off",
+        "react/refs": "off",
+        "react/no-array-index-key": "off",
+        "react-hooks-js/refs": "off",
+        "react-hooks-js/exhaustive-deps": "off",
+        "typescript/no-unsafe-type-assertion": "off",
+        "typescript/no-unnecessary-type-parameters": "off"
+      }
+    },
+    {
       "files": [
         "scripts/**/*.ts",
         "packages/core/drizzle.config.ts",

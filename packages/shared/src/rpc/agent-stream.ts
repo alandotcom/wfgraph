@@ -37,12 +37,17 @@ const toolCallPart = Schema.Struct({
   input: jsonObjectSchema,
 });
 
-/** What that call answered, as the one sentence the panel shows. */
+/** What that call answered. */
 const toolResultPart = Schema.Struct({
   type: Schema.Literal("tool-result"),
   id: Schema.String,
   name: Schema.String,
-  summary: Schema.String,
+  /**
+   * The sentence the panel shows once the call settles, where the tool knows
+   * something the call itself did not say. A read tool answers none, and the
+   * panel keeps the phrase it drew from the call.
+   */
+  summary: Schema.optionalKey(Schema.String),
   /** True when the tool refused and the model was told why. */
   failed: Schema.Boolean,
 });

@@ -142,9 +142,11 @@ export type AgentGraphUpdate = {
 export const agentGraphUpdateAtom = atom<AgentGraphUpdate | null>(null);
 
 /**
- * The build agent's panel: whether it is open, and how big the user made it.
+ * The build agent's panel: whether it is open, whether it covers the editor,
+ * and how big the user made it while docked.
  *
- * It floats over the bottom-left of the canvas, so it reserves no canvas width.
+ * Docked it floats over the bottom-left of the canvas, so it reserves no canvas
+ * width. Expanded it covers the editor and the size below stops applying.
  */
 const AGENT_PANEL_MIN = { width: 320, height: 280 } as const;
 const AGENT_PANEL_MAX = { width: 720, height: 900 } as const;
@@ -188,6 +190,15 @@ export const isAgentPanelOpenAtom = atom(
     writeCookie(AGENT_PANEL_OPEN_COOKIE, String(value));
   }
 );
+
+/**
+ * Whether the panel covers the editor rather than sitting on the canvas.
+ *
+ * Deliberately not persisted, and cleared when the panel closes: covering the
+ * editor is something a reader asks for to read one long turn, so the next time
+ * they open the agent it should be back on the canvas with the graph in view.
+ */
+export const isAgentPanelExpandedAtom = atom(false);
 
 const agentPanelSizeStateAtom = atom(readInitialAgentPanelSize());
 

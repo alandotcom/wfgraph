@@ -14,20 +14,22 @@ import type { Response, Toolkit } from "effect/unstable/ai";
 import type { agentToolkit } from "@wfgraph/agent/toolkit";
 import type { AgentStreamPart } from "@wfgraph/shared/rpc/agent-stream";
 import { readJsonObject } from "@wfgraph/shared/types/json";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { getErrorMessage } from "@wfgraph/shared/utils";
 
 /**
- * The sentence the panel shows beside a tool call.
+ * The sentence the panel shows once a tool call settles.
  *
  * Every write tool answers a `summary` and every refusal answers a `reason`, so
  * those two are read by name. Anything else is a read tool, whose result is data
- * the model wanted rather than something a person needs spelled out.
+ * the model wanted rather than something a person needs spelled out; it answers
+ * nothing here, and the panel keeps the phrase it drew from the call itself.
  */
 export function summarizeToolResult(input: {
   readonly name: string;
   readonly result: unknown;
   readonly isFailure: boolean;
-}): string {
+}): string | undefined {
   const fields = readJsonObject(input.result);
 
   if (input.isFailure) {
@@ -36,7 +38,7 @@ export function summarizeToolResult(input: {
   }
 
   const summary = fields?.summary;
-  return typeof summary === "string" ? summary : `Read ${input.name}.`;
+  return typeof summary === "string" ? summary : undefined;
 }
 
 /**
@@ -67,18 +69,21 @@ export function toAgentStreamPart(
         input: readJsonObject(part.params) ?? {},
       };
 
-    case "tool-result":
-      return {
-        type: "tool-result",
+    case "tool-result": {
+      const summary = summarizeToolResult({
+        name: part.name,
+        result: part.result,
+        isFailure: part.isFailure,
+      });
+
+      return omitUndefined({
+        type: "tool-result" as const,
         id: part.id,
         name: part.name,
-        summary: summarizeToolResult({
-          name: part.name,
-          result: part.result,
-          isFailure: part.isFailure,
-        }),
+        summary,
         failed: part.isFailure,
-      };
+      });
+    }
 
     case "error":
       return { type: "error", message: getErrorMessage(part.error) };

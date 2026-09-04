@@ -171,7 +171,16 @@ const config: KnipConfig = {
       // added or updated, so export reports are muted for that one directory.
       // File reports still apply, which is how the six unused components in it
       // were found.
-      ignoreIssues: { "src/components/ui/**": ["exports", "types"] },
+      //
+      // src/components/agent/elements holds the same arrangement for a second
+      // generator: assistant-ui's Base UI registry at r.assistant-ui.com/base.
+      // Each file there ships that element's whole surface, and the chat panel
+      // reads a few names from it, so pruning the rest would have to be redone
+      // on every re-vendor and would turn a copy into a merge.
+      ignoreIssues: {
+        "src/components/agent/elements/**": ["exports", "types"],
+        "src/components/ui/**": ["exports", "types"],
+      },
     },
 
     "packages/plugins": {

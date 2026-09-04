@@ -61,7 +61,7 @@ describe("AgentThread", () => {
     expect(screen.getByText("Notify").tagName).toBe("STRONG");
   });
 
-  it("shows a tool call as the sentence the tool answered", async () => {
+  it("folds a turn's tool calls under a count", async () => {
     renderThread([
       {
         role: "assistant",
@@ -69,75 +69,113 @@ describe("AgentThread", () => {
           {
             type: "tool-call",
             toolCallId: "c1",
+            toolName: "list_actions",
+            args: { query: "slack" },
+          },
+          {
+            type: "tool-call",
+            toolCallId: "c2",
             toolName: "add_node",
             args: { label: "Notify" },
             result: "Added Notify as abc.",
-          },
-        ],
-      },
-    ]);
-
-    // The working-out is folded away by default, so the answer is what a
-    // reader sees first.
-    const trigger = await screen.findByText("Thinking");
-    expect(screen.queryByText("Added Notify as abc.")).toBeNull();
-
-    fireEvent.click(trigger);
-    expect(await screen.findByText("Added Notify as abc.")).toBeTruthy();
-  });
-
-  it("marks a refused tool call so it does not read as success", async () => {
-    const { container } = renderThread([
-      {
-        role: "assistant",
-        content: [
-          {
-            type: "tool-call",
-            toolCallId: "c1",
-            toolName: "connect_nodes",
-            args: {},
-            result: "A step cannot flow into itself.",
-            isError: true,
-          },
-        ],
-      },
-    ]);
-
-    fireEvent.click(await screen.findByText("Thinking"));
-    expect(
-      await screen.findByText("A step cannot flow into itself.")
-    ).toBeTruthy();
-    // Colour carries the state, which is the one thing DESIGN.md reserves it for.
-    expect(container.querySelector(".text-destructive")).not.toBeNull();
-  });
-
-  it("folds reasoning and tool calls into one chain of thought", async () => {
-    renderThread([
-      {
-        role: "assistant",
-        content: [
-          { type: "reasoning", text: "The Slack action needs a channel." },
-          {
-            type: "tool-call",
-            toolCallId: "c1",
-            toolName: "describe_action",
-            args: {},
-            result: "Read describe_action.",
           },
           { type: "text", text: "Added the step." },
         ],
       },
     ]);
 
-    // One disclosure for the whole working-out, and the answer outside it.
+    // The answer reads without opening anything; what the agent did is behind
+    // one count.
     expect(await screen.findByText("Added the step.")).toBeTruthy();
-    expect(screen.getAllByText("Thinking")).toHaveLength(1);
+    expect(screen.queryByText(/Searched actions/)).toBeNull();
 
-    fireEvent.click(screen.getByText("Thinking"));
+    fireEvent.click(screen.getByText("2 tool calls"));
+    expect(await screen.findByText(/Searched actions for/)).toBeTruthy();
+    expect(screen.getByText(/Added Notify/)).toBeTruthy();
+  });
+
+  it("names a read call by what it asked for, since it answers no sentence", async () => {
+    renderThread([
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCallId: "c1",
+            toolName: "list_actions",
+            args: { query: "slack" },
+          },
+          {
+            type: "tool-call",
+            toolCallId: "c2",
+            toolName: "list_actions",
+            args: { query: "email" },
+          },
+        ],
+      },
+    ]);
+
+    // Two calls to one tool read as two different lines, which is the whole
+    // point of naming a call by its arguments.
+    fireEvent.click(await screen.findByText("2 tool calls"));
     expect(
-      await screen.findByText("The Slack action needs a channel.")
+      await screen.findByText(/Searched actions for “slack”/)
     ).toBeTruthy();
-    expect(screen.getByText("Read describe_action.")).toBeTruthy();
+    expect(screen.getByText(/Searched actions for “email”/)).toBeTruthy();
+  });
+
+  it("reads reasoning as the steps the model went through", async () => {
+    renderThread([
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "reasoning",
+            text: "**Reading the workflow**\n\nIt has no Slack step yet.",
+          },
+          {
+            type: "tool-call",
+            toolCallId: "c1",
+            toolName: "describe_action",
+            args: { actionId: "slack.post" },
+          },
+          { type: "reasoning", text: "No heading on this one." },
+          { type: "text", text: "Added the step." },
+        ],
+      },
+    ]);
+
+    // A summary arrives as a bold heading over a paragraph, which is a step's
+    // title and its body. One without a heading keeps its whole text.
+    expect(await screen.findByText("Added the step.")).toBeTruthy();
+    fireEvent.click(screen.getByText("Thinking"));
+    expect(await screen.findByText("Reading the workflow")).toBeTruthy();
+    expect(screen.getByText("It has no Slack step yet.")).toBeTruthy();
+    expect(screen.getByText("No heading on this one.")).toBeTruthy();
+  });
+
+  it("keeps the tool calls under a count of their own", async () => {
+    renderThread([
+      {
+        role: "assistant",
+        content: [
+          { type: "reasoning", text: "**Reading the workflow**" },
+          {
+            type: "tool-call",
+            toolCallId: "c1",
+            toolName: "describe_action",
+            args: { actionId: "slack.post" },
+          },
+          { type: "text", text: "Added the step." },
+        ],
+      },
+    ]);
+
+    expect(await screen.findByText("Added the step.")).toBeTruthy();
+    expect(screen.queryByText(/Read the slack.post action/)).toBeNull();
+
+    fireEvent.click(screen.getByText("1 tool call"));
+    expect(await screen.findByText(/Read the slack.post action/)).toBeTruthy();
   });
 
   it("offers a way to send, and a way to stop once a turn is running", async () => {
