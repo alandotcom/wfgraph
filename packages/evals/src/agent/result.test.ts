@@ -88,6 +88,59 @@ describe("collectAgentEvalResult", () => {
     });
   });
 
+  it("uses only assistant text after the final tool result as the final response", () => {
+    const parts: AgentStreamPart[] = [
+      { type: "text-delta", id: "text-1", delta: "I will add the step. " },
+      {
+        type: "tool-call",
+        id: "call-1",
+        name: "add_node",
+        input: { actionId: "slack/send-message", label: "Notify" },
+      },
+      {
+        type: "tool-result",
+        id: "call-1",
+        name: "add_node",
+        summary: "Added Notify.",
+        failed: false,
+      },
+      { type: "text-delta", id: "text-2", delta: "The workflow is ready." },
+    ];
+
+    const result = collectAgentEvalResult(initialDocument, parts);
+
+    expect(result.finalText).toBe("The workflow is ready.");
+    expect(result.events).toEqual(
+      expect.arrayContaining([
+        {
+          type: "message",
+          role: "assistant",
+          content: "I will add the step. ",
+        },
+        {
+          type: "message",
+          role: "assistant",
+          content: "The workflow is ready.",
+        },
+      ])
+    );
+  });
+
+  it("uses all assistant text when the turn has no tool result", () => {
+    const parts: AgentStreamPart[] = [
+      { type: "text-delta", id: "text-1", delta: "I need more detail. " },
+      {
+        type: "text-delta",
+        id: "text-1",
+        delta: "Which channel should I use?",
+      },
+    ];
+
+    expect(collectAgentEvalResult(initialDocument, parts).finalText).toBe(
+      "I need more detail. Which channel should I use?"
+    );
+  });
+
   it("keeps the initial graph and records tool and stream failures", () => {
     const parts: AgentStreamPart[] = [
       {

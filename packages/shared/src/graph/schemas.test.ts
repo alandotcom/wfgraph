@@ -108,6 +108,22 @@ describe("a graph built in process", () => {
       )
     ).toThrow(/finite/);
   });
+
+  it.each([
+    ["width", { width: Number.POSITIVE_INFINITY }],
+    ["height", { height: Number.NaN }],
+  ])("rejects non-finite measured %s", (_field, measured) => {
+    expect(() =>
+      parseSerializedWorkflowGraph(
+        graphWithNode({
+          id: "n1",
+          position: { x: 0, y: 0 },
+          measured,
+          data: { label: "Send email", type: "action" },
+        })
+      )
+    ).toThrow(/finite/);
+  });
 });
 
 describe("persisted node data", () => {

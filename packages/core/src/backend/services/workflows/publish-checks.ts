@@ -34,16 +34,63 @@ import {
   nodesBehindOutlet,
 } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import { configDeclaresCancelEvent } from "@wfgraph/shared/lifecycle/lifecycle-rules";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
 
 export type PublishCheckResult =
   | { valid: true }
   | { valid: false; error: string };
 
+export type SynchronousPublicationFailure = {
+  kind:
+    | "missing_required_field"
+    | "invalid_event"
+    | "invalid_start_filter"
+    | "invalid_cancel_filter"
+    | "invalid_event_split"
+    | "invalid_template"
+    | "unreachable_node";
+  error: string;
+};
+
 const BOTH_OUTLETS: readonly LifecycleOutlet[] = [
   LIFECYCLE_STARTED_HANDLE,
   LIFECYCLE_CANCELED_HANDLE,
 ];
+
+type SynchronousPublicationCheck = readonly [
+  SynchronousPublicationFailure["kind"],
+  () => PublishCheckResult,
+];
+
+function synchronousPublicationChecks(input: {
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+  catalog: ExtensionCatalog;
+}): readonly SynchronousPublicationCheck[] {
+  const { nodes, edges, catalog } = input;
+
+  return [
+    [
+      "missing_required_field",
+      () => validateWorkflowActionConfigs(nodes, catalog),
+    ],
+    ["invalid_event", () => validateWorkflowEvents(nodes, catalog)],
+    // Publish only. `validateWorkflowEvents` also runs in preflight, where a
+    // Start Filter must not stop the whole workflow.
+    ["invalid_start_filter", () => validateStartFilters(nodes, catalog)],
+    ["invalid_cancel_filter", () => validateCancelFilters(nodes, catalog)],
+    [
+      "invalid_event_split",
+      () => validateEventSplitOutlets(nodes, edges, catalog),
+    ],
+    [
+      "invalid_template",
+      () => validateWorkflowTemplates({ nodes, edges, catalog }),
+    ],
+    ["unreachable_node", () => checkUnreachableSubtrees({ nodes, edges })],
+  ];
+}
 
 function lifecycleEntryIds(nodes: readonly WorkflowNode[]): Set<string> {
   return new Set(
@@ -127,6 +174,24 @@ export function checkUnreachableSubtrees(input: {
   };
 }
 
+/** Returns every synchronous publication failure in production priority order. */
+export function collectSynchronousPublicationFailures(input: {
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+  catalog: ExtensionCatalog;
+}): SynchronousPublicationFailure[] {
+  const failures: SynchronousPublicationFailure[] = [];
+
+  for (const [kind, check] of synchronousPublicationChecks(input)) {
+    const result = check();
+    if (!result.valid) {
+      failures.push({ kind, error: result.error });
+    }
+  }
+
+  return failures;
+}
+
 /**
  * Everything a graph must satisfy to become runnable, in one fixed order, no
  * further than the first refusal.
@@ -149,18 +214,11 @@ export const checkPublishReadiness = Effect.fn(
     const { nodes, edges } = input;
     const { catalog } = yield* Extensions;
 
-    for (const check of [
-      () => validateWorkflowActionConfigs(nodes, catalog),
-      () => validateWorkflowEvents(nodes, catalog),
-      // Publish only. `validateWorkflowEvents` above runs in preflight too, and
-      // a lifecycle filter must not stop a whole workflow there. The validation
-      // module explains why these checks belong at publish.
-      () => validateStartFilters(nodes, catalog),
-      () => validateCancelFilters(nodes, catalog),
-      () => validateEventSplitOutlets(nodes, edges, catalog),
-      () => validateWorkflowTemplates({ nodes, edges, catalog }),
-      () => checkUnreachableSubtrees({ nodes, edges }),
-    ]) {
+    for (const [, check] of synchronousPublicationChecks({
+      nodes,
+      edges,
+      catalog,
+    })) {
       const result = check();
       if (!result.valid) {
         return yield* new InvalidInput({ error: result.error });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Effect } from "effect";
+import { Effect, Exit } from "effect";
 import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
 import { emptyLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { fixtureCatalog } from "#src/tools/catalog-fixture";
@@ -151,168 +151,51 @@ describe("read_workflow", () => {
 });
 
 describe("validate_workflow", () => {
-  it.effect("reports nothing for a workflow that is fully configured", () =>
+  it.effect("requires an explicit draft validation stub", () =>
     Effect.gen(function* () {
-      const { tools } = yield* agentToolsFor({
-        nodes: [lifecycle, slackNode],
-        edges: [entryToSlack],
-        catalog,
-        integrations: [{ id: "conn-1", type: "slack" }],
-      });
-      const result = yield* tools.validate_workflow();
+      const { tools } = yield* agentToolsFor({ catalog });
+      const result = yield* Effect.exit(tools.validate_workflow());
 
-      expect(result).toEqual({
-        draftValid: true,
-        structuralIssues: [],
-        publishBlockers: [],
-        warnings: [],
-      });
+      expect(Exit.isFailure(result)).toBe(true);
+      if (Exit.isFailure(result)) {
+        const failure = result.cause.reasons[0];
+        expect(failure?._tag).toBe("Die");
+        if (failure?._tag === "Die") {
+          expect(failure.defect).toBeInstanceOf(Error);
+          if (failure.defect instanceof Error) {
+            expect(failure.defect.message).toBe(
+              "agentToolsFor requires an explicit validateDraft stub for validate_workflow"
+            );
+          }
+        }
+      }
     })
   );
 
-  it.effect("blocks on an action whose integration is not connected", () =>
+  it.effect("forwards the injected full draft validation unchanged", () =>
     Effect.gen(function* () {
-      const { tools } = yield* agentToolsFor({
-        nodes: [lifecycle, slackNode],
-        edges: [entryToSlack],
-        catalog,
-        integrations: [],
-      });
-      const result = yield* tools.validate_workflow();
-
-      expect(result.draftValid).toBe(true);
-      expect(result.structuralIssues).toEqual([]);
-      expect(result.publishBlockers).toContainEqual(
-        expect.objectContaining({
-          kind: "missing_integration",
-          severity: "blocking",
-          nodeId: "notify",
-        })
-      );
-    })
-  );
-
-  it.effect("blocks on a join across mutually exclusive Condition paths", () =>
-    Effect.gen(function* () {
-      const condition: WorkflowNode = {
-        id: "condition",
-        position: { x: 0, y: 0 },
-        type: "action",
-        data: {
-          label: "Is Jerry?",
-          type: "action",
-          config: { actionType: "Condition" },
-        },
-      };
-      const linear: WorkflowNode = {
-        ...slackNode,
-        id: "linear",
-        data: {
-          ...slackNode.data,
-          label: "Create Linear ticket",
-          config: { actionType: "linear/create-issue" },
-        },
-      };
-      const edges: WorkflowEdge[] = [
-        {
-          id: "entry-condition",
-          source: "entry",
-          target: "condition",
-          sourceHandle: "started",
-        },
-        {
-          id: "condition-true",
-          source: "condition",
-          target: "notify",
-          sourceHandle: "true",
-        },
-        {
-          id: "condition-false",
-          source: "condition",
-          target: "linear",
-          sourceHandle: "false",
-        },
-        { id: "notify-linear", source: "notify", target: "linear" },
-      ];
-      const { tools } = yield* agentToolsFor({
-        nodes: [lifecycle, condition, slackNode, linear],
-        edges,
-        catalog,
-      });
-
-      const result = yield* tools.validate_workflow();
-
-      expect(result.draftValid).toBe(false);
-      expect(result.structuralIssues[0]).toContain(
-        "mutually exclusive branches"
-      );
-    })
-  );
-
-  it.effect("blocks on a required field the config leaves empty", () =>
-    Effect.gen(function* () {
-      const missingText: WorkflowNode = {
-        ...slackNode,
-        data: {
-          ...slackNode.data,
-          config: {
-            actionType: "slack/send-message",
-            integrationId: "conn-1",
-            channel: "#hiring",
+      const validation = {
+        draftValid: false,
+        structuralIssues: ["Graph contains duplicate edge IDs"],
+        publishBlockers: [
+          {
+            kind: "missing_integration",
+            message: "Connect Slack before publication.",
           },
-        },
-      };
-
-      const { tools } = yield* agentToolsFor({
-        nodes: [lifecycle, missingText],
-        edges: [entryToSlack],
-        catalog,
-        integrations: [{ id: "conn-1", type: "slack" }],
-      });
-      const result = yield* tools.validate_workflow();
-
-      expect(result.draftValid).toBe(true);
-      expect(result.publishBlockers).toContainEqual(
-        expect.objectContaining({
-          kind: "missing_required_field",
-          severity: "blocking",
-          nodeId: "notify",
-        })
-      );
-    })
-  );
-
-  it.effect("warns about a template token naming a node that is gone", () =>
-    Effect.gen(function* () {
-      const danglingRef: WorkflowNode = {
-        ...slackNode,
-        data: {
-          ...slackNode.data,
-          config: {
-            actionType: "slack/send-message",
-            integrationId: "conn-1",
-            channel: "#hiring",
-            text: "Score was {{@removed:Score applicant.score}}",
+        ],
+        warnings: [
+          {
+            kind: "broken_reference",
+            message: "A template refers to a deleted node.",
           },
-        },
-      };
-
+        ],
+      } as const;
       const { tools } = yield* agentToolsFor({
-        nodes: [lifecycle, danglingRef],
-        edges: [entryToSlack],
         catalog,
-        integrations: [{ id: "conn-1", type: "slack" }],
+        validateDraft: () => validation,
       });
-      const result = yield* tools.validate_workflow();
 
-      expect(result.warnings).toContainEqual(
-        expect.objectContaining({
-          kind: "broken_reference",
-          nodeId: "notify",
-        })
-      );
-      expect(result.draftValid).toBe(true);
-      expect(result.publishBlockers).toEqual([]);
+      expect(yield* tools.validate_workflow()).toBe(validation);
     })
   );
 });

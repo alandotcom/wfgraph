@@ -24,9 +24,14 @@ export const focusedScenarios: Array<{
       document: emptyDocument,
       integrations: [],
       expected: {
-        requiredActions: { "score-applicant": 1 },
         exactActions: { "score-applicant": 1 },
-        startEvents: ["applicant.created"],
+        exactEvents: { start: ["applicant.created"], cancel: [] },
+        efficiencyBudget: {
+          maxModelCalls: 12,
+          maxToolCalls: 24,
+          maxGraphRevisions: 6,
+          maxRefusals: 4,
+        },
         requiredFlows: [
           {
             source: { kind: "lifecycle" },
@@ -59,9 +64,8 @@ export const focusedScenarios: Array<{
       document: emptyDocument,
       integrations: [],
       expected: {
-        requiredActions: { "slack/send-message": 1 },
         exactActions: { "slack/send-message": 1 },
-        startEvents: ["applicant.created"],
+        exactEvents: { start: ["applicant.created"], cancel: [] },
         requiredConfigs: [
           {
             node: { kind: "action", actionId: "slack/send-message" },
@@ -78,8 +82,12 @@ export const focusedScenarios: Array<{
       },
       expectedCompletion: {
         outcome: "blocked",
-        answerMustMention: ["slack", "requires a connection"],
-        publishBlockerMustMention: ["connected slack integration"],
+        answerMustMention: ["Slack", "connection"],
+        requiredPublishBlocker: {
+          kind: "missing_integration",
+          messageMustMention: ["needs a Slack connection"],
+        },
+        allowedPublishBlockerKinds: ["missing_integration"],
       },
       intentCriteria: [
         "The workflow is built as far as possible.",
@@ -100,15 +108,44 @@ export const focusedScenarios: Array<{
       document: emptyDocument,
       integrations: [],
       expected: {
-        forbiddenActions: ["sms/send-message", "twilio/send-message"],
-        allowedActions: [],
+        exactActions: {},
+        exactEvents: { start: [], cancel: [] },
+        editSafety: { forbiddenMutations: "all" },
       },
       expectedCompletion: {
         outcome: "unsupported",
+        answerMustMentionOneOf: ["SMS", "text message", "texting"],
       },
       intentCriteria: [
         "The answer explains that the available actions cannot send SMS.",
         "The graph contains no invented SMS action.",
+      ],
+    }),
+  },
+  {
+    name: "asks which Event should start an ambiguous workflow",
+    input: scenario({
+      messages: [
+        {
+          role: "user",
+          content:
+            "I need an applicant follow-up workflow, but I have not chosen the trigger Event. Ask me which Event should start the workflow before making any changes.",
+        },
+      ],
+      document: emptyDocument,
+      integrations: [],
+      expected: {
+        exactActions: {},
+        exactEvents: { start: [], cancel: [] },
+        editSafety: { forbiddenMutations: "all" },
+      },
+      expectedCompletion: {
+        outcome: "clarification",
+        questionMustMention: ["event"],
+      },
+      intentCriteria: [
+        "The answer asks which Event should start the applicant follow-up workflow.",
+        "The graph remains empty while the trigger Event is unspecified.",
       ],
     }),
   },
@@ -125,16 +162,23 @@ export const focusedScenarios: Array<{
       document: emptyDocument,
       integrations: connectedIntegrations,
       expected: {
-        requiredActions: {
-          [BUILT_IN_ACTION_IDS.eventSplit]: 1,
-          "slack/send-message": 2,
-        },
         exactActions: {
           [BUILT_IN_ACTION_IDS.eventSplit]: 1,
           "slack/send-message": 2,
         },
-        startEvents: ["app/appointment.created", "app/appointment.rescheduled"],
+        exactEvents: {
+          start: ["app/appointment.created", "app/appointment.rescheduled"],
+          cancel: [],
+        },
         requiredFlows: [
+          {
+            source: { kind: "lifecycle" },
+            target: {
+              kind: "action",
+              actionId: BUILT_IN_ACTION_IDS.eventSplit,
+            },
+            sourceHandle: "started",
+          },
           {
             source: {
               kind: "action",
@@ -150,6 +194,24 @@ export const focusedScenarios: Array<{
             },
             target: { kind: "action", actionId: "slack/send-message" },
             sourceHandle: "event:app/appointment.rescheduled",
+          },
+        ],
+        requiredExclusiveBranches: [
+          {
+            source: {
+              kind: "action",
+              actionId: BUILT_IN_ACTION_IDS.eventSplit,
+            },
+            branches: [
+              {
+                sourceHandle: "event:app/appointment.created",
+                target: { kind: "action", actionId: "slack/send-message" },
+              },
+              {
+                sourceHandle: "event:app/appointment.rescheduled",
+                target: { kind: "action", actionId: "slack/send-message" },
+              },
+            ],
           },
         ],
         requiredNonEmptyConfigs: [
@@ -170,7 +232,11 @@ export const focusedScenarios: Array<{
       expectedCompletion: {
         outcome: "blocked",
         answerMustMention: ["channel"],
-        publishBlockerMustMention: ["missing required fields", "channel"],
+        requiredPublishBlocker: {
+          kind: "missing_required_field",
+          messageMustMention: ["missing required field", "channel"],
+        },
+        allowedPublishBlockerKinds: ["missing_required_field"],
       },
       intentCriteria: [
         "Each Start Event reaches only its matching Slack message.",
@@ -191,9 +257,8 @@ export const focusedScenarios: Array<{
       document: emptyDocument,
       integrations: [],
       expected: {
-        requiredActions: { "appointments/cancel": 1 },
         exactActions: { "appointments/cancel": 1 },
-        startEvents: ["app/appointment.created"],
+        exactEvents: { start: ["app/appointment.created"], cancel: [] },
         requiredConfigs: [
           {
             node: { kind: "action", actionId: "appointments/cancel" },
@@ -235,15 +300,11 @@ export const focusedScenarios: Array<{
       document: emptyDocument,
       integrations: connectedIntegrations,
       expected: {
-        requiredActions: {
-          [BUILT_IN_ACTION_IDS.wait]: 1,
-          "slack/send-message": 1,
-        },
         exactActions: {
           [BUILT_IN_ACTION_IDS.wait]: 1,
           "slack/send-message": 1,
         },
-        startEvents: ["app/appointment.created"],
+        exactEvents: { start: ["app/appointment.created"], cancel: [] },
         requiredFlows: [
           {
             source: { kind: "lifecycle" },
@@ -312,15 +373,11 @@ export const focusedScenarios: Array<{
       },
       integrations: connectedIntegrations,
       expected: {
-        requiredActions: {
-          "score-applicant": 1,
-          "slack/send-message": 1,
-        },
         exactActions: {
           "score-applicant": 1,
           "slack/send-message": 1,
         },
-        startEvents: ["applicant.created"],
+        exactEvents: { start: ["applicant.created"], cancel: [] },
         requiredReferences: [
           {
             node: { kind: "action", actionId: "slack/send-message" },
@@ -348,17 +405,18 @@ export const focusedScenarios: Array<{
       document: configuredApplicantDocument,
       integrations: connectedIntegrations,
       expected: {
-        requiredActions: {
-          "score-applicant": 1,
-          "slack/send-message": 1,
-        },
         exactActions: {
           "score-applicant": 1,
           "slack/send-message": 1,
         },
-        startEvents: ["applicant.created"],
-        cancelEvents: ["applicant.withdrawn"],
-        preserveNodeIds: ["score", "notify"],
+        exactEvents: {
+          start: ["applicant.created"],
+          cancel: ["applicant.withdrawn"],
+        },
+        editSafety: {
+          protectedNodeIds: ["score", "notify"],
+          protectedEdgeIds: ["entry-score", "score-notify"],
+        },
       },
       expectedCompletion: { outcome: "ready" },
       intentCriteria: [
@@ -380,10 +438,8 @@ export const focusedScenarios: Array<{
       document: emptyDocument,
       integrations: [],
       expected: {
-        requiredActions: { "score-applicant": 1 },
         exactActions: { "score-applicant": 1 },
-        forbiddenActions: [BUILT_IN_ACTION_IDS.condition],
-        startEvents: ["applicant.created"],
+        exactEvents: { start: ["applicant.created"], cancel: [] },
         requiredStartFilters: [
           {
             event: "applicant.created",
@@ -433,11 +489,11 @@ export const focusedScenarios: Array<{
       document: emptyDocument,
       integrations: [],
       expected: {
-        requiredActions: { [BUILT_IN_ACTION_IDS.wait]: 1 },
         exactActions: { [BUILT_IN_ACTION_IDS.wait]: 1 },
-        forbiddenActions: [BUILT_IN_ACTION_IDS.condition],
-        startEvents: ["app/appointment.created"],
-        cancelEvents: ["app/appointment.canceled"],
+        exactEvents: {
+          start: ["app/appointment.created"],
+          cancel: ["app/appointment.canceled"],
+        },
         requiredCancelFilters: [
           {
             event: "app/appointment.canceled",
@@ -494,15 +550,11 @@ export const focusedScenarios: Array<{
       document: emptyDocument,
       integrations: connectedIntegrations,
       expected: {
-        requiredActions: {
-          [BUILT_IN_ACTION_IDS.wait]: 1,
-          "slack/send-message": 1,
-        },
         exactActions: {
           [BUILT_IN_ACTION_IDS.wait]: 1,
           "slack/send-message": 1,
         },
-        startEvents: ["app/appointment.created"],
+        exactEvents: { start: ["app/appointment.created"], cancel: [] },
         requiredFlows: [
           {
             source: { kind: "lifecycle" },

@@ -1,11 +1,16 @@
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { AgentMessage } from "@wfgraph/shared/rpc/agent-stream";
 import type { AgentDocument } from "@wfgraph/agent/document";
+import type { AgentPublicationBlockerKind } from "@wfgraph/core/backend/agent/publication-validation";
+import type { AgentTraceSummary } from "@wfgraph/core/backend/agent/trace";
 import type {
   ConditionRule,
   GroupLogic,
 } from "@wfgraph/shared/conditions/condition-model";
-import type { DeterministicAssessment } from "#src/agent/judges/graph";
+import type { CompletionFacts } from "#src/agent/completion-facts";
+import type { JsonNormalized } from "#src/agent/evidence";
+import type { AgentEvalDocument } from "#src/agent/result";
+import type { AgentTrajectory } from "#src/agent/trajectory";
 
 type WithoutId<Value> = Value extends { id: string }
   ? Omit<Value, "id">
@@ -24,17 +29,34 @@ export type EvalLifecycleFilter = {
   };
 };
 
+export type AgentEvalEditSafety = {
+  protectedNodeIds?: string[];
+  protectedEdgeIds?: string[];
+  forbiddenMutations?: "all" | string[];
+};
+
+export type AgentEvalEfficiencyBudget = {
+  maxModelCalls?: number;
+  maxToolCalls?: number;
+  maxGraphRevisions?: number;
+  maxRefusals?: number;
+};
+
 export type EvalNodeSelector =
   | { kind: "lifecycle" }
   | { kind: "action"; actionId: string; label?: string };
 
+/** Every kind returned by the canonical agent publication validator. */
+export type PublicationBlockerKind = AgentPublicationBlockerKind;
+
 export type AgentEvalExpectations = {
-  requiredActions?: Record<string, number>;
+  editSafety?: AgentEvalEditSafety;
   exactActions?: Record<string, number>;
-  forbiddenActions?: string[];
-  allowedActions?: string[];
-  startEvents?: string[];
-  cancelEvents?: string[];
+  exactEvents?: {
+    start: string[];
+    cancel: string[];
+  };
+  efficiencyBudget?: AgentEvalEfficiencyBudget;
   requiredStartFilters?: EvalLifecycleFilter[];
   requiredCancelFilters?: EvalLifecycleFilter[];
   requiredFlows?: Array<{
@@ -54,6 +76,13 @@ export type AgentEvalExpectations = {
   requiredParallel?: Array<{
     first: EvalNodeSelector;
     second: EvalNodeSelector;
+  }>;
+  requiredExclusiveBranches?: Array<{
+    source: EvalNodeSelector;
+    branches: Array<{
+      sourceHandle: string;
+      target: EvalNodeSelector;
+    }>;
   }>;
   requiredConfigs?: Array<{
     node: EvalNodeSelector;
@@ -102,17 +131,20 @@ export type AgentEvalExpectations = {
     key: string;
     count: number;
   }>;
-  preserveNodeIds?: string[];
-  preserveDocument?: boolean;
 };
 
 export type AgentEvalExpectedCompletion =
   | { outcome: "ready" }
+  | { outcome: "clarification"; questionMustMention: string[] }
   | {
       outcome: "blocked";
       answerMustMention: string[];
       answerMustMentionOneOf?: string[];
-      publishBlockerMustMention: string[];
+      requiredPublishBlocker: {
+        kind: PublicationBlockerKind;
+        messageMustMention: string[];
+      };
+      allowedPublishBlockerKinds: PublicationBlockerKind[];
     }
   | {
       outcome: "unsupported";
@@ -131,25 +163,17 @@ export type AgentEvalInput = {
   model?: string;
 };
 
+export type AgentEvalEvidenceDocument = JsonNormalized<AgentEvalDocument>;
+
+export type AgentEvalCompletionFacts = JsonNormalized<CompletionFacts>;
+export type AgentEvalTrajectory = JsonNormalized<AgentTrajectory>;
+export type AgentEvalTraceSummary = JsonNormalized<AgentTraceSummary, null>;
+
 export type AgentEvalOutput = {
-  finalDocumentJson: string;
+  finalDocument: AgentEvalEvidenceDocument;
   finalText: string;
   errors: string[];
-  publishability: DeterministicAssessment;
-  grounding: DeterministicAssessment;
-  semantics: DeterministicAssessment;
-  toolBehavior: DeterministicAssessment;
-  completion: DeterministicAssessment;
-  traceSummary: {
-    modelCalls: number;
-    toolCalls: number;
-    refusals: number;
-    graphRevisions: number;
-    inputTokens: number;
-    outputTokens: number;
-    reasoningTokens: number;
-    totalTokens: number;
-    finishReason: string | null;
-    finishReasons: string[];
-  };
+  completionFacts: AgentEvalCompletionFacts;
+  trajectory: AgentEvalTrajectory;
+  traceSummary: AgentEvalTraceSummary;
 };

@@ -1,8 +1,15 @@
 import { describe, expect, it } from "vitest";
+import { Effect, Layer } from "effect";
 import {
+  collectSynchronousPublicationFailures,
+  checkPublishReadiness,
   checkUnreachableSubtrees,
   reachableNodeIds,
 } from "#src/backend/services/workflows/publish-checks";
+import {
+  stubExtensions,
+  stubIntegrationRepo,
+} from "#src/backend/lib/effect/test-layers";
 import {
   catalogFingerprint,
   draftDiffersFromPublished,
@@ -20,6 +27,7 @@ import {
   createSerializedWorkflowGraph,
   toWorkflowGraphData,
 } from "@wfgraph/shared/graph/graph";
+import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import { LIFECYCLE_CANCELED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 
 function lifecycleNode(cancelEvents: string[] = []) {
@@ -41,7 +49,7 @@ function lifecycleNode(cancelEvents: string[] = []) {
   };
 }
 
-function actionNode(id: string, label: string) {
+function actionNode(id: string, label: string): WorkflowNode {
   return {
     id,
     type: "action" as const,
@@ -92,6 +100,80 @@ const catalogOf = (parts: Partial<ExtensionCatalog>): ExtensionCatalog => ({
 });
 
 describe("publish-checks", () => {
+  it("stops after the first synchronous failure before later checks or integration lookup", async () => {
+    const sendAction: ActionMetadata = {
+      ...anAction("custom/send"),
+      configFields: [
+        { key: "to", label: "to", type: "text", required: true },
+        aField("template"),
+      ],
+    };
+    let actionReads = 0;
+    const catalog: ExtensionCatalog = {
+      ...emptyExtensionCatalog,
+      actions: [sendAction],
+    };
+    Object.defineProperty(catalog, "actions", {
+      configurable: true,
+      get() {
+        actionReads += 1;
+        if (actionReads > 1) {
+          throw new Error("template validation ran after an earlier failure");
+        }
+        return [sendAction];
+      },
+    });
+
+    const invalidAction = actionNode("send", "Send");
+    invalidAction.data.config = {
+      actionType: "custom/send",
+      template: "{{@lifecycle-1:Start.id}}",
+    };
+    let integrationLookups = 0;
+
+    await expect(
+      Effect.runPromise(
+        checkPublishReadiness({
+          nodes: [lifecycle, invalidAction],
+          edges: [],
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              stubExtensions({ catalog }),
+              stubIntegrationRepo({
+                typesByIds: () =>
+                  Effect.sync(() => {
+                    integrationLookups += 1;
+                    return {};
+                  }),
+              })
+            )
+          )
+        )
+      )
+    ).rejects.toMatchObject({
+      _tag: "InvalidInput",
+      error: 'Node "Send" is missing required fields: to',
+    });
+
+    expect(integrationLookups).toBe(0);
+  });
+
+  it("collects every synchronous failure in publication order", () => {
+    const invalidLifecycle = lifecycleNode();
+    invalidLifecycle.data.config.lifecycleRules.startEvents = ["unknown.event"];
+    const unfinished = actionNode("unfinished", "Unfinished");
+    unfinished.data.config = {};
+
+    expect(
+      collectSynchronousPublicationFailures({
+        nodes: [invalidLifecycle, unfinished],
+        edges: [],
+        catalog: emptyExtensionCatalog,
+      }).map((failure) => failure.kind)
+    ).toEqual(["missing_required_field", "invalid_event", "unreachable_node"]);
+  });
+
   it("flags nodes the Lifecycle Node cannot reach", () => {
     const orphan = actionNode("orphan", "Orphan");
     const { nodes, edges } = toWorkflowGraphData(

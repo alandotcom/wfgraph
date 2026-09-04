@@ -222,6 +222,12 @@ export const workflowNodeAttributesSchema = Schema.StructWithRest(
     parentId: Schema.optional(NonEmptyTrimmedString),
     width: Schema.optional(Schema.Finite),
     height: Schema.optional(Schema.Finite),
+    measured: Schema.optional(
+      Schema.Struct({
+        width: Schema.optional(Schema.Finite),
+        height: Schema.optional(Schema.Finite),
+      })
+    ),
     // `Schema.Finite` rejects Infinity and NaN. A node position holding either
     // is already corruption, and the editor's save store treats a rejected
     // graph as "nothing to save" rather than surfacing it.
@@ -247,6 +253,12 @@ export const workflowEdgeAttributesSchema = Schema.StructWithRest(
   }),
   unknownRest
 );
+
+/** The direct graph shape before it enters the persisted graph envelope. */
+export const workflowGraphDataSchema = Schema.Struct({
+  nodes: listOf(workflowNodeAttributesSchema),
+  edges: listOf(workflowEdgeAttributesSchema),
+});
 
 const serializedWorkflowNodeSchema = Schema.Struct({
   key: NonEmptyTrimmedString,

@@ -2,12 +2,11 @@
 import type { TranscriptEvent } from "vitest-evals";
 import type { AgentDocument } from "@wfgraph/agent/document";
 import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
-import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
 import type { AgentStreamPart } from "@wfgraph/shared/rpc/agent-stream";
 
 export type AgentEvalDocument = {
-  nodes: WorkflowNode[];
-  edges: WorkflowEdge[];
+  nodes: Array<AgentDocument["nodes"][number]>;
+  edges: Array<AgentDocument["edges"][number]>;
 };
 
 export type AgentEvalResult = {
@@ -57,6 +56,7 @@ export function collectAgentEvalResult(
         break;
       case "tool-result":
         flushText();
+        finalText = "";
         events.push(
           part.failed
             ? {

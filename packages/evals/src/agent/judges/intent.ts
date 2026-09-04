@@ -24,6 +24,13 @@ export function keepIntentJudgeAdvisory<E, R>(
   }));
 }
 
+export function runIntentJudgeEffect<A, E>(
+  effect: Effect.Effect<A, E>,
+  signal?: AbortSignal
+): Promise<A> {
+  return Effect.runPromise(effect, { signal });
+}
+
 export function parseIntentVerdict(value: unknown): IntentVerdict {
   try {
     const text =
@@ -48,11 +55,11 @@ export function parseIntentVerdict(value: unknown): IntentVerdict {
 
 export const workflowIntentJudgeHarness = createJudgeHarness({
   name: "workflow-intent-judge",
-  run: async ({ system, prompt }) => {
+  run: async ({ system, prompt }, { signal }) => {
     const modelPrompt = Prompt.make([{ role: "user", content: prompt }]).pipe(
       Prompt.setSystem(system ?? "Evaluate the supplied workflow evidence.")
     );
-    const verdict = await Effect.runPromise(
+    const verdict = await runIntentJudgeEffect(
       LanguageModel.generateObject({
         objectName: "intent_verdict",
         prompt: modelPrompt,
@@ -65,7 +72,8 @@ export const workflowIntentJudgeHarness = createJudgeHarness({
             readEvalModelSettings(process.env.WFGRAPH_EVAL_JUDGE_MODEL)
           )
         )
-      )
+      ),
+      signal
     );
     return verdict;
   },
@@ -84,13 +92,9 @@ export const IntentAlignmentJudge = createJudge<
     prompt: JSON.stringify({
       request: context.input.messages,
       criteria: context.input.intentCriteria,
-      finalDocument: JSON.parse(context.output.finalDocumentJson),
+      finalDocument: context.output.finalDocument,
       finalAnswer: context.output.finalText,
-      deterministicAssessments: {
-        publishability: context.output.publishability,
-        grounding: context.output.grounding,
-        semantics: context.output.semantics,
-      },
+      completionFacts: context.output.completionFacts,
     }),
     responseFormat: { type: "json" },
   });

@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import { defineIntegration } from "#src/backend/extensions/define-integration";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
 import {
+  extractRequiredIntegrationRequirements,
   extractRequiredIntegrationIds,
+  shouldEnforceStrictIntegrationValidation,
   validateWorkflowIntegrations,
 } from "#src/backend/services/workflows/validation/workflow-integration-validation";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
@@ -126,6 +128,38 @@ function createWaitNode(
 }
 
 describe("extractRequiredIntegrationIds", () => {
+  it("includes node identity in each integration requirement", () => {
+    const requirements = extractRequiredIntegrationRequirements(
+      [
+        createLifecycleNode({
+          startEvents: ["slack/message.posted"],
+          cancelEvents: [],
+          concurrency: "unlimited",
+          connectionIds: { "slack/message.posted": "slack_1" },
+        }),
+        createWaitNode([
+          { event: "slack/message.posted", connectionId: "slack_2" },
+        ]),
+      ],
+      eventCatalog
+    );
+
+    expect(requirements).toEqual([
+      {
+        integrationId: "slack_1",
+        requiredType: "slack",
+        nodeId: "lifecycle_1",
+        nodeLabel: "Lifecycle",
+      },
+      {
+        integrationId: "slack_2",
+        requiredType: "slack",
+        nodeId: "wait_1",
+        nodeLabel: "Action",
+      },
+    ]);
+  });
+
   it("includes integration IDs for actions that require integrations", () => {
     const ids = extractRequiredIntegrationIds(
       [
@@ -199,6 +233,11 @@ describe("extractRequiredIntegrationIds", () => {
 });
 
 describe("validateWorkflowIntegrations", () => {
+  it("exposes the strict-validation decision used by publication callers", () => {
+    expect(shouldEnforceStrictIntegrationValidation(true)).toBe(true);
+    expect(shouldEnforceStrictIntegrationValidation(false)).toBe(false);
+  });
+
   it("deduplicates integration ids before the one read it makes", async () => {
     const getIntegrationTypesByIds = vi.fn(() =>
       Effect.succeed({ shared_integration: "slack" })
@@ -415,6 +454,22 @@ describe("Event Connection references", () => {
         createLifecycleNode({
           startEvents: ["slack/message.posted"],
           cancelEvents: [],
+          concurrency: "unlimited",
+          connectionIds: { "slack/message.posted": "slack_1" },
+        }),
+      ],
+      eventCatalog
+    );
+
+    expect(ids).toEqual(["slack_1"]);
+  });
+
+  it("collects the Connection for a Lifecycle Cancel Event", () => {
+    const ids = extractRequiredIntegrationIds(
+      [
+        createLifecycleNode({
+          startEvents: [],
+          cancelEvents: ["slack/message.posted"],
           concurrency: "unlimited",
           connectionIds: { "slack/message.posted": "slack_1" },
         }),

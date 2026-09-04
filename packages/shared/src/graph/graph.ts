@@ -5,15 +5,18 @@ import { rejectUnknownKeys } from "#src/types/schema";
 import {
   serializedWorkflowGraphSchema,
   workflowEdgeAttributesSchema,
+  workflowGraphDataSchema,
   workflowNodeAttributesSchema,
 } from "#src/graph/schemas";
 import { persistedNodeEnabled } from "#src/graph/node-enabled";
+import { omitUndefined } from "#src/utils/omit-undefined";
 import type {
   PersistedNodeData,
   SerializedWorkflowEdge,
   SerializedWorkflowGraph,
   SerializedWorkflowNode,
   WorkflowEdge,
+  WorkflowGraphData,
   WorkflowNode,
   WorkflowNodeType,
 } from "#src/graph/types";
@@ -38,6 +41,10 @@ const decodeGraph = Schema.decodeUnknownSync(
   rejectUnknownKeys
 );
 const readGraph = Schema.decodeUnknownResult(serializedWorkflowGraphSchema, {
+  ...rejectUnknownKeys,
+  errors: "all",
+});
+const readGraphData = Schema.decodeUnknownResult(workflowGraphDataSchema, {
   ...rejectUnknownKeys,
   errors: "all",
 });
@@ -114,10 +121,12 @@ function parseNodeAttributes(attributes: unknown): WorkflowNode {
   // open rest of `workflowNodeAttributesSchema` and is read by nobody.
   const node: WorkflowNode = {
     id: parsed.id,
-    type: parsed.type,
     position: parsed.position ?? { x: 0, y: 0 },
     data: toPersistedNodeData(parsed.data),
   };
+  if (parsed.type !== undefined) {
+    node.type = parsed.type;
+  }
   if (parsed.parentId !== undefined) {
     node.parentId = parsed.parentId;
   }
@@ -127,19 +136,22 @@ function parseNodeAttributes(attributes: unknown): WorkflowNode {
   if (parsed.height !== undefined) {
     node.height = parsed.height;
   }
+  if (parsed.measured !== undefined) {
+    node.measured = parsed.measured;
+  }
   return node;
 }
 
 function parseEdgeAttributes(attributes: unknown): WorkflowEdge {
   const parsed = decodeEdgeAttributes(attributes);
-  return {
+  return omitUndefined({
     id: parsed.id,
     source: parsed.source,
     target: parsed.target,
     sourceHandle: parsed.sourceHandle,
     targetHandle: parsed.targetHandle,
     data: parsed.data,
-  };
+  });
 }
 
 function toNodeFromSerialized(
@@ -180,8 +192,8 @@ function toEdgeFromSerialized(
 }
 
 export function createSerializedWorkflowGraph(input: {
-  nodes: WorkflowGraphNodeInput[];
-  edges: WorkflowEdge[];
+  nodes: readonly WorkflowGraphNodeInput[];
+  edges: readonly WorkflowEdge[];
   attributes?: Record<string, unknown> | undefined;
 }): SerializedWorkflowGraph {
   const graph = new DirectedGraph({
@@ -218,10 +230,43 @@ export function createSerializedWorkflowGraph(input: {
   return parseSerializedWorkflowGraph(graph.export());
 }
 
+/** Wraps direct graph data without applying graph topology policy. */
+export function serializeWorkflowGraphData(
+  input: WorkflowGraphData
+): SerializedWorkflowGraph {
+  return {
+    attributes: {},
+    options: WORKFLOW_GRAPH_OPTIONS,
+    nodes: input.nodes.map((node) => ({
+      key: node.id,
+      attributes: { ...node, type: node.data.type },
+    })),
+    edges: input.edges.map((edge) => ({
+      key: edge.id,
+      source: edge.source,
+      target: edge.target,
+      attributes: edge,
+      undirected: false,
+    })),
+  };
+}
+
 export function parseSerializedWorkflowGraph(
   value: unknown
 ): SerializedWorkflowGraph {
   return decodeGraph(value);
+}
+
+/** Parses the direct graph shape and removes fields outside the shared contract. */
+export function parseWorkflowGraphData(value: unknown): WorkflowGraphData {
+  const parsed = readGraphData(value);
+  if (Result.isFailure(parsed)) {
+    throw new Error(formatSchemaFailure(parsed.failure.issue));
+  }
+  return {
+    nodes: parsed.success.nodes.map(parseNodeAttributes),
+    edges: parsed.success.edges.map(parseEdgeAttributes),
+  };
 }
 
 export function toWorkflowGraphData(serializedGraph: SerializedWorkflowGraph): {

@@ -3,10 +3,13 @@ import { describeEval } from "vitest-evals";
 import { workflowAgentHarness } from "#src/agent/harness";
 import {
   CompletionOutcomeJudge,
-  ConfusionJudge,
+  EditSafetyJudge,
+  EfficiencyBudgetJudge,
+  EvidenceUseJudge,
   GroundedGraphJudge,
+  RecoveryJudge,
   ScenarioSemanticsJudge,
-  ToolProtocolJudge,
+  ValidationJudge,
 } from "#src/agent/judges/index";
 import {
   IntentAlignmentJudge,
@@ -18,8 +21,10 @@ const deterministicJudges = [
   CompletionOutcomeJudge,
   GroundedGraphJudge,
   ScenarioSemanticsJudge,
-  ToolProtocolJudge,
-  ConfusionJudge,
+  EvidenceUseJudge,
+  EditSafetyJudge,
+  RecoveryJudge,
+  ValidationJudge,
 ];
 
 const skipWithoutModelKey = () => !process.env.OPENAI_API_KEY?.trim();
@@ -33,10 +38,14 @@ describeEval(
     skipIf: skipWithoutModelKey,
   },
   (it) => {
-    it.for(focusedScenarios)(
-      "$name",
-      async ({ input }, { run }) => void (await run(input))
-    );
+    it.for(focusedScenarios)("$name", async ({ input }, { run }) => {
+      const result = await run(input);
+      if (input.expected.efficiencyBudget !== undefined) {
+        await expect(result).toSatisfyJudge(EfficiencyBudgetJudge, {
+          threshold: null,
+        });
+      }
+    });
   }
 );
 
@@ -58,6 +67,12 @@ describeEval(
       "$name (trial $trial)",
       async ({ input, trial }, { run }) => {
         const result = await run(input);
+
+        if (input.expected.efficiencyBudget !== undefined) {
+          await expect(result).toSatisfyJudge(EfficiencyBudgetJudge, {
+            threshold: null,
+          });
+        }
 
         // One advisory model judgment per scenario limits cost while the three
         // agent trials still measure behavioral variability.

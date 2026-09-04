@@ -23,7 +23,12 @@ describe("makeWorkflowDraft", () => {
           document: initialDocument,
           catalog: { actions: [], events: [], integrations: [] },
           integrations: [],
-          validatePublication: () => ({ publishBlockers: [], warnings: [] }),
+          validateDraft: () => ({
+            draftValid: true,
+            structuralIssues: [],
+            publishBlockers: [],
+            warnings: [],
+          }),
         });
         const firstNode = {
           id: "first",

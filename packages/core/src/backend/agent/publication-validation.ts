@@ -1,36 +1,58 @@
 /**
- * Canonical publish validation adapted to the build agent's snapshot result.
+ * Canonical draft and publish validation for the build agent's snapshot.
  *
  * The backend owns these checks because several depend on backend validation
- * modules. The agent receives one function through its draft service and keeps
- * its package dependency surface limited to shared runtime code.
+ * modules. The agent receives the complete result through its draft service and
+ * keeps its package dependency surface limited to shared runtime code.
  */
 
 import type {
   AgentDocument,
+  AgentDraftValidation,
   AgentPublicationValidation,
+  AgentValidationIssue,
   ConnectedIntegration,
 } from "@wfgraph/agent/document";
-import { findAction } from "@wfgraph/shared/extensions/catalog";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
-import { enabledActionTypeOf } from "@wfgraph/shared/graph/node-config";
-import { collectWorkflowIssues } from "@wfgraph/shared/graph/workflow-issues";
-import { checkUnreachableSubtrees } from "#src/backend/services/workflows/publish-checks";
-import { validateWorkflowConditionConfigs } from "#src/backend/services/workflows/validation/workflow-conditions-validation";
+import { serializeWorkflowGraphData } from "@wfgraph/shared/graph/graph";
 import {
-  validateCancelFilters,
-  validateEventSplitOutlets,
-  validateStartFilters,
-  validateWorkflowEvents,
-} from "#src/backend/services/workflows/validation/workflow-lifecycle-validation";
-import { validateWorkflowTemplates } from "#src/backend/services/workflows/validation/workflow-template-validation";
+  collectWorkflowIssues,
+  type WorkflowIssue,
+} from "@wfgraph/shared/graph/workflow-issues";
+import { validateGraphSaveShape } from "#src/backend/services/workflows/graph-save";
+import {
+  collectSynchronousPublicationFailures,
+  type SynchronousPublicationFailure,
+} from "#src/backend/services/workflows/publish-checks";
+import {
+  extractRequiredIntegrationRequirements,
+  shouldEnforceStrictIntegrationValidation,
+} from "#src/backend/services/workflows/validation/workflow-integration-validation";
 
-type ValidationIssue = AgentPublicationValidation["publishBlockers"][number];
+/** Every blocker kind produced by the concrete agent publication validator. */
+export type AgentPublicationBlockerKind =
+  | SynchronousPublicationFailure["kind"]
+  | "missing_integration";
 
-function addUnique(issues: ValidationIssue[], issue: ValidationIssue): void {
-  if (!issues.some((existing) => existing.message === issue.message)) {
-    issues.push(issue);
-  }
+type PublicationBlocker = Omit<AgentValidationIssue, "kind"> & {
+  readonly kind: AgentPublicationBlockerKind;
+};
+
+type BlockingWorkflowIssue = Extract<WorkflowIssue, { severity: "blocking" }>;
+
+function integrationBlockerKey(nodeId: string, requiredType: string): string {
+  return `${nodeId}\u0000${requiredType}`;
+}
+
+function toPublicationBlocker(
+  issue: BlockingWorkflowIssue
+): PublicationBlocker {
+  return {
+    kind: issue.kind,
+    nodeId: issue.nodeId,
+    nodeLabel: issue.nodeLabel,
+    message: issue.message,
+  };
 }
 
 export function validateAgentPublication(input: {
@@ -40,20 +62,17 @@ export function validateAgentPublication(input: {
 }): AgentPublicationValidation {
   const nodes = [...input.document.nodes];
   const edges = [...input.document.edges];
+  const strictIntegrationValidation =
+    shouldEnforceStrictIntegrationValidation();
   const workflowIssues = collectWorkflowIssues({
     nodes,
     catalog: input.catalog,
     integrations: input.integrations,
   });
-  const publishBlockers: ValidationIssue[] = workflowIssues
-    .filter((issue) => issue.severity === "blocking")
-    .map((issue) => ({
-      kind: issue.kind,
-      nodeId: issue.nodeId,
-      nodeLabel: issue.nodeLabel,
-      message: issue.message,
-    }));
-  const warnings: ValidationIssue[] = workflowIssues
+  const blockingWorkflowIssues = workflowIssues.filter(
+    (issue): issue is BlockingWorkflowIssue => issue.severity === "blocking"
+  );
+  const warnings: AgentValidationIssue[] = workflowIssues
     .filter((issue) => issue.severity === "warning")
     .map((issue) => ({
       kind: issue.kind,
@@ -61,60 +80,93 @@ export function validateAgentPublication(input: {
       nodeLabel: issue.nodeLabel,
       message: issue.message,
     }));
+  const publishBlockers: PublicationBlocker[] = [];
 
-  for (const [kind, check] of [
-    ["invalid_condition", () => validateWorkflowConditionConfigs(nodes)],
-    ["invalid_event", () => validateWorkflowEvents(nodes, input.catalog)],
-    // Publish refuses a Start Filter the graph cannot be run on, so the agent
-    // has to see the same refusal: without it the agent reads an empty blocker
-    // list as "ready to publish" and the person clicking Publish is the one who
-    // finds out.
-    ["invalid_start_filter", () => validateStartFilters(nodes, input.catalog)],
-    [
-      "invalid_cancel_filter",
-      () => validateCancelFilters(nodes, input.catalog),
-    ],
-    [
-      "invalid_event_split",
-      () => validateEventSplitOutlets(nodes, edges, input.catalog),
-    ],
-    [
-      "invalid_template",
-      () => validateWorkflowTemplates({ nodes, edges, catalog: input.catalog }),
-    ],
-    ["unreachable_node", () => checkUnreachableSubtrees({ nodes, edges })],
-  ] as const) {
-    const result = check();
-    if (!result.valid) {
-      addUnique(publishBlockers, { kind, message: result.error });
-    }
-  }
-
-  for (const node of nodes) {
-    const actionId = enabledActionTypeOf(node);
-    const integrationType = actionId
-      ? findAction(input.catalog, actionId)?.integration
-      : undefined;
-    if (!integrationType) {
+  for (const failure of collectSynchronousPublicationFailures({
+    nodes,
+    edges,
+    catalog: input.catalog,
+  })) {
+    if (failure.kind === "missing_required_field") {
+      const detailedFailures = blockingWorkflowIssues
+        .filter((issue) => issue.kind === "missing_required_field")
+        .map(toPublicationBlocker);
+      publishBlockers.push(
+        ...(detailedFailures.length > 0
+          ? detailedFailures
+          : [{ kind: failure.kind, message: failure.error }])
+      );
       continue;
     }
-    const integrationId = node.data.config?.integrationId;
+    publishBlockers.push({ kind: failure.kind, message: failure.error });
+  }
+
+  if (!strictIntegrationValidation) {
+    return { publishBlockers, warnings };
+  }
+
+  const missingIntegrationKeys = new Set<string>();
+  for (const issue of blockingWorkflowIssues) {
+    if (issue.kind !== "missing_integration") {
+      continue;
+    }
+    const blockerKey = integrationBlockerKey(
+      issue.nodeId,
+      issue.integrationType
+    );
+    if (missingIntegrationKeys.has(blockerKey)) {
+      continue;
+    }
+    publishBlockers.push(toPublicationBlocker(issue));
+    missingIntegrationKeys.add(blockerKey);
+  }
+  for (const requirement of extractRequiredIntegrationRequirements(
+    nodes,
+    input.catalog
+  )) {
     if (
-      typeof integrationId !== "string" ||
       !input.integrations.some(
         (integration) =>
-          integration.id === integrationId &&
-          integration.type === integrationType
+          integration.id === requirement.integrationId &&
+          integration.type === requirement.requiredType
       )
     ) {
-      addUnique(publishBlockers, {
+      if (
+        missingIntegrationKeys.has(
+          integrationBlockerKey(requirement.nodeId, requirement.requiredType)
+        )
+      ) {
+        continue;
+      }
+      publishBlockers.push({
         kind: "missing_integration",
-        nodeId: node.id,
-        nodeLabel: node.data.label,
-        message: `Node "${node.data.label || node.id}" needs a connected ${integrationType} integration.`,
+        nodeId: requirement.nodeId,
+        nodeLabel: requirement.nodeLabel,
+        message: `Node "${requirement.nodeLabel}" needs a connected ${requirement.requiredType} integration.`,
       });
+      missingIntegrationKeys.add(
+        integrationBlockerKey(requirement.nodeId, requirement.requiredType)
+      );
     }
   }
 
   return { publishBlockers, warnings };
+}
+
+/** Combines structural and publication checks for one agent draft snapshot. */
+export function validateAgentDraft(input: {
+  document: AgentDocument;
+  catalog: ExtensionCatalog;
+  integrations: readonly ConnectedIntegration[];
+}): AgentDraftValidation {
+  const shapeValidation = validateGraphSaveShape(
+    serializeWorkflowGraphData(input.document)
+  );
+  const publication = validateAgentPublication(input);
+
+  return {
+    draftValid: shapeValidation.valid,
+    structuralIssues: shapeValidation.valid ? [] : [shapeValidation.error],
+    ...publication,
+  };
 }

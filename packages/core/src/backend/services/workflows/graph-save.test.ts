@@ -11,7 +11,10 @@ import { assert, describe, layer } from "@effect/vitest";
 import { Effect, Layer } from "effect";
 import { InvalidInput } from "#src/backend/lib/effect/failures";
 import { SilentAppLoggerLayer } from "#src/backend/lib/effect/test-layers";
-import { prepareGraphSave } from "#src/backend/services/workflows/graph-save";
+import {
+  prepareGraphSave,
+  validateGraphSaveShape,
+} from "#src/backend/services/workflows/graph-save";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import {
   createDefaultConditionModel,
@@ -169,6 +172,33 @@ describe("prepareGraphSave", () => {
         }).pipe(Effect.flip);
 
         assert.instanceOf(failure, InvalidInput);
+      })
+    );
+
+    it.effect("uses the pure shape refusal text in the service failure", () =>
+      Effect.gen(function* () {
+        const model = createDefaultConditionModel(
+          {
+            path: "appointment.startsAt",
+            label: "appointment.startsAt",
+            type: "timestamp",
+          },
+          { groupId: "group-1", conditionId: "condition-1" }
+        );
+        const graph = graphWithAction({
+          actionType: "Condition",
+          conditionModel: serializeConditionModel(model),
+          condition: "appointment.startsAt > now + days(10)",
+        });
+
+        const validation = validateGraphSaveShape(graph);
+        assert.isFalse(validation.valid);
+        if (validation.valid) {
+          return;
+        }
+
+        const failure = yield* prepareGraphSave({ graph }).pipe(Effect.flip);
+        assert.strictEqual(failure.error, validation.error);
       })
     );
   });

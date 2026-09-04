@@ -3,20 +3,13 @@ import {
   type ExtensionCatalog,
   findAction,
 } from "@wfgraph/shared/extensions/catalog";
+import type { DeterministicAssessment } from "#src/agent/assessment";
 import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
 import { findTemplateTokens } from "@wfgraph/shared/graph/node-references";
 import { upstreamNodeIds } from "@wfgraph/shared/graph/upstream-nodes";
-import { workflowTopologyRefusalReason } from "@wfgraph/shared/graph/workflow-topology";
 import { flattenConfigFields } from "@wfgraph/shared/plugins/action-fields";
 import { isBlank } from "@wfgraph/shared/types/string";
-import { validateWorkflowActionConfigs } from "@wfgraph/core/backend/services/workflows/validation/workflow-action-validation";
-import { validateWorkflowConditionConfigs } from "@wfgraph/core/backend/services/workflows/validation/workflow-conditions-validation";
-import {
-  validateEventSplitOutlets,
-  validateWorkflowEvents,
-} from "@wfgraph/core/backend/services/workflows/validation/workflow-lifecycle-validation";
-import { validateWorkflowTemplates } from "@wfgraph/core/backend/services/workflows/validation/workflow-template-validation";
-import { checkUnreachableSubtrees } from "@wfgraph/core/backend/services/workflows/publish-checks";
+import { extractRequiredIntegrationRequirements } from "@wfgraph/core/backend/services/workflows/validation/workflow-integration-validation";
 import type { AgentEvalDocument } from "#src/agent/result";
 
 type ConnectedIntegration = { id: string; type: string };
@@ -27,63 +20,10 @@ type GraphAssessmentInput = {
   integrations: readonly ConnectedIntegration[];
 };
 
-export type DeterministicAssessment = {
-  score: 0 | 1;
-  rationale: string;
-};
-
 const BUILT_INS = new Set<string>(Object.values(BUILT_IN_ACTION_IDS));
 
 function failed(rationale: string): DeterministicAssessment {
   return { score: 0, rationale };
-}
-
-/** Runs the pure parts of the same checks that guard workflow publication. */
-export function assessPublishability(
-  input: GraphAssessmentInput
-): DeterministicAssessment {
-  const { nodes, edges } = input.document;
-  const topologyError = workflowTopologyRefusalReason({ nodes, edges });
-  if (topologyError) {
-    return failed(topologyError);
-  }
-
-  for (const check of [
-    () => validateWorkflowActionConfigs(nodes, input.catalog),
-    () => validateWorkflowConditionConfigs(nodes),
-    () => validateWorkflowEvents(nodes, input.catalog),
-    () => validateEventSplitOutlets(nodes, edges, input.catalog),
-    () => validateWorkflowTemplates({ nodes, edges, catalog: input.catalog }),
-    () => checkUnreachableSubtrees({ nodes, edges }),
-  ]) {
-    const result = check();
-    if (!result.valid) {
-      return failed(result.error);
-    }
-  }
-
-  for (const node of nodes) {
-    const actionId = actionTypeOf(node);
-    if (!actionId) {
-      continue;
-    }
-    const integrationType = findAction(input.catalog, actionId)?.integration;
-    if (!integrationType) {
-      continue;
-    }
-    const integrationId = node.data.config?.integrationId;
-    const connected = input.integrations.some(
-      (integration) =>
-        integration.id === integrationId && integration.type === integrationType
-    );
-    if (!connected) {
-      return failed(
-        `Node "${node.data.label || node.id}" needs a connected ${integrationType} integration.`
-      );
-    }
-  }
-
-  return { score: 1, rationale: "The graph is ready to publish." };
 }
 
 function templateIssues(input: GraphAssessmentInput): string[] {
@@ -179,22 +119,26 @@ export function assessGraphGrounding(
     }
   }
 
-  issues.push(...templateIssues(input));
-
-  for (const check of [
-    () => validateWorkflowEvents(input.document.nodes, input.catalog),
-    () =>
-      validateEventSplitOutlets(
-        input.document.nodes,
-        input.document.edges,
-        input.catalog
-      ),
-  ]) {
-    const result = check();
-    if (!result.valid) {
-      issues.push(result.error);
+  for (const requirement of extractRequiredIntegrationRequirements(
+    input.document.nodes,
+    input.catalog
+  )) {
+    const connected = input.integrations.find(
+      (integration) => integration.id === requirement.integrationId
+    );
+    if (!connected) {
+      const issue = `unknown integration ${requirement.integrationId} on ${requirement.nodeLabel}`;
+      if (!issues.includes(issue)) {
+        issues.push(issue);
+      }
+    } else if (connected.type !== requirement.requiredType) {
+      issues.push(
+        `integration ${requirement.integrationId} has type ${connected.type} but ${requirement.nodeLabel} requires ${requirement.requiredType}`
+      );
     }
   }
+
+  issues.push(...templateIssues(input));
 
   return issues.length === 0
     ? { score: 1, rationale: "Every graph identifier is grounded." }
