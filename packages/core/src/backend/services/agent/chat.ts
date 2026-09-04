@@ -21,7 +21,8 @@ import {
   AgentConfig,
   agentDisabledMessage,
 } from "#src/backend/agent/config";
-import { runAgentTurn } from "#src/backend/agent/chat";
+import { AgentRunnerService, runAgentRunner } from "#src/backend/agent/runner";
+import { makeAgentToolSession } from "#src/backend/agent/tool-session";
 import {
   finishReasonFailure,
   makeAgentTraceAccumulator,
@@ -38,6 +39,7 @@ import { ENCRYPTION_KEY_MISMATCH_MESSAGE } from "#src/backend/services/integrati
 import { IntegrationRepo } from "#src/backend/services/integrations/repo";
 import { getErrorMessage } from "@wfgraph/shared/utils";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
+import { validateAgentDraft } from "#src/backend/agent/publication-validation";
 
 const AGENT_BUSY_MESSAGE =
   "The build agent is busy with other turns. Wait for one to finish and try again.";
@@ -193,6 +195,7 @@ export const postAgentChat = Effect.fn("postAgentChat")(function* (
   const repo = yield* IntegrationRepo;
   const logger = (yield* AppLogger).get("agent");
   const capacity = yield* AgentCapacity;
+  const runner = yield* AgentRunnerService;
 
   // `listByType` fails two ways, and neither is a sentence a caller can act on,
   // so both become one internal failure with the cause on the log record.
@@ -211,15 +214,23 @@ export const postAgentChat = Effect.fn("postAgentChat")(function* (
 
   const startedAt = Date.now();
   const trace = makeAgentTraceAccumulator();
-  const stream = yield* runAgentTurn({
-    settings,
+  const session = yield* makeAgentToolSession({
     catalog,
     integrations: integrations.map((integration) => ({
       id: integration.id,
       type: integration.type,
     })),
     document: toDocument(input.graph),
+    validateDraft: (document) =>
+      validateAgentDraft({
+        document,
+        catalog,
+        integrations,
+      }),
+  });
+  const stream = runAgentRunner(runner, {
     messages: input.messages,
+    session,
     observeTrace: trace.observe,
   });
 
@@ -230,7 +241,7 @@ export const postAgentChat = Effect.fn("postAgentChat")(function* (
       logger,
       workflowId: input.workflowId,
       messageCount: input.messages.length,
-      model: settings.model,
+      model: runner.metadata.model,
       startedAt,
       now: Date.now,
     }),

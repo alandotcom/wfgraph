@@ -1,6 +1,10 @@
 import { expect } from "vitest";
 import { describeEval } from "vitest-evals";
-import { workflowAgentHarness } from "#src/agent/harness";
+import { makeBuiltInAgentRunner } from "@wfgraph/core/backend/agent/chat";
+import {
+  createWorkflowAgentHarness,
+  readEvalModelSettings,
+} from "#src/agent/harness";
 import {
   CompletionOutcomeJudge,
   EditSafetyJudge,
@@ -16,6 +20,10 @@ import {
   workflowIntentJudgeHarness,
 } from "#src/agent/judges/intent";
 import { complexScenarios, focusedScenarios } from "#src/agent/scenarios";
+
+const workflowAgentHarness = createWorkflowAgentHarness((input) =>
+  makeBuiltInAgentRunner(readEvalModelSettings(input.model))
+);
 
 const deterministicJudges = [
   CompletionOutcomeJudge,

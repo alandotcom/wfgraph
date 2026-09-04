@@ -16,6 +16,10 @@ import {
   Stream,
 } from "effect";
 import { makeAgentConfigLayer } from "#src/backend/agent/config";
+import {
+  disabledAgentRunner,
+  makeAgentRunnerLayer,
+} from "#src/backend/agent/runner";
 import { NotFound } from "#src/backend/lib/effect/failures";
 import {
   SilentAppLoggerLayer,
@@ -74,6 +78,7 @@ function createStubRuntime({
       stubWorkflowRepo(workflowRepo),
       stubExecutionRepo(),
       makeAgentConfigLayer({ enabled: false }),
+      makeAgentRunnerLayer(disabledAgentRunner),
       stubInngestClient()
     )
   );
