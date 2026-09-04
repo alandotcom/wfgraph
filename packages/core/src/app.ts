@@ -84,8 +84,8 @@ export type WfGraphAppOptions = {
    * Required everywhere rather than only in production, because the check that
    * would tell the two apart reads an environment variable that says
    * "production" and misses "prod" and an unset one. Covers everything Workflow
-   * Graph serves except machine routes (the wait resume path, `/webhooks/:type/:connectionId`,
-   * and `/inngest` when HTTP serve is mounted) and public OAuth client metadata at
+   * Graph serves except machine routes (`/webhooks/:type/:connectionId` and
+   * `/inngest` when HTTP serve is mounted) and public OAuth client metadata at
    * `/integrations/oauth/clients/:integrationType`.
    */
   auth: WfGraphAuth;

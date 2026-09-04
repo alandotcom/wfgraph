@@ -88,9 +88,8 @@ export type CreateWaitStateInput = {
   nodeName: string;
   waitType: "delay" | "event";
   /**
-   * What `POST /workflows/waits/:token/resume` unparks this run by. Generated per
-   * park rather than authored, because two runs at one node would collide on a
-   * token decided at design time.
+   * What the authenticated runs panel uses to address this parked run. Generated
+   * per park because two runs at one node would collide on an authored token.
    */
   resumeToken?: string | undefined;
   /** Target timestamp as ISO 8601; the adapter converts it for storage. */

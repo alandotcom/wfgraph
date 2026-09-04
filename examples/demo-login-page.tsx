@@ -2,7 +2,7 @@
 /* oxlint-disable react/react-in-jsx-scope -- this file uses Hono's JSX runtime. */
 
 const roleDescriptions = [
-  ["admin", "All operations, including connections and API keys"],
+  ["admin", "All operations, including connection management"],
   ["editor", "Workflow authoring, runs, and the build agent"],
   ["readonly", "Workflow, run, and connection viewing"],
 ] as const;

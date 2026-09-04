@@ -39,8 +39,7 @@ import {
  * The default for a `timestamp` column, which is timezone-naive and read back as
  * UTC. Plain `now()` writes the session's own wall clock, so on a server whose
  * timezone is not UTC a defaulted row disagrees with every timestamp the app
- * writes from a `Date`. This is the same framing `api-keys/repo.ts` compares
- * `last_used_at` against.
+ * writes from a `Date`.
  */
 const utcNow = () => sql`(now() at time zone 'utc')`;
 
@@ -456,9 +455,8 @@ export const workflowWaitStates = pgTable(
       .notNull()
       .$type<"waiting" | "resuming" | "resumed" | "timed_out" | "cancelled">(),
     /**
-     * What `POST /workflows/waits/:token/resume` unparks this run by. Generated
-     * per park: a token decided at design time is one two runs at the same node
-     * would collide on, and a unique index leaves one of them unfindable.
+     * What the authenticated runs panel uses to address this parked run.
+     * Generated per park so concurrent runs at the same node cannot collide.
      */
     resumeToken: text("resume_token"),
     waitUntil: timestamp("wait_until"),
@@ -536,21 +534,6 @@ export const workflowExecutionEvents = pgTable(
   ]
 );
 
-export const apiKeys = pgTable(
-  "api_keys",
-  {
-    id: text("id")
-      .primaryKey()
-      .$defaultFn(() => generateId()),
-    name: text("name"),
-    keyHash: text("key_hash").notNull(),
-    keyPrefix: text("key_prefix").notNull(),
-    createdAt: timestamp("created_at").notNull().default(utcNow()),
-    lastUsedAt: timestamp("last_used_at"),
-  },
-  (table) => [index("api_keys_key_prefix_idx").on(table.keyPrefix)]
-);
-
 /**
  * Every table the schema module declares. `defineRelations` and the kit-safe
  * bag for `db.query` both take this object, so a table added below is one edit
@@ -564,7 +547,6 @@ export const tables = {
   workflowExecutionEvents,
   workflowWaitStates,
   workflowEventSubscriptions,
-  apiKeys,
   integrations,
   oauthAuthorizationAttempts,
 };

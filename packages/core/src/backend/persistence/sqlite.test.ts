@@ -401,7 +401,10 @@ describe("native SQLite persistence", () => {
              AND name <> '__wfgraph_sqlite_migrations'`
         )
         .all();
-      expect(applicationTables).toHaveLength(10);
+      expect(applicationTables).toHaveLength(9);
+      expect(applicationTables.map((table) => table.name)).not.toContain(
+        "api_keys"
+      );
       for (const table of applicationTables) {
         expect(table.sql).toMatch(/\) STRICT(?:, WITHOUT ROWID)?$/);
       }
@@ -483,6 +486,13 @@ describe("native SQLite persistence", () => {
         expect(database.prepare("PRAGMA user_version").get()).toEqual({
           user_version: 0,
         });
+        expect(
+          database
+            .prepare(
+              "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'api_keys'"
+            )
+            .get()
+        ).toBeUndefined();
       } finally {
         database.close();
       }
@@ -661,7 +671,6 @@ describe("native SQLite persistence", () => {
     const filename = await databasePath();
     const database = new DatabaseSync(filename);
     for (const table of [
-      "api_keys",
       "integrations",
       "oauth_authorization_attempts",
       "workflow_event_subscriptions",

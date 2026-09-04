@@ -18,9 +18,6 @@ function assertNever(value: never): never {
 function returnKnownOperationId(id: WfGraphOperationId): WfGraphOperationId {
   switch (id) {
     case "agent.chat":
-    case "apiKey.getAll":
-    case "apiKey.create":
-    case "apiKey.delete":
     case "integration.getAll":
     case "integration.get":
     case "integration.configOptions":
@@ -74,8 +71,6 @@ describe("Workflow Graph authorization operations", () => {
       runManage: "run.manage",
       connectionRead: "connection.read",
       connectionWrite: "connection.write",
-      settingsRead: "settings.read",
-      settingsWrite: "settings.write",
       agentUse: "agent.use",
     });
   });
@@ -84,7 +79,6 @@ describe("Workflow Graph authorization operations", () => {
     expect(WfGraphOperationIds).toEqual(
       expect.arrayContaining([
         "agent.chat",
-        "apiKey.getAll",
         "integration.getAll",
         "workflow.getAll",
         "workflow.subscribeList",

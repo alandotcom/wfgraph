@@ -38,8 +38,8 @@ export type EffectLogger = {
 /**
  * The application log, reached by category.
  *
- * `get("api-keys", "auth")` is the Effect-side spelling of
- * `getAppLogger("api-keys", "auth")`, so a category keeps its name across the
+ * `get("integrations", "oauth")` is the Effect-side spelling of
+ * `getAppLogger("integrations", "oauth")`, so a category keeps its name across the
  * migration and the sink configuration a host installed keeps working.
  */
 export class AppLogger extends Context.Service<

@@ -195,7 +195,7 @@ describe("SQLite migration execution", () => {
     });
     await database.close();
 
-    const invalid = join(migrations, "20260904000000_invalid_schema");
+    const invalid = join(migrations, "20260905000000_invalid_schema");
     await mkdir(invalid);
     await writeFile(
       join(invalid, "migration.sql"),

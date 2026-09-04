@@ -283,19 +283,6 @@ export const workflowExecutionEvents = sqliteTable(
   ]
 );
 
-export const apiKeys = sqliteTable(
-  "api_keys",
-  {
-    id: text("id").primaryKey(),
-    name: text("name"),
-    keyHash: text("key_hash").notNull(),
-    keyPrefix: text("key_prefix").notNull(),
-    createdAt: integer("created_at").notNull(),
-    lastUsedAt: integer("last_used_at"),
-  },
-  (table) => [index("api_keys_prefix_idx").on(table.keyPrefix)]
-);
-
 export const integrations = sqliteTable(
   "integrations",
   {
@@ -362,7 +349,6 @@ export const sqliteTables = {
   workflowExecutionLogs,
   workflowWaitStates,
   workflowExecutionEvents,
-  apiKeys,
   integrations,
   oauthAuthorizationAttempts,
 };

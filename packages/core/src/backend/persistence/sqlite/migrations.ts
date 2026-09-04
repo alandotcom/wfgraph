@@ -7,17 +7,16 @@ import { sqliteMigrations } from "#src/backend/persistence/sqlite/generated-migr
 
 const MIGRATIONS_TABLE = "__wfgraph_sqlite_migrations";
 const LEGACY_SCHEMA_FINGERPRINTS = new Map([
-  [6, "04c0c74f0205f808a3822afb497e2abf5d007a8a7e0c1e4b9df364ec74bb6267"],
-  [7, "a2929e0c5f5e94800e8ab3840f476aee1ce1e11c18638ec5fbfa516c5edf75f8"],
+  [6, "77261cee4c909093d042849e5bbd650020c27546c6f2cc6bcc38504ae7c3a839"],
+  [7, "e73822bda63d0602c7a357a6fcd7e603df1eabc26db4da2de723a260ced7f225"],
 ]);
 const CURRENT_SCHEMA_FINGERPRINTS = new Set([
   // A database created by all generated migrations.
-  "fb423fd36740f96c03728d4bb6517969c67d670808fad5c7966ed523c5210738",
+  "88401776a5d04e0089b4a9bd4c4c9e0e4468da7c7a8eeabbba3c72bd79b59872",
   // An adopted version-6 or version-7 database keeps its original table DDL.
-  "ae98ab4ac80090f3a0114c9547f2d1da59c5a27090caca2c87fdb363b13832c9",
+  "1b21b793f1ac82dae9691cd1d3ae3f1b0d46cff59e731026248396e7a1c14f4d",
 ]);
 const EXPECTED_TABLES = [
-  "api_keys",
   "integrations",
   "oauth_authorization_attempts",
   "workflow_event_subscriptions",

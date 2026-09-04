@@ -89,6 +89,7 @@ describePostgres("PostgreSQL migrations", () => {
       expect(state.names).toContain(getTableName(table));
     }
     expect(state.names).toContain(MIGRATIONS_TABLE);
+    expect(state.names).not.toContain("api_keys");
     expect(state.leaked).toBeNull();
   });
 

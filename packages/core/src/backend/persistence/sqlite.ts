@@ -1,12 +1,10 @@
 import { Layer } from "effect";
-import { ApiKeyRepo } from "#src/backend/services/api-keys/repo";
 import type { IntegrationCipher } from "#src/backend/services/integrations/cipher";
 import { IntegrationRepo } from "#src/backend/services/integrations/repo";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import type { WfGraphPersistence } from "#src/backend/persistence/types";
 import { openSqliteDatabase } from "#src/backend/persistence/sqlite/database";
-import { makeSqliteApiKeyRepo } from "#src/backend/persistence/sqlite/api-keys";
 import { makeSqliteIntegrationRepo } from "#src/backend/persistence/sqlite/integrations";
 import { makeSqliteWorkflowRepo } from "#src/backend/persistence/sqlite/workflows";
 import { makeSqliteExecutionRepo } from "#src/backend/persistence/sqlite/executions/index";
@@ -38,7 +36,6 @@ export function wfSqlite(
       });
       return {
         repositories: Layer.mergeAll(
-          Layer.succeed(ApiKeyRepo, makeSqliteApiKeyRepo(database)),
           Layer.succeed(
             IntegrationRepo,
             makeSqliteIntegrationRepo(database, cipher)

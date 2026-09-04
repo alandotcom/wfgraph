@@ -61,8 +61,8 @@ function hasRequestBody(request: IncomingMessage): boolean {
  * True when a body arrived on the wire but the stream has already been drained.
  *
  * A body parser mounted ahead of Workflow Graph leaves exactly this state, and every POST
- * would otherwise reach Workflow Graph empty: a wait resume would see `{}` and the Inngest
- * callback's signature check would fail on bytes that no longer exist.
+ * would otherwise reach Workflow Graph empty. An Inngest callback's signature check
+ * would fail on bytes that no longer exist.
  * Re-serializing a parsed body is not a way out, because `JSON.stringify` does
  * not reproduce the original bytes and the signature covers those.
  *

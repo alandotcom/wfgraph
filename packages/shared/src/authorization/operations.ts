@@ -11,8 +11,6 @@ const permissionValues = [
   "run.manage",
   "connection.read",
   "connection.write",
-  "settings.read",
-  "settings.write",
   "agent.use",
 ] as const;
 
@@ -25,8 +23,6 @@ export const WfGraphPermissions = Object.freeze({
   runManage: "run.manage",
   connectionRead: "connection.read",
   connectionWrite: "connection.write",
-  settingsRead: "settings.read",
-  settingsWrite: "settings.write",
   agentUse: "agent.use",
 } as const satisfies Record<string, WfGraphPermission>);
 
@@ -42,10 +38,6 @@ function operation<
 
 const operationDefinitions = {
   agentChat: operation("agent.chat", WfGraphPermissions.agentUse),
-
-  apiKeyGetAll: operation("apiKey.getAll", WfGraphPermissions.settingsRead),
-  apiKeyCreate: operation("apiKey.create", WfGraphPermissions.settingsWrite),
-  apiKeyDelete: operation("apiKey.delete", WfGraphPermissions.settingsWrite),
 
   integrationGetAll: operation(
     "integration.getAll",

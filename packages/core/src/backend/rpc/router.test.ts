@@ -23,7 +23,6 @@ import {
 import { NotFound } from "#src/backend/lib/effect/failures";
 import {
   SilentAppLoggerLayer,
-  stubApiKeyRepo,
   stubExtensions,
   stubExecutionRepo,
   stubIntegrationRepo,
@@ -73,7 +72,6 @@ function createStubRuntime({
       startupLayer ?? Layer.empty,
       makeAppContextLayer(appContext),
       stubExtensions(),
-      stubApiKeyRepo(),
       stubIntegrationRepo(integrationRepo),
       stubWorkflowRepo(workflowRepo),
       stubExecutionRepo(),

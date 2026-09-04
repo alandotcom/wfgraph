@@ -37,7 +37,7 @@ marks who owns an action.
 
 **2. A webhook is an ungated intake channel that produces those Events.** Core
 mounts it on `machineRoutes` (`packages/core/src/backend/api-app.ts`), next to
-the Inngest serve path and wait-resume, because a vendor carries its own
+the Inngest serve path, because a vendor carries its own
 signature rather than the host's `auth` predicate. `verify` then `receive` then
 `inngest.send`. From that send onward, Precedence is unchanged: Lifecycle
 Rules first, then Wait Subscriptions.

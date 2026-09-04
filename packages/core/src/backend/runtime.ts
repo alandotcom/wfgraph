@@ -23,7 +23,6 @@ import {
 import { TracerBridgeLayer } from "#src/backend/lib/effect/tracer";
 import type { ExtensionSet } from "#src/backend/extensions/extension-set";
 import type { InngestSurface } from "#src/backend/lib/inngest/client";
-import { ApiKeyRepo } from "#src/backend/services/api-keys/repo";
 import { IntegrationRepo } from "#src/backend/services/integrations/repo";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
@@ -51,7 +50,6 @@ export type WfGraphServices =
   | AgentRunnerService
   | WfGraphAppContext
   | Extensions
-  | ApiKeyRepo
   | IntegrationRepo
   | WorkflowRepo
   | ExecutionRepo
@@ -59,7 +57,6 @@ export type WfGraphServices =
 
 /** The storage-facing services supplied by one persistence backend. */
 export type WfGraphRepositories =
-  | ApiKeyRepo
   | IntegrationRepo
   | WorkflowRepo
   | ExecutionRepo;

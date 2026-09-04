@@ -206,32 +206,6 @@ describe.each([
     expect(response.body).toContain("Input validation failed");
   });
 
-  it("delivers a POST body to the wait resume route", async () => {
-    // Valid JSON of the wrong shape, so validation rejects it before the route
-    // reaches the database.
-    const response = await postJson(
-      `${origin()}/wfgraph/api/workflows/waits/tok_1/resume`,
-      JSON.stringify(["not", "an", "object"])
-    );
-
-    expect(response.status).toBe(400);
-    expect(JSON.parse(response.body)).toMatchObject({
-      error: expect.any(String),
-    });
-  });
-
-  it("reports a malformed body as such rather than as an empty one", async () => {
-    const response = await postJson(
-      `${origin()}/wfgraph/api/workflows/waits/tok_1/resume`,
-      "{ not json"
-    );
-
-    expect(response.status).toBe(400);
-    expect(JSON.parse(response.body)).toMatchObject({
-      error: "Request body must be valid JSON",
-    });
-  });
-
   it("carries the query string across the mount", async () => {
     // openapi.json is the cheapest route that answers 200 and would notice a
     // path rebuilt from the wrong pieces.
@@ -284,9 +258,9 @@ describe("Workflow Graph mounted somewhere other than its basePath", () => {
 });
 
 describe("Workflow Graph mounted behind a body parser", () => {
-  it("names the misconfiguration instead of running on an empty body", async () => {
+  it("names the consumed body before webhook processing", async () => {
     const response = await postJson(
-      `${parsedBodyOrigin}/wfgraph/api/workflows/waits/tok_1/resume`,
+      `${parsedBodyOrigin}/wfgraph/api/webhooks/resend/conn_1`,
       JSON.stringify({ event: "created" })
     );
 
@@ -294,11 +268,5 @@ describe("Workflow Graph mounted behind a body parser", () => {
     const body = JSON.parse(response.body) as { error: string };
     expect(body.error).toContain("already read");
     expect(body.error).toContain("body parser");
-  });
-
-  it("still serves requests that carry no body", async () => {
-    expect(
-      (await send(`${parsedBodyOrigin}/wfgraph/api/extensions`)).status
-    ).toBe(200);
   });
 });
