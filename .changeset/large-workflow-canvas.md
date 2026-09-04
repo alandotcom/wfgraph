@@ -4,4 +4,4 @@
 "@wfgraph/shared": patch
 ---
 
-Improve large workflow canvas fitting, layout spacing, and description access.
+Improve large workflow canvas fitting, navigation, layout spacing, and description access.

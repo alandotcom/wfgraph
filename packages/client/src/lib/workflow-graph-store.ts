@@ -16,6 +16,7 @@ import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
   activeAgentTurnIdAtom,
   workflowGraphUpdateAtom,
+  workflowWorkspaceViewAtom,
 } from "#src/lib/workflow-ui-store";
 import {
   formatTemplateToken,
@@ -37,6 +38,7 @@ import {
   fanOutStoreEdgeIds,
   orderGroupParentsFirst,
 } from "@wfgraph/shared/graph/node-group";
+import { mapOrSame } from "@wfgraph/shared/utils/map-or-same";
 import {
   draftEditable,
   edgesStateAtom,
@@ -214,18 +216,27 @@ export const clearGraphSelectionAtom = atom(null, (get, set) => {
   set(selectedEdgeAtom, null);
 });
 
-/** Make one node the only selected node. Selection only, so not an undo step. */
+/**
+ * Make one displayed node the only selection. Selection stays out of history and
+ * may change while the Draft is read-only; Runs and Changes project the selected
+ * node without writing the underlying Draft.
+ */
 export const selectOnlyNodeAtom = atom(null, (get, set, nodeId: string) => {
-  if (!draftEditable(get)) {
-    return;
+  if (get(workflowWorkspaceViewAtom) === "draft") {
+    set(
+      nodesStateAtom,
+      mapOrSame(get(nodesStateAtom), (node) => {
+        const selected = node.id === nodeId;
+        return node.selected === selected ? node : { ...node, selected };
+      })
+    );
+    set(
+      edgesStateAtom,
+      mapOrSame(get(edgesStateAtom), (edge) =>
+        edge.selected ? { ...edge, selected: false } : edge
+      )
+    );
   }
-  set(
-    nodesStateAtom,
-    get(nodesStateAtom).map((node) => ({
-      ...node,
-      selected: node.id === nodeId,
-    }))
-  );
   set(selectedNodeAtom, nodeId);
   set(selectedEdgeAtom, null);
 });

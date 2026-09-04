@@ -88,8 +88,9 @@ export function useWorkflowCommands({
         Boolean(state.currentWorkflowId) &&
         !state.isGenerating &&
         state.canUpdate,
-      canRunDraft: state.canExecute && state.canUpdate,
-      canRunPublished: state.canExecute && state.canReadVersionGraph,
+      canRunDraft: state.canExecute && state.canUpdate && !editingLocked,
+      canRunPublished:
+        state.canExecute && state.canReadVersionGraph && !editingLocked,
       canViewRuns: Boolean(state.currentWorkflowId) && state.canReadRuns,
       canViewChanges:
         Boolean(state.currentWorkflowId) &&

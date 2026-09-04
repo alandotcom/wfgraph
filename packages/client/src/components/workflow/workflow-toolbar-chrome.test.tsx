@@ -262,6 +262,7 @@ describe("WorkflowToolbarChrome", () => {
     });
     const run = await findByRole("group", { name: "Run" });
     const publish = await findByRole("button", { name: "Publish" });
+    const findNode = await findByRole("button", { name: "Find a node" });
 
     expect(
       [dashboard, workflow, actions, settings].map((element) =>
@@ -269,7 +270,7 @@ describe("WorkflowToolbarChrome", () => {
       )
     ).not.toContain(null);
     expect(
-      [workspaceSwitcher, run, publish].map((element) =>
+      [workspaceSwitcher, findNode, run, publish].map((element) =>
         element.closest("[data-slot='workflow-toolbar-right']")
       )
     ).not.toContain(null);
@@ -277,6 +278,10 @@ describe("WorkflowToolbarChrome", () => {
       (await findByRole("button", { name: "Search commands or add a step" }))
         .className
     ).toContain("w-80");
+    expect(findNode.className).toContain("min-[70rem]:hidden");
+    expect(
+      dashboard.closest("[data-slot='workflow-toolbar-left']")?.className
+    ).toContain("pr-72");
   });
 
   // Published mode lives in the status strip, beside the version it governs.

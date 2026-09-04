@@ -14,7 +14,6 @@ import {
 } from "@xyflow/react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
 import { Canvas } from "#src/components/flow-elements/canvas";
 import { Connection } from "#src/components/flow-elements/connection";
 import { Controls } from "#src/components/flow-elements/controls";
@@ -26,7 +25,6 @@ import { Edge } from "#src/components/flow-elements/edge";
 import { Panel } from "#src/components/flow-elements/panel";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { useAfterDelay, useAfterPaint, useDomEvent } from "#src/hooks/effects";
-import { useIsMobile } from "#src/hooks/use-mobile";
 import { isTextEntry } from "#src/lib/is-text-entry";
 import { viewportAnimationDuration } from "#src/lib/motion";
 import {
@@ -50,7 +48,6 @@ import {
 import {
   activeComparisonAtom,
   moveComparisonNodesAtom,
-  setComparisonSubviewAtom,
 } from "#src/lib/workflow-comparison-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
@@ -73,6 +70,7 @@ import { LifecycleNode } from "./nodes/lifecycle-node";
 import { useCanvasCopyPaste } from "./use-canvas-copy-paste";
 import { useReflowLayout } from "./use-reflow-layout";
 import { useCollectWorkflowIssues } from "#src/hooks/use-workflow-issues";
+import { useWorkflowNodeInspection } from "./use-workflow-node-inspection";
 import {
   type ContextMenuState,
   useContextMenuHandlers,
@@ -159,10 +157,6 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const workflowGraphUpdate = useAtomValue(workflowGraphUpdateAtom);
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
   const [showMinimap] = useAtom(showMinimapAtom);
-  // Below the mobile breakpoint the config rail is gone, so clicking a node has
-  // to open the bottom sheet instead.
-  const isMobile = useIsMobile();
-  const { openSheet } = useConfigurationSheet();
   const onNodesChange = useSetAtom(onNodesChangeAtom);
   const moveComparisonNodes = useSetAtom(moveComparisonNodesAtom);
   const onEdgesChange = useSetAtom(onEdgesChangeAtom);
@@ -174,7 +168,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const snapshotHistory = useSetAtom(snapshotHistoryAtom);
   const undo = useSetAtom(undoAtom);
   const redo = useSetAtom(redoAtom);
-  const setComparisonSubview = useSetAtom(setComparisonSubviewAtom);
+  const inspectNode = useWorkflowNodeInspection();
   const {
     screenToFlowPosition,
     fitView,
@@ -552,34 +546,8 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   );
 
   const onNodeClick: NodeMouseHandler = useCallback(
-    (_event, node) => {
-      setSelectedNode(node.id);
-      if (overlayActive) {
-        return;
-      }
-      if (comparisonActive && currentWorkflowId) {
-        setComparisonSubview({
-          workflowId: currentWorkflowId,
-          subview: "properties",
-        });
-      }
-      // Below the rail's breakpoint there is no panel mounted to receive the
-      // selection, so selecting a node used to look like nothing happening: the
-      // config lived behind an unlabelled toolbar icon a first-time user has no
-      // reason to find. On a narrow canvas the tap opens the sheet itself.
-      if (isMobile) {
-        openSheet();
-      }
-    },
-    [
-      comparisonActive,
-      currentWorkflowId,
-      isMobile,
-      openSheet,
-      overlayActive,
-      setComparisonSubview,
-      setSelectedNode,
-    ]
+    (_event, node) => inspectNode(node.id),
+    [inspectNode]
   );
 
   const onComparisonNodesChange = useCallback(
@@ -926,8 +894,10 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
         }
       >
         <Panel
-          className="border-none bg-transparent p-0"
+          className="[--workflow-controls-bottom:3.5rem] border-none bg-transparent p-0 md:[--workflow-controls-bottom:0px]"
+          data-slot="workflow-canvas-controls"
           position="bottom-left"
+          style={{ bottom: "var(--workflow-controls-bottom)" }}
         >
           <Controls
             canReflow={!graphEditingLocked && canReflow}

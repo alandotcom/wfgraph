@@ -20,6 +20,7 @@ export type CanvasPosition = { readonly x: number; readonly y: number };
  */
 export type CommandPalettePage =
   | { readonly id: "root" }
+  | { readonly id: "find-node" }
   | { readonly id: "add-step"; readonly at?: CanvasPosition };
 
 export type CommandPaletteState = {

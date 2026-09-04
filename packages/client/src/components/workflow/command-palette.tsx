@@ -15,7 +15,7 @@
 import { Autocomplete } from "@base-ui/react/autocomplete";
 import type { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import type { BaseUIEvent } from "@base-ui/react/types";
-import { partition } from "es-toolkit/array";
+import { compact, partition, uniq } from "es-toolkit/array";
 import { useAtomValue, useSetAtom } from "jotai";
 import { ChevronLeft, Search } from "lucide-react";
 import {
@@ -38,6 +38,7 @@ import {
 } from "#src/components/ui/dialog";
 import { ActionIcon } from "#src/components/workflow/config/action-grid";
 import { useAddStep } from "#src/components/workflow/use-add-step";
+import { useFocusWorkflowNode } from "#src/components/workflow/use-focus-workflow-node";
 import { useAfterCommit, useDomEvent } from "#src/hooks/effects";
 import { isTextEntry } from "#src/lib/is-text-entry";
 import {
@@ -59,10 +60,17 @@ import {
   WorkflowCommandIcon,
   type WorkflowCommand,
 } from "#src/lib/workflow-commands";
-import { canvasEditingLockedAtom } from "#src/lib/workflow-graph-store";
+import {
+  canvasEditingLockedAtom,
+  displayNodesAtom,
+} from "#src/lib/workflow-graph-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
-import { selectableActions } from "@wfgraph/shared/extensions/catalog";
+import {
+  findAction,
+  selectableActions,
+} from "@wfgraph/shared/extensions/catalog";
 import { cn } from "@wfgraph/shared/utils";
+import { workflowNodeAriaLabel } from "#src/lib/workflow-graph-types";
 
 type PaletteItem = {
   readonly id: string;
@@ -285,6 +293,8 @@ function CommandPaletteDialog({
   const inputRef = useRef<HTMLInputElement>(null);
   const catalog = useExtensionCatalog();
   const editingLocked = useAtomValue(canvasEditingLockedAtom);
+  const displayNodes = useAtomValue(displayNodesAtom);
+  const focusNode = useFocusWorkflowNode();
   const addStep = useAddStep();
   const hintsId = useId();
   const pageId = useId();
@@ -314,6 +324,7 @@ function CommandPaletteDialog({
   }, [setPalette, palette]);
 
   const onStepPage = page.id === "add-step";
+  const onFindNodePage = page.id === "find-node";
   // Held apart from `page` so the memo below depends on the position itself
   // rather than on the state object a keystroke replaces.
   const stepAt: CanvasPosition | undefined =
@@ -352,13 +363,61 @@ function CommandPaletteDialog({
     }));
   }, [onStepPage, stepAt, catalog, editingLocked, addStep, setPalette]);
 
+  const nodeItems = useMemo((): readonly PaletteItem[] => {
+    const labels = new Map(
+      displayNodes.map((node) => [
+        node.id,
+        workflowNodeAriaLabel(node.data, catalog),
+      ])
+    );
+    return displayNodes
+      .filter((node) => node.type !== "add" && node.hidden !== true)
+      .map((node) => {
+        const label = labels.get(node.id) ?? "Unknown step";
+        const groupLabel = node.parentId
+          ? labels.get(node.parentId)
+          : undefined;
+        const configuredActionId =
+          typeof node.data.config?.actionType === "string" &&
+          node.data.config.actionType.trim()
+            ? node.data.config.actionType.trim()
+            : undefined;
+        const configuredActionLabel = configuredActionId
+          ? findAction(catalog, configuredActionId)?.label
+          : undefined;
+        return {
+          id: `node:${node.id}`,
+          label,
+          detail: groupLabel ? `In ${groupLabel} · ${node.id}` : node.id,
+          keywords: uniq(
+            compact([
+              label,
+              groupLabel,
+              node.id,
+              configuredActionId,
+              configuredActionLabel,
+            ])
+          ).join(" "),
+          disabled: false,
+          consequential: false,
+          icon: <Search className="size-3.5 text-muted-foreground" />,
+          select: () => {
+            if (
+              focusNode({ nodeId: node.id, workflowId: palette.workflowId })
+            ) {
+              setPalette(null);
+            }
+          },
+        };
+      });
+  }, [catalog, displayNodes, focusNode, palette.workflowId, setPalette]);
+
   const rootPageGroups: readonly PaletteGroup[] = [
     { id: "steps", label: "Steps" },
     { id: "workflow", label: "Workflow" },
     { id: "canvas", label: "Canvas" },
-  ].map((group) => ({
-    ...group,
-    items: commands
+  ].map((group) => {
+    const commandItems = commands
       .filter((command) => command.group === group.id)
       .map((command) => ({
         id: command.id,
@@ -382,14 +441,40 @@ function CommandPaletteDialog({
           close();
           command.execute();
         },
-      })),
-  }));
+      }));
+    const findNodeItem: PaletteItem = {
+      id: "find-node",
+      label: "Find a node",
+      detail: "Search the displayed workflow",
+      keywords: "find node search workflow",
+      disabled: false,
+      consequential: false,
+      icon: <Search className="size-3.5 text-muted-foreground" />,
+      select: () => setPalette(pushPalettePage(palette, { id: "find-node" })),
+    };
+    return {
+      ...group,
+      items:
+        group.id === "canvas" ? [...commandItems, findNodeItem] : commandItems,
+    };
+  });
 
   let authoredGroups: readonly PaletteGroup[];
   if (onStepPage) {
     authoredGroups = stepPageGroups;
+  } else if (onFindNodePage) {
+    authoredGroups =
+      palette.query === ""
+        ? NO_GROUPS
+        : [{ id: "nodes", label: "Nodes", items: nodeItems }];
   } else {
-    authoredGroups = rootPageGroups;
+    authoredGroups =
+      palette.query === ""
+        ? rootPageGroups
+        : [
+            ...rootPageGroups,
+            { id: "nodes", label: "Nodes", items: nodeItems },
+          ];
   }
 
   const groups =
@@ -407,7 +492,9 @@ function CommandPaletteDialog({
   const pageAnnouncement =
     page.id === "add-step"
       ? "Add step. Choose what the new step does."
-      : "Commands.";
+      : page.id === "find-node"
+        ? "Find node. Type a node name, action, ID, or Group."
+        : "Commands.";
 
   /**
    * Escape is contested: the dialog closes on it, and the palette wants it to
@@ -551,13 +638,15 @@ function CommandPaletteDialog({
               // weakest source an accessible name can come from, and this one's
               // changes underneath it.
               aria-describedby={`${pageId} ${hintsId}`}
-              aria-label="Search commands and step types"
+              aria-label="Search commands, step types, and nodes"
               className="h-full w-full min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
               onKeyDown={handleInputKeyDown}
               placeholder={
                 page.id === "add-step"
                   ? "Search step types"
-                  : "Search commands, or add a step"
+                  : page.id === "find-node"
+                    ? "Search nodes"
+                    : "Search commands, steps, or nodes"
               }
               ref={inputRef}
             />
@@ -567,12 +656,20 @@ function CommandPaletteDialog({
             <p className="px-3 py-6 text-center text-muted-foreground text-xs">
               {hasAnyItem
                 ? "Nothing matches that."
-                : "No step types are available yet."}
+                : page.id === "find-node"
+                  ? "Type a node name, action, ID, or Group."
+                  : "No step types are available yet."}
             </p>
           </Autocomplete.Empty>
 
           <Autocomplete.List
-            aria-label={page.id === "add-step" ? "Step types" : "Commands"}
+            aria-label={
+              page.id === "add-step"
+                ? "Step types"
+                : page.id === "find-node"
+                  ? "Nodes"
+                  : "Commands and nodes"
+            }
             className="max-h-[min(24rem,50vh)] overflow-y-auto overscroll-contain p-1"
           >
             {(group: PaletteGroup) => (

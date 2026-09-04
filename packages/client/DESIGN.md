@@ -308,10 +308,11 @@ graph share the column height.
 The 44px editor toolbar spans the full editor shell. Workflow navigation,
 **Actions**, and **Settings** form the leading group. The 320px search control
 stays centered in the shell and hides at 70rem or narrower; its keyboard
-shortcut remains available. It sits between the two groups in DOM order, so Tab
-reaches it in the position it appears. The workspace control, the Run split
-button, and **Publish** form the trailing group, which sticks to the shell's
-right edge so a scrolling row never carries a write control out of reach. The
+shortcut remains available. A compact **Find a node** control stays in the
+trailing group while the search control is hidden. It sits between the two
+groups in DOM order, so Tab reaches it in the position it appears. The workspace
+control, the Run split button, and **Publish** form the trailing group, which
+sticks to the shell's right edge so a scrolling row never carries a write control out of reach. The
 split button's face is **Run draft**, which always sends to test recipients. Its
 menu holds the run of the published version, labelled with that version number
 and the Published mode. Below `md` the workspace control, both run commands and

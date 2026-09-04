@@ -2,9 +2,28 @@ import { act, fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ToolbarActions } from "#src/components/workflow/workflow-toolbar-chrome";
 import { renderChrome } from "#src/components/workflow/workflow-toolbar-chrome.test-support";
-import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
+import {
+  currentWorkflowDraftRevisionAtom,
+  currentWorkflowIdAtom,
+} from "#src/lib/workflow-save-store";
 import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
+import {
+  canUndoAtom,
+  displayEdgesAtom,
+  displayNodesAtom,
+  edgesAtom,
+  nodesAtom,
+  selectedEdgeAtom,
+  selectedNodeAtom,
+} from "#src/lib/workflow-graph-store";
+import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
+import {
+  toPersistedEdge,
+  toPersistedNode,
+} from "#src/lib/workflow-graph-types";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
 
 /**
  * The command palette is mounted by `ToolbarActions`, so what is exercised here
@@ -27,6 +46,35 @@ const ONE_ACTION_CATALOG: ExtensionCatalog = {
   ],
 };
 
+const SEARCH_GRAPH: WorkflowNode[] = [
+  {
+    id: "lifecycle_1",
+    type: "lifecycle",
+    position: { x: 0, y: 0 },
+    data: { label: "Lifecycle", type: "lifecycle" },
+  },
+  {
+    id: "group_1",
+    type: "group",
+    position: { x: 400, y: 120 },
+    data: { label: "Customer updates", type: "group" },
+  },
+  {
+    id: "notify_customer",
+    parentId: "group_1",
+    type: "action",
+    position: { x: 24, y: 48 },
+    data: { label: "Notify customer", type: "action" },
+  },
+];
+
+const SELECTED_SEARCH_EDGE: WorkflowEdge = {
+  id: "lifecycle-to-group",
+  source: "lifecycle_1",
+  target: "group_1",
+  selected: true,
+};
+
 /** The palette's own search box, which is the only textbox in this tree. */
 function paletteInput(container: HTMLElement | Document = document) {
   return container.querySelector<HTMLInputElement>("[role='combobox']");
@@ -34,6 +82,13 @@ function paletteInput(container: HTMLElement | Document = document) {
 
 function pressCommandK(target: Document | Element = document) {
   fireEvent.keyDown(target, { key: "k", metaKey: true });
+}
+
+function persistedDraft(input: ReturnType<typeof renderChrome>["store"]) {
+  return createSerializedWorkflowGraph({
+    nodes: input.get(nodesAtom).map(toPersistedNode),
+    edges: input.get(edgesAtom).map(toPersistedEdge),
+  });
 }
 
 describe("the command palette", () => {
@@ -44,7 +99,7 @@ describe("the command palette", () => {
     pressCommandK();
 
     expect(paletteInput()?.getAttribute("placeholder")).toBe(
-      "Search commands, or add a step"
+      "Search commands, steps, or nodes"
     );
     const palette = document.querySelector('[data-slot="dialog-content"]');
     expect(palette?.className).toContain("data-open:animate-in");
@@ -129,9 +184,9 @@ describe("the command palette", () => {
     await openedPalette(rendered);
 
     expect(
-      getByRole("combobox", { name: "Search commands and step types" })
+      getByRole("combobox", { name: "Search commands, step types, and nodes" })
     ).toBeTruthy();
-    expect(getByRole("listbox", { name: "Commands" })).toBeTruthy();
+    expect(getByRole("listbox", { name: "Commands and nodes" })).toBeTruthy();
     // Base UI asks for a close inside every modal popup, for the touch screen
     // reader that has no Escape key and cannot reach the backdrop.
     expect(getByRole("button", { name: "Close command palette" })).toBeTruthy();
@@ -140,7 +195,7 @@ describe("the command palette", () => {
     chooseAddStep(rendered);
 
     expect(
-      getByRole("combobox", { name: "Search commands and step types" })
+      getByRole("combobox", { name: "Search commands, step types, and nodes" })
     ).toBeTruthy();
     expect(getByRole("listbox", { name: "Step types" })).toBeTruthy();
     expect(getByText(/^Add step\. Choose/).getAttribute("aria-live")).toBe(
@@ -174,7 +229,7 @@ describe("the command palette", () => {
 
   // A step added under a run overlay lands on a draft nobody can see, which is
   // the same reason Publish and every menu item that writes the graph refuse.
-  it("refuses both ways in while a past run pins the canvas", async () => {
+  it("opens search but keeps Add step unavailable while a past run pins the canvas", async () => {
     const { findByRole } = renderChrome(ToolbarActions, {
       overlayActive: true,
     });
@@ -182,27 +237,42 @@ describe("the command palette", () => {
     const trigger = await findByRole("button", {
       name: /Search commands or add a step/,
     });
-    expect(trigger.hasAttribute("disabled")).toBe(true);
+    expect(trigger.hasAttribute("disabled")).toBe(false);
 
     pressCommandK();
 
-    expect(paletteInput()).toBeNull();
+    expect(paletteInput()).not.toBeNull();
+    expect(
+      (await findByRole("option", { name: /^Add step/ })).getAttribute(
+        "data-disabled"
+      )
+    ).not.toBeNull();
+    expect(
+      (await findByRole("option", { name: /^Run draft/ })).getAttribute(
+        "data-disabled"
+      )
+    ).not.toBeNull();
   });
 
   // Generation used to fall between the palette's lock and its items': Cmd+K
   // opened a palette whose every item was disabled, "Add step" included, which
   // the Actions menu refuses outright in the same state.
-  it("refuses both ways in while generation is rewriting the graph", async () => {
+  it("opens search but keeps Add step unavailable while generation is rewriting the graph", async () => {
     const { findByRole } = renderChrome(ToolbarActions, { generating: true });
 
     const trigger = await findByRole("button", {
       name: /Search commands or add a step/,
     });
-    expect(trigger.hasAttribute("disabled")).toBe(true);
+    expect(trigger.hasAttribute("disabled")).toBe(false);
 
     pressCommandK();
 
-    expect(paletteInput()).toBeNull();
+    expect(paletteInput()).not.toBeNull();
+    expect(
+      (await findByRole("option", { name: /^Add step/ })).getAttribute(
+        "data-disabled"
+      )
+    ).not.toBeNull();
   });
 
   // Someone who chose "Add step" has already said what they want, so the root
@@ -237,6 +307,215 @@ describe("the command palette", () => {
         "data-disabled"
       )
     ).not.toBeNull();
+  });
+
+  it("keeps node search read-only in Changes without enabling run commands", async () => {
+    const rendered = renderChrome(ToolbarActions);
+    act(() => rendered.store.set(workflowWorkspaceViewAtom, "changes"));
+
+    await openedPalette(rendered);
+
+    expect(
+      rendered
+        .getByRole("option", { name: /^Add step/ })
+        .getAttribute("data-disabled")
+    ).not.toBeNull();
+    expect(
+      rendered
+        .getByRole("option", { name: /^Run draft/ })
+        .getAttribute("data-disabled")
+    ).not.toBeNull();
+  });
+
+  it("finds and selects displayed Group children in a read-only Draft", async () => {
+    const rendered = renderChrome(ToolbarActions, {
+      graph: SEARCH_GRAPH,
+      state: { canUpdate: false },
+    });
+    const before = persistedDraft(rendered.store);
+    const input = await openedPalette(rendered);
+
+    fireEvent.change(input, { target: { value: "notify" } });
+    const result = rendered.getByRole("option", {
+      name: /Notify customer — In Customer updates · notify_customer/,
+    });
+
+    fireEvent.click(result);
+
+    expect(rendered.store.get(selectedNodeAtom)).toBe("notify_customer");
+    expect(
+      rendered.store
+        .get(displayNodesAtom)
+        .filter((node) => node.selected)
+        .map((node) => node.id)
+    ).toEqual(["notify_customer"]);
+    expect(persistedDraft(rendered.store)).toEqual(before);
+    expect(paletteInput()).toBeNull();
+  });
+
+  it("makes a searched Draft node the only graph selection without a graph edit", async () => {
+    const graph = SEARCH_GRAPH.map((node) => ({
+      ...node,
+      selected: node.id === "lifecycle_1",
+    }));
+    const rendered = renderChrome(ToolbarActions, {
+      graph,
+      edges: [SELECTED_SEARCH_EDGE],
+      state: { canUpdate: false },
+    });
+    const serializedBefore = persistedDraft(rendered.store);
+    const revisionBefore = rendered.store.get(currentWorkflowDraftRevisionAtom);
+    expect(rendered.store.get(canUndoAtom)).toBe(false);
+
+    const input = await openedPalette(rendered);
+    fireEvent.change(input, { target: { value: "notify" } });
+    fireEvent.click(rendered.getByRole("option", { name: /Notify customer/ }));
+
+    expect(rendered.store.get(selectedNodeAtom)).toBe("notify_customer");
+    expect(rendered.store.get(selectedEdgeAtom)).toBeNull();
+    expect(
+      rendered.store
+        .get(displayNodesAtom)
+        .filter((node) => node.selected)
+        .map((node) => node.id)
+    ).toEqual(["notify_customer"]);
+    expect(
+      rendered.store.get(displayEdgesAtom).some((edge) => edge.selected)
+    ).toBe(false);
+    expect(persistedDraft(rendered.store)).toEqual(serializedBefore);
+    expect(rendered.store.get(canUndoAtom)).toBe(false);
+    expect(rendered.store.get(currentWorkflowDraftRevisionAtom)).toBe(
+      revisionBefore
+    );
+  });
+
+  it("finds a custom-labelled action by its catalog label and action ID", async () => {
+    const catalog: ExtensionCatalog = {
+      events: [],
+      integrations: [],
+      actions: [
+        {
+          id: "twilio/send-sms",
+          label: "Send SMS",
+          description: "Send a text message",
+          category: "Twilio",
+          configFields: [],
+          outputFields: [],
+        },
+      ],
+    };
+    const graph: WorkflowNode[] = [
+      {
+        id: "notify_customer",
+        type: "action",
+        position: { x: 24, y: 48 },
+        data: {
+          label: "Notify customer",
+          type: "action",
+          config: { actionType: "twilio/send-sms" },
+        },
+      },
+    ];
+    const rendered = renderChrome(ToolbarActions, { catalog, graph });
+    const input = await openedPalette(rendered);
+
+    fireEvent.change(input, { target: { value: "Send SMS" } });
+    expect(
+      rendered.getByRole("option", { name: /Notify customer/ })
+    ).toBeTruthy();
+
+    fireEvent.change(input, { target: { value: "twilio/send-sms" } });
+    expect(
+      rendered.getByRole("option", { name: /Notify customer/ })
+    ).toBeTruthy();
+  });
+
+  it("finds and selects nodes in the pinned Runs graph without enabling edits", async () => {
+    const rendered = renderChrome(ToolbarActions, {
+      graph: SEARCH_GRAPH.map((node) => ({
+        ...node,
+        selected: node.id === "lifecycle_1",
+      })),
+      edges: [SELECTED_SEARCH_EDGE],
+      overlayActive: true,
+      overlayGraph: { nodes: SEARCH_GRAPH, edges: [] },
+    });
+    const draftBefore = persistedDraft(rendered.store);
+    const input = await openedPalette(rendered);
+
+    fireEvent.change(input, { target: { value: "notify" } });
+    fireEvent.click(rendered.getByRole("option", { name: /Notify customer/ }));
+
+    expect(rendered.store.get(selectedNodeAtom)).toBe("notify_customer");
+    expect(
+      rendered.store
+        .get(displayNodesAtom)
+        .filter((node) => node.selected)
+        .map((node) => node.id)
+    ).toEqual(["notify_customer"]);
+    expect(persistedDraft(rendered.store)).toEqual(draftBefore);
+    expect(
+      rendered.store
+        .get(nodesAtom)
+        .filter((node) => node.selected)
+        .map((node) => node.id)
+    ).toEqual(["lifecycle_1"]);
+    expect(
+      rendered.store
+        .get(edgesAtom)
+        .filter((edge) => edge.selected)
+        .map((edge) => edge.id)
+    ).toEqual(["lifecycle-to-group"]);
+    expect(rendered.actions.handleExecute).not.toHaveBeenCalled();
+  });
+
+  it("finds Changes nodes without replacing the Draft selection", async () => {
+    const comparison: WorkflowComparisonPayload = {
+      baseVersion: null,
+      proposedVersion: 1,
+      baseGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+      draftGraph: createSerializedWorkflowGraph({
+        nodes: [SEARCH_GRAPH[2]],
+        edges: [],
+      }),
+      hasChanges: true,
+      nodeChanges: [{ nodeId: "notify_customer", kind: "added", fields: [] }],
+      edgeChanges: [],
+    };
+    const rendered = renderChrome(ToolbarActions, {
+      graph: SEARCH_GRAPH.map((node) => ({
+        ...node,
+        selected: node.id === "lifecycle_1",
+      })),
+      edges: [SELECTED_SEARCH_EDGE],
+      comparison,
+    });
+    const draftBefore = persistedDraft(rendered.store);
+    const input = await openedPalette(rendered);
+
+    fireEvent.change(input, { target: { value: "notify" } });
+    fireEvent.click(rendered.getByRole("option", { name: /Notify customer/ }));
+
+    expect(rendered.store.get(selectedNodeAtom)).toBe("notify_customer");
+    expect(
+      rendered.store
+        .get(displayNodesAtom)
+        .filter((node) => node.selected)
+        .map((node) => node.id)
+    ).toEqual(["notify_customer"]);
+    expect(persistedDraft(rendered.store)).toEqual(draftBefore);
+    expect(
+      rendered.store
+        .get(nodesAtom)
+        .filter((node) => node.selected)
+        .map((node) => node.id)
+    ).toEqual(["lifecycle_1"]);
+    expect(
+      rendered.store
+        .get(edgesAtom)
+        .filter((edge) => edge.selected)
+        .map((edge) => edge.id)
+    ).toEqual(["lifecycle-to-group"]);
   });
 
   // A held palette belongs to the workflow it was opened over. Opening another
@@ -319,7 +598,7 @@ describe("the command palette", () => {
     fireEvent.click(back);
 
     expect(paletteInput()?.getAttribute("placeholder")).toBe(
-      "Search commands, or add a step"
+      "Search commands, steps, or nodes"
     );
     expect(document.activeElement).toBe(paletteInput());
   });
@@ -333,7 +612,7 @@ describe("the command palette", () => {
 
     fireEvent.keyDown(paletteInput() ?? input, { key: "Escape" });
     expect(paletteInput()?.getAttribute("placeholder")).toBe(
-      "Search commands, or add a step"
+      "Search commands, steps, or nodes"
     );
 
     fireEvent.keyDown(paletteInput() ?? input, { key: "Escape" });
@@ -358,7 +637,7 @@ describe("the command palette", () => {
     fireEvent.change(paletteInput() ?? input, { target: { value: "" } });
     fireEvent.keyDown(paletteInput() ?? input, { key: "Backspace" });
     expect(paletteInput()?.getAttribute("placeholder")).toBe(
-      "Search commands, or add a step"
+      "Search commands, steps, or nodes"
     );
   });
 

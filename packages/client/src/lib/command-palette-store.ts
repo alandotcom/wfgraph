@@ -12,10 +12,7 @@ import {
   type CommandPalettePage,
   type CommandPaletteState,
 } from "#src/lib/command-palette";
-import {
-  canvasEditingLockedAtom,
-  isExecutionOverlayActiveAtom,
-} from "#src/lib/workflow-graph-store";
+import { canvasEditingLockedAtom } from "#src/lib/workflow-graph-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 
 const paletteCellAtom = atom<CommandPaletteState | null>(null);
@@ -24,19 +21,13 @@ const paletteCellAtom = atom<CommandPaletteState | null>(null);
  * Why the palette will not open, written for the person who asked, or null when
  * it will.
  *
- * The gate is `canvasEditingLockedAtom`, the same one the Actions menu disables
- * "Add step" with, so the two cannot answer the same question differently. The
- * second read only chooses the wording. Reading the run overlay alone left a gap
- * around generation: the palette opened with every one of its items dead, which
- * is the state that atom exists to prevent.
+ * Root search remains available in read-only workspaces. Add step stays behind
+ * the canvas editing lock, which is the same gate the Actions menu uses.
  */
 export const commandPaletteRefusalAtom = atom((get) => {
-  if (!get(canvasEditingLockedAtom)) {
-    return null;
-  }
-  return get(isExecutionOverlayActiveAtom)
-    ? "Close the run on the canvas before adding a step."
-    : "Wait for the workflow to finish generating.";
+  return get(currentWorkflowIdAtom)
+    ? null
+    : "Save the workflow before opening the command palette.";
 });
 
 /**
@@ -72,7 +63,10 @@ export const openCommandPaletteAtom = atom(
   null,
   (get, set, page: CommandPalettePage): boolean => {
     const workflowId = get(currentWorkflowIdAtom);
-    if (!workflowId || get(commandPaletteRefusalAtom)) {
+    if (!workflowId) {
+      return false;
+    }
+    if (page.id === "add-step" && get(canvasEditingLockedAtom)) {
       return false;
     }
     set(paletteCellAtom, openPalette(workflowId, page));

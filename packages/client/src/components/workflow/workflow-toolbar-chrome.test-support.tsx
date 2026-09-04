@@ -31,6 +31,12 @@ import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import { toEditorNode } from "#src/lib/workflow-graph-types";
 import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
+import type { WorkflowEdge } from "#src/lib/workflow-graph-types";
+import {
+  beginWorkflowComparisonRequestAtom,
+  installWorkflowComparisonAtom,
+} from "#src/lib/workflow-comparison-store";
 
 const emptyCatalog: ExtensionCatalog = {
   events: [],
@@ -145,6 +151,12 @@ export function renderChrome(
   Chrome: React.ComponentType<ChromeProps>,
   lock: {
     overlayActive?: boolean;
+    /** The pinned Run graph the command palette searches. */
+    overlayGraph?: { nodes: WorkflowToolbarState["nodes"]; edges: [] };
+    /** Draft edges paired with `graph` for a selection-focused test. */
+    edges?: readonly WorkflowEdge[];
+    /** A Changes workspace graph that must remain separate from the Draft. */
+    comparison?: WorkflowComparisonPayload;
     generating?: boolean;
     graph?: WorkflowToolbarState["nodes"];
     state?: Partial<WorkflowToolbarState>;
@@ -165,13 +177,19 @@ export function renderChrome(
   if (lock.graph) {
     // "Tidy layout" reads the graph off the store rather than off the state
     // prop, because the pass it runs is the canvas's own.
-    store.set(loadWorkflowGraphAtom, { nodes: lock.graph, edges: [] });
+    store.set(loadWorkflowGraphAtom, {
+      nodes: lock.graph,
+      edges: lock.edges ? [...lock.edges] : [],
+    });
   }
   if (lock.overlayActive) {
     // The overlay is only on the canvas while the Runs workspace is, so both halves
     // of that state go in together.
     store.set(workflowWorkspaceViewAtom, "runs");
-    store.set(executionOverlayGraphAtom, { nodes: [], edges: [] });
+    store.set(
+      executionOverlayGraphAtom,
+      lock.overlayGraph ?? { nodes: [], edges: [] }
+    );
   }
   if (lock.generating) {
     store.set(isGeneratingAtom, true);
@@ -183,6 +201,18 @@ export function renderChrome(
     currentWorkflowIdAtom,
     ("workflowId" in lock ? lock.workflowId : "workflow_1") ?? null
   );
+  if (lock.comparison) {
+    const workflowId = "workflowId" in lock ? lock.workflowId : "workflow_1";
+    if (workflowId) {
+      const epoch = store.set(beginWorkflowComparisonRequestAtom, workflowId);
+      store.set(installWorkflowComparisonAtom, {
+        workflowId,
+        epoch,
+        payload: lock.comparison,
+      });
+      store.set(workflowWorkspaceViewAtom, "changes");
+    }
+  }
 
   // Built once rather than inside the route component, so a case can assert on
   // the spy the chrome was actually handed: re-created per render, every click
