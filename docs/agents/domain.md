@@ -1,17 +1,17 @@
-# Domain Docs
+# Domain docs
 
-How the engineering skills should consume this repo's domain documentation when exploring the codebase.
+This file defines how engineering skills use the repository's domain documentation.
 
 ## Before exploring, read these
 
-- **`CONTEXT.md`** at the repo root — the glossary of domain terms.
-- **`docs/adr/`** — read ADRs that touch the area you're about to work in.
+- `CONTEXT.md` at the repository root contains the glossary of domain terms.
+- `docs/adr/` contains the architecture decisions. Read the ADRs that apply to your work.
 
-If any of these files don't exist, **proceed silently**. Don't flag their absence; don't suggest creating them upfront. The `/domain-modeling` skill (reached via `/grill-with-docs` and `/improve-codebase-architecture`) creates them lazily when terms or decisions actually get resolved.
+If a domain documentation file is absent, proceed with the work. The `/domain-modeling` skill, reached through `/grill-with-docs` or `/improve-codebase-architecture`, creates domain documentation when the team resolves a term or decision.
 
 ## File structure
 
-This is a single-context repo. One glossary and one ADR directory cover all four
+This is a single-context repository. One glossary and one ADR directory cover all
 workspace packages.
 
 ```
@@ -26,25 +26,26 @@ workspace packages.
 │   ├── agents/            # engineering-skill config, not host manuals
 │   └── internal/          # session plans and product intent; not adopter docs
 └── packages/
-    ├── shared/
-    ├── core/
+    ├── agent/
     ├── client/
-    └── plugins/
+    ├── core/
+    ├── evals/
+    ├── plugins/
+    └── shared/
 ```
 
-Should the packages ever diverge into genuinely separate domains, the layout to move
-to is a root `CONTEXT-MAP.md` pointing at a `CONTEXT.md` per package, each with its own
-`packages/<name>/docs/adr/` for context-scoped decisions. Switching means editing this
-file; the skills read the layout from here.
+If packages diverge into separate domains, create a root `CONTEXT-MAP.md` that points
+to one `CONTEXT.md` file per package. Store context-specific decisions in
+`packages/<name>/docs/adr/`, and update this file with the new layout.
 
 ## Use the glossary's vocabulary
 
-When your output names a domain concept (in an issue title, a refactor proposal, a hypothesis, a test name), use the term as defined in `CONTEXT.md`. Don't drift to synonyms the glossary explicitly avoids.
+When your output names a domain concept in an issue title, proposal, hypothesis, or test name, use the term from `CONTEXT.md`.
 
-If the concept you need isn't in the glossary yet, that's a signal — either you're inventing language the project doesn't use (reconsider) or there's a real gap (note it for `/domain-modeling`).
+If `CONTEXT.md` does not define a required concept, verify that the project uses the proposed term. Record a genuine vocabulary gap for `/domain-modeling`.
 
 ## Flag ADR conflicts
 
-If your output contradicts an existing ADR, surface it explicitly rather than silently overriding:
+If your output contradicts an existing ADR, identify the conflict explicitly:
 
-> _Contradicts ADR-0007 (event-sourced orders) — but worth reopening because…_
+> _Contradicts ADR-0007's decision that Lifecycle Rules are defined per workflow. Reopen the decision because ..._
