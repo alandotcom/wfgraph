@@ -141,6 +141,213 @@ describe("assessScenarioSemantics", () => {
     });
   });
 
+  it("accepts the required tracked Entity and eligibility condition", () => {
+    const document = completedDocument();
+    const lifecycle = document.nodes[0];
+    if (!lifecycle) {
+      throw new Error("Lifecycle fixture is missing");
+    }
+    lifecycle.data.config = {
+      lifecycleRules: {
+        startEvents: ["applicant.created"],
+        cancelEvents: [],
+        concurrency: "unlimited",
+        trackedEntity: {
+          type: "applicant",
+          bindings: { "applicant.created": "applicant" },
+        },
+        entityEligibility: {
+          checkpoints: ["before-node", "before-execution"],
+          condition: JSON.stringify({
+            version: 2,
+            groupLogic: "and",
+            groups: [
+              {
+                id: "group",
+                logic: "and",
+                conditions: [
+                  {
+                    id: "rule",
+                    field: "status",
+                    fieldType: "string",
+                    operator: "is_one_of",
+                    values: ["active", "paused"],
+                  },
+                ],
+              },
+            ],
+          }),
+        },
+      },
+    };
+    const lifecycleInput: AgentEvalInput = {
+      ...input,
+      expected: {
+        requiredLifecycleRules: {
+          trackedEntity: {
+            type: "applicant",
+            bindings: { "applicant.created": "applicant" },
+          },
+          entityEligibility: {
+            checkpoints: ["before-execution", "before-node"],
+            condition: {
+              groupLogic: "and",
+              groups: [
+                {
+                  logic: "and",
+                  rules: [
+                    {
+                      field: "status",
+                      fieldType: "string",
+                      operator: "is_one_of",
+                      values: ["active", "paused"],
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      },
+    };
+
+    expect(assessScenarioSemantics(lifecycleInput, document)).toMatchObject({
+      score: 1,
+    });
+  });
+
+  it("rejects duplicate eligibility checkpoints", () => {
+    const document = completedDocument();
+    const lifecycle = document.nodes[0];
+    if (!lifecycle) {
+      throw new Error("Lifecycle fixture is missing");
+    }
+    lifecycle.data.config = {
+      lifecycleRules: {
+        startEvents: ["applicant.created"],
+        cancelEvents: [],
+        concurrency: "unlimited",
+        trackedEntity: {
+          type: "applicant",
+          bindings: { "applicant.created": "applicant" },
+        },
+        entityEligibility: {
+          checkpoints: ["before-execution", "before-node", "before-node"],
+          condition: JSON.stringify({
+            version: 2,
+            groupLogic: "and",
+            groups: [
+              {
+                id: "group",
+                logic: "and",
+                conditions: [
+                  {
+                    id: "rule",
+                    field: "status",
+                    fieldType: "string",
+                    operator: "equals",
+                    value: "active",
+                  },
+                ],
+              },
+            ],
+          }),
+        },
+      },
+    };
+    const lifecycleInput: AgentEvalInput = {
+      ...input,
+      expected: {
+        requiredLifecycleRules: {
+          entityEligibility: {
+            checkpoints: ["before-execution", "before-node"],
+            condition: {
+              groupLogic: "and",
+              groups: [
+                {
+                  logic: "and",
+                  rules: [
+                    {
+                      field: "status",
+                      fieldType: "string",
+                      operator: "equals",
+                      value: "active",
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      },
+    };
+
+    expect(assessScenarioSemantics(lifecycleInput, document)).toEqual({
+      score: 0,
+      rationale:
+        "Lifecycle Entity Eligibility does not match the required checkpoints and condition.",
+    });
+  });
+
+  it("requires tracking without eligibility when the scenario says so", () => {
+    const document = completedDocument();
+    const lifecycle = document.nodes[0];
+    if (!lifecycle) {
+      throw new Error("Lifecycle fixture is missing");
+    }
+    lifecycle.data.config = {
+      lifecycleRules: {
+        startEvents: ["applicant.created"],
+        cancelEvents: [],
+        concurrency: "unlimited",
+        trackedEntity: {
+          type: "applicant",
+          bindings: { "applicant.created": "applicant" },
+        },
+        entityEligibility: {
+          checkpoints: ["before-execution"],
+          condition: JSON.stringify({
+            version: 2,
+            groupLogic: "and",
+            groups: [
+              {
+                id: "group",
+                logic: "and",
+                conditions: [
+                  {
+                    id: "rule",
+                    field: "status",
+                    fieldType: "string",
+                    operator: "equals",
+                    value: "active",
+                  },
+                ],
+              },
+            ],
+          }),
+        },
+      },
+    };
+    const lifecycleInput: AgentEvalInput = {
+      ...input,
+      expected: {
+        requiredLifecycleRules: {
+          trackedEntity: {
+            type: "applicant",
+            bindings: { "applicant.created": "applicant" },
+          },
+          entityEligibility: null,
+        },
+      },
+    };
+
+    expect(assessScenarioSemantics(lifecycleInput, document)).toEqual({
+      score: 0,
+      rationale:
+        "Lifecycle must track the Entity without an eligibility condition.",
+    });
+  });
+
   it("allows additional lifecycle map entries required by the requested edit", () => {
     const document = completedDocument();
     const lifecycle = document.nodes[0];

@@ -88,6 +88,26 @@ function wrongRequiredLifecycleRules(context: SemanticsContext): string[] {
   const rules = context.lifecycleRules.find(
     (candidate): candidate is LifecycleRules => candidate !== undefined
   );
+  const requiredEligibility = required.entityEligibility;
+  const actualCheckpoints = rules?.entityEligibility?.checkpoints ?? [];
+  const parsedEligibility = parseConditionModel(
+    rules?.entityEligibility?.condition
+  );
+  const eligibilityMatches =
+    requiredEligibility === undefined ||
+    (requiredEligibility === null
+      ? rules?.entityEligibility === undefined
+      : parsedEligibility.valid &&
+        actualCheckpoints.length === requiredEligibility.checkpoints.length &&
+        new Set(actualCheckpoints).size === actualCheckpoints.length &&
+        isEqual(
+          new Set(actualCheckpoints),
+          new Set(requiredEligibility.checkpoints)
+        ) &&
+        isEqual(
+          lifecycleFilterShape(parsedEligibility.model),
+          requiredEligibility.condition
+        ));
   return compact([
     required.concurrency === undefined ||
     rules?.concurrency === required.concurrency
@@ -105,6 +125,15 @@ function wrongRequiredLifecycleRules(context: SemanticsContext): string[] {
     includesRequiredEntries(rules?.connectionIds, required.connectionIds)
       ? undefined
       : "Lifecycle Connections do not include the required values",
+    required.trackedEntity === undefined ||
+    isEqual(rules?.trackedEntity, required.trackedEntity)
+      ? undefined
+      : "Lifecycle tracked Entity does not match the required type and bindings",
+    eligibilityMatches
+      ? undefined
+      : requiredEligibility === null
+        ? "Lifecycle must track the Entity without an eligibility condition"
+        : "Lifecycle Entity Eligibility does not match the required checkpoints and condition",
   ]);
 }
 
