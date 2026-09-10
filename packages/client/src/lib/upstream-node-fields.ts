@@ -5,6 +5,7 @@ import {
   type EventMetadata,
   type ExtensionCatalog,
   findAction,
+  findEntity,
   findEvent,
 } from "@wfgraph/shared/extensions/catalog";
 import {
@@ -336,6 +337,37 @@ function schemaFieldFlags(
     // oxlint-disable-next-line wfgraph/no-conditional-spread -- an unset flag leaves the key absent, so two rows compare equal only when both carry the same flags.
     ...(field.enumValues ? { enumValues: field.enumValues } : {}),
   };
+}
+
+/** The current-state fields a Lifecycle Entity Eligibility rule may read. */
+export function getEntityConditionFields(
+  catalog: ExtensionCatalog,
+  entityType: string
+): ConditionSelectableField[] {
+  const entity = findEntity(catalog, entityType);
+  if (!entity) {
+    return [];
+  }
+
+  return compact(
+    entity.stateFields.map((field) => {
+      const path = field.path.trim();
+      const type = conditionTypeOf(field);
+      if (!(path && type)) {
+        return null;
+      }
+
+      return {
+        path,
+        label: path,
+        type,
+        sourceNodeId: `entity:${entity.type}`,
+        sourceNodeLabel: `${entity.label} State`,
+        sourceNodeLabels: [`${entity.label} State`],
+        ...schemaFieldFlags(field),
+      } satisfies ConditionSelectableField;
+    })
+  ).toSorted((a, b) => compareText(a.path, b.path));
 }
 
 /**

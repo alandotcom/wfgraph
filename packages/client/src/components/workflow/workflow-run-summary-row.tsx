@@ -100,6 +100,8 @@ export function getRunOutcome(
       ).length;
       return `Canceled after ${completedSteps} ${completedSteps === 1 ? "step" : "steps"}`;
     }
+    case "exited":
+      return "Exited by Entity eligibility";
     case "superseded":
       return "Replaced by a newer start";
   }

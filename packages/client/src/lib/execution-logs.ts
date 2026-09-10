@@ -7,6 +7,7 @@ import {
 import type { ExecutionLogEntry } from "@wfgraph/shared/graph/types";
 import type { WorkflowVersionKind } from "@wfgraph/shared/graph/version-kinds";
 import type { ExecutionLogsResult } from "#src/lib/rpc-client";
+import { readJsonObject } from "@wfgraph/shared/types/json";
 
 /**
  * The shapes a workflow run takes on the client, and the pure functions that
@@ -64,6 +65,62 @@ export type ExecutionEvent = {
   metadata: unknown;
   createdAt: Date;
 };
+
+export type ExecutionExit = {
+  reason: "entity_condition_not_met" | "entity_not_found";
+  entityType: string;
+  conditionId: string;
+  nodeId: string;
+  checkedAt: Date;
+};
+
+/** Reads the structured business outcome from the terminal audit record. */
+export function findExecutionExit(
+  events: readonly ExecutionEvent[]
+): ExecutionExit | undefined {
+  const event = events.findLast(
+    (candidate) => candidate.eventType === "run_exited"
+  );
+  const metadata = readJsonObject(event?.metadata);
+  const reason = metadata?.reason;
+  const checkedAt =
+    typeof metadata?.checkedAt === "string"
+      ? new Date(metadata.checkedAt)
+      : null;
+  if (
+    (reason !== "entity_condition_not_met" && reason !== "entity_not_found") ||
+    typeof metadata?.entityType !== "string" ||
+    typeof metadata.conditionId !== "string" ||
+    typeof metadata.nodeId !== "string" ||
+    checkedAt === null ||
+    Number.isNaN(checkedAt.getTime())
+  ) {
+    return undefined;
+  }
+
+  return {
+    reason,
+    entityType: metadata.entityType,
+    conditionId: metadata.conditionId,
+    nodeId: metadata.nodeId,
+    checkedAt,
+  };
+}
+
+/**
+ * Keeps the events feed alive through the small window between terminal status
+ * and its structured audit record. Without this, an exited run can retain the
+ * generic fallback sentence until the page is reloaded.
+ */
+export function shouldPollExecutionEvents(
+  status: WorkflowExecutionStatus | undefined,
+  events: readonly ExecutionEvent[] | undefined
+): boolean {
+  return (
+    isRunInProgress(status) ||
+    (status === "exited" && findExecutionExit(events ?? []) === undefined)
+  );
+}
 
 /**
  * One node this run is parked at, with what would unpark it.

@@ -195,6 +195,9 @@ describe("WorkflowRunSummaryRow", () => {
     expect(getRunOutcome({ ...BASE_EXECUTION, status: "superseded" }, [])).toBe(
       "Replaced by a newer start"
     );
+    expect(getRunOutcome({ ...BASE_EXECUTION, status: "exited" }, [])).toBe(
+      "Exited by Entity eligibility"
+    );
   });
 
   it("shows a compact header with a visible cancel action", () => {

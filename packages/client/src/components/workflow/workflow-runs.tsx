@@ -10,6 +10,7 @@ import { type ReactNode, useState } from "react";
 import { Button } from "#src/components/ui/button";
 import {
   isRunInProgress,
+  shouldPollExecutionEvents,
   toExecutionDetail,
   toExecutionEvents,
   toWorkflowExecutions,
@@ -159,23 +160,18 @@ export function WorkflowRuns({ listActions }: { listActions?: ReactNode }) {
       : executions.findIndex((execution) => execution.id === executionId);
   const listedRun = listedIndex >= 0 ? executions[listedIndex] : undefined;
 
-  // Both detail queries follow the same run, so they read its status from the
-  // same place: the list, which is polling anyway. Deriving it from each
-  // query's own payload would give the events poll no way to know it had
-  // finished, because the events endpoint does not report a status. A run that
-  // has left the list reports no status, which is what stops the polling.
-  // Cancel therefore has to invalidate logs and events in `refreshRunHistory`:
-  // once this interval is false, a list-only refresh would otherwise leave the
-  // journey on its last in-flight snapshot.
+  // The list is already polling, so its status controls whether the logs still
+  // have active work to learn about. A run that has left the list reports no
+  // status, which stops this interval. Cancel therefore has to invalidate logs
+  // and events in `refreshRunHistory`: a list-only refresh would otherwise
+  // leave the journey on its last in-flight snapshot.
   const detailPollInterval = isRunInProgress(listedRun?.status)
     ? RUN_POLL_MS
     : false;
 
   // Opening a run enables its logs and events; the cache decides whether that
-  // means a request. Both stop once the run is finished, which the single
-  // interval this replaced could not do: it refreshed the open run forever,
-  // long after there was anything left to learn about it. The logs payload also
-  // carries an execution summary for ids past the newest-50 list.
+  // means a request. The logs payload also carries an execution summary for ids
+  // past the newest-50 list.
   const detailQuery = useQuery({
     ...orpcQuery.workflow.getExecutionLogs.queryOptions({
       input: { executionId: executionId ?? "" },
@@ -186,6 +182,7 @@ export function WorkflowRuns({ listActions }: { listActions?: ReactNode }) {
     refetchInterval: detailPollInterval,
   });
 
+  const detailStatus = listedRun?.status ?? detailQuery.data?.execution.status;
   const eventsQuery = useQuery({
     ...orpcQuery.workflow.getExecutionEvents.queryOptions({
       input: { executionId: executionId ?? "" },
@@ -193,7 +190,15 @@ export function WorkflowRuns({ listActions }: { listActions?: ReactNode }) {
     }),
     enabled: executionId !== undefined && canReadEvents,
     staleTime: 0,
-    refetchInterval: detailPollInterval,
+    // Terminal status and its audit record are separate writes. Keep reading an
+    // exited run until the structured reason arrives, then stop as usual.
+    refetchInterval: (query) =>
+      shouldPollExecutionEvents(
+        detailStatus,
+        query.state.data ? toExecutionEvents(query.state.data) : undefined
+      )
+        ? RUN_POLL_MS
+        : false,
   });
 
   const cancelExecution = useMutation(

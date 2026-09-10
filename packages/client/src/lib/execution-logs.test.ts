@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   applyExecutionStatusToLogs,
+  type ExecutionEvent,
+  findExecutionExit,
   isRunInProgress,
+  shouldPollExecutionEvents,
   toPinnedRunSummary,
   toWorkflowExecutionFromSummary,
   toWorkflowExecutions,
@@ -78,6 +81,71 @@ describe("toWorkflowExecutions", () => {
     expect(result.executions[0]?.waitingAt).toBeNull();
     expect(result.executions[0]?.cancelledAt).toBeNull();
     expect(result.executions[0]?.completedAt).toBeNull();
+  });
+});
+
+describe("findExecutionExit", () => {
+  it("reads only the non-sensitive terminal verdict metadata", () => {
+    expect(
+      findExecutionExit([
+        {
+          id: "audit_exit",
+          eventType: "run_exited",
+          message: "Run exited",
+          metadata: {
+            reason: "entity_condition_not_met",
+            entityType: "appointment",
+            conditionId: "condition-v1",
+            nodeId: "send-reminder",
+            checkedAt: "2026-03-01T10:00:05.000Z",
+            entityId: "appt_secret",
+            state: { active: true },
+          },
+          createdAt: new Date("2026-03-01T10:00:05.000Z"),
+        },
+      ])
+    ).toEqual({
+      reason: "entity_condition_not_met",
+      entityType: "appointment",
+      conditionId: "condition-v1",
+      nodeId: "send-reminder",
+      checkedAt: new Date("2026-03-01T10:00:05.000Z"),
+    });
+  });
+
+  it("ignores malformed audit metadata", () => {
+    expect(
+      findExecutionExit([
+        {
+          id: "audit_exit",
+          eventType: "run_exited",
+          message: "Run exited",
+          metadata: { reason: "entity_not_found", entityId: "secret" },
+          createdAt: new Date("2026-03-01T10:00:05.000Z"),
+        },
+      ])
+    ).toBeUndefined();
+  });
+
+  it("polls an exited run until its structured terminal record arrives", () => {
+    const event = {
+      id: "audit_exit",
+      eventType: "run_exited",
+      message: "Run exited",
+      metadata: {
+        reason: "entity_condition_not_met",
+        entityType: "appointment",
+        conditionId: "condition-v1",
+        nodeId: "send-reminder",
+        checkedAt: "2026-03-01T10:00:05.000Z",
+      },
+      createdAt: new Date("2026-03-01T10:00:05.000Z"),
+    } satisfies ExecutionEvent;
+
+    expect(shouldPollExecutionEvents("running", [])).toBe(true);
+    expect(shouldPollExecutionEvents("exited", [])).toBe(true);
+    expect(shouldPollExecutionEvents("exited", [event])).toBe(false);
+    expect(shouldPollExecutionEvents("completed", [])).toBe(false);
   });
 });
 

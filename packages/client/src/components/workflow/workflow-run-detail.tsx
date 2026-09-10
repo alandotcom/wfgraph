@@ -6,12 +6,16 @@ import { useAfterCommit } from "#src/hooks/effects";
 import {
   applyExecutionStatusToLogs,
   type ExecutionEvent,
+  type ExecutionExit,
   type ExecutionLog,
   type ExecutionWait,
+  findExecutionExit,
   isRunInProgress,
   type WorkflowExecution,
 } from "#src/lib/execution-logs";
-import { selectedNodeAtom } from "#src/lib/workflow-graph-store";
+import { nodesAtom, selectedNodeAtom } from "#src/lib/workflow-graph-store";
+import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
+import { findEntity } from "@wfgraph/shared/extensions/catalog";
 import { CollapsibleSection } from "./workflow-run-shared";
 import { WorkflowRunNodeInspector } from "./workflow-run-node-inspector";
 import {
@@ -34,6 +38,16 @@ type WorkflowRunDetailProps = {
   onCancel?: ((executionId: string) => void) | undefined;
   onResume?: ((token: string) => void) | undefined;
 };
+
+function exitSummary(input: {
+  exit: ExecutionExit;
+  entityLabel: string;
+  nodeLabel: string;
+}): string {
+  return input.exit.reason === "entity_not_found"
+    ? `Exited before “${input.nodeLabel}” because the ${input.entityLabel} no longer exists.`
+    : `Exited before “${input.nodeLabel}” because the ${input.entityLabel} was no longer eligible.`;
+}
 
 function waitingSummary(wait: ExecutionWait): string {
   if (wait.subscribedEvents.length > 0) {
@@ -62,6 +76,8 @@ export function WorkflowRunDetail({
   onResume,
 }: WorkflowRunDetailProps) {
   const selectedNodeId = useAtomValue(selectedNodeAtom);
+  const nodes = useAtomValue(nodesAtom);
+  const catalog = useExtensionCatalog();
   const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
   const [returnFocusLogId, setReturnFocusLogId] = useState<string | null>(null);
   // The list row is what cancel paints first. Logs and waits can still be the
@@ -110,6 +126,15 @@ export function WorkflowRunDetail({
   }
 
   const failedLog = sortedLogs.findLast((log) => log.status === "error");
+  const exit = findExecutionExit(events);
+  const exitNodeLabel = exit
+    ? (nodes.find((node) => node.id === exit.nodeId)?.data.label ??
+      sortedLogs.find((log) => log.nodeId === exit.nodeId)?.nodeName ??
+      exit.nodeId)
+    : undefined;
+  const exitEntityLabel = exit
+    ? (findEntity(catalog, exit.entityType)?.label ?? exit.entityType)
+    : undefined;
   const primaryWait = activeWaits[0];
   const outcome =
     execution.status === "waiting" && primaryWait
@@ -161,6 +186,36 @@ export function WorkflowRunDetail({
             </section>
           ) : null}
 
+          {execution.status === "exited" ? (
+            <section className="space-y-1.5 rounded-md border border-cancelled/30 p-3">
+              <h3 className="font-medium text-cancelled text-xs">
+                Exited by Entity eligibility
+              </h3>
+              <p className="break-words text-xs">
+                {exit && exitNodeLabel && exitEntityLabel
+                  ? exitSummary({
+                      exit,
+                      nodeLabel: exitNodeLabel,
+                      entityLabel: exitEntityLabel,
+                    })
+                  : "This run exited because Entity eligibility did not pass."}
+              </p>
+              {exit ? (
+                <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1 text-xs">
+                  <dt className="text-muted-foreground">Condition</dt>
+                  <dd className="break-all font-mono">{exit.conditionId}</dd>
+                  <dt className="text-muted-foreground">Checked</dt>
+                  <dd>
+                    {exit.checkedAt.toLocaleString(undefined, {
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                    })}
+                  </dd>
+                </dl>
+              ) : null}
+            </section>
+          ) : null}
+
           {execution.status === "failed" && (failedLog || execution.error) ? (
             <section className="rounded-md border border-destructive/30 bg-destructive/10 p-3">
               <h3 className="font-medium text-destructive text-xs">
@@ -175,6 +230,11 @@ export function WorkflowRunDetail({
           ) : null}
 
           <WorkflowRunNodeIndex
+            exit={
+              exit && exitNodeLabel
+                ? { conditionId: exit.conditionId, nodeLabel: exitNodeLabel }
+                : undefined
+            }
             focusLogId={returnFocusLogId}
             logs={sortedLogs}
             onSelect={(log) => {

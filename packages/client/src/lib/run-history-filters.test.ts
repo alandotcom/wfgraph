@@ -246,6 +246,10 @@ describe("filterRuns", () => {
 });
 
 describe("toExecutionsQueryInput", () => {
+  it("shows Entity Eligibility exits in the default history", () => {
+    expect(DEFAULT_STATUS_OPTIONS).toContain("exited");
+  });
+
   it("asks for the default statuses when none are picked", () => {
     expect(
       toExecutionsQueryInput({

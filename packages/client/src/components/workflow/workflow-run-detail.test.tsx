@@ -3,9 +3,19 @@ import { act, fireEvent, render } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
-import type { WorkflowExecution } from "#src/lib/execution-logs";
-import { selectedNodeAtom } from "#src/lib/workflow-graph-store";
-import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import type {
+  ExecutionEvent,
+  WorkflowExecution,
+} from "#src/lib/execution-logs";
+import {
+  loadWorkflowGraphAtom,
+  selectedNodeAtom,
+} from "#src/lib/workflow-graph-store";
+import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import {
+  emptyExtensionCatalog,
+  type ExtensionCatalog,
+} from "@wfgraph/shared/extensions/catalog";
 import { WorkflowRunDetail } from "./workflow-run-detail";
 
 const BASE_EXECUTION: WorkflowExecution = {
@@ -33,10 +43,16 @@ function renderDetail(
   extras?: {
     logs?: WorkflowRunDetailLogs;
     waits?: Parameters<typeof WorkflowRunDetail>[0]["waits"];
+    events?: ExecutionEvent[];
+    catalog?: ExtensionCatalog;
+    nodes?: WorkflowNode[];
     selectedNodeId?: string;
   }
 ) {
   const store = createStore();
+  if (extras?.nodes) {
+    store.set(loadWorkflowGraphAtom, { nodes: extras.nodes, edges: [] });
+  }
   if (extras?.selectedNodeId) {
     store.set(selectedNodeAtom, extras.selectedNodeId);
   }
@@ -44,10 +60,12 @@ function renderDetail(
     store,
     ...render(
       <JotaiProvider store={store}>
-        <ExtensionCatalogProvider value={emptyExtensionCatalog}>
+        <ExtensionCatalogProvider
+          value={extras?.catalog ?? emptyExtensionCatalog}
+        >
           <IntegrationUiProvider value={{}}>
             <WorkflowRunDetail
-              events={[]}
+              events={extras?.events ?? []}
               execution={execution}
               isCanceling={false}
               isResuming={false}
@@ -93,6 +111,68 @@ describe("WorkflowRunDetail", () => {
     const view = renderDetail({ ...BASE_EXECUTION, status: "completed" });
 
     expect(view.queryByRole("button", { name: "Cancel" })).toBeNull();
+  });
+
+  it("explains an Entity Eligibility exit without exposing Entity State", () => {
+    const view = renderDetail(
+      {
+        ...BASE_EXECUTION,
+        status: "exited",
+        completedAt: new Date("2026-10-19T15:00:00.000Z"),
+      },
+      {
+        catalog: {
+          ...emptyExtensionCatalog,
+          entities: [
+            {
+              type: "appointment",
+              label: "Appointment",
+              stateFields: [],
+              stateSchemaDigest: "state-v1",
+            },
+          ],
+        },
+        nodes: [
+          {
+            id: "send-reminder",
+            type: "action",
+            position: { x: 0, y: 0 },
+            data: {
+              label: "Send reminder",
+              type: "action",
+              config: { actionType: "mail/send" },
+            },
+          },
+        ],
+        events: [
+          {
+            id: "audit_exit",
+            eventType: "run_exited",
+            message: "Run exited because the Entity was ineligible",
+            metadata: {
+              reason: "entity_condition_not_met",
+              entityType: "appointment",
+              conditionId: "condition_digest",
+              nodeId: "send-reminder",
+              checkedAt: "2026-10-19T15:00:00.000Z",
+              entityId: "appt_secret",
+              entityState: "active=true",
+            },
+            createdAt: new Date("2026-10-19T15:00:00.000Z"),
+          },
+        ],
+      }
+    );
+
+    expect(
+      view.getByText(
+        "Exited before “Send reminder” because the Appointment was no longer eligible."
+      )
+    ).toBeTruthy();
+    expect(view.getByText("condition_digest")).toBeTruthy();
+    expect(view.getByText("Prevented Send reminder")).toBeTruthy();
+    expect(view.getByText("condition_di")).toBeTruthy();
+    expect(view.queryByText(/appt_secret|active=true/)).toBeNull();
   });
 
   it("opens the inspector from an executed-node row and back returns to overview", () => {

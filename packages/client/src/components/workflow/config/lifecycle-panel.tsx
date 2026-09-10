@@ -32,18 +32,25 @@ import {
 } from "@wfgraph/shared/lifecycle/start-filters";
 import { IntegrationEventConnectionEditor } from "./integration-event-connection";
 import { LifecycleConcurrencyGroup } from "./lifecycle-concurrency-group";
+import {
+  LifecycleEntityEligibilityGroup,
+  reconcileEntityBindings,
+} from "./lifecycle-entity-eligibility-group";
 import { LifecycleEventGroup } from "./lifecycle-event-group";
 import type { UpdateNodeConfig } from "./node-config-patch";
 
 export { CONCURRENCY_OPTIONS } from "./lifecycle-concurrency-group";
 
 function prune(next: LifecycleRules, catalog: ExtensionCatalog) {
-  return pruneCancelFilters(
-    pruneStartFilters(
-      pruneConnectionIds(
-        inheritConnectionIds(pruneCorrelationPaths(next), catalog)
+  return reconcileEntityBindings(
+    pruneCancelFilters(
+      pruneStartFilters(
+        pruneConnectionIds(
+          inheritConnectionIds(pruneCorrelationPaths(next), catalog)
+        )
       )
-    )
+    ),
+    catalog
   );
 }
 
@@ -165,6 +172,8 @@ export function LifecyclePanel({
     onStartFilterChangeForAll: setStartFilterForEveryEvent,
     onCancelFilterChange: setCancelFilter,
     onCancelFilterChangeForAll: setCancelFilterForEveryEvent,
+    onRulesChange: (next: LifecycleRules) =>
+      write(reconcileEntityBindings(next, catalog)),
   };
 
   return (
@@ -197,6 +206,7 @@ function LifecycleGroups({
   onCancelFilterChange,
   onCancelFilterChangeForAll,
   onConnectionChange,
+  onRulesChange,
 }: {
   rules: LifecycleRules;
   catalog: ExtensionCatalog;
@@ -214,6 +224,7 @@ function LifecycleGroups({
   onCancelFilterChange: (eventName: string, model: string | undefined) => void;
   onCancelFilterChangeForAll: (model: string | undefined) => void;
   onConnectionChange: (integration: string, connectionId: string) => void;
+  onRulesChange: (rules: LifecycleRules) => void;
 }) {
   return (
     <div className="divide-y">
@@ -244,6 +255,12 @@ function LifecycleGroups({
         onFilterChange={onCancelFilterChange}
         onFilterChangeForAll={onCancelFilterChangeForAll}
         role="cancel"
+        rules={rules}
+      />
+      <LifecycleEntityEligibilityGroup
+        catalog={catalog}
+        disabled={disabled}
+        onChange={onRulesChange}
         rules={rules}
       />
       {uniqueIntegrationsOfEvents(catalog, [
