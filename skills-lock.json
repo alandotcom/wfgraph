@@ -11,27 +11,37 @@
       "source": "ai-evals-course/evals-skills",
       "sourceType": "github",
       "skillPath": "skills/eval-audit/SKILL.md",
-      "computedHash": "bf5f20b6921ba2d876c45c55211783f2bb6f952623b3d7336b5f272e6bcb6430"
+      "computedHash": "61dc5dc1763fe031616a603c020e6dd54068e45d6135feea94f068f4cbb9150f"
     },
     "react-flow": {
       "source": "existential-birds/beagle",
       "sourceType": "github",
-      "computedHash": "2e0b696ee5d7d3407263fb8330c1ed455837eb86f52464688e3bc7c60304b7b7"
+      "skillPath": "plugins/beagle-react/skills/react-flow/SKILL.md",
+      "computedHash": "24daea215037828ec60608bf5952cd24ed55ff5512d65fc1d636bd0c0b188c5a"
     },
     "react-flow-advanced": {
       "source": "existential-birds/beagle",
       "sourceType": "github",
-      "computedHash": "8584b77e9491af20225a185bebdb3823bbc3e66e1da74d2e5e9dc5114559ef19"
+      "skillPath": "plugins/beagle-react/skills/react-flow-advanced/SKILL.md",
+      "computedHash": "a81a69fd93b7f91bac1b0c92b344051077928cba152fad8260dc01ea6d3a600e"
     },
     "react-flow-architecture": {
       "source": "existential-birds/beagle",
       "sourceType": "github",
-      "computedHash": "5cd5f71fb064348da0e8fe00e162c71e4d03e36cfdbf72e45dcb5b1dac238427"
+      "skillPath": "plugins/beagle-react/skills/react-flow-architecture/SKILL.md",
+      "computedHash": "1f3f095e41847ba75f6d9cf1ee1f50e0383b6b1346551eb4149959b9716af6a8"
     },
     "react-flow-code-review": {
       "source": "existential-birds/beagle",
       "sourceType": "github",
-      "computedHash": "3aad2d3d4cd1b79b585d3c17dfcc61952fccde59f35fb864fa7852cfde1fe958"
+      "skillPath": "plugins/beagle-react/skills/react-flow-code-review/SKILL.md",
+      "computedHash": "cc8ebd5147f6f8ccc7cef50af8a5cc01dcb0f5375bb9f8cb76b483e5885ac724"
+    },
+    "react-flow-implementation": {
+      "source": "existential-birds/beagle",
+      "sourceType": "github",
+      "skillPath": "plugins/beagle-react/skills/react-flow-implementation/SKILL.md",
+      "computedHash": "1066638aecc213a865695f63bd5abdd988468e87dec9d066465954d91a5e7664"
     },
     "react-state-management": {
       "source": "wshobson/agents",

@@ -40,11 +40,16 @@ and creates its schema on first boot.
 
 **Trap.** A backgrounded `pnpm run dev` returns at once, and the harness reports
 it as finished while the three processes keep running. Wait for readiness rather
-than for the command:
+than for the command. Probe the public login page: `/api/extensions` is protected
+and returns 401 until the request carries a demo-login session.
 
 ```bash
-until curl -sSf -o /dev/null http://localhost:4017/api/extensions; do sleep 2; done
+until curl -sSf -o /dev/null http://localhost:4017/login; do sleep 2; done
 ```
+
+Open `http://localhost:5173/login` (or Vite's printed port) and sign in with a
+demo account before calling protected API routes. Every account uses `password`;
+`editor` has the permissions a live run needs.
 
 Then give the Connect handshake another few seconds. The log line to look for is
 `Inngest Connect worker ready`. A run enqueued before that handshake sits

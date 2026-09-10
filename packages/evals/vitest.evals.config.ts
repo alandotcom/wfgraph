@@ -1,5 +1,15 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
-import { workspaceSourceAliases } from "./scripts/plugins/workspace-source-aliases.ts";
+import { workspaceSourceAliases } from "../../scripts/plugins/workspace-source-aliases.ts";
+
+const repositoryFile = (path: string) =>
+  fileURLToPath(new URL(`../../${path}`, import.meta.url));
+
+if (!process.env.VITEST_EVALS_REPLAY_DIR?.trim()) {
+  process.env.VITEST_EVALS_REPLAY_DIR = repositoryFile(
+    ".vitest-evals/recordings"
+  );
+}
 
 /**
  * A file name no run overwrites, so two runs can be compared.
@@ -13,7 +23,7 @@ function reportPath(): string {
   const [date, time] = new Date().toISOString().split("T");
   const stamp = `${date?.replaceAll("-", "")}-${time?.slice(0, 8).replaceAll(":", "")}`;
   const label = process.env.WFGRAPH_EVAL_LABEL?.trim() || "run";
-  return `eval-results/${stamp}-${label}.json`;
+  return repositoryFile(`eval-results/${stamp}-${label}.json`);
 }
 
 /** Model-backed evals run separately from the deterministic unit-test projects. */
@@ -23,8 +33,8 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["packages/evals/src/**/*.eval.ts"],
-    setupFiles: ["./load-env.ts"],
+    include: ["src/**/*.eval.ts"],
+    setupFiles: [repositoryFile("load-env.ts")],
     testTimeout: 180_000,
     hookTimeout: 30_000,
     // Info rather than the reporter's compact default: it prints per-tool

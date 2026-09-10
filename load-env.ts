@@ -12,6 +12,13 @@
  * INNGEST_BASE_URL on the command line.
  */
 
+import { fileURLToPath } from "node:url";
 import { config as loadDotEnv } from "dotenv";
 
-loadDotEnv({ path: [".env.local", ".env"], quiet: true });
+loadDotEnv({
+  path: [
+    fileURLToPath(new URL(".env.local", import.meta.url)),
+    fileURLToPath(new URL(".env", import.meta.url)),
+  ],
+  quiet: true,
+});

@@ -349,24 +349,27 @@ rows it left open, and routes the Execution. A runtime offering no `startBranch`
 Wait in place. `driveWithReplay` (`engine/testing/replay-runtime.ts`) is how a test sees any of this:
 it owns a set of runs and keeps the measured wake policy per run.
 
-**happy-dom belongs to the client project alone.** `vitest.config.ts` declares three projects:
-`client` covers `packages/client`, runs in happy-dom, and is the only one loading
-`test-setup.ts`; `node` takes every other `packages/*/src` test and `scripts/**/*.test.ts`
-development-harness tests and runs them in bare Node. That boundary
-is load-bearing. happy-dom ships its own `TransformStream` whose `writable` is a boolean,
-and Inngest's execution engine builds a `TransformStream` on every run, so a backend test
-inheriting happy-dom's globals would throw `getWriter is not a function` the moment it
-touched a function. The node project's include is the whole of `packages/*/src` with the
-client carved out, rather than a list of package names, because a test file outside every
+**happy-dom belongs to the client project alone.** The root `vitest.config.ts` declares
+three projects: `client` covers `packages/client`, runs in happy-dom, and is the only one
+loading `test-setup.ts`; `node` takes every other `packages/*/src` test except
+`packages/evals` and runs it with `scripts/**/*.test.ts` in bare Node. The eval package runs
+its own support tests under Vitest 4, the version `vitest-evals` supports, while the root
+suite uses the Vitest 5 required by `@effect/vitest`. That boundary is load-bearing.
+happy-dom ships its own `TransformStream` whose `writable` is a boolean, and Inngest's
+execution engine builds a `TransformStream` on every run, so a backend test inheriting
+happy-dom's globals would throw `getWriter is not a function` the moment it touched a
+function. The node project's include is the whole of `packages/*/src` with the client and
+evals carved out, rather than a list of package names, because a test file outside every
 project's globs is skipped without a word. A test file outside `packages/` and `scripts/`
 still runs nowhere.
 
-**There are two Vite configs and neither extends the other.**
+**The Vite and Vitest configs do not extend each other.**
 `packages/client/vite.config.ts` is the SPA's dev server and build; the root
-`vitest.config.ts` is the suite's. vitest resolves `vitest.config` first and stops at the
-first file it finds, so anything the tests need is declared at the root as well. The
-`@wfgraph/plugins` source aliases are shared between them as `workspaceSourceAliases`
-(`scripts/plugins/workspace-source-aliases.ts`) for that reason; without them a test
+`vitest.config.ts` is the main suite; `packages/evals/vitest.config.ts` and
+`packages/evals/vitest.evals.config.ts` run that package on its isolated Vitest version.
+Vitest resolves `vitest.config` first and stops at the first file it finds, so each runner
+declares what its tests need. The `@wfgraph/plugins` source aliases are shared among them as
+`workspaceSourceAliases` (`scripts/plugins/workspace-source-aliases.ts`); without them a test
 importing `@wfgraph/plugins` would resolve through the package's `exports` to a stale `dist`.
 
 **The repo has no server of its own.** The one server is `examples/app.ts` (ADR-0006), and

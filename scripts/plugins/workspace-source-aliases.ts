@@ -19,12 +19,11 @@ const coreSrc = fileURLToPath(
  * against the one that was published last week. The root tsconfig's paths say
  * the same thing for tsc and for oxlint.
  *
- * Two configs spread this in by relative path, the root `vitest.config.ts` and
- * `packages/client/vite.config.ts`, and it stays here rather than in either of
- * them because neither one contains the other. vitest is the reason there are
- * two: it looks for `vitest.config` before `vite.config` and stops at the first
- * file it finds, so it never reads the client's config and anything the tests
- * need has to be declared again at the root.
+ * The Vite and Vitest configs spread this in by relative path, and it stays here
+ * rather than in any one of them because none contains the others. Vitest looks
+ * for `vitest.config` before `vite.config` and stops at the first match, so it
+ * never reads the client's config and every test runner declares the aliases it
+ * needs.
  */
 export const workspaceSourceAliases: Alias[] = [
   { find: /^@wfgraph\/plugins$/, replacement: `${pluginsSrc}/index.ts` },

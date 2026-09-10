@@ -101,11 +101,11 @@ const config: KnipConfig = {
     },
 
     "packages/evals": {
-      // Vitest discovers these files through vitest.evals.config.ts. Naming the
-      // pattern here makes each eval suite an entry while helper files still
-      // have to be imported by a suite or a deterministic support test.
+      // Vitest discovers these files through packages/evals/vitest.evals.config.ts.
+      // Naming the pattern here makes each eval suite an entry while helper files
+      // still have to be imported by a suite or a deterministic support test.
       entry: ["src/**/*.eval.ts"],
-      project: ["src/**/*.ts"],
+      project: ["*.ts", "src/**/*.ts"],
     },
 
     "packages/shared": {
