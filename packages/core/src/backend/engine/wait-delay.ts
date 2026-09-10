@@ -176,10 +176,14 @@ export const delayWaitMode: WaitMode<DelayPrepared, DelayResumed> = {
   mode: "delay",
   prepare: prepareDelayWait,
   resume: resumeDelayWait,
-  // A cancel wake halts the branch: the run is claimed, so nothing below this
-  // node is work it still wants.
-  outcome: ({ resumed }): WaitOutcome => ({
+  // A cancel wake halts the branch because the run has been claimed. An Event
+  // arrival can reach this mode after a Migration and replaces the Arriving Event.
+  outcome: ({ resumed, wake }): WaitOutcome => ({
     result: { success: true, data: resumed.output },
     haltBranch: resumed.canceled,
+    arrivingEvent:
+      wake.kind === "resume" && wake.eventName !== null
+        ? { eventName: wake.eventName, payload: wake.payload }
+        : undefined,
   }),
 };

@@ -767,23 +767,29 @@ function runMigratedWait(options: {
   parked: Record<string, unknown>;
   migrated: Record<string, unknown>;
   events: Record<string, unknown>;
+  startEventName?: string | undefined;
+  startPayload?: JsonObject | undefined;
 }) {
   return driveWithReplay(
-    (runtime) =>
-      executeWorkflow(
+    (runtime) => {
+      const migrated = options.store.callsOf("createWaitState").length > 0;
+      const workflowVersionId = migrated ? "ver_2" : "ver_1";
+      options.store.pinnedVersionId = workflowVersionId;
+
+      return executeWorkflow(
         {
-          graph: createWaitGraph(
-            options.store.callsOf("createWaitState").length === 0
-              ? options.parked
-              : options.migrated
-          ),
+          graph: createWaitGraph(migrated ? options.migrated : options.parked),
           executionId: "exec_wait",
           workflowId: "workflow_wait",
+          workflowVersionId,
+          startEventName: options.startEventName,
+          startPayload: options.startPayload,
         },
         runtime,
         options.store,
         noWorkflowActions
-      ),
+      );
+    },
     { events: options.events }
   );
 }
@@ -833,6 +839,30 @@ describe("wait node - migration to a later workflow version", () => {
       waitType: "delay",
       hops: 2,
     });
+  });
+
+  it("re-prepares after an old version's park times out", async () => {
+    const run = await runMigratedWait({
+      store,
+      parked: { waitMode: "delay", waitDuration: "1h" },
+      migrated: { waitMode: "delay", waitDuration: "3h" },
+      events: {},
+    });
+
+    const created = store.callsOf("createWaitState");
+    const reparked = store.callsOf("reparkWaitState");
+    expect(created).toHaveLength(1);
+    expect(reparked).toHaveLength(1);
+
+    // Attempt 0 times out at one hour. Attempt 1 keeps the original anchor and
+    // parks for the two hours remaining under the target version's duration.
+    const anchorAt = Date.parse(String(created[0]?.waitUntilIso)) - HOUR_MS;
+    expect(Date.parse(String(reparked[0]?.waitUntilIso))).toBe(
+      anchorAt + 3 * HOUR_MS
+    );
+    expect(run.executed.map((step) => step.stepId)).toContain(
+      "wait-prepare-wait_1-1"
+    );
   });
 
   // A Migration may give the node the other mode. The attempts already on the
@@ -998,6 +1028,40 @@ describe("wait node - migration to a later workflow version", () => {
       hops: 1,
     });
     expect(waitHaltedBranch(run.value)).toBe(false);
+  });
+
+  it("keeps a recorded arrival when the target version changes the wait to delay mode", async () => {
+    store.reparkAnswer = false;
+    store.waitState = {
+      status: "resumed",
+      arrival: {
+        signalType: "wait-resume",
+        eventName: "billing/payment.settled",
+        payload: { id: "pay_1" },
+      },
+    };
+
+    const run = await runMigratedWait({
+      store,
+      parked: {
+        waitMode: "event",
+        waitFor: [{ event: "billing/payment.settled" }],
+        waitTimeout: "7d",
+      },
+      migrated: { waitMode: "delay", waitDuration: "1h" },
+      events: {
+        "wait-park-wait_1-0": waitResumeSignal({ id: "pay_1" }),
+      },
+      startEventName: "app/appointment.created",
+      startPayload: { id: "appt_1" },
+    });
+
+    expect(store.callsOf("reparkWaitState")[0]?.waitType).toBe("delay");
+    expect(waitOutput(run.value)).toMatchObject({
+      waitType: "delay",
+      hops: 1,
+    });
+    expect(run.value.outputs.lifecycle_1?.data).toEqual({ id: "pay_1" });
   });
 
   it("takes the cancel path when the row was cancelled between two parks", async () => {

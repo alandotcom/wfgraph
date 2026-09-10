@@ -247,23 +247,23 @@ type WaitAttemptResult =
  * park: a resume claim recorded its arrival on the row, and this attempt takes
  * that arrival instead of parking on a signal that has already been sent.
  *
- * `mode` is the mode that wrote the preparation. A replay hands back whatever
- * the earlier body memoized, and `prepared` is that mode's own shape, so the
- * driver checks the mode before handing `prepared` to a resume.
+ * `workflowVersionId` is the version that wrote the preparation. A replay
+ * returns the earlier body's memoized value, so the driver starts a new attempt
+ * before the current version resumes work prepared from another graph.
  */
 type WaitAttemptPreparation<Prepared> =
   | { status: "error"; error: string }
   | { status: "skipped"; output: Record<string, unknown> }
   | {
       status: "parked";
-      mode: "delay" | "event";
+      workflowVersionId: string;
       carry: WaitCarry;
       park: WaitPark;
       prepared: Prepared;
     }
   | {
       status: "woken";
-      mode: "delay" | "event";
+      workflowVersionId: string;
       carry: WaitCarry;
       prepared: Prepared;
       wake: WaitWake;
@@ -353,11 +353,10 @@ function runWaitAttempt<Prepared, Resumed>(
       return { status: "reprepare" };
     }
 
-    // A replayed preparation the other mode wrote cannot be resumed by this
-    // one: `prepared.prepared` is that mode's shape. The next attempt prepares
-    // the same row again under this mode, and a wake that has already arrived
-    // is read back off the row by `readMissedWake`.
-    if (prepared.mode !== mode.mode) {
+    // A replay can return a preparation computed before the execution moved.
+    // The next attempt prepares the same row from the current version, and a
+    // wake that has already arrived is read from the row by `readMissedWake`.
+    if (prepared.workflowVersionId !== branch.workflowVersionId) {
       return { status: "reprepare" };
     }
 
@@ -445,7 +444,7 @@ function prepareWaitAttempt<Prepared, Resumed>(
       yield* recordWaiting(branch, { attempt: input.attempt.index, park });
       const opened: WaitAttemptPreparation<Prepared> = {
         status: "parked",
-        mode: mode.mode,
+        workflowVersionId: branch.workflowVersionId,
         carry: {
           waitStateId: created.waitStateId,
           anchorAtIso,
@@ -478,7 +477,7 @@ function prepareWaitAttempt<Prepared, Resumed>(
       }
       const woken: WaitAttemptPreparation<Prepared> = {
         status: "woken",
-        mode: mode.mode,
+        workflowVersionId: branch.workflowVersionId,
         carry: {
           waitStateId: input.waitStateId,
           anchorAtIso,
@@ -493,7 +492,7 @@ function prepareWaitAttempt<Prepared, Resumed>(
     yield* recordWaiting(branch, { attempt: input.attempt.index, park });
     const reopened: WaitAttemptPreparation<Prepared> = {
       status: "parked",
-      mode: mode.mode,
+      workflowVersionId: branch.workflowVersionId,
       carry: {
         waitStateId: input.waitStateId,
         anchorAtIso,
