@@ -93,7 +93,9 @@ function runMode(value: string): WorkflowExecution["runMode"] {
   return value;
 }
 
-function versionKind(value: string): WorkflowExecutionListRow["versionKind"] {
+export function sqliteVersionKind(
+  value: string
+): WorkflowExecutionListRow["versionKind"] {
   if (value !== "published" && value !== "draft_snapshot") {
     throw new Error("Invalid SQLite version_kind");
   }
@@ -132,7 +134,7 @@ export function sqliteExecutionListRow(
 ): WorkflowExecutionListRow {
   return {
     ...executionListColumns(row),
-    versionKind: versionKind(row.versionKind),
+    versionKind: sqliteVersionKind(row.versionKind),
     versionNumber: row.versionNumber,
   };
 }

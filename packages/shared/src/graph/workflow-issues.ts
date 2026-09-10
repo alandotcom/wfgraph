@@ -10,7 +10,6 @@
  */
 
 import { groupBy, uniq } from "es-toolkit/array";
-import { isPlainObject } from "es-toolkit/predicate";
 import {
   getMissingRequiredFieldsForNodes,
   type ResolveActionByType,
@@ -21,7 +20,7 @@ import {
   findIntegration,
 } from "#src/extensions/catalog";
 import { readConfigTrimmedString } from "#src/graph/node-config";
-import { findTemplateTokens } from "#src/graph/node-references";
+import { extractAllTemplateReferences } from "#src/graph/node-references";
 import type { WorkflowNode } from "#src/graph/types";
 import { flattenConfigFields } from "#src/plugins/action-fields";
 import { asNonEmptyString } from "#src/types/string";
@@ -306,46 +305,6 @@ function collectMissingIntegrationIssues(input: {
   }
 
   return issues;
-}
-
-function extractTemplateReferences(
-  value: unknown
-): Array<{ nodeId: string; displayText: string }> {
-  if (typeof value !== "string") {
-    return [];
-  }
-
-  return findTemplateTokens(value).map((token) => ({
-    nodeId: token.nodeId,
-    displayText: token.fieldPath
-      ? `${token.nodeLabel}.${token.fieldPath}`
-      : token.nodeLabel,
-  }));
-}
-
-function extractAllTemplateReferences(
-  config: Record<string, unknown>,
-  prefix = ""
-): Array<{ field: string; nodeId: string; displayText: string }> {
-  const results: Array<{ field: string; nodeId: string; displayText: string }> =
-    [];
-
-  for (const [key, value] of Object.entries(config)) {
-    const fieldPath = prefix ? `${prefix}.${key}` : key;
-
-    if (typeof value === "string") {
-      for (const ref of extractTemplateReferences(value)) {
-        results.push({ field: fieldPath, ...ref });
-      }
-      continue;
-    }
-
-    if (isPlainObject(value)) {
-      results.push(...extractAllTemplateReferences(value, fieldPath));
-    }
-  }
-
-  return results;
 }
 
 function collectBrokenReferenceIssues(input: {

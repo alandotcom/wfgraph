@@ -245,6 +245,59 @@ export function findTemplateTokens(value: string): TemplateToken[] {
   return tokens;
 }
 
+/** One template reference, with the config key it was written into. */
+export type ConfigTemplateReference = {
+  /** The dotted config key holding the reference. */
+  field: string;
+  nodeId: string;
+  /** The label and field path a builder sees, for a message about the reference. */
+  displayText: string;
+};
+
+/**
+ * Every template reference in a node's config, each carrying the dotted key it
+ * was written into.
+ *
+ * Nested objects and arrays are both walked, because a config key holds either:
+ * an HTTP node's headers are an array of objects, a Condition node's rules are
+ * an array of objects, and a Wait node's `waitFor` is an array of
+ * subscriptions. An array index joins the path as another dotted segment, so a
+ * reference inside the second header reads as `headers.1.value`.
+ */
+export function extractAllTemplateReferences(
+  config: Record<string, unknown>,
+  prefix = ""
+): ConfigTemplateReference[] {
+  return Object.entries(config).flatMap(([key, value]) =>
+    templateReferencesIn(value, prefix ? `${prefix}.${key}` : key)
+  );
+}
+
+function templateReferencesIn(
+  value: unknown,
+  field: string
+): ConfigTemplateReference[] {
+  if (typeof value === "string") {
+    return findTemplateTokens(value).map((token) => ({
+      field,
+      nodeId: token.nodeId,
+      displayText: templateTokenDisplayText(token),
+    }));
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((item, index) =>
+      templateReferencesIn(item, `${field}.${index}`)
+    );
+  }
+
+  if (isPlainObject(value)) {
+    return extractAllTemplateReferences(value, field);
+  }
+
+  return [];
+}
+
 /**
  * The first node reference in the string, or null when there is none. Useful
  * when a string is expected to be a single token, such as one badge's value.

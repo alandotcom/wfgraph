@@ -18,6 +18,7 @@ import type { RunsRepoMethods } from "#src/backend/services/executions/repo/runs
 import type {
   ExecutionSummary,
   GlobalExecutionRow,
+  InFlightExecutionRow,
   NewExecution,
   WorkflowExecution,
 } from "#src/backend/services/executions/repo";
@@ -35,6 +36,7 @@ import {
   sqliteExecution,
   sqliteExecutionListRow,
   sqliteExecutionStatus,
+  sqliteVersionKind,
   type SqliteExecutionListRow,
 } from "#src/backend/persistence/sqlite/executions/rows";
 
@@ -128,6 +130,22 @@ function executionSummary(
     startedAt: execution.startedAt,
     completedAt: execution.completedAt,
     duration: execution.duration,
+  };
+}
+
+function inFlightExecution(row: {
+  id: string;
+  status: string;
+  workflowVersionId: string;
+  versionKind: string;
+  versionNumber: number | null;
+}): InFlightExecutionRow {
+  return {
+    id: row.id,
+    status: sqliteExecutionStatus(row.status),
+    workflowVersionId: row.workflowVersionId,
+    versionKind: sqliteVersionKind(row.versionKind),
+    versionNumber: row.versionNumber,
   };
 }
 
@@ -238,6 +256,33 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
           .limit(query.limit)
           .pipe(Effect.map((rows) => rows.map(globalExecution)));
       }),
+    listInFlightByWorkflow: (workflowId) =>
+      store.read((database) =>
+        database
+          .select({
+            id: workflowExecutions.id,
+            status: workflowExecutions.status,
+            workflowVersionId: workflowExecutions.workflowVersionId,
+            versionKind: workflowVersions.kind,
+            versionNumber: workflowVersions.version,
+          })
+          .from(workflowExecutions)
+          .innerJoin(
+            workflowVersions,
+            eq(workflowVersions.id, workflowExecutions.workflowVersionId)
+          )
+          .where(
+            and(
+              eq(workflowExecutions.workflowId, workflowId),
+              inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES)
+            )
+          )
+          .orderBy(
+            desc(workflowExecutions.startedAt),
+            desc(workflowExecutions.id)
+          )
+          .pipe(Effect.map((rows) => rows.map(inFlightExecution)))
+      ),
     findSummaryById: (executionId) =>
       store.read((database) =>
         database
@@ -327,6 +372,21 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
             and(
               eq(workflowExecutions.id, executionId),
               inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES)
+            )
+          )
+          .returning({ id: workflowExecutions.id })
+          .pipe(Effect.map((rows) => rows.length > 0))
+      ),
+    repinVersion: (input) =>
+      store.write((database) =>
+        database
+          .update(workflowExecutions)
+          .set({ workflowVersionId: input.toVersionId })
+          .where(
+            and(
+              eq(workflowExecutions.id, input.executionId),
+              eq(workflowExecutions.status, "waiting"),
+              eq(workflowExecutions.workflowVersionId, input.fromVersionId)
             )
           )
           .returning({ id: workflowExecutions.id })

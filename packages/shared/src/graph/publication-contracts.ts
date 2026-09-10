@@ -1,17 +1,12 @@
 import { Schema } from "effect";
 import { serializedWorkflowGraphSchema } from "#src/graph/schemas";
-import { listOf, NonEmptyTrimmedString } from "#src/types/schema";
+import {
+  listOf,
+  NonEmptyTrimmedString,
+  nonNegativeInteger,
+  positiveInteger,
+} from "#src/types/schema";
 import { isoTimestampString } from "#src/types/timestamp";
-
-const positiveInteger = Schema.Finite.check(
-  Schema.isInt(),
-  Schema.isGreaterThan(0)
-);
-
-const nonNegativeInteger = Schema.Finite.check(
-  Schema.isInt(),
-  Schema.isGreaterThanOrEqualTo(0)
-);
 
 export const WORKFLOW_VERSION_HISTORY_DEFAULT_LIMIT = 25;
 export const WORKFLOW_VERSION_HISTORY_MAX_LIMIT = 100;

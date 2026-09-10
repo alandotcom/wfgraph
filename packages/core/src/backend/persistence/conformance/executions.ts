@@ -612,7 +612,164 @@ export function describeExecutionConformance({
       });
     });
 
+    it("lists the in-flight runs of one workflow with their pinned version", async () => {
+      const database = await openConnection();
+      await seedPublishedWorkflow(database);
+      await seedPublishedWorkflow(database, {
+        workflowId: "wf_2",
+        name: "Reminders",
+        versionId: "ver_other",
+      });
 
+      const result = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const open = yield* executions.startForEntity({
+            execution: {
+              workflowId: "wf_1",
+              workflowVersionId: "ver_1",
+              startSource: "manual",
+              runMode: "live",
+              input: {},
+            },
+            concurrency: "unlimited",
+            supersededReason: "newer start",
+          });
+          if (open.status !== "started") throw new Error("Start was refused");
+
+          const finished = yield* executions.startForEntity({
+            execution: {
+              workflowId: "wf_1",
+              workflowVersionId: "ver_1",
+              startSource: "manual",
+              runMode: "live",
+              input: {},
+            },
+            concurrency: "unlimited",
+            supersededReason: "newer start",
+          });
+          if (finished.status !== "started")
+            throw new Error("Start was refused");
+          yield* executions.finishRun({
+            executionId: finished.execution.id,
+            status: "completed",
+            output: null,
+          });
+
+          // A run of another workflow, to show the list is scoped to one.
+          yield* executions.startForEntity({
+            execution: {
+              workflowId: "wf_2",
+              workflowVersionId: "ver_other",
+              startSource: "manual",
+              runMode: "live",
+              input: {},
+            },
+            concurrency: "unlimited",
+            supersededReason: "newer start",
+          });
+
+          return {
+            openId: open.execution.id,
+            rows: yield* executions.listInFlightByWorkflow("wf_1"),
+          };
+        })
+      );
+
+      expect(result.rows).toEqual([
+        {
+          id: result.openId,
+          status: "running",
+          workflowVersionId: "ver_1",
+          versionKind: "published",
+          versionNumber: 1,
+        },
+      ]);
+    });
+
+    it("moves a parked run's version pointer only under both guards", async () => {
+      const database = await openConnection();
+      await seedPublishedWorkflow(database);
+
+      const result = await database.run(
+        Effect.gen(function* () {
+          const workflows = yield* WorkflowRepo;
+          const executions = yield* ExecutionRepo;
+          const draft = yield* workflows.findDraftRevisionById("wf_1");
+          yield* workflows.insertPublishedVersion({
+            workflowId: "wf_1",
+            versionId: "ver_2",
+            version: 2,
+            expectedPublishedVersionId: "ver_1",
+            expectedDraftRevision: draft?.draftRevision ?? 1,
+            graph: emptyGraph,
+            draftGraph: emptyGraph,
+            catalogFingerprint: "catalog",
+            graphDigest: "digest-2",
+            eventSubscriptions: [],
+          });
+
+          const started = yield* executions.startForEntity({
+            execution: {
+              workflowId: "wf_1",
+              workflowVersionId: "ver_1",
+              startSource: "manual",
+              runMode: "live",
+              input: {},
+            },
+            concurrency: "unlimited",
+            supersededReason: "newer start",
+          });
+          if (started.status !== "started")
+            throw new Error("Start was refused");
+          const executionId = started.execution.id;
+
+          const whileRunning = yield* executions.repinVersion({
+            executionId,
+            fromVersionId: "ver_1",
+            toVersionId: "ver_2",
+          });
+
+          const wait = yield* executions.startWait({
+            executionId,
+            workflowId: "wf_1",
+            runId: "run_1",
+            nodeId: "wait_1",
+            nodeName: "Wait for approval",
+            waitType: "delay",
+            waitUntil: new Date("2026-01-01T00:00:00.000Z"),
+          });
+          if (!wait) throw new Error("Wait was refused");
+
+          const fromAnotherVersion = yield* executions.repinVersion({
+            executionId,
+            fromVersionId: "ver_2",
+            toVersionId: "ver_2",
+          });
+          const whileWaiting = yield* executions.repinVersion({
+            executionId,
+            fromVersionId: "ver_1",
+            toVersionId: "ver_2",
+          });
+
+          return {
+            whileRunning,
+            fromAnotherVersion,
+            whileWaiting,
+            summary: yield* executions.findSummaryById(executionId),
+          };
+        })
+      );
+
+      expect(result.whileRunning).toBe(false);
+      expect(result.fromAnotherVersion).toBe(false);
+      expect(result.whileWaiting).toBe(true);
+      expect(result.summary).toMatchObject({
+        workflowVersionId: "ver_2",
+        versionNumber: 2,
+        status: "waiting",
+      });
+    });
 
     it("pages waits across run modes and filters the runs a delivery settled", async () => {
       const database = await openConnection();
