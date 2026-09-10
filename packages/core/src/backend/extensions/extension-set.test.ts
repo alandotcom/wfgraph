@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { findIntegration } from "@wfgraph/shared/extensions/catalog";
 import { defineAction } from "#src/backend/extensions/define-action";
 import { defineEvent } from "#src/backend/extensions/define-event";
+import { defineEntity } from "#src/backend/extensions/define-entity";
 import { CONNECTION_STAMP_KEY } from "#src/backend/lib/inngest/catalog-connection";
 import {
   defineIntegration,
@@ -19,6 +20,15 @@ const appointmentPayload = Schema.Struct({
   }).annotate({ description: "The appointment this event is about" }),
   kind: Schema.String.annotate({ description: "Which thing happened" }),
 });
+
+function anEntity(type: string) {
+  return defineEntity({
+    type,
+    label: type,
+    state: Schema.Struct({ status: Schema.String }),
+    resolve: () => ({ status: "active" }),
+  });
+}
 
 function anEvent(
   name: string,
@@ -129,6 +139,7 @@ describe("assembleExtensions", () => {
     const { catalog, events } = assembleExtensions({});
 
     expect(catalog.events).toEqual([]);
+    expect(catalog.entities).toEqual([]);
     expect(events).toEqual([]);
     // No integration is a built-in any more: a host naming none gets none.
     expect(catalog.integrations).toEqual([]);
@@ -370,6 +381,95 @@ describe("assembleExtensions", () => {
     for (const action of catalog.actions) {
       expect(action).not.toHaveProperty("hidden");
     }
+  });
+
+  it("discovers Entity definitions transitively from Event bindings", () => {
+    const appointment = anEntity("appointment");
+    const patient = anEntity("patient");
+    const event = defineEvent({
+      name: "app/appointment.created",
+      schema: appointmentPayload,
+      entities: {
+        appointment: {
+          entity: appointment,
+          selectEntityId: (payload) => payload.appointment.id,
+        },
+        patient: {
+          entity: patient,
+          selectEntityId: () => "patient_1",
+        },
+      },
+    });
+    const set = assembleExtensions({ events: [event] });
+
+    expect(set.entities).toEqual([appointment, patient]);
+    expect(set.entityByType("appointment")).toBe(appointment);
+    expect(set.entityByType("missing")).toBeUndefined();
+    expect(set.catalog.entities).toEqual([
+      {
+        type: "appointment",
+        label: "appointment",
+        stateFields: [{ path: "status", type: "string" }],
+        stateSchemaDigest: appointment.stateSchemaDigest,
+      },
+      {
+        type: "patient",
+        label: "patient",
+        stateFields: [{ path: "status", type: "string" }],
+        stateSchemaDigest: patient.stateSchemaDigest,
+      },
+    ]);
+    expect(set.catalog.events[0]?.entityBindings).toEqual([
+      { name: "appointment", entityType: "appointment" },
+      { name: "patient", entityType: "patient" },
+    ]);
+    expect(JSON.stringify(set.catalog)).not.toContain("resolve");
+  });
+
+  it("deduplicates one Entity definition referenced by several Events", () => {
+    const appointment = anEntity("appointment");
+    const event = (name: string) =>
+      defineEvent({
+        name,
+        schema: appointmentPayload,
+        entities: {
+          appointment: {
+            entity: appointment,
+            selectEntityId: (payload) => payload.appointment.id,
+          },
+        },
+      });
+    const set = assembleExtensions({
+      events: [event("appointment.created"), event("appointment.updated")],
+    });
+
+    expect(set.entities).toEqual([appointment]);
+    expect(set.catalog.entities).toHaveLength(1);
+  });
+
+  it("refuses distinct Entity definitions claiming one type", () => {
+    const first = anEntity("appointment");
+    const second = anEntity("appointment");
+    const event = (name: string, entity: typeof first) =>
+      defineEvent({
+        name,
+        schema: appointmentPayload,
+        entities: {
+          appointment: {
+            entity,
+            selectEntityId: (payload) => payload.appointment.id,
+          },
+        },
+      });
+
+    expect(() =>
+      assembleExtensions({
+        events: [
+          event("appointment.created", first),
+          event("appointment.updated", second),
+        ],
+      })
+    ).toThrow('Two Entities are defined with the type "appointment"');
   });
 
   it("answers an Event by name, and undefined for one it does not hold", () => {

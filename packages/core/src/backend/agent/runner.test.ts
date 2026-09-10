@@ -15,7 +15,7 @@ const reply: AgentStreamPart = {
 const makeSession = () =>
   makeAgentToolSession({
     document: { nodes: [], edges: [] },
-    catalog: { actions: [], events: [], integrations: [] },
+    catalog: { actions: [], entities: [], events: [], integrations: [] },
     integrations: [],
     validateDraft: () => ({
       draftValid: true,

@@ -77,6 +77,7 @@ const sendEmail = action("sms", "resend/send-email");
  * `sideEffect` matters to these cases; the rest is what the type asks for.
  */
 const catalog: ExtensionCatalog = {
+  entities: [],
   events: [],
   actions: [
     {

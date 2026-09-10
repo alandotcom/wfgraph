@@ -47,6 +47,7 @@ function anAction(id: string, paths: string[]): ActionMetadata {
 }
 
 const catalog: ExtensionCatalog = {
+  entities: [],
   events: [
     anEvent(CREATED, ["appointmentId", "bookedBy"]),
     anEvent(CANCELED, ["appointmentId", "reason"]),

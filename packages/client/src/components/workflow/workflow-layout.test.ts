@@ -25,7 +25,7 @@ describe("editor workflow layout", () => {
     const result = layoutWorkflowNodes({
       nodes: [group, child],
       edges: [],
-      catalog: { actions: [], events: [], integrations: [] },
+      catalog: { actions: [], entities: [], events: [], integrations: [] },
     });
     const laidOutGroup = result.nodes.find((node) => node.id === group.id);
 

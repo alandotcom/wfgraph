@@ -26,6 +26,7 @@ import {
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 
 const catalog: ExtensionCatalog = {
+  entities: [],
   events: [],
   integrations: [
     {

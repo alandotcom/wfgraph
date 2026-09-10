@@ -11,6 +11,7 @@ import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { TestPayloads } from "@wfgraph/shared/lifecycle/test-payloads";
 
 const testCatalog: ExtensionCatalog = {
+  entities: [],
   events: [
     {
       name: "app/appointment.created",

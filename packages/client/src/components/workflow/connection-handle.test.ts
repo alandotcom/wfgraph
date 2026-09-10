@@ -136,6 +136,7 @@ describe("normalizeSourceHandleForConnection - Event Split", () => {
   const RESCHEDULED = "app/appointment.rescheduled";
 
   const eventSplitCatalog: ExtensionCatalog = {
+    entities: [],
     events: [
       { name: CREATED, label: CREATED, payloadFields: [] },
       { name: RESCHEDULED, label: RESCHEDULED, payloadFields: [] },

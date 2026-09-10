@@ -34,6 +34,7 @@ function refusalOf(check: LifecycleRulesCheck): string {
  * rule below is stated over.
  */
 const catalog: ExtensionCatalog = {
+  entities: [],
   events: [
     {
       name: "app/appointment.created",

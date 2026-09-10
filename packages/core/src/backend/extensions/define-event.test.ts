@@ -7,6 +7,8 @@
 import { Effect, Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import { defineEvent } from "#src/backend/extensions/define-event";
+import { defineEntity } from "#src/backend/extensions/define-entity";
+import { isoTimestampToDate } from "@wfgraph/shared/types/timestamp";
 
 const appointment = Schema.Struct({
   id: Schema.String.annotate({ description: "Appointment ID" }),
@@ -116,6 +118,129 @@ describe("defineEvent path typing", () => {
       // @ts-expect-error the payload has no "patient" field.
       correlationPath: "patient.id",
     });
+  });
+});
+
+describe("defineEvent Entity bindings", () => {
+  const entity = defineEntity({
+    type: "appointment",
+    label: "Appointment",
+    state: Schema.Struct({ status: Schema.String }),
+    resolve: () => null,
+  });
+
+  it("types selectors from the validated payload and keeps the wire payload unchanged", () => {
+    const event = defineEvent({
+      name: "app/appointment.observed",
+      schema: Schema.Struct({
+        appointmentId: Schema.String,
+        observedAt: isoTimestampToDate,
+      }),
+      entities: {
+        appointment: {
+          entity,
+          selectEntityId: (payload) => {
+            expect(payload.observedAt).toBeInstanceOf(Date);
+            return payload.appointmentId;
+          },
+        },
+      },
+    });
+    const wirePayload = {
+      appointmentId: "apt_123",
+      observedAt: "2026-10-20T15:00:00.000Z",
+    };
+    const validated = Effect.runSync(event.decodePayloadValue(wirePayload));
+
+    expect(event.entities?.appointment?.selectEntityId(validated)).toBe(
+      "apt_123"
+    );
+    expect(wirePayload.observedAt).toBe("2026-10-20T15:00:00.000Z");
+  });
+
+  it("rejects selector fields and return values outside the Event schema", () => {
+    defineEvent({
+      name: "app/appointment.bad-selector-field",
+      schema: Schema.Struct({ appointmentId: Schema.String }),
+      entities: {
+        appointment: {
+          entity,
+          // @ts-expect-error the validated Event has no patientId field.
+          selectEntityId: (payload) => payload.patientId,
+        },
+      },
+    });
+
+    defineEvent({
+      name: "app/appointment.bad-selector-result",
+      schema: Schema.Struct({ appointmentNumber: Schema.Finite }),
+      entities: {
+        appointment: {
+          entity,
+          // @ts-expect-error an Entity ID selector must return a string.
+          selectEntityId: (payload) => payload.appointmentNumber,
+        },
+      },
+    });
+  });
+
+  it("normalizes binding names and selected Entity IDs", () => {
+    const event = defineEvent({
+      name: "app/appointment.normalized",
+      schema: Schema.Struct({ appointmentId: Schema.String }),
+      entities: {
+        "  appointment  ": {
+          entity,
+          selectEntityId: (payload) => `  ${payload.appointmentId}  `,
+        },
+      },
+    });
+
+    expect(Object.keys(event.entities ?? {})).toEqual(["appointment"]);
+    expect(
+      event.entities?.appointment?.selectEntityId({ appointmentId: "apt_123" })
+    ).toBe("apt_123");
+  });
+
+  it("refuses blank, reserved, and duplicate normalized binding names", () => {
+    const eventInput = (entities: Record<string, never>) => ({
+      name: "app/appointment.invalid-binding",
+      schema: Schema.Struct({ appointmentId: Schema.String }),
+      entities,
+    });
+    const binding = {
+      entity,
+      selectEntityId: (payload: { readonly appointmentId: string }) =>
+        payload.appointmentId,
+    };
+
+    expect(() => defineEvent(eventInput({ "  ": binding } as never))).toThrow(
+      /blank Entity binding name/u
+    );
+    expect(() =>
+      defineEvent(
+        eventInput(Object.fromEntries([["constructor", binding]]) as never)
+      )
+    ).toThrow(/binding name reserved by JavaScript objects/u);
+    expect(() =>
+      defineEvent(
+        eventInput({ appointment: binding, " appointment ": binding } as never)
+      )
+    ).toThrow(/more than one Entity binding named "appointment"/u);
+  });
+
+  it("refuses a blank or non-string selected Entity ID", () => {
+    const event = defineEvent({
+      name: "app/appointment.invalid-id",
+      schema: Schema.Struct({ appointmentId: Schema.String }),
+      entities: {
+        appointment: { entity, selectEntityId: () => "  " },
+      },
+    });
+
+    expect(() =>
+      event.entities?.appointment?.selectEntityId({ appointmentId: "apt_123" })
+    ).toThrow(/must select a non-empty string Entity ID/u);
   });
 });
 

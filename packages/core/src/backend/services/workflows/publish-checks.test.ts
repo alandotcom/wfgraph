@@ -17,6 +17,7 @@ import {
 } from "#src/backend/services/workflows/version-digest";
 import type {
   ActionMetadata,
+  EntityMetadata,
   EventMetadata,
   ExtensionCatalog,
   IntegrationMetadata,
@@ -83,6 +84,13 @@ const anEvent = (name: string): EventMetadata => ({
   name,
   label: name,
   payloadFields: [{ path: "id" }],
+});
+
+const anEntity = (type: string): EntityMetadata => ({
+  type,
+  label: type,
+  stateFields: [{ path: "status", type: "string" }],
+  stateSchemaDigest: `${type}-state-v1`,
 });
 
 const anIntegration = (type: string): IntegrationMetadata => ({
@@ -429,13 +437,15 @@ describe("version-digest", () => {
     expect(catalogFingerprint(oneOrder)).toBe(catalogFingerprint(theOther));
   });
 
-  it("ignores the order of events and integrations", () => {
+  it("ignores the order of events, Entities, and integrations", () => {
     const oneOrder = catalogOf({
       events: [anEvent("app/a.happened"), anEvent("app/b.happened")],
+      entities: [anEntity("appointment"), anEntity("patient")],
       integrations: [anIntegration("gmail"), anIntegration("slack")],
     });
     const theOther = catalogOf({
       events: [anEvent("app/b.happened"), anEvent("app/a.happened")],
+      entities: [anEntity("patient"), anEntity("appointment")],
       integrations: [anIntegration("slack"), anIntegration("gmail")],
     });
 
@@ -490,6 +500,52 @@ describe("version-digest", () => {
     });
 
     expect(catalogFingerprint(before)).not.toBe(catalogFingerprint(after));
+  });
+
+  it("changes with Event binding and Entity state compatibility metadata", () => {
+    const before = catalogOf({
+      events: [
+        {
+          ...anEvent("app/appointment.created"),
+          entityBindings: [{ name: "appointment", entityType: "appointment" }],
+        },
+      ],
+      entities: [anEntity("appointment")],
+    });
+    const changedBinding = catalogOf({
+      ...before,
+      events: [
+        {
+          ...anEvent("app/appointment.created"),
+          entityBindings: [{ name: "patient", entityType: "patient" }],
+        },
+      ],
+    });
+    const changedFields = catalogOf({
+      ...before,
+      entities: [
+        {
+          ...anEntity("appointment"),
+          stateFields: [{ path: "eligible", type: "boolean" }],
+        },
+      ],
+    });
+    const changedDigest = catalogOf({
+      ...before,
+      entities: [
+        { ...anEntity("appointment"), stateSchemaDigest: "new-digest" },
+      ],
+    });
+
+    expect(catalogFingerprint(before)).not.toBe(
+      catalogFingerprint(changedBinding)
+    );
+    expect(catalogFingerprint(before)).not.toBe(
+      catalogFingerprint(changedFields)
+    );
+    expect(catalogFingerprint(before)).not.toBe(
+      catalogFingerprint(changedDigest)
+    );
   });
 
   it("ignores whether an action is hidden", () => {

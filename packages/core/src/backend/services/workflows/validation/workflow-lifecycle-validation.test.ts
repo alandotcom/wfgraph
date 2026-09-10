@@ -22,6 +22,7 @@ import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
 // The vocabulary the rules are checked against, which a running app assembles
 // from what the host passed `createWfGraphApp`.
 const catalog: ExtensionCatalog = {
+  entities: [],
   events: [
     {
       name: "app/appointment.created",
@@ -333,6 +334,7 @@ describe("validateEventSplitOutlets", () => {
 
   it("accepts an outlet naming an Event a Wait above the split parks on", () => {
     const waitCatalog: ExtensionCatalog = {
+      entities: [],
       events: [
         ...catalog.events,
         {

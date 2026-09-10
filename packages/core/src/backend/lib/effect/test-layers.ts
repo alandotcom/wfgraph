@@ -163,7 +163,9 @@ export function stubExtensions(
     oauthFor: () => undefined,
     webhookFor: () => undefined,
     eventByName: () => undefined,
+    entityByType: () => undefined,
     events: [],
+    entities: [],
     ...set,
   });
 }

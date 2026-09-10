@@ -53,6 +53,7 @@ import {
 } from "@wfgraph/shared/authorization/operations";
 
 const emptyCatalog: ExtensionCatalog = {
+  entities: [],
   events: [],
   actions: [],
   integrations: [],

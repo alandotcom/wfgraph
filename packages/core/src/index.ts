@@ -7,6 +7,12 @@
  */
 
 export {
+  defineEntity,
+  type EntityDefinition,
+  type EntityResolver,
+  type EntityStateSchema,
+} from "#src/backend/extensions/define-entity";
+export {
   defineEvent,
   type EventDefinition,
 } from "#src/backend/extensions/define-event";

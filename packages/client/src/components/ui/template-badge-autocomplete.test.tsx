@@ -22,12 +22,14 @@ import { TemplateBadgeTextarea } from "./template-badge-textarea";
 // wants either says what the app declares by writing this object.
 type MutableCatalog = {
   events: EventMetadata[];
+  entities: ExtensionCatalog["entities"];
   actions: ActionMetadata[];
   integrations: ExtensionCatalog["integrations"];
 };
 
 const surface: MutableCatalog = {
   events: [],
+  entities: [],
   actions: [],
   integrations: [],
 };

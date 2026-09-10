@@ -40,6 +40,13 @@ export {
   type IntegrationDefinition,
 } from "#src/backend/extensions/define-integration";
 export {
+  defineEntity,
+  type AnyEntityDefinition,
+  type EntityDefinition,
+  type EntityResolver,
+  type EntityStateSchema,
+} from "#src/backend/extensions/define-entity";
+export {
   defineEvent,
   type AnyEventDefinition,
   type EventDefinition,

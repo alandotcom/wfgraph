@@ -67,6 +67,7 @@ export const nodes = toWorkflowGraphData(graph).nodes.map(toEditorNode);
 export const expectedSnapshot = toSerializedGraph({ nodes, edges: [] });
 
 export const catalog: ExtensionCatalog = {
+  entities: [],
   actions: [],
   events: [],
   integrations: [],

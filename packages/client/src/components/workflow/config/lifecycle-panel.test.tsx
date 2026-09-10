@@ -19,6 +19,7 @@ import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 
 const testCatalog: ExtensionCatalog = {
+  entities: [],
   events: [
     {
       name: "app/appointment.created",

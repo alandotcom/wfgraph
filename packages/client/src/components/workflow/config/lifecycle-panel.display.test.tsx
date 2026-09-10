@@ -6,6 +6,7 @@ import { LifecyclePanel } from "#src/components/workflow/config/lifecycle-panel"
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 
 const testCatalog: ExtensionCatalog = {
+  entities: [],
   events: [
     {
       name: "app/appointment.created",

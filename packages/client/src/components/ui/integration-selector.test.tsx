@@ -25,6 +25,7 @@ beforeEach(() => {
 afterEach(resetAuthorizationGrantsForTests);
 
 const testCatalog: ExtensionCatalog = {
+  entities: [],
   events: [],
   actions: [],
   integrations: [

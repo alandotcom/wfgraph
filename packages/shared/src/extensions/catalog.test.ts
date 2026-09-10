@@ -9,6 +9,7 @@ import {
   emptyExtensionCatalog,
   type ExtensionCatalog,
   findAction,
+  findEntity,
   findEvent,
   findIntegration,
   uniqueIntegrationsOfEvents,
@@ -16,6 +17,14 @@ import {
 import { readExtensionCatalog } from "./catalog-wire";
 
 const catalog: ExtensionCatalog = {
+  entities: [
+    {
+      type: "appointment",
+      label: "Appointment",
+      stateFields: [{ path: "status", type: "string" }],
+      stateSchemaDigest: "appointment-state-v1",
+    },
+  ],
   events: [
     {
       name: "app/appointment.created",
@@ -95,13 +104,15 @@ describe("catalog lookups", () => {
     );
   });
 
-  it("finds an action by id and an integration by type", () => {
+  it("finds an Entity, action, and integration by type or id", () => {
+    expect(findEntity(catalog, "appointment")?.label).toBe("Appointment");
     expect(findAction(catalog, "twilio/send-sms")?.label).toBe("Send SMS");
     expect(findIntegration(catalog, "twilio")?.label).toBe("Twilio");
   });
 
   it("answers undefined for a name the catalog has never heard of", () => {
     expect(findEvent(catalog, "app/nothing.happened")).toBeUndefined();
+    expect(findEntity(catalog, "patient")).toBeUndefined();
     expect(findAction(catalog, "twilio/send-mms")).toBeUndefined();
     expect(findIntegration(catalog, "postmark")).toBeUndefined();
   });
@@ -313,6 +324,7 @@ describe("the catalog wire schema", () => {
 describe("uniqueIntegrationsOfEvents", () => {
   it("names each integration once, in the order its Events appear", () => {
     const withIntegrations: ExtensionCatalog = {
+      entities: [],
       events: [
         {
           name: "app/appointment.created",

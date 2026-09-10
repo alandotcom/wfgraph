@@ -66,7 +66,7 @@ describe("collectAgentTurn", () => {
     const input: AgentEvalInput = {
       messages: [{ role: "user", content: "Build it" }],
       document: { nodes: [], edges: [] },
-      catalog: { actions: [], events: [], integrations: [] },
+      catalog: { actions: [], entities: [], events: [], integrations: [] },
       integrations: [],
       expected: {},
       expectedCompletion: { outcome: "ready" },

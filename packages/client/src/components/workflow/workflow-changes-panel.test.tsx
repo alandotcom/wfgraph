@@ -27,6 +27,7 @@ import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 
 const catalog: ExtensionCatalog = {
+  entities: [],
   events: [],
   integrations: [],
   actions: [

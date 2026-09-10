@@ -171,6 +171,7 @@ const appointmentCreated = defineEvent({
 
 const catalogLayer = stubExtensions({
   catalog: {
+    entities: [],
     events: [
       {
         name: "app/appointment.created",

@@ -23,6 +23,7 @@ import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { PUBLICATION_CONFLICT_CODES } from "@wfgraph/shared/rpc/error-codes";
 
 const catalog = {
+  entities: [],
   events: [
     {
       name: "app/appointment.created",

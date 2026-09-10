@@ -11,6 +11,7 @@ import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 
 const resendCatalog: ExtensionCatalog = {
+  entities: [],
   events: [
     {
       name: "app/appointment.created",

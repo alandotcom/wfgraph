@@ -45,7 +45,9 @@ function slowStep() {
     oauthFor: () => undefined,
     webhookFor: () => undefined,
     eventByName: () => undefined,
+    entityByType: () => undefined,
     events: [],
+    entities: [],
   };
 
   return { calls, extensions };
