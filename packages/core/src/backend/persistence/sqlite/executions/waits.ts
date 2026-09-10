@@ -37,6 +37,29 @@ import {
 
 const WAIT_RESUME_CLAIM_LEASE_MS = 5 * 60 * 1000;
 
+/**
+ * Whether a wait row's `subscribed_events` still lists this Event name. The
+ * column holds a JSON array, so the test walks it with `json_each`.
+ */
+function subscribedTo(eventName: string): SQL {
+  return sql`exists (
+    select 1 from json_each(${workflowWaitStates.subscribedEvents}) j
+    where j.value = ${eventName}
+  )`;
+}
+
+/**
+ * Whether the execution a wait row belongs to still pins this Workflow Version.
+ * Correlated against the wait row, so the statement it guards evaluates it.
+ */
+function pinnedVersionIs(workflowVersionId: string): SQL {
+  return sql`exists (
+    select 1 from ${workflowExecutions}
+    where ${workflowExecutions.id} = ${workflowWaitStates.executionId}
+      and ${workflowExecutions.workflowVersionId} = ${workflowVersionId}
+  )`;
+}
+
 const waitStateSelection = {
   id: workflowWaitStates.id,
   executionId: workflowWaitStates.executionId,
@@ -61,18 +84,13 @@ const waitStateSelection = {
  */
 function claimWait(
   database: SqliteExecutor,
-  column: "id" | "resume_token",
-  value: string,
+  identity: SQL | undefined,
   arrival: WaitArrival
 ): Effect.Effect<WaitResumeClaim | null, unknown> {
   return Effect.gen(function* () {
     const claimedAt = new Date();
     const claimedAtMs = claimedAt.getTime();
     const staleBefore = claimedAtMs - WAIT_RESUME_CLAIM_LEASE_MS;
-    const identity =
-      column === "id"
-        ? eq(workflowWaitStates.id, value)
-        : eq(workflowWaitStates.resumeToken, value);
     const claimable = or(
       eq(workflowWaitStates.status, "waiting"),
       and(
@@ -168,7 +186,8 @@ export function makeSqliteWaitsMethods(
           .where(
             and(
               eq(workflowWaitStates.id, input.waitStateId),
-              eq(workflowWaitStates.status, "waiting")
+              eq(workflowWaitStates.status, "waiting"),
+              pinnedVersionIs(input.workflowVersionId)
             )
           )
           .returning({ id: workflowWaitStates.id })
@@ -243,10 +262,7 @@ export function makeSqliteWaitsMethods(
           eq(workflowWaitStates.workflowId, input.workflowId),
           eq(workflowWaitStates.status, "waiting"),
           inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES),
-          sql`exists (
-            select 1 from json_each(${workflowWaitStates.subscribedEvents}) j
-            where j.value = ${input.eventName}
-          )`,
+          subscribedTo(input.eventName),
         ];
         if (input.afterId) {
           filters.push(gt(workflowWaitStates.id, input.afterId));
@@ -273,11 +289,26 @@ export function makeSqliteWaitsMethods(
       }),
     claimWaitingStateByToken: (input) =>
       store.write((database) =>
-        claimWait(database, "resume_token", input.resumeToken, input.arrival)
+        claimWait(
+          database,
+          and(
+            eq(workflowWaitStates.resumeToken, input.resumeToken),
+            eq(workflowWaitStates.waitType, "event")
+          ),
+          input.arrival
+        )
       ),
     claimWaitingStateById: (input) =>
       store.write((database) =>
-        claimWait(database, "id", input.waitStateId, input.arrival)
+        claimWait(
+          database,
+          and(
+            eq(workflowWaitStates.id, input.waitStateId),
+            eq(workflowWaitStates.waitType, "event"),
+            subscribedTo(input.eventName)
+          ),
+          input.arrival
+        )
       ),
     settleWaitingStateClaim: (input) =>
       store.write((database) =>

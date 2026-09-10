@@ -184,8 +184,9 @@ const resumeOneWait = Effect.fn("resumeOneWait")(function* (input: {
         kind: "wait_state",
         waitStateId: waitState.id,
         token: resumeToken,
+        eventName: eventType,
       },
-      source: { kind: "event", eventName: eventType, payload: input.payload },
+      payload: input.payload,
     }),
     (outcome) => (outcome.status === "resumed" ? 1 : 0)
   ).pipe(

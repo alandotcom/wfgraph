@@ -29,6 +29,7 @@ import type {
 import type { ResolveTemplates } from "#src/backend/engine/wait-match";
 import {
   type EngineFailure,
+  engineFailure,
   failureFromCause,
   failureFromUnknown,
 } from "#src/backend/engine/engine-failure";
@@ -100,6 +101,39 @@ export function fromStore<A>(
   return Effect.mapError(effect, failureFromUnknown);
 }
 
+/**
+ * Moves the run back to `running` under the Workflow Version this body loaded,
+ * failing the step when no row moved.
+ *
+ * The guarded write is the resume's version fence, and it is the first thing a
+ * resume does. A Migration that lands between the wake and this write leaves the
+ * execution row pinned to another version, so nothing moves and the step fails;
+ * Inngest retries the body, which reloads the graph from the new pointer and
+ * prepares the Wait again. Running it first leaves the wait row untouched for
+ * that retry to re-park.
+ */
+export function markRunningUnderLoadedVersion(
+  branch: WaitBranchContext
+): Effect.Effect<void, EngineFailure> {
+  return Effect.flatMap(
+    fromStore(
+      branch.store.markExecutionRunning({
+        executionId: branch.context.executionId,
+        workflowVersionId: branch.workflowVersionId,
+      })
+    ),
+    (moved) =>
+      moved
+        ? Effect.void
+        : Effect.fail(
+            engineFailure(
+              "failure",
+              `This run has been moved off workflow version ${branch.workflowVersionId} since its graph was loaded.`
+            )
+          )
+  );
+}
+
 export function readWaitGateMode(
   config: WaitConfig
 ): "require_actual_wait" | "off" {
@@ -155,6 +189,15 @@ export type WaitWake =
   | { kind: "migrate" }
   | { kind: "cancel" }
   | { kind: "resume"; eventName: string | null; payload: JsonObject };
+
+/**
+ * Why a park ended, as a resume sees it.
+ *
+ * A `migrate` wake never reaches a resume: the driver reads it as the
+ * instruction to prepare the Wait again against the version the run was moved
+ * to, and starts the next attempt instead of resuming.
+ */
+export type WaitResumeWake = Exclude<WaitWake, { kind: "migrate" }>;
 
 /**
  * Reads why a park ended out of the Inngest event that ended it.
@@ -264,7 +307,7 @@ export type WaitResumeInput<Prepared> = {
   branch: WaitBranchContext;
   prepared: Prepared;
   waitStateId: string;
-  wake: WaitWake;
+  wake: WaitResumeWake;
   /** How many times this Wait parked, which is the node's `hops` output. */
   hops: number;
 };

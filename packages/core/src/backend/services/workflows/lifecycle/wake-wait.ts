@@ -1,16 +1,26 @@
 import { Effect } from "effect";
 import type { JsonObject } from "@wfgraph/shared/types/json";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { InngestClient } from "#src/backend/lib/effect/inngest-client";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 
+/**
+ * Which parked Wait the wake addresses.
+ *
+ * A manual resume from the runs panel names the park's own token. An Event
+ * delivery names the row it selected and the Event it is delivering, which the
+ * claim requires the row to still be subscribed to: a Migration can re-park the
+ * row between the selection and the claim.
+ */
 type WaitWakeTarget =
   | { kind: "resume_token"; token: string }
-  | { kind: "wait_state"; waitStateId: string; token: string };
-
-type WaitWakeSource =
-  | { kind: "manual"; payload: JsonObject }
-  | { kind: "event"; eventName: string; payload: JsonObject };
+  | {
+      kind: "wait_state";
+      waitStateId: string;
+      token: string;
+      eventName: string;
+    };
 
 /**
  * Claims one Wait and delivers its wake to the durable runtime.
@@ -22,31 +32,28 @@ type WaitWakeSource =
  */
 export const wakeWait = Effect.fn("wakeWait")(function* (input: {
   target: WaitWakeTarget;
-  source: WaitWakeSource;
+  /** What the Event or the runs panel sent, which the woken run reads back. */
+  payload: JsonObject;
 }) {
   const repo = yield* ExecutionRepo;
   const inngest = yield* InngestClient;
   const logger = (yield* AppLogger).get("wait-resume");
 
-  const arrival =
-    input.source.kind === "event"
-      ? {
-          signalType: "wait-resume" as const,
-          eventName: input.source.eventName,
-          payload: input.source.payload,
-        }
-      : {
-          signalType: "wait-resume" as const,
-          eventName: null,
-          payload: input.source.payload,
-        };
-  const claim = yield* input.target.kind === "resume_token"
+  const { target, payload } = input;
+  const eventName = target.kind === "wait_state" ? target.eventName : null;
+  const arrival = {
+    signalType: "wait-resume" as const,
+    eventName,
+    payload,
+  };
+  const claim = yield* target.kind === "resume_token"
     ? repo.claimWaitingStateByToken({
-        resumeToken: input.target.token,
+        resumeToken: target.token,
         arrival,
       })
     : repo.claimWaitingStateById({
-        waitStateId: input.target.waitStateId,
+        waitStateId: target.waitStateId,
+        eventName: target.eventName,
         arrival,
       });
 
@@ -55,24 +62,15 @@ export const wakeWait = Effect.fn("wakeWait")(function* (input: {
   }
 
   const { waitState, claimedAt } = claim;
-  const token = input.target.token;
-  const signal =
-    input.source.kind === "event"
-      ? {
-          executionId: waitState.executionId,
-          nodeId: waitState.nodeId,
-          token,
-          eventType: input.source.eventName,
-          payload: input.source.payload,
-          signalType: "wait-resume" as const,
-        }
-      : {
-          executionId: waitState.executionId,
-          nodeId: waitState.nodeId,
-          token,
-          payload: input.source.payload,
-          signalType: "wait-resume" as const,
-        };
+  // A manual resume names no Event, and the envelope carries no key for one.
+  const signal = omitUndefined({
+    executionId: waitState.executionId,
+    nodeId: waitState.nodeId,
+    token: target.token,
+    eventType: eventName ?? undefined,
+    payload,
+    signalType: "wait-resume" as const,
+  });
 
   yield* inngest.sendWaitSignal(signal).pipe(
     Effect.tapError(() =>

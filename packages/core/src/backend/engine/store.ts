@@ -115,6 +115,12 @@ export type CreateWaitStateInput = {
  */
 export type ReparkWaitStateInput = {
   waitStateId: string;
+  /**
+   * The Workflow Version this park was resolved from. The write requires the
+   * execution row to still pin it, so a Migration landing inside the preparing
+   * step refuses the park instead of writing one from the graph the run left.
+   */
+  workflowVersionId: string;
   waitType: "delay" | "event";
   /** Target timestamp as ISO 8601, and null for a wait with no target. */
   waitUntilIso: string | null;
@@ -191,8 +197,9 @@ export type WorkflowStore = {
   ): Effect.Effect<{ waitStateId: string } | undefined, DatabaseError>;
   /**
    * Writes a re-parked wait's whole park onto the row it already holds. True
-   * when a row still `waiting` was written, and false when the row has left
-   * `waiting`, which the caller answers by reading it back.
+   * when a row still `waiting` under the named version was written. False is
+   * either the row having left `waiting`, which the caller answers by reading
+   * it back, or the execution having been moved to another version.
    */
   reparkWaitState(
     input: ReparkWaitStateInput
@@ -219,10 +226,19 @@ export type WorkflowStore = {
   markWaitStateStatus(
     input: MarkWaitStateStatusInput
   ): Effect.Effect<void, DatabaseError>;
-  /** Moves an execution back from "waiting" to "running" after a wait. */
+  /**
+   * Moves an execution back to "running" after a wait, answering whether a row
+   * moved.
+   *
+   * The write requires the row to still pin `workflowVersionId`, which makes it
+   * the fence a resuming Wait stands on: false means a Migration moved the run
+   * while this resume was in flight, and the caller must not carry on under the
+   * graph it loaded.
+   */
   markExecutionRunning(input: {
     executionId: string;
-  }): Effect.Effect<void, DatabaseError>;
+    workflowVersionId: string;
+  }): Effect.Effect<boolean, DatabaseError>;
   /**
    * Whether a Cancel Event has claimed this run, and what it carried. Read at
    * each node boundary inside a step, so the answer is memoized and a replay
@@ -271,7 +287,7 @@ export const noopWorkflowStore: WorkflowStore = {
   readWaitState: () => Effect.succeed(null),
   readPinnedVersionId: () => Effect.succeed(null),
   markWaitStateStatus: () => Effect.void,
-  markExecutionRunning: () => Effect.void,
+  markExecutionRunning: () => Effect.succeed(true),
   readPendingCancel: () => Effect.succeed(null),
   completeRun: () => Effect.succeed(true),
   readNodeOutputs: () => Effect.succeed({}),

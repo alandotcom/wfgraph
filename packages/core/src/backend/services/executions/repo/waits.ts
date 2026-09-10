@@ -10,6 +10,7 @@ import {
   lte,
   notInArray,
   or,
+  type SQL,
   sql,
 } from "drizzle-orm";
 import type { Effect } from "effect";
@@ -82,10 +83,15 @@ export type WaitsRepoMethods = {
    * row keeps its id and its `waiting` status, so the delivery fan-out keeps
    * addressing the same park. Everything else is the new version's answer,
    * including the wait type, so a Wait that changed mode re-parks as the mode it
-   * now is. False means the row left `waiting` while the run was between parks.
+   * now is. False means the row left `waiting` while the run was between parks,
+   * or a second Migration moved the execution off `workflowVersionId` while this
+   * park was being resolved, which would otherwise write a park computed from a
+   * graph the run has already left.
    */
   readonly reparkWait: (input: {
     waitStateId: string;
+    /** The version the caller resolved this park from. */
+    workflowVersionId: string;
     waitType: "delay" | "event";
     waitUntil: Date | null;
     subscribedEvents: string[];
@@ -156,6 +162,10 @@ export type WaitsRepoMethods = {
    * the concurrency boundary: exactly one caller gets the row. An abandoned
    * in-flight claim becomes reclaimable after its lease rather than consuming
    * the wait forever.
+   *
+   * Only an event wait is claimable. A delay wait answers no resume signal, so
+   * a row a Migration turned into a delay park keeps counting down rather than
+   * consuming a manual resume that would reach nothing.
    */
   readonly claimWaitingStateByToken: (input: {
     resumeToken: string;
@@ -164,9 +174,15 @@ export type WaitsRepoMethods = {
   /**
    * Claim one candidate previously found by event delivery. The execution may
    * already be running because a sibling wait resumed first.
+   *
+   * The claim repeats the two facts the candidate was selected on, because a
+   * Migration can re-park the row between the selection and this write: the row
+   * must still be an event wait, and must still be subscribed to `eventName`.
    */
   readonly claimWaitingStateById: (input: {
     waitStateId: string;
+    /** The Event being delivered, which the row must still subscribe to. */
+    eventName: string;
     arrival: WaitArrival;
   }) => Effect.Effect<WaitResumeClaim | null, DatabaseError>;
   /** Settle only the exact claim that delivered the wake signal. */
@@ -248,7 +264,8 @@ export function makeWaitsMethods(
           .where(
             and(
               eq(workflowWaitStates.id, input.waitStateId),
-              eq(workflowWaitStates.status, "waiting")
+              eq(workflowWaitStates.status, "waiting"),
+              pinnedVersionIs(db, input.workflowVersionId)
             )
           )
           .returning({ id: workflowWaitStates.id });
@@ -363,7 +380,10 @@ export function makeWaitsMethods(
       database.query((db) =>
         claimWaitState(
           db,
-          eq(workflowWaitStates.resumeToken, input.resumeToken),
+          and(
+            eq(workflowWaitStates.resumeToken, input.resumeToken),
+            eq(workflowWaitStates.waitType, "event")
+          ),
           input.arrival
         )
       ),
@@ -372,7 +392,13 @@ export function makeWaitsMethods(
       database.query((db) =>
         claimWaitState(
           db,
-          eq(workflowWaitStates.id, input.waitStateId),
+          and(
+            eq(workflowWaitStates.id, input.waitStateId),
+            eq(workflowWaitStates.waitType, "event"),
+            arrayContains(workflowWaitStates.subscribedEvents, [
+              input.eventName,
+            ])
+          ),
           input.arrival
         )
       ),
@@ -450,14 +476,39 @@ export function makeWaitsMethods(
 }
 
 /**
+ * Whether the execution a wait row belongs to still pins this Workflow Version.
+ *
+ * Correlated against `workflow_wait_states.execution_id`, so it is evaluated by
+ * the statement it guards rather than as a separate read the caller could be
+ * overtaken after.
+ */
+function pinnedVersionIs(db: WfGraphDatabase, workflowVersionId: string): SQL {
+  return exists(
+    db
+      .select({ id: workflowExecutions.id })
+      .from(workflowExecutions)
+      .where(
+        and(
+          eq(workflowExecutions.id, workflowWaitStates.executionId),
+          eq(workflowExecutions.workflowVersionId, workflowVersionId)
+        )
+      )
+  );
+}
+
+/**
  * Claims one row and records the wake in the same statement.
  *
  * The wake is merged into the metadata the park wrote rather than replacing it,
  * so the compiled match the row carries survives a claim.
+ *
+ * `identity` is everything about the row the caller requires, which is more than
+ * its id: a Migration can re-park the row between a candidate read and this
+ * write, so the claim re-states the properties the candidate was chosen for.
  */
 async function claimWaitState(
   db: WfGraphDatabase,
-  identity: ReturnType<typeof eq>,
+  identity: SQL | undefined,
   arrival: WaitArrival
 ): Promise<WaitResumeClaim | null> {
   const claimedAt = new Date();

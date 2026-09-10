@@ -122,7 +122,7 @@ export function createDbWorkflowStore(
 
     markWaitStateStatus: (input) => repo.markWaitStatus(input),
 
-    markExecutionRunning: (input) => repo.markRunning(input.executionId),
+    markExecutionRunning: (input) => repo.markRunning(input),
 
     readPendingCancel: (executionId) => repo.findPendingCancel(executionId),
 

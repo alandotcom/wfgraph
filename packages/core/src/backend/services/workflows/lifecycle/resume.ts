@@ -27,7 +27,7 @@ export const resumeWaitByToken = Effect.fn("resumeWaitByToken")(
   function* (input: { token: string; body: JsonObject }) {
     const result = yield* wakeWait({
       target: { kind: "resume_token", token: input.token },
-      source: { kind: "manual", payload: input.body },
+      payload: input.body,
     });
 
     if (result.status === "unchanged") {

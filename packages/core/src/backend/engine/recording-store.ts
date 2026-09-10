@@ -31,7 +31,7 @@ type StoreCallInputs = {
   markWaitStateStatus: MarkWaitStateStatusInput;
   readWaitState: { waitStateId: string };
   readPinnedVersionId: { executionId: string };
-  markExecutionRunning: { executionId: string };
+  markExecutionRunning: { executionId: string; workflowVersionId: string };
   readPendingCancel: { executionId: string };
   completeRun: CompleteRunInput;
   readNodeOutputs: { executionId: string };
@@ -61,6 +61,12 @@ export type RecordingWorkflowStore = WorkflowStore & {
    * check alone, which is what every test that is not about a Migration wants.
    */
   pinnedVersionId: string | null;
+  /**
+   * What `markExecutionRunning` answers. False models a Migration landing
+   * between a Wait's wake and its resume, which the resume treats as a step
+   * failure.
+   */
+  markRunningAnswer: boolean;
   reset(): void;
 };
 
@@ -94,6 +100,7 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
     reparkAnswer: true,
     waitState: null,
     pinnedVersionId: null,
+    markRunningAnswer: true,
 
     reset() {
       calls.length = 0;
@@ -177,6 +184,7 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
       return Effect.sync(() => {
         calls.push({ method: "markExecutionRunning", input });
         byMethod.markExecutionRunning.push(input);
+        return store.markRunningAnswer;
       });
     },
 

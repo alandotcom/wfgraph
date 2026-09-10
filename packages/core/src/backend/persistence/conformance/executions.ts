@@ -28,6 +28,27 @@ const EVENT_ARRIVAL = {
   payload: { approved: true },
 } as const;
 
+/**
+ * Publishes a second version of the seeded workflow, which the Migration cases
+ * move a parked run onto.
+ */
+const publishSecondVersion = Effect.gen(function* () {
+  const workflows = yield* WorkflowRepo;
+  const draft = yield* workflows.findDraftRevisionById("wf_1");
+  yield* workflows.insertPublishedVersion({
+    workflowId: "wf_1",
+    versionId: "ver_2",
+    version: 2,
+    expectedPublishedVersionId: "ver_1",
+    expectedDraftRevision: draft?.draftRevision ?? 1,
+    graph: emptyGraph,
+    draftGraph: emptyGraph,
+    catalogFingerprint: "catalog",
+    graphDigest: "digest-2",
+    eventSubscriptions: [],
+  });
+});
+
 /** The first-wins start that the race cases in this file make. */
 const startFirstWins = (
   connection: ConformanceConnection,
@@ -143,6 +164,7 @@ export function describeExecutionConformance({
             nodeName: "Approval",
             waitType: "event",
             resumeToken: "resume_1",
+            subscribedEvents: ["appointment/approved"],
           });
           if (!wait) throw new Error("wait refused");
           const sibling = yield* executions.startWait({
@@ -153,6 +175,7 @@ export function describeExecutionConformance({
             nodeName: "Escalation",
             waitType: "event",
             resumeToken: "resume_2",
+            subscribedEvents: ["appointment/approved"],
           });
           if (!sibling) throw new Error("sibling wait refused");
           return {
@@ -169,6 +192,7 @@ export function describeExecutionConformance({
             const executions = yield* ExecutionRepo;
             return yield* executions.claimWaitingStateById({
               waitStateId: waitStateIds.first,
+              eventName: EVENT_ARRIVAL.eventName,
               arrival: EVENT_ARRIVAL,
             });
           })
@@ -190,9 +214,13 @@ export function describeExecutionConformance({
             claimedAt: firstClaim.claimedAt,
           });
           if (!settled) throw new Error("Claimed wait did not settle");
-          yield* executions.markRunning(waitStateIds.executionId);
+          yield* executions.markRunning({
+            executionId: waitStateIds.executionId,
+            workflowVersionId: "ver_1",
+          });
           return yield* executions.claimWaitingStateById({
             waitStateId: waitStateIds.sibling,
+            eventName: EVENT_ARRIVAL.eventName,
             arrival: EVENT_ARRIVAL,
           });
         })
@@ -374,6 +402,7 @@ export function describeExecutionConformance({
           });
           const secondClaim = yield* executions.claimWaitingStateById({
             waitStateId: wait.waitStateId,
+            eventName: EVENT_ARRIVAL.eventName,
             arrival: EVENT_ARRIVAL,
           });
           if (!secondClaim) throw new Error("Released wait was not claimable");
@@ -381,7 +410,10 @@ export function describeExecutionConformance({
             waitStateId: wait.waitStateId,
             claimedAt: secondClaim.claimedAt,
           });
-          yield* executions.markRunning(executionId);
+          yield* executions.markRunning({
+            executionId,
+            workflowVersionId: "ver_1",
+          });
 
           const cancelled = yield* executions.requestCancelForEntity({
             workflowId: "wf_1",
@@ -501,6 +533,7 @@ export function describeExecutionConformance({
 
           yield* executions.reparkWait({
             waitStateId: wait.waitStateId,
+            workflowVersionId: "ver_1",
             waitType: "event",
             waitUntil: new Date("2026-02-01T00:00:00.000Z"),
             subscribedEvents: ["appointment/rescheduled"],
@@ -592,6 +625,7 @@ export function describeExecutionConformance({
           return {
             reparked: yield* executions.reparkWait({
               waitStateId: wait.waitStateId,
+              workflowVersionId: "ver_1",
               waitType: "event",
               waitUntil: new Date("2026-02-01T00:00:00.000Z"),
               subscribedEvents: ["appointment/rescheduled"],
@@ -770,6 +804,283 @@ export function describeExecutionConformance({
         versionNumber: 2,
         status: "waiting",
       });
+    });
+
+    it("marks a run running only while it pins the version the caller loaded", async () => {
+      const database = await openConnection();
+      await seedPublishedWorkflow(database);
+
+      const result = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          yield* publishSecondVersion;
+
+          const started = yield* executions.startForEntity({
+            execution: {
+              workflowId: "wf_1",
+              workflowVersionId: "ver_1",
+              startSource: "manual",
+              runMode: "live",
+              input: {},
+            },
+            concurrency: "unlimited",
+            supersededReason: "newer start",
+          });
+          if (started.status !== "started")
+            throw new Error("Start was refused");
+          const executionId = started.execution.id;
+
+          const wait = yield* executions.startWait({
+            executionId,
+            workflowId: "wf_1",
+            runId: "run_1",
+            nodeId: "wait_1",
+            nodeName: "Wait for approval",
+            waitType: "delay",
+            waitUntil: new Date("2026-01-01T00:00:00.000Z"),
+          });
+          if (!wait) throw new Error("Wait was refused");
+
+          const migrated = yield* executions.repinVersion({
+            executionId,
+            fromVersionId: "ver_1",
+            toVersionId: "ver_2",
+          });
+          if (!migrated) throw new Error("The migration was refused");
+
+          return {
+            // The resuming body loaded ver_1, which the row no longer pins.
+            underTheVersionLeftBehind: yield* executions.markRunning({
+              executionId,
+              workflowVersionId: "ver_1",
+            }),
+            underThePinnedVersion: yield* executions.markRunning({
+              executionId,
+              workflowVersionId: "ver_2",
+            }),
+            // A sibling Wait of the same run resumes into a row already running.
+            fromASiblingWait: yield* executions.markRunning({
+              executionId,
+              workflowVersionId: "ver_2",
+            }),
+            status: yield* executions.findStatusById(executionId),
+          };
+        })
+      );
+
+      expect(result.underTheVersionLeftBehind).toBe(false);
+      expect(result.underThePinnedVersion).toBe(true);
+      expect(result.fromASiblingWait).toBe(true);
+      expect(result.status).toMatchObject({ status: "running" });
+    });
+
+    it("refuses a re-park resolved from a version the run has left", async () => {
+      const database = await openConnection();
+      await seedPublishedWorkflow(database);
+
+      const result = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          yield* publishSecondVersion;
+
+          const started = yield* executions.startForEntity({
+            execution: {
+              workflowId: "wf_1",
+              workflowVersionId: "ver_1",
+              startSource: "manual",
+              runMode: "live",
+              input: {},
+            },
+            concurrency: "unlimited",
+            supersededReason: "newer start",
+          });
+          if (started.status !== "started")
+            throw new Error("Start was refused");
+          const executionId = started.execution.id;
+
+          const wait = yield* executions.startWait({
+            executionId,
+            workflowId: "wf_1",
+            runId: "run_1",
+            nodeId: "wait_1",
+            nodeName: "Wait for approval",
+            waitType: "event",
+            resumeToken: "resume_1",
+            waitUntil: new Date("2026-01-01T00:00:00.000Z"),
+            subscribedEvents: ["appointment/approved"],
+            metadata: { waitTimeout: "7d" },
+          });
+          if (!wait) throw new Error("Wait was refused");
+
+          const migrated = yield* executions.repinVersion({
+            executionId,
+            fromVersionId: "ver_1",
+            toVersionId: "ver_2",
+          });
+          if (!migrated) throw new Error("The migration was refused");
+
+          return {
+            fromTheVersionLeftBehind: yield* executions.reparkWait({
+              waitStateId: wait.waitStateId,
+              workflowVersionId: "ver_1",
+              waitType: "event",
+              waitUntil: new Date("2026-02-01T00:00:00.000Z"),
+              subscribedEvents: ["appointment/rescheduled"],
+              resumeToken: "resume_1",
+              metadata: { waitTimeout: "30d" },
+            }),
+            afterTheRefusedWrite: yield* executions.findWaitStateById(
+              wait.waitStateId
+            ),
+            fromThePinnedVersion: yield* executions.reparkWait({
+              waitStateId: wait.waitStateId,
+              workflowVersionId: "ver_2",
+              waitType: "event",
+              waitUntil: new Date("2026-02-01T00:00:00.000Z"),
+              subscribedEvents: ["appointment/rescheduled"],
+              resumeToken: "resume_1",
+              metadata: { waitTimeout: "30d" },
+            }),
+          };
+        })
+      );
+
+      expect(result.fromTheVersionLeftBehind).toBe(false);
+      expect(result.afterTheRefusedWrite).toMatchObject({
+        status: "waiting",
+        subscribedEvents: ["appointment/approved"],
+        metadata: { waitTimeout: "7d" },
+      });
+      expect(result.fromThePinnedVersion).toBe(true);
+    });
+
+    it("refuses to claim a wait re-parked as a delay", async () => {
+      const database = await openConnection();
+      await seedPublishedWorkflow(database);
+
+      const result = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const started = yield* executions.startForEntity({
+            execution: {
+              workflowId: "wf_1",
+              workflowVersionId: "ver_1",
+              startSource: "manual",
+              runMode: "live",
+              input: {},
+            },
+            concurrency: "unlimited",
+            supersededReason: "newer start",
+          });
+          if (started.status !== "started")
+            throw new Error("Start was refused");
+
+          const wait = yield* executions.startWait({
+            executionId: started.execution.id,
+            workflowId: "wf_1",
+            runId: "run_1",
+            nodeId: "wait_1",
+            nodeName: "Wait for approval",
+            waitType: "event",
+            resumeToken: "resume_1",
+            subscribedEvents: ["appointment/approved"],
+          });
+          if (!wait) throw new Error("Wait was refused");
+
+          // The token stays on the row so both claims address it and the wait
+          // type is the only thing refusing them.
+          const reparked = yield* executions.reparkWait({
+            waitStateId: wait.waitStateId,
+            workflowVersionId: "ver_1",
+            waitType: "delay",
+            waitUntil: new Date("2026-02-01T00:00:00.000Z"),
+            subscribedEvents: ["appointment/approved"],
+            resumeToken: "resume_1",
+            metadata: {},
+          });
+          if (!reparked) throw new Error("The re-park was refused");
+
+          return {
+            byId: yield* executions.claimWaitingStateById({
+              waitStateId: wait.waitStateId,
+              eventName: "appointment/approved",
+              arrival: EVENT_ARRIVAL,
+            }),
+            byToken: yield* executions.claimWaitingStateByToken({
+              resumeToken: "resume_1",
+              arrival: EVENT_ARRIVAL,
+            }),
+            row: yield* executions.findWaitStateById(wait.waitStateId),
+          };
+        })
+      );
+
+      expect(result.byId).toBeNull();
+      expect(result.byToken).toBeNull();
+      expect(result.row).toMatchObject({ status: "waiting" });
+    });
+
+    it("refuses to claim a wait no longer subscribed to the delivered event", async () => {
+      const database = await openConnection();
+      await seedPublishedWorkflow(database);
+
+      const result = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const started = yield* executions.startForEntity({
+            execution: {
+              workflowId: "wf_1",
+              workflowVersionId: "ver_1",
+              startSource: "manual",
+              runMode: "live",
+              input: {},
+            },
+            concurrency: "unlimited",
+            supersededReason: "newer start",
+          });
+          if (started.status !== "started")
+            throw new Error("Start was refused");
+
+          const wait = yield* executions.startWait({
+            executionId: started.execution.id,
+            workflowId: "wf_1",
+            runId: "run_1",
+            nodeId: "wait_1",
+            nodeName: "Wait for approval",
+            waitType: "event",
+            resumeToken: "resume_1",
+            subscribedEvents: ["appointment/approved"],
+          });
+          if (!wait) throw new Error("Wait was refused");
+
+          const reparked = yield* executions.reparkWait({
+            waitStateId: wait.waitStateId,
+            workflowVersionId: "ver_1",
+            waitType: "event",
+            waitUntil: null,
+            subscribedEvents: ["appointment/rescheduled"],
+            resumeToken: "resume_1",
+            metadata: {},
+          });
+          if (!reparked) throw new Error("The re-park was refused");
+
+          return {
+            onTheDroppedEvent: yield* executions.claimWaitingStateById({
+              waitStateId: wait.waitStateId,
+              eventName: "appointment/approved",
+              arrival: EVENT_ARRIVAL,
+            }),
+            onTheEventItNowNames: yield* executions.claimWaitingStateById({
+              waitStateId: wait.waitStateId,
+              eventName: "appointment/rescheduled",
+              arrival: EVENT_ARRIVAL,
+            }),
+          };
+        })
+      );
+
+      expect(result.onTheDroppedEvent).toBeNull();
+      expect(result.onTheEventItNowNames?.waitState.id).not.toBeUndefined();
     });
 
     it("pages waits across run modes and filters the runs a delivery settled", async () => {

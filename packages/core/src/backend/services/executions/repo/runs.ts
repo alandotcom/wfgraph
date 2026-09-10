@@ -211,12 +211,19 @@ export type RunsRepoMethods = {
     toVersionId: string;
   }) => Effect.Effect<boolean, DatabaseError>;
   /**
-   * Move a run back from "waiting" to "running", answering whether a waiting
-   * row was there to move.
+   * Move a run back from "waiting" to "running" under the version the caller
+   * loaded, answering whether a row moved.
+   *
+   * The version is the fence a resuming Wait relies on: a Migration that lands
+   * between the wake and this write leaves the row pinned to another version,
+   * no row is written, and the caller starts again against the new pointer.
+   * `running` is an accepted starting status, because a sibling Wait of the
+   * same run may already have written it.
    */
-  readonly markRunning: (
-    executionId: string
-  ) => Effect.Effect<boolean, DatabaseError>;
+  readonly markRunning: (input: {
+    executionId: string;
+    workflowVersionId: string;
+  }) => Effect.Effect<boolean, DatabaseError>;
   /**
    * End a run from outside it, answering whether this write is the one that
    * made the row terminal.
@@ -484,15 +491,15 @@ export function makeRunsMethods(
         return moved.length > 0;
       }),
 
-    markRunning: (executionId) =>
+    markRunning: (input) =>
       database.query(async (db) => {
         const moved = await db
           .update(workflowExecutions)
           .set({ status: "running", waitingAt: null })
           .where(
             and(
-              eq(workflowExecutions.id, executionId),
-              eq(workflowExecutions.status, "waiting")
+              inFlightExecution(input.executionId),
+              eq(workflowExecutions.workflowVersionId, input.workflowVersionId)
             )
           )
           .returning({ id: workflowExecutions.id });

@@ -371,15 +371,17 @@ function runWaitAttempt<Prepared, Resumed>(
           stage: `resume ${mode.mode}`,
         }),
       },
-      Effect.gen(function* () {
-        yield* assertPinnedVersion(branch);
-        return yield* mode.resume({
-          branch,
-          prepared: prepared.prepared,
-          waitStateId: prepared.carry.waitStateId,
-          wake,
-          hops: state.parks,
-        });
+      // The version fence for this step is the guarded write inside the mode's
+      // resume that moves the run back to "running", which is the first thing
+      // each mode does. That write refuses when the execution row pins another
+      // version, so a separate version read here would ask the same question a
+      // moment before the transition it is protecting.
+      mode.resume({
+        branch,
+        prepared: prepared.prepared,
+        waitStateId: prepared.carry.waitStateId,
+        wake,
+        hops: state.parks,
       })
     );
 
@@ -456,6 +458,7 @@ function prepareWaitAttempt<Prepared, Resumed>(
     const reparked = yield* fromStore(
       store.reparkWaitState({
         waitStateId: input.waitStateId,
+        workflowVersionId: branch.workflowVersionId,
         waitType: park.waitType,
         waitUntilIso: park.waitUntilIso,
         subscribedEvents: park.subscribedEvents,
@@ -467,6 +470,11 @@ function prepareWaitAttempt<Prepared, Resumed>(
     if (!reparked) {
       const missed = yield* readMissedWake(branch, input.waitStateId);
       if (missed === null) {
+        // The re-park is fenced on the pinned version as well as on the row's
+        // status, so a Migration landing inside this step refuses the write
+        // while the row is still waiting and records no wake. Failing the step
+        // sends the body around again against the new pointer.
+        yield* assertPinnedVersion(branch);
         return yield* failPreparation<Prepared>(
           branch,
           "The wait row left waiting before this park could be written, and it records no wake to resume from"

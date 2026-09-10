@@ -392,15 +392,16 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
           .returning({ id: workflowExecutions.id })
           .pipe(Effect.map((rows) => rows.length > 0))
       ),
-    markRunning: (executionId) =>
+    markRunning: (input) =>
       store.write((database) =>
         database
           .update(workflowExecutions)
           .set({ status: "running", waitingAt: null })
           .where(
             and(
-              eq(workflowExecutions.id, executionId),
-              eq(workflowExecutions.status, "waiting")
+              eq(workflowExecutions.id, input.executionId),
+              eq(workflowExecutions.workflowVersionId, input.workflowVersionId),
+              inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES)
             )
           )
           .returning({ id: workflowExecutions.id })
