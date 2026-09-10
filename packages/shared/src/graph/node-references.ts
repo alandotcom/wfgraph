@@ -250,6 +250,8 @@ export type ConfigTemplateReference = {
   /** The dotted config key holding the reference. */
   field: string;
   nodeId: string;
+  /** Dotted path into that node's output; empty when the token names the whole output. */
+  fieldPath: string;
   /** The label and field path a builder sees, for a message about the reference. */
   displayText: string;
 };
@@ -263,10 +265,19 @@ export type ConfigTemplateReference = {
  * an array of objects, and a Wait node's `waitFor` is an array of
  * subscriptions. An array index joins the path as another dotted segment, so a
  * reference inside the second header reads as `headers.1.value`.
+ *
+ * A config is JSON, so this takes the `JsonObject` a caller holding a live
+ * config reaches through `readJsonObjectLeniently`.
  */
 export function extractAllTemplateReferences(
-  config: Record<string, unknown>,
-  prefix = ""
+  config: JsonObject
+): ConfigTemplateReference[] {
+  return configReferences(config, "");
+}
+
+function configReferences(
+  config: JsonObject,
+  prefix: string
 ): ConfigTemplateReference[] {
   return Object.entries(config).flatMap(([key, value]) =>
     templateReferencesIn(value, prefix ? `${prefix}.${key}` : key)
@@ -274,13 +285,14 @@ export function extractAllTemplateReferences(
 }
 
 function templateReferencesIn(
-  value: unknown,
+  value: JsonValue,
   field: string
 ): ConfigTemplateReference[] {
   if (typeof value === "string") {
     return findTemplateTokens(value).map((token) => ({
       field,
       nodeId: token.nodeId,
+      fieldPath: token.fieldPath,
       displayText: templateTokenDisplayText(token),
     }));
   }
@@ -291,8 +303,8 @@ function templateReferencesIn(
     );
   }
 
-  if (isPlainObject(value)) {
-    return extractAllTemplateReferences(value, field);
+  if (isJsonObject(value)) {
+    return configReferences(value, field);
   }
 
   return [];

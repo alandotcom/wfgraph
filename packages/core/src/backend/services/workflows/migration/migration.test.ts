@@ -2,6 +2,7 @@
 // provides, so nothing here imports the bare one.
 import { assert, describe, layer } from "@effect/vitest";
 import { Effect, Layer } from "effect";
+import { DatabaseError } from "#src/backend/lib/effect/database";
 import {
   InngestError,
   type InngestClient,
@@ -186,6 +187,9 @@ function makeMigrationSeams(input: {
   nodeOutputs?: Record<string, JsonValue> | undefined;
   repinned?: boolean | undefined;
   sendWaitSignal?: InngestClient["Service"]["sendWaitSignal"] | undefined;
+  recordAuditEvent?: ExecutionRepo["Service"]["recordAuditEvent"] | undefined;
+  /** The workflow each run outside the in-flight list belongs to, by run id. */
+  workflowIdByExecution?: Record<string, string | null> | undefined;
 }) {
   const version = publishedVersion(input.graph ?? targetGraph());
   const waitStates = input.waitStates ?? [];
@@ -193,6 +197,7 @@ function makeMigrationSeams(input: {
     order: [] as string[],
     waitLookups: [] as string[][],
     outputReads: [] as string[],
+    workflowIdReads: [] as string[],
     repins: [] as Parameters<ExecutionRepo["Service"]["repinVersion"]>[0][],
     auditEvents: [] as Parameters<
       ExecutionRepo["Service"]["recordAuditEvent"]
@@ -248,9 +253,17 @@ function makeMigrationSeams(input: {
             return input.repinned ?? true;
           }),
         recordAuditEvent: (event) =>
-          Effect.sync(() => {
+          Effect.suspend(() => {
             calls.order.push("audit");
             calls.auditEvents.push(event);
+            return input.recordAuditEvent
+              ? input.recordAuditEvent(event)
+              : Effect.void;
+          }),
+        findWorkflowIdById: (executionId) =>
+          Effect.sync(() => {
+            calls.workflowIdReads.push(executionId);
+            return input.workflowIdByExecution?.[executionId] ?? null;
           }),
       }),
       stubInngestClient({
@@ -449,6 +462,102 @@ describe("previewMigration", () => {
         })
     );
 
+    it.effect("refuses a field the recorded output does not hold", () =>
+      Effect.gen(function* () {
+        const seams = makeMigrationSeams({
+          executions: [inFlightRow({ id: "exec_1" })],
+          waitStates: [waitRow({ id: "wait_row_1", executionId: "exec_1" })],
+          // `before_1` ran, but it left no `value`, so the template below the
+          // Wait would render as empty text.
+          nodeOutputs: { before_1: { other: "x" } },
+        });
+
+        const report = yield* previewMigration({
+          workflowId: WORKFLOW_ID,
+        }).pipe(Effect.provide(seams.layer));
+
+        assert.deepStrictEqual(report.refused, [
+          {
+            executionId: "exec_1",
+            fromVersionNumber: 1,
+            reason: "unresolved_reference",
+            detail: "after_1.subject",
+          },
+        ]);
+      })
+    );
+
+    it.effect("accepts a recorded field holding null", () =>
+      Effect.gen(function* () {
+        const seams = makeMigrationSeams({
+          executions: [inFlightRow({ id: "exec_1" })],
+          waitStates: [waitRow({ id: "wait_row_1", executionId: "exec_1" })],
+          nodeOutputs: { before_1: { value: null } },
+        });
+
+        const report = yield* previewMigration({
+          workflowId: WORKFLOW_ID,
+        }).pipe(Effect.provide(seams.layer));
+
+        assert.deepStrictEqual(report.refused, []);
+        assert.strictEqual(report.eligible.length, 1);
+      })
+    );
+
+    it.effect(
+      "refuses a delay park landing on an Event Wait whose timeout passed",
+      () =>
+        Effect.gen(function* () {
+          const seams = makeMigrationSeams({
+            graph: targetGraph({
+              waitConfig: { waitMode: "event", waitTimeout: "30s" },
+            }),
+            executions: [inFlightRow({ id: "exec_1" })],
+            waitStates: [waitRow({ id: "wait_row_1", executionId: "exec_1" })],
+            nodeOutputs: { before_1: { value: "ok" } },
+          });
+
+          const report = yield* previewMigration({
+            workflowId: WORKFLOW_ID,
+          }).pipe(Effect.provide(seams.layer));
+
+          assert.deepStrictEqual(report.refused, [
+            {
+              executionId: "exec_1",
+              fromVersionNumber: 1,
+              reason: "wait_timeout_elapsed",
+              detail: "wait_1",
+            },
+          ]);
+        })
+    );
+
+    it.effect("keeps an event park landing on a delay Wait", () =>
+      Effect.gen(function* () {
+        const seams = makeMigrationSeams({
+          graph: targetGraph({
+            waitConfig: { waitMode: "delay", waitTimeout: "30s" },
+          }),
+          executions: [inFlightRow({ id: "exec_1" })],
+          waitStates: [
+            waitRow({
+              id: "wait_row_1",
+              executionId: "exec_1",
+              waitType: "event",
+            }),
+          ],
+          nodeOutputs: { before_1: { value: "ok" } },
+        });
+
+        const report = yield* previewMigration({
+          workflowId: WORKFLOW_ID,
+        }).pipe(Effect.provide(seams.layer));
+
+        assert.deepStrictEqual(report.refused, []);
+        assert.strictEqual(report.eligible.length, 1);
+      })
+    );
+
     it.effect("resolves a reference below one of the run's other Waits", () =>
       Effect.gen(function* () {
         const seams = makeMigrationSeams({
@@ -615,7 +724,7 @@ describe("previewMigration", () => {
 
 describe("migrateExecutions", () => {
   layer(SilentAppLoggerLayer)((it) => {
-    it.effect("moves the pointer, records the audit row, then signals", () =>
+    it.effect("moves the pointer, signals, then records the audit row", () =>
       Effect.gen(function* () {
         const seams = makeMigrationSeams({
           executions: [inFlightRow({ id: "exec_1" })],
@@ -639,7 +748,7 @@ describe("migrateExecutions", () => {
         assert.deepStrictEqual(result.outcomes, [
           { executionId: "exec_1", status: "migrated", signaled: true },
         ]);
-        assert.deepStrictEqual(seams.calls.order, ["repin", "audit", "signal"]);
+        assert.deepStrictEqual(seams.calls.order, ["repin", "signal", "audit"]);
         assert.deepStrictEqual(seams.calls.repins, [
           {
             executionId: "exec_1",
@@ -739,6 +848,59 @@ describe("migrateExecutions", () => {
         ]);
         assert.deepStrictEqual(seams.calls.order, ["repin"]);
       })
+    );
+
+    it.effect("migrates a run whose audit write was refused", () =>
+      Effect.gen(function* () {
+        const seams = makeMigrationSeams({
+          executions: [inFlightRow({ id: "exec_1" })],
+          waitStates: [waitRow({ id: "wait_row_1", executionId: "exec_1" })],
+          nodeOutputs: { before_1: { value: "ok" } },
+          recordAuditEvent: () =>
+            Effect.fail(
+              new DatabaseError({ cause: new Error("write failed") })
+            ),
+        });
+
+        const result = yield* migrateExecutions({
+          workflowId: WORKFLOW_ID,
+          targetVersionId: TARGET_VERSION_ID,
+          executionIds: ["exec_1"],
+        }).pipe(Effect.provide(seams.layer));
+
+        assert.deepStrictEqual(result.outcomes, [
+          { executionId: "exec_1", status: "migrated", signaled: true },
+        ]);
+        assert.deepStrictEqual(seams.calls.order, ["repin", "signal", "audit"]);
+      })
+    );
+
+    it.effect(
+      "refuses one run that left the in-flight list since the preview",
+      () =>
+        Effect.gen(function* () {
+          const seams = makeMigrationSeams({
+            executions: [inFlightRow({ id: "exec_1" })],
+            waitStates: [waitRow({ id: "wait_row_1", executionId: "exec_1" })],
+            nodeOutputs: { before_1: { value: "ok" } },
+            workflowIdByExecution: { exec_ended: WORKFLOW_ID },
+          });
+
+          const result = yield* migrateExecutions({
+            workflowId: WORKFLOW_ID,
+            targetVersionId: TARGET_VERSION_ID,
+            executionIds: ["exec_1", "exec_ended"],
+          }).pipe(Effect.provide(seams.layer));
+
+          assert.deepStrictEqual(result.outcomes, [
+            { executionId: "exec_1", status: "migrated", signaled: true },
+            {
+              executionId: "exec_ended",
+              status: "refused",
+              reason: "not_requested_version",
+            },
+          ]);
+        })
     );
 
     it.effect("reports a run already on the target as already current", () =>

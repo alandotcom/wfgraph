@@ -2,10 +2,11 @@
  * Moves the named parked runs onto a later published version.
  *
  * Each run is reclassified first, because the preview the caller acted on is a
- * snapshot and a run can wake or end in between. A run moves in one order:
- * the pinned version pointer, then the audit row, then a `version-migrate`
- * signal per parked wait row, which is what makes the run recompute its Wait
- * against the version it now pins.
+ * snapshot and a run can wake or end in between. A run moves in one order: the
+ * pinned version pointer, then a `version-migrate` signal per parked wait row,
+ * which is what makes the run recompute its Wait against the version it now
+ * pins, then the audit row. The audit row is written last because it is a
+ * record of the move rather than a part of it.
  */
 
 import { Effect } from "effect";
@@ -79,6 +80,91 @@ const signalMigratedWaits = Effect.fn("signalMigratedWaits")(function* (input: {
   return sent.every((signaled) => signaled);
 });
 
+/**
+ * How many runs the departed-run read asks about at once. Only a requested id
+ * the in-flight list did not hold costs a read, so this bounds the rare case.
+ */
+const DEPARTED_RUN_READ_CONCURRENCY = 8;
+
+/**
+ * Files the audit row for a run that has already moved, and answers either way.
+ *
+ * The pointer has moved and the wake signal has gone out by the time this runs,
+ * so a refused write costs the audit trail one row and changes nothing about
+ * the run. Raising here would report a run that did migrate as a failed call.
+ */
+const recordMigrationAudit = Effect.fn("recordMigrationAudit")(
+  function* (input: {
+    executionId: string;
+    workflowId: string;
+    fromVersionId: string;
+    fromVersionNumber: number | null;
+    targetVersion: PublishedWorkflowVersion;
+  }) {
+    const repo = yield* ExecutionRepo;
+    const logger = yield* loggerFor(input.workflowId);
+
+    yield* repo
+      .recordAuditEvent({
+        workflowId: input.workflowId,
+        executionId: input.executionId,
+        eventType: "run_migrated",
+        message: `Run migrated to version ${input.targetVersion.version}`,
+        metadata: {
+          fromVersionId: input.fromVersionId,
+          fromVersionNumber: input.fromVersionNumber,
+          toVersionId: input.targetVersion.id,
+          toVersionNumber: input.targetVersion.version,
+        },
+      })
+      .pipe(
+        Effect.catchTag("DatabaseError", (failure) =>
+          logger.error("Failed to record a run migration", {
+            run: { executionId: input.executionId },
+            error: failure.cause,
+          })
+        )
+      );
+  }
+);
+
+/**
+ * Sorts the requested ids the in-flight list did not hold.
+ *
+ * Two cases arrive here and they answer differently. An id naming no run of
+ * this workflow was built against something other than this workflow's
+ * preview, so the whole call is refused. A run of this workflow that is no
+ * longer in flight woke, ended, or was cancelled between the preview and this
+ * call, and is answered as one refused run so the rest of the batch still
+ * moves.
+ */
+const readDepartedRunIds = Effect.fn("readDepartedRunIds")(function* (input: {
+  missingIds: readonly string[];
+  workflowId: string;
+}) {
+  const repo = yield* ExecutionRepo;
+  const owners = yield* Effect.forEach(
+    input.missingIds,
+    (executionId) =>
+      Effect.map(repo.findWorkflowIdById(executionId), (workflowId) => ({
+        executionId,
+        workflowId,
+      })),
+    { concurrency: DEPARTED_RUN_READ_CONCURRENCY }
+  );
+
+  const foreign = owners.filter(
+    (owner) => owner.workflowId !== input.workflowId
+  );
+  if (foreign.length > 0) {
+    return yield* new InvalidInput({
+      error: `${foreign.length} of the requested runs are not runs of this workflow`,
+    });
+  }
+
+  return owners.map((owner) => owner.executionId);
+});
+
 function refusedOutcome(input: {
   executionId: string;
   reason: MigrationOutcomeRefusalReason;
@@ -127,23 +213,18 @@ const migrateOne = Effect.fn("migrateOne")(function* (input: {
     return refusedOutcome({ executionId, reason: "not_requested_version" });
   }
 
-  yield* repo.recordAuditEvent({
-    workflowId: input.workflowId,
-    executionId,
-    eventType: "run_migrated",
-    message: `Run migrated to version ${targetVersion.version}`,
-    metadata: {
-      fromVersionId: classification.candidate.workflowVersionId,
-      fromVersionNumber: classification.candidate.versionNumber,
-      toVersionId: targetVersion.id,
-      toVersionNumber: targetVersion.version,
-    },
-  });
-
   const signaled = yield* signalMigratedWaits({
     executionId,
     waitStates: classification.waitStates,
     workflowId: input.workflowId,
+  });
+
+  yield* recordMigrationAudit({
+    executionId,
+    workflowId: input.workflowId,
+    fromVersionId: classification.candidate.workflowVersionId,
+    fromVersionNumber: classification.candidate.versionNumber,
+    targetVersion,
   });
   const migrated: WorkflowMigrationOutcome = {
     executionId,
@@ -170,28 +251,33 @@ export const migrateExecutions = Effect.fn("wfgraph.workflow.migrate_runs")(
     const candidates = requestedIds
       .map((executionId) => inFlightById.get(executionId))
       .filter(isNotNil);
-    // The whole call is refused rather than each unknown id, because a request
-    // naming a run this workflow does not have in flight was built against
-    // something other than this workflow's preview.
-    const unknownCount = requestedIds.length - candidates.length;
-    if (unknownCount > 0) {
-      return yield* new InvalidInput({
-        error: `${unknownCount} of the requested runs are not in-flight runs of this workflow`,
-      });
-    }
+    const departedIds = yield* readDepartedRunIds({
+      missingIds: requestedIds.filter(
+        (executionId) => !inFlightById.has(executionId)
+      ),
+      workflowId: input.workflowId,
+    });
 
     const classifications = yield* classifyMigrationCandidates({
       candidates,
       targetVersion,
     });
 
-    const outcomes = yield* Effect.forEach(classifications, (classification) =>
-      migrateOne({
-        classification,
-        workflowId: input.workflowId,
-        targetVersion,
-      })
+    const classifiedOutcomes = yield* Effect.forEach(
+      classifications,
+      (classification) =>
+        migrateOne({
+          classification,
+          workflowId: input.workflowId,
+          targetVersion,
+        })
     );
+    const outcomes = [
+      ...classifiedOutcomes,
+      ...departedIds.map((executionId) =>
+        refusedOutcome({ executionId, reason: "not_requested_version" })
+      ),
+    ];
 
     const payload: WorkflowMigrationPayload = {
       targetVersionId: targetVersion.id,

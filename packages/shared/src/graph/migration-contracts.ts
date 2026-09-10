@@ -21,8 +21,10 @@
  *   already in the past. The migrated hop would time out on arrival.
  *
  * The migrate call adds one reason of its own. `not_requested_version` means
- * the guarded pointer move changed no row, so the run woke, ended, or was moved
- * by another caller between the classification and the write.
+ * the guard had nothing to move: either the guarded pointer move changed no
+ * row, or the run had already left the in-flight list by the time the call
+ * arrived. Either way the run woke, ended, or was moved by another caller
+ * between the preview and the write.
  */
 
 import { Schema } from "effect";

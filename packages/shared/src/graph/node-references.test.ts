@@ -764,8 +764,18 @@ describe("extractAllTemplateReferences", () => {
         count: 3,
       })
     ).toEqual([
-      { field: "subject", nodeId: "n1", displayText: "Fetch.name" },
-      { field: "body.text", nodeId: "n2", displayText: "Order.id" },
+      {
+        field: "subject",
+        nodeId: "n1",
+        fieldPath: "name",
+        displayText: "Fetch.name",
+      },
+      {
+        field: "body.text",
+        nodeId: "n2",
+        fieldPath: "id",
+        displayText: "Order.id",
+      },
     ]);
   });
 
@@ -780,9 +790,30 @@ describe("extractAllTemplateReferences", () => {
         waitFor: [{ event: "order/paid", match: "{{@n3:Order.total}} > 0" }],
       })
     ).toEqual([
-      { field: "tags.1", nodeId: "n1", displayText: "Fetch.tag" },
-      { field: "headers.0.value", nodeId: "n2", displayText: "Order.id" },
-      { field: "waitFor.0.match", nodeId: "n3", displayText: "Order.total" },
+      {
+        field: "tags.1",
+        nodeId: "n1",
+        fieldPath: "tag",
+        displayText: "Fetch.tag",
+      },
+      {
+        field: "headers.0.value",
+        nodeId: "n2",
+        fieldPath: "id",
+        displayText: "Order.id",
+      },
+      {
+        field: "waitFor.0.match",
+        nodeId: "n3",
+        fieldPath: "total",
+        displayText: "Order.total",
+      },
+    ]);
+  });
+
+  it("carries an empty field path for a token naming a whole output", () => {
+    expect(extractAllTemplateReferences({ subject: "{{@n1:Fetch}}" })).toEqual([
+      { field: "subject", nodeId: "n1", fieldPath: "", displayText: "Fetch" },
     ]);
   });
 });

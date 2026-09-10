@@ -23,6 +23,7 @@ import { readConfigTrimmedString } from "#src/graph/node-config";
 import { extractAllTemplateReferences } from "#src/graph/node-references";
 import type { WorkflowNode } from "#src/graph/types";
 import { flattenConfigFields } from "#src/plugins/action-fields";
+import { readJsonObjectLeniently } from "#src/types/json";
 import { asNonEmptyString } from "#src/types/string";
 
 export type MissingRequiredFieldIssue = {
@@ -319,8 +320,10 @@ function collectBrokenReferenceIssues(input: {
       continue;
     }
 
-    const config = node.data.config;
-    if (!config || typeof config !== "object") {
+    // A config is JSON, and a live one holds `undefined` under a key the editor
+    // cleared, which this read drops so the templates beside it are still seen.
+    const config = readJsonObjectLeniently(node.data.config);
+    if (!config) {
       continue;
     }
 

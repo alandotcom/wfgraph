@@ -2,9 +2,10 @@
  * Decides, for each in-flight run, whether the target version can take it over.
  *
  * A run qualifies while it is parked on a Wait node the target graph still has,
- * with a timeout that has not already passed, and every template below that Wait
- * names a node the run either reaches after waking or has already recorded an
- * output for. Both the preview and the migrate call read their verdicts from
+ * whose timeout has not already passed when that target Wait waits for an
+ * Event, and every template below that Wait resolves: either against a node the
+ * run reaches after waking, or against a field of an output the run already
+ * recorded. Both the preview and the migrate call read their verdicts from
  * here.
  */
 
@@ -16,12 +17,23 @@ import {
   enabledActionTypeOf,
   isWaitActionType,
 } from "@wfgraph/shared/graph/node-config";
-import { extractAllTemplateReferences } from "@wfgraph/shared/graph/node-references";
+import {
+  extractAllTemplateReferences,
+  resolveOutputPath,
+} from "@wfgraph/shared/graph/node-references";
 import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
 import type { MigrationRefusalReason } from "@wfgraph/shared/graph/migration-contracts";
-import { DEFAULT_WAIT_TIMEOUT } from "@wfgraph/shared/lifecycle/wait-subscription";
+import {
+  DEFAULT_WAIT_TIMEOUT,
+  type WaitMode,
+} from "@wfgraph/shared/lifecycle/wait-subscription";
+import {
+  type JsonValue,
+  readJsonObjectLeniently,
+} from "@wfgraph/shared/types/json";
 import { parseDurationMs } from "@wfgraph/shared/utils/wait-time";
 import type { PublishedWorkflowVersion } from "#src/backend/lib/db/schema";
+import { wrapStoredOutput } from "#src/backend/engine/contracts";
 import {
   ExecutionRepo,
   type InFlightExecutionRow,
@@ -69,6 +81,8 @@ type PendingReference = {
   field: string;
   /** The node the reference names. */
   referencedNodeId: string;
+  /** The dotted path into that node's output; empty when the token names the whole output. */
+  referencedFieldPath: string;
 };
 
 /**
@@ -85,6 +99,8 @@ type WaitNodeScan = {
   references: PendingReference[];
   /** The node's own timeout, in milliseconds, for a run parked on an Event. */
   timeoutMs: number | null;
+  /** The shape the target Wait is in, which decides whether its timeout applies. */
+  waitMode: WaitMode;
 };
 
 function scanWaitNode(input: {
@@ -101,15 +117,23 @@ function scanWaitNode(input: {
   // The Wait node's own config is scanned beside the nodes below it, because
   // the migrated hop resolves that config again: its `waitFor` matches, its
   // `waitUntil` and its `waitDuration` are all templates the run must answer.
-  const references = input.nodes.flatMap((node) =>
-    reach.has(node.id) && node.data.enabled !== false && node.data.config
-      ? extractAllTemplateReferences(node.data.config).map((reference) => ({
+  const references = input.nodes.flatMap((node) => {
+    // A config is JSON. Reading it back as JSON drops a key the editor cleared
+    // and leaves every template beside it in the walk.
+    const config =
+      reach.has(node.id) && node.data.enabled !== false
+        ? readJsonObjectLeniently(node.data.config)
+        : null;
+
+    return config === null
+      ? []
+      : extractAllTemplateReferences(config).map((reference) => ({
           nodeId: node.id,
           field: reference.field,
           referencedNodeId: reference.nodeId,
-        }))
-      : []
-  );
+          referencedFieldPath: reference.fieldPath,
+        }));
+  });
 
   const timeout = input.waitNode.data.config?.waitTimeout;
   return {
@@ -120,6 +144,10 @@ function scanWaitNode(input: {
         ? timeout
         : DEFAULT_WAIT_TIMEOUT
     ),
+    // Absence reads as the selector's default, the same way the editor and the
+    // engine read this key.
+    waitMode:
+      input.waitNode.data.config?.waitMode === "event" ? "event" : "delay",
   };
 }
 
@@ -152,24 +180,55 @@ const listParkedWaits = Effect.fn("listParkedWaits")(function* (
 });
 
 /**
- * Whether a run parked on this Event wait would time out the moment it woke.
+ * Whether the migrated hop would time out the moment it woke.
  *
- * The park instant is the row's own `createdAt`, and the timeout is the target
- * graph's, because that is the pair the migrated hop is computed from. A run
- * refused here would, under `waitTimeoutBehavior: "skip"`, halt its branch
- * rather than continue on the newer graph. A delay wait is never refused for
- * this: a target already in the past resumes at once, which is a legitimate
- * reason to migrate.
+ * The park instant is the row's own `createdAt`, and both the timeout and the
+ * shape are the target Wait's, because that is what the migrated hop is
+ * computed from: a run that parked on a delay and lands on an Event Wait waits
+ * for that Event under the target's timeout. A run refused here would, under
+ * `waitTimeoutBehavior: "skip"`, halt its branch rather than continue on the
+ * newer graph.
+ *
+ * A target Wait in delay mode is never refused for this: it has no Event to
+ * miss, and a delay target already in the past resumes at once, which is a
+ * legitimate reason to migrate.
  */
 function waitTimeoutHasElapsed(input: {
   waitState: WorkflowWaitState;
-  timeoutMs: number | null;
+  scan: WaitNodeScan;
   now: number;
 }): boolean {
   return (
-    input.waitState.waitType === "event" &&
-    input.timeoutMs !== null &&
-    input.waitState.createdAt.getTime() + input.timeoutMs <= input.now
+    input.scan.waitMode === "event" &&
+    input.scan.timeoutMs !== null &&
+    input.waitState.createdAt.getTime() + input.scan.timeoutMs <= input.now
+  );
+}
+
+/**
+ * Whether the recorded outputs answer this reference the way the engine would.
+ *
+ * A node id on its own is not enough: `{{@lookup:Lookup.customerId}}` renders as
+ * empty text when the run recorded an output for `lookup` that carries no
+ * `customerId`. The path is walked with the walker the engine's template
+ * resolution uses, against the same `{ success, data }` envelope the engine
+ * wraps a stored row in, so a path that resolves here resolves there.
+ *
+ * A path that reaches a stored `null` resolves: the builder gets the null the
+ * node produced, which is a value the run recorded rather than a missing one.
+ */
+function referenceResolves(
+  reference: PendingReference,
+  recorded: Record<string, JsonValue>
+): boolean {
+  const output = recorded[reference.referencedNodeId];
+
+  return (
+    output !== undefined &&
+    resolveOutputPath(
+      wrapStoredOutput(output),
+      reference.referencedFieldPath
+    ) !== undefined
   );
 }
 
@@ -216,12 +275,14 @@ const classifyOne = Effect.fn("classifyOne")(function* (input: {
     return refuse("wait_node_missing", missing.waitState.nodeId);
   }
 
-  const elapsed = scans.find((entry) =>
-    waitTimeoutHasElapsed({
-      waitState: entry.waitState,
-      timeoutMs: entry.scan?.timeoutMs ?? null,
-      now: input.now,
-    })
+  const elapsed = scans.find(
+    (entry) =>
+      entry.scan !== undefined &&
+      waitTimeoutHasElapsed({
+        waitState: entry.waitState,
+        scan: entry.scan,
+        now: input.now,
+      })
   );
   if (elapsed) {
     return refuse("wait_timeout_elapsed", elapsed.waitState.nodeId);
@@ -238,11 +299,9 @@ const classifyOne = Effect.fn("classifyOne")(function* (input: {
 
   if (pending.length > 0) {
     const repo = yield* ExecutionRepo;
-    const recorded = new Set(
-      Object.keys(yield* repo.readNodeOutputs(candidate.id))
-    );
+    const recorded = yield* repo.readNodeOutputs(candidate.id);
     const unresolved = pending.find(
-      (reference) => !recorded.has(reference.referencedNodeId)
+      (reference) => !referenceResolves(reference, recorded)
     );
     if (unresolved) {
       return refuse(

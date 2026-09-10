@@ -37,9 +37,12 @@ export function WorkflowVersionUsage({ workflowId }: { workflowId: string }) {
   const hasCurrentPublishedVersion = Boolean(
     items?.some((item) => item.kind === "published" && item.isCurrent)
   );
+  // The dialog previews before it migrates, so a session holding one grant
+  // without the other cannot complete the command.
   const canMigrate =
     hasCurrentPublishedVersion &&
-    can(WfGraphOperations.workflowMigrateExecutions.id);
+    can(WfGraphOperations.workflowMigrateExecutions.id) &&
+    can(WfGraphOperations.workflowPreviewMigration.id);
 
   return (
     <section

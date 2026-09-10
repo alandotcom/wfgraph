@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isJsonObject, toJsonObject } from "./json";
+import { isJsonObject, readJsonObjectLeniently, toJsonObject } from "./json";
 
 describe("toJsonObject", () => {
   it("drops the keys whose value is undefined", () => {
@@ -32,5 +32,45 @@ describe("isJsonObject", () => {
 
   it("answers true for an object", () => {
     expect(isJsonObject({})).toBe(true);
+  });
+});
+
+describe("readJsonObjectLeniently", () => {
+  it("drops a key holding undefined and keeps the rest of the object", () => {
+    expect(
+      readJsonObjectLeniently({
+        subject: "Hello",
+        integrationId: undefined,
+      })
+    ).toEqual({ subject: "Hello" });
+  });
+
+  it("drops an undefined key nested inside an array element", () => {
+    expect(
+      readJsonObjectLeniently({
+        waitFor: [{ event: "order/paid", match: undefined }],
+      })
+    ).toEqual({ waitFor: [{ event: "order/paid" }] });
+  });
+
+  it("keeps an element position by writing null for a value JSON cannot carry", () => {
+    expect(readJsonObjectLeniently({ items: ["a", new Date(), "b"] })).toEqual({
+      items: ["a", null, "b"],
+    });
+  });
+
+  it("keeps a key named __proto__ as data", () => {
+    const json = readJsonObjectLeniently(
+      JSON.parse('{"__proto__": {"polluted": true}}') as unknown
+    );
+
+    expect(Object.hasOwn(json ?? {}, "__proto__")).toBe(true);
+    expect(({} as { polluted?: boolean }).polluted).toBeUndefined();
+  });
+
+  it("answers null for a value that is not an object", () => {
+    expect(readJsonObjectLeniently(["a"])).toBeNull();
+    expect(readJsonObjectLeniently("a")).toBeNull();
+    expect(readJsonObjectLeniently(undefined)).toBeNull();
   });
 });

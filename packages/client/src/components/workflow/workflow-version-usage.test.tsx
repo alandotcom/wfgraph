@@ -84,6 +84,7 @@ describe("WorkflowVersionUsage", () => {
   it("offers the migration command once a current published version exists", () => {
     installAuthorizationGrantsForTests([
       WfGraphOperations.workflowMigrateExecutions.id,
+      WfGraphOperations.workflowPreviewMigration.id,
     ]);
 
     const view = renderUsage([publishedUsage({ activeRunCount: 2 })]);
@@ -101,9 +102,22 @@ describe("WorkflowVersionUsage", () => {
     ).toBeNull();
   });
 
+  it("withholds the migration command from a viewer who cannot preview a migration", () => {
+    installAuthorizationGrantsForTests([
+      WfGraphOperations.workflowMigrateExecutions.id,
+    ]);
+
+    const view = renderUsage([publishedUsage({ activeRunCount: 2 })]);
+
+    expect(
+      view.queryByRole("button", { name: "Migrate active runs" })
+    ).toBeNull();
+  });
+
   it("withholds the migration command while only a draft snapshot is in use", () => {
     installAuthorizationGrantsForTests([
       WfGraphOperations.workflowMigrateExecutions.id,
+      WfGraphOperations.workflowPreviewMigration.id,
     ]);
 
     const view = renderUsage([draftUsage()]);
