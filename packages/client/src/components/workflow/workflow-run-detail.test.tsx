@@ -8,9 +8,11 @@ import type {
   WorkflowExecution,
 } from "#src/lib/execution-logs";
 import {
+  executionOverlayGraphAtom,
   loadWorkflowGraphAtom,
   selectedNodeAtom,
 } from "#src/lib/workflow-graph-store";
+import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import { serializeConditionModel } from "@wfgraph/shared/conditions/conditions";
 import {
@@ -48,12 +50,20 @@ function renderDetail(
     exit?: Parameters<typeof WorkflowRunDetail>[0]["exit"];
     catalog?: ExtensionCatalog;
     nodes?: WorkflowNode[];
+    executionNodes?: WorkflowNode[];
     selectedNodeId?: string;
   }
 ) {
   const store = createStore();
   if (extras?.nodes) {
     store.set(loadWorkflowGraphAtom, { nodes: extras.nodes, edges: [] });
+  }
+  if (extras?.executionNodes) {
+    store.set(workflowWorkspaceViewAtom, "runs");
+    store.set(executionOverlayGraphAtom, {
+      nodes: extras.executionNodes,
+      edges: [],
+    });
   }
   if (extras?.selectedNodeId) {
     store.set(selectedNodeAtom, extras.selectedNodeId);
@@ -116,7 +126,7 @@ describe("WorkflowRunDetail", () => {
     expect(view.queryByRole("button", { name: "Cancel" })).toBeNull();
   });
 
-  it("explains an Entity Eligibility exit without exposing Entity State", () => {
+  it("explains an Entity Eligibility exit from the pinned graph without exposing Entity State", () => {
     const view = renderDetail(
       {
         ...BASE_EXECUTION,
@@ -138,6 +148,18 @@ describe("WorkflowRunDetail", () => {
           ],
         },
         nodes: [
+          {
+            id: "send-reminder",
+            type: "action",
+            position: { x: 0, y: 0 },
+            data: {
+              label: "Draft-only label",
+              type: "action",
+              config: { actionType: "mail/send" },
+            },
+          },
+        ],
+        executionNodes: [
           {
             id: "lifecycle",
             type: "lifecycle",
@@ -226,6 +248,7 @@ describe("WorkflowRunDetail", () => {
     expect(view.getByText("is true")).toBeTruthy();
     expect(view.getByText("Eligibility rule did not match")).toBeTruthy();
     expect(view.getByText("Prevented Send reminder")).toBeTruthy();
+    expect(view.queryByText("Draft-only label")).toBeNull();
     expect(view.queryByText("condition_digest")).toBeNull();
     expect(view.queryByText(/appt_secret|active=true/)).toBeNull();
   });

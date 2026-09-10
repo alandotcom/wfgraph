@@ -14,7 +14,10 @@ import {
   isRunInProgress,
   type WorkflowExecution,
 } from "#src/lib/execution-logs";
-import { nodesAtom, selectedNodeAtom } from "#src/lib/workflow-graph-store";
+import {
+  executionOverlayGraphAtom,
+  selectedNodeAtom,
+} from "#src/lib/workflow-graph-store";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { findEntity } from "@wfgraph/shared/extensions/catalog";
 import { getEntityConditionFields } from "#src/lib/upstream-node-fields";
@@ -81,7 +84,7 @@ export function WorkflowRunDetail({
   onResume,
 }: WorkflowRunDetailProps) {
   const selectedNodeId = useAtomValue(selectedNodeAtom);
-  const nodes = useAtomValue(nodesAtom);
+  const executionGraph = useAtomValue(executionOverlayGraphAtom);
   const catalog = useExtensionCatalog();
   const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
   const [returnFocusLogId, setReturnFocusLogId] = useState<string | null>(null);
@@ -132,7 +135,8 @@ export function WorkflowRunDetail({
 
   const failedLog = sortedLogs.findLast((log) => log.status === "error");
   const exitNodeLabel = exit
-    ? (nodes.find((node) => node.id === exit.nodeId)?.data.label ??
+    ? (executionGraph?.nodes.find((node) => node.id === exit.nodeId)?.data
+        .label ??
       sortedLogs.find((log) => log.nodeId === exit.nodeId)?.nodeName ??
       exit.nodeId)
     : undefined;
@@ -140,7 +144,7 @@ export function WorkflowRunDetail({
     ? (findEntity(catalog, exit.entityType)?.label ?? exit.entityType)
     : undefined;
   const serializedExitCondition = exit
-    ? nodes
+    ? (executionGraph?.nodes ?? [])
         .filter((node) => node.data.type === "lifecycle")
         .map((node) => readLifecycleRules(node.data.config))
         .find((rules) => rules?.trackedEntity?.type === exit.entityType)
