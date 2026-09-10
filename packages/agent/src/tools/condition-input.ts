@@ -37,7 +37,7 @@ export const conditionRuleSchema = Schema.Struct({
   }),
   operator: Schema.String.annotate({
     description:
-      "string: equals, not_equals, contains, is_one_of, is_not_one_of. number: equals, not_equals, greater_than, greater_or_equal, less_than, less_or_equal. boolean: is_true, is_false. timestamp: within_next, more_than_from_now, less_than_ago, more_than_ago, before, after. Any type also takes is_set and is_not_set.",
+      "string: equals, not_equals, contains, is_one_of, is_not_one_of. For several allowed or excluded values from published enumValues, use one is_one_of or is_not_one_of rule instead of multiple equals rules. number: equals, not_equals, greater_than, greater_or_equal, less_than, less_or_equal. boolean: is_true, is_false. timestamp: within_next, more_than_from_now, less_than_ago, more_than_ago, before, after. Any type also takes is_set and is_not_set.",
   }),
   value: Schema.optionalKey(Schema.String).annotate({
     description:
