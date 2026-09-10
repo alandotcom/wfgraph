@@ -4,6 +4,7 @@ import {
   EntityStateRejected,
   type AnyEntityDefinition,
 } from "#src/backend/extensions/define-entity";
+import { resolveEntityState } from "#src/backend/extensions/entity-resolution";
 import { evaluateSerializedCondition } from "#src/backend/lib/cel/condition-payload";
 import { InternalFailure } from "#src/backend/lib/effect/failures";
 import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
@@ -102,17 +103,20 @@ export const evaluateSelectedEntityAdmission = Effect.fn(
   }
 
   const conditionId = entityEligibilityConditionId(eligibility.condition);
-  const state = yield* Effect.tryPromise({
-    try: async () =>
-      await entity.definition.resolve({ entityId: entity.entityId }),
-    catch: (cause) =>
-      new InternalFailure({
-        error:
-          cause instanceof EntityStateRejected
-            ? cause.message
-            : `Failed to resolve Entity "${entity.entityType}" for Eligibility`,
-      }),
-  });
+  const state = yield* resolveEntityState({
+    definition: entity.definition,
+    entityId: entity.entityId,
+  }).pipe(
+    Effect.mapError(
+      (cause) =>
+        new InternalFailure({
+          error:
+            cause instanceof EntityStateRejected
+              ? cause.message
+              : `Failed to resolve Entity "${entity.entityType}" for Eligibility`,
+        })
+    )
+  );
 
   if (state === null) {
     return {

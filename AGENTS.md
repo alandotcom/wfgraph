@@ -197,10 +197,10 @@ ISO-string-to-`Date` conversion, and `isoTimestampString` is the spelling that a
 `@wfgraph/example-app` is written in it, which makes "an adopter needs no Effect" enforceable
 rather than promised. In `packages/` it is a devDependency of `core` and `shared` only.
 
-**The authoring vocabulary is three functions**, all in
+**The authoring vocabulary is four functions**, all in
 `packages/core/src/backend/extensions/` and walked through in `docs/events.md` and
-`docs/integrations.md`: `defineEvent` and `defineAction` for a host, `defineIntegration`
-for an integration. Nothing registers on import. An integration's actions are object
+`docs/integrations.md`: `defineEntity`, `defineEvent`, and `defineAction` for a host,
+`defineIntegration` for an integration. Nothing registers on import. An integration's actions are object
 literals inside that one call, and `defineStep` is the internal builder each is mapped
 through, reachable from no entry. `docs/integrations.md` owns the canonical JSON codec
 contract a step boundary runs both directions through; `steps/define-step.ts`'s header

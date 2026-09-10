@@ -68,8 +68,8 @@ The current JSON-object state a host Entity resolver returns for one Entity ID.
 The host remains its system of record. Workflow Graph validates Entity State
 and may evaluate Entity Eligibility against it, but never persists it or makes
 it available to templates, node outputs, logs, or audit metadata. A `null`
-resolver result means that the Entity no longer exists; a thrown error or
-schema-invalid result is an operational failure.
+resolver result means that the Entity no longer exists; a timeout, thrown error,
+or schema-invalid result is an operational failure.
 
 ### Lifecycle
 
@@ -138,9 +138,10 @@ differently has no type at all, and needs an Event Split above the node before
 anything can read it.
 
 **Cancel Event**:
-An Event the Lifecycle Rules list as canceling runs. When one arrives, every
-in-flight Execution with an equal Entity Value jumps to the Canceled outlet at
-its next step boundary if the Cancel Filter accepts the arrival. Stopping a
+An Event the Lifecycle Rules list as canceling runs. When one arrives and its
+Cancel Filter accepts it, every matching in-flight Execution jumps to the Canceled
+outlet at its next step boundary. Guarded workflows match immutable Entity type and
+ID; unguarded workflows match the Correlation Path's Entity Value. Stopping a
 sequence mid-graph is an unwired Condition False, not a Cancel Event.
 
 **Cancel Filter**:

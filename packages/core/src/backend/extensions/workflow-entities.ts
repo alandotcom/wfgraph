@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import type { ExtensionSet } from "#src/backend/extensions/extension-set";
 import { EntityStateRejected } from "#src/backend/extensions/define-entity";
+import { resolveEntityState } from "#src/backend/extensions/entity-resolution";
 import type { WorkflowEntities } from "#src/backend/engine/entities";
 import { engineFailure } from "#src/backend/engine/engine-failure";
 import { evaluateSerializedCondition } from "#src/backend/lib/cel/condition-payload";
@@ -22,16 +23,19 @@ export function createWorkflowEntities(
           );
         }
 
-        const state = yield* Effect.tryPromise({
-          try: () => entity.resolve({ entityId: input.entityId }),
-          catch: (cause) =>
+        const state = yield* resolveEntityState({
+          definition: entity,
+          entityId: input.entityId,
+        }).pipe(
+          Effect.mapError((cause) =>
             cause instanceof EntityStateRejected
               ? engineFailure("defect", cause.message)
               : engineFailure(
                   "failure",
                   `Failed to resolve Entity "${input.entityType}" for Eligibility`
-                ),
-        });
+                )
+          )
+        );
         const checkedAt = new Date().toISOString();
         if (state === null) {
           return {

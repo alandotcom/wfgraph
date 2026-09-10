@@ -2,7 +2,8 @@ import { assert, describe, layer } from "@effect/vitest";
 // The mocks API has to be the one vitest itself exports; reaching it through the
 // `@effect/vitest` re-export leaves it unable to find the module registry.
 import { beforeEach, vi } from "vitest";
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Fiber, Layer, Schema } from "effect";
+import { TestClock } from "effect/testing";
 import type {
   PublishedWorkflowVersion,
   Workflow,
@@ -53,6 +54,9 @@ const sendRunRequestedMock = vi.fn<
 const sendCancelRequestedMock = vi.fn<
   InngestClient["Service"]["sendCancelRequested"]
 >(() => Effect.void);
+const settle = Effect.promise(
+  () => new Promise<void>((resolve) => setImmediate(resolve))
+);
 
 const resolveEntityMock = vi.fn(
   async (): Promise<{ status: string; remindersEnabled: boolean } | null> => ({
@@ -874,6 +878,43 @@ describe("applyLifecycleRules and Start Filters", () => {
           assert.strictEqual(exit._tag, "Failure");
           assert.strictEqual(startForEntityMock.mock.calls.length, 0);
           assert.strictEqual(recordAuditEventMock.mock.calls.length, 0);
+        })
+    );
+
+    it.effect(
+      "times out an admission resolver without opening or refusing an Execution",
+      () =>
+        Effect.gen(function* () {
+          resolveEntityMock.mockImplementation(
+            () =>
+              new Promise<{ status: string; remindersEnabled: boolean } | null>(
+                () => undefined
+              )
+          );
+
+          const fiber = yield* Effect.forkChild(
+            Effect.exit(
+              applyLifecycleRules({
+                subscriber: subscriber(),
+                event: appointmentCreated,
+                payload: videoPayload,
+              }).pipe(
+                Effect.provide(
+                  workflowWith(
+                    guardedRules({ checkpoints: ["before-execution"] })
+                  )
+                )
+              )
+            )
+          );
+          yield* settle;
+          yield* TestClock.adjust("10 seconds");
+
+          const exit = yield* Fiber.join(fiber);
+          assert.strictEqual(exit._tag, "Failure");
+          assert.strictEqual(startForEntityMock.mock.calls.length, 0);
+          assert.strictEqual(recordAuditEventMock.mock.calls.length, 0);
+          assert.strictEqual(recordAdmissionRefusalMock.mock.calls.length, 0);
         })
     );
 

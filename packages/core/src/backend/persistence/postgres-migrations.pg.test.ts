@@ -4,6 +4,9 @@
  */
 
 import { afterEach, expect, it } from "vitest";
+import { cp, mkdtemp, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { getTableName } from "drizzle-orm";
 import { readMigrationFiles } from "drizzle-orm/migrator";
 import { Effect } from "effect";
@@ -37,6 +40,7 @@ describePostgres("PostgreSQL migrations", () => {
   // conformance one: name it here, and it is gone however the case ended.
   const minted: string[] = [];
   const connections: ConformanceConnection[] = [];
+  const directories: string[] = [];
   const freshSchema = (): string => {
     const schema = mintTestSchemaName();
     minted.push(schema);
@@ -45,6 +49,11 @@ describePostgres("PostgreSQL migrations", () => {
 
   afterEach(async () => {
     await Promise.all(connections.splice(0).map((one) => one.close()));
+    await Promise.all(
+      directories
+        .splice(0)
+        .map((directory) => rm(directory, { recursive: true, force: true }))
+    );
     const schemas = minted.splice(0);
     if (schemas.length === 0) {
       return;
@@ -91,6 +100,70 @@ describePostgres("PostgreSQL migrations", () => {
     expect(state.names).toContain(MIGRATIONS_TABLE);
     expect(state.names).not.toContain("api_keys");
     expect(state.leaked).toBeNull();
+  });
+
+  it("preserves a legacy cancellation claim while generalizing termination", async () => {
+    const schema = freshSchema();
+    const url = requirePostgresTestUrl();
+    const directory = await mkdtemp(join(tmpdir(), "wfgraph-pg-migrations-"));
+    directories.push(directory);
+    const source = wfgraphMigrationsDir();
+    const firstTerminationMigration = "20260910120958_complete_annihilus";
+    const migrationNames = (await readdir(source, { withFileTypes: true }))
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .toSorted();
+    const firstTerminationIndex = migrationNames.indexOf(
+      firstTerminationMigration
+    );
+    expect(firstTerminationIndex).toBeGreaterThan(0);
+    await Promise.all(
+      migrationNames.slice(0, firstTerminationIndex).map(async (name) => {
+        await cp(join(source, name), join(directory, name), {
+          recursive: true,
+        });
+      })
+    );
+
+    await migrateWfGraphDatabase({ url, schema, migrationsDir: directory });
+    await withAdminClient(async (client) => {
+      await client.unsafe(`
+        insert into "${schema}"."workflows" (id, name, graph)
+        values ('wf_cancel', 'Cancellation upgrade', '{"nodes":[],"edges":[]}'::jsonb);
+        insert into "${schema}"."workflow_versions"
+          (id, workflow_id, version, graph, catalog_fingerprint, graph_digest)
+        values
+          ('wv_cancel', 'wf_cancel', 1, '{"nodes":[],"edges":[]}'::jsonb, 'catalog', 'graph');
+        insert into "${schema}"."workflow_executions"
+          (id, workflow_id, workflow_version_id, status, started_at, cancel_requested_at, cancel_event_name, cancel_payload)
+        values
+          ('exec_cancel', 'wf_cancel', 'wv_cancel', 'running', '2026-03-01 00:00:00', '2026-03-01 00:01:00', 'appointment.canceled', '{"reason":"host request"}'::jsonb);
+      `);
+    });
+
+    await migrateWfGraphDatabase({ url, schema });
+
+    const [row] = await withAdminClient(
+      async (client) =>
+        client<
+          {
+            termination_kind: string | null;
+            termination_requested_at: Date | null;
+            cancel_event_name: string | null;
+            cancel_payload: unknown;
+          }[]
+        >`
+        select termination_kind, termination_requested_at, cancel_event_name, cancel_payload
+        from ${client(schema)}.${client("workflow_executions")}
+        where id = 'exec_cancel'
+      `
+    );
+    expect(row).toEqual({
+      termination_kind: "cancel",
+      termination_requested_at: new Date(2026, 2, 1, 0, 1),
+      cancel_event_name: "appointment.canceled",
+      cancel_payload: { reason: "host request" },
+    });
   });
 
   it("records the migrations this build ships, and reruns none of them", async () => {

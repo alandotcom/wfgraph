@@ -51,8 +51,9 @@ const appointment = defineEntity({
 
 `type` is the stable serialized identity of the Entity definition. `state` must describe a
 JSON object. The resolver receives one `entityId`; returning `null` means that Entity no
-longer exists, while throwing or returning schema-invalid state is an operational failure.
-Workflow Graph validates the result and then evaluates the Lifecycle decision without
+longer exists. The resolver has 10 seconds to settle; a timeout, rejection, or
+schema-invalid state is an operational failure. Workflow Graph validates the result and
+then evaluates the Lifecycle decision without
 persisting the Entity State or exposing it to workflow steps, templates, logs, or audit
 metadata.
 

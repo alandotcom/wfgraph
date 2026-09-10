@@ -35,8 +35,8 @@ work. A non-object root throws at definition.
 
 Use `defineEntity({ type, label, state, resolve })`. `state` must encode to a
 JSON object. `resolve({ entityId })` returns current host state or `null` when the
-Entity no longer exists. A rejection or schema-invalid result is an operational
-failure.
+Entity no longer exists. The resolver has 10 seconds to settle; a timeout,
+rejection, or schema-invalid result is an operational failure.
 
 Workflow Graph validates current state only to decide Eligibility. The state
 stays out of persistence, templates, node outputs, logs, and audit metadata.

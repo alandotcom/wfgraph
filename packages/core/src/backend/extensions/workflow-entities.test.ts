@@ -1,5 +1,7 @@
+import { it as effectIt } from "@effect/vitest";
 import { describe, expect, it } from "vitest";
-import { Cause, Effect, Exit, Option, Schema } from "effect";
+import { Cause, Effect, Exit, Fiber, Option, Schema } from "effect";
+import { TestClock } from "effect/testing";
 import { defineEntity } from "#src/backend/extensions/define-entity";
 import { defineEvent } from "#src/backend/extensions/define-event";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
@@ -50,6 +52,10 @@ function surface(
   return createWorkflowEntities(assembleExtensions({ events: [event] }));
 }
 
+const settle = Effect.promise(
+  () => new Promise<void>((resolve) => setImmediate(resolve))
+);
+
 const input = {
   entityType: "appointment",
   entityId: "appt_1",
@@ -85,6 +91,31 @@ describe("Workflow Entity Eligibility port", () => {
     });
   });
 
+  effectIt.effect("times out a resolver as an operational failure", () =>
+    Effect.gen(function* () {
+      const fiber = yield* Effect.forkChild(
+        Effect.exit(
+          surface(
+            () => new Promise<{ active: boolean } | null>(() => undefined)
+          ).evaluateEligibility(input)
+        )
+      );
+      yield* settle;
+      yield* TestClock.adjust("10 seconds");
+
+      const exit = yield* Fiber.join(fiber);
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        expect(
+          Option.getOrUndefined(Cause.findErrorOption(exit.cause))
+        ).toEqual({
+          kind: "failure",
+          message: 'Failed to resolve Entity "appointment" for Eligibility',
+        });
+      }
+    })
+  );
+
   it("keeps resolver and state-schema defects in the failure channel", async () => {
     const resolverFailure = await Effect.runPromiseExit(
       surface(() =>
@@ -113,5 +144,17 @@ describe("Workflow Entity Eligibility port", () => {
       expect(JSON.stringify(failure)).not.toContain("active=true");
     }
     expect(Exit.isFailure(invalidState)).toBe(true);
+    if (Exit.isFailure(invalidState)) {
+      const failure = Option.getOrUndefined(
+        Cause.findErrorOption(invalidState.cause)
+      );
+      expect(failure).toMatchObject({
+        kind: "defect",
+        message: expect.stringContaining(
+          'Entity "appointment" returned current state its schema does not accept'
+        ),
+      });
+      expect(JSON.stringify(failure)).not.toContain('"active":"yes"');
+    }
   });
 });

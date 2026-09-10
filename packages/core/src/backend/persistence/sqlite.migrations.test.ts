@@ -50,22 +50,27 @@ async function migrationFixture() {
   };
 }
 
-async function migrate(
+async function migrateMetadata(
   filename: string,
-  migrations: string
+  migrations: readonly MigrationMeta[]
 ): Promise<{ foreign_keys: number }> {
   await using runtime = ManagedRuntime.make(
     SqliteClient.layer({ filename, busyTimeout: 1_000 })
   );
   const database = await runtime.runPromise(makeWithDefaults());
-  await runtime.runPromise(
-    runSqliteMigrations(
-      database,
-      readMigrationFiles({ migrationsFolder: migrations })
-    )
-  );
+  await runtime.runPromise(runSqliteMigrations(database, migrations));
   return await runtime.runPromise(
     database.get<{ foreign_keys: number }>(sql`pragma foreign_keys`)
+  );
+}
+
+async function migrate(
+  filename: string,
+  migrations: string
+): Promise<{ foreign_keys: number }> {
+  return migrateMetadata(
+    filename,
+    readMigrationFiles({ migrationsFolder: migrations })
   );
 }
 
@@ -104,6 +109,66 @@ describe("SQLite migration execution", () => {
     expect(sqliteMigrations).toEqual(
       readMigrationFiles({ migrationsFolder: migrationsDir })
     );
+  });
+
+  it("preserves a legacy cancellation claim while generalizing termination", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "wfgraph-migrations-"));
+    directories.push(directory);
+    const filename = join(directory, "migration.db");
+    const migrationCount = sqliteMigrations.length;
+    const firstTerminationMigration = sqliteMigrations.findIndex(
+      (migration) => migration.name === "20260910120959_peaceful_gladiator"
+    );
+    expect(firstTerminationMigration).toBeGreaterThan(0);
+    await migrateMetadata(
+      filename,
+      sqliteMigrations.slice(0, firstTerminationMigration)
+    );
+
+    const inspection = new DatabaseSync(filename);
+    try {
+      inspection.exec(`
+        insert into workflows
+          (id, name, graph, created_at, updated_at)
+        values
+          ('wf_cancel', 'Cancellation upgrade', '{"nodes":[],"edges":[]}', 1000, 1000);
+        insert into workflow_versions
+          (id, workflow_id, version, graph, catalog_fingerprint, graph_digest, published_at)
+        values
+          ('wv_cancel', 'wf_cancel', 1, '{"nodes":[],"edges":[]}', 'catalog', 'graph', 1000);
+        insert into workflow_executions
+          (id, workflow_id, workflow_version_id, status, started_at, cancel_requested_at, cancel_event_name, cancel_payload)
+        values
+          ('exec_cancel', 'wf_cancel', 'wv_cancel', 'running', 1000, 2000, 'appointment.canceled', '{"reason":"host request"}');
+      `);
+    } finally {
+      inspection.close();
+    }
+
+    await migrateMetadata(filename, sqliteMigrations);
+
+    const migrated = new DatabaseSync(filename, { readOnly: true });
+    try {
+      expect(
+        migrated
+          .prepare(
+            "select termination_kind, termination_requested_at, cancel_event_name, cancel_payload from workflow_executions where id = 'exec_cancel'"
+          )
+          .get()
+      ).toEqual({
+        termination_kind: "cancel",
+        termination_requested_at: 2000,
+        cancel_event_name: "appointment.canceled",
+        cancel_payload: '{"reason":"host request"}',
+      });
+      expect(
+        migrated
+          .prepare("select count(*) as total from __wfgraph_sqlite_migrations")
+          .get()
+      ).toEqual({ total: migrationCount });
+    } finally {
+      migrated.close();
+    }
   });
 
   it("preserves dependent rows across a generated table rebuild", async () => {
