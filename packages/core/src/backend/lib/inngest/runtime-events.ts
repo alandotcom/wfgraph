@@ -67,7 +67,6 @@ export async function sendWorkflowBranchKill(
     executionId: string;
     workflowId: string;
     reason: string;
-    excludedEntryNodeIds: string[];
   }
 ) {
   return await client.send(

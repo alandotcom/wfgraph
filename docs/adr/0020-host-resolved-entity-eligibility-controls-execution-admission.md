@@ -164,3 +164,21 @@ current-state rule that admits or exits them.
 The host may set `entityResolverTimeoutMs` on `createWfGraphApp` or `wfWorker`.
 The default remains 10,000 milliseconds. The app validates the value at startup and applies
 one deadline to every admission and node-checkpoint resolver call.
+
+## Amendment: Exit leaves parked sibling branches parked
+
+Date: 2026-09-10
+
+The parent run no longer stops sibling durable branches after an Exit claim.
+Stopping them selectively needed a `cancelOn` expression on `workflow-branch`
+that spared the branch reporting the Exit and its parents. Inngest validates
+every `cancelOn` expression at registration against a restrictive CEL policy
+that refuses every macro and every function outside comparison, logic, indexing
+and type conversion, so that expression prevented the branch function from
+registering at all.
+
+After an Exit claim, a sibling branch run parked on a Wait stays parked until
+that Wait ends. It then asks the store to admit its next node, the Exit claim
+refuses it, and the branch returns to the parent with its own rows closed. The
+parent still records the one `exited` terminal status. `workflow/branch.kill.requested`
+now ends every branch run of an Execution and is sent only for a Cancel Event.

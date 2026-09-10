@@ -407,7 +407,7 @@ describe("executeWorkflow Event Split after Wait", () => {
         },
         branch: (runtime, branchInput) =>
           executeWorkflowBranch(
-            { ...input, ...branchInput, ancestorEntryNodeIds: [] },
+            { ...input, ...branchInput },
             runtime,
             store,
             noWorkflowActions

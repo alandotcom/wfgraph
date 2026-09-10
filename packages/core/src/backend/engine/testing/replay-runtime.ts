@@ -265,10 +265,10 @@ async function driveWithReplayInstalled<T>(
     }
   }
 
-  /** Ends every other branch run that is still going. */
-  function killLiveBranches(excluded?: DurableRun) {
+  /** Ends every branch run that is still going. */
+  function killLiveBranches() {
     for (const run of tree) {
-      if (run === excluded || !run.parent || run.settled) {
+      if (!run.parent || run.settled) {
         continue;
       }
       run.settled = { value: null };
@@ -377,12 +377,6 @@ async function driveWithReplayInstalled<T>(
             );
           }
           return pending<unknown>();
-        }),
-
-      stopBranches: () =>
-        withActivity(() => {
-          killLiveBranches(run.parent ? run : undefined);
-          return Promise.resolve();
         }),
 
       startBranch: branch

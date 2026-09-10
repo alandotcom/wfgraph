@@ -143,14 +143,12 @@ function branchInvokeData(
   varied: {
     entryNodeId?: string;
     releasedNodeIds?: string[];
-    ancestorEntryNodeIds?: string[];
   } = {}
 ) {
   return {
     executionId: testExecution.id,
     entryNodeId: varied.entryNodeId ?? "wait_1",
     releasedNodeIds: varied.releasedNodeIds ?? [],
-    ancestorEntryNodeIds: varied.ancestorEntryNodeIds ?? [],
   };
 }
 
@@ -245,8 +243,57 @@ describe("the workflow run function", () => {
       opts: { cancelOn: { if?: string }[] };
     };
     expect(cancellationOptions.cancelOn[0]?.if).toBe(
-      "async.data.executionId == event.data.executionId && !async.data.excludedEntryNodeIds.exists(id, id == event.data.entryNodeId)"
+      "async.data.executionId == event.data.executionId"
     );
+  });
+
+  /**
+   * Inngest checks every `cancelOn` expression at registration against
+   * `DefaultRestrictiveValidationPolicy` (inngest/inngest PR #2376), which
+   * refuses all CEL macros and every function outside comparison, logic,
+   * indexing and type conversion. A refused expression fails registration of
+   * the whole app, and the dev server is the first place that shows it, so
+   * this reads the expressions of both functions and fails on the names the
+   * policy refuses.
+   */
+  it("registers cancelOn expressions Inngest's restrictive CEL policy accepts", () => {
+    const ports = {
+      actions: buildTestActions,
+      store: testStore,
+      appRuntime: testAppRuntime,
+      executeWorkflow: vi.fn(),
+      executeWorkflowBranch: vi.fn(),
+    };
+    const refused = [
+      "has(",
+      ".all(",
+      ".exists(",
+      ".exists_one(",
+      ".map(",
+      ".filter(",
+      " in ",
+      ".contains(",
+      "size(",
+      ".startsWith(",
+      ".endsWith(",
+      ".matches(",
+    ];
+    const expressions = [
+      createWorkflowRunFunction(createTestClient(), ports),
+      createWorkflowBranchFunction(createTestClient(), ports),
+    ].flatMap((registered) => {
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+      const { opts } = registered as { opts: { cancelOn: { if?: string }[] } };
+      return opts.cancelOn.map((cancel) => cancel.if ?? "");
+    });
+
+    expect(expressions).toHaveLength(3);
+    for (const expression of expressions) {
+      expect(
+        refused.filter((name) => expression.includes(name)),
+        expression
+      ).toEqual([]);
+    }
   });
 
   /**
@@ -373,7 +420,6 @@ describe("the workflow run function", () => {
       ...persistedRunInput(),
       entryNodeId: "wait_1",
       releasedNodeIds: ["entry_1"],
-      ancestorEntryNodeIds: [],
     });
   });
 
@@ -586,110 +632,10 @@ describe("the workflow run function", () => {
           executionId: "exec_123",
           entryNodeId: "wait_1",
           releasedNodeIds: ["entry_1"],
-          ancestorEntryNodeIds: [],
         },
       }
     );
     expect(handoff).toEqual({ status: "finished", result: branchResult });
-  });
-
-  it("carries the parent branch chain into a nested branch", async () => {
-    let branchRuntime: WorkflowExecutionRuntime | undefined;
-    const executeWorkflowBranch = vi.fn(
-      (...args: [unknown, WorkflowExecutionRuntime, ...unknown[]]) => {
-        branchRuntime = args[1];
-        return Effect.succeed({ results: {}, outputs: {} });
-      }
-    );
-    const execution = await new InngestTestEngine({
-      function: createWorkflowBranchFunction(createTestClient(), {
-        actions: buildTestActions,
-        store: testStore,
-        appRuntime: testAppRuntime,
-        executeWorkflow: vi.fn(),
-        executeWorkflowBranch,
-      }),
-    }).execute({
-      events: [
-        {
-          name: "inngest/function.invoked",
-          data: branchInvokeData({
-            entryNodeId: "wait_inner",
-            ancestorEntryNodeIds: ["wait_outer"],
-          }),
-        },
-      ],
-    });
-    if (!branchRuntime) {
-      throw new Error("Expected executeWorkflowBranch to receive a runtime.");
-    }
-    const invokeSpy = vi
-      .spyOn(execution.ctx.step, "invoke")
-      .mockResolvedValue({ results: {}, outputs: {} });
-
-    await branchRuntime.startBranch?.(
-      { id: "branch-wait_deep", name: "Deep wait (branch)" },
-      { entryNodeId: "wait_deep", releasedNodeIds: ["wait_inner"] }
-    );
-
-    expect(invokeSpy).toHaveBeenCalledWith(
-      { id: "branch-wait_deep", name: "Deep wait (branch)" },
-      {
-        function: expect.anything(),
-        data: {
-          executionId: "exec_123",
-          entryNodeId: "wait_deep",
-          releasedNodeIds: ["wait_inner"],
-          ancestorEntryNodeIds: ["wait_outer", "wait_inner"],
-        },
-      }
-    );
-  });
-
-  it("excludes the winning branch and its ancestors from an Exit kill", async () => {
-    const client = createTestClient();
-    const send = vi
-      .spyOn(client, "send")
-      .mockImplementation(async () => ({ ids: ["event_1"] }));
-    const executeWorkflowBranch = vi.fn(
-      (...args: [unknown, WorkflowExecutionRuntime, ...unknown[]]) =>
-        Effect.promise(async () => {
-          await args[1].stopBranches?.();
-          return { results: {}, outputs: {} };
-        })
-    );
-
-    await new InngestTestEngine({
-      function: createWorkflowBranchFunction(client, {
-        actions: buildTestActions,
-        store: testStore,
-        appRuntime: testAppRuntime,
-        executeWorkflow: vi.fn(),
-        executeWorkflowBranch,
-      }),
-    }).execute({
-      events: [
-        {
-          name: "inngest/function.invoked",
-          data: branchInvokeData({
-            entryNodeId: "wait_inner",
-            ancestorEntryNodeIds: ["wait_outer"],
-          }),
-        },
-      ],
-    });
-
-    expect(send).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: "workflow/branch.kill.requested",
-        data: {
-          executionId: "exec_123",
-          workflowId: "workflow_123",
-          reason: "entity-eligibility-exit",
-          excludedEntryNodeIds: ["wait_outer", "wait_inner"],
-        },
-      })
-    );
   });
 
   /**

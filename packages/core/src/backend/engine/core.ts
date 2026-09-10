@@ -106,8 +106,6 @@ export type WorkflowExecutionInput = {
 export type WorkflowBranchInput = WorkflowExecutionInput & {
   entryNodeId: string;
   releasedNodeIds: readonly string[];
-  /** Wait entries of the durable branch invocations waiting on this branch. */
-  ancestorEntryNodeIds: readonly string[];
 };
 
 /** What one call of the engine builds before it can execute a node. */

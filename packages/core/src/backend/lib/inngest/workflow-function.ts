@@ -47,7 +47,6 @@ import type { WfGraphRuntime } from "#src/backend/runtime";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import type { ExecutionSummary } from "#src/backend/services/executions/repo/contracts";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
-import { sendWorkflowBranchKill } from "#src/backend/lib/inngest/runtime-events";
 
 /** The engine entry the run function calls; tests inject a stand-in. */
 type ExecuteWorkflow = typeof defaultExecuteWorkflow;
@@ -147,7 +146,6 @@ function createDurableRuntime(input: {
   attempt: number;
   runId: string;
   data: WorkflowExecutionInput | WorkflowBranchInput;
-  stopBranches?: (() => Promise<void>) | undefined;
 }): WorkflowExecutionRuntime {
   const { step, attempt, runId, data } = input;
 
@@ -183,14 +181,9 @@ function createDurableRuntime(input: {
             executionId: data.executionId,
             entryNodeId,
             releasedNodeIds: [...releasedNodeIds],
-            ancestorEntryNodeIds:
-              "entryNodeId" in data
-                ? [...data.ancestorEntryNodeIds, data.entryNodeId]
-                : [],
           },
         })
       ),
-    stopBranches: input.stopBranches,
     attempt,
     runId,
   };
@@ -343,7 +336,6 @@ async function workflowRunRequestedHandler({
   appRuntime,
   executeWorkflow,
   write,
-  stopBranches,
 }: {
   event: { data: typeof workflowRunRequestSchema.Type };
   actions: WorkflowActions;
@@ -357,9 +349,6 @@ async function workflowRunRequestedHandler({
   step: DurableStep;
   executeWorkflow: ExecuteWorkflow;
   write: RunMetadataWriter;
-  stopBranches: (
-    data: WorkflowExecutionInput | WorkflowBranchInput
-  ) => Promise<void>;
 }) {
   const data = await loadPersistedRunInput(appRuntime, event.data.executionId);
 
@@ -370,13 +359,7 @@ async function workflowRunRequestedHandler({
   const result = await appRuntime.runPromise(
     executeWorkflow(
       data,
-      createDurableRuntime({
-        step,
-        attempt,
-        runId,
-        data,
-        stopBranches: () => stopBranches(data),
-      }),
+      createDurableRuntime({ step, attempt, runId, data }),
       store,
       actions,
       entities
@@ -430,7 +413,6 @@ async function workflowBranchRequestedHandler({
   appRuntime,
   executeWorkflowBranch,
   write,
-  stopBranches,
 }: {
   event: { data: typeof workflowBranchInputSchema.Type };
   actions: WorkflowActions;
@@ -442,9 +424,6 @@ async function workflowBranchRequestedHandler({
   step: DurableStep;
   executeWorkflowBranch: ExecuteWorkflowBranch;
   write: RunMetadataWriter;
-  stopBranches: (
-    data: WorkflowExecutionInput | WorkflowBranchInput
-  ) => Promise<void>;
 }) {
   const persisted = await loadPersistedRunInput(
     appRuntime,
@@ -454,7 +433,6 @@ async function workflowBranchRequestedHandler({
     ...persisted,
     entryNodeId: event.data.entryNodeId,
     releasedNodeIds: event.data.releasedNodeIds,
-    ancestorEntryNodeIds: event.data.ancestorEntryNodeIds ?? [],
   };
 
   await writeRunMetadata({ step, write, data });
@@ -462,13 +440,7 @@ async function workflowBranchRequestedHandler({
   return await appRuntime.runPromise(
     executeWorkflowBranch(
       data,
-      createDurableRuntime({
-        step,
-        attempt,
-        runId,
-        data,
-        stopBranches: () => stopBranches(data),
-      }),
+      createDurableRuntime({ step, attempt, runId, data }),
       store,
       actions,
       entities
@@ -566,14 +538,6 @@ export function createWorkflowRunFunction(
         appRuntime: input.appRuntime,
         executeWorkflow: input.executeWorkflow,
         write: runMetadataWriter(client),
-        stopBranches: async (data) => {
-          await sendWorkflowBranchKill(client, {
-            executionId: data.executionId,
-            workflowId: data.workflowId,
-            reason: "entity-eligibility-exit",
-            excludedEntryNodeIds: [],
-          });
-        },
       })
   );
 }
@@ -601,10 +565,14 @@ export function createWorkflowBranchFunction(
       name: "Workflow branch",
       retries: STEP_RETRIES,
       triggers: [workflowBranchInvoked],
+      // Inngest checks each `if` at registration against a restrictive CEL
+      // policy that refuses every macro and most functions, and a refused
+      // expression fails registration of the whole app. Each expression is
+      // therefore a comparison of fields.
       cancelOn: [
         {
           event: workflowBranchKillRequested,
-          if: "async.data.executionId == event.data.executionId && !async.data.excludedEntryNodeIds.exists(id, id == event.data.entryNodeId)",
+          if: "async.data.executionId == event.data.executionId",
         },
         {
           event: workflowRunCancelRequested,
@@ -621,17 +589,6 @@ export function createWorkflowBranchFunction(
         appRuntime: input.appRuntime,
         executeWorkflowBranch: input.executeWorkflowBranch,
         write: runMetadataWriter(client),
-        stopBranches: async (data) => {
-          await sendWorkflowBranchKill(client, {
-            executionId: data.executionId,
-            workflowId: data.workflowId,
-            reason: "entity-eligibility-exit",
-            excludedEntryNodeIds:
-              "entryNodeId" in data
-                ? [...data.ancestorEntryNodeIds, data.entryNodeId]
-                : [],
-          });
-        },
       })
   );
 }

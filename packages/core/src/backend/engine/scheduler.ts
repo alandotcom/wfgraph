@@ -225,7 +225,7 @@ export class NodeScheduler {
         );
 
         if (decision.outcome === "exit") {
-          const termination = yield* runDurable(
+          yield* runDurable(
             runtime,
             {
               id: `entity-exit:${node.id}`,
@@ -238,9 +238,6 @@ export class NodeScheduler {
               checkedAt: decision.checkedAt,
             })
           );
-          if (termination?.didWrite && termination.claim?.kind === "exit") {
-            yield* this.stopBranchesAfterExit(node.id);
-          }
           return false;
         }
 
@@ -253,28 +250,6 @@ export class NodeScheduler {
           store.admitNode(executionId)
         );
       }.bind(this)
-    );
-  }
-
-  /** Stops durable sibling branches after the parent observes an Exit claim. */
-  private stopBranchesAfterExit(
-    nodeId: string
-  ): Effect.Effect<void, EngineFailure> {
-    const { runtime } = this.input;
-    const stopBranches = runtime.stopBranches;
-    if (!stopBranches) {
-      return Effect.void;
-    }
-
-    return Effect.asVoid(
-      runDurableUnit(
-        runtime,
-        {
-          id: `entity-exit-stop-branches:${nodeId}`,
-          name: "Stop exited branches",
-        },
-        fromUnknownPromise(stopBranches)
-      )
     );
   }
 
@@ -520,7 +495,6 @@ export class NodeScheduler {
 
         traversal.absorbBranch(handoff.result);
         if (handoff.result.exit) {
-          yield* this.stopBranchesAfterExit(handoff.result.exit.nodeId);
           return {
             result: { success: true as const, data: null },
             haltBranch: true,

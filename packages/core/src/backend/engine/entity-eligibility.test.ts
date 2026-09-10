@@ -322,13 +322,8 @@ describe("per-node Entity Eligibility", () => {
     expect(store.callsOf("recordAuditEvent")).toHaveLength(0);
   });
 
-  it("does not stop branches when this checkpoint lost the Exit claim", async () => {
+  it("reports the stored Exit claim when this checkpoint lost it", async () => {
     const store = createRecordingWorkflowStore();
-    const stopBranches = vi.fn(async () => undefined);
-    const runtime = {
-      ...createInMemoryWorkflowRuntime(),
-      stopBranches,
-    };
     const authoritative = {
       status: "running" as const,
       claim: {
@@ -354,7 +349,7 @@ describe("per-node Entity Eligibility", () => {
 
     const result = await executeTestWorkflow(
       executionInput,
-      runtime,
+      createInMemoryWorkflowRuntime(),
       store,
       actions,
       entities
@@ -367,7 +362,6 @@ describe("per-node Entity Eligibility", () => {
         nodeId: "other_branch",
       },
     });
-    expect(stopBranches).not.toHaveBeenCalled();
   });
 
   it("does not resolve for a disabled node", async () => {
