@@ -24,6 +24,7 @@ import {
   createRequestListener,
   createWfGraphApp,
   defineAction,
+  defineEntity,
   defineEvent,
 } from "@wfgraph/core";
 import { configureWfGraphLogging } from "@wfgraph/core/logging";
@@ -72,6 +73,30 @@ const appointmentSchema = z.object({
   status: z.string(),
 });
 
+const appointmentStateSchema = z.object({
+  status: z.enum(["scheduled", "completed", "canceled"]),
+  remindersEnabled: z.boolean(),
+});
+
+// This map stands in for the host application's appointment store. Workflow
+// Graph receives the Entity id and a validated decision surface, never the
+// record itself. The two rows make both Eligibility outcomes easy to try from
+// the Inngest dashboard without adding a second service to the example.
+const appointmentStates = new Map<
+  string,
+  z.infer<typeof appointmentStateSchema>
+>([
+  ["apt_demo_scheduled", { status: "scheduled", remindersEnabled: true }],
+  ["apt_demo_completed", { status: "completed", remindersEnabled: false }],
+]);
+
+const appointmentEntity = defineEntity({
+  type: "appointment",
+  label: "Appointment",
+  state: appointmentStateSchema,
+  resolve: ({ entityId }) => appointmentStates.get(entityId) ?? null,
+});
+
 /**
  * The Events this app raises: a name, a payload shape, and where the payload
  * carries its Entity Value. An Event holds no lifecycle role -- which workflow
@@ -90,6 +115,12 @@ const appointmentCreated = defineEvent({
   description: "Raised when a new appointment is booked.",
   schema: z.object({ appointment: appointmentSchema, occurredAt }),
   correlationPath: "appointment.id",
+  entities: {
+    appointment: {
+      entity: appointmentEntity,
+      selectEntityId: (event) => event.appointment.id,
+    },
+  },
 });
 
 const appointmentRescheduled = defineEvent({
@@ -102,6 +133,12 @@ const appointmentRescheduled = defineEvent({
     previousStartsAt: z.iso.datetime(),
   }),
   correlationPath: "appointment.id",
+  entities: {
+    appointment: {
+      entity: appointmentEntity,
+      selectEntityId: (event) => event.appointment.id,
+    },
+  },
 });
 
 const appointmentCanceled = defineEvent({
@@ -114,6 +151,12 @@ const appointmentCanceled = defineEvent({
     reason: z.string().describe("Why it was canceled"),
   }),
   correlationPath: "appointment.id",
+  entities: {
+    appointment: {
+      entity: appointmentEntity,
+      selectEntityId: (event) => event.appointment.id,
+    },
+  },
 });
 
 /**
@@ -139,6 +182,12 @@ const paymentSettled = defineEvent({
     settledAt: z.iso.datetime(),
   }),
   correlationPath: "appointmentId",
+  entities: {
+    appointment: {
+      entity: appointmentEntity,
+      selectEntityId: (event) => event.appointmentId,
+    },
+  },
 });
 
 const cancelAppointmentAction = defineAction({

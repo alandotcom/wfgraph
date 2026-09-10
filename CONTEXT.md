@@ -11,8 +11,8 @@ meaning per workflow.
 ### Personas
 
 **Event Author**:
-The developer embedding the library who defines Events in code: their names,
-their payload shapes, and where each payload carries its Entity Value.
+The developer embedding the library who defines Events and Entities in code:
+their names, payload or state shapes, Entity bindings, and resolvers.
 _Avoid_: Trigger Author (retired with the authored trigger), developer
 (ambiguous), integrator
 
@@ -24,9 +24,9 @@ _Avoid_: user (ambiguous), operator
 ### Events
 
 **Event**:
-A named payload shape declared in code: name, label, payload schema, and
-Correlation Path. An Event carries no lifecycle role; roles are assigned per
-workflow by the Workflow Builder.
+A named payload shape declared in code: name, label, payload schema, optional
+Correlation Path, and optional Entity bindings. An Event carries no lifecycle
+role; roles are assigned per workflow by the Workflow Builder.
 _Avoid_: trigger (the retired authored bundle of events and policy)
 
 **Integration Event**:
@@ -47,21 +47,38 @@ declares one as the default; the Workflow Builder sets the path their own
 workflow reads it at, and that one wins.
 
 **Entity Value**:
-The string identifying the entity a run tracks, read from a payload at that
-Event's Correlation Path. Runs and payloads sharing an Entity Value are about
-the same entity. Two Events describe the same entity when their Entity Values
-are equal, even when their Correlation Paths differ. A start with no payload
-(a schedule tick or a manual run) uses the workflow itself as its entity, so
-Concurrency stays meaningful on scheduled workflows.
+The legacy untyped string a workflow without a tracked Entity uses for
+Concurrency and cancellation, read from an Event payload at its Correlation
+Path. Two Events describe the same thing when their Entity Values are equal,
+even when their Correlation Paths differ. A start with no payload uses the
+workflow itself as its Entity Value, so Concurrency stays meaningful on
+scheduled workflows.
 _Avoid_: correlation key (the retired implicit wait-match model)
+
+**Entity**:
+A reusable host-authored definition of a tracked thing. Its stable `type`,
+human label, current-state schema, and read-only resolver are declared once
+with `defineEntity`; Events refer to that object through named, typed bindings.
+The Workflow Builder chooses one Entity type and one compatible binding for
+every Lifecycle Event. Workflow Graph persists the resulting Entity type and
+ID as the Execution's immutable typed identity.
+
+**Entity State**:
+The current JSON-object state a host Entity resolver returns for one Entity ID.
+The host remains its system of record. Workflow Graph validates Entity State
+and may evaluate Entity Eligibility against it, but never persists it or makes
+it available to templates, node outputs, logs, or audit metadata. A `null`
+resolver result means that the Entity no longer exists; a thrown error or
+schema-invalid result is an operational failure.
 
 ### Lifecycle
 
 **Lifecycle Rules**:
 The Workflow Builder's per-workflow declaration of a run's lifetime: Start
-Events and their Start Filters, Cancel Events and their Cancel Filters, and
-Concurrency. Lives on the Lifecycle Node. One Event never holds the start role
-and the cancel role in the same workflow; the editor rejects that configuration.
+Events and their Start Filters, Cancel Events and their Cancel Filters, Entity
+Eligibility when configured, and Concurrency. Lives on the Lifecycle Node. One
+Event never holds the start role and the cancel role in the same workflow; the
+editor rejects that configuration.
 _Avoid_: Routing Policy (the retired per-event verb table), Replace, Ignore
 (retired verbs of that table)
 
@@ -76,7 +93,9 @@ Start Filter decides whether the arrival counts, then Concurrency applies, then
 a new Execution enters through the Started outlet carrying the payload. A
 workflow may name several, which is how one graph answers an appointment being
 booked and being moved; a node behind Started may then be reached by any of
-them, and an Event Split is what tells them apart.
+them, and an Event Split is what tells them apart. For a guarded workflow the
+fixed admission order is Event validation, Start Filter, Entity ID selection,
+Entity resolver, Entity Eligibility, Concurrency, then Execution creation.
 
 **Start Filter**:
 The condition an arrival must satisfy before a run opens, written per Start
@@ -88,6 +107,22 @@ against literals, having no run to read a value from. Optional, and one filter
 covers several Start Events for as long as it reads only the paths they agree
 on. It governs arrivals alone: a manual run is a person asking for this run, and
 starts whatever the filter says.
+
+**Entity Eligibility**:
+A positive Lifecycle condition over current Entity State. The Workflow Builder
+chooses one or both checkpoints: before opening an Execution, before each
+enabled executable node on the Started side. An admission refusal opens no
+Execution. An in-run refusal claims an execution-wide Exit before the node,
+prevents later nodes from starting, and skips the Canceled outlet. Work already
+admitted may finish. Entity Eligibility is distinct from payload Start Filters
+and host-sent Cancel Events.
+
+**Exited**:
+How an Execution ends when an in-run Entity Eligibility check fails because its
+condition is false or the Entity no longer exists. Expected business outcome,
+with no Canceled outlet and no engine failure. Run history records the reason,
+Entity type, condition identifier, blocked node, and check time, but no Entity
+ID or Entity State.
 
 **Event Split**:
 A node whose outlets are the Events that can reach it, one each, derived
@@ -112,7 +147,8 @@ sequence mid-graph is an unwired Condition False, not a Cancel Event.
 The condition an arrival must satisfy before it can cancel a run, written per
 Cancel Event. A declined arrival leaves every Execution active and still reaches
 Wait Subscriptions. The filter compares payload fields and the Arriving Event
-against literals. The filter runs before the workflow requires an Entity Value.
+against literals. The filter runs before the workflow selects an Entity binding
+or requires an Entity Value.
 
 **Arriving Event**:
 The Event that put a run where it is: the Start Event it began on, the Cancel
@@ -172,10 +208,11 @@ memoized, and nothing above a Wait re-runs.
 
 **Precedence**:
 One fixed order when an Event arrives: Lifecycle Rules apply first, then the
-Event reaches the Wait Subscriptions of surviving runs. Inside the first half the
-Start Filter runs before Concurrency. A Cancel Filter runs before correlation
-and cancellation. These filters let a declined arrival leave every run in
-flight. An admitted start always starts, and Concurrency resolves multiplicity.
+Event reaches the Wait Subscriptions of surviving runs. A start validates its
+payload, applies its Start Filter, establishes typed Entity identity and any
+admission Eligibility verdict, then applies Concurrency and opens the Execution.
+A Cancel Filter runs before Entity binding or Correlation Path selection and
+cancellation. These filters let a declined arrival leave every run in flight.
 
 ### Waits
 
@@ -228,7 +265,7 @@ start runs on an Event.
 One run of one workflow, started by a Start Event, a schedule, or a manual
 test. Pins the Workflow Version it started against, and a Migration is the one
 way that pin moves. Ends with exactly one status: completed, canceled,
-superseded, or failed.
+superseded, exited, or failed.
 _Avoid_: workflow (a workflow is the definition; an Execution is one run of it)
 
 **Migration**:
@@ -238,8 +275,11 @@ run parked on a Wait. The parked Wait recomputes its parameters from the new
 version's config and parks again on the next hop. Nodes below the Wait then run
 the new version's definitions, and nodes above the Wait keep the outputs they
 already produced. A preflight report classifies every in-flight run as eligible
-or refused before anything moves. A refused run stays on its old version, so a
-partial Migration leaves the workflow's runs spread over two versions.
+or refused before anything moves. A guarded run keeps its immutable typed Entity
+identity and is refused when the target tracks another Entity type or its
+Eligibility rule does not fit the current Entity schema. A refused run stays on
+its old version, so a partial Migration leaves the workflow's runs spread over
+two versions.
 _Avoid_: rebase, upgrade, hot-swap, version bump
 
 **Draft run**:

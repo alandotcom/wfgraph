@@ -1,6 +1,6 @@
-# Defining an Event
+# Defining Events and Entities
 
-How an Event Author declares Events, umbrella sources, the intake gate, and how that fits the Lifecycle model.
+How an Event Author declares Events, current Entity State, umbrella sources, the intake gate, and how that fits the Lifecycle model.
 
 An Event is a named payload shape that your application raises.
 
@@ -24,6 +24,81 @@ which workflow it starts and which it cancels (`docs/adr/0007`).
 `defineEvent` builds a value. Pass it in `extensions.events`, where assembly checks it and
 names the Event in any error.
 
+## Current Entity State
+
+Use `defineEntity` when Lifecycle decisions need fresh state from the host instead of only
+the Event payload. The host remains the system of record.
+
+```ts
+const appointment = defineEntity({
+  type: "appointment",
+  label: "Appointment",
+  state: z.object({
+    status: z.enum(["scheduled", "completed", "canceled"]),
+    remindersEnabled: z.boolean(),
+  }),
+  async resolve({ entityId }) {
+    const record = await appointments.findById(entityId);
+    return record
+      ? {
+          status: record.status,
+          remindersEnabled: record.remindersEnabled,
+        }
+      : null;
+  },
+});
+```
+
+`type` is the stable serialized identity of the Entity definition. `state` must describe a
+JSON object. The resolver receives one `entityId`; returning `null` means that Entity no
+longer exists, while throwing or returning schema-invalid state is an operational failure.
+Workflow Graph validates the result and then evaluates the Lifecycle decision without
+persisting the Entity State or exposing it to workflow steps, templates, logs, or audit
+metadata.
+
+Give an Event one or more named bindings to reusable Entity definitions:
+
+```ts
+const appointmentScheduled = defineEvent({
+  name: "appointment.scheduled",
+  label: "Appointment scheduled",
+  schema: z.object({ appointmentId: z.string() }),
+  entities: {
+    appointment: {
+      entity: appointment,
+      selectEntityId: (event) => event.appointmentId,
+    },
+  },
+});
+```
+
+An Event may expose another binding, such as `patient`, beside `appointment`. The record key
+is the binding name shown in the Lifecycle panel. `selectEntityId` receives
+the validated Event value and must synchronously return a non-empty string. Different
+Events may select the same Entity type from different payload fields. Pass only the Events
+in `extensions.events`; assembly discovers their referenced Entity definitions transitively
+and rejects distinct definitions with the same `type`.
+
+A Workflow Builder may then select one tracked Entity type, one compatible binding for each
+Start and Cancel Event, one positive **Eligible when** condition over Entity State, and one
+or both checkpoints:
+
+- **Before opening an Execution** runs after the payload Start Filter and before
+  Concurrency. An ineligible arrival is a Refused Start and opens no Execution.
+- **Before each workflow node** runs before every enabled executable node on the Started
+  side. An ineligible run ends as `exited` before that node starts. The Canceled outlet does
+  not run.
+
+Selecting only the node checkpoint opens an Execution before the first resolver read.
+Selecting both checks admission and reads fresh host state again at each new node. A Wait
+is checked before it parks; a state change while parked is observed before the next node
+only. A host that needs immediate interruption sends a Cancel Event.
+
+A guarded manual or Draft run names a Start Event and supplies a payload so its selected
+binding can establish typed Entity identity. Schedule-only guarded workflows cannot start.
+The Entity type and ID remain immutable across Wait branches, durable replay, and Migration;
+a target version tracking another Entity type is not a compatible Migration.
+
 **`name` is the identity.** One Event covers one thing that happened. Declare
 `appointment.created` and `appointment.canceled` as two Events, because the lifecycle model
 states its rules over Event names. One umbrella Event with a subtype field is wrong.
@@ -41,8 +116,8 @@ path replaces the label that the editor derives from the key ("Starts At").
 **`correlationPath` names where the Entity Value sits.** It is typed against the payload
 and admits a path that resolves to a string.
 
-- Runs that share that value are about the same entity. Concurrency, Cancel Events, and the
-  match of a Wait node act on it.
+- Workflows without a tracked Entity use that value for Concurrency and Cancel Events.
+  Guarded workflows use the selected typed bindings instead.
 - Two Events describe one entity when their Entity Values are equal, also where their paths
   differ.
 - The path is optional. The author of an imported Event often lacks one, so the Workflow
@@ -113,9 +188,9 @@ the schema never heard of.
 - Workflow Graph logs a refusal and stops there, because a second attempt meets the same malformed
   payload.
 
-Workflow Graph discards what the gate decoded to and carries the raw JSON on. Every consumer
-downstream reads that JSON directly. A transform rewrites what the sender sent, and one
-`Date` round trip breaks a wait match that compares a literal captured at park time.
+Workflow Graph carries the raw JSON into the workflow. The decoded value is used only by a
+typed Entity ID selector and then discarded. A transform rewriting what the sender sent
+would break a wait match that compares a literal captured at park time.
 
 ## The Lifecycle model
 
@@ -123,7 +198,8 @@ A Workflow Builder declares the Lifecycle Rules in the Lifecycle panel:
 
 - which Events start a run and the payload filters for those Events;
 - which Events cancel a run and the payload filters for those Events;
-- the concurrency policy that applies to each Entity Value.
+- optional Entity Eligibility over current host state and its checkpoints;
+- the concurrency policy that applies to each typed Entity identity or legacy Entity Value.
 
 `CONTEXT.md` defines Lifecycle Node, Start Event, Start Filter, Cancel Event, Cancel Filter,
 Arriving Event, Concurrency, Precedence, Refused Start, and Execution status in full.
