@@ -2,6 +2,12 @@ import { asyncIteratorObject } from "@orpc/contract";
 import { Schema } from "effect";
 import { WfGraphOperations } from "#src/authorization/operations";
 import {
+  workflowMigrationInputSchema,
+  workflowMigrationPayloadSchema,
+  workflowMigrationPreviewInputSchema,
+  workflowMigrationPreviewPayloadSchema,
+} from "#src/graph/migration-contracts";
+import {
   workflowComparisonInputSchema,
   workflowComparisonPayloadSchema,
   workflowPublishInputSchema,
@@ -103,6 +109,14 @@ const workflowVersionUsageInput = contractSchema(
 const workflowVersionUsagePayload = contractSchema(
   workflowVersionUsagePayloadSchema
 );
+const workflowMigrationPreviewInput = contractSchema(
+  workflowMigrationPreviewInputSchema
+);
+const workflowMigrationPreviewPayload = contractSchema(
+  workflowMigrationPreviewPayloadSchema
+);
+const workflowMigrationInput = contractSchema(workflowMigrationInputSchema);
+const workflowMigrationPayload = contractSchema(workflowMigrationPayloadSchema);
 const workflowComparisonInput = contractSchema(workflowComparisonInputSchema);
 const workflowComparisonPayload = contractSchema(
   workflowComparisonPayloadSchema
@@ -414,6 +428,30 @@ export const workflowContract = {
   )
     .input(workflowVersionUsageInput)
     .output(workflowVersionUsagePayload),
+  /**
+   * Classify every in-flight run of the workflow against a later published
+   * version. The report is a read: it names the runs that version can take
+   * over, and the reason each of the rest stays where it is.
+   */
+  previewMigration: route(
+    "POST",
+    "/workflows/{workflowId}/migration/preview",
+    WfGraphOperations.workflowPreviewMigration
+  )
+    .input(workflowMigrationPreviewInput)
+    .output(workflowMigrationPreviewPayload),
+  /**
+   * Move the named parked runs onto the target published version. Each run is
+   * classified again before it moves, so a run that woke since the preview is
+   * refused rather than migrated.
+   */
+  migrateExecutions: route(
+    "POST",
+    "/workflows/{workflowId}/migration",
+    WfGraphOperations.workflowMigrateExecutions
+  )
+    .input(workflowMigrationInput)
+    .output(workflowMigrationPayload),
   compareVersion: route(
     "POST",
     "/workflows/{workflowId}/versions/compare",

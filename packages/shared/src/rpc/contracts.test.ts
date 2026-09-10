@@ -122,6 +122,44 @@ describe("workflow executions RPC output contract", () => {
   });
 });
 
+describe("workflow migration RPC contracts", () => {
+  it("accepts a preview request that names no target version", async () => {
+    const result = await validateInput(rpcContract.workflow.previewMigration, {
+      workflowId: "workflow_1",
+    });
+
+    expect(result).toHaveProperty("value");
+  });
+
+  it("rejects a migrate request that names no target version", async () => {
+    const result = await validateInput(rpcContract.workflow.migrateExecutions, {
+      workflowId: "workflow_1",
+      executionIds: ["exec_1"],
+    });
+
+    expect(result).toHaveProperty("issues");
+  });
+
+  it("carries a migrated run and a refused run in one report", async () => {
+    const decode = getOutputDecoder(rpcContract.workflow.migrateExecutions);
+
+    const result = await decode({
+      targetVersionId: "version_2",
+      targetVersionNumber: 2,
+      outcomes: [
+        { executionId: "exec_1", status: "migrated", signaled: true },
+        {
+          executionId: "exec_2",
+          status: "refused",
+          reason: "executing",
+        },
+      ],
+    });
+
+    expect(result).toHaveProperty("value");
+  });
+});
+
 describe("workflow draft subscription RPC input contract", () => {
   it("accepts the last locally loaded revision, including the initial zero", async () => {
     const result = await validateInput(rpcContract.workflow.subscribeDraft, {

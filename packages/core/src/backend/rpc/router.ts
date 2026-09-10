@@ -33,6 +33,8 @@ import {
   streamWorkflowDraftRevisions,
 } from "#src/backend/services/workflows/workflow";
 import { postWorkflowDuplicate } from "#src/backend/services/workflows/duplicate";
+import { migrateExecutions } from "#src/backend/services/workflows/migration/migrate";
+import { previewMigration } from "#src/backend/services/workflows/migration/preview";
 import { publishWorkflow } from "#src/backend/services/workflows/publish";
 import { getVersionGraph } from "#src/backend/services/workflows/version-graph";
 import {
@@ -549,6 +551,12 @@ export const rpcRouter = rpc.router({
     ),
     getVersionUsage: rpc.workflow.getVersionUsage.handler(
       rpcEffectHandler(({ input }) => getWorkflowVersionUsage(input))
+    ),
+    previewMigration: rpc.workflow.previewMigration.handler(
+      rpcEffectHandler(({ input }) => previewMigration(input))
+    ),
+    migrateExecutions: rpc.workflow.migrateExecutions.handler(
+      rpcEffectHandler(({ input }) => migrateExecutions(input))
     ),
     compareVersion: rpc.workflow.compareVersion.handler(
       rpcEffectHandler(({ input }) => compareWorkflowVersion(input))
