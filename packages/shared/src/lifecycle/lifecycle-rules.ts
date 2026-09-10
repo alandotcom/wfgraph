@@ -21,6 +21,10 @@ import {
   inheritConnections,
   stampConnection,
 } from "#src/lifecycle/event-connections";
+import {
+  entityEligibilitySchema,
+  trackedEntitySchema,
+} from "#src/lifecycle/entity-eligibility";
 import { NonEmptyTrimmedString, readAs } from "#src/types/schema";
 
 /**
@@ -103,6 +107,12 @@ export const lifecycleRulesSchema = Schema.Struct({
    * payload against literals.
    */
   cancelFilters: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+
+  /** The one host-owned Entity identity every guarded Execution carries. */
+  trackedEntity: Schema.optional(trackedEntitySchema),
+
+  /** A positive condition over current Entity State and when to evaluate it. */
+  entityEligibility: Schema.optional(entityEligibilitySchema),
 });
 
 export type LifecycleRules = typeof lifecycleRulesSchema.Type;
@@ -158,8 +168,10 @@ export function configDeclaresCancelEvent(
 }
 
 /**
- * Where an Event's Entity Value sits for this workflow: the builder's path, or
- * the Event Author's declaration where the builder wrote none.
+ * Where an Event's legacy Entity Value sits for an unguarded workflow: the
+ * builder's path, or the Event Author's declaration where the builder wrote
+ * none. A guarded workflow answers `undefined`, because its selected Entity
+ * binding is the sole identity source.
  *
  * The declaration is a default rather than a verdict. An Event names the entity
  * its own author had in mind, and the workflow reading it may be about a
@@ -170,6 +182,10 @@ export function resolveCorrelationPath(input: {
   eventName: string;
   declaredPath?: string | undefined;
 }): string | undefined {
+  if (input.rules.trackedEntity) {
+    return undefined;
+  }
+
   return input.rules.correlationPaths?.[input.eventName] ?? input.declaredPath;
 }
 
@@ -248,25 +264,10 @@ function startMatchesByEntityValue(rules: LifecycleRules): boolean {
 }
 
 /**
- * One Event's Correlation Path request for this workflow, or undefined for a
- * Start Event that currently matches nothing (`startMatchesByEntityValue`).
- *
- * A Cancel Event always matches by entity, so a `role: "cancel"` request is never
- * undefined -- overloaded on that literal so a caller asking for a cancel role
- * does not carry optionality the value never has.
+ * One Event's Correlation Path request for this workflow, or undefined when a
+ * Start Event currently matches nothing or a tracked Entity binding supplies
+ * identity instead.
  */
-export function correlationPathRequestFor(input: {
-  rules: LifecycleRules;
-  catalog: ExtensionCatalog;
-  eventName: string;
-  role: "cancel";
-}): CorrelationPathRequest;
-export function correlationPathRequestFor(input: {
-  rules: LifecycleRules;
-  catalog: ExtensionCatalog;
-  eventName: string;
-  role: CorrelationPathRole;
-}): CorrelationPathRequest | undefined;
 export function correlationPathRequestFor(input: {
   rules: LifecycleRules;
   catalog: ExtensionCatalog;
@@ -275,7 +276,10 @@ export function correlationPathRequestFor(input: {
 }): CorrelationPathRequest | undefined {
   const { rules, catalog, eventName, role } = input;
 
-  if (role === "start" && !startMatchesByEntityValue(rules)) {
+  if (
+    rules.trackedEntity ||
+    (role === "start" && !startMatchesByEntityValue(rules))
+  ) {
     return undefined;
   }
 
@@ -356,6 +360,9 @@ export function retainNamedKeys(
 export function pruneCorrelationPaths(rules: LifecycleRules): LifecycleRules {
   if (!rules.correlationPaths) {
     return rules;
+  }
+  if (rules.trackedEntity) {
+    return { ...rules, correlationPaths: undefined };
   }
 
   const needed = new Set(rules.cancelEvents);

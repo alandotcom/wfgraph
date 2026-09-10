@@ -182,6 +182,39 @@ describe("publish-checks", () => {
     ).toEqual(["missing_required_field", "invalid_event", "unreachable_node"]);
   });
 
+  it("classifies guarded lifecycle failures separately from Event failures", () => {
+    const guarded: WorkflowNode = lifecycleNode();
+    guarded.data.config = {
+      lifecycleRules: {
+        startEvents: ["app/appointment.created"],
+        cancelEvents: [],
+        concurrency: "unlimited",
+        entityEligibility: {
+          condition: "{}",
+          checkpoints: ["before-node"],
+        },
+      },
+    };
+
+    expect(
+      collectSynchronousPublicationFailures({
+        nodes: [guarded],
+        edges: [],
+        catalog: catalogOf({
+          events: [
+            {
+              ...anEvent("app/appointment.created"),
+              entityBindings: [
+                { name: "appointment", entityType: "appointment" },
+              ],
+            },
+          ],
+          entities: [anEntity("appointment")],
+        }),
+      }).map((failure) => failure.kind)
+    ).toEqual(["invalid_entity_eligibility"]);
+  });
+
   it("flags nodes the Lifecycle Node cannot reach", () => {
     const orphan = actionNode("orphan", "Orphan");
     const { nodes, edges } = toWorkflowGraphData(

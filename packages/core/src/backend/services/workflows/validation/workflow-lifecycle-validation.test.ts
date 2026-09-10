@@ -3,6 +3,7 @@ import { errorOf } from "#src/backend/services/workflows/validation/validation-t
 import {
   validateCancelFilterModels,
   validateCancelFilters,
+  validateEntityEligibility,
   validateEventSplitOutlets,
   validateStartFilterModels,
   validateStartFilters,
@@ -98,6 +99,99 @@ function waitNode(
     },
   };
 }
+
+describe("validateEntityEligibility", () => {
+  const eligibilityCatalog: ExtensionCatalog = {
+    ...catalog,
+    entities: [
+      {
+        type: "appointment",
+        label: "Appointment",
+        stateFields: [{ path: "status", type: "string" }],
+        stateSchemaDigest: "appointment-v1",
+      },
+    ],
+    events: catalog.events.map((event) =>
+      event.name === "app/appointment.created" ||
+      event.name === "app/appointment.canceled"
+        ? {
+            ...event,
+            entityBindings: [
+              { name: "appointment", entityType: "appointment" },
+            ],
+          }
+        : event
+    ),
+  };
+
+  const guardedRules: LifecycleRules = {
+    startEvents: ["app/appointment.created"],
+    cancelEvents: ["app/appointment.canceled"],
+    concurrency: "newest-wins",
+    trackedEntity: {
+      type: "appointment",
+      bindings: {
+        "app/appointment.created": "appointment",
+        "app/appointment.canceled": "appointment",
+      },
+    },
+    entityEligibility: {
+      condition: serializeConditionModel({
+        version: 2,
+        groupLogic: "and",
+        groups: [
+          {
+            id: "group-1",
+            logic: "and",
+            conditions: [
+              {
+                id: "rule-1",
+                field: "status",
+                fieldType: "string",
+                operator: "equals",
+                value: "scheduled",
+              },
+            ],
+          },
+        ],
+      }),
+      checkpoints: ["before-execution", "before-node"],
+    },
+  };
+
+  it("accepts a complete guarded Lifecycle configuration", () => {
+    expect(
+      validateEntityEligibility(
+        [lifecycleNode(guardedRules)],
+        eligibilityCatalog
+      )
+    ).toEqual({ valid: true });
+  });
+
+  it("returns a publish-facing repair when an Event has no selected binding", () => {
+    expect(
+      validateEntityEligibility(
+        [
+          lifecycleNode({
+            ...guardedRules,
+            trackedEntity: {
+              type: "appointment",
+              bindings: {
+                "app/appointment.created": "appointment",
+              },
+            },
+          }),
+        ],
+        eligibilityCatalog
+      )
+    ).toMatchObject({
+      valid: false,
+      error: expect.stringContaining(
+        'Event "app/appointment.canceled" has no selected Entity binding'
+      ),
+    });
+  });
+});
 
 describe("validateWorkflowEvents - lifecycle role", () => {
   it("accepts rules naming an Event the app declares", () => {

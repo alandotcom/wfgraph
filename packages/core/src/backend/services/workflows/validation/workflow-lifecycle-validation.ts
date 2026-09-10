@@ -27,6 +27,7 @@ import {
   checkStartFilterModels,
   checkStartFilters,
 } from "@wfgraph/shared/lifecycle/start-filters";
+import { checkEntityEligibility } from "@wfgraph/shared/lifecycle/entity-eligibility";
 import {
   checkCancelFilterModels,
   checkCancelFilters,
@@ -150,6 +151,16 @@ export function validateStartFilters(
 ): WorkflowLifecycleValidationResult {
   return checkEveryLifecycleNode(nodes, (rules) =>
     checkStartFilters({ rules, catalog })
+  );
+}
+
+/** One tracked Entity, its Event bindings, condition, and checkpoints. */
+export function validateEntityEligibility(
+  nodes: readonly WorkflowNode[],
+  catalog: ExtensionCatalog
+): WorkflowLifecycleValidationResult {
+  return checkEveryLifecycleNode(nodes, (rules) =>
+    checkEntityEligibility({ rules, catalog })
   );
 }
 
