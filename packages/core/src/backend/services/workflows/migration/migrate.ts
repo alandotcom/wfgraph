@@ -6,8 +6,10 @@
  * pinned version pointer, then a `version-migrate` signal per parked wait row,
  * which is what makes the run recompute its Wait against the version it now
  * pins, then the audit row. The audit row is written last because it is a
- * record of the move rather than a part of it. Runs move a bounded number at a
- * time, so a call naming thousands of them still answers inside a request.
+ * record of the move rather than a part of it. The pointer write and the
+ * signals run uninterruptibly, so a run cannot be left repinned with no signal
+ * sent. A read or write that fails for one run is that run's own outcome, and
+ * the rest of the batch still moves.
  */
 
 import { Effect } from "effect";
@@ -90,11 +92,12 @@ const DEPARTED_RUN_READ_CONCURRENCY = 8;
 /**
  * How many runs are moved at once.
  *
- * One call can name every in-flight run of a busy workflow, and each run costs a
- * pointer write, a signal per parked row and an audit write. Moving them one
- * after another puts a request over ten thousand runs at risk of timing out. The
- * bound matches the classifier's output read, and each run's own three steps
- * stay in their order inside it.
+ * Each run costs a pointer write, a signal per parked row and an audit write,
+ * and this bounds how many of those are in flight together. It does not bound
+ * how many runs one call names: a call over a very large in-flight population
+ * still performs every one of those writes, so it runs for as long as that
+ * takes. The bound matches the classifier's output read, and each run's own
+ * three steps stay in their order inside it.
  */
 const MIGRATE_RUN_CONCURRENCY = 8;
 
@@ -190,59 +193,126 @@ function refusedOutcome(input: {
   });
 }
 
-/** Acts on one classification, and answers what happened to that run. */
-const migrateOne = Effect.fn("migrateOne")(function* (input: {
-  classification: MigrationClassification;
+/**
+ * Moves one run's version pointer and wakes the rows it is parked on.
+ *
+ * The two writes run uninterruptibly together. A run repinned by a fiber
+ * interrupted before its signal went out would answer `already_current` on the
+ * next call while still parked on the old version's schedule, and nothing else
+ * would reach it.
+ */
+const repinAndSignal = Effect.fn("repinAndSignal")(function* (input: {
+  executionId: string;
+  fromVersionId: string;
+  waitStates: readonly WorkflowWaitState[];
   workflowId: string;
   targetVersion: PublishedWorkflowVersion;
 }) {
-  const { classification, targetVersion } = input;
-  const executionId = classification.candidate.id;
+  const repo = yield* ExecutionRepo;
 
-  if (classification.kind === "refused") {
-    return refusedOutcome({
+  return yield* Effect.uninterruptible(
+    Effect.gen(function* () {
+      const moved = yield* repo.repinVersion({
+        executionId: input.executionId,
+        fromVersionId: input.fromVersionId,
+        toVersionId: input.targetVersion.id,
+      });
+      if (!moved) {
+        return { moved: false } as const;
+      }
+
+      const signaled = yield* signalMigratedWaits({
+        executionId: input.executionId,
+        waitStates: input.waitStates,
+        workflowId: input.workflowId,
+      });
+
+      return { moved: true, signaled } as const;
+    })
+  );
+});
+
+/** Acts on one classification, and answers what happened to that run. */
+const migrateOne = Effect.fn("migrateOne")(
+  function* (input: {
+    classification: MigrationClassification;
+    workflowId: string;
+    targetVersion: PublishedWorkflowVersion;
+  }) {
+    const { classification, targetVersion } = input;
+    const executionId = classification.candidate.id;
+
+    if (classification.kind === "refused") {
+      return refusedOutcome({
+        executionId,
+        reason: classification.reason,
+        detail: classification.detail,
+      });
+    }
+
+    if (classification.kind === "already_current") {
+      // A run repinned by an earlier call whose signal never went out is still
+      // parked on the schedule its old version computed, and this is the one
+      // thing that wakes it under the version it now pins. A run parked on
+      // nothing is left alone, and a redundant signal costs the Wait one attempt.
+      yield* Effect.uninterruptible(
+        signalMigratedWaits({
+          executionId,
+          waitStates: classification.waitStates,
+          workflowId: input.workflowId,
+        })
+      );
+
+      return {
+        executionId,
+        status: "already_current",
+      } satisfies WorkflowMigrationOutcome;
+    }
+
+    const move = yield* repinAndSignal({
       executionId,
-      reason: classification.reason,
-      detail: classification.detail,
+      fromVersionId: classification.candidate.workflowVersionId,
+      waitStates: classification.waitStates,
+      workflowId: input.workflowId,
+      targetVersion,
     });
-  }
+    if (!move.moved) {
+      return refusedOutcome({ executionId, reason: "not_requested_version" });
+    }
 
-  if (classification.kind === "already_current") {
+    yield* recordMigrationAudit({
+      executionId,
+      workflowId: input.workflowId,
+      fromVersionId: classification.candidate.workflowVersionId,
+      fromVersionNumber: classification.candidate.versionNumber,
+      targetVersion,
+    });
     return {
       executionId,
-      status: "already_current",
+      status: "migrated",
+      signaled: move.signaled,
     } satisfies WorkflowMigrationOutcome;
-  }
+  },
+  // A read or write this run needed was refused. The run stays on the version
+  // it pinned, and the batch carries on, so a later call can move it.
+  (effect, input) =>
+    effect.pipe(
+      Effect.catchTag("DatabaseError", (failure) =>
+        Effect.gen(function* () {
+          const logger = yield* loggerFor(input.workflowId);
+          yield* logger.error("Failed to migrate a workflow run", {
+            run: { executionId: input.classification.candidate.id },
+            error: failure.cause,
+          });
 
-  const repo = yield* ExecutionRepo;
-  const moved = yield* repo.repinVersion({
-    executionId,
-    fromVersionId: classification.candidate.workflowVersionId,
-    toVersionId: targetVersion.id,
-  });
-  if (!moved) {
-    return refusedOutcome({ executionId, reason: "not_requested_version" });
-  }
-
-  const signaled = yield* signalMigratedWaits({
-    executionId,
-    waitStates: classification.waitStates,
-    workflowId: input.workflowId,
-  });
-
-  yield* recordMigrationAudit({
-    executionId,
-    workflowId: input.workflowId,
-    fromVersionId: classification.candidate.workflowVersionId,
-    fromVersionNumber: classification.candidate.versionNumber,
-    targetVersion,
-  });
-  return {
-    executionId,
-    status: "migrated",
-    signaled,
-  } satisfies WorkflowMigrationOutcome;
-});
+          return {
+            executionId: input.classification.candidate.id,
+            status: "failed",
+          } satisfies WorkflowMigrationOutcome;
+        })
+      )
+    )
+);
 
 export const migrateExecutions = Effect.fn("wfgraph.workflow.migrate_runs")(
   function* (input: WorkflowMigrationInput) {
@@ -302,6 +372,7 @@ export const migrateExecutions = Effect.fn("wfgraph.workflow.migrate_runs")(
       migration: {
         migrated: byStatus.migrated ?? 0,
         refused: byStatus.refused ?? 0,
+        failed: byStatus.failed ?? 0,
         alreadyCurrent: byStatus.already_current ?? 0,
       },
     });

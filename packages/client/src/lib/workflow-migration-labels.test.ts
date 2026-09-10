@@ -82,16 +82,40 @@ describe("runCountLabel", () => {
 });
 
 describe("migrationOutcomeToast", () => {
-  it("counts the runs that moved and leaves out the second line", () => {
-    expect(migrationOutcomeToast({ migrated: 2, notMoved: 0 })).toEqual({
+  it("counts the runs that moved and leaves out the description", () => {
+    expect(
+      migrationOutcomeToast({ migrated: 2, unsignaled: 0, notMoved: 0 })
+    ).toEqual({
       title: "Migrated 2 runs",
     });
   });
 
   it("counts every run that stayed where it was", () => {
-    expect(migrationOutcomeToast({ migrated: 1, notMoved: 3 })).toEqual({
+    expect(
+      migrationOutcomeToast({ migrated: 1, unsignaled: 0, notMoved: 3 })
+    ).toEqual({
       title: "Migrated 1 run",
       description: "3 runs did not move.",
+    });
+  });
+
+  it("says which moved runs are still waiting on their old schedule", () => {
+    expect(
+      migrationOutcomeToast({ migrated: 4, unsignaled: 2, notMoved: 0 })
+    ).toEqual({
+      title: "Migrated 4 runs",
+      description:
+        "2 runs moved but were not woken, and will pick up the new version at the next wake.",
+    });
+  });
+
+  it("uses the singular for one run that was not woken", () => {
+    expect(
+      migrationOutcomeToast({ migrated: 1, unsignaled: 1, notMoved: 2 })
+    ).toEqual({
+      title: "Migrated 1 run",
+      description:
+        "2 runs did not move. 1 run moved but was not woken, and will pick up the new version at the next wake.",
     });
   });
 });

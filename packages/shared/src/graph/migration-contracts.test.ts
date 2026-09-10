@@ -88,6 +88,9 @@ describe("workflow migration contracts", () => {
       )
     ).toBe(true);
     expect(
+      Result.isSuccess(decode({ executionId: "execution_1", status: "failed" }))
+    ).toBe(true);
+    expect(
       Result.isFailure(
         decode({ executionId: "execution_1", status: "migrated" })
       )

@@ -97,6 +97,11 @@ Inngest retries, so the next attempt loads the newer graph.
 
 Each hop costs its own prepare, park and resume steps. A run migrated many times
 grows its step count in proportion to its hops, against Inngest's limit of 1000
-steps per function run. Nothing bounds the number of Migrations a run can
-receive, so a workflow whose runs are migrated dozens of times is the shape to
-watch.
+steps per function run. `WAIT_ATTEMPT_LIMIT` in `packages/core/src/backend/engine/wait.ts`
+caps one Wait at 50 parks and fails the node past that, so the hops a run can
+accumulate at one Wait are bounded.
+
+A migrate call is bounded by concurrency rather than by count. It accepts every
+execution id the caller names and moves eight runs at a time, so a workflow with
+a very large in-flight population makes one request run for a long time, and
+splitting such a population across calls is the caller's choice.

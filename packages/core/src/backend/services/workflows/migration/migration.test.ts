@@ -194,6 +194,7 @@ function makeMigrationSeams(input: {
     | undefined;
   nodeLogNodeIds?: string[] | undefined;
   repinned?: boolean | undefined;
+  repinVersion?: ExecutionRepo["Service"]["repinVersion"] | undefined;
   sendWaitSignal?: InngestClient["Service"]["sendWaitSignal"] | undefined;
   recordAuditEvent?: ExecutionRepo["Service"]["recordAuditEvent"] | undefined;
   /** The workflow each run outside the in-flight list belongs to, by run id. */
@@ -214,7 +215,7 @@ function makeMigrationSeams(input: {
     order: [] as string[],
     waitLookups: [] as string[][],
     outputReads: [] as string[],
-    nodeStatusReads: [] as string[],
+    loggedNodeIdReads: [] as string[][],
     workflowIdReads: [] as string[],
     repins: [] as Parameters<ExecutionRepo["Service"]["repinVersion"]>[0][],
     auditEvents: [] as Parameters<
@@ -261,19 +262,23 @@ function makeMigrationSeams(input: {
               {}
             );
           }),
-        listNodeStatuses: (executionId) =>
+        listLoggedNodeIdsForExecutions: (executionIds) =>
           Effect.sync(() => {
-            calls.nodeStatusReads.push(executionId);
-            return (input.nodeLogNodeIds ?? ["before_1"]).map((nodeId) => ({
-              nodeId,
-              status: "success" as const,
-            }));
+            calls.loggedNodeIdReads.push(executionIds);
+            return new Map(
+              executionIds.map((executionId) => [
+                executionId,
+                new Set(input.nodeLogNodeIds ?? ["before_1"]),
+              ])
+            );
           }),
         repinVersion: (repin) =>
-          Effect.sync(() => {
+          Effect.suspend(() => {
             calls.order.push("repin");
             calls.repins.push(repin);
-            return input.repinned ?? true;
+            return input.repinVersion
+              ? input.repinVersion(repin)
+              : Effect.succeed(input.repinned ?? true);
           }),
         recordAuditEvent: (event) =>
           Effect.suspend(() => {
@@ -352,6 +357,111 @@ describe("previewMigration", () => {
 
         assert.strictEqual(report.alreadyCurrentCount, 1);
         assert.deepStrictEqual(report.eligible, []);
+      })
+    );
+
+    it.effect("still counts a parked run already on the target version", () =>
+      Effect.gen(function* () {
+        const seams = makeMigrationSeams({
+          executions: [
+            inFlightRow({
+              id: "exec_1",
+              workflowVersionId: TARGET_VERSION_ID,
+              versionNumber: 2,
+            }),
+          ],
+          waitStates: [waitRow({ id: "wait_row_1", executionId: "exec_1" })],
+        });
+
+        const report = yield* previewMigration({
+          workflowId: WORKFLOW_ID,
+          targetVersionId: TARGET_VERSION_ID,
+        }).pipe(Effect.provide(seams.layer));
+
+        assert.strictEqual(report.alreadyCurrentCount, 1);
+        assert.deepStrictEqual(report.eligible, []);
+        assert.deepStrictEqual(report.refused, []);
+      })
+    );
+
+    it.effect("reads the logged node ids of every candidate at once", () =>
+      Effect.gen(function* () {
+        const seams = makeMigrationSeams({
+          graph: targetGraph({ withAddedNodeAboveWait: true }),
+          executions: [
+            inFlightRow({ id: "exec_1" }),
+            inFlightRow({ id: "exec_2" }),
+          ],
+          waitStates: [
+            waitRow({ id: "wait_row_1", executionId: "exec_1" }),
+            waitRow({ id: "wait_row_2", executionId: "exec_2" }),
+          ],
+          nodeLogNodeIds: ["before_1", "added_1"],
+        });
+
+        const report = yield* previewMigration({
+          workflowId: WORKFLOW_ID,
+        }).pipe(Effect.provide(seams.layer));
+
+        assert.strictEqual(report.eligible.length, 2);
+        assert.deepStrictEqual(seams.calls.loggedNodeIdReads, [
+          ["exec_1", "exec_2"],
+        ]);
+        assert.deepStrictEqual(seams.calls.outputReads, []);
+      })
+    );
+
+    it.effect("reads no node logs when the target graph holds no node", () =>
+      Effect.gen(function* () {
+        const seams = makeMigrationSeams({
+          graph: waitGraph({ nodeIds: [], waitNodeIds: [], edges: [] }),
+          executions: [inFlightRow({ id: "exec_1" })],
+          waitStates: [waitRow({ id: "wait_row_1", executionId: "exec_1" })],
+        });
+
+        const report = yield* previewMigration({
+          workflowId: WORKFLOW_ID,
+        }).pipe(Effect.provide(seams.layer));
+
+        assert.strictEqual(report.refused.length, 1);
+        assert.deepStrictEqual(seams.calls.loggedNodeIdReads, []);
+      })
+    );
+
+    it.effect("measures an event timeout from the row's anchor instant", () =>
+      Effect.gen(function* () {
+        const seams = makeMigrationSeams({
+          graph: targetGraph({
+            waitConfig: { waitMode: "event", waitTimeout: "30m" },
+          }),
+          executions: [inFlightRow({ id: "exec_1" })],
+          waitStates: [
+            waitRow({
+              id: "wait_row_1",
+              executionId: "exec_1",
+              waitType: "event",
+              // The row was opened a minute ago, so `createdAt` alone leaves
+              // the 30 minute timeout well inside its window.
+              metadata: {
+                anchorAt: new Date(Date.now() - 3_600_000).toISOString(),
+              },
+            }),
+          ],
+          nodeOutputs: { before_1: { value: "ok" } },
+        });
+
+        const report = yield* previewMigration({
+          workflowId: WORKFLOW_ID,
+        }).pipe(Effect.provide(seams.layer));
+
+        assert.deepStrictEqual(report.refused, [
+          {
+            executionId: "exec_1",
+            fromVersionNumber: 1,
+            reason: "wait_timeout_elapsed",
+            detail: "wait_1",
+          },
+        ]);
       })
     );
 
@@ -1297,6 +1407,76 @@ describe("migrateExecutions", () => {
             },
           ]);
         })
+    );
+
+    it.effect(
+      "reports a run whose pointer write failed and moves the rest",
+      () =>
+        Effect.gen(function* () {
+          const seams = makeMigrationSeams({
+            executions: [
+              inFlightRow({ id: "exec_1" }),
+              inFlightRow({ id: "exec_2" }),
+            ],
+            waitStates: [
+              waitRow({ id: "wait_row_1", executionId: "exec_1" }),
+              waitRow({ id: "wait_row_2", executionId: "exec_2" }),
+            ],
+            nodeOutputs: { before_1: { value: "ok" } },
+            repinVersion: (repin) =>
+              repin.executionId === "exec_1"
+                ? Effect.fail(
+                    new DatabaseError({ cause: new Error("write failed") })
+                  )
+                : Effect.succeed(true),
+          });
+
+          const result = yield* migrateExecutions({
+            workflowId: WORKFLOW_ID,
+            targetVersionId: TARGET_VERSION_ID,
+            executionIds: ["exec_1", "exec_2"],
+          }).pipe(Effect.provide(seams.layer));
+
+          assert.deepStrictEqual(result.outcomes, [
+            { executionId: "exec_1", status: "failed" },
+            { executionId: "exec_2", status: "migrated", signaled: true },
+          ]);
+          assert.deepStrictEqual(seams.calls.signals, [
+            {
+              executionId: "exec_2",
+              nodeId: "wait_1",
+              token: null,
+              signalType: "version-migrate",
+            },
+          ]);
+        })
+    );
+
+    it.effect("signals a run already on the target that is still parked", () =>
+      Effect.gen(function* () {
+        const seams = makeMigrationSeams({
+          executions: [
+            inFlightRow({
+              id: "exec_1",
+              workflowVersionId: TARGET_VERSION_ID,
+              versionNumber: 2,
+            }),
+          ],
+          waitStates: [waitRow({ id: "wait_row_1", executionId: "exec_1" })],
+        });
+
+        const result = yield* migrateExecutions({
+          workflowId: WORKFLOW_ID,
+          targetVersionId: TARGET_VERSION_ID,
+          executionIds: ["exec_1"],
+        }).pipe(Effect.provide(seams.layer));
+
+        assert.deepStrictEqual(result.outcomes, [
+          { executionId: "exec_1", status: "already_current" },
+        ]);
+        assert.deepStrictEqual(seams.calls.order, ["signal"]);
+        assert.deepStrictEqual(seams.calls.repins, []);
+      })
     );
 
     it.effect("reports a run already on the target as already current", () =>

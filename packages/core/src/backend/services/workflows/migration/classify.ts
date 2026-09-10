@@ -33,6 +33,7 @@ import {
   type JsonValue,
   readJsonObjectLeniently,
 } from "@wfgraph/shared/types/json";
+import { decodeIsoTimestamp } from "@wfgraph/shared/types/timestamp";
 import { parseDurationMs } from "@wfgraph/shared/utils/wait-time";
 import type { PublishedWorkflowVersion } from "#src/backend/lib/db/schema";
 import {
@@ -57,16 +58,25 @@ import {
 const NODE_OUTPUT_READ_CONCURRENCY = 8;
 
 /**
- * How many run ids one parked-wait read is given.
+ * How many run ids one batched read is given.
  *
- * The read expands to an `IN` list, and both engines have a bound on how long
- * one statement's parameter list may be.
+ * A batched read expands to an `IN` list, and both engines have a bound on how
+ * long one statement's parameter list may be. The parked wait rows and the
+ * logged node ids are both read this way.
  */
-const WAIT_LOOKUP_CHUNK_SIZE = 500;
+const EXECUTION_LOOKUP_CHUNK_SIZE = 500;
 
 export type MigrationClassification =
-  /** Already pinned to the target version, so there is nothing to move. */
-  | { kind: "already_current"; candidate: InFlightExecutionRow }
+  /**
+   * Already pinned to the target version, so the pointer has nothing to move.
+   * The rows the run is parked on come along, because a migrate call wakes them
+   * for a run repinned by an earlier call whose signal never went out.
+   */
+  | {
+      kind: "already_current";
+      candidate: InFlightExecutionRow;
+      waitStates: WorkflowWaitState[];
+    }
   | {
       kind: "eligible";
       candidate: InFlightExecutionRow;
@@ -120,9 +130,28 @@ type ParkedWait = {
   scan: WaitNodeScan;
 };
 
+/**
+ * Every template reference written into one node's config.
+ *
+ * A config is JSON. Reading it back as JSON drops a key the editor cleared and
+ * leaves every template beside it in the walk.
+ */
+function referencesOf(node: WorkflowNode): PendingReference[] {
+  const config = readJsonObjectLeniently(node.data.config);
+
+  return config === null
+    ? []
+    : extractAllTemplateReferences(config).map((reference) => ({
+        nodeId: node.id,
+        field: reference.field,
+        referencedNodeId: reference.nodeId,
+        referencedFieldPath: reference.fieldPath,
+      }));
+}
+
 function scanWaitNode(input: {
   waitNode: WorkflowNode;
-  nodes: readonly WorkflowNode[];
+  referencesByNode: Map<string, PendingReference[]>;
   edges: readonly WorkflowEdge[];
 }): WaitNodeScan {
   const reach = descendantsOf({
@@ -134,23 +163,9 @@ function scanWaitNode(input: {
   // The Wait node's own config is scanned beside the nodes below it, because
   // the migrated hop resolves that config again: its `waitFor` matches, its
   // `waitUntil` and its `waitDuration` are all templates the run must answer.
-  const references = input.nodes.flatMap((node) => {
-    // A config is JSON. Reading it back as JSON drops a key the editor cleared
-    // and leaves every template beside it in the walk.
-    const config =
-      reach.has(node.id) && node.data.enabled !== false
-        ? readJsonObjectLeniently(node.data.config)
-        : null;
-
-    return config === null
-      ? []
-      : extractAllTemplateReferences(config).map((reference) => ({
-          nodeId: node.id,
-          field: reference.field,
-          referencedNodeId: reference.nodeId,
-          referencedFieldPath: reference.fieldPath,
-        }));
-  });
+  const references = [...reach].flatMap(
+    (nodeId) => input.referencesByNode.get(nodeId) ?? []
+  );
 
   const config = input.waitNode.data.config;
   const timeout = config?.waitTimeout;
@@ -171,17 +186,29 @@ function scanWaitNode(input: {
   };
 }
 
-/** Every enabled Wait node of the target graph, scanned once for the whole set. */
+/**
+ * Every enabled Wait node of the target graph, scanned once for the whole set.
+ *
+ * Each enabled node's templates are extracted once here and read by every Wait
+ * whose reach holds that node, so a graph with several Waits walks each config
+ * one time.
+ */
 function scanWaitNodes(
   nodes: readonly WorkflowNode[],
   edges: readonly WorkflowEdge[]
 ): Map<string, WaitNodeScan> {
+  const referencesByNode = new Map(
+    nodes
+      .filter((node) => node.data.enabled !== false)
+      .map((node) => [node.id, referencesOf(node)] as const)
+  );
+
   return new Map(
     nodes
       .filter((node) => isWaitActionType(enabledActionTypeOf(node)))
       .map((waitNode) => [
         waitNode.id,
-        scanWaitNode({ waitNode, nodes, edges }),
+        scanWaitNode({ waitNode, referencesByNode, edges }),
       ])
   );
 }
@@ -192,8 +219,26 @@ const listParkedWaits = Effect.fn("listParkedWaits")(function* (
 ) {
   const repo = yield* ExecutionRepo;
   const pages = yield* Effect.forEach(
-    chunk(executionIds, WAIT_LOOKUP_CHUNK_SIZE),
+    chunk(executionIds, EXECUTION_LOOKUP_CHUNK_SIZE),
     (ids) => repo.listWaitingStatesForExecutions(ids)
+  );
+
+  return new Map(pages.flatMap((page) => [...page]));
+});
+
+/**
+ * The node ids every candidate has a run-log row for, read in bounded batches.
+ *
+ * A run with no rows is absent from the map the repository answers with, and a
+ * run absent here reads as having produced nothing.
+ */
+const listLoggedNodeIds = Effect.fn("listLoggedNodeIds")(function* (
+  executionIds: string[]
+) {
+  const repo = yield* ExecutionRepo;
+  const pages = yield* Effect.forEach(
+    chunk(executionIds, EXECUTION_LOOKUP_CHUNK_SIZE),
+    (ids) => repo.listLoggedNodeIdsForExecutions(ids)
   );
 
   return new Map(pages.flatMap((page) => [...page]));
@@ -294,19 +339,26 @@ function referenceResolves(
   );
 }
 
-/** What one parked wait row's target timeout says about this run. */
-type WaitTimeoutVerdict =
-  /** The hop has time left, the target Wait waits for no Event, or the resolved text is no duration. */
-  | "within"
-  /** The resolved timeout, measured from the park, is already in the past. */
-  | "elapsed"
-  /** A token in the timeout names an output the run never recorded. */
-  | "unresolved";
+/**
+ * The instant a parked row's timeout is measured from.
+ *
+ * The first park writes the instant it resolved against onto the row's
+ * metadata as `anchorAt`, and every recompute of that Wait resolves durations
+ * and targets from it. A row written before that key existed carries none, and
+ * the row's own `createdAt` is the instant it was opened at.
+ */
+function parkAnchorMs(waitState: WorkflowWaitState): number {
+  const anchorAt = waitState.metadata?.anchorAt;
+  const anchor =
+    typeof anchorAt === "string" ? decodeIsoTimestamp(anchorAt) : null;
+
+  return (anchor ?? waitState.createdAt).getTime();
+}
 
 /**
  * Whether the migrated hop would time out the moment it woke.
  *
- * The park instant is the row's own `createdAt`, and both the timeout and the
+ * The park instant is the row's anchor, and both the timeout and the
  * shape are the target Wait's, because that is what the migrated hop is
  * computed from: a run that parked on a delay and lands on an Event Wait waits
  * for that Event under the target's timeout. The timeout is resolved against
@@ -318,41 +370,56 @@ type WaitTimeoutVerdict =
  *
  * A target Wait in delay mode is never refused for this: it has no Event to
  * miss, and a delay target already in the past resumes at once, which is a
- * legitimate reason to migrate.
+ * legitimate reason to migrate. A timeout whose resolved text is no duration is
+ * not refused either, because the hop parks on the engine's own fallback.
+ *
+ * Every token in the timeout has been checked against the recorded outputs
+ * before this runs, so the resolved text holds no unanswered token.
  */
-function waitTimeoutVerdict(input: {
+function waitTimeoutElapsed(input: {
   parked: ParkedWait;
   outputs: NodeOutputs;
   now: number;
-}): WaitTimeoutVerdict {
+}): boolean {
   const eventTimeout = input.parked.scan.eventTimeout;
   if (eventTimeout === null) {
-    return "within";
-  }
-
-  if (
-    eventTimeout.tokens.some(
-      (token) => !outputPathResolves(token, input.outputs)
-    )
-  ) {
-    return "unresolved";
+    return false;
   }
 
   const timeoutMs = parseDurationMs(
     resolveTemplateString(eventTimeout.template, input.outputs)
   );
 
-  return timeoutMs !== null &&
-    input.parked.waitState.createdAt.getTime() + timeoutMs <= input.now
-    ? "elapsed"
-    : "within";
+  return (
+    timeoutMs !== null &&
+    parkAnchorMs(input.parked.waitState) + timeoutMs <= input.now
+  );
+}
+
+/**
+ * The timeout tokens of one parked row, as references named by the field they
+ * were written into.
+ *
+ * The elapsed check needs a duration, so a token here is answered from the
+ * recorded outputs whether or not the node it names is upstream of the Wait.
+ */
+function timeoutReferences(parked: ParkedWait): PendingReference[] {
+  return (parked.scan.eventTimeout?.tokens ?? []).map((token) => ({
+    nodeId: parked.waitState.nodeId,
+    field: "waitTimeout",
+    referencedNodeId: token.nodeId,
+    referencedFieldPath: token.fieldPath,
+  }));
 }
 
 const classifyOne = Effect.fn("classifyOne")(function* (input: {
   candidate: InFlightExecutionRow;
   waitStates: WorkflowWaitState[];
   waitNodes: Map<string, WaitNodeScan>;
-  targetNodes: readonly WorkflowNode[];
+  /** The target nodes a run has to hold a node log row for, unless a parked Wait reaches them. */
+  checkedNodes: readonly WorkflowNode[];
+  /** The node ids this run has a run-log row for, empty when no node is checked. */
+  loggedNodeIds: Set<string>;
   targetEdges: readonly WorkflowEdge[];
   targetVersion: PublishedWorkflowVersion;
   now: number;
@@ -376,6 +443,7 @@ const classifyOne = Effect.fn("classifyOne")(function* (input: {
     return {
       kind: "already_current",
       candidate,
+      waitStates,
     } satisfies MigrationClassification;
   }
 
@@ -394,65 +462,27 @@ const classifyOne = Effect.fn("classifyOne")(function* (input: {
     return refuse("waits_nested", nested);
   }
 
-  const pending = parked
-    .flatMap((entry) => entry.scan.references)
-    .filter(
-      (reference) =>
-        !upstreamNodeIds(reference.nodeId, input.targetEdges).has(
-          reference.referencedNodeId
-        )
-    );
+  // Every reference the target graph alone cannot answer, in one list: the
+  // parked Waits' own timeout tokens first, then the templates below them that
+  // graph order does not already cover.
+  const pending = [
+    ...parked.flatMap(timeoutReferences),
+    ...parked
+      .flatMap((entry) => entry.scan.references)
+      .filter(
+        (reference) =>
+          !upstreamNodeIds(reference.nodeId, input.targetEdges).has(
+            reference.referencedNodeId
+          )
+      ),
+  ];
 
-  // One read answers both the timeout templates and the references, and a run
-  // whose target graph asks neither question costs no read at all.
+  // One read answers the whole list, and a run whose target graph asks nothing
+  // of the recorded outputs costs no read at all.
   const repo = yield* ExecutionRepo;
-  const needsOutputs =
-    pending.length > 0 ||
-    parked.some((entry) => (entry.scan.eventTimeout?.tokens.length ?? 0) > 0);
   const outputs = toNodeOutputs(
-    needsOutputs ? yield* repo.readNodeOutputs(candidate.id) : {}
+    pending.length > 0 ? yield* repo.readNodeOutputs(candidate.id) : {}
   );
-
-  const timeouts = parked.map((entry) => ({
-    waitState: entry.waitState,
-    verdict: waitTimeoutVerdict({
-      parked: entry,
-      outputs,
-      now: input.now,
-    }),
-  }));
-
-  const unresolvedTimeout = timeouts.find(
-    (entry) => entry.verdict === "unresolved"
-  );
-  if (unresolvedTimeout) {
-    // The token sits in the Wait's own `waitTimeout`, which is also the field
-    // the reference check below names it by, so the run reads the same refusal
-    // whichever check reaches it first.
-    return refuse(
-      "unresolved_reference",
-      `${unresolvedTimeout.waitState.nodeId}.waitTimeout`
-    );
-  }
-
-  const elapsed = timeouts.find((entry) => entry.verdict === "elapsed");
-  if (elapsed) {
-    return refuse("wait_timeout_elapsed", elapsed.waitState.nodeId);
-  }
-
-  const reachable = new Set(parked.flatMap((entry) => [...entry.scan.reach]));
-  const nodeStatuses = yield* repo.listNodeStatuses(candidate.id);
-  const loggedNodeIds = new Set(nodeStatuses.map((row) => row.nodeId));
-  const addedAboveWait = input.targetNodes.find(
-    (node) =>
-      node.data.enabled !== false &&
-      !isLifecycleNode(node) &&
-      !reachable.has(node.id) &&
-      !loggedNodeIds.has(node.id)
-  );
-  if (addedAboveWait) {
-    return refuse("node_added_above_wait", addedAboveWait.id);
-  }
 
   const unresolved = pending.find(
     (reference) => !referenceResolves(reference, outputs)
@@ -464,6 +494,24 @@ const classifyOne = Effect.fn("classifyOne")(function* (input: {
     );
   }
 
+  const elapsed = parked.find((entry) =>
+    waitTimeoutElapsed({ parked: entry, outputs, now: input.now })
+  );
+  if (elapsed) {
+    return refuse("wait_timeout_elapsed", elapsed.waitState.nodeId);
+  }
+
+  // Only a node the target graph places outside every parked Wait's reach can
+  // be new to this run, so a target whose reach covers the graph asks the node
+  // log nothing.
+  const reachable = new Set(parked.flatMap((entry) => [...entry.scan.reach]));
+  const addedAboveWait = input.checkedNodes.find(
+    (node) => !reachable.has(node.id) && !input.loggedNodeIds.has(node.id)
+  );
+  if (addedAboveWait) {
+    return refuse("node_added_above_wait", addedAboveWait.id);
+  }
+
   return {
     kind: "eligible",
     candidate,
@@ -473,8 +521,9 @@ const classifyOne = Effect.fn("classifyOne")(function* (input: {
 
 /**
  * Classifies each candidate against the target version, reading the parked wait
- * rows once for the whole set, each candidate's node statuses, and one run's
- * outputs only when a template it would run needs them.
+ * rows once for the whole set, the logged node ids once for the whole set when
+ * the target graph holds a node a run could be missing, and one run's outputs
+ * only when a template it would run needs them.
  */
 export const classifyMigrationCandidates = Effect.fn(
   "classifyMigrationCandidates"
@@ -484,9 +533,20 @@ export const classifyMigrationCandidates = Effect.fn(
 }) {
   const graph = toWorkflowGraphData(input.targetVersion.graph);
   const waitNodes = scanWaitNodes(graph.nodes, graph.edges);
-  const waitsByExecution = yield* listParkedWaits(
-    input.candidates.map((candidate) => candidate.id)
+  // A disabled node never runs, and the Lifecycle node is the run's entry
+  // rather than work a target version adds, so neither can be a node this run
+  // is missing.
+  const checkedNodes = graph.nodes.filter(
+    (node) => node.data.enabled !== false && !isLifecycleNode(node)
   );
+  const executionIds = input.candidates.map((candidate) => candidate.id);
+  const waitsByExecution = yield* listParkedWaits(executionIds);
+  // A target graph whose Waits reach every node has nothing to compare a run
+  // log against, so the whole set is spared the read.
+  const loggedByExecution =
+    checkedNodes.length > 0
+      ? yield* listLoggedNodeIds(executionIds)
+      : new Map<string, Set<string>>();
   const now = Date.now();
 
   return yield* Effect.forEach(
@@ -496,7 +556,8 @@ export const classifyMigrationCandidates = Effect.fn(
         candidate,
         waitStates: waitsByExecution.get(candidate.id) ?? [],
         waitNodes,
-        targetNodes: graph.nodes,
+        checkedNodes,
+        loggedNodeIds: loggedByExecution.get(candidate.id) ?? new Set(),
         targetEdges: graph.edges,
         targetVersion: input.targetVersion,
         now,

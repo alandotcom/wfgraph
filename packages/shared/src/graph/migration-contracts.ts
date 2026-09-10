@@ -29,7 +29,10 @@
  *   and measured from when the run parked, is already in the past. The migrated
  *   hop would time out on arrival.
  *
- * The migrate call adds one reason of its own. `not_requested_version` means
+ * The migrate call adds one outcome status and one reason of its own. The
+ * status `failed` means a read or write for that run was refused: the run stays
+ * on the version it pinned, the failure is logged, and the other runs in the
+ * call still moved. `not_requested_version` means
  * the guard had nothing to move: either the guarded pointer move changed no
  * row, or the run had already left the in-flight list by the time the call
  * arrived. Either way the run woke, ended, or was moved by another caller
@@ -118,6 +121,10 @@ export const workflowMigrationOutcomeSchema = Schema.Union([
   Schema.Struct({
     executionId: NonEmptyTrimmedString,
     status: Schema.Literal("already_current"),
+  }),
+  Schema.Struct({
+    executionId: NonEmptyTrimmedString,
+    status: Schema.Literal("failed"),
   }),
   Schema.Struct({
     executionId: NonEmptyTrimmedString,
