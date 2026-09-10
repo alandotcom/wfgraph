@@ -14,8 +14,11 @@ import type {
   CompleteStepLogInput,
   CreateWaitStateInput,
   MarkWaitStateStatusInput,
+  ReparkWaitStateInput,
+  ReparkWaitStateOutcome,
   RecordAuditEventInput,
   StartStepLogInput,
+  WaitStateSnapshot,
   WorkflowStore,
 } from "#src/backend/engine/store";
 
@@ -25,8 +28,11 @@ type StoreCallInputs = {
   completeStepLog: CompleteStepLogInput;
   recordAuditEvent: RecordAuditEventInput;
   createWaitState: CreateWaitStateInput;
+  reparkWaitState: ReparkWaitStateInput;
   markWaitStateStatus: MarkWaitStateStatusInput;
-  markExecutionRunning: { executionId: string };
+  readWaitState: { waitStateId: string };
+  markExecutionRunning: { executionId: string; workflowVersionId: string };
+  markExecutionWaitingIfParked: { executionId: string };
   readPendingCancel: { executionId: string };
   completeRun: CompleteRunInput;
   readNodeOutputs: { executionId: string };
@@ -44,6 +50,31 @@ export type RecordingWorkflowStore = WorkflowStore & {
   readonly calls: RecordedStoreCall[];
   /** Inputs of the calls made to one method, in order. */
   callsOf<M extends StoreMethod>(method: M): StoreCallInputs[M][];
+  /**
+   * Set to `undefined` to model a first park the execution row refused, which
+   * is a run that ended or was moved to another Workflow Version. Left unset,
+   * every park opens a row.
+   */
+  createWaitStateAnswer: { waitStateId: string } | undefined | "open";
+  /**
+   * What `reparkWaitState` answers. A refusal models the guard that turned the
+   * write down: `not_waiting` is a row that left `waiting` between the wake and
+   * the re-park, `version_moved` is a Migration landing inside the park.
+   */
+  reparkAnswer: ReparkWaitStateOutcome;
+  /** What `readWaitState` answers, for the case a re-park was refused. */
+  waitState: WaitStateSnapshot | null;
+  /**
+   * What `markExecutionRunning` answers. False models a Migration landing
+   * between a Wait's wake and its resume, which the resume treats as a step
+   * failure.
+   */
+  markRunningAnswer: boolean;
+  /**
+   * What `markExecutionWaitingIfParked` answers. True models a run whose sibling
+   * branch is still parked when this branch finishes.
+   */
+  waitingIfParkedAnswer: boolean;
   reset(): void;
 };
 
@@ -58,18 +89,27 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
     completeStepLog: [],
     recordAuditEvent: [],
     createWaitState: [],
+    reparkWaitState: [],
     markWaitStateStatus: [],
+    readWaitState: [],
     markExecutionRunning: [],
+    markExecutionWaitingIfParked: [],
     readPendingCancel: [],
     completeRun: [],
     readNodeOutputs: [],
     cancelOpenWork: [],
   };
 
-  return {
+  const store: RecordingWorkflowStore = {
     calls,
 
     callsOf: (method) => byMethod[method],
+
+    createWaitStateAnswer: "open",
+    reparkAnswer: { ok: true },
+    waitState: null,
+    markRunningAnswer: true,
+    waitingIfParkedAnswer: false,
 
     reset() {
       calls.length = 0;
@@ -110,9 +150,26 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
       return Effect.sync(() => {
         calls.push({ method: "createWaitState", input });
         byMethod.createWaitState.push(input);
-        return {
-          waitStateId: `wait_state_${byMethod.createWaitState.length}`,
-        };
+        return store.createWaitStateAnswer === "open"
+          ? { waitStateId: `wait_state_${byMethod.createWaitState.length}` }
+          : store.createWaitStateAnswer;
+      });
+    },
+
+    reparkWaitState(input) {
+      return Effect.sync(() => {
+        calls.push({ method: "reparkWaitState", input });
+        byMethod.reparkWaitState.push(input);
+        return store.reparkAnswer;
+      });
+    },
+
+    readWaitState(waitStateId) {
+      return Effect.sync(() => {
+        const input = { waitStateId };
+        calls.push({ method: "readWaitState", input });
+        byMethod.readWaitState.push(input);
+        return store.waitState;
       });
     },
 
@@ -127,6 +184,15 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
       return Effect.sync(() => {
         calls.push({ method: "markExecutionRunning", input });
         byMethod.markExecutionRunning.push(input);
+        return store.markRunningAnswer;
+      });
+    },
+
+    markExecutionWaitingIfParked(input) {
+      return Effect.sync(() => {
+        calls.push({ method: "markExecutionWaitingIfParked", input });
+        byMethod.markExecutionWaitingIfParked.push(input);
+        return store.waitingIfParkedAnswer;
       });
     },
 
@@ -166,4 +232,6 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
       });
     },
   };
+
+  return store;
 }

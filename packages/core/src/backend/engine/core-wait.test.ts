@@ -10,21 +10,20 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import type { JsonObject } from "@wfgraph/shared/types/json";
-import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import { resolveOutputPath } from "@wfgraph/shared/graph/node-references";
-import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import { executeTestWorkflow as executeWorkflow } from "#src/backend/engine/test-execution";
-import {
-  type ExecutionResult,
-  executionData,
-  executionError,
-} from "#src/backend/engine/contracts";
+import { executionError } from "#src/backend/engine/contracts";
 import {
   createRecordingWorkflowStore,
   type RecordingWorkflowStore,
 } from "#src/backend/engine/recording-store";
 import { noWorkflowActions } from "#src/backend/engine/actions";
 import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
+import {
+  createWaitGraph,
+  waitOutput,
+  waitResumeSignal,
+} from "#src/backend/engine/testing/wait-fixtures";
 
 /**
  * The Wait node's own run-log rows.
@@ -50,69 +49,6 @@ function waitStepLogs(store: RecordingWorkflowStore) {
       .callsOf("completeStepLog")
       .filter((call) => waitLogIds.has(call.logId)),
   };
-}
-
-function createLifecycleNode(id: string): WorkflowNode {
-  return {
-    id,
-    type: "lifecycle",
-    position: { x: 0, y: 0 },
-    data: {
-      label: "Lifecycle",
-      type: "lifecycle",
-      config: {},
-    },
-  };
-}
-
-function createWaitNode(
-  id: string,
-  config: Record<string, unknown>
-): WorkflowNode {
-  return {
-    id,
-    type: "action",
-    position: { x: 0, y: 0 },
-    data: {
-      label: "Wait",
-      type: "action",
-      config: { actionType: "Wait", ...config },
-    },
-  };
-}
-
-// A node below the wait, so whether the wait halted its branch is a fact about
-// what ran rather than a flag on the wait's own result.
-function createAfterWaitNode(): WorkflowNode {
-  return {
-    id: "after_wait",
-    type: "action",
-    position: { x: 0, y: 0 },
-    data: {
-      label: "After Wait",
-      type: "action",
-      config: { actionType: "Condition", condition: true },
-    },
-  };
-}
-
-function createWaitGraph(config: Record<string, unknown>) {
-  return createSerializedWorkflowGraph({
-    nodes: [
-      createLifecycleNode("lifecycle_1"),
-      createWaitNode("wait_1", config),
-      createAfterWaitNode(),
-    ],
-    edges: [
-      {
-        id: "edge_1",
-        source: "lifecycle_1",
-        sourceHandle: "started",
-        target: "wait_1",
-      },
-      { id: "edge_2", source: "wait_1", target: "after_wait" },
-    ],
-  });
 }
 
 type RunWaitOptions = {
@@ -143,52 +79,8 @@ function matchOn(field: string, value: string): string {
   });
 }
 
-/**
- * A resume as `resume-waits.ts` sends it: an Inngest event whose `data` is the
- * `workflow/wait.signal` envelope, with the arriving Event's payload inside it.
- * The nesting is what the node's output has to strip.
- */
-function waitResumeSignal(
-  payload: JsonObject,
-  eventType = "billing/payment.settled"
-) {
-  return {
-    name: "workflow/wait.signal",
-    id: "evt_signal",
-    ts: 0,
-    data: {
-      executionId: "exec_wait",
-      nodeId: "wait_1",
-      token: "token_1",
-      eventType,
-      signalType: "wait-resume",
-      payload,
-    },
-  };
-}
-
-/**
- * The Wait node returns an ExecutionResult, which the engine then stores whole
- * as the node's data - so the wait's own output sits one level in.
- */
-function waitOutput(result: { results: Record<string, ExecutionResult> }) {
-  const nodeData = executionData(result.results.wait_1) as { data?: unknown };
-  return nodeData?.data as Record<string, unknown>;
-}
-
-/**
- * Whether the wait node halted its branch, read the way a builder would see it:
- * the node below the wait never ran.
- */
-function waitHaltedBranch(result: {
-  results: Record<string, ExecutionResult>;
-}): boolean {
-  return result.results.after_wait === undefined;
-}
-
 function runWait(options: RunWaitOptions) {
   const runtime = createInMemoryWorkflowRuntime({
-    skipSleep: true,
     resumeEvent: options.resumeEvent ?? null,
     memo: options.memo,
   });
@@ -236,15 +128,26 @@ describe("wait node - delay mode", () => {
     expect(created[0]?.nodeId).toBe("wait_1");
     expect(created[0]?.executionId).toBe("exec_wait");
 
-    // Roughly an hour, allowing for the milliseconds the run itself took.
-    const sleep = runtime.sleeps.find((s) => s.stepId === "wait-delay-wait_1");
-    expect(sleep?.durationMs).toBeGreaterThan(3_500_000);
+    // The park is a signal wait whose timeout is what is left of the delay:
+    // roughly an hour, allowing for the milliseconds the run itself took.
+    const park = runtime.waits.find(
+      (wait) => wait.stepId === "wait-park-wait_1-0"
+    );
+    expect(park?.options.timeoutMs).toBeGreaterThan(3_500_000);
+    // A delay wait answers to a Migration and to nothing else.
+    expect(park?.options.ifExpression).toContain(
+      'async.data.signalType == "version-migrate"'
+    );
+    expect(park?.options.ifExpression).not.toContain("wait-resume");
 
+    // One park, so the row is written once and never re-parked.
+    expect(store.callsOf("reparkWaitState")).toHaveLength(0);
+    expect(waitData.hops).toBe(1);
     expect(store.callsOf("markWaitStateStatus")).toEqual([
       { waitStateId: "wait_state_1", status: "resumed" },
     ]);
     expect(store.callsOf("markExecutionRunning")).toEqual([
-      { executionId: "exec_wait" },
+      { executionId: "exec_wait", workflowVersionId: "ver_test" },
     ]);
 
     const auditTypes = store
@@ -270,14 +173,14 @@ describe("wait node - delay mode", () => {
     });
     const result = await execution;
 
-    expect(waitHaltedBranch(result)).toBe(true);
+    expect(result.results.after_wait).toBeUndefined();
     expect(waitOutput(result)).toMatchObject({
       skipped: true,
       skippedReason: "past_due_no_wait",
     });
-    // Nothing to wait for means no wait-state row and no sleep at all.
+    // Nothing to wait for means no wait-state row and no park at all.
     expect(store.callsOf("createWaitState")).toHaveLength(0);
-    expect(runtime.sleeps).toHaveLength(0);
+    expect(runtime.waits).toHaveLength(0);
     expect(store.callsOf("recordAuditEvent")[0]?.eventType).toBe("run_skipped");
   });
 
@@ -334,7 +237,7 @@ describe("wait node - event mode", () => {
     });
     // An ordinary resume carries the run on, which is what makes the halting
     // assertions elsewhere in this file mean something.
-    expect(waitHaltedBranch(result)).toBe(false);
+    expect(result.results.after_wait).toBeDefined();
     expect(result.results.after_wait?.success).toBe(true);
 
     const resumeToken = store.callsOf("createWaitState")[0]?.resumeToken;
@@ -342,7 +245,7 @@ describe("wait node - event mode", () => {
     expect(resumeToken).not.toBe("");
 
     const wait = runtime.waits.at(0);
-    expect(wait?.stepId).toBe("wait-event-wait_1");
+    expect(wait?.stepId).toBe("wait-park-wait_1-0");
     expect(wait?.options.event).toBe("workflow/wait.signal");
     expect(wait?.options.ifExpression).toContain(`"${resumeToken}"`);
     expect(wait?.options.ifExpression).toContain(
@@ -353,7 +256,45 @@ describe("wait node - event mode", () => {
     expect(store.callsOf("createWaitState")[0]).toMatchObject({
       waitType: "event",
     });
-    expect(store.callsOf("markWaitStateStatus")[0]?.status).toBe("resumed");
+    // The signal producer settles its fenced claim. The engine records the
+    // resume only after consuming that durable wake.
+    expect(store.callsOf("markWaitStateStatus")).toHaveLength(0);
+    expect(store.callsOf("markExecutionRunning")).toEqual([
+      { executionId: "exec_wait", workflowVersionId: "ver_test" },
+    ]);
+    expect(
+      store
+        .callsOf("recordAuditEvent")
+        .filter((event) => event.eventType === "run_resumed")
+    ).toEqual([
+      expect.objectContaining({
+        message: "Run resumed from wait on billing/payment.settled",
+      }),
+    ]);
+  });
+
+  it("records a manual resume as coming from the runs panel", async () => {
+    const { execution } = runWait({
+      config: {
+        waitMode: "event",
+        waitFor: [{ event: "billing/payment.settled" }],
+        waitTimeout: "7d",
+      },
+      store,
+      resumeEvent: waitResumeSignal({ approved: true }, null),
+    });
+    await execution;
+
+    expect(
+      store
+        .callsOf("recordAuditEvent")
+        .filter((event) => event.eventType === "run_resumed")
+    ).toEqual([
+      expect.objectContaining({
+        message: "Run resumed from the runs panel",
+        metadata: { nodeId: "wait_1", hops: 1, waitStateId: "wait_state_1" },
+      }),
+    ]);
   });
 
   // The node output is the arriving Event's payload and nothing of the signal
@@ -683,7 +624,7 @@ describe("wait node - event mode", () => {
     });
     const result = await execution;
 
-    expect(waitHaltedBranch(result)).toBe(true);
+    expect(result.results.after_wait).toBeUndefined();
     expect(waitOutput(result)).toMatchObject({
       skipped: true,
       skippedReason: "timeout_skip",
@@ -708,7 +649,7 @@ describe("wait node - event mode", () => {
     };
 
     await runWait({ config: parked, store, memo, resumeEvent: null }).execution;
-    memo.delete("wait-event-resume-wait_1");
+    memo.delete("wait-resume-wait_1-0");
 
     const result = await runWait({
       config: { ...parked, waitTimeoutBehavior: "continue" },
@@ -717,7 +658,7 @@ describe("wait node - event mode", () => {
       resumeEvent: null,
     }).execution;
 
-    expect(waitHaltedBranch(result)).toBe(true);
+    expect(result.results.after_wait).toBeUndefined();
     expect(waitOutput(result)).toMatchObject({
       skipped: true,
       skippedReason: "timeout_skip",

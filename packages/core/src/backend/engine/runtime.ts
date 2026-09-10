@@ -31,7 +31,6 @@ export type WaitForEventOptions = {
 export type DurableStepRef = { id: string; name?: string };
 
 export type WorkflowExecutionRuntime = {
-  sleep: (step: DurableStepRef, durationMs: number) => Promise<void>;
   waitForEvent: (
     step: DurableStepRef,
     options: WaitForEventOptions
@@ -90,15 +89,12 @@ export type InMemoryRuntimeOptions = {
   memo?: Map<string, unknown> | undefined;
   /** What `waitForEvent` resolves to. `null` models a timeout. */
   resumeEvent?: unknown;
-  /** Resolve sleeps immediately instead of sitting through a real timer. */
-  skipSleep?: boolean | undefined;
   /** The attempt this runtime reports. See `WorkflowExecutionRuntime.attempt`. */
   attempt?: number | undefined;
 };
 
 export type InMemoryWorkflowRuntime = WorkflowExecutionRuntime & {
   readonly memo: Map<string, unknown>;
-  readonly sleeps: Array<{ stepId: string; durationMs: number }>;
   readonly waits: Array<{ stepId: string; options: WaitForEventOptions }>;
 };
 
@@ -120,26 +116,14 @@ export type InMemoryWorkflowRuntime = WorkflowExecutionRuntime & {
 export function createInMemoryWorkflowRuntime(
   options: InMemoryRuntimeOptions = {}
 ): InMemoryWorkflowRuntime {
-  const { resumeEvent = null, skipSleep = false, attempt = 0 } = options;
+  const { resumeEvent = null, attempt = 0 } = options;
   const memo = options.memo ?? new Map<string, unknown>();
-  const sleeps: Array<{ stepId: string; durationMs: number }> = [];
   const waits: Array<{ stepId: string; options: WaitForEventOptions }> = [];
 
   return {
     memo,
-    sleeps,
     waits,
     attempt,
-
-    sleep: async (step, durationMs) => {
-      sleeps.push({ stepId: step.id, durationMs });
-      if (skipSleep || durationMs <= 0) {
-        return;
-      }
-      await new Promise((resolve) => {
-        setTimeout(resolve, durationMs);
-      });
-    },
 
     waitForEvent: (step, waitOptions) => {
       waits.push({ stepId: step.id, options: waitOptions });

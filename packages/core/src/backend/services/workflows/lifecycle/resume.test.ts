@@ -13,10 +13,7 @@ import {
   stubExecutionRepo,
   stubInngestClient,
 } from "#src/backend/lib/effect/test-layers";
-import type {
-  ExecutionRepo,
-  WorkflowWaitState,
-} from "#src/backend/services/executions/repo";
+import type { WorkflowWaitState } from "#src/backend/services/executions/repo";
 import { resumeWaitByToken } from "#src/backend/services/workflows/lifecycle/resume";
 
 const RESUME_TOKEN = "resume_token_1";
@@ -43,21 +40,20 @@ const liveWaitState: WorkflowWaitState = {
 function makeResumeSeams(input: {
   waitState?: WorkflowWaitState | undefined;
   sendWaitSignal?: InngestClient["Service"]["sendWaitSignal"] | undefined;
+  /** What `settleWaitingStateClaim` answers. Defaults to the claim settling. */
+  settled?: boolean | undefined;
 }) {
   const calls = {
     tokenLookups: [] as string[],
     claimed: false,
-    auditEvents: [] as Parameters<
-      ExecutionRepo["Service"]["recordAuditEvent"]
-    >[0][],
   };
 
   return {
     layer: Layer.mergeAll(
       stubExecutionRepo({
-        claimWaitingStateByToken: (hookToken) =>
+        claimWaitingStateByToken: ({ resumeToken }) =>
           Effect.sync(() => {
-            calls.tokenLookups.push(hookToken);
+            calls.tokenLookups.push(resumeToken);
             if (calls.claimed || !input.waitState) {
               return null;
             }
@@ -72,12 +68,7 @@ function makeResumeSeams(input: {
             calls.claimed = false;
             return true;
           }),
-        settleWaitingStateClaim: () => Effect.succeed(true),
-        markRunning: () => Effect.succeed(true),
-        recordAuditEvent: (event) =>
-          Effect.sync(() => {
-            calls.auditEvents.push(event);
-          }),
+        settleWaitingStateClaim: () => Effect.succeed(input.settled ?? true),
       }),
       // Left refusing unless a test supplies one, so a send from a request that
       // should never have got this far kills the test.
@@ -91,7 +82,7 @@ function makeResumeSeams(input: {
 
 describe("resumeWaitByToken", () => {
   layer(SilentAppLoggerLayer)((it) => {
-    it.effect("wakes the waiting node and marks the wait resumed", () =>
+    it.effect("claims the waiting node and sends its resume signal", () =>
       Effect.gen(function* () {
         const signals: Array<
           Parameters<InngestClient["Service"]["sendWaitSignal"]>[0]
@@ -121,15 +112,6 @@ describe("resumeWaitByToken", () => {
             token: RESUME_TOKEN,
             payload: { approved: true },
             signalType: "wait-resume",
-          },
-        ]);
-        assert.deepStrictEqual(seams.calls.auditEvents, [
-          {
-            workflowId: "wf_1",
-            executionId: "exec_1",
-            eventType: "run_resumed",
-            message: "Run resumed from the runs panel",
-            metadata: { waitStateId: "wait_1" },
           },
         ]);
       })
@@ -166,6 +148,30 @@ describe("resumeWaitByToken", () => {
           attempts.filter((attempt) => attempt._tag === "Failure").length,
           1
         );
+      })
+    );
+
+    // The signal is already with the durable runtime by the time the claim is
+    // settled, so a settle another writer won is a run that did resume. Reading
+    // it as a wait nobody could reach would answer 404 for a run that woke.
+    it.effect("reports a resume whose claim another writer settled", () =>
+      Effect.gen(function* () {
+        const seams = makeResumeSeams({
+          waitState: liveWaitState,
+          sendWaitSignal: () => Effect.void,
+          settled: false,
+        });
+
+        const resumed = yield* resumeWaitByToken({
+          token: RESUME_TOKEN,
+          body: { approved: true },
+        }).pipe(Effect.provide(seams.layer));
+
+        assert.deepStrictEqual(resumed, {
+          success: true,
+          status: "resumed",
+          executionId: "exec_1",
+        });
       })
     );
 

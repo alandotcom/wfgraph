@@ -71,6 +71,12 @@ export const builtInActions: readonly ActionMetadata[] = [
         type: "timestamp",
       },
       {
+        path: "hops",
+        description:
+          "How many times the run parked here; more than one means it was migrated to a newer version while waiting",
+        type: "number",
+      },
+      {
         path: "event",
         description: "The name of the Event that resumed the run",
         type: "string",

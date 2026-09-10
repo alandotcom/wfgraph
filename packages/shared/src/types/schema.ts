@@ -28,6 +28,22 @@ export const NonEmptyTrimmedString = Schema.String.pipe(
 ).check(Schema.isMinLength(1));
 
 /**
+ * A whole number above zero: a version number, a page size, a count of things
+ * that exist. `Schema.Finite` is the base so that `NaN` and `Infinity` are
+ * refused before the integer check runs.
+ */
+export const positiveInteger = Schema.Finite.check(
+  Schema.isInt(),
+  Schema.isGreaterThan(0)
+);
+
+/** A whole number of zero or more, for a total that can legitimately be none. */
+export const nonNegativeInteger = Schema.Finite.check(
+  Schema.isInt(),
+  Schema.isGreaterThanOrEqualTo(0)
+);
+
+/**
  * How every schema in this project reads a document that came from outside it.
  *
  * Effect has no per-schema equivalent of Zod's `.strict()`: a closed object is

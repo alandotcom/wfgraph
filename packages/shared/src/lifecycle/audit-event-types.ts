@@ -18,6 +18,7 @@ export const RUN_SCOPED_AUDIT_EVENT_TYPES = [
   "run_waiting",
   "run_skipped",
   "run_resumed",
+  "run_migrated",
   "run_timed_out",
   "run_cancel_requested",
   "run_cancelled",

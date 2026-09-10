@@ -186,6 +186,13 @@ Event needs no lifecycle role to wake a wait, and waking follows Precedence.
 The Events it parks on become the Arriving Event for everything below the
 Wait, which is how an Event Split after a Wait tells those arrivals apart.
 
+**Hop**:
+One park of a Wait node. A Wait parks again on a further hop when a Migration
+makes it recompute its parameters. The Wait's output reports the number of parks
+in a `hops` field. A recompute resolves durations, targets and allowed hours
+from the instant of the first park, so a Migration leaves the clock running from
+that instant.
+
 ### Runs
 
 **Workflow Version**:
@@ -219,9 +226,21 @@ start runs on an Event.
 
 **Execution**:
 One run of one workflow, started by a Start Event, a schedule, or a manual
-test. Pins the Workflow Version it started against. Ends with exactly one
-status: completed, canceled, superseded, or failed.
+test. Pins the Workflow Version it started against, and a Migration is the one
+way that pin moves. Ends with exactly one status: completed, canceled,
+superseded, or failed.
 _Avoid_: workflow (a workflow is the definition; an Execution is one run of it)
+
+**Migration**:
+Moving an open Execution from the Workflow Version it pinned to another
+published version of the same workflow, usually the current one. It reaches a
+run parked on a Wait. The parked Wait recomputes its parameters from the new
+version's config and parks again on the next hop. Nodes below the Wait then run
+the new version's definitions, and nodes above the Wait keep the outputs they
+already produced. A preflight report classifies every in-flight run as eligible
+or refused before anything moves. A refused run stays on its old version, so a
+partial Migration leaves the workflow's runs spread over two versions.
+_Avoid_: rebase, upgrade, hot-swap, version bump
 
 **Draft run**:
 One run of the graph on the canvas, started by the Run draft command. It freezes

@@ -13,9 +13,11 @@ export const TRACER_VERSION = "0.1.0";
 /**
  * Every span is named `wfgraph.<domain>.<snake_case operation>`, and the name is a
  * released contract a host's dashboards key off. Its attributes are identifiers
- * under `wfgraph.<entity>.<field>` plus `wfgraph.outcome`, the one key deliberately
- * outside that family because it names the call rather than an entity. A graph, a
- * payload, an Event body, a step output or a credential is never an attribute.
+ * under `wfgraph.<entity>.<field>`, plus `wfgraph.outcome`, which sits outside
+ * that family because it names the call rather than an entity. A graph, a
+ * payload, an Event body, a step output or a credential is never an attribute,
+ * and neither is a total: a count of what a call touched goes on that call's own
+ * log record.
  */
 export type ServiceSpanFacts = {
   workflowId?: string | undefined;
@@ -25,6 +27,8 @@ export type ServiceSpanFacts = {
   /** The version a comparison reads against, when it differs from `versionId`. */
   baseVersionId?: string | undefined;
   versionNumber?: number | undefined;
+  /** The version a Migration moves runs onto. */
+  targetVersionId?: string | undefined;
   /**
    * How the call ended, in one machine word: a status, a refusal reason, or the
    * code a failure carries. Never a sentence, because a sentence quotes values.
@@ -50,6 +54,7 @@ export function annotateServiceSpan(
         "wfgraph.workflow.version.id": facts.versionId,
         "wfgraph.workflow.version.base_id": facts.baseVersionId,
         "wfgraph.workflow.version.number": facts.versionNumber,
+        "wfgraph.workflow.version.target_id": facts.targetVersionId,
         "wfgraph.outcome": facts.outcome,
       },
       isNil

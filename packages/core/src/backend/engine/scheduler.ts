@@ -75,6 +75,8 @@ export type NodeSchedulerInput = {
   actions: WorkflowActions;
   executionId: string;
   workflowId: string;
+  /** The Workflow Version whose graph this run is walking. */
+  workflowVersionId: string;
   workflowRunId: string;
   runMode: "live" | "test";
   /** What the entry node hands on: see `WorkflowExecutionInput.startPayload`. */
@@ -320,6 +322,7 @@ export class NodeScheduler {
           startPayload,
           eventName: this.currentEventName(),
           catalogFingerprint: this.input.catalogFingerprint,
+          workflowVersionId: this.input.workflowVersionId,
           entersInPlace: this.entersInPlace(node.id),
           handOffBranch: () => this.handOffBranch(node, nodeName),
         };

@@ -3,6 +3,7 @@ import {
   count,
   desc,
   eq,
+  exists,
   inArray,
   isNull,
   lt,
@@ -17,6 +18,7 @@ import {
   workflowExecutions,
   workflows,
   workflowVersions,
+  workflowWaitStates,
 } from "#src/backend/lib/db/schema";
 import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
@@ -26,6 +28,7 @@ import type {
   ExecutionStatusRow,
   ExecutionSummary,
   GlobalExecutionRow,
+  InFlightExecutionRow,
   NewTerminalExecution,
   PendingCancel,
   WorkflowExecution,
@@ -135,6 +138,17 @@ export type RunsRepoMethods = {
   readonly listPage: (
     query: ExecutionPageQuery
   ) => Effect.Effect<GlobalExecutionRow[], DatabaseError>;
+  /**
+   * Every in-flight run of one workflow, in the columns a Migration classifies
+   * from.
+   *
+   * Unpaged, because a Migration's verdict is about the whole set: the report
+   * counts the runs already on the target version beside the ones it can move,
+   * and a page boundary would split that count.
+   */
+  readonly listInFlightByWorkflow: (
+    workflowId: string
+  ) => Effect.Effect<InFlightExecutionRow[], DatabaseError>;
   /** One run as the logs view paints it (status, timing, and start identity). */
   readonly findSummaryById: (
     executionId: string
@@ -187,12 +201,48 @@ export type RunsRepoMethods = {
     error: string;
   }) => Effect.Effect<boolean, DatabaseError>;
   /**
-   * Move a run back from "waiting" to "running", answering whether a waiting
-   * row was there to move.
+   * Move a parked run's pinned version pointer, answering whether a row moved.
+   *
+   * The guard is the whole of the safety: only a row still `waiting` and still
+   * on `fromVersionId` is written, so a run that woke, ended, or was already
+   * moved by another caller keeps the version it is executing against.
    */
-  readonly markRunning: (
-    executionId: string
-  ) => Effect.Effect<boolean, DatabaseError>;
+  readonly repinVersion: (input: {
+    executionId: string;
+    fromVersionId: string;
+    toVersionId: string;
+  }) => Effect.Effect<boolean, DatabaseError>;
+  /**
+   * Move a run back from "waiting" to "running" under the version the caller
+   * loaded, answering whether a row moved.
+   *
+   * The version is the fence a resuming Wait relies on: a Migration that lands
+   * between the wake and this write leaves the row pinned to another version,
+   * no row is written, and the caller starts again against the new pointer.
+   *
+   * Only `waiting` and `running` are accepted starting statuses. `waiting` is
+   * the run this resume woke. `running` is a sibling Wait of the same run having
+   * already written it, which is routine when two branches wake together. A
+   * `pending` run has not reached a Wait, so a resume finding one is addressing
+   * a row nothing parked.
+   */
+  readonly markRunning: (input: {
+    executionId: string;
+    workflowVersionId: string;
+  }) => Effect.Effect<boolean, DatabaseError>;
+  /**
+   * Move a `running` run back to `waiting` when it still holds a waiting wait
+   * row, answering whether a row moved.
+   *
+   * Only a park writes `waiting`, so a run whose branch resumed and finished
+   * while a sibling branch stayed parked would read `running` until that sibling
+   * woke. The guard is what keeps this from parking a run with nothing left
+   * waiting: the wait-row test and the status test are one statement, so a park
+   * or a resume landing beside it cannot be overtaken.
+   */
+  readonly markWaitingIfParked: (input: {
+    executionId: string;
+  }) => Effect.Effect<boolean, DatabaseError>;
   /**
    * End a run from outside it, answering whether this write is the one that
    * made the row terminal.
@@ -302,6 +352,32 @@ export function makeRunsMethods(
           )
           .limit(query.limit);
       }),
+
+    listInFlightByWorkflow: (workflowId) =>
+      database.query((db) =>
+        db
+          .select({
+            id: workflowExecutions.id,
+            status: workflowExecutions.status,
+            workflowVersionId: workflowExecutions.workflowVersionId,
+            versionKind: workflowVersions.kind,
+            versionNumber: workflowVersions.version,
+          })
+          .from(workflowExecutions)
+          .innerJoin(workflowVersions, pinnedVersion)
+          .where(
+            and(
+              eq(workflowExecutions.workflowId, workflowId),
+              inArray(workflowExecutions.status, [
+                ...IN_FLIGHT_EXECUTION_STATUSES,
+              ])
+            )
+          )
+          .orderBy(
+            desc(workflowExecutions.startedAt),
+            desc(workflowExecutions.id)
+          )
+      ),
 
     findSummaryById: (executionId) =>
       database.query(async (db) => {
@@ -417,20 +493,65 @@ export function makeRunsMethods(
         return closed.length > 0;
       }),
 
-    markRunning: (executionId) =>
+    repinVersion: (input) =>
+      database.query(async (db) => {
+        const moved = await db
+          .update(workflowExecutions)
+          .set({ workflowVersionId: input.toVersionId })
+          .where(
+            and(
+              eq(workflowExecutions.id, input.executionId),
+              eq(workflowExecutions.status, "waiting"),
+              eq(workflowExecutions.workflowVersionId, input.fromVersionId)
+            )
+          )
+          .returning({ id: workflowExecutions.id });
+
+        return moved.length > 0;
+      }),
+
+    markRunning: (input) =>
       database.query(async (db) => {
         const moved = await db
           .update(workflowExecutions)
           .set({ status: "running", waitingAt: null })
           .where(
             and(
-              eq(workflowExecutions.id, executionId),
-              eq(workflowExecutions.status, "waiting")
+              eq(workflowExecutions.id, input.executionId),
+              inArray(workflowExecutions.status, ["waiting", "running"]),
+              eq(workflowExecutions.workflowVersionId, input.workflowVersionId)
             )
           )
           .returning({ id: workflowExecutions.id });
 
         return moved.length > 0;
+      }),
+
+    markWaitingIfParked: (input) =>
+      database.query(async (db) => {
+        const parked = await db
+          .update(workflowExecutions)
+          .set({ status: "waiting", waitingAt: new Date() })
+          .where(
+            and(
+              eq(workflowExecutions.id, input.executionId),
+              eq(workflowExecutions.status, "running"),
+              exists(
+                db
+                  .select({ id: workflowWaitStates.id })
+                  .from(workflowWaitStates)
+                  .where(
+                    and(
+                      eq(workflowWaitStates.executionId, workflowExecutions.id),
+                      eq(workflowWaitStates.status, "waiting")
+                    )
+                  )
+              )
+            )
+          )
+          .returning({ id: workflowExecutions.id });
+
+        return parked.length > 0;
       }),
 
     endInFlight: (input) =>

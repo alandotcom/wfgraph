@@ -11,7 +11,7 @@
  * `setInterval`, and `process.nextTick` are intentionally not: a body that
  * awaits one between step ports ends the pass early the same way quiet turns
  * did. Positive `setTimeout` throws so that case fails loudly instead of
- * skewing the Inngest virtual clock the driver keeps for sleeps and waits.
+ * skewing the Inngest virtual clock the driver keeps for parked waits.
  */
 
 type HostTimers = {
@@ -146,7 +146,7 @@ export class ReplayHostTimers {
       const delay = Math.max(0, ms ?? 0);
       if (delay > 0) {
         throw new Error(
-          "ReplayHostTimers does not own delayed setTimeout. A positive delay between step ports ends a pass early; keep delayed work inside step.run or use runtime.sleep."
+          "ReplayHostTimers does not own delayed setTimeout. A positive delay between step ports ends a pass early; keep delayed work inside step.run or park on runtime.waitForEvent."
         );
       }
       return this.enqueue(() => fn(...args));

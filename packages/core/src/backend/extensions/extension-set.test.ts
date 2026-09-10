@@ -155,6 +155,7 @@ describe("assembleExtensions", () => {
       "waitType",
       "timedOut",
       "resumedAt",
+      "hops",
       "event",
       "payload",
     ]);

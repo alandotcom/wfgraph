@@ -1,13 +1,19 @@
 import { Collapsible } from "@base-ui/react/collapsible";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronRight } from "lucide-react";
+import { useState } from "react";
+import { Button } from "#src/components/ui/button";
+import { MigrationDialog } from "#src/components/workflow/migration-dialog";
 import { PanelState } from "#src/components/workflow/workflow-changes-panel-state";
 import { versionUsagePollInterval } from "#src/components/workflow/version-usage-poll";
+import { can } from "#src/lib/authorization";
 import { orpcQuery } from "#src/lib/rpc-query";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { getRelativeTime } from "@wfgraph/shared/utils/time";
 import type { WorkflowVersionUsageItem } from "@wfgraph/shared/graph/publication-contracts";
 
 export function WorkflowVersionUsage({ workflowId }: { workflowId: string }) {
+  const [migrationOpen, setMigrationOpen] = useState(false);
   const usage = useQuery({
     ...orpcQuery.workflow.getVersionUsage.queryOptions({
       input: { workflowId },
@@ -26,6 +32,17 @@ export function WorkflowVersionUsage({ workflowId }: { workflowId: string }) {
     : usage.isError
       ? "Version usage unavailable"
       : `${versionCount} ${versionCount === 1 ? "version" : "versions"}, ${activeRunCount} active ${activeRunCount === 1 ? "run" : "runs"}`;
+  // A Migration needs a published version to move runs onto, and that version
+  // is the current publication.
+  const hasCurrentPublishedVersion = Boolean(
+    items?.some((item) => item.kind === "published" && item.isCurrent)
+  );
+  // The dialog previews before it migrates, so a session holding one grant
+  // without the other cannot complete the command.
+  const canMigrate =
+    hasCurrentPublishedVersion &&
+    can(WfGraphOperations.workflowMigrateExecutions.id) &&
+    can(WfGraphOperations.workflowPreviewMigration.id);
 
   return (
     <section
@@ -42,10 +59,30 @@ export function WorkflowVersionUsage({ workflowId }: { workflowId: string }) {
             ? ` · ${versionCount} ${versionCount === 1 ? "version" : "versions"}`
             : ""}
         </h3>
-        <span className="text-muted-foreground text-xs" role="status">
-          {summary}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-muted-foreground text-xs" role="status">
+            {summary}
+          </span>
+          {canMigrate ? (
+            <Button
+              className="h-6"
+              onClick={() => setMigrationOpen(true)}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              Migrate active runs
+            </Button>
+          ) : null}
+        </div>
       </div>
+      {canMigrate ? (
+        <MigrationDialog
+          onOpenChange={setMigrationOpen}
+          open={migrationOpen}
+          workflowId={workflowId}
+        />
+      ) : null}
       {usage.isPending ? (
         <div className="flex min-h-28 items-center justify-center border-b p-6 text-center">
           <p className="text-muted-foreground text-sm">Loading version usage</p>

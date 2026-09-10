@@ -109,6 +109,10 @@ const operationDefinitions = {
     "workflow.getVersionGraph",
     WfGraphPermissions.workflowRead
   ),
+  workflowPreviewMigration: operation(
+    "workflow.previewMigration",
+    WfGraphPermissions.runRead
+  ),
   workflowCreate: operation(
     "workflow.create",
     WfGraphPermissions.workflowWrite
@@ -173,6 +177,10 @@ const operationDefinitions = {
   ),
   workflowCancelExecution: operation(
     "workflow.cancelExecution",
+    WfGraphPermissions.runManage
+  ),
+  workflowMigrateExecutions: operation(
+    "workflow.migrateExecutions",
     WfGraphPermissions.runManage
   ),
 

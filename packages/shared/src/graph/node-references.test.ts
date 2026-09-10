@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   appendOutputPathKey,
   displayTemplateText,
+  extractAllTemplateReferences,
   fieldsVisibleForConfig,
   findTemplateTokens,
   flattenSchemaToReferenceFields,
@@ -751,5 +752,68 @@ describe("fieldsVisibleForConfig", () => {
     expect(
       fieldsVisibleForConfig({ waitMode: "event" }, fields).map((f) => f.path)
     ).toEqual(["always", "onEvent"]);
+  });
+});
+
+describe("extractAllTemplateReferences", () => {
+  it("names the dotted config key a reference was written into", () => {
+    expect(
+      extractAllTemplateReferences({
+        subject: "Hello {{@n1:Fetch.name}}",
+        body: { text: "Order {{@n2:Order.id}}" },
+        count: 3,
+      })
+    ).toEqual([
+      {
+        field: "subject",
+        nodeId: "n1",
+        fieldPath: "name",
+        displayText: "Fetch.name",
+      },
+      {
+        field: "body.text",
+        nodeId: "n2",
+        fieldPath: "id",
+        displayText: "Order.id",
+      },
+    ]);
+  });
+
+  it("walks arrays of strings and arrays of objects", () => {
+    expect(
+      extractAllTemplateReferences({
+        tags: ["plain", "{{@n1:Fetch.tag}}"],
+        headers: [
+          { key: "X-Trace", value: "{{@n2:Order.id}}" },
+          { key: "X-Static", value: "1" },
+        ],
+        waitFor: [{ event: "order/paid", match: "{{@n3:Order.total}} > 0" }],
+      })
+    ).toEqual([
+      {
+        field: "tags.1",
+        nodeId: "n1",
+        fieldPath: "tag",
+        displayText: "Fetch.tag",
+      },
+      {
+        field: "headers.0.value",
+        nodeId: "n2",
+        fieldPath: "id",
+        displayText: "Order.id",
+      },
+      {
+        field: "waitFor.0.match",
+        nodeId: "n3",
+        fieldPath: "total",
+        displayText: "Order.total",
+      },
+    ]);
+  });
+
+  it("carries an empty field path for a token naming a whole output", () => {
+    expect(extractAllTemplateReferences({ subject: "{{@n1:Fetch}}" })).toEqual([
+      { field: "subject", nodeId: "n1", fieldPath: "", displayText: "Fetch" },
+    ]);
   });
 });

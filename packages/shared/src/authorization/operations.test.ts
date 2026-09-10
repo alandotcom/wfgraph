@@ -36,6 +36,7 @@ function returnKnownOperationId(id: WfGraphOperationId): WfGraphOperationId {
     case "workflow.compareVersion":
     case "workflow.getCurrent":
     case "workflow.getVersionGraph":
+    case "workflow.previewMigration":
     case "workflow.create":
     case "workflow.update":
     case "workflow.delete":
@@ -53,6 +54,7 @@ function returnKnownOperationId(id: WfGraphOperationId): WfGraphOperationId {
     case "workflow.deleteExecutions":
     case "workflow.resumeWait":
     case "workflow.cancelExecution":
+    case "workflow.migrateExecutions":
     case "oauth.start":
     case "oauth.status":
     case "oauth.callback":
@@ -90,6 +92,14 @@ describe("Workflow Graph authorization operations", () => {
     );
     expect(new Set(WfGraphOperationIds).size).toBe(WfGraphOperationIds.length);
     expect(WfGraphOperations.workflowExecute.permission).toBe("run.manage");
+    // The preview names run ids and reports what each run is parked on, so it
+    // is a read of runs rather than a read of the workflow.
+    expect(WfGraphOperations.workflowPreviewMigration.permission).toBe(
+      "run.read"
+    );
+    expect(WfGraphOperations.workflowMigrateExecutions.permission).toBe(
+      "run.manage"
+    );
   });
 
   it("keeps operation IDs closed and operation permissions exact at compile time", () => {

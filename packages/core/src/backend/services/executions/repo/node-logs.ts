@@ -43,6 +43,18 @@ export type NodeLogsRepoMethods = {
   readonly readNodeOutputs: (
     executionId: string
   ) => Effect.Effect<Record<string, JsonValue>, DatabaseError>;
+  /**
+   * Which node ids each of these runs has a log row for, keyed by execution id.
+   *
+   * A Migration asks this of every run it is classifying at once, because a node
+   * the target version adds above a parked Wait has no memoized step for the run
+   * and would execute on the wake. Every status counts, a skipped node included:
+   * the question is whether the run reached the node at all. A run with no log
+   * rows is absent from the map, as it is from `listWaitingStatesForExecutions`.
+   */
+  readonly listLoggedNodeIdsForExecutions: (
+    executionIds: string[]
+  ) => Effect.Effect<Map<string, Set<string>>, DatabaseError>;
   /** One run's node logs, newest first, whole rows. */
   readonly listLogs: (
     executionId: string
@@ -133,6 +145,33 @@ export function makeNodeLogsMethods(
         }
 
         return outputs;
+      }),
+
+    listLoggedNodeIdsForExecutions: (executionIds) =>
+      database.query(async (db) => {
+        const byExecution = new Map<string, Set<string>>();
+        if (executionIds.length === 0) {
+          return byExecution;
+        }
+
+        const rows = await db
+          .selectDistinct({
+            executionId: workflowExecutionLogs.executionId,
+            nodeId: workflowExecutionLogs.nodeId,
+          })
+          .from(workflowExecutionLogs)
+          .where(inArray(workflowExecutionLogs.executionId, executionIds));
+
+        for (const row of rows) {
+          const existing = byExecution.get(row.executionId);
+          if (existing) {
+            existing.add(row.nodeId);
+            continue;
+          }
+          byExecution.set(row.executionId, new Set([row.nodeId]));
+        }
+
+        return byExecution;
       }),
 
     listLogs: (executionId) =>

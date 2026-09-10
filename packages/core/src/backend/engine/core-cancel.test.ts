@@ -478,7 +478,6 @@ describe("a run claimed for the Canceled outlet", () => {
       { ...cancelInput, graph },
       createInMemoryWorkflowRuntime({
         resumeEvent: { data: { signalType: "lifecycle-cancel" } },
-        skipSleep: true,
       }),
       withCancelAnswers(store, [null, CANCEL]),
       actions

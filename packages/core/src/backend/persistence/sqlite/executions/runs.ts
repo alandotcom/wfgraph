@@ -18,6 +18,7 @@ import type { RunsRepoMethods } from "#src/backend/services/executions/repo/runs
 import type {
   ExecutionSummary,
   GlobalExecutionRow,
+  InFlightExecutionRow,
   NewExecution,
   WorkflowExecution,
 } from "#src/backend/services/executions/repo";
@@ -30,11 +31,13 @@ import {
   workflowExecutions,
   workflows,
   workflowVersions,
+  workflowWaitStates,
 } from "#src/backend/persistence/sqlite/schema";
 import {
   sqliteExecution,
   sqliteExecutionListRow,
   sqliteExecutionStatus,
+  sqliteVersionKind,
   type SqliteExecutionListRow,
 } from "#src/backend/persistence/sqlite/executions/rows";
 
@@ -59,6 +62,18 @@ const executionListSelection = {
   versionKind: workflowVersions.kind,
   versionNumber: workflowVersions.version,
 };
+
+/**
+ * Whether the execution still holds a wait row in `waiting`. Correlated against
+ * the execution row, so the statement it guards evaluates it.
+ */
+function stillParked(): SQL {
+  return sql`exists (
+    select 1 from ${workflowWaitStates}
+    where ${workflowWaitStates.executionId} = ${workflowExecutions.id}
+      and ${workflowWaitStates.status} = 'waiting'
+  )`;
+}
 
 function optionalJsonObject(value: string | null) {
   if (value === null) return null;
@@ -128,6 +143,22 @@ function executionSummary(
     startedAt: execution.startedAt,
     completedAt: execution.completedAt,
     duration: execution.duration,
+  };
+}
+
+function inFlightExecution(row: {
+  id: string;
+  status: string;
+  workflowVersionId: string;
+  versionKind: string;
+  versionNumber: number | null;
+}): InFlightExecutionRow {
+  return {
+    id: row.id,
+    status: sqliteExecutionStatus(row.status),
+    workflowVersionId: row.workflowVersionId,
+    versionKind: sqliteVersionKind(row.versionKind),
+    versionNumber: row.versionNumber,
   };
 }
 
@@ -238,6 +269,33 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
           .limit(query.limit)
           .pipe(Effect.map((rows) => rows.map(globalExecution)));
       }),
+    listInFlightByWorkflow: (workflowId) =>
+      store.read((database) =>
+        database
+          .select({
+            id: workflowExecutions.id,
+            status: workflowExecutions.status,
+            workflowVersionId: workflowExecutions.workflowVersionId,
+            versionKind: workflowVersions.kind,
+            versionNumber: workflowVersions.version,
+          })
+          .from(workflowExecutions)
+          .innerJoin(
+            workflowVersions,
+            eq(workflowVersions.id, workflowExecutions.workflowVersionId)
+          )
+          .where(
+            and(
+              eq(workflowExecutions.workflowId, workflowId),
+              inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES)
+            )
+          )
+          .orderBy(
+            desc(workflowExecutions.startedAt),
+            desc(workflowExecutions.id)
+          )
+          .pipe(Effect.map((rows) => rows.map(inFlightExecution)))
+      ),
     findSummaryById: (executionId) =>
       store.read((database) =>
         database
@@ -332,15 +390,46 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
           .returning({ id: workflowExecutions.id })
           .pipe(Effect.map((rows) => rows.length > 0))
       ),
-    markRunning: (executionId) =>
+    repinVersion: (input) =>
+      store.write((database) =>
+        database
+          .update(workflowExecutions)
+          .set({ workflowVersionId: input.toVersionId })
+          .where(
+            and(
+              eq(workflowExecutions.id, input.executionId),
+              eq(workflowExecutions.status, "waiting"),
+              eq(workflowExecutions.workflowVersionId, input.fromVersionId)
+            )
+          )
+          .returning({ id: workflowExecutions.id })
+          .pipe(Effect.map((rows) => rows.length > 0))
+      ),
+    markRunning: (input) =>
       store.write((database) =>
         database
           .update(workflowExecutions)
           .set({ status: "running", waitingAt: null })
           .where(
             and(
-              eq(workflowExecutions.id, executionId),
-              eq(workflowExecutions.status, "waiting")
+              eq(workflowExecutions.id, input.executionId),
+              eq(workflowExecutions.workflowVersionId, input.workflowVersionId),
+              inArray(workflowExecutions.status, ["waiting", "running"])
+            )
+          )
+          .returning({ id: workflowExecutions.id })
+          .pipe(Effect.map((rows) => rows.length > 0))
+      ),
+    markWaitingIfParked: (input) =>
+      store.write((database) =>
+        database
+          .update(workflowExecutions)
+          .set({ status: "waiting", waitingAt: Date.now() })
+          .where(
+            and(
+              eq(workflowExecutions.id, input.executionId),
+              eq(workflowExecutions.status, "running"),
+              stillParked()
             )
           )
           .returning({ id: workflowExecutions.id })

@@ -1,349 +1,215 @@
 /**
  * Event-mode Wait: park until a matching signal arrives or the timeout fires.
+ *
+ * A later attempt recompiles its subscriptions and its timeout from the Workflow
+ * Version the execution row now names. The timeout is still counted from the
+ * instant the first attempt resolved against, so a Migration does not give the
+ * run more time than it started with.
  */
 
 import { randomUUID } from "node:crypto";
-import { type JsonObject, readJsonObject } from "@wfgraph/shared/types/json";
+import type { JsonObject } from "@wfgraph/shared/types/json";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { encodeIsoTimestamp } from "@wfgraph/shared/types/timestamp";
 import { resolveWaitUntil } from "@wfgraph/shared/utils/wait-time";
-import { celStringLiteral } from "@wfgraph/shared/conditions/cel-string-literal";
 import { Effect } from "effect";
 import { DEFAULT_WAIT_TIMEOUT } from "@wfgraph/shared/lifecycle/wait-subscription";
 import { closeStepLog } from "#src/backend/engine/step-log";
 import { compileWaitSubscriptions } from "#src/backend/engine/wait-match";
-import { fromUnknownPromise, runDurable } from "#src/backend/engine/durable";
 import {
-  failureFromCause,
-  type EngineFailure,
-} from "#src/backend/engine/engine-failure";
-import {
-  fromStore,
+  type WaitAttempt,
   type WaitBranchContext,
+  type WaitMode,
   type WaitOutcome,
+  type WaitPreparation,
+  type WaitResumeInput,
+  type WaitWake,
 } from "#src/backend/engine/wait-shared";
 
-/** The token addresses a parked run, so it comes from a cryptographic source. */
-function generateWaitToken(): string {
-  return randomUUID();
-}
-
 /**
- * The `workflow/wait.signal` body out of the Inngest event that carried it.
+ * What an event attempt's resume reads back off its own preparation.
  *
- * `waitForEvent` resolves to the whole event object, and the signal is Workflow Graph's
- * own envelope inside it. Reading it once here is what keeps that envelope out
- * of everything below: a builder addresses the Event's payload, not the
- * transport it travelled in.
- */
-function readWaitSignal(resumeEvent: unknown) {
-  return readJsonObject(readJsonObject(resumeEvent)?.data);
-}
-
-/**
- * Which Event woke a parked run, off the signal envelope `sendWaitSignal` built,
- * and `null` for an envelope that named none.
- *
- * A wait subscribes to several Events at once, and this is the only thing that
- * says which of them arrived. The caller decides what an unnamed one means: the
- * node's output leaves the field out rather than carrying a null, because the
- * catalog offers it as a string a condition can compare.
- */
-function readWaitEventName(signal: JsonObject | null): string | null {
-  const eventType = signal?.eventType;
-  return typeof eventType === "string" ? eventType : null;
-}
-
-/**
- * Outcome of the persistence work that happens before an event wait suspends the
- * run. Everything a resumed run needs is here rather than read from the config
+ * Everything a resumed run needs is here rather than read from the config
  * again: this crosses a memoized step boundary, so it is what the run parked
- * with, and a graph edited while the run was parked cannot reach it.
+ * with, and an edit to the graph cannot reach it. What can reach it is a
+ * Migration, which sends the Wait around again and prepares it afresh against
+ * the version the run was moved to.
  */
-type EventWaitPreparation =
-  | { status: "error"; error: string }
-  | {
-      status: "ready";
-      waitStateId: string;
-      resumeToken: string;
-      timeoutMs?: number | undefined;
-      timeoutBehavior: "continue" | "skip";
-    };
+type EventPrepared = {
+  resumeToken: string;
+  timeoutBehavior: "continue" | "skip";
+};
 
-function prepareEventWait(
-  branch: WaitBranchContext
-): Effect.Effect<EventWaitPreparation, EngineFailure> {
-  return Effect.gen(function* () {
-    const {
-      config,
-      context,
-      store,
-      workflowId,
-      runId,
-      resolveTemplates,
-      startLog,
-    } = branch;
-    const { executionId } = context;
+/** What an event attempt's resume step writes into the memo. */
+type EventResumed = {
+  output: Record<string, unknown>;
+  skipOnTimeout: boolean;
+};
 
-    const failWith = (
-      error: string
-    ): Effect.Effect<EventWaitPreparation, EngineFailure> =>
-      Effect.as(closeStepLog(store, startLog, { status: "error", error }), {
-        status: "error" as const,
-        error,
-      });
+const prepareEventWait = Effect.fn("prepareEventWait")(function* (
+  branch: WaitBranchContext,
+  attempt: WaitAttempt
+) {
+  const { config, store, resolveTemplates, startLog } = branch;
 
-    // The timeout is what keeps a parked run mortal, so a wait that names none is
-    // held to the default the editor writes rather than parking forever.
-    const timeout = config.waitTimeout?.trim() || DEFAULT_WAIT_TIMEOUT;
-    const waitTimeoutResolution = resolveWaitUntil({ waitDuration: timeout });
-    if (waitTimeoutResolution.error || !waitTimeoutResolution.waitUntil) {
-      return yield* failWith(
-        waitTimeoutResolution.error ??
-          "Wait could not determine a timeout from waitTimeout."
-      );
-    }
-
-    const compiled = compileWaitSubscriptions({
-      subscriptions: config.waitFor ?? [],
-      resolveTemplates,
+  const failWith = (error: string) =>
+    Effect.as(closeStepLog(store, startLog, { status: "error", error }), {
+      status: "error" as const,
+      error,
     });
-    if (!compiled.valid) {
-      return yield* failWith(compiled.error);
-    }
 
-    const resumeToken = generateWaitToken();
-    const waitUntilIso = encodeIsoTimestamp(waitTimeoutResolution.waitUntil);
-    const timeoutBehavior = config.waitTimeoutBehavior ?? "continue";
-
-    const waitState = yield* fromStore(
-      store.createWaitState({
-        executionId,
-        workflowId,
-        runId,
-        nodeId: context.nodeId,
-        nodeName: context.nodeName,
-        waitType: "event",
-        resumeToken,
-        waitUntilIso,
-        subscribedEvents: compiled.subscriptions.map(
-          (subscription) => subscription.event
-        ),
-        // Everything here crosses the JSONB column and Inngest's memoization, so a
-        // compiled string and a literal are what the match is reduced to.
-        metadata: {
-          waitTimeout: timeout,
-          waitTimeoutBehavior: timeoutBehavior,
-          waitFor: compiled.subscriptions,
-        },
-      })
+  // The timeout is what keeps a parked run mortal, so a wait that names none is
+  // held to the default the editor writes rather than parking forever.
+  const timeout = config.waitTimeout?.trim() || DEFAULT_WAIT_TIMEOUT;
+  const anchorAt = attempt.anchorAt ?? new Date();
+  const waitTimeoutResolution = resolveWaitUntil({
+    now: anchorAt,
+    waitDuration: timeout,
+  });
+  if (waitTimeoutResolution.error || !waitTimeoutResolution.waitUntil) {
+    return yield* failWith(
+      waitTimeoutResolution.error ??
+        "Wait could not determine a timeout from waitTimeout."
     );
+  }
 
-    if (!waitState) {
-      // A policy cancel flipped the execution terminal between the last step
-      // and this park; Inngest is already killing the run.
-      return yield* failWith(
-        "Execution was cancelled before the wait was registered"
-      );
-    }
+  const compiled = compileWaitSubscriptions({
+    subscriptions: config.waitFor ?? [],
+    resolveTemplates,
+  });
+  if (!compiled.valid) {
+    return yield* failWith(compiled.error);
+  }
 
-    yield* fromStore(
-      store.recordAuditEvent({
-        workflowId,
-        executionId,
-        eventType: "run_waiting",
-        message: `Run waiting on event in node '${context.nodeName}'`,
-        metadata: {
-          nodeId: context.nodeId,
-          resumeToken,
-          waitFor: compiled.subscriptions.map(
-            (subscription) => subscription.event
-          ),
-          timeoutAt: waitUntilIso,
-        },
-      })
-    );
+  // The token names this park, and a later attempt keeps the cryptographically
+  // random one the row already has: everything addressing it keeps working.
+  const resumeToken = attempt.resumeToken ?? randomUUID();
+  const waitUntilIso = encodeIsoTimestamp(waitTimeoutResolution.waitUntil);
+  // Read from the config this attempt parks on. A Migration is a decision to
+  // adopt the new graph, so the new version's answer to a timeout is the one
+  // that holds from here.
+  const timeoutBehavior = config.waitTimeoutBehavior ?? "continue";
 
-    return {
-      status: "ready",
-      waitStateId: waitState.waitStateId,
+  const preparation: WaitPreparation<EventPrepared> = {
+    status: "ready",
+    anchorAtIso: encodeIsoTimestamp(anchorAt),
+    park: {
+      waitType: "event",
+      waitUntilIso,
+      subscribedEvents: compiled.subscriptions.map(
+        (subscription) => subscription.event
+      ),
       resumeToken,
+      // Everything here crosses the JSONB column and Inngest's memoization, so a
+      // compiled string and a literal are what the match is reduced to.
+      metadata: {
+        waitTimeout: timeout,
+        waitTimeoutBehavior: timeoutBehavior,
+        waitFor: compiled.subscriptions,
+      },
       timeoutMs: Math.max(
         waitTimeoutResolution.waitUntil.getTime() - Date.now(),
         0
       ),
-      timeoutBehavior,
-    };
-  });
+      // A Cancel Event and a Migration each wake a parked run through the same
+      // envelope the resume uses.
+      signalTypes: ["wait-resume", "lifecycle-cancel", "version-migrate"],
+    },
+    prepared: { resumeToken, timeoutBehavior },
+  };
+  return preparation;
+});
+
+/**
+ * What the arriving Event carried, and nothing of the envelope it came in.
+ *
+ * A cancel wake carries no resume payload: the signal is a nudge, and what the
+ * canceling Event sent is on the execution row, which the engine reads at this
+ * node's boundary. A timeout carries nothing either.
+ */
+function readArrival(wake: WaitWake): {
+  eventName: string | null;
+  payload: JsonObject;
+} | null {
+  return wake.kind === "resume"
+    ? { eventName: wake.eventName, payload: wake.payload }
+    : null;
 }
 
-export function executeEventWait(
-  branch: WaitBranchContext
-): Effect.Effect<WaitOutcome, EngineFailure> {
-  return Effect.gen(function* () {
-    const { context, runtime, store, workflowId, startLog } = branch;
-    const { executionId } = context;
+const resumeEventWait = Effect.fn("resumeEventWait")(function* (
+  input: WaitResumeInput<EventPrepared>
+) {
+  const { branch, prepared, wake, hops } = input;
+  const { store, startLog } = branch;
 
-    const prepared = yield* runDurable(
-      runtime,
-      {
-        id: `wait-event-prepare-${context.nodeId}`,
-        name: `${context.nodeName} (prepare wait)`,
-      },
-      prepareEventWait(branch)
-    );
+  const timedOut = wake.kind === "timeout";
+  const arrival = readArrival(wake);
 
-    if (prepared.status === "error") {
-      return {
-        result: {
-          success: false,
-          error: { kind: "failure", message: prepared.error },
-        },
-        haltBranch: false,
+  // A wait configured to skip on timeout stops its branch instead of letting
+  // downstream nodes run without the awaited Event. The behaviour comes off the
+  // preparation, which is what this attempt parked with: an edit to the node
+  // cannot change how a run already counting down treats its timeout, and a
+  // Migration changes it by preparing the next attempt rather than this one.
+  const skipOnTimeout = timedOut && prepared.timeoutBehavior === "skip";
+
+  // The resume token stays off this object: it is a capability addressing this
+  // parked run, node output is template-addressable, and the panel reads the
+  // token off the wait row instead.
+  const base = {
+    waitType: "event",
+    timedOut,
+    hops,
+    resumedAt: encodeIsoTimestamp(new Date()),
+  };
+  // `payload.orderId` is the path a builder writes, and the catalog's field list
+  // for this node promises exactly that.
+  const output = skipOnTimeout
+    ? { ...base, skipped: true, skippedReason: "timeout_skip" }
+    : {
+        ...base,
+        ...omitUndefined({
+          event: arrival?.eventName ?? undefined,
+          payload: arrival === null ? undefined : arrival.payload,
+        }),
       };
-    }
 
-    const resumeEvent = yield* Effect.catchCause(
-      fromUnknownPromise(() =>
-        // Inngest waits on Workflow Graph's own signal envelope rather than on the
-        // business Event: Workflow Graph decides which runs an arrival concerns first.
-        runtime.waitForEvent(
-          {
-            id: `wait-event-${context.nodeId}`,
-            name: `${context.nodeName} (wait for event)`,
-          },
-          {
-            event: "workflow/wait.signal",
-            timeoutMs: prepared.timeoutMs,
-            ifExpression: [
-              "async.data.executionId == event.data.executionId",
-              `async.data.nodeId == ${celStringLiteral(context.nodeId)}`,
-              `async.data.token == ${celStringLiteral(prepared.resumeToken)}`,
-              // A Cancel Event wakes a parked run through the same envelope.
-              `(async.data.signalType == ${celStringLiteral("wait-resume")} || async.data.signalType == ${celStringLiteral("lifecycle-cancel")})`,
-            ].join(" && "),
-          }
-        )
-      ),
-      (cause) =>
-        Effect.gen(function* () {
-          // The run is unwinding, so no new durable step is started.
-          yield* closeStepLog(store, startLog, {
-            status: "error",
-            error: failureFromCause(cause).message,
-          });
-          return yield* Effect.failCause(cause);
-        })
-    );
+  yield* closeStepLog(store, startLog, { status: "success", output });
 
-    const timedOut = resumeEvent === null;
-    const signal = readWaitSignal(resumeEvent);
+  const resumed: EventResumed = { output, skipOnTimeout };
+  return resumed;
+});
 
-    // Derived outside the step for the same reason `timedOut` is: both come off
-    // the memoized `waitForEvent` result, so a replay reads the same verdict.
-    const canceled = !timedOut && signal?.signalType === "lifecycle-cancel";
-    const resumeEventName = readWaitEventName(signal);
+export const eventWaitMode: WaitMode<EventPrepared, EventResumed> = {
+  mode: "event",
+  prepare: prepareEventWait,
+  resume: resumeEventWait,
 
-    const resumed = yield* runDurable(
-      runtime,
-      {
-        id: `wait-event-resume-${context.nodeId}`,
-        name: `${context.nodeName} (resume)`,
-      },
-      Effect.gen(function* () {
-        yield* fromStore(
-          store.markWaitStateStatus({
-            waitStateId: prepared.waitStateId,
-            status: canceled ? "cancelled" : timedOut ? "timed_out" : "resumed",
-          })
-        );
-        yield* fromStore(store.markExecutionRunning({ executionId }));
+  outcome: ({ resumed, wake }): WaitOutcome => {
+    const arrival = readArrival(wake);
 
-        yield* fromStore(
-          store.recordAuditEvent({
-            workflowId,
-            executionId,
-            eventType: timedOut ? "run_timed_out" : "run_resumed",
-            message: timedOut
-              ? `Run timed out in event wait node '${context.nodeName}'`
-              : canceled
-                ? `Run woken by a cancel request in node '${context.nodeName}'`
-                : `Run resumed from event in node '${context.nodeName}'`,
-            metadata: {
-              nodeId: context.nodeId,
-              resumeToken: prepared.resumeToken,
-            },
-          })
-        );
-
-        // A wait configured to skip on timeout stops its branch instead of letting
-        // downstream nodes run without the awaited Event. The behaviour comes off
-        // the preparation, which is what this run parked with: a wait can outlive
-        // several edits to the node it parked on, and none of them may change how
-        // this run treats a timeout it is already counting down.
-        const skipOnTimeout = timedOut && prepared.timeoutBehavior === "skip";
-
-        // The resume token stays off this object: it is a capability addressing
-        // this parked run, node output is template-addressable, and the panel
-        // reads the token off the wait row instead.
-        const base = {
-          waitType: "event",
-          timedOut,
-          resumedAt: encodeIsoTimestamp(new Date()),
-        };
-        // A cancel wake carries no resume payload: the signal is a nudge, and what
-        // the canceling Event sent is on the execution row, which the engine reads
-        // at this node's boundary.
-        const carriesPayload = !(timedOut || canceled);
-        // What the arriving Event carried, and nothing of the envelope it came in:
-        // `payload.orderId` is the path a builder writes, and the catalog's field
-        // list for this node promises exactly that.
-        const output = skipOnTimeout
-          ? { ...base, skipped: true, skippedReason: "timeout_skip" }
-          : {
-              ...base,
-              ...omitUndefined({
-                event:
-                  carriesPayload && resumeEventName !== null
-                    ? resumeEventName
-                    : undefined,
-                payload: carriesPayload
-                  ? (readJsonObject(signal?.payload) ?? {})
-                  : undefined,
-              }),
-            };
-
-        yield* closeStepLog(store, startLog, { status: "success", output });
-
-        return { output, skipOnTimeout };
-      })
-    );
-
-    // Skip and cancel halt the branch, so the Arriving Event they would name
-    // is never read. A timeout that continues names none, which is how an
-    // Event Split below this node stops rather than taking a Start Event
-    // outlet. A resume names the Event that woke the Wait.
+    // Skip and cancel halt the branch, so the Arriving Event they would name is
+    // never read. A timeout that continues names none, which is how an Event
+    // Split below this node stops rather than taking a Start Event outlet. A
+    // resume names the Event that woke the Wait.
+    const canceled = wake.kind === "cancel";
     const arrivingEvent =
       resumed.skipOnTimeout || canceled
         ? undefined
-        : timedOut
+        : arrival === null
           ? null
-          : resumeEventName === null
+          : arrival.eventName === null
             ? undefined
-            : {
-                eventName: resumeEventName,
-                payload: readJsonObject(signal?.payload) ?? {},
-              };
+            : { eventName: arrival.eventName, payload: arrival.payload };
 
     // A cancel wake halts the branch as a timeout skip does. The run is claimed,
     // so nothing below this node is work it still wants: a run walking its own
     // graph is sent to the Canceled outlet by the boundary read at this node,
-    // which happens before the halt is consulted, and a branch run has no boundary
-    // of its own and would otherwise carry on for a run already ending.
+    // which happens before the halt is consulted, and a branch run has no
+    // boundary of its own and would otherwise carry on for a run already ending.
     return {
       result: { success: true, data: resumed.output },
       haltBranch: resumed.skipOnTimeout || canceled,
       arrivingEvent,
     };
-  });
-}
+  },
+};

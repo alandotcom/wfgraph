@@ -74,3 +74,21 @@ Assigning an epoch immediately was rejected because one persisted value and one
 routing branch carried no compatibility choice. Assigning a new Inngest
 function id on every deploy was rejected because routine deploys would strand
 parked runs without adding semantic safety.
+
+## Amendment (2026-09-09)
+
+ADR-0019 made the first incompatible change to the durable protocol this ADR
+named as the compatibility boundary. Wait step ids gained an attempt index, a
+delay park moved from `step.sleep` to `step.waitForEvent`, and the wait-signal
+payload schema gained a literal, which `rejectUnknownKeys` treats as
+incompatible during a mixed deployment. This ADR's statement that existing
+executions were not to be rewritten to a newer workflow version no longer holds:
+a Migration moves an open Execution's pinned version at a parked Wait.
+
+The project accepted the break under the no-backwards-compatibility convention
+in AGENTS.md, because no external consumer holds parked runs. The engine-epoch
+mechanism remains deferred; nothing in ADR-0019 stamps or routes an epoch.
+
+An adopter running a version before ADR-0019 drains its parked runs before
+upgrading. A run parked under the old Wait step ids resumes into a handler that
+has none of them.

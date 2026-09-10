@@ -11,6 +11,8 @@
  */
 
 import { Schema } from "effect";
+import { compact } from "es-toolkit/array";
+import { isPlainObject } from "es-toolkit/predicate";
 import { readAs } from "#src/types/schema";
 import { omitUndefined } from "#src/utils/omit-undefined";
 
@@ -154,6 +156,68 @@ export function readJsonObject(value: unknown): JsonObject | null {
   const json = readJsonValue(value);
 
   return json !== null && isJsonObject(json) ? json : null;
+}
+
+/**
+ * Read every part of a value that JSON can carry, dropping the parts it cannot.
+ *
+ * A node config is JSON: it is stored in a JSONB column and read back with
+ * `JSON.parse`. TypeScript still types a config the editor is holding as
+ * `Record<string, unknown>`, and such a config carries `undefined` under a key
+ * the editor cleared, which JSON has no spelling for. `readJsonObject` refuses
+ * an object holding one whole, so a walk given its answer would miss every
+ * template beside that key. This drops the key instead and keeps the rest.
+ *
+ * An array keeps its length, because a caller addressing an element by index
+ * means the position it was written at: an element JSON cannot carry becomes
+ * `null` rather than closing the gap.
+ *
+ * The result is a copy, so a caller comparing references sees a new object even
+ * when nothing was dropped.
+ */
+export function readJsonObjectLeniently(value: unknown): JsonObject | null {
+  const json = readJsonLeniently(value);
+
+  return json !== undefined && isJsonObject(json) ? json : null;
+}
+
+function readJsonLeniently(value: unknown): JsonValue | undefined {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "boolean"
+  ) {
+    return value;
+  }
+
+  // `JSON.stringify` writes a NaN or an Infinity as `null`, so that is what
+  // reading one back gives.
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (Array.isArray(value)) {
+    const items: readonly unknown[] = value;
+    return items.map((item) => readJsonLeniently(item) ?? null);
+  }
+
+  // The one narrowing of a bare `unknown` in this module. `isJsonObject` cannot
+  // do it: its argument is a `JsonValue`, which is the fact this call is trying
+  // to establish.
+  if (!isPlainObject(value)) {
+    return undefined;
+  }
+
+  // `Object.fromEntries` defines each key as an own property, so a config
+  // holding a key named `__proto__` keeps it as data.
+  return Object.fromEntries(
+    compact(
+      Object.entries(value).map(([key, nested]) => {
+        const item = readJsonLeniently(nested);
+        return item === undefined ? undefined : ([key, item] as const);
+      })
+    )
+  );
 }
 
 /**

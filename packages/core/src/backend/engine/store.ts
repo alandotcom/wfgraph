@@ -24,6 +24,7 @@ import type {
   JsonObjectDraft,
   JsonValue,
 } from "@wfgraph/shared/types/json";
+import type { WaitArrival } from "@wfgraph/shared/lifecycle/wait-signal";
 import { Effect } from "effect";
 import type { EngineFailure } from "#src/backend/engine/engine-failure";
 import type { DatabaseError } from "#src/backend/lib/effect/database";
@@ -86,6 +87,13 @@ export type CreateWaitStateInput = {
   runId: string;
   nodeId: string;
   nodeName: string;
+  /**
+   * The Workflow Version this park was resolved from. The write requires the
+   * execution row to still pin it, so a Migration landing inside the preparing
+   * step refuses the first park instead of writing one from the graph the run
+   * left.
+   */
+  workflowVersionId: string;
   waitType: "delay" | "event";
   /**
    * What the authenticated runs panel uses to address this parked run. Generated
@@ -100,6 +108,63 @@ export type CreateWaitStateInput = {
    */
   subscribedEvents?: string[] | undefined;
   metadata?: JsonObjectDraft | undefined;
+};
+
+/**
+ * What a re-park answers: the write landed, or the guard that refused it. See
+ * `WorkflowStore.reparkWaitState`.
+ */
+export type ReparkWaitStateOutcome =
+  | { ok: true }
+  | { ok: false; reason: "not_waiting" | "version_moved" };
+
+/**
+ * A wait row parked again, after a Migration moved the run to a newer Workflow
+ * Version while it was waiting.
+ *
+ * The row keeps its id and its `waiting` status, so everything already
+ * addressing this park keeps addressing it. Every other field of the park is
+ * written over, because the new version's config decides all of them: a Wait
+ * that changed mode writes a different `waitType`, an event wait that lost its
+ * subscriptions writes an empty list, and a delay wait writes a null token.
+ */
+export type ReparkWaitStateInput = {
+  waitStateId: string;
+  /**
+   * The Workflow Version this park was resolved from. The write requires the
+   * execution row to still pin it, so a Migration landing inside the preparing
+   * step refuses the park instead of writing one from the graph the run left.
+   */
+  workflowVersionId: string;
+  waitType: "delay" | "event";
+  /** Target timestamp as ISO 8601, and null for a wait with no target. */
+  waitUntilIso: string | null;
+  /** The Event names a delivery finds this row by. Empty for a delay wait. */
+  subscribedEvents: string[];
+  /** The token addressing this park, and null for a delay wait, which has none. */
+  resumeToken: string | null;
+  metadata: JsonObject;
+};
+
+/** The statuses a wait row can be read back in. */
+export type WaitStateStatus =
+  | "waiting"
+  | "resuming"
+  | "resumed"
+  | "timed_out"
+  | "cancelled";
+
+/**
+ * A wait row as the engine reads it back after a re-park was refused.
+ *
+ * A run woken by a Migration is still `waiting` between that wake and its next
+ * park, so a resume can claim the row in the meantime and send a signal nothing
+ * is parked on. The claim's recorded arrival lets the next park read the wake it
+ * missed instead of waiting forever.
+ */
+export type WaitStateSnapshot = {
+  status: WaitStateStatus;
+  arrival: WaitArrival | null;
 };
 
 export type MarkWaitStateStatusInput = {
@@ -138,21 +203,59 @@ export type WorkflowStore = {
     input: RecordAuditEventInput
   ): Effect.Effect<void, DatabaseError>;
   /**
-   * Records that the run is parked on a Wait node; returns the new row's id,
-   * or undefined when the execution lost a race with a cancellation and may
-   * no longer park.
+   * Records that the run is parked on a Wait node; returns the new row's id, or
+   * undefined when the execution has left the version this park was resolved
+   * from, or lost a race with a cancellation, and may no longer park.
    */
   createWaitState(
     input: CreateWaitStateInput
   ): Effect.Effect<{ waitStateId: string } | undefined, DatabaseError>;
+  /**
+   * Writes a re-parked wait's whole park onto the row it already holds, saying
+   * which guard refused when none was written: `not_waiting` for the row having
+   * left `waiting`, which the caller answers by reading the wake the row
+   * records, and `version_moved` for a Migration having moved the execution off
+   * the version this park was resolved from.
+   */
+  reparkWaitState(
+    input: ReparkWaitStateInput
+  ): Effect.Effect<ReparkWaitStateOutcome, DatabaseError>;
+  /**
+   * One wait row as it stands, or null when no row holds that id. Read after a
+   * refused re-park, to find out what moved the row.
+   */
+  readWaitState(
+    waitStateId: string
+  ): Effect.Effect<WaitStateSnapshot | null, DatabaseError>;
   /** Closes out a wait row once the run resumes, times out, or is cancelled. */
   markWaitStateStatus(
     input: MarkWaitStateStatusInput
   ): Effect.Effect<void, DatabaseError>;
-  /** Moves an execution back from "waiting" to "running" after a wait. */
+  /**
+   * Moves an execution back to "running" after a wait, answering whether a row
+   * moved.
+   *
+   * The write requires the row to still pin `workflowVersionId`, which makes it
+   * the fence a resuming Wait stands on: false means a Migration moved the run
+   * while this resume was in flight, and the caller must not carry on under the
+   * graph it loaded.
+   */
   markExecutionRunning(input: {
     executionId: string;
-  }): Effect.Effect<void, DatabaseError>;
+    workflowVersionId: string;
+  }): Effect.Effect<boolean, DatabaseError>;
+  /**
+   * Moves a "running" execution back to "waiting" when it still holds a waiting
+   * wait row, answering whether a row moved.
+   *
+   * A branch run resumes its own Wait and marks the execution running, so a
+   * branch that finishes while a sibling branch is still parked would leave the
+   * run reading running with nothing executing. The guard is what makes the
+   * write safe to issue at the end of every branch run.
+   */
+  markExecutionWaitingIfParked(input: {
+    executionId: string;
+  }): Effect.Effect<boolean, DatabaseError>;
   /**
    * Whether a Cancel Event has claimed this run, and what it carried. Read at
    * each node boundary inside a step, so the answer is memoized and a replay
@@ -197,8 +300,11 @@ export const noopWorkflowStore: WorkflowStore = {
   completeStepLog: () => Effect.void,
   recordAuditEvent: () => Effect.void,
   createWaitState: () => Effect.succeed({ waitStateId: "" }),
+  reparkWaitState: () => Effect.succeed({ ok: true }),
+  readWaitState: () => Effect.succeed(null),
   markWaitStateStatus: () => Effect.void,
-  markExecutionRunning: () => Effect.void,
+  markExecutionRunning: () => Effect.succeed(true),
+  markExecutionWaitingIfParked: () => Effect.succeed(false),
   readPendingCancel: () => Effect.succeed(null),
   completeRun: () => Effect.succeed(true),
   readNodeOutputs: () => Effect.succeed({}),

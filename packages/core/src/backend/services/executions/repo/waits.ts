@@ -10,6 +10,8 @@ import {
   lte,
   notInArray,
   or,
+  type SQL,
+  sql,
 } from "drizzle-orm";
 import type { Effect } from "effect";
 import {
@@ -19,7 +21,15 @@ import {
 import type { WfGraphDatabase } from "#src/backend/lib/db/index";
 import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
-import { type JsonObjectDraft, toJsonObject } from "@wfgraph/shared/types/json";
+import {
+  type JsonObject,
+  type JsonObjectDraft,
+  toJsonObject,
+} from "@wfgraph/shared/types/json";
+import {
+  WAIT_ARRIVAL_METADATA_KEY,
+  type WaitArrival,
+} from "@wfgraph/shared/lifecycle/wait-signal";
 import { inFlightExecution } from "#src/backend/services/executions/repo/runs";
 import type {
   SettledWaitStatus,
@@ -33,15 +43,37 @@ export type WaitResumeClaim = {
   claimedAt: Date;
 };
 
+/** The claim's wake as it is stored, under one key of the row's metadata. */
+function arrivalMetadata(arrival: WaitArrival): JsonObject {
+  return { [WAIT_ARRIVAL_METADATA_KEY]: { ...arrival } };
+}
+
+/**
+ * Why a re-park wrote no row.
+ *
+ * `not_waiting` is the row having left `waiting` between the wake and this park,
+ * which the caller answers by reading the wake the row records. `version_moved`
+ * is a Migration having moved the execution off the version the park was
+ * resolved from, which the caller answers by failing its step and preparing the
+ * Wait again against the version the row now names.
+ */
+export type ReparkWaitRefusal = "not_waiting" | "version_moved";
+
+export type ReparkWaitOutcome =
+  | { ok: true }
+  | { ok: false; reason: ReparkWaitRefusal };
+
 /** The `workflow_wait_states` slice of `ExecutionRepo`. */
 export type WaitsRepoMethods = {
   /**
    * Park a run on a wait, answering the new row's id.
    *
-   * The status flip runs first, behind the in-flight guard: a policy cancel can
-   * land between the run's last step and this park, and a cancelled execution
-   * must not gain a live wait row that resume matching would later hit.
-   * Undefined is that race lost -- the caller's run is already being cancelled.
+   * The status flip runs first, behind the in-flight guard and the pinned
+   * version: a policy cancel can land between the run's last step and this park,
+   * and a cancelled execution must not gain a live wait row that resume matching
+   * would later hit, while a Migration landing in the same window would leave
+   * the row holding a park resolved from a graph the run has left. Undefined is
+   * either race lost.
    */
   readonly startWait: (input: {
     executionId: string;
@@ -49,6 +81,8 @@ export type WaitsRepoMethods = {
     runId: string;
     nodeId: string;
     nodeName: string;
+    /** The version the caller resolved this park from. */
+    workflowVersionId: string;
     waitType: "delay" | "event";
     resumeToken?: string | undefined;
     waitUntil?: Date | undefined;
@@ -56,6 +90,31 @@ export type WaitsRepoMethods = {
     subscribedEvents?: string[] | undefined;
     metadata?: JsonObjectDraft | undefined;
   }) => Effect.Effect<{ waitStateId: string } | undefined, DatabaseError>;
+  /**
+   * Write a re-parked wait's whole park onto the row it is already parked on,
+   * answering whether a row still `waiting` was written and, when none was, why.
+   *
+   * A Migration moves an open Execution to another Workflow Version while it is
+   * parked, and the Wait then parks again against the new version's config. The
+   * row keeps its id and its `waiting` status, so the delivery fan-out keeps
+   * addressing the same park. Everything else is the new version's answer,
+   * including the wait type, so a Wait that changed mode re-parks as the mode it
+   * now is.
+   */
+  readonly reparkWait: (input: {
+    waitStateId: string;
+    /** The version the caller resolved this park from. */
+    workflowVersionId: string;
+    waitType: "delay" | "event";
+    waitUntil: Date | null;
+    subscribedEvents: string[];
+    resumeToken: string | null;
+    metadata: JsonObject;
+  }) => Effect.Effect<ReparkWaitOutcome, DatabaseError>;
+  /** One wait row by id, whatever status it is in. */
+  readonly findWaitStateById: (
+    waitStateId: string
+  ) => Effect.Effect<WorkflowWaitState | null, DatabaseError>;
   /**
    * Close out one wait row, answering whether it was still active. A normal
    * resume starts from `waiting`; timeout and cancellation may also overtake an
@@ -115,17 +174,29 @@ export type WaitsRepoMethods = {
    * the concurrency boundary: exactly one caller gets the row. An abandoned
    * in-flight claim becomes reclaimable after its lease rather than consuming
    * the wait forever.
+   *
+   * Only an event wait is claimable. A delay wait answers no resume signal, so
+   * a row a Migration turned into a delay park keeps counting down rather than
+   * consuming a manual resume that would reach nothing.
    */
-  readonly claimWaitingStateByToken: (
-    resumeToken: string
-  ) => Effect.Effect<WaitResumeClaim | null, DatabaseError>;
+  readonly claimWaitingStateByToken: (input: {
+    resumeToken: string;
+    arrival: WaitArrival;
+  }) => Effect.Effect<WaitResumeClaim | null, DatabaseError>;
   /**
    * Claim one candidate previously found by event delivery. The execution may
    * already be running because a sibling wait resumed first.
+   *
+   * The claim repeats the two facts the candidate was selected on, because a
+   * Migration can re-park the row between the selection and this write: the row
+   * must still be an event wait, and must still be subscribed to `eventName`.
    */
-  readonly claimWaitingStateById: (
-    waitStateId: string
-  ) => Effect.Effect<WaitResumeClaim | null, DatabaseError>;
+  readonly claimWaitingStateById: (input: {
+    waitStateId: string;
+    /** The Event being delivered, which the row must still subscribe to. */
+    eventName: string;
+    arrival: WaitArrival;
+  }) => Effect.Effect<WaitResumeClaim | null, DatabaseError>;
   /** Settle only the exact claim that delivered the wake signal. */
   readonly settleWaitingStateClaim: (input: {
     waitStateId: string;
@@ -160,10 +231,21 @@ export function makeWaitsMethods(
     startWait: (input) =>
       database.query((db) =>
         db.transaction(async (tx) => {
+          // The version predicate is this park's fence. The statement writes the
+          // execution row itself, so the pin is compared on that row rather than
+          // through the correlated subquery `reparkWait` needs.
           const parked = await tx
             .update(workflowExecutions)
             .set({ status: "waiting", waitingAt: new Date() })
-            .where(inFlightExecution(input.executionId))
+            .where(
+              and(
+                inFlightExecution(input.executionId),
+                eq(
+                  workflowExecutions.workflowVersionId,
+                  input.workflowVersionId
+                )
+              )
+            )
             .returning({ id: workflowExecutions.id });
 
           if (parked.length === 0) {
@@ -190,6 +272,64 @@ export function makeWaitsMethods(
           return { waitStateId: waitState.id };
         })
       ),
+
+    reparkWait: (input) =>
+      database.query((db) =>
+        db.transaction(async (tx): Promise<ReparkWaitOutcome> => {
+          const reparked = await tx
+            .update(workflowWaitStates)
+            .set({
+              waitType: input.waitType,
+              waitUntil: input.waitUntil,
+              subscribedEvents: input.subscribedEvents,
+              resumeToken: input.resumeToken,
+              metadata: input.metadata,
+            })
+            .where(
+              and(
+                eq(workflowWaitStates.id, input.waitStateId),
+                eq(workflowWaitStates.status, "waiting"),
+                pinnedVersionIs(db, input.workflowVersionId)
+              )
+            )
+            .returning({ id: workflowWaitStates.id });
+
+          if (reparked.length > 0) {
+            return { ok: true };
+          }
+
+          // Which of the two guards refused, read in the same transaction as the
+          // write it explains. A row nobody holds reads as `not_waiting`, which
+          // sends the caller to the wake the row would record.
+          const [row] = await tx
+            .select({
+              status: workflowWaitStates.status,
+              pinnedVersionId: workflowExecutions.workflowVersionId,
+            })
+            .from(workflowWaitStates)
+            .leftJoin(
+              workflowExecutions,
+              eq(workflowExecutions.id, workflowWaitStates.executionId)
+            )
+            .where(eq(workflowWaitStates.id, input.waitStateId))
+            .limit(1);
+
+          return row?.status === "waiting" &&
+            row.pinnedVersionId !== input.workflowVersionId
+            ? { ok: false, reason: "version_moved" }
+            : { ok: false, reason: "not_waiting" };
+        })
+      ),
+
+    findWaitStateById: (waitStateId) =>
+      database.query(async (db) => {
+        const [row] = await db
+          .select()
+          .from(workflowWaitStates)
+          .where(eq(workflowWaitStates.id, waitStateId))
+          .limit(1);
+        return row ?? null;
+      }),
 
     markWaitStatus: (input) =>
       database.query(async (db) => {
@@ -284,14 +424,31 @@ export function makeWaitsMethods(
           .limit(input.limit)
       ),
 
-    claimWaitingStateByToken: (resumeToken) =>
+    claimWaitingStateByToken: (input) =>
       database.query((db) =>
-        claimWaitState(db, eq(workflowWaitStates.resumeToken, resumeToken))
+        claimWaitState(
+          db,
+          and(
+            eq(workflowWaitStates.resumeToken, input.resumeToken),
+            eq(workflowWaitStates.waitType, "event")
+          ),
+          input.arrival
+        )
       ),
 
-    claimWaitingStateById: (waitStateId) =>
+    claimWaitingStateById: (input) =>
       database.query((db) =>
-        claimWaitState(db, eq(workflowWaitStates.id, waitStateId))
+        claimWaitState(
+          db,
+          and(
+            eq(workflowWaitStates.id, input.waitStateId),
+            eq(workflowWaitStates.waitType, "event"),
+            arrayContains(workflowWaitStates.subscribedEvents, [
+              input.eventName,
+            ])
+          ),
+          input.arrival
+        )
       ),
 
     settleWaitingStateClaim: (input) =>
@@ -366,9 +523,41 @@ export function makeWaitsMethods(
   };
 }
 
+/**
+ * Whether the execution a wait row belongs to still pins this Workflow Version.
+ *
+ * Correlated against `workflow_wait_states.execution_id`, so it is evaluated by
+ * the statement it guards rather than as a separate read the caller could be
+ * overtaken after.
+ */
+function pinnedVersionIs(db: WfGraphDatabase, workflowVersionId: string): SQL {
+  return exists(
+    db
+      .select({ id: workflowExecutions.id })
+      .from(workflowExecutions)
+      .where(
+        and(
+          eq(workflowExecutions.id, workflowWaitStates.executionId),
+          eq(workflowExecutions.workflowVersionId, workflowVersionId)
+        )
+      )
+  );
+}
+
+/**
+ * Claims one row and records the wake in the same statement.
+ *
+ * The wake is merged into the metadata the park wrote rather than replacing it,
+ * so the compiled match the row carries survives a claim.
+ *
+ * `identity` is everything about the row the caller requires, which is more than
+ * its id: a Migration can re-park the row between a candidate read and this
+ * write, so the claim re-states the properties the candidate was chosen for.
+ */
 async function claimWaitState(
   db: WfGraphDatabase,
-  identity: ReturnType<typeof eq>
+  identity: SQL | undefined,
+  arrival: WaitArrival
 ): Promise<WaitResumeClaim | null> {
   const claimedAt = new Date();
   const staleBefore = new Date(
@@ -376,7 +565,11 @@ async function claimWaitState(
   );
   const [waitState] = await db
     .update(workflowWaitStates)
-    .set({ status: "resuming", resumedAt: claimedAt })
+    .set({
+      status: "resuming",
+      resumedAt: claimedAt,
+      metadata: sql`coalesce(${workflowWaitStates.metadata}, '{}'::jsonb) || ${JSON.stringify(arrivalMetadata(arrival))}::jsonb`,
+    })
     .where(
       and(
         identity,

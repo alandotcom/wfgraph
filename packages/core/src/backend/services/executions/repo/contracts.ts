@@ -104,6 +104,24 @@ export type ExecutionSummary = Pick<
   versionNumber: number | null;
 };
 
+/**
+ * One in-flight run in the columns a Migration decides from: where the run got
+ * to, which version it pinned, and how that version is identified.
+ *
+ * A Migration classifies every in-flight run of a workflow at once, so this
+ * shape is deliberately thinner than `ExecutionSummary`: the start and result
+ * payloads are JSONB the verdict never reads.
+ */
+export type InFlightExecutionRow = Pick<
+  WorkflowExecution,
+  "id" | "status" | "workflowVersionId"
+> & {
+  /** As on `ExecutionSummary`: which sort of version this run pinned. */
+  versionKind: WorkflowVersionKind;
+  /** As on `ExecutionSummary`: that version's number, null on a snapshot. */
+  versionNumber: number | null;
+};
+
 /** A run reduced to where it got to. */
 export type ExecutionStatusRow = Pick<WorkflowExecution, "id" | "status">;
 

@@ -1,5 +1,6 @@
 import type { Inngest } from "inngest";
 import type { JsonObject } from "@wfgraph/shared/types/json";
+import type { WaitSignalType } from "@wfgraph/shared/lifecycle/wait-signal";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { withCatalogConnection } from "#src/backend/lib/inngest/catalog-connection";
 import {
@@ -85,8 +86,11 @@ export async function sendWorkflowWaitSignal(
     entityValue?: string | undefined;
     // JSON is what survives the send, so the caller supplies JSON.
     payload?: JsonObject | undefined;
-    /** Why the run is being woken; the wait's `if` expression admits both. */
-    signalType: "wait-resume" | "lifecycle-cancel";
+    /**
+     * Why the run is being woken. An event wait's `if` expression admits all
+     * three; a delay wait's admits `version-migrate` alone.
+     */
+    signalType: WaitSignalType;
   }
 ) {
   return await client.send(

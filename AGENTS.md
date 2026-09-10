@@ -166,9 +166,9 @@ otherwise be written a second time. Never a fresh `value is Record<string, unkno
 predicate, and never es-toolkit's `isPlainObject`; that module's header says why.
 
 **Effect Schema is the only schema library** inside `packages/`, and
-`packages/shared/src/types/schema.ts` holds the three names most of the repo needs:
-`NonEmptyTrimmedString`, `rejectUnknownKeys`, and `toStandardSchema`. Four rules that cost
-something to learn:
+`packages/shared/src/types/schema.ts` holds the five names most of the repo needs:
+`NonEmptyTrimmedString`, `positiveInteger`, `nonNegativeInteger`, `rejectUnknownKeys`, and
+`toStandardSchema`. Four rules that cost something to learn:
 
 - Strictness is a decode option. Effect has no `.strict()`, so a wire decode passes
   `rejectUnknownKeys`; a shape meant to stay open says so with `Schema.StructWithRest`.
@@ -208,7 +208,7 @@ states the invariant in brief.
 
 **One contract, two backends, one suite.** `backend/persistence/conformance/` holds every case
 that is about the repository contract rather than about an engine, one file per aggregate over
-`support.ts`, which owns the cipher, the seed, and the registry that closes what a case opened.
+`support.ts` (the executions aggregate has a second file, `execution-waits.ts`, for its wait rows), which owns the cipher, the seed, and the registry that closes what a case opened.
 `persistence-conformance-test-support.ts` composes them, and both backends run the result:
 `sqlite.conformance.test.ts` and `postgres.conformance.pg.test.ts`. A case belongs there unless
 it reaches past the repositories into one engine's own storage, which is what is left in
@@ -335,7 +335,7 @@ function-level, each step carrying its own counter. Step results round-trip thro
 `ManagedRuntime` outlives every run, so it must never hold the per-invocation action surface
 or credentials. Finalizers above a suspension do not run, and a fork there leaks; keep
 end-of-run work as an explicit durable call and do not use `Effect.fork` in the engine. A
-timeout or race around `runtime.run`, `sleep`, `waitForEvent`, or `startBranch` turns
+timeout or race around `runtime.run`, `waitForEvent`, or `startBranch` turns
 Inngest's intentionally unsettled Promise into a failure, so those calls get neither.
 
 **A suspension holds the run, and a branch is given a run.** Inngest parks a whole function

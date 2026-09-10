@@ -245,6 +245,71 @@ export function findTemplateTokens(value: string): TemplateToken[] {
   return tokens;
 }
 
+/** One template reference, with the config key it was written into. */
+export type ConfigTemplateReference = {
+  /** The dotted config key holding the reference. */
+  field: string;
+  nodeId: string;
+  /** Dotted path into that node's output; empty when the token names the whole output. */
+  fieldPath: string;
+  /** The label and field path a builder sees, for a message about the reference. */
+  displayText: string;
+};
+
+/**
+ * Every template reference in a node's config, each carrying the dotted key it
+ * was written into.
+ *
+ * Nested objects and arrays are both walked, because a config key holds either:
+ * an HTTP node's headers are an array of objects, a Condition node's rules are
+ * an array of objects, and a Wait node's `waitFor` is an array of
+ * subscriptions. An array index joins the path as another dotted segment, so a
+ * reference inside the second header reads as `headers.1.value`.
+ *
+ * A config is JSON, so this takes the `JsonObject` a caller holding a live
+ * config reaches through `readJsonObjectLeniently`.
+ */
+export function extractAllTemplateReferences(
+  config: JsonObject
+): ConfigTemplateReference[] {
+  return configReferences(config, "");
+}
+
+function configReferences(
+  config: JsonObject,
+  prefix: string
+): ConfigTemplateReference[] {
+  return Object.entries(config).flatMap(([key, value]) =>
+    templateReferencesIn(value, prefix ? `${prefix}.${key}` : key)
+  );
+}
+
+function templateReferencesIn(
+  value: JsonValue,
+  field: string
+): ConfigTemplateReference[] {
+  if (typeof value === "string") {
+    return findTemplateTokens(value).map((token) => ({
+      field,
+      nodeId: token.nodeId,
+      fieldPath: token.fieldPath,
+      displayText: templateTokenDisplayText(token),
+    }));
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((item, index) =>
+      templateReferencesIn(item, `${field}.${index}`)
+    );
+  }
+
+  if (isJsonObject(value)) {
+    return configReferences(value, field);
+  }
+
+  return [];
+}
+
 /**
  * The first node reference in the string, or null when there is none. Useful
  * when a string is expected to be a single token, such as one badge's value.

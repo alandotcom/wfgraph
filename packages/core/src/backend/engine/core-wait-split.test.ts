@@ -282,7 +282,7 @@ describe("executeWorkflow Event Split after Wait", () => {
         startEventName: CREATED,
         startPayload: { appointmentId: "appt_1" },
       },
-      createInMemoryWorkflowRuntime({ skipSleep: true }),
+      createInMemoryWorkflowRuntime(),
       store,
       noWorkflowActions
     );
@@ -403,7 +403,7 @@ describe("executeWorkflow Event Split after Wait", () => {
       (runtime) => executeWorkflow(input, runtime, store, noWorkflowActions),
       {
         events: {
-          "wait-event-wait_1": waitResumeSignal(SETTLED, { amount: "40" }),
+          "wait-park-wait_1-0": waitResumeSignal(SETTLED, { amount: "40" }),
         },
         branch: (runtime, branchInput) =>
           executeWorkflowBranch(

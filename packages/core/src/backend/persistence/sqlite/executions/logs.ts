@@ -84,6 +84,30 @@ export function makeSqliteNodeLogsMethods(
             })
           )
       ),
+    listLoggedNodeIdsForExecutions: (executionIds) =>
+      store.read((database) => {
+        if (executionIds.length === 0) {
+          return Effect.succeed(new Map<string, Set<string>>());
+        }
+        return database
+          .selectDistinct({
+            executionId: workflowExecutionLogs.executionId,
+            nodeId: workflowExecutionLogs.nodeId,
+          })
+          .from(workflowExecutionLogs)
+          .where(inArray(workflowExecutionLogs.executionId, executionIds))
+          .pipe(
+            Effect.map((rows) => {
+              const byExecution = new Map<string, Set<string>>();
+              for (const row of rows) {
+                const existing = byExecution.get(row.executionId);
+                if (existing) existing.add(row.nodeId);
+                else byExecution.set(row.executionId, new Set([row.nodeId]));
+              }
+              return byExecution;
+            })
+          );
+      }),
     listLogs: (executionId) =>
       store.read((database) =>
         database

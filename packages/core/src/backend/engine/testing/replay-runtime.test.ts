@@ -10,6 +10,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { BranchRunResult } from "#src/backend/engine/branch";
+import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
 import { driveWithReplay } from "#src/backend/engine/testing/replay-runtime";
 
 /** A branch body's answer, which the driver hands to whoever started it. */
@@ -20,6 +21,20 @@ const NOTHING_RAN: BranchRunResult = { results: {}, outputs: {} };
  * wakes a run, so none of them has a display name to state.
  */
 const stepRef = (id: string) => ({ id });
+
+/**
+ * A park with no answer, which the driver ends at its timeout. The Wait node is
+ * the only thing that suspends a run, so a park is how these cases hold one.
+ */
+const park = (
+  runtime: WorkflowExecutionRuntime,
+  id: string,
+  timeoutMs: number
+): Promise<unknown> =>
+  runtime.waitForEvent(stepRef(id), {
+    event: "workflow/wait.signal",
+    timeoutMs,
+  });
 
 describe("driveWithReplay", () => {
   it("runs a chain of steps, calling the body again after each", async () => {
@@ -57,9 +72,9 @@ describe("driveWithReplay", () => {
     expect(run.invocations).toBeGreaterThan(2);
   });
 
-  it("moves the clock to a sleep's target", async () => {
+  it("moves the clock to a park's target", async () => {
     const run = await driveWithReplay(async (runtime) => {
-      await runtime.sleep(stepRef("nap"), 5_000);
+      await park(runtime, "nap", 5_000);
       return await runtime.run(stepRef("after"), () => Promise.resolve("done"));
     });
 
@@ -70,9 +85,9 @@ describe("driveWithReplay", () => {
     ]);
   });
 
-  it("holds a sibling branch at its next step boundary while a sleep is outstanding", async () => {
+  it("holds a sibling branch at its next step boundary while a park is outstanding", async () => {
     const run = await driveWithReplay(async (runtime) => {
-      const parked = runtime.sleep(stepRef("nap"), 60_000);
+      const parked = park(runtime, "nap", 60_000);
       const busy = (async () => {
         await runtime.run(stepRef("first"), () => Promise.resolve(1));
         await runtime.run(stepRef("second"), () => Promise.resolve(2));
@@ -85,20 +100,20 @@ describe("driveWithReplay", () => {
     const clockFor = (stepId: string) =>
       run.executed.find((step) => step.stepId === stepId)?.at;
 
-    // The pass that reached the sleep had already asked for `first`, so that one
+    // The pass that reached the park had already asked for `first`, so that one
     // runs. `second` belongs to the pass that never came.
     expect(clockFor("first")).toBe(0);
     expect(clockFor("second")).toBe(60_000);
   });
 
-  it("wakes two outstanding sleeps together, at the later target", async () => {
+  it("wakes two outstanding parks together, at the later target", async () => {
     const run = await driveWithReplay(async (runtime) => {
       const short = (async () => {
-        await runtime.sleep(stepRef("short"), 20_000);
+        await park(runtime, "short", 20_000);
         await runtime.run(stepRef("afterShort"), () => Promise.resolve(1));
       })();
       const long = (async () => {
-        await runtime.sleep(stepRef("long"), 90_000);
+        await park(runtime, "long", 90_000);
         await runtime.run(stepRef("afterLong"), () => Promise.resolve(1));
       })();
 
@@ -106,7 +121,7 @@ describe("driveWithReplay", () => {
       return "done";
     });
 
-    // Measured against `inngest dev`: a 20s sleep beside a 90s sleep resumed at
+    // Measured against `inngest dev`: a 20s park beside a 90s park resumed at
     // the 90s mark, so the branch behind the shorter one is 70 seconds late.
     expect(run.executed.map((step) => `${step.stepId}@${step.at}`)).toEqual([
       "afterShort@90000",
@@ -142,7 +157,7 @@ describe("driveWithReplay", () => {
   });
 
   it("wakes each branch run at its own pause rather than at the tree's last", async () => {
-    const sleepFor: Record<string, number> = { short: 20_000, long: 90_000 };
+    const parkFor: Record<string, number> = { short: 20_000, long: 90_000 };
 
     const run = await driveWithReplay(
       async (runtime) => {
@@ -160,10 +175,7 @@ describe("driveWithReplay", () => {
       },
       {
         branch: async (runtime, { entryNodeId }) => {
-          await runtime.sleep(
-            stepRef(`wait-${entryNodeId}`),
-            sleepFor[entryNodeId]
-          );
+          await park(runtime, `wait-${entryNodeId}`, parkFor[entryNodeId]);
           await runtime.run(stepRef(`after-${entryNodeId}`), () =>
             Promise.resolve(null)
           );
@@ -182,8 +194,8 @@ describe("driveWithReplay", () => {
     expect(run.elapsedMs).toBe(90_000);
   });
 
-  it("registers a short branch sleep at its own target after a macrotask between steps", async () => {
-    const sleepFor: Record<string, number> = { short: 20_000, long: 90_000 };
+  it("registers a short branch park at its own target after a macrotask between steps", async () => {
+    const parkFor: Record<string, number> = { short: 20_000, long: 90_000 };
 
     const run = await driveWithReplay(
       async (runtime) => {
@@ -205,15 +217,12 @@ describe("driveWithReplay", () => {
             Promise.resolve(null)
           );
           // Host macrotask between step ports: under quiet-turn quiescence the
-          // pass ended here and the short sleep registered after the long
+          // pass ended here and the short park registered after the long
           // sibling had already advanced the clock.
           await new Promise<void>((resolve) => {
             setImmediate(resolve);
           });
-          await runtime.sleep(
-            stepRef(`wait-${entryNodeId}`),
-            sleepFor[entryNodeId]
-          );
+          await park(runtime, `wait-${entryNodeId}`, parkFor[entryNodeId]);
           await runtime.run(stepRef(`after-${entryNodeId}`), () =>
             Promise.resolve(null)
           );
@@ -261,7 +270,7 @@ describe("driveWithReplay", () => {
     ).rejects.toThrow("the branch died");
   });
 
-  it("answers killed for a branch the cancel reached mid-sleep", async () => {
+  it("answers killed for a branch the cancel reached while it was parked", async () => {
     const run = await driveWithReplay(
       async (runtime) =>
         await runtime.startBranch?.(stepRef("branch-wait"), {
@@ -270,7 +279,7 @@ describe("driveWithReplay", () => {
         }),
       {
         branch: async (runtime) => {
-          await runtime.sleep(stepRef("wait-long"), 600_000);
+          await park(runtime, "wait-long", 600_000);
           await runtime.run(stepRef("after"), () => Promise.resolve(null));
           return NOTHING_RAN;
         },
@@ -279,7 +288,7 @@ describe("driveWithReplay", () => {
     );
 
     expect(run.value).toEqual({ status: "killed" });
-    // The step behind the sleep never ran, and the tree ended at the kill
+    // The step behind the park never ran, and the tree ended at the kill
     // rather than at the branch's own target.
     expect(run.executed).toEqual([]);
     expect(run.elapsedMs).toBe(30_000);

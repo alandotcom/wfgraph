@@ -10,7 +10,6 @@
  */
 
 import { groupBy, uniq } from "es-toolkit/array";
-import { isPlainObject } from "es-toolkit/predicate";
 import {
   getMissingRequiredFieldsForNodes,
   type ResolveActionByType,
@@ -21,9 +20,10 @@ import {
   findIntegration,
 } from "#src/extensions/catalog";
 import { readConfigTrimmedString } from "#src/graph/node-config";
-import { findTemplateTokens } from "#src/graph/node-references";
+import { extractAllTemplateReferences } from "#src/graph/node-references";
 import type { WorkflowNode } from "#src/graph/types";
 import { flattenConfigFields } from "#src/plugins/action-fields";
+import { readJsonObjectLeniently } from "#src/types/json";
 import { asNonEmptyString } from "#src/types/string";
 
 export type MissingRequiredFieldIssue = {
@@ -308,46 +308,6 @@ function collectMissingIntegrationIssues(input: {
   return issues;
 }
 
-function extractTemplateReferences(
-  value: unknown
-): Array<{ nodeId: string; displayText: string }> {
-  if (typeof value !== "string") {
-    return [];
-  }
-
-  return findTemplateTokens(value).map((token) => ({
-    nodeId: token.nodeId,
-    displayText: token.fieldPath
-      ? `${token.nodeLabel}.${token.fieldPath}`
-      : token.nodeLabel,
-  }));
-}
-
-function extractAllTemplateReferences(
-  config: Record<string, unknown>,
-  prefix = ""
-): Array<{ field: string; nodeId: string; displayText: string }> {
-  const results: Array<{ field: string; nodeId: string; displayText: string }> =
-    [];
-
-  for (const [key, value] of Object.entries(config)) {
-    const fieldPath = prefix ? `${prefix}.${key}` : key;
-
-    if (typeof value === "string") {
-      for (const ref of extractTemplateReferences(value)) {
-        results.push({ field: fieldPath, ...ref });
-      }
-      continue;
-    }
-
-    if (isPlainObject(value)) {
-      results.push(...extractAllTemplateReferences(value, fieldPath));
-    }
-  }
-
-  return results;
-}
-
 function collectBrokenReferenceIssues(input: {
   nodes: WorkflowNode[];
   catalog: ExtensionCatalog;
@@ -360,8 +320,10 @@ function collectBrokenReferenceIssues(input: {
       continue;
     }
 
-    const config = node.data.config;
-    if (!config || typeof config !== "object") {
+    // A config is JSON, and a live one holds `undefined` under a key the editor
+    // cleared, which this read drops so the templates beside it are still seen.
+    const config = readJsonObjectLeniently(node.data.config);
+    if (!config) {
       continue;
     }
 

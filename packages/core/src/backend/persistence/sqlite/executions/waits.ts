@@ -14,7 +14,13 @@ import {
 import { generateId } from "@wfgraph/shared/utils/id";
 import { toJsonObject } from "@wfgraph/shared/types/json";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
+import {
+  WAIT_ARRIVAL_METADATA_KEY,
+  type WaitArrival,
+} from "@wfgraph/shared/lifecycle/wait-signal";
 import type {
+  ReparkWaitOutcome,
+  ReparkWaitRefusal,
   WaitResumeClaim,
   WaitsRepoMethods,
 } from "#src/backend/services/executions/repo/waits";
@@ -28,9 +34,28 @@ import {
   workflowExecutions,
   workflowWaitStates,
 } from "#src/backend/persistence/sqlite/schema";
-import { sqliteWaitState } from "#src/backend/persistence/sqlite/executions/rows";
+import {
+  optionalJsonObject,
+  sqliteWaitState,
+} from "#src/backend/persistence/sqlite/executions/rows";
 
 const WAIT_RESUME_CLAIM_LEASE_MS = 5 * 60 * 1000;
+
+/**
+ * Whether a wait row's `subscribed_events` still lists this Event name. The
+ * column holds a JSON array, so the test walks it with `json_each`.
+ */
+function subscribedTo(eventName: string): SQL {
+  return sql`exists (
+    select 1 from json_each(${workflowWaitStates.subscribedEvents}) j
+    where j.value = ${eventName}
+  )`;
+}
+
+/** A re-park the row's status or the run's pinned version refused. */
+function refusedRepark(reason: ReparkWaitRefusal): ReparkWaitOutcome {
+  return { ok: false, reason };
+}
 
 const waitStateSelection = {
   id: workflowWaitStates.id,
@@ -50,19 +75,19 @@ const waitStateSelection = {
   cancelledAt: workflowWaitStates.cancelledAt,
 };
 
+/**
+ * Claims one row and records the wake on it, so a run between two parks can
+ * read back the signal it was not listening for.
+ */
 function claimWait(
   database: SqliteExecutor,
-  column: "id" | "resume_token",
-  value: string
+  identity: SQL | undefined,
+  arrival: WaitArrival
 ): Effect.Effect<WaitResumeClaim | null, unknown> {
   return Effect.gen(function* () {
     const claimedAt = new Date();
     const claimedAtMs = claimedAt.getTime();
     const staleBefore = claimedAtMs - WAIT_RESUME_CLAIM_LEASE_MS;
-    const identity =
-      column === "id"
-        ? eq(workflowWaitStates.id, value)
-        : eq(workflowWaitStates.resumeToken, value);
     const claimable = or(
       eq(workflowWaitStates.status, "waiting"),
       and(
@@ -71,7 +96,10 @@ function claimWait(
       )
     );
     const candidate = yield* database
-      .select({ id: workflowWaitStates.id })
+      .select({
+        id: workflowWaitStates.id,
+        metadata: workflowWaitStates.metadata,
+      })
       .from(workflowWaitStates)
       .innerJoin(
         workflowExecutions,
@@ -88,7 +116,14 @@ function claimWait(
     if (!candidate) return null;
     const [claimed] = yield* database
       .update(workflowWaitStates)
-      .set({ status: "resuming", resumedAt: claimedAtMs })
+      .set({
+        status: "resuming",
+        resumedAt: claimedAtMs,
+        metadata: encodeJson({
+          ...optionalJsonObject(candidate.metadata, "metadata"),
+          [WAIT_ARRIVAL_METADATA_KEY]: { ...arrival },
+        }),
+      })
       .where(and(eq(workflowWaitStates.id, candidate.id), claimable))
       .returning();
     if (!claimed) return null;
@@ -104,12 +139,19 @@ export function makeSqliteWaitsMethods(
       store.write((database) =>
         Effect.gen(function* () {
           const now = Date.now();
+          // The version predicate is this park's fence. The statement writes the
+          // execution row itself, so the pin is compared on that row rather than
+          // through the correlated subquery `reparkWait` needs.
           const [parked] = yield* database
             .update(workflowExecutions)
             .set({ status: "waiting", waitingAt: now })
             .where(
               and(
                 eq(workflowExecutions.id, input.executionId),
+                eq(
+                  workflowExecutions.workflowVersionId,
+                  input.workflowVersionId
+                ),
                 inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES)
               )
             )
@@ -133,6 +175,60 @@ export function makeSqliteWaitsMethods(
           });
           return { waitStateId: id };
         })
+      ),
+    reparkWait: (input) =>
+      store.write((database) =>
+        Effect.gen(function* () {
+          // The read and the write share one `BEGIN IMMEDIATE`, so the status
+          // and the pinned version this reads are the ones the write sees.
+          const [row] = yield* database
+            .select({
+              status: workflowWaitStates.status,
+              pinnedVersionId: workflowExecutions.workflowVersionId,
+            })
+            .from(workflowWaitStates)
+            .leftJoin(
+              workflowExecutions,
+              eq(workflowExecutions.id, workflowWaitStates.executionId)
+            )
+            .where(eq(workflowWaitStates.id, input.waitStateId))
+            .limit(1);
+
+          if (row?.status !== "waiting") {
+            return refusedRepark("not_waiting");
+          }
+          if (row.pinnedVersionId !== input.workflowVersionId) {
+            return refusedRepark("version_moved");
+          }
+
+          yield* database
+            .update(workflowWaitStates)
+            .set({
+              waitType: input.waitType,
+              waitUntil: input.waitUntil?.getTime() ?? null,
+              subscribedEvents: JSON.stringify(input.subscribedEvents),
+              resumeToken: input.resumeToken,
+              metadata: encodeJson(input.metadata),
+            })
+            .where(eq(workflowWaitStates.id, input.waitStateId));
+
+          const reparked: ReparkWaitOutcome = { ok: true };
+          return reparked;
+        })
+      ),
+    findWaitStateById: (waitStateId) =>
+      store.read((database) =>
+        database
+          .select()
+          .from(workflowWaitStates)
+          .where(eq(workflowWaitStates.id, waitStateId))
+          .limit(1)
+          .pipe(
+            Effect.map((rows) => {
+              const [row] = rows;
+              return row ? sqliteWaitState(row) : null;
+            })
+          )
       ),
     markWaitStatus: (input) =>
       store.write((database) => {
@@ -189,10 +285,7 @@ export function makeSqliteWaitsMethods(
           eq(workflowWaitStates.workflowId, input.workflowId),
           eq(workflowWaitStates.status, "waiting"),
           inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES),
-          sql`exists (
-            select 1 from json_each(${workflowWaitStates.subscribedEvents}) j
-            where j.value = ${input.eventName}
-          )`,
+          subscribedTo(input.eventName),
         ];
         if (input.afterId) {
           filters.push(gt(workflowWaitStates.id, input.afterId));
@@ -217,12 +310,29 @@ export function makeSqliteWaitsMethods(
           .limit(input.limit)
           .pipe(Effect.map((rows) => rows.map(sqliteWaitState)));
       }),
-    claimWaitingStateByToken: (resumeToken) =>
+    claimWaitingStateByToken: (input) =>
       store.write((database) =>
-        claimWait(database, "resume_token", resumeToken)
+        claimWait(
+          database,
+          and(
+            eq(workflowWaitStates.resumeToken, input.resumeToken),
+            eq(workflowWaitStates.waitType, "event")
+          ),
+          input.arrival
+        )
       ),
-    claimWaitingStateById: (waitStateId) =>
-      store.write((database) => claimWait(database, "id", waitStateId)),
+    claimWaitingStateById: (input) =>
+      store.write((database) =>
+        claimWait(
+          database,
+          and(
+            eq(workflowWaitStates.id, input.waitStateId),
+            eq(workflowWaitStates.waitType, "event"),
+            subscribedTo(input.eventName)
+          ),
+          input.arrival
+        )
+      ),
     settleWaitingStateClaim: (input) =>
       store.write((database) =>
         database
