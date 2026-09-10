@@ -31,6 +31,12 @@ describe("migrationRefusalSentence", () => {
     ).toBe("Version 8 adds a node that would run before this run's Wait.");
   });
 
+  it("explains two Waits the target version places one below the other", () => {
+    expect(
+      migrationRefusalSentence({ reason: "waits_nested", detail: "wait_1" }, 8)
+    ).toBe("Version 8 places one of this run's Waits below another.");
+  });
+
   it("quotes the node and field an unresolved reference is about", () => {
     expect(
       migrationRefusalSentence(

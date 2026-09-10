@@ -5,7 +5,7 @@
  * A refusal reason is a machine word the client renders its own sentence for.
  * `detail` names the node or field the reason is about, never a config value.
  *
- * The six preview reasons:
+ * The seven preview reasons:
  *
  * - `draft_run`: the run pins a draft snapshot, which has no published history
  *   to move along.
@@ -16,12 +16,18 @@
  * - `node_added_above_wait`: the target graph has an enabled, non-Lifecycle node
  *   outside every parked Wait's descendants with no node log row in this run.
  *   Waking would execute work before or beside a parked Wait.
+ * - `waits_nested`: the run is parked on two Waits, and the target graph places
+ *   one of them below the other. Each parked Wait wakes its own branch run, and
+ *   the branch entered at the upper Wait would run down to the lower one and
+ *   park a second time on a row the other branch already holds.
  * - `unresolved_reference`: a node at or below a parked Wait references a node
  *   that has no recorded output and is not upstream of the consuming node in
- *   the target graph.
+ *   the target graph. A template token inside the target Wait's own
+ *   `waitTimeout` is reported the same way.
  * - `wait_timeout_elapsed`: the run is parked on an Event Wait, and the target
- *   graph's timeout for that node, measured from when the run parked, is
- *   already in the past. The migrated hop would time out on arrival.
+ *   graph's timeout for that node, resolved against this run's recorded outputs
+ *   and measured from when the run parked, is already in the past. The migrated
+ *   hop would time out on arrival.
  *
  * The migrate call adds one reason of its own. `not_requested_version` means
  * the guard had nothing to move: either the guarded pointer move changed no
@@ -43,6 +49,7 @@ export const MIGRATION_REFUSAL_REASONS = [
   "executing",
   "wait_node_missing",
   "node_added_above_wait",
+  "waits_nested",
   "unresolved_reference",
   "wait_timeout_elapsed",
 ] as const;

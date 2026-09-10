@@ -115,16 +115,15 @@ function targetGraph(
 }
 
 /**
- * Two Waits in sequence, each with a node below it. The node below the second
- * Wait references the node between them, which the run reaches only after the
- * first Wait releases.
+ * A graph of delay Wait nodes and plain nodes, wired by `edges`. `reference`
+ * writes one template into the consumer node's `subject`, naming the referenced
+ * node's `value` output.
  */
-function graphWithReference(input: {
+function waitGraph(input: {
   nodeIds: string[];
   waitNodeIds: string[];
-  consumerId: string;
-  referencedNodeId: string;
   edges: Array<{ id: string; source: string; target: string }>;
+  reference?: { consumerId: string; referencedNodeId: string };
 }): SerializedWorkflowGraph {
   return createSerializedWorkflowGraph({
     nodes: input.nodeIds.map((id) => ({
@@ -138,8 +137,10 @@ function graphWithReference(input: {
             ? BUILT_IN_ACTION_IDS.wait
             : "http.request",
           ...(input.waitNodeIds.includes(id) ? { waitMode: "delay" } : {}),
-          ...(id === input.consumerId
-            ? { subject: `{{@${input.referencedNodeId}:Source.value}}` }
+          ...(id === input.reference?.consumerId
+            ? {
+                subject: `{{@${input.reference.referencedNodeId}:Source.value}}`,
+              }
             : {}),
         },
       },
@@ -187,6 +188,10 @@ function makeMigrationSeams(input: {
   executions?: InFlightExecutionRow[] | undefined;
   waitStates?: WorkflowWaitState[] | undefined;
   nodeOutputs?: Record<string, JsonValue> | undefined;
+  /** The recorded outputs of one named run, for a case where runs differ. */
+  nodeOutputsByExecution?:
+    | Record<string, Record<string, JsonValue>>
+    | undefined;
   nodeLogNodeIds?: string[] | undefined;
   repinned?: boolean | undefined;
   sendWaitSignal?: InngestClient["Service"]["sendWaitSignal"] | undefined;
@@ -250,7 +255,11 @@ function makeMigrationSeams(input: {
         readNodeOutputs: (executionId) =>
           Effect.sync(() => {
             calls.outputReads.push(executionId);
-            return input.nodeOutputs ?? {};
+            return (
+              input.nodeOutputsByExecution?.[executionId] ??
+              input.nodeOutputs ??
+              {}
+            );
           }),
         listNodeStatuses: (executionId) =>
           Effect.sync(() => {
@@ -456,11 +465,13 @@ describe("previewMigration", () => {
     it.effect("refuses a template the run recorded no output for", () =>
       Effect.gen(function* () {
         const seams = makeMigrationSeams({
-          graph: graphWithReference({
+          graph: waitGraph({
             nodeIds: ["before_1", "wait_1", "after_1"],
             waitNodeIds: ["wait_1"],
-            consumerId: "after_1",
-            referencedNodeId: "before_1",
+            reference: {
+              consumerId: "after_1",
+              referencedNodeId: "before_1",
+            },
             edges: [{ id: "e1", source: "wait_1", target: "after_1" }],
           }),
           executions: [inFlightRow({ id: "exec_1" })],
@@ -528,11 +539,13 @@ describe("previewMigration", () => {
     it.effect("refuses a field the recorded output does not hold", () =>
       Effect.gen(function* () {
         const seams = makeMigrationSeams({
-          graph: graphWithReference({
+          graph: waitGraph({
             nodeIds: ["before_1", "wait_1", "after_1"],
             waitNodeIds: ["wait_1"],
-            consumerId: "after_1",
-            referencedNodeId: "before_1",
+            reference: {
+              consumerId: "after_1",
+              referencedNodeId: "before_1",
+            },
             edges: [{ id: "e1", source: "wait_1", target: "after_1" }],
           }),
           executions: [inFlightRow({ id: "exec_1" })],
@@ -631,11 +644,13 @@ describe("previewMigration", () => {
     it.effect("refuses a reference across two parked branches", () =>
       Effect.gen(function* () {
         const seams = makeMigrationSeams({
-          graph: graphWithReference({
+          graph: waitGraph({
             nodeIds: ["wait_1", "branch_1", "wait_2", "branch_2"],
             waitNodeIds: ["wait_1", "wait_2"],
-            consumerId: "branch_1",
-            referencedNodeId: "branch_2",
+            reference: {
+              consumerId: "branch_1",
+              referencedNodeId: "branch_2",
+            },
             edges: [
               { id: "e1", source: "wait_1", target: "branch_1" },
               { id: "e2", source: "wait_2", target: "branch_2" },
@@ -673,11 +688,13 @@ describe("previewMigration", () => {
       () =>
         Effect.gen(function* () {
           const seams = makeMigrationSeams({
-            graph: graphWithReference({
+            graph: waitGraph({
               nodeIds: ["wait_1", "source_1", "consumer_1"],
               waitNodeIds: ["wait_1"],
-              consumerId: "consumer_1",
-              referencedNodeId: "source_1",
+              reference: {
+                consumerId: "consumer_1",
+                referencedNodeId: "source_1",
+              },
               edges: [
                 { id: "e1", source: "wait_1", target: "source_1" },
                 { id: "e2", source: "source_1", target: "consumer_1" },
@@ -701,11 +718,13 @@ describe("previewMigration", () => {
     it.effect("accepts a reference through a join of two parked branches", () =>
       Effect.gen(function* () {
         const seams = makeMigrationSeams({
-          graph: graphWithReference({
+          graph: waitGraph({
             nodeIds: ["wait_1", "branch_1", "wait_2", "branch_2", "join_1"],
             waitNodeIds: ["wait_1", "wait_2"],
-            consumerId: "join_1",
-            referencedNodeId: "branch_2",
+            reference: {
+              consumerId: "join_1",
+              referencedNodeId: "branch_2",
+            },
             edges: [
               { id: "e1", source: "wait_1", target: "branch_1" },
               { id: "e2", source: "wait_2", target: "branch_2" },
@@ -738,11 +757,13 @@ describe("previewMigration", () => {
     it.effect("refuses a Wait that references itself", () =>
       Effect.gen(function* () {
         const seams = makeMigrationSeams({
-          graph: graphWithReference({
+          graph: waitGraph({
             nodeIds: ["wait_1"],
             waitNodeIds: ["wait_1"],
-            consumerId: "wait_1",
-            referencedNodeId: "wait_1",
+            reference: {
+              consumerId: "wait_1",
+              referencedNodeId: "wait_1",
+            },
             edges: [],
           }),
           executions: [inFlightRow({ id: "exec_1" })],
@@ -814,6 +835,172 @@ describe("previewMigration", () => {
 
         assert.deepStrictEqual(report.refused, []);
         assert.strictEqual(report.eligible.length, 1);
+      })
+    );
+
+    it.effect(
+      "resolves a templated wait timeout against each run's own outputs",
+      () =>
+        Effect.gen(function* () {
+          const seams = makeMigrationSeams({
+            graph: targetGraph({
+              waitConfig: {
+                waitMode: "event",
+                waitTimeout: "{{@before_1:Before.timeout}}",
+              },
+            }),
+            executions: [
+              inFlightRow({ id: "exec_1" }),
+              inFlightRow({ id: "exec_2" }),
+            ],
+            waitStates: [
+              waitRow({
+                id: "wait_row_1",
+                executionId: "exec_1",
+                waitType: "event",
+              }),
+              waitRow({
+                id: "wait_row_2",
+                executionId: "exec_2",
+                waitType: "event",
+              }),
+            ],
+            nodeOutputsByExecution: {
+              // The park is a minute old, so 30 seconds has run out and a week
+              // has not.
+              exec_1: { before_1: { value: "ok", timeout: "30s" } },
+              exec_2: { before_1: { value: "ok", timeout: "7d" } },
+            },
+          });
+
+          const report = yield* previewMigration({
+            workflowId: WORKFLOW_ID,
+          }).pipe(Effect.provide(seams.layer));
+
+          assert.deepStrictEqual(report.refused, [
+            {
+              executionId: "exec_1",
+              fromVersionNumber: 1,
+              reason: "wait_timeout_elapsed",
+              detail: "wait_1",
+            },
+          ]);
+          assert.deepStrictEqual(
+            report.eligible.map((run) => run.executionId),
+            ["exec_2"]
+          );
+        })
+    );
+
+    it.effect(
+      "refuses a wait timeout naming an output the run never recorded",
+      () =>
+        Effect.gen(function* () {
+          const seams = makeMigrationSeams({
+            graph: targetGraph({
+              waitConfig: {
+                waitMode: "event",
+                waitTimeout: "{{@before_1:Before.timeout}}",
+              },
+            }),
+            executions: [inFlightRow({ id: "exec_1" })],
+            waitStates: [
+              waitRow({
+                id: "wait_row_1",
+                executionId: "exec_1",
+                waitType: "event",
+              }),
+            ],
+            nodeOutputs: { before_1: { value: "ok" } },
+          });
+
+          const report = yield* previewMigration({
+            workflowId: WORKFLOW_ID,
+          }).pipe(Effect.provide(seams.layer));
+
+          assert.deepStrictEqual(report.refused, [
+            {
+              executionId: "exec_1",
+              fromVersionNumber: 1,
+              reason: "unresolved_reference",
+              detail: "wait_1.waitTimeout",
+            },
+          ]);
+        })
+    );
+
+    it.effect("refuses a run whose two Waits the target graph nests", () =>
+      Effect.gen(function* () {
+        const seams = makeMigrationSeams({
+          graph: waitGraph({
+            nodeIds: ["wait_1", "mid_1", "wait_2"],
+            waitNodeIds: ["wait_1", "wait_2"],
+            edges: [
+              { id: "e1", source: "wait_1", target: "mid_1" },
+              { id: "e2", source: "mid_1", target: "wait_2" },
+            ],
+          }),
+          executions: [inFlightRow({ id: "exec_1" })],
+          waitStates: [
+            waitRow({ id: "wait_row_1", executionId: "exec_1" }),
+            waitRow({
+              id: "wait_row_2",
+              executionId: "exec_1",
+              nodeId: "wait_2",
+            }),
+          ],
+        });
+
+        const report = yield* previewMigration({
+          workflowId: WORKFLOW_ID,
+        }).pipe(Effect.provide(seams.layer));
+
+        assert.deepStrictEqual(report.refused, [
+          {
+            executionId: "exec_1",
+            fromVersionNumber: 1,
+            reason: "waits_nested",
+            detail: "wait_1",
+          },
+        ]);
+      })
+    );
+
+    it.effect("accepts two Waits on branches beside each other", () =>
+      Effect.gen(function* () {
+        const seams = makeMigrationSeams({
+          graph: waitGraph({
+            nodeIds: ["root_1", "wait_1", "wait_2"],
+            waitNodeIds: ["wait_1", "wait_2"],
+            edges: [
+              { id: "e1", source: "root_1", target: "wait_1" },
+              { id: "e2", source: "root_1", target: "wait_2" },
+            ],
+          }),
+          executions: [inFlightRow({ id: "exec_1" })],
+          waitStates: [
+            waitRow({ id: "wait_row_1", executionId: "exec_1" }),
+            waitRow({
+              id: "wait_row_2",
+              executionId: "exec_1",
+              nodeId: "wait_2",
+            }),
+          ],
+          nodeLogNodeIds: ["root_1"],
+        });
+
+        const report = yield* previewMigration({
+          workflowId: WORKFLOW_ID,
+        }).pipe(Effect.provide(seams.layer));
+
+        assert.deepStrictEqual(report.refused, []);
+        assert.deepStrictEqual(report.eligible, [
+          {
+            executionId: "exec_1",
+            fromVersionNumber: 1,
+            parkedNodeIds: ["wait_1", "wait_2"],
+          },
+        ]);
       })
     );
 

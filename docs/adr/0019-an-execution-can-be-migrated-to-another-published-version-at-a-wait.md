@@ -48,12 +48,15 @@ before it happens. `previewMigration` produces that preflight report, and
 
 The preflight classifies every in-flight run not already on the target version
 as eligible or refused. The refusal reasons are `draft_run`, `executing`,
-`wait_node_missing`, `node_added_above_wait`, `unresolved_reference` and
-`wait_timeout_elapsed`, and
+`wait_node_missing`, `node_added_above_wait`, `waits_nested`,
+`unresolved_reference` and `wait_timeout_elapsed`, and
 `packages/shared/src/graph/migration-contracts.ts` states what each one means.
 `unresolved_reference` is the reason the preflight exists: a template below a
 parked Wait in the target version can address a node the run produced no output
-for, and moving that run would move it into a failure.
+for, and moving that run would move it into a failure. `waits_nested` covers a
+run parked at two Waits the target version places one below the other: both
+would wake, and the branch entered at the upper Wait would run down to the lower
+one and park a second time on the row the other branch already holds.
 
 `migrateExecutions` re-checks the runs it was handed, moves each eligible run's
 version pointer under a guard on the run's status and current version, records

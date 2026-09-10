@@ -6,7 +6,8 @@
  * pinned version pointer, then a `version-migrate` signal per parked wait row,
  * which is what makes the run recompute its Wait against the version it now
  * pins, then the audit row. The audit row is written last because it is a
- * record of the move rather than a part of it.
+ * record of the move rather than a part of it. Runs move a bounded number at a
+ * time, so a call naming thousands of them still answers inside a request.
  */
 
 import { Effect } from "effect";
@@ -85,6 +86,17 @@ const signalMigratedWaits = Effect.fn("signalMigratedWaits")(function* (input: {
  * the in-flight list did not hold costs a read, so this bounds the rare case.
  */
 const DEPARTED_RUN_READ_CONCURRENCY = 8;
+
+/**
+ * How many runs are moved at once.
+ *
+ * One call can name every in-flight run of a busy workflow, and each run costs a
+ * pointer write, a signal per parked row and an audit write. Moving them one
+ * after another puts a request over ten thousand runs at risk of timing out. The
+ * bound matches the classifier's output read, and each run's own three steps
+ * stay in their order inside it.
+ */
+const MIGRATE_RUN_CONCURRENCY = 8;
 
 /**
  * Files the audit row for a run that has already moved, and answers either way.
@@ -268,7 +280,8 @@ export const migrateExecutions = Effect.fn("wfgraph.workflow.migrate_runs")(
           classification,
           workflowId: input.workflowId,
           targetVersion,
-        })
+        }),
+      { concurrency: MIGRATE_RUN_CONCURRENCY }
     );
     const outcomes = [
       ...classifiedOutcomes,
