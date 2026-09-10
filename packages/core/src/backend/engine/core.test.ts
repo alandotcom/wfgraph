@@ -785,7 +785,12 @@ describe("run persistence through the store port", () => {
   function storeClaimingNothing(): RecordingWorkflowStore {
     return {
       ...store,
-      completeRun: (input) => Effect.as(store.completeRun(input), false),
+      completeRun: (input) =>
+        Effect.as(store.completeRun(input), {
+          status: "superseded" as const,
+          claim: null,
+          didWrite: false,
+        }),
     };
   }
 

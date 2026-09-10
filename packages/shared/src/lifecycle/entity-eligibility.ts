@@ -144,7 +144,7 @@ function unreadableEligibilityRule(
   return undefined;
 }
 
-function checkEligibilityCondition(
+export function checkEntityEligibilityCondition(
   entity: EntityMetadata,
   serialized: string
 ): LifecycleRulesCheck {
@@ -262,5 +262,5 @@ export function checkEntityEligibility(input: {
     );
   }
 
-  return checkEligibilityCondition(entity, eligibility.condition);
+  return checkEntityEligibilityCondition(entity, eligibility.condition);
 }

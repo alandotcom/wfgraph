@@ -10,6 +10,7 @@ import {
 import {
   SilentAppLoggerLayer,
   stubExecutionRepo,
+  stubExtensions,
   stubInngestClient,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
@@ -25,6 +26,10 @@ import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
 import type { JsonValue } from "@wfgraph/shared/types/json";
+import {
+  emptyExtensionCatalog,
+  type ExtensionCatalog,
+} from "@wfgraph/shared/extensions/catalog";
 
 const WORKFLOW_ID = "wf_1";
 const TARGET_VERSION_ID = "ver_2";
@@ -44,6 +49,7 @@ function targetGraph(
     waitEnabled?: boolean;
     waitConfig?: Record<string, unknown>;
     withAddedNodeAboveWait?: boolean;
+    trackedEntityType?: string;
   } = {}
 ): SerializedWorkflowGraph {
   const withWaitNode = options.withWaitNode ?? true;
@@ -64,6 +70,36 @@ function targetGraph(
 
   return createSerializedWorkflowGraph({
     nodes: [
+      ...(options.trackedEntityType
+        ? [
+            {
+              id: "lifecycle",
+              position: { x: 0, y: -100 },
+              data: {
+                label: "Lifecycle",
+                type: "lifecycle" as const,
+                config: {
+                  lifecycleRules: {
+                    startEvents: ["appointment.started"],
+                    cancelEvents: [],
+                    concurrency: "unlimited" as const,
+                    allowManualStart: false,
+                    trackedEntity: {
+                      type: options.trackedEntityType,
+                      bindings: {
+                        "appointment.started": "appointment",
+                      },
+                    },
+                    entityEligibility: {
+                      condition: "condition",
+                      checkpoints: ["before-node" as const],
+                    },
+                  },
+                },
+              },
+            },
+          ]
+        : []),
       {
         id: "before_1",
         position: { x: 0, y: 0 },
@@ -102,6 +138,16 @@ function targetGraph(
     ],
     edges: withWaitNode
       ? [
+          ...(options.trackedEntityType
+            ? [
+                {
+                  id: "entry",
+                  source: "lifecycle",
+                  sourceHandle: "started",
+                  target: "before_1",
+                },
+              ]
+            : []),
           ...(options.withAddedNodeAboveWait
             ? [
                 { id: "e0", source: "before_1", target: "added_1" },
@@ -199,6 +245,7 @@ function makeMigrationSeams(input: {
   recordAuditEvent?: ExecutionRepo["Service"]["recordAuditEvent"] | undefined;
   /** The workflow each run outside the in-flight list belongs to, by run id. */
   workflowIdByExecution?: Record<string, string | null> | undefined;
+  catalog?: ExtensionCatalog | undefined;
 }) {
   const version: PublishedWorkflowVersion = {
     id: TARGET_VERSION_ID,
@@ -228,6 +275,7 @@ function makeMigrationSeams(input: {
     version,
     calls,
     layer: Layer.mergeAll(
+      stubExtensions({ catalog: input.catalog ?? emptyExtensionCatalog }),
       stubWorkflowRepo({
         findByIdWithPublishedVersionForRun: () =>
           Effect.succeed({
@@ -336,6 +384,78 @@ describe("previewMigration", () => {
           alreadyCurrentCount: 0,
         });
       })
+    );
+
+    it.effect(
+      "refuses a target that would change the run's tracked Entity type",
+      () =>
+        Effect.gen(function* () {
+          const seams = makeMigrationSeams({
+            graph: targetGraph({ trackedEntityType: "patient" }),
+            executions: [
+              inFlightRow({
+                id: "exec_1",
+                entityType: "appointment",
+                entityId: "appointment_1",
+              }),
+            ],
+            waitStates: [waitRow({ id: "wait_row_1", executionId: "exec_1" })],
+          });
+
+          const report = yield* previewMigration({
+            workflowId: WORKFLOW_ID,
+          }).pipe(Effect.provide(seams.layer));
+
+          assert.deepStrictEqual(report.eligible, []);
+          assert.deepStrictEqual(report.refused, [
+            {
+              executionId: "exec_1",
+              fromVersionNumber: 1,
+              reason: "entity_incompatible",
+              detail: "patient",
+            },
+          ]);
+        })
+    );
+
+    it.effect(
+      "refuses a target whose Eligibility cannot use the current Entity schema",
+      () =>
+        Effect.gen(function* () {
+          const seams = makeMigrationSeams({
+            graph: targetGraph({ trackedEntityType: "appointment" }),
+            catalog: {
+              ...emptyExtensionCatalog,
+              entities: [
+                {
+                  type: "appointment",
+                  label: "Appointment",
+                  stateFields: [{ path: "status", type: "string" }],
+                  stateSchemaDigest: "schema-v2",
+                },
+              ],
+            },
+            executions: [
+              inFlightRow({
+                id: "exec_1",
+                entityType: "appointment",
+                entityId: "appointment_1",
+              }),
+            ],
+            waitStates: [waitRow({ id: "wait_row_1", executionId: "exec_1" })],
+          });
+
+          const report = yield* previewMigration({
+            workflowId: WORKFLOW_ID,
+          }).pipe(Effect.provide(seams.layer));
+
+          assert.deepStrictEqual(report.eligible, []);
+          assert.strictEqual(report.refused[0]?.reason, "entity_incompatible");
+          assert.match(
+            report.refused[0]?.detail ?? "",
+            /condition|unknown|field/i
+          );
+        })
     );
 
     it.effect("counts a run already pinned to the target version", () =>
@@ -1139,6 +1259,7 @@ describe("previewMigration", () => {
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
+              stubExtensions(),
               stubWorkflowRepo({
                 findByIdWithPublishedVersionForRun: () => Effect.succeed(null),
               }),
@@ -1162,6 +1283,7 @@ describe("previewMigration", () => {
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
+              stubExtensions(),
               stubWorkflowRepo({
                 findByIdWithPublishedVersionForRun: () =>
                   Effect.succeed({

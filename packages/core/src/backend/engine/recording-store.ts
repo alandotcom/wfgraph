@@ -13,10 +13,12 @@ import type {
   CompleteRunInput,
   CompleteStepLogInput,
   CreateWaitStateInput,
+  ExecutionTerminationState,
   MarkWaitStateStatusInput,
   ReparkWaitStateInput,
   ReparkWaitStateOutcome,
   RecordAuditEventInput,
+  RequestExecutionExitInput,
   StartStepLogInput,
   WaitStateSnapshot,
   WorkflowStore,
@@ -33,6 +35,9 @@ type StoreCallInputs = {
   readWaitState: { waitStateId: string };
   markExecutionRunning: { executionId: string; workflowVersionId: string };
   markExecutionWaitingIfParked: { executionId: string };
+  admitNode: { executionId: string };
+  requestExit: RequestExecutionExitInput;
+  readTerminationState: { executionId: string };
   readPendingCancel: { executionId: string };
   completeRun: CompleteRunInput;
   readNodeOutputs: { executionId: string };
@@ -75,6 +80,8 @@ export type RecordingWorkflowStore = WorkflowStore & {
    * branch is still parked when this branch finishes.
    */
   waitingIfParkedAnswer: boolean;
+  /** Shared execution boundary state used by node-admission and exit tests. */
+  terminationState: ExecutionTerminationState | null;
   reset(): void;
 };
 
@@ -94,6 +101,9 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
     readWaitState: [],
     markExecutionRunning: [],
     markExecutionWaitingIfParked: [],
+    admitNode: [],
+    requestExit: [],
+    readTerminationState: [],
     readPendingCancel: [],
     completeRun: [],
     readNodeOutputs: [],
@@ -110,6 +120,7 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
     waitState: null,
     markRunningAnswer: true,
     waitingIfParkedAnswer: false,
+    terminationState: null,
 
     reset() {
       calls.length = 0;
@@ -196,6 +207,45 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
       });
     },
 
+    admitNode(executionId) {
+      return Effect.sync(() => {
+        const input = { executionId };
+        calls.push({ method: "admitNode", input });
+        byMethod.admitNode.push(input);
+        return store.terminationState === null;
+      });
+    },
+
+    requestExit(input) {
+      return Effect.sync(() => {
+        calls.push({ method: "requestExit", input });
+        byMethod.requestExit.push(input);
+        if (store.terminationState) {
+          return { ...store.terminationState, didWrite: false };
+        }
+        store.terminationState = {
+          status: "running",
+          claim: {
+            kind: "exit",
+            requestedAt: input.checkedAt,
+            reason: input.reason,
+            nodeId: input.nodeId,
+          },
+          didWrite: true,
+        };
+        return store.terminationState;
+      });
+    },
+
+    readTerminationState(executionId) {
+      return Effect.sync(() => {
+        const input = { executionId };
+        calls.push({ method: "readTerminationState", input });
+        byMethod.readTerminationState.push(input);
+        return store.terminationState;
+      });
+    },
+
     readPendingCancel(executionId) {
       return Effect.sync(() => {
         const input = { executionId };
@@ -209,7 +259,26 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
       return Effect.sync(() => {
         calls.push({ method: "completeRun", input });
         byMethod.completeRun.push(input);
-        return true;
+        const current = store.terminationState;
+        const claimMatches =
+          !current?.claim ||
+          (current.claim.kind === "exit" && input.status === "exited") ||
+          (current.claim.kind === "cancel" && input.status === "canceled");
+        const stillInFlight =
+          !current ||
+          current.status === "pending" ||
+          current.status === "running" ||
+          current.status === "waiting";
+        if (!claimMatches || !stillInFlight) {
+          return current ? { ...current, didWrite: false } : null;
+        }
+
+        store.terminationState = {
+          status: input.status,
+          claim: current?.claim ?? null,
+          didWrite: true,
+        };
+        return store.terminationState;
       });
     },
 

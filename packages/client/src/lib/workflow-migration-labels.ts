@@ -43,6 +43,8 @@ export function migrationRefusalSentence(
         : "A field below the Wait reads an output this run never produced.";
     case "wait_timeout_elapsed":
       return `The Wait in version ${targetVersionNumber} would time out at once for this run.`;
+    case "entity_incompatible":
+      return `Version ${targetVersionNumber} has Entity configuration that is incompatible with this run.`;
     case "not_requested_version":
       return "This run moved or ended before the migration reached it.";
     default: {

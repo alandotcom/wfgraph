@@ -36,6 +36,8 @@ export type NodeWorkOutcome = {
    * everything underneath.
    */
   haltBranch?: boolean | undefined;
+  /** A durable child reported execution-wide Exit before entering this node. */
+  executionExited?: boolean | undefined;
   /**
    * How this node changes the Arriving Event. Absent means leave it. `null`
    * means the run names none below this node (a timeout that continues past

@@ -114,6 +114,7 @@ export const workflowBranchKillRequested = eventType(
         executionId: NonEmptyTrimmedString,
         workflowId: NonEmptyTrimmedString,
         reason: Schema.String,
+        excludedEntryNodeId: Schema.optionalKey(NonEmptyTrimmedString),
       }),
       rejectUnknownKeys
     ),

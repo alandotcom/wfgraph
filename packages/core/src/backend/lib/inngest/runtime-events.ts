@@ -67,10 +67,11 @@ export async function sendWorkflowBranchKill(
     executionId: string;
     workflowId: string;
     reason: string;
+    excludedEntryNodeId?: string | undefined;
   }
 ) {
   return await client.send(
-    workflowBranchKillRequested.create(input, {
+    workflowBranchKillRequested.create(omitUndefined(input), {
       id: `workflow-branch-kill-${input.executionId}-${Date.now()}`,
     })
   );

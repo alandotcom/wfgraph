@@ -2,6 +2,7 @@ import type { Inngest, InngestFunction } from "inngest";
 import { Effect } from "effect";
 import { Extensions } from "#src/backend/lib/effect/extensions";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
+import { createWorkflowEntities } from "#src/backend/extensions/workflow-entities";
 import { createDbWorkflowStore } from "#src/backend/engine/db-store";
 import {
   executeWorkflow,
@@ -51,6 +52,7 @@ export async function buildInngestFunctions(
   );
   const ports = {
     actions: () => createWorkflowActions(extensions, runtime),
+    entities: () => createWorkflowEntities(extensions),
     store: createDbWorkflowStore(executionRepo),
     appRuntime: runtime,
     executeWorkflow,

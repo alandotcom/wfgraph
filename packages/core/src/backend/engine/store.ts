@@ -25,6 +25,10 @@ import type {
   JsonValue,
 } from "@wfgraph/shared/types/json";
 import type { WaitArrival } from "@wfgraph/shared/lifecycle/wait-signal";
+import type {
+  EntityEligibilityReason,
+  WorkflowExecutionStatus,
+} from "@wfgraph/shared/lifecycle/execution-contracts";
 import { Effect } from "effect";
 import type { EngineFailure } from "#src/backend/engine/engine-failure";
 import type { DatabaseError } from "#src/backend/lib/effect/database";
@@ -40,6 +44,7 @@ export type WorkflowRunAuditEventType =
   | "run_resumed"
   | "run_timed_out"
   | "run_cancelled"
+  | "run_exited"
   | "run_completed"
   | "run_failed";
 
@@ -182,9 +187,35 @@ export type PendingCancel = {
   payload: JsonObject | null;
 };
 
+export type ExecutionTerminationState = {
+  status: WorkflowExecutionStatus;
+  claim:
+    | {
+        kind: "cancel";
+        requestedAt: string;
+        eventName: string | null;
+        payload: JsonObject | null;
+      }
+    | {
+        kind: "exit";
+        requestedAt: string;
+        reason: EntityEligibilityReason;
+        nodeId: string;
+      }
+    | null;
+  didWrite: boolean;
+};
+
+export type RequestExecutionExitInput = {
+  executionId: string;
+  reason: EntityEligibilityReason;
+  nodeId: string;
+  checkedAt: string;
+};
+
 export type CompleteRunInput = {
   executionId: string;
-  status: "completed" | "failed" | "canceled";
+  status: "completed" | "failed" | "canceled" | "exited";
   output?: unknown;
   failure?: EngineFailure | undefined;
 };
@@ -257,6 +288,21 @@ export type WorkflowStore = {
     executionId: string;
   }): Effect.Effect<boolean, DatabaseError>;
   /**
+   * Atomically admits one Started-side node only while no execution-wide
+   * termination claim or terminal status exists. The durable caller treats a
+   * true answer as the node's linearized admission, so a later claim may let
+   * that already-admitted node finish but cannot admit its successors.
+   */
+  admitNode(executionId: string): Effect.Effect<boolean, DatabaseError>;
+  /** Atomically claims execution-wide Entity Eligibility exit. */
+  requestExit(
+    input: RequestExecutionExitInput
+  ): Effect.Effect<ExecutionTerminationState | null, DatabaseError>;
+  /** Reads the authoritative execution-wide claim and terminal status. */
+  readTerminationState(
+    executionId: string
+  ): Effect.Effect<ExecutionTerminationState | null, DatabaseError>;
+  /**
    * Whether a Cancel Event has claimed this run, and what it carried. Read at
    * each node boundary inside a step, so the answer is memoized and a replay
    * takes the branch the first pass took.
@@ -265,12 +311,14 @@ export type WorkflowStore = {
     executionId: string
   ): Effect.Effect<PendingCancel | null, DatabaseError>;
   /**
-   * Writes the terminal state of the run. True when this write claimed the row
-   * and false when a terminal status already won the race. A database refusal
-   * remains in the error channel; the terminal-record policy converts it to the
-   * same no-audit outcome after logging it distinctly.
+   * Attempts the terminal state and returns the authoritative stored outcome.
+   * `didWrite` identifies this call as the compare-and-set winner. A database
+   * refusal remains in the error channel; terminal-record policy logs it and
+   * emits no audit announcement.
    */
-  completeRun(input: CompleteRunInput): Effect.Effect<boolean, DatabaseError>;
+  completeRun(
+    input: CompleteRunInput
+  ): Effect.Effect<ExecutionTerminationState | null, DatabaseError>;
   /**
    * What the nodes of this run that have already finished left behind, keyed by
    * node id. A branch run starts partway down the graph, so this is how the
@@ -305,8 +353,12 @@ export const noopWorkflowStore: WorkflowStore = {
   markWaitStateStatus: () => Effect.void,
   markExecutionRunning: () => Effect.succeed(true),
   markExecutionWaitingIfParked: () => Effect.succeed(false),
+  admitNode: () => Effect.succeed(true),
+  requestExit: () => Effect.succeed(null),
+  readTerminationState: () => Effect.succeed(null),
   readPendingCancel: () => Effect.succeed(null),
-  completeRun: () => Effect.succeed(true),
+  completeRun: (input) =>
+    Effect.succeed({ status: input.status, claim: null, didWrite: true }),
   readNodeOutputs: () => Effect.succeed({}),
   cancelOpenWork: () => Effect.void,
 };

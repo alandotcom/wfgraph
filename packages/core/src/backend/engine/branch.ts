@@ -14,11 +14,20 @@ import type {
   NodeOutputs,
 } from "#src/backend/engine/contracts";
 import { engineFailureSchema } from "#src/backend/engine/engine-failure";
+import { ENTITY_ELIGIBILITY_REASONS } from "@wfgraph/shared/lifecycle/execution-contracts";
 
 /** What a branch run's traversal left behind, keyed the way its own was. */
 export type BranchRunResult = {
   results: Record<string, ExecutionResult>;
   outputs: NodeOutputs;
+  /** Exit claimed by this or a sibling branch, for the parent run to own. */
+  exit?:
+    | {
+        reason: "entity_condition_not_met" | "entity_not_found";
+        nodeId: string;
+        checkedAt: string;
+      }
+    | undefined;
 };
 
 /**
@@ -55,5 +64,12 @@ export const branchRunResultSchema = Schema.Struct({
   outputs: Schema.Record(
     Schema.String,
     Schema.Struct({ label: Schema.String, data: Schema.MutableJson })
+  ),
+  exit: Schema.optionalKey(
+    Schema.Struct({
+      reason: Schema.Literals(ENTITY_ELIGIBILITY_REASONS),
+      nodeId: Schema.String,
+      checkedAt: Schema.String,
+    })
   ),
 }) satisfies Schema.Codec<BranchRunResult>;

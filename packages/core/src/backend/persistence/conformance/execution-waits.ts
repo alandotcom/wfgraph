@@ -678,6 +678,8 @@ export function describeExecutionWaitConformance({
           workflowVersionId: "ver_1",
           versionKind: "published",
           versionNumber: 1,
+          entityType: null,
+          entityId: null,
         },
       ]);
     });

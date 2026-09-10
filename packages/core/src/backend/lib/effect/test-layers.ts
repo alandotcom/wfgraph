@@ -343,6 +343,7 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
   endInFlight: refuse("endInFlight"),
   requestCancelForEntity: refuse("requestCancelForEntity"),
   requestExit: refuse("requestExit"),
+  canAdmitNode: refuse("canAdmitNode"),
   findTerminationState: refuse("findTerminationState"),
   findPendingCancel: refuse("findPendingCancel"),
   finishRun: refuse("finishRun"),

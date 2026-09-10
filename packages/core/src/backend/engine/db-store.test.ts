@@ -28,13 +28,17 @@ describe("completeRun", () => {
         }),
     })
   )((it) => {
-    it.effect("answers true when the write claimed the row", () =>
+    it.effect("answers the claimed terminal state", () =>
       Effect.gen(function* () {
         const repo = yield* ExecutionRepo;
         const result =
           yield* createDbWorkflowStore(repo).completeRun(terminalWrite);
 
-        expect(result).toBe(true);
+        expect(result).toEqual({
+          status: "completed",
+          claim: null,
+          didWrite: true,
+        });
       })
     );
   });
@@ -51,14 +55,18 @@ describe("completeRun", () => {
     })
   )((it) => {
     it.effect(
-      "answers false when an earlier terminal status holds the row",
+      "answers the authoritative state when another terminal status won",
       () =>
         Effect.gen(function* () {
           const repo = yield* ExecutionRepo;
           const result =
             yield* createDbWorkflowStore(repo).completeRun(terminalWrite);
 
-          expect(result).toBe(false);
+          expect(result).toEqual({
+            status: "canceled",
+            claim: null,
+            didWrite: false,
+          });
         })
     );
   });

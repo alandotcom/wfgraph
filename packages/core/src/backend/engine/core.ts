@@ -16,6 +16,10 @@ import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { Cause, Effect } from "effect";
 import type { WorkflowActions } from "#src/backend/engine/actions";
 import type { BranchRunResult } from "#src/backend/engine/branch";
+import {
+  noWorkflowEntities,
+  type WorkflowEntities,
+} from "#src/backend/engine/entities";
 import { CancelBoundary } from "#src/backend/engine/cancel-boundary";
 import {
   type ExecutionResult,
@@ -37,6 +41,9 @@ import {
 } from "#src/backend/engine/engine-failure";
 import { runDurable, runDurableUnit } from "#src/backend/engine/durable";
 import { withAppLogCategory } from "#src/backend/lib/effect/app-logger";
+import { entityEligibilityConditionId } from "#src/backend/lib/entity-eligibility";
+import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
+import type { WorkflowExecutionStatus } from "@wfgraph/shared/lifecycle/execution-contracts";
 
 export type { WorkflowActions } from "#src/backend/engine/actions";
 export type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
@@ -75,6 +82,9 @@ export type WorkflowExecutionInput = {
   /** Owning workflow. Also how steps look up integration credentials. */
   workflowId: string;
   workflowName?: string | undefined;
+  /** Immutable typed identity selected when a guarded Execution was opened. */
+  entityType?: string | undefined;
+  entityId?: string | undefined;
   workflowRunId?: string | undefined;
   runMode?: "live" | "test" | undefined;
 };
@@ -100,14 +110,25 @@ type PreparedRun = {
   cancelBoundary: CancelBoundary;
   scheduler: NodeScheduler;
   lifecycleNodeIds: string[];
+  entityEligibilityCondition?: string | undefined;
 };
 
 type WorkflowExecutionResult = {
+  status: WorkflowExecutionStatus;
   success: boolean;
   results: Readonly<Record<string, ExecutionResult>>;
   outputs: Readonly<NodeOutputs>;
   error?: string | undefined;
   cancelled?: boolean | undefined;
+  exit?:
+    | {
+        reason: "entity_condition_not_met" | "entity_not_found";
+        entityType: string;
+        conditionId: string;
+        nodeId: string;
+        checkedAt: string;
+      }
+    | undefined;
 };
 
 /**
@@ -122,7 +143,8 @@ function prepareRun(
   input: WorkflowExecutionInput | WorkflowBranchInput,
   runtime: WorkflowExecutionRuntime,
   store: WorkflowStore,
-  actions: WorkflowActions
+  actions: WorkflowActions,
+  entities: WorkflowEntities
 ): PreparedRun {
   const branchEntryNodeId =
     "entryNodeId" in input ? input.entryNodeId : undefined;
@@ -141,6 +163,9 @@ function prepareRun(
 
   const traversal = new Traversal(nodes, edges);
   const lifecycleNodes = traversal.lifecycleNodes;
+  const eligibility = lifecycleNodes
+    .map((node) => readLifecycleRules(node.data.config)?.entityEligibility)
+    .find((candidate) => candidate?.checkpoints.includes("before-node"));
 
   const boundaryInput = {
     edges,
@@ -159,6 +184,7 @@ function prepareRun(
     runtime,
     store,
     actions,
+    entities,
     executionId,
     workflowId,
     workflowRunId: currentWorkflowRunId,
@@ -167,6 +193,13 @@ function prepareRun(
     startEventName,
     catalogFingerprint: input.catalogFingerprint,
     workflowVersionId: input.workflowVersionId,
+    entityEligibility: eligibility
+      ? {
+          entityType: input.entityType ?? "",
+          entityId: input.entityId ?? "",
+          condition: eligibility.condition,
+        }
+      : undefined,
     branchEntryNodeId,
   });
 
@@ -177,6 +210,7 @@ function prepareRun(
     cancelBoundary,
     scheduler,
     lifecycleNodeIds: lifecycleNodes.map((node) => node.id),
+    entityEligibilityCondition: eligibility?.condition,
   };
 }
 
@@ -243,9 +277,16 @@ export function executeWorkflow(
   input: WorkflowExecutionInput,
   runtime: WorkflowExecutionRuntime,
   store: WorkflowStore,
-  actions: WorkflowActions
+  actions: WorkflowActions,
+  entities: WorkflowEntities = noWorkflowEntities
 ): Effect.Effect<WorkflowExecutionResult, EngineFailure> {
-  const execute = executeWorkflowInner(input, runtime, store, actions).pipe(
+  const execute = executeWorkflowInner(
+    input,
+    runtime,
+    store,
+    actions,
+    entities
+  ).pipe(
     Effect.annotateLogs(runLogAnnotations(input, runtime)),
     Effect.withSpan("wfgraph.workflow.execution", {
       attributes: workflowSpanAttributes(input),
@@ -258,7 +299,8 @@ function executeWorkflowInner(
   input: WorkflowExecutionInput,
   runtime: WorkflowExecutionRuntime,
   store: WorkflowStore,
-  actions: WorkflowActions
+  actions: WorkflowActions,
+  entities: WorkflowEntities
 ) {
   return Effect.suspend(() => {
     const { executionId, workflowId, runMode = "live" } = input;
@@ -269,7 +311,8 @@ function executeWorkflowInner(
       cancelBoundary,
       scheduler,
       lifecycleNodeIds,
-    } = prepareRun(input, runtime, store, actions);
+      entityEligibilityCondition,
+    } = prepareRun(input, runtime, store, actions, entities);
 
     // This body is re-run on every attempt and after every wait, so this clock
     // measures the current attempt alone. The run's own elapsed is derived from
@@ -299,30 +342,36 @@ function executeWorkflowInner(
 
       const finalSuccess = traversal.allSucceeded();
       const finalOutput = traversal.deterministicTerminalOutput();
-      // A cancel outranks what the nodes did: the run reached the end of the
-      // Canceled branch, and that is the whole of what it means to be canceled.
-      const terminalStatus: TraversalTerminalStatus =
-        cancelBoundary.hasLeftStartedBranch()
+      const termination = yield* runDurable(
+        runtime,
+        { id: "execution-termination-final", name: "Read run outcome" },
+        store.readTerminationState(executionId)
+      );
+      const exitClaim =
+        termination?.claim?.kind === "exit" ? termination.claim : undefined;
+      const exitContext =
+        entityEligibilityCondition && input.entityType
+          ? {
+              entityType: input.entityType,
+              conditionId: entityEligibilityConditionId(
+                entityEligibilityCondition
+              ),
+            }
+          : undefined;
+      // The persisted first claim outranks traversal results. Exit takes no
+      // graph outlet; cancellation retains its distinct Canceled branch.
+      const terminalStatus: TraversalTerminalStatus = exitClaim
+        ? "exited"
+        : cancelBoundary.hasLeftStartedBranch() ||
+            termination?.claim?.kind === "cancel"
           ? "canceled"
           : finalSuccess
             ? "completed"
             : "failed";
 
-      const attemptMs = Date.now() - attemptStartTime;
-      yield* Effect.logInfo(`Run ${terminalStatus} in ${attemptMs}ms`).pipe(
-        Effect.annotateLogs({
-          outcome: {
-            status: terminalStatus,
-            success: finalSuccess,
-            nodes: traversal.resultCount,
-            ms: attemptMs,
-          },
-        })
-      );
-
       // Wrapped as a durable step so the terminal record and its audit event are
       // written exactly once, even though the body replays after every wait.
-      yield* runDurable(
+      const recorded = yield* runDurable(
         runtime,
         { id: "workflow-run-completed", name: "Run completed" },
         recordRunCompleted({
@@ -334,13 +383,28 @@ function executeWorkflowInner(
           failure: traversal.firstFailure(),
           resultCount: traversal.resultCount,
           runMode,
+          exitContext,
+        })
+      );
+
+      const attemptMs = Date.now() - attemptStartTime;
+      yield* Effect.logInfo(`Run ${recorded.status} in ${attemptMs}ms`).pipe(
+        Effect.annotateLogs({
+          outcome: {
+            status: recorded.status,
+            success: recorded.status !== "failed",
+            nodes: traversal.resultCount,
+            ms: attemptMs,
+          },
         })
       );
 
       return {
-        success: finalSuccess,
+        status: recorded.status,
+        success: recorded.status !== "failed",
         results: traversal.results,
         outputs: traversal.outputs,
+        exit: recorded.exit,
       };
     });
 
@@ -357,10 +421,22 @@ function executeWorkflowInner(
         // canceled because a Cancel Event claimed it, never because the text of
         // whatever died happens to contain the word.
         const cancelled = cancelBoundary.hasLeftStartedBranch();
-        const terminalStatus = cancelled ? "canceled" : "failed";
+        const terminalStatus: TraversalTerminalStatus = cancelled
+          ? "canceled"
+          : "failed";
+
+        const exitContext =
+          entityEligibilityCondition && input.entityType
+            ? {
+                entityType: input.entityType,
+                conditionId: entityEligibilityConditionId(
+                  entityEligibilityCondition
+                ),
+              }
+            : undefined;
 
         // Same exactly-once treatment as the success path above.
-        yield* runDurable(
+        const recorded = yield* runDurable(
           runtime,
           { id: "workflow-run-failed", name: "Run failed" },
           recordRunFailed({
@@ -370,15 +446,18 @@ function executeWorkflowInner(
             status: terminalStatus,
             failure,
             runMode,
+            exitContext,
           })
         );
 
         return {
-          success: false,
+          status: recorded.status,
+          success: recorded.status !== "failed",
           results: traversal.results,
           outputs: traversal.outputs,
-          error: failure.message,
-          cancelled,
+          error: recorded.status === "failed" ? failure.message : undefined,
+          cancelled: recorded.status === "canceled" || cancelled,
+          exit: recorded.exit,
         };
       })
     );
@@ -396,13 +475,15 @@ export function executeWorkflowBranch(
   input: WorkflowBranchInput,
   runtime: WorkflowExecutionRuntime,
   store: WorkflowStore,
-  actions: WorkflowActions
+  actions: WorkflowActions,
+  entities: WorkflowEntities = noWorkflowEntities
 ): Effect.Effect<BranchRunResult, EngineFailure> {
   const execute = executeWorkflowBranchInner(
     input,
     runtime,
     store,
-    actions
+    actions,
+    entities
   ).pipe(
     Effect.annotateLogs(runLogAnnotations(input, runtime)),
     Effect.withSpan("wfgraph.workflow.branch", {
@@ -419,7 +500,8 @@ function executeWorkflowBranchInner(
   input: WorkflowBranchInput,
   runtime: WorkflowExecutionRuntime,
   store: WorkflowStore,
-  actions: WorkflowActions
+  actions: WorkflowActions,
+  entities: WorkflowEntities
 ): Effect.Effect<BranchRunResult, EngineFailure> {
   return Effect.gen(function* () {
     const { entryNodeId, executionId } = input;
@@ -427,7 +509,8 @@ function executeWorkflowBranchInner(
       input,
       runtime,
       store,
-      actions
+      actions,
+      entities
     );
 
     // Templates behind the Wait address the nodes above it, which this run never
@@ -486,8 +569,25 @@ function executeWorkflowBranchInner(
       Effect.asVoid(store.markExecutionWaitingIfParked({ executionId }))
     );
 
+    const termination = yield* runDurable(
+      runtime,
+      {
+        id: `branch-termination-${entryNodeId}`,
+        name: "Read branch outcome",
+      },
+      store.readTerminationState(executionId)
+    );
+    const exit =
+      termination?.claim?.kind === "exit"
+        ? {
+            reason: termination.claim.reason,
+            nodeId: termination.claim.nodeId,
+            checkedAt: termination.claim.requestedAt,
+          }
+        : undefined;
+
     yield* Effect.logInfo(
-      `Branch at ${entryNodeId} completed in ${Date.now() - branchStartTime}ms`
+      `Branch at ${entryNodeId} ${exit ? "exited" : "completed"} in ${Date.now() - branchStartTime}ms`
     ).pipe(
       Effect.annotateLogs({
         branch: {
@@ -498,6 +598,10 @@ function executeWorkflowBranchInner(
       })
     );
 
-    return { results: { ...traversal.results }, outputs: traversal.ownOutputs };
+    return {
+      results: { ...traversal.results },
+      outputs: traversal.ownOutputs,
+      ...(exit ? { exit } : {}),
+    };
   });
 }

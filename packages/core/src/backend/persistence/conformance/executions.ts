@@ -293,11 +293,18 @@ export function describeExecutionConformance({
       const result = await database.run(
         Effect.gen(function* () {
           const executions = yield* ExecutionRepo;
+          const admittedBeforeExit = yield* executions.canAdmitNode(
+            started.execution.id
+          );
           const first = yield* executions.requestExit({
             executionId: started.execution.id,
             reason: "entity_condition_not_met",
             nodeId: "node_check_1",
+            requestedAt: new Date("2026-10-19T15:00:00.000Z"),
           });
+          const admittedAfterExit = yield* executions.canAdmitNode(
+            started.execution.id
+          );
           const replayed = yield* executions.requestExit({
             executionId: started.execution.id,
             reason: "entity_not_found",
@@ -330,6 +337,8 @@ export function describeExecutionConformance({
             nodeId: "node_check_3",
           });
           return {
+            admittedBeforeExit,
+            admittedAfterExit,
             first,
             replayed,
             cancel,
@@ -345,9 +354,12 @@ export function describeExecutionConformance({
 
       const expectedClaim = {
         kind: "exit",
+        requestedAt: new Date("2026-10-19T15:00:00.000Z"),
         reason: "entity_condition_not_met",
         nodeId: "node_check_1",
       } as const;
+      expect(result.admittedBeforeExit).toBe(true);
+      expect(result.admittedAfterExit).toBe(false);
       expect(result.first).toMatchObject({
         executionId: started.execution.id,
         status: "running",

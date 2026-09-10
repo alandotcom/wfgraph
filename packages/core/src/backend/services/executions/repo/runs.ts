@@ -354,7 +354,16 @@ export type RunsRepoMethods = {
     executionId: string;
     reason: "entity_condition_not_met" | "entity_not_found";
     nodeId: string;
+    requestedAt?: Date | undefined;
   }) => Effect.Effect<ExecutionTerminationState | null, DatabaseError>;
+  /**
+   * Linearizes one node admission before or after an execution-wide claim.
+   * True means the node was admitted while the run was still in flight and
+   * unclaimed; a later claim may stop its successors but not undo this answer.
+   */
+  readonly canAdmitNode: (
+    executionId: string
+  ) => Effect.Effect<boolean, DatabaseError>;
   /** The authoritative boundary state, or null when the execution is absent. */
   readonly findTerminationState: (
     executionId: string
@@ -364,10 +373,9 @@ export type RunsRepoMethods = {
     executionId: string
   ) => Effect.Effect<PendingCancel | null, DatabaseError>;
   /**
-   * Write the run's own terminal row, answering whether this write recorded
-   * it. The same in-flight guard as `endInFlight`: a cancel can flip the row
-   * while the run is finishing its last step, and the losing completion must
-   * not resurrect it.
+   * Write the run's own terminal row and return the authoritative state. The
+   * same in-flight guard as `endInFlight` prevents a completion from
+   * overwriting an earlier Cancel or Exit claim.
    */
   readonly finishRun: (input: {
     executionId: string;
@@ -445,6 +453,8 @@ export function makeRunsMethods(
             workflowVersionId: workflowExecutions.workflowVersionId,
             versionKind: workflowVersions.kind,
             versionNumber: workflowVersions.version,
+            entityType: workflowExecutions.entityType,
+            entityId: workflowExecutions.entityId,
           })
           .from(workflowExecutions)
           .innerJoin(workflowVersions, pinnedVersion)
@@ -477,6 +487,8 @@ export function makeRunsMethods(
             runMode: workflowExecutions.runMode,
             startEventName: workflowExecutions.startEventName,
             entityValue: workflowExecutions.entityValue,
+            entityType: workflowExecutions.entityType,
+            entityId: workflowExecutions.entityId,
             input: workflowExecutions.input,
             output: workflowExecutions.output,
             error: workflowExecutions.error,
@@ -711,7 +723,7 @@ export function makeRunsMethods(
           .update(workflowExecutions)
           .set({
             terminationKind: "exit",
-            terminationRequestedAt: new Date(),
+            terminationRequestedAt: input.requestedAt ?? new Date(),
             terminationReason: input.reason,
             terminationNodeId: input.nodeId,
           })
@@ -726,6 +738,16 @@ export function makeRunsMethods(
         return state
           ? executionTerminationState(state, updated.length > 0)
           : null;
+      }),
+
+    canAdmitNode: (executionId) =>
+      database.query(async (db) => {
+        const [execution] = await db
+          .select({ id: workflowExecutions.id })
+          .from(workflowExecutions)
+          .where(inFlightExecution(executionId))
+          .limit(1);
+        return execution !== undefined;
       }),
 
     findTerminationState: (executionId) =>

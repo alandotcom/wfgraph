@@ -29,6 +29,12 @@ import {
 import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
 import type { MigrationRefusalReason } from "@wfgraph/shared/graph/migration-contracts";
 import { DEFAULT_WAIT_TIMEOUT } from "@wfgraph/shared/lifecycle/wait-subscription";
+import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
+import { checkEntityEligibilityCondition } from "@wfgraph/shared/lifecycle/entity-eligibility";
+import {
+  findEntity,
+  type ExtensionCatalog,
+} from "@wfgraph/shared/extensions/catalog";
 import {
   type JsonValue,
   readJsonObjectLeniently,
@@ -437,6 +443,10 @@ type MigrationTarget = {
   waitNodes: Map<string, WaitNodeScan>;
   /** The target nodes a run has to hold a node log row for, unless a parked Wait reaches them. */
   checkedNodes: readonly WorkflowNode[];
+  /** Immutable Entity type a guarded run must retain across migration. */
+  trackedEntityType: string | null;
+  /** Current catalog incompatibility with the target's authored condition. */
+  entityCompatibilityError?: string | undefined;
 };
 
 const classifyOne = Effect.fn("classifyOne")(function* (input: {
@@ -468,6 +478,19 @@ const classifyOne = Effect.fn("classifyOne")(function* (input: {
       candidate,
       waitStates,
     } satisfies MigrationClassification;
+  }
+
+  if ((candidate.entityType ?? null) !== target.trackedEntityType) {
+    return refuse(
+      "entity_incompatible",
+      target.trackedEntityType ?? "no tracked Entity"
+    );
+  }
+  if (candidate.entityType && !candidate.entityId) {
+    return refuse("entity_incompatible", candidate.entityType);
+  }
+  if (target.entityCompatibilityError) {
+    return refuse("entity_incompatible", target.entityCompatibilityError);
   }
 
   if (candidate.status !== "waiting" || waitStates.length === 0) {
@@ -553,8 +576,32 @@ export const classifyMigrationCandidates = Effect.fn(
 )(function* (input: {
   candidates: readonly InFlightExecutionRow[];
   targetVersion: PublishedWorkflowVersion;
+  catalog?: ExtensionCatalog | undefined;
 }) {
   const graph = toWorkflowGraphData(input.targetVersion.graph);
+  const targetEligibility = graph.nodes
+    .filter(isLifecycleNode)
+    .map((node) => readLifecycleRules(node.data.config))
+    .find((rules) => rules?.trackedEntity);
+  const trackedEntityType = targetEligibility?.trackedEntity?.type ?? null;
+  const currentEntity =
+    trackedEntityType && input.catalog
+      ? findEntity(input.catalog, trackedEntityType)
+      : undefined;
+  const conditionCheck =
+    currentEntity && targetEligibility?.entityEligibility
+      ? checkEntityEligibilityCondition(
+          currentEntity,
+          targetEligibility.entityEligibility.condition
+        )
+      : undefined;
+  const entityCompatibilityError =
+    trackedEntityType && input.catalog && !currentEntity
+      ? `Entity "${trackedEntityType}" is unavailable in the current catalog`
+      : conditionCheck && !conditionCheck.valid
+        ? conditionCheck.error
+        : undefined;
+
   const target: MigrationTarget = {
     version: input.targetVersion,
     edges: graph.edges,
@@ -565,6 +612,8 @@ export const classifyMigrationCandidates = Effect.fn(
     checkedNodes: graph.nodes.filter(
       (node) => node.data.enabled !== false && !isLifecycleNode(node)
     ),
+    trackedEntityType,
+    entityCompatibilityError,
   };
   const executionIds = input.candidates.map((candidate) => candidate.id);
   const waitsByExecution = yield* listParkedWaits(executionIds);

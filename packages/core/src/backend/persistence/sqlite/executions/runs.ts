@@ -192,6 +192,8 @@ function executionSummary(
     runMode: execution.runMode,
     startEventName: execution.startEventName,
     entityValue: execution.entityValue,
+    entityType: execution.entityType,
+    entityId: execution.entityId,
     input: execution.input,
     output: execution.output,
     error: execution.error,
@@ -207,6 +209,8 @@ function inFlightExecution(row: {
   workflowVersionId: string;
   versionKind: string;
   versionNumber: number | null;
+  entityType: string | null;
+  entityId: string | null;
 }): InFlightExecutionRow {
   return {
     id: row.id,
@@ -214,6 +218,8 @@ function inFlightExecution(row: {
     workflowVersionId: row.workflowVersionId,
     versionKind: sqliteVersionKind(row.versionKind),
     versionNumber: row.versionNumber,
+    entityType: row.entityType,
+    entityId: row.entityId,
   };
 }
 
@@ -333,6 +339,8 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
             workflowVersionId: workflowExecutions.workflowVersionId,
             versionKind: workflowVersions.kind,
             versionNumber: workflowVersions.version,
+            entityType: workflowExecutions.entityType,
+            entityId: workflowExecutions.entityId,
           })
           .from(workflowExecutions)
           .innerJoin(
@@ -568,7 +576,8 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
             .update(workflowExecutions)
             .set({
               terminationKind: "exit",
-              terminationRequestedAt: Date.now(),
+              terminationRequestedAt:
+                input.requestedAt?.getTime() ?? Date.now(),
               terminationReason: input.reason,
               terminationNodeId: input.nodeId,
             })
@@ -590,6 +599,21 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
             .get();
           return row ? terminationState(row, updated.length > 0) : null;
         })
+      ),
+    canAdmitNode: (executionId) =>
+      store.read((database) =>
+        database
+          .select({ id: workflowExecutions.id })
+          .from(workflowExecutions)
+          .where(
+            and(
+              eq(workflowExecutions.id, executionId),
+              inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES),
+              isNull(workflowExecutions.terminationKind)
+            )
+          )
+          .get()
+          .pipe(Effect.map((row) => row !== undefined))
       ),
     findTerminationState: (executionId) =>
       store.read((database) =>

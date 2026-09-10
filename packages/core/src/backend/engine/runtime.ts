@@ -71,6 +71,12 @@ export type WorkflowExecutionRuntime = {
       ) => Promise<BranchHandoff>)
     | undefined;
   /**
+   * Requests that the other durable branch invocations for this Execution stop.
+   * An adapter may exclude the branch making the request so it can report Exit
+   * to its parent before ending.
+   */
+  stopBranches?: (() => Promise<void>) | undefined;
+  /**
    * Zero-indexed retry counter for the current attempt, which holds across every
    * replay within that attempt and rises when the runtime retries the body. A
    * step id carrying it is memoized per attempt, so a later attempt may correct

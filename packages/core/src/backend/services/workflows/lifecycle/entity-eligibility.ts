@@ -1,11 +1,14 @@
-import { createHash } from "node:crypto";
 import { Effect } from "effect";
 import type { AnyEventDefinition } from "#src/backend/extensions/define-event";
-import type { AnyEntityDefinition } from "#src/backend/extensions/define-entity";
+import {
+  EntityStateRejected,
+  type AnyEntityDefinition,
+} from "#src/backend/extensions/define-entity";
 import { evaluateSerializedCondition } from "#src/backend/lib/cel/condition-payload";
 import { InternalFailure } from "#src/backend/lib/effect/failures";
 import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import type { EntityEligibilityReason } from "@wfgraph/shared/lifecycle/execution-contracts";
+import { entityEligibilityConditionId } from "#src/backend/lib/entity-eligibility";
 
 /** The server-only Event data needed to establish a guarded run's identity. */
 export type EntityBindingEvent = {
@@ -32,15 +35,10 @@ export type GuardedStartDecision = {
   readonly refusal?: AdmissionEligibilityRefusal | undefined;
 };
 
-/** A stable audit reference to the one serialized Eligibility condition. */
-export function entityEligibilityConditionId(condition: string): string {
-  return createHash("sha256").update(condition).digest("hex");
-}
-
-function configurationFailure(message: string, cause?: unknown) {
+function configurationFailure(message: string) {
   return new InternalFailure({
     error: "Failed to evaluate Entity Eligibility",
-    cause: cause ?? new Error(message),
+    cause: new Error(message),
   });
 }
 
@@ -75,10 +73,9 @@ export const selectTrackedEntity = Effect.fn("selectTrackedEntity")(
 
     const entityId = yield* Effect.try({
       try: () => binding.selectEntityId(input.event.validatedPayload),
-      catch: (cause) =>
+      catch: () =>
         configurationFailure(
-          `Event "${input.event.name}" could not select an Entity ID`,
-          cause
+          `Event "${input.event.name}" could not select an Entity ID`
         ),
     });
 
@@ -110,8 +107,10 @@ export const evaluateSelectedEntityAdmission = Effect.fn(
       await entity.definition.resolve({ entityId: entity.entityId }),
     catch: (cause) =>
       new InternalFailure({
-        error: `Failed to resolve Entity "${entity.entityType}" for Eligibility`,
-        cause,
+        error:
+          cause instanceof EntityStateRejected
+            ? cause.message
+            : `Failed to resolve Entity "${entity.entityType}" for Eligibility`,
       }),
   });
 

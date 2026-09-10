@@ -66,6 +66,12 @@ describe("migrationRefusalSentence", () => {
     ).toBe("The Wait in version 8 would time out at once for this run.");
   });
 
+  it("explains an incompatible tracked Entity", () => {
+    expect(migrationRefusalSentence({ reason: "entity_incompatible" }, 8)).toBe(
+      "Version 8 has Entity configuration that is incompatible with this run."
+    );
+  });
+
   it("explains an outcome the migrate call refused after the preview", () => {
     expect(
       migrationRefusalSentence({ reason: "not_requested_version" }, 8)

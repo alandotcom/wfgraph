@@ -116,6 +116,9 @@ export type ExecutionSummary = Pick<
    * published graph a run walked ("v7"). Null on a draft snapshot.
    */
   versionNumber: number | null;
+  /** Engine-only typed identity; older test fixtures may omit unguarded nulls. */
+  entityType?: string | null | undefined;
+  entityId?: string | null | undefined;
 };
 
 /**
@@ -134,6 +137,9 @@ export type InFlightExecutionRow = Pick<
   versionKind: WorkflowVersionKind;
   /** As on `ExecutionSummary`: that version's number, null on a snapshot. */
   versionNumber: number | null;
+  /** Immutable identity retained when the run is guarded. */
+  entityType?: string | null | undefined;
+  entityId?: string | null | undefined;
 };
 
 /** A run reduced to where it got to. */

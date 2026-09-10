@@ -8,6 +8,10 @@ import {
 import { Effect, Schema } from "effect";
 import type { WorkflowActions } from "#src/backend/engine/actions";
 import {
+  noWorkflowEntities,
+  type WorkflowEntities,
+} from "#src/backend/engine/entities";
+import {
   type BranchHandoff,
   branchRunResultSchema,
 } from "#src/backend/engine/branch";
@@ -43,6 +47,7 @@ import type { WfGraphRuntime } from "#src/backend/runtime";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import type { ExecutionSummary } from "#src/backend/services/executions/repo/contracts";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
+import { sendWorkflowBranchKill } from "#src/backend/lib/inngest/runtime-events";
 
 /** The engine entry the run function calls; tests inject a stand-in. */
 type ExecuteWorkflow = typeof defaultExecuteWorkflow;
@@ -141,7 +146,8 @@ function createDurableRuntime(input: {
   step: DurableStep;
   attempt: number;
   runId: string;
-  data: WorkflowExecutionInput;
+  data: WorkflowExecutionInput | WorkflowBranchInput;
+  stopBranches?: (() => Promise<void>) | undefined;
 }): WorkflowExecutionRuntime {
   const { step, attempt, runId, data } = input;
 
@@ -180,6 +186,7 @@ function createDurableRuntime(input: {
           },
         })
       ),
+    stopBranches: input.stopBranches,
     attempt,
     runId,
   };
@@ -315,6 +322,8 @@ async function loadPersistedRunInput(
     executionId: execution.id,
     workflowId: execution.workflowId,
     workflowName: workflow.name,
+    entityType: execution.entityType ?? undefined,
+    entityId: execution.entityId ?? undefined,
     runMode: execution.runMode,
   };
 }
@@ -325,13 +334,16 @@ async function workflowRunRequestedHandler({
   attempt,
   runId,
   actions,
+  entities,
   store,
   appRuntime,
   executeWorkflow,
   write,
+  stopBranches,
 }: {
   event: { data: typeof workflowRunRequestSchema.Type };
   actions: WorkflowActions;
+  entities: WorkflowEntities;
   store: WorkflowStore;
   /** The application boundary that runs the whole engine Effect. */
   appRuntime: WfGraphRuntime;
@@ -341,6 +353,9 @@ async function workflowRunRequestedHandler({
   step: DurableStep;
   executeWorkflow: ExecuteWorkflow;
   write: RunMetadataWriter;
+  stopBranches: (
+    data: WorkflowExecutionInput | WorkflowBranchInput
+  ) => Promise<void>;
 }) {
   const data = await loadPersistedRunInput(appRuntime, event.data.executionId);
 
@@ -351,9 +366,16 @@ async function workflowRunRequestedHandler({
   const result = await appRuntime.runPromise(
     executeWorkflow(
       data,
-      createDurableRuntime({ step, attempt, runId, data }),
+      createDurableRuntime({
+        step,
+        attempt,
+        runId,
+        data,
+        stopBranches: () => stopBranches(data),
+      }),
       store,
-      actions
+      actions,
+      entities
     )
   );
   if (!result.success) {
@@ -399,13 +421,16 @@ async function workflowBranchRequestedHandler({
   attempt,
   runId,
   actions,
+  entities,
   store,
   appRuntime,
   executeWorkflowBranch,
   write,
+  stopBranches,
 }: {
   event: { data: typeof workflowBranchInputSchema.Type };
   actions: WorkflowActions;
+  entities: WorkflowEntities;
   store: WorkflowStore;
   appRuntime: WfGraphRuntime;
   attempt: number;
@@ -413,6 +438,9 @@ async function workflowBranchRequestedHandler({
   step: DurableStep;
   executeWorkflowBranch: ExecuteWorkflowBranch;
   write: RunMetadataWriter;
+  stopBranches: (
+    data: WorkflowExecutionInput | WorkflowBranchInput
+  ) => Promise<void>;
 }) {
   const persisted = await loadPersistedRunInput(
     appRuntime,
@@ -429,9 +457,16 @@ async function workflowBranchRequestedHandler({
   return await appRuntime.runPromise(
     executeWorkflowBranch(
       data,
-      createDurableRuntime({ step, attempt, runId, data }),
+      createDurableRuntime({
+        step,
+        attempt,
+        runId,
+        data,
+        stopBranches: () => stopBranches(data),
+      }),
       store,
-      actions
+      actions,
+      entities
     )
   );
 }
@@ -446,6 +481,8 @@ export type WorkflowFunctionPorts = {
    * decrypted secret must not outlive the invocation that read it.
    */
   actions: () => WorkflowActions;
+  /** Live host-owned Entity resolvers, rebuilt for each invocation. */
+  entities?: (() => WorkflowEntities) | undefined;
   /** Where a run's rows go, built by the app from its own runtime. */
   store: WorkflowStore;
   /** Runs the engine Effect at the outer Inngest execution boundary. */
@@ -519,10 +556,18 @@ export function createWorkflowRunFunction(
       await workflowRunRequestedHandler({
         ...context,
         actions: input.actions(),
+        entities: input.entities?.() ?? noWorkflowEntities,
         store: input.store,
         appRuntime: input.appRuntime,
         executeWorkflow: input.executeWorkflow,
         write: runMetadataWriter(client),
+        stopBranches: async (data) => {
+          await sendWorkflowBranchKill(client, {
+            executionId: data.executionId,
+            workflowId: data.workflowId,
+            reason: "entity-eligibility-exit",
+          });
+        },
       })
   );
 }
@@ -553,7 +598,7 @@ export function createWorkflowBranchFunction(
       cancelOn: [
         {
           event: workflowBranchKillRequested,
-          if: "async.data.executionId == event.data.executionId",
+          if: "async.data.executionId == event.data.executionId && (!event.data.excludedEntryNodeId || async.data.entryNodeId != event.data.excludedEntryNodeId)",
         },
         {
           event: workflowRunCancelRequested,
@@ -565,10 +610,20 @@ export function createWorkflowBranchFunction(
       await workflowBranchRequestedHandler({
         ...context,
         actions: input.actions(),
+        entities: input.entities?.() ?? noWorkflowEntities,
         store: input.store,
         appRuntime: input.appRuntime,
         executeWorkflowBranch: input.executeWorkflowBranch,
         write: runMetadataWriter(client),
+        stopBranches: async (data) => {
+          await sendWorkflowBranchKill(client, {
+            executionId: data.executionId,
+            workflowId: data.workflowId,
+            reason: "entity-eligibility-exit",
+            excludedEntryNodeId:
+              "entryNodeId" in data ? data.entryNodeId : undefined,
+          });
+        },
       })
   );
 }

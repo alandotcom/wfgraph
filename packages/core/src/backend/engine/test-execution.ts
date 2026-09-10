@@ -6,6 +6,7 @@ import {
   type WorkflowExecutionInput,
 } from "#src/backend/engine/core";
 import type { WorkflowActions } from "#src/backend/engine/actions";
+import type { WorkflowEntities } from "#src/backend/engine/entities";
 import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
 import type { WorkflowStore } from "#src/backend/engine/store";
 import { AppLoggerLayer } from "#src/backend/lib/effect/app-logger";
@@ -24,7 +25,8 @@ export function executeTestWorkflow(
     >,
   runtime: WorkflowExecutionRuntime,
   store: WorkflowStore,
-  actions: WorkflowActions
+  actions: WorkflowActions,
+  entities?: WorkflowEntities
 ) {
   return Effect.runPromise(
     executeWorkflow(
@@ -37,7 +39,8 @@ export function executeTestWorkflow(
       },
       runtime,
       store,
-      actions
+      actions,
+      entities
     ).pipe(Effect.provide(EngineTestLayer))
   );
 }
@@ -49,7 +52,8 @@ export function executeTestWorkflowBranch(
     >,
   runtime: WorkflowExecutionRuntime,
   store: WorkflowStore,
-  actions: WorkflowActions
+  actions: WorkflowActions,
+  entities?: WorkflowEntities
 ) {
   return Effect.runPromise(
     executeWorkflowBranch(
@@ -60,7 +64,8 @@ export function executeTestWorkflowBranch(
       },
       runtime,
       store,
-      actions
+      actions,
+      entities
     ).pipe(Effect.provide(EngineTestLayer))
   );
 }

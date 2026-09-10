@@ -265,10 +265,10 @@ async function driveWithReplayInstalled<T>(
     }
   }
 
-  /** Ends every branch run that is still going, as a cancellation does. */
-  function killLiveBranches() {
+  /** Ends every other branch run that is still going. */
+  function killLiveBranches(excluded?: DurableRun) {
     for (const run of tree) {
-      if (!run.parent || run.settled) {
+      if (run === excluded || !run.parent || run.settled) {
         continue;
       }
       run.settled = { value: null };
@@ -377,6 +377,12 @@ async function driveWithReplayInstalled<T>(
             );
           }
           return pending<unknown>();
+        }),
+
+      stopBranches: () =>
+        withActivity(() => {
+          killLiveBranches(run.parent ? run : undefined);
+          return Promise.resolve();
         }),
 
       startBranch: branch

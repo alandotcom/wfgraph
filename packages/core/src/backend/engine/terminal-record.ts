@@ -5,37 +5,53 @@
 
 import type {
   CompleteRunInput,
+  ExecutionTerminationState,
   RecordAuditEventInput,
   WorkflowRunAuditEventType,
   WorkflowStore,
 } from "#src/backend/engine/store";
 import { Cause, Effect } from "effect";
 import { type EngineFailure } from "#src/backend/engine/engine-failure";
+import type {
+  EntityEligibilityReason,
+  WorkflowExecutionStatus,
+} from "@wfgraph/shared/lifecycle/execution-contracts";
+import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
 
-/**
- * How a run that walked its graph to the end finished. `canceled` is a run that
- * left the Started branch for the Canceled one, whether or not that branch had
- * anything to run.
- */
-export type TraversalTerminalStatus = "completed" | "failed" | "canceled";
+/** How a run that walked its graph to the end finished. */
+export type TraversalTerminalStatus =
+  | "completed"
+  | "failed"
+  | "canceled"
+  | "exited";
 
-/**
- * Appends the recipients a test run sent to. Run mode records recipients only. A
- * Draft run always carries `test` whatever the workflow's Published mode is, so
- * this line names the recipients and leaves the graph that ran to the run row
- * beside it.
- */
+export type RunExitOutcome = {
+  reason: EntityEligibilityReason;
+  entityType: string;
+  conditionId: string;
+  nodeId: string;
+  checkedAt: string;
+};
+
+type RunExitContext = Pick<RunExitOutcome, "entityType" | "conditionId">;
+
+/** Appends the recipients a test run sent to. */
 function withRecipients(message: string, runMode: "live" | "test"): string {
   return runMode === "test" ? `${message} (test recipients)` : message;
 }
 
-/** How a run that reached the end of its graph is worded on the timeline. */
 function buildRunCompletedMessage(
   runMode: "live" | "test",
   status: TraversalTerminalStatus
 ): string {
   if (status === "canceled") {
     return withRecipients("Run canceled at the Canceled outlet", runMode);
+  }
+  if (status === "exited") {
+    return withRecipients(
+      "Run exited because the Entity was ineligible",
+      runMode
+    );
   }
   return withRecipients(
     status === "completed"
@@ -47,10 +63,14 @@ function buildRunCompletedMessage(
 
 function buildRunFailedMessage(
   runMode: "live" | "test",
-  cancelled: boolean
+  status: TraversalTerminalStatus
 ): string {
   return withRecipients(
-    cancelled ? "Run cancelled while waiting" : "Run failed with fatal error",
+    status === "canceled"
+      ? "Run cancelled while waiting"
+      : status === "exited"
+        ? "Run exited because the Entity was ineligible"
+        : "Run failed with fatal error",
     runMode
   );
 }
@@ -59,22 +79,45 @@ const TERMINAL_AUDIT_EVENT = {
   completed: "run_completed",
   failed: "run_failed",
   canceled: "run_cancelled",
+  exited: "run_exited",
 } as const satisfies Record<TraversalTerminalStatus, WorkflowRunAuditEventType>;
 
+function isTraversalTerminal(
+  status: WorkflowExecutionStatus
+): status is TraversalTerminalStatus {
+  return (
+    status === "completed" ||
+    status === "failed" ||
+    status === "canceled" ||
+    status === "exited"
+  );
+}
+
+function isInFlight(status: ExecutionTerminationState["status"]): boolean {
+  return IN_FLIGHT_EXECUTION_STATUSES.some((candidate) => candidate === status);
+}
+
+function claimedStatus(
+  state: ExecutionTerminationState
+): "canceled" | "exited" | undefined {
+  return state.claim?.kind === "cancel"
+    ? "canceled"
+    : state.claim?.kind === "exit"
+      ? "exited"
+      : undefined;
+}
+
 /**
- * Writes a run's terminal row, then announces the outcome when that write
- * claimed the row. A database refusal is logged and treated as an unclaimed
- * row, so neither terminal-write outcome can send `core.ts` down its fatal path
- * to record the run a second time.
+ * Attempts the caller's verdict, then finalizes a racing Cancel or Exit claim.
+ * The returned state is authoritative, so the engine never reports its stale
+ * local traversal verdict after persistence selected another outcome.
  */
-function writeTerminalRecord(input: {
+function finalizeRun(input: {
   store: WorkflowStore;
   run: CompleteRunInput;
-  announcement: RecordAuditEventInput;
-}): Effect.Effect<void> {
+}): Effect.Effect<ExecutionTerminationState | null> {
   return Effect.gen(function* () {
-    const completion = yield* input.store.completeRun(input.run).pipe(
-      Effect.map((claimed) => ({ kind: "answer" as const, claimed })),
+    const first = yield* input.store.completeRun(input.run).pipe(
       Effect.catchTag("DatabaseError", (error) =>
         Effect.logWarning("Terminal run record not written").pipe(
           Effect.annotateLogs({
@@ -82,39 +125,65 @@ function writeTerminalRecord(input: {
             status: input.run.status,
             error,
           }),
-          Effect.as({ kind: "database_error" as const })
+          Effect.as(null)
         )
       )
     );
-
-    if (completion.kind === "database_error") {
-      return;
+    if (!first || first.didWrite || !isInFlight(first.status)) {
+      return first;
     }
 
-    if (!completion.claimed) {
-      yield* Effect.logInfo("Run did not claim the terminal record").pipe(
-        Effect.annotateLogs({ status: input.run.status })
-      );
-      return;
+    const status = claimedStatus(first);
+    if (!status) {
+      return first;
     }
 
-    yield* Effect.catchCause(
-      input.store.recordAuditEvent(input.announcement),
-      (cause) =>
-        Effect.logError("Failed to announce the run's outcome").pipe(
+    const claimedRun: CompleteRunInput =
+      status === "exited"
+        ? { ...input.run, status, failure: undefined }
+        : { ...input.run, status };
+    return yield* input.store.completeRun(claimedRun).pipe(
+      Effect.catchTag("DatabaseError", (error) =>
+        Effect.logWarning("Claimed terminal run record not written").pipe(
           Effect.annotateLogs({
-            error: Cause.squash(cause),
-          })
+            executionId: input.run.executionId,
+            status,
+            error,
+          }),
+          Effect.as(first)
         )
+      )
     );
   });
 }
 
-/**
- * Writes the terminal record and timeline event for a run that finished its
- * graph. Runs inside a durable step, so it must stay side-effect-idempotent
- * from the caller's point of view: nothing here feeds back into the traversal.
- */
+function exitMetadata(
+  state: ExecutionTerminationState,
+  context: RunExitContext | undefined
+): RunExitOutcome | undefined {
+  return state.claim?.kind === "exit" && context
+    ? {
+        reason: state.claim.reason,
+        entityType: context.entityType,
+        conditionId: context.conditionId,
+        nodeId: state.claim.nodeId,
+        checkedAt: state.claim.requestedAt,
+      }
+    : undefined;
+}
+
+function announce(
+  store: WorkflowStore,
+  announcement: RecordAuditEventInput
+): Effect.Effect<void> {
+  return Effect.catchCause(store.recordAuditEvent(announcement), (cause) =>
+    Effect.logError("Failed to announce the run's outcome").pipe(
+      Effect.annotateLogs({ error: Cause.squash(cause) })
+    )
+  );
+}
+
+/** Writes the terminal record and timeline event for a completed traversal. */
 export function recordRunCompleted(input: {
   store: WorkflowStore;
   executionId: string;
@@ -124,9 +193,13 @@ export function recordRunCompleted(input: {
   failure?: EngineFailure | undefined;
   resultCount: number;
   runMode: "live" | "test";
-}): Effect.Effect<{ status: TraversalTerminalStatus }> {
-  return Effect.as(
-    writeTerminalRecord({
+  exitContext?: RunExitContext | undefined;
+}): Effect.Effect<{
+  status: WorkflowExecutionStatus;
+  exit?: RunExitOutcome | undefined;
+}> {
+  return Effect.gen(function* () {
+    const state = yield* finalizeRun({
       store: input.store,
       run: {
         executionId: input.executionId,
@@ -134,25 +207,40 @@ export function recordRunCompleted(input: {
         output: input.output,
         failure: input.failure,
       },
-      announcement: {
-        workflowId: input.workflowId,
-        executionId: input.executionId,
-        eventType: TERMINAL_AUDIT_EVENT[input.status],
-        message: buildRunCompletedMessage(input.runMode, input.status),
-        metadata: {
-          resultCount: input.resultCount,
-          runMode: input.runMode,
-        },
-      },
-    }),
-    { status: input.status }
-  );
+    });
+    const status = state?.status ?? input.status;
+    const exit = state ? exitMetadata(state, input.exitContext) : undefined;
+    if (!state?.didWrite) {
+      if (state) {
+        yield* Effect.logInfo("Run did not claim the terminal record").pipe(
+          Effect.annotateLogs({ status })
+        );
+      }
+      return { status, ...(exit ? { exit } : {}) };
+    }
+    if (!isTraversalTerminal(status)) {
+      return { status };
+    }
+
+    yield* announce(input.store, {
+      workflowId: input.workflowId,
+      executionId: input.executionId,
+      eventType: TERMINAL_AUDIT_EVENT[status],
+      message: buildRunCompletedMessage(input.runMode, status),
+      metadata: exit
+        ? {
+            resultCount: input.resultCount,
+            runMode: input.runMode,
+            ...exit,
+            checkpoint: "before-node",
+          }
+        : { resultCount: input.resultCount, runMode: input.runMode },
+    });
+    return { status, ...(exit ? { exit } : {}) };
+  });
 }
 
-/**
- * Terminal record for a run that died on an error escaping the traversal
- * (including a cancellation while waiting).
- */
+/** Terminal record for an error escaping the traversal. */
 export function recordRunFailed(input: {
   store: WorkflowStore;
   executionId: string;
@@ -160,30 +248,51 @@ export function recordRunFailed(input: {
   status: "failed" | "canceled";
   failure: EngineFailure;
   runMode: "live" | "test";
-}): Effect.Effect<{ status: "failed" | "canceled" }> {
-  return Effect.as(
-    writeTerminalRecord({
+  exitContext?: RunExitContext | undefined;
+}): Effect.Effect<{
+  status: WorkflowExecutionStatus;
+  exit?: RunExitOutcome | undefined;
+}> {
+  return Effect.gen(function* () {
+    const state = yield* finalizeRun({
       store: input.store,
       run: {
         executionId: input.executionId,
         status: input.status,
         failure: input.failure,
       },
-      announcement: {
-        workflowId: input.workflowId,
-        executionId: input.executionId,
-        eventType: TERMINAL_AUDIT_EVENT[input.status],
-        message: buildRunFailedMessage(
-          input.runMode,
-          input.status === "canceled"
-        ),
-        metadata: {
-          error: input.failure.message,
-          failureKind: input.failure.kind,
-          runMode: input.runMode,
-        },
-      },
-    }),
-    { status: input.status }
-  );
+    });
+    const status = state?.status ?? input.status;
+    const exit = state ? exitMetadata(state, input.exitContext) : undefined;
+    if (!state?.didWrite) {
+      if (state) {
+        yield* Effect.logInfo("Run did not claim the terminal record").pipe(
+          Effect.annotateLogs({ status })
+        );
+      }
+      return { status, ...(exit ? { exit } : {}) };
+    }
+    if (!isTraversalTerminal(status)) {
+      return { status };
+    }
+
+    yield* announce(input.store, {
+      workflowId: input.workflowId,
+      executionId: input.executionId,
+      eventType: TERMINAL_AUDIT_EVENT[status],
+      message: buildRunFailedMessage(input.runMode, status),
+      metadata: exit
+        ? {
+            ...exit,
+            checkpoint: "before-node",
+            runMode: input.runMode,
+          }
+        : {
+            error: input.failure.message,
+            failureKind: input.failure.kind,
+            runMode: input.runMode,
+          },
+    });
+    return { status, ...(exit ? { exit } : {}) };
+  });
 }
