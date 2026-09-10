@@ -239,7 +239,7 @@ describe("wait node - delay mode", () => {
     // The park is a signal wait whose timeout is what is left of the delay:
     // roughly an hour, allowing for the milliseconds the run itself took.
     const park = runtime.waits.find(
-      (wait) => wait.stepId === "wait-delay-wait_1-0"
+      (wait) => wait.stepId === "wait-park-wait_1-0"
     );
     expect(park?.options.timeoutMs).toBeGreaterThan(3_500_000);
     // A delay wait answers to a Migration and to nothing else.
@@ -353,7 +353,7 @@ describe("wait node - event mode", () => {
     expect(resumeToken).not.toBe("");
 
     const wait = runtime.waits.at(0);
-    expect(wait?.stepId).toBe("wait-event-wait_1-0");
+    expect(wait?.stepId).toBe("wait-park-wait_1-0");
     expect(wait?.options.event).toBe("workflow/wait.signal");
     expect(wait?.options.ifExpression).toContain(`"${resumeToken}"`);
     expect(wait?.options.ifExpression).toContain(
@@ -719,7 +719,7 @@ describe("wait node - event mode", () => {
     };
 
     await runWait({ config: parked, store, memo, resumeEvent: null }).execution;
-    memo.delete("wait-event-resume-wait_1-0");
+    memo.delete("wait-resume-wait_1-0");
 
     const result = await runWait({
       config: { ...parked, waitTimeoutBehavior: "continue" },
@@ -803,7 +803,7 @@ describe("wait node - migration to a later workflow version", () => {
       store,
       parked: { waitMode: "delay", waitDuration: "1h" },
       migrated: { waitMode: "delay", waitDuration: "3d" },
-      events: { "wait-delay-wait_1-0": waitMigrateSignal() },
+      events: { "wait-park-wait_1-0": waitMigrateSignal() },
     });
 
     // One row, written over rather than joined by a second.
@@ -825,12 +825,63 @@ describe("wait node - migration to a later workflow version", () => {
     );
 
     const stepIds = run.executed.map((step) => step.stepId);
-    expect(stepIds).toContain("wait-delay-prepare-wait_1-1");
-    expect(stepIds).toContain("wait-delay-resume-wait_1-1");
-    expect(stepIds).not.toContain("wait-delay-resume-wait_1-0");
+    expect(stepIds).toContain("wait-prepare-wait_1-1");
+    expect(stepIds).toContain("wait-resume-wait_1-1");
+    expect(stepIds).not.toContain("wait-resume-wait_1-0");
 
     expect(waitOutput(run.value)).toMatchObject({
       waitType: "delay",
+      hops: 2,
+    });
+  });
+
+  // A Migration may give the node the other mode. The attempts already on the
+  // run are memoized under ids that name the node and the attempt alone, so the
+  // reloaded body replays them, keeps the row and the anchor the delay attempt
+  // wrote, and re-parks that row as an event wait.
+  it("re-parks the same row in event mode when the migration changed the wait's mode", async () => {
+    const run = await runMigratedWait({
+      store,
+      parked: { waitMode: "delay", waitDuration: "1h" },
+      migrated: {
+        waitMode: "event",
+        waitFor: [{ event: "billing/payment.settled" }],
+        waitTimeout: "7d",
+      },
+      events: {
+        "wait-park-wait_1-0": waitMigrateSignal(),
+        "wait-park-wait_1-1": waitResumeSignal(
+          { id: "pay_1" },
+          "billing/payment.settled"
+        ),
+      },
+    });
+
+    const created = store.callsOf("createWaitState");
+    const reparked = store.callsOf("reparkWaitState");
+    expect(created).toHaveLength(1);
+    expect(created[0]?.waitType).toBe("delay");
+    expect(reparked).toHaveLength(1);
+    expect(reparked[0]?.waitStateId).toBe("wait_state_1");
+    expect(reparked[0]?.waitType).toBe("event");
+    expect(reparked[0]?.subscribedEvents).toEqual(["billing/payment.settled"]);
+
+    // A delay park carries no token, so the event attempt mints one.
+    expect(created[0]?.resumeToken).toBeUndefined();
+    expect(reparked[0]?.resumeToken).toEqual(expect.any(String));
+
+    // The event wait's timeout is measured from the instant the delay attempt
+    // resolved against, whose target was an hour past it.
+    const anchorAt = Date.parse(String(created[0]?.waitUntilIso)) - HOUR_MS;
+    expect(Date.parse(String(reparked[0]?.waitUntilIso))).toBe(
+      anchorAt + 7 * DAY_MS
+    );
+
+    expect(waitOutput(run.value)).toMatchObject({
+      waitType: "event",
+      timedOut: false,
+      event: "billing/payment.settled",
+      payload: { id: "pay_1" },
       hops: 2,
     });
   });
@@ -849,8 +900,8 @@ describe("wait node - migration to a later workflow version", () => {
         waitTimeout: "7d",
       },
       events: {
-        "wait-event-wait_1-0": waitMigrateSignal(),
-        "wait-event-wait_1-1": waitResumeSignal(
+        "wait-park-wait_1-0": waitMigrateSignal(),
+        "wait-park-wait_1-1": waitResumeSignal(
           { id: "pay_1" },
           "billing/payment.failed"
         ),
@@ -890,7 +941,7 @@ describe("wait node - migration to a later workflow version", () => {
         waitDuration: "-1h",
         waitGateMode: "require_actual_wait",
       },
-      events: { "wait-delay-wait_1-0": waitMigrateSignal() },
+      events: { "wait-park-wait_1-0": waitMigrateSignal() },
     });
 
     // The gate asks whether this Wait ever waited, and the first attempt waited
@@ -902,7 +953,7 @@ describe("wait node - migration to a later workflow version", () => {
     // in all.
     expect(output.hops).toBe(1);
     expect(run.executed.map((step) => step.stepId)).toContain(
-      "wait-delay-resume-wait_1-1"
+      "wait-resume-wait_1-1"
     );
   });
   // Between a Migration's wake and the next park the row is still `waiting`, so
@@ -932,7 +983,7 @@ describe("wait node - migration to a later workflow version", () => {
         waitFor: [{ event: "billing/payment.settled" }],
         waitTimeout: "7d",
       },
-      events: { "wait-event-wait_1-0": waitMigrateSignal() },
+      events: { "wait-park-wait_1-0": waitMigrateSignal() },
     });
 
     expect(store.callsOf("readWaitState")).toEqual([
@@ -965,7 +1016,7 @@ describe("wait node - migration to a later workflow version", () => {
         waitFor: [{ event: "billing/payment.settled" }],
         waitTimeout: "7d",
       },
-      events: { "wait-event-wait_1-0": waitMigrateSignal() },
+      events: { "wait-park-wait_1-0": waitMigrateSignal() },
     });
 
     expect(store.callsOf("markWaitStateStatus").at(-1)?.status).toBe(
@@ -990,7 +1041,7 @@ describe("wait node - migration to a later workflow version", () => {
         waitFor: [{ event: "billing/payment.settled" }],
         waitTimeout: "7d",
       },
-      events: { "wait-event-wait_1-0": waitMigrateSignal() },
+      events: { "wait-park-wait_1-0": waitMigrateSignal() },
     });
 
     expect(run.value.results.wait_1?.success).toBe(false);
@@ -1024,7 +1075,7 @@ describe("wait node - migration to a later workflow version", () => {
           noWorkflowActions
         );
       },
-      { events: { "wait-delay-wait_1-0": waitMigrateSignal() } }
+      { events: { "wait-park-wait_1-0": waitMigrateSignal() } }
     );
 
     await expect(run).rejects.toMatchObject({

@@ -176,12 +176,20 @@ function executeWaitActionInner(
   });
 }
 
-/** What one attempt settled, and every later attempt reuses. */
+/**
+ * What one attempt settled, and every later attempt reuses.
+ *
+ * It crosses the prepare step's memo boundary, so every field is JSON-safe, and
+ * it says nothing about which mode wrote it: a later attempt in the other mode
+ * re-parks the same row from the same anchor. A delay park carries no resume
+ * token, so `resumeToken` is null after one and the event mode mints a fresh
+ * token when it takes the row over.
+ */
 type WaitCarry = {
   waitStateId: string;
   /** The instant the first attempt resolved against, as an ISO string. */
   anchorAtIso: string;
-  resumeToken?: string | undefined;
+  resumeToken: string | null;
 };
 
 /** The loop's own state, which outlives one attempt but not the node. */
@@ -227,10 +235,10 @@ function driveWait(
   });
 }
 
-/** Either the Wait is done, or a Migration sent it around again. */
+/** Either the Wait is done, or this attempt has to be prepared again. */
 type WaitAttemptResult =
   | { status: "finished"; outcome: WaitOutcome }
-  | { status: "migrated" };
+  | { status: "reprepare" };
 
 /**
  * What the prepare step of one attempt settled.
@@ -238,20 +246,25 @@ type WaitAttemptResult =
  * `woken` is the row having left `waiting` between a Migration's wake and this
  * park: a resume claim recorded its arrival on the row, and this attempt takes
  * that arrival instead of parking on a signal that has already been sent.
+ *
+ * `mode` is the mode that wrote the preparation. A replay hands back whatever
+ * the earlier body memoized, and `prepared` is that mode's own shape, so the
+ * driver checks the mode before handing `prepared` to a resume.
  */
 type WaitAttemptPreparation<Prepared> =
   | { status: "error"; error: string }
   | { status: "skipped"; output: Record<string, unknown> }
   | {
       status: "parked";
-      waitStateId: string;
-      anchorAtIso: string;
+      mode: "delay" | "event";
+      carry: WaitCarry;
       park: WaitPark;
       prepared: Prepared;
     }
   | {
       status: "woken";
-      waitStateId: string;
+      mode: "delay" | "event";
+      carry: WaitCarry;
       prepared: Prepared;
       wake: WaitWake;
     };
@@ -264,11 +277,7 @@ function runWaitAttempt<Prepared, Resumed>(
   return Effect.gen(function* () {
     const { context, runtime } = branch;
     const { attempt, carry } = state;
-    const stepIds = waitStepIds({
-      mode: mode.mode,
-      nodeId: context.nodeId,
-      attempt,
-    });
+    const stepIds = waitStepIds({ nodeId: context.nodeId, attempt });
 
     const anchorAt = carry
       ? yield* Effect.try({
@@ -290,7 +299,11 @@ function runWaitAttempt<Prepared, Resumed>(
         }),
       },
       prepareWaitAttempt(branch, mode, {
-        attempt: { index: attempt, anchorAt, resumeToken: carry?.resumeToken },
+        attempt: {
+          index: attempt,
+          anchorAt,
+          resumeToken: carry?.resumeToken ?? undefined,
+        },
         waitStateId: carry?.waitStateId,
       })
     );
@@ -309,14 +322,12 @@ function runWaitAttempt<Prepared, Resumed>(
       };
     }
 
+    // The row and the anchor are the attempt's, whichever mode wrote them, so
+    // the next attempt reuses both even when the mode has changed underneath.
+    state.carry = prepared.carry;
+
     let wake: WaitWake;
     if (prepared.status === "parked") {
-      state.carry = {
-        waitStateId: prepared.waitStateId,
-        anchorAtIso: prepared.anchorAtIso,
-        resumeToken: prepared.park.resumeToken ?? undefined,
-      };
-
       // A target the clock has already reached is not parked on. There is
       // nothing left to wait for, and a park with no time on it would hold the
       // run for the minimum a durable runtime can express.
@@ -339,7 +350,15 @@ function runWaitAttempt<Prepared, Resumed>(
     // The run has been moved to a later Workflow Version. The next attempt is
     // prepared from the config this body loaded, which came from that version.
     if (wake.kind === "migrate") {
-      return { status: "migrated" };
+      return { status: "reprepare" };
+    }
+
+    // A replayed preparation the other mode wrote cannot be resumed by this
+    // one: `prepared.prepared` is that mode's shape. The next attempt prepares
+    // the same row again under this mode, and a wake that has already arrived
+    // is read back off the row by `readMissedWake`.
+    if (prepared.mode !== mode.mode) {
+      return { status: "reprepare" };
     }
 
     const resumed = yield* runDurable(
@@ -349,7 +368,7 @@ function runWaitAttempt<Prepared, Resumed>(
         name: waitStepName({
           nodeName: context.nodeName,
           attempt,
-          stage: "resume",
+          stage: `resume ${mode.mode}`,
         }),
       },
       Effect.gen(function* () {
@@ -357,7 +376,7 @@ function runWaitAttempt<Prepared, Resumed>(
         return yield* mode.resume({
           branch,
           prepared: prepared.prepared,
-          waitStateId: prepared.waitStateId,
+          waitStateId: prepared.carry.waitStateId,
           wake,
           hops: state.parks,
         });
@@ -426,8 +445,12 @@ function prepareWaitAttempt<Prepared, Resumed>(
       yield* recordWaiting(branch, { attempt: input.attempt.index, park });
       const opened: WaitAttemptPreparation<Prepared> = {
         status: "parked",
-        waitStateId: created.waitStateId,
-        anchorAtIso,
+        mode: mode.mode,
+        carry: {
+          waitStateId: created.waitStateId,
+          anchorAtIso,
+          resumeToken: park.resumeToken,
+        },
         park,
         prepared,
       };
@@ -455,7 +478,12 @@ function prepareWaitAttempt<Prepared, Resumed>(
       }
       const woken: WaitAttemptPreparation<Prepared> = {
         status: "woken",
-        waitStateId: input.waitStateId,
+        mode: mode.mode,
+        carry: {
+          waitStateId: input.waitStateId,
+          anchorAtIso,
+          resumeToken: park.resumeToken,
+        },
         prepared,
         wake: missed,
       };
@@ -465,8 +493,12 @@ function prepareWaitAttempt<Prepared, Resumed>(
     yield* recordWaiting(branch, { attempt: input.attempt.index, park });
     const reopened: WaitAttemptPreparation<Prepared> = {
       status: "parked",
-      waitStateId: input.waitStateId,
-      anchorAtIso,
+      mode: mode.mode,
+      carry: {
+        waitStateId: input.waitStateId,
+        anchorAtIso,
+        resumeToken: park.resumeToken,
+      },
       park,
       prepared,
     };

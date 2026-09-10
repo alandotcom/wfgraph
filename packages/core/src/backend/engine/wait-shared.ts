@@ -289,17 +289,27 @@ export type WaitMode<Prepared, Resumed> = {
   outcome: (input: { resumed: Resumed; wake: WaitWake }) => WaitOutcome;
 };
 
-/** The step ids one attempt of a Wait node memoizes its own work under. */
-export function waitStepIds(input: {
-  mode: "delay" | "event";
-  nodeId: string;
-  attempt: number;
-}): { prepare: string; park: string; resume: string } {
+/**
+ * The step ids one attempt of a Wait node memoizes its own work under.
+ *
+ * The ids name the node and the attempt and nothing else. A Migration may give
+ * the node the other mode, and the body that reloads the new Workflow Version
+ * has to replay the attempts already on the run: an id carrying the mode would
+ * miss every one of them, so the driver would start attempt 0 again with an
+ * empty carry and open a second wait row beside the one still parked. The mode
+ * appears in the step *name* instead, which the Inngest UI shows and no replay
+ * reads.
+ */
+export function waitStepIds(input: { nodeId: string; attempt: number }): {
+  prepare: string;
+  park: string;
+  resume: string;
+} {
   const suffix = `${input.nodeId}-${input.attempt}`;
   return {
-    prepare: `wait-${input.mode}-prepare-${suffix}`,
-    park: `wait-${input.mode}-${suffix}`,
-    resume: `wait-${input.mode}-resume-${suffix}`,
+    prepare: `wait-prepare-${suffix}`,
+    park: `wait-park-${suffix}`,
+    resume: `wait-resume-${suffix}`,
   };
 }
 

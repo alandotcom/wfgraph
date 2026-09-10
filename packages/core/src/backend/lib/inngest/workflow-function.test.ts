@@ -650,7 +650,7 @@ describe("the workflow run function", () => {
     ).rejects.toThrow(/shape this run cannot read/);
   });
 
-  it("runtime.waitForEvent converts timeoutMs to Inngest duration format", async () => {
+  it("runtime.waitForEvent passes timeoutMs to Inngest as milliseconds", async () => {
     const { runtime, ctx } = await executeWorkflowFunctionForTest();
     const waitForEventSpy = vi.spyOn(ctx.step, "waitForEvent");
     const waitResult = {
@@ -662,6 +662,7 @@ describe("the workflow run function", () => {
 
     waitForEventSpy
       .mockResolvedValueOnce(waitResult)
+      .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(null);
 
     const result = await runtime.waitForEvent(
@@ -680,7 +681,27 @@ describe("the workflow run function", () => {
       {
         event: "workflow/wait.signal",
         if: "async.data.executionId == event.data.executionId",
-        timeout: "2s",
+        timeout: 1500,
+      }
+    );
+
+    // A sub-second timeout travels as it is. Inngest clamps it to its own one
+    // second minimum; nothing here rounds it first.
+    await runtime.waitForEvent(
+      { id: "wait-hook-sub-second" },
+      {
+        event: "workflow/wait.signal",
+        timeoutMs: 100,
+      }
+    );
+
+    expect(waitForEventSpy).toHaveBeenNthCalledWith(
+      2,
+      { id: "wait-hook-sub-second" },
+      {
+        event: "workflow/wait.signal",
+        if: undefined,
+        timeout: 100,
       }
     );
 
@@ -692,7 +713,7 @@ describe("the workflow run function", () => {
     );
 
     expect(waitForEventSpy).toHaveBeenNthCalledWith(
-      2,
+      3,
       { id: "wait-hook-default-timeout" },
       {
         event: "workflow/wait.signal",

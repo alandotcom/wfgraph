@@ -403,7 +403,7 @@ describe("executeWorkflow Event Split after Wait", () => {
       (runtime) => executeWorkflow(input, runtime, store, noWorkflowActions),
       {
         events: {
-          "wait-event-wait_1-0": waitResumeSignal(SETTLED, { amount: "40" }),
+          "wait-park-wait_1-0": waitResumeSignal(SETTLED, { amount: "40" }),
         },
         branch: (runtime, branchInput) =>
           executeWorkflowBranch(

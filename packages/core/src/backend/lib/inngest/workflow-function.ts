@@ -48,11 +48,6 @@ import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 type ExecuteWorkflow = typeof defaultExecuteWorkflow;
 type ExecuteWorkflowBranch = typeof defaultExecuteWorkflowBranch;
 
-function toDurationString(milliseconds: number): string {
-  const seconds = Math.max(1, Math.ceil(milliseconds / 1000));
-  return `${seconds}s`;
-}
-
 /** The id `workflow-branch` registers under, which is also how it is invoked. */
 const WORKFLOW_BRANCH_FUNCTION_ID = "workflow-branch";
 
@@ -76,7 +71,7 @@ const workflowBranchTarget: InngestFunctionReference.Any = referenceFunction({
 type DurableStep = {
   waitForEvent: (
     step: DurableStepRef,
-    options: { event: string; if?: string; timeout: string }
+    options: { event: string; if?: string; timeout: string | number }
   ) => Promise<unknown>;
   run: <T>(step: DurableStepRef, fn: () => Promise<T>) => Promise<T>;
   invoke: (
@@ -162,10 +157,13 @@ function createDurableRuntime(input: {
         omitUndefined({
           event: options.event,
           if: options.ifExpression,
-          timeout:
-            options.timeoutMs === undefined
-              ? "365d"
-              : toDurationString(options.timeoutMs),
+          // Inngest takes a timeout as a number of milliseconds, and renders it
+          // itself: `timeStr` clamps anything under a second up to `1s`, the
+          // minimum resolution of a durable wait, and drops the sub-second
+          // remainder of anything longer. Handing it the milliseconds keeps the
+          // engine's own value exact up to that boundary; rounding here as well
+          // would turn a 1.5s wait into 2s.
+          timeout: options.timeoutMs ?? "365d",
         })
       ),
     // Memoization boundary: Inngest stores the result under the step's id, so
