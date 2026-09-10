@@ -216,8 +216,8 @@ Workflow Graph's built-in permission vocabulary is fixed:
 | ------------------ | ----------------------------------------------------------------- |
 | `workflow.read`    | Reading workflows and version history                             |
 | `workflow.write`   | Creating, editing, publishing, restoring, and deleting workflows  |
-| `run.read`         | Reading runs, logs, events, and status                            |
-| `run.manage`       | Starting, canceling, deleting, and resuming runs                  |
+| `run.read`         | Reading runs, logs, events, status, and migration preflights      |
+| `run.manage`       | Starting, canceling, deleting, resuming, and migrating runs       |
 | `connection.read`  | Reading connections and connection configuration options          |
 | `connection.write` | Creating, editing, testing, deleting, and authorizing connections |
 | `agent.use`        | Using the build agent                                             |
@@ -228,8 +228,8 @@ The following table maps every operation ID to its permission:
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `workflow.read`    | `workflow.getAll`, `workflow.getById`, `workflow.subscribeList`, `workflow.subscribeDraft`, `workflow.getVersionHistory`, `workflow.getVersionUsage`, `workflow.compareVersion`, `workflow.getCurrent`, `workflow.getVersionGraph` |
 | `workflow.write`   | `workflow.create`, `workflow.update`, `workflow.delete`, `workflow.duplicate`, `workflow.publish`, `workflow.restoreVersion`, `workflow.saveCurrent`, `workflow.bulkLifecycle`                                                     |
-| `run.read`         | `workflow.getExecutions`, `workflow.getExecutionsGlobal`, `workflow.getExecutionLogs`, `workflow.getExecutionEvents`, `workflow.getExecutionStatus`                                                                                |
-| `run.manage`       | `workflow.execute`, `workflow.deleteExecutions`, `workflow.resumeWait`, `workflow.cancelExecution`                                                                                                                                 |
+| `run.read`         | `workflow.getExecutions`, `workflow.getExecutionsGlobal`, `workflow.getExecutionLogs`, `workflow.getExecutionEvents`, `workflow.getExecutionStatus`, `workflow.previewMigration`                                                   |
+| `run.manage`       | `workflow.execute`, `workflow.deleteExecutions`, `workflow.resumeWait`, `workflow.cancelExecution`, `workflow.migrateExecutions`                                                                                                   |
 | `connection.read`  | `integration.getAll`, `integration.get`, `integration.configOptions`                                                                                                                                                               |
 | `connection.write` | `integration.create`, `integration.update`, `integration.delete`, `integration.disconnectOAuth`, `integration.testConnection`, `integration.testCredentials`, `oauth.start`, `oauth.status`, `oauth.callback`                      |
 | `agent.use`        | `agent.chat`                                                                                                                                                                                                                       |
@@ -778,29 +778,31 @@ of work inside a run:
 | `wfgraph.workflow.action.execute` | the action inside a node          | `wfgraph.action.type`, `wfgraph.node.id`, `wfgraph.node.name`                                        |
 | `wfgraph.workflow.wait`           | a Wait node                       | `wfgraph.wait.type` (`delay` or `event`), `wfgraph.node.id`, `wfgraph.node.name`                     |
 
-Nine more come from the services behind the API, one per request the editor or a
+Twelve more come from the services behind the API, one per request the editor or a
 host makes. Each carries the identifiers it is about, and a span nested inside
 another leaves the parent's identifiers to the parent rather than repeating them.
 Where a call has a verdict worth reading, `wfgraph.outcome` names it in one machine
 word:
 
-| Span                                 | Opened for                             | Attributes beyond the identifiers                                                                             |
-| ------------------------------------ | -------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `wfgraph.workflow.publish`           | minting a version from the draft       | `wfgraph.workflow.version.id` and `.number` on success; `wfgraph.outcome` is `published` or the conflict code |
-| `wfgraph.workflow.publish_readiness` | the readiness battery, under a publish | `wfgraph.outcome` is `ready`; a refusal leaves the span with the error recorded                               |
-| `wfgraph.workflow.version.compare`   | a draft diffed against a version       | `wfgraph.workflow.version.base_id`                                                                            |
-| `wfgraph.workflow.version.history`   | a page of the version list             | none                                                                                                          |
-| `wfgraph.workflow.version.restore`   | a version copied back to the draft     | `wfgraph.workflow.version.id`                                                                                 |
-| `wfgraph.execution.start`            | a manual run request                   | `wfgraph.execution.id` once a run opens; `wfgraph.outcome` is `running` or `ignored`                          |
-| `wfgraph.execution.load_workflow`    | the published version a start reads    | `wfgraph.workflow.version.id`                                                                                 |
-| `wfgraph.execution.load_draft`       | the draft snapshot a draft run creates | `wfgraph.workflow.version.id`                                                                                 |
-| `wfgraph.execution.preflight`        | the checks that version must pass      | `wfgraph.workflow.version.id`                                                                                 |
-| `wfgraph.execution.cancel`           | cancelling a run                       | `wfgraph.outcome` is `canceled` or `already_finished`                                                         |
+| Span                                 | Opened for                                  | Attributes beyond the identifiers                                                                             |
+| ------------------------------------ | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `wfgraph.workflow.publish`           | minting a version from the draft            | `wfgraph.workflow.version.id` and `.number` on success; `wfgraph.outcome` is `published` or the conflict code |
+| `wfgraph.workflow.publish_readiness` | the readiness battery, under a publish      | `wfgraph.outcome` is `ready`; a refusal leaves the span with the error recorded                               |
+| `wfgraph.workflow.version.compare`   | a draft diffed against a version            | `wfgraph.workflow.version.base_id`                                                                            |
+| `wfgraph.workflow.version.history`   | a page of the version list                  | none                                                                                                          |
+| `wfgraph.workflow.version.restore`   | a version copied back to the draft          | `wfgraph.workflow.version.id`                                                                                 |
+| `wfgraph.workflow.preview_migration` | the migration preflight over in-flight runs | `wfgraph.workflow.version.target_id`, `wfgraph.outcome`                                                       |
+| `wfgraph.workflow.migrate_runs`      | moving the named runs to the target version | `wfgraph.workflow.version.target_id`, `wfgraph.outcome`                                                       |
+| `wfgraph.execution.start`            | a manual run request                        | `wfgraph.execution.id` once a run opens; `wfgraph.outcome` is `running` or `ignored`                          |
+| `wfgraph.execution.load_workflow`    | the published version a start reads         | `wfgraph.workflow.version.id`                                                                                 |
+| `wfgraph.execution.load_draft`       | the draft snapshot a draft run creates      | `wfgraph.workflow.version.id`                                                                                 |
+| `wfgraph.execution.preflight`        | the checks that version must pass           | `wfgraph.workflow.version.id`                                                                                 |
+| `wfgraph.execution.cancel`           | cancelling a run                            | `wfgraph.outcome` is `canceled` or `already_finished`                                                         |
 
 A service function outside that table opens a span named after the function
 itself. Those names are internal and change with the code.
 
-**An attribute is an identifier.** A workflow id, an execution id, a version id
+**An attribute is an identifier.** A workflow id, an execution id, a version id,
 and one outcome word are the whole of it. A graph, a request body, an Event
 payload, a step output and a credential are stored where they can be read whole,
 and a trace backend shows an attribute to everyone who can read the trace.

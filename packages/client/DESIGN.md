@@ -335,6 +335,12 @@ listed even with no active runs, alongside every version an active run pins.
 Each row keeps its active-run status visible, opens to its action ids, and marks
 catalog drift as a warning without implying that a draft snapshot was published.
 
+The **Migrate active runs** command sits in the **In use** section, because that
+section is where a builder reads how many runs sit on older versions. The
+toolbar's trailing group holds **Run** and **Publish**, the commands a builder
+uses on every visit, and a Migration is a rare action taken after reading the
+version usage it acts on.
+
 Comparison marks nodes with `A`, `M`, or `D` in addition to signal color. Added
 nodes use Signal Green, modified nodes use Signal Amber, and deleted nodes use
 Signal Red. Deleted edges use a distinct dotted treatment. Node position,
