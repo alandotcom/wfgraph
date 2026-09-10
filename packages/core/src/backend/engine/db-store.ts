@@ -16,8 +16,47 @@ import type { ExecutionRepo } from "#src/backend/services/executions/repo";
 import { decodeIsoTimestampOrThrow } from "@wfgraph/shared/types/timestamp";
 import type {
   CompleteRunInput,
+  WaitStateArrival,
   WorkflowStore,
 } from "#src/backend/engine/store";
+import { WAIT_ARRIVAL_METADATA_KEY } from "#src/backend/services/executions/repo/waits";
+import { isWaitSignalType } from "@wfgraph/shared/lifecycle/wait-signal";
+import { type JsonObject, readJsonObject } from "@wfgraph/shared/types/json";
+
+/**
+ * The port speaks ISO strings so wait-state writes stay JSON-safe across a
+ * memoized step; the table wants a Date.
+ */
+function readWaitUntil(
+  waitUntilIso: string | undefined
+): Effect.Effect<Date | undefined, DatabaseError> {
+  return waitUntilIso
+    ? Effect.try({
+        try: () => decodeIsoTimestampOrThrow(waitUntilIso),
+        catch: (cause) => new DatabaseError({ cause }),
+      })
+    : Effect.succeed(undefined);
+}
+
+/**
+ * The wake a resume claim recorded on the row, or null when it recorded none.
+ *
+ * The row's metadata is written by two parties: the park writes the wait's own
+ * parameters and a claim adds its arrival under one key. Anything that does not
+ * read back as an arrival is treated as none, because the alternative is a run
+ * failing on a row a future version wrote a different shape into.
+ */
+function readWaitArrival(metadata: JsonObject | null): WaitStateArrival | null {
+  const arrival = readJsonObject(metadata?.[WAIT_ARRIVAL_METADATA_KEY]);
+  if (!arrival || !isWaitSignalType(arrival.signalType)) {
+    return null;
+  }
+  return {
+    signalType: arrival.signalType,
+    eventName: typeof arrival.eventName === "string" ? arrival.eventName : null,
+    payload: readJsonObject(arrival.payload) ?? {},
+  };
+}
 
 export function createDbWorkflowStore(
   repo: ExecutionRepo["Service"]
@@ -57,20 +96,26 @@ export function createDbWorkflowStore(
     recordAuditEvent: (input) => repo.recordAuditEvent(input),
 
     createWaitState: ({ waitUntilIso, ...input }) =>
-      Effect.flatMap(
-        waitUntilIso
-          ? Effect.try({
-              try: () => decodeIsoTimestampOrThrow(waitUntilIso),
-              catch: (cause) => new DatabaseError({ cause }),
-            })
-          : Effect.succeed(undefined),
-        (waitUntil) =>
-          repo.startWait({
-            ...input,
-            // The port speaks ISO strings so wait-state writes stay JSON-safe
-            // across a memoized step; the table wants a Date.
-            waitUntil,
-          })
+      Effect.flatMap(readWaitUntil(waitUntilIso), (waitUntil) =>
+        repo.startWait({ ...input, waitUntil })
+      ),
+
+    reparkWaitState: ({ waitUntilIso, ...input }) =>
+      Effect.flatMap(readWaitUntil(waitUntilIso ?? undefined), (waitUntil) =>
+        repo.reparkWait({ ...input, waitUntil: waitUntil ?? null })
+      ),
+
+    readWaitState: (waitStateId) =>
+      Effect.map(repo.findWaitStateById(waitStateId), (row) =>
+        row
+          ? { status: row.status, arrival: readWaitArrival(row.metadata) }
+          : null
+      ),
+
+    readPinnedVersionId: (executionId) =>
+      Effect.map(
+        repo.findSummaryById(executionId),
+        (execution) => execution?.workflowVersionId ?? null
       ),
 
     markWaitStateStatus: (input) => repo.markWaitStatus(input),

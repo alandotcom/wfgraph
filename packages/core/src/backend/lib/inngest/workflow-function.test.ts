@@ -422,7 +422,6 @@ describe("the workflow run function", () => {
     ];
     expect(input).toEqual(persistedRunInput());
     expect(runtime).toMatchObject({
-      sleep: expect.any(Function),
       waitForEvent: expect.any(Function),
       run: expect.any(Function),
       runId: expect.any(String),
@@ -649,18 +648,6 @@ describe("the workflow run function", () => {
         }
       )
     ).rejects.toThrow(/shape this run cannot read/);
-  });
-
-  it("runtime.sleep skips non-positive durations", async () => {
-    const { runtime, ctx } = await executeWorkflowFunctionForTest();
-    const sleepSpy = vi.spyOn(ctx.step, "sleep").mockResolvedValue(undefined);
-
-    await runtime.sleep({ id: "sleep-zero" }, 0);
-    await runtime.sleep({ id: "sleep-negative" }, -100);
-    await runtime.sleep({ id: "sleep-positive" }, 1500);
-
-    expect(sleepSpy).toHaveBeenCalledTimes(1);
-    expect(sleepSpy).toHaveBeenCalledWith({ id: "sleep-positive" }, 1500);
   });
 
   it("runtime.waitForEvent converts timeoutMs to Inngest duration format", async () => {

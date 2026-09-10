@@ -157,6 +157,7 @@ describe("engine Effect spans", () => {
         runtime: createInMemoryWorkflowRuntime(),
         store: createRecordingWorkflowStore(),
         workflowId: "workflow_2",
+        workflowVersionId: "ver_2",
         workflowRunId: "run_2",
         resolveTemplates: (value) => value,
       }).pipe(Effect.provide(TracerBridgeLayer))
@@ -195,6 +196,7 @@ describe("engine Effect spans", () => {
         runtime: createInMemoryWorkflowRuntime(),
         store,
         workflowId: "workflow_context",
+        workflowVersionId: "ver_context",
         workflowRunId: "run_context",
         resolveTemplates: (value) => value,
       }).pipe(

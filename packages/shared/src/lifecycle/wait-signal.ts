@@ -1,0 +1,37 @@
+/**
+ * The `workflow/wait.signal` vocabulary: the Inngest event name a parked Wait
+ * node suspends on, and the reasons one is sent.
+ *
+ * Both ends read the names from here. The Inngest event schema builds its
+ * literal union from `WAIT_SIGNAL_TYPES`, the send helper types its argument
+ * from it, and the engine matches an arriving signal against it. The engine
+ * imports nothing from `lib/inngest`, so the shared package is where the two
+ * meet.
+ */
+
+import { Schema } from "effect";
+
+/** The Inngest event both Wait modes park on. */
+export const WAIT_SIGNAL_EVENT = "workflow/wait.signal";
+
+/**
+ * Why a wait signal was sent, as the `signalType` key spells it.
+ *
+ * `wait-resume` is an Event arrival or a manual resume from the runs panel,
+ * `lifecycle-cancel` is a Cancel Event claiming the run, and `version-migrate`
+ * tells a parked Wait to prepare itself again against the Workflow Version the
+ * execution row now names.
+ */
+export const WAIT_SIGNAL_TYPES = [
+  "wait-resume",
+  "lifecycle-cancel",
+  "version-migrate",
+] as const;
+
+export type WaitSignalType = (typeof WAIT_SIGNAL_TYPES)[number];
+
+const waitSignalTypeSchema = Schema.Literals([...WAIT_SIGNAL_TYPES]);
+
+/** Whether an arbitrary value is one of the three signal types. */
+export const isWaitSignalType: (value: unknown) => value is WaitSignalType =
+  Schema.is(waitSignalTypeSchema);

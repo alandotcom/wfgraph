@@ -159,12 +159,9 @@ type DurableRun = {
   readonly id: string;
   readonly body: (runtime: WorkflowExecutionRuntime) => Promise<unknown>;
   readonly memo: Map<string, unknown>;
-  readonly finishedSleeps: Set<string>;
   readonly finishedWaits: Map<string, unknown>;
   /** When each pause fires, fixed the first time this run reaches it. */
   readonly wakeAt: Map<string, number>;
-  /** Which pauses are event waits, so an ended one resolves to its answer. */
-  readonly eventWaits: Set<string>;
   /** The step ids this run has started a branch under. */
   readonly branchRuns: Set<string>;
   /** How each of those branches ended, once one has. */
@@ -225,10 +222,8 @@ async function driveWithReplayInstalled<T>(
       id,
       body: runBody,
       memo: new Map(),
-      finishedSleeps: new Set(),
       finishedWaits: new Map(),
       wakeAt: new Map(),
-      eventWaits: new Set(),
       branchRuns: new Set(),
       branchEndings: new Map(),
       parent,
@@ -239,15 +234,12 @@ async function driveWithReplayInstalled<T>(
     return run;
   }
 
-  /** Ends one pause, which is what lets the run that holds it be called again. */
+  /**
+   * Ends one pause, which is what lets the run that holds it be called again. A
+   * wait with no answer reached its timeout, which the engine reads as null.
+   */
   function endPause(run: DurableRun, stepId: string) {
-    if (run.eventWaits.has(stepId)) {
-      // A wait with no answer reached its timeout, which the engine reads as
-      // null.
-      run.finishedWaits.set(stepId, events[stepId] ?? null);
-    } else {
-      run.finishedSleeps.add(stepId);
-    }
+    run.finishedWaits.set(stepId, events[stepId] ?? null);
     run.outstanding.delete(stepId);
   }
 
@@ -257,7 +249,7 @@ async function driveWithReplayInstalled<T>(
    * A run stays parked until the last of its outstanding pauses ends, which is
    * the executor policy measured against `inngest dev`: two pauses outstanding
    * together give one wake, at the later target, whichever was registered
-   * first. A 20-second sleep beside a 90-second one resumed 70 seconds past its
+   * first. A 20-second park beside a 90-second one resumed 70 seconds past its
    * own target. What that measurement is about is one run: a pause held by
    * another run stops nothing here, which is the whole of why a waiting branch
    * gets a run of its own.
@@ -373,24 +365,12 @@ async function driveWithReplayInstalled<T>(
           return pending<R>();
         }),
 
-      sleep: ({ id: stepId }, durationMs) =>
-        withActivity(() => {
-          if (run.finishedSleeps.has(stepId)) {
-            return Promise.resolve();
-          }
-          if (!pass.pauses.has(stepId)) {
-            noteFirstReach(stepId, durationMs);
-          }
-          return pending<void>();
-        }),
-
       waitForEvent: ({ id: stepId }, waitOptions: WaitForEventOptions) =>
         withActivity(() => {
           if (run.finishedWaits.has(stepId)) {
             return Promise.resolve(run.finishedWaits.get(stepId));
           }
           if (!pass.pauses.has(stepId)) {
-            run.eventWaits.add(stepId);
             noteFirstReach(
               stepId,
               waitOptions.timeoutMs ?? FALLBACK_TIMEOUT_MS

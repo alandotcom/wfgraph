@@ -55,9 +55,9 @@ function makeResumeSeams(input: {
   return {
     layer: Layer.mergeAll(
       stubExecutionRepo({
-        claimWaitingStateByToken: (hookToken) =>
+        claimWaitingStateByToken: ({ resumeToken }) =>
           Effect.sync(() => {
-            calls.tokenLookups.push(hookToken);
+            calls.tokenLookups.push(resumeToken);
             if (calls.claimed || !input.waitState) {
               return null;
             }

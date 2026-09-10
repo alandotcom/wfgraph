@@ -14,9 +14,11 @@ import {
 import { generateId } from "@wfgraph/shared/utils/id";
 import { toJsonObject } from "@wfgraph/shared/types/json";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
-import type {
-  WaitResumeClaim,
-  WaitsRepoMethods,
+import {
+  WAIT_ARRIVAL_METADATA_KEY,
+  type WaitResumeArrival,
+  type WaitResumeClaim,
+  type WaitsRepoMethods,
 } from "#src/backend/services/executions/repo/waits";
 import type { WorkflowWaitState } from "#src/backend/services/executions/repo";
 import type {
@@ -28,7 +30,10 @@ import {
   workflowExecutions,
   workflowWaitStates,
 } from "#src/backend/persistence/sqlite/schema";
-import { sqliteWaitState } from "#src/backend/persistence/sqlite/executions/rows";
+import {
+  optionalJsonObject,
+  sqliteWaitState,
+} from "#src/backend/persistence/sqlite/executions/rows";
 
 const WAIT_RESUME_CLAIM_LEASE_MS = 5 * 60 * 1000;
 
@@ -50,10 +55,15 @@ const waitStateSelection = {
   cancelledAt: workflowWaitStates.cancelledAt,
 };
 
+/**
+ * Claims one row and records the wake on it, so a run between two parks can
+ * read back the signal it was not listening for.
+ */
 function claimWait(
   database: SqliteExecutor,
   column: "id" | "resume_token",
-  value: string
+  value: string,
+  arrival: WaitResumeArrival
 ): Effect.Effect<WaitResumeClaim | null, unknown> {
   return Effect.gen(function* () {
     const claimedAt = new Date();
@@ -71,7 +81,10 @@ function claimWait(
       )
     );
     const candidate = yield* database
-      .select({ id: workflowWaitStates.id })
+      .select({
+        id: workflowWaitStates.id,
+        metadata: workflowWaitStates.metadata,
+      })
       .from(workflowWaitStates)
       .innerJoin(
         workflowExecutions,
@@ -88,7 +101,14 @@ function claimWait(
     if (!candidate) return null;
     const [claimed] = yield* database
       .update(workflowWaitStates)
-      .set({ status: "resuming", resumedAt: claimedAtMs })
+      .set({
+        status: "resuming",
+        resumedAt: claimedAtMs,
+        metadata: encodeJson({
+          ...optionalJsonObject(candidate.metadata, "metadata"),
+          [WAIT_ARRIVAL_METADATA_KEY]: { ...arrival },
+        }),
+      })
       .where(and(eq(workflowWaitStates.id, candidate.id), claimable))
       .returning();
     if (!claimed) return null;
@@ -133,6 +153,40 @@ export function makeSqliteWaitsMethods(
           });
           return { waitStateId: id };
         })
+      ),
+    reparkWait: (input) =>
+      store.write((database) =>
+        database
+          .update(workflowWaitStates)
+          .set({
+            waitType: input.waitType,
+            waitUntil: input.waitUntil?.getTime() ?? null,
+            subscribedEvents: JSON.stringify(input.subscribedEvents),
+            resumeToken: input.resumeToken,
+            metadata: encodeJson(input.metadata),
+          })
+          .where(
+            and(
+              eq(workflowWaitStates.id, input.waitStateId),
+              eq(workflowWaitStates.status, "waiting")
+            )
+          )
+          .returning({ id: workflowWaitStates.id })
+          .pipe(Effect.map((rows) => rows.length > 0))
+      ),
+    findWaitStateById: (waitStateId) =>
+      store.read((database) =>
+        database
+          .select()
+          .from(workflowWaitStates)
+          .where(eq(workflowWaitStates.id, waitStateId))
+          .limit(1)
+          .pipe(
+            Effect.map((rows) => {
+              const [row] = rows;
+              return row ? sqliteWaitState(row) : null;
+            })
+          )
       ),
     markWaitStatus: (input) =>
       store.write((database) => {
@@ -217,12 +271,14 @@ export function makeSqliteWaitsMethods(
           .limit(input.limit)
           .pipe(Effect.map((rows) => rows.map(sqliteWaitState)));
       }),
-    claimWaitingStateByToken: (resumeToken) =>
+    claimWaitingStateByToken: (input) =>
       store.write((database) =>
-        claimWait(database, "resume_token", resumeToken)
+        claimWait(database, "resume_token", input.resumeToken, input.arrival)
       ),
-    claimWaitingStateById: (waitStateId) =>
-      store.write((database) => claimWait(database, "id", waitStateId)),
+    claimWaitingStateById: (input) =>
+      store.write((database) =>
+        claimWait(database, "id", input.waitStateId, input.arrival)
+      ),
     settleWaitingStateClaim: (input) =>
       store.write((database) =>
         database

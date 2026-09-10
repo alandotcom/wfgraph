@@ -335,7 +335,7 @@ function-level, each step carrying its own counter. Step results round-trip thro
 `ManagedRuntime` outlives every run, so it must never hold the per-invocation action surface
 or credentials. Finalizers above a suspension do not run, and a fork there leaks; keep
 end-of-run work as an explicit durable call and do not use `Effect.fork` in the engine. A
-timeout or race around `runtime.run`, `sleep`, `waitForEvent`, or `startBranch` turns
+timeout or race around `runtime.run`, `waitForEvent`, or `startBranch` turns
 Inngest's intentionally unsettled Promise into a failure, so those calls get neither.
 
 **A suspension holds the run, and a branch is given a run.** Inngest parks a whole function

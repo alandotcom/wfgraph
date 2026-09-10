@@ -343,6 +343,8 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
   cancelOpenNodeLogs: refuse("cancelOpenNodeLogs"),
   readNodeOutputs: refuse("readNodeOutputs"),
   startWait: refuse("startWait"),
+  reparkWait: refuse("reparkWait"),
+  findWaitStateById: refuse("findWaitStateById"),
   markWaitStatus: refuse("markWaitStatus"),
   cancelWaits: refuse("cancelWaits"),
   cancelWaitsForExecution: refuse("cancelWaitsForExecution"),

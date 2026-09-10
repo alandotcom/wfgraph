@@ -90,6 +90,7 @@ function runAction(context: NodeWorkContext) {
       actions,
       executionId,
       workflowId,
+      workflowVersionId,
       workflowRunId,
       runMode,
     } = context;
@@ -146,6 +147,7 @@ function runAction(context: NodeWorkContext) {
         runtime,
         store,
         workflowId,
+        workflowVersionId,
         workflowRunId,
         resolveTemplates: (value) =>
           resolveTemplateString(value, traversal.outputs),

@@ -27,27 +27,28 @@ const sendWaitSignalMock = vi.fn<InngestClient["Service"]["sendWaitSignal"]>(
 const recordAuditEventMock = vi.fn<Repo["recordAuditEvent"]>(() => Effect.void);
 const markRunningMock = vi.fn<Repo["markRunning"]>(() => Effect.succeed(true));
 const CLAIMED_AT = new Date("2026-03-01T00:01:00.000Z");
-const claimWaitingStateByIdMock = vi.fn<Repo["claimWaitingStateById"]>((id) =>
-  Effect.succeed({
-    claimedAt: CLAIMED_AT,
-    waitState: {
-      id,
-      executionId: `exec_${id}`,
-      workflowId: "workflow_1",
-      runId: `run_${id}`,
-      nodeId: `node_${id}`,
-      nodeName: `Wait ${id}`,
-      waitType: "event",
-      status: "resuming",
-      resumeToken: `token_${id}`,
-      waitUntil: null,
-      subscribedEvents: ["event.update"],
-      metadata: null,
-      createdAt: new Date("2026-03-01T00:00:00.000Z"),
-      resumedAt: CLAIMED_AT,
-      cancelledAt: null,
-    },
-  })
+const claimWaitingStateByIdMock = vi.fn<Repo["claimWaitingStateById"]>(
+  ({ waitStateId: id }) =>
+    Effect.succeed({
+      claimedAt: CLAIMED_AT,
+      waitState: {
+        id,
+        executionId: `exec_${id}`,
+        workflowId: "workflow_1",
+        runId: `run_${id}`,
+        nodeId: `node_${id}`,
+        nodeName: `Wait ${id}`,
+        waitType: "event",
+        status: "resuming",
+        resumeToken: `token_${id}`,
+        waitUntil: null,
+        subscribedEvents: ["event.update"],
+        metadata: null,
+        createdAt: new Date("2026-03-01T00:00:00.000Z"),
+        resumedAt: CLAIMED_AT,
+        cancelledAt: null,
+      },
+    })
 );
 const settleWaitingStateClaimMock = vi.fn<Repo["settleWaitingStateClaim"]>(() =>
   Effect.succeed(true)
@@ -141,7 +142,7 @@ describe("resumeWaitsMatchingEvent", () => {
     }) as typeof waitMatchLogger.error);
 
     sendWaitSignalMock.mockImplementation(() => Effect.void);
-    claimWaitingStateByIdMock.mockImplementation((id) =>
+    claimWaitingStateByIdMock.mockImplementation(({ waitStateId: id }) =>
       Effect.succeed({
         claimedAt: CLAIMED_AT,
         waitState: {

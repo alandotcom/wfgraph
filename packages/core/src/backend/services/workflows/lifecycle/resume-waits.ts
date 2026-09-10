@@ -183,7 +183,16 @@ const resumeOneWait = Effect.fn("resumeOneWait")(function* (input: {
   const inngest = yield* InngestClient;
 
   return yield* Effect.gen(function* () {
-    const claim = yield* repo.claimWaitingStateById(waitState.id);
+    // The arrival goes onto the row in the same statement that claims it, so a
+    // run between two parks can read back the wake it was not listening for.
+    const claim = yield* repo.claimWaitingStateById({
+      waitStateId: waitState.id,
+      arrival: {
+        signalType: "wait-resume",
+        eventName: eventType,
+        payload: input.payload,
+      },
+    });
     if (!claim) {
       return 0;
     }

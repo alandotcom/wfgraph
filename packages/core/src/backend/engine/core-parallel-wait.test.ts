@@ -600,7 +600,7 @@ describe("a wait node beside another branch", () => {
         workflowId: "workflow_cancel",
         startEventName: START_EVENT,
       },
-      createInMemoryWorkflowRuntime({ skipSleep: true }),
+      createInMemoryWorkflowRuntime(),
       cancelStore,
       actions
     );

@@ -25,6 +25,7 @@ import {
 } from "#src/backend/engine/recording-store";
 import { noWorkflowActions } from "#src/backend/engine/actions";
 import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
+import { driveWithReplay } from "#src/backend/engine/testing/replay-runtime";
 
 /**
  * The Wait node's own run-log rows.
@@ -188,7 +189,6 @@ function waitHaltedBranch(result: {
 
 function runWait(options: RunWaitOptions) {
   const runtime = createInMemoryWorkflowRuntime({
-    skipSleep: true,
     resumeEvent: options.resumeEvent ?? null,
     memo: options.memo,
   });
@@ -236,10 +236,21 @@ describe("wait node - delay mode", () => {
     expect(created[0]?.nodeId).toBe("wait_1");
     expect(created[0]?.executionId).toBe("exec_wait");
 
-    // Roughly an hour, allowing for the milliseconds the run itself took.
-    const sleep = runtime.sleeps.find((s) => s.stepId === "wait-delay-wait_1");
-    expect(sleep?.durationMs).toBeGreaterThan(3_500_000);
+    // The park is a signal wait whose timeout is what is left of the delay:
+    // roughly an hour, allowing for the milliseconds the run itself took.
+    const park = runtime.waits.find(
+      (wait) => wait.stepId === "wait-delay-wait_1-0"
+    );
+    expect(park?.options.timeoutMs).toBeGreaterThan(3_500_000);
+    // A delay wait answers to a Migration and to nothing else.
+    expect(park?.options.ifExpression).toContain(
+      'async.data.signalType == "version-migrate"'
+    );
+    expect(park?.options.ifExpression).not.toContain("wait-resume");
 
+    // One park, so the row is written once and never re-parked.
+    expect(store.callsOf("reparkWaitState")).toHaveLength(0);
+    expect(waitData.hops).toBe(1);
     expect(store.callsOf("markWaitStateStatus")).toEqual([
       { waitStateId: "wait_state_1", status: "resumed" },
     ]);
@@ -275,9 +286,9 @@ describe("wait node - delay mode", () => {
       skipped: true,
       skippedReason: "past_due_no_wait",
     });
-    // Nothing to wait for means no wait-state row and no sleep at all.
+    // Nothing to wait for means no wait-state row and no park at all.
     expect(store.callsOf("createWaitState")).toHaveLength(0);
-    expect(runtime.sleeps).toHaveLength(0);
+    expect(runtime.waits).toHaveLength(0);
     expect(store.callsOf("recordAuditEvent")[0]?.eventType).toBe("run_skipped");
   });
 
@@ -342,7 +353,7 @@ describe("wait node - event mode", () => {
     expect(resumeToken).not.toBe("");
 
     const wait = runtime.waits.at(0);
-    expect(wait?.stepId).toBe("wait-event-wait_1");
+    expect(wait?.stepId).toBe("wait-event-wait_1-0");
     expect(wait?.options.event).toBe("workflow/wait.signal");
     expect(wait?.options.ifExpression).toContain(`"${resumeToken}"`);
     expect(wait?.options.ifExpression).toContain(
@@ -708,7 +719,7 @@ describe("wait node - event mode", () => {
     };
 
     await runWait({ config: parked, store, memo, resumeEvent: null }).execution;
-    memo.delete("wait-event-resume-wait_1");
+    memo.delete("wait-event-resume-wait_1-0");
 
     const result = await runWait({
       config: { ...parked, waitTimeoutBehavior: "continue" },
@@ -721,6 +732,303 @@ describe("wait node - event mode", () => {
     expect(waitOutput(result)).toMatchObject({
       skipped: true,
       skippedReason: "timeout_skip",
+    });
+  });
+});
+
+/**
+ * A Migration's wake, as the service that moves an Execution to a later
+ * Workflow Version sends it: the same envelope a resume travels in, carrying
+ * `version-migrate` instead.
+ */
+function waitMigrateSignal() {
+  return {
+    name: "workflow/wait.signal",
+    id: "evt_migrate",
+    ts: 0,
+    data: {
+      executionId: "exec_wait",
+      nodeId: "wait_1",
+      token: "token_1",
+      signalType: "version-migrate",
+    },
+  };
+}
+
+/**
+ * Drives a Wait whose config changes once the run is parked, which is what a
+ * Migration looks like from inside the run: Inngest calls the function body
+ * again from the top on every wake, and the body loads the graph from the
+ * version the execution row now names. The wait-state row is the switch,
+ * because the first park is what writes it.
+ */
+function runMigratedWait(options: {
+  store: RecordingWorkflowStore;
+  parked: Record<string, unknown>;
+  migrated: Record<string, unknown>;
+  events: Record<string, unknown>;
+}) {
+  return driveWithReplay(
+    (runtime) =>
+      executeWorkflow(
+        {
+          graph: createWaitGraph(
+            options.store.callsOf("createWaitState").length === 0
+              ? options.parked
+              : options.migrated
+          ),
+          executionId: "exec_wait",
+          workflowId: "workflow_wait",
+        },
+        runtime,
+        options.store,
+        noWorkflowActions
+      ),
+    { events: options.events }
+  );
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
+
+describe("wait node - migration to a later workflow version", () => {
+  let store: RecordingWorkflowStore;
+
+  beforeEach(() => {
+    store = createRecordingWorkflowStore();
+  });
+
+  it("re-parks a delay wait on the next attempt, measured from the first park's anchor", async () => {
+    const run = await runMigratedWait({
+      store,
+      parked: { waitMode: "delay", waitDuration: "1h" },
+      migrated: { waitMode: "delay", waitDuration: "3d" },
+      events: { "wait-delay-wait_1-0": waitMigrateSignal() },
+    });
+
+    // One row, written over rather than joined by a second.
+    const created = store.callsOf("createWaitState");
+    const reparked = store.callsOf("reparkWaitState");
+    expect(created).toHaveLength(1);
+    expect(reparked).toHaveLength(1);
+    expect(reparked[0]?.waitStateId).toBe("wait_state_1");
+    // The whole park is written over, wait type and token included.
+    expect(reparked[0]?.waitType).toBe("delay");
+    expect(reparked[0]?.resumeToken).toBeNull();
+    expect(reparked[0]?.subscribedEvents).toEqual([]);
+
+    // Three days from where the run first parked, not from where it woke. The
+    // first park's target is an hour past that anchor.
+    const anchorAt = Date.parse(String(created[0]?.waitUntilIso)) - HOUR_MS;
+    expect(Date.parse(String(reparked[0]?.waitUntilIso))).toBe(
+      anchorAt + 3 * DAY_MS
+    );
+
+    const stepIds = run.executed.map((step) => step.stepId);
+    expect(stepIds).toContain("wait-delay-prepare-wait_1-1");
+    expect(stepIds).toContain("wait-delay-resume-wait_1-1");
+    expect(stepIds).not.toContain("wait-delay-resume-wait_1-0");
+
+    expect(waitOutput(run.value)).toMatchObject({
+      waitType: "delay",
+      hops: 2,
+    });
+  });
+
+  it("recompiles an event wait's subscriptions and timeout on the next attempt", async () => {
+    const run = await runMigratedWait({
+      store,
+      parked: {
+        waitMode: "event",
+        waitFor: [{ event: "billing/payment.settled" }],
+        waitTimeout: "7d",
+      },
+      migrated: {
+        waitMode: "event",
+        waitFor: [{ event: "billing/payment.failed" }],
+        waitTimeout: "7d",
+      },
+      events: {
+        "wait-event-wait_1-0": waitMigrateSignal(),
+        "wait-event-wait_1-1": waitResumeSignal(
+          { id: "pay_1" },
+          "billing/payment.failed"
+        ),
+      },
+    });
+
+    const created = store.callsOf("createWaitState");
+    const reparked = store.callsOf("reparkWaitState");
+    expect(created[0]?.subscribedEvents).toEqual(["billing/payment.settled"]);
+    expect(reparked).toHaveLength(1);
+    expect(reparked[0]?.subscribedEvents).toEqual(["billing/payment.failed"]);
+    // The token the row already carries addresses the new park too.
+    expect(reparked[0]?.resumeToken).toBe(created[0]?.resumeToken);
+
+    // The timeout still runs out where the first park put it.
+    expect(reparked[0]?.waitUntilIso).toBe(created[0]?.waitUntilIso);
+
+    expect(waitOutput(run.value)).toMatchObject({
+      waitType: "event",
+      timedOut: false,
+      event: "billing/payment.failed",
+      payload: { id: "pay_1" },
+      hops: 2,
+    });
+  });
+
+  it("does not skip a wait that already waited when the recomputed target has passed", async () => {
+    const run = await runMigratedWait({
+      store,
+      parked: {
+        waitMode: "delay",
+        waitDuration: "1h",
+        waitGateMode: "require_actual_wait",
+      },
+      migrated: {
+        waitMode: "delay",
+        waitDuration: "-1h",
+        waitGateMode: "require_actual_wait",
+      },
+      events: { "wait-delay-wait_1-0": waitMigrateSignal() },
+    });
+
+    // The gate asks whether this Wait ever waited, and the first attempt waited
+    // an hour.
+    expect(waitHaltedBranch(run.value)).toBe(false);
+    const output = waitOutput(run.value);
+    expect(output.skipped).toBeUndefined();
+    // The second attempt had nothing left to wait for, so the run parked once
+    // in all.
+    expect(output.hops).toBe(1);
+    expect(run.executed.map((step) => step.stepId)).toContain(
+      "wait-delay-resume-wait_1-1"
+    );
+  });
+  // Between a Migration's wake and the next park the row is still `waiting`, so
+  // a resume claim can take it and send a signal nothing is parked on. The claim
+  // writes its arrival onto the row, and the refused re-park is what sends the
+  // Wait to read it.
+  it("resumes from the arrival recorded on a row that left waiting", async () => {
+    store.reparkAnswer = false;
+    store.waitState = {
+      status: "resumed",
+      arrival: {
+        signalType: "wait-resume",
+        eventName: "billing/payment.settled",
+        payload: { id: "pay_1" },
+      },
+    };
+
+    const run = await runMigratedWait({
+      store,
+      parked: {
+        waitMode: "event",
+        waitFor: [{ event: "billing/payment.settled" }],
+        waitTimeout: "7d",
+      },
+      migrated: {
+        waitMode: "event",
+        waitFor: [{ event: "billing/payment.settled" }],
+        waitTimeout: "7d",
+      },
+      events: { "wait-event-wait_1-0": waitMigrateSignal() },
+    });
+
+    expect(store.callsOf("readWaitState")).toEqual([
+      { waitStateId: "wait_state_1" },
+    ]);
+    expect(waitOutput(run.value)).toMatchObject({
+      waitType: "event",
+      timedOut: false,
+      event: "billing/payment.settled",
+      payload: { id: "pay_1" },
+      // The second attempt read the arrival instead of parking again.
+      hops: 1,
+    });
+    expect(waitHaltedBranch(run.value)).toBe(false);
+  });
+
+  it("takes the cancel path when the row was cancelled between two parks", async () => {
+    store.reparkAnswer = false;
+    store.waitState = { status: "cancelled", arrival: null };
+
+    const run = await runMigratedWait({
+      store,
+      parked: {
+        waitMode: "event",
+        waitFor: [{ event: "billing/payment.settled" }],
+        waitTimeout: "7d",
+      },
+      migrated: {
+        waitMode: "event",
+        waitFor: [{ event: "billing/payment.settled" }],
+        waitTimeout: "7d",
+      },
+      events: { "wait-event-wait_1-0": waitMigrateSignal() },
+    });
+
+    expect(store.callsOf("markWaitStateStatus").at(-1)?.status).toBe(
+      "cancelled"
+    );
+    expect(waitHaltedBranch(run.value)).toBe(true);
+  });
+
+  it("fails the node when the row that left waiting records no wake", async () => {
+    store.reparkAnswer = false;
+    store.waitState = { status: "timed_out", arrival: null };
+
+    const run = await runMigratedWait({
+      store,
+      parked: {
+        waitMode: "event",
+        waitFor: [{ event: "billing/payment.settled" }],
+        waitTimeout: "7d",
+      },
+      migrated: {
+        waitMode: "event",
+        waitFor: [{ event: "billing/payment.settled" }],
+        waitTimeout: "7d",
+      },
+      events: { "wait-event-wait_1-0": waitMigrateSignal() },
+    });
+
+    expect(run.value.results.wait_1?.success).toBe(false);
+    expect(executionError(run.value.results.wait_1)).toContain(
+      "records no wake"
+    );
+  });
+
+  // The pointer can move after Inngest has resolved the park and before the
+  // resume step runs, which would let the attempt carry on under the graph this
+  // body loaded. The step fails instead, and Inngest retries the body against
+  // the version the row now names.
+  it("fails its step when the run has been moved to another workflow version", async () => {
+    store.pinnedVersionId = "ver_test";
+
+    const run = driveWithReplay(
+      (runtime) => {
+        // The Migration lands while the run is parked, so every step after the
+        // first park reads a version this body did not load.
+        if (store.callsOf("createWaitState").length > 0) {
+          store.pinnedVersionId = "ver_2";
+        }
+        return executeWorkflow(
+          {
+            graph: createWaitGraph({ waitMode: "delay", waitDuration: "1h" }),
+            executionId: "exec_wait",
+            workflowId: "workflow_wait",
+          },
+          runtime,
+          store,
+          noWorkflowActions
+        );
+      },
+      { events: { "wait-delay-wait_1-0": waitMigrateSignal() } }
+    );
+
+    await expect(run).rejects.toMatchObject({
+      message: expect.stringContaining("moved to another workflow version"),
     });
   });
 });

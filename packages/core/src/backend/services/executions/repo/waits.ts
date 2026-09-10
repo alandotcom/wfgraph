@@ -10,6 +10,7 @@ import {
   lte,
   notInArray,
   or,
+  sql,
 } from "drizzle-orm";
 import type { Effect } from "effect";
 import {
@@ -19,7 +20,12 @@ import {
 import type { WfGraphDatabase } from "#src/backend/lib/db/index";
 import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
-import { type JsonObjectDraft, toJsonObject } from "@wfgraph/shared/types/json";
+import {
+  type JsonObject,
+  type JsonObjectDraft,
+  toJsonObject,
+} from "@wfgraph/shared/types/json";
+import type { WaitSignalType } from "@wfgraph/shared/lifecycle/wait-signal";
 import { inFlightExecution } from "#src/backend/services/executions/repo/runs";
 import type {
   SettledWaitStatus,
@@ -32,6 +38,33 @@ export type WaitResumeClaim = {
   waitState: WorkflowWaitState;
   claimedAt: Date;
 };
+
+/**
+ * The metadata key a resume claim writes its wake under, which the engine reads
+ * back when a re-park finds the row has left `waiting`.
+ */
+export const WAIT_ARRIVAL_METADATA_KEY = "arrival";
+
+/**
+ * What a claim is about, written onto the row in the same statement that claims
+ * it.
+ *
+ * A run woken by a Migration is still parked as far as the row is concerned
+ * until its next park lands, so a claim in that window sends a signal the run
+ * is not listening for. Recording the wake on the row is what lets the next
+ * park find it.
+ */
+export type WaitResumeArrival = {
+  signalType: WaitSignalType;
+  /** The Event that arrived, and null for a resume from the runs panel. */
+  eventName: string | null;
+  payload: JsonObject;
+};
+
+/** The claim's wake as it is stored, under one key of the row's metadata. */
+function arrivalMetadata(arrival: WaitResumeArrival): JsonObject {
+  return { [WAIT_ARRIVAL_METADATA_KEY]: { ...arrival } };
+}
 
 /** The `workflow_wait_states` slice of `ExecutionRepo`. */
 export type WaitsRepoMethods = {
@@ -56,6 +89,29 @@ export type WaitsRepoMethods = {
     subscribedEvents?: string[] | undefined;
     metadata?: JsonObjectDraft | undefined;
   }) => Effect.Effect<{ waitStateId: string } | undefined, DatabaseError>;
+  /**
+   * Write a re-parked wait's whole park onto the row it is already parked on,
+   * answering whether a row still `waiting` was written.
+   *
+   * A Migration moves an open Execution to a later Workflow Version while it is
+   * parked, and the Wait then parks again against the new version's config. The
+   * row keeps its id and its `waiting` status, so the delivery fan-out keeps
+   * addressing the same park. Everything else is the new version's answer,
+   * including the wait type, so a Wait that changed mode re-parks as the mode it
+   * now is. False means the row left `waiting` while the run was between parks.
+   */
+  readonly reparkWait: (input: {
+    waitStateId: string;
+    waitType: "delay" | "event";
+    waitUntil: Date | null;
+    subscribedEvents: string[];
+    resumeToken: string | null;
+    metadata: JsonObject;
+  }) => Effect.Effect<boolean, DatabaseError>;
+  /** One wait row by id, whatever status it is in. */
+  readonly findWaitStateById: (
+    waitStateId: string
+  ) => Effect.Effect<WorkflowWaitState | null, DatabaseError>;
   /**
    * Close out one wait row, answering whether it was still active. A normal
    * resume starts from `waiting`; timeout and cancellation may also overtake an
@@ -116,16 +172,18 @@ export type WaitsRepoMethods = {
    * in-flight claim becomes reclaimable after its lease rather than consuming
    * the wait forever.
    */
-  readonly claimWaitingStateByToken: (
-    resumeToken: string
-  ) => Effect.Effect<WaitResumeClaim | null, DatabaseError>;
+  readonly claimWaitingStateByToken: (input: {
+    resumeToken: string;
+    arrival: WaitResumeArrival;
+  }) => Effect.Effect<WaitResumeClaim | null, DatabaseError>;
   /**
    * Claim one candidate previously found by event delivery. The execution may
    * already be running because a sibling wait resumed first.
    */
-  readonly claimWaitingStateById: (
-    waitStateId: string
-  ) => Effect.Effect<WaitResumeClaim | null, DatabaseError>;
+  readonly claimWaitingStateById: (input: {
+    waitStateId: string;
+    arrival: WaitResumeArrival;
+  }) => Effect.Effect<WaitResumeClaim | null, DatabaseError>;
   /** Settle only the exact claim that delivered the wake signal. */
   readonly settleWaitingStateClaim: (input: {
     waitStateId: string;
@@ -190,6 +248,38 @@ export function makeWaitsMethods(
           return { waitStateId: waitState.id };
         })
       ),
+
+    reparkWait: (input) =>
+      database.query(async (db) => {
+        const reparked = await db
+          .update(workflowWaitStates)
+          .set({
+            waitType: input.waitType,
+            waitUntil: input.waitUntil,
+            subscribedEvents: input.subscribedEvents,
+            resumeToken: input.resumeToken,
+            metadata: input.metadata,
+          })
+          .where(
+            and(
+              eq(workflowWaitStates.id, input.waitStateId),
+              eq(workflowWaitStates.status, "waiting")
+            )
+          )
+          .returning({ id: workflowWaitStates.id });
+
+        return reparked.length > 0;
+      }),
+
+    findWaitStateById: (waitStateId) =>
+      database.query(async (db) => {
+        const [row] = await db
+          .select()
+          .from(workflowWaitStates)
+          .where(eq(workflowWaitStates.id, waitStateId))
+          .limit(1);
+        return row ?? null;
+      }),
 
     markWaitStatus: (input) =>
       database.query(async (db) => {
@@ -284,14 +374,22 @@ export function makeWaitsMethods(
           .limit(input.limit)
       ),
 
-    claimWaitingStateByToken: (resumeToken) =>
+    claimWaitingStateByToken: (input) =>
       database.query((db) =>
-        claimWaitState(db, eq(workflowWaitStates.resumeToken, resumeToken))
+        claimWaitState(
+          db,
+          eq(workflowWaitStates.resumeToken, input.resumeToken),
+          input.arrival
+        )
       ),
 
-    claimWaitingStateById: (waitStateId) =>
+    claimWaitingStateById: (input) =>
       database.query((db) =>
-        claimWaitState(db, eq(workflowWaitStates.id, waitStateId))
+        claimWaitState(
+          db,
+          eq(workflowWaitStates.id, input.waitStateId),
+          input.arrival
+        )
       ),
 
     settleWaitingStateClaim: (input) =>
@@ -366,9 +464,16 @@ export function makeWaitsMethods(
   };
 }
 
+/**
+ * Claims one row and records the wake in the same statement.
+ *
+ * The wake is merged into the metadata the park wrote rather than replacing it,
+ * so the compiled match the row carries survives a claim.
+ */
 async function claimWaitState(
   db: WfGraphDatabase,
-  identity: ReturnType<typeof eq>
+  identity: ReturnType<typeof eq>,
+  arrival: WaitResumeArrival
 ): Promise<WaitResumeClaim | null> {
   const claimedAt = new Date();
   const staleBefore = new Date(
@@ -376,7 +481,11 @@ async function claimWaitState(
   );
   const [waitState] = await db
     .update(workflowWaitStates)
-    .set({ status: "resuming", resumedAt: claimedAt })
+    .set({
+      status: "resuming",
+      resumedAt: claimedAt,
+      metadata: sql`coalesce(${workflowWaitStates.metadata}, '{}'::jsonb) || ${JSON.stringify(arrivalMetadata(arrival))}::jsonb`,
+    })
     .where(
       and(
         identity,

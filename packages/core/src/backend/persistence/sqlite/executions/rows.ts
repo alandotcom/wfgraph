@@ -48,7 +48,7 @@ function optionalJsonValue(
   return json;
 }
 
-function optionalJsonObject(value: string | null, key: string) {
+export function optionalJsonObject(value: string | null, key: string) {
   if (value === null) return null;
   const json = readJsonValue(JSON.parse(value));
   if (json === null || typeof json !== "object" || Array.isArray(json)) {

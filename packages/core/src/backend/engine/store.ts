@@ -24,6 +24,7 @@ import type {
   JsonObjectDraft,
   JsonValue,
 } from "@wfgraph/shared/types/json";
+import type { WaitSignalType } from "@wfgraph/shared/lifecycle/wait-signal";
 import { Effect } from "effect";
 import type { EngineFailure } from "#src/backend/engine/engine-failure";
 import type { DatabaseError } from "#src/backend/lib/effect/database";
@@ -102,6 +103,57 @@ export type CreateWaitStateInput = {
   metadata?: JsonObjectDraft | undefined;
 };
 
+/**
+ * A wait row parked again, after a Migration moved the run to a newer Workflow
+ * Version while it was waiting.
+ *
+ * The row keeps its id and its `waiting` status, so everything already
+ * addressing this park keeps addressing it. Every other field of the park is
+ * written over, because the new version's config decides all of them: a Wait
+ * that changed mode writes a different `waitType`, an event wait that lost its
+ * subscriptions writes an empty list, and a delay wait writes a null token.
+ */
+export type ReparkWaitStateInput = {
+  waitStateId: string;
+  waitType: "delay" | "event";
+  /** Target timestamp as ISO 8601, and null for a wait with no target. */
+  waitUntilIso: string | null;
+  /** The Event names a delivery finds this row by. Empty for a delay wait. */
+  subscribedEvents: string[];
+  /** The token addressing this park, and null for a delay wait, which has none. */
+  resumeToken: string | null;
+  metadata: JsonObject;
+};
+
+/** The statuses a wait row can be read back in. */
+export type WaitStateStatus =
+  | "waiting"
+  | "resuming"
+  | "resumed"
+  | "timed_out"
+  | "cancelled";
+
+/**
+ * The wake a resume claim recorded on a wait row before it sent the signal.
+ *
+ * A run woken by a Migration is still `waiting` between that wake and its next
+ * park, so a resume can claim the row in the meantime and send a signal nothing
+ * is parked on. The claim writes what it is about onto the row, which is what
+ * lets the next park read the wake it missed instead of waiting forever.
+ */
+export type WaitStateArrival = {
+  signalType: WaitSignalType;
+  /** The Event that arrived, and null for a resume that named none. */
+  eventName: string | null;
+  payload: JsonObject;
+};
+
+/** A wait row as the engine reads it back after a re-park was refused. */
+export type WaitStateSnapshot = {
+  status: WaitStateStatus;
+  arrival: WaitStateArrival | null;
+};
+
 export type MarkWaitStateStatusInput = {
   waitStateId: string;
   status: "resumed" | "timed_out" | "cancelled";
@@ -145,6 +197,32 @@ export type WorkflowStore = {
   createWaitState(
     input: CreateWaitStateInput
   ): Effect.Effect<{ waitStateId: string } | undefined, DatabaseError>;
+  /**
+   * Writes a re-parked wait's whole park onto the row it already holds. True
+   * when a row still `waiting` was written, and false when the row has left
+   * `waiting`, which the caller answers by reading it back.
+   */
+  reparkWaitState(
+    input: ReparkWaitStateInput
+  ): Effect.Effect<boolean, DatabaseError>;
+  /**
+   * One wait row as it stands, or null when no row holds that id. Read after a
+   * refused re-park, to find out what moved the row.
+   */
+  readWaitState(
+    waitStateId: string
+  ): Effect.Effect<WaitStateSnapshot | null, DatabaseError>;
+  /**
+   * The Workflow Version this execution row pins, or null when the row is gone.
+   *
+   * A Migration moves that pointer while a run is parked. The Wait node compares
+   * it against the version the running body loaded, so an attempt that would
+   * carry on under the superseded graph fails its step and is retried against
+   * the new one.
+   */
+  readPinnedVersionId(
+    executionId: string
+  ): Effect.Effect<string | null, DatabaseError>;
   /** Closes out a wait row once the run resumes, times out, or is cancelled. */
   markWaitStateStatus(
     input: MarkWaitStateStatusInput
@@ -197,6 +275,9 @@ export const noopWorkflowStore: WorkflowStore = {
   completeStepLog: () => Effect.void,
   recordAuditEvent: () => Effect.void,
   createWaitState: () => Effect.succeed({ waitStateId: "" }),
+  reparkWaitState: () => Effect.succeed(true),
+  readWaitState: () => Effect.succeed(null),
+  readPinnedVersionId: () => Effect.succeed(null),
   markWaitStateStatus: () => Effect.void,
   markExecutionRunning: () => Effect.void,
   readPendingCancel: () => Effect.succeed(null),

@@ -28,6 +28,10 @@ import { Schema } from "effect";
 import { eventType, invoke } from "inngest";
 import { jsonObjectSchema } from "@wfgraph/shared/types/json";
 import {
+  WAIT_SIGNAL_EVENT,
+  WAIT_SIGNAL_TYPES,
+} from "@wfgraph/shared/lifecycle/wait-signal";
+import {
   NonEmptyTrimmedString,
   rejectUnknownKeys,
   toStandardSchema,
@@ -133,7 +137,7 @@ export const workflowRunCancelRequested = eventType(
   }
 );
 
-export const workflowWaitSignal = eventType("workflow/wait.signal", {
+export const workflowWaitSignal = eventType(WAIT_SIGNAL_EVENT, {
   schema: toStandardSchema(
     Schema.Struct({
       executionId: NonEmptyTrimmedString,
@@ -144,11 +148,13 @@ export const workflowWaitSignal = eventType("workflow/wait.signal", {
       eventType: Schema.optional(Schema.String),
       entityValue: Schema.optional(Schema.String),
       payload: Schema.optional(jsonObjectSchema),
-      // One envelope wakes a parked run for either reason. The signal carries
-      // no decision of its own: a `lifecycle-cancel` wake sends the run back to
-      // the flag on its execution row, which is the single answer to whether it
-      // is canceled.
-      signalType: Schema.Literals(["wait-resume", "lifecycle-cancel"]),
+      // One envelope wakes a parked run for each of three reasons. The signal
+      // carries no decision of its own: a `lifecycle-cancel` wake sends the run
+      // back to the flag on its execution row, which is the single answer to
+      // whether it is canceled, and a `version-migrate` wake sends the Wait
+      // back to the execution row's Workflow Version, which is the single
+      // answer to which graph the run is on.
+      signalType: Schema.Literals([...WAIT_SIGNAL_TYPES]),
     }),
     rejectUnknownKeys
   ),

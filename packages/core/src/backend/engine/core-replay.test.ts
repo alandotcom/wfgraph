@@ -37,7 +37,7 @@ const BRANCH_ACTION_ID = "test/replay-branch";
  * retry instead, which is what lets a node's row be closed a second time.
  */
 function createReplayRuntime(memo: Map<string, unknown>, attempt = 0) {
-  return createInMemoryWorkflowRuntime({ memo, skipSleep: true, attempt });
+  return createInMemoryWorkflowRuntime({ memo, attempt });
 }
 
 function createLifecycleNode(id: string): WorkflowNode {
@@ -240,8 +240,8 @@ describe("workflow engine replay safety", () => {
     // A Wait node suspends the run, so a step cannot contain it. Its own
     // persistence segments are memoized around the suspension instead.
     expect(memo.has("node:wait_1:log-open")).toBe(false);
-    expect(memo.has("wait-delay-prepare-wait_1")).toBe(true);
-    expect(memo.has("wait-delay-resume-wait_1")).toBe(true);
+    expect(memo.has("wait-delay-prepare-wait_1-0")).toBe(true);
+    expect(memo.has("wait-delay-resume-wait_1-0")).toBe(true);
   });
 
   // The other half of the contract, and the trap worth knowing: Workflow Graph wraps no

@@ -14,8 +14,10 @@ import type {
   CompleteStepLogInput,
   CreateWaitStateInput,
   MarkWaitStateStatusInput,
+  ReparkWaitStateInput,
   RecordAuditEventInput,
   StartStepLogInput,
+  WaitStateSnapshot,
   WorkflowStore,
 } from "#src/backend/engine/store";
 
@@ -25,7 +27,10 @@ type StoreCallInputs = {
   completeStepLog: CompleteStepLogInput;
   recordAuditEvent: RecordAuditEventInput;
   createWaitState: CreateWaitStateInput;
+  reparkWaitState: ReparkWaitStateInput;
   markWaitStateStatus: MarkWaitStateStatusInput;
+  readWaitState: { waitStateId: string };
+  readPinnedVersionId: { executionId: string };
   markExecutionRunning: { executionId: string };
   readPendingCancel: { executionId: string };
   completeRun: CompleteRunInput;
@@ -44,6 +49,18 @@ export type RecordingWorkflowStore = WorkflowStore & {
   readonly calls: RecordedStoreCall[];
   /** Inputs of the calls made to one method, in order. */
   callsOf<M extends StoreMethod>(method: M): StoreCallInputs[M][];
+  /**
+   * What `reparkWaitState` answers. False models a row that left `waiting`
+   * between the wake and the re-park.
+   */
+  reparkAnswer: boolean;
+  /** What `readWaitState` answers, for the case a re-park was refused. */
+  waitState: WaitStateSnapshot | null;
+  /**
+   * What `readPinnedVersionId` answers. Null leaves the Wait node's version
+   * check alone, which is what every test that is not about a Migration wants.
+   */
+  pinnedVersionId: string | null;
   reset(): void;
 };
 
@@ -58,7 +75,10 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
     completeStepLog: [],
     recordAuditEvent: [],
     createWaitState: [],
+    reparkWaitState: [],
     markWaitStateStatus: [],
+    readWaitState: [],
+    readPinnedVersionId: [],
     markExecutionRunning: [],
     readPendingCancel: [],
     completeRun: [],
@@ -66,10 +86,14 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
     cancelOpenWork: [],
   };
 
-  return {
+  const store: RecordingWorkflowStore = {
     calls,
 
     callsOf: (method) => byMethod[method],
+
+    reparkAnswer: true,
+    waitState: null,
+    pinnedVersionId: null,
 
     reset() {
       calls.length = 0;
@@ -113,6 +137,32 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
         return {
           waitStateId: `wait_state_${byMethod.createWaitState.length}`,
         };
+      });
+    },
+
+    reparkWaitState(input) {
+      return Effect.sync(() => {
+        calls.push({ method: "reparkWaitState", input });
+        byMethod.reparkWaitState.push(input);
+        return store.reparkAnswer;
+      });
+    },
+
+    readWaitState(waitStateId) {
+      return Effect.sync(() => {
+        const input = { waitStateId };
+        calls.push({ method: "readWaitState", input });
+        byMethod.readWaitState.push(input);
+        return store.waitState;
+      });
+    },
+
+    readPinnedVersionId(executionId) {
+      return Effect.sync(() => {
+        const input = { executionId };
+        calls.push({ method: "readPinnedVersionId", input });
+        byMethod.readPinnedVersionId.push(input);
+        return store.pinnedVersionId;
       });
     },
 
@@ -166,4 +216,6 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
       });
     },
   };
+
+  return store;
 }

@@ -166,6 +166,7 @@ function prepareRun(
     startPayload,
     startEventName,
     catalogFingerprint: input.catalogFingerprint,
+    workflowVersionId: input.workflowVersionId,
     branchEntryNodeId,
   });
 

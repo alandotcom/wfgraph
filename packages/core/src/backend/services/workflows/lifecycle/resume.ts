@@ -33,7 +33,13 @@ export const resumeWaitByToken = Effect.fn("resumeWaitByToken")(
 
     // Claim before sending. The guarded update is the one winner across every
     // app process, so two callers can never both wake the same parked run.
-    const claim = yield* repo.claimWaitingStateByToken(token);
+    const claim = yield* repo.claimWaitingStateByToken({
+      resumeToken: token,
+      // The arrival goes onto the row in the same statement that claims it, so a
+      // run between two parks can read back the wake it was not listening for.
+      // A manual resume names no Event; the body is what it carries.
+      arrival: { signalType: "wait-resume", eventName: null, payload: body },
+    });
 
     if (!claim) {
       yield* logger.warn("Wait not found or no longer active");

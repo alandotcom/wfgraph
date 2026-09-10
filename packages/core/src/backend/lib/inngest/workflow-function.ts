@@ -74,7 +74,6 @@ const workflowBranchTarget: InngestFunctionReference.Any = referenceFunction({
  * these handlers depend on is stated in one readable place.
  */
 type DurableStep = {
-  sleep: (step: DurableStepRef, durationMs: number) => Promise<void>;
   waitForEvent: (
     step: DurableStepRef,
     options: { event: string; if?: string; timeout: string }
@@ -155,12 +154,6 @@ function createDurableRuntime(input: {
   // step tools each take a `StepOptionsOrId`, where `id` memoizes and `name` is
   // the label the trace prints.
   return {
-    sleep: async (durableStep, durationMs) => {
-      if (durationMs <= 0) {
-        return;
-      }
-      await step.sleep(durableStep, durationMs);
-    },
     waitForEvent: async (durableStep, options) =>
       await step.waitForEvent(
         durableStep,

@@ -6,28 +6,59 @@
  * memoizes its own persistence segments around those boundaries instead: the
  * config read and the row that opens, the preparation that parks the run, and
  * the resume that closes the row. `executeWaitAction` is the whole of what the
- * traversal calls. Delay and event branches live beside this file.
+ * traversal calls.
+ *
+ * The loop below is one driver for both Wait modes. It re-reads the mode from
+ * the config on every attempt, so a Migration that turns a delay Wait into an
+ * event Wait re-parks as the mode the new Workflow Version says. Each mode
+ * supplies only what its config resolves to, what its resume writes, and the
+ * shape of its output; `wait-delay.ts` and `wait-event.ts` hold those.
  */
 
 import { Effect } from "effect";
 import { readWaitConfig } from "@wfgraph/shared/lifecycle/wait-subscription";
+import { WAIT_SIGNAL_EVENT } from "@wfgraph/shared/lifecycle/wait-signal";
+import { decodeIsoTimestampOrThrow } from "@wfgraph/shared/types/timestamp";
 import { closeStepLog, openStepLog } from "#src/backend/engine/step-log";
-import { runDurable } from "#src/backend/engine/durable";
-import type { EngineFailure } from "#src/backend/engine/engine-failure";
-import { executeDelayWait } from "#src/backend/engine/wait-delay";
-import { executeEventWait } from "#src/backend/engine/wait-event";
+import { fromUnknownPromise, runDurable } from "#src/backend/engine/durable";
 import {
+  engineFailure,
+  type EngineFailure,
+  failureFromUnknown,
+} from "#src/backend/engine/engine-failure";
+import { delayWaitMode } from "#src/backend/engine/wait-delay";
+import { eventWaitMode } from "#src/backend/engine/wait-event";
+import {
+  fromStore,
+  parkUntil,
   readAllowedHoursConfig,
   readWaitGateMode,
+  readWaitWake,
   type WaitActionInput,
   type WaitBranchContext,
+  type WaitMode,
   type WaitOutcome,
+  type WaitPark,
+  type WaitWake,
+  waitSignalMatch,
+  waitStepIds,
+  waitStepName,
 } from "#src/backend/engine/wait-shared";
 
 export type {
   WaitActionInput,
   WaitOutcome,
 } from "#src/backend/engine/wait-shared";
+
+/**
+ * How many times one Wait may park before the node fails.
+ *
+ * Each Migration of a parked run costs an attempt, and a run parked for a week
+ * can be migrated many times, so the cap is high. What it is there for is a
+ * `version-migrate` wake that keeps arriving without the target ever moving,
+ * which would otherwise spin the body against Inngest forever.
+ */
+const WAIT_ATTEMPT_LIMIT = 50;
 
 export function executeWaitAction(
   input: WaitActionInput
@@ -46,6 +77,16 @@ export function executeWaitAction(
   );
 }
 
+function failedWait(message: string): WaitOutcome {
+  return {
+    result: {
+      success: false,
+      error: { kind: "failure", message },
+    },
+    haltBranch: false,
+  };
+}
+
 function executeWaitActionInner(
   input: WaitActionInput
 ): Effect.Effect<WaitOutcome, EngineFailure> {
@@ -55,6 +96,7 @@ function executeWaitActionInner(
       runtime,
       store,
       workflowId,
+      workflowVersionId,
       workflowRunId,
       resolveTemplates,
     } = input;
@@ -88,19 +130,13 @@ function executeWaitActionInner(
         })
       );
 
-      return {
-        result: {
-          success: false,
-          error: { kind: "failure", message: errorMessage },
-        },
-        haltBranch: false,
-      };
+      return failedWait(errorMessage);
     }
 
     const config = read.config;
 
     // The "step started" row is written once and its id is replayed from the
-    // memoized step return, so the branches below always close the same row.
+    // memoized step return, so every attempt below closes the same row.
     const startLog = yield* runDurable(
       runtime,
       {
@@ -130,14 +166,449 @@ function executeWaitActionInner(
       runtime,
       store,
       workflowId,
+      workflowVersionId,
       runId,
       resolveTemplates,
       startLog,
     };
 
-    if (read.waitMode === "delay") {
-      return yield* executeDelayWait(branch);
-    }
-    return yield* executeEventWait(branch);
+    return yield* driveWait(branch, read.waitMode);
   });
+}
+
+/** What one attempt settled, and every later attempt reuses. */
+type WaitCarry = {
+  waitStateId: string;
+  /** The instant the first attempt resolved against, as an ISO string. */
+  anchorAtIso: string;
+  resumeToken?: string | undefined;
+};
+
+/** The loop's own state, which outlives one attempt but not the node. */
+type WaitDriveState = {
+  attempt: number;
+  /** How many times this Wait actually parked, which is its `hops` output. */
+  parks: number;
+  carry: WaitCarry | undefined;
+};
+
+/**
+ * Runs the Wait until it resumes, times out, is skipped, or fails.
+ *
+ * The mode is chosen per attempt from the config this body loaded, which is the
+ * config of the Workflow Version the execution row names. A Migration therefore
+ * re-parks a Wait as whichever mode the new version gives it.
+ */
+function driveWait(
+  branch: WaitBranchContext,
+  waitMode: "delay" | "event"
+): Effect.Effect<WaitOutcome, EngineFailure> {
+  return Effect.gen(function* () {
+    const state: WaitDriveState = { attempt: 0, parks: 0, carry: undefined };
+
+    for (;;) {
+      if (state.attempt >= WAIT_ATTEMPT_LIMIT) {
+        return failedWait(
+          `Wait node parked ${WAIT_ATTEMPT_LIMIT} times without resuming, which is the limit on one Wait's attempts.`
+        );
+      }
+
+      const attempted =
+        waitMode === "delay"
+          ? yield* runWaitAttempt(branch, delayWaitMode, state)
+          : yield* runWaitAttempt(branch, eventWaitMode, state);
+
+      if (attempted.status === "finished") {
+        return attempted.outcome;
+      }
+
+      state.attempt += 1;
+    }
+  });
+}
+
+/** Either the Wait is done, or a Migration sent it around again. */
+type WaitAttemptResult =
+  | { status: "finished"; outcome: WaitOutcome }
+  | { status: "migrated" };
+
+/**
+ * What the prepare step of one attempt settled.
+ *
+ * `woken` is the row having left `waiting` between a Migration's wake and this
+ * park: a resume claim recorded its arrival on the row, and this attempt takes
+ * that arrival instead of parking on a signal that has already been sent.
+ */
+type WaitAttemptPreparation<Prepared> =
+  | { status: "error"; error: string }
+  | { status: "skipped"; output: Record<string, unknown> }
+  | {
+      status: "parked";
+      waitStateId: string;
+      anchorAtIso: string;
+      park: WaitPark;
+      prepared: Prepared;
+    }
+  | {
+      status: "woken";
+      waitStateId: string;
+      prepared: Prepared;
+      wake: WaitWake;
+    };
+
+function runWaitAttempt<Prepared, Resumed>(
+  branch: WaitBranchContext,
+  mode: WaitMode<Prepared, Resumed>,
+  state: WaitDriveState
+): Effect.Effect<WaitAttemptResult, EngineFailure> {
+  return Effect.gen(function* () {
+    const { context, runtime } = branch;
+    const { attempt, carry } = state;
+    const stepIds = waitStepIds({
+      mode: mode.mode,
+      nodeId: context.nodeId,
+      attempt,
+    });
+
+    const anchorAt = carry
+      ? yield* Effect.try({
+          try: () => decodeIsoTimestampOrThrow(carry.anchorAtIso),
+          catch: failureFromUnknown,
+        })
+      : undefined;
+
+    // Everything before the park is one durable step per attempt: a replay must
+    // not resolve a fresh target time or write the wait row a second time.
+    const prepared = yield* runDurable(
+      runtime,
+      {
+        id: stepIds.prepare,
+        name: waitStepName({
+          nodeName: context.nodeName,
+          attempt,
+          stage: `prepare ${mode.mode}`,
+        }),
+      },
+      prepareWaitAttempt(branch, mode, {
+        attempt: { index: attempt, anchorAt, resumeToken: carry?.resumeToken },
+        waitStateId: carry?.waitStateId,
+      })
+    );
+
+    if (prepared.status === "error") {
+      return { status: "finished", outcome: failedWait(prepared.error) };
+    }
+
+    if (prepared.status === "skipped") {
+      return {
+        status: "finished",
+        outcome: {
+          result: { success: true, data: prepared.output },
+          haltBranch: true,
+        },
+      };
+    }
+
+    let wake: WaitWake;
+    if (prepared.status === "parked") {
+      state.carry = {
+        waitStateId: prepared.waitStateId,
+        anchorAtIso: prepared.anchorAtIso,
+        resumeToken: prepared.park.resumeToken ?? undefined,
+      };
+
+      // A target the clock has already reached is not parked on. There is
+      // nothing left to wait for, and a park with no time on it would hold the
+      // run for the minimum a durable runtime can express.
+      if (prepared.park.timeoutMs > 0) {
+        wake = readWaitWake(
+          yield* parkOnSignal(branch, {
+            stepId: stepIds.park,
+            attempt,
+            park: prepared.park,
+          })
+        );
+        state.parks += 1;
+      } else {
+        wake = { kind: "timeout" };
+      }
+    } else {
+      wake = prepared.wake;
+    }
+
+    // The run has been moved to a later Workflow Version. The next attempt is
+    // prepared from the config this body loaded, which came from that version.
+    if (wake.kind === "migrate") {
+      return { status: "migrated" };
+    }
+
+    const resumed = yield* runDurable(
+      runtime,
+      {
+        id: stepIds.resume,
+        name: waitStepName({
+          nodeName: context.nodeName,
+          attempt,
+          stage: "resume",
+        }),
+      },
+      Effect.gen(function* () {
+        yield* assertPinnedVersion(branch);
+        return yield* mode.resume({
+          branch,
+          prepared: prepared.prepared,
+          waitStateId: prepared.waitStateId,
+          wake,
+          hops: state.parks,
+        });
+      })
+    );
+
+    return { status: "finished", outcome: mode.outcome({ resumed, wake }) };
+  });
+}
+
+/**
+ * Resolves one attempt and writes its park onto the run's wait row.
+ *
+ * All of it is one durable step. The row write has to be memoized with the
+ * resolution that produced it, or a replay would open a second row or park
+ * against a target it resolved again.
+ */
+function prepareWaitAttempt<Prepared, Resumed>(
+  branch: WaitBranchContext,
+  mode: WaitMode<Prepared, Resumed>,
+  input: {
+    attempt: {
+      index: number;
+      anchorAt?: Date | undefined;
+      resumeToken?: string | undefined;
+    };
+    waitStateId: string | undefined;
+  }
+): Effect.Effect<WaitAttemptPreparation<Prepared>, EngineFailure> {
+  return Effect.gen(function* () {
+    const { context, store, workflowId, runId } = branch;
+
+    yield* assertPinnedVersion(branch);
+
+    const preparation = yield* mode.prepare(branch, input.attempt);
+    if (preparation.status !== "ready") {
+      return preparation;
+    }
+    const { park, prepared, anchorAtIso } = preparation;
+
+    if (input.waitStateId === undefined) {
+      const created = yield* fromStore(
+        store.createWaitState({
+          executionId: context.executionId,
+          workflowId,
+          runId,
+          nodeId: context.nodeId,
+          nodeName: context.nodeName,
+          waitType: park.waitType,
+          resumeToken: park.resumeToken ?? undefined,
+          waitUntilIso: park.waitUntilIso ?? undefined,
+          subscribedEvents: park.subscribedEvents,
+          metadata: park.metadata,
+        })
+      );
+
+      if (!created) {
+        // A policy cancel flipped the execution terminal between the last step
+        // and this park; Inngest is already killing the run.
+        return yield* failPreparation<Prepared>(
+          branch,
+          "Execution was cancelled before the wait was registered"
+        );
+      }
+
+      yield* recordWaiting(branch, { attempt: input.attempt.index, park });
+      const opened: WaitAttemptPreparation<Prepared> = {
+        status: "parked",
+        waitStateId: created.waitStateId,
+        anchorAtIso,
+        park,
+        prepared,
+      };
+      return opened;
+    }
+
+    const reparked = yield* fromStore(
+      store.reparkWaitState({
+        waitStateId: input.waitStateId,
+        waitType: park.waitType,
+        waitUntilIso: park.waitUntilIso,
+        subscribedEvents: park.subscribedEvents,
+        resumeToken: park.resumeToken,
+        metadata: park.metadata,
+      })
+    );
+
+    if (!reparked) {
+      const missed = yield* readMissedWake(branch, input.waitStateId);
+      if (missed === null) {
+        return yield* failPreparation<Prepared>(
+          branch,
+          "The wait row left waiting before this park could be written, and it records no wake to resume from"
+        );
+      }
+      const woken: WaitAttemptPreparation<Prepared> = {
+        status: "woken",
+        waitStateId: input.waitStateId,
+        prepared,
+        wake: missed,
+      };
+      return woken;
+    }
+
+    yield* recordWaiting(branch, { attempt: input.attempt.index, park });
+    const reopened: WaitAttemptPreparation<Prepared> = {
+      status: "parked",
+      waitStateId: input.waitStateId,
+      anchorAtIso,
+      park,
+      prepared,
+    };
+    return reopened;
+  });
+}
+
+/** Closes the Wait's log row and answers the failure the driver reports. */
+function failPreparation<Prepared>(
+  branch: WaitBranchContext,
+  error: string
+): Effect.Effect<WaitAttemptPreparation<Prepared>, EngineFailure> {
+  return Effect.as(
+    closeStepLog(branch.store, branch.startLog, { status: "error", error }),
+    { status: "error" as const, error }
+  );
+}
+
+/**
+ * Why the row this attempt meant to re-park has left `waiting`, or null when it
+ * does not say.
+ *
+ * Between a Migration's wake and the next park the row is still `waiting`, so a
+ * resume claim can take it and send a signal nothing is parked on. The claim
+ * writes what it was about onto the row, which is what this reads back. A
+ * cancelled row is the Cancel Event having claimed the run in the same window.
+ */
+function readMissedWake(
+  branch: WaitBranchContext,
+  waitStateId: string
+): Effect.Effect<WaitWake | null, EngineFailure> {
+  return Effect.map(
+    fromStore(branch.store.readWaitState(waitStateId)),
+    (waitState) => {
+      if (!waitState) {
+        return null;
+      }
+      if (waitState.status === "cancelled") {
+        return { kind: "cancel" };
+      }
+      const arrival = waitState.arrival;
+      if (
+        arrival === null ||
+        (waitState.status !== "resumed" && waitState.status !== "resuming")
+      ) {
+        return null;
+      }
+      return {
+        kind: "resume",
+        eventName: arrival.eventName,
+        payload: arrival.payload,
+      };
+    }
+  );
+}
+
+/**
+ * Fails the step when the run has been moved to another Workflow Version.
+ *
+ * The failure is a plain step failure rather than a node error, so Inngest
+ * retries the function body: the retry reloads the graph from the execution
+ * row's new pointer, and the attempt is prepared afresh against it.
+ */
+function assertPinnedVersion(
+  branch: WaitBranchContext
+): Effect.Effect<void, EngineFailure> {
+  return Effect.flatMap(
+    fromStore(branch.store.readPinnedVersionId(branch.context.executionId)),
+    (pinned) =>
+      pinned === null || pinned === branch.workflowVersionId
+        ? Effect.void
+        : Effect.fail(
+            engineFailure(
+              "failure",
+              `This run has been moved to another workflow version (${pinned}) since its graph was loaded.`
+            )
+          )
+  );
+}
+
+/** The run's timeline entry for one park. */
+function recordWaiting(
+  branch: WaitBranchContext,
+  input: { attempt: number; park: WaitPark }
+): Effect.Effect<void, EngineFailure> {
+  const { context, store, workflowId } = branch;
+  const { park } = input;
+
+  return fromStore(
+    store.recordAuditEvent({
+      workflowId,
+      executionId: context.executionId,
+      eventType: "run_waiting",
+      message: `Run waiting in ${park.waitType} node '${context.nodeName}'`,
+      metadata: {
+        nodeId: context.nodeId,
+        waitType: park.waitType,
+        waitUntil: park.waitUntilIso,
+        subscribedEvents: park.subscribedEvents,
+        resumeToken: park.resumeToken,
+        attempt: input.attempt,
+      },
+    })
+  );
+}
+
+/**
+ * Suspends until a signal addressed to this park arrives, answering null for the
+ * timeout.
+ *
+ * Inngest waits on Workflow Graph's own signal envelope rather than on the
+ * business Event: Workflow Graph decides which runs an arrival concerns first.
+ */
+function parkOnSignal(
+  branch: WaitBranchContext,
+  input: { stepId: string; attempt: number; park: WaitPark }
+): Effect.Effect<unknown, EngineFailure> {
+  const { context, runtime } = branch;
+  const { park } = input;
+
+  return parkUntil(
+    branch,
+    fromUnknownPromise(() =>
+      runtime.waitForEvent(
+        {
+          id: input.stepId,
+          name: waitStepName({
+            nodeName: context.nodeName,
+            attempt: input.attempt,
+            stage: park.waitType === "delay" ? "delay" : "wait for event",
+          }),
+        },
+        {
+          event: WAIT_SIGNAL_EVENT,
+          timeoutMs: park.timeoutMs,
+          ifExpression: waitSignalMatch({
+            nodeId: context.nodeId,
+            resumeToken: park.resumeToken ?? undefined,
+            signalTypes: park.signalTypes,
+          }),
+        }
+      )
+    )
+  );
 }
