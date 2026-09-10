@@ -44,7 +44,6 @@ import {
   runDurable,
   runDurableUnit,
 } from "#src/backend/engine/durable";
-import { entityEligibilityConditionId } from "#src/backend/lib/entity-eligibility";
 
 /** What the run log and the trace call a node. */
 function getNodeName(node: WorkflowNode, actions: WorkflowActions): string {
@@ -98,6 +97,7 @@ export type NodeSchedulerInput = {
         entityType: string;
         entityId: string;
         condition: string;
+        conditionId: string;
       }
     | undefined;
   /**
@@ -175,6 +175,8 @@ export class NodeScheduler {
    * Only enabled action nodes on the Started side are checkpoints. The action
    * node shape also represents Conditions, Event Splits, and Waits; Lifecycle,
    * Group, add-placeholder, disabled, and Canceled-side nodes resolve nothing.
+   * Durable ids follow node identity across Migration, so replay keeps a verdict
+   * already taken while the first newly reached node reads the target rule.
    */
   private admitExecutableNode(
     node: WorkflowNode,
@@ -191,16 +193,14 @@ export class NodeScheduler {
       return Effect.succeed(true);
     }
 
-    const { runtime, store, entities, executionId, workflowVersionId } =
-      this.input;
-    const conditionId = entityEligibilityConditionId(eligibility.condition);
+    const { runtime, store, entities, executionId } = this.input;
 
     return Effect.gen(
       function* (this: NodeScheduler) {
         const boundaryOpen = yield* runDurable(
           runtime,
           {
-            id: `node-boundary:${workflowVersionId}:${conditionId}:${node.id}`,
+            id: `node-boundary:${node.id}`,
             name: `${nodeName} (boundary)`,
           },
           store.admitNode(executionId)
@@ -212,7 +212,7 @@ export class NodeScheduler {
         const decision = yield* runDurable(
           runtime,
           {
-            id: `entity-eligibility:${workflowVersionId}:${conditionId}:${node.id}`,
+            id: `entity-eligibility:${node.id}`,
             name: `${nodeName} (Eligibility)`,
           },
           entities.evaluateEligibility({
@@ -228,7 +228,7 @@ export class NodeScheduler {
           const termination = yield* runDurable(
             runtime,
             {
-              id: `entity-exit:${workflowVersionId}:${conditionId}:${node.id}`,
+              id: `entity-exit:${node.id}`,
               name: `${nodeName} (Exit)`,
             },
             store.requestExit({
@@ -247,7 +247,7 @@ export class NodeScheduler {
         return yield* runDurable(
           runtime,
           {
-            id: `node-admission:${workflowVersionId}:${conditionId}:${node.id}`,
+            id: `node-admission:${node.id}`,
             name: `${nodeName} (admit)`,
           },
           store.admitNode(executionId)
@@ -260,7 +260,7 @@ export class NodeScheduler {
   private stopBranchesAfterExit(
     nodeId: string
   ): Effect.Effect<void, EngineFailure> {
-    const { runtime, workflowVersionId } = this.input;
+    const { runtime } = this.input;
     const stopBranches = runtime.stopBranches;
     if (!stopBranches) {
       return Effect.void;
@@ -270,7 +270,7 @@ export class NodeScheduler {
       runDurableUnit(
         runtime,
         {
-          id: `entity-exit-stop-branches:${workflowVersionId}:${nodeId}`,
+          id: `entity-exit-stop-branches:${nodeId}`,
           name: "Stop exited branches",
         },
         fromUnknownPromise(stopBranches)

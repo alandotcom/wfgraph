@@ -21,7 +21,10 @@ import {
   workflowWaitStates,
 } from "#src/backend/lib/db/schema";
 import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
-import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
+import {
+  IN_FLIGHT_EXECUTION_STATUSES,
+  type EntityEligibilityReason,
+} from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { JsonObject, JsonValue } from "@wfgraph/shared/types/json";
 import type {
   ExecutionEntitySelector,
@@ -103,7 +106,7 @@ type TerminationRow = {
   status: WorkflowExecution["status"];
   kind: "cancel" | "exit" | null;
   requestedAt: Date | null;
-  reason: "entity_condition_not_met" | "entity_not_found" | null;
+  reason: EntityEligibilityReason | null;
   nodeId: string | null;
   eventName: string | null;
   payload: JsonObject | null;
@@ -352,7 +355,7 @@ export type RunsRepoMethods = {
    */
   readonly requestExit: (input: {
     executionId: string;
-    reason: "entity_condition_not_met" | "entity_not_found";
+    reason: EntityEligibilityReason;
     nodeId: string;
     requestedAt?: Date | undefined;
   }) => Effect.Effect<ExecutionTerminationState | null, DatabaseError>;
@@ -669,16 +672,18 @@ export function makeRunsMethods(
             error: input.error,
           })
           .where(inFlightExecution(input.executionId))
-          .returning({ id: workflowExecutions.id });
+          .returning(TERMINATION_COLUMNS);
 
-        const [state] = await db
+        const [written] = updated;
+        if (written) {
+          return executionTerminationState(written, true);
+        }
+        const [current] = await db
           .select(TERMINATION_COLUMNS)
           .from(workflowExecutions)
           .where(eq(workflowExecutions.id, input.executionId))
           .limit(1);
-        return state
-          ? executionTerminationState(state, updated.length > 0)
-          : null;
+        return current ? executionTerminationState(current) : null;
       }),
 
     requestCancelForEntity: (input) =>
@@ -728,16 +733,18 @@ export function makeRunsMethods(
             terminationNodeId: input.nodeId,
           })
           .where(inFlightExecution(input.executionId))
-          .returning({ id: workflowExecutions.id });
+          .returning(TERMINATION_COLUMNS);
 
-        const [state] = await db
+        const [written] = updated;
+        if (written) {
+          return executionTerminationState(written, true);
+        }
+        const [current] = await db
           .select(TERMINATION_COLUMNS)
           .from(workflowExecutions)
           .where(eq(workflowExecutions.id, input.executionId))
           .limit(1);
-        return state
-          ? executionTerminationState(state, updated.length > 0)
-          : null;
+        return current ? executionTerminationState(current) : null;
       }),
 
     canAdmitNode: (executionId) =>
@@ -813,16 +820,18 @@ export function makeRunsMethods(
               claimGuard
             )
           )
-          .returning({ id: workflowExecutions.id });
+          .returning(TERMINATION_COLUMNS);
 
-        const [state] = await db
+        const [written] = updated;
+        if (written) {
+          return executionTerminationState(written, true);
+        }
+        const [current] = await db
           .select(TERMINATION_COLUMNS)
           .from(workflowExecutions)
           .where(eq(workflowExecutions.id, input.executionId))
           .limit(1);
-        return state
-          ? executionTerminationState(state, updated.length > 0)
-          : null;
+        return current ? executionTerminationState(current) : null;
       }),
   };
 }

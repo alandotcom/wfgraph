@@ -1,6 +1,8 @@
 import { useAtomValue } from "jotai";
 import { useState } from "react";
 import { getRelativeTime } from "@wfgraph/shared/utils/time";
+import { parseConditionModel } from "@wfgraph/shared/conditions/conditions";
+import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { Button } from "#src/components/ui/button";
 import { useAfterCommit } from "#src/hooks/effects";
 import {
@@ -9,13 +11,14 @@ import {
   type ExecutionExit,
   type ExecutionLog,
   type ExecutionWait,
-  findExecutionExit,
   isRunInProgress,
   type WorkflowExecution,
 } from "#src/lib/execution-logs";
 import { nodesAtom, selectedNodeAtom } from "#src/lib/workflow-graph-store";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { findEntity } from "@wfgraph/shared/extensions/catalog";
+import { getEntityConditionFields } from "#src/lib/upstream-node-fields";
+import { ConditionSummary } from "./config/condition-summary";
 import { CollapsibleSection } from "./workflow-run-shared";
 import { WorkflowRunNodeInspector } from "./workflow-run-node-inspector";
 import {
@@ -31,6 +34,7 @@ type WorkflowRunDetailProps = {
   notice?: string | undefined;
   logs: ExecutionLog[];
   events: ExecutionEvent[];
+  exit: ExecutionExit | null;
   waits: ExecutionWait[];
   isCanceling: boolean;
   isResuming: boolean;
@@ -68,6 +72,7 @@ export function WorkflowRunDetail({
   notice,
   logs,
   events,
+  exit,
   waits,
   isCanceling,
   isResuming,
@@ -126,7 +131,6 @@ export function WorkflowRunDetail({
   }
 
   const failedLog = sortedLogs.findLast((log) => log.status === "error");
-  const exit = findExecutionExit(events);
   const exitNodeLabel = exit
     ? (nodes.find((node) => node.id === exit.nodeId)?.data.label ??
       sortedLogs.find((log) => log.nodeId === exit.nodeId)?.nodeName ??
@@ -135,6 +139,22 @@ export function WorkflowRunDetail({
   const exitEntityLabel = exit
     ? (findEntity(catalog, exit.entityType)?.label ?? exit.entityType)
     : undefined;
+  const serializedExitCondition = exit
+    ? nodes
+        .filter((node) => node.data.type === "lifecycle")
+        .map((node) => readLifecycleRules(node.data.config))
+        .find((rules) => rules?.trackedEntity?.type === exit.entityType)
+        ?.entityEligibility?.condition
+    : undefined;
+  const parsedExitCondition = serializedExitCondition
+    ? parseConditionModel(serializedExitCondition)
+    : undefined;
+  const exitCondition = parsedExitCondition?.valid
+    ? parsedExitCondition.model
+    : undefined;
+  const exitConditionFields = exit
+    ? getEntityConditionFields(catalog, exit.entityType)
+    : [];
   const primaryWait = activeWaits[0];
   const outcome =
     execution.status === "waiting" && primaryWait
@@ -188,10 +208,10 @@ export function WorkflowRunDetail({
 
           {execution.status === "exited" ? (
             <section className="space-y-1.5 rounded-md border border-cancelled/30 p-3">
-              <h3 className="font-medium text-cancelled text-xs">
-                Exited by Entity eligibility
+              <h3 className="font-semibold text-cancelled text-sm">
+                Exit details
               </h3>
-              <p className="break-words text-xs">
+              <p className="break-words text-sm leading-5">
                 {exit && exitNodeLabel && exitEntityLabel
                   ? exitSummary({
                       exit,
@@ -201,17 +221,46 @@ export function WorkflowRunDetail({
                   : "This run exited because Entity eligibility did not pass."}
               </p>
               {exit ? (
-                <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1 text-xs">
-                  <dt className="text-muted-foreground">Condition</dt>
-                  <dd className="break-all font-mono">{exit.conditionId}</dd>
-                  <dt className="text-muted-foreground">Checked</dt>
-                  <dd>
-                    {exit.checkedAt.toLocaleString(undefined, {
-                      dateStyle: "medium",
-                      timeStyle: "short",
-                    })}
-                  </dd>
-                </dl>
+                <>
+                  <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1">
+                    <dt className="text-muted-foreground text-xs leading-5">
+                      Entity
+                    </dt>
+                    <dd className="text-sm leading-5">{exitEntityLabel}</dd>
+                    <dt className="text-muted-foreground text-xs leading-5">
+                      Result
+                    </dt>
+                    <dd className="text-sm leading-5">
+                      {exit.reason === "entity_not_found"
+                        ? "Entity not found"
+                        : "Eligibility rule did not match"}
+                    </dd>
+                    <dt className="text-muted-foreground text-xs leading-5">
+                      Checked
+                    </dt>
+                    <dd className="text-sm leading-5">
+                      {exit.checkedAt.toLocaleString(undefined, {
+                        dateStyle: "medium",
+                        timeStyle: "short",
+                      })}
+                    </dd>
+                  </dl>
+                  {exitCondition ? (
+                    <div className="space-y-1.5 border-t pt-2">
+                      <p className="font-medium text-sm">Eligible when</p>
+                      <ConditionSummary
+                        compact
+                        fields={exitConditionFields}
+                        model={exitCondition}
+                      />
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground text-xs">
+                      The eligibility rule is unavailable for this workflow
+                      version.
+                    </p>
+                  )}
+                </>
               ) : null}
             </section>
           ) : null}
@@ -231,9 +280,7 @@ export function WorkflowRunDetail({
 
           <WorkflowRunNodeIndex
             exit={
-              exit && exitNodeLabel
-                ? { conditionId: exit.conditionId, nodeLabel: exitNodeLabel }
-                : undefined
+              exit && exitNodeLabel ? { nodeLabel: exitNodeLabel } : undefined
             }
             focusLogId={returnFocusLogId}
             logs={sortedLogs}

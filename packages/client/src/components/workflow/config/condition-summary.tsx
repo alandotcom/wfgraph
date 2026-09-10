@@ -38,10 +38,28 @@ import { unavailableFieldLabel } from "./condition-field-label";
 export function ConditionSummary({
   model,
   fields,
+  compact = false,
 }: {
   model: ConditionModel;
   fields: readonly ConditionSelectableField[];
+  compact?: boolean;
 }) {
+  const onlyGroup = model.groups.length === 1 ? model.groups[0] : undefined;
+  const onlyCondition =
+    onlyGroup?.conditions.length === 1 ? onlyGroup.conditions[0] : undefined;
+
+  if (compact && onlyCondition) {
+    return (
+      <ul>
+        <RuleLine
+          condition={onlyCondition}
+          field={conditionFieldForPath(fields, onlyCondition.field)}
+          joiner={null}
+        />
+      </ul>
+    );
+  }
+
   return (
     <div>
       {model.groups.map((group, groupIndex) => (

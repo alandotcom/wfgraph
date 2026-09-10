@@ -19,12 +19,7 @@ export function WorkflowRunNodeIndex({
   onSelect,
 }: {
   logs: ExecutionLog[];
-  exit?:
-    | {
-        conditionId: string;
-        nodeLabel: string;
-      }
-    | undefined;
+  exit?: { nodeLabel: string } | undefined;
   focusLogId?: string | null;
   onFocusRestored?: () => void;
   onSelect?: (log: ExecutionLog) => void;
@@ -55,7 +50,7 @@ export function WorkflowRunNodeIndex({
 
   return (
     <section>
-      <h3 className="mb-1 font-medium text-xs/relaxed">Node journey</h3>
+      <h3 className="mb-1 font-semibold text-sm">Node journey</h3>
       <ol>
         {logs.map((log, index) => (
           <li className="relative pl-5" key={log.id}>
@@ -127,12 +122,6 @@ export function WorkflowRunNodeIndex({
                 </span>
                 <span className="block truncate text-muted-foreground text-xs">
                   Prevented {exit.nodeLabel}
-                </span>
-                <span className="block truncate text-muted-foreground text-xs">
-                  Condition{" "}
-                  <code title={exit.conditionId}>
-                    {exit.conditionId.slice(0, 12)}
-                  </code>
                 </span>
               </span>
               <span className="text-cancelled text-xs">Exited</span>

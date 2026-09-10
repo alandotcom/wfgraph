@@ -10,22 +10,21 @@ import { Schema } from "effect";
 import {
   compileConditionModel,
   type ConditionModel,
-  type ConditionRule,
   isNullCheckConditionRule,
   parseConditionModel,
   readConditionRuleOperand,
 } from "#src/conditions/conditions";
-import { conditionTypeOf } from "#src/conditions/condition-field-type";
+import {
+  conditionTypeOf,
+  findConditionFieldDeclaration,
+} from "#src/conditions/condition-field-type";
 import {
   type EntityMetadata,
   type ExtensionCatalog,
   findEntity,
   findEvent,
 } from "#src/extensions/catalog";
-import {
-  appendOutputPathKey,
-  findTemplateTokens,
-} from "#src/graph/node-references";
+import { findTemplateTokens } from "#src/graph/node-references";
 import type {
   LifecycleRules,
   LifecycleRulesCheck,
@@ -57,50 +56,6 @@ function lifecycleEventNames(rules: LifecycleRules): string[] {
   return [...rules.startEvents, ...rules.cancelEvents];
 }
 
-function keyUnder(recordPath: string, path: string): boolean {
-  if (!path.startsWith(`${recordPath}.`)) {
-    return false;
-  }
-
-  const rest = path.slice(recordPath.length + 1);
-  return rest.length > 0 && !rest.includes(".");
-}
-
-type EligibilityFieldDeclaration = {
-  field: EntityMetadata["stateFields"][number];
-  nullable: boolean;
-};
-
-function declarationForRule(
-  entity: EntityMetadata,
-  rule: ConditionRule
-): EligibilityFieldDeclaration | undefined {
-  const path = rule.field.trim();
-  const key = rule.recordKey?.trim();
-  const byPath = new Map(
-    entity.stateFields.map((field) => [field.path, field])
-  );
-  const openRecords = entity.stateFields.filter((field) => field.valueType);
-
-  if (key) {
-    const base = byPath.get(path);
-    if (base?.valueType) {
-      return { field: base, nullable: true };
-    }
-
-    const field = byPath.get(appendOutputPathKey(path, key));
-    return field ? { field, nullable: field.nullable === true } : undefined;
-  }
-
-  const exact = byPath.get(path);
-  if (exact) {
-    return { field: exact, nullable: exact.nullable === true };
-  }
-
-  const openRecord = openRecords.find((field) => keyUnder(field.path, path));
-  return openRecord ? { field: openRecord, nullable: true } : undefined;
-}
-
 function unreadableEligibilityRule(
   entity: EntityMetadata,
   model: ConditionModel
@@ -108,7 +63,10 @@ function unreadableEligibilityRule(
   for (const group of model.groups) {
     for (const rule of group.conditions) {
       const path = rule.field.trim();
-      const declaration = declarationForRule(entity, rule);
+      const declaration = findConditionFieldDeclaration(
+        entity.stateFields,
+        rule
+      );
       if (!declaration) {
         return `reads "${path}", which Entity "${entity.type}" does not declare`;
       }

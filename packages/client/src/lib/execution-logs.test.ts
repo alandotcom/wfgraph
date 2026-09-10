@@ -1,10 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   applyExecutionStatusToLogs,
-  type ExecutionEvent,
-  findExecutionExit,
   isRunInProgress,
-  shouldPollExecutionEvents,
+  shouldPollExecutionDetail,
+  toExecutionDetail,
   toPinnedRunSummary,
   toWorkflowExecutionFromSummary,
   toWorkflowExecutions,
@@ -84,71 +83,6 @@ describe("toWorkflowExecutions", () => {
   });
 });
 
-describe("findExecutionExit", () => {
-  it("reads only the non-sensitive terminal verdict metadata", () => {
-    expect(
-      findExecutionExit([
-        {
-          id: "audit_exit",
-          eventType: "run_exited",
-          message: "Run exited",
-          metadata: {
-            reason: "entity_condition_not_met",
-            entityType: "appointment",
-            conditionId: "condition-v1",
-            nodeId: "send-reminder",
-            checkedAt: "2026-03-01T10:00:05.000Z",
-            entityId: "appt_secret",
-            state: { active: true },
-          },
-          createdAt: new Date("2026-03-01T10:00:05.000Z"),
-        },
-      ])
-    ).toEqual({
-      reason: "entity_condition_not_met",
-      entityType: "appointment",
-      conditionId: "condition-v1",
-      nodeId: "send-reminder",
-      checkedAt: new Date("2026-03-01T10:00:05.000Z"),
-    });
-  });
-
-  it("ignores malformed audit metadata", () => {
-    expect(
-      findExecutionExit([
-        {
-          id: "audit_exit",
-          eventType: "run_exited",
-          message: "Run exited",
-          metadata: { reason: "entity_not_found", entityId: "secret" },
-          createdAt: new Date("2026-03-01T10:00:05.000Z"),
-        },
-      ])
-    ).toBeUndefined();
-  });
-
-  it("polls an exited run until its structured terminal record arrives", () => {
-    const event = {
-      id: "audit_exit",
-      eventType: "run_exited",
-      message: "Run exited",
-      metadata: {
-        reason: "entity_condition_not_met",
-        entityType: "appointment",
-        conditionId: "condition-v1",
-        nodeId: "send-reminder",
-        checkedAt: "2026-03-01T10:00:05.000Z",
-      },
-      createdAt: new Date("2026-03-01T10:00:05.000Z"),
-    } satisfies ExecutionEvent;
-
-    expect(shouldPollExecutionEvents("running", [])).toBe(true);
-    expect(shouldPollExecutionEvents("exited", [])).toBe(true);
-    expect(shouldPollExecutionEvents("exited", [event])).toBe(false);
-    expect(shouldPollExecutionEvents("completed", [])).toBe(false);
-  });
-});
-
 describe("isRunInProgress", () => {
   it("answers for the statuses that can still change", () => {
     expect(isRunInProgress("running")).toBe(true);
@@ -156,6 +90,13 @@ describe("isRunInProgress", () => {
     expect(isRunInProgress("completed")).toBe(false);
     expect(isRunInProgress("superseded")).toBe(false);
     expect(isRunInProgress(undefined)).toBe(false);
+  });
+
+  it("polls from detail status for deep links and list/detail races", () => {
+    expect(shouldPollExecutionDetail("running", undefined)).toBe(true);
+    expect(shouldPollExecutionDetail("running", "exited")).toBe(true);
+    expect(shouldPollExecutionDetail("exited", "running")).toBe(false);
+    expect(shouldPollExecutionDetail(undefined, "waiting")).toBe(true);
   });
 });
 
@@ -243,6 +184,7 @@ describe("toPinnedRunSummary", () => {
     },
     logs: [],
     waits: [],
+    exit: null,
   };
 
   it("carries the pinned run's version and run mode", () => {
@@ -268,6 +210,46 @@ describe("toPinnedRunSummary", () => {
     expect(summary.versionKind).toBe("draft_snapshot");
     expect(summary.versionNumber).toBeNull();
     expect(summary.runMode).toBe("test");
+  });
+});
+
+describe("toExecutionDetail", () => {
+  it("converts the authoritative Exit timestamp", () => {
+    const detail = toExecutionDetail({
+      execution: {
+        id: "exec_exit",
+        workflowId: "wf_1",
+        workflowVersionId: "ver_1",
+        versionKind: "published",
+        versionNumber: 7,
+        status: "exited",
+        input: {},
+        output: {},
+        error: null,
+        startedAt: "2026-03-01T10:00:00.000Z",
+        completedAt: "2026-03-01T10:00:05.000Z",
+        duration: "5000",
+        runMode: "live",
+        startSource: "event",
+        startEventName: "appointment.updated",
+        entityValue: null,
+      },
+      logs: [],
+      waits: [],
+      exit: {
+        reason: "entity_condition_not_met",
+        entityType: "patient",
+        nodeId: "send-reminder",
+        checkedAt: "2026-03-01T10:00:05.000Z",
+      },
+    });
+
+    expect(detail.exit).toEqual({
+      reason: "entity_condition_not_met",
+      entityType: "patient",
+      nodeId: "send-reminder",
+      checkedAt: new Date("2026-03-01T10:00:05.000Z"),
+    });
   });
 });
 

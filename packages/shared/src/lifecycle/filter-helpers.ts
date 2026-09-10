@@ -11,18 +11,17 @@ import {
   compileConditionModel,
   compileSerializedConditionModel,
   type ConditionModel,
-  type ConditionRule,
   EVENT_NAME_FIELD_PATH,
   isNullCheckConditionRule,
   parseConditionModel,
   readConditionRuleOperand,
 } from "#src/conditions/conditions";
-import { conditionTypeOf } from "#src/conditions/condition-field-type";
-import { type ExtensionCatalog, findEvent } from "#src/extensions/catalog";
 import {
-  appendOutputPathKey,
-  findTemplateTokens,
-} from "#src/graph/node-references";
+  conditionTypeOf,
+  findConditionFieldDeclaration,
+} from "#src/conditions/condition-field-type";
+import { type ExtensionCatalog, findEvent } from "#src/extensions/catalog";
+import { findTemplateTokens } from "#src/graph/node-references";
 import type {
   LifecycleRules,
   LifecycleRulesCheck,
@@ -130,15 +129,6 @@ export function checkFilterModels(
   return read.valid ? lifecycleRulesValid : refuseLifecycleRules(read.error);
 }
 
-function keyUnder(recordPath: string, path: string): boolean {
-  if (!path.startsWith(`${recordPath}.`)) {
-    return false;
-  }
-
-  const rest = path.slice(recordPath.length + 1);
-  return rest.length > 0 && !rest.includes(".");
-}
-
 function unreadableFilterRule(input: {
   model: ConditionModel;
   catalog: ExtensionCatalog;
@@ -146,25 +136,6 @@ function unreadableFilterRule(input: {
 }): string | undefined {
   const payloadFields =
     findEvent(input.catalog, input.eventName)?.payloadFields ?? [];
-  const byPath = new Map(payloadFields.map((field) => [field.path, field]));
-  const records = payloadFields.filter((field) => field.valueType);
-
-  const declarationFor = (rule: ConditionRule) => {
-    const path = rule.field.trim();
-    const key = rule.recordKey?.trim();
-
-    if (key) {
-      const base = byPath.get(path);
-      return base?.valueType
-        ? base
-        : byPath.get(appendOutputPathKey(path, key));
-    }
-
-    return (
-      byPath.get(path) ?? records.find((record) => keyUnder(record.path, path))
-    );
-  };
-
   for (const group of input.model.groups) {
     for (const rule of group.conditions) {
       const path = rule.field.trim();
@@ -180,12 +151,12 @@ function unreadableFilterRule(input: {
         continue;
       }
 
-      const declaration = declarationFor(rule);
+      const declaration = findConditionFieldDeclaration(payloadFields, rule);
       if (!declaration) {
         return `reads "${path}", which that Event does not carry`;
       }
 
-      const offered = conditionTypeOf(declaration);
+      const offered = conditionTypeOf(declaration.field);
       if (offered === null) {
         return `compares "${path}", which that Event declares as a shape no rule can compare`;
       }

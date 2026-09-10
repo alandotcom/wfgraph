@@ -1,1 +1,0 @@
-ALTER TABLE `workflow_executions` DROP COLUMN `cancel_requested_at`;

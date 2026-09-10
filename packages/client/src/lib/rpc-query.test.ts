@@ -110,6 +110,7 @@ beforeEach(() => {
     },
     logs: [],
     waits: [],
+    exit: null,
   });
   queryClient.setQueryData(executionEventsKey("exec_a"), { events: [] });
   queryClient.setQueryData(executionStatusKey("exec_a"), {

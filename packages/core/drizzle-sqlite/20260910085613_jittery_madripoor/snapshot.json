@@ -1,7 +1,7 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "1c0166dd-2fb0-4df8-beac-504fd5343f78",
+  "id": "2e452b2b-ac98-4fb0-9d47-c89fdfc0dc77",
   "prevIds": ["f46fd4de-5a08-4d55-960e-9f03e74e4690"],
   "ddl": [
     {
@@ -747,16 +747,6 @@
       "default": null,
       "generated": null,
       "name": "termination_node_id",
-      "entityType": "columns",
-      "table": "workflow_executions"
-    },
-    {
-      "type": "integer",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "cancel_requested_at",
       "entityType": "columns",
       "table": "workflow_executions"
     },

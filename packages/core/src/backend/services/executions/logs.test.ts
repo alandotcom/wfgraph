@@ -8,6 +8,7 @@ import {
 } from "#src/backend/lib/effect/test-layers";
 import type {
   ExecutionSummary,
+  ExecutionTerminationState,
   WorkflowExecutionLog,
 } from "#src/backend/services/executions/repo";
 import { getExecutionLogs } from "#src/backend/services/executions/logs";
@@ -37,12 +38,14 @@ function summary(overrides: Partial<ExecutionSummary> = {}): ExecutionSummary {
 /** The three reads this service makes, with the summary the test chose. */
 function makeRepos(
   execution: ExecutionSummary | null,
-  logs: WorkflowExecutionLog[] = []
+  logs: WorkflowExecutionLog[] = [],
+  termination: ExecutionTerminationState | null = null
 ) {
   return Layer.mergeAll(
     SilentAppLoggerLayer,
     stubExecutionRepo({
       findSummaryById: () => Effect.succeed(execution),
+      findTerminationState: () => Effect.succeed(termination),
       listLogs: () => Effect.succeed(logs),
       listWaitingStates: () => Effect.succeed([]),
     })
@@ -86,6 +89,44 @@ describe("getExecutionLogs", () => {
         assert.strictEqual(result.execution.startEventName, "order.updated");
         assert.strictEqual(result.execution.entityValue, "ord_2");
       })
+    );
+
+    it.effect(
+      "returns the stored Exit boundary without Entity ID or State",
+      () =>
+        Effect.gen(function* () {
+          const result = yield* getExecutionLogs("exec_1").pipe(
+            Effect.provide(
+              makeRepos(
+                summary({
+                  status: "exited",
+                  entityType: "patient",
+                  entityId: "patient_secret",
+                }),
+                [],
+                {
+                  executionId: "exec_1",
+                  status: "exited",
+                  claim: {
+                    kind: "exit",
+                    requestedAt: new Date("2026-03-01T10:00:05.000Z"),
+                    reason: "entity_condition_not_met",
+                    nodeId: "send-reminder",
+                  },
+                  didWrite: false,
+                }
+              )
+            )
+          );
+
+          assert.deepStrictEqual(result.exit, {
+            reason: "entity_condition_not_met",
+            entityType: "patient",
+            nodeId: "send-reminder",
+            checkedAt: "2026-03-01T10:00:05.000Z",
+          });
+          assert.notInclude(JSON.stringify(result.exit), "patient_secret");
+        })
     );
 
     it.effect("redacts execution input and output beside the node logs", () =>

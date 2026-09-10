@@ -23,7 +23,10 @@ import {
 import { evaluateSerializedCondition } from "#src/backend/lib/cel/condition-payload";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import { requestCanceledOutlet } from "#src/backend/services/workflows/lifecycle/cancel";
-import { startWithConcurrency } from "#src/backend/services/workflows/lifecycle/concurrency";
+import {
+  startWithConcurrency,
+  type StartRefusalReason,
+} from "#src/backend/services/workflows/lifecycle/concurrency";
 import {
   evaluateGuardedStart,
   selectTrackedEntity,
@@ -75,6 +78,17 @@ export type DeliveredEvent = {
   readonly validatedPayload?: unknown;
 };
 
+type LifecycleDeliveryRefusalReason =
+  | StartRefusalReason
+  /** The arrival did not satisfy this Cancel Event's Cancel Filter. */
+  | "cancel_filter_not_met"
+  /** The Cancel Filter could not be read against this payload at all. */
+  | "cancel_filter_unevaluable"
+  /** The arrival did not satisfy this Start Event's Start Filter. */
+  | "start_filter_not_met"
+  /** The Start Filter could not be read against this payload at all. */
+  | "start_filter_unevaluable";
+
 /** What the Lifecycle Rules did to one workflow, as the listener records it. */
 export type LifecycleDeliveryOutcome =
   | {
@@ -87,19 +101,7 @@ export type LifecycleDeliveryOutcome =
   | {
       kind: "refused";
       workflowId: string;
-      reason:
-        | "concurrency_first_wins"
-        | "entity_value_missing"
-        /** The arrival did not satisfy this Cancel Event's Cancel Filter. */
-        | "cancel_filter_not_met"
-        /** The Cancel Filter could not be read against this payload at all. */
-        | "cancel_filter_unevaluable"
-        /** The arrival did not satisfy this Start Event's Start Filter. */
-        | "start_filter_not_met"
-        /** The Start Filter could not be read against this payload at all. */
-        | "start_filter_unevaluable"
-        | "entity_condition_not_met"
-        | "entity_not_found";
+      reason: LifecycleDeliveryRefusalReason;
     }
   /**
    * This Event holds the cancel role here; the ids are the runs it claimed. A

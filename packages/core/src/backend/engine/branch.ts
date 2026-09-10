@@ -14,7 +14,10 @@ import type {
   NodeOutputs,
 } from "#src/backend/engine/contracts";
 import { engineFailureSchema } from "#src/backend/engine/engine-failure";
-import { ENTITY_ELIGIBILITY_REASONS } from "@wfgraph/shared/lifecycle/execution-contracts";
+import {
+  ENTITY_ELIGIBILITY_REASONS,
+  type EntityEligibilityReason,
+} from "@wfgraph/shared/lifecycle/execution-contracts";
 
 /** What a branch run's traversal left behind, keyed the way its own was. */
 export type BranchRunResult = {
@@ -23,7 +26,7 @@ export type BranchRunResult = {
   /** Exit claimed by this or a sibling branch, for the parent run to own. */
   exit?:
     | {
-        reason: "entity_condition_not_met" | "entity_not_found";
+        reason: EntityEligibilityReason;
         nodeId: string;
         checkedAt: string;
       }

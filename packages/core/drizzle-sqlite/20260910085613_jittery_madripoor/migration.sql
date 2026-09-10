@@ -31,7 +31,6 @@ CREATE TABLE `__new_workflow_executions` (
 	`termination_requested_at` integer,
 	`termination_reason` text,
 	`termination_node_id` text,
-	`cancel_requested_at` integer,
 	`cancel_event_name` text,
 	`cancel_payload` text,
 	CONSTRAINT `fk_workflow_executions_workflow_id_workflows_id_fk` FOREIGN KEY (`workflow_id`) REFERENCES `workflows`(`id`) ON DELETE CASCADE,
@@ -46,7 +45,7 @@ CREATE TABLE `__new_workflow_executions` (
 	CONSTRAINT "workflow_executions_cancel_payload_json_check" CHECK("cancel_payload" is null or json_valid("cancel_payload"))
 ) STRICT;
 --> statement-breakpoint
-INSERT INTO `__new_workflow_executions`(`id`, `workflow_id`, `workflow_version_id`, `workflow_run_id`, `status`, `start_source`, `delivery_id`, `enqueued_at`, `run_mode`, `start_event_name`, `entity_value`, `input`, `output`, `error`, `started_at`, `waiting_at`, `cancelled_at`, `completed_at`, `duration`, `cancel_requested_at`, `cancel_event_name`, `cancel_payload`) SELECT `id`, `workflow_id`, `workflow_version_id`, `workflow_run_id`, `status`, `start_source`, `delivery_id`, `enqueued_at`, `run_mode`, `start_event_name`, `entity_value`, `input`, `output`, `error`, `started_at`, `waiting_at`, `cancelled_at`, `completed_at`, `duration`, `cancel_requested_at`, `cancel_event_name`, `cancel_payload` FROM `workflow_executions`;--> statement-breakpoint
+INSERT INTO `__new_workflow_executions`(`id`, `workflow_id`, `workflow_version_id`, `workflow_run_id`, `status`, `start_source`, `delivery_id`, `enqueued_at`, `run_mode`, `start_event_name`, `entity_value`, `input`, `output`, `error`, `started_at`, `waiting_at`, `cancelled_at`, `completed_at`, `duration`, `cancel_event_name`, `cancel_payload`) SELECT `id`, `workflow_id`, `workflow_version_id`, `workflow_run_id`, `status`, `start_source`, `delivery_id`, `enqueued_at`, `run_mode`, `start_event_name`, `entity_value`, `input`, `output`, `error`, `started_at`, `waiting_at`, `cancelled_at`, `completed_at`, `duration`, `cancel_event_name`, `cancel_payload` FROM `workflow_executions`;--> statement-breakpoint
 DROP TABLE `workflow_executions`;--> statement-breakpoint
 ALTER TABLE `__new_workflow_executions` RENAME TO `workflow_executions`;--> statement-breakpoint
 PRAGMA foreign_keys=ON;--> statement-breakpoint

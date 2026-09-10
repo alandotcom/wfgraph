@@ -65,36 +65,38 @@ const demoAuth = createDemoAuth({
 // node's date field. A `.describe()` replaces the derived label, so it earns its
 // place only where the key reads badly alone.
 const appointmentIdSchema = z.string().describe("Appointment ID");
+const patientIdSchema = z.string().describe("Patient ID");
 
 const appointmentSchema = z.object({
   id: appointmentIdSchema,
   startsAt: z.iso.datetime(),
+  patientId: patientIdSchema,
   patientName: z.string(),
   status: z.string(),
 });
 
-const appointmentStateSchema = z.object({
-  status: z.enum(["scheduled", "completed", "canceled"]),
-  remindersEnabled: z.boolean(),
+const patientStateSchema = z.object({
+  status: z.enum(["active", "inactive"]),
+  appointmentRemindersEnabled: z.boolean(),
 });
 
-// This map stands in for the host application's appointment store. Workflow
-// Graph receives the Entity id and a validated decision surface, never the
-// record itself. The two rows make both Eligibility outcomes easy to try from
-// the Inngest dashboard without adding a second service to the example.
-const appointmentStates = new Map<
-  string,
-  z.infer<typeof appointmentStateSchema>
->([
-  ["apt_demo_scheduled", { status: "scheduled", remindersEnabled: true }],
-  ["apt_demo_completed", { status: "completed", remindersEnabled: false }],
+// This map stands in for the host application's patient store. The appointment
+// Event identifies a different domain object, which makes the Event-to-Entity
+// binding explicit. Workflow Graph receives the Patient id and a validated
+// decision surface, never the record itself.
+const patientStates = new Map<string, z.infer<typeof patientStateSchema>>([
+  ["pat_demo_active", { status: "active", appointmentRemindersEnabled: true }],
+  [
+    "pat_demo_opted_out",
+    { status: "active", appointmentRemindersEnabled: false },
+  ],
 ]);
 
-const appointmentEntity = defineEntity({
-  type: "appointment",
-  label: "Appointment",
-  state: appointmentStateSchema,
-  resolve: ({ entityId }) => appointmentStates.get(entityId) ?? null,
+const patientEntity = defineEntity({
+  type: "patient",
+  label: "Patient",
+  state: patientStateSchema,
+  resolve: ({ entityId }) => patientStates.get(entityId) ?? null,
 });
 
 /**
@@ -116,9 +118,9 @@ const appointmentCreated = defineEvent({
   schema: z.object({ appointment: appointmentSchema, occurredAt }),
   correlationPath: "appointment.id",
   entities: {
-    appointment: {
-      entity: appointmentEntity,
-      selectEntityId: (event) => event.appointment.id,
+    patient: {
+      entity: patientEntity,
+      selectEntityId: (event) => event.appointment.patientId,
     },
   },
 });
@@ -134,9 +136,9 @@ const appointmentRescheduled = defineEvent({
   }),
   correlationPath: "appointment.id",
   entities: {
-    appointment: {
-      entity: appointmentEntity,
-      selectEntityId: (event) => event.appointment.id,
+    patient: {
+      entity: patientEntity,
+      selectEntityId: (event) => event.appointment.patientId,
     },
   },
 });
@@ -152,9 +154,9 @@ const appointmentCanceled = defineEvent({
   }),
   correlationPath: "appointment.id",
   entities: {
-    appointment: {
-      entity: appointmentEntity,
-      selectEntityId: (event) => event.appointment.id,
+    patient: {
+      entity: patientEntity,
+      selectEntityId: (event) => event.appointment.patientId,
     },
   },
 });
@@ -182,12 +184,6 @@ const paymentSettled = defineEvent({
     settledAt: z.iso.datetime(),
   }),
   correlationPath: "appointmentId",
-  entities: {
-    appointment: {
-      entity: appointmentEntity,
-      selectEntityId: (event) => event.appointmentId,
-    },
-  },
 });
 
 const cancelAppointmentAction = defineAction({

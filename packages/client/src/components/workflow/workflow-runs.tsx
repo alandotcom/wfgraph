@@ -10,7 +10,7 @@ import { type ReactNode, useState } from "react";
 import { Button } from "#src/components/ui/button";
 import {
   isRunInProgress,
-  shouldPollExecutionEvents,
+  shouldPollExecutionDetail,
   toExecutionDetail,
   toExecutionEvents,
   toWorkflowExecutions,
@@ -165,13 +165,10 @@ export function WorkflowRuns({ listActions }: { listActions?: ReactNode }) {
   // status, which stops this interval. Cancel therefore has to invalidate logs
   // and events in `refreshRunHistory`: a list-only refresh would otherwise
   // leave the journey on its last in-flight snapshot.
-  const detailPollInterval = isRunInProgress(listedRun?.status)
-    ? RUN_POLL_MS
-    : false;
-
   // Opening a run enables its logs and events; the cache decides whether that
   // means a request. The logs payload also carries an execution summary for ids
-  // past the newest-50 list.
+  // past the newest-50 list. Once loaded, that summary owns polling so a deep
+  // link outside the list and a list/detail terminal-write race both converge.
   const detailQuery = useQuery({
     ...orpcQuery.workflow.getExecutionLogs.queryOptions({
       input: { executionId: executionId ?? "" },
@@ -179,10 +176,16 @@ export function WorkflowRuns({ listActions }: { listActions?: ReactNode }) {
     }),
     enabled: executionId !== undefined && canReadLogs,
     staleTime: 0,
-    refetchInterval: detailPollInterval,
+    refetchInterval: (query) =>
+      shouldPollExecutionDetail(
+        query.state.data?.execution.status,
+        listedRun?.status
+      )
+        ? RUN_POLL_MS
+        : false,
   });
 
-  const detailStatus = listedRun?.status ?? detailQuery.data?.execution.status;
+  const detailStatus = detailQuery.data?.execution.status ?? listedRun?.status;
   const eventsQuery = useQuery({
     ...orpcQuery.workflow.getExecutionEvents.queryOptions({
       input: { executionId: executionId ?? "" },
@@ -190,15 +193,7 @@ export function WorkflowRuns({ listActions }: { listActions?: ReactNode }) {
     }),
     enabled: executionId !== undefined && canReadEvents,
     staleTime: 0,
-    // Terminal status and its audit record are separate writes. Keep reading an
-    // exited run until the structured reason arrives, then stop as usual.
-    refetchInterval: (query) =>
-      shouldPollExecutionEvents(
-        detailStatus,
-        query.state.data ? toExecutionEvents(query.state.data) : undefined
-      )
-        ? RUN_POLL_MS
-        : false,
+    refetchInterval: isRunInProgress(detailStatus) ? RUN_POLL_MS : false,
   });
 
   const cancelExecution = useMutation(
@@ -325,6 +320,7 @@ export function WorkflowRuns({ listActions }: { listActions?: ReactNode }) {
       <WorkflowRunDetail
         events={eventsQuery.data ?? []}
         execution={execution}
+        exit={detailQuery.data?.exit ?? null}
         isCanceling={
           cancelExecution.isPending &&
           cancelExecution.variables?.executionId === execution.id

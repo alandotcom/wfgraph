@@ -526,13 +526,16 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
                 isNull(workflowExecutions.terminationKind)
               )
             )
-            .returning({ id: workflowExecutions.id });
-          const row = yield* database
+            .returning();
+          const [written] = updated;
+          if (written) return terminationState(written, true);
+
+          const current = yield* database
             .select()
             .from(workflowExecutions)
             .where(eq(workflowExecutions.id, input.executionId))
             .get();
-          return row ? terminationState(row, updated.length > 0) : null;
+          return current ? terminationState(current) : null;
         })
       ),
     requestCancelForEntity: (input) =>
@@ -553,11 +556,7 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
             inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES),
             isNull(workflowExecutions.terminationKind)
           );
-          const rows = yield* database
-            .select({ id: workflowExecutions.id })
-            .from(workflowExecutions)
-            .where(where);
-          yield* database
+          const flagged = yield* database
             .update(workflowExecutions)
             .set({
               terminationKind: "cancel",
@@ -565,8 +564,9 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
               cancelEventName: input.eventName,
               cancelPayload: encodeJson(input.payload),
             })
-            .where(where);
-          return rows.map((row) => row.id);
+            .where(where)
+            .returning({ id: workflowExecutions.id });
+          return flagged.map((row) => row.id);
         })
       ),
     requestExit: (input) =>
@@ -591,13 +591,16 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
                 isNull(workflowExecutions.terminationKind)
               )
             )
-            .returning({ id: workflowExecutions.id });
-          const row = yield* database
+            .returning();
+          const [written] = updated;
+          if (written) return terminationState(written, true);
+
+          const current = yield* database
             .select()
             .from(workflowExecutions)
             .where(eq(workflowExecutions.id, input.executionId))
             .get();
-          return row ? terminationState(row, updated.length > 0) : null;
+          return current ? terminationState(current) : null;
         })
       ),
     canAdmitNode: (executionId) =>
@@ -648,12 +651,6 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
     finishRun: (input) =>
       store.write((database) =>
         Effect.gen(function* () {
-          const row = yield* database
-            .select({ startedAt: workflowExecutions.startedAt })
-            .from(workflowExecutions)
-            .where(eq(workflowExecutions.id, input.executionId))
-            .get();
-          if (!row) return null;
           const claimGuard =
             input.status === "canceled"
               ? eq(workflowExecutions.terminationKind, "cancel")
@@ -670,7 +667,7 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
               waitingAt: null,
               cancelledAt: input.status === "canceled" ? now : null,
               completedAt: now,
-              duration: String(now - row.startedAt),
+              duration: sql`cast(${now} - ${workflowExecutions.startedAt} as text)`,
             })
             .where(
               and(
@@ -682,13 +679,16 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
                 claimGuard
               )
             )
-            .returning({ id: workflowExecutions.id });
+            .returning();
+          const [written] = updated;
+          if (written) return terminationState(written, true);
+
           const current = yield* database
             .select()
             .from(workflowExecutions)
             .where(eq(workflowExecutions.id, input.executionId))
             .get();
-          return current ? terminationState(current, updated.length > 0) : null;
+          return current ? terminationState(current) : null;
         })
       ),
   };

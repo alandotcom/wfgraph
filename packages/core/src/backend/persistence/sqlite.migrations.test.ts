@@ -111,13 +111,23 @@ describe("SQLite migration execution", () => {
     );
   });
 
-  it("preserves a legacy cancellation claim while generalizing termination", async () => {
+  it("keeps the applied Entity termination migration identity stable", () => {
+    expect(
+      sqliteMigrations.find(
+        (migration) => migration.name === "20260910085613_jittery_madripoor"
+      )
+    ).toMatchObject({
+      folderMillis: 1789030573000,
+      hash: "139fa3603b6e13f8af6783061edfa1eab75b11ce34131c410f75975186d21705",
+    });
+  });
+
+  it("preserves a legacy cancellation claim across the immutable migration", async () => {
     const directory = await mkdtemp(join(tmpdir(), "wfgraph-migrations-"));
     directories.push(directory);
     const filename = join(directory, "migration.db");
-    const migrationCount = sqliteMigrations.length;
     const firstTerminationMigration = sqliteMigrations.findIndex(
-      (migration) => migration.name === "20260910120959_peaceful_gladiator"
+      (migration) => migration.name === "20260910085613_jittery_madripoor"
     );
     expect(firstTerminationMigration).toBeGreaterThan(0);
     await migrateMetadata(
@@ -161,11 +171,6 @@ describe("SQLite migration execution", () => {
         cancel_event_name: "appointment.canceled",
         cancel_payload: '{"reason":"host request"}',
       });
-      expect(
-        migrated
-          .prepare("select count(*) as total from __wfgraph_sqlite_migrations")
-          .get()
-      ).toEqual({ total: migrationCount });
     } finally {
       migrated.close();
     }

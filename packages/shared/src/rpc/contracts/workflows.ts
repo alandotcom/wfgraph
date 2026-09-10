@@ -20,6 +20,7 @@ import {
 import { serializedWorkflowGraphSchema } from "#src/graph/schemas";
 import { WORKFLOW_VERSION_KINDS } from "#src/graph/version-kinds";
 import {
+  ENTITY_ELIGIBILITY_REASONS,
   WORKFLOW_EXECUTION_IGNORED_REASONS,
   WORKFLOW_EXECUTION_START_SOURCES,
   WORKFLOW_EXECUTION_STATUSES,
@@ -227,6 +228,14 @@ const executionWaitSchema = Schema.Struct({
   resumeToken: Schema.NullOr(Schema.String),
   subscribedEvents: listOf(Schema.String),
   waitUntil: Schema.NullOr(Schema.String),
+});
+
+/** The authoritative Entity Eligibility boundary stored on an exited run. */
+const executionExitSchema = Schema.Struct({
+  reason: Schema.Literals(ENTITY_ELIGIBILITY_REASONS),
+  entityType: Schema.String,
+  nodeId: Schema.String,
+  checkedAt: Schema.String,
 });
 
 /**
@@ -645,6 +654,7 @@ export const workflowContract = {
           execution: executionSummarySchema,
           logs: listOf(executionLogSchema),
           waits: listOf(executionWaitSchema),
+          exit: Schema.NullOr(executionExitSchema),
         })
       )
     ),

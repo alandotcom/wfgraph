@@ -32,6 +32,7 @@ import {
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import type { Concurrency } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import type { WorkflowMode } from "@wfgraph/shared/graph/types";
+import type { EntityEligibilityReason } from "@wfgraph/shared/lifecycle/execution-contracts";
 
 export type StartWithConcurrencyInput = {
   workflow: WorkflowRunTarget;
@@ -54,8 +55,7 @@ export type StartWithConcurrencyInput = {
 export type StartRefusalReason =
   | "concurrency_first_wins"
   | "entity_value_missing"
-  | "entity_condition_not_met"
-  | "entity_not_found";
+  | EntityEligibilityReason;
 
 /**
  * What a start attempt did.

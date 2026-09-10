@@ -1,3 +1,4 @@
+import { isEntityEligibilityReason } from "@wfgraph/shared/lifecycle/execution-contracts";
 import { readJsonValue, type JsonValue } from "@wfgraph/shared/types/json";
 import type {
   WorkflowExecution,
@@ -87,11 +88,7 @@ function terminationKind(
 function terminationReason(
   value: string | null
 ): WorkflowExecution["terminationReason"] {
-  if (
-    value !== null &&
-    value !== "entity_condition_not_met" &&
-    value !== "entity_not_found"
-  ) {
+  if (value !== null && !isEntityEligibilityReason(value)) {
     throw new Error("Invalid SQLite execution termination reason");
   }
   return value;

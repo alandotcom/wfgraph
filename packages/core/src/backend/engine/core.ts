@@ -27,7 +27,10 @@ import {
   wrapStoredOutput,
 } from "#src/backend/engine/contracts";
 import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
-import { NodeScheduler } from "#src/backend/engine/scheduler";
+import {
+  NodeScheduler,
+  type NodeSchedulerInput,
+} from "#src/backend/engine/scheduler";
 import type { WorkflowStore } from "#src/backend/engine/store";
 import {
   recordRunCompleted,
@@ -43,7 +46,10 @@ import { runDurable, runDurableUnit } from "#src/backend/engine/durable";
 import { withAppLogCategory } from "#src/backend/lib/effect/app-logger";
 import { entityEligibilityConditionId } from "#src/backend/lib/entity-eligibility";
 import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
-import type { WorkflowExecutionStatus } from "@wfgraph/shared/lifecycle/execution-contracts";
+import type {
+  EntityEligibilityReason,
+  WorkflowExecutionStatus,
+} from "@wfgraph/shared/lifecycle/execution-contracts";
 
 export type { WorkflowActions } from "#src/backend/engine/actions";
 export type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
@@ -110,7 +116,7 @@ type PreparedRun = {
   cancelBoundary: CancelBoundary;
   scheduler: NodeScheduler;
   lifecycleNodeIds: string[];
-  entityEligibilityCondition?: string | undefined;
+  entityEligibility?: NodeSchedulerInput["entityEligibility"];
 };
 
 type WorkflowExecutionResult = {
@@ -122,7 +128,7 @@ type WorkflowExecutionResult = {
   cancelled?: boolean | undefined;
   exit?:
     | {
-        reason: "entity_condition_not_met" | "entity_not_found";
+        reason: EntityEligibilityReason;
         entityType: string;
         conditionId: string;
         nodeId: string;
@@ -167,6 +173,15 @@ function prepareRun(
     .map((node) => readLifecycleRules(node.data.config)?.entityEligibility)
     .find((candidate) => candidate?.checkpoints.includes("before-node"));
 
+  const entityEligibility = eligibility
+    ? {
+        entityType: input.entityType ?? "",
+        entityId: input.entityId ?? "",
+        condition: eligibility.condition,
+        conditionId: entityEligibilityConditionId(eligibility.condition),
+      }
+    : undefined;
+
   const boundaryInput = {
     edges,
     traversal,
@@ -193,13 +208,7 @@ function prepareRun(
     startEventName,
     catalogFingerprint: input.catalogFingerprint,
     workflowVersionId: input.workflowVersionId,
-    entityEligibility: eligibility
-      ? {
-          entityType: input.entityType ?? "",
-          entityId: input.entityId ?? "",
-          condition: eligibility.condition,
-        }
-      : undefined,
+    entityEligibility,
     branchEntryNodeId,
   });
 
@@ -210,7 +219,7 @@ function prepareRun(
     cancelBoundary,
     scheduler,
     lifecycleNodeIds: lifecycleNodes.map((node) => node.id),
-    entityEligibilityCondition: eligibility?.condition,
+    entityEligibility,
   };
 }
 
@@ -311,7 +320,7 @@ function executeWorkflowInner(
       cancelBoundary,
       scheduler,
       lifecycleNodeIds,
-      entityEligibilityCondition,
+      entityEligibility,
     } = prepareRun(input, runtime, store, actions, entities);
 
     // This body is re-run on every attempt and after every wait, so this clock
@@ -349,15 +358,12 @@ function executeWorkflowInner(
       );
       const exitClaim =
         termination?.claim?.kind === "exit" ? termination.claim : undefined;
-      const exitContext =
-        entityEligibilityCondition && input.entityType
-          ? {
-              entityType: input.entityType,
-              conditionId: entityEligibilityConditionId(
-                entityEligibilityCondition
-              ),
-            }
-          : undefined;
+      const exitContext = entityEligibility?.entityType
+        ? {
+            entityType: entityEligibility.entityType,
+            conditionId: entityEligibility.conditionId,
+          }
+        : undefined;
       // The persisted first claim outranks traversal results. Exit takes no
       // graph outlet; cancellation retains its distinct Canceled branch.
       const terminalStatus: TraversalTerminalStatus = exitClaim
@@ -425,15 +431,12 @@ function executeWorkflowInner(
           ? "canceled"
           : "failed";
 
-        const exitContext =
-          entityEligibilityCondition && input.entityType
-            ? {
-                entityType: input.entityType,
-                conditionId: entityEligibilityConditionId(
-                  entityEligibilityCondition
-                ),
-              }
-            : undefined;
+        const exitContext = entityEligibility?.entityType
+          ? {
+              entityType: entityEligibility.entityType,
+              conditionId: entityEligibility.conditionId,
+            }
+          : undefined;
 
         // Same exactly-once treatment as the success path above.
         const recorded = yield* runDurable(

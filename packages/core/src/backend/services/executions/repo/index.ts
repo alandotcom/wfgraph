@@ -17,6 +17,7 @@ import {
 } from "#src/backend/lib/effect/database";
 import {
   IN_FLIGHT_EXECUTION_STATUSES,
+  isEntityEligibilityReason,
   type EntityEligibilityReason,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { Concurrency } from "@wfgraph/shared/lifecycle/lifecycle-rules";
@@ -90,14 +91,6 @@ function isSerializationFailure(error: DatabaseError): boolean {
   return hasDatabaseErrorCode(error, SERIALIZATION_FAILURE_CODE);
 }
 
-function entityEligibilityReason(
-  value: unknown
-): EntityEligibilityReason | null {
-  return value === "entity_condition_not_met" || value === "entity_not_found"
-    ? value
-    : null;
-}
-
 async function findAdmissionRefusal(
   database: WfGraphDatabase | WfGraphTransaction,
   input: { workflowId: string; decisionId: string }
@@ -110,7 +103,8 @@ async function findAdmissionRefusal(
     },
     columns: { metadata: true },
   });
-  return entityEligibilityReason(row?.metadata?.reason);
+  const reason = row?.metadata?.reason;
+  return isEntityEligibilityReason(reason) ? reason : null;
 }
 
 function isStuckBeforeTheBus(row: {

@@ -11,6 +11,11 @@ import type {
 import { createRecordingWorkflowStore } from "#src/backend/engine/recording-store";
 import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
 import { executeTestWorkflow } from "#src/backend/engine/test-execution";
+import { driveWithReplay } from "#src/backend/engine/testing/replay-runtime";
+import {
+  waitMigrateSignal,
+  waitResumeSignal,
+} from "#src/backend/engine/testing/wait-fixtures";
 
 const condition = JSON.stringify({
   version: 2,
@@ -33,7 +38,8 @@ const condition = JSON.stringify({
 
 function lifecycleNode(
   checkpoints: Array<"before-execution" | "before-node"> = ["before-node"],
-  cancelEvents: string[] = []
+  cancelEvents: string[] = [],
+  eligibilityCondition = condition
 ): WorkflowNode {
   return {
     id: "lifecycle",
@@ -58,7 +64,7 @@ function lifecycleNode(
             ),
           },
           entityEligibility: {
-            condition,
+            condition: eligibilityCondition,
             checkpoints,
           },
         },
@@ -105,6 +111,40 @@ function graph(
         target: "first",
       },
       { id: "first-second", source: "first", target: "second" },
+    ],
+  });
+}
+
+function migrationGraph(eligibilityCondition: string) {
+  const wait: WorkflowNode = {
+    ...actionNode("wait_1", true, "Wait"),
+    data: {
+      type: "action",
+      label: "Wait",
+      config: {
+        actionType: "Wait",
+        waitMode: "event",
+        waitFor: [{ event: "appointment.ready" }],
+        waitTimeout: "1h",
+      },
+    },
+  };
+  return createSerializedWorkflowGraph({
+    nodes: [
+      lifecycleNode(["before-node"], [], eligibilityCondition),
+      actionNode("first"),
+      wait,
+      actionNode("second"),
+    ],
+    edges: [
+      {
+        id: "lifecycle-first",
+        source: "lifecycle",
+        sourceHandle: "started",
+        target: "first",
+      },
+      { id: "first-wait", source: "first", target: "wait_1" },
+      { id: "wait-second", source: "wait_1", target: "second" },
     ],
   });
 }
@@ -472,6 +512,53 @@ describe("per-node Entity Eligibility", () => {
     expect(result.status).toBe("failed");
     expect(result.error).toBeUndefined();
     expect(runAction).not.toHaveBeenCalled();
+  });
+
+  it("keeps completed checkpoints across Migration and applies the target rule downstream", async () => {
+    const migratedCondition = condition.replace(
+      '"active"',
+      '"remindersEnabled"'
+    );
+    const store = createRecordingWorkflowStore();
+    const entities = entityPort([
+      { outcome: "eligible" },
+      { outcome: "eligible" },
+      { outcome: "eligible" },
+    ]);
+
+    const run = await driveWithReplay(
+      (runtime) => {
+        const migrated = store.callsOf("createWaitState").length > 0;
+        return executeTestWorkflow(
+          {
+            ...executionInput,
+            graph: migrationGraph(migrated ? migratedCondition : condition),
+            executionId: "exec_wait",
+            workflowVersionId: migrated ? "version_2" : "version_1",
+          },
+          runtime,
+          store,
+          actions,
+          entities
+        );
+      },
+      {
+        events: {
+          "wait-park-wait_1-0": waitMigrateSignal(),
+          "wait-park-wait_1-1": waitResumeSignal({}, "appointment.ready"),
+        },
+      }
+    );
+
+    expect(run.value.status).toBe("completed");
+    expect(entities.inputs).toEqual([
+      expect.objectContaining({ nodeId: "first", condition }),
+      expect.objectContaining({ nodeId: "wait_1", condition }),
+      expect.objectContaining({
+        nodeId: "second",
+        condition: migratedCondition,
+      }),
+    ]);
   });
 
   it("memoizes the decision without persisting Entity State", async () => {

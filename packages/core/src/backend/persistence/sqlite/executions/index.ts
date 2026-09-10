@@ -3,7 +3,7 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 import { partition } from "es-toolkit/array";
 import {
   IN_FLIGHT_EXECUTION_STATUSES,
-  type EntityEligibilityReason,
+  isEntityEligibilityReason,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { Concurrency } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import type {
@@ -38,14 +38,6 @@ import {
   sqliteExecution,
 } from "#src/backend/persistence/sqlite/executions/rows";
 
-function entityEligibilityReason(
-  value: unknown
-): EntityEligibilityReason | null {
-  return value === "entity_condition_not_met" || value === "entity_not_found"
-    ? value
-    : null;
-}
-
 function findAdmissionRefusal(
   database: SqliteReadExecutor,
   input: { workflowId: string; decisionId: string }
@@ -62,11 +54,12 @@ function findAdmissionRefusal(
     )
     .get()
     .pipe(
-      Effect.map((row) =>
-        entityEligibilityReason(
-          row ? optionalJsonObject(row.metadata, "metadata")?.reason : undefined
-        )
-      )
+      Effect.map((row) => {
+        const reason = row
+          ? optionalJsonObject(row.metadata, "metadata")?.reason
+          : undefined;
+        return isEntityEligibilityReason(reason) ? reason : null;
+      })
     );
 }
 

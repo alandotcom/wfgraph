@@ -30,6 +30,12 @@ export const ENTITY_ELIGIBILITY_REASONS = [
 export type EntityEligibilityReason =
   (typeof ENTITY_ELIGIBILITY_REASONS)[number];
 
+export function isEntityEligibilityReason(
+  value: unknown
+): value is EntityEligibilityReason {
+  return ENTITY_ELIGIBILITY_REASONS.some((reason) => reason === value);
+}
+
 /**
  * The statuses a run can still leave.
  *

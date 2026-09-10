@@ -30,19 +30,19 @@ Use `defineEntity` when Lifecycle decisions need fresh state from the host inste
 the Event payload. The host remains the system of record.
 
 ```ts
-const appointment = defineEntity({
-  type: "appointment",
-  label: "Appointment",
+const patient = defineEntity({
+  type: "patient",
+  label: "Patient",
   state: z.object({
-    status: z.enum(["scheduled", "completed", "canceled"]),
-    remindersEnabled: z.boolean(),
+    status: z.enum(["active", "inactive"]),
+    appointmentRemindersEnabled: z.boolean(),
   }),
   async resolve({ entityId }) {
-    const record = await appointments.findById(entityId);
+    const record = await patients.findById(entityId);
     return record
       ? {
           status: record.status,
-          remindersEnabled: record.remindersEnabled,
+          appointmentRemindersEnabled: record.appointmentRemindersEnabled,
         }
       : null;
   },
@@ -63,17 +63,20 @@ Give an Event one or more named bindings to reusable Entity definitions:
 const appointmentScheduled = defineEvent({
   name: "appointment.scheduled",
   label: "Appointment scheduled",
-  schema: z.object({ appointmentId: z.string() }),
+  schema: z.object({
+    appointmentId: z.string(),
+    patientId: z.string(),
+  }),
   entities: {
-    appointment: {
-      entity: appointment,
-      selectEntityId: (event) => event.appointmentId,
+    patient: {
+      entity: patient,
+      selectEntityId: (event) => event.patientId,
     },
   },
 });
 ```
 
-An Event may expose another binding, such as `patient`, beside `appointment`. The record key
+An Event may expose another binding, such as `clinic`, beside `patient`. The record key
 is the binding name shown in the Lifecycle panel. `selectEntityId` receives
 the validated Event value and must synchronously return a non-empty string. Different
 Events may select the same Entity type from different payload fields. Pass only the Events

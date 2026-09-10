@@ -12,6 +12,7 @@ import {
   selectedNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import { serializeConditionModel } from "@wfgraph/shared/conditions/conditions";
 import {
   emptyExtensionCatalog,
   type ExtensionCatalog,
@@ -44,6 +45,7 @@ function renderDetail(
     logs?: WorkflowRunDetailLogs;
     waits?: Parameters<typeof WorkflowRunDetail>[0]["waits"];
     events?: ExecutionEvent[];
+    exit?: Parameters<typeof WorkflowRunDetail>[0]["exit"];
     catalog?: ExtensionCatalog;
     nodes?: WorkflowNode[];
     selectedNodeId?: string;
@@ -67,6 +69,7 @@ function renderDetail(
             <WorkflowRunDetail
               events={extras?.events ?? []}
               execution={execution}
+              exit={extras?.exit ?? null}
               isCanceling={false}
               isResuming={false}
               logs={extras?.logs ?? []}
@@ -125,14 +128,57 @@ describe("WorkflowRunDetail", () => {
           ...emptyExtensionCatalog,
           entities: [
             {
-              type: "appointment",
-              label: "Appointment",
-              stateFields: [],
+              type: "patient",
+              label: "Patient",
+              stateFields: [
+                { path: "appointmentRemindersEnabled", type: "boolean" },
+              ],
               stateSchemaDigest: "state-v1",
             },
           ],
         },
         nodes: [
+          {
+            id: "lifecycle",
+            type: "lifecycle",
+            position: { x: 0, y: 0 },
+            data: {
+              label: "Lifecycle",
+              type: "lifecycle",
+              config: {
+                lifecycleRules: {
+                  startEvents: ["appointment.updated"],
+                  cancelEvents: [],
+                  concurrency: "unlimited",
+                  trackedEntity: {
+                    type: "patient",
+                    bindings: { "appointment.updated": "patient" },
+                  },
+                  entityEligibility: {
+                    checkpoints: ["before-node"],
+                    condition: serializeConditionModel({
+                      version: 2,
+                      groupLogic: "and",
+                      groups: [
+                        {
+                          id: "eligibility",
+                          logic: "and",
+                          conditions: [
+                            {
+                              id: "reminders-enabled",
+                              field: "appointmentRemindersEnabled",
+                              fieldType: "boolean",
+                              operator: "is_true",
+                            },
+                          ],
+                        },
+                      ],
+                    }),
+                  },
+                },
+              },
+            },
+          },
           {
             id: "send-reminder",
             type: "action",
@@ -144,6 +190,12 @@ describe("WorkflowRunDetail", () => {
             },
           },
         ],
+        exit: {
+          reason: "entity_condition_not_met",
+          entityType: "patient",
+          nodeId: "send-reminder",
+          checkedAt: new Date("2026-10-19T15:00:00.000Z"),
+        },
         events: [
           {
             id: "audit_exit",
@@ -151,7 +203,7 @@ describe("WorkflowRunDetail", () => {
             message: "Run exited because the Entity was ineligible",
             metadata: {
               reason: "entity_condition_not_met",
-              entityType: "appointment",
+              entityType: "patient",
               conditionId: "condition_digest",
               nodeId: "send-reminder",
               checkedAt: "2026-10-19T15:00:00.000Z",
@@ -166,12 +218,15 @@ describe("WorkflowRunDetail", () => {
 
     expect(
       view.getByText(
-        "Exited before “Send reminder” because the Appointment was no longer eligible."
+        "Exited before “Send reminder” because the Patient was no longer eligible."
       )
     ).toBeTruthy();
-    expect(view.getByText("condition_digest")).toBeTruthy();
+    expect(view.getByText("Eligible when")).toBeTruthy();
+    expect(view.getByText("appointmentRemindersEnabled")).toBeTruthy();
+    expect(view.getByText("is true")).toBeTruthy();
+    expect(view.getByText("Eligibility rule did not match")).toBeTruthy();
     expect(view.getByText("Prevented Send reminder")).toBeTruthy();
-    expect(view.getByText("condition_di")).toBeTruthy();
+    expect(view.queryByText("condition_digest")).toBeNull();
     expect(view.queryByText(/appt_secret|active=true/)).toBeNull();
   });
 

@@ -6,6 +6,8 @@ import type { MigrationMeta } from "drizzle-orm/migrator";
 import { sqliteMigrations } from "#src/backend/persistence/sqlite/generated-migrations";
 
 const MIGRATIONS_TABLE = "__wfgraph_sqlite_migrations";
+const ENTITY_TERMINATION_MIGRATION = "20260910085613_jittery_madripoor";
+const LEGACY_CANCEL_CLAIMS_TABLE = "__wfgraph_legacy_cancel_claims";
 const LEGACY_SCHEMA_FINGERPRINTS = new Map([
   [6, "77261cee4c909093d042849e5bbd650020c27546c6f2cc6bcc38504ae7c3a839"],
   [7, "e73822bda63d0602c7a357a6fcd7e603df1eabc26db4da2de723a260ced7f225"],
@@ -261,6 +263,60 @@ function violationKey(violation: ForeignKeyViolation): string {
   ]);
 }
 
+/**
+ * Holds legacy Cancel claim timestamps across the immutable Entity termination
+ * migration, whose generated table rebuild removed their old column.
+ */
+const preserveLegacyCancelClaims = Effect.fn("preserveLegacyCancelClaims")(
+  function* (
+    database: SqliteMigrationDatabase,
+    pending: readonly MigrationMeta[]
+  ) {
+    if (
+      !pending.some(
+        (migration) => migration.name === ENTITY_TERMINATION_MIGRATION
+      )
+    ) {
+      return false;
+    }
+
+    const columns = yield* database.all<{ name: string }>(
+      sql`select name from pragma_table_info('workflow_executions')`
+    );
+    if (!columns.some((column) => column.name === "cancel_requested_at")) {
+      return false;
+    }
+
+    yield* database.run(
+      sql.raw(`
+      create temporary table ${LEGACY_CANCEL_CLAIMS_TABLE} as
+      select id, cancel_requested_at
+      from workflow_executions
+      where cancel_requested_at is not null
+    `)
+    );
+    return true;
+  }
+);
+
+const restoreLegacyCancelClaims = Effect.fn("restoreLegacyCancelClaims")(
+  function* (database: SqliteMigrationDatabase) {
+    yield* database.run(
+      sql.raw(`
+      update workflow_executions
+      set termination_kind = 'cancel',
+          termination_requested_at = (
+            select cancel_requested_at
+            from ${LEGACY_CANCEL_CLAIMS_TABLE}
+            where ${LEGACY_CANCEL_CLAIMS_TABLE}.id = workflow_executions.id
+          )
+      where id in (select id from ${LEGACY_CANCEL_CLAIMS_TABLE})
+    `)
+    );
+    yield* database.run(sql.raw(`drop table ${LEGACY_CANCEL_CLAIMS_TABLE}`));
+  }
+);
+
 const adoptLegacySchema = Effect.fn("adoptLegacySqliteSchema")(function* (
   database: SqliteMigrationExecutor,
   migrations: readonly MigrationMeta[],
@@ -386,6 +442,10 @@ export const runSqliteMigrations = Effect.fn("runSqliteMigrations")(function* (
             transaction,
             migrations
           );
+          const preservedLegacyCancelClaims = yield* preserveLegacyCancelClaims(
+            transaction,
+            pending
+          );
           for (const migration of pending) {
             for (const statement of migration.sql) {
               yield* transaction.run(sql.raw(statement));
@@ -398,6 +458,9 @@ export const runSqliteMigrations = Effect.fn("runSqliteMigrations")(function* (
                 ${new Date().toISOString()}
               )
             `);
+          }
+          if (preservedLegacyCancelClaims) {
+            yield* restoreLegacyCancelClaims(transaction);
           }
 
           const newViolations = (yield* transaction.all<ForeignKeyViolation>(
