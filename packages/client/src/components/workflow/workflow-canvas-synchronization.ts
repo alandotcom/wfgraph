@@ -55,15 +55,19 @@ export function useSynchronizedCanvas({
   synchronizePresentation,
   viewportCorrection,
   correctViewport,
+  remeasureNodes,
+  nodeIds,
   currentWorkflowId,
   lifecycleNode,
   internalNode,
   fitGenerationRef,
 }: {
   presentation: unknown;
-  synchronizePresentation: () => void;
+  synchronizePresentation: () => boolean;
   viewportCorrection: unknown;
   correctViewport: () => void;
+  remeasureNodes: (nodeIds: string[]) => void;
+  nodeIds: string[];
   currentWorkflowId: string | null;
   lifecycleNode: WorkflowNode | null;
   internalNode: InternalLifecycleAnchor | null;
@@ -72,10 +76,23 @@ export function useSynchronizedCanvas({
   lifecycleAnchor: ReturnType<typeof synchronizedLifecycleAnchor>;
   fitViewKey: string | null;
 } {
-  useBeforePaint(presentation, synchronizePresentation);
+  const nodesNeedRemeasureRef = useRef(false);
+  useBeforePaint(presentation, () => {
+    const nodesChanged = synchronizePresentation();
+    nodesNeedRemeasureRef.current =
+      nodesNeedRemeasureRef.current || nodesChanged;
+  });
   useBeforePaint(viewportCorrection, () => {
     if (viewportCorrection !== null) {
       correctViewport();
+    }
+  });
+  // React Flow can retain a mounted node while replacing its internal record.
+  // Re-measure after the replacement so retained handles regain their bounds.
+  useAfterPaint(presentation, () => {
+    if (nodesNeedRemeasureRef.current) {
+      nodesNeedRemeasureRef.current = false;
+      remeasureNodes(nodeIds);
     }
   });
 
@@ -243,11 +260,13 @@ export function synchronizeCanvasGraph({
   currentEdges: WorkflowEdge[];
   setNodes: (nodes: WorkflowNode[]) => void;
   setEdges: (edges: WorkflowEdge[]) => void;
-}): void {
-  if (currentNodes !== nodes) {
+}): boolean {
+  const nodesChanged = currentNodes !== nodes;
+  if (nodesChanged) {
     setNodes(nodes);
   }
   if (currentEdges !== edges) {
     setEdges(edges);
   }
+  return nodesChanged;
 }

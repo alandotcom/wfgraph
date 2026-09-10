@@ -9,6 +9,7 @@ import {
   useInternalNode,
   useReactFlow,
   useStoreApi,
+  useUpdateNodeInternals,
   type Connection as XYFlowConnection,
   type Edge as XYFlowEdge,
 } from "@xyflow/react";
@@ -205,9 +206,10 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
     [currentWorkflowId, workspaceView, resolvedWorkspacePresentation]
   );
   const reactFlowStore = useStoreApi<WorkflowNode, WorkflowEdge>();
+  const updateNodeInternals = useUpdateNodeInternals();
   const synchronizeGraph = () => {
     const state = reactFlowStore.getState();
-    synchronizeCanvasGraph({
+    return synchronizeCanvasGraph({
       nodes: accessibleGraph.nodes,
       edges: accessibleGraph.edges,
       currentNodes: state.nodes,
@@ -284,6 +286,8 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
     synchronizePresentation: synchronizeGraph,
     viewportCorrection,
     correctViewport,
+    remeasureNodes: updateNodeInternals,
+    nodeIds: accessibleGraph.nodes.map((node) => node.id),
     currentWorkflowId,
     lifecycleNode: lifecycleNode ?? null,
     internalNode: internalLifecycleNode
@@ -334,7 +338,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
 
   const closeContextMenu = useCallback(() => {
     setContextMenuState(null);
-  }, []);
+  }, [setContextMenuState]);
 
   // A missing measurement must not strand the canvas invisibly. Normal loads
   // become ready in the anchor pass below; this guard handles a node that React
