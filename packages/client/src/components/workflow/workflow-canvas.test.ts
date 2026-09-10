@@ -73,7 +73,7 @@ describe("synchronizeCanvasGraph", () => {
     let currentNodes = outgoingNodes;
     let currentEdges = outgoingEdges;
 
-    synchronizeCanvasGraph({
+    const nodesChanged = synchronizeCanvasGraph({
       nodes: incomingNodes,
       edges: incomingEdges,
       currentNodes,
@@ -86,8 +86,28 @@ describe("synchronizeCanvasGraph", () => {
       },
     });
 
+    expect(nodesChanged).toBe(true);
     expect(currentNodes).toBe(incomingNodes);
     expect(currentEdges).toBe(incomingEdges);
+  });
+
+  it("does not report a node replacement for an edge-only update", () => {
+    const nodes = [lifecycleNode(0)];
+    const outgoingEdges: WorkflowEdge[] = [];
+    const incomingEdges: WorkflowEdge[] = [
+      { id: "edge", source: "lifecycle", target: "action" },
+    ];
+
+    expect(
+      synchronizeCanvasGraph({
+        nodes,
+        edges: incomingEdges,
+        currentNodes: nodes,
+        currentEdges: outgoingEdges,
+        setNodes: vi.fn(),
+        setEdges: vi.fn(),
+      })
+    ).toBe(false);
   });
 });
 
@@ -107,9 +127,12 @@ describe("useSynchronizedCanvas", () => {
           presentation,
           synchronizePresentation: () => {
             setViewport({ x: -lifecycle.position.x, y: 0, zoom: 1 });
+            return true;
           },
           viewportCorrection: draftPresentation,
           correctViewport: setViewport,
+          remeasureNodes: () => {},
+          nodeIds: [lifecycle.id],
           currentWorkflowId: "workflow_1",
           lifecycleNode: lifecycle,
           internalNode: internalNode(lifecycle),
@@ -129,10 +152,66 @@ describe("useSynchronizedCanvas", () => {
     expect(setViewport).not.toHaveBeenCalled();
   });
 
+  it("remeasures current node handles after synchronizing a replacement", async () => {
+    vi.useFakeTimers();
+    try {
+      const runPresentation = {};
+      const draftPresentation = {};
+      const calls: string[] = [];
+      let nodesChanged = true;
+      const synchronizePresentation = vi.fn(() => {
+        calls.push("synchronize");
+        return nodesChanged;
+      });
+      const remeasureNodes = vi.fn((nodeIds: string[]) => {
+        calls.push(`remeasure:${nodeIds.join(",")}`);
+      });
+      const lifecycle = lifecycleNode(100);
+      const action = { ...lifecycleNode(200), id: "action" };
+      type Props = { presentation: unknown };
+      const { rerender } = renderHook(
+        ({ presentation }: Props) =>
+          useSynchronizedCanvas({
+            presentation,
+            synchronizePresentation,
+            viewportCorrection: null,
+            correctViewport: () => {},
+            remeasureNodes,
+            nodeIds: [lifecycle.id, action.id],
+            currentWorkflowId: "workflow_1",
+            lifecycleNode: lifecycle,
+            internalNode: {
+              userNode: lifecycle,
+              position: lifecycle.position,
+              width: 192,
+            },
+            fitGenerationRef: { current: 0 },
+          }),
+        { initialProps: { presentation: runPresentation } as Props }
+      );
+      await act(() => vi.runAllTimersAsync());
+      calls.length = 0;
+
+      rerender({ presentation: null });
+      nodesChanged = false;
+      rerender({ presentation: draftPresentation });
+
+      expect(calls).toEqual(["synchronize", "synchronize"]);
+      await act(() => vi.runAllTimersAsync());
+      expect(calls).toEqual([
+        "synchronize",
+        "synchronize",
+        "remeasure:lifecycle,action",
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("synchronizes Draft edge edits without correcting the viewport, then corrects a resolved workspace switch", () => {
     const draftLifecycle = lifecycleNode(100);
     const runLifecycle = lifecycleNode(800);
-    const synchronizePresentation = vi.fn();
+    const synchronizePresentation = vi.fn(() => true);
     const setViewport = vi.fn();
     const initialDraftEdges: WorkflowEdge[] = [];
     const addedDraftEdge: WorkflowEdge[] = [
@@ -183,6 +262,8 @@ describe("useSynchronizedCanvas", () => {
                 },
               })
             ),
+          remeasureNodes: () => {},
+          nodeIds: [lifecycle.id],
           currentWorkflowId: "workflow_1",
           lifecycleNode: lifecycle,
           internalNode: {
@@ -232,7 +313,7 @@ describe("useSynchronizedCanvas", () => {
 describe("canvasSynchronizationKey", () => {
   it("synchronizes again when same-workflow hydration replaces the Draft edges", () => {
     const lifecycle = lifecycleNode(100);
-    const synchronizePresentation = vi.fn();
+    const synchronizePresentation = vi.fn(() => true);
     const runGraph = {
       nodes: [lifecycleNode(500)],
       edges: [{ id: "run-edge", source: "lifecycle", target: "run-action" }],
@@ -258,6 +339,8 @@ describe("canvasSynchronizationKey", () => {
           synchronizePresentation,
           viewportCorrection: null,
           correctViewport: () => {},
+          remeasureNodes: () => {},
+          nodeIds: [lifecycle.id],
           currentWorkflowId: "workflow_1",
           lifecycleNode: lifecycle,
           internalNode: {
@@ -424,9 +507,11 @@ describe("useSynchronizedCanvas lifecycle anchor", () => {
       ({ displayedNode, installedNode }) =>
         useSynchronizedCanvas({
           presentation: {},
-          synchronizePresentation: () => {},
+          synchronizePresentation: () => false,
           viewportCorrection: null,
           correctViewport: () => {},
+          remeasureNodes: () => {},
+          nodeIds: [displayedNode.id],
           currentWorkflowId: "workflow_1",
           lifecycleNode: displayedNode,
           internalNode: installedNode,
