@@ -16,10 +16,9 @@ import {
 } from "#src/lib/rpc-fetch-test-support";
 import { mutationErrorToast } from "#src/lib/query-client";
 import { orpcQuery } from "#src/lib/rpc-query";
-import {
-  MIGRATION_EXECUTION_IDS_LIMIT,
-  type WorkflowMigrationPayload,
-  type WorkflowMigrationPreviewPayload,
+import type {
+  WorkflowMigrationPayload,
+  WorkflowMigrationPreviewPayload,
 } from "@wfgraph/shared/graph/migration-contracts";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 
@@ -59,13 +58,13 @@ const preview: WorkflowMigrationPreviewPayload = {
   alreadyCurrentCount: 4,
 };
 
-const batchExecutionIds = Array.from(
-  { length: MIGRATION_EXECUTION_IDS_LIMIT + 1 },
+const largeExecutionIds = Array.from(
+  { length: 501 },
   (_unused, index) => `run_${index}`
 );
-const batchPreview: WorkflowMigrationPreviewPayload = {
+const largePreview: WorkflowMigrationPreviewPayload = {
   ...preview,
-  eligible: batchExecutionIds.map((executionId) => ({
+  eligible: largeExecutionIds.map((executionId) => ({
     executionId,
     fromVersionNumber: 7,
     parkedNodeIds: ["wait_1"],
@@ -75,14 +74,12 @@ const batchPreview: WorkflowMigrationPreviewPayload = {
 /**
  * Answers the two procedures the dialog calls: the preflight report a case
  * hands in, and a migrate call that moves every id it was sent. `migrateRequests`
- * collects the body of each migrate call.
+ * collects the body of the migrate call.
  */
 function stubRpc(options: {
   report: WorkflowMigrationPreviewPayload;
   migrateRequests?: JsonObject[];
-  failMigrateCall?: number;
 }) {
-  let migrateCall = 0;
   vi.stubGlobal(
     "fetch",
     async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -92,14 +89,6 @@ function stubRpc(options: {
       }
       const body = await parseRpcRequestInput(init);
       options.migrateRequests?.push(body);
-      migrateCall += 1;
-      if (migrateCall === options.failMigrateCall) {
-        return rpcErrorResponse({
-          code: "INTERNAL_SERVER_ERROR",
-          status: 500,
-          message: "Migration failed",
-        });
-      }
       const executionIds = Array.isArray(body.executionIds)
         ? (body.executionIds as string[])
         : [];
@@ -262,9 +251,9 @@ describe("MigrationDialog", () => {
     });
   });
 
-  it("splits more than 500 run ids across sequential migrate calls", async () => {
+  it("sends more than 500 run ids in one migrate call", async () => {
     const migrateRequests: JsonObject[] = [];
-    stubRpc({ report: batchPreview, migrateRequests });
+    stubRpc({ report: largePreview, migrateRequests });
 
     const view = renderDialog();
     await waitFor(() =>
@@ -274,56 +263,7 @@ describe("MigrationDialog", () => {
     );
     fireEvent.click(view.getByRole("button", { name: "Migrate 501 runs" }));
 
-    await waitFor(() => expect(migrateRequests.length).toBe(2));
-    expect(
-      migrateRequests.map(
-        (request) => (request.executionIds as string[]).length
-      )
-    ).toEqual([MIGRATION_EXECUTION_IDS_LIMIT, 1]);
-    expect(migrateRequests[1]?.executionIds).toEqual([
-      `run_${MIGRATION_EXECUTION_IDS_LIMIT}`,
-    ]);
-  });
-
-  it("refreshes run history and reports completed work when a later batch fails", async () => {
-    const infoToast = vi.spyOn(toast, "info").mockImplementation(() => "");
-    const errorToast = vi.spyOn(toast, "error").mockImplementation(() => "");
-    const migrateRequests: JsonObject[] = [];
-    stubRpc({
-      report: batchPreview,
-      migrateRequests,
-      failMigrateCall: 2,
-    });
-    const view = renderDialog();
-    const runHistoryKey = orpcQuery.workflow.getExecutions.queryKey({
-      input: { workflowId: "workflow_1" },
-    });
-    view.queryClient.setQueryData(runHistoryKey, {
-      items: [],
-      supersededCount: 0,
-      refusedStarts: [],
-      cancelNotDelivered: [],
-    });
-
-    fireEvent.click(
-      await view.findByRole("button", { name: "Migrate 501 runs" })
-    );
-
-    await waitFor(() =>
-      expect(errorToast).toHaveBeenCalledWith("Unable to migrate the runs")
-    );
-    expect(migrateRequests.length).toBe(2);
-    expect(infoToast).toHaveBeenCalledWith(
-      "500 runs moved before the migration failed"
-    );
-    expect(infoToast.mock.invocationCallOrder[0]).toBeLessThan(
-      errorToast.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY
-    );
-    expect(
-      view.queryClient.getQueryCache().find({
-        queryKey: runHistoryKey,
-        exact: true,
-      })?.state.isInvalidated
-    ).toBe(true);
+    await waitFor(() => expect(migrateRequests.length).toBe(1));
+    expect(migrateRequests[0]?.executionIds).toEqual(largeExecutionIds);
   });
 });

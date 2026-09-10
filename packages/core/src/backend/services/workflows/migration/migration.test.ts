@@ -954,6 +954,42 @@ describe("migrateExecutions", () => {
       })
     );
 
+    it.effect(
+      "processes more than one persistence-sized batch in one call",
+      () =>
+        Effect.gen(function* () {
+          const executions = Array.from({ length: 501 }, (_, index) =>
+            inFlightRow({ id: `exec_${index}` })
+          );
+          const waitStates = executions.map((execution, index) =>
+            waitRow({
+              id: `wait_row_${index}`,
+              executionId: execution.id,
+            })
+          );
+          const seams = makeMigrationSeams({ executions, waitStates });
+
+          const result = yield* migrateExecutions({
+            workflowId: WORKFLOW_ID,
+            targetVersionId: TARGET_VERSION_ID,
+            executionIds: executions.map((execution) => execution.id),
+          }).pipe(Effect.provide(seams.layer));
+
+          assert.strictEqual(result.outcomes.length, 501);
+          assert.strictEqual(
+            result.outcomes.filter((outcome) => outcome.status === "migrated")
+              .length,
+            501
+          );
+          assert.deepStrictEqual(
+            seams.calls.waitLookups.map((ids) => ids.length),
+            [500, 1]
+          );
+          assert.strictEqual(seams.calls.repins.length, 501);
+          assert.strictEqual(seams.calls.signals.length, 501);
+        })
+    );
+
     it.effect("sends no token for a delay park", () =>
       Effect.gen(function* () {
         const seams = makeMigrationSeams({

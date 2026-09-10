@@ -1,7 +1,6 @@
 import { Result, Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import {
-  MIGRATION_EXECUTION_IDS_LIMIT,
   workflowMigrationInputSchema,
   workflowMigrationOutcomeSchema,
   workflowMigrationPreviewPayloadSchema,
@@ -117,7 +116,7 @@ describe("workflow migration contracts", () => {
     ).toBe(true);
   });
 
-  it("holds the requested run ids between one and the batch limit", () => {
+  it("requires at least one run id without exposing a persistence batch limit", () => {
     const decode = Schema.decodeUnknownResult(
       workflowMigrationInputSchema,
       rejectUnknownKeys
@@ -132,11 +131,6 @@ describe("workflow migration contracts", () => {
     });
 
     expect(Result.isFailure(decode(request(0)))).toBe(true);
-    expect(
-      Result.isSuccess(decode(request(MIGRATION_EXECUTION_IDS_LIMIT)))
-    ).toBe(true);
-    expect(
-      Result.isFailure(decode(request(MIGRATION_EXECUTION_IDS_LIMIT + 1)))
-    ).toBe(true);
+    expect(Result.isSuccess(decode(request(501)))).toBe(true);
   });
 });

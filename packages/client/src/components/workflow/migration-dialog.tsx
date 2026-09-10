@@ -6,14 +6,13 @@
  * a run that woke since the last look is no longer eligible. The dialog stays
  * mounted while it is closed, so the report of the previous open is still in
  * the cache when it reopens; the report and the confirm button are therefore
- * shown only after a successful refetch. The confirm sends the ids the preview
- * called eligible in contract-sized batches, and the server classifies each run
- * a second time before it moves. Completed batches refresh run history
- * and remain visible to the user when a later batch fails.
+ * shown only after a successful refetch. The confirm sends every id the preview
+ * called eligible in one request. The server owns the persistence-sized chunks
+ * used while it reclassifies those runs before moving them.
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { chunk, countBy } from "es-toolkit/array";
+import { countBy } from "es-toolkit/array";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "#src/components/ui/button";
@@ -32,11 +31,7 @@ import {
   migrationRefusalSentence,
   runCountLabel,
 } from "#src/lib/workflow-migration-labels";
-import {
-  MIGRATION_EXECUTION_IDS_LIMIT,
-  type WorkflowMigrationInput,
-  type WorkflowMigrationPayload,
-} from "@wfgraph/shared/graph/migration-contracts";
+import type { WorkflowMigrationPayload } from "@wfgraph/shared/graph/migration-contracts";
 
 /**
  * How many characters of a run id name a run on screen.
@@ -45,49 +40,6 @@ import {
  * a run refused here is recognisable from the run pinned to the canvas.
  */
 const RUN_ID_PREFIX_LENGTH = 8;
-
-/**
- * Sends the run ids in batches the migrate input accepts, one batch at a time,
- * and answers the outcomes of every batch under the first batch's target
- * version. When a later batch fails, `onPartialFailure` receives every outcome
- * that committed before the original failure is rethrown.
- */
-async function migrateInBatches(
-  input: WorkflowMigrationInput,
-  send: (batch: WorkflowMigrationInput) => Promise<WorkflowMigrationPayload>,
-  onPartialFailure: (payload: WorkflowMigrationPayload) => Promise<void>
-): Promise<WorkflowMigrationPayload> {
-  const payloads = await chunk(
-    input.executionIds,
-    MIGRATION_EXECUTION_IDS_LIMIT
-  ).reduce<Promise<WorkflowMigrationPayload[]>>(
-    async (pendingPayloads, executionIds) => {
-      const completedPayloads = await pendingPayloads;
-      try {
-        const payload = await send({ ...input, executionIds });
-        return [...completedPayloads, payload];
-      } catch (error) {
-        const first = completedPayloads[0];
-        if (first) {
-          await onPartialFailure({
-            ...first,
-            outcomes: completedPayloads.flatMap((payload) => payload.outcomes),
-          });
-        }
-        throw error;
-      }
-    },
-    Promise.resolve([])
-  );
-  const first = payloads[0];
-  if (!first) {
-    throw new Error("A migration needs at least one run id.");
-  }
-  return {
-    ...first,
-    outcomes: payloads.flatMap((payload) => payload.outcomes),
-  };
-}
 
 /** How many of a migrate call's outcomes moved, and how many did not. */
 function migrationOutcomeCounts(payload: WorkflowMigrationPayload): {
@@ -129,24 +81,7 @@ export function MigrationDialog({
     },
     meta: { errorMessage: "Unable to migrate the runs" },
   });
-  const sendBatch = migrateOptions.mutationFn;
-  const migrate = useMutation({
-    ...migrateOptions,
-    mutationFn: (input: WorkflowMigrationInput, context) =>
-      sendBatch
-        ? migrateInBatches(
-            input,
-            (batch) => sendBatch(batch, context),
-            async (payload) => {
-              const { migrated } = migrationOutcomeCounts(payload);
-              await refreshRunHistory(queryClient);
-              toast.info(
-                `${runCountLabel(migrated)} moved before the migration failed`
-              );
-            }
-          )
-        : Promise.reject(new Error("The migrate procedure carries no call.")),
-  });
+  const migrate = useMutation(migrateOptions);
 
   // The report of the previous open survives in the cache, so it is withheld
   // until the fresh classification lands.

@@ -60,9 +60,6 @@ export const migrationOutcomeRefusalReasonSchema = Schema.Literals(
   MIGRATION_OUTCOME_REFUSAL_REASONS
 );
 
-/** How many runs one migrate call may name. */
-export const MIGRATION_EXECUTION_IDS_LIMIT = 500;
-
 export const workflowMigrationPreviewInputSchema = Schema.Struct({
   workflowId: NonEmptyTrimmedString,
   /** Defaults to the workflow's current published version. */
@@ -97,10 +94,7 @@ export const workflowMigrationPreviewPayloadSchema = Schema.Struct({
 export const workflowMigrationInputSchema = Schema.Struct({
   workflowId: NonEmptyTrimmedString,
   targetVersionId: NonEmptyTrimmedString,
-  executionIds: listOf(NonEmptyTrimmedString).check(
-    Schema.isMinLength(1),
-    Schema.isMaxLength(MIGRATION_EXECUTION_IDS_LIMIT)
-  ),
+  executionIds: listOf(NonEmptyTrimmedString).check(Schema.isMinLength(1)),
 });
 
 /**
