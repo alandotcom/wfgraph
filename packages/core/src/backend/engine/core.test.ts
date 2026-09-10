@@ -762,10 +762,7 @@ describe("run persistence through the store port", () => {
     ).toContain("run_failed");
   });
 
-  /**
-   * A runtime that refuses the terminal step, which is what puts a run on the
-   * fatal path where `recordRunFailed` writes.
-   */
+  /** A runtime that exhausts retries for one terminal durable step. */
   function runtimeRefusingTerminalStep() {
     const runtime = createInMemoryWorkflowRuntime();
     return {
@@ -815,42 +812,22 @@ describe("run persistence through the store port", () => {
     ).not.toContain("run_completed");
   });
 
-  // A superseded run reaches this path, and its row stays `superseded` because
-  // `completeRun` refuses the write. Announcing the failure anyway would put a
-  // last word on the timeline that contradicts the row.
-  it("announces a fatal failure only when the terminal write owned it", async () => {
-    await executeWorkflow(
-      {
-        graph: createLifecycleToActionGraph(),
-        executionId: "exec_displaced",
-        workflowId: "workflow_displaced",
-      },
-      runtimeRefusingTerminalStep(),
-      storeClaimingNothing(),
-      actions
-    );
+  it("lets a refused completion step escape for durable retry", async () => {
+    await expect(
+      executeWorkflow(
+        {
+          graph: createLifecycleToActionGraph(),
+          executionId: "exec_retry_completion",
+          workflowId: "workflow_retry_completion",
+        },
+        runtimeRefusingTerminalStep(),
+        store,
+        actions
+      )
+    ).rejects.toThrow("terminal write refused");
 
-    expect(store.callsOf("completeRun")).toHaveLength(1);
-    expect(
-      store.callsOf("recordAuditEvent").map((call) => call.eventType)
-    ).not.toContain("run_failed");
-  });
-
-  it("announces a fatal failure that did own the terminal write", async () => {
-    await executeWorkflow(
-      {
-        graph: createLifecycleToActionGraph(),
-        executionId: "exec_fatal",
-        workflowId: "workflow_fatal",
-      },
-      runtimeRefusingTerminalStep(),
-      store,
-      actions
-    );
-
-    expect(
-      store.callsOf("recordAuditEvent").map((call) => call.eventType)
-    ).toContain("run_failed");
+    expect(store.callsOf("completeRun")).toHaveLength(0);
+    expect(store.callsOf("recordAuditEvent")).toHaveLength(0);
   });
 });
 

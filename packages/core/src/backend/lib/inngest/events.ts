@@ -86,6 +86,8 @@ export const workflowBranchInputSchema = Schema.Struct({
    * rows cannot answer it: a node that halted its branch has an output too.
    */
   releasedNodeIds: Schema.Array(NonEmptyTrimmedString),
+  /** Wait entries of the parent branch invocations, nearest parent last. */
+  ancestorEntryNodeIds: Schema.optional(Schema.Array(NonEmptyTrimmedString)),
   [INNGEST_META_KEY]: Schema.optional(jsonObjectSchema),
 });
 
@@ -114,7 +116,7 @@ export const workflowBranchKillRequested = eventType(
         executionId: NonEmptyTrimmedString,
         workflowId: NonEmptyTrimmedString,
         reason: Schema.String,
-        excludedEntryNodeId: Schema.optionalKey(NonEmptyTrimmedString),
+        excludedEntryNodeIds: Schema.Array(NonEmptyTrimmedString),
       }),
       rejectUnknownKeys
     ),

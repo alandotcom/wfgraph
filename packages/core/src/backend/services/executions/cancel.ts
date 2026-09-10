@@ -49,7 +49,9 @@ export const postExecutionCancel = Effect.fn("wfgraph.execution.cancel")(
         (status) => status === execution.status
       );
 
-    if (!isInFlight) {
+    // A canceled row can be a half-finished earlier request whose Inngest signal
+    // failed. Let the operation retry its signal, wait cleanup, and final audit.
+    if (!isInFlight && execution?.status !== "canceled") {
       yield* logger.warn("Execution is not in flight and cannot be cancelled");
       yield* annotateServiceSpan({ outcome: "already_finished" });
       return yield* new Conflict({
@@ -66,9 +68,9 @@ export const postExecutionCancel = Effect.fn("wfgraph.execution.cancel")(
       message: "Manual cancellation requested",
     });
 
-    // The one run-ender a person reaches: the signal, the row behind its
-    // compare-and-set, the wait rows (whatever exist -- a run standing on any
-    // other node carries none), and the timeline entry are one thing. A Cancel
+    // The one run-ender a person reaches: the row behind its compare-and-set,
+    // the signal, the wait rows (whatever exist -- a run standing on any other
+    // node carries none), and the timeline entry are one thing. A Cancel
     // Event takes the other path, flagging the run for its Canceled outlet
     // rather than ending it (`lifecycle/cancel.ts`).
     const ended = yield* cancelInFlightRuns({

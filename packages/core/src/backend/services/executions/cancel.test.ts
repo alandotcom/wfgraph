@@ -140,6 +140,67 @@ describe("postExecutionCancel", () => {
     })
   );
 
+  it.effect("retries a cancel signal after its terminal write succeeded", () =>
+    Effect.gen(function* () {
+      findStatusById
+        .mockImplementationOnce(() =>
+          Effect.succeed({ id: "exec_1", status: "running" })
+        )
+        .mockImplementationOnce(() =>
+          Effect.succeed({ id: "exec_1", status: "canceled" })
+        );
+      listWaitingStates.mockImplementation(() =>
+        Effect.succeed([createWaitState()])
+      );
+      endInFlight
+        .mockImplementationOnce(() =>
+          Effect.succeed({
+            executionId: "exec_1",
+            status: "canceled",
+            claim: null,
+            didWrite: true,
+          })
+        )
+        .mockImplementationOnce(() =>
+          Effect.succeed({
+            executionId: "exec_1",
+            status: "canceled",
+            claim: null,
+            didWrite: false,
+          })
+        );
+      sendCancelRequested
+        .mockImplementationOnce(() =>
+          Effect.fail(new InngestError({ cause: "no route" }))
+        )
+        .mockImplementationOnce(() => Effect.void);
+
+      const firstFailure = yield* postExecutionCancel("exec_1").pipe(
+        Effect.provide(services),
+        Effect.flip
+      );
+      const retried = yield* postExecutionCancel("exec_1").pipe(
+        Effect.provide(services)
+      );
+
+      assert.strictEqual(firstFailure._tag, "InternalFailure");
+      assert.deepStrictEqual(retried, {
+        success: true,
+        status: "canceled",
+        cancelledWaitStates: 1,
+      });
+      assert.strictEqual(endInFlight.mock.calls.length, 2);
+      assert.strictEqual(sendCancelRequested.mock.calls.length, 2);
+      assert.deepStrictEqual(cancelWaits.mock.calls, [[[]], [["wait_1"]]]);
+      assert.strictEqual(
+        recordAuditEvent.mock.calls.filter(
+          ([event]) => event.eventType === "run_cancelled"
+        ).length,
+        1
+      );
+    })
+  );
+
   it.effect("refuses a run that already reached a terminal status", () =>
     Effect.gen(function* () {
       findStatusById.mockImplementation(() =>

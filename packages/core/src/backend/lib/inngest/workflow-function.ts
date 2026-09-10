@@ -183,6 +183,10 @@ function createDurableRuntime(input: {
             executionId: data.executionId,
             entryNodeId,
             releasedNodeIds: [...releasedNodeIds],
+            ancestorEntryNodeIds:
+              "entryNodeId" in data
+                ? [...data.ancestorEntryNodeIds, data.entryNodeId]
+                : [],
           },
         })
       ),
@@ -450,6 +454,7 @@ async function workflowBranchRequestedHandler({
     ...persisted,
     entryNodeId: event.data.entryNodeId,
     releasedNodeIds: event.data.releasedNodeIds,
+    ancestorEntryNodeIds: event.data.ancestorEntryNodeIds ?? [],
   };
 
   await writeRunMetadata({ step, write, data });
@@ -566,6 +571,7 @@ export function createWorkflowRunFunction(
             executionId: data.executionId,
             workflowId: data.workflowId,
             reason: "entity-eligibility-exit",
+            excludedEntryNodeIds: [],
           });
         },
       })
@@ -598,7 +604,7 @@ export function createWorkflowBranchFunction(
       cancelOn: [
         {
           event: workflowBranchKillRequested,
-          if: "async.data.executionId == event.data.executionId && (!event.data.excludedEntryNodeId || async.data.entryNodeId != event.data.excludedEntryNodeId)",
+          if: "async.data.executionId == event.data.executionId && !async.data.excludedEntryNodeIds.exists(id, id == event.data.entryNodeId)",
         },
         {
           event: workflowRunCancelRequested,
@@ -620,8 +626,10 @@ export function createWorkflowBranchFunction(
             executionId: data.executionId,
             workflowId: data.workflowId,
             reason: "entity-eligibility-exit",
-            excludedEntryNodeId:
-              "entryNodeId" in data ? data.entryNodeId : undefined,
+            excludedEntryNodeIds:
+              "entryNodeId" in data
+                ? [...data.ancestorEntryNodeIds, data.entryNodeId]
+                : [],
           });
         },
       })

@@ -12,6 +12,7 @@ import type {
 } from "#src/backend/engine/store";
 import { Cause, Effect } from "effect";
 import { type EngineFailure } from "#src/backend/engine/engine-failure";
+import type { DatabaseError } from "#src/backend/lib/effect/database";
 import type {
   EntityEligibilityReason,
   WorkflowExecutionStatus,
@@ -115,7 +116,7 @@ function claimedStatus(
 function finalizeRun(input: {
   store: WorkflowStore;
   run: CompleteRunInput;
-}): Effect.Effect<ExecutionTerminationState | null> {
+}): Effect.Effect<ExecutionTerminationState | null, DatabaseError> {
   return Effect.gen(function* () {
     const first = yield* input.store.completeRun(input.run).pipe(
       Effect.catchTag("DatabaseError", (error) =>
@@ -143,14 +144,13 @@ function finalizeRun(input: {
         ? { ...input.run, status, failure: undefined }
         : { ...input.run, status };
     return yield* input.store.completeRun(claimedRun).pipe(
-      Effect.catchTag("DatabaseError", (error) =>
+      Effect.tapError((error) =>
         Effect.logWarning("Claimed terminal run record not written").pipe(
           Effect.annotateLogs({
             executionId: input.run.executionId,
             status,
             error,
-          }),
-          Effect.as(first)
+          })
         )
       )
     );
@@ -194,10 +194,13 @@ export function recordRunCompleted(input: {
   resultCount: number;
   runMode: "live" | "test";
   exitContext?: RunExitContext | undefined;
-}): Effect.Effect<{
-  status: WorkflowExecutionStatus;
-  exit?: RunExitOutcome | undefined;
-}> {
+}): Effect.Effect<
+  {
+    status: WorkflowExecutionStatus;
+    exit?: RunExitOutcome | undefined;
+  },
+  DatabaseError
+> {
   return Effect.gen(function* () {
     const state = yield* finalizeRun({
       store: input.store,
@@ -249,10 +252,13 @@ export function recordRunFailed(input: {
   failure: EngineFailure;
   runMode: "live" | "test";
   exitContext?: RunExitContext | undefined;
-}): Effect.Effect<{
-  status: WorkflowExecutionStatus;
-  exit?: RunExitOutcome | undefined;
-}> {
+}): Effect.Effect<
+  {
+    status: WorkflowExecutionStatus;
+    exit?: RunExitOutcome | undefined;
+  },
+  DatabaseError
+> {
   return Effect.gen(function* () {
     const state = yield* finalizeRun({
       store: input.store,

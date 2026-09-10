@@ -106,6 +106,8 @@ export type WorkflowExecutionInput = {
 export type WorkflowBranchInput = WorkflowExecutionInput & {
   entryNodeId: string;
   releasedNodeIds: readonly string[];
+  /** Wait entries of the durable branch invocations waiting on this branch. */
+  ancestorEntryNodeIds: readonly string[];
 };
 
 /** What one call of the engine builds before it can execute a node. */
@@ -169,11 +171,10 @@ function prepareRun(
 
   const traversal = new Traversal(nodes, edges);
   const lifecycleNodes = traversal.lifecycleNodes;
-  const eligibility = lifecycleNodes
-    .map((node) => readLifecycleRules(node.data.config)?.entityEligibility)
-    .find((candidate) => candidate?.checkpoints.includes("before-node"));
-
-  const entityEligibility = eligibility
+  const eligibility = readLifecycleRules(
+    lifecycleNodes[0]?.data.config
+  )?.entityEligibility;
+  const entityEligibility = eligibility?.checkpoints.includes("before-node")
     ? {
         entityType: input.entityType ?? "",
         entityId: input.entityId ?? "",
@@ -375,51 +376,22 @@ function executeWorkflowInner(
             ? "completed"
             : "failed";
 
-      // Wrapped as a durable step so the terminal record and its audit event are
-      // written exactly once, even though the body replays after every wait.
-      const recorded = yield* runDurable(
-        runtime,
-        { id: "workflow-run-completed", name: "Run completed" },
-        recordRunCompleted({
-          store,
-          executionId,
-          workflowId,
-          status: terminalStatus,
-          output: finalOutput,
-          failure: traversal.firstFailure(),
-          resultCount: traversal.resultCount,
-          runMode,
-          exitContext,
-        })
-      );
-
-      const attemptMs = Date.now() - attemptStartTime;
-      yield* Effect.logInfo(`Run ${recorded.status} in ${attemptMs}ms`).pipe(
-        Effect.annotateLogs({
-          outcome: {
-            status: recorded.status,
-            success: recorded.status !== "failed",
-            nodes: traversal.resultCount,
-            ms: attemptMs,
-          },
-        })
-      );
-
-      return {
-        status: recorded.status,
-        success: recorded.status !== "failed",
-        results: traversal.results,
-        outputs: traversal.outputs,
-        exit: recorded.exit,
-      };
+      return { terminalStatus, finalOutput, exitContext };
     });
 
-    return Effect.catchCause(execute, (cause) =>
-      Effect.gen(function* () {
-        const failure = failureFromCause(cause);
+    return Effect.gen(function* () {
+      const outcome = yield* execute.pipe(
+        Effect.map((value) => ({ kind: "completed" as const, value })),
+        Effect.catchCause((cause) =>
+          Effect.succeed({ kind: "failed" as const, cause })
+        )
+      );
+
+      if (outcome.kind === "failed") {
+        const failure = failureFromCause(outcome.cause);
         yield* Effect.logError("Fatal error during workflow execution").pipe(
           Effect.annotateLogs({
-            error: { kind: failure.kind, cause: Cause.squash(cause) },
+            error: { kind: failure.kind, cause: Cause.squash(outcome.cause) },
           })
         );
 
@@ -438,7 +410,9 @@ function executeWorkflowInner(
             }
           : undefined;
 
-        // Same exactly-once treatment as the success path above.
+        // Same exactly-once treatment as the success path. A refusal here
+        // escapes so the durable step can retry instead of being mistaken for
+        // another traversal failure.
         const recorded = yield* runDurable(
           runtime,
           { id: "workflow-run-failed", name: "Run failed" },
@@ -462,8 +436,47 @@ function executeWorkflowInner(
           cancelled: recorded.status === "canceled" || cancelled,
           exit: recorded.exit,
         };
-      })
-    );
+      }
+
+      // Wrapped as a durable step so the terminal record and its audit event are
+      // written exactly once, even though the body replays after every wait. A
+      // refusal escapes the traversal catch above and lets this step retry.
+      const recorded = yield* runDurable(
+        runtime,
+        { id: "workflow-run-completed", name: "Run completed" },
+        recordRunCompleted({
+          store,
+          executionId,
+          workflowId,
+          status: outcome.value.terminalStatus,
+          output: outcome.value.finalOutput,
+          failure: traversal.firstFailure(),
+          resultCount: traversal.resultCount,
+          runMode,
+          exitContext: outcome.value.exitContext,
+        })
+      );
+
+      const attemptMs = Date.now() - attemptStartTime;
+      yield* Effect.logInfo(`Run ${recorded.status} in ${attemptMs}ms`).pipe(
+        Effect.annotateLogs({
+          outcome: {
+            status: recorded.status,
+            success: recorded.status !== "failed",
+            nodes: traversal.resultCount,
+            ms: attemptMs,
+          },
+        })
+      );
+
+      return {
+        status: recorded.status,
+        success: recorded.status !== "failed",
+        results: traversal.results,
+        outputs: traversal.outputs,
+        exit: recorded.exit,
+      };
+    });
   });
 }
 

@@ -140,12 +140,17 @@ function runRequestData() {
 }
 
 function branchInvokeData(
-  varied: { entryNodeId?: string; releasedNodeIds?: string[] } = {}
+  varied: {
+    entryNodeId?: string;
+    releasedNodeIds?: string[];
+    ancestorEntryNodeIds?: string[];
+  } = {}
 ) {
   return {
     executionId: testExecution.id,
     entryNodeId: varied.entryNodeId ?? "wait_1",
     releasedNodeIds: varied.releasedNodeIds ?? [],
+    ancestorEntryNodeIds: varied.ancestorEntryNodeIds ?? [],
   };
 }
 
@@ -235,6 +240,13 @@ describe("the workflow run function", () => {
     expect(opts.triggers).toHaveLength(1);
     expect(opts.triggers[0]?.event).toBe("inngest/function.invoked");
     expect(opts.triggers[0]?.name).toBe("inngest/function.invoked");
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    const { opts: cancellationOptions } = branchFunction as {
+      opts: { cancelOn: { if?: string }[] };
+    };
+    expect(cancellationOptions.cancelOn[0]?.if).toBe(
+      "async.data.executionId == event.data.executionId && !async.data.excludedEntryNodeIds.exists(id, id == event.data.entryNodeId)"
+    );
   });
 
   /**
@@ -361,6 +373,7 @@ describe("the workflow run function", () => {
       ...persistedRunInput(),
       entryNodeId: "wait_1",
       releasedNodeIds: ["entry_1"],
+      ancestorEntryNodeIds: [],
     });
   });
 
@@ -573,10 +586,110 @@ describe("the workflow run function", () => {
           executionId: "exec_123",
           entryNodeId: "wait_1",
           releasedNodeIds: ["entry_1"],
+          ancestorEntryNodeIds: [],
         },
       }
     );
     expect(handoff).toEqual({ status: "finished", result: branchResult });
+  });
+
+  it("carries the parent branch chain into a nested branch", async () => {
+    let branchRuntime: WorkflowExecutionRuntime | undefined;
+    const executeWorkflowBranch = vi.fn(
+      (...args: [unknown, WorkflowExecutionRuntime, ...unknown[]]) => {
+        branchRuntime = args[1];
+        return Effect.succeed({ results: {}, outputs: {} });
+      }
+    );
+    const execution = await new InngestTestEngine({
+      function: createWorkflowBranchFunction(createTestClient(), {
+        actions: buildTestActions,
+        store: testStore,
+        appRuntime: testAppRuntime,
+        executeWorkflow: vi.fn(),
+        executeWorkflowBranch,
+      }),
+    }).execute({
+      events: [
+        {
+          name: "inngest/function.invoked",
+          data: branchInvokeData({
+            entryNodeId: "wait_inner",
+            ancestorEntryNodeIds: ["wait_outer"],
+          }),
+        },
+      ],
+    });
+    if (!branchRuntime) {
+      throw new Error("Expected executeWorkflowBranch to receive a runtime.");
+    }
+    const invokeSpy = vi
+      .spyOn(execution.ctx.step, "invoke")
+      .mockResolvedValue({ results: {}, outputs: {} });
+
+    await branchRuntime.startBranch?.(
+      { id: "branch-wait_deep", name: "Deep wait (branch)" },
+      { entryNodeId: "wait_deep", releasedNodeIds: ["wait_inner"] }
+    );
+
+    expect(invokeSpy).toHaveBeenCalledWith(
+      { id: "branch-wait_deep", name: "Deep wait (branch)" },
+      {
+        function: expect.anything(),
+        data: {
+          executionId: "exec_123",
+          entryNodeId: "wait_deep",
+          releasedNodeIds: ["wait_inner"],
+          ancestorEntryNodeIds: ["wait_outer", "wait_inner"],
+        },
+      }
+    );
+  });
+
+  it("excludes the winning branch and its ancestors from an Exit kill", async () => {
+    const client = createTestClient();
+    const send = vi
+      .spyOn(client, "send")
+      .mockImplementation(async () => ({ ids: ["event_1"] }));
+    const executeWorkflowBranch = vi.fn(
+      (...args: [unknown, WorkflowExecutionRuntime, ...unknown[]]) =>
+        Effect.promise(async () => {
+          await args[1].stopBranches?.();
+          return { results: {}, outputs: {} };
+        })
+    );
+
+    await new InngestTestEngine({
+      function: createWorkflowBranchFunction(client, {
+        actions: buildTestActions,
+        store: testStore,
+        appRuntime: testAppRuntime,
+        executeWorkflow: vi.fn(),
+        executeWorkflowBranch,
+      }),
+    }).execute({
+      events: [
+        {
+          name: "inngest/function.invoked",
+          data: branchInvokeData({
+            entryNodeId: "wait_inner",
+            ancestorEntryNodeIds: ["wait_outer"],
+          }),
+        },
+      ],
+    });
+
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "workflow/branch.kill.requested",
+        data: {
+          executionId: "exec_123",
+          workflowId: "workflow_123",
+          reason: "entity-eligibility-exit",
+          excludedEntryNodeIds: ["wait_outer", "wait_inner"],
+        },
+      })
+    );
   });
 
   /**

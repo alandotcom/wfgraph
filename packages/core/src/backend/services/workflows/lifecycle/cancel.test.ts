@@ -174,6 +174,7 @@ describe("requestCanceledOutlet", () => {
       executionId: "exec_1",
       workflowId: "wf_1",
       reason: "Cancellation requested by app/appointment.canceled",
+      excludedEntryNodeIds: [],
     });
   });
 

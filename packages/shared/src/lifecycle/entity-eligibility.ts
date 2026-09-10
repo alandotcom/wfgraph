@@ -109,7 +109,7 @@ function unreadableEligibilityRule(
         const unavailable = values.find(
           (value) => !declaration.field.enumValues?.includes(value)
         );
-        if (unavailable) {
+        if (unavailable !== undefined) {
           return `compares "${path}" with "${unavailable}", which Entity "${entity.type}" no longer offers`;
         }
       }

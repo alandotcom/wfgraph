@@ -72,8 +72,8 @@ export type WorkflowExecutionRuntime = {
     | undefined;
   /**
    * Requests that the other durable branch invocations for this Execution stop.
-   * An adapter may exclude the branch making the request so it can report Exit
-   * to its parent before ending.
+   * An adapter may preserve the requesting branch and its ancestors so Exit can
+   * propagate to the root before they end.
    */
   stopBranches?: (() => Promise<void>) | undefined;
   /**

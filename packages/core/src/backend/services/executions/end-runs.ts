@@ -1,9 +1,10 @@
 /**
  * Ending a run from outside it, which happens two ways and in two orders.
  *
- * A cancel decides and then acts: the signal goes out, the row flips behind a
- * compare-and-set, and a run that finished first keeps its own terminal status. A
- * supersede has already been decided -- `ExecutionRepo.startForEntity` flips those
+ * A cancel decides and then acts: the row flips behind a compare-and-set, then
+ * the signal goes out, and a run that finished or claimed termination first keeps
+ * its own outcome. A supersede has already been decided --
+ * `ExecutionRepo.startForEntity` flips those
  * rows inside the lock that made room for the newer start -- so all that is left
  * is telling the runs to stop and saying why on their timelines.
  *
@@ -14,6 +15,7 @@
 
 import { Effect } from "effect";
 import { partition, uniq } from "es-toolkit/array";
+import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { InngestClient } from "#src/backend/lib/effect/inngest-client";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
@@ -47,15 +49,15 @@ export type EndedRunsSummary = {
 };
 
 /**
- * How ending one run went. A run either reaches its terminal write, loses the
- * race to a completion that beat this call there, or is left unreachable by a
- * signal or a write that did not land -- the three outcomes `endOneRun` can
- * report, as a union rather than a `{ ended, failed }` pair that could also
- * spell the fourth, impossible combination.
+ * How ending one run went. A run can reach its terminal write, lose to a
+ * terminal result, remain owned by an earlier termination claim, or be left
+ * unreachable by a signal or write failure. The union prevents contradictory
+ * outcome combinations.
  */
 type RunEndOutcome =
   | { kind: "ended"; executionId: string }
   | { kind: "lost-race"; executionId: string }
+  | { kind: "claim-pending"; executionId: string }
   | { kind: "unreachable"; executionId: string };
 
 function runEndOutcome(
@@ -187,15 +189,18 @@ const recordRunEnded = Effect.fn("recordRunEnded")(function* (input: {
 });
 
 /**
- * Cancels every in-flight execution named: signal first, then the row behind a
- * compare-and-set.
+ * Cancels every in-flight execution named: claim the terminal row behind a
+ * compare-and-set, then signal the run this call ended. A repeated request also
+ * repairs a canceled row whose earlier signal or audit failed.
  *
  * An execution that completed between the caller's candidate query and this write
  * loses nothing: the CAS fails, the row keeps its terminal status, no audit event
  * is written, and the run is not counted as ended. Its wait row is still cleaned,
  * because a prior partly-failed attempt can leave a terminal execution with a
  * still-waiting row and this is the path that heals it (`cancelWaits` guards on
- * `waiting`, so a legitimately resumed wait is untouched).
+ * `waiting`, so a legitimately resumed wait is untouched). An in-flight Cancel
+ * or Exit claim remains owned by its durable run; this call neither signals that
+ * run nor cleans its waits.
  *
  * Every failure is contained per execution, so one of them never discards the
  * summary or skips the cleanup for the executions that did end.
@@ -219,7 +224,7 @@ export const cancelInFlightRuns = Effect.fn("cancelInFlightRuns")(function* (
 
   const [unreachable, settled] = partition(
     outcomes,
-    (entry) => entry.kind === "unreachable"
+    (entry) => entry.kind === "unreachable" || entry.kind === "claim-pending"
   );
 
   yield* repo.cancelWaits(
@@ -248,16 +253,6 @@ const endOneRun = Effect.fn("endOneRun")(function* (input: {
   const repo = yield* ExecutionRepo;
   const logger = yield* loggerFor;
 
-  const signalled = yield* signalRunToStop({
-    workflowId,
-    executionId,
-    reason: input.reason,
-    eventName: input.eventName,
-  });
-  if (!signalled) {
-    return runEndOutcome("unreachable", executionId);
-  }
-
   const termination = yield* repo
     .endInFlight({
       executionId,
@@ -275,7 +270,7 @@ const endOneRun = Effect.fn("endOneRun")(function* (input: {
           yield* recordEndingFailure({
             workflowId,
             executionId,
-            message: `${input.reason}: the run was told to stop, but its status could not be written`,
+            message: `${input.reason}: the status could not be written, so no cancel signal was sent`,
             eventName: input.eventName,
             outcome: "write_failed",
           });
@@ -289,14 +284,40 @@ const endOneRun = Effect.fn("endOneRun")(function* (input: {
   }
 
   if (!termination.didWrite) {
-    yield* logger.info(
-      "Execution reached a terminal status before it could be ended",
-      {
+    if (
+      termination.claim &&
+      IN_FLIGHT_EXECUTION_STATUSES.some(
+        (status) => status === termination.status
+      )
+    ) {
+      yield* logger.info("Execution already has a termination claim", {
         workflowId,
         executionId,
-      }
-    );
-    return runEndOutcome("lost-race", executionId);
+        claim: termination.claim.kind,
+      });
+      return runEndOutcome("claim-pending", executionId);
+    }
+
+    if (termination.status !== "canceled") {
+      yield* logger.info(
+        "Execution reached a terminal status before it could be ended",
+        {
+          workflowId,
+          executionId,
+        }
+      );
+      return runEndOutcome("lost-race", executionId);
+    }
+  }
+
+  const signalled = yield* signalRunToStop({
+    workflowId,
+    executionId,
+    reason: input.reason,
+    eventName: input.eventName,
+  });
+  if (!signalled) {
+    return runEndOutcome("unreachable", executionId);
   }
 
   const recorded = yield* recordRunEnded({

@@ -95,6 +95,30 @@ describe("validateWorkflowGraph", () => {
     expect(result.valid).toBe(true);
   });
 
+  it("requires exactly one Lifecycle Node", () => {
+    const missing = validateWorkflowGraph(
+      createSerializedWorkflowGraph({ nodes: [createActionNode()], edges: [] })
+    );
+    const duplicate = validateWorkflowGraph(
+      createSerializedWorkflowGraph({
+        nodes: [
+          createBaseLifecycleNode(),
+          createBaseLifecycleNode("lifecycle_2"),
+        ],
+        edges: [],
+      })
+    );
+
+    expect(missing).toMatchObject({
+      valid: false,
+      error: "Workflow must contain one Lifecycle Node",
+    });
+    expect(duplicate).toMatchObject({
+      valid: false,
+      error: "Workflow must contain only one Lifecycle Node",
+    });
+  });
+
   it("rejects parallel edges between the same nodes", () => {
     const graph = createSerializedWorkflowGraph({
       nodes: [createBaseLifecycleNode(), createActionNode()],

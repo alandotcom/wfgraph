@@ -220,7 +220,7 @@ function runGraph(
       ...replayOptions,
       branch: (runtime, branchInput) =>
         executeWorkflowBranch(
-          { ...input, ...branchInput },
+          { ...input, ...branchInput, ancestorEntryNodeIds: [] },
           runtime,
           store,
           actions,

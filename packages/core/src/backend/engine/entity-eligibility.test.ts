@@ -12,6 +12,7 @@ import { createRecordingWorkflowStore } from "#src/backend/engine/recording-stor
 import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
 import { executeTestWorkflow } from "#src/backend/engine/test-execution";
 import { driveWithReplay } from "#src/backend/engine/testing/replay-runtime";
+import { DatabaseError } from "#src/backend/lib/effect/database";
 import {
   waitMigrateSignal,
   waitResumeSignal,
@@ -279,6 +280,46 @@ describe("per-node Entity Eligibility", () => {
       nodeId: "second",
     });
     expect(JSON.stringify(store.calls)).not.toContain("appt_secret");
+  });
+
+  it("lets a claimed terminal write failure escape for durable retry", async () => {
+    const databaseError = new DatabaseError({
+      cause: new Error("terminal unavailable"),
+    });
+    const store = createRecordingWorkflowStore();
+    let terminalWrites = 0;
+    store.completeRun = () => {
+      terminalWrites += 1;
+      return terminalWrites === 1
+        ? Effect.succeed({
+            status: "running" as const,
+            claim: {
+              kind: "exit" as const,
+              requestedAt: "2026-10-19T15:00:00.000Z",
+              reason: "entity_condition_not_met" as const,
+              nodeId: "second",
+            },
+            didWrite: false,
+          })
+        : Effect.fail(databaseError);
+    };
+    const entities = entityPort([
+      { outcome: "eligible" },
+      { outcome: "eligible" },
+    ]);
+
+    await expect(
+      executeTestWorkflow(
+        executionInput,
+        createInMemoryWorkflowRuntime(),
+        store,
+        actions,
+        entities
+      )
+    ).rejects.toThrow("terminal unavailable");
+
+    expect(terminalWrites).toBe(2);
+    expect(store.callsOf("recordAuditEvent")).toHaveLength(0);
   });
 
   it("does not stop branches when this checkpoint lost the Exit claim", async () => {

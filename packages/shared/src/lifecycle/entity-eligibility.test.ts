@@ -412,25 +412,27 @@ describe("checkEntityEligibility", () => {
       )
     ).toContain("no longer offers");
 
-    expect(
-      errorOf(
-        checkEntityEligibility({
-          rules: rules({
-            entityEligibility: {
-              condition: conditionForRule({
-                id: "rule-1",
-                field: "status",
-                fieldType: "string",
-                operator: "is_one_of",
-                values: ["scheduled", "removed"],
-              }),
-              checkpoints: ["before-node"],
-            },
-          }),
-          catalog,
-        })
-      )
-    ).toContain("no longer offers");
+    for (const unavailable of ["removed", ""]) {
+      expect(
+        errorOf(
+          checkEntityEligibility({
+            rules: rules({
+              entityEligibility: {
+                condition: conditionForRule({
+                  id: "rule-1",
+                  field: "status",
+                  fieldType: "string",
+                  operator: "is_one_of",
+                  values: ["scheduled", unavailable],
+                }),
+                checkpoints: ["before-node"],
+              },
+            }),
+            catalog,
+          })
+        )
+      ).toContain("no longer offers");
+    }
 
     expect(
       errorOf(

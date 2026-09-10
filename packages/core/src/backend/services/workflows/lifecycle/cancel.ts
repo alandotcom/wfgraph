@@ -120,6 +120,7 @@ const stopClaimedRun = Effect.fn("stopClaimedRun")(function* (input: {
       executionId: input.executionId,
       workflowId: input.workflowId,
       reason: `Cancellation requested by ${input.eventName}`,
+      excludedEntryNodeIds: [],
     });
 
     yield* Effect.forEach(

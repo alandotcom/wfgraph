@@ -133,6 +133,56 @@ describe("terminal record completion policy", () => {
     })
   );
 
+  it.effect("fails so a claimed Exit finalization can be retried", () =>
+    Effect.gen(function* () {
+      const databaseError = new DatabaseError({
+        cause: new Error("connection interrupted"),
+      });
+      const recording = createRecordingWorkflowStore();
+      let call = 0;
+      const store: WorkflowStore = {
+        ...recording,
+        completeRun: () => {
+          call += 1;
+          return call === 1
+            ? Effect.succeed({
+                status: "running" as const,
+                claim: {
+                  kind: "exit" as const,
+                  requestedAt: "2026-10-19T15:00:00.000Z",
+                  reason: "entity_condition_not_met" as const,
+                  nodeId: "send-reminder",
+                },
+                didWrite: false,
+              })
+            : Effect.fail(databaseError);
+        },
+      };
+      const recordingLoggerLayer = recordingLogger();
+
+      const failure = yield* Effect.flip(
+        recordRunCompleted({ ...terminalInput, store }).pipe(
+          Effect.provide(recordingLoggerLayer.layer)
+        )
+      );
+
+      expect(failure).toBe(databaseError);
+      expect(call).toBe(2);
+      expect(recording.callsOf("recordAuditEvent")).toHaveLength(0);
+      expect(recordingLoggerLayer.lines).toEqual([
+        {
+          level: "Warn",
+          message: "Claimed terminal run record not written",
+          properties: {
+            executionId: "exec_1",
+            status: "exited",
+            error: databaseError,
+          },
+        },
+      ]);
+    })
+  );
+
   it.effect(
     "returns Exit details but skips the audit when another writer won",
     () =>
