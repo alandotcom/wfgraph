@@ -177,16 +177,6 @@ function waitOutput(result: { results: Record<string, ExecutionResult> }) {
   return nodeData?.data as Record<string, unknown>;
 }
 
-/**
- * Whether the wait node halted its branch, read the way a builder would see it:
- * the node below the wait never ran.
- */
-function waitHaltedBranch(result: {
-  results: Record<string, ExecutionResult>;
-}): boolean {
-  return result.results.after_wait === undefined;
-}
-
 function runWait(options: RunWaitOptions) {
   const runtime = createInMemoryWorkflowRuntime({
     resumeEvent: options.resumeEvent ?? null,
@@ -281,7 +271,7 @@ describe("wait node - delay mode", () => {
     });
     const result = await execution;
 
-    expect(waitHaltedBranch(result)).toBe(true);
+    expect(result.results.after_wait).toBeUndefined();
     expect(waitOutput(result)).toMatchObject({
       skipped: true,
       skippedReason: "past_due_no_wait",
@@ -345,7 +335,7 @@ describe("wait node - event mode", () => {
     });
     // An ordinary resume carries the run on, which is what makes the halting
     // assertions elsewhere in this file mean something.
-    expect(waitHaltedBranch(result)).toBe(false);
+    expect(result.results.after_wait).toBeDefined();
     expect(result.results.after_wait?.success).toBe(true);
 
     const resumeToken = store.callsOf("createWaitState")[0]?.resumeToken;
@@ -694,7 +684,7 @@ describe("wait node - event mode", () => {
     });
     const result = await execution;
 
-    expect(waitHaltedBranch(result)).toBe(true);
+    expect(result.results.after_wait).toBeUndefined();
     expect(waitOutput(result)).toMatchObject({
       skipped: true,
       skippedReason: "timeout_skip",
@@ -728,7 +718,7 @@ describe("wait node - event mode", () => {
       resumeEvent: null,
     }).execution;
 
-    expect(waitHaltedBranch(result)).toBe(true);
+    expect(result.results.after_wait).toBeUndefined();
     expect(waitOutput(result)).toMatchObject({
       skipped: true,
       skippedReason: "timeout_skip",
@@ -976,7 +966,7 @@ describe("wait node - migration to a later workflow version", () => {
 
     // The gate asks whether this Wait ever waited, and the first attempt waited
     // an hour.
-    expect(waitHaltedBranch(run.value)).toBe(false);
+    expect(run.value.results.after_wait).toBeDefined();
     const output = waitOutput(run.value);
     expect(output.skipped).toBeUndefined();
     // The second attempt had nothing left to wait for, so the run parked once
@@ -1027,7 +1017,7 @@ describe("wait node - migration to a later workflow version", () => {
       // The second attempt read the arrival instead of parking again.
       hops: 1,
     });
-    expect(waitHaltedBranch(run.value)).toBe(false);
+    expect(run.value.results.after_wait).toBeDefined();
   });
 
   it("keeps a recorded arrival when the target version changes the wait to delay mode", async () => {
@@ -1086,7 +1076,7 @@ describe("wait node - migration to a later workflow version", () => {
     expect(store.callsOf("markWaitStateStatus").at(-1)?.status).toBe(
       "cancelled"
     );
-    expect(waitHaltedBranch(run.value)).toBe(true);
+    expect(run.value.results.after_wait).toBeUndefined();
   });
 
   it("fails the node when the row that left waiting records no wake", async () => {

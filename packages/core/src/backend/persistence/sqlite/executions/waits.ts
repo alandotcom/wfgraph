@@ -14,9 +14,9 @@ import {
 import { generateId } from "@wfgraph/shared/utils/id";
 import { toJsonObject } from "@wfgraph/shared/types/json";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
+import type { WaitArrival } from "@wfgraph/shared/lifecycle/wait-signal";
 import {
   WAIT_ARRIVAL_METADATA_KEY,
-  type WaitResumeArrival,
   type WaitResumeClaim,
   type WaitsRepoMethods,
 } from "#src/backend/services/executions/repo/waits";
@@ -63,7 +63,7 @@ function claimWait(
   database: SqliteExecutor,
   column: "id" | "resume_token",
   value: string,
-  arrival: WaitResumeArrival
+  arrival: WaitArrival
 ): Effect.Effect<WaitResumeClaim | null, unknown> {
   return Effect.gen(function* () {
     const claimedAt = new Date();

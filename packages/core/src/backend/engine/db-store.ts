@@ -16,11 +16,13 @@ import type { ExecutionRepo } from "#src/backend/services/executions/repo";
 import { decodeIsoTimestampOrThrow } from "@wfgraph/shared/types/timestamp";
 import type {
   CompleteRunInput,
-  WaitStateArrival,
   WorkflowStore,
 } from "#src/backend/engine/store";
 import { WAIT_ARRIVAL_METADATA_KEY } from "#src/backend/services/executions/repo/waits";
-import { isWaitSignalType } from "@wfgraph/shared/lifecycle/wait-signal";
+import {
+  isWaitSignalType,
+  type WaitArrival,
+} from "@wfgraph/shared/lifecycle/wait-signal";
 import { type JsonObject, readJsonObject } from "@wfgraph/shared/types/json";
 
 /**
@@ -46,7 +48,7 @@ function readWaitUntil(
  * read back as an arrival is treated as none, because the alternative is a run
  * failing on a row a future version wrote a different shape into.
  */
-function readWaitArrival(metadata: JsonObject | null): WaitStateArrival | null {
+function readWaitArrival(metadata: JsonObject | null): WaitArrival | null {
   const arrival = readJsonObject(metadata?.[WAIT_ARRIVAL_METADATA_KEY]);
   if (!arrival || !isWaitSignalType(arrival.signalType)) {
     return null;

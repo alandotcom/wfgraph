@@ -25,7 +25,7 @@ import {
   type JsonObjectDraft,
   toJsonObject,
 } from "@wfgraph/shared/types/json";
-import type { WaitSignalType } from "@wfgraph/shared/lifecycle/wait-signal";
+import type { WaitArrival } from "@wfgraph/shared/lifecycle/wait-signal";
 import { inFlightExecution } from "#src/backend/services/executions/repo/runs";
 import type {
   SettledWaitStatus,
@@ -45,24 +45,8 @@ export type WaitResumeClaim = {
  */
 export const WAIT_ARRIVAL_METADATA_KEY = "arrival";
 
-/**
- * What a claim is about, written onto the row in the same statement that claims
- * it.
- *
- * A run woken by a Migration is still parked as far as the row is concerned
- * until its next park lands, so a claim in that window sends a signal the run
- * is not listening for. Recording the wake on the row is what lets the next
- * park find it.
- */
-export type WaitResumeArrival = {
-  signalType: WaitSignalType;
-  /** The Event that arrived, and null for a resume from the runs panel. */
-  eventName: string | null;
-  payload: JsonObject;
-};
-
 /** The claim's wake as it is stored, under one key of the row's metadata. */
-function arrivalMetadata(arrival: WaitResumeArrival): JsonObject {
+function arrivalMetadata(arrival: WaitArrival): JsonObject {
   return { [WAIT_ARRIVAL_METADATA_KEY]: { ...arrival } };
 }
 
@@ -174,7 +158,7 @@ export type WaitsRepoMethods = {
    */
   readonly claimWaitingStateByToken: (input: {
     resumeToken: string;
-    arrival: WaitResumeArrival;
+    arrival: WaitArrival;
   }) => Effect.Effect<WaitResumeClaim | null, DatabaseError>;
   /**
    * Claim one candidate previously found by event delivery. The execution may
@@ -182,7 +166,7 @@ export type WaitsRepoMethods = {
    */
   readonly claimWaitingStateById: (input: {
     waitStateId: string;
-    arrival: WaitResumeArrival;
+    arrival: WaitArrival;
   }) => Effect.Effect<WaitResumeClaim | null, DatabaseError>;
   /** Settle only the exact claim that delivered the wake signal. */
   readonly settleWaitingStateClaim: (input: {
@@ -473,7 +457,7 @@ export function makeWaitsMethods(
 async function claimWaitState(
   db: WfGraphDatabase,
   identity: ReturnType<typeof eq>,
-  arrival: WaitResumeArrival
+  arrival: WaitArrival
 ): Promise<WaitResumeClaim | null> {
   const claimedAt = new Date();
   const staleBefore = new Date(

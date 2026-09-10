@@ -35,6 +35,7 @@ import {
   readWaitGateMode,
   readWaitWake,
   type WaitActionInput,
+  type WaitAttempt,
   type WaitBranchContext,
   type WaitMode,
   type WaitOutcome,
@@ -397,11 +398,7 @@ function prepareWaitAttempt<Prepared, Resumed>(
   branch: WaitBranchContext,
   mode: WaitMode<Prepared, Resumed>,
   input: {
-    attempt: {
-      index: number;
-      anchorAt?: Date | undefined;
-      resumeToken?: string | undefined;
-    };
+    attempt: WaitAttempt;
     waitStateId: string | undefined;
   }
 ): Effect.Effect<WaitAttemptPreparation<Prepared>, EngineFailure> {

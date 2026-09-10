@@ -16,10 +16,12 @@ import {
 } from "#src/lib/rpc-fetch-test-support";
 import { mutationErrorToast } from "#src/lib/query-client";
 import { orpcQuery } from "#src/lib/rpc-query";
-import type {
-  WorkflowMigrationPayload,
-  WorkflowMigrationPreviewPayload,
+import {
+  MIGRATION_EXECUTION_IDS_LIMIT,
+  type WorkflowMigrationPayload,
+  type WorkflowMigrationPreviewPayload,
 } from "@wfgraph/shared/graph/migration-contracts";
+import type { JsonObject } from "@wfgraph/shared/types/json";
 
 const preview: WorkflowMigrationPreviewPayload = {
   targetVersionId: "version_8",
@@ -57,6 +59,19 @@ const preview: WorkflowMigrationPreviewPayload = {
   alreadyCurrentCount: 4,
 };
 
+const batchExecutionIds = Array.from(
+  { length: MIGRATION_EXECUTION_IDS_LIMIT + 1 },
+  (_unused, index) => `run_${index}`
+);
+const batchPreview: WorkflowMigrationPreviewPayload = {
+  ...preview,
+  eligible: batchExecutionIds.map((executionId) => ({
+    executionId,
+    fromVersionNumber: 7,
+    parkedNodeIds: ["wait_1"],
+  })),
+};
+
 /**
  * Answers the two procedures the dialog calls: the preflight report a case
  * hands in, and a migrate call that moves every id it was sent. `migrateRequests`
@@ -64,7 +79,7 @@ const preview: WorkflowMigrationPreviewPayload = {
  */
 function stubRpc(options: {
   report: WorkflowMigrationPreviewPayload;
-  migrateRequests?: Array<Record<string, unknown>>;
+  migrateRequests?: JsonObject[];
   failMigrateCall?: number;
 }) {
   let migrateCall = 0;
@@ -89,8 +104,8 @@ function stubRpc(options: {
         ? (body.executionIds as string[])
         : [];
       const payload: WorkflowMigrationPayload = {
-        targetVersionId: "version_8",
-        targetVersionNumber: 8,
+        targetVersionId: options.report.targetVersionId,
+        targetVersionNumber: options.report.targetVersionNumber,
         outcomes: executionIds.map((executionId) => ({
           executionId,
           status: "migrated",
@@ -230,7 +245,7 @@ describe("MigrationDialog", () => {
   });
 
   it("sends only the eligible run ids and the target version", async () => {
-    const migrateRequests: Array<Record<string, unknown>> = [];
+    const migrateRequests: JsonObject[] = [];
     stubRpc({ report: preview, migrateRequests });
 
     const view = renderDialog();
@@ -248,22 +263,8 @@ describe("MigrationDialog", () => {
   });
 
   it("splits more than 500 run ids across sequential migrate calls", async () => {
-    const executionIds = Array.from(
-      { length: 501 },
-      (_unused, index) => `run_${index}`
-    );
-    const migrateRequests: Array<Record<string, unknown>> = [];
-    stubRpc({
-      report: {
-        ...preview,
-        eligible: executionIds.map((executionId) => ({
-          executionId,
-          fromVersionNumber: 7,
-          parkedNodeIds: ["wait_1"],
-        })),
-      },
-      migrateRequests,
-    });
+    const migrateRequests: JsonObject[] = [];
+    stubRpc({ report: batchPreview, migrateRequests });
 
     const view = renderDialog();
     await waitFor(() =>
@@ -278,27 +279,18 @@ describe("MigrationDialog", () => {
       migrateRequests.map(
         (request) => (request.executionIds as string[]).length
       )
-    ).toEqual([500, 1]);
-    expect(migrateRequests[1]?.executionIds).toEqual(["run_500"]);
+    ).toEqual([MIGRATION_EXECUTION_IDS_LIMIT, 1]);
+    expect(migrateRequests[1]?.executionIds).toEqual([
+      `run_${MIGRATION_EXECUTION_IDS_LIMIT}`,
+    ]);
   });
 
   it("refreshes run history and reports completed work when a later batch fails", async () => {
     const infoToast = vi.spyOn(toast, "info").mockImplementation(() => "");
     const errorToast = vi.spyOn(toast, "error").mockImplementation(() => "");
-    const executionIds = Array.from(
-      { length: 501 },
-      (_unused, index) => `run_${index}`
-    );
-    const migrateRequests: Array<Record<string, unknown>> = [];
+    const migrateRequests: JsonObject[] = [];
     stubRpc({
-      report: {
-        ...preview,
-        eligible: executionIds.map((executionId) => ({
-          executionId,
-          fromVersionNumber: 7,
-          parkedNodeIds: ["wait_1"],
-        })),
-      },
+      report: batchPreview,
       migrateRequests,
       failMigrateCall: 2,
     });

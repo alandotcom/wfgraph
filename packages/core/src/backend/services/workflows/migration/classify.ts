@@ -25,10 +25,7 @@ import {
 } from "@wfgraph/shared/graph/node-references";
 import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
 import type { MigrationRefusalReason } from "@wfgraph/shared/graph/migration-contracts";
-import {
-  DEFAULT_WAIT_TIMEOUT,
-  type WaitMode,
-} from "@wfgraph/shared/lifecycle/wait-subscription";
+import { DEFAULT_WAIT_TIMEOUT } from "@wfgraph/shared/lifecycle/wait-subscription";
 import {
   type JsonValue,
   readJsonObjectLeniently,
@@ -98,10 +95,8 @@ type PendingReference = {
 type WaitNodeScan = {
   reach: Set<string>;
   references: PendingReference[];
-  /** The node's own timeout, in milliseconds, for a run parked on an Event. */
-  timeoutMs: number | null;
-  /** The shape the target Wait is in, which decides whether its timeout applies. */
-  waitMode: WaitMode;
+  /** The node's timeout in milliseconds, or null when it does not wait for an Event. */
+  eventTimeoutMs: number | null;
 };
 
 function scanWaitNode(input: {
@@ -136,19 +131,21 @@ function scanWaitNode(input: {
         }));
   });
 
-  const timeout = input.waitNode.data.config?.waitTimeout;
+  const config = input.waitNode.data.config;
+  const timeout = config?.waitTimeout;
   return {
     reach,
     references,
-    timeoutMs: parseDurationMs(
-      typeof timeout === "string" && timeout.trim()
-        ? timeout
-        : DEFAULT_WAIT_TIMEOUT
-    ),
-    // Absence reads as the selector's default, the same way the editor and the
-    // engine read this key.
-    waitMode:
-      input.waitNode.data.config?.waitMode === "event" ? "event" : "delay",
+    // Absence reads as the selector's delay default, the same way the editor and
+    // the engine read this key.
+    eventTimeoutMs:
+      config?.waitMode === "event"
+        ? parseDurationMs(
+            typeof timeout === "string" && timeout.trim()
+              ? timeout
+              : DEFAULT_WAIT_TIMEOUT
+          )
+        : null,
   };
 }
 
@@ -200,9 +197,8 @@ function waitTimeoutHasElapsed(input: {
   now: number;
 }): boolean {
   return (
-    input.scan.waitMode === "event" &&
-    input.scan.timeoutMs !== null &&
-    input.waitState.createdAt.getTime() + input.scan.timeoutMs <= input.now
+    input.scan.eventTimeoutMs !== null &&
+    input.waitState.createdAt.getTime() + input.scan.eventTimeoutMs <= input.now
   );
 }
 

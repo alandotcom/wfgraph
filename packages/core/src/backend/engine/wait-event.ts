@@ -27,11 +27,6 @@ import {
   type WaitWake,
 } from "#src/backend/engine/wait-shared";
 
-/** The token addresses a parked run, so it comes from a cryptographic source. */
-function generateWaitToken(): string {
-  return randomUUID();
-}
-
 /**
  * What an event attempt's resume reads back off its own preparation.
  *
@@ -87,9 +82,9 @@ const prepareEventWait = Effect.fn("prepareEventWait")(function* (
     return yield* failWith(compiled.error);
   }
 
-  // The token names this park, and a later attempt keeps the one the row already
-  // has: everything addressing the parked run keeps addressing it.
-  const resumeToken = attempt.resumeToken ?? generateWaitToken();
+  // The token names this park, and a later attempt keeps the cryptographically
+  // random one the row already has: everything addressing it keeps working.
+  const resumeToken = attempt.resumeToken ?? randomUUID();
   const waitUntilIso = encodeIsoTimestamp(waitTimeoutResolution.waitUntil);
   // Read from the config this attempt parks on. A Migration is a decision to
   // adopt the new graph, so the new version's answer to a timeout is the one

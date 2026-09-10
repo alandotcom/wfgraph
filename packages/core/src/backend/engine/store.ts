@@ -24,7 +24,7 @@ import type {
   JsonObjectDraft,
   JsonValue,
 } from "@wfgraph/shared/types/json";
-import type { WaitSignalType } from "@wfgraph/shared/lifecycle/wait-signal";
+import type { WaitArrival } from "@wfgraph/shared/lifecycle/wait-signal";
 import { Effect } from "effect";
 import type { EngineFailure } from "#src/backend/engine/engine-failure";
 import type { DatabaseError } from "#src/backend/lib/effect/database";
@@ -134,24 +134,16 @@ export type WaitStateStatus =
   | "cancelled";
 
 /**
- * The wake a resume claim recorded on a wait row before it sent the signal.
+ * A wait row as the engine reads it back after a re-park was refused.
  *
  * A run woken by a Migration is still `waiting` between that wake and its next
  * park, so a resume can claim the row in the meantime and send a signal nothing
- * is parked on. The claim writes what it is about onto the row, which is what
- * lets the next park read the wake it missed instead of waiting forever.
+ * is parked on. The claim's recorded arrival lets the next park read the wake it
+ * missed instead of waiting forever.
  */
-export type WaitStateArrival = {
-  signalType: WaitSignalType;
-  /** The Event that arrived, and null for a resume that named none. */
-  eventName: string | null;
-  payload: JsonObject;
-};
-
-/** A wait row as the engine reads it back after a re-park was refused. */
 export type WaitStateSnapshot = {
   status: WaitStateStatus;
-  arrival: WaitStateArrival | null;
+  arrival: WaitArrival | null;
 };
 
 export type MarkWaitStateStatusInput = {

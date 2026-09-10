@@ -162,7 +162,7 @@ const readDepartedRunIds = Effect.fn("readDepartedRunIds")(function* (input: {
     });
   }
 
-  return owners.map((owner) => owner.executionId);
+  return input.missingIds;
 });
 
 function refusedOutcome(input: {
@@ -196,11 +196,10 @@ const migrateOne = Effect.fn("migrateOne")(function* (input: {
   }
 
   if (classification.kind === "already_current") {
-    const alreadyCurrent: WorkflowMigrationOutcome = {
+    return {
       executionId,
       status: "already_current",
-    };
-    return alreadyCurrent;
+    } satisfies WorkflowMigrationOutcome;
   }
 
   const repo = yield* ExecutionRepo;
@@ -226,12 +225,11 @@ const migrateOne = Effect.fn("migrateOne")(function* (input: {
     fromVersionNumber: classification.candidate.versionNumber,
     targetVersion,
   });
-  const migrated: WorkflowMigrationOutcome = {
+  return {
     executionId,
     status: "migrated",
     signaled,
-  };
-  return migrated;
+  } satisfies WorkflowMigrationOutcome;
 });
 
 export const migrateExecutions = Effect.fn("wfgraph.workflow.migrate_runs")(

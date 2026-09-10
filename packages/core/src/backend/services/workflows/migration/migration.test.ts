@@ -148,21 +148,6 @@ function graphWithReference(input: {
   });
 }
 
-function publishedVersion(
-  graph: SerializedWorkflowGraph
-): PublishedWorkflowVersion {
-  return {
-    id: TARGET_VERSION_ID,
-    workflowId: WORKFLOW_ID,
-    version: 2,
-    kind: "published",
-    graph,
-    catalogFingerprint: "catalog",
-    graphDigest: "digest",
-    publishedAt: new Date("2026-03-01T00:00:00.000Z"),
-  };
-}
-
 function inFlightRow(
   overrides: Partial<InFlightExecutionRow> & { id: string }
 ): InFlightExecutionRow {
@@ -209,7 +194,16 @@ function makeMigrationSeams(input: {
   /** The workflow each run outside the in-flight list belongs to, by run id. */
   workflowIdByExecution?: Record<string, string | null> | undefined;
 }) {
-  const version = publishedVersion(input.graph ?? targetGraph());
+  const version: PublishedWorkflowVersion = {
+    id: TARGET_VERSION_ID,
+    workflowId: WORKFLOW_ID,
+    version: 2,
+    kind: "published",
+    graph: input.graph ?? targetGraph(),
+    catalogFingerprint: "catalog",
+    graphDigest: "digest",
+    publishedAt: new Date("2026-03-01T00:00:00.000Z"),
+  };
   const waitStates = input.waitStates ?? [];
   const calls = {
     order: [] as string[],
@@ -246,19 +240,12 @@ function makeMigrationSeams(input: {
         listWaitingStatesForExecutions: (executionIds) =>
           Effect.sync(() => {
             calls.waitLookups.push(executionIds);
-            const byExecution = new Map<string, WorkflowWaitState[]>();
-            for (const row of waitStates) {
-              if (!executionIds.includes(row.executionId)) {
-                continue;
-              }
-              const existing = byExecution.get(row.executionId);
-              if (existing) {
-                existing.push(row);
-              } else {
-                byExecution.set(row.executionId, [row]);
-              }
-            }
-            return byExecution;
+            return Map.groupBy(
+              waitStates.filter((row) =>
+                executionIds.includes(row.executionId)
+              ),
+              (row) => row.executionId
+            );
           }),
         readNodeOutputs: (executionId) =>
           Effect.sync(() => {

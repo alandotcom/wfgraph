@@ -7,13 +7,13 @@
  * runs were asked to move to.
  */
 
-import type { MigrationOutcomeRefusalReason } from "@wfgraph/shared/graph/migration-contracts";
+import type { WorkflowMigrationOutcome } from "@wfgraph/shared/graph/migration-contracts";
 
 /** One refused run, as the preview or a migrate outcome reports it. */
-export type MigrationRefusal = {
-  reason: MigrationOutcomeRefusalReason;
-  detail?: string | undefined;
-};
+type MigrationRefusal = Pick<
+  Extract<WorkflowMigrationOutcome, { status: "refused" }>,
+  "reason" | "detail"
+>;
 
 /** "1 run" or "4 runs", for a sentence that counts runs. */
 export function runCountLabel(count: number): string {

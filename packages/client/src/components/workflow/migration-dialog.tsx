@@ -7,8 +7,8 @@
  * mounted while it is closed, so the report of the previous open is still in
  * the cache when it reopens; the report and the confirm button are therefore
  * shown only after a successful refetch. The confirm sends the ids the preview
- * called eligible in batches of `MIGRATION_BATCH_SIZE`, and the server classifies
- * each run a second time before it moves. Completed batches refresh run history
+ * called eligible in contract-sized batches, and the server classifies each run
+ * a second time before it moves. Completed batches refresh run history
  * and remain visible to the user when a later batch fails.
  */
 
@@ -32,9 +32,10 @@ import {
   migrationRefusalSentence,
   runCountLabel,
 } from "#src/lib/workflow-migration-labels";
-import type {
-  WorkflowMigrationInput,
-  WorkflowMigrationPayload,
+import {
+  MIGRATION_EXECUTION_IDS_LIMIT,
+  type WorkflowMigrationInput,
+  type WorkflowMigrationPayload,
 } from "@wfgraph/shared/graph/migration-contracts";
 
 /**
@@ -44,9 +45,6 @@ import type {
  * a run refused here is recognisable from the run pinned to the canvas.
  */
 const RUN_ID_PREFIX_LENGTH = 8;
-
-/** The most run ids one migrate call takes, which the contract caps at 500. */
-const MIGRATION_BATCH_SIZE = 500;
 
 /**
  * Sends the run ids in batches the migrate input accepts, one batch at a time,
@@ -59,24 +57,28 @@ async function migrateInBatches(
   send: (batch: WorkflowMigrationInput) => Promise<WorkflowMigrationPayload>,
   onPartialFailure: (payload: WorkflowMigrationPayload) => Promise<void>
 ): Promise<WorkflowMigrationPayload> {
-  const payloads = await chunk(input.executionIds, MIGRATION_BATCH_SIZE).reduce<
-    Promise<WorkflowMigrationPayload[]>
-  >(async (pendingPayloads, executionIds) => {
-    const completedPayloads = await pendingPayloads;
-    try {
-      const payload = await send({ ...input, executionIds });
-      return [...completedPayloads, payload];
-    } catch (error) {
-      const first = completedPayloads[0];
-      if (first) {
-        await onPartialFailure({
-          ...first,
-          outcomes: completedPayloads.flatMap((payload) => payload.outcomes),
-        });
+  const payloads = await chunk(
+    input.executionIds,
+    MIGRATION_EXECUTION_IDS_LIMIT
+  ).reduce<Promise<WorkflowMigrationPayload[]>>(
+    async (pendingPayloads, executionIds) => {
+      const completedPayloads = await pendingPayloads;
+      try {
+        const payload = await send({ ...input, executionIds });
+        return [...completedPayloads, payload];
+      } catch (error) {
+        const first = completedPayloads[0];
+        if (first) {
+          await onPartialFailure({
+            ...first,
+            outcomes: completedPayloads.flatMap((payload) => payload.outcomes),
+          });
+        }
+        throw error;
       }
-      throw error;
-    }
-  }, Promise.resolve([]));
+    },
+    Promise.resolve([])
+  );
   const first = payloads[0];
   if (!first) {
     throw new Error("A migration needs at least one run id.");

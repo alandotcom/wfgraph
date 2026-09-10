@@ -10,6 +10,7 @@
  */
 
 import { Schema } from "effect";
+import type { JsonObject } from "#src/types/json";
 
 /** The Inngest event both Wait modes park on. */
 export const WAIT_SIGNAL_EVENT = "workflow/wait.signal";
@@ -29,6 +30,14 @@ export const WAIT_SIGNAL_TYPES = [
 ] as const;
 
 export type WaitSignalType = (typeof WAIT_SIGNAL_TYPES)[number];
+
+/** What a resume claim records about the signal that claimed a wait row. */
+export type WaitArrival = {
+  signalType: WaitSignalType;
+  /** The Event that arrived, and null for a resume that named none. */
+  eventName: string | null;
+  payload: JsonObject;
+};
 
 const waitSignalTypeSchema = Schema.Literals([...WAIT_SIGNAL_TYPES]);
 
