@@ -35,6 +35,7 @@ import {
 } from "@wfgraph/shared/types/json";
 import { decodeIsoTimestamp } from "@wfgraph/shared/types/timestamp";
 import { parseDurationMs } from "@wfgraph/shared/utils/wait-time";
+import type { DatabaseError } from "#src/backend/lib/effect/database";
 import type { PublishedWorkflowVersion } from "#src/backend/lib/db/schema";
 import {
   type NodeOutputs,
@@ -213,35 +214,46 @@ function scanWaitNodes(
   );
 }
 
-/** The parked wait rows of every candidate, read in bounded batches. */
+/**
+ * Runs one batched read over every candidate and merges the pages into one map.
+ *
+ * The read is given `EXECUTION_LOOKUP_CHUNK_SIZE` ids at a time, and a run the
+ * read found nothing for is absent from the map it answers with.
+ */
+function readByExecution<V>(
+  executionIds: string[],
+  read: (ids: string[]) => Effect.Effect<Map<string, V>, DatabaseError>
+): Effect.Effect<Map<string, V>, DatabaseError> {
+  return Effect.forEach(
+    chunk(executionIds, EXECUTION_LOOKUP_CHUNK_SIZE),
+    read
+  ).pipe(Effect.map((pages) => new Map(pages.flatMap((page) => [...page]))));
+}
+
+/** The parked wait rows of every candidate. */
 const listParkedWaits = Effect.fn("listParkedWaits")(function* (
   executionIds: string[]
 ) {
   const repo = yield* ExecutionRepo;
-  const pages = yield* Effect.forEach(
-    chunk(executionIds, EXECUTION_LOOKUP_CHUNK_SIZE),
-    (ids) => repo.listWaitingStatesForExecutions(ids)
+  return yield* readByExecution(
+    executionIds,
+    repo.listWaitingStatesForExecutions
   );
-
-  return new Map(pages.flatMap((page) => [...page]));
 });
 
 /**
- * The node ids every candidate has a run-log row for, read in bounded batches.
+ * The node ids every candidate has a run-log row for.
  *
- * A run with no rows is absent from the map the repository answers with, and a
- * run absent here reads as having produced nothing.
+ * A run absent from the map reads as having produced nothing.
  */
 const listLoggedNodeIds = Effect.fn("listLoggedNodeIds")(function* (
   executionIds: string[]
 ) {
   const repo = yield* ExecutionRepo;
-  const pages = yield* Effect.forEach(
-    chunk(executionIds, EXECUTION_LOOKUP_CHUNK_SIZE),
-    (ids) => repo.listLoggedNodeIdsForExecutions(ids)
+  return yield* readByExecution(
+    executionIds,
+    repo.listLoggedNodeIdsForExecutions
   );
-
-  return new Map(pages.flatMap((page) => [...page]));
 });
 
 /**
@@ -412,19 +424,30 @@ function timeoutReferences(parked: ParkedWait): PendingReference[] {
   }));
 }
 
-const classifyOne = Effect.fn("classifyOne")(function* (input: {
-  candidate: InFlightExecutionRow;
-  waitStates: WorkflowWaitState[];
+/**
+ * The target version, scanned once and read by every candidate.
+ *
+ * The scan is the same for the whole set, so it is computed in
+ * `classifyMigrationCandidates` and handed down rather than redone per run.
+ */
+type MigrationTarget = {
+  version: PublishedWorkflowVersion;
+  edges: readonly WorkflowEdge[];
+  /** Every enabled Wait node of the target graph, by node id. */
   waitNodes: Map<string, WaitNodeScan>;
   /** The target nodes a run has to hold a node log row for, unless a parked Wait reaches them. */
   checkedNodes: readonly WorkflowNode[];
+};
+
+const classifyOne = Effect.fn("classifyOne")(function* (input: {
+  candidate: InFlightExecutionRow;
+  waitStates: WorkflowWaitState[];
+  target: MigrationTarget;
   /** The node ids this run has a run-log row for, empty when no node is checked. */
   loggedNodeIds: Set<string>;
-  targetEdges: readonly WorkflowEdge[];
-  targetVersion: PublishedWorkflowVersion;
   now: number;
 }) {
-  const { candidate, waitStates, waitNodes } = input;
+  const { candidate, waitStates, target } = input;
   const refuse = (
     reason: MigrationRefusalReason,
     detail?: string
@@ -439,7 +462,7 @@ const classifyOne = Effect.fn("classifyOne")(function* (input: {
     return refuse("draft_run");
   }
 
-  if (candidate.workflowVersionId === input.targetVersion.id) {
+  if (candidate.workflowVersionId === target.version.id) {
     return {
       kind: "already_current",
       candidate,
@@ -451,7 +474,7 @@ const classifyOne = Effect.fn("classifyOne")(function* (input: {
     return refuse("executing");
   }
 
-  const paired = pairParkedWaits(waitStates, waitNodes);
+  const paired = pairParkedWaits(waitStates, target.waitNodes);
   if ("missingNodeId" in paired) {
     return refuse("wait_node_missing", paired.missingNodeId);
   }
@@ -471,7 +494,7 @@ const classifyOne = Effect.fn("classifyOne")(function* (input: {
       .flatMap((entry) => entry.scan.references)
       .filter(
         (reference) =>
-          !upstreamNodeIds(reference.nodeId, input.targetEdges).has(
+          !upstreamNodeIds(reference.nodeId, target.edges).has(
             reference.referencedNodeId
           )
       ),
@@ -505,7 +528,7 @@ const classifyOne = Effect.fn("classifyOne")(function* (input: {
   // be new to this run, so a target whose reach covers the graph asks the node
   // log nothing.
   const reachable = new Set(parked.flatMap((entry) => [...entry.scan.reach]));
-  const addedAboveWait = input.checkedNodes.find(
+  const addedAboveWait = target.checkedNodes.find(
     (node) => !reachable.has(node.id) && !input.loggedNodeIds.has(node.id)
   );
   if (addedAboveWait) {
@@ -532,19 +555,23 @@ export const classifyMigrationCandidates = Effect.fn(
   targetVersion: PublishedWorkflowVersion;
 }) {
   const graph = toWorkflowGraphData(input.targetVersion.graph);
-  const waitNodes = scanWaitNodes(graph.nodes, graph.edges);
-  // A disabled node never runs, and the Lifecycle node is the run's entry
-  // rather than work a target version adds, so neither can be a node this run
-  // is missing.
-  const checkedNodes = graph.nodes.filter(
-    (node) => node.data.enabled !== false && !isLifecycleNode(node)
-  );
+  const target: MigrationTarget = {
+    version: input.targetVersion,
+    edges: graph.edges,
+    waitNodes: scanWaitNodes(graph.nodes, graph.edges),
+    // A disabled node never runs, and the Lifecycle node is the run's entry
+    // rather than work a target version adds, so neither can be a node this run
+    // is missing.
+    checkedNodes: graph.nodes.filter(
+      (node) => node.data.enabled !== false && !isLifecycleNode(node)
+    ),
+  };
   const executionIds = input.candidates.map((candidate) => candidate.id);
   const waitsByExecution = yield* listParkedWaits(executionIds);
   // A target graph whose Waits reach every node has nothing to compare a run
   // log against, so the whole set is spared the read.
   const loggedByExecution =
-    checkedNodes.length > 0
+    target.checkedNodes.length > 0
       ? yield* listLoggedNodeIds(executionIds)
       : new Map<string, Set<string>>();
   const now = Date.now();
@@ -555,11 +582,8 @@ export const classifyMigrationCandidates = Effect.fn(
       classifyOne({
         candidate,
         waitStates: waitsByExecution.get(candidate.id) ?? [],
-        waitNodes,
-        checkedNodes,
+        target,
         loggedNodeIds: loggedByExecution.get(candidate.id) ?? new Set(),
-        targetEdges: graph.edges,
-        targetVersion: input.targetVersion,
         now,
       }),
     { concurrency: NODE_OUTPUT_READ_CONCURRENCY }

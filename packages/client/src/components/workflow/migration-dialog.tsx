@@ -27,6 +27,7 @@ import {
 import { PanelState } from "#src/components/workflow/workflow-changes-panel-state";
 import { orpcQuery, refreshRunHistory } from "#src/lib/rpc-query";
 import {
+  type MigrationOutcomeCounts,
   migrationOutcomeToast,
   migrationRefusalSentence,
   runCountLabel,
@@ -42,18 +43,15 @@ import type { WorkflowMigrationPayload } from "@wfgraph/shared/graph/migration-c
 const RUN_ID_PREFIX_LENGTH = 8;
 
 /**
- * How many of a migrate call's outcomes moved, how many of those were left
- * unwoken, and how many did not move at all.
+ * Counts one migrate call's outcomes.
  *
  * A run whose pointer moved and whose wake signal was refused is a migrated run
- * with `signaled: false`. It reaches the target version at its next wake rather
- * than now, which is a different thing to tell the reader than a move.
+ * with `signaled: false`, and it is counted as `unsignaled` as well as
+ * `migrated`.
  */
-function migrationOutcomeCounts(payload: WorkflowMigrationPayload): {
-  migrated: number;
-  unsignaled: number;
-  notMoved: number;
-} {
+function migrationOutcomeCounts(
+  payload: WorkflowMigrationPayload
+): MigrationOutcomeCounts {
   const byStatus = countBy(payload.outcomes, (outcome) => outcome.status);
   const migrated = byStatus.migrated ?? 0;
 

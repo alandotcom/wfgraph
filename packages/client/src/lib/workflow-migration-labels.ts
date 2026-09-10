@@ -52,20 +52,28 @@ export function migrationRefusalSentence(
   }
 }
 
-/**
- * What the toast says after a migrate call.
- *
- * A run already on the target version did not move either, so it is counted in
- * `notMoved` beside the refused runs and the runs whose writes failed.
- * `unsignaled` counts the runs inside `migrated` whose wake signal was refused:
- * they are pinned to the target version and wake under it at the target their
- * park already holds.
- */
-export function migrationOutcomeToast(counts: {
+/** How a migrate call's outcomes are counted for the reader. */
+export type MigrationOutcomeCounts = {
+  /** The runs whose version pointer moved to the target version. */
   migrated: number;
+  /**
+   * The runs inside `migrated` whose wake signal was refused. They are pinned
+   * to the target version and wake under it at the target their park already
+   * holds.
+   */
   unsignaled: number;
+  /**
+   * The runs that stayed where they were: the refused runs, the runs whose
+   * writes failed, and the runs already on the target version.
+   */
   notMoved: number;
-}): { title: string; description?: string } {
+};
+
+/** What the toast says after a migrate call. */
+export function migrationOutcomeToast(counts: MigrationOutcomeCounts): {
+  title: string;
+  description?: string;
+} {
   const title = `Migrated ${runCountLabel(counts.migrated)}`;
   const lines = compact([
     counts.notMoved > 0

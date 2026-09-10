@@ -144,7 +144,8 @@ const recordMigrationAudit = Effect.fn("recordMigrationAudit")(
 );
 
 /**
- * Sorts the requested ids the in-flight list did not hold.
+ * Answers the requested ids the in-flight list did not hold, and refuses the
+ * whole call when one of them names a run of another workflow.
  *
  * Two cases arrive here and they answer differently. An id naming no run of
  * this workflow was built against something other than this workflow's
@@ -153,32 +154,31 @@ const recordMigrationAudit = Effect.fn("recordMigrationAudit")(
  * call, and is answered as one refused run so the rest of the batch still
  * moves.
  */
-const readDepartedRunIds = Effect.fn("readDepartedRunIds")(function* (input: {
-  missingIds: readonly string[];
-  workflowId: string;
-}) {
-  const repo = yield* ExecutionRepo;
-  const owners = yield* Effect.forEach(
-    input.missingIds,
-    (executionId) =>
-      Effect.map(repo.findWorkflowIdById(executionId), (workflowId) => ({
-        executionId,
-        workflowId,
-      })),
-    { concurrency: DEPARTED_RUN_READ_CONCURRENCY }
-  );
+const acceptDepartedRunIds = Effect.fn("acceptDepartedRunIds")(
+  function* (input: { missingIds: readonly string[]; workflowId: string }) {
+    const repo = yield* ExecutionRepo;
+    const owners = yield* Effect.forEach(
+      input.missingIds,
+      (executionId) =>
+        Effect.map(repo.findWorkflowIdById(executionId), (workflowId) => ({
+          executionId,
+          workflowId,
+        })),
+      { concurrency: DEPARTED_RUN_READ_CONCURRENCY }
+    );
 
-  const foreign = owners.filter(
-    (owner) => owner.workflowId !== input.workflowId
-  );
-  if (foreign.length > 0) {
-    return yield* new InvalidInput({
-      error: `${foreign.length} of the requested runs are not runs of this workflow`,
-    });
+    const foreign = owners.filter(
+      (owner) => owner.workflowId !== input.workflowId
+    );
+    if (foreign.length > 0) {
+      return yield* new InvalidInput({
+        error: `${foreign.length} of the requested runs are not runs of this workflow`,
+      });
+    }
+
+    return input.missingIds;
   }
-
-  return input.missingIds;
-});
+);
 
 function refusedOutcome(input: {
   executionId: string;
@@ -331,7 +331,7 @@ export const migrateExecutions = Effect.fn("wfgraph.workflow.migrate_runs")(
     const candidates = requestedIds
       .map((executionId) => inFlightById.get(executionId))
       .filter(isNotNil);
-    const departedIds = yield* readDepartedRunIds({
+    const departedIds = yield* acceptDepartedRunIds({
       missingIds: requestedIds.filter(
         (executionId) => !inFlightById.has(executionId)
       ),

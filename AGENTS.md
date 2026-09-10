@@ -166,9 +166,9 @@ otherwise be written a second time. Never a fresh `value is Record<string, unkno
 predicate, and never es-toolkit's `isPlainObject`; that module's header says why.
 
 **Effect Schema is the only schema library** inside `packages/`, and
-`packages/shared/src/types/schema.ts` holds the three names most of the repo needs:
-`NonEmptyTrimmedString`, `rejectUnknownKeys`, and `toStandardSchema`. Four rules that cost
-something to learn:
+`packages/shared/src/types/schema.ts` holds the five names most of the repo needs:
+`NonEmptyTrimmedString`, `positiveInteger`, `nonNegativeInteger`, `rejectUnknownKeys`, and
+`toStandardSchema`. Four rules that cost something to learn:
 
 - Strictness is a decode option. Effect has no `.strict()`, so a wire decode passes
   `rejectUnknownKeys`; a shape meant to stay open says so with `Schema.StructWithRest`.

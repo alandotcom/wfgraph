@@ -77,6 +77,18 @@ export const wakeWait = Effect.fn("wakeWait")(function* (input: {
   }
 
   const { waitState, claimedAt } = claim;
+  // The claim outlives the wake whether the row refused the release or the
+  // database did. A database failure carries a cause to name; a refusal has
+  // none.
+  const logReleaseFailure = (error?: unknown) =>
+    logger.error(
+      "Failed to release refused wait wake claim",
+      omitUndefined({
+        run: { executionId: waitState.executionId },
+        node: { waitStateId: waitState.id },
+        error,
+      })
+    );
   // A manual resume names no Event, and the envelope carries no key for one.
   const signal = omitUndefined({
     executionId: waitState.executionId,
@@ -93,19 +105,10 @@ export const wakeWait = Effect.fn("wakeWait")(function* (input: {
         .releaseWaitingStateClaim({ waitStateId: waitState.id, claimedAt })
         .pipe(
           Effect.flatMap((released) =>
-            released
-              ? Effect.void
-              : logger.error("Failed to release refused wait wake claim", {
-                  waitStateId: waitState.id,
-                  executionId: waitState.executionId,
-                })
+            released ? Effect.void : logReleaseFailure()
           ),
           Effect.catchTag("DatabaseError", (failure) =>
-            logger.error("Failed to release refused wait wake claim", {
-              waitStateId: waitState.id,
-              executionId: waitState.executionId,
-              error: failure.cause,
-            })
+            logReleaseFailure(failure.cause)
           )
         )
     )
@@ -120,8 +123,8 @@ export const wakeWait = Effect.fn("wakeWait")(function* (input: {
     // this write found. Something else settled the row first, which is what
     // separates this from a wake that reached no run at all.
     yield* logger.warn("Wait wake claim was already settled", {
-      waitStateId: waitState.id,
-      executionId: waitState.executionId,
+      run: { executionId: waitState.executionId },
+      node: { waitStateId: waitState.id },
     });
     const raced: WaitWakeOutcome = {
       status: "raced",

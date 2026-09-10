@@ -111,6 +111,14 @@ export type CreateWaitStateInput = {
 };
 
 /**
+ * What a re-park answers: the write landed, or the guard that refused it. See
+ * `WorkflowStore.reparkWaitState`.
+ */
+export type ReparkWaitStateOutcome =
+  | { ok: true }
+  | { ok: false; reason: "not_waiting" | "version_moved" };
+
+/**
  * A wait row parked again, after a Migration moved the run to a newer Workflow
  * Version while it was waiting.
  *
@@ -120,14 +128,6 @@ export type CreateWaitStateInput = {
  * that changed mode writes a different `waitType`, an event wait that lost its
  * subscriptions writes an empty list, and a delay wait writes a null token.
  */
-/**
- * What a re-park answers: the write landed, or the guard that refused it. See
- * `WorkflowStore.reparkWaitState`.
- */
-export type ReparkWaitStateOutcome =
-  | { ok: true }
-  | { ok: false; reason: "not_waiting" | "version_moved" };
-
 export type ReparkWaitStateInput = {
   waitStateId: string;
   /**

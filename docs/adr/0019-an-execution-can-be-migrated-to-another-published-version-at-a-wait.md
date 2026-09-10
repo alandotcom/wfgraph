@@ -95,11 +95,14 @@ both into a retry: the prepare and resume steps compare the execution row's
 pinned version with the version the body loaded, and a mismatch fails in a way
 Inngest retries, so the next attempt loads the newer graph.
 
-Each hop costs its own prepare, park and resume steps. A run migrated many times
-grows its step count in proportion to its hops, against Inngest's limit of 1000
-steps per function run. `WAIT_ATTEMPT_LIMIT` in `packages/core/src/backend/engine/wait.ts`
-caps one Wait at 50 parks and fails the node past that, so the hops a run can
-accumulate at one Wait are bounded.
+Each attempt of the Wait driver costs its own prepare, park and resume steps. A
+run migrated many times grows its step count in proportion to its attempts,
+against Inngest's limit of 1000 steps per function run.
+`WAIT_ATTEMPT_LIMIT` in `packages/core/src/backend/engine/wait.ts` caps one Wait
+at 50 attempts and fails the node past that. An attempt that reaches a park is a
+hop; a past-due recompute and a re-prepare behind the version fence each cost an
+attempt without parking, so the cap bounds the step count rather than the hop
+count.
 
 A migrate call is bounded by concurrency rather than by count. It accepts every
 execution id the caller names and moves eight runs at a time, so a workflow with

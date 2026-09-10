@@ -233,14 +233,13 @@ _Avoid_: workflow (a workflow is the definition; an Execution is one run of it)
 
 **Migration**:
 Moving an open Execution from the Workflow Version it pinned to another
-published version of the same workflow, usually the current one. A Migration is its own action, taken
-after Publish rather than as part of Publish. It reaches a run parked on a Wait.
-The parked Wait recomputes its parameters from the new version's config and
-parks again on the next hop. Nodes below the Wait then run the new version's
-definitions, and nodes above the Wait keep the outputs they already produced. A
-preflight report classifies every in-flight run as eligible or refused before
-anything moves. A refused run stays on its old version, so a partial Migration
-leaves the workflow's runs spread over two versions.
+published version of the same workflow, usually the current one. It reaches a
+run parked on a Wait. The parked Wait recomputes its parameters from the new
+version's config and parks again on the next hop. Nodes below the Wait then run
+the new version's definitions, and nodes above the Wait keep the outputs they
+already produced. A preflight report classifies every in-flight run as eligible
+or refused before anything moves. A refused run stays on its old version, so a
+partial Migration leaves the workflow's runs spread over two versions.
 _Avoid_: rebase, upgrade, hot-swap, version bump
 
 **Draft run**:

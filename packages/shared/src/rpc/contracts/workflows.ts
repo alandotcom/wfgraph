@@ -429,7 +429,7 @@ export const workflowContract = {
     .input(workflowVersionUsageInput)
     .output(workflowVersionUsagePayload),
   /**
-   * Classify every in-flight run of the workflow against a later published
+   * Classify every in-flight run of the workflow against another published
    * version. The report is a read: it names the runs that version can take
    * over, and the reason each of the rest stays where it is.
    */

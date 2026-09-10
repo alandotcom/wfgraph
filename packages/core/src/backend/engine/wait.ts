@@ -57,12 +57,16 @@ export type {
 } from "#src/backend/engine/wait-shared";
 
 /**
- * How many times one Wait may park before the node fails.
+ * How many attempts one Wait may make before the node fails.
  *
- * Each Migration of a parked run costs an attempt, and a run parked for a week
- * can be migrated many times, so the cap is high. What it is there for is a
- * `version-migrate` wake that keeps arriving without the target ever moving,
- * which would otherwise spin the body against Inngest forever.
+ * An attempt is one pass of the driver, and it costs the prepare, park and
+ * resume steps whether or not it reaches a park: a past-due recompute and a
+ * re-prepare behind the version fence both consume one without parking. The
+ * step count is what the cap protects, so it counts attempts. Each Migration of
+ * a parked run costs an attempt, and a run parked for a week can be migrated
+ * many times, so the cap is high. What it is there for is a `version-migrate`
+ * wake that keeps arriving without the target ever moving, which would
+ * otherwise spin the body against Inngest forever.
  */
 const WAIT_ATTEMPT_LIMIT = 50;
 
@@ -201,8 +205,8 @@ type WaitCarry = {
 /** The loop's own state, which outlives one attempt but not the node. */
 type WaitDriveState = {
   attempt: number;
-  /** How many times this Wait actually parked, which is its `hops` output. */
-  parks: number;
+  /** How many times this Wait parked, which is the node's `hops` output. */
+  hops: number;
   carry: WaitCarry | undefined;
 };
 
@@ -218,7 +222,7 @@ function driveWait(
   waitMode: "delay" | "event"
 ): Effect.Effect<WaitOutcome, EngineFailure> {
   return Effect.gen(function* () {
-    const state: WaitDriveState = { attempt: 0, parks: 0, carry: undefined };
+    const state: WaitDriveState = { attempt: 0, hops: 0, carry: undefined };
 
     for (;;) {
       if (state.attempt >= WAIT_ATTEMPT_LIMIT) {
@@ -343,7 +347,7 @@ function runWaitAttempt<Prepared, Resumed>(
             park: prepared.park,
           })
         );
-        state.parks += 1;
+        state.hops += 1;
       } else {
         wake = { kind: "timeout" };
       }
@@ -381,13 +385,13 @@ function runWaitAttempt<Prepared, Resumed>(
           mode: mode.mode,
           waitStateId: prepared.carry.waitStateId,
           wake,
-          hops: state.parks,
+          hops: state.hops,
         });
         return yield* mode.resume({
           branch,
           prepared: prepared.prepared,
           wake,
-          hops: state.parks,
+          hops: state.hops,
         });
       })
     );
@@ -423,6 +427,20 @@ function prepareWaitAttempt<Prepared, Resumed>(
       ...park.metadata,
       [WAIT_ANCHOR_METADATA_KEY]: anchorAtIso,
     };
+    // A first park learns its row id from the row it just created, and a
+    // re-park already holds one. The rest of the preparation is the same
+    // either way.
+    const parked = (waitStateId: string): WaitAttemptPreparation<Prepared> => ({
+      status: "parked",
+      workflowVersionId: branch.workflowVersionId,
+      carry: {
+        waitStateId,
+        anchorAtIso,
+        resumeToken: park.resumeToken,
+      },
+      park,
+      prepared,
+    });
 
     if (input.waitStateId === undefined) {
       const created = yield* fromStore(
@@ -457,18 +475,7 @@ function prepareWaitAttempt<Prepared, Resumed>(
       }
 
       yield* recordWaiting(branch, { attempt: input.attempt.index, park });
-      const opened: WaitAttemptPreparation<Prepared> = {
-        status: "parked",
-        workflowVersionId: branch.workflowVersionId,
-        carry: {
-          waitStateId: created.waitStateId,
-          anchorAtIso,
-          resumeToken: park.resumeToken,
-        },
-        park,
-        prepared,
-      };
-      return opened;
+      return parked(created.waitStateId);
     }
 
     const reparked = yield* fromStore(
@@ -519,23 +526,12 @@ function prepareWaitAttempt<Prepared, Resumed>(
     }
 
     yield* recordWaiting(branch, { attempt: input.attempt.index, park });
-    const reopened: WaitAttemptPreparation<Prepared> = {
-      status: "parked",
-      workflowVersionId: branch.workflowVersionId,
-      carry: {
-        waitStateId: input.waitStateId,
-        anchorAtIso,
-        resumeToken: park.resumeToken,
-      },
-      park,
-      prepared,
-    };
-    return reopened;
+    return parked(input.waitStateId);
   });
 }
 
 /**
- * Ends a Wait that has parked its whole allowance without resuming.
+ * Ends a Wait that has used its whole attempt allowance without resuming.
  *
  * The node fails, and the two rows the Wait opened are closed with it: the
  * step-log row the first attempt wrote, and the wait row, which is settled as
@@ -546,7 +542,7 @@ function abandonWait(
   branch: WaitBranchContext,
   state: WaitDriveState
 ): Effect.Effect<WaitOutcome, EngineFailure> {
-  const message = `Wait node parked ${WAIT_ATTEMPT_LIMIT} times without resuming, which is the limit on one Wait's attempts.`;
+  const message = `Wait node made ${WAIT_ATTEMPT_LIMIT} attempts without resuming, which is the limit on one Wait's attempts.`;
 
   return Effect.gen(function* () {
     const waitStateId = state.carry?.waitStateId;
