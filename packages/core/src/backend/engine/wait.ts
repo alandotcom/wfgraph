@@ -34,6 +34,7 @@ import { delayWaitMode } from "#src/backend/engine/wait-delay";
 import { eventWaitMode } from "#src/backend/engine/wait-event";
 import {
   fromStore,
+  isClaimWake,
   parkUntil,
   readAllowedHoursConfig,
   readWaitGateMode,
@@ -251,9 +252,10 @@ type WaitAttemptResult =
 /**
  * What the prepare step of one attempt settled.
  *
- * `woken` is the row having left `waiting` between a Migration's wake and this
- * park: a resume claim recorded its arrival on the row, and this attempt takes
- * that arrival instead of parking on a signal that has already been sent.
+ * `woken` is a re-park refused between a Migration's wake and this park. Either
+ * a resume claim recorded its arrival on the row, and this attempt takes that
+ * arrival instead of parking on a signal that has already been sent, or a Cancel
+ * or Exit claim on the run refused the park, and the claim is the wake.
  *
  * `workflowVersionId` is the version that wrote the preparation. A replay
  * returns the earlier body's memoized value, so the driver starts a new attempt
@@ -460,12 +462,31 @@ function prepareWaitAttempt<Prepared, Resumed>(
       );
 
       if (!created) {
-        // The write is fenced on the pinned version as well as on the run still
-        // being in flight, so it refuses either a Migration that landed inside
-        // this step or a policy cancel that ended the run. Failing the step
-        // covers both: Inngest retries the body, which reloads the graph from
-        // the pointer the row now names, and a run Inngest is already killing
-        // never reaches that retry.
+        // The write is fenced on the pinned version, on the run still being in
+        // flight, and on no Cancel or Exit claim. A claim means another branch
+        // has already ended this run's work, so the Wait halts its branch
+        // without parking, and nothing is added to the timeline because nothing
+        // parked. This also covers a branch admitted before the claim that
+        // reaches its park after the claim's parked-Wait read.
+        const claim = yield* readClaimWake(branch);
+        if (claim !== null) {
+          const output = { waitType: park.waitType, haltedBy: claim.kind };
+          yield* closeStepLog(store, branch.startLog, {
+            status: "success",
+            output,
+          });
+          const halted: WaitAttemptPreparation<Prepared> = {
+            status: "skipped",
+            output,
+          };
+          return halted;
+        }
+
+        // With no claim, the refusal is a Migration that landed inside this
+        // step or a policy cancel that ended the run. Failing the step covers
+        // both: Inngest retries the body, which reloads the graph from the
+        // pointer the row now names, and a run Inngest is already killing never
+        // reaches that retry.
         return yield* Effect.fail(
           engineFailure(
             "failure",
@@ -504,7 +525,11 @@ function prepareWaitAttempt<Prepared, Resumed>(
         );
       }
 
-      const missed = yield* readMissedWake(branch, input.waitStateId);
+      // The row can also still be waiting, when a Cancel or Exit claim is what
+      // refused the re-park. That claim is then the wake.
+      const missed =
+        (yield* readMissedWake(branch, input.waitStateId)) ??
+        (yield* readClaimWake(branch));
       if (missed === null) {
         return yield* failPreparation<Prepared>(
           branch,
@@ -593,14 +618,19 @@ function markRunningUnderLoadedVersion(
 }
 
 /**
- * The three writes every resume opens with, whichever mode is resuming: the
- * version fence, the wait row settled for the wakes that have no producer, and
- * the run's one timeline entry for this wake.
+ * The writes every resume opens with, whichever mode is resuming: the version
+ * fence, the wait row settled for the wakes that have no producer, and the run's
+ * one timeline entry for this wake.
  *
  * Only this engine invocation knows it consumed the wake, so it owns the
  * Execution's running status and that entry. The wait row is settled here only
- * for a timeout and a cancellation; an ordinary resume was settled by the
- * producer that sent the signal, through its own claim fence.
+ * for a timeout and a claim wake; an ordinary resume was settled by the producer
+ * that sent the signal, through its own claim fence.
+ *
+ * A claim wake (a Cancel or an Exit) skips the version fence. The running write
+ * refuses a claimed run, so the fence would fail every claim wake. A claimed run
+ * cannot be migrated either, because the Migration's repin write refuses a
+ * claimed run too, so the version this body loaded is still the pinned one.
  */
 function openResume(
   branch: WaitBranchContext,
@@ -615,18 +645,20 @@ function openResume(
     const { context, store, workflowId } = branch;
     const { mode, wake, hops } = input;
 
-    yield* markRunningUnderLoadedVersion(branch);
+    const claimed = isClaimWake(wake);
+    if (!claimed) {
+      yield* markRunningUnderLoadedVersion(branch);
+    }
 
-    if (wake.kind === "timeout" || wake.kind === "cancel") {
+    if (wake.kind === "timeout" || claimed) {
       yield* fromStore(
         store.markWaitStateStatus({
           waitStateId: input.waitStateId,
-          status:
-            wake.kind === "cancel"
-              ? "cancelled"
-              : mode === "event"
-                ? "timed_out"
-                : "resumed",
+          status: claimed
+            ? "cancelled"
+            : mode === "event"
+              ? "timed_out"
+              : "resumed",
         })
       );
     }
@@ -693,6 +725,14 @@ function resumeAuditEntry(input: {
     };
   }
 
+  if (wake.kind === "exit") {
+    return {
+      eventType: "run_resumed",
+      message: `Run woken by an Exit in node '${nodeName}'`,
+      metadata: where,
+    };
+  }
+
   return wake.eventName === null
     ? {
         eventType: "run_resumed",
@@ -751,6 +791,25 @@ function readMissedWake(
         eventName: arrival.eventName,
         payload: arrival.payload,
       };
+    }
+  );
+}
+
+/**
+ * The execution-wide claim that ended this run's work, as a wake, or null when
+ * the run holds no Cancel or Exit claim.
+ *
+ * Read after the store refused a park, since a claim is one of the reasons it
+ * refuses. A terminal status with no claim answers null.
+ */
+function readClaimWake(
+  branch: WaitBranchContext
+): Effect.Effect<{ kind: "cancel" } | { kind: "exit" } | null, EngineFailure> {
+  return Effect.map(
+    fromStore(branch.store.readTerminationState(branch.context.executionId)),
+    (state) => {
+      const kind = state?.claim?.kind;
+      return kind === undefined ? null : { kind };
     }
   );
 }

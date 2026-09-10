@@ -46,6 +46,7 @@ import {
 import type { WfGraphRuntime } from "#src/backend/runtime";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import type { ExecutionSummary } from "#src/backend/services/executions/repo/contracts";
+import { wakeParkedWaitsAfterExit } from "#src/backend/services/workflows/lifecycle/signal-parked-waits";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 
 /** The engine entry the run function calls; tests inject a stand-in. */
@@ -146,8 +147,10 @@ function createDurableRuntime(input: {
   attempt: number;
   runId: string;
   data: WorkflowExecutionInput | WorkflowBranchInput;
+  /** Runs the parked-Wait wake an Exit claim sends. */
+  appRuntime: WfGraphRuntime;
 }): WorkflowExecutionRuntime {
-  const { step, attempt, runId, data } = input;
+  const { step, attempt, runId, data, appRuntime } = input;
 
   // Every port forwards the engine's `{ id, name }` straight through: Inngest's
   // step tools each take a `StepOptionsOrId`, where `id` memoizes and `name` is
@@ -183,6 +186,12 @@ function createDurableRuntime(input: {
             releasedNodeIds: [...releasedNodeIds],
           },
         })
+      ),
+    // The engine calls this inside its own durable step, so the signals are
+    // sent once per Exit claim rather than once per replay.
+    wakeParkedWaits: () =>
+      appRuntime.runPromise(
+        wakeParkedWaitsAfterExit({ executionId: data.executionId })
       ),
     attempt,
     runId,
@@ -359,7 +368,7 @@ async function workflowRunRequestedHandler({
   const result = await appRuntime.runPromise(
     executeWorkflow(
       data,
-      createDurableRuntime({ step, attempt, runId, data }),
+      createDurableRuntime({ step, attempt, runId, data, appRuntime }),
       store,
       actions,
       entities
@@ -440,7 +449,7 @@ async function workflowBranchRequestedHandler({
   return await appRuntime.runPromise(
     executeWorkflowBranch(
       data,
-      createDurableRuntime({ step, attempt, runId, data }),
+      createDurableRuntime({ step, attempt, runId, data, appRuntime }),
       store,
       actions,
       entities

@@ -148,12 +148,13 @@ export const workflowWaitSignal = eventType(WAIT_SIGNAL_EVENT, {
       eventType: Schema.optional(Schema.String),
       entityValue: Schema.optional(Schema.String),
       payload: Schema.optional(jsonObjectSchema),
-      // One envelope wakes a parked run for each of three reasons. The signal
-      // carries no decision of its own: a `lifecycle-cancel` wake sends the run
-      // back to the flag on its execution row, which is the single answer to
-      // whether it is canceled, and a `version-migrate` wake sends the Wait
-      // back to the execution row's Workflow Version, which is the single
-      // answer to which graph the run is on.
+      // One envelope wakes a parked run for each of the `WAIT_SIGNAL_TYPES`.
+      // The signal carries no decision of its own: a `lifecycle-cancel` or
+      // `lifecycle-exit` wake sends the run back to the claim on its execution
+      // row, which is the single answer to whether its work has ended, and a
+      // `version-migrate` wake sends the Wait back to the execution row's
+      // Workflow Version, which is the single answer to which graph the run is
+      // on.
       signalType: Schema.Literals([...WAIT_SIGNAL_TYPES]),
     }),
     rejectUnknownKeys

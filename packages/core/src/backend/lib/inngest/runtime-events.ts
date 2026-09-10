@@ -87,8 +87,8 @@ export async function sendWorkflowWaitSignal(
     // JSON is what survives the send, so the caller supplies JSON.
     payload?: JsonObject | undefined;
     /**
-     * Why the run is being woken. An event wait's `if` expression admits all
-     * three; a delay wait's admits `version-migrate` alone.
+     * Why the run is being woken. An event wait's `if` expression admits every
+     * signal type; a delay wait's admits `version-migrate` and `lifecycle-exit`.
      */
     signalType: WaitSignalType;
   }

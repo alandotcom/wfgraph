@@ -332,11 +332,10 @@ describe("a wait node beside another branch", () => {
     expect(run.runs).toBe(3);
   });
 
-  // An Exit claimed in one branch run leaves a parked sibling branch run
-  // parked. The sibling wakes when its own Wait ends, and the Exit claim then
-  // refuses the node behind that Wait, so the run ends `exited` at the later
-  // Wait's target.
-  it("returns a child Exit to the parent and refuses the node behind a sibling's Wait", async () => {
+  // The branch run that wins an Exit claim wakes the sibling branch run parked
+  // on its Wait. The sibling halts at that Wait, and the run ends `exited` at
+  // the Exit rather than at the sibling Wait's ten-minute target.
+  it("returns a child Exit to the parent and wakes a sibling parked on a Wait", async () => {
     const store = createRecordingWorkflowStore();
     const checkedNodes: string[] = [];
     const entities: WorkflowEntities = {
@@ -400,12 +399,25 @@ describe("a wait node beside another branch", () => {
         nodeId: "after_short",
       },
     });
-    expect(run.elapsedMs).toBe(600_000);
+    // The short Wait's 30 seconds, when the Exit was claimed.
+    expect(run.elapsedMs).toBe(30_000);
     expect(checkedNodes).toContain("short_wait");
     expect(checkedNodes).toContain("long_wait");
     expect(checkedNodes).toContain("after_short");
     expect(checkedNodes).not.toContain("after_long");
     expect(dispatchClock(run.executed, "after_long")).toBeUndefined();
+    // The sibling's timeline names the Exit that woke it, and its row closed.
+    expect(
+      store
+        .callsOf("recordAuditEvent")
+        .filter((event) => event.eventType === "run_resumed")
+        .map((event) => event.message)
+    ).toContain("Run woken by an Exit in node 'long_wait'");
+    expect(
+      store
+        .callsOf("markWaitStateStatus")
+        .filter((call) => call.status === "cancelled")
+    ).toHaveLength(1);
     // Each branch run closed its own rows before it returned, so the kill
     // sweep has nothing to close and never runs.
     expect(store.callsOf("cancelOpenWork")).toHaveLength(0);

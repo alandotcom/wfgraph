@@ -144,17 +144,33 @@ export function waitSignalMatch(input: {
 /**
  * Why a park ended.
  *
- * `timeout` is the park running out of the time it was given. The other three
- * are the reasons a `workflow/wait.signal` carries: an Event or a manual resume,
- * a Cancel Event claiming the run, and a Migration telling the Wait to prepare
- * itself again. A signal envelope naming no reason this build knows reads as a
- * resume, because a resume is what a wake with a payload and no verdict is.
+ * `timeout` is the park running out of the time it was given. Every other kind
+ * is a reason a `workflow/wait.signal` carries. `resume` is an Event or a manual
+ * resume. `cancel` is a Cancel Event claiming the run, and `exit` is another
+ * branch of the run claiming an Entity Eligibility Exit. `migrate` is a
+ * Migration telling the Wait to prepare itself again. A signal envelope naming
+ * no reason this build knows reads as a resume, because a resume is what a wake
+ * with a payload and no verdict is.
  */
 export type WaitWake =
   | { kind: "timeout" }
   | { kind: "migrate" }
   | { kind: "cancel" }
+  | { kind: "exit" }
   | { kind: "resume"; eventName: string | null; payload: JsonObject };
+
+/**
+ * Whether a wake comes from an execution-wide claim, a Cancel or an Exit.
+ *
+ * A claim wake halts the branch where it stands and closes the wait row as
+ * cancelled. The claim already refuses every later node, so nothing below the
+ * Wait is work the run still wants.
+ */
+export function isClaimWake(
+  wake: WaitWake
+): wake is { kind: "cancel" } | { kind: "exit" } {
+  return wake.kind === "cancel" || wake.kind === "exit";
+}
 
 /**
  * Why a park ended, as a resume sees it.
@@ -186,6 +202,9 @@ export function readWaitWake(resumeEvent: unknown): WaitWake {
     }
     if (signalType === "lifecycle-cancel") {
       return { kind: "cancel" };
+    }
+    if (signalType === "lifecycle-exit") {
+      return { kind: "exit" };
     }
   }
 

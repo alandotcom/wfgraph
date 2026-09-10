@@ -20,6 +20,7 @@ import {
   type ExecutionEntitySelector,
   type WorkflowWaitState,
 } from "#src/backend/services/executions/repo";
+import { signalParkedWaits } from "#src/backend/services/workflows/lifecycle/signal-parked-waits";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import type { WorkflowMode } from "@wfgraph/shared/graph/types";
 
@@ -122,19 +123,13 @@ const stopClaimedRun = Effect.fn("stopClaimedRun")(function* (input: {
       reason: `Cancellation requested by ${input.eventName}`,
     });
 
-    yield* Effect.forEach(
-      input.parked,
-      (waitState) =>
-        inngest.sendWaitSignal({
-          executionId: input.executionId,
-          nodeId: waitState.nodeId,
-          token: waitState.resumeToken,
-          eventType: input.eventName,
-          payload: input.payload,
-          signalType: "lifecycle-cancel",
-        }),
-      { concurrency: DEFAULT_QUERY_CONNECTIONS }
-    );
+    yield* signalParkedWaits({
+      executionId: input.executionId,
+      parked: input.parked,
+      signalType: "lifecycle-cancel",
+      eventName: input.eventName,
+      payload: input.payload,
+    });
 
     yield* repo.recordAuditEvent({
       workflowId: input.workflowId,

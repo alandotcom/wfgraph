@@ -71,6 +71,17 @@ export type WorkflowExecutionRuntime = {
       ) => Promise<BranchHandoff>)
     | undefined;
   /**
+   * Sends a `lifecycle-exit` wait signal to every Wait of this Execution that is
+   * still parked, which is how the run that claimed an Exit ends the sibling
+   * branches waiting beside it. The caller runs it inside a durable step, and a
+   * rejection means at least one signal was refused.
+   *
+   * The Waits of this run and of the runs that started it have already resumed,
+   * so the read of parked Waits never names them. A runtime that starts no
+   * durable runs leaves this out, since every Wait then parks in the one run.
+   */
+  wakeParkedWaits?: (() => Promise<void>) | undefined;
+  /**
    * Zero-indexed retry counter for the current attempt, which holds across every
    * replay within that attempt and rises when the runtime retries the body. A
    * step id carrying it is memoized per attempt, so a later attempt may correct

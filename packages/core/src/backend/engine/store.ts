@@ -244,9 +244,10 @@ export type WorkflowStore = {
   /**
    * Writes a re-parked wait's whole park onto the row it already holds, saying
    * which guard refused when none was written: `not_waiting` for the row having
-   * left `waiting`, which the caller answers by reading the wake the row
-   * records, and `version_moved` for a Migration having moved the execution off
-   * the version this park was resolved from.
+   * left `waiting` or the run holding a Cancel or Exit claim, which the caller
+   * answers by reading the wake the row records and then the run's claim, and
+   * `version_moved` for a Migration having moved the execution off the version
+   * this park was resolved from.
    */
   reparkWaitState(
     input: ReparkWaitStateInput

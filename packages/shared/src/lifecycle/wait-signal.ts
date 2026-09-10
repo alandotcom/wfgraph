@@ -18,14 +18,16 @@ export const WAIT_SIGNAL_EVENT = "workflow/wait.signal";
 /**
  * Why a wait signal was sent, as the `signalType` key spells it.
  *
- * `wait-resume` is an Event arrival or a manual resume from the runs panel,
- * `lifecycle-cancel` is a Cancel Event claiming the run, and `version-migrate`
- * tells a parked Wait to prepare itself again against the Workflow Version the
- * execution row now names.
+ * `wait-resume` is an Event arrival or a manual resume from the runs panel.
+ * `lifecycle-cancel` is a Cancel Event claiming the run. `lifecycle-exit` is an
+ * Entity Eligibility Exit claimed by another branch of the same run.
+ * `version-migrate` tells a parked Wait to prepare itself again against the
+ * Workflow Version the execution row now names.
  */
 export const WAIT_SIGNAL_TYPES = [
   "wait-resume",
   "lifecycle-cancel",
+  "lifecycle-exit",
   "version-migrate",
 ] as const;
 
@@ -58,6 +60,6 @@ export type WaitArrival = {
 
 const waitSignalTypeSchema = Schema.Literals([...WAIT_SIGNAL_TYPES]);
 
-/** Whether an arbitrary value is one of the three signal types. */
+/** Whether an arbitrary value is one of the `WAIT_SIGNAL_TYPES`. */
 export const isWaitSignalType: (value: unknown) => value is WaitSignalType =
   Schema.is(waitSignalTypeSchema);

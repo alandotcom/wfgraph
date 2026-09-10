@@ -380,6 +380,56 @@ describe("wait node - migration to a later workflow version", () => {
     expect(run.value.results.after_wait).toBeUndefined();
   });
 
+  // A re-park is refused while the row is still waiting when the run holds a
+  // Cancel or Exit claim. The claim is then the wake, so the Wait resumes as an
+  // Exit and halts its branch.
+  it("resumes as an Exit when an Exit claim refused the re-park", async () => {
+    store.reparkAnswer = { ok: false, reason: "not_waiting" };
+    store.waitState = { status: "waiting", arrival: null };
+    store.terminationState = {
+      status: "running",
+      claim: {
+        kind: "exit",
+        requestedAt: "2026-10-19T15:00:00.000Z",
+        reason: "entity_condition_not_met",
+        nodeId: "other_branch",
+      },
+      didWrite: false,
+    };
+
+    const run = await runMigratedWait({
+      store,
+      parked: {
+        waitMode: "event",
+        waitFor: [{ event: "billing/payment.settled" }],
+        waitTimeout: "7d",
+      },
+      migrated: {
+        waitMode: "event",
+        waitFor: [{ event: "billing/payment.settled" }],
+        waitTimeout: "7d",
+      },
+      events: { "wait-park-wait_1-0": waitMigrateSignal() },
+    });
+
+    expect(run.value.results.wait_1?.success).toBe(true);
+    expect(run.value.results.after_wait).toBeUndefined();
+    expect(store.callsOf("markWaitStateStatus")).toEqual([
+      { waitStateId: "wait_state_1", status: "cancelled" },
+    ]);
+    expect(store.callsOf("markExecutionRunning")).toEqual([]);
+    expect(
+      store
+        .callsOf("recordAuditEvent")
+        .filter((event) => event.eventType === "run_resumed")
+    ).toEqual([
+      expect.objectContaining({
+        message: "Run woken by an Exit in node 'Wait'",
+        metadata: { nodeId: "wait_1", hops: 1 },
+      }),
+    ]);
+  });
+
   it("fails the node when the row that left waiting records no wake", async () => {
     store.reparkAnswer = { ok: false, reason: "not_waiting" };
     store.waitState = { status: "timed_out", arrival: null };

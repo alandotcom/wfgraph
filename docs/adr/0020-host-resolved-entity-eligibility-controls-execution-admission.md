@@ -182,3 +182,25 @@ that Wait ends. It then asks the store to admit its next node, the Exit claim
 refuses it, and the branch returns to the parent with its own rows closed. The
 parent still records the one `exited` terminal status. `workflow/branch.kill.requested`
 now ends every branch run of an Execution and is sent only for a Cancel Event.
+
+## Amendment: The Exit winner wakes parked sibling Waits
+
+Date: 2026-09-10
+
+After an Exit claim, the run that won the claim, whether the parent or a branch,
+read the Execution's parked Waits and sent each a `workflow/wait.signal` with
+signal type `lifecycle-exit`. Inngest's CEL policy accepted the Wait's match
+expression, because the signal selected a Wait by execution id and node id with
+equality comparisons alone. A woken Wait closed its row as cancelled, halted its
+branch, and returned through `step.invoke`; the parent then recorded `exited`
+from the claim. The Waits of the winning run and of its parents had already
+resumed, so they were never signaled.
+
+A sibling admitted before the claim could reach its park after the winner read
+the parked Waits. The park write refused a claimed run, and that Wait halted its
+branch without parking. A signal that still failed after the durable step's
+retries left that sibling parked until its own timeout.
+
+The wait-signal payload schema gained the `lifecycle-exit` literal, which
+ADR-0015 counts as an incompatible durable protocol change during a mixed
+deployment.

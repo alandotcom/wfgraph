@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { Effect } from "effect";
+import { Effect, Layer, Logger, References } from "effect";
+import { executeWorkflow } from "#src/backend/engine/core";
+import { TracerBridgeLayer } from "#src/backend/lib/effect/tracer";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import { LIFECYCLE_CANCELED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
@@ -362,6 +364,121 @@ describe("per-node Entity Eligibility", () => {
         nodeId: "other_branch",
       },
     });
+  });
+
+  // The run that wins the Exit claim wakes the Waits parked in sibling branch
+  // runs, once, inside a durable step of its own.
+  it("wakes the parked Waits once when this checkpoint won the Exit claim", async () => {
+    const wakeParkedWaits = vi.fn(() => Promise.resolve());
+    const runtime = { ...createInMemoryWorkflowRuntime(), wakeParkedWaits };
+    const entities = entityPort([
+      { outcome: "eligible" },
+      {
+        outcome: "exit",
+        reason: "entity_condition_not_met",
+        checkedAt: "2026-10-19T15:00:00.000Z",
+      },
+    ]);
+
+    const result = await executeTestWorkflow(
+      executionInput,
+      runtime,
+      createRecordingWorkflowStore(),
+      actions,
+      entities
+    );
+
+    expect(result.status).toBe("exited");
+    expect(wakeParkedWaits).toHaveBeenCalledTimes(1);
+    expect(runtime.memo.has("entity-exit-wake-waits:second")).toBe(true);
+  });
+
+  it("leaves the parked Waits to the run that won the Exit claim", async () => {
+    const wakeParkedWaits = vi.fn(() => Promise.resolve());
+    const runtime = { ...createInMemoryWorkflowRuntime(), wakeParkedWaits };
+    const store = createRecordingWorkflowStore();
+    const authoritative = {
+      status: "running" as const,
+      claim: {
+        kind: "exit" as const,
+        requestedAt: "2026-10-19T14:59:00.000Z",
+        reason: "entity_not_found" as const,
+        nodeId: "other_branch",
+      },
+      didWrite: false,
+    };
+    store.requestExit = () =>
+      Effect.sync(() => {
+        store.terminationState = authoritative;
+        return authoritative;
+      });
+    const entities = entityPort([
+      {
+        outcome: "exit",
+        reason: "entity_condition_not_met",
+        checkedAt: "2026-10-19T15:00:00.000Z",
+      },
+    ]);
+
+    const result = await executeTestWorkflow(
+      executionInput,
+      runtime,
+      store,
+      actions,
+      entities
+    );
+
+    expect(result.status).toBe("exited");
+    expect(wakeParkedWaits).not.toHaveBeenCalled();
+  });
+
+  // A refused wake leaves sibling Waits parked until their own timeouts. It is
+  // logged, and it fails neither the run nor the checkpoint node, which the
+  // Exit claim kept from being admitted.
+  it("logs a refused wake and still ends the run exited", async () => {
+    const wakeParkedWaits = vi.fn(() =>
+      Promise.reject(new Error("bus refused"))
+    );
+    const runtime = { ...createInMemoryWorkflowRuntime(), wakeParkedWaits };
+    const store = createRecordingWorkflowStore();
+    const entities = entityPort([
+      { outcome: "eligible" },
+      {
+        outcome: "exit",
+        reason: "entity_condition_not_met",
+        checkedAt: "2026-10-19T15:00:00.000Z",
+      },
+    ]);
+    const logged: unknown[] = [];
+    const captureLogs = Layer.merge(
+      Logger.layer([
+        Logger.make<unknown, void>(({ message }) => {
+          logged.push(Array.isArray(message) ? message[0] : message);
+        }),
+      ]),
+      Layer.succeed(References.MinimumLogLevel, "All")
+    );
+
+    const result = await Effect.runPromise(
+      executeWorkflow(
+        {
+          ...executionInput,
+          catalogFingerprint: actions.catalogFingerprint(),
+        },
+        runtime,
+        store,
+        actions,
+        entities
+      ).pipe(Effect.provide(Layer.merge(TracerBridgeLayer, captureLogs)))
+    );
+
+    expect(result.status).toBe("exited");
+    expect(wakeParkedWaits).toHaveBeenCalledTimes(1);
+    expect(logged).toContain("Failed to wake parked Waits after an Exit");
+    expect(result.results.second).toBeUndefined();
+    expect(
+      store.callsOf("startStepLog").map((entry) => entry.nodeId)
+    ).not.toContain("second");
   });
 
   it("does not resolve for a disabled node", async () => {

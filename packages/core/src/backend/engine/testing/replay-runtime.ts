@@ -265,6 +265,31 @@ async function driveWithReplayInstalled<T>(
     }
   }
 
+  /**
+   * Ends every Wait another run is parked on with a `lifecycle-exit` signal,
+   * which is what the run that wins an Exit claim sends.
+   *
+   * A pause with a `wakeAt` entry is a Wait. A branch hand-off has none, so the
+   * runs that started the caller stay parked on it. A Wait reached after this
+   * call is not signaled, as in production, where the signal reaches only the
+   * rows parked when it was sent.
+   */
+  function signalParkedWaitsBeside(caller: DurableRun) {
+    for (const run of tree) {
+      if (run === caller || run.settled) {
+        continue;
+      }
+      for (const stepId of run.outstanding) {
+        if (run.wakeAt.has(stepId)) {
+          run.finishedWaits.set(stepId, {
+            data: { signalType: "lifecycle-exit" },
+          });
+          run.outstanding.delete(stepId);
+        }
+      }
+    }
+  }
+
   /** Ends every branch run that is still going. */
   function killLiveBranches() {
     for (const run of tree) {
@@ -378,6 +403,13 @@ async function driveWithReplayInstalled<T>(
           }
           return pending<unknown>();
         }),
+
+      // The engine calls this inside a durable step, which the driver runs
+      // between passes, so the signals land before any run is called again.
+      wakeParkedWaits: () => {
+        signalParkedWaitsBeside(run);
+        return Promise.resolve();
+      },
 
       startBranch: branch
         ? (

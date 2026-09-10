@@ -225,7 +225,7 @@ export class NodeScheduler {
         );
 
         if (decision.outcome === "exit") {
-          yield* runDurable(
+          const claimed = yield* runDurable(
             runtime,
             {
               id: `entity-exit:${node.id}`,
@@ -238,6 +238,32 @@ export class NodeScheduler {
               checkedAt: decision.checkedAt,
             })
           );
+
+          // The run that wins the Exit claim wakes the Waits parked in sibling
+          // branch runs, so each halts and returns to the run that started it.
+          // A refused wake leaves those siblings parked until their own Waits
+          // end. It does not fail this node, which was never admitted.
+          const wakeParkedWaits = runtime.wakeParkedWaits;
+          if (
+            claimed?.didWrite &&
+            claimed.claim?.kind === "exit" &&
+            wakeParkedWaits
+          ) {
+            yield* runDurableUnit(
+              runtime,
+              {
+                id: `entity-exit-wake-waits:${node.id}`,
+                name: `${nodeName} (wake parked Waits)`,
+              },
+              fromUnknownPromise(wakeParkedWaits)
+            ).pipe(
+              Effect.catch((failure) =>
+                Effect.logError(
+                  "Failed to wake parked Waits after an Exit"
+                ).pipe(Effect.annotateLogs({ error: failure.message }))
+              )
+            );
+          }
           return false;
         }
 

@@ -236,6 +236,75 @@ export function describeExecutionWaitConformance({
       });
     });
 
+    // The run that wins an Exit claim reads the Waits still parked beside it and
+    // signals each, and the woken Wait closes its own row. Both need the row
+    // after the claim, which the park and claim guards above do not reach.
+    it("still lists and closes a parked wait after an Exit claim", async () => {
+      const database = await openConnection();
+      await seedPublishedWorkflow(database);
+
+      const result = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const started = yield* executions.startForEntity({
+            execution: {
+              workflowId: "wf_1",
+              workflowVersionId: "ver_1",
+              startSource: "manual",
+              runMode: "live",
+              input: {},
+            },
+            concurrency: "unlimited",
+            supersededReason: "newer start",
+          });
+          if (started.status !== "started") {
+            throw new Error("Start was refused");
+          }
+          const executionId = started.execution.id;
+          const wait = yield* executions.startWait({
+            executionId,
+            workflowId: "wf_1",
+            runId: "run_1",
+            nodeId: "wait_1",
+            nodeName: "Sibling delay",
+            workflowVersionId: "ver_1",
+            waitType: "delay",
+            subscribedEvents: [],
+          });
+          if (!wait) throw new Error("Initial wait was refused");
+
+          yield* executions.requestExit({
+            executionId,
+            reason: "entity_condition_not_met",
+            nodeId: "checkpoint_1",
+          });
+
+          const listedAfterClaim =
+            yield* executions.listWaitingStates(executionId);
+          const closed = yield* executions.markWaitStatus({
+            waitStateId: wait.waitStateId,
+            status: "cancelled",
+          });
+          return {
+            listedAfterClaim: listedAfterClaim.map((row) => row.id),
+            closed,
+            listedAfterClose: yield* executions.listWaitingStates(executionId),
+            row: (yield* executions.findWaitStateById(wait.waitStateId))
+              ?.status,
+            waitStateId: wait.waitStateId,
+          };
+        })
+      );
+
+      expect(result).toEqual({
+        listedAfterClaim: [result.waitStateId],
+        closed: true,
+        listedAfterClose: [],
+        row: "cancelled",
+        waitStateId: result.waitStateId,
+      });
+    });
+
     it("refuses a first park resolved from a version the run has left", async () => {
       const database = await openConnection();
       await seedPublishedWorkflow(database);

@@ -17,6 +17,7 @@ import { DEFAULT_WAIT_TIMEOUT } from "@wfgraph/shared/lifecycle/wait-subscriptio
 import { closeStepLog } from "#src/backend/engine/step-log";
 import { compileWaitSubscriptions } from "#src/backend/engine/wait-match";
 import {
+  isClaimWake,
   type WaitAttempt,
   type WaitBranchContext,
   type WaitMode,
@@ -111,9 +112,14 @@ const prepareEventWait = Effect.fn("prepareEventWait")(function* (
         waitTimeoutResolution.waitUntil.getTime() - Date.now(),
         0
       ),
-      // A Cancel Event and a Migration each wake a parked run through the same
-      // envelope the resume uses.
-      signalTypes: ["wait-resume", "lifecycle-cancel", "version-migrate"],
+      // A Cancel Event, an Exit claimed by another branch, and a Migration each
+      // wake a parked run through the same envelope the resume uses.
+      signalTypes: [
+        "wait-resume",
+        "lifecycle-cancel",
+        "lifecycle-exit",
+        "version-migrate",
+      ],
     },
     prepared: { resumeToken, timeoutBehavior },
   };
@@ -123,9 +129,9 @@ const prepareEventWait = Effect.fn("prepareEventWait")(function* (
 /**
  * What the arriving Event carried, and nothing of the envelope it came in.
  *
- * A cancel wake carries no resume payload: the signal is a nudge, and what the
- * canceling Event sent is on the execution row, which the engine reads at this
- * node's boundary. A timeout carries nothing either.
+ * A claim wake (a Cancel or an Exit) carries no resume payload: the signal is a
+ * nudge, and the claim itself is on the execution row. A timeout carries
+ * nothing either.
  */
 function readArrival(wake: WaitWake): {
   eventName: string | null;
@@ -187,13 +193,13 @@ export const eventWaitMode: WaitMode<EventPrepared, EventResumed> = {
   outcome: ({ resumed, wake }): WaitOutcome => {
     const arrival = readArrival(wake);
 
-    // Skip and cancel halt the branch, so the Arriving Event they would name is
-    // never read. A timeout that continues names none, which is how an Event
-    // Split below this node stops rather than taking a Start Event outlet. A
-    // resume names the Event that woke the Wait.
-    const canceled = wake.kind === "cancel";
+    // Skip and a claim wake halt the branch, so the Arriving Event they would
+    // name is never read. A timeout that continues names none, which is how an
+    // Event Split below this node stops rather than taking a Start Event outlet.
+    // A resume names the Event that woke the Wait.
+    const claimed = isClaimWake(wake);
     const arrivingEvent =
-      resumed.skipOnTimeout || canceled
+      resumed.skipOnTimeout || claimed
         ? undefined
         : arrival === null
           ? null
@@ -201,14 +207,14 @@ export const eventWaitMode: WaitMode<EventPrepared, EventResumed> = {
             ? undefined
             : { eventName: arrival.eventName, payload: arrival.payload };
 
-    // A cancel wake halts the branch as a timeout skip does. The run is claimed,
-    // so nothing below this node is work it still wants: a run walking its own
-    // graph is sent to the Canceled outlet by the boundary read at this node,
-    // which happens before the halt is consulted, and a branch run has no
+    // A Cancel or Exit wake halts the branch as a timeout skip does. The run is
+    // claimed, so nothing below this node is work it still wants: a run walking
+    // its own graph is sent to the Canceled outlet by the boundary read at this
+    // node, which happens before the halt is consulted, and a branch run has no
     // boundary of its own and would otherwise carry on for a run already ending.
     return {
       result: { success: true, data: resumed.output },
-      haltBranch: resumed.skipOnTimeout || canceled,
+      haltBranch: resumed.skipOnTimeout || claimed,
       arrivingEvent,
     };
   },

@@ -24,7 +24,10 @@ import {
 } from "#src/backend/lib/inngest/workflow-function";
 import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
 import type { Workflow, WorkflowVersion } from "#src/backend/lib/db/schema";
-import type { ExecutionSummary } from "#src/backend/services/executions/repo";
+import type {
+  ExecutionSummary,
+  WorkflowWaitState,
+} from "#src/backend/services/executions/repo";
 
 const executeWorkflowMock = vi.fn();
 
@@ -75,10 +78,32 @@ const testExecution: ExecutionSummary = {
   duration: null,
 };
 const findSummaryById = vi.fn(() => Effect.succeed(testExecution));
+/** The one Wait `exec_123` is parked on, for the Exit wake. */
+const parkedWait: WorkflowWaitState = {
+  id: "wait_state_1",
+  executionId: testExecution.id,
+  workflowId: testWorkflow.id,
+  runId: "run_1",
+  nodeId: "wait_1",
+  nodeName: "Wait",
+  waitType: "delay",
+  status: "waiting",
+  resumeToken: null,
+  waitUntil: null,
+  subscribedEvents: [],
+  metadata: null,
+  createdAt: new Date("2026-01-01T00:00:00.000Z"),
+  resumedAt: null,
+  cancelledAt: null,
+};
+const listWaitingStates = vi.fn(() => Effect.succeed([parkedWait]));
+const sendWaitSignal = vi.fn(() => Effect.void);
 const testAppRuntime = stubWfGraphRuntime({
   executionRepo: {
     findSummaryById,
+    listWaitingStates,
   },
+  inngestClient: { sendWaitSignal },
   workflowRepo: {
     findById: () => Effect.succeed(testWorkflow),
     findVersionById: () => Effect.succeed(testVersion),
@@ -605,6 +630,25 @@ describe("the workflow run function", () => {
     expect(runSpy).toHaveBeenCalledWith(step, work);
     // The stored value wins over re-running the work: that is the whole point.
     expect(result).toBe("memoized-result");
+  });
+
+  // The run that wins an Exit claim wakes the Waits parked beside it. The port
+  // runs that on the application runtime the function was built with, against
+  // the execution this run was requested for.
+  it("wakes the execution's parked Waits with an Exit signal", async () => {
+    const { runtime } = await executeWorkflowFunctionForTest();
+    listWaitingStates.mockClear();
+    sendWaitSignal.mockClear();
+
+    await runtime.wakeParkedWaits?.();
+
+    expect(listWaitingStates).toHaveBeenCalledWith("exec_123");
+    expect(sendWaitSignal).toHaveBeenCalledWith({
+      executionId: "exec_123",
+      nodeId: "wait_1",
+      token: null,
+      signalType: "lifecycle-exit",
+    });
   });
 
   it("hands a branch off with the run's own payload and the entry node named", async () => {

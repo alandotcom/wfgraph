@@ -294,6 +294,57 @@ describe("driveWithReplay", () => {
     expect(run.elapsedMs).toBe(30_000);
   });
 
+  // The run that wins an Exit claim signals every Wait parked in another run.
+  // The runs that started it are parked on a branch hand-off, which is no Wait,
+  // so they wake only when the branch they started returns.
+  it("wakes the Waits other runs are parked on with an Exit signal", async () => {
+    const run = await driveWithReplay(
+      async (runtime) =>
+        await Promise.all([
+          runtime.startBranch?.(stepRef("branch-exit"), {
+            entryNodeId: "exit",
+            releasedNodeIds: [],
+          }),
+          runtime.startBranch?.(stepRef("branch-sibling"), {
+            entryNodeId: "sibling",
+            releasedNodeIds: [],
+          }),
+        ]),
+      {
+        branch: async (runtime, input) => {
+          if (input.entryNodeId === "exit") {
+            await park(runtime, "wait-short", 30_000);
+            await runtime.run(stepRef("wake-parked-waits"), async () => {
+              await runtime.wakeParkedWaits?.();
+              return null;
+            });
+            return NOTHING_RAN;
+          }
+          const woken = await park(runtime, "wait-long", 600_000);
+          return {
+            results: { sibling: { success: true, data: woken } },
+            outputs: {},
+          };
+        },
+      }
+    );
+
+    expect(run.value[1]).toEqual({
+      status: "finished",
+      result: {
+        results: {
+          sibling: {
+            success: true,
+            data: { data: { signalType: "lifecycle-exit" } },
+          },
+        },
+        outputs: {},
+      },
+    });
+    // The sibling woke at the signal rather than at its own target.
+    expect(run.elapsedMs).toBe(30_000);
+  });
+
   it("gives up on a body that asks for nothing and never returns", async () => {
     await expect(
       driveWithReplay(() => new Promise(() => undefined))
