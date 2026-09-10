@@ -2,9 +2,14 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  installAuthorizationGrantsForTests,
+  resetAuthorizationGrantsForTests,
+} from "#src/lib/authorization-test-support";
+import {
   rpcErrorResponse,
   rpcJsonResponse,
 } from "#src/lib/rpc-fetch-test-support";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { orpcQuery } from "#src/lib/rpc-query";
 import type { WorkflowVersionUsageItem } from "@wfgraph/shared/graph/publication-contracts";
 import { WorkflowVersionUsage } from "./workflow-version-usage";
@@ -73,6 +78,39 @@ function renderUsage(items?: WorkflowVersionUsageItem[]) {
 describe("WorkflowVersionUsage", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    resetAuthorizationGrantsForTests();
+  });
+
+  it("offers the migration command once a current published version exists", () => {
+    installAuthorizationGrantsForTests([
+      WfGraphOperations.workflowMigrateExecutions.id,
+    ]);
+
+    const view = renderUsage([publishedUsage({ activeRunCount: 2 })]);
+
+    expect(
+      view.getByRole("button", { name: "Migrate active runs" })
+    ).toBeDefined();
+  });
+
+  it("withholds the migration command from a viewer who cannot manage runs", () => {
+    const view = renderUsage([publishedUsage({ activeRunCount: 2 })]);
+
+    expect(
+      view.queryByRole("button", { name: "Migrate active runs" })
+    ).toBeNull();
+  });
+
+  it("withholds the migration command while only a draft snapshot is in use", () => {
+    installAuthorizationGrantsForTests([
+      WfGraphOperations.workflowMigrateExecutions.id,
+    ]);
+
+    const view = renderUsage([draftUsage()]);
+
+    expect(
+      view.queryByRole("button", { name: "Migrate active runs" })
+    ).toBeNull();
   });
 
   it("shows an explicit busy state while version usage is loading", () => {
