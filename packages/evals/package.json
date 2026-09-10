@@ -6,12 +6,18 @@
   "imports": {
     "#src/*": "./src/*.js"
   },
+  "scripts": {
+    "evals": "vitest run --config vitest.evals.config.ts",
+    "evals:ui": "vitest-evals serve ../../eval-results",
+    "test": "vitest run --config vitest.config.ts"
+  },
   "devDependencies": {
     "@wfgraph/agent": "workspace:*",
     "@wfgraph/core": "workspace:*",
     "@wfgraph/shared": "workspace:*",
     "effect": "catalog:",
     "es-toolkit": "catalog:",
+    "vitest": "4.1.11",
     "vitest-evals": "catalog:"
   }
 }

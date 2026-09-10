@@ -6,9 +6,10 @@ import { workspaceSourceAliases } from "./scripts/plugins/workspace-source-alias
 /**
  * The test runner's own Vite config. It does not extend the client's:
  * `packages/client/vite.config.ts` configures a dev server and a build for one
- * package, while the suite spans all four, and vitest would not read it in any
- * case, because it looks for `vitest.config` first and stops at the first
- * match. Anything the tests need is declared here.
+ * package, while this suite spans every package except the isolated eval harness.
+ * Vitest would not read the client config in any case, because it looks for
+ * `vitest.config` first and stops at the first match. Anything these tests need
+ * is declared here.
  */
 
 // A test file outside every project's `include` is skipped in silence, so the
@@ -41,12 +42,13 @@ export default defineConfig({
         test: {
           name: "node",
           environment: "node",
-          include: [
-            PACKAGE_TESTS,
+          include: [PACKAGE_TESTS, DEVELOPMENT_HARNESS_TESTS],
+          exclude: [
+            ...ALWAYS_EXCLUDED,
+            CLIENT_TESTS,
             EVAL_SUPPORT_TESTS,
-            DEVELOPMENT_HARNESS_TESTS,
+            POSTGRES_TESTS,
           ],
-          exclude: [...ALWAYS_EXCLUDED, CLIENT_TESTS, POSTGRES_TESTS],
         },
       },
       {
@@ -63,8 +65,8 @@ export default defineConfig({
           exclude: ALWAYS_EXCLUDED,
           // The URL may sit in a gitignored `.env.local` the way
           // `INTEGRATION_ENCRYPTION_KEY` does, and Node reads no `.env` unless
-          // an entrypoint asks it to. `vitest.evals.config.ts` loads it for the
-          // same reason.
+          // an entrypoint asks it to. `packages/evals/vitest.evals.config.ts`
+          // loads it for the same reason.
           setupFiles: ["./load-env.ts"],
           // Cases drop their own schema, so the sweep only finds what an
           // interrupted run left. It runs at setup rather than teardown, so a

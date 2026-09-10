@@ -16,50 +16,76 @@ import { Option, Schema } from "effect";
  * (`response.data`, `response.headers`) and the validated value is handed on to
  * Linear whole. The named fields are the ones Linear reads unguarded: a `message`
  * that is not a string, or a `response.errors` that is not a list of objects,
- * makes Linear's own parsing throw. `onExcessProperty: "preserve"` in the decode
- * below is what keeps the unnamed fields, at every level, on the value that comes
- * back; the default strips them.
+ * makes Linear's own parsing throw. Each object uses `Schema.StructWithRest` so
+ * the unnamed fields survive at every level; a closed struct would strip them.
  *
  * Fields are described as the API sends them. Linear's LinearErrorRaw types both
  * the per-error `message` and `extensions.type` as its LinearErrorType enum, while
  * the wire carries readable text ("Authentication required") and a lowercase
  * phrase ("authentication error") that Linear maps back to the enum itself.
  */
-const linearGraphqlErrorSchema = Schema.Struct({
-  message: Schema.optionalKey(Schema.String),
-  path: Schema.optionalKey(Schema.Array(Schema.String)),
-  extensions: Schema.optionalKey(
-    Schema.Struct({
-      type: Schema.optionalKey(Schema.String),
-      userError: Schema.optionalKey(Schema.Boolean),
-      userPresentableMessage: Schema.optionalKey(Schema.String),
-    })
-  ),
-});
+const unknownFields = [Schema.Record(Schema.String, Schema.Unknown)] as const;
 
-const linearErrorRawSchema = Schema.Struct({
-  name: Schema.optionalKey(Schema.String),
-  message: Schema.optionalKey(Schema.String),
-  request: Schema.optionalKey(
-    Schema.Struct({
-      query: Schema.optionalKey(Schema.String),
-      variables: Schema.optionalKey(
-        Schema.Record(Schema.String, Schema.Unknown)
-      ),
-    })
-  ),
-  response: Schema.optionalKey(
-    Schema.Struct({
-      status: Schema.optionalKey(Schema.Finite),
-      error: Schema.optionalKey(Schema.String),
-      errors: Schema.optionalKey(Schema.Array(linearGraphqlErrorSchema)),
-    })
-  ),
-});
+const linearErrorExtensionSchema = Schema.StructWithRest(
+  Schema.Struct({
+    type: Schema.optionalKey(Schema.String),
+    userError: Schema.optionalKey(Schema.Boolean),
+    userPresentableMessage: Schema.optionalKey(Schema.String),
+  }),
+  unknownFields
+);
 
-const readLinearErrorRaw = Schema.decodeUnknownOption(linearErrorRawSchema, {
-  onExcessProperty: "preserve",
-});
+const linearGraphqlErrorSchema = Schema.StructWithRest(
+  Schema.Struct({
+    message: Schema.optionalKey(Schema.String),
+    path: Schema.optionalKey(Schema.Array(Schema.String)),
+    extensions: Schema.optionalKey(linearErrorExtensionSchema),
+  }),
+  unknownFields
+);
+
+const linearRequestSchema = Schema.StructWithRest(
+  Schema.Struct({
+    query: Schema.optionalKey(Schema.String),
+    variables: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
+  }),
+  unknownFields
+);
+
+const linearResponseSchema = Schema.StructWithRest(
+  Schema.Struct({
+    status: Schema.optionalKey(Schema.Finite),
+    error: Schema.optionalKey(Schema.String),
+    errors: Schema.optionalKey(Schema.Array(linearGraphqlErrorSchema)),
+  }),
+  unknownFields
+);
+
+const linearErrorRawSchema = Schema.StructWithRest(
+  Schema.Struct({
+    name: Schema.optionalKey(Schema.String),
+    message: Schema.optionalKey(Schema.String),
+    request: Schema.optionalKey(linearRequestSchema),
+    response: Schema.optionalKey(linearResponseSchema),
+  }),
+  unknownFields
+);
+
+const decodeLinearErrorRaw = Schema.decodeUnknownOption(linearErrorRawSchema);
+
+function readLinearErrorRaw(input: unknown) {
+  if (typeof input !== "object" || input === null) {
+    return decodeLinearErrorRaw(input);
+  }
+
+  const ownProperties = Object.fromEntries(
+    Object.getOwnPropertyNames(input).map((key) => [
+      key,
+      Reflect.get(input, key),
+    ])
+  );
+  return decodeLinearErrorRaw(ownProperties);
+}
 
 /**
  * Normalizes anything thrown while talking to Linear into a LinearError, which is
@@ -78,11 +104,11 @@ export function toLinearError(error: unknown): LinearError {
     // Linear's own type for this payload disagrees with what its API sends for the
     // GraphQL error fields, so the validated value goes back under Linear's type.
     // The assertion narrows `message` and `extensions.type` from the string the wire
-    // carries to Linear's enum, which holds because Linear maps that text back itself.
-    // Removing the assertion turns this into a type error, so the narrowing is the
-    // point rather than an oversight.
+    // carries to Linear's enum, and bridges Effect's readonly arrays to the mutable
+    // arrays in Linear's input type. Linear only maps over those arrays, and maps the
+    // wire text back to its enum itself.
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    return parseLinearError(raw as LinearErrorRaw);
+    return parseLinearError(raw as unknown as LinearErrorRaw);
   }
 
   if (error instanceof Error) {

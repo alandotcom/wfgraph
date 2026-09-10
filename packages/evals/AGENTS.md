@@ -1,5 +1,9 @@
 # Eval instructions
 
+This package owns Vitest 4 because `vitest-evals` requires it; the main repository suite
+uses Vitest 5 for `@effect/vitest`. Keep deterministic support tests and model-backed evals
+on the package-local runner through the root `test` and `evals` scripts.
+
 Before reporting that `OPENAI_API_KEY` is unavailable, check both `.env.local`
 and `.env` at the repository root. The eval configuration loads those files
 through `load-env.ts`, with `.env.local` taking precedence. Do not infer key

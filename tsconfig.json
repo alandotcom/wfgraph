@@ -50,7 +50,8 @@
   },
   "include": [
     "vitest.config.ts",
-    "vitest.evals.config.ts",
+    "packages/evals/vitest.config.ts",
+    "packages/evals/vitest.evals.config.ts",
     "test-setup.ts",
     "examples/**/*.ts",
     "examples/**/*.tsx",

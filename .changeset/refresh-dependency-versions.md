@@ -10,7 +10,10 @@ What an adopter installs changes: `@wfgraph/plugins` now needs `@clerk/backend`
 `@dagrejs/dagre` 3, and the `@orpc` 2.0 beta line moves to beta.32 across all
 six packages. No exported API changed.
 
-Two upgrades are held back. `vitest` 5 is refused by the `vitest` peer range of
-both `@effect/vitest` and `vitest-evals`, each capping at `<5`. `@types/node` 26
-is ahead of the Node 24 the `engines` floor and CI both name, and typing against
-a newer runtime than the floor would compile code that fails on it.
+Vitest 5 now runs the main suite, as required by `@effect/vitest` rc.113. The
+private eval package keeps its own Vitest 4 runner because `vitest-evals` still
+caps its peer range below 5.
+
+`@types/node` 26 remains held back because it is ahead of the Node 24 that the
+`engines` floor and CI both name. Typing against a newer runtime than the floor
+would compile code that fails on it.

@@ -123,7 +123,7 @@ export function makeBuiltInAgentRunner(
  * continuation is suspended until then.
  */
 export function agenticSteps(input: {
-  readonly session: Chat.Service;
+  readonly session: Chat.Chat;
   readonly toolkit: Toolkit.WithHandler<Toolkit.Tools<typeof agentToolkit>>;
   readonly observeTrace: AgentTraceObserver;
 }): Stream.Stream<SteppedAgentPart, unknown, LanguageModel.LanguageModel> {

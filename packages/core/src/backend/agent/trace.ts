@@ -11,7 +11,8 @@ import { getErrorMessage } from "@wfgraph/shared/utils";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 type AgentResponsePart = Response.StreamPart<
-  Toolkit.Tools<typeof agentToolkit>
+  Toolkit.Tools<typeof agentToolkit>,
+  "opaque"
 >;
 
 export type AgentTraceUsage = {

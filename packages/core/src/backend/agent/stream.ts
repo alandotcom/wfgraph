@@ -46,7 +46,8 @@ export function summarizeToolResult(input: {
  * for it.
  */
 type AgentStreamPartIn = Response.StreamPart<
-  Toolkit.Tools<typeof agentToolkit>
+  Toolkit.Tools<typeof agentToolkit>,
+  "opaque"
 >;
 
 export function toAgentStreamPart(
