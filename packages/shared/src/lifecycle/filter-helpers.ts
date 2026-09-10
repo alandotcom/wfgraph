@@ -14,7 +14,7 @@ import {
   EVENT_NAME_FIELD_PATH,
   isNullCheckConditionRule,
   parseConditionModel,
-  readConditionRuleOperand,
+  readConditionRuleOperands,
 } from "#src/conditions/conditions";
 import {
   conditionTypeOf,
@@ -191,8 +191,11 @@ export function checkFilters(input: {
 
     for (const group of model.groups) {
       for (const rule of group.conditions) {
-        const operand = readConditionRuleOperand(rule);
-        if (operand && findTemplateTokens(operand).length > 0) {
+        if (
+          readConditionRuleOperands(rule).some(
+            (operand) => findTemplateTokens(operand).length > 0
+          )
+        ) {
           const timing =
             role === "start" ? "before a run exists" : "before cancellation";
           return refuseLifecycleRules(

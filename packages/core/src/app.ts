@@ -96,6 +96,11 @@ export type WfGraphAppOptions = {
   logger?: WfGraphLogger | undefined;
   /** The storage backend Workflow Graph uses for all durable state. */
   persistence: WfGraphPersistence;
+  /**
+   * Maximum time in milliseconds for one call to a host-owned Entity resolver.
+   * Defaults to 10,000. A timeout is an operational failure.
+   */
+  entityResolverTimeoutMs?: number | undefined;
   encryption: EncryptionRuntimeConfig;
   inngest: WfGraphInngestConfig;
   /**
@@ -238,7 +243,9 @@ async function buildWfGraphApp(
       connect: connectInngestSdk,
     });
 
-    const extensions = assembleExtensions(options.extensions ?? {});
+    const extensions = assembleExtensions(options.extensions ?? {}, {
+      entityResolverTimeoutMs: options.entityResolverTimeoutMs,
+    });
 
     // A host who forgets to pass its integrations gets an empty editor and no
     // error, so the counts go where a startup log is read.

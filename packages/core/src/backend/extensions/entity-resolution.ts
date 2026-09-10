@@ -5,14 +5,25 @@
  * workflow decision must return to its operational-failure path in finite time.
  */
 
-import { Duration, Effect } from "effect";
+import { Effect } from "effect";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import {
   EntityStateRejected,
   type AnyEntityDefinition,
 } from "#src/backend/extensions/define-entity";
 
-export const ENTITY_RESOLVER_TIMEOUT = Duration.seconds(10);
+export const DEFAULT_ENTITY_RESOLVER_TIMEOUT_MS = 10_000;
+
+/** Reads the app-owned deadline once, before the runtime starts. */
+export function readEntityResolverTimeoutMs(value?: number): number {
+  if (value === undefined) {
+    return DEFAULT_ENTITY_RESOLVER_TIMEOUT_MS;
+  }
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error("entityResolverTimeoutMs must be a positive integer");
+  }
+  return value;
+}
 
 /** A resolver rejected without exposing host error text past the boundary. */
 export class EntityResolutionFailed extends Error {
@@ -40,6 +51,7 @@ export class EntityResolutionTimedOut extends Error {
 export function resolveEntityState(input: {
   definition: AnyEntityDefinition;
   entityId: string;
+  timeoutMs: number;
 }): Effect.Effect<JsonObject | null, unknown> {
   return Effect.tryPromise({
     try: () => input.definition.resolve({ entityId: input.entityId }),
@@ -49,7 +61,7 @@ export function resolveEntityState(input: {
         : new EntityResolutionFailed(input.definition.type),
   }).pipe(
     Effect.timeoutOrElse({
-      duration: ENTITY_RESOLVER_TIMEOUT,
+      duration: input.timeoutMs,
       orElse: () =>
         Effect.fail(new EntityResolutionTimedOut(input.definition.type)),
     })

@@ -3,6 +3,18 @@ import { nanoid } from "nanoid";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "#src/components/ui/button";
+import {
+  Combobox,
+  ComboboxChip,
+  ComboboxChips,
+  ComboboxChipsInput,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxItem,
+  ComboboxList,
+  ComboboxTrigger,
+  ComboboxValue,
+} from "#src/components/ui/combobox";
 import { Input } from "#src/components/ui/input";
 import {
   Select,
@@ -26,6 +38,7 @@ import {
   createDefaultConditionRule,
   GROUP_LOGIC_OPTIONS,
   isNullCheckConditionRule,
+  isStringSetConditionRule,
   isTimestampAbsoluteConditionRule,
   isTimestampRelativeConditionRule,
   parseConditionModel,
@@ -153,6 +166,83 @@ function enumOptionLabel(
   return field?.enumLabels?.[value] ?? value;
 }
 
+type EnumChoice = { value: string; label: string };
+
+function sameEnumChoice(a: EnumChoice, b: EnumChoice): boolean {
+  return a.value === b.value;
+}
+
+function EnumMultiValueInput({
+  disabled,
+  field,
+  name,
+  onValueChange,
+  values,
+}: {
+  disabled: boolean;
+  field: ConditionSelectableField | undefined;
+  name: string;
+  onValueChange: (values: string[]) => void;
+  values: string[];
+}) {
+  const choices = (field?.enumValues ?? []).map((value) => ({
+    value,
+    label: enumOptionLabel(field, value),
+  }));
+  const selected = values.flatMap(
+    (value) => choices.find((choice) => choice.value === value) ?? []
+  );
+
+  return (
+    <Combobox<EnumChoice, true>
+      disabled={disabled}
+      isItemEqualToValue={sameEnumChoice}
+      items={choices}
+      itemToStringLabel={(choice) => choice.label}
+      multiple
+      onValueChange={(next) =>
+        onValueChange(next.map((choice) => choice.value))
+      }
+      value={selected}
+    >
+      <ComboboxChips className="min-w-[240px]">
+        <ComboboxValue>
+          {(picked: EnumChoice[]) => (
+            <>
+              {picked.map((choice) => (
+                <ComboboxChip
+                  key={choice.value}
+                  removeLabel={`Remove ${choice.label}`}
+                >
+                  <span className="max-w-40 truncate" title={choice.label}>
+                    {choice.label}
+                  </span>
+                </ComboboxChip>
+              ))}
+              <ComboboxChipsInput
+                aria-label={`Select ${name} values`}
+                disabled={disabled}
+                placeholder={picked.length === 0 ? "Select values" : ""}
+              />
+              <ComboboxTrigger aria-label={`Show ${name} values`} />
+            </>
+          )}
+        </ComboboxValue>
+      </ComboboxChips>
+      <ComboboxContent>
+        <ComboboxEmpty>No value matches that.</ComboboxEmpty>
+        <ComboboxList>
+          {(choice: EnumChoice) => (
+            <ComboboxItem key={choice.value} value={choice}>
+              {choice.label}
+            </ComboboxItem>
+          )}
+        </ComboboxList>
+      </ComboboxContent>
+    </Combobox>
+  );
+}
+
 function ConditionValueInput(input: {
   condition: ConditionRule;
   disabled: boolean;
@@ -240,6 +330,20 @@ function ConditionValueInput(input: {
   }
 
   if (condition.fieldType === "string") {
+    if (isStringSetConditionRule(condition)) {
+      return (
+        <EnumMultiValueInput
+          disabled={disabled}
+          field={field}
+          name={field?.label ?? condition.field}
+          onValueChange={(values) =>
+            onConditionChange({ ...condition, values })
+          }
+          values={condition.values}
+        />
+      );
+    }
+
     if (
       enumValues &&
       enumValues.length > 0 &&
@@ -611,7 +715,8 @@ export function ConditionBuilderRow({
                   const operatorOptions = getOperatorOptionsByFieldType(
                     condition.fieldType,
                     selectedFieldDef?.nullable ||
-                      condition.recordKey !== undefined
+                      condition.recordKey !== undefined,
+                    selectedFieldDef?.enumValues
                   );
                   // Names the row's delete button. Several rows can sit in one
                   // group, and a list of buttons all called "Remove" says
@@ -707,7 +812,10 @@ export function ConditionBuilderRow({
                           })}
                           value={condition.operator}
                         >
-                          <SelectTrigger className="min-w-[190px]">
+                          <SelectTrigger
+                            aria-label={`${conditionName} operator`}
+                            className="min-w-[190px]"
+                          >
                             <SelectValue placeholder="Select operator" />
                           </SelectTrigger>
                           <SelectContent>

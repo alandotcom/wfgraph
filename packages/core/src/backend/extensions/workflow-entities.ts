@@ -26,6 +26,7 @@ export function createWorkflowEntities(
         const state = yield* resolveEntityState({
           definition: entity,
           entityId: input.entityId,
+          timeoutMs: extensions.entityResolverTimeoutMs,
         }).pipe(
           Effect.mapError((cause) =>
             cause instanceof EntityStateRejected

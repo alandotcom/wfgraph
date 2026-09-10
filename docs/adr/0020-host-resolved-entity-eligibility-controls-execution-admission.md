@@ -150,3 +150,17 @@ a state-schema digest. Resolver function identity is intentionally absent, as
 handler bodies are absent for actions. A schema change therefore requires publish
 compatibility work, while a resolver logic fix can govern new checkpoints
 immediately.
+
+## Amendment: Tracking without Eligibility
+
+Date: 2026-09-10
+
+A Lifecycle may select a tracked Entity and its Event bindings without declaring
+Entity Eligibility. The tracked identity still governs Concurrency and Cancel
+Events. Resolver reads occur only when the Lifecycle also declares Eligibility.
+This separates the stable identity needed to match runs from the optional
+current-state rule that admits or exits them.
+
+The host may set `entityResolverTimeoutMs` on `createWfGraphApp` or `wfWorker`.
+The default remains 10,000 milliseconds. The app validates the value at startup and applies
+one deadline to every admission and node-checkpoint resolver call.

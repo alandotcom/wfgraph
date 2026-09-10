@@ -1,4 +1,3 @@
-import { X } from "lucide-react";
 import { Button } from "#src/components/ui/button";
 import { Checkbox } from "#src/components/ui/checkbox";
 import { Label } from "#src/components/ui/label";
@@ -14,9 +13,11 @@ import {
   findEntity,
   findEvent,
 } from "@wfgraph/shared/extensions/catalog";
+import { checkEntityEligibility } from "@wfgraph/shared/lifecycle/entity-eligibility";
 import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
-import { omit } from "es-toolkit/object";
 import { uniq } from "es-toolkit/array";
+import { omit } from "es-toolkit/object";
+import { toast } from "sonner";
 import { getEntityConditionFields } from "#src/lib/upstream-node-fields";
 import { whenChosen } from "#src/lib/select-choice";
 import { ConditionBuilderRow } from "./condition-builder-row";
@@ -25,15 +26,14 @@ import { ConfigGroup } from "./config-section";
 const CHECKPOINTS = [
   {
     value: "before-execution" as const,
-    label: "Before opening an Execution",
-    description:
-      "Runs after the Start Filter and before Concurrency. Ineligible arrivals open no Execution.",
+    label: "Before starting a run",
+    description: "If the Entity is not eligible, no run starts.",
   },
   {
     value: "before-node" as const,
-    label: "Before each workflow node",
+    label: "Before each step",
     description:
-      "Checks every enabled executable node on the Started side. Ineligible runs exit before the node starts.",
+      "If the Entity is no longer eligible, the run ends before the next step.",
   },
 ];
 
@@ -88,6 +88,7 @@ export function reconcileEntityBindings(
 function EventBindingRow({
   catalog,
   disabled,
+  entityLabel,
   entityType,
   eventName,
   selectedBinding,
@@ -95,6 +96,7 @@ function EventBindingRow({
 }: {
   catalog: ExtensionCatalog;
   disabled: boolean;
+  entityLabel: string;
   entityType: string;
   eventName: string;
   selectedBinding: string | undefined;
@@ -104,11 +106,36 @@ function EventBindingRow({
   const choices = bindingChoices({ catalog, eventName, entityType });
   const label = event?.label ?? eventName;
 
+  if (choices.length === 0) {
+    return (
+      <div className="space-y-1">
+        <p className="font-medium text-xs">{label}</p>
+        <p className="text-warning text-xs">
+          {label} cannot identify the {entityLabel}. Add a compatible binding to
+          this event in the host app.
+        </p>
+      </div>
+    );
+  }
+
+  if (choices.length === 1) {
+    return (
+      <div className="space-y-0.5 text-xs">
+        <p className="break-words font-medium">{label}</p>
+        <p className="break-words text-muted-foreground">
+          Uses {choices[0]?.name} automatically
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="grid gap-1.5">
-      <Label htmlFor={`entity-binding-${eventName}`}>{label}</Label>
+      <Label htmlFor={`entity-binding-${eventName}`}>
+        {entityLabel} in {label}
+      </Label>
       <Select
-        disabled={disabled || choices.length === 0}
+        disabled={disabled}
         items={choices.map((choice) => ({
           label: choice.name,
           value: choice.name,
@@ -117,15 +144,11 @@ function EventBindingRow({
         value={selectedBinding ?? null}
       >
         <SelectTrigger
-          aria-label={`Entity binding for ${label}`}
+          aria-label={`${entityLabel} in ${label}`}
           className="w-full"
           id={`entity-binding-${eventName}`}
         >
-          <SelectValue
-            placeholder={
-              choices.length === 0 ? "No compatible binding" : "Choose binding"
-            }
-          />
+          <SelectValue placeholder="Choose binding" />
         </SelectTrigger>
         <SelectContent>
           {choices.map((choice) => (
@@ -135,6 +158,51 @@ function EventBindingRow({
           ))}
         </SelectContent>
       </Select>
+    </div>
+  );
+}
+
+function UnavailableEntityNote({
+  catalog,
+  events,
+  compatibleEntityTypes,
+}: {
+  catalog: ExtensionCatalog;
+  events: string[];
+  compatibleEntityTypes: Set<string>;
+}) {
+  const unavailable = catalog.entities.flatMap((entity) => {
+    if (compatibleEntityTypes.has(entity.type)) {
+      return [];
+    }
+    const missingEvents = events
+      .filter(
+        (eventName) =>
+          bindingChoices({
+            catalog,
+            eventName,
+            entityType: entity.type,
+          }).length === 0
+      )
+      .map((eventName) => findEvent(catalog, eventName)?.label ?? eventName);
+    return missingEvents.length > 0 ? [{ entity, missingEvents }] : [];
+  });
+
+  if (unavailable.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="space-y-1 text-muted-foreground text-xs">
+      <p>Only Entities identified by every lifecycle event are shown.</p>
+      <ul className="list-disc space-y-0.5 pl-4">
+        {unavailable.map(({ entity, missingEvents }) => (
+          <li key={entity.type}>
+            {entity.label} is unavailable because {missingEvents.join(", ")}{" "}
+            cannot identify it.
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -153,6 +221,7 @@ export function LifecycleEntityEligibilityGroup({
   const tracked = rules.trackedEntity;
   const eligibility = rules.entityEligibility;
   const entity = tracked ? findEntity(catalog, tracked.type) : undefined;
+  const entityLabel = entity?.label ?? tracked?.type ?? "Entity";
   const entityFields = tracked
     ? getEntityConditionFields(catalog, tracked.type)
     : [];
@@ -170,6 +239,10 @@ export function LifecycleEntityEligibilityGroup({
           )
         )
       : [];
+  const compatibleEntityTypes = new Set(
+    compatibleEntities.map((candidate) => candidate.type)
+  );
+  const configurationCheck = checkEntityEligibility({ rules, catalog });
 
   const selectEntity = (entityType: string) => {
     if (entityType === tracked?.type) {
@@ -178,16 +251,17 @@ export function LifecycleEntityEligibilityGroup({
     onChange(
       reconcileEntityBindings(
         {
-          ...rules,
+          ...omit(rules, ["entityEligibility"]),
           trackedEntity: { type: entityType, bindings: {} },
-          entityEligibility: {
-            condition: "",
-            checkpoints: ["before-execution", "before-node"],
-          },
         },
         catalog
       )
     );
+    if (eligibility) {
+      toast("Eligibility rule cleared", {
+        description: "Set a rule for the newly selected Entity.",
+      });
+    }
   };
 
   const updateBinding = (eventName: string, bindingName: string) => {
@@ -226,69 +300,93 @@ export function LifecycleEntityEligibilityGroup({
     });
   };
 
+  const removeTracking = () => {
+    onChange(omit(rules, ["trackedEntity", "entityEligibility"]));
+    toast("Tracking and eligibility removed", {
+      description: "Use Actions > Undo to restore it.",
+    });
+  };
+
   return (
     <ConfigGroup
       className="py-3 first:pt-0 last:pb-0"
       help={
         <>
-          <p>The host resolves current Entity State for this rule.</p>
-          <p>Payload Start Filters run separately before an admission check.</p>
-          <p>Resolved State is never available to workflow steps.</p>
+          <p>
+            Tracking identifies which Entity a lifecycle event belongs to.
+            Overlapping runs and cancellation use this identity.
+          </p>
+          <p>
+            Eligibility can check the latest Entity data before a run starts or
+            before each step.
+          </p>
+          <p>Resolved data is not stored or available to steps.</p>
         </>
       }
-      label="Entity eligibility"
+      label={
+        tracked
+          ? `${entityLabel} tracking and eligibility`
+          : "Tracking and eligibility"
+      }
+      prominent
     >
-      {tracked && eligibility ? (
+      {tracked ? (
         <div className="space-y-3">
-          <div className="flex items-end gap-2">
-            <div className="min-w-0 flex-1 space-y-1.5">
-              <Label htmlFor="tracked-entity">Tracked Entity</Label>
-              <Select
-                disabled={disabled}
-                items={compatibleEntities.map((item) => ({
-                  label: item.label,
-                  value: item.type,
-                }))}
-                onValueChange={whenChosen(selectEntity)}
-                value={
-                  compatibleEntities.some((item) => item.type === tracked.type)
-                    ? tracked.type
-                    : null
-                }
-              >
-                <SelectTrigger className="w-full" id="tracked-entity">
-                  <SelectValue placeholder={tracked.type} />
-                </SelectTrigger>
-                <SelectContent>
-                  {compatibleEntities.map((item) => (
-                    <SelectItem key={item.type} value={item.type}>
-                      {item.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <Button
-              aria-label="Remove Entity eligibility"
+          <div className="space-y-1.5">
+            <Label htmlFor="tracked-entity">Track runs by</Label>
+            <Select
               disabled={disabled}
-              onClick={() =>
-                onChange(omit(rules, ["trackedEntity", "entityEligibility"]))
+              items={compatibleEntities.map((item) => ({
+                label: item.label,
+                value: item.type,
+              }))}
+              onValueChange={whenChosen(selectEntity)}
+              value={
+                compatibleEntities.some((item) => item.type === tracked.type)
+                  ? tracked.type
+                  : null
               }
-              size="icon-sm"
-              type="button"
-              variant="ghost"
             >
-              <X />
-            </Button>
+              <SelectTrigger
+                aria-invalid={
+                  !entity || !compatibleEntityTypes.has(tracked.type)
+                }
+                aria-label="Track runs by"
+                className="w-full"
+                id="tracked-entity"
+              >
+                <SelectValue placeholder={entityLabel} />
+              </SelectTrigger>
+              <SelectContent>
+                {compatibleEntities.map((item) => (
+                  <SelectItem key={item.type} value={item.type}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {!entity ? (
+              <p className="text-warning text-xs" role="alert">
+                {entityLabel} is no longer available. Choose an Entity this app
+                declares, or ask the host to restore it.
+              </p>
+            ) : null}
           </div>
+
+          <UnavailableEntityNote
+            catalog={catalog}
+            compatibleEntityTypes={compatibleEntityTypes}
+            events={events}
+          />
 
           {events.length > 0 ? (
             <div className="space-y-2 rounded-md border px-3 py-2">
-              <p className="font-medium text-xs">Event bindings</p>
+              <p className="font-medium text-xs">{entityLabel} in each event</p>
               {events.map((eventName) => (
                 <EventBindingRow
                   catalog={catalog}
                   disabled={disabled}
+                  entityLabel={entityLabel}
                   entityType={tracked.type}
                   eventName={eventName}
                   key={eventName}
@@ -301,51 +399,88 @@ export function LifecycleEntityEligibilityGroup({
             </div>
           ) : (
             <p className="text-muted-foreground text-xs">
-              Choose a Start Event before configuring Entity bindings.
+              Add a Start Event before tracking an Entity.
             </p>
           )}
 
           <ConditionBuilderRow
-            description={`Uses current ${entity?.label ?? tracked.type} State from the host. Resolved State is not stored.`}
+            description={`Workflow Graph checks the ${entityLabel}'s latest data from your app. This data is used only for eligibility. It is not stored or available to steps.`}
             disabled={disabled}
-            editActionName="Eligibility condition"
-            emptyFieldsMessage="This Entity declares no fields that an Eligibility condition can compare."
+            editActionName="Eligibility rule"
+            emptyFieldsMessage={`The ${entityLabel} has no fields available for an eligibility rule.`}
             fields={entityFields}
             label="Eligible when"
             onChange={({ model }) =>
-              onChange({
-                ...rules,
-                entityEligibility: { ...eligibility, condition: model },
-              })
+              onChange(
+                model === ""
+                  ? omit(rules, ["entityEligibility"])
+                  : {
+                      ...rules,
+                      entityEligibility: {
+                        condition: model,
+                        checkpoints: eligibility?.checkpoints ?? [
+                          "before-execution",
+                          "before-node",
+                        ],
+                      },
+                    }
+              )
             }
-            value={eligibility.condition}
+            value={eligibility?.condition ?? ""}
           />
 
-          <fieldset className="space-y-2">
-            <legend className="font-medium text-xs">Evaluate</legend>
-            {CHECKPOINTS.map((checkpoint) => {
-              const inputId = `entity-eligibility-${checkpoint.value}`;
-              return (
-                <div className="flex items-start gap-2" key={checkpoint.value}>
-                  <Checkbox
-                    checked={eligibility.checkpoints.includes(checkpoint.value)}
-                    className="mt-0.5"
-                    disabled={disabled}
-                    id={inputId}
-                    onCheckedChange={(checked) =>
-                      setCheckpoint(checkpoint.value, checked)
-                    }
-                  />
-                  <div className="space-y-0.5">
-                    <Label htmlFor={inputId}>{checkpoint.label}</Label>
-                    <p className="text-muted-foreground text-xs">
-                      {checkpoint.description}
-                    </p>
+          {entity && !configurationCheck.valid ? (
+            <p className="text-warning text-xs" role="alert">
+              {configurationCheck.error}
+            </p>
+          ) : null}
+
+          {eligibility ? (
+            <fieldset className="space-y-2">
+              <legend className="font-medium text-xs">When to check</legend>
+              {CHECKPOINTS.map((checkpoint) => {
+                const inputId = `entity-eligibility-${checkpoint.value}`;
+                const description = checkpoint.description.replace(
+                  "the Entity",
+                  `the ${entityLabel}`
+                );
+                return (
+                  <div
+                    className="flex items-start gap-2"
+                    key={checkpoint.value}
+                  >
+                    <Checkbox
+                      checked={eligibility.checkpoints.includes(
+                        checkpoint.value
+                      )}
+                      className="mt-0.5"
+                      disabled={disabled}
+                      id={inputId}
+                      onCheckedChange={(checked) =>
+                        setCheckpoint(checkpoint.value, checked)
+                      }
+                    />
+                    <div className="space-y-0.5">
+                      <Label htmlFor={inputId}>{checkpoint.label}</Label>
+                      <p className="text-muted-foreground text-xs">
+                        {description}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </fieldset>
+                );
+              })}
+            </fieldset>
+          ) : null}
+
+          <Button
+            disabled={disabled}
+            onClick={removeTracking}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            Remove tracking and eligibility
+          </Button>
         </div>
       ) : compatibleEntities.length > 0 ? (
         <div className="space-y-2">
@@ -358,7 +493,7 @@ export function LifecycleEntityEligibilityGroup({
             onValueChange={whenChosen(selectEntity)}
             value={null}
           >
-            <SelectTrigger aria-label="Tracked Entity" className="w-full">
+            <SelectTrigger aria-label="Track runs by" className="w-full">
               <SelectValue placeholder="Choose an Entity" />
             </SelectTrigger>
             <SelectContent>
@@ -370,15 +505,27 @@ export function LifecycleEntityEligibilityGroup({
             </SelectContent>
           </Select>
           <p className="text-muted-foreground text-xs">
-            Optional. Guard starts or workflow nodes with current host state.
+            Optional. Use an Entity to match overlapping runs and cancel events.
           </p>
+          <UnavailableEntityNote
+            catalog={catalog}
+            compatibleEntityTypes={compatibleEntityTypes}
+            events={events}
+          />
         </div>
       ) : (
-        <p className="text-muted-foreground text-xs">
-          {events.length === 0
-            ? "Choose a Start Event before adding Entity eligibility."
-            : "Current Lifecycle Events do not share a host-defined Entity type."}
-        </p>
+        <div className="space-y-2 text-muted-foreground text-xs">
+          <p>
+            {events.length === 0
+              ? "Add a Start Event before tracking an Entity."
+              : "No Entity can be tracked because the lifecycle events do not share a compatible Entity binding."}
+          </p>
+          <UnavailableEntityNote
+            catalog={catalog}
+            compatibleEntityTypes={compatibleEntityTypes}
+            events={events}
+          />
+        </div>
       )}
     </ConfigGroup>
   );

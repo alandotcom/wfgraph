@@ -96,6 +96,26 @@ function aDefinition(
 }
 
 describe("assembleExtensions", () => {
+  it("uses a ten-second Entity resolver timeout by default", () => {
+    expect(assembleExtensions({}).entityResolverTimeoutMs).toBe(10_000);
+  });
+
+  it("keeps the host's Entity resolver timeout on the assembled app surface", () => {
+    expect(
+      assembleExtensions({}, { entityResolverTimeoutMs: 25_000 })
+        .entityResolverTimeoutMs
+    ).toBe(25_000);
+  });
+
+  it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+    "refuses the invalid Entity resolver timeout %s",
+    (timeout) => {
+      expect(() =>
+        assembleExtensions({}, { entityResolverTimeoutMs: timeout })
+      ).toThrow("entityResolverTimeoutMs must be a positive integer");
+    }
+  );
+
   it.each(["__proto__", "prototype", "constructor"])(
     "refuses the reserved integration action slug %s",
     (slug) => {

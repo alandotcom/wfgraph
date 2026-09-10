@@ -200,9 +200,9 @@ function choosePath(view: RenderResult, eventName: string, option: string) {
   fireEvent.click(choice);
 }
 
-/** Pick a Concurrency setting by the word its option carries. */
+/** Pick an overlapping-run setting by the words its option carries. */
 function chooseConcurrency(view: RenderResult, label: string) {
-  fireEvent.click(view.getByRole("combobox", { name: "Concurrency" }));
+  fireEvent.click(view.getByRole("combobox", { name: "Overlapping runs" }));
 
   const choice = view.getByRole("option", { name: label });
   fireEvent.pointerDown(choice);
@@ -569,7 +569,7 @@ describe("LifecyclePanel Cancel Events", () => {
       />
     );
 
-    expect(view.queryByText("This will not save")).toBeNull();
+    expect(view.queryByText("Lifecycle settings need attention")).toBeNull();
 
     chooseEvent(view, "Cancel Events", "Appointment created");
 
@@ -776,7 +776,7 @@ describe("LifecyclePanel Correlation Paths", () => {
     );
 
     // Concurrency now compares, so the field appears; the builder overrides it.
-    chooseConcurrency(view, "Newest wins");
+    chooseConcurrency(view, "Start the newest run");
     await waitFor(() => {
       expect(rulesOf(latest).concurrency).toBe("newest-wins");
     });
@@ -791,7 +791,7 @@ describe("LifecyclePanel Correlation Paths", () => {
     // Back to Unlimited, with no Cancel Event to keep the override alive: the
     // field leaves the screen, and the pruned outcome is what is pinned here --
     // the stored override goes with it rather than surviving unseen.
-    chooseConcurrency(view, "Unlimited");
+    chooseConcurrency(view, "Start every run");
     await waitFor(() => {
       expect(rulesOf(latest).concurrency).toBe("unlimited");
     });
@@ -820,7 +820,7 @@ describe("LifecyclePanel Correlation Paths", () => {
 
     expect(pathInForce(view, "app/appointment.created")).toBe("appointment.id");
     expect(onConfigChange).not.toHaveBeenCalled();
-    expect(view.queryByText("This will not save")).toBeNull();
+    expect(view.queryByText("Lifecycle settings need attention")).toBeNull();
   });
 
   // Unlimited compares no entities, so there is no value to compare and no input.
@@ -860,7 +860,7 @@ describe("LifecyclePanel Correlation Paths", () => {
     expect(
       view.getByLabelText("Correlation Path for ops/nightly.swept")
     ).toBeTruthy();
-    expect(view.getByText("Nightly sweep")).toBeTruthy();
+    expect(view.getByRole("heading", { name: "Nightly sweep" })).toBeTruthy();
   });
 
   // A Wait Subscription carries its own match expression, so nothing a Wait node
@@ -883,7 +883,7 @@ describe("LifecyclePanel Correlation Paths", () => {
     );
 
     expect(view.queryByLabelText("ops/nightly.swept")).toBeNull();
-    expect(view.queryByText("This will not save")).toBeNull();
+    expect(view.queryByText("Lifecycle settings need attention")).toBeNull();
   });
 });
 
@@ -908,32 +908,113 @@ describe("LifecyclePanel Entity eligibility", () => {
       />
     );
 
-    chooseSelect(view, "Tracked Entity", "Appointment");
+    chooseSelect(view, "Track runs by", "Appointment");
 
     await waitFor(() => {
-      expect(rulesOf(latest)).toMatchObject({
-        trackedEntity: {
-          type: "appointment",
-          bindings: {
-            "app/appointment.created": "appointment",
-          },
-        },
-        entityEligibility: {
-          condition: "",
-          checkpoints: ["before-execution", "before-node"],
+      expect(rulesOf(latest).trackedEntity).toEqual({
+        type: "appointment",
+        bindings: {
+          "app/appointment.created": "appointment",
         },
       });
     });
-    expect(view.getByLabelText("Entity binding for Appointment created")).toBe(
+    expect(rulesOf(latest).entityEligibility).toBeUndefined();
+    expect(
       view.getByRole("combobox", {
-        name: "Entity binding for Appointment created",
+        name: "Appointment in Appointment created",
       })
-    );
+    ).toBeTruthy();
     expect(
       view
         .getByRole("button", { name: "Configure condition" })
         .hasAttribute("disabled")
     ).toBe(false);
+  });
+
+  it("clears eligibility when the tracked Entity changes", async () => {
+    const switchCatalog: ExtensionCatalog = {
+      ...testCatalog,
+      entities: [
+        ...testCatalog.entities,
+        {
+          type: "patient",
+          label: "Patient",
+          stateFields: [{ path: "status", type: "string" }],
+          stateSchemaDigest: "patient-state-v1",
+        },
+      ],
+      events: testCatalog.events.map((event) =>
+        event.name === "app/appointment.created"
+          ? {
+              ...event,
+              entityBindings: [
+                ...(event.entityBindings ?? []),
+                { name: "patient", entityType: "patient" },
+              ],
+            }
+          : event
+      ),
+    };
+    let latest: Record<string, unknown> = {
+      lifecycleRules: {
+        ...rulesOf(configuredStart),
+        trackedEntity: {
+          type: "appointment",
+          bindings: { "app/appointment.created": "appointment" },
+        },
+        entityEligibility: {
+          condition: "condition for appointment",
+          checkpoints: ["before-execution"],
+        },
+      } satisfies LifecycleRules,
+    };
+    const view = render(
+      <ExtensionCatalogProvider value={switchCatalog}>
+        <ControlledPanel
+          initialConfig={latest}
+          onConfigChange={(config) => {
+            latest = config;
+          }}
+        />
+      </ExtensionCatalogProvider>
+    );
+
+    chooseSelect(view, "Track runs by", "Patient");
+
+    await waitFor(() => {
+      expect(rulesOf(latest).trackedEntity).toEqual({
+        type: "patient",
+        bindings: { "app/appointment.created": "patient" },
+      });
+    });
+    expect(rulesOf(latest).entityEligibility).toBeUndefined();
+  });
+
+  it("identifies a tracked Entity that the app no longer declares", () => {
+    const view = renderWithCatalog(
+      <ControlledPanel
+        initialConfig={{
+          lifecycleRules: {
+            ...rulesOf(configuredStart),
+            trackedEntity: {
+              type: "removed-entity",
+              bindings: { "app/appointment.created": "appointment" },
+            },
+          } satisfies LifecycleRules,
+        }}
+      />
+    );
+
+    expect(
+      view.getByText(
+        "removed-entity is no longer available. Choose an Entity this app declares, or ask the host to restore it."
+      )
+    ).toBeTruthy();
+    expect(
+      view
+        .getByRole("combobox", { name: "Track runs by" })
+        .getAttribute("aria-invalid")
+    ).toBe("true");
   });
 
   it("binds every Start and Cancel Event before enabling the guard", async () => {
@@ -952,7 +1033,7 @@ describe("LifecyclePanel Entity eligibility", () => {
       />
     );
 
-    chooseSelect(view, "Tracked Entity", "Appointment");
+    chooseSelect(view, "Track runs by", "Appointment");
 
     await waitFor(() => {
       expect(rulesOf(latest).trackedEntity?.bindings).toEqual({
@@ -960,11 +1041,7 @@ describe("LifecyclePanel Entity eligibility", () => {
         "ops/nightly.swept": "appointment",
       });
     });
-    expect(
-      view.getByRole("combobox", {
-        name: "Entity binding for Nightly sweep",
-      })
-    ).toBeTruthy();
+    expect(view.getByText("Uses appointment automatically")).toBeTruthy();
   });
 
   it("repairs bindings when Lifecycle Events are added or removed", async () => {
@@ -1013,7 +1090,7 @@ describe("LifecyclePanel Entity eligibility", () => {
       <ControlledPanel initialConfig={configuredStart} />
     );
 
-    chooseSelect(view, "Tracked Entity", "Appointment");
+    chooseSelect(view, "Track runs by", "Appointment");
     fireEvent.click(
       await view.findByRole("button", { name: "Configure condition" })
     );
@@ -1055,9 +1132,7 @@ describe("LifecyclePanel Entity eligibility", () => {
       />
     );
 
-    fireEvent.click(
-      view.getByRole("checkbox", { name: "Before each workflow node" })
-    );
+    fireEvent.click(view.getByRole("checkbox", { name: "Before each step" }));
 
     await waitFor(() => {
       expect(rulesOf(latest).trackedEntity?.bindings).toEqual({
@@ -1088,23 +1163,22 @@ describe("LifecyclePanel Entity eligibility", () => {
     );
 
     for (const control of [
-      view.getByRole("combobox", { name: "Tracked Entity" }),
-      view.getByRole("combobox", {
-        name: "Entity binding for Appointment created",
-      }),
+      view.getByRole("combobox", { name: "Track runs by" }),
       view.getByRole("button", { name: "Configure condition" }),
-      view.getByRole("button", { name: "Remove Entity eligibility" }),
+      view.getByRole("button", {
+        name: "Remove tracking and eligibility",
+      }),
     ]) {
       expect(control.hasAttribute("disabled")).toBe(true);
     }
     expect(
       view
-        .getByRole("checkbox", { name: "Before opening an Execution" })
+        .getByRole("checkbox", { name: "Before starting a run" })
         .getAttribute("aria-disabled")
     ).toBe("true");
     expect(
       view
-        .getByRole("checkbox", { name: "Before each workflow node" })
+        .getByRole("checkbox", { name: "Before each step" })
         .getAttribute("aria-disabled")
     ).toBe("true");
   });
@@ -1132,20 +1206,16 @@ describe("LifecyclePanel Entity eligibility", () => {
       />
     );
 
-    fireEvent.click(
-      view.getByRole("checkbox", { name: "Before each workflow node" })
-    );
+    fireEvent.click(view.getByRole("checkbox", { name: "Before each step" }));
     await waitFor(() => {
       expect(rulesOf(latest).entityEligibility?.checkpoints).toEqual([
         "before-execution",
       ]);
     });
 
+    fireEvent.click(view.getByRole("checkbox", { name: "Before each step" }));
     fireEvent.click(
-      view.getByRole("checkbox", { name: "Before each workflow node" })
-    );
-    fireEvent.click(
-      view.getByRole("checkbox", { name: "Before opening an Execution" })
+      view.getByRole("checkbox", { name: "Before starting a run" })
     );
     await waitFor(() => {
       expect(rulesOf(latest).entityEligibility?.checkpoints).toEqual([
@@ -1154,7 +1224,7 @@ describe("LifecyclePanel Entity eligibility", () => {
     });
 
     fireEvent.click(
-      view.getByRole("checkbox", { name: "Before opening an Execution" })
+      view.getByRole("checkbox", { name: "Before starting a run" })
     );
     await waitFor(() => {
       expect(rulesOf(latest).entityEligibility?.checkpoints).toEqual([
@@ -1164,7 +1234,7 @@ describe("LifecyclePanel Entity eligibility", () => {
     });
 
     fireEvent.click(
-      view.getByRole("button", { name: "Remove Entity eligibility" })
+      view.getByRole("button", { name: "Remove tracking and eligibility" })
     );
     await waitFor(() => {
       expect(rulesOf(latest).trackedEntity).toBeUndefined();
@@ -1190,7 +1260,7 @@ describe("LifecyclePanel refusals", () => {
       />
     );
 
-    expect(view.getByText("This will not save")).toBeTruthy();
+    expect(view.getByText("Lifecycle settings need attention")).toBeTruthy();
     expect(
       view.getByText(
         "Nothing can start this workflow. Add a Start Event, or allow manual starts."
@@ -1341,7 +1411,9 @@ describe("LifecyclePanel start filters", () => {
     );
 
     fireEvent.click(
-      view.getByRole("button", { name: "Filter each Event separately" })
+      view.getByRole("button", {
+        name: "Use a different filter for each event",
+      })
     );
 
     await waitFor(() => {
@@ -1350,7 +1422,7 @@ describe("LifecyclePanel start filters", () => {
       ).toHaveLength(2);
     });
     expect(
-      view.getByRole("button", { name: "Use one filter for every Event" })
+      view.getByRole("button", { name: "Use one filter for all events" })
     ).toBeTruthy();
   });
 
@@ -1369,7 +1441,9 @@ describe("LifecyclePanel start filters", () => {
     );
 
     fireEvent.click(
-      view.getByRole("button", { name: "Filter each Event separately" })
+      view.getByRole("button", {
+        name: "Use a different filter for each event",
+      })
     );
     fireEvent.click(
       view.getAllByRole("button", { name: "Add a filter" })[0] as HTMLElement
@@ -1527,17 +1601,15 @@ describe("LifecyclePanel cancel filters", () => {
 
     expect(
       view.getByText(
-        "Workflow Graph checks the Cancel Filter before reading the Correlation Path."
+        "A cancel event stops matching active runs and sends them down the Canceled branch."
       )
     ).toBeTruthy();
     expect(
-      view.getByText(
-        "If the Cancel Filter declines the Event, the runs in progress stay active."
-      )
+      view.getByText("A cancel filter limits which events can stop a run.")
     ).toBeTruthy();
     expect(
       view.getByText(
-        "If the Cancel Filter accepts the Event, Workflow Graph reads the entity from the Event's Correlation Path and cancels matching runs."
+        "Matching uses the tracked Entity, or the correlation path when no Entity is tracked."
       )
     ).toBeTruthy();
   });
@@ -1560,7 +1632,9 @@ describe("LifecyclePanel cancel filters", () => {
       1
     );
     expect(
-      view.getByRole("button", { name: "Filter each Cancel Event separately" })
+      view.getByRole("button", {
+        name: "Use a different filter for each cancel event",
+      })
     ).toBeTruthy();
 
     fireEvent.click(view.getByRole("button", { name: "Add a filter" }));

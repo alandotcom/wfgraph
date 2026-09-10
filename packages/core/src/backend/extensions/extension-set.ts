@@ -49,6 +49,7 @@ import {
 import type { ReferenceField } from "@wfgraph/shared/graph/node-references";
 import { CONNECTION_STAMP_KEY } from "#src/backend/lib/inngest/catalog-connection";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
+import { readEntityResolverTimeoutMs } from "#src/backend/extensions/entity-resolution";
 
 /**
  * An Event as the set holds it, which is what `eventByName` answers with.
@@ -104,6 +105,8 @@ export type ExtensionSet = {
   readonly webhookFor: (type: string) => IntegrationWebhook | undefined;
   readonly eventByName: (name: string) => RegisteredEvent | undefined;
   readonly entityByType: (type: string) => AnyEntityDefinition | undefined;
+  /** App-owned deadline for every call into a host Entity resolver. */
+  readonly entityResolverTimeoutMs: number;
   /** Every Event, which is the Inngest listener set: one function each. */
   readonly events: readonly RegisteredEvent[];
   /** Every Entity reached transitively from a registered Event. */
@@ -469,7 +472,10 @@ function readHostAction(action: ActionDefinition, into: Assembly): void {
   into.steps.set(action.id, action.implement);
 }
 
-export function assembleExtensions(input: WfGraphExtensions): ExtensionSet {
+export function assembleExtensions(
+  input: WfGraphExtensions,
+  options: { entityResolverTimeoutMs?: number | undefined } = {}
+): ExtensionSet {
   // Integration Events go in first, so a host listing the same `defineEvent`
   // object a plugin already declared is identity-equal and kept once. The owner
   // map is what stamps `EventMetadata.integration` without mutating the value.
@@ -557,6 +563,9 @@ export function assembleExtensions(input: WfGraphExtensions): ExtensionSet {
     webhookFor: (type) => into.webhooks.get(type),
     eventByName: (name) => eventsByName.get(name),
     entityByType: (type) => entitiesByType.get(type),
+    entityResolverTimeoutMs: readEntityResolverTimeoutMs(
+      options.entityResolverTimeoutMs
+    ),
     events,
     entities,
   };

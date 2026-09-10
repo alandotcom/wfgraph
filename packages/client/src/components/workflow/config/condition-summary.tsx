@@ -10,11 +10,13 @@ import {
   type ConditionRule,
   GROUP_LOGIC_OPTIONS,
   isNullCheckConditionRule,
+  isStringSetConditionRule,
   isTimestampAbsoluteConditionRule,
   isTimestampRelativeConditionRule,
   NULLCHECK_OPERATOR_OPTIONS,
   NUMBER_OPERATOR_OPTIONS,
   STRING_OPERATOR_OPTIONS,
+  STRING_SET_OPERATOR_OPTIONS,
   TIME_UNIT_OPTIONS,
   TIMESTAMP_OPERATOR_OPTIONS,
 } from "@wfgraph/shared/conditions/conditions";
@@ -161,14 +163,25 @@ function ruleRefusal(
 
   const offered = field?.enumValues;
   if (
+    isStringSetConditionRule(condition) &&
+    (!offered || offered.length === 0)
+  ) {
+    return `${ruleFieldLabel(condition, field)} no longer offers a fixed list of values. Choose another operator.`;
+  }
+
+  if (
     offered &&
     offered.length > 0 &&
     !isNullCheckConditionRule(condition) &&
     condition.fieldType === "string" &&
-    (condition.operator === "equals" || condition.operator === "not_equals") &&
-    !offered.includes(condition.value)
+    condition.operator !== "contains"
   ) {
-    return `${field.label} no longer offers this value. Choose one it does.`;
+    const values = isStringSetConditionRule(condition)
+      ? condition.values
+      : [condition.value];
+    if (values.some((value) => !offered.includes(value))) {
+      return `${field.label} no longer offers one or more selected values. Choose from the available values.`;
+    }
   }
 
   return null;
@@ -214,7 +227,7 @@ function operatorTable(
     return TIMESTAMP_OPERATOR_OPTIONS;
   }
   if (fieldType === "string") {
-    return STRING_OPERATOR_OPTIONS;
+    return [...STRING_OPERATOR_OPTIONS, ...STRING_SET_OPERATOR_OPTIONS];
   }
   if (fieldType === "number") {
     return NUMBER_OPERATOR_OPTIONS;
@@ -256,6 +269,13 @@ function valueLabel(
   }
 
   if (rule.fieldType === "string") {
+    if (isStringSetConditionRule(rule)) {
+      return rule.values
+        .map((value) =>
+          displayTemplateText(field?.enumLabels?.[value] ?? value)
+        )
+        .join(", ");
+    }
     return displayTemplateText(field?.enumLabels?.[rule.value] ?? rule.value);
   }
 

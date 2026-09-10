@@ -6,6 +6,7 @@ import {
 } from "#src/backend/extensions/define-entity";
 import { resolveEntityState } from "#src/backend/extensions/entity-resolution";
 import { evaluateSerializedCondition } from "#src/backend/lib/cel/condition-payload";
+import { Extensions } from "#src/backend/lib/effect/extensions";
 import { InternalFailure } from "#src/backend/lib/effect/failures";
 import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import type { EntityEligibilityReason } from "@wfgraph/shared/lifecycle/execution-contracts";
@@ -102,10 +103,12 @@ export const evaluateSelectedEntityAdmission = Effect.fn(
     return { entity } satisfies GuardedStartDecision;
   }
 
+  const extensions = yield* Extensions;
   const conditionId = entityEligibilityConditionId(eligibility.condition);
   const state = yield* resolveEntityState({
     definition: entity.definition,
     entityId: entity.entityId,
+    timeoutMs: extensions.entityResolverTimeoutMs,
   }).pipe(
     Effect.mapError(
       (cause) =>

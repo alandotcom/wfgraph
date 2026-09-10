@@ -172,15 +172,16 @@ describe("checkEntityEligibility", () => {
     });
   });
 
-  it("requires tracked Entity and Eligibility to be configured together", () => {
+  it("allows tracking without an Eligibility condition", () => {
     expect(
-      errorOf(
-        checkEntityEligibility({
-          rules: rules({ entityEligibility: undefined }),
-          catalog,
-        })
-      )
-    ).toContain("has no Eligibility condition");
+      checkEntityEligibility({
+        rules: rules({ entityEligibility: undefined }),
+        catalog,
+      })
+    ).toEqual({ valid: true });
+  });
+
+  it("requires Eligibility to name a tracked Entity", () => {
     expect(
       errorOf(
         checkEntityEligibility({
@@ -420,6 +421,46 @@ describe("checkEntityEligibility", () => {
                 id: "rule-1",
                 field: "status",
                 fieldType: "string",
+                operator: "is_one_of",
+                values: ["scheduled", "removed"],
+              }),
+              checkpoints: ["before-node"],
+            },
+          }),
+          catalog,
+        })
+      )
+    ).toContain("no longer offers");
+
+    expect(
+      errorOf(
+        checkEntityEligibility({
+          rules: rules({
+            entityEligibility: {
+              condition: conditionForRule({
+                id: "rule-1",
+                field: "optionalNote",
+                fieldType: "string",
+                operator: "is_not_one_of",
+                values: ["private"],
+              }),
+              checkpoints: ["before-node"],
+            },
+          }),
+          catalog,
+        })
+      )
+    ).toContain("no longer offers as a fixed list");
+
+    expect(
+      errorOf(
+        checkEntityEligibility({
+          rules: rules({
+            entityEligibility: {
+              condition: conditionForRule({
+                id: "rule-1",
+                field: "status",
+                fieldType: "string",
                 operator: "is_set",
               }),
               checkpoints: ["before-node"],
@@ -429,6 +470,24 @@ describe("checkEntityEligibility", () => {
         })
       )
     ).toContain("now requires that field");
+
+    expect(
+      checkEntityEligibility({
+        rules: rules({
+          entityEligibility: {
+            condition: conditionForRule({
+              id: "rule-1",
+              field: "status",
+              fieldType: "string",
+              operator: "contains",
+              value: "sched",
+            }),
+            checkpoints: ["before-node"],
+          },
+        }),
+        catalog,
+      })
+    ).toEqual({ valid: true });
 
     expect(
       checkEntityEligibility({

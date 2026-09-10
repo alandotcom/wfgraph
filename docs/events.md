@@ -51,9 +51,10 @@ const patient = defineEntity({
 
 `type` is the stable serialized identity of the Entity definition. `state` must describe a
 JSON object. The resolver receives one `entityId`; returning `null` means that Entity no
-longer exists. The resolver has 10 seconds to settle; a timeout, rejection, or
-schema-invalid state is an operational failure. Workflow Graph validates the result and
-then evaluates the Lifecycle decision without
+longer exists. The resolver has 10 seconds to settle by default. A host can set
+`entityResolverTimeoutMs` on `createWfGraphApp` or `wfWorker` to use another positive
+whole-number deadline. A timeout, rejection, or schema-invalid state is an operational failure.
+Workflow Graph validates the result and then evaluates the Lifecycle decision without
 persisting the Entity State or exposing it to workflow steps, templates, logs, or audit
 metadata.
 
@@ -83,9 +84,10 @@ Events may select the same Entity type from different payload fields. Pass only 
 in `extensions.events`; assembly discovers their referenced Entity definitions transitively
 and rejects distinct definitions with the same `type`.
 
-A Workflow Builder may then select one tracked Entity type, one compatible binding for each
-Start and Cancel Event, one positive **Eligible when** condition over Entity State, and one
-or both checkpoints:
+A Workflow Builder may then select one tracked Entity type and one compatible binding for
+each Start and Cancel Event. Tracking alone gives Concurrency and Cancel Events a typed
+identity. The builder may also add one positive **Eligible when** condition over Entity
+State and one or both checkpoints:
 
 - **Before opening an Execution** runs after the payload Start Filter and before
   Concurrency. An ineligible arrival is a Refused Start and opens no Execution.
@@ -98,8 +100,8 @@ Selecting both checks admission and reads fresh host state again at each new nod
 is checked before it parks; a state change while parked is observed before the next node
 only. A host that needs immediate interruption sends a Cancel Event.
 
-A guarded manual or Draft run names a Start Event and supplies a payload so its selected
-binding can establish typed Entity identity. Schedule-only guarded workflows cannot start.
+A tracked manual or Draft run names a Start Event and supplies a payload so its selected
+binding can establish typed Entity identity. Schedule-only tracked workflows cannot start.
 The Entity type and ID remain immutable across Wait branches, durable replay, and Migration;
 a target version tracking another Entity type is not a compatible Migration.
 
@@ -121,7 +123,7 @@ path replaces the label that the editor derives from the key ("Starts At").
 and admits a path that resolves to a string.
 
 - Workflows without a tracked Entity use that value for Concurrency and Cancel Events.
-  Guarded workflows use the selected typed bindings instead.
+  Tracked workflows use the selected typed bindings instead.
 - Two Events describe one entity when their Entity Values are equal, also where their paths
   differ.
 - The path is optional. The author of an imported Event often lacks one, so the Workflow

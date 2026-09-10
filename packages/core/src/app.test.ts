@@ -462,6 +462,12 @@ describe("createWfGraphApp with host authentication", () => {
 });
 
 describe("createWfGraphApp configuration", () => {
+  it("refuses an invalid Entity resolver timeout", async () => {
+    await expect(
+      createWfGraphApp({ ...BASE_OPTIONS, entityResolverTimeoutMs: 0 })
+    ).rejects.toThrow("entityResolverTimeoutMs must be a positive integer");
+  });
+
   // Integration credentials are stored encrypted, so a missing or malformed key
   // has to stop startup rather than surface later as a failing integration read.
   it("refuses to start without an encryption key", async () => {

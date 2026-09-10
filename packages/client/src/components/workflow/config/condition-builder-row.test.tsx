@@ -384,6 +384,40 @@ describe("ConditionBuilderRow field picker", () => {
     );
   });
 
+  it("offers set operators only for enumerated strings", () => {
+    expect(
+      getOperatorOptionsByFieldType("string", false, ["confirmed", "booked"])
+    ).toEqual(
+      expect.arrayContaining([
+        { value: "is_one_of", label: "is one of" },
+        { value: "is_not_one_of", label: "is not one of" },
+      ])
+    );
+    expect(getOperatorOptionsByFieldType("string", false)).not.toEqual(
+      expect.arrayContaining([{ value: "is_one_of", label: "is one of" }])
+    );
+  });
+
+  it("carries a scalar enum value into and out of a set operator", () => {
+    const setRule = applyOperatorValueToCondition(
+      {
+        id: "r",
+        field: "status",
+        fieldType: "string",
+        operator: "equals",
+        value: "confirmed",
+      },
+      "is_one_of"
+    );
+    expect(setRule).toMatchObject({
+      operator: "is_one_of",
+      values: ["confirmed"],
+    });
+    expect(
+      setRule && applyOperatorValueToCondition(setRule, "equals")
+    ).toMatchObject({ operator: "equals", value: "confirmed" });
+  });
+
   it("preserves an open-record key when a timestamp operator is rewritten", () => {
     const rewritten = applyOperatorValueToCondition(
       {
@@ -635,7 +669,39 @@ describe("ConditionBuilderRow view mode names what a rule still owes", () => {
     ];
     const view = renderRow(withEnum, stringRule("status", "cancelled"));
 
-    expect(view.getByText(/no longer offers this value/)).toBeTruthy();
+    expect(view.getByText(/no longer offers/)).toBeTruthy();
+  });
+
+  it("names a stale value in an enum set", () => {
+    const withEnum = [
+      field("status", "Look Up Donor", { enumValues: ["confirmed", "booked"] }),
+    ];
+    const view = renderRow(
+      withEnum,
+      serializeConditionModel({
+        version: 2,
+        groupLogic: "and",
+        groups: [
+          {
+            id: "g",
+            logic: "and",
+            conditions: [
+              {
+                id: "r",
+                field: "status",
+                fieldType: "string",
+                operator: "is_one_of",
+                values: ["confirmed", "cancelled"],
+              },
+            ],
+          },
+        ],
+      })
+    );
+
+    expect(
+      view.getByText(/no longer offers one or more selected values/)
+    ).toBeTruthy();
   });
 
   it("says nothing about a value the field still offers", () => {
@@ -644,7 +710,58 @@ describe("ConditionBuilderRow view mode names what a rule still owes", () => {
     ];
     const view = renderRow(withEnum, stringRule("status", "confirmed"));
 
-    expect(view.queryByText(/no longer offers this value/)).toBeNull();
+    expect(view.queryByText(/no longer offers/)).toBeNull();
+  });
+
+  it("allows substring operands that are not exact enum values", () => {
+    const withEnum = [
+      field("status", "Look Up Donor", { enumValues: ["confirmed", "booked"] }),
+    ];
+    const view = renderRow(withEnum, stringRule("status", "firm", "contains"));
+
+    expect(view.queryByText(/no longer offers/)).toBeNull();
+  });
+
+  it("selects multiple offered values for an enum set operator", () => {
+    const onChange = vi.fn();
+    const withEnum = [
+      field("status", "Look Up Donor", {
+        enumValues: ["confirmed", "booked"],
+        enumLabels: { confirmed: "Confirmed", booked: "Booked" },
+      }),
+    ];
+    const view = renderRow(
+      withEnum,
+      stringRule("status", "confirmed"),
+      onChange
+    );
+
+    enterEdit(view);
+    fireEvent.click(view.getByRole("combobox", { name: "status operator" }));
+    const operator = view.getByRole("option", { name: "is one of" });
+    fireEvent.pointerDown(operator);
+    fireEvent.click(operator);
+
+    const values = view.getByLabelText("Select status values");
+    fireEvent.keyDown(values, { key: "ArrowDown" });
+    fireEvent.click(view.getByRole("option", { name: "Booked" }));
+    fireEvent.keyDown(values, { key: "Escape" });
+
+    expect(writtenRule(onChange)).toMatchObject({
+      field: "status",
+      operator: "is_one_of",
+      values: ["confirmed", "booked"],
+    });
+    expect(onChange.mock.calls.at(-1)?.[0].expression).toContain(
+      'payload.status in ["confirmed", "booked"]'
+    );
+
+    fireEvent.click(view.getByRole("button", { name: "Remove Confirmed" }));
+    expect(writtenRule(onChange)).toMatchObject({ values: ["booked"] });
+
+    fireEvent.click(view.getByRole("button", { name: "Remove Booked" }));
+    expect(writtenRule(onChange)).toMatchObject({ values: [] });
+    expect(onChange.mock.calls.at(-1)?.[0].expression).toBe("");
   });
 
   // The field picker marks a path the graph no longer offers; the summary marks

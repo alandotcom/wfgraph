@@ -22,6 +22,7 @@ import {
   makeExtensionsLayer,
 } from "#src/backend/lib/effect/extensions";
 import type { ExtensionSet } from "#src/backend/extensions/extension-set";
+import { DEFAULT_ENTITY_RESOLVER_TIMEOUT_MS } from "#src/backend/extensions/entity-resolution";
 import type { StepEnvironment } from "#src/backend/extensions/steps/step-runner";
 import {
   emptyExtensionCatalog,
@@ -164,6 +165,7 @@ export function stubExtensions(
     webhookFor: () => undefined,
     eventByName: () => undefined,
     entityByType: () => undefined,
+    entityResolverTimeoutMs: DEFAULT_ENTITY_RESOLVER_TIMEOUT_MS,
     events: [],
     entities: [],
     ...set,

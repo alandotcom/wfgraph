@@ -4,6 +4,8 @@ import { useExtensionCatalog } from "#src/components/extension-catalog-provider"
 import { WarningCallout } from "#src/components/ui/callout";
 import {
   type ExtensionCatalog,
+  findEntity,
+  findEvent,
   uniqueIntegrationsOfEvents,
 } from "@wfgraph/shared/extensions/catalog";
 import {
@@ -31,7 +33,10 @@ import {
   setStartFilterForEvent,
 } from "@wfgraph/shared/lifecycle/start-filters";
 import { IntegrationEventConnectionEditor } from "./integration-event-connection";
-import { LifecycleConcurrencyGroup } from "./lifecycle-concurrency-group";
+import {
+  CONCURRENCY_OPTIONS,
+  LifecycleConcurrencyGroup,
+} from "./lifecycle-concurrency-group";
 import {
   LifecycleEntityEligibilityGroup,
   reconcileEntityBindings,
@@ -40,6 +45,86 @@ import { LifecycleEventGroup } from "./lifecycle-event-group";
 import type { UpdateNodeConfig } from "./node-config-patch";
 
 export { CONCURRENCY_OPTIONS } from "./lifecycle-concurrency-group";
+
+function eventLabels(
+  eventNames: readonly string[],
+  catalog: ExtensionCatalog
+): string {
+  return eventNames
+    .map((eventName) => findEvent(catalog, eventName)?.label ?? eventName)
+    .join(", ");
+}
+
+function eligibilityTiming(rules: LifecycleRules): string {
+  const eligibility = rules.entityEligibility;
+  if (!eligibility) {
+    return "None (optional)";
+  }
+  if (!eligibility.condition) {
+    return "Rule required";
+  }
+
+  const beforeStart = eligibility.checkpoints.includes("before-execution");
+  const beforeStep = eligibility.checkpoints.includes("before-node");
+  if (beforeStart && beforeStep) {
+    return "Before starting and each step";
+  }
+  if (beforeStart) {
+    return "Before starting";
+  }
+  if (beforeStep) {
+    return "Before each step";
+  }
+  return "Timing required";
+}
+
+function LifecycleSummary({
+  rules,
+  catalog,
+}: {
+  rules: LifecycleRules;
+  catalog: ExtensionCatalog;
+}) {
+  const startSources = [
+    ...rules.startEvents.map(
+      (eventName) => findEvent(catalog, eventName)?.label ?? eventName
+    ),
+    ...(rules.allowManualStart ? ["Manual runs"] : []),
+  ];
+  const concurrency = CONCURRENCY_OPTIONS.find(
+    (option) => option.value === rules.concurrency
+  )?.label;
+  const tracked = rules.trackedEntity
+    ? (findEntity(catalog, rules.trackedEntity.type)?.label ??
+      rules.trackedEntity.type)
+    : "Not tracked";
+  const rows = [
+    { label: "Starts", value: startSources.join(", ") || "Not configured" },
+    { label: "Overlapping runs", value: concurrency ?? rules.concurrency },
+    {
+      label: "Stops",
+      value: eventLabels(rules.cancelEvents, catalog) || "No cancel events",
+    },
+    { label: "Tracks", value: tracked },
+    { label: "Eligibility", value: eligibilityTiming(rules) },
+  ];
+
+  return (
+    <section
+      aria-label="Lifecycle summary"
+      className="rounded-md border bg-muted/30 px-3 py-2"
+    >
+      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
+        {rows.map((row) => (
+          <div className="contents" key={row.label}>
+            <dt className="text-muted-foreground">{row.label}</dt>
+            <dd className="min-w-0 text-right text-foreground">{row.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
 
 function prune(next: LifecycleRules, catalog: ExtensionCatalog) {
   return reconcileEntityBindings(
@@ -178,10 +263,11 @@ export function LifecyclePanel({
 
   return (
     <div className="space-y-4">
+      <LifecycleSummary catalog={catalog} rules={rules} />
       <LifecycleGroups onConnectionChange={setConnectionId} {...groupProps} />
 
       {check.valid ? null : (
-        <WarningCallout title="This will not save">
+        <WarningCallout title="Lifecycle settings need attention">
           {check.error}
         </WarningCallout>
       )}

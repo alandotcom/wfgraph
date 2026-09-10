@@ -11,8 +11,9 @@ import {
   compileConditionModel,
   type ConditionModel,
   isNullCheckConditionRule,
+  isStringSetConditionRule,
   parseConditionModel,
-  readConditionRuleOperand,
+  readConditionRuleOperands,
 } from "#src/conditions/conditions";
 import {
   conditionTypeOf,
@@ -82,19 +83,35 @@ function unreadableEligibilityRule(
       if (offered !== rule.fieldType) {
         return `compares "${path}" as ${rule.fieldType}, which Entity "${entity.type}" now declares as ${offered}`;
       }
-      const operand = readConditionRuleOperand(rule);
-      if (operand && findTemplateTokens(operand).length > 0) {
+      const hasTemplateOperand = readConditionRuleOperands(rule).some(
+        (operand) => findTemplateTokens(operand).length > 0
+      );
+      if (hasTemplateOperand) {
         return `compares "${path}" against a value from the run, but Entity Eligibility accepts literal values only`;
+      }
+      if (
+        isStringSetConditionRule(rule) &&
+        (!declaration.field.enumValues ||
+          declaration.field.enumValues.length === 0)
+      ) {
+        return `uses a set comparison for "${path}", which Entity "${entity.type}" no longer offers as a fixed list`;
       }
       if (
         !isNullCheckConditionRule(rule) &&
         rule.fieldType === "string" &&
-        (rule.operator === "equals" || rule.operator === "not_equals") &&
+        rule.operator !== "contains" &&
         declaration.field.enumValues &&
-        declaration.field.enumValues.length > 0 &&
-        !declaration.field.enumValues.includes(rule.value)
+        declaration.field.enumValues.length > 0
       ) {
-        return `compares "${path}" with "${rule.value}", which Entity "${entity.type}" no longer offers`;
+        const values = isStringSetConditionRule(rule)
+          ? rule.values
+          : [rule.value];
+        const unavailable = values.find(
+          (value) => !declaration.field.enumValues?.includes(value)
+        );
+        if (unavailable) {
+          return `compares "${path}" with "${unavailable}", which Entity "${entity.type}" no longer offers`;
+        }
       }
     }
   }
@@ -129,8 +146,9 @@ export function checkEntityEligibilityCondition(
 }
 
 /**
- * Holds a guarded workflow to one available Entity type, one compatible binding
- * per lifecycle Event, one complete condition, and a non-empty checkpoint set.
+ * Holds a tracked workflow to one available Entity type and one compatible
+ * binding per lifecycle Event. When eligibility is configured, its condition
+ * must be complete and its checkpoint set non-empty.
  */
 export function checkEntityEligibility(input: {
   rules: LifecycleRules;
@@ -148,12 +166,6 @@ export function checkEntityEligibility(input: {
       "Entity Eligibility has no tracked Entity. Choose the Entity this workflow tracks."
     );
   }
-  if (!eligibility) {
-    return refuse(
-      `Tracked Entity "${tracked.type}" has no Eligibility condition. Add Entity Eligibility, or remove the tracked Entity.`
-    );
-  }
-
   const entity = findEntity(catalog, tracked.type);
   if (!entity) {
     return refuse(
@@ -163,7 +175,7 @@ export function checkEntityEligibility(input: {
 
   if (rules.startEvents.length === 0) {
     return refuse(
-      "Entity Eligibility needs a Start Event to establish Entity identity. Add a Start Event with a compatible binding."
+      "Tracking an Entity needs a Start Event to establish identity. Add a Start Event with a compatible binding."
     );
   }
 
@@ -205,6 +217,10 @@ export function checkEntityEligibility(input: {
         `Event "${eventName}" cannot use a Correlation Path while this workflow tracks an Entity. Remove the Correlation Path; the selected Entity binding supplies identity.`
       );
     }
+  }
+
+  if (!eligibility) {
+    return valid;
   }
 
   if (eligibility.checkpoints.length === 0) {

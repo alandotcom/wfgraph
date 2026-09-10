@@ -3,7 +3,8 @@ import type {
   GroupLogic,
   NullCheckOperator,
   NumberOperator,
-  StringOperator,
+  StringScalarOperator,
+  StringSetOperator,
   TimeUnit,
   TimestampOperator,
 } from "#src/conditions/condition-model";
@@ -36,12 +37,20 @@ export const TIME_UNIT_OPTIONS: Array<{ value: TimeUnit; label: string }> = [
 ];
 
 export const STRING_OPERATOR_OPTIONS: Array<{
-  value: StringOperator;
+  value: StringScalarOperator;
   label: string;
 }> = [
   { value: "equals", label: "equals" },
   { value: "not_equals", label: "does not equal" },
   { value: "contains", label: "contains" },
+];
+
+export const STRING_SET_OPERATOR_OPTIONS: Array<{
+  value: StringSetOperator;
+  label: string;
+}> = [
+  { value: "is_one_of", label: "is one of" },
+  { value: "is_not_one_of", label: "is not one of" },
 ];
 
 export const NUMBER_OPERATOR_OPTIONS: Array<{

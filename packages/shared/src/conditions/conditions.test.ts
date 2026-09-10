@@ -388,6 +388,74 @@ describe("conditions", () => {
     }
   });
 
+  it("compiles enum set membership operators", () => {
+    const oneOf = compileConditionRule({
+      id: "condition-1",
+      field: "status",
+      fieldType: "string",
+      operator: "is_one_of",
+      values: ["scheduled", 'needs "review"'],
+    });
+    const notOneOf = compileConditionRule({
+      id: "condition-2",
+      field: "status",
+      fieldType: "string",
+      operator: "is_not_one_of",
+      values: ["canceled", "completed"],
+    });
+
+    expect(oneOf).toEqual({
+      valid: true,
+      expression:
+        'has(payload.status) && (payload.status in ["scheduled", "needs \\"review\\""])',
+    });
+    expect(notOneOf).toEqual({
+      valid: true,
+      expression:
+        'has(payload.status) && (!(payload.status in ["canceled", "completed"]))',
+    });
+  });
+
+  it("treats an empty enum set as unfinished", () => {
+    expect(
+      compileConditionRule({
+        id: "condition-1",
+        field: "status",
+        fieldType: "string",
+        operator: "is_one_of",
+        values: [],
+      })
+    ).toEqual({
+      valid: false,
+      error: "String set conditions require at least one value",
+      incomplete: true,
+    });
+  });
+
+  it("parses enum set operators from JSON", () => {
+    const parsed = parseConditionModel({
+      version: 2,
+      groupLogic: "and",
+      groups: [
+        {
+          id: "group-1",
+          logic: "and",
+          conditions: [
+            {
+              id: "condition-1",
+              field: "status",
+              fieldType: "string",
+              operator: "is_not_one_of",
+              values: ["canceled", "completed"],
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(parsed.valid).toBe(true);
+  });
+
   it("parses null-check conditions from JSON", () => {
     const json = JSON.stringify({
       version: 2,

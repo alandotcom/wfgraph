@@ -35,8 +35,11 @@ work. A non-object root throws at definition.
 
 Use `defineEntity({ type, label, state, resolve })`. `state` must encode to a
 JSON object. `resolve({ entityId })` returns current host state or `null` when the
-Entity no longer exists. The resolver has 10 seconds to settle; a timeout,
-rejection, or schema-invalid result is an operational failure.
+Entity no longer exists. The resolver has 10 seconds to settle by default;
+`createWfGraphApp({ entityResolverTimeoutMs })` or
+`wfWorker({ entityResolverTimeoutMs })` sets another positive whole-number
+deadline. A timeout, rejection, or schema-invalid result is an
+operational failure.
 
 Workflow Graph validates current state only to decide Eligibility. The state
 stays out of persistence, templates, node outputs, logs, and audit metadata.
@@ -50,23 +53,24 @@ Entity object and a synchronous `selectEntityId` typed from the decoded Event
 schema. It must return a non-empty string. The original JSON payload still flows
 through the workflow.
 
-A guarded Lifecycle selects one Entity type and one compatible binding per Start
-and Cancel Event. It can check **Before opening an Execution**, **Before each
-workflow node**, or both. Admission runs after the Start Filter and before
+A tracked Lifecycle selects one Entity type and one compatible binding per Start
+and Cancel Event. Tracking can stand alone for typed Concurrency and cancellation
+identity. An optional Eligibility rule can check **Before opening an Execution**,
+**Before each workflow node**, or both. Admission runs after the Start Filter and before
 Concurrency; a refusal opens no Execution. A node refusal ends the run as
 `exited` before that node starts. A host requiring immediate interruption sends
 a Cancel Event.
 
-Guarded manual and Draft runs require a Start Event plus valid payload. Guarded
+Tracked manual and Draft runs require a Start Event plus valid payload. Tracked
 schedules cannot start. Typed Entity identity stays fixed across Wait branches,
 replay, and Migration.
 
 ### correlationPath
 
-Typed against the payload; must resolve to a string. Unguarded workflows use
+Typed against the payload; must resolve to a string. Untracked workflows use
 that Entity Value for Concurrency and Cancel Events. Optional: a Workflow
 Builder can set it in the Lifecycle panel; the builder's path outranks the
-author's. Guarded workflows use their selected typed Entity bindings instead.
+author's. Tracked workflows use their selected typed Entity bindings instead.
 
 ### Datetime fields
 

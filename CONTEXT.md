@@ -93,9 +93,9 @@ Start Filter decides whether the arrival counts, then Concurrency applies, then
 a new Execution enters through the Started outlet carrying the payload. A
 workflow may name several, which is how one graph answers an appointment being
 booked and being moved; a node behind Started may then be reached by any of
-them, and an Event Split is what tells them apart. For a guarded workflow the
-fixed admission order is Event validation, Start Filter, Entity ID selection,
-Entity resolver, Entity Eligibility, Concurrency, then Execution creation.
+them, and an Event Split is what tells them apart. A tracked workflow selects
+its Entity ID before Concurrency. When it also declares Entity Eligibility, the
+resolver and eligibility check run between Entity ID selection and Concurrency.
 
 **Start Filter**:
 The condition an arrival must satisfy before a run opens, written per Start
@@ -140,8 +140,8 @@ anything can read it.
 **Cancel Event**:
 An Event the Lifecycle Rules list as canceling runs. When one arrives and its
 Cancel Filter accepts it, every matching in-flight Execution jumps to the Canceled
-outlet at its next step boundary. Guarded workflows match immutable Entity type and
-ID; unguarded workflows match the Correlation Path's Entity Value. Stopping a
+outlet at its next step boundary. Tracked workflows match immutable Entity type and
+ID; untracked workflows match the Correlation Path's Entity Value. Stopping a
 sequence mid-graph is an unwired Condition False, not a Cancel Event.
 
 **Cancel Filter**:
@@ -276,7 +276,7 @@ run parked on a Wait. The parked Wait recomputes its parameters from the new
 version's config and parks again on the next hop. Nodes below the Wait then run
 the new version's definitions, and nodes above the Wait keep the outputs they
 already produced. A preflight report classifies every in-flight run as eligible
-or refused before anything moves. A guarded run keeps its immutable typed Entity
+or refused before anything moves. A tracked run keeps its immutable typed Entity
 identity and is refused when the target tracks another Entity type or its
 Eligibility rule does not fit the current Entity schema. A refused run stays on
 its old version, so a partial Migration leaves the workflow's runs spread over
