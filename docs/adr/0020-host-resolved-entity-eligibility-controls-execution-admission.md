@@ -68,9 +68,9 @@ It retries Event delivery before admission and follows normal Execution failure
 handling after admission. A `null` result is the expected `entity_not_found`
 business outcome. A false condition is `entity_condition_not_met`.
 
-Each in-run check is one durable decision identified by the pinned Workflow
-Version, condition digest, durable invocation, and target node. Replay reuses that
-verdict; a later node resolves fresh state. Sibling nodes do not share a state
+Each in-run check is one durable decision identified by the target node within
+its durable invocation. Replay reuses that verdict; a later node resolves fresh
+state. Sibling nodes do not share a state
 snapshot and may observe different host states.
 
 Exit, cancellation, supersession, completion, and failure share one atomic
