@@ -1,5 +1,5 @@
 /**
- * Reports which in-flight runs a later published version can take over.
+ * Reports which in-flight runs another published version can take over.
  *
  * The report is a read: nothing moves until `migrateExecutions` is called with
  * the execution ids the caller picked out of it. Every in-flight run of the

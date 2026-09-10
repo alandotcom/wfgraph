@@ -1,5 +1,5 @@
 /**
- * Moves the named parked runs onto a later published version.
+ * Moves the named parked runs onto another published version of the workflow.
  *
  * Each run is reclassified first, because the preview the caller acted on is a
  * snapshot and a run can wake or end in between. A run moves in one order: the

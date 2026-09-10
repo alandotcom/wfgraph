@@ -1,4 +1,4 @@
-# 19. An Execution can be migrated to a later version at a Wait
+# 19. An Execution can be migrated to another published version at a Wait
 
 Date: 2026-09-09
 

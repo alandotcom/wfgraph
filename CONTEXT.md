@@ -232,8 +232,8 @@ superseded, or failed.
 _Avoid_: workflow (a workflow is the definition; an Execution is one run of it)
 
 **Migration**:
-Moving an open Execution from the Workflow Version it pinned to a later
-published version of the same workflow. A Migration is its own action, taken
+Moving an open Execution from the Workflow Version it pinned to another
+published version of the same workflow, usually the current one. A Migration is its own action, taken
 after Publish rather than as part of Publish. It reaches a run parked on a Wait.
 The parked Wait recomputes its parameters from the new version's config and
 parks again on the next hop. Nodes below the Wait then run the new version's
