@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Effect } from "effect";
 import {
   AppLogger,
@@ -13,6 +14,7 @@ import { signalRunToStop } from "#src/backend/services/executions/end-runs";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import type { JsonObject, JsonObjectDraft } from "@wfgraph/shared/types/json";
 import type {
+  EntityEligibilityReason,
   WorkflowExecutionIgnoredReason,
   WorkflowExecutionStartSource,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
@@ -20,6 +22,7 @@ import type {
   SerializedWorkflowGraph,
   WorkflowMode,
 } from "@wfgraph/shared/graph/types";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import type { WorkflowVersionKind } from "@wfgraph/shared/graph/version-kinds";
 
 /**
@@ -70,14 +73,32 @@ export function toWorkflowRunTarget(input: {
 export type WorkflowRunStart = {
   source: WorkflowExecutionStartSource;
   eventName?: string | undefined;
-  entityValue?: string | undefined;
   /**
    * The arrival this start answers, which for an Event is the id the bus carried
    * it under. It goes on the audit row so one arrival can be traced across every
    * workflow it started or was refused by.
    */
   deliveryId?: string | undefined;
-};
+} & (
+  | {
+      /** Stable identity selected from an Event binding for a guarded workflow. */
+      entityType: string;
+      entityId: string;
+      entityValue?: never;
+    }
+  | {
+      /** Legacy untyped Correlation Path identity. */
+      entityValue?: string | undefined;
+      entityType?: never;
+      entityId?: never;
+    }
+);
+
+function workflowRunIdentity(start: WorkflowRunStart) {
+  return start.entityType === undefined
+    ? { entityValue: start.entityValue }
+    : { entityType: start.entityType, entityId: start.entityId };
+}
 
 export type EnqueueStartedRunInput = {
   workflow: WorkflowRunTarget;
@@ -223,6 +244,14 @@ export function buildIgnoredRunAuditMessage(input: {
     return `Refused a start from ${named}: the payload does not satisfy this workflow's start filter`;
   }
 
+  if (input.reason === "entity_not_found") {
+    return `Refused a start from ${named}: the tracked Entity no longer exists`;
+  }
+
+  if (input.reason === "entity_condition_not_met") {
+    return `Refused a start from ${named}: current Entity State does not satisfy Entity Eligibility`;
+  }
+
   // The filter's own error is not repeated here. It is a message from the CEL
   // library about a payload this row does not carry, and it goes to the log,
   // which is where an operator reads it.
@@ -245,48 +274,97 @@ export function buildIgnoredRunAuditMessage(input: {
  * `extra` is what one reason knows and the others do not: the runs first-wins
  * found already going, or the error a Start Filter could not be read past.
  */
-export const recordStartRefusal = Effect.fn("recordStartRefusal")(
-  function* (input: {
-    workflowId: string;
-    startSource: WorkflowExecutionStartSource;
-    reason: WorkflowExecutionIgnoredReason;
-    runMode: WorkflowMode;
-    logger: EffectLogger;
-    eventName?: string | undefined;
-    entityValue?: string | undefined;
-    deliveryId?: string | undefined;
-    extra?: JsonObject | undefined;
-  }) {
-    const repo = yield* ExecutionRepo;
+export function startAdmissionDecisionId(
+  workflowId: string,
+  deliveryId: string
+): string {
+  return `admission_${createHash("sha256")
+    .update(`${workflowId}\0${deliveryId}`)
+    .digest("hex")}`;
+}
 
+type RecordStartRefusalInput = {
+  workflowId: string;
+  startSource: WorkflowExecutionStartSource;
+  runMode: WorkflowMode;
+  logger: EffectLogger;
+  eventName?: string | undefined;
+  entityValue?: string | undefined;
+  entityType?: string | undefined;
+  extra?: JsonObject | undefined;
+} & (
+  | {
+      reason: EntityEligibilityReason;
+      deliveryId: string;
+      /** Coordinates an Event's Entity refusal with a racing start transaction. */
+      durableEntityAdmission: true;
+    }
+  | {
+      reason: WorkflowExecutionIgnoredReason;
+      deliveryId?: string | undefined;
+      durableEntityAdmission?: false | undefined;
+    }
+);
+
+export const recordStartRefusal = Effect.fn("recordStartRefusal")(function* (
+  input: RecordStartRefusalInput
+) {
+  const repo = yield* ExecutionRepo;
+  const message = buildIgnoredRunAuditMessage({
+    startSource: input.startSource,
+    reason: input.reason,
+    eventName: input.eventName,
+  });
+  const metadata = omitUndefined({
+    // The refusal's own keys are written last, so what one reason knows and
+    // the others do not cannot rename the row it is written on.
+    ...input.extra,
+    reason: input.reason,
+    startSource: input.startSource,
+    eventName: input.eventName,
+    entityValue: input.entityValue,
+    entityType: input.entityType,
+    deliveryId: input.deliveryId,
+    runMode: input.runMode,
+  });
+
+  const admissionDecision =
+    input.durableEntityAdmission && input.deliveryId
+      ? yield* repo.recordAdmissionRefusal({
+          workflowId: input.workflowId,
+          deliveryId: input.deliveryId,
+          decisionId: startAdmissionDecisionId(
+            input.workflowId,
+            input.deliveryId
+          ),
+          reason: input.reason,
+          message,
+          metadata,
+        })
+      : undefined;
+
+  if (!admissionDecision) {
     yield* repo.recordAuditEvent({
       workflowId: input.workflowId,
       eventType: "run_refused",
-      message: buildIgnoredRunAuditMessage({
-        startSource: input.startSource,
-        reason: input.reason,
-        eventName: input.eventName,
-      }),
-      metadata: {
-        // The refusal's own keys are written last, so what one reason knows and
-        // the others do not cannot rename the row it is written on.
-        ...input.extra,
-        reason: input.reason,
-        startSource: input.startSource,
-        eventName: input.eventName,
-        entityValue: input.entityValue,
-        deliveryId: input.deliveryId,
-        runMode: input.runMode,
-      },
-    });
-
-    yield* input.logger.info("Start refused", {
-      ...input.extra,
-      reason: input.reason,
-      entityValue: input.entityValue,
+      message,
+      metadata,
     });
   }
-);
+
+  if (!admissionDecision || admissionDecision.kind === "refused") {
+    yield* input.logger.info(
+      "Start refused",
+      omitUndefined({
+        ...input.extra,
+        reason: input.reason,
+        entityValue: input.entityValue,
+        entityType: input.entityType,
+      })
+    );
+  }
+  return admissionDecision;
+});
 
 /** This module's logger, as the Effect that produces it (see `services/workflows/workflow.ts`). */
 const loggerFor = (workflowId: string) =>
@@ -348,16 +426,17 @@ export const enqueueStartedRun = Effect.fn("enqueueStartedRun")(function* (
         eventName: start.eventName,
         version: workflow.version,
       }),
-      metadata: {
+      metadata: omitUndefined({
         startSource: start.source,
         runMode,
         versionKind: workflow.version.kind,
         versionNumber: workflow.version.number ?? undefined,
         eventName: start.eventName,
         entityValue: start.entityValue,
+        entityType: start.entityType,
         deliveryId: start.deliveryId,
         runId: run.eventId,
-      },
+      }),
     })
   );
 
@@ -457,7 +536,7 @@ export const recordTerminalWorkflowRun = Effect.fn("recordTerminalWorkflowRun")(
       startSource: input.start.source,
       runMode: input.runMode,
       startEventName: input.start.eventName,
-      entityValue: input.start.entityValue,
+      ...workflowRunIdentity(input.start),
       input: input.payload,
       output: input.output,
       error: input.error,
@@ -491,11 +570,24 @@ export const recordPausedRunIgnored = Effect.fn("recordPausedRunIgnored")(
     startSource: WorkflowExecutionStartSource;
     runMode: WorkflowMode;
     payload: JsonObject;
+    eventName?: string | undefined;
+    entityType?: string | undefined;
+    entityId?: string | undefined;
   }) {
+    const start: WorkflowRunStart =
+      input.entityType && input.entityId
+        ? {
+            source: input.startSource,
+            eventName: input.eventName,
+            entityType: input.entityType,
+            entityId: input.entityId,
+          }
+        : { source: input.startSource, eventName: input.eventName };
+
     return yield* recordTerminalWorkflowRun({
       workflowId: input.workflowId,
       workflowVersionId: input.workflowVersionId,
-      start: { source: input.startSource },
+      start,
       runMode: input.runMode,
       payload: input.payload,
       status: "completed",

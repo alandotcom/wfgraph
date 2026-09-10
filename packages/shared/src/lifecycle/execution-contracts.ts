@@ -76,8 +76,12 @@ export type WorkflowExecutionStartSource =
  *   workflow put on that Start Event.
  * - `start_filter_unevaluable`: the Start Filter could not be read against the
  *   payload at all, which a payload carrying a field of the wrong type does.
+ * - `entity_condition_not_met`: current Entity State did not satisfy the
+ *   workflow's positive Entity Eligibility condition.
+ * - `entity_not_found`: the host reported that the tracked Entity no longer
+ *   exists.
  *
- * The last two reach no manual start, because a manual start is a person asking
+ * The two Start Filter reasons reach no manual start, because a manual start is a person asking
  * for this run rather than an arrival being admitted. They are listed here so the
  * sentence every refusal is recorded with keeps one home,
  * `buildIgnoredRunAuditMessage`.
@@ -90,6 +94,8 @@ export const WORKFLOW_EXECUTION_IGNORED_REASONS = [
   "start_event_required",
   "start_filter_not_met",
   "start_filter_unevaluable",
+  "entity_condition_not_met",
+  "entity_not_found",
 ] as const;
 
 export type WorkflowExecutionIgnoredReason =

@@ -113,6 +113,131 @@ export function describeExecutionConformance({
       expect(retry.execution.id).toBe(started.execution.id);
     });
 
+    it("keeps a durable Entity admission refusal authoritative on replay", async () => {
+      const database = await openConnection();
+      await seedPublishedWorkflow(database);
+      const decisionId = "admission_refusal_first";
+
+      const refusal = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          return yield* executions.recordAdmissionRefusal({
+            workflowId: "wf_1",
+            deliveryId: "delivery_refusal_first",
+            decisionId,
+            reason: "entity_condition_not_met",
+            message: "Entity Eligibility refused the start",
+            metadata: { reason: "entity_condition_not_met" },
+          });
+        })
+      );
+      const replay = await attemptStart(database, {
+        deliveryId: "delivery_refusal_first",
+        entityType: "appointment",
+        entityId: "appt_8813",
+        admissionDecisionId: decisionId,
+      });
+
+      expect(refusal).toEqual({
+        kind: "refused",
+        reason: "entity_condition_not_met",
+      });
+      expect(replay).toEqual({
+        status: "admission_refused",
+        reason: "entity_condition_not_met",
+      });
+    });
+
+    it("returns an existing start to a racing admission refusal", async () => {
+      const database = await openConnection();
+      await seedPublishedWorkflow(database);
+      const decisionId = "admission_start_first";
+      const started = await attemptStart(database, {
+        deliveryId: "delivery_start_first",
+        entityType: "appointment",
+        entityId: "appt_8813",
+        admissionDecisionId: decisionId,
+      });
+      if (started.status !== "started") {
+        throw new Error("The admission did not open a run");
+      }
+
+      const decision = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          return yield* executions.recordAdmissionRefusal({
+            workflowId: "wf_1",
+            deliveryId: "delivery_start_first",
+            decisionId,
+            reason: "entity_not_found",
+            message: "Entity Eligibility refused the start",
+            metadata: { reason: "entity_not_found" },
+          });
+        })
+      );
+
+      expect(decision).toEqual({
+        kind: "started",
+        executionId: started.execution.id,
+      });
+      const refusals = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          return yield* executions.listWorkflowEvents({
+            workflowId: "wf_1",
+            eventType: "run_refused",
+          });
+        })
+      );
+      expect(refusals).toEqual([]);
+    });
+
+    it("settles a concurrent admission start/refusal race once", async () => {
+      const store = await openDatabase();
+      const database = await store.open();
+      const otherConnection = await store.open();
+      await seedPublishedWorkflow(database);
+      const decisionId = "admission_race";
+
+      const [start, refusal] = await Promise.all([
+        attemptStart(database, {
+          deliveryId: "delivery_admission_race",
+          entityType: "appointment",
+          entityId: "appt_8813",
+          admissionDecisionId: decisionId,
+        }),
+        otherConnection.run(
+          Effect.gen(function* () {
+            const executions = yield* ExecutionRepo;
+            return yield* executions.recordAdmissionRefusal({
+              workflowId: "wf_1",
+              deliveryId: "delivery_admission_race",
+              decisionId,
+              reason: "entity_condition_not_met",
+              message: "Entity Eligibility refused the start",
+              metadata: { reason: "entity_condition_not_met" },
+            });
+          })
+        ),
+      ]);
+
+      if (start.status === "started") {
+        expect(refusal).toEqual({
+          kind: "started",
+          executionId: start.execution.id,
+        });
+      } else {
+        expect(start).toEqual({
+          status: "admission_refused",
+          reason: "entity_condition_not_met",
+        });
+        expect(refusal).toEqual({
+          kind: "refused",
+          reason: "entity_condition_not_met",
+        });
+      }
+    });
+
     it("persists typed Entity identity and makes an Exit claim authoritative", async () => {
       const store = await openDatabase();
       const database = await store.open();

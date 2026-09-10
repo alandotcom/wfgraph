@@ -2,7 +2,7 @@ import { assert, describe, layer } from "@effect/vitest";
 // The mocks API has to be the one vitest itself exports; reaching it through the
 // `@effect/vitest` re-export leaves it unable to find the module registry.
 import { beforeEach, vi } from "vitest";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import type {
   PublishedWorkflowVersion,
   Workflow,
@@ -17,6 +17,8 @@ import {
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import { defineEntity } from "#src/backend/extensions/define-entity";
+import { defineEvent } from "#src/backend/extensions/define-event";
 import type { ConditionModel } from "@wfgraph/shared/conditions/conditions";
 import { serializeConditionModel } from "@wfgraph/shared/conditions/conditions";
 import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
@@ -25,6 +27,7 @@ import type {
   ExecutionRepo,
   WorkflowExecution,
 } from "#src/backend/services/executions/repo";
+import type { EntityEligibilityReason } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { EventSubscriber } from "#src/backend/services/workflows/repo";
 import { applyLifecycleRules } from "#src/backend/services/workflows/lifecycle/deliver-event";
 
@@ -40,6 +43,9 @@ import { applyLifecycleRules } from "#src/backend/services/workflows/lifecycle/d
 type Repo = ExecutionRepo["Service"];
 
 const startForEntityMock = vi.fn<Repo["startForEntity"]>();
+const requestCancelForEntityMock = vi.fn<Repo["requestCancelForEntity"]>();
+const findAdmissionRefusalMock = vi.fn<Repo["findAdmissionRefusal"]>();
+const recordAdmissionRefusalMock = vi.fn<Repo["recordAdmissionRefusal"]>();
 const recordAuditEventMock = vi.fn<Repo["recordAuditEvent"]>(() => Effect.void);
 const sendRunRequestedMock = vi.fn<
   InngestClient["Service"]["sendRunRequested"]
@@ -47,6 +53,60 @@ const sendRunRequestedMock = vi.fn<
 const sendCancelRequestedMock = vi.fn<
   InngestClient["Service"]["sendCancelRequested"]
 >(() => Effect.void);
+
+const resolveEntityMock = vi.fn(
+  async (): Promise<{ status: string; remindersEnabled: boolean } | null> => ({
+    status: "scheduled",
+    remindersEnabled: true,
+  })
+);
+const appointmentEntity = defineEntity({
+  type: "appointment",
+  label: "Appointment",
+  state: Schema.Struct({
+    status: Schema.String,
+    remindersEnabled: Schema.Boolean,
+  }),
+  resolve: resolveEntityMock,
+});
+const selectEntityIdMock = vi.fn(
+  (event: { appointment: { id: string } }) => event.appointment.id
+);
+const appointmentCreatedDefinition = defineEvent({
+  name: "app/appointment.created",
+  label: "Appointment created",
+  schema: Schema.Struct({
+    appointment: Schema.Struct({
+      id: Schema.String,
+      channel: Schema.String,
+      seats: Schema.String,
+    }),
+  }),
+  correlationPath: "appointment.id",
+  entities: {
+    appointment: {
+      entity: appointmentEntity,
+      selectEntityId: selectEntityIdMock,
+    },
+  },
+});
+const selectCanceledEntityIdMock = vi.fn(
+  (event: { appointmentId: string; reason: string }) => event.appointmentId
+);
+const appointmentCanceledDefinition = defineEvent({
+  name: "app/appointment.canceled",
+  label: "Appointment canceled",
+  schema: Schema.Struct({
+    appointmentId: Schema.String,
+    reason: Schema.String,
+  }),
+  entities: {
+    appointment: {
+      entity: appointmentEntity,
+      selectEntityId: selectCanceledEntityIdMock,
+    },
+  },
+});
 
 const catalogLayer = stubExtensionCatalog({
   events: [
@@ -59,13 +119,46 @@ const catalogLayer = stubExtensionCatalog({
         { path: "appointment.channel", type: "string" },
         { path: "appointment.seats", type: "number" },
       ],
+      entityBindings: [{ name: "appointment", entityType: "appointment" }],
+    },
+    {
+      name: "app/appointment.canceled",
+      label: "Appointment canceled",
+      payloadFields: [
+        { path: "appointmentId", type: "string" },
+        { path: "reason", type: "string" },
+      ],
+      entityBindings: [{ name: "appointment", entityType: "appointment" }],
+    },
+  ],
+  entities: [
+    {
+      type: "appointment",
+      label: "Appointment",
+      stateFields: [
+        { path: "status", type: "string" },
+        { path: "remindersEnabled", type: "boolean" },
+      ],
+      stateSchemaDigest: appointmentEntity.stateSchemaDigest,
     },
   ],
 });
 
 const appointmentCreated = {
-  name: "app/appointment.created",
-  correlationPath: "appointment.id",
+  name: appointmentCreatedDefinition.name,
+  correlationPath: appointmentCreatedDefinition.correlationPath,
+  entityBindings: appointmentCreatedDefinition.entities,
+  validatedPayload: {
+    appointment: { id: "appt_8813", channel: "video", seats: "two" },
+  },
+};
+const appointmentCanceled = {
+  name: appointmentCanceledDefinition.name,
+  entityBindings: appointmentCanceledDefinition.entities,
+  validatedPayload: {
+    appointmentId: "appt_8813",
+    reason: "host request",
+  },
 };
 
 /** A payload the Start Filters below are written against. */
@@ -115,6 +208,61 @@ function filteredRules(
         ? undefined
         : { "app/appointment.created": "appointment.id" },
     startFilters: { "app/appointment.created": filter },
+  };
+}
+
+function guardedRules(input: {
+  checkpoints: Array<"before-execution" | "before-node">;
+  status?: string;
+  startFilter?: string | undefined;
+}): LifecycleRules {
+  return {
+    startEvents: ["app/appointment.created"],
+    cancelEvents: [],
+    concurrency: "newest-wins",
+    startFilters: input.startFilter
+      ? { "app/appointment.created": input.startFilter }
+      : undefined,
+    trackedEntity: {
+      type: "appointment",
+      bindings: { "app/appointment.created": "appointment" },
+    },
+    entityEligibility: {
+      condition: filterOn({
+        path: "status",
+        fieldType: "string",
+        operator: "equals",
+        value: input.status ?? "scheduled",
+      }),
+      checkpoints: input.checkpoints,
+    },
+  };
+}
+
+function guardedCancelRules(cancelFilter?: string): LifecycleRules {
+  return {
+    startEvents: ["app/appointment.created"],
+    cancelEvents: ["app/appointment.canceled"],
+    concurrency: "newest-wins",
+    cancelFilters: cancelFilter
+      ? { "app/appointment.canceled": cancelFilter }
+      : undefined,
+    trackedEntity: {
+      type: "appointment",
+      bindings: {
+        "app/appointment.created": "appointment",
+        "app/appointment.canceled": "appointment",
+      },
+    },
+    entityEligibility: {
+      condition: filterOn({
+        path: "status",
+        fieldType: "string",
+        operator: "equals",
+        value: "scheduled",
+      }),
+      checkpoints: ["before-node"],
+    },
   };
 }
 
@@ -231,6 +379,9 @@ function subscriber(): EventSubscriber {
 const lifecyclePorts = Layer.mergeAll(
   stubExecutionRepo({
     startForEntity: startForEntityMock,
+    requestCancelForEntity: requestCancelForEntityMock,
+    findAdmissionRefusal: findAdmissionRefusalMock,
+    recordAdmissionRefusal: recordAdmissionRefusalMock,
     recordAuditEvent: recordAuditEventMock,
     listWaitingStatesForExecutions: () => Effect.succeed(new Map()),
     markEnqueued: () => Effect.void,
@@ -252,11 +403,26 @@ function workflowWith(rules: LifecycleRules) {
 
 beforeEach(() => {
   startForEntityMock.mockReset();
+  requestCancelForEntityMock.mockReset();
+  findAdmissionRefusalMock.mockReset();
+  recordAdmissionRefusalMock.mockReset();
   recordAuditEventMock.mockReset();
   sendRunRequestedMock.mockReset();
   sendCancelRequestedMock.mockReset();
+  resolveEntityMock.mockReset();
+  selectEntityIdMock.mockClear();
+  selectCanceledEntityIdMock.mockClear();
 
+  resolveEntityMock.mockResolvedValue({
+    status: "scheduled",
+    remindersEnabled: true,
+  });
   startForEntityMock.mockImplementation(() => Effect.succeed(startedOutcome));
+  requestCancelForEntityMock.mockImplementation(() => Effect.succeed([]));
+  findAdmissionRefusalMock.mockImplementation(() => Effect.succeed(null));
+  recordAdmissionRefusalMock.mockImplementation((input) =>
+    Effect.succeed({ kind: "refused", reason: input.reason })
+  );
   recordAuditEventMock.mockImplementation(() => Effect.void);
   sendRunRequestedMock.mockImplementation(() =>
     Effect.succeed({ eventId: "evt_1" })
@@ -425,6 +591,337 @@ describe("applyLifecycleRules and Start Filters", () => {
           recordAuditEventMock.mock.calls[0]?.[0].eventType,
           "run_refused"
         );
+      })
+    );
+
+    it.effect(
+      "runs the Start Filter before selecting or resolving the tracked Entity",
+      () =>
+        Effect.gen(function* () {
+          const outcome = yield* applyLifecycleRules({
+            subscriber: subscriber(),
+            event: appointmentCreated,
+            payload: videoPayload,
+          }).pipe(
+            Effect.provide(
+              workflowWith(
+                guardedRules({
+                  checkpoints: ["before-execution"],
+                  startFilter: filterOn({
+                    path: "appointment.channel",
+                    fieldType: "string",
+                    operator: "equals",
+                    value: "in_person",
+                  }),
+                })
+              )
+            )
+          );
+
+          assert.strictEqual(outcome.kind, "refused");
+          assert.strictEqual(selectEntityIdMock.mock.calls.length, 0);
+          assert.strictEqual(resolveEntityMock.mock.calls.length, 0);
+          assert.strictEqual(startForEntityMock.mock.calls.length, 0);
+        })
+    );
+
+    it.effect(
+      "refuses an ineligible Entity before Concurrency without persisting its state or id",
+      () =>
+        Effect.gen(function* () {
+          resolveEntityMock.mockResolvedValue({
+            status: "cancelled",
+            remindersEnabled: false,
+          });
+
+          const outcome = yield* applyLifecycleRules({
+            subscriber: subscriber(),
+            event: appointmentCreated,
+            payload: videoPayload,
+            deliveryId: "evt_entity_refusal",
+          }).pipe(
+            Effect.provide(
+              workflowWith(guardedRules({ checkpoints: ["before-execution"] }))
+            )
+          );
+
+          assert.deepStrictEqual(outcome, {
+            kind: "refused",
+            workflowId: "wf_1",
+            reason: "entity_condition_not_met",
+          });
+          assert.strictEqual(resolveEntityMock.mock.calls.length, 1);
+          assert.strictEqual(startForEntityMock.mock.calls.length, 0);
+          const audit = recordAdmissionRefusalMock.mock.calls[0]?.[0];
+          assert.deepInclude(audit?.metadata, {
+            reason: "entity_condition_not_met",
+            entityType: "appointment",
+            checkpoint: "before-execution",
+            deliveryId: "evt_entity_refusal",
+          });
+          assert.notProperty(audit?.metadata ?? {}, "entityId");
+          assert.notProperty(audit?.metadata ?? {}, "state");
+        })
+    );
+
+    it.effect(
+      "replays a durable admission refusal without resolving again",
+      () =>
+        Effect.gen(function* () {
+          let storedReason: EntityEligibilityReason | null = null;
+          findAdmissionRefusalMock.mockImplementation(() =>
+            Effect.succeed(storedReason)
+          );
+          recordAdmissionRefusalMock.mockImplementation((input) =>
+            Effect.sync(() => {
+              storedReason = input.reason;
+              return { kind: "refused" as const, reason: input.reason };
+            })
+          );
+          resolveEntityMock
+            .mockResolvedValueOnce({
+              status: "cancelled",
+              remindersEnabled: false,
+            })
+            .mockResolvedValue({
+              status: "scheduled",
+              remindersEnabled: true,
+            });
+          const delivery = {
+            subscriber: subscriber(),
+            event: appointmentCreated,
+            payload: videoPayload,
+            deliveryId: "evt_replayed_refusal",
+          };
+          const services = workflowWith(
+            guardedRules({ checkpoints: ["before-execution"] })
+          );
+
+          const first = yield* applyLifecycleRules(delivery).pipe(
+            Effect.provide(services)
+          );
+          const replay = yield* applyLifecycleRules(delivery).pipe(
+            Effect.provide(services)
+          );
+
+          assert.strictEqual(first.kind, "refused");
+          assert.strictEqual(replay.kind, "refused");
+          assert.strictEqual(resolveEntityMock.mock.calls.length, 1);
+          assert.strictEqual(recordAdmissionRefusalMock.mock.calls.length, 1);
+          assert.strictEqual(startForEntityMock.mock.calls.length, 0);
+        })
+    );
+
+    it.effect("returns the start that won a racing admission refusal", () =>
+      Effect.gen(function* () {
+        resolveEntityMock.mockResolvedValue({
+          status: "cancelled",
+          remindersEnabled: false,
+        });
+        recordAdmissionRefusalMock.mockImplementation(() =>
+          Effect.succeed({ kind: "started", executionId: "exec_winner" })
+        );
+
+        const outcome = yield* applyLifecycleRules({
+          subscriber: subscriber(),
+          event: appointmentCreated,
+          payload: videoPayload,
+          deliveryId: "evt_racing_start",
+        }).pipe(
+          Effect.provide(
+            workflowWith(guardedRules({ checkpoints: ["before-execution"] }))
+          )
+        );
+
+        assert.deepStrictEqual(outcome, {
+          kind: "started",
+          workflowId: "wf_1",
+          executionId: "exec_winner",
+          supersededExecutionIds: [],
+          failedToSupersede: [],
+        });
+      })
+    );
+
+    it.effect("distinguishes a missing Entity from an ineligible one", () =>
+      Effect.gen(function* () {
+        resolveEntityMock.mockResolvedValue(null);
+
+        const outcome = yield* applyLifecycleRules({
+          subscriber: subscriber(),
+          event: appointmentCreated,
+          payload: videoPayload,
+        }).pipe(
+          Effect.provide(
+            workflowWith(guardedRules({ checkpoints: ["before-execution"] }))
+          )
+        );
+
+        assert.strictEqual(outcome.kind, "refused");
+        if (outcome.kind === "refused") {
+          assert.strictEqual(outcome.reason, "entity_not_found");
+        }
+        assert.strictEqual(startForEntityMock.mock.calls.length, 0);
+      })
+    );
+
+    it.effect(
+      "persists typed identity and skips the resolver for a node-only guard",
+      () =>
+        Effect.gen(function* () {
+          const outcome = yield* applyLifecycleRules({
+            subscriber: subscriber(),
+            event: appointmentCreated,
+            payload: videoPayload,
+          }).pipe(
+            Effect.provide(
+              workflowWith(guardedRules({ checkpoints: ["before-node"] }))
+            )
+          );
+
+          assert.strictEqual(outcome.kind, "started");
+          assert.strictEqual(resolveEntityMock.mock.calls.length, 0);
+          assert.deepInclude(startForEntityMock.mock.calls[0]?.[0].execution, {
+            entityType: "appointment",
+            entityId: "appt_8813",
+          });
+          assert.notProperty(
+            startForEntityMock.mock.calls[0]?.[0].execution ?? {},
+            "entityValue"
+          );
+        })
+    );
+
+    it.effect(
+      "accepts a validated undefined value when the Event selector supports it",
+      () =>
+        Effect.gen(function* () {
+          const selectUndefined = vi.fn((value: unknown) => {
+            assert.strictEqual(value, undefined);
+            return "appt_constant";
+          });
+          const outcome = yield* applyLifecycleRules({
+            subscriber: subscriber(),
+            event: {
+              name: appointmentCreated.name,
+              entityBindings: {
+                appointment: {
+                  entity: appointmentEntity,
+                  selectEntityId: selectUndefined,
+                },
+              },
+              validatedPayload: undefined,
+            },
+            payload: videoPayload,
+          }).pipe(
+            Effect.provide(
+              workflowWith(guardedRules({ checkpoints: ["before-node"] }))
+            )
+          );
+
+          assert.strictEqual(outcome.kind, "started");
+          assert.strictEqual(selectUndefined.mock.calls.length, 1);
+          assert.strictEqual(
+            startForEntityMock.mock.calls[0]?.[0].execution.entityId,
+            "appt_constant"
+          );
+        })
+    );
+
+    it.effect(
+      "starts with typed identity only after admission Eligibility passes",
+      () =>
+        Effect.gen(function* () {
+          const outcome = yield* applyLifecycleRules({
+            subscriber: subscriber(),
+            event: appointmentCreated,
+            payload: videoPayload,
+          }).pipe(
+            Effect.provide(
+              workflowWith(guardedRules({ checkpoints: ["before-execution"] }))
+            )
+          );
+
+          assert.strictEqual(outcome.kind, "started");
+          assert.strictEqual(resolveEntityMock.mock.calls.length, 1);
+          assert.deepInclude(startForEntityMock.mock.calls[0]?.[0].execution, {
+            entityType: "appointment",
+            entityId: "appt_8813",
+          });
+        })
+    );
+
+    it.effect(
+      "leaves a resolver failure operational and opens no Execution",
+      () =>
+        Effect.gen(function* () {
+          resolveEntityMock.mockRejectedValue(new Error("host unavailable"));
+
+          const exit = yield* Effect.exit(
+            applyLifecycleRules({
+              subscriber: subscriber(),
+              event: appointmentCreated,
+              payload: videoPayload,
+            }).pipe(
+              Effect.provide(
+                workflowWith(
+                  guardedRules({ checkpoints: ["before-execution"] })
+                )
+              )
+            )
+          );
+
+          assert.strictEqual(exit._tag, "Failure");
+          assert.strictEqual(startForEntityMock.mock.calls.length, 0);
+          assert.strictEqual(recordAuditEventMock.mock.calls.length, 0);
+        })
+    );
+
+    it.effect("matches guarded cancellations by typed Entity identity", () =>
+      Effect.gen(function* () {
+        const outcome = yield* applyLifecycleRules({
+          subscriber: { ...subscriber(), roles: ["cancel"] },
+          event: appointmentCanceled,
+          payload: { appointmentId: "appt_8813", reason: "host request" },
+        }).pipe(Effect.provide(workflowWith(guardedCancelRules())));
+
+        assert.strictEqual(outcome.kind, "canceled");
+        assert.deepInclude(requestCancelForEntityMock.mock.calls[0]?.[0], {
+          workflowId: "wf_1",
+          entityType: "appointment",
+          entityId: "appt_8813",
+        });
+        assert.notProperty(
+          requestCancelForEntityMock.mock.calls[0]?.[0] ?? {},
+          "entityValue"
+        );
+      })
+    );
+
+    it.effect("runs a guarded Cancel Filter before its Entity selector", () =>
+      Effect.gen(function* () {
+        const outcome = yield* applyLifecycleRules({
+          subscriber: { ...subscriber(), roles: ["cancel"] },
+          event: appointmentCanceled,
+          payload: { appointmentId: "appt_8813", reason: "host request" },
+        }).pipe(
+          Effect.provide(
+            workflowWith(
+              guardedCancelRules(
+                filterOn({
+                  path: "reason",
+                  fieldType: "string",
+                  operator: "equals",
+                  value: "duplicate",
+                })
+              )
+            )
+          )
+        );
+
+        assert.strictEqual(outcome.kind, "refused");
+        assert.strictEqual(selectCanceledEntityIdMock.mock.calls.length, 0);
+        assert.strictEqual(requestCancelForEntityMock.mock.calls.length, 0);
       })
     );
 

@@ -15,6 +15,7 @@
  */
 
 import { Effect } from "effect";
+import type { AnyEventDefinition } from "#src/backend/extensions/define-event";
 import {
   AppLogger,
   type EffectLogger,
@@ -23,6 +24,10 @@ import { evaluateSerializedCondition } from "#src/backend/lib/cel/condition-payl
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import { requestCanceledOutlet } from "#src/backend/services/workflows/lifecycle/cancel";
 import { startWithConcurrency } from "#src/backend/services/workflows/lifecycle/concurrency";
+import {
+  evaluateGuardedStart,
+  selectTrackedEntity,
+} from "#src/backend/services/workflows/lifecycle/entity-eligibility";
 import { resumeWaitsMatchingEvent } from "#src/backend/services/workflows/lifecycle/resume-waits";
 import { runWorkflowExecutionPreflight } from "#src/backend/services/executions/preflight";
 import {
@@ -31,6 +36,7 @@ import {
 } from "#src/backend/services/workflows/repo";
 import {
   recordStartRefusal,
+  startAdmissionDecisionId,
   toWorkflowRunTarget,
 } from "#src/backend/services/executions/run-rows";
 import { connectionMatches } from "@wfgraph/shared/lifecycle/event-connections";
@@ -63,6 +69,10 @@ export type DeliveredEvent = {
    * these agree.
    */
   readonly connectionId?: string | undefined;
+  /** Server-only bindings used after the Start/Cancel Filter has accepted. */
+  readonly entityBindings?: AnyEventDefinition["entities"];
+  /** The decoded Event value those typed bindings select from. */
+  readonly validatedPayload?: unknown;
 };
 
 /** What the Lifecycle Rules did to one workflow, as the listener records it. */
@@ -87,7 +97,9 @@ export type LifecycleDeliveryOutcome =
         /** The arrival did not satisfy this Start Event's Start Filter. */
         | "start_filter_not_met"
         /** The Start Filter could not be read against this payload at all. */
-        | "start_filter_unevaluable";
+        | "start_filter_unevaluable"
+        | "entity_condition_not_met"
+        | "entity_not_found";
     }
   /**
    * This Event holds the cancel role here; the ids are the runs it claimed. A
@@ -274,53 +286,64 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
         return filterRefusal;
       }
 
-      const entityValue = readEntityValue({
+      const trackedEntity = yield* selectTrackedEntity({
+        rules,
         event: input.event,
-        subscriber: input.subscriber,
-        payload: input.payload,
       });
-
-      // A cancel matches by Entity Value and has nothing else to match on, so a
-      // payload carrying none reaches no run. The save rules require a path for
-      // every Cancel Event, which is what makes this the payload's own gap.
-      //
-      // The row is what a Refused Start gets for the same reason: without it the
-      // builder watches the runs carry on and finds nothing anywhere saying the
-      // cancel was refused.
-      if (!entityValue) {
-        const executionRepo = yield* ExecutionRepo;
-        yield* executionRepo.recordAuditEvent({
+      let canceledExecutionIds: string[];
+      if (trackedEntity) {
+        canceledExecutionIds = yield* requestCanceledOutlet({
           workflowId: workflow.id,
-          eventType: "cancel_not_delivered",
-          message: `Cancel from ${input.event.name} reached no run: nothing at this workflow's Correlation Path`,
-          metadata: {
+          runMode: workflow.mode,
+          eventName: input.event.name,
+          payload: input.payload,
+          entityType: trackedEntity.entityType,
+          entityId: trackedEntity.entityId,
+        });
+      } else {
+        const entityValue = readEntityValue({
+          event: input.event,
+          subscriber: input.subscriber,
+          payload: input.payload,
+        });
+
+        // An unguarded cancel matches by legacy Entity Value and has nothing
+        // else to match on, so a payload carrying none reaches no run.
+        if (!entityValue) {
+          const executionRepo = yield* ExecutionRepo;
+          yield* executionRepo.recordAuditEvent({
+            workflowId: workflow.id,
+            eventType: "cancel_not_delivered",
+            message: `Cancel from ${input.event.name} reached no run: nothing at this workflow's Correlation Path`,
+            metadata: {
+              reason: "entity_value_missing",
+              eventName: input.event.name,
+              correlationPath: correlationPathFor(input),
+              deliveryId: input.deliveryId,
+              runMode: workflow.mode,
+            },
+          });
+
+          yield* logger.info("Cancel refused", {
             reason: "entity_value_missing",
-            eventName: input.event.name,
-            correlationPath: correlationPathFor(input),
             deliveryId: input.deliveryId,
-            runMode: workflow.mode,
-          },
-        });
+          });
 
-        yield* logger.info("Cancel refused", {
-          reason: "entity_value_missing",
-          deliveryId: input.deliveryId,
-        });
+          return {
+            kind: "refused" as const,
+            workflowId: workflow.id,
+            reason: "entity_value_missing" as const,
+          };
+        }
 
-        return {
-          kind: "refused" as const,
+        canceledExecutionIds = yield* requestCanceledOutlet({
           workflowId: workflow.id,
-          reason: "entity_value_missing" as const,
-        };
+          runMode: workflow.mode,
+          eventName: input.event.name,
+          payload: input.payload,
+          entityValue,
+        });
       }
-
-      const canceledExecutionIds = yield* requestCanceledOutlet({
-        workflowId: workflow.id,
-        runMode: workflow.mode,
-        eventName: input.event.name,
-        payload: input.payload,
-        entityValue,
-      });
 
       return {
         kind: "canceled" as const,
@@ -333,11 +356,28 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
       return { kind: "waits_only" as const, workflowId: workflow.id };
     }
 
-    const entityValue = readEntityValue({
-      event: input.event,
-      subscriber: input.subscriber,
-      payload: input.payload,
-    });
+    if (rules.trackedEntity && input.deliveryId) {
+      const executionRepo = yield* ExecutionRepo;
+      const priorRefusal = yield* executionRepo.findAdmissionRefusal({
+        workflowId: workflow.id,
+        decisionId: startAdmissionDecisionId(workflow.id, input.deliveryId),
+      });
+      if (priorRefusal) {
+        return {
+          kind: "refused" as const,
+          workflowId: workflow.id,
+          reason: priorRefusal,
+        };
+      }
+    }
+
+    const entityValue = rules.trackedEntity
+      ? undefined
+      : readEntityValue({
+          event: input.event,
+          subscriber: input.subscriber,
+          payload: input.payload,
+        });
 
     // The Start Filter is read before Concurrency, which is the whole of why it
     // exists: a Condition node behind the Started outlet reads the same payload,
@@ -356,6 +396,52 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
       return filterRefusal;
     }
 
+    // Selection and the optional resolver read follow the cheap payload filter.
+    // Both precede Concurrency, so an ineligible arrival cannot refuse or
+    // supersede another run and opens no Execution of its own.
+    const guarded = yield* evaluateGuardedStart({
+      rules,
+      event: input.event,
+    });
+    if (guarded?.refusal) {
+      const refusalInput = {
+        workflowId: workflow.id,
+        startSource: "event" as const,
+        reason: guarded.refusal.reason,
+        runMode: workflow.mode,
+        logger,
+        eventName: input.event.name,
+        entityType: guarded.refusal.entityType,
+        extra: {
+          conditionId: guarded.refusal.conditionId,
+          checkpoint: "before-execution",
+          checkedAt: guarded.refusal.checkedAt,
+        },
+      };
+      const decision = input.deliveryId
+        ? yield* recordStartRefusal({
+            ...refusalInput,
+            deliveryId: input.deliveryId,
+            durableEntityAdmission: true,
+          })
+        : yield* recordStartRefusal(refusalInput);
+
+      if (decision?.kind === "started") {
+        return {
+          kind: "started" as const,
+          workflowId: workflow.id,
+          executionId: decision.executionId,
+          supersededExecutionIds: [],
+          failedToSupersede: [],
+        };
+      }
+      return {
+        kind: "refused" as const,
+        workflowId: workflow.id,
+        reason: decision?.reason ?? guarded.refusal.reason,
+      };
+    }
+
     const started = yield* startWithConcurrency({
       workflow: toWorkflowRunTarget({
         workflow,
@@ -365,12 +451,20 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
         version: { kind: "published", number: version.version },
       }),
       concurrency: rules.concurrency,
-      start: {
-        source: "event",
-        eventName: input.event.name,
-        deliveryId: input.deliveryId,
-        entityValue,
-      },
+      start: guarded
+        ? {
+            source: "event",
+            eventName: input.event.name,
+            deliveryId: input.deliveryId,
+            entityType: guarded.entity.entityType,
+            entityId: guarded.entity.entityId,
+          }
+        : {
+            source: "event",
+            eventName: input.event.name,
+            deliveryId: input.deliveryId,
+            entityValue,
+          },
       runMode: workflow.mode,
       payload: input.payload,
       logger,

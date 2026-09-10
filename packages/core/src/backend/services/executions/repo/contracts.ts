@@ -186,6 +186,10 @@ export type GlobalExecutionRow = WorkflowExecutionListRow & {
  * `refused` names the runs it deferred to, so first-wins can say what it deferred
  * to rather than only that it declined.
  */
+export type StartAdmissionDecision =
+  | { kind: "started"; executionId: string }
+  | { kind: "refused"; reason: EntityEligibilityReason };
+
 export type EntityStartOutcome =
   | {
       status: "started";
@@ -200,7 +204,12 @@ export type EntityStartOutcome =
        */
       reclaimedExecutionIds: string[];
     }
-  | { status: "refused"; inFlightExecutionIds: string[] };
+  | { status: "refused"; inFlightExecutionIds: string[] }
+  | {
+      /** An earlier or racing admission refusal owns this delivery. */
+      status: "admission_refused";
+      reason: EntityEligibilityReason;
+    };
 
 export type ExecutionTerminationClaim =
   | {

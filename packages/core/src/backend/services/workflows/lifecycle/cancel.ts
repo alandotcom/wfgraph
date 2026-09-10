@@ -17,6 +17,7 @@ import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { InngestClient } from "#src/backend/lib/effect/inngest-client";
 import {
   ExecutionRepo,
+  type ExecutionEntitySelector,
   type WorkflowWaitState,
 } from "#src/backend/services/executions/repo";
 import type { JsonObject } from "@wfgraph/shared/types/json";
@@ -33,23 +34,18 @@ import type { WorkflowMode } from "@wfgraph/shared/graph/types";
  * next boundary either way, and a parked one at its wait timeout.
  */
 export const requestCanceledOutlet = Effect.fn("requestCanceledOutlet")(
-  function* (input: {
-    workflowId: string;
-    runMode: WorkflowMode;
-    eventName: string;
-    payload: JsonObject;
-    entityValue: string;
-  }) {
+  function* (
+    input: {
+      workflowId: string;
+      runMode: WorkflowMode;
+      eventName: string;
+      payload: JsonObject;
+    } & ExecutionEntitySelector
+  ) {
     const repo = yield* ExecutionRepo;
     const logger = (yield* AppLogger).get("lifecycle-cancel");
 
-    const claimed = yield* repo.requestCancelForEntity({
-      workflowId: input.workflowId,
-      entityValue: input.entityValue,
-      runMode: input.runMode,
-      eventName: input.eventName,
-      payload: input.payload,
-    });
+    const claimed = yield* repo.requestCancelForEntity(input);
 
     if (claimed.length === 0) {
       return claimed;

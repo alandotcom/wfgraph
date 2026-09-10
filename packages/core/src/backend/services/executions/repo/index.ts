@@ -15,7 +15,10 @@ import {
   type DatabaseError,
   hasDatabaseErrorCode,
 } from "#src/backend/lib/effect/database";
-import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
+import {
+  IN_FLIGHT_EXECUTION_STATUSES,
+  type EntityEligibilityReason,
+} from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { Concurrency } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import {
   type AuditRepoMethods,
@@ -36,7 +39,9 @@ import {
 import type {
   EntityStartOutcome,
   NewExecution,
+  StartAdmissionDecision,
 } from "#src/backend/services/executions/repo/contracts";
+import type { JsonObject } from "@wfgraph/shared/types/json";
 
 export * from "#src/backend/services/executions/repo/contracts";
 
@@ -83,6 +88,29 @@ const SERIALIZATION_FAILURE_CODE = "40001";
 
 function isSerializationFailure(error: DatabaseError): boolean {
   return hasDatabaseErrorCode(error, SERIALIZATION_FAILURE_CODE);
+}
+
+function entityEligibilityReason(
+  value: unknown
+): EntityEligibilityReason | null {
+  return value === "entity_condition_not_met" || value === "entity_not_found"
+    ? value
+    : null;
+}
+
+async function findAdmissionRefusal(
+  database: WfGraphDatabase | WfGraphTransaction,
+  input: { workflowId: string; decisionId: string }
+): Promise<EntityEligibilityReason | null> {
+  const row = await database.query.workflowExecutionEvents.findFirst({
+    where: {
+      id: input.decisionId,
+      workflowId: input.workflowId,
+      eventType: "run_refused",
+    },
+    columns: { metadata: true },
+  });
+  return entityEligibilityReason(row?.metadata?.reason);
 }
 
 function isStuckBeforeTheBus(row: {
@@ -163,9 +191,25 @@ type CrossTableRepoMethods = {
      */
     execution: NewExecution;
     concurrency: Concurrency;
+    /** Stable key shared with an admission refusal for this Event delivery. */
+    admissionDecisionId?: string | undefined;
     /** Written onto a displaced run's `error`, which run history shows. */
     supersededReason: string;
   }) => Effect.Effect<EntityStartOutcome, DatabaseError>;
+  /** Read a durable Entity admission refusal before repeating its resolver. */
+  readonly findAdmissionRefusal: (input: {
+    workflowId: string;
+    decisionId: string;
+  }) => Effect.Effect<EntityEligibilityReason | null, DatabaseError>;
+  /** Atomically records a refusal or returns the start that won the delivery. */
+  readonly recordAdmissionRefusal: (input: {
+    workflowId: string;
+    deliveryId: string;
+    decisionId: string;
+    reason: EntityEligibilityReason;
+    message: string;
+    metadata: JsonObject;
+  }) => Effect.Effect<StartAdmissionDecision, DatabaseError>;
   /**
    * Erase one workflow's run history, answering how many runs went. Node logs
    * and wait states follow the runs by cascade; the audit rows are deleted here
@@ -210,7 +254,12 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
         ...makeWaitsMethods(database),
         ...makeAuditMethods(database),
 
-        startForEntity: ({ execution, concurrency, supersededReason }) =>
+        startForEntity: ({
+          execution,
+          concurrency,
+          supersededReason,
+          admissionDecisionId,
+        }) =>
           database
             .query(async (db) => {
               const entityPredicate =
@@ -274,7 +323,10 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
                 return row ?? (await findByDelivery(tx));
               };
 
-              if (concurrency === "unlimited" || !entityPredicate) {
+              if (
+                (concurrency === "unlimited" || !entityPredicate) &&
+                !admissionDecisionId
+              ) {
                 const opened = await insertRunning(db);
                 return {
                   status: "started" as const,
@@ -286,6 +338,19 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
 
               return await db.transaction(
                 async (tx) => {
+                  if (admissionDecisionId) {
+                    const refusal = await findAdmissionRefusal(tx, {
+                      workflowId: execution.workflowId,
+                      decisionId: admissionDecisionId,
+                    });
+                    if (refusal) {
+                      return {
+                        status: "admission_refused" as const,
+                        reason: refusal,
+                      };
+                    }
+                  }
+
                   // Asked before Concurrency is, because this arrival's own row is
                   // not a run to defer to or displace. It is this call's answer.
                   const own = await findByDelivery(tx);
@@ -293,6 +358,15 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
                     return {
                       status: "started" as const,
                       execution: own,
+                      supersededExecutionIds: [],
+                      reclaimedExecutionIds: [],
+                    };
+                  }
+
+                  if (concurrency === "unlimited" || !entityPredicate) {
+                    return {
+                      status: "started" as const,
+                      execution: await insertRunning(tx),
                       supersededExecutionIds: [],
                       reclaimedExecutionIds: [],
                     };
@@ -392,6 +466,59 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
                 { isolationLevel: "serializable" }
               );
             })
+            .pipe(
+              Effect.retry({
+                schedule: serializationRetrySchedule,
+                while: isSerializationFailure,
+              })
+            ),
+
+        findAdmissionRefusal: (input) =>
+          database.query((db) => findAdmissionRefusal(db, input)),
+
+        recordAdmissionRefusal: (input) =>
+          database
+            .query((db) =>
+              db.transaction(
+                async (tx) => {
+                  const existingExecution =
+                    await tx.query.workflowExecutions.findFirst({
+                      where: {
+                        workflowId: input.workflowId,
+                        deliveryId: input.deliveryId,
+                      },
+                      columns: { id: true },
+                    });
+                  if (existingExecution) {
+                    return {
+                      kind: "started" as const,
+                      executionId: existingExecution.id,
+                    };
+                  }
+
+                  const existingRefusal = await findAdmissionRefusal(tx, {
+                    workflowId: input.workflowId,
+                    decisionId: input.decisionId,
+                  });
+                  if (existingRefusal) {
+                    return {
+                      kind: "refused" as const,
+                      reason: existingRefusal,
+                    };
+                  }
+
+                  await tx.insert(workflowExecutionEvents).values({
+                    id: input.decisionId,
+                    workflowId: input.workflowId,
+                    eventType: "run_refused",
+                    message: input.message,
+                    metadata: input.metadata,
+                  });
+                  return { kind: "refused" as const, reason: input.reason };
+                },
+                { isolationLevel: "serializable" }
+              )
+            )
             .pipe(
               Effect.retry({
                 schedule: serializationRetrySchedule,

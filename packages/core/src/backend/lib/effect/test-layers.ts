@@ -332,6 +332,8 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
   existsById: refuse("existsById"),
   findWorkflowIdById: refuse("findWorkflowIdById"),
   startForEntity: refuse("startForEntity"),
+  findAdmissionRefusal: refuse("findAdmissionRefusal"),
+  recordAdmissionRefusal: refuse("recordAdmissionRefusal"),
   insertTerminal: refuse("insertTerminal"),
   markEnqueued: refuse("markEnqueued"),
   markEnqueueFailed: refuse("markEnqueueFailed"),

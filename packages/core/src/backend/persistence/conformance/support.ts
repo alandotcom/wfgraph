@@ -176,6 +176,7 @@ export type StartOptions = {
   concurrency?: Concurrency | undefined;
   workflowId?: string | undefined;
   versionId?: string | undefined;
+  admissionDecisionId?: string | undefined;
 };
 
 /**
@@ -203,6 +204,7 @@ export function attemptStart(
         }),
         concurrency: options.concurrency ?? "unlimited",
         supersededReason: "newer start",
+        admissionDecisionId: options.admissionDecisionId,
       });
     })
   );
