@@ -1,18 +1,17 @@
 /**
  * Waking the runs an arriving Event was the thing they parked for.
  *
- * The signal and the bookkeeping around it are one unit: a run is only counted
- * as resumed once its wait row has moved out of `waiting`, which is what stops
- * two deliveries of the same Event waking one node twice.
+ * Claim and delivery are one unit: a run is counted once its durable signal is
+ * accepted and its exact claim is settled. The claim stops two deliveries from
+ * waking one node, while the resumed engine records the consumed wake.
  */
 
 import { Effect } from "effect";
 import { evaluateCompiledCondition } from "#src/backend/lib/cel/condition-payload";
 import { DEFAULT_QUERY_CONNECTIONS } from "#src/backend/lib/db/config";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
-import { InngestClient } from "#src/backend/lib/effect/inngest-client";
 import { readCompiledWaitSubscriptions } from "#src/backend/engine/wait-match";
-import { ExecutionRepo } from "#src/backend/services/executions/repo";
+import { wakeWait } from "#src/backend/services/workflows/lifecycle/wake-wait";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import { connectionMatches } from "@wfgraph/shared/lifecycle/event-connections";
 
@@ -179,79 +178,17 @@ const resumeOneWait = Effect.fn("resumeOneWait")(function* (input: {
     return 0;
   }
 
-  const repo = yield* ExecutionRepo;
-  const inngest = yield* InngestClient;
-
-  return yield* Effect.gen(function* () {
-    // The arrival goes onto the row in the same statement that claims it, so a
-    // run between two parks can read back the wake it was not listening for.
-    const claim = yield* repo.claimWaitingStateById({
-      waitStateId: waitState.id,
-      arrival: {
-        signalType: "wait-resume",
-        eventName: eventType,
-        payload: input.payload,
-      },
-    });
-    if (!claim) {
-      return 0;
-    }
-    const { waitState: claimedWait, claimedAt } = claim;
-
-    yield* inngest
-      .sendWaitSignal({
-        executionId: claimedWait.executionId,
-        nodeId: claimedWait.nodeId,
+  return yield* Effect.map(
+    wakeWait({
+      target: {
+        kind: "wait_state",
+        waitStateId: waitState.id,
         token: resumeToken,
-        eventType,
-        payload: input.payload,
-        signalType: "wait-resume",
-      })
-      .pipe(
-        Effect.tapError(() =>
-          repo
-            .releaseWaitingStateClaim({
-              waitStateId: claimedWait.id,
-              claimedAt,
-            })
-            .pipe(
-              Effect.catchTag("DatabaseError", (releaseFailure) =>
-                logger.error("Failed to release refused wait-resume claim", {
-                  workflowId: input.workflowId,
-                  eventType,
-                  waitStateId: claimedWait.id,
-                  error: releaseFailure.cause,
-                })
-              )
-            )
-        )
-      );
-
-    const waitStateUpdated = yield* repo.settleWaitingStateClaim({
-      waitStateId: claimedWait.id,
-      claimedAt,
-    });
-
-    if (!waitStateUpdated) {
-      return 0;
-    }
-
-    yield* Effect.all(
-      [
-        repo.markRunning(claimedWait.executionId),
-        repo.recordAuditEvent({
-          workflowId: input.workflowId,
-          executionId: claimedWait.executionId,
-          eventType: "run_resumed",
-          message: `Run resumed from wait on ${eventType}`,
-          metadata: { eventType },
-        }),
-      ],
-      { concurrency: "unbounded" }
-    );
-
-    return 1;
-  }).pipe(
+      },
+      source: { kind: "event", eventName: eventType, payload: input.payload },
+    }),
+    (outcome) => (outcome.status === "resumed" ? 1 : 0)
+  ).pipe(
     Effect.catch((error) =>
       logger
         .error("Failed to resume wait", {

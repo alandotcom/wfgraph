@@ -148,30 +148,64 @@ const resumeEventWait = Effect.fn("resumeEventWait")(function* (
   const canceled = wake.kind === "cancel";
   const arrival = readArrival(wake);
 
-  yield* fromStore(
-    store.markWaitStateStatus({
-      waitStateId,
-      status: canceled ? "cancelled" : timedOut ? "timed_out" : "resumed",
-    })
-  );
+  // The signal producer settles an ordinary resume through its claim fence.
+  // Timeout and cancellation have no such producer, so the engine settles them.
+  if (timedOut || canceled) {
+    yield* fromStore(
+      store.markWaitStateStatus({
+        waitStateId,
+        status: canceled ? "cancelled" : "timed_out",
+      })
+    );
+  }
+
+  // Only this engine invocation knows it consumed the wake, so it owns the
+  // Execution's running status and the single timeline entry.
   yield* fromStore(store.markExecutionRunning({ executionId }));
 
+  const audit = timedOut
+    ? {
+        eventType: "run_timed_out" as const,
+        message: `Run timed out in event wait node '${context.nodeName}'`,
+        metadata: {
+          nodeId: context.nodeId,
+          resumeToken: prepared.resumeToken,
+          hops,
+        },
+      }
+    : canceled
+      ? {
+          eventType: "run_resumed" as const,
+          message: `Run woken by a cancel request in node '${context.nodeName}'`,
+          metadata: {
+            nodeId: context.nodeId,
+            resumeToken: prepared.resumeToken,
+            hops,
+          },
+        }
+      : wake.kind === "migrate"
+        ? {
+            eventType: "run_resumed" as const,
+            message: `Run resumed from event in node '${context.nodeName}'`,
+            metadata: {
+              nodeId: context.nodeId,
+              resumeToken: prepared.resumeToken,
+              hops,
+            },
+          }
+        : wake.eventName === null
+          ? {
+              eventType: "run_resumed" as const,
+              message: "Run resumed from the runs panel",
+              metadata: { waitStateId },
+            }
+          : {
+              eventType: "run_resumed" as const,
+              message: `Run resumed from wait on ${wake.eventName}`,
+              metadata: { eventType: wake.eventName },
+            };
   yield* fromStore(
-    store.recordAuditEvent({
-      workflowId,
-      executionId,
-      eventType: timedOut ? "run_timed_out" : "run_resumed",
-      message: timedOut
-        ? `Run timed out in event wait node '${context.nodeName}'`
-        : canceled
-          ? `Run woken by a cancel request in node '${context.nodeName}'`
-          : `Run resumed from event in node '${context.nodeName}'`,
-      metadata: {
-        nodeId: context.nodeId,
-        resumeToken: prepared.resumeToken,
-        hops,
-      },
-    })
+    store.recordAuditEvent({ workflowId, executionId, ...audit })
   );
 
   // A wait configured to skip on timeout stops its branch instead of letting

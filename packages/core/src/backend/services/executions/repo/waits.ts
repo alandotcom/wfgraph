@@ -102,6 +102,7 @@ export type WaitsRepoMethods = {
    * in-flight resume claim. Only the fenced claim method can settle `resuming`
    * as successfully resumed.
    */
+  /** Settle an engine-owned timeout or cancellation. */
   readonly markWaitStatus: (input: {
     waitStateId: string;
     status: SettledWaitStatus;

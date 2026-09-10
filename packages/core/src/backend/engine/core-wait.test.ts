@@ -151,20 +151,20 @@ function matchOn(field: string, value: string): string {
  */
 function waitResumeSignal(
   payload: JsonObject,
-  eventType = "billing/payment.settled"
+  eventType: string | null = "billing/payment.settled"
 ) {
+  const data = {
+    executionId: "exec_wait",
+    nodeId: "wait_1",
+    token: "token_1",
+    signalType: "wait-resume" as const,
+    payload,
+  };
   return {
     name: "workflow/wait.signal",
     id: "evt_signal",
     ts: 0,
-    data: {
-      executionId: "exec_wait",
-      nodeId: "wait_1",
-      token: "token_1",
-      eventType,
-      signalType: "wait-resume",
-      payload,
-    },
+    data: eventType === null ? data : { ...data, eventType },
   };
 }
 
@@ -354,7 +354,45 @@ describe("wait node - event mode", () => {
     expect(store.callsOf("createWaitState")[0]).toMatchObject({
       waitType: "event",
     });
-    expect(store.callsOf("markWaitStateStatus")[0]?.status).toBe("resumed");
+    // The signal producer settles its fenced claim. The engine records the
+    // resume only after consuming that durable wake.
+    expect(store.callsOf("markWaitStateStatus")).toHaveLength(0);
+    expect(store.callsOf("markExecutionRunning")).toEqual([
+      { executionId: "exec_wait" },
+    ]);
+    expect(
+      store
+        .callsOf("recordAuditEvent")
+        .filter((event) => event.eventType === "run_resumed")
+    ).toEqual([
+      expect.objectContaining({
+        message: "Run resumed from wait on billing/payment.settled",
+      }),
+    ]);
+  });
+
+  it("records a manual resume as coming from the runs panel", async () => {
+    const { execution } = runWait({
+      config: {
+        waitMode: "event",
+        waitFor: [{ event: "billing/payment.settled" }],
+        waitTimeout: "7d",
+      },
+      store,
+      resumeEvent: waitResumeSignal({ approved: true }, null),
+    });
+    await execution;
+
+    expect(
+      store
+        .callsOf("recordAuditEvent")
+        .filter((event) => event.eventType === "run_resumed")
+    ).toEqual([
+      expect.objectContaining({
+        message: "Run resumed from the runs panel",
+        metadata: { waitStateId: "wait_state_1" },
+      }),
+    ]);
   });
 
   // The node output is the arriving Event's payload and nothing of the signal
@@ -1052,6 +1090,19 @@ describe("wait node - migration to a later workflow version", () => {
       hops: 1,
     });
     expect(run.value.outputs.lifecycle_1?.data).toEqual({ id: "pay_1" });
+    expect(store.callsOf("markWaitStateStatus")).toHaveLength(0);
+    expect(store.callsOf("markExecutionRunning")).toEqual([
+      { executionId: "exec_wait" },
+    ]);
+    expect(
+      store
+        .callsOf("recordAuditEvent")
+        .filter((event) => event.eventType === "run_resumed")
+    ).toEqual([
+      expect.objectContaining({
+        message: "Run resumed from wait on billing/payment.settled",
+      }),
+    ]);
   });
 
   it("takes the cancel path when the row was cancelled between two parks", async () => {

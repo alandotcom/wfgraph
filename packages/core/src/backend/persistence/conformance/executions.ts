@@ -185,10 +185,11 @@ export function describeExecutionConformance({
       const siblingClaim = await database.run(
         Effect.gen(function* () {
           const executions = yield* ExecutionRepo;
-          yield* executions.settleWaitingStateClaim({
+          const settled = yield* executions.settleWaitingStateClaim({
             waitStateId: waitStateIds.first,
             claimedAt: firstClaim.claimedAt,
           });
+          if (!settled) throw new Error("Claimed wait did not settle");
           yield* executions.markRunning(waitStateIds.executionId);
           return yield* executions.claimWaitingStateById({
             waitStateId: waitStateIds.sibling,

@@ -1,9 +1,8 @@
 import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { statedSeamFailureHandlers } from "#src/backend/lib/effect/internal-failure";
-import { InngestClient } from "#src/backend/lib/effect/inngest-client";
 import { NotFound } from "#src/backend/lib/effect/failures";
-import { ExecutionRepo } from "#src/backend/services/executions/repo";
+import { wakeWait } from "#src/backend/services/workflows/lifecycle/wake-wait";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 
 type WorkflowResumeSuccess = {
@@ -26,88 +25,23 @@ const resumeLogger = Effect.map(AppLogger, (appLogger) =>
  */
 export const resumeWaitByToken = Effect.fn("resumeWaitByToken")(
   function* (input: { token: string; body: JsonObject }) {
-    const { token, body } = input;
-    const repo = yield* ExecutionRepo;
-    const inngest = yield* InngestClient;
-    const logger = yield* resumeLogger;
-
-    // Claim before sending. The guarded update is the one winner across every
-    // app process, so two callers can never both wake the same parked run.
-    const claim = yield* repo.claimWaitingStateByToken({
-      resumeToken: token,
-      // The arrival goes onto the row in the same statement that claims it, so a
-      // run between two parks can read back the wake it was not listening for.
-      // A manual resume names no Event; the body is what it carries.
-      arrival: { signalType: "wait-resume", eventName: null, payload: body },
+    const result = yield* wakeWait({
+      target: { kind: "resume_token", token: input.token },
+      source: { kind: "manual", payload: input.body },
     });
 
-    if (!claim) {
+    if (result.status === "unchanged") {
+      const logger = yield* resumeLogger;
       yield* logger.warn("Wait not found or no longer active");
       return yield* new NotFound({
         error: "Wait not found or no longer active",
       });
     }
-    const { waitState, claimedAt } = claim;
-
-    yield* inngest
-      .sendWaitSignal({
-        executionId: waitState.executionId,
-        nodeId: waitState.nodeId,
-        token,
-        payload: body,
-        signalType: "wait-resume",
-      })
-      .pipe(
-        Effect.tapError(() =>
-          repo
-            .releaseWaitingStateClaim({ waitStateId: waitState.id, claimedAt })
-            .pipe(
-              Effect.flatMap((released) =>
-                released
-                  ? Effect.void
-                  : logger.error(
-                      "Failed to release refused wait-resume claim",
-                      {
-                        waitStateId: waitState.id,
-                      }
-                    )
-              ),
-              Effect.catchTag("DatabaseError", (releaseFailure) =>
-                logger.error("Failed to release refused wait-resume claim", {
-                  waitStateId: waitState.id,
-                  error: releaseFailure.cause,
-                })
-              )
-            )
-        )
-      );
-
-    const completedClaim = yield* repo.settleWaitingStateClaim({
-      waitStateId: waitState.id,
-      claimedAt,
-    });
-    if (!completedClaim) {
-      yield* logger.warn("Wait resume claim was already settled", {
-        waitStateId: waitState.id,
-      });
-    }
-
-    yield* repo.markRunning(waitState.executionId);
-
-    yield* repo.recordAuditEvent({
-      workflowId: waitState.workflowId,
-      executionId: waitState.executionId,
-      eventType: "run_resumed",
-      message: "Run resumed from the runs panel",
-      metadata: {
-        waitStateId: waitState.id,
-      },
-    });
 
     const resumed: WorkflowResumeSuccess = {
       success: true,
       status: "resumed",
-      executionId: waitState.executionId,
+      executionId: result.executionId,
     };
     return resumed;
   },

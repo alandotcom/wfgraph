@@ -57,7 +57,6 @@ const settleWaitingStateClaimMock = vi.fn<Repo["settleWaitingStateClaim"]>(() =>
 const releaseWaitingStateClaimMock = vi.fn<Repo["releaseWaitingStateClaim"]>(
   () => Effect.succeed(true)
 );
-const markRunningMock = vi.fn<Repo["markRunning"]>(() => Effect.succeed(true));
 const sendRunRequestedMock = vi.fn<
   InngestClient["Service"]["sendRunRequested"]
 >(() => Effect.succeed({ eventId: "evt_1" }));
@@ -337,7 +336,6 @@ const waitPorts = Layer.mergeAll(
     claimWaitingStateById: claimWaitingStateByIdMock,
     settleWaitingStateClaim: settleWaitingStateClaimMock,
     releaseWaitingStateClaim: releaseWaitingStateClaimMock,
-    markRunning: markRunningMock,
     recordAuditEvent: recordAuditEventMock,
   }),
   stubInngestClient({
@@ -354,7 +352,6 @@ beforeEach(() => {
   claimWaitingStateByIdMock.mockReset();
   settleWaitingStateClaimMock.mockReset();
   releaseWaitingStateClaimMock.mockReset();
-  markRunningMock.mockReset();
   sendRunRequestedMock.mockReset();
   sendCancelRequestedMock.mockReset();
   sendWaitSignalMock.mockReset();
@@ -380,7 +377,6 @@ beforeEach(() => {
   );
   settleWaitingStateClaimMock.mockImplementation(() => Effect.succeed(true));
   releaseWaitingStateClaimMock.mockImplementation(() => Effect.succeed(true));
-  markRunningMock.mockImplementation(() => Effect.succeed(true));
   sendRunRequestedMock.mockImplementation(() =>
     Effect.succeed({ eventId: "evt_1" })
   );

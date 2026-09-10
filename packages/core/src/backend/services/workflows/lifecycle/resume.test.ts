@@ -13,10 +13,7 @@ import {
   stubExecutionRepo,
   stubInngestClient,
 } from "#src/backend/lib/effect/test-layers";
-import type {
-  ExecutionRepo,
-  WorkflowWaitState,
-} from "#src/backend/services/executions/repo";
+import type { WorkflowWaitState } from "#src/backend/services/executions/repo";
 import { resumeWaitByToken } from "#src/backend/services/workflows/lifecycle/resume";
 
 const RESUME_TOKEN = "resume_token_1";
@@ -47,9 +44,6 @@ function makeResumeSeams(input: {
   const calls = {
     tokenLookups: [] as string[],
     claimed: false,
-    auditEvents: [] as Parameters<
-      ExecutionRepo["Service"]["recordAuditEvent"]
-    >[0][],
   };
 
   return {
@@ -73,11 +67,6 @@ function makeResumeSeams(input: {
             return true;
           }),
         settleWaitingStateClaim: () => Effect.succeed(true),
-        markRunning: () => Effect.succeed(true),
-        recordAuditEvent: (event) =>
-          Effect.sync(() => {
-            calls.auditEvents.push(event);
-          }),
       }),
       // Left refusing unless a test supplies one, so a send from a request that
       // should never have got this far kills the test.
@@ -91,7 +80,7 @@ function makeResumeSeams(input: {
 
 describe("resumeWaitByToken", () => {
   layer(SilentAppLoggerLayer)((it) => {
-    it.effect("wakes the waiting node and marks the wait resumed", () =>
+    it.effect("claims the waiting node and sends its resume signal", () =>
       Effect.gen(function* () {
         const signals: Array<
           Parameters<InngestClient["Service"]["sendWaitSignal"]>[0]
@@ -121,15 +110,6 @@ describe("resumeWaitByToken", () => {
             token: RESUME_TOKEN,
             payload: { approved: true },
             signalType: "wait-resume",
-          },
-        ]);
-        assert.deepStrictEqual(seams.calls.auditEvents, [
-          {
-            workflowId: "wf_1",
-            executionId: "exec_1",
-            eventType: "run_resumed",
-            message: "Run resumed from the runs panel",
-            metadata: { waitStateId: "wait_1" },
           },
         ]);
       })

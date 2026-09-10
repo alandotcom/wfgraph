@@ -139,23 +139,51 @@ const resumeDelayWait = Effect.fn("resumeDelayWait")(function* (
   // row a Cancel Event claimed while the run was between two parks.
   const canceled = wake.kind === "cancel";
 
-  yield* fromStore(
-    store.markWaitStateStatus({
-      waitStateId,
-      status: canceled ? "cancelled" : "resumed",
-    })
-  );
+  // The signal producer settles an ordinary resume through its claim fence.
+  // Timeout and cancellation have no such producer, so the engine settles them.
+  if (wake.kind === "timeout" || canceled) {
+    yield* fromStore(
+      store.markWaitStateStatus({
+        waitStateId,
+        status: canceled ? "cancelled" : "resumed",
+      })
+    );
+  }
+
+  // Only this engine invocation knows it consumed the wake, so it owns the
+  // Execution's running status and the single timeline entry.
   yield* fromStore(store.markExecutionRunning({ executionId }));
 
+  const audit = canceled
+    ? {
+        message: `Run woken by a cancel request in node '${context.nodeName}'`,
+        metadata: { nodeId: context.nodeId, hops },
+      }
+    : wake.kind === "timeout"
+      ? {
+          message: `Run resumed after delay in node '${context.nodeName}'`,
+          metadata: { nodeId: context.nodeId, hops },
+        }
+      : wake.kind === "migrate"
+        ? {
+            message: `Run resumed after delay in node '${context.nodeName}'`,
+            metadata: { nodeId: context.nodeId, hops },
+          }
+        : wake.eventName === null
+          ? {
+              message: "Run resumed from the runs panel",
+              metadata: { waitStateId },
+            }
+          : {
+              message: `Run resumed from wait on ${wake.eventName}`,
+              metadata: { eventType: wake.eventName },
+            };
   yield* fromStore(
     store.recordAuditEvent({
       workflowId,
       executionId,
       eventType: "run_resumed",
-      message: canceled
-        ? `Run woken by a cancel request in node '${context.nodeName}'`
-        : `Run resumed after delay in node '${context.nodeName}'`,
-      metadata: { nodeId: context.nodeId, hops },
+      ...audit,
     })
   );
 
