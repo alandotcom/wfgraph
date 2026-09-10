@@ -257,8 +257,10 @@ export function LifecyclePanel({
     onStartFilterChangeForAll: setStartFilterForEveryEvent,
     onCancelFilterChange: setCancelFilter,
     onCancelFilterChangeForAll: setCancelFilterForEveryEvent,
-    onRulesChange: (next: LifecycleRules) =>
-      write(reconcileEntityBindings(next, catalog)),
+    // The Entity group's writes go through prune like every other write in
+    // this panel, so selecting an Entity also clears the Correlation Paths
+    // that tracking an Entity makes invalid.
+    onRulesChange: (next: LifecycleRules) => write(prune(next, catalog)),
   };
 
   return (

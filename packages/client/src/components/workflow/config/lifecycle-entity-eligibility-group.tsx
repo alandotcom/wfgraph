@@ -262,6 +262,11 @@ export function LifecycleEntityEligibilityGroup({
         description: "Set a rule for the newly selected Entity.",
       });
     }
+    if (rules.correlationPaths) {
+      toast("Correlation Paths cleared", {
+        description: "Entity tracking replaces Correlation Paths.",
+      });
+    }
   };
 
   const updateBinding = (eventName: string, bindingName: string) => {

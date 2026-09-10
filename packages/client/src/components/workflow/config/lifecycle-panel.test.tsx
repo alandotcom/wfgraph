@@ -15,6 +15,7 @@ import {
 } from "#src/components/workflow/config/lifecycle-panel";
 import { loadWorkflowGraphAtom } from "#src/lib/workflow-graph-store";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import { checkEntityEligibility } from "@wfgraph/shared/lifecycle/entity-eligibility";
 import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 
@@ -929,6 +930,41 @@ describe("LifecyclePanel Entity eligibility", () => {
         .getByRole("button", { name: "Configure condition" })
         .hasAttribute("disabled")
     ).toBe(false);
+  });
+
+  // A Correlation Path and an Entity are two ways of establishing the same
+  // identity, and the rules refuse holding both. Selecting an Entity while a
+  // Correlation Path is still stored must drop that path, or the builder is
+  // left with a refused save that none of the visible controls can fix.
+  it("clears a stored Correlation Path when an Entity is selected", async () => {
+    let latest: Record<string, unknown> = {
+      lifecycleRules: {
+        ...rulesOf(configuredStart),
+        correlationPaths: { "app/appointment.created": "appointment.id" },
+      } satisfies LifecycleRules,
+    };
+    const view = renderWithCatalog(
+      <ControlledPanel
+        initialConfig={latest}
+        onConfigChange={(config) => {
+          latest = config;
+        }}
+      />
+    );
+
+    chooseSelect(view, "Track runs by", "Appointment");
+
+    await waitFor(() => {
+      expect(rulesOf(latest).trackedEntity).toEqual({
+        type: "appointment",
+        bindings: { "app/appointment.created": "appointment" },
+      });
+    });
+    expect(rulesOf(latest).correlationPaths).toBeUndefined();
+    expect(
+      checkEntityEligibility({ rules: rulesOf(latest), catalog: testCatalog })
+        .valid
+    ).toBe(true);
   });
 
   it("clears eligibility when the tracked Entity changes", async () => {
