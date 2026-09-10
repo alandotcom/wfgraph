@@ -14,11 +14,15 @@ import {
 import { generateId } from "@wfgraph/shared/utils/id";
 import { toJsonObject } from "@wfgraph/shared/types/json";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
-import type { WaitArrival } from "@wfgraph/shared/lifecycle/wait-signal";
 import {
   WAIT_ARRIVAL_METADATA_KEY,
-  type WaitResumeClaim,
-  type WaitsRepoMethods,
+  type WaitArrival,
+} from "@wfgraph/shared/lifecycle/wait-signal";
+import type {
+  ReparkWaitOutcome,
+  ReparkWaitRefusal,
+  WaitResumeClaim,
+  WaitsRepoMethods,
 } from "#src/backend/services/executions/repo/waits";
 import type { WorkflowWaitState } from "#src/backend/services/executions/repo";
 import type {
@@ -48,16 +52,9 @@ function subscribedTo(eventName: string): SQL {
   )`;
 }
 
-/**
- * Whether the execution a wait row belongs to still pins this Workflow Version.
- * Correlated against the wait row, so the statement it guards evaluates it.
- */
-function pinnedVersionIs(workflowVersionId: string): SQL {
-  return sql`exists (
-    select 1 from ${workflowExecutions}
-    where ${workflowExecutions.id} = ${workflowWaitStates.executionId}
-      and ${workflowExecutions.workflowVersionId} = ${workflowVersionId}
-  )`;
+/** A re-park the row's status or the run's pinned version refused. */
+function refusedRepark(reason: ReparkWaitRefusal): ReparkWaitOutcome {
+  return { ok: false, reason };
 }
 
 const waitStateSelection = {
@@ -142,12 +139,19 @@ export function makeSqliteWaitsMethods(
       store.write((database) =>
         Effect.gen(function* () {
           const now = Date.now();
+          // The version predicate is this park's fence. The statement writes the
+          // execution row itself, so the pin is compared on that row rather than
+          // through the correlated subquery `reparkWait` needs.
           const [parked] = yield* database
             .update(workflowExecutions)
             .set({ status: "waiting", waitingAt: now })
             .where(
               and(
                 eq(workflowExecutions.id, input.executionId),
+                eq(
+                  workflowExecutions.workflowVersionId,
+                  input.workflowVersionId
+                ),
                 inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES)
               )
             )
@@ -174,24 +178,43 @@ export function makeSqliteWaitsMethods(
       ),
     reparkWait: (input) =>
       store.write((database) =>
-        database
-          .update(workflowWaitStates)
-          .set({
-            waitType: input.waitType,
-            waitUntil: input.waitUntil?.getTime() ?? null,
-            subscribedEvents: JSON.stringify(input.subscribedEvents),
-            resumeToken: input.resumeToken,
-            metadata: encodeJson(input.metadata),
-          })
-          .where(
-            and(
-              eq(workflowWaitStates.id, input.waitStateId),
-              eq(workflowWaitStates.status, "waiting"),
-              pinnedVersionIs(input.workflowVersionId)
+        Effect.gen(function* () {
+          // The read and the write share one `BEGIN IMMEDIATE`, so the status
+          // and the pinned version this reads are the ones the write sees.
+          const [row] = yield* database
+            .select({
+              status: workflowWaitStates.status,
+              pinnedVersionId: workflowExecutions.workflowVersionId,
+            })
+            .from(workflowWaitStates)
+            .leftJoin(
+              workflowExecutions,
+              eq(workflowExecutions.id, workflowWaitStates.executionId)
             )
-          )
-          .returning({ id: workflowWaitStates.id })
-          .pipe(Effect.map((rows) => rows.length > 0))
+            .where(eq(workflowWaitStates.id, input.waitStateId))
+            .limit(1);
+
+          if (row?.status !== "waiting") {
+            return refusedRepark("not_waiting");
+          }
+          if (row.pinnedVersionId !== input.workflowVersionId) {
+            return refusedRepark("version_moved");
+          }
+
+          yield* database
+            .update(workflowWaitStates)
+            .set({
+              waitType: input.waitType,
+              waitUntil: input.waitUntil?.getTime() ?? null,
+              subscribedEvents: JSON.stringify(input.subscribedEvents),
+              resumeToken: input.resumeToken,
+              metadata: encodeJson(input.metadata),
+            })
+            .where(eq(workflowWaitStates.id, input.waitStateId));
+
+          const reparked: ReparkWaitOutcome = { ok: true };
+          return reparked;
+        })
       ),
     findWaitStateById: (waitStateId) =>
       store.read((database) =>

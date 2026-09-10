@@ -87,6 +87,13 @@ export type CreateWaitStateInput = {
   runId: string;
   nodeId: string;
   nodeName: string;
+  /**
+   * The Workflow Version this park was resolved from. The write requires the
+   * execution row to still pin it, so a Migration landing inside the preparing
+   * step refuses the first park instead of writing one from the graph the run
+   * left.
+   */
+  workflowVersionId: string;
   waitType: "delay" | "event";
   /**
    * What the authenticated runs panel uses to address this parked run. Generated
@@ -113,6 +120,14 @@ export type CreateWaitStateInput = {
  * that changed mode writes a different `waitType`, an event wait that lost its
  * subscriptions writes an empty list, and a delay wait writes a null token.
  */
+/**
+ * What a re-park answers: the write landed, or the guard that refused it. See
+ * `WorkflowStore.reparkWaitState`.
+ */
+export type ReparkWaitStateOutcome =
+  | { ok: true }
+  | { ok: false; reason: "not_waiting" | "version_moved" };
+
 export type ReparkWaitStateInput = {
   waitStateId: string;
   /**
@@ -188,22 +203,23 @@ export type WorkflowStore = {
     input: RecordAuditEventInput
   ): Effect.Effect<void, DatabaseError>;
   /**
-   * Records that the run is parked on a Wait node; returns the new row's id,
-   * or undefined when the execution lost a race with a cancellation and may
-   * no longer park.
+   * Records that the run is parked on a Wait node; returns the new row's id, or
+   * undefined when the execution has left the version this park was resolved
+   * from, or lost a race with a cancellation, and may no longer park.
    */
   createWaitState(
     input: CreateWaitStateInput
   ): Effect.Effect<{ waitStateId: string } | undefined, DatabaseError>;
   /**
-   * Writes a re-parked wait's whole park onto the row it already holds. True
-   * when a row still `waiting` under the named version was written. False is
-   * either the row having left `waiting`, which the caller answers by reading
-   * it back, or the execution having been moved to another version.
+   * Writes a re-parked wait's whole park onto the row it already holds, saying
+   * which guard refused when none was written: `not_waiting` for the row having
+   * left `waiting`, which the caller answers by reading the wake the row
+   * records, and `version_moved` for a Migration having moved the execution off
+   * the version this park was resolved from.
    */
   reparkWaitState(
     input: ReparkWaitStateInput
-  ): Effect.Effect<boolean, DatabaseError>;
+  ): Effect.Effect<ReparkWaitStateOutcome, DatabaseError>;
   /**
    * One wait row as it stands, or null when no row holds that id. Read after a
    * refused re-park, to find out what moved the row.
@@ -211,17 +227,6 @@ export type WorkflowStore = {
   readWaitState(
     waitStateId: string
   ): Effect.Effect<WaitStateSnapshot | null, DatabaseError>;
-  /**
-   * The Workflow Version this execution row pins, or null when the row is gone.
-   *
-   * A Migration moves that pointer while a run is parked. The Wait node compares
-   * it against the version the running body loaded, so an attempt that would
-   * carry on under the superseded graph fails its step and is retried against
-   * the new one.
-   */
-  readPinnedVersionId(
-    executionId: string
-  ): Effect.Effect<string | null, DatabaseError>;
   /** Closes out a wait row once the run resumes, times out, or is cancelled. */
   markWaitStateStatus(
     input: MarkWaitStateStatusInput
@@ -238,6 +243,18 @@ export type WorkflowStore = {
   markExecutionRunning(input: {
     executionId: string;
     workflowVersionId: string;
+  }): Effect.Effect<boolean, DatabaseError>;
+  /**
+   * Moves a "running" execution back to "waiting" when it still holds a waiting
+   * wait row, answering whether a row moved.
+   *
+   * A branch run resumes its own Wait and marks the execution running, so a
+   * branch that finishes while a sibling branch is still parked would leave the
+   * run reading running with nothing executing. The guard is what makes the
+   * write safe to issue at the end of every branch run.
+   */
+  markExecutionWaitingIfParked(input: {
+    executionId: string;
   }): Effect.Effect<boolean, DatabaseError>;
   /**
    * Whether a Cancel Event has claimed this run, and what it carried. Read at
@@ -283,11 +300,11 @@ export const noopWorkflowStore: WorkflowStore = {
   completeStepLog: () => Effect.void,
   recordAuditEvent: () => Effect.void,
   createWaitState: () => Effect.succeed({ waitStateId: "" }),
-  reparkWaitState: () => Effect.succeed(true),
+  reparkWaitState: () => Effect.succeed({ ok: true }),
   readWaitState: () => Effect.succeed(null),
-  readPinnedVersionId: () => Effect.succeed(null),
   markWaitStateStatus: () => Effect.void,
   markExecutionRunning: () => Effect.succeed(true),
+  markExecutionWaitingIfParked: () => Effect.succeed(false),
   readPendingCancel: () => Effect.succeed(null),
   completeRun: () => Effect.succeed(true),
   readNodeOutputs: () => Effect.succeed({}),

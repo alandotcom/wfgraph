@@ -188,6 +188,8 @@ const resumeOneWait = Effect.fn("resumeOneWait")(function* (input: {
       },
       payload: input.payload,
     }),
+    // A raced settle counts as none here: the run did wake, but another writer
+    // owns that claim and is the one counting it.
     (outcome) => (outcome.status === "resumed" ? 1 : 0)
   ).pipe(
     Effect.catch((error) =>

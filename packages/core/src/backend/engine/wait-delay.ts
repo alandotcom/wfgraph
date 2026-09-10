@@ -18,7 +18,6 @@ import { Effect } from "effect";
 import { closeStepLog } from "#src/backend/engine/step-log";
 import {
   fromStore,
-  markRunningUnderLoadedVersion,
   readAllowedHoursConfig,
   readWaitGateMode,
   type WaitAttempt,
@@ -132,58 +131,12 @@ const prepareDelayWait = Effect.fn("prepareDelayWait")(function* (
 const resumeDelayWait = Effect.fn("resumeDelayWait")(function* (
   input: WaitResumeInput<DelayPrepared>
 ) {
-  const { branch, prepared, waitStateId, wake, hops } = input;
-  const { context, store, workflowId, startLog } = branch;
-  const { executionId } = context;
-
-  // Only this engine invocation knows it consumed the wake, so it owns the
-  // Execution's running status and the single timeline entry. That write is
-  // also this step's version fence, and it runs before the wait row is settled
-  // so a refused fence leaves the row for the next attempt to re-park.
-  yield* markRunningUnderLoadedVersion(branch);
+  const { branch, prepared, wake, hops } = input;
+  const { store, startLog } = branch;
 
   // A delay park answers no cancel signal. This wake reaches it only through a
   // row a Cancel Event claimed while the run was between two parks.
   const canceled = wake.kind === "cancel";
-
-  // The signal producer settles an ordinary resume through its claim fence.
-  // Timeout and cancellation have no such producer, so the engine settles them.
-  if (wake.kind === "timeout" || canceled) {
-    yield* fromStore(
-      store.markWaitStateStatus({
-        waitStateId,
-        status: canceled ? "cancelled" : "resumed",
-      })
-    );
-  }
-
-  const audit = canceled
-    ? {
-        message: `Run woken by a cancel request in node '${context.nodeName}'`,
-        metadata: { nodeId: context.nodeId, hops },
-      }
-    : wake.kind === "timeout"
-      ? {
-          message: `Run resumed after delay in node '${context.nodeName}'`,
-          metadata: { nodeId: context.nodeId, hops },
-        }
-      : wake.eventName === null
-        ? {
-            message: "Run resumed from the runs panel",
-            metadata: { waitStateId },
-          }
-        : {
-            message: `Run resumed from wait on ${wake.eventName}`,
-            metadata: { eventType: wake.eventName },
-          };
-  yield* fromStore(
-    store.recordAuditEvent({
-      workflowId,
-      executionId,
-      eventType: "run_resumed",
-      ...audit,
-    })
-  );
 
   const output = {
     waitType: "delay",

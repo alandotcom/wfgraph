@@ -3,6 +3,7 @@ import {
   count,
   desc,
   eq,
+  exists,
   inArray,
   isNull,
   lt,
@@ -17,6 +18,7 @@ import {
   workflowExecutions,
   workflows,
   workflowVersions,
+  workflowWaitStates,
 } from "#src/backend/lib/db/schema";
 import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
@@ -217,12 +219,29 @@ export type RunsRepoMethods = {
    * The version is the fence a resuming Wait relies on: a Migration that lands
    * between the wake and this write leaves the row pinned to another version,
    * no row is written, and the caller starts again against the new pointer.
-   * `running` is an accepted starting status, because a sibling Wait of the
-   * same run may already have written it.
+   *
+   * Only `waiting` and `running` are accepted starting statuses. `waiting` is
+   * the run this resume woke. `running` is a sibling Wait of the same run having
+   * already written it, which is routine when two branches wake together. A
+   * `pending` run has not reached a Wait, so a resume finding one is addressing
+   * a row nothing parked.
    */
   readonly markRunning: (input: {
     executionId: string;
     workflowVersionId: string;
+  }) => Effect.Effect<boolean, DatabaseError>;
+  /**
+   * Move a `running` run back to `waiting` when it still holds a waiting wait
+   * row, answering whether a row moved.
+   *
+   * Only a park writes `waiting`, so a run whose branch resumed and finished
+   * while a sibling branch stayed parked would read `running` until that sibling
+   * woke. The guard is what keeps this from parking a run with nothing left
+   * waiting: the wait-row test and the status test are one statement, so a park
+   * or a resume landing beside it cannot be overtaken.
+   */
+  readonly markWaitingIfParked: (input: {
+    executionId: string;
   }) => Effect.Effect<boolean, DatabaseError>;
   /**
    * End a run from outside it, answering whether this write is the one that
@@ -498,13 +517,41 @@ export function makeRunsMethods(
           .set({ status: "running", waitingAt: null })
           .where(
             and(
-              inFlightExecution(input.executionId),
+              eq(workflowExecutions.id, input.executionId),
+              inArray(workflowExecutions.status, ["waiting", "running"]),
               eq(workflowExecutions.workflowVersionId, input.workflowVersionId)
             )
           )
           .returning({ id: workflowExecutions.id });
 
         return moved.length > 0;
+      }),
+
+    markWaitingIfParked: (input) =>
+      database.query(async (db) => {
+        const parked = await db
+          .update(workflowExecutions)
+          .set({ status: "waiting", waitingAt: new Date() })
+          .where(
+            and(
+              eq(workflowExecutions.id, input.executionId),
+              eq(workflowExecutions.status, "running"),
+              exists(
+                db
+                  .select({ id: workflowWaitStates.id })
+                  .from(workflowWaitStates)
+                  .where(
+                    and(
+                      eq(workflowWaitStates.executionId, workflowExecutions.id),
+                      eq(workflowWaitStates.status, "waiting")
+                    )
+                  )
+              )
+            )
+          )
+          .returning({ id: workflowExecutions.id });
+
+        return parked.length > 0;
       }),
 
     endInFlight: (input) =>

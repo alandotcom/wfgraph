@@ -23,6 +23,20 @@ type WaitWakeTarget =
     };
 
 /**
+ * How far a wake got.
+ *
+ * `unclaimed` is no row this wake could take, so nothing was sent and no run
+ * woke. `resumed` is the signal delivered and this caller's claim settled.
+ * `raced` is the signal delivered and the claim settled by someone else in the
+ * meantime, which is a run that did resume: the wake reached the engine, and
+ * only the bookkeeping was lost.
+ */
+export type WaitWakeOutcome =
+  | { status: "unclaimed" }
+  | { status: "resumed"; executionId: string }
+  | { status: "raced"; executionId: string };
+
+/**
  * Claims one Wait and delivers its wake to the durable runtime.
  *
  * The claim is released when the durable runtime refuses the signal. Once the
@@ -58,7 +72,8 @@ export const wakeWait = Effect.fn("wakeWait")(function* (input: {
       });
 
   if (!claim) {
-    return { status: "unchanged" } as const;
+    const unclaimed: WaitWakeOutcome = { status: "unclaimed" };
+    return unclaimed;
   }
 
   const { waitState, claimedAt } = claim;
@@ -101,15 +116,23 @@ export const wakeWait = Effect.fn("wakeWait")(function* (input: {
     claimedAt,
   });
   if (!settled) {
+    // The signal is already with the durable runtime, so the run wakes whatever
+    // this write found. Something else settled the row first, which is what
+    // separates this from a wake that reached no run at all.
     yield* logger.warn("Wait wake claim was already settled", {
       waitStateId: waitState.id,
       executionId: waitState.executionId,
     });
-    return { status: "unchanged" } as const;
+    const raced: WaitWakeOutcome = {
+      status: "raced",
+      executionId: waitState.executionId,
+    };
+    return raced;
   }
 
-  return {
+  const resumed: WaitWakeOutcome = {
     status: "resumed",
     executionId: waitState.executionId,
-  } as const;
+  };
+  return resumed;
 });

@@ -29,7 +29,6 @@ import type {
 import type { ResolveTemplates } from "#src/backend/engine/wait-match";
 import {
   type EngineFailure,
-  engineFailure,
   failureFromCause,
   failureFromUnknown,
 } from "#src/backend/engine/engine-failure";
@@ -60,9 +59,9 @@ export type WaitBranchContext = {
   workflowId: string;
   /**
    * The Workflow Version whose graph this body is walking. A Migration moves the
-   * execution row's pointer while the run is parked, and every durable step of
-   * this node compares the two, so an attempt never carries on under a graph the
-   * run has been moved off.
+   * execution row's pointer while the run is parked, and each of this node's
+   * three writes against that row requires it to still pin this version, so an
+   * attempt never carries on under a graph the run has been moved off.
    */
   workflowVersionId: string;
   runId: string;
@@ -99,39 +98,6 @@ export function fromStore<A>(
   effect: Effect.Effect<A, DatabaseError>
 ): Effect.Effect<A, EngineFailure> {
   return Effect.mapError(effect, failureFromUnknown);
-}
-
-/**
- * Moves the run back to `running` under the Workflow Version this body loaded,
- * failing the step when no row moved.
- *
- * The guarded write is the resume's version fence, and it is the first thing a
- * resume does. A Migration that lands between the wake and this write leaves the
- * execution row pinned to another version, so nothing moves and the step fails;
- * Inngest retries the body, which reloads the graph from the new pointer and
- * prepares the Wait again. Running it first leaves the wait row untouched for
- * that retry to re-park.
- */
-export function markRunningUnderLoadedVersion(
-  branch: WaitBranchContext
-): Effect.Effect<void, EngineFailure> {
-  return Effect.flatMap(
-    fromStore(
-      branch.store.markExecutionRunning({
-        executionId: branch.context.executionId,
-        workflowVersionId: branch.workflowVersionId,
-      })
-    ),
-    (moved) =>
-      moved
-        ? Effect.void
-        : Effect.fail(
-            engineFailure(
-              "failure",
-              `This run has been moved off workflow version ${branch.workflowVersionId} since its graph was loaded.`
-            )
-          )
-  );
 }
 
 export function readWaitGateMode(
@@ -302,11 +268,17 @@ export type WaitPreparation<Prepared> =
       prepared: Prepared;
     };
 
-/** What a mode's resume step writes and hands to its outcome. */
+/**
+ * What a mode's resume step writes and hands to its outcome.
+ *
+ * The driver has already run the resume's prologue by the time a mode sees
+ * this: the version fence, the wait row's settlement, and the timeline entry.
+ * What is left to a mode is its own output and, for the event mode, what the
+ * configured timeout behaviour does to the branch.
+ */
 export type WaitResumeInput<Prepared> = {
   branch: WaitBranchContext;
   prepared: Prepared;
-  waitStateId: string;
   wake: WaitResumeWake;
   /** How many times this Wait parked, which is the node's `hops` output. */
   hops: number;

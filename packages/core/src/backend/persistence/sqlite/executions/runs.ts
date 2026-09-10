@@ -31,6 +31,7 @@ import {
   workflowExecutions,
   workflows,
   workflowVersions,
+  workflowWaitStates,
 } from "#src/backend/persistence/sqlite/schema";
 import {
   sqliteExecution,
@@ -61,6 +62,18 @@ const executionListSelection = {
   versionKind: workflowVersions.kind,
   versionNumber: workflowVersions.version,
 };
+
+/**
+ * Whether the execution still holds a wait row in `waiting`. Correlated against
+ * the execution row, so the statement it guards evaluates it.
+ */
+function stillParked(): SQL {
+  return sql`exists (
+    select 1 from ${workflowWaitStates}
+    where ${workflowWaitStates.executionId} = ${workflowExecutions.id}
+      and ${workflowWaitStates.status} = 'waiting'
+  )`;
+}
 
 function optionalJsonObject(value: string | null) {
   if (value === null) return null;
@@ -401,7 +414,22 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
             and(
               eq(workflowExecutions.id, input.executionId),
               eq(workflowExecutions.workflowVersionId, input.workflowVersionId),
-              inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES)
+              inArray(workflowExecutions.status, ["waiting", "running"])
+            )
+          )
+          .returning({ id: workflowExecutions.id })
+          .pipe(Effect.map((rows) => rows.length > 0))
+      ),
+    markWaitingIfParked: (input) =>
+      store.write((database) =>
+        database
+          .update(workflowExecutions)
+          .set({ status: "waiting", waitingAt: Date.now() })
+          .where(
+            and(
+              eq(workflowExecutions.id, input.executionId),
+              eq(workflowExecutions.status, "running"),
+              stillParked()
             )
           )
           .returning({ id: workflowExecutions.id })

@@ -35,7 +35,7 @@ import {
   type EngineFailure,
   failureFromCause,
 } from "#src/backend/engine/engine-failure";
-import { runDurable } from "#src/backend/engine/durable";
+import { runDurable, runDurableUnit } from "#src/backend/engine/durable";
 import { withAppLogCategory } from "#src/backend/lib/effect/app-logger";
 
 export type { WorkflowActions } from "#src/backend/engine/actions";
@@ -470,6 +470,21 @@ function executeWorkflowBranchInner(
     // A wait further down this branch is handed off in turn, so this run holds
     // one pause of its own and the branch below that one holds its own.
     yield* scheduler.drainDeferredWaits();
+
+    // This branch resumed its own Wait and moved the Execution to "running". A
+    // sibling branch may still be parked, and only a park writes "waiting", so
+    // the run would read as executing with nothing executing until that sibling
+    // woke. The repository write is guarded on the run still holding a waiting
+    // wait row, so a branch that left nothing parked writes nothing. The run
+    // that started this branch is the one that ends the Execution.
+    yield* runDurableUnit(
+      runtime,
+      {
+        id: `branch-park-check-${entryNodeId}`,
+        name: "Re-park the run if a sibling wait is open",
+      },
+      Effect.asVoid(store.markExecutionWaitingIfParked({ executionId }))
+    );
 
     yield* Effect.logInfo(
       `Branch at ${entryNodeId} completed in ${Date.now() - branchStartTime}ms`

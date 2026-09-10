@@ -208,7 +208,7 @@ states the invariant in brief.
 
 **One contract, two backends, one suite.** `backend/persistence/conformance/` holds every case
 that is about the repository contract rather than about an engine, one file per aggregate over
-`support.ts`, which owns the cipher, the seed, and the registry that closes what a case opened.
+`support.ts` (the executions aggregate has a second file, `execution-waits.ts`, for its wait rows), which owns the cipher, the seed, and the registry that closes what a case opened.
 `persistence-conformance-test-support.ts` composes them, and both backends run the result:
 `sqlite.conformance.test.ts` and `postgres.conformance.pg.test.ts`. A case belongs there unless
 it reaches past the repositories into one engine's own storage, which is what is left in

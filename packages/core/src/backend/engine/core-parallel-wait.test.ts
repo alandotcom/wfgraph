@@ -281,6 +281,58 @@ describe("a wait node beside another branch", () => {
     expect(run.runs).toBe(3);
   });
 
+  // Only a park writes "waiting", and the short branch's resume writes
+  // "running". The long sibling is still parked when that branch finishes, so
+  // the branch offers the run back to the repository, whose guard decides.
+  it("offers the run back to waiting when its branch finishes beside a parked sibling", async () => {
+    const store = createRecordingWorkflowStore();
+    await runGraph(
+      createSerializedWorkflowGraph({
+        nodes: [
+          lifecycleNode("entry"),
+          waitNode("short_wait", "30s"),
+          sendNode("after_short"),
+          waitNode("long_wait", "10m"),
+          sendNode("after_long"),
+        ],
+        edges: [
+          {
+            id: "e1",
+            source: "entry",
+            sourceHandle: "started",
+            target: "short_wait",
+          },
+          {
+            id: "e2",
+            source: "short_wait",
+            sourceHandle: null,
+            target: "after_short",
+          },
+          {
+            id: "e3",
+            source: "entry",
+            sourceHandle: "started",
+            target: "long_wait",
+          },
+          {
+            id: "e4",
+            source: "long_wait",
+            sourceHandle: null,
+            target: "after_long",
+          },
+        ],
+      }),
+      { store }
+    );
+
+    // One offer per branch run, and none from the root, which ends the run with
+    // its terminal record instead.
+    expect(store.callsOf("markExecutionWaitingIfParked")).toEqual([
+      { executionId: "exec_parallel" },
+      { executionId: "exec_parallel" },
+    ]);
+  });
+
   it("takes a second wait further down the same branch on a later pass", async () => {
     const run = await runGraph(
       createSerializedWorkflowGraph({

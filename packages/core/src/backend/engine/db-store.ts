@@ -18,9 +18,9 @@ import type {
   CompleteRunInput,
   WorkflowStore,
 } from "#src/backend/engine/store";
-import { WAIT_ARRIVAL_METADATA_KEY } from "#src/backend/services/executions/repo/waits";
 import {
   isWaitSignalType,
+  WAIT_ARRIVAL_METADATA_KEY,
   type WaitArrival,
 } from "@wfgraph/shared/lifecycle/wait-signal";
 import { type JsonObject, readJsonObject } from "@wfgraph/shared/types/json";
@@ -114,15 +114,11 @@ export function createDbWorkflowStore(
           : null
       ),
 
-    readPinnedVersionId: (executionId) =>
-      Effect.map(
-        repo.findSummaryById(executionId),
-        (execution) => execution?.workflowVersionId ?? null
-      ),
-
     markWaitStateStatus: (input) => repo.markWaitStatus(input),
 
     markExecutionRunning: (input) => repo.markRunning(input),
+
+    markExecutionWaitingIfParked: (input) => repo.markWaitingIfParked(input),
 
     readPendingCancel: (executionId) => repo.findPendingCancel(executionId),
 

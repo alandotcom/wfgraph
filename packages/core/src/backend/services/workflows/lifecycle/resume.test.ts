@@ -40,6 +40,8 @@ const liveWaitState: WorkflowWaitState = {
 function makeResumeSeams(input: {
   waitState?: WorkflowWaitState | undefined;
   sendWaitSignal?: InngestClient["Service"]["sendWaitSignal"] | undefined;
+  /** What `settleWaitingStateClaim` answers. Defaults to the claim settling. */
+  settled?: boolean | undefined;
 }) {
   const calls = {
     tokenLookups: [] as string[],
@@ -66,7 +68,7 @@ function makeResumeSeams(input: {
             calls.claimed = false;
             return true;
           }),
-        settleWaitingStateClaim: () => Effect.succeed(true),
+        settleWaitingStateClaim: () => Effect.succeed(input.settled ?? true),
       }),
       // Left refusing unless a test supplies one, so a send from a request that
       // should never have got this far kills the test.
@@ -146,6 +148,30 @@ describe("resumeWaitByToken", () => {
           attempts.filter((attempt) => attempt._tag === "Failure").length,
           1
         );
+      })
+    );
+
+    // The signal is already with the durable runtime by the time the claim is
+    // settled, so a settle another writer won is a run that did resume. Reading
+    // it as a wait nobody could reach would answer 404 for a run that woke.
+    it.effect("reports a resume whose claim another writer settled", () =>
+      Effect.gen(function* () {
+        const seams = makeResumeSeams({
+          waitState: liveWaitState,
+          sendWaitSignal: () => Effect.void,
+          settled: false,
+        });
+
+        const resumed = yield* resumeWaitByToken({
+          token: RESUME_TOKEN,
+          body: { approved: true },
+        }).pipe(Effect.provide(seams.layer));
+
+        assert.deepStrictEqual(resumed, {
+          success: true,
+          status: "resumed",
+          executionId: "exec_1",
+        });
       })
     );
 
