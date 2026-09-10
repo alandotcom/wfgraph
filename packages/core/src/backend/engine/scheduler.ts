@@ -17,7 +17,7 @@ import {
 } from "@wfgraph/shared/graph/node-config";
 import { type JsonObject, readJsonValue } from "@wfgraph/shared/types/json";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
-import { Cause, Effect } from "effect";
+import { Cause, Effect, Schema } from "effect";
 import type { WorkflowActions } from "#src/backend/engine/actions";
 import type { WorkflowEntities } from "#src/backend/engine/entities";
 import type { CancelBoundary } from "#src/backend/engine/cancel-boundary";
@@ -44,6 +44,53 @@ import {
   runDurable,
   runDurableUnit,
 } from "#src/backend/engine/durable";
+
+/**
+ * The kill request for the other branch runs of an exited Execution could not
+ * be sent, after the durable step spent its retries.
+ *
+ * No node records it, because the node that claimed Exit was refused admission
+ * and did no work. It passes through every node to the run's entry point:
+ * `executeWorkflow` and `executeWorkflowBranch` each record it as the run's
+ * failure, and the terminal record then reads exited from the Exit claim.
+ */
+export class BranchStopFailed extends Schema.TaggedError<BranchStopFailed>()(
+  "BranchStopFailed",
+  { message: Schema.String }
+) {}
+
+/** The `BranchStopFailed` a cause failed with, when it holds one. */
+function findBranchStopFailure(
+  cause: Cause.Cause<unknown>
+): BranchStopFailed | undefined {
+  for (const reason of cause.reasons) {
+    if (
+      Cause.isFailReason(reason) &&
+      reason.error instanceof BranchStopFailed
+    ) {
+      return reason.error;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * `Effect.catchCause` for the node attribution boundary. A cause holding a
+ * `BranchStopFailed` skips the handler and fails with that error, so it reaches
+ * the run's own failure path.
+ */
+function catchNodeCause<A, E, B, E2>(
+  effect: Effect.Effect<A, E>,
+  handler: (cause: Cause.Cause<E>) => Effect.Effect<B, E2>
+): Effect.Effect<A | B, E2 | BranchStopFailed> {
+  return Effect.catchCause(
+    effect,
+    (cause): Effect.Effect<B, E2 | BranchStopFailed> => {
+      const branchStop = findBranchStopFailure(cause);
+      return branchStop ? Effect.fail(branchStop) : handler(cause);
+    }
+  );
+}
 
 /** What the run log and the trace call a node. */
 function getNodeName(node: WorkflowNode, actions: WorkflowActions): string {
@@ -181,7 +228,7 @@ export class NodeScheduler {
   private admitExecutableNode(
     node: WorkflowNode,
     nodeName: string
-  ): Effect.Effect<boolean, EngineFailure> {
+  ): Effect.Effect<boolean, EngineFailure | BranchStopFailed> {
     const eligibility = this.input.entityEligibility;
     if (
       !eligibility ||
@@ -256,24 +303,33 @@ export class NodeScheduler {
     );
   }
 
-  /** Stops durable sibling branches after the parent observes an Exit claim. */
+  /**
+   * Stops durable sibling branches after this run observes an Exit claim. A
+   * send that still fails after the step's retries is a `BranchStopFailed`.
+   */
   private stopBranchesAfterExit(
     nodeId: string
-  ): Effect.Effect<void, EngineFailure> {
+  ): Effect.Effect<void, BranchStopFailed> {
     const { runtime } = this.input;
     const stopBranches = runtime.stopBranches;
     if (!stopBranches) {
       return Effect.void;
     }
 
-    return Effect.asVoid(
-      runDurableUnit(
-        runtime,
-        {
-          id: `entity-exit-stop-branches:${nodeId}`,
-          name: "Stop exited branches",
-        },
-        fromUnknownPromise(stopBranches)
+    return runDurableUnit(
+      runtime,
+      {
+        id: `entity-exit-stop-branches:${nodeId}`,
+        name: "Stop exited branches",
+      },
+      fromUnknownPromise(stopBranches)
+    ).pipe(
+      Effect.asVoid,
+      Effect.mapError(
+        (failure) =>
+          new BranchStopFailed({
+            message: `Could not stop the other branch runs after an Entity Eligibility Exit: ${failure.message}`,
+          })
       )
     );
   }
@@ -304,7 +360,7 @@ export class NodeScheduler {
 
   // The persisted graph is validated as a DAG before execution, so we avoid
   // per-call cycle-tracking allocations on this hot path.
-  private executeNode(nodeId: string): Effect.Effect<void> {
+  private executeNode(nodeId: string): Effect.Effect<void, BranchStopFailed> {
     const execute = Effect.gen(
       function* (this: NodeScheduler) {
         const { traversal, actions } = this.input;
@@ -373,11 +429,12 @@ export class NodeScheduler {
       }.bind(this)
     );
 
-    return Effect.catchCause(execute, (cause) =>
+    return catchNodeCause(execute, (cause) =>
       Effect.gen(
         function* (this: NodeScheduler) {
           // This is the attribution boundary: a cause becomes the node's failure
-          // value here, while sibling nodes continue.
+          // value here, while sibling nodes continue. `catchNodeCause` passes a
+          // `BranchStopFailed` through to the run.
           yield* Effect.logError("Unexpected error executing node").pipe(
             Effect.annotateLogs({ error: Cause.squash(cause) })
           );
@@ -390,8 +447,8 @@ export class NodeScheduler {
             yield* this.runAll(cancel.nextNodes);
           }
         }.bind(this)
-      ).pipe(
-        Effect.catchCause((recoveryCause) =>
+      ).pipe((recovery) =>
+        catchNodeCause(recovery, (recoveryCause) =>
           Effect.logError(
             "Failed to settle cancellation after node failure"
           ).pipe(Effect.annotateLogs({ error: Cause.squash(recoveryCause) }))
@@ -520,11 +577,10 @@ export class NodeScheduler {
 
         traversal.absorbBranch(handoff.result);
         if (handoff.result.exit) {
-          yield* this.stopBranchesAfterExit(handoff.result.exit.nodeId);
           return {
             result: { success: true as const, data: null },
             haltBranch: true,
-            executionExited: true,
+            exitNodeId: handoff.result.exit.nodeId,
           };
         }
 
@@ -573,7 +629,7 @@ export class NodeScheduler {
     nodeId: string,
     node: WorkflowNode,
     nodeName: string
-  ): Effect.Effect<void, EngineFailure> {
+  ): Effect.Effect<void, EngineFailure | BranchStopFailed> {
     const actionType = actionTypeOf(node);
     const kind = actionType ?? node.data.type;
 
@@ -619,7 +675,10 @@ export class NodeScheduler {
         const outcome = yield* this.runNodeWork(node, nodeName);
         const { result } = outcome;
 
-        if (outcome.executionExited) {
+        // A branch run handed back an Exit claim, so this run stops the other
+        // branch runs and records nothing for this node.
+        if (outcome.exitNodeId !== undefined) {
+          yield* this.stopBranchesAfterExit(outcome.exitNodeId);
           return;
         }
 
@@ -698,8 +757,13 @@ export class NodeScheduler {
     return execute;
   }
 
-  /** Runs a set of nodes side by side, which is how every branch fans out. */
-  runAll(nodeIds: readonly string[]): Effect.Effect<void[]> {
+  /**
+   * Runs a set of nodes side by side, which is how every branch fans out. A
+   * node's own failure is recorded on the node. The one error this fails with is
+   * a `BranchStopFailed`, which interrupts the other nodes and reaches the run's
+   * entry point.
+   */
+  runAll(nodeIds: readonly string[]): Effect.Effect<void[], BranchStopFailed> {
     return Effect.forEach(nodeIds, (nodeId) => this.executeNode(nodeId), {
       concurrency: "unbounded",
     });
@@ -722,7 +786,7 @@ export class NodeScheduler {
    * and a wait held back since before the crossing would otherwise park the run
    * on a branch it has left.
    */
-  drainDeferredWaits(): Effect.Effect<void> {
+  drainDeferredWaits(): Effect.Effect<void, BranchStopFailed> {
     return Effect.gen(
       function* (this: NodeScheduler) {
         const { cancelBoundary } = this.input;

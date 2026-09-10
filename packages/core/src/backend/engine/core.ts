@@ -26,7 +26,10 @@ import {
   type NodeOutputs,
   wrapStoredOutput,
 } from "#src/backend/engine/contracts";
-import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
+import type {
+  DurableStepRef,
+  WorkflowExecutionRuntime,
+} from "#src/backend/engine/runtime";
 import {
   NodeScheduler,
   type NodeSchedulerInput,
@@ -40,6 +43,7 @@ import {
 import { Traversal } from "#src/backend/engine/traversal";
 import {
   type EngineFailure,
+  engineFailure,
   failureFromCause,
 } from "#src/backend/engine/engine-failure";
 import { runDurable, runDurableUnit } from "#src/backend/engine/durable";
@@ -276,6 +280,41 @@ function workflowSpanAttributes(
 }
 
 /**
+ * Writes the terminal record for a run-level failure through `recordRunFailed`,
+ * in one durable step. An Exit or Cancel claim already on the row wins, so the
+ * Execution ends on that claim.
+ */
+function recordRunFailure(input: {
+  run: WorkflowExecutionInput | WorkflowBranchInput;
+  runtime: WorkflowExecutionRuntime;
+  store: WorkflowStore;
+  entityEligibility: NodeSchedulerInput["entityEligibility"];
+  step: DurableStepRef;
+  status: "failed" | "canceled";
+  failure: EngineFailure;
+}) {
+  const { run, entityEligibility } = input;
+  return runDurable(
+    input.runtime,
+    input.step,
+    recordRunFailed({
+      store: input.store,
+      executionId: run.executionId,
+      workflowId: run.workflowId,
+      status: input.status,
+      failure: input.failure,
+      runMode: run.runMode ?? "live",
+      exitContext: entityEligibility?.entityType
+        ? {
+            entityType: entityEligibility.entityType,
+            conditionId: entityEligibility.conditionId,
+          }
+        : undefined,
+    })
+  );
+}
+
+/**
  * All three ports are required. `runtime` decides how work is made durable,
  * `store` decides where the run's trace is written, and `actions` decides what
  * an action id dispatches to. None of them defaults, because a port that
@@ -403,29 +442,18 @@ function executeWorkflowInner(
           ? "canceled"
           : "failed";
 
-        const exitContext = entityEligibility?.entityType
-          ? {
-              entityType: entityEligibility.entityType,
-              conditionId: entityEligibility.conditionId,
-            }
-          : undefined;
-
         // Same exactly-once treatment as the success path. A refusal here
         // escapes so the durable step can retry instead of being mistaken for
         // another traversal failure.
-        const recorded = yield* runDurable(
+        const recorded = yield* recordRunFailure({
+          run: input,
           runtime,
-          { id: "workflow-run-failed", name: "Run failed" },
-          recordRunFailed({
-            store,
-            executionId,
-            workflowId,
-            status: terminalStatus,
-            failure,
-            runMode,
-            exitContext,
-          })
-        );
+          store,
+          entityEligibility,
+          step: { id: "workflow-run-failed", name: "Run failed" },
+          status: terminalStatus,
+          failure,
+        });
 
         return {
           status: recorded.status,
@@ -486,6 +514,9 @@ function executeWorkflowInner(
  * What it did travels back to the run that started the branch in the returned
  * value, and that run is where the Execution ends, where a cancellation routes,
  * and where a fatal error here is attributed, so this one lets an error escape.
+ * A failed branch kill after this run claimed Exit is the exception: this run
+ * writes the Execution's terminal record itself, because the run that started
+ * it stays parked on any sibling the kill did not reach.
  */
 export function executeWorkflowBranch(
   input: WorkflowBranchInput,
@@ -521,7 +552,7 @@ function executeWorkflowBranchInner(
 ): Effect.Effect<BranchRunResult, EngineFailure> {
   return Effect.gen(function* () {
     const { entryNodeId, executionId } = input;
-    const { nodes, traversal, scheduler } = prepareRun(
+    const { nodes, traversal, scheduler, entityEligibility } = prepareRun(
       input,
       runtime,
       store,
@@ -565,10 +596,46 @@ function executeWorkflowBranchInner(
       })
     );
 
-    yield* scheduler.runAll([entryNodeId]);
-    // A wait further down this branch is handed off in turn, so this run holds
-    // one pause of its own and the branch below that one holds its own.
-    yield* scheduler.drainDeferredWaits();
+    yield* Effect.gen(function* () {
+      yield* scheduler.runAll([entryNodeId]);
+      // A wait further down this branch is handed off in turn, so this run holds
+      // one pause of its own and the branch below that one holds its own.
+      yield* scheduler.drainDeferredWaits();
+    }).pipe(
+      // A failed branch kill has already interrupted every node of this run,
+      // and a sibling branch may still be parked. The run that started this
+      // branch stays parked on that sibling, so this run ends the Execution.
+      // The terminal record gives way to the Exit claim and reads exited. The
+      // open rows are closed after it, because `loadPersistedRunInput` refuses
+      // a sibling that wakes to a terminal row before it writes anything.
+      Effect.catchTag("BranchStopFailed", (stopFailure) =>
+        Effect.gen(function* () {
+          yield* Effect.logError(
+            "Branch kill failed; this branch run ends the Execution"
+          ).pipe(Effect.annotateLogs({ error: stopFailure.message }));
+          yield* recordRunFailure({
+            run: input,
+            runtime,
+            store,
+            entityEligibility,
+            step: {
+              id: `branch-exit-run-failed-${entryNodeId}`,
+              name: "Run ended after a failed branch kill",
+            },
+            status: "failed",
+            failure: engineFailure("failure", stopFailure.message),
+          });
+          yield* runDurableUnit(
+            runtime,
+            {
+              id: `branch-exit-sweep-${entryNodeId}`,
+              name: "Close open work",
+            },
+            store.cancelOpenWork({ executionId })
+          );
+        })
+      )
+    );
 
     // This branch resumed its own Wait and moved the Execution to "running". A
     // sibling branch may still be parked, and only a park writes "waiting", so

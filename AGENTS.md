@@ -344,8 +344,10 @@ waiting branch is a durable run of its own (ADR-0011). `NodeScheduler` holds eve
 and `drainDeferredWaits` hands it to `workflow-branch` through `runtime.startBranch`, which
 is `step.invoke`. The branch run inherits the outputs above its entry node from the store and
 its released node ids from the invoke payload, and leaves the terminal record to the run that
-started it. A cancellation kills it where it stands; that run observes the kill, sweeps the
-rows it left open, and routes the Execution. A runtime offering no `startBranch` enters the
+started it. The one exception is a branch run that claimed an Exit and failed to kill its
+sibling branches: it writes the terminal record itself, since the run that started it stays
+parked on those siblings. A cancellation kills a branch run where it stands; the run that
+started it observes the kill, sweeps the rows it left open, and routes the Execution. A runtime offering no `startBranch` enters the
 Wait in place. `driveWithReplay` (`engine/testing/replay-runtime.ts`) is how a test sees any of this:
 it owns a set of runs and keeps the measured wake policy per run.
 

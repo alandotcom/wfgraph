@@ -9,8 +9,15 @@ import type {
   WorkflowEntities,
 } from "#src/backend/engine/entities";
 import { createRecordingWorkflowStore } from "#src/backend/engine/recording-store";
-import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
-import { executeTestWorkflow } from "#src/backend/engine/test-execution";
+import {
+  createInMemoryWorkflowRuntime,
+  type DurableStepRef,
+  type WorkflowExecutionRuntime,
+} from "#src/backend/engine/runtime";
+import {
+  executeTestWorkflow,
+  executeTestWorkflowBranch,
+} from "#src/backend/engine/test-execution";
 import { driveWithReplay } from "#src/backend/engine/testing/replay-runtime";
 import { DatabaseError } from "#src/backend/lib/effect/database";
 import {
@@ -148,6 +155,73 @@ function migrationGraph(eligibilityCondition: string) {
       { id: "wait-second", source: "wait_1", target: "second" },
     ],
   });
+}
+
+function delayWaitNode(id: string, waitDuration: string): WorkflowNode {
+  return {
+    ...actionNode(id, true, "Wait"),
+    data: {
+      type: "action",
+      label: id,
+      config: {
+        actionType: "Wait",
+        waitMode: "delay",
+        waitDuration,
+        waitGateMode: "require_actual_wait",
+      },
+    },
+  };
+}
+
+/**
+ * Two Waits beside each other, each handed to a branch run of its own. The
+ * short branch reaches `after_short` at 30 seconds; the long one stays parked
+ * for ten minutes.
+ */
+function siblingWaitGraph() {
+  return createSerializedWorkflowGraph({
+    nodes: [
+      lifecycleNode(),
+      delayWaitNode("short_wait", "30s"),
+      actionNode("after_short"),
+      delayWaitNode("long_wait", "10m"),
+      actionNode("after_long"),
+    ],
+    edges: [
+      {
+        id: "to-short",
+        source: "lifecycle",
+        sourceHandle: "started",
+        target: "short_wait",
+      },
+      { id: "short-after", source: "short_wait", target: "after_short" },
+      {
+        id: "to-long",
+        source: "lifecycle",
+        sourceHandle: "started",
+        target: "long_wait",
+      },
+      { id: "long-after", source: "long_wait", target: "after_long" },
+    ],
+  });
+}
+
+const BRANCH_KILL_FAILURE = "Branch kill send failed";
+
+/**
+ * A runtime whose branch kill step has spent its retries. Inngest answers such
+ * a step by rejecting its `step.run` promise, which is what this does.
+ */
+function withFailingBranchKill(
+  runtime: WorkflowExecutionRuntime
+): WorkflowExecutionRuntime {
+  return {
+    ...runtime,
+    run: <T>(step: DurableStepRef, fn: () => Promise<T>): Promise<T> =>
+      step.id.startsWith("entity-exit-stop-branches:")
+        ? Promise.reject(new Error(BRANCH_KILL_FAILURE))
+        : runtime.run(step, fn),
+  };
 }
 
 const runAction = vi.fn(() =>
@@ -368,6 +442,128 @@ describe("per-node Entity Eligibility", () => {
       },
     });
     expect(stopBranches).not.toHaveBeenCalled();
+  });
+
+  it("fails the run rather than the claiming node when the branch kill cannot be sent", async () => {
+    const store = createRecordingWorkflowStore();
+    const stopBranches = vi.fn(() =>
+      Promise.reject(new Error(BRANCH_KILL_FAILURE))
+    );
+    const runtime = {
+      ...createInMemoryWorkflowRuntime(),
+      stopBranches,
+    };
+    const entities = entityPort([
+      { outcome: "eligible" },
+      {
+        outcome: "exit",
+        reason: "entity_condition_not_met",
+        checkedAt: "2026-10-19T15:00:00.000Z",
+      },
+    ]);
+
+    const result = await executeTestWorkflow(
+      executionInput,
+      runtime,
+      store,
+      actions,
+      entities
+    );
+
+    expect(stopBranches).toHaveBeenCalledTimes(1);
+    expect(result.results["second"]).toBeUndefined();
+    expect(result).toMatchObject({
+      status: "exited",
+      exit: { nodeId: "second" },
+    });
+    // The run-level path offers "failed" first, and the Exit claim the store
+    // already holds is what the terminal record ends on.
+    expect(
+      store.callsOf("completeRun").map((call) => ({
+        status: call.status,
+        failure: call.failure?.message,
+      }))
+    ).toEqual([
+      {
+        status: "failed",
+        failure: expect.stringContaining(BRANCH_KILL_FAILURE),
+      },
+      { status: "exited", failure: undefined },
+    ]);
+  });
+
+  it("ends the Execution from the claiming branch run when its kill cannot be sent", async () => {
+    const store = createRecordingWorkflowStore();
+    const entities: WorkflowEntities = {
+      evaluateEligibility: (input) =>
+        Effect.succeed(
+          input.nodeId === "after_short"
+            ? {
+                outcome: "exit" as const,
+                reason: "entity_condition_not_met" as const,
+                checkedAt: "2026-10-19T15:00:00.000Z",
+              }
+            : { outcome: "eligible" as const }
+        ),
+    };
+    const input = {
+      ...executionInput,
+      graph: siblingWaitGraph(),
+      executionId: "exec_branch_exit",
+    };
+
+    const run = await driveWithReplay(
+      (runtime) =>
+        executeTestWorkflow(
+          input,
+          withFailingBranchKill(runtime),
+          store,
+          actions,
+          entities
+        ),
+      {
+        branch: (runtime, branchInput) =>
+          executeTestWorkflowBranch(
+            { ...input, ...branchInput, ancestorEntryNodeIds: [] },
+            withFailingBranchKill(runtime),
+            store,
+            actions,
+            entities
+          ),
+      }
+    );
+
+    expect(run.value).toMatchObject({
+      status: "exited",
+      exit: { nodeId: "after_short" },
+    });
+    expect(
+      Object.entries(run.value.results).filter(([, result]) => !result.success)
+    ).toEqual([]);
+    expect(runAction).not.toHaveBeenCalled();
+
+    // The claiming branch wrote the terminal record at its own 30-second
+    // wake, long before the sibling's ten-minute Wait ended.
+    const stepClock = (stepId: string) =>
+      run.executed.find((step) => step.stepId === stepId)?.at;
+    expect(stepClock("branch-exit-run-failed-short_wait")).toBeLessThan(60_000);
+    expect(stepClock("branch-exit-sweep-short_wait")).toBeLessThan(60_000);
+    expect(store.callsOf("cancelOpenWork")).toHaveLength(1);
+
+    // The branch offered "failed" and the Exit claim turned it into "exited".
+    // The root's own attempt, once the sibling ended, found a terminal row
+    // and wrote nothing.
+    expect(store.callsOf("completeRun").map((call) => call.status)).toEqual([
+      "failed",
+      "exited",
+      "failed",
+    ]);
+    expect(store.terminationState?.status).toBe("exited");
+    expect(
+      store
+        .callsOf("recordAuditEvent")
+        .filter((event) => event.eventType === "run_exited")
+    ).toHaveLength(1);
   });
 
   it("does not resolve for a disabled node", async () => {
