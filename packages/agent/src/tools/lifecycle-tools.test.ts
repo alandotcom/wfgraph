@@ -562,6 +562,40 @@ describe("set_lifecycle_rules", () => {
     })
   );
 
+  it.effect(
+    "drops a tracked Entity binding when its Event loses its lifecycle role",
+    () =>
+      Effect.gen(function* () {
+        const { tools, draft } = yield* agentToolsFor({
+          catalog: catalogWithEntity,
+        });
+
+        yield* tools.set_lifecycle_rules({
+          startEvents: ["applicant.created"],
+          cancelEvents: ["applicant.withdrawn"],
+          trackedEntity: {
+            type: "applicant",
+            bindings: [
+              { event: "applicant.created", binding: "applicant" },
+              { event: "applicant.withdrawn", binding: "applicant" },
+            ],
+          },
+        });
+
+        // Drops the Cancel Event and omits trackedEntity, so the tool has to
+        // keep tracking but trim the binding the removed Event held.
+        yield* tools.set_lifecycle_rules({ cancelEvents: [] });
+
+        const rules = readLifecycleRules(
+          (yield* draft.current).nodes[0]?.data.config
+        );
+        expect(rules?.trackedEntity).toEqual({
+          type: "applicant",
+          bindings: { "applicant.created": "applicant" },
+        });
+      })
+  );
+
   it.effect("writes onto the entry node the workflow already has", () =>
     Effect.gen(function* () {
       const { tools, draft } = yield* agentToolsFor({

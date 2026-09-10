@@ -136,7 +136,7 @@ export const SetLifecycleRules = Tool.make("set_lifecycle_rules", {
       })
     ).annotate({
       description:
-        "Track every run by one Entity. Supply exactly one compatible binding for every Start and Cancel Event. Omit to preserve tracking. Changing the Entity type clears existing eligibility unless this edit supplies a replacement.",
+        "Track every run by one Entity. Supply exactly one compatible binding for every Start and Cancel Event. Omit to preserve tracking; a binding for an Event this edit no longer names as Start or Cancel is dropped. Changing the Entity type clears existing eligibility unless this edit supplies a replacement.",
     }),
     clearTrackedEntity: Schema.optionalKey(Schema.Boolean).annotate({
       description:
@@ -490,7 +490,19 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
           });
         }
 
-        let trackedEntity = stored?.trackedEntity;
+        // The stored tracking keeps only the bindings for this edit's Start and
+        // Cancel Events, because checkEntityEligibility refuses a binding for
+        // an Event with no lifecycle role.
+        let trackedEntity = stored?.trackedEntity
+          ? {
+              ...stored.trackedEntity,
+              bindings:
+                retainNamedKeys(
+                  stored.trackedEntity.bindings,
+                  new Set(named)
+                ) ?? {},
+            }
+          : undefined;
         if (input.clearTrackedEntity === true) {
           trackedEntity = undefined;
         } else if (input.trackedEntity !== undefined) {
