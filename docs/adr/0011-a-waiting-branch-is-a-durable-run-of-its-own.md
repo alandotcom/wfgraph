@@ -158,28 +158,3 @@ timeout. A wait woken that way halts its branch, which it did not need to do
 before, since the run it woke read the cancel flag at that node and routed
 itself. A branch run reads no flag, so without the halt it would carry on doing
 real work for a run already ending.
-
-## Amendment, 2026-09-10
-
-A branch run that claimed an Entity Eligibility Exit and could not stop its
-sibling branches ended the Execution itself. This was the one exception to the
-rule that the run that handed a branch off ends the Execution.
-
-The claiming branch sent `workflow/branch.kill.requested` to stop its siblings.
-When that step failed after its retries, the run that started the branch could
-not act on the Exit: a run wakes only after every pause it holds has ended, and
-a sibling still parked on a Wait was one of those pauses. The Execution stayed in
-flight until that Wait ended, which for an event-mode Wait was seven days by
-default. The only run awake at that moment was the claiming branch.
-
-That branch therefore wrote the terminal record through `recordRunFailed`, the
-same path a root run's fatal error took. The Exit claim already on the row won,
-so the Execution ended exited. The branch then closed the open rows with
-`cancelOpenWork`. The terminal write came first because a sibling that wakes to
-a terminal row is refused in `loadPersistedRunInput` before it writes anything,
-which is what made closing its rows safe while it was still parked.
-
-The cost was two failed Inngest runs, written when the parked sibling woke. The
-sibling was refused as no longer in flight, and the run that started the branch
-then woke to the same refusal. Neither did any work, and the Execution's
-record was already final.

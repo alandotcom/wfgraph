@@ -36,12 +36,8 @@ export type NodeWorkOutcome = {
    * everything underneath.
    */
   haltBranch?: boolean | undefined;
-  /**
-   * The node where a durable branch run claimed execution-wide Exit. Set by a
-   * hand-off whose branch run returned that claim. The scheduler then stops the
-   * other branch runs and records nothing for the Wait that handed off.
-   */
-  exitNodeId?: string | undefined;
+  /** A durable child reported execution-wide Exit before entering this node. */
+  executionExited?: boolean | undefined;
   /**
    * How this node changes the Arriving Event. Absent means leave it. `null`
    * means the run names none below this node (a timeout that continues past

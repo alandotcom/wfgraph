@@ -332,8 +332,7 @@ export type WorkflowStore = {
    * Closes every node row still open and every wait still waiting, as cancelled.
    *
    * The caller states when this is safe: nothing may still be writing to those
-   * rows. See `NodeScheduler.sweepKilledBranchWork`, and the branch run in
-   * `executeWorkflowBranch` that ends the Execution after a failed branch kill.
+   * rows. See `NodeScheduler.sweepKilledBranchWork`, its one call site.
    */
   cancelOpenWork(input: {
     executionId: string;
