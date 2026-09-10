@@ -17,7 +17,17 @@ const terminalWrite = {
 } as const;
 
 describe("completeRun", () => {
-  layer(stubExecutionRepo({ finishRun: () => Effect.succeed(true) }))((it) => {
+  layer(
+    stubExecutionRepo({
+      finishRun: () =>
+        Effect.succeed({
+          executionId: "exec_1",
+          status: "completed",
+          claim: null,
+          didWrite: true,
+        }),
+    })
+  )((it) => {
     it.effect("answers true when the write claimed the row", () =>
       Effect.gen(function* () {
         const repo = yield* ExecutionRepo;
@@ -29,7 +39,17 @@ describe("completeRun", () => {
     );
   });
 
-  layer(stubExecutionRepo({ finishRun: () => Effect.succeed(false) }))((it) => {
+  layer(
+    stubExecutionRepo({
+      finishRun: () =>
+        Effect.succeed({
+          executionId: "exec_1",
+          status: "canceled",
+          claim: null,
+          didWrite: false,
+        }),
+    })
+  )((it) => {
     it.effect(
       "answers false when an earlier terminal status holds the row",
       () =>

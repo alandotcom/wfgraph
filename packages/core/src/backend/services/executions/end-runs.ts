@@ -258,7 +258,7 @@ const endOneRun = Effect.fn("endOneRun")(function* (input: {
     return runEndOutcome("unreachable", executionId);
   }
 
-  const wasInFlight = yield* repo
+  const termination = yield* repo
     .endInFlight({
       executionId,
       status: "canceled",
@@ -284,11 +284,11 @@ const endOneRun = Effect.fn("endOneRun")(function* (input: {
       )
     );
 
-  if (wasInFlight === null) {
+  if (termination === null) {
     return runEndOutcome("unreachable", executionId);
   }
 
-  if (!wasInFlight) {
+  if (!termination.didWrite) {
     yield* logger.info(
       "Execution reached a terminal status before it could be ended",
       {

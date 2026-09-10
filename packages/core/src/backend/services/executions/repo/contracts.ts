@@ -8,6 +8,10 @@ import type {
   RunScopedAuditEventType,
   WorkflowScopedAuditEventType,
 } from "@wfgraph/shared/lifecycle/audit-event-types";
+import type {
+  EntityEligibilityReason,
+  WorkflowExecutionStatus,
+} from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { JsonObject, JsonObjectDraft } from "@wfgraph/shared/types/json";
 import type { WorkflowVersionKind } from "@wfgraph/shared/graph/version-kinds";
 
@@ -50,7 +54,17 @@ export type NewExecution = {
    * time it is asked for.
    */
   deliveryId?: string | undefined;
-};
+} & (
+  | {
+      /** Stable typed identity for a workflow guarded by Entity Eligibility. */
+      entityType: string;
+      entityId: string;
+    }
+  | {
+      entityType?: never;
+      entityId?: never;
+    }
+);
 
 /**
  * A run that reached its verdict without executing the graph. It starts and
@@ -187,6 +201,48 @@ export type EntityStartOutcome =
       reclaimedExecutionIds: string[];
     }
   | { status: "refused"; inFlightExecutionIds: string[] };
+
+export type ExecutionTerminationClaim =
+  | {
+      kind: "cancel";
+      requestedAt: Date;
+      eventName: string | null;
+      payload: JsonObject | null;
+    }
+  | {
+      kind: "exit";
+      requestedAt: Date;
+      reason: EntityEligibilityReason;
+      nodeId: string;
+    };
+
+/**
+ * The authoritative execution boundary after a claim or terminal write.
+ *
+ * A claim may coexist with an in-flight status while the parent run cleans up.
+ * A terminal status has no pending claim unless it is the finalized result of
+ * that same cancel or exit request.
+ */
+export type ExecutionTerminationState = {
+  executionId: string;
+  status: WorkflowExecutionStatus;
+  claim: ExecutionTerminationClaim | null;
+  /** Whether this call wrote the decision or terminal status it requested. */
+  didWrite: boolean;
+};
+
+/** The typed Entity identity, or the legacy untyped correlation value. */
+export type ExecutionEntitySelector =
+  | {
+      entityType: string;
+      entityId: string;
+      entityValue?: never;
+    }
+  | {
+      entityType?: never;
+      entityId?: never;
+      entityValue: string;
+    };
 
 /**
  * A Cancel Event's request, as the run reads it back at its next node boundary.

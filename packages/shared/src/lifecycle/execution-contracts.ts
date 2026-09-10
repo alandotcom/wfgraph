@@ -3,7 +3,7 @@
  * written: the column's type, the RPC literals, and the run-history filter all
  * derive from this list.
  *
- * An Execution ends with exactly one of four (CONTEXT.md). `superseded` is how
+ * An Execution ends with exactly one terminal outcome (CONTEXT.md). `superseded` is how
  * newest-wins Concurrency ends a run a newer start displaced, which is quiet:
  * no outlet fires and the status is the whole of the record.
  */
@@ -13,12 +13,22 @@ export const WORKFLOW_EXECUTION_STATUSES = [
   "waiting",
   "completed",
   "canceled",
+  "exited",
   "superseded",
   "failed",
 ] as const;
 
 export type WorkflowExecutionStatus =
   (typeof WORKFLOW_EXECUTION_STATUSES)[number];
+
+/** Why Entity Eligibility refused admission or exited an active Execution. */
+export const ENTITY_ELIGIBILITY_REASONS = [
+  "entity_condition_not_met",
+  "entity_not_found",
+] as const;
+
+export type EntityEligibilityReason =
+  (typeof ENTITY_ELIGIBILITY_REASONS)[number];
 
 /**
  * The statuses a run can still leave.

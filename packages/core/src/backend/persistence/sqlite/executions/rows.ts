@@ -67,9 +67,32 @@ export function sqliteExecutionStatus(
     value !== "completed" &&
     value !== "failed" &&
     value !== "canceled" &&
+    value !== "exited" &&
     value !== "superseded"
   ) {
     throw new Error("Invalid SQLite execution status");
+  }
+  return value;
+}
+
+function terminationKind(
+  value: string | null
+): WorkflowExecution["terminationKind"] {
+  if (value !== null && value !== "cancel" && value !== "exit") {
+    throw new Error("Invalid SQLite execution termination kind");
+  }
+  return value;
+}
+
+function terminationReason(
+  value: string | null
+): WorkflowExecution["terminationReason"] {
+  if (
+    value !== null &&
+    value !== "entity_condition_not_met" &&
+    value !== "entity_not_found"
+  ) {
+    throw new Error("Invalid SQLite execution termination reason");
   }
   return value;
 }
@@ -147,8 +170,15 @@ export function sqliteExecution(row: SqliteExecutionRow): WorkflowExecution {
     enqueuedAt: row.enqueuedAt === null ? null : new Date(row.enqueuedAt),
     input: optionalJsonObject(row.input, "input"),
     output: optionalJsonValue(row.output, "output"),
-    cancelRequestedAt:
-      row.cancelRequestedAt === null ? null : new Date(row.cancelRequestedAt),
+    entityType: row.entityType,
+    entityId: row.entityId,
+    terminationKind: terminationKind(row.terminationKind),
+    terminationRequestedAt:
+      row.terminationRequestedAt === null
+        ? null
+        : new Date(row.terminationRequestedAt),
+    terminationReason: terminationReason(row.terminationReason),
+    terminationNodeId: row.terminationNodeId,
     cancelEventName: row.cancelEventName,
     cancelPayload: optionalJsonObject(row.cancelPayload, "cancel_payload"),
   };

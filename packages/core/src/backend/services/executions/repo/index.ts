@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { Context, Duration, Effect, Layer, Schedule } from "effect";
 import { partition } from "es-toolkit/array";
 import {
@@ -121,7 +121,8 @@ async function reclaimStuckRuns(
     .where(
       and(
         inArray(workflowExecutions.id, executionIds),
-        inArray(workflowExecutions.status, [...IN_FLIGHT_EXECUTION_STATUSES])
+        inArray(workflowExecutions.status, [...IN_FLIGHT_EXECUTION_STATUSES]),
+        isNull(workflowExecutions.terminationKind)
       )
     )
     .returning({ id: workflowExecutions.id });
@@ -156,9 +157,9 @@ type CrossTableRepoMethods = {
    */
   readonly startForEntity: (input: {
     /**
-     * The row to open. Its `entityValue` is what Concurrency serializes on as
-     * well as what the column stores, and a start with nothing to serialize on
-     * leaves it out.
+     * The row to open. Concurrency serializes on its typed Entity identity when
+     * present, otherwise on the legacy `entityValue`. A start with neither
+     * identity leaves Entity-scoped Concurrency out.
      */
     execution: NewExecution;
     concurrency: Concurrency;
@@ -212,7 +213,16 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
         startForEntity: ({ execution, concurrency, supersededReason }) =>
           database
             .query(async (db) => {
-              const { entityValue } = execution;
+              const entityPredicate =
+                execution.entityType !== undefined &&
+                execution.entityId !== undefined
+                  ? and(
+                      eq(workflowExecutions.entityType, execution.entityType),
+                      eq(workflowExecutions.entityId, execution.entityId)
+                    )
+                  : execution.entityValue === undefined
+                    ? undefined
+                    : eq(workflowExecutions.entityValue, execution.entityValue);
 
               const findByDelivery = async (
                 tx: WfGraphDatabase | WfGraphTransaction
@@ -245,6 +255,8 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
                     runMode: execution.runMode,
                     startEventName: execution.startEventName,
                     entityValue: execution.entityValue,
+                    entityType: execution.entityType,
+                    entityId: execution.entityId,
                     deliveryId: execution.deliveryId,
                     input: execution.input,
                   })
@@ -262,7 +274,7 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
                 return row ?? (await findByDelivery(tx));
               };
 
-              if (concurrency === "unlimited" || !entityValue) {
+              if (concurrency === "unlimited" || !entityPredicate) {
                 const opened = await insertRunning(db);
                 return {
                   status: "started" as const,
@@ -296,11 +308,12 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
                     .where(
                       and(
                         eq(workflowExecutions.workflowId, execution.workflowId),
-                        eq(workflowExecutions.entityValue, entityValue),
+                        entityPredicate,
                         eq(workflowExecutions.runMode, execution.runMode),
                         inArray(workflowExecutions.status, [
                           ...IN_FLIGHT_EXECUTION_STATUSES,
-                        ])
+                        ]),
+                        isNull(workflowExecutions.terminationKind)
                       )
                     );
 
@@ -345,7 +358,8 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
                           inArray(workflowExecutions.id, ids),
                           inArray(workflowExecutions.status, [
                             ...IN_FLIGHT_EXECUTION_STATUSES,
-                          ])
+                          ]),
+                          isNull(workflowExecutions.terminationKind)
                         )
                       )
                       .returning({ id: workflowExecutions.id });

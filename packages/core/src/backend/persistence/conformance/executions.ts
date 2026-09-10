@@ -113,6 +113,242 @@ export function describeExecutionConformance({
       expect(retry.execution.id).toBe(started.execution.id);
     });
 
+    it("persists typed Entity identity and makes an Exit claim authoritative", async () => {
+      const store = await openDatabase();
+      const database = await store.open();
+      const otherConnection = await store.open();
+      await seedPublishedWorkflow(database);
+
+      const started = await attemptStart(database, {
+        deliveryId: "delivery_entity_exit",
+        entityValue: "legacy-correlation",
+        entityType: "appointment",
+        entityId: "appt_8813",
+        concurrency: "first-wins",
+      });
+      if (started.status !== "started") {
+        throw new Error("The Entity-bound run was refused");
+      }
+
+      expect(started.execution).toMatchObject({
+        entityValue: "legacy-correlation",
+        entityType: "appointment",
+        entityId: "appt_8813",
+      });
+
+      const replay = await attemptStart(otherConnection, {
+        deliveryId: "delivery_entity_exit",
+        entityValue: "different-retry-value",
+        entityType: "different-retry-type",
+        entityId: "different-retry-id",
+      });
+      expect(replay.status).toBe("started");
+      if (replay.status !== "started") {
+        throw new Error("The delivery replay was refused");
+      }
+      expect(replay.execution).toMatchObject({
+        id: started.execution.id,
+        entityValue: "legacy-correlation",
+        entityType: "appointment",
+        entityId: "appt_8813",
+      });
+
+      const competing = await attemptStart(otherConnection, {
+        deliveryId: "delivery_same_typed_entity",
+        entityValue: "different-legacy-correlation",
+        entityType: "appointment",
+        entityId: "appt_8813",
+        concurrency: "first-wins",
+      });
+      expect(competing).toMatchObject({
+        status: "refused",
+        inFlightExecutionIds: [started.execution.id],
+      });
+
+      const result = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const first = yield* executions.requestExit({
+            executionId: started.execution.id,
+            reason: "entity_condition_not_met",
+            nodeId: "node_check_1",
+          });
+          const replayed = yield* executions.requestExit({
+            executionId: started.execution.id,
+            reason: "entity_not_found",
+            nodeId: "node_check_2",
+          });
+          const cancel = yield* executions.requestCancelForEntity({
+            workflowId: "wf_1",
+            entityType: "appointment",
+            entityId: "appt_8813",
+            runMode: "live",
+            eventName: "appointment/cancelled",
+            payload: {},
+          });
+          const completion = yield* executions.finishRun({
+            executionId: started.execution.id,
+            status: "completed",
+            output: { shouldNotPersist: true },
+          });
+          const exited = yield* executions.finishRun({
+            executionId: started.execution.id,
+            status: "exited",
+          });
+          const repeatedExit = yield* executions.finishRun({
+            executionId: started.execution.id,
+            status: "exited",
+          });
+          const afterTerminal = yield* executions.requestExit({
+            executionId: started.execution.id,
+            reason: "entity_not_found",
+            nodeId: "node_check_3",
+          });
+          return {
+            first,
+            replayed,
+            cancel,
+            completion,
+            exited,
+            repeatedExit,
+            afterTerminal,
+            summary: yield* executions.findSummaryById(started.execution.id),
+            inFlight: yield* executions.listInFlightByWorkflow("wf_1"),
+          };
+        })
+      );
+
+      const expectedClaim = {
+        kind: "exit",
+        reason: "entity_condition_not_met",
+        nodeId: "node_check_1",
+      } as const;
+      expect(result.first).toMatchObject({
+        executionId: started.execution.id,
+        status: "running",
+        claim: expectedClaim,
+        didWrite: true,
+      });
+      expect(result.replayed).toMatchObject({
+        claim: expectedClaim,
+        didWrite: false,
+      });
+      expect(result.cancel).toEqual([]);
+      expect(result.completion).toMatchObject({
+        status: "running",
+        claim: expectedClaim,
+        didWrite: false,
+      });
+      expect(result.exited).toMatchObject({
+        status: "exited",
+        claim: expectedClaim,
+        didWrite: true,
+      });
+      expect(result.repeatedExit).toMatchObject({
+        status: "exited",
+        claim: expectedClaim,
+        didWrite: false,
+      });
+      expect(result.afterTerminal).toMatchObject({
+        status: "exited",
+        claim: expectedClaim,
+        didWrite: false,
+      });
+      expect(result.summary).toMatchObject({
+        status: "exited",
+        output: null,
+      });
+      expect(result.inFlight).toEqual([]);
+
+      const terminalReplay = await attemptStart(database, {
+        deliveryId: "delivery_entity_exit",
+        entityValue: "ignored-after-first-delivery",
+      });
+      expect(terminalReplay.status).toBe("started");
+      if (terminalReplay.status !== "started") {
+        throw new Error("The terminal delivery replay was refused");
+      }
+      expect(terminalReplay.execution).toMatchObject({
+        status: "exited",
+        cancelledAt: null,
+        entityType: "appointment",
+        entityId: "appt_8813",
+      });
+    });
+
+    it("keeps a Cancel claim when Exit races it", async () => {
+      const database = await openConnection();
+      await seedPublishedWorkflow(database);
+      const started = await attemptStart(database, {
+        deliveryId: "delivery_cancel_exit",
+        entityValue: "appointment_1",
+        entityType: "appointment",
+        entityId: "appointment_1",
+      });
+      if (started.status !== "started") {
+        throw new Error("The Entity-bound run was refused");
+      }
+
+      const result = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const cancel = yield* executions.requestCancelForEntity({
+            workflowId: "wf_1",
+            entityType: "appointment",
+            entityId: "appointment_1",
+            runMode: "live",
+            eventName: "appointment/cancelled",
+            payload: { reason: "host request" },
+          });
+          const exit = yield* executions.requestExit({
+            executionId: started.execution.id,
+            reason: "entity_condition_not_met",
+            nodeId: "node_check",
+          });
+          const refusedExitFinish = yield* executions.finishRun({
+            executionId: started.execution.id,
+            status: "exited",
+          });
+          const canceled = yield* executions.finishRun({
+            executionId: started.execution.id,
+            status: "canceled",
+          });
+          const repeatedCancel = yield* executions.endInFlight({
+            executionId: started.execution.id,
+            status: "canceled",
+          });
+          return { cancel, exit, refusedExitFinish, canceled, repeatedCancel };
+        })
+      );
+
+      const expectedClaim = {
+        kind: "cancel",
+        eventName: "appointment/cancelled",
+        payload: { reason: "host request" },
+      } as const;
+      expect(result.cancel).toEqual([started.execution.id]);
+      expect(result.exit).toMatchObject({
+        status: "running",
+        claim: expectedClaim,
+        didWrite: false,
+      });
+      expect(result.refusedExitFinish).toMatchObject({
+        status: "running",
+        claim: expectedClaim,
+        didWrite: false,
+      });
+      expect(result.canceled).toMatchObject({
+        status: "canceled",
+        claim: expectedClaim,
+        didWrite: true,
+      });
+      expect(result.repeatedCancel).toMatchObject({
+        status: "canceled",
+        claim: expectedClaim,
+        didWrite: false,
+      });
+    });
+
     it("enforces workflow-name and workflow-run uniqueness", async () => {
       const database = await openConnection();
       await database.run(
@@ -318,8 +554,7 @@ export function describeExecutionConformance({
           });
           const finished = yield* executions.finishRun({
             executionId,
-            status: "completed",
-            output: { ok: true },
+            status: "canceled",
           });
 
           const snapshot = {
@@ -358,14 +593,19 @@ export function describeExecutionConformance({
         eventName: "appointment/cancelled",
         payload: { reason: "host request" },
       });
-      expect(result.finished).toBe(true);
+      expect(result.finished).toMatchObject({
+        executionId: result.executionId,
+        status: "canceled",
+        claim: { kind: "cancel", eventName: "appointment/cancelled" },
+        didWrite: true,
+      });
       expect(result.summary).toMatchObject({
-        status: "completed",
-        output: { ok: true },
+        status: "canceled",
+        output: null,
       });
       expect(result.status).toEqual({
         id: result.executionId,
-        status: "completed",
+        status: "canceled",
       });
       expect(result.page).toMatchObject([
         { workflowName: "Appointments", workflowIsPaused: false },

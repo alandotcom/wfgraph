@@ -153,6 +153,89 @@ export function describeExecutionWaitConformance({
       expect(siblingClaim).not.toBeNull();
     });
 
+    it("does not park, re-park, list, or resume waits after an Exit claim", async () => {
+      const database = await openConnection();
+      await seedPublishedWorkflow(database);
+
+      const result = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const started = yield* executions.startForEntity({
+            execution: {
+              workflowId: "wf_1",
+              workflowVersionId: "ver_1",
+              startSource: "manual",
+              runMode: "live",
+              input: {},
+            },
+            concurrency: "unlimited",
+            supersededReason: "newer start",
+          });
+          if (started.status !== "started") {
+            throw new Error("Start was refused");
+          }
+          const firstWait = yield* executions.startWait({
+            executionId: started.execution.id,
+            workflowId: "wf_1",
+            runId: "run_1",
+            nodeId: "wait_1",
+            nodeName: "Approval",
+            workflowVersionId: "ver_1",
+            waitType: "event",
+            resumeToken: "resume_exit",
+            subscribedEvents: [EVENT_ARRIVAL.eventName],
+          });
+          if (!firstWait) throw new Error("Initial wait was refused");
+
+          yield* executions.requestExit({
+            executionId: started.execution.id,
+            reason: "entity_condition_not_met",
+            nodeId: "checkpoint_1",
+          });
+
+          return {
+            listed: yield* executions.listWaitsForEvent({
+              workflowId: "wf_1",
+              eventName: EVENT_ARRIVAL.eventName,
+              limit: 10,
+            }),
+            claimed: yield* executions.claimWaitingStateById({
+              waitStateId: firstWait.waitStateId,
+              eventName: EVENT_ARRIVAL.eventName,
+              arrival: EVENT_ARRIVAL,
+            }),
+            reparked: yield* executions.reparkWait({
+              waitStateId: firstWait.waitStateId,
+              workflowVersionId: "ver_1",
+              waitType: "event",
+              waitUntil: null,
+              subscribedEvents: [EVENT_ARRIVAL.eventName],
+              resumeToken: "resume_exit_again",
+              metadata: {},
+            }),
+            newlyParked: yield* executions.startWait({
+              executionId: started.execution.id,
+              workflowId: "wf_1",
+              runId: "run_1",
+              nodeId: "wait_2",
+              nodeName: "Second approval",
+              workflowVersionId: "ver_1",
+              waitType: "event",
+              resumeToken: "resume_exit_2",
+              subscribedEvents: [EVENT_ARRIVAL.eventName],
+            }),
+          };
+        })
+      );
+
+      expect(result).toEqual({
+        listed: [],
+        claimed: null,
+        reparked: { ok: false, reason: "not_waiting" },
+        newlyParked: undefined,
+      });
+    });
+
     it("refuses a first park resolved from a version the run has left", async () => {
       const database = await openConnection();
       await seedPublishedWorkflow(database);

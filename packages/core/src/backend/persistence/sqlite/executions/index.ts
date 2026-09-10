@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { partition } from "es-toolkit/array";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { Concurrency } from "@wfgraph/shared/lifecycle/lifecycle-rules";
@@ -53,7 +53,8 @@ function endInFlightExecutions(
   if (ids.length === 0) return Effect.succeed<string[]>([]);
   const inFlight = and(
     inArray(workflowExecutions.id, ids),
-    inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES)
+    inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES),
+    isNull(workflowExecutions.terminationKind)
   );
   return Effect.gen(function* () {
     const rows = yield* database
@@ -73,7 +74,8 @@ function endInFlightExecutions(
       .where(
         and(
           inArray(workflowExecutions.id, eligible),
-          inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES)
+          inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES),
+          isNull(workflowExecutions.terminationKind)
         )
       );
     return eligible;
@@ -96,7 +98,16 @@ function startForEntity(
         reclaimedExecutionIds: [],
       };
     }
-    if (concurrency === "unlimited" || !execution.entityValue) {
+    const entityPredicate =
+      execution.entityType !== undefined && execution.entityId !== undefined
+        ? and(
+            eq(workflowExecutions.entityType, execution.entityType),
+            eq(workflowExecutions.entityId, execution.entityId)
+          )
+        : execution.entityValue === undefined
+          ? undefined
+          : eq(workflowExecutions.entityValue, execution.entityValue);
+    if (concurrency === "unlimited" || !entityPredicate) {
       return {
         status: "started" as const,
         execution: yield* insertExecution(database, execution, "running"),
@@ -115,9 +126,10 @@ function startForEntity(
       .where(
         and(
           eq(workflowExecutions.workflowId, execution.workflowId),
-          eq(workflowExecutions.entityValue, execution.entityValue),
+          entityPredicate,
           eq(workflowExecutions.runMode, execution.runMode),
-          inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES)
+          inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES),
+          isNull(workflowExecutions.terminationKind)
         )
       );
 

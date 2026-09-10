@@ -5,6 +5,7 @@ import {
   eq,
   gt,
   inArray,
+  isNull,
   lte,
   notInArray,
   or,
@@ -109,7 +110,8 @@ function claimWait(
         and(
           identity,
           claimable,
-          inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES)
+          inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES),
+          isNull(workflowExecutions.terminationKind)
         )
       )
       .get();
@@ -152,7 +154,11 @@ export function makeSqliteWaitsMethods(
                   workflowExecutions.workflowVersionId,
                   input.workflowVersionId
                 ),
-                inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES)
+                inArray(
+                  workflowExecutions.status,
+                  IN_FLIGHT_EXECUTION_STATUSES
+                ),
+                isNull(workflowExecutions.terminationKind)
               )
             )
             .returning({ id: workflowExecutions.id });
@@ -185,6 +191,7 @@ export function makeSqliteWaitsMethods(
             .select({
               status: workflowWaitStates.status,
               pinnedVersionId: workflowExecutions.workflowVersionId,
+              terminationKind: workflowExecutions.terminationKind,
             })
             .from(workflowWaitStates)
             .leftJoin(
@@ -199,6 +206,9 @@ export function makeSqliteWaitsMethods(
           }
           if (row.pinnedVersionId !== input.workflowVersionId) {
             return refusedRepark("version_moved");
+          }
+          if (row.terminationKind !== null) {
+            return refusedRepark("not_waiting");
           }
 
           yield* database
@@ -285,6 +295,7 @@ export function makeSqliteWaitsMethods(
           eq(workflowWaitStates.workflowId, input.workflowId),
           eq(workflowWaitStates.status, "waiting"),
           inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES),
+          isNull(workflowExecutions.terminationKind),
           subscribedTo(input.eventName),
         ];
         if (input.afterId) {

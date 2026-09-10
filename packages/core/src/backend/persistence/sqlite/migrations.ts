@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { Data, Effect } from "effect";
+import { Data, Effect, Exit } from "effect";
 import { sql } from "drizzle-orm";
 import type { EffectSQLiteNodeDatabase } from "drizzle-orm/effect-sqlite-node";
 import type { MigrationMeta } from "drizzle-orm/migrator";
@@ -12,9 +12,9 @@ const LEGACY_SCHEMA_FINGERPRINTS = new Map([
 ]);
 const CURRENT_SCHEMA_FINGERPRINTS = new Set([
   // A database created by all generated migrations.
-  "88401776a5d04e0089b4a9bd4c4c9e0e4468da7c7a8eeabbba3c72bd79b59872",
+  "164a0ad7d45f4cbcb3224f11a23e701d324c56624b025a0d3581222bd79256a0",
   // An adopted version-6 or version-7 database keeps its original table DDL.
-  "1b21b793f1ac82dae9691cd1d3ae3f1b0d46cff59e731026248396e7a1c14f4d",
+  "0a7dbf55abf5155fd1825e9d4a9fe70dfa0f5442429fbe9294f0bd78d8e97154",
 ]);
 const EXPECTED_TABLES = [
   "integrations",
@@ -41,8 +41,63 @@ class SqliteInitializationError extends Data.TaggedError(
 
 type SqliteMigrationDatabase = Pick<
   EffectSQLiteNodeDatabase,
-  "all" | "get" | "run" | "transaction"
+  "all" | "get" | "run"
 >;
+
+/**
+ * Tries for an exclusive migration lock without joining SQLite's lock queue.
+ * A queued second initializer can prevent the current holder from upgrading
+ * its schema lock during a table rebuild, so contenders poll instead.
+ */
+function acquireExclusiveMigrationLock(
+  database: SqliteMigrationDatabase,
+  attemptsRemaining: number
+): Effect.Effect<void, unknown> {
+  return database
+    .run(sql`begin exclusive`)
+    .pipe(
+      Effect.catch((error) =>
+        attemptsRemaining <= 1
+          ? Effect.fail(error)
+          : Effect.sleep(10).pipe(
+              Effect.flatMap(() =>
+                acquireExclusiveMigrationLock(database, attemptsRemaining - 1)
+              )
+            )
+      )
+    );
+}
+
+function exclusiveMigrationTransaction<A, E>(
+  database: SqliteMigrationDatabase,
+  effect: Effect.Effect<A, E>
+): Effect.Effect<A, unknown> {
+  const acquire = Effect.gen(function* () {
+    const setting = yield* database.get<{ timeout: number }>(
+      sql`pragma busy_timeout`
+    );
+    yield* database.run(sql`pragma busy_timeout = 0`);
+    yield* acquireExclusiveMigrationLock(
+      database,
+      Math.max(1, Math.ceil(setting.timeout / 10))
+    ).pipe(
+      Effect.ensuring(
+        database
+          .run(sql.raw(`pragma busy_timeout = ${setting.timeout}`))
+          .pipe(Effect.orDie)
+      )
+    );
+  });
+
+  return Effect.acquireUseRelease(
+    acquire,
+    () => effect,
+    (_, exit) =>
+      database
+        .run(Exit.isSuccess(exit) ? sql`commit` : sql`rollback`)
+        .pipe(Effect.orDie)
+  );
+}
 
 type SqliteMigrationExecutor = Pick<
   EffectSQLiteNodeDatabase,
@@ -293,8 +348,10 @@ export const runSqliteMigrations = Effect.fn("runSqliteMigrations")(function* (
   yield* Effect.acquireUseRelease(
     database.run(sql`pragma foreign_keys = off`),
     () =>
-      database.transaction((transaction) =>
+      exclusiveMigrationTransaction(
+        database,
         Effect.gen(function* () {
+          const transaction = database;
           const existingViolations = new Set(
             (yield* transaction.all<ForeignKeyViolation>(
               sql`pragma foreign_key_check`

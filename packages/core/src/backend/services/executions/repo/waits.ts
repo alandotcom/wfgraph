@@ -7,6 +7,7 @@ import {
   getColumns,
   gt,
   inArray,
+  isNull,
   lte,
   notInArray,
   or,
@@ -409,6 +410,7 @@ export function makeWaitsMethods(
               inArray(workflowExecutions.status, [
                 ...IN_FLIGHT_EXECUTION_STATUSES,
               ]),
+              isNull(workflowExecutions.terminationKind),
               input.afterId
                 ? gt(workflowWaitStates.id, input.afterId)
                 : undefined,
@@ -524,7 +526,7 @@ export function makeWaitsMethods(
 }
 
 /**
- * Whether the execution a wait row belongs to still pins this Workflow Version.
+ * Whether the active execution a wait row belongs to still pins this Workflow Version.
  *
  * Correlated against `workflow_wait_states.execution_id`, so it is evaluated by
  * the statement it guards rather than as a separate read the caller could be
@@ -538,7 +540,8 @@ function pinnedVersionIs(db: WfGraphDatabase, workflowVersionId: string): SQL {
       .where(
         and(
           eq(workflowExecutions.id, workflowWaitStates.executionId),
-          eq(workflowExecutions.workflowVersionId, workflowVersionId)
+          eq(workflowExecutions.workflowVersionId, workflowVersionId),
+          isNull(workflowExecutions.terminationKind)
         )
       )
   );
@@ -589,7 +592,8 @@ async function claimWaitState(
                 eq(workflowExecutions.id, workflowWaitStates.executionId),
                 inArray(workflowExecutions.status, [
                   ...IN_FLIGHT_EXECUTION_STATUSES,
-                ])
+                ]),
+                isNull(workflowExecutions.terminationKind)
               )
             )
         )

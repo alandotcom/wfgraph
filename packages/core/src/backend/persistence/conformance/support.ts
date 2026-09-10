@@ -10,6 +10,7 @@ import { afterAll, afterEach } from "vitest";
 import { Effect, ManagedRuntime } from "effect";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { Concurrency } from "@wfgraph/shared/lifecycle/lifecycle-rules";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
   createIntegrationCipher,
   type IntegrationCipher,
@@ -169,6 +170,8 @@ export function seedPublishedWorkflow(
 export type StartOptions = {
   deliveryId: string;
   entityValue?: string | undefined;
+  entityType?: string | undefined;
+  entityId?: string | undefined;
   runMode?: "live" | "test" | undefined;
   concurrency?: Concurrency | undefined;
   workflowId?: string | undefined;
@@ -187,15 +190,17 @@ export function attemptStart(
     Effect.gen(function* () {
       const executions = yield* ExecutionRepo;
       return yield* executions.startForEntity({
-        execution: {
+        execution: omitUndefined({
           workflowId: options.workflowId ?? "wf_1",
           workflowVersionId: options.versionId ?? "ver_1",
-          startSource: "event",
+          startSource: "event" as const,
           runMode: options.runMode ?? "live",
           entityValue: options.entityValue ?? "appointment_1",
+          entityType: options.entityType,
+          entityId: options.entityId,
           deliveryId: options.deliveryId,
           input: {},
-        },
+        }),
         concurrency: options.concurrency ?? "unlimited",
         supersededReason: "newer start",
       });

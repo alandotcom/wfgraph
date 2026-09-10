@@ -20,7 +20,14 @@ type Repo = ExecutionRepo["Service"];
 const sendCancelRequested = vi.fn(
   () => Effect.void as Effect.Effect<void, InngestError>
 );
-const endInFlight = vi.fn<Repo["endInFlight"]>(() => Effect.succeed(true));
+const endInFlight = vi.fn<Repo["endInFlight"]>(() =>
+  Effect.succeed({
+    executionId: "exec_1",
+    status: "canceled",
+    claim: null,
+    didWrite: true,
+  })
+);
 const cancelWaits = vi.fn<Repo["cancelWaits"]>(() => Effect.succeed([]));
 const recordAuditEvent = vi.fn<Repo["recordAuditEvent"]>(() => Effect.void);
 
@@ -28,7 +35,14 @@ const recordAuditEvent = vi.fn<Repo["recordAuditEvent"]>(() => Effect.void);
 beforeEach(() => {
   vi.clearAllMocks();
   sendCancelRequested.mockImplementation(() => Effect.void);
-  endInFlight.mockImplementation(() => Effect.succeed(true));
+  endInFlight.mockImplementation(() =>
+    Effect.succeed({
+      executionId: "exec_1",
+      status: "canceled",
+      claim: null,
+      didWrite: true,
+    })
+  );
   cancelWaits.mockImplementation(() => Effect.succeed([]));
   recordAuditEvent.mockImplementation(() => Effect.void);
 });
@@ -143,8 +157,22 @@ describe("cancelInFlightRuns", () => {
     () =>
       Effect.gen(function* () {
         endInFlight
-          .mockImplementationOnce(() => Effect.succeed(false))
-          .mockImplementationOnce(() => Effect.succeed(true));
+          .mockImplementationOnce(() =>
+            Effect.succeed({
+              executionId: "exec_completed",
+              status: "completed",
+              claim: null,
+              didWrite: false,
+            })
+          )
+          .mockImplementationOnce(() =>
+            Effect.succeed({
+              executionId: "exec_still_waiting",
+              status: "canceled",
+              claim: null,
+              didWrite: true,
+            })
+          );
 
         const summary = yield* cancelInFlightRuns({
           workflowId: "workflow_1",

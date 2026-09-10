@@ -24,9 +24,11 @@ import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { JsonObject, JsonValue } from "@wfgraph/shared/types/json";
 import type {
+  ExecutionEntitySelector,
   ExecutionPageQuery,
   ExecutionStatusRow,
   ExecutionSummary,
+  ExecutionTerminationState,
   GlobalExecutionRow,
   InFlightExecutionRow,
   NewTerminalExecution,
@@ -80,8 +82,75 @@ const WORKFLOW_EXECUTIONS_LIMIT = 50;
 export function inFlightExecution(executionId: string): SQL | undefined {
   return and(
     eq(workflowExecutions.id, executionId),
-    inArray(workflowExecutions.status, [...IN_FLIGHT_EXECUTION_STATUSES])
+    inArray(workflowExecutions.status, [...IN_FLIGHT_EXECUTION_STATUSES]),
+    isNull(workflowExecutions.terminationKind)
   );
+}
+
+const TERMINATION_COLUMNS = {
+  executionId: workflowExecutions.id,
+  status: workflowExecutions.status,
+  kind: workflowExecutions.terminationKind,
+  requestedAt: workflowExecutions.terminationRequestedAt,
+  reason: workflowExecutions.terminationReason,
+  nodeId: workflowExecutions.terminationNodeId,
+  eventName: workflowExecutions.cancelEventName,
+  payload: workflowExecutions.cancelPayload,
+} as const;
+
+type TerminationRow = {
+  executionId: string;
+  status: WorkflowExecution["status"];
+  kind: "cancel" | "exit" | null;
+  requestedAt: Date | null;
+  reason: "entity_condition_not_met" | "entity_not_found" | null;
+  nodeId: string | null;
+  eventName: string | null;
+  payload: JsonObject | null;
+};
+
+function executionTerminationState(
+  row: TerminationRow,
+  didWrite = false
+): ExecutionTerminationState {
+  if (row.kind === null) {
+    return {
+      executionId: row.executionId,
+      status: row.status,
+      claim: null,
+      didWrite,
+    };
+  }
+  if (row.requestedAt === null) {
+    throw new Error("Execution termination claim has no timestamp");
+  }
+  if (row.kind === "cancel") {
+    return {
+      executionId: row.executionId,
+      status: row.status,
+      claim: {
+        kind: "cancel",
+        requestedAt: row.requestedAt,
+        eventName: row.eventName,
+        payload: row.payload,
+      },
+      didWrite,
+    };
+  }
+  if (row.reason === null || row.nodeId === null) {
+    throw new Error("Execution exit claim is incomplete");
+  }
+  return {
+    executionId: row.executionId,
+    status: row.status,
+    claim: {
+      kind: "exit",
+      requestedAt: row.requestedAt,
+      reason: row.reason,
+      nodeId: row.nodeId,
+    },
+    didWrite,
+  };
 }
 
 function buildPageFilters(query: ExecutionPageQuery): SQL[] {
@@ -257,7 +326,7 @@ export type RunsRepoMethods = {
     executionId: string;
     status: "canceled" | "superseded";
     error?: string | undefined;
-  }) => Effect.Effect<boolean, DatabaseError>;
+  }) => Effect.Effect<ExecutionTerminationState | null, DatabaseError>;
   /**
    * Flag every in-flight run of this workflow about this entity for the
    * Canceled outlet, answering the ids flagged.
@@ -269,13 +338,27 @@ export type RunsRepoMethods = {
    * The rows keep their status -- a cancellation is a routed continuation, so
    * the run ends itself once it has read the flag at its next node boundary.
    */
-  readonly requestCancelForEntity: (input: {
-    workflowId: string;
-    entityValue: string;
-    runMode: WorkflowExecution["runMode"];
-    eventName: string;
-    payload: JsonObject;
-  }) => Effect.Effect<string[], DatabaseError>;
+  readonly requestCancelForEntity: (
+    input: {
+      workflowId: string;
+      runMode: WorkflowExecution["runMode"];
+      eventName: string;
+      payload: JsonObject;
+    } & ExecutionEntitySelector
+  ) => Effect.Effect<string[], DatabaseError>;
+  /**
+   * Atomically claims an execution-wide Entity Eligibility exit and returns the
+   * authoritative stored boundary, including an earlier competing outcome.
+   */
+  readonly requestExit: (input: {
+    executionId: string;
+    reason: "entity_condition_not_met" | "entity_not_found";
+    nodeId: string;
+  }) => Effect.Effect<ExecutionTerminationState | null, DatabaseError>;
+  /** The authoritative boundary state, or null when the execution is absent. */
+  readonly findTerminationState: (
+    executionId: string
+  ) => Effect.Effect<ExecutionTerminationState | null, DatabaseError>;
   /** The cancel a run was flagged with, or null when it carries none. */
   readonly findPendingCancel: (
     executionId: string
@@ -288,10 +371,10 @@ export type RunsRepoMethods = {
    */
   readonly finishRun: (input: {
     executionId: string;
-    status: "completed" | "failed" | "canceled";
+    status: "completed" | "failed" | "canceled" | "exited";
     output?: JsonValue | undefined;
     error?: string | undefined;
-  }) => Effect.Effect<boolean, DatabaseError>;
+  }) => Effect.Effect<ExecutionTerminationState | null, DatabaseError>;
 };
 
 /** Builds the `workflow_executions` slice of `ExecutionRepo` over one database. */
@@ -370,7 +453,8 @@ export function makeRunsMethods(
               eq(workflowExecutions.workflowId, workflowId),
               inArray(workflowExecutions.status, [
                 ...IN_FLIGHT_EXECUTION_STATUSES,
-              ])
+              ]),
+              isNull(workflowExecutions.terminationKind)
             )
           )
           .orderBy(
@@ -451,6 +535,8 @@ export function makeRunsMethods(
             runMode: input.runMode,
             startEventName: input.startEventName,
             entityValue: input.entityValue,
+            entityType: input.entityType,
+            entityId: input.entityId,
             input: input.input,
             output: input.output,
             error: input.error,
@@ -485,7 +571,8 @@ export function makeRunsMethods(
               eq(workflowExecutions.id, input.executionId),
               inArray(workflowExecutions.status, [
                 ...IN_FLIGHT_EXECUTION_STATUSES,
-              ])
+              ]),
+              isNull(workflowExecutions.terminationKind)
             )
           )
           .returning({ id: workflowExecutions.id });
@@ -502,7 +589,8 @@ export function makeRunsMethods(
             and(
               eq(workflowExecutions.id, input.executionId),
               eq(workflowExecutions.status, "waiting"),
-              eq(workflowExecutions.workflowVersionId, input.fromVersionId)
+              eq(workflowExecutions.workflowVersionId, input.fromVersionId),
+              isNull(workflowExecutions.terminationKind)
             )
           )
           .returning({ id: workflowExecutions.id });
@@ -519,7 +607,8 @@ export function makeRunsMethods(
             and(
               eq(workflowExecutions.id, input.executionId),
               inArray(workflowExecutions.status, ["waiting", "running"]),
-              eq(workflowExecutions.workflowVersionId, input.workflowVersionId)
+              eq(workflowExecutions.workflowVersionId, input.workflowVersionId),
+              isNull(workflowExecutions.terminationKind)
             )
           )
           .returning({ id: workflowExecutions.id });
@@ -536,6 +625,7 @@ export function makeRunsMethods(
             and(
               eq(workflowExecutions.id, input.executionId),
               eq(workflowExecutions.status, "running"),
+              isNull(workflowExecutions.terminationKind),
               exists(
                 db
                   .select({ id: workflowWaitStates.id })
@@ -557,7 +647,7 @@ export function makeRunsMethods(
     endInFlight: (input) =>
       database.query(async (db) => {
         const now = new Date();
-        const ended = await db
+        const updated = await db
           .update(workflowExecutions)
           .set({
             status: input.status,
@@ -569,30 +659,45 @@ export function makeRunsMethods(
           .where(inFlightExecution(input.executionId))
           .returning({ id: workflowExecutions.id });
 
-        return ended.length > 0;
+        const [state] = await db
+          .select(TERMINATION_COLUMNS)
+          .from(workflowExecutions)
+          .where(eq(workflowExecutions.id, input.executionId))
+          .limit(1);
+        return state
+          ? executionTerminationState(state, updated.length > 0)
+          : null;
       }),
 
     requestCancelForEntity: (input) =>
       database.query(async (db) => {
+        const requestedAt = new Date();
+        const entityPredicate =
+          input.entityType === undefined
+            ? eq(workflowExecutions.entityValue, input.entityValue)
+            : and(
+                eq(workflowExecutions.entityType, input.entityType),
+                eq(workflowExecutions.entityId, input.entityId)
+              );
         const flagged = await db
           .update(workflowExecutions)
           .set({
-            cancelRequestedAt: new Date(),
+            terminationKind: "cancel",
+            terminationRequestedAt: requestedAt,
             cancelEventName: input.eventName,
             cancelPayload: input.payload,
           })
           .where(
             and(
               eq(workflowExecutions.workflowId, input.workflowId),
-              eq(workflowExecutions.entityValue, input.entityValue),
+              entityPredicate,
               eq(workflowExecutions.runMode, input.runMode),
               inArray(workflowExecutions.status, [
                 ...IN_FLIGHT_EXECUTION_STATUSES,
               ]),
-              // First cancel wins, held on the statement: a second Cancel Event
-              // for the same entity would otherwise overwrite the payload the
-              // Canceled branch is already running against.
-              isNull(workflowExecutions.cancelRequestedAt)
+              // The first boundary claim owns the run. A second Cancel Event or
+              // a concurrent exit cannot replace its kind or payload.
+              isNull(workflowExecutions.terminationKind)
             )
           )
           .returning({ id: workflowExecutions.id });
@@ -600,18 +705,51 @@ export function makeRunsMethods(
         return flagged.map((row) => row.id);
       }),
 
+    requestExit: (input) =>
+      database.query(async (db) => {
+        const updated = await db
+          .update(workflowExecutions)
+          .set({
+            terminationKind: "exit",
+            terminationRequestedAt: new Date(),
+            terminationReason: input.reason,
+            terminationNodeId: input.nodeId,
+          })
+          .where(inFlightExecution(input.executionId))
+          .returning({ id: workflowExecutions.id });
+
+        const [state] = await db
+          .select(TERMINATION_COLUMNS)
+          .from(workflowExecutions)
+          .where(eq(workflowExecutions.id, input.executionId))
+          .limit(1);
+        return state
+          ? executionTerminationState(state, updated.length > 0)
+          : null;
+      }),
+
+    findTerminationState: (executionId) =>
+      database.query(async (db) => {
+        const [state] = await db
+          .select(TERMINATION_COLUMNS)
+          .from(workflowExecutions)
+          .where(eq(workflowExecutions.id, executionId))
+          .limit(1);
+        return state ? executionTerminationState(state) : null;
+      }),
+
     findPendingCancel: (executionId) =>
       database.query(async (db) => {
         const execution = await db.query.workflowExecutions.findFirst({
           where: { id: executionId },
           columns: {
-            cancelRequestedAt: true,
+            terminationKind: true,
             cancelEventName: true,
             cancelPayload: true,
           },
         });
 
-        if (!execution?.cancelRequestedAt) {
+        if (execution?.terminationKind !== "cancel") {
           return null;
         }
 
@@ -623,13 +761,20 @@ export function makeRunsMethods(
 
     finishRun: (input) =>
       database.query(async (db) => {
-        const finished = await db
+        const claimGuard =
+          input.status === "canceled"
+            ? eq(workflowExecutions.terminationKind, "cancel")
+            : input.status === "exited"
+              ? eq(workflowExecutions.terminationKind, "exit")
+              : isNull(workflowExecutions.terminationKind);
+        const updated = await db
           .update(workflowExecutions)
           .set({
             status: input.status,
             output: input.output,
             error: input.error,
             waitingAt: null,
+            cancelledAt: input.status === "canceled" ? new Date() : null,
             completedAt: new Date(),
             // Derived here rather than passed in, because the caller's clock is
             // the workflow function body, which a durable runtime re-runs on
@@ -637,10 +782,25 @@ export function makeRunsMethods(
             // so both ends of the elapsed come from the same place.
             duration: sql`round(extract(epoch from ((now() at time zone 'utc') - ${workflowExecutions.startedAt})) * 1000)::text`,
           })
-          .where(inFlightExecution(input.executionId))
+          .where(
+            and(
+              eq(workflowExecutions.id, input.executionId),
+              inArray(workflowExecutions.status, [
+                ...IN_FLIGHT_EXECUTION_STATUSES,
+              ]),
+              claimGuard
+            )
+          )
           .returning({ id: workflowExecutions.id });
 
-        return finished.length > 0;
+        const [state] = await db
+          .select(TERMINATION_COLUMNS)
+          .from(workflowExecutions)
+          .where(eq(workflowExecutions.id, input.executionId))
+          .limit(1);
+        return state
+          ? executionTerminationState(state, updated.length > 0)
+          : null;
       }),
   };
 }

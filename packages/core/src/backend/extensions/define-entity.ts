@@ -18,10 +18,7 @@ import {
   isEffectSchema,
   type StandardSchema,
 } from "@wfgraph/shared/types/schema";
-import {
-  type JsonObject,
-  readJsonObject,
-} from "@wfgraph/shared/types/json";
+import { type JsonObject, readJsonObject } from "@wfgraph/shared/types/json";
 import { jsonSchemaLibraryOptions } from "@wfgraph/shared/graph/schema-codec";
 import { requireOutputFieldsFromSchema } from "@wfgraph/shared/graph/output-fields";
 import type { ReferenceField } from "@wfgraph/shared/graph/node-references";
@@ -111,7 +108,10 @@ function schemaDigest(schema: StandardSchema<unknown>): string {
     .digest("hex");
 }
 
-function invalidState(entityType: string, failure: string): EntityStateRejected {
+function invalidState(
+  entityType: string,
+  failure: string
+): EntityStateRejected {
   return new EntityStateRejected(
     entityType,
     `Entity "${entityType}" returned current state its schema does not accept: ${failure}`

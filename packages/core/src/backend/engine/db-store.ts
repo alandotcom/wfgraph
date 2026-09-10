@@ -66,12 +66,14 @@ export function createDbWorkflowStore(
   function completeRun(
     input: CompleteRunInput
   ): Effect.Effect<boolean, DatabaseError> {
-    return repo.finishRun({
-      executionId: input.executionId,
-      status: input.status,
-      output: redactSensitiveData(input.output),
-      error: input.failure?.message,
-    });
+    return repo
+      .finishRun({
+        executionId: input.executionId,
+        status: input.status,
+        output: redactSensitiveData(input.output),
+        error: input.failure?.message,
+      })
+      .pipe(Effect.map((state) => state?.didWrite ?? false));
   }
 
   return {

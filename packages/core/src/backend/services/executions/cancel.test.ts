@@ -27,7 +27,14 @@ const listWaitingStates = vi.fn<Repo["listWaitingStates"]>(() =>
   Effect.succeed([])
 );
 const recordAuditEvent = vi.fn<Repo["recordAuditEvent"]>(() => Effect.void);
-const endInFlight = vi.fn<Repo["endInFlight"]>(() => Effect.succeed(true));
+const endInFlight = vi.fn<Repo["endInFlight"]>(() =>
+  Effect.succeed({
+    executionId: "exec_1",
+    status: "canceled",
+    claim: null,
+    didWrite: true,
+  })
+);
 const cancelWaits = vi.fn<Repo["cancelWaits"]>(() => Effect.succeed([]));
 const sendCancelRequested = vi.fn(
   () => Effect.void as Effect.Effect<void, InngestError>
@@ -66,7 +73,14 @@ beforeEach(() => {
   );
   listWaitingStates.mockImplementation(() => Effect.succeed([]));
   recordAuditEvent.mockImplementation(() => Effect.void);
-  endInFlight.mockImplementation(() => Effect.succeed(true));
+  endInFlight.mockImplementation(() =>
+    Effect.succeed({
+      executionId: "exec_1",
+      status: "canceled",
+      claim: null,
+      didWrite: true,
+    })
+  );
   cancelWaits.mockImplementation(() => Effect.succeed([]));
   sendCancelRequested.mockImplementation(() => Effect.void);
 });
