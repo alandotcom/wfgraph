@@ -43,6 +43,7 @@ function targetGraph(
     withWaitNode?: boolean;
     waitEnabled?: boolean;
     waitConfig?: Record<string, unknown>;
+    withAddedNodeAboveWait?: boolean;
   } = {}
 ): SerializedWorkflowGraph {
   const withWaitNode = options.withWaitNode ?? true;
@@ -72,6 +73,19 @@ function targetGraph(
           config: { actionType: "http.request" },
         },
       },
+      ...(options.withAddedNodeAboveWait
+        ? [
+            {
+              id: "added_1",
+              position: { x: 0, y: 50 },
+              data: {
+                label: "Added",
+                type: "action" as const,
+                config: { actionType: "http.request" },
+              },
+            },
+          ]
+        : []),
       ...(withWaitNode ? [waitNode] : []),
       {
         id: "after_1",
@@ -88,7 +102,12 @@ function targetGraph(
     ],
     edges: withWaitNode
       ? [
-          { id: "e1", source: "before_1", target: "wait_1" },
+          ...(options.withAddedNodeAboveWait
+            ? [
+                { id: "e0", source: "before_1", target: "added_1" },
+                { id: "e1", source: "added_1", target: "wait_1" },
+              ]
+            : [{ id: "e1", source: "before_1", target: "wait_1" }]),
           { id: "e2", source: "wait_1", target: "after_1" },
         ]
       : [{ id: "e2", source: "before_1", target: "after_1" }],
@@ -100,34 +119,32 @@ function targetGraph(
  * Wait references the node between them, which the run reaches only after the
  * first Wait releases.
  */
-function twoWaitGraph(): SerializedWorkflowGraph {
-  const node = (id: string, config: Record<string, unknown>) => ({
-    id,
-    position: { x: 0, y: 0 },
-    data: { label: id, type: "action" as const, config },
-  });
-
+function graphWithReference(input: {
+  nodeIds: string[];
+  waitNodeIds: string[];
+  consumerId: string;
+  referencedNodeId: string;
+  edges: Array<{ id: string; source: string; target: string }>;
+}): SerializedWorkflowGraph {
   return createSerializedWorkflowGraph({
-    nodes: [
-      node("wait_1", {
-        actionType: BUILT_IN_ACTION_IDS.wait,
-        waitMode: "delay",
-      }),
-      node("between_1", { actionType: "http.request" }),
-      node("wait_2", {
-        actionType: BUILT_IN_ACTION_IDS.wait,
-        waitMode: "delay",
-      }),
-      node("after_2", {
-        actionType: "http.request",
-        subject: "{{@between_1:Between.value}}",
-      }),
-    ],
-    edges: [
-      { id: "e1", source: "wait_1", target: "between_1" },
-      { id: "e2", source: "between_1", target: "wait_2" },
-      { id: "e3", source: "wait_2", target: "after_2" },
-    ],
+    nodes: input.nodeIds.map((id) => ({
+      id,
+      position: { x: 0, y: 0 },
+      data: {
+        label: id,
+        type: "action" as const,
+        config: {
+          actionType: input.waitNodeIds.includes(id)
+            ? BUILT_IN_ACTION_IDS.wait
+            : "http.request",
+          ...(input.waitNodeIds.includes(id) ? { waitMode: "delay" } : {}),
+          ...(id === input.consumerId
+            ? { subject: `{{@${input.referencedNodeId}:Source.value}}` }
+            : {}),
+        },
+      },
+    })),
+    edges: input.edges,
   });
 }
 
@@ -185,6 +202,7 @@ function makeMigrationSeams(input: {
   executions?: InFlightExecutionRow[] | undefined;
   waitStates?: WorkflowWaitState[] | undefined;
   nodeOutputs?: Record<string, JsonValue> | undefined;
+  nodeLogNodeIds?: string[] | undefined;
   repinned?: boolean | undefined;
   sendWaitSignal?: InngestClient["Service"]["sendWaitSignal"] | undefined;
   recordAuditEvent?: ExecutionRepo["Service"]["recordAuditEvent"] | undefined;
@@ -197,6 +215,7 @@ function makeMigrationSeams(input: {
     order: [] as string[],
     waitLookups: [] as string[][],
     outputReads: [] as string[],
+    nodeStatusReads: [] as string[],
     workflowIdReads: [] as string[],
     repins: [] as Parameters<ExecutionRepo["Service"]["repinVersion"]>[0][],
     auditEvents: [] as Parameters<
@@ -245,6 +264,14 @@ function makeMigrationSeams(input: {
           Effect.sync(() => {
             calls.outputReads.push(executionId);
             return input.nodeOutputs ?? {};
+          }),
+        listNodeStatuses: (executionId) =>
+          Effect.sync(() => {
+            calls.nodeStatusReads.push(executionId);
+            return (input.nodeLogNodeIds ?? ["before_1"]).map((nodeId) => ({
+              nodeId,
+              status: "success" as const,
+            }));
           }),
         repinVersion: (repin) =>
           Effect.sync(() => {
@@ -397,9 +424,58 @@ describe("previewMigration", () => {
       })
     );
 
+    it.effect("refuses an enabled node added above the parked Wait", () =>
+      Effect.gen(function* () {
+        const seams = makeMigrationSeams({
+          graph: targetGraph({ withAddedNodeAboveWait: true }),
+          executions: [inFlightRow({ id: "exec_1" })],
+          waitStates: [waitRow({ id: "wait_row_1", executionId: "exec_1" })],
+          nodeLogNodeIds: ["before_1"],
+        });
+
+        const report = yield* previewMigration({
+          workflowId: WORKFLOW_ID,
+        }).pipe(Effect.provide(seams.layer));
+
+        assert.deepStrictEqual(report.refused, [
+          {
+            executionId: "exec_1",
+            fromVersionNumber: 1,
+            reason: "node_added_above_wait",
+            detail: "added_1",
+          },
+        ]);
+      })
+    );
+
+    it.effect("accepts an added node with a node log row", () =>
+      Effect.gen(function* () {
+        const seams = makeMigrationSeams({
+          graph: targetGraph({ withAddedNodeAboveWait: true }),
+          executions: [inFlightRow({ id: "exec_1" })],
+          waitStates: [waitRow({ id: "wait_row_1", executionId: "exec_1" })],
+          nodeLogNodeIds: ["before_1", "added_1"],
+        });
+
+        const report = yield* previewMigration({
+          workflowId: WORKFLOW_ID,
+        }).pipe(Effect.provide(seams.layer));
+
+        assert.deepStrictEqual(report.refused, []);
+        assert.strictEqual(report.eligible.length, 1);
+      })
+    );
+
     it.effect("refuses a template the run recorded no output for", () =>
       Effect.gen(function* () {
         const seams = makeMigrationSeams({
+          graph: graphWithReference({
+            nodeIds: ["before_1", "wait_1", "after_1"],
+            waitNodeIds: ["wait_1"],
+            consumerId: "after_1",
+            referencedNodeId: "before_1",
+            edges: [{ id: "e1", source: "wait_1", target: "after_1" }],
+          }),
           executions: [inFlightRow({ id: "exec_1" })],
           waitStates: [waitRow({ id: "wait_row_1", executionId: "exec_1" })],
           nodeOutputs: {},
@@ -465,6 +541,13 @@ describe("previewMigration", () => {
     it.effect("refuses a field the recorded output does not hold", () =>
       Effect.gen(function* () {
         const seams = makeMigrationSeams({
+          graph: graphWithReference({
+            nodeIds: ["before_1", "wait_1", "after_1"],
+            waitNodeIds: ["wait_1"],
+            consumerId: "after_1",
+            referencedNodeId: "before_1",
+            edges: [{ id: "e1", source: "wait_1", target: "after_1" }],
+          }),
           executions: [inFlightRow({ id: "exec_1" })],
           waitStates: [waitRow({ id: "wait_row_1", executionId: "exec_1" })],
           // `before_1` ran, but it left no `value`, so the template below the
@@ -558,10 +641,91 @@ describe("previewMigration", () => {
       })
     );
 
-    it.effect("resolves a reference below one of the run's other Waits", () =>
+    it.effect("refuses a reference across two parked branches", () =>
       Effect.gen(function* () {
         const seams = makeMigrationSeams({
-          graph: twoWaitGraph(),
+          graph: graphWithReference({
+            nodeIds: ["wait_1", "branch_1", "wait_2", "branch_2"],
+            waitNodeIds: ["wait_1", "wait_2"],
+            consumerId: "branch_1",
+            referencedNodeId: "branch_2",
+            edges: [
+              { id: "e1", source: "wait_1", target: "branch_1" },
+              { id: "e2", source: "wait_2", target: "branch_2" },
+            ],
+          }),
+          executions: [inFlightRow({ id: "exec_1" })],
+          waitStates: [
+            waitRow({ id: "wait_row_1", executionId: "exec_1" }),
+            waitRow({
+              id: "wait_row_2",
+              executionId: "exec_1",
+              nodeId: "wait_2",
+            }),
+          ],
+          nodeOutputs: {},
+        });
+
+        const report = yield* previewMigration({
+          workflowId: WORKFLOW_ID,
+        }).pipe(Effect.provide(seams.layer));
+
+        assert.deepStrictEqual(report.refused, [
+          {
+            executionId: "exec_1",
+            fromVersionNumber: 1,
+            reason: "unresolved_reference",
+            detail: "branch_1.subject",
+          },
+        ]);
+      })
+    );
+
+    it.effect(
+      "accepts a reference to an upstream node below the same Wait",
+      () =>
+        Effect.gen(function* () {
+          const seams = makeMigrationSeams({
+            graph: graphWithReference({
+              nodeIds: ["wait_1", "source_1", "consumer_1"],
+              waitNodeIds: ["wait_1"],
+              consumerId: "consumer_1",
+              referencedNodeId: "source_1",
+              edges: [
+                { id: "e1", source: "wait_1", target: "source_1" },
+                { id: "e2", source: "source_1", target: "consumer_1" },
+              ],
+            }),
+            executions: [inFlightRow({ id: "exec_1" })],
+            waitStates: [waitRow({ id: "wait_row_1", executionId: "exec_1" })],
+            nodeOutputs: {},
+          });
+
+          const report = yield* previewMigration({
+            workflowId: WORKFLOW_ID,
+          }).pipe(Effect.provide(seams.layer));
+
+          assert.deepStrictEqual(report.refused, []);
+          assert.strictEqual(report.eligible.length, 1);
+          assert.deepStrictEqual(seams.calls.outputReads, []);
+        })
+    );
+
+    it.effect("accepts a reference through a join of two parked branches", () =>
+      Effect.gen(function* () {
+        const seams = makeMigrationSeams({
+          graph: graphWithReference({
+            nodeIds: ["wait_1", "branch_1", "wait_2", "branch_2", "join_1"],
+            waitNodeIds: ["wait_1", "wait_2"],
+            consumerId: "join_1",
+            referencedNodeId: "branch_2",
+            edges: [
+              { id: "e1", source: "wait_1", target: "branch_1" },
+              { id: "e2", source: "wait_2", target: "branch_2" },
+              { id: "e3", source: "branch_1", target: "join_1" },
+              { id: "e4", source: "branch_2", target: "join_1" },
+            ],
+          }),
           executions: [inFlightRow({ id: "exec_1" })],
           waitStates: [
             waitRow({ id: "wait_row_1", executionId: "exec_1" }),
@@ -579,16 +743,38 @@ describe("previewMigration", () => {
         }).pipe(Effect.provide(seams.layer));
 
         assert.deepStrictEqual(report.refused, []);
-        assert.deepStrictEqual(report.eligible, [
+        assert.strictEqual(report.eligible.length, 1);
+        assert.deepStrictEqual(seams.calls.outputReads, []);
+      })
+    );
+
+    it.effect("refuses a Wait that references itself", () =>
+      Effect.gen(function* () {
+        const seams = makeMigrationSeams({
+          graph: graphWithReference({
+            nodeIds: ["wait_1"],
+            waitNodeIds: ["wait_1"],
+            consumerId: "wait_1",
+            referencedNodeId: "wait_1",
+            edges: [],
+          }),
+          executions: [inFlightRow({ id: "exec_1" })],
+          waitStates: [waitRow({ id: "wait_row_1", executionId: "exec_1" })],
+          nodeOutputs: {},
+        });
+
+        const report = yield* previewMigration({
+          workflowId: WORKFLOW_ID,
+        }).pipe(Effect.provide(seams.layer));
+
+        assert.deepStrictEqual(report.refused, [
           {
             executionId: "exec_1",
             fromVersionNumber: 1,
-            parkedNodeIds: ["wait_1", "wait_2"],
+            reason: "unresolved_reference",
+            detail: "wait_1.subject",
           },
         ]);
-        // Nothing is pending once the two Waits' reach is unioned, so the run's
-        // outputs are never read.
-        assert.deepStrictEqual(seams.calls.outputReads, []);
       })
     );
 

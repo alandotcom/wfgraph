@@ -5,7 +5,7 @@
  * A refusal reason is a machine word the client renders its own sentence for.
  * `detail` names the node or field the reason is about, never a config value.
  *
- * The five preview reasons:
+ * The six preview reasons:
  *
  * - `draft_run`: the run pins a draft snapshot, which has no published history
  *   to move along.
@@ -13,9 +13,12 @@
  *   later graph could take over. Asking again once it parks can succeed.
  * - `wait_node_missing`: the node the run is parked on is not an enabled Wait
  *   node in the target graph.
- * - `unresolved_reference`: a node below the parked Wait in the target graph
- *   references a node that neither runs below one of this run's parked Waits
- *   nor left an output in this run.
+ * - `node_added_above_wait`: the target graph has an enabled, non-Lifecycle node
+ *   outside every parked Wait's descendants with no node log row in this run.
+ *   Waking would execute work before or beside a parked Wait.
+ * - `unresolved_reference`: a node at or below a parked Wait references a node
+ *   that has no recorded output and is not upstream of the consuming node in
+ *   the target graph.
  * - `wait_timeout_elapsed`: the run is parked on an Event Wait, and the target
  *   graph's timeout for that node, measured from when the run parked, is
  *   already in the past. The migrated hop would time out on arrival.
@@ -39,6 +42,7 @@ export const MIGRATION_REFUSAL_REASONS = [
   "draft_run",
   "executing",
   "wait_node_missing",
+  "node_added_above_wait",
   "unresolved_reference",
   "wait_timeout_elapsed",
 ] as const;

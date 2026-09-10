@@ -6,9 +6,10 @@
  * a run that woke since the last look is no longer eligible. The dialog stays
  * mounted while it is closed, so the report of the previous open is still in
  * the cache when it reopens; the report and the confirm button are therefore
- * shown only while the query is not fetching. The confirm sends the ids the
- * preview called eligible in batches of `MIGRATION_BATCH_SIZE`, and the server
- * classifies each run a second time before it moves.
+ * shown only after a successful refetch. The confirm sends the ids the preview
+ * called eligible in batches of `MIGRATION_BATCH_SIZE`, and the server classifies
+ * each run a second time before it moves. Completed batches refresh run history
+ * and remain visible to the user when a later batch fails.
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -50,17 +51,32 @@ const MIGRATION_BATCH_SIZE = 500;
 /**
  * Sends the run ids in batches the migrate input accepts, one batch at a time,
  * and answers the outcomes of every batch under the first batch's target
- * version.
+ * version. When a later batch fails, `onPartialFailure` receives every outcome
+ * that committed before the original failure is rethrown.
  */
 async function migrateInBatches(
   input: WorkflowMigrationInput,
-  send: (batch: WorkflowMigrationInput) => Promise<WorkflowMigrationPayload>
+  send: (batch: WorkflowMigrationInput) => Promise<WorkflowMigrationPayload>,
+  onPartialFailure: (payload: WorkflowMigrationPayload) => Promise<void>
 ): Promise<WorkflowMigrationPayload> {
-  const payloads: WorkflowMigrationPayload[] = [];
-  for (const executionIds of chunk(input.executionIds, MIGRATION_BATCH_SIZE)) {
-    // oxlint-disable-next-line no-await-in-loop -- the batches go one at a time, so the server classifies each run against the rows the previous batch left behind.
-    payloads.push(await send({ ...input, executionIds }));
-  }
+  const payloads = await chunk(input.executionIds, MIGRATION_BATCH_SIZE).reduce<
+    Promise<WorkflowMigrationPayload[]>
+  >(async (pendingPayloads, executionIds) => {
+    const completedPayloads = await pendingPayloads;
+    try {
+      const payload = await send({ ...input, executionIds });
+      return [...completedPayloads, payload];
+    } catch (error) {
+      const first = completedPayloads[0];
+      if (first) {
+        await onPartialFailure({
+          ...first,
+          outcomes: completedPayloads.flatMap((payload) => payload.outcomes),
+        });
+      }
+      throw error;
+    }
+  }, Promise.resolve([]));
   const first = payloads[0];
   if (!first) {
     throw new Error("A migration needs at least one run id.");
@@ -116,13 +132,24 @@ export function MigrationDialog({
     ...migrateOptions,
     mutationFn: (input: WorkflowMigrationInput, context) =>
       sendBatch
-        ? migrateInBatches(input, (batch) => sendBatch(batch, context))
+        ? migrateInBatches(
+            input,
+            (batch) => sendBatch(batch, context),
+            async (payload) => {
+              const { migrated } = migrationOutcomeCounts(payload);
+              await refreshRunHistory(queryClient);
+              toast.info(
+                `${runCountLabel(migrated)} moved before the migration failed`
+              );
+            }
+          )
         : Promise.reject(new Error("The migrate procedure carries no call.")),
   });
 
   // The report of the previous open survives in the cache, so it is withheld
   // until the fresh classification lands.
-  const report = preview.isFetching ? undefined : preview.data;
+  const report =
+    preview.isFetching || preview.isError ? undefined : preview.data;
   const eligibleCount = report?.eligible.length ?? 0;
   const isMigrating = migrate.isPending;
 

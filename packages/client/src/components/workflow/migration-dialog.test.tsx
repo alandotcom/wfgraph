@@ -1,13 +1,20 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  MutationCache,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
 import { fireEvent, render, waitFor } from "@testing-library/react";
+import { toast } from "sonner";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MigrationDialog } from "#src/components/workflow/migration-dialog";
 import {
   extractRpcProcedurePath,
   parseRpcRequestInput,
+  rpcErrorResponse,
   rpcJsonResponse,
   rpcUrl,
 } from "#src/lib/rpc-fetch-test-support";
+import { mutationErrorToast } from "#src/lib/query-client";
 import { orpcQuery } from "#src/lib/rpc-query";
 import type {
   WorkflowMigrationPayload,
@@ -58,7 +65,9 @@ const preview: WorkflowMigrationPreviewPayload = {
 function stubRpc(options: {
   report: WorkflowMigrationPreviewPayload;
   migrateRequests?: Array<Record<string, unknown>>;
+  failMigrateCall?: number;
 }) {
+  let migrateCall = 0;
   vi.stubGlobal(
     "fetch",
     async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -68,6 +77,14 @@ function stubRpc(options: {
       }
       const body = await parseRpcRequestInput(init);
       options.migrateRequests?.push(body);
+      migrateCall += 1;
+      if (migrateCall === options.failMigrateCall) {
+        return rpcErrorResponse({
+          code: "INTERNAL_SERVER_ERROR",
+          status: 500,
+          message: "Migration failed",
+        });
+      }
       const executionIds = Array.isArray(body.executionIds)
         ? (body.executionIds as string[])
         : [];
@@ -87,6 +104,14 @@ function stubRpc(options: {
 
 function renderDialog(cachedReport?: WorkflowMigrationPreviewPayload) {
   const queryClient = new QueryClient({
+    mutationCache: new MutationCache({
+      onError: (error, _variables, _context, mutation) => {
+        const message = mutationErrorToast(error, mutation.meta);
+        if (message !== null) {
+          toast.error(message);
+        }
+      },
+    }),
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   if (cachedReport) {
@@ -98,15 +123,19 @@ function renderDialog(cachedReport?: WorkflowMigrationPreviewPayload) {
     );
   }
 
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <MigrationDialog onOpenChange={vi.fn()} open workflowId="workflow_1" />
-    </QueryClientProvider>
-  );
+  return {
+    ...render(
+      <QueryClientProvider client={queryClient}>
+        <MigrationDialog onOpenChange={vi.fn()} open workflowId="workflow_1" />
+      </QueryClientProvider>
+    ),
+    queryClient,
+  };
 }
 
 describe("MigrationDialog", () => {
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
@@ -159,6 +188,31 @@ describe("MigrationDialog", () => {
         view.getByText("Already on version 8").nextSibling?.textContent
       ).toBe("9")
     );
+  });
+
+  it("withholds a cached report when its refetch fails", async () => {
+    vi.stubGlobal("fetch", () =>
+      Promise.resolve(
+        rpcErrorResponse({
+          code: "INTERNAL_SERVER_ERROR",
+          status: 500,
+          message: "Preview failed",
+        })
+      )
+    );
+    const view = renderDialog(preview);
+
+    await waitFor(() =>
+      expect(view.getByText("Unable to check which runs can move")).toBeTruthy()
+    );
+    expect(view.getByRole("button", { name: "Try again" })).toBeTruthy();
+    expect(view.queryByText("Already on version 8")).toBeNull();
+    expect(view.queryByText("Staying where they are")).toBeNull();
+    expect(
+      view
+        .getByRole("button", { name: "Migrate 0 runs" })
+        .hasAttribute("disabled")
+    ).toBe(true);
   });
 
   it("disables the confirm button when no run can move", async () => {
@@ -226,5 +280,58 @@ describe("MigrationDialog", () => {
       )
     ).toEqual([500, 1]);
     expect(migrateRequests[1]?.executionIds).toEqual(["run_500"]);
+  });
+
+  it("refreshes run history and reports completed work when a later batch fails", async () => {
+    const infoToast = vi.spyOn(toast, "info").mockImplementation(() => "");
+    const errorToast = vi.spyOn(toast, "error").mockImplementation(() => "");
+    const executionIds = Array.from(
+      { length: 501 },
+      (_unused, index) => `run_${index}`
+    );
+    const migrateRequests: Array<Record<string, unknown>> = [];
+    stubRpc({
+      report: {
+        ...preview,
+        eligible: executionIds.map((executionId) => ({
+          executionId,
+          fromVersionNumber: 7,
+          parkedNodeIds: ["wait_1"],
+        })),
+      },
+      migrateRequests,
+      failMigrateCall: 2,
+    });
+    const view = renderDialog();
+    const runHistoryKey = orpcQuery.workflow.getExecutions.queryKey({
+      input: { workflowId: "workflow_1" },
+    });
+    view.queryClient.setQueryData(runHistoryKey, {
+      items: [],
+      supersededCount: 0,
+      refusedStarts: [],
+      cancelNotDelivered: [],
+    });
+
+    fireEvent.click(
+      await view.findByRole("button", { name: "Migrate 501 runs" })
+    );
+
+    await waitFor(() =>
+      expect(errorToast).toHaveBeenCalledWith("Unable to migrate the runs")
+    );
+    expect(migrateRequests.length).toBe(2);
+    expect(infoToast).toHaveBeenCalledWith(
+      "500 runs moved before the migration failed"
+    );
+    expect(infoToast.mock.invocationCallOrder[0]).toBeLessThan(
+      errorToast.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY
+    );
+    expect(
+      view.queryClient.getQueryCache().find({
+        queryKey: runHistoryKey,
+        exact: true,
+      })?.state.isInvalidated
+    ).toBe(true);
   });
 });

@@ -3,10 +3,10 @@
  *
  * A run qualifies while it is parked on a Wait node the target graph still has,
  * whose timeout has not already passed when that target Wait waits for an
- * Event, and every template below that Wait resolves: either against a node the
- * run reaches after waking, or against a field of an output the run already
- * recorded. Both the preview and the migrate call read their verdicts from
- * here.
+ * Event, no enabled node outside the parked Waits' descendant sets is new to
+ * the run, and every template below a Wait resolves from a recorded output or
+ * from a node upstream of its consumer. Both the preview and the migrate call
+ * read their verdicts from here.
  */
 
 import { Effect } from "effect";
@@ -15,8 +15,10 @@ import { descendantsOf } from "@wfgraph/shared/graph/descendants";
 import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
 import {
   enabledActionTypeOf,
+  isLifecycleNode,
   isWaitActionType,
 } from "@wfgraph/shared/graph/node-config";
+import { upstreamNodeIds } from "@wfgraph/shared/graph/upstream-nodes";
 import {
   extractAllTemplateReferences,
   resolveOutputPath,
@@ -89,10 +91,9 @@ type PendingReference = {
  * What one enabled Wait node of the target graph contributes to a verdict.
  *
  * `reach` is the Wait node and everything below it: the nodes a run parked here
- * still runs, so a reference into any of them resolves as the run continues.
- * `references` is every template reference written in those nodes, unfiltered,
- * because which of them resolve depends on the run: a run parked at two Waits
- * reaches the union of both sets.
+ * still runs. `references` is every template reference written in those nodes.
+ * A reference resolves from graph order only when its source is upstream of its
+ * consumer.
  */
 type WaitNodeScan = {
   reach: Set<string>;
@@ -236,6 +237,8 @@ const classifyOne = Effect.fn("classifyOne")(function* (input: {
   candidate: InFlightExecutionRow;
   waitStates: WorkflowWaitState[];
   waitNodes: Map<string, WaitNodeScan>;
+  targetNodes: readonly WorkflowNode[];
+  targetEdges: readonly WorkflowEdge[];
   targetVersion: PublishedWorkflowVersion;
   now: number;
 }) {
@@ -288,17 +291,33 @@ const classifyOne = Effect.fn("classifyOne")(function* (input: {
     return refuse("wait_timeout_elapsed", elapsed.waitState.nodeId);
   }
 
-  // A run parked at several Waits still runs everything below any of them, so
-  // a reference below one Wait that names a node below another resolves.
   const reachable = new Set(
     scans.flatMap((entry) => [...(entry.scan?.reach ?? [])])
   );
+  const repo = yield* ExecutionRepo;
+  const nodeStatuses = yield* repo.listNodeStatuses(candidate.id);
+  const loggedNodeIds = new Set(nodeStatuses.map((row) => row.nodeId));
+  const addedAboveWait = input.targetNodes.find(
+    (node) =>
+      node.data.enabled !== false &&
+      !isLifecycleNode(node) &&
+      !reachable.has(node.id) &&
+      !loggedNodeIds.has(node.id)
+  );
+  if (addedAboveWait) {
+    return refuse("node_added_above_wait", addedAboveWait.id);
+  }
+
   const pending = scans
     .flatMap((entry) => entry.scan?.references ?? [])
-    .filter((reference) => !reachable.has(reference.referencedNodeId));
+    .filter(
+      (reference) =>
+        !upstreamNodeIds(reference.nodeId, input.targetEdges).has(
+          reference.referencedNodeId
+        )
+    );
 
   if (pending.length > 0) {
-    const repo = yield* ExecutionRepo;
     const recorded = yield* repo.readNodeOutputs(candidate.id);
     const unresolved = pending.find(
       (reference) => !referenceResolves(reference, recorded)
@@ -320,8 +339,8 @@ const classifyOne = Effect.fn("classifyOne")(function* (input: {
 
 /**
  * Classifies each candidate against the target version, reading the parked wait
- * rows once for the whole set and one run's outputs only when a template it
- * would run needs them.
+ * rows once for the whole set, each candidate's node statuses, and one run's
+ * outputs only when a template it would run needs them.
  */
 export const classifyMigrationCandidates = Effect.fn(
   "classifyMigrationCandidates"
@@ -343,6 +362,8 @@ export const classifyMigrationCandidates = Effect.fn(
         candidate,
         waitStates: waitsByExecution.get(candidate.id) ?? [],
         waitNodes,
+        targetNodes: graph.nodes,
+        targetEdges: graph.edges,
         targetVersion: input.targetVersion,
         now,
       }),

@@ -22,6 +22,15 @@ describe("migrationRefusalSentence", () => {
     );
   });
 
+  it("explains a target node that would run before the parked Wait", () => {
+    expect(
+      migrationRefusalSentence(
+        { reason: "node_added_above_wait", detail: "added_1" },
+        8
+      )
+    ).toBe("Version 8 adds a node that would run before this run's Wait.");
+  });
+
   it("quotes the node and field an unresolved reference is about", () => {
     expect(
       migrationRefusalSentence(

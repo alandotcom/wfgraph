@@ -48,7 +48,8 @@ before it happens. `previewMigration` produces that preflight report, and
 
 The preflight classifies every in-flight run not already on the target version
 as eligible or refused. The refusal reasons are `draft_run`, `executing`,
-`wait_node_missing`, `unresolved_reference` and `wait_timeout_elapsed`, and
+`wait_node_missing`, `node_added_above_wait`, `unresolved_reference` and
+`wait_timeout_elapsed`, and
 `packages/shared/src/graph/migration-contracts.ts` states what each one means.
 `unresolved_reference` is the reason the preflight exists: a template below a
 parked Wait in the target version can address a node the run produced no output

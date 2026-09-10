@@ -32,6 +32,8 @@ export function migrationRefusalSentence(
       return "Not parked on a Wait. Try again once the run reaches one.";
     case "wait_node_missing":
       return `The Wait this run is parked on is not in version ${targetVersionNumber}.`;
+    case "node_added_above_wait":
+      return `Version ${targetVersionNumber} adds a node that would run before this run's Wait.`;
     case "unresolved_reference":
       return refusal.detail
         ? `A field below the Wait reads an output this run never produced (${refusal.detail}).`
