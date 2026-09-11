@@ -315,6 +315,32 @@ const startedOutcome: EntityStartOutcome = {
   reclaimedExecutionIds: [],
 };
 
+/**
+ * What `startForEntity` answers a replayed delivery with: the Execution an
+ * earlier attempt of that delivery committed, and nothing displaced.
+ * `enqueuedAt` is null when that attempt died before the send.
+ */
+function winnerOutcome(input: {
+  deliveryId: string;
+  enqueuedAt: Date | null;
+}): EntityStartOutcome {
+  return {
+    status: "started",
+    execution: {
+      ...createExecution(),
+      id: "exec_winner",
+      deliveryId: input.deliveryId,
+      enqueuedAt: input.enqueuedAt,
+      workflowRunId: input.enqueuedAt ? "evt_winner" : null,
+      entityValue: null,
+      entityType: "appointment",
+      entityId: "appt_8813",
+    },
+    supersededExecutionIds: [],
+    reclaimedExecutionIds: [],
+  };
+}
+
 /** The entry node, carrying the rules under test and nothing else. */
 function createWorkflow(input: { rules: LifecycleRules }): Workflow {
   return {
@@ -716,6 +742,9 @@ describe("applyLifecycleRules and Start Filters", () => {
         })
     );
 
+    // The bus drops a second send carrying the same `workflow-run-<executionId>`
+    // id, so resending a winner that was already sent starts nothing new. The
+    // replayed start through `startWithConcurrency` resends the same way.
     it.effect("returns the start that won a racing admission refusal", () =>
       Effect.gen(function* () {
         resolveEntityMock.mockResolvedValue({
@@ -724,6 +753,14 @@ describe("applyLifecycleRules and Start Filters", () => {
         });
         recordAdmissionRefusalMock.mockImplementation(() =>
           Effect.succeed({ kind: "started", executionId: "exec_winner" })
+        );
+        startForEntityMock.mockImplementation(() =>
+          Effect.succeed(
+            winnerOutcome({
+              deliveryId: "evt_racing_start",
+              enqueuedAt: new Date("2026-03-01T00:00:01.000Z"),
+            })
+          )
         );
 
         const outcome = yield* applyLifecycleRules({
@@ -744,7 +781,62 @@ describe("applyLifecycleRules and Start Filters", () => {
           supersededExecutionIds: [],
           failedToSupersede: [],
         });
+        assert.deepStrictEqual(
+          sendRunRequestedMock.mock.calls.map(([data]) => data),
+          [{ executionId: "exec_winner" }]
+        );
       })
+    );
+
+    // An eligible attempt committed the Execution and the step died before the
+    // send. The retry reads the Entity as ineligible, and the delivery still has
+    // to reach the bus, or the row stays in flight with no run behind it.
+    it.effect(
+      "sends the unsent Execution an earlier attempt committed when the retry finds the Entity ineligible",
+      () =>
+        Effect.gen(function* () {
+          resolveEntityMock.mockResolvedValue({
+            status: "cancelled",
+            remindersEnabled: false,
+          });
+          recordAdmissionRefusalMock.mockImplementation(() =>
+            Effect.succeed({ kind: "started", executionId: "exec_winner" })
+          );
+          startForEntityMock.mockImplementation(() =>
+            Effect.succeed(
+              winnerOutcome({ deliveryId: "evt_crashed", enqueuedAt: null })
+            )
+          );
+
+          const outcome = yield* applyLifecycleRules({
+            subscriber: subscriber(),
+            event: appointmentCreated,
+            payload: videoPayload,
+            deliveryId: "evt_crashed",
+          }).pipe(
+            Effect.provide(
+              workflowWith(guardedRules({ checkpoints: ["before-execution"] }))
+            )
+          );
+
+          assert.deepStrictEqual(outcome, {
+            kind: "started",
+            workflowId: "wf_1",
+            executionId: "exec_winner",
+            supersededExecutionIds: [],
+            failedToSupersede: [],
+          });
+          assert.strictEqual(startForEntityMock.mock.calls.length, 1);
+          assert.deepInclude(startForEntityMock.mock.calls[0]?.[0].execution, {
+            deliveryId: "evt_crashed",
+            entityType: "appointment",
+            entityId: "appt_8813",
+          });
+          assert.deepStrictEqual(
+            sendRunRequestedMock.mock.calls.map(([data]) => data),
+            [{ executionId: "exec_winner" }]
+          );
+        })
     );
 
     it.effect("distinguishes a missing Entity from an ineligible one", () =>

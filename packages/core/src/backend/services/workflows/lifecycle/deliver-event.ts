@@ -428,20 +428,19 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
           })
         : yield* recordStartRefusal(refusalInput);
 
-      if (decision?.kind === "started") {
+      // A "started" decision means an earlier attempt of this delivery already
+      // committed its Execution, possibly without sending it to the bus. That
+      // decision falls through to `startWithConcurrency`, which finds the row by
+      // delivery id and hands it to `enqueueStartedRun` under the run's
+      // idempotency key. A row the earlier attempt never sent reaches the bus,
+      // and Inngest drops a second send for a row it already took.
+      if (decision?.kind !== "started") {
         return {
-          kind: "started" as const,
+          kind: "refused" as const,
           workflowId: workflow.id,
-          executionId: decision.executionId,
-          supersededExecutionIds: [],
-          failedToSupersede: [],
+          reason: decision?.reason ?? guarded.refusal.reason,
         };
       }
-      return {
-        kind: "refused" as const,
-        workflowId: workflow.id,
-        reason: decision?.reason ?? guarded.refusal.reason,
-      };
     }
 
     const started = yield* startWithConcurrency({
