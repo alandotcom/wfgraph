@@ -31,6 +31,7 @@ const testCatalog: ExtensionCatalog = {
           enumValues: ["scheduled", "completed", "canceled"],
         },
         { path: "remindersEnabled", type: "boolean" },
+        { path: "timezone", type: "string" },
       ],
       stateSchemaDigest: "appointment-state-v1",
     },
@@ -1142,6 +1143,50 @@ describe("LifecyclePanel Entity eligibility", () => {
     );
     expect(choices).not.toEqual(
       expect.arrayContaining(["patient.id", "tenantId", "sweep.id"])
+    );
+  });
+
+  /**
+   * Track the Appointment, seed an eligibility rule on `fieldPath`, and list the
+   * operators its picker offers.
+   */
+  async function eligibilityOperators(fieldPath: string): Promise<string[]> {
+    const view = renderWithCatalog(
+      <ControlledPanel initialConfig={configuredStart} />
+    );
+
+    chooseSelect(view, "Track runs by", "Appointment");
+    fireEvent.click(
+      await view.findByRole("button", { name: "Configure condition" })
+    );
+    const fieldInput = view.getByLabelText("Select field");
+    fireEvent.keyDown(fieldInput, { key: "ArrowDown" });
+    fireEvent.change(fieldInput, { target: { value: fieldPath } });
+    fireEvent.click(view.getByRole("option", { name: fieldPath }));
+
+    fireEvent.click(
+      view.getByRole("combobox", { name: `${fieldPath} operator` })
+    );
+    return view
+      .getAllByRole("option")
+      .map((option) => option.textContent ?? "");
+  }
+
+  // Entity Eligibility refuses a set comparison on a string field with no enum
+  // values, so its builder must not offer one there.
+  it("offers no set operator on a string field without enum values", async () => {
+    const operators = await eligibilityOperators("timezone");
+
+    expect(operators).toContain("equals");
+    expect(operators).not.toContain("is one of");
+    expect(operators).not.toContain("is not one of");
+  });
+
+  it("offers set operators on a string field with enum values", async () => {
+    const operators = await eligibilityOperators("status");
+
+    expect(operators).toEqual(
+      expect.arrayContaining(["is one of", "is not one of"])
     );
   });
 

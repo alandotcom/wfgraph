@@ -103,12 +103,14 @@ function ControlledRow({
   fields,
   initialValue,
   onChange = vi.fn(),
+  setOperatorsRequireEnumValues,
 }: {
   fields: ConditionSelectableField[];
   initialValue: string;
   onChange?:
     | ((next: { model: string; expression: string }) => void)
     | undefined;
+  setOperatorsRequireEnumValues?: boolean | undefined;
 }) {
   const [value, setValue] = useState(initialValue);
 
@@ -125,6 +127,7 @@ function ControlledRow({
         setValue(next.model);
         onChange(next);
       }}
+      setOperatorsRequireEnumValues={setOperatorsRequireEnumValues}
       stickyHeader
       value={value}
     />
@@ -134,7 +137,8 @@ function ControlledRow({
 function renderRow(
   fields: ConditionSelectableField[],
   initialValue: string,
-  onChange?: (next: { model: string; expression: string }) => void
+  onChange?: (next: { model: string; expression: string }) => void,
+  options?: { setOperatorsRequireEnumValues?: boolean | undefined }
 ) {
   return render(
     <ExtensionCatalogProvider value={emptyExtensionCatalog}>
@@ -142,6 +146,7 @@ function renderRow(
         fields={fields}
         initialValue={initialValue}
         onChange={onChange}
+        setOperatorsRequireEnumValues={options?.setOperatorsRequireEnumValues}
       />
     </ExtensionCatalogProvider>
   );
@@ -384,16 +389,34 @@ describe("ConditionBuilderRow field picker", () => {
     );
   });
 
-  it("offers set operators only for enumerated strings", () => {
+  it("offers set operators on every string field by default", () => {
+    const setOperators = expect.arrayContaining([
+      { value: "is_one_of", label: "is one of" },
+      { value: "is_not_one_of", label: "is not one of" },
+    ]);
     expect(
       getOperatorOptionsByFieldType("string", false, ["confirmed", "booked"])
-    ).toEqual(
-      expect.arrayContaining([
-        { value: "is_one_of", label: "is one of" },
-        { value: "is_not_one_of", label: "is not one of" },
-      ])
+    ).toEqual(setOperators);
+    expect(getOperatorOptionsByFieldType("string", false)).toEqual(
+      setOperators
     );
-    expect(getOperatorOptionsByFieldType("string", false)).not.toEqual(
+  });
+
+  it("offers set operators only for enumerated strings when asked to", () => {
+    const restricted = { setOperatorsRequireEnumValues: true };
+    expect(
+      getOperatorOptionsByFieldType(
+        "string",
+        false,
+        ["confirmed", "booked"],
+        restricted
+      )
+    ).toEqual(
+      expect.arrayContaining([{ value: "is_one_of", label: "is one of" }])
+    );
+    expect(
+      getOperatorOptionsByFieldType("string", false, undefined, restricted)
+    ).not.toEqual(
       expect.arrayContaining([{ value: "is_one_of", label: "is one of" }])
     );
   });
@@ -815,6 +838,177 @@ describe("ConditionBuilderRow view mode names what a rule still owes", () => {
     const compiled = view.getByText(/Compiled CEL/);
     expect(compiled.textContent).toContain("Lifecycle.data.email_id");
     expect(compiled.textContent).not.toContain("V1StGXR8_Z5jdHi6B-myT");
+  });
+});
+
+/** A stored `is one of` rule on `email`, a string field with no enum values. */
+function emailSetModel(values: string[]): string {
+  return serializeConditionModel({
+    version: 2,
+    groupLogic: "and",
+    groups: [
+      {
+        id: "g",
+        logic: "and",
+        conditions: [
+          {
+            id: "r",
+            field: "email",
+            fieldType: "string",
+            operator: "is_one_of",
+            values,
+          },
+        ],
+      },
+    ],
+  });
+}
+
+// The build agent writes `is one of` on any string field, so a field with no
+// enum values needs a list the builder types into.
+describe("ConditionBuilderRow set comparison on a plain string field", () => {
+  it("shows every stored value and edits the list by typing", () => {
+    const onChange = vi.fn();
+    const view = renderRow(
+      DONOR_FIELDS,
+      emailSetModel(["a@example.com", "b@example.com"]),
+      onChange
+    );
+
+    expect(view.queryByText(/fixed list/)).toBeNull();
+
+    enterEdit(view);
+    expect(
+      view.getByRole("combobox", { name: "email operator" }).textContent
+    ).toContain("is one of");
+    expect(view.getByText("a@example.com")).toBeTruthy();
+    expect(view.getByText("b@example.com")).toBeTruthy();
+    expect(view.queryByLabelText("Select email values")).toBeNull();
+
+    const input = view.getByLabelText("Add email values");
+    fireEvent.change(input, { target: { value: "  c@example.com " } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(writtenRule(onChange)).toMatchObject({
+      operator: "is_one_of",
+      values: ["a@example.com", "b@example.com", "c@example.com"],
+    });
+    expect(input).toHaveProperty("value", "");
+
+    fireEvent.click(view.getByRole("button", { name: "Remove b@example.com" }));
+
+    expect(writtenRule(onChange)).toMatchObject({
+      values: ["a@example.com", "c@example.com"],
+    });
+    expect(onChange.mock.calls.at(-1)?.[0].expression).toContain(
+      'payload.email in ["a@example.com", "c@example.com"]'
+    );
+  });
+
+  it("offers no entry for blank text or a value already listed", () => {
+    const onChange = vi.fn();
+    const view = renderRow(
+      DONOR_FIELDS,
+      emailSetModel(["a@example.com"]),
+      onChange
+    );
+
+    enterEdit(view);
+    const input = view.getByLabelText("Add email values");
+    // Open the popup, so a missing Add entry is one the list left out.
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+
+    fireEvent.change(input, { target: { value: "   " } });
+    expect(view.queryByRole("option", { name: /^Add / })).toBeNull();
+
+    fireEvent.change(input, { target: { value: " a@example.com " } });
+    expect(view.queryByRole("option", { name: /^Add / })).toBeNull();
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("adds typed text from its Add entry", () => {
+    const onChange = vi.fn();
+    const view = renderRow(DONOR_FIELDS, emailSetModel([]), onChange);
+
+    enterEdit(view);
+    const input = view.getByLabelText("Add email values");
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.change(input, { target: { value: "d@example.com" } });
+    fireEvent.click(view.getByRole("option", { name: 'Add "d@example.com"' }));
+
+    expect(writtenRule(onChange)).toMatchObject({
+      values: ["d@example.com"],
+    });
+  });
+
+  it("adds typed text once when Enter picks the highlighted Add entry", () => {
+    const onChange = vi.fn();
+    const view = renderRow(DONOR_FIELDS, emailSetModel([]), onChange);
+
+    enterEdit(view);
+    const input = view.getByLabelText("Add email values");
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.change(input, { target: { value: "e@example.com" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(writtenRule(onChange)).toMatchObject({
+      values: ["e@example.com"],
+    });
+  });
+
+  it("keeps the enum picker for a field with enum values", () => {
+    const withEnum = [
+      field("status", "Look Up Donor", { enumValues: ["confirmed", "booked"] }),
+    ];
+    const view = renderRow(
+      withEnum,
+      serializeConditionModel({
+        version: 2,
+        groupLogic: "and",
+        groups: [
+          {
+            id: "g",
+            logic: "and",
+            conditions: [
+              {
+                id: "r",
+                field: "status",
+                fieldType: "string",
+                operator: "is_one_of",
+                values: ["confirmed"],
+              },
+            ],
+          },
+        ],
+      })
+    );
+
+    enterEdit(view);
+
+    expect(view.getByLabelText("Select status values")).toBeTruthy();
+    expect(view.queryByLabelText("Add status values")).toBeNull();
+  });
+
+  // Where set comparisons need enum values, a stored one still reads back
+  // whole: the operator the rule holds and every value it compares.
+  it("shows a stored set rule the restricted builder no longer offers", () => {
+    const view = renderRow(
+      DONOR_FIELDS,
+      emailSetModel(["a@example.com"]),
+      undefined,
+      { setOperatorsRequireEnumValues: true }
+    );
+
+    expect(view.getByText(/no longer offers a fixed list/)).toBeTruthy();
+
+    enterEdit(view);
+    expect(
+      view.getByRole("combobox", { name: "email operator" }).textContent
+    ).toContain("is one of");
+    expect(view.getByText("a@example.com")).toBeTruthy();
   });
 });
 

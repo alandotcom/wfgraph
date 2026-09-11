@@ -415,6 +415,9 @@ export function LifecycleEntityEligibilityGroup({
             emptyFieldsMessage={`The ${entityLabel} has no fields available for an eligibility rule.`}
             fields={entityFields}
             label="Eligible when"
+            // Entity Eligibility refuses a set comparison on a string field
+            // with no enum values, so the builder does not offer one.
+            setOperatorsRequireEnumValues
             onChange={({ model }) =>
               onChange(
                 model === ""

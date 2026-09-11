@@ -41,10 +41,16 @@ export function ConditionSummary({
   model,
   fields,
   compact = false,
+  setOperatorsRequireEnumValues = false,
 }: {
   model: ConditionModel;
   fields: readonly ConditionSelectableField[];
   compact?: boolean;
+  /**
+   * Refuses a set comparison on a string field with no enum values, as Entity
+   * Eligibility does. See `ConditionBuilderRow`.
+   */
+  setOperatorsRequireEnumValues?: boolean | undefined;
 }) {
   const onlyGroup = model.groups.length === 1 ? model.groups[0] : undefined;
   const onlyCondition =
@@ -57,6 +63,7 @@ export function ConditionSummary({
           condition={onlyCondition}
           field={conditionFieldForPath(fields, onlyCondition.field)}
           joiner={null}
+          setOperatorsRequireEnumValues={setOperatorsRequireEnumValues}
         />
       </ul>
     );
@@ -87,6 +94,7 @@ export function ConditionSummary({
                 field={conditionFieldForPath(fields, condition.field)}
                 joiner={conditionIndex > 0 ? logicLabel(group.logic) : null}
                 key={condition.id}
+                setOperatorsRequireEnumValues={setOperatorsRequireEnumValues}
               />
             ))}
           </ul>
@@ -117,12 +125,16 @@ function RuleLine({
   condition,
   field,
   joiner,
+  setOperatorsRequireEnumValues,
 }: {
   condition: ConditionRule;
   field: ConditionSelectableField | undefined;
   joiner: string | null;
+  setOperatorsRequireEnumValues: boolean;
 }) {
-  const refusal = ruleRefusal(condition, field);
+  const refusal = ruleRefusal(condition, field, {
+    setOperatorsRequireEnumValues,
+  });
 
   return (
     <li>
@@ -150,11 +162,13 @@ function RuleLine({
  * while editing and the same one a run is held to. The enum case is the one
  * refusal it cannot reach: a value the field no longer names still compiles,
  * still runs, and matches nothing, and the picker in edit mode shows it as an
- * empty box.
+ * empty box. A set comparison on a field with no enum values is refused only
+ * where `setOperatorsRequireEnumValues` says so.
  */
 function ruleRefusal(
   condition: ConditionRule,
-  field: ConditionSelectableField | undefined
+  field: ConditionSelectableField | undefined,
+  options: { setOperatorsRequireEnumValues: boolean }
 ): string | null {
   const compiled = compileConditionRule(condition);
   if (!compiled.valid) {
@@ -163,6 +177,7 @@ function ruleRefusal(
 
   const offered = field?.enumValues;
   if (
+    options.setOperatorsRequireEnumValues &&
     isStringSetConditionRule(condition) &&
     (!offered || offered.length === 0)
   ) {

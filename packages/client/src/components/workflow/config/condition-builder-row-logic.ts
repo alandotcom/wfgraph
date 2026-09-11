@@ -70,10 +70,19 @@ function isBooleanOperatorValue(
   return value === "is_true" || value === "is_false";
 }
 
+/**
+ * The operators a rule on a field of this type may pick.
+ *
+ * `is one of` and `is not one of` compile for any string field, so they are
+ * offered on every string field by default. `setOperatorsRequireEnumValues`
+ * limits them to fields declaring enum values, which is what Entity Eligibility
+ * accepts.
+ */
 export function getOperatorOptionsByFieldType(
   fieldType: ConditionFieldType,
   nullable?: boolean,
-  enumValues?: readonly string[]
+  enumValues?: readonly string[],
+  options?: { setOperatorsRequireEnumValues?: boolean | undefined }
 ) {
   const nullOpts = nullable ? NULLCHECK_OPERATOR_OPTIONS : [];
 
@@ -82,8 +91,11 @@ export function getOperatorOptionsByFieldType(
   }
 
   if (fieldType === "string") {
+    const hasEnumValues = enumValues !== undefined && enumValues.length > 0;
     const setOptions =
-      enumValues && enumValues.length > 0 ? STRING_SET_OPERATOR_OPTIONS : [];
+      hasEnumValues || !options?.setOperatorsRequireEnumValues
+        ? STRING_SET_OPERATOR_OPTIONS
+        : [];
     return [...STRING_OPERATOR_OPTIONS, ...setOptions, ...nullOpts];
   }
 

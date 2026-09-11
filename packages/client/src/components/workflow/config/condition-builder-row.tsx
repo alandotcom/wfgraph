@@ -1,6 +1,6 @@
 import { Plus, Trash2 } from "lucide-react";
 import { nanoid } from "nanoid";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "#src/components/ui/button";
 import {
@@ -44,6 +44,7 @@ import {
   parseConditionModel,
   reconcileModelWithFields,
   serializeConditionModel,
+  STRING_SET_OPERATOR_OPTIONS,
   TIME_UNIT_OPTIONS,
   type TimeUnit,
 } from "@wfgraph/shared/conditions/conditions";
@@ -51,6 +52,8 @@ import {
   appendOutputPathKey,
   displayTemplateText,
 } from "@wfgraph/shared/graph/node-references";
+import { isBlank } from "@wfgraph/shared/types/string";
+import { uniq } from "es-toolkit/array";
 import {
   applyOperatorValueToCondition,
   getOperatorOptionsByFieldType,
@@ -87,6 +90,12 @@ type ConditionBuilderRowProps = {
    * one click would produce a summary of a rule nobody has filled in yet.
    */
   defaultEditing?: boolean | undefined;
+  /**
+   * Offers `is one of` and `is not one of` only on string fields that declare
+   * enum values. Entity Eligibility sets it, because it refuses a set
+   * comparison on any other string field.
+   */
+  setOperatorsRequireEnumValues?: boolean | undefined;
   disabled: boolean;
 };
 
@@ -243,6 +252,124 @@ function EnumMultiValueInput({
   );
 }
 
+/**
+ * One value of a free-text set, or the entry that adds the text typed so far.
+ * `adding` marks that entry, whose `label` is the "Add" wording.
+ */
+type TextSetChoice = { value: string; label: string; adding: boolean };
+
+/**
+ * The value list of a set comparison on a string field with no enum values.
+ *
+ * Every stored value is a chip the builder can remove. Typed text is trimmed
+ * and offered as one "Add" entry, which a click appends. Enter appends it too,
+ * including while the popup is closed. Blank text and a value already in the
+ * list offer no entry, so neither is added.
+ */
+function TextSetValueInput({
+  disabled,
+  name,
+  onValueChange,
+  values,
+}: {
+  disabled: boolean;
+  name: string;
+  onValueChange: (values: string[]) => void;
+  values: string[];
+}) {
+  const [query, setQuery] = useState("");
+  // The entry Enter would pick, if any. Base UI handles Enter on a highlighted
+  // entry itself, so the input's own Enter handler acts only when none is.
+  const highlighted = useRef<TextSetChoice | undefined>(undefined);
+  const typed = query.trim();
+  const selected = values.map((value) => ({
+    value,
+    label: displayTemplateText(value),
+    adding: false,
+  }));
+  const addable =
+    isBlank(typed) || values.includes(typed)
+      ? []
+      : [{ value: typed, label: `Add "${typed}"`, adding: true }];
+
+  return (
+    <Combobox<TextSetChoice, true>
+      autoHighlight
+      disabled={disabled}
+      // The one entry is built from the query, so matching it against the
+      // query again could only hide it.
+      filter={null}
+      inputValue={query}
+      isItemEqualToValue={sameEnumChoice}
+      items={addable}
+      itemToStringLabel={(choice) => choice.label}
+      multiple
+      onInputValueChange={setQuery}
+      onItemHighlighted={(choice) => {
+        highlighted.current = choice;
+      }}
+      // A closed popup highlights nothing, whatever it last reported.
+      onOpenChange={(open) => {
+        if (!open) {
+          highlighted.current = undefined;
+        }
+      }}
+      onValueChange={(next) => {
+        onValueChange(uniq(next.map((choice) => choice.value)));
+        if (next.some((choice) => choice.adding)) {
+          setQuery("");
+        }
+      }}
+      value={selected}
+    >
+      <ComboboxChips className="min-w-[240px]">
+        <ComboboxValue>
+          {(picked: TextSetChoice[]) => (
+            <>
+              {picked.map((choice) => (
+                <ComboboxChip
+                  key={choice.value}
+                  removeLabel={`Remove ${choice.label}`}
+                >
+                  <span className="max-w-40 truncate" title={choice.label}>
+                    {choice.label}
+                  </span>
+                </ComboboxChip>
+              ))}
+              <ComboboxChipsInput
+                aria-label={`Add ${name} values`}
+                disabled={disabled}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter" || highlighted.current) {
+                    return;
+                  }
+                  event.preventDefault();
+                  const [adding] = addable;
+                  if (adding) {
+                    onValueChange([...values, adding.value]);
+                    setQuery("");
+                  }
+                }}
+                placeholder={picked.length === 0 ? "Type a value" : ""}
+              />
+            </>
+          )}
+        </ComboboxValue>
+      </ComboboxChips>
+      <ComboboxContent>
+        <ComboboxEmpty>Type a value to add it.</ComboboxEmpty>
+        <ComboboxList>
+          {(choice: TextSetChoice) => (
+            <ComboboxItem key={choice.value} value={choice}>
+              {choice.label}
+            </ComboboxItem>
+          )}
+        </ComboboxList>
+      </ComboboxContent>
+    </Combobox>
+  );
+}
+
 function ConditionValueInput(input: {
   condition: ConditionRule;
   disabled: boolean;
@@ -331,6 +458,21 @@ function ConditionValueInput(input: {
 
   if (condition.fieldType === "string") {
     if (isStringSetConditionRule(condition)) {
+      // A field with enum values offers only those. Any other string field
+      // takes typed values, and a stored rule shows every value it holds.
+      if (!(enumValues && enumValues.length > 0)) {
+        return (
+          <TextSetValueInput
+            disabled={disabled}
+            name={field?.label ?? condition.field}
+            onValueChange={(values) =>
+              onConditionChange({ ...condition, values })
+            }
+            values={condition.values}
+          />
+        );
+      }
+
       return (
         <EnumMultiValueInput
           disabled={disabled}
@@ -428,6 +570,7 @@ export function ConditionBuilderRow({
   onChange,
   currentNodeId,
   defaultEditing = false,
+  setOperatorsRequireEnumValues = false,
   disabled,
 }: ConditionBuilderRowProps) {
   const seedField = availableFields[0] ?? null;
@@ -619,7 +762,11 @@ export function ConditionBuilderRow({
       stickyHeader={stickyHeader}
       view={
         parsedModel ? (
-          <ConditionSummary fields={availableFields} model={parsedModel} />
+          <ConditionSummary
+            fields={availableFields}
+            model={parsedModel}
+            setOperatorsRequireEnumValues={setOperatorsRequireEnumValues}
+          />
         ) : (
           <div className="space-y-2">
             {availableFields.length > 0 ? (
@@ -712,12 +859,27 @@ export function ConditionBuilderRow({
                   const pickedPath = fieldByPath.has(namedPath)
                     ? namedPath
                     : condition.field;
-                  const operatorOptions = getOperatorOptionsByFieldType(
+                  const offeredOperators = getOperatorOptionsByFieldType(
                     condition.fieldType,
                     selectedFieldDef?.nullable ||
                       condition.recordKey !== undefined,
-                    selectedFieldDef?.enumValues
+                    selectedFieldDef?.enumValues,
+                    { setOperatorsRequireEnumValues }
                   );
+                  // A stored set operator this context no longer offers stays
+                  // in the list, so the picker shows the operator the rule
+                  // holds. The summary and the Eligibility check say why it is
+                  // refused.
+                  const operatorOptions = offeredOperators.some(
+                    (option) => option.value === condition.operator
+                  )
+                    ? offeredOperators
+                    : [
+                        ...offeredOperators,
+                        ...STRING_SET_OPERATOR_OPTIONS.filter(
+                          (option) => option.value === condition.operator
+                        ),
+                      ];
                   // Names the row's delete button. Several rows can sit in one
                   // group, and a list of buttons all called "Remove" says
                   // nothing about which rule each one drops.

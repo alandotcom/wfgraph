@@ -256,6 +256,7 @@ export function WorkflowRunDetail({
                         compact
                         fields={exitConditionFields}
                         model={exitCondition}
+                        setOperatorsRequireEnumValues
                       />
                     </div>
                   ) : (
