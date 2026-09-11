@@ -3,9 +3,22 @@ import { act, fireEvent, render } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
-import type { WorkflowExecution } from "#src/lib/execution-logs";
-import { selectedNodeAtom } from "#src/lib/workflow-graph-store";
-import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import type {
+  ExecutionEvent,
+  WorkflowExecution,
+} from "#src/lib/execution-logs";
+import {
+  executionOverlayGraphAtom,
+  loadWorkflowGraphAtom,
+  selectedNodeAtom,
+} from "#src/lib/workflow-graph-store";
+import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
+import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import { serializeConditionModel } from "@wfgraph/shared/conditions/conditions";
+import {
+  emptyExtensionCatalog,
+  type ExtensionCatalog,
+} from "@wfgraph/shared/extensions/catalog";
 import { WorkflowRunDetail } from "./workflow-run-detail";
 
 const BASE_EXECUTION: WorkflowExecution = {
@@ -33,10 +46,25 @@ function renderDetail(
   extras?: {
     logs?: WorkflowRunDetailLogs;
     waits?: Parameters<typeof WorkflowRunDetail>[0]["waits"];
+    events?: ExecutionEvent[];
+    exit?: Parameters<typeof WorkflowRunDetail>[0]["exit"];
+    catalog?: ExtensionCatalog;
+    nodes?: WorkflowNode[];
+    executionNodes?: WorkflowNode[];
     selectedNodeId?: string;
   }
 ) {
   const store = createStore();
+  if (extras?.nodes) {
+    store.set(loadWorkflowGraphAtom, { nodes: extras.nodes, edges: [] });
+  }
+  if (extras?.executionNodes) {
+    store.set(workflowWorkspaceViewAtom, "runs");
+    store.set(executionOverlayGraphAtom, {
+      nodes: extras.executionNodes,
+      edges: [],
+    });
+  }
   if (extras?.selectedNodeId) {
     store.set(selectedNodeAtom, extras.selectedNodeId);
   }
@@ -44,11 +72,14 @@ function renderDetail(
     store,
     ...render(
       <JotaiProvider store={store}>
-        <ExtensionCatalogProvider value={emptyExtensionCatalog}>
+        <ExtensionCatalogProvider
+          value={extras?.catalog ?? emptyExtensionCatalog}
+        >
           <IntegrationUiProvider value={{}}>
             <WorkflowRunDetail
-              events={[]}
+              events={extras?.events ?? []}
               execution={execution}
+              exit={extras?.exit ?? null}
               isCanceling={false}
               isResuming={false}
               logs={extras?.logs ?? []}
@@ -93,6 +124,133 @@ describe("WorkflowRunDetail", () => {
     const view = renderDetail({ ...BASE_EXECUTION, status: "completed" });
 
     expect(view.queryByRole("button", { name: "Cancel" })).toBeNull();
+  });
+
+  it("explains an Entity Eligibility exit from the pinned graph without exposing Entity State", () => {
+    const view = renderDetail(
+      {
+        ...BASE_EXECUTION,
+        status: "exited",
+        completedAt: new Date("2026-10-19T15:00:00.000Z"),
+      },
+      {
+        catalog: {
+          ...emptyExtensionCatalog,
+          entities: [
+            {
+              type: "patient",
+              label: "Patient",
+              stateFields: [
+                { path: "appointmentRemindersEnabled", type: "boolean" },
+              ],
+              stateSchemaDigest: "state-v1",
+            },
+          ],
+        },
+        nodes: [
+          {
+            id: "send-reminder",
+            type: "action",
+            position: { x: 0, y: 0 },
+            data: {
+              label: "Draft-only label",
+              type: "action",
+              config: { actionType: "mail/send" },
+            },
+          },
+        ],
+        executionNodes: [
+          {
+            id: "lifecycle",
+            type: "lifecycle",
+            position: { x: 0, y: 0 },
+            data: {
+              label: "Lifecycle",
+              type: "lifecycle",
+              config: {
+                lifecycleRules: {
+                  startEvents: ["appointment.updated"],
+                  cancelEvents: [],
+                  concurrency: "unlimited",
+                  trackedEntity: {
+                    type: "patient",
+                    bindings: { "appointment.updated": "patient" },
+                  },
+                  entityEligibility: {
+                    checkpoints: ["before-node"],
+                    condition: serializeConditionModel({
+                      version: 2,
+                      groupLogic: "and",
+                      groups: [
+                        {
+                          id: "eligibility",
+                          logic: "and",
+                          conditions: [
+                            {
+                              id: "reminders-enabled",
+                              field: "appointmentRemindersEnabled",
+                              fieldType: "boolean",
+                              operator: "is_true",
+                            },
+                          ],
+                        },
+                      ],
+                    }),
+                  },
+                },
+              },
+            },
+          },
+          {
+            id: "send-reminder",
+            type: "action",
+            position: { x: 0, y: 0 },
+            data: {
+              label: "Send reminder",
+              type: "action",
+              config: { actionType: "mail/send" },
+            },
+          },
+        ],
+        exit: {
+          reason: "entity_condition_not_met",
+          entityType: "patient",
+          nodeId: "send-reminder",
+          checkedAt: new Date("2026-10-19T15:00:00.000Z"),
+        },
+        events: [
+          {
+            id: "audit_exit",
+            eventType: "run_exited",
+            message: "Run exited because the Entity was ineligible",
+            metadata: {
+              reason: "entity_condition_not_met",
+              entityType: "patient",
+              conditionId: "condition_digest",
+              nodeId: "send-reminder",
+              checkedAt: "2026-10-19T15:00:00.000Z",
+              entityId: "appt_secret",
+              entityState: "active=true",
+            },
+            createdAt: new Date("2026-10-19T15:00:00.000Z"),
+          },
+        ],
+      }
+    );
+
+    expect(
+      view.getByText(
+        "Exited before “Send reminder” because the Patient was no longer eligible."
+      )
+    ).toBeTruthy();
+    expect(view.getByText("Eligible when")).toBeTruthy();
+    expect(view.getByText("appointmentRemindersEnabled")).toBeTruthy();
+    expect(view.getByText("is true")).toBeTruthy();
+    expect(view.getByText("Eligibility rule did not match")).toBeTruthy();
+    expect(view.getByText("Prevented Send reminder")).toBeTruthy();
+    expect(view.queryByText("Draft-only label")).toBeNull();
+    expect(view.queryByText("condition_digest")).toBeNull();
+    expect(view.queryByText(/appt_secret|active=true/)).toBeNull();
   });
 
   it("opens the inspector from an executed-node row and back returns to overview", () => {

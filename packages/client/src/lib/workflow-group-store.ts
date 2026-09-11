@@ -6,9 +6,9 @@
  */
 
 import { atom } from "jotai";
-import { nanoid } from "nanoid";
 import { groupSelection, ungroupNode } from "#src/lib/node-group";
 import { canonicalizeNodeEnabled } from "@wfgraph/shared/graph/node-enabled";
+import { generateId } from "@wfgraph/shared/utils/id";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
   childIdsOfGroup,
@@ -156,7 +156,7 @@ export const connectNodesAtom = atom(null, (get, set, edge: WorkflowEdge) => {
     // leaving an unnamed handle omits it.
     omitUndefined({
       ...edge,
-      id: index === 0 ? edge.id : nanoid(),
+      id: index === 0 ? edge.id : generateId(),
       source: item.source,
       target: item.target,
       sourceHandle: item.sourceHandle,

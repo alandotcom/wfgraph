@@ -6,6 +6,7 @@ import {
   type ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
 import type { ExtensionSet } from "#src/backend/extensions/extension-set";
+import { DEFAULT_ENTITY_RESOLVER_TIMEOUT_MS } from "#src/backend/extensions/entity-resolution";
 import { defineStep } from "#src/backend/extensions/steps/define-step";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
 import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
@@ -45,7 +46,10 @@ function slowStep() {
     oauthFor: () => undefined,
     webhookFor: () => undefined,
     eventByName: () => undefined,
+    entityByType: () => undefined,
+    entityResolverTimeoutMs: DEFAULT_ENTITY_RESOLVER_TIMEOUT_MS,
     events: [],
+    entities: [],
   };
 
   return { calls, extensions };

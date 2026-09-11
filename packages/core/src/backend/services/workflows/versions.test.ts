@@ -115,6 +115,7 @@ describe("workflow versions", () => {
       () =>
         Effect.gen(function* () {
           const catalog: ExtensionCatalog = {
+            entities: [],
             events: [],
             integrations: [],
             actions: [

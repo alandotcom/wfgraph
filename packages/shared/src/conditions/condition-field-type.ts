@@ -8,11 +8,18 @@
  * cannot answer, and every arrival is then refused as unevaluable.
  */
 
-import type { ConditionFieldType } from "#src/conditions/condition-model";
+import type {
+  ConditionFieldType,
+  ConditionRule,
+} from "#src/conditions/condition-model";
 import type {
   WorkflowSchemaFieldType,
   WorkflowSchemaItemType,
 } from "#src/graph/schema-codec";
+import {
+  appendOutputPathKey,
+  type ReferenceField,
+} from "#src/graph/node-references";
 
 export function toConditionFieldType(field: {
   type?: WorkflowSchemaFieldType | undefined;
@@ -58,4 +65,49 @@ export function conditionTypeOf(field: {
   return toConditionFieldType(
     field.valueType ? { type: field.valueType } : field
   );
+}
+
+export type ConditionFieldDeclaration = {
+  field: ReferenceField;
+  nullable: boolean;
+};
+
+function isKeyUnder(recordPath: string, path: string): boolean {
+  if (!path.startsWith(`${recordPath}.`)) {
+    return false;
+  }
+
+  const rest = path.slice(recordPath.length + 1);
+  return rest.length > 0 && !rest.includes(".");
+}
+
+/** Finds the declared field a condition rule reads, including keys under open records. */
+export function findConditionFieldDeclaration(
+  fields: readonly ReferenceField[],
+  rule: Pick<ConditionRule, "field" | "recordKey">
+): ConditionFieldDeclaration | undefined {
+  const path = rule.field.trim();
+  const key = rule.recordKey?.trim();
+
+  if (key) {
+    const base = fields.find((field) => field.path === path);
+    if (base?.valueType) {
+      return { field: base, nullable: true };
+    }
+
+    const field = fields.find(
+      (candidate) => candidate.path === appendOutputPathKey(path, key)
+    );
+    return field ? { field, nullable: field.nullable === true } : undefined;
+  }
+
+  const exact = fields.find((field) => field.path === path);
+  if (exact) {
+    return { field: exact, nullable: exact.nullable === true };
+  }
+
+  const openRecord = fields.find(
+    (field) => field.valueType && isKeyUnder(field.path, path)
+  );
+  return openRecord ? { field: openRecord, nullable: true } : undefined;
 }

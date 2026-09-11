@@ -22,6 +22,7 @@ import {
   makeExtensionsLayer,
 } from "#src/backend/lib/effect/extensions";
 import type { ExtensionSet } from "#src/backend/extensions/extension-set";
+import { DEFAULT_ENTITY_RESOLVER_TIMEOUT_MS } from "#src/backend/extensions/entity-resolution";
 import type { StepEnvironment } from "#src/backend/extensions/steps/step-runner";
 import {
   emptyExtensionCatalog,
@@ -163,7 +164,10 @@ export function stubExtensions(
     oauthFor: () => undefined,
     webhookFor: () => undefined,
     eventByName: () => undefined,
+    entityByType: () => undefined,
+    entityResolverTimeoutMs: DEFAULT_ENTITY_RESOLVER_TIMEOUT_MS,
     events: [],
+    entities: [],
     ...set,
   });
 }
@@ -329,7 +333,10 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
   findStatusById: refuse("findStatusById"),
   existsById: refuse("existsById"),
   findWorkflowIdById: refuse("findWorkflowIdById"),
+  findByDelivery: refuse("findByDelivery"),
   startForEntity: refuse("startForEntity"),
+  findAdmissionRefusal: refuse("findAdmissionRefusal"),
+  recordAdmissionRefusal: refuse("recordAdmissionRefusal"),
   insertTerminal: refuse("insertTerminal"),
   markEnqueued: refuse("markEnqueued"),
   markEnqueueFailed: refuse("markEnqueueFailed"),
@@ -338,6 +345,9 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
   markWaitingIfParked: refuse("markWaitingIfParked"),
   endInFlight: refuse("endInFlight"),
   requestCancelForEntity: refuse("requestCancelForEntity"),
+  requestExit: refuse("requestExit"),
+  canAdmitNode: refuse("canAdmitNode"),
+  findTerminationState: refuse("findTerminationState"),
   findPendingCancel: refuse("findPendingCancel"),
   finishRun: refuse("finishRun"),
   recordAuditEvent: refuse("recordAuditEvent"),
@@ -357,6 +367,7 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
   settleWaitingStateClaim: refuse("settleWaitingStateClaim"),
   releaseWaitingStateClaim: refuse("releaseWaitingStateClaim"),
   listWaitingStates: refuse("listWaitingStates"),
+  listActiveWaitStates: refuse("listActiveWaitStates"),
   listWaitingStatesForExecutions: refuse("listWaitingStatesForExecutions"),
   listLoggedNodeIdsForExecutions: refuse("listLoggedNodeIdsForExecutions"),
   listLogs: refuse("listLogs"),

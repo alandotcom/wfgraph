@@ -158,3 +158,29 @@ timeout. A wait woken that way halts its branch, which it did not need to do
 before, since the run it woke read the cancel flag at that node and routed
 itself. A branch run reads no flag, so without the halt it would carry on doing
 real work for a run already ending.
+
+## Amendment: A Canceled-side branch carries the parent's claim
+
+Date: 2026-09-10
+
+A Wait behind the Canceled outlet is handed to a branch run the same way a
+Started-side Wait is. The branch's boundary was inert, which left it reading the
+Start Event as its Arriving Event and the start payload as the entry node's
+output, because the stored node rows hold what the entry node recorded before the
+claim landed.
+
+`CancelBoundary.forBranch` replaced that inert boundary. It keeps the
+graph-derived Canceled node set, so the branch knows which side each of its nodes
+sits on, and routes nothing, so the run that started the branch stays the only one
+that takes the outlet. A Canceled-side branch reads the run's Cancel claim in a
+durable step of its own and calls `carryClaim`, which names the Cancel Event as
+the Arriving Event and writes the canceling payload onto the entry node. It still
+routes nothing and still leaves the terminal record to the run that started it.
+
+The invoke payload gained `side`, and `workflow/branch.kill.requested` gained
+`side: "started"`. The branch function's `cancelOn` compares both the execution id
+and the side, which is the same registered form as the expression it replaced: two
+field equalities joined by `&&`. Without the comparison, a parent that reached a
+Canceled-side hand-off before the kill send landed would have that branch killed by
+the cancellation the branch exists to answer. No Cancel Event reaches such a branch
+either, because the claim write skips a run that already holds a claim.

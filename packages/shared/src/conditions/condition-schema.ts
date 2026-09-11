@@ -91,6 +91,7 @@ const TIMESTAMP_AMOUNT_ERROR = "Timestamp amount must be a positive integer";
 const DATE_TIME_ERROR =
   "Timestamp absolute operators require a valid date-time";
 const STRING_OPERATOR_ERROR = "String operator is invalid";
+const STRING_VALUES_ERROR = "String set conditions require text values";
 const NUMBER_OPERATOR_ERROR = "Number operator is invalid";
 const NUMBER_VALUE_ERROR = "Number conditions require a finite numeric value";
 const BOOLEAN_OPERATOR_ERROR = "Boolean operator is invalid";
@@ -176,6 +177,17 @@ const conditionRuleVariants = [
       STRING_OPERATOR_ERROR
     ),
     value: withMessage(Schema.String, "String conditions require a text value"),
+  }),
+  Schema.Struct({
+    ...conditionRuleShape("string"),
+    operator: withMessage(
+      Schema.Literals(["is_one_of", "is_not_one_of"]),
+      STRING_OPERATOR_ERROR
+    ),
+    values: withMessage(
+      Schema.mutable(Schema.Array(Schema.String)),
+      STRING_VALUES_ERROR
+    ),
   }),
   nullCheckRuleSchema("string", STRING_OPERATOR_ERROR),
   Schema.Struct({

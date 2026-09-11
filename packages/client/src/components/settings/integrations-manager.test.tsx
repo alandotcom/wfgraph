@@ -30,6 +30,7 @@ import { WfGraphOperationIds } from "@wfgraph/shared/authorization/operations";
 const ACTION = "linear/find-issues";
 
 const catalog: ExtensionCatalog = {
+  entities: [],
   events: [],
   actions: [
     {

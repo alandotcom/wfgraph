@@ -20,8 +20,8 @@ import { Connection } from "#src/components/flow-elements/connection";
 import { Controls } from "#src/components/flow-elements/controls";
 import "@xyflow/react/dist/style.css";
 
-import { nanoid } from "nanoid";
 import { toast } from "sonner";
+import { generateId } from "@wfgraph/shared/utils/id";
 import { Edge } from "#src/components/flow-elements/edge";
 import { Panel } from "#src/components/flow-elements/panel";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
@@ -491,7 +491,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
         connection.sourceHandle
       );
       const newEdge = {
-        id: nanoid(),
+        id: generateId(),
         ...connection,
         sourceHandle,
       };
@@ -673,7 +673,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
       position.y -= WORKFLOW_NODE_HEIGHT / 2;
 
       const newNode: WorkflowNode = {
-        id: nanoid(),
+        id: generateId(),
         type: "action",
         position,
         data: {

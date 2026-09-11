@@ -15,6 +15,7 @@
 import { isBlank } from "@wfgraph/shared/types/string";
 import type {
   ActionMetadata,
+  EntityMetadata,
   EventMetadata,
   ExtensionCatalog,
   IntegrationMetadata,
@@ -28,6 +29,7 @@ import type { StepFactory } from "#src/backend/extensions/steps/step-runner";
 import { builtInActions } from "#src/backend/extensions/built-ins";
 import type { ActionDefinition } from "#src/backend/extensions/define-action";
 import type { AnyEventDefinition } from "#src/backend/extensions/define-event";
+import type { AnyEntityDefinition } from "#src/backend/extensions/define-entity";
 import {
   assertDistinctListenerIds,
   assertSourcesAreDistinguishable,
@@ -47,6 +49,7 @@ import {
 import type { ReferenceField } from "@wfgraph/shared/graph/node-references";
 import { CONNECTION_STAMP_KEY } from "#src/backend/lib/inngest/catalog-connection";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
+import { readEntityResolverTimeoutMs } from "#src/backend/extensions/entity-resolution";
 
 /**
  * An Event as the set holds it, which is what `eventByName` answers with.
@@ -101,8 +104,13 @@ export type ExtensionSet = {
    */
   readonly webhookFor: (type: string) => IntegrationWebhook | undefined;
   readonly eventByName: (name: string) => RegisteredEvent | undefined;
+  readonly entityByType: (type: string) => AnyEntityDefinition | undefined;
+  /** App-owned deadline for every call into a host Entity resolver. */
+  readonly entityResolverTimeoutMs: number;
   /** Every Event, which is the Inngest listener set: one function each. */
   readonly events: readonly RegisteredEvent[];
+  /** Every Entity reached transitively from a registered Event. */
+  readonly entities: readonly AnyEntityDefinition[];
 };
 
 /**
@@ -128,6 +136,31 @@ function indexEvents(
   }
 
   return byName;
+}
+
+/**
+ * Entities are dependencies of Events rather than a second registration list.
+ * Reusing one definition object deduplicates it; two definitions claiming one
+ * stable type cannot safely dispatch to different schemas or resolvers.
+ */
+function indexEntities(
+  events: readonly RegisteredEvent[]
+): Map<string, AnyEntityDefinition> {
+  const byType = new Map<string, AnyEntityDefinition>();
+
+  for (const event of events) {
+    for (const binding of Object.values(event.entities ?? {})) {
+      const existing = byType.get(binding.entity.type);
+      if (existing && existing !== binding.entity) {
+        throw new Error(
+          `Two Entities are defined with the type "${binding.entity.type}". One Entity type must name one state schema and resolver.`
+        );
+      }
+      byType.set(binding.entity.type, binding.entity);
+    }
+  }
+
+  return byType;
 }
 
 /**
@@ -279,6 +312,10 @@ function toEventMetadata(
 ): EventMetadata {
   // `|| undefined` rather than the value itself: a blank string is a member the
   // author left empty, and the wire schema takes an absent key for it.
+  const entityBindings = Object.entries(event.entities ?? {}).map(
+    ([name, binding]) => ({ name, entityType: binding.entity.type })
+  );
+
   return omitUndefined({
     name: event.name,
     label: event.label,
@@ -286,7 +323,22 @@ function toEventMetadata(
     correlationPath: event.correlationPath || undefined,
     integration: integration || undefined,
     payloadFields: event.payloadFields,
+    entityBindings: entityBindings.length > 0 ? entityBindings : undefined,
   });
+}
+
+/**
+ * The catalog's description of an Entity. The runtime Eligibility checkpoints
+ * also build it from the host definition they hold, to check a stored condition
+ * against the Entity's current State schema.
+ */
+export function toEntityMetadata(entity: AnyEntityDefinition): EntityMetadata {
+  return {
+    type: entity.type,
+    label: entity.label,
+    stateFields: entity.stateFields,
+    stateSchemaDigest: entity.stateSchemaDigest,
+  };
 }
 
 /**
@@ -425,7 +477,10 @@ function readHostAction(action: ActionDefinition, into: Assembly): void {
   into.steps.set(action.id, action.implement);
 }
 
-export function assembleExtensions(input: WfGraphExtensions): ExtensionSet {
+export function assembleExtensions(
+  input: WfGraphExtensions,
+  options: { entityResolverTimeoutMs?: number | undefined } = {}
+): ExtensionSet {
   // Integration Events go in first, so a host listing the same `defineEvent`
   // object a plugin already declared is identity-equal and kept once. The owner
   // map is what stamps `EventMetadata.integration` without mutating the value.
@@ -454,6 +509,8 @@ export function assembleExtensions(input: WfGraphExtensions): ExtensionSet {
     ...(input.events ?? []),
   ]);
   const events = Array.from(eventsByName.values());
+  const entitiesByType = indexEntities(events);
+  const entities = Array.from(entitiesByType.values());
   for (const event of events) {
     assertSafeReferencePaths(`Event "${event.name}"`, event.payloadFields);
     if (eventOwners.has(event.name)) {
@@ -499,6 +556,7 @@ export function assembleExtensions(input: WfGraphExtensions): ExtensionSet {
       events: events.map((event) =>
         toEventMetadata(event, eventOwners.get(event.name))
       ),
+      entities: entities.map(toEntityMetadata),
       actions: into.actions,
       integrations,
     },
@@ -509,6 +567,11 @@ export function assembleExtensions(input: WfGraphExtensions): ExtensionSet {
     oauthFor: (type) => into.oauth.get(type),
     webhookFor: (type) => into.webhooks.get(type),
     eventByName: (name) => eventsByName.get(name),
+    entityByType: (type) => entitiesByType.get(type),
+    entityResolverTimeoutMs: readEntityResolverTimeoutMs(
+      options.entityResolverTimeoutMs
+    ),
     events,
+    entities,
   };
 }

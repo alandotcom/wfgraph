@@ -159,7 +159,12 @@ export function evaluateSerializedCondition(input: {
   /** Serialized `ConditionModel`, as the Lifecycle Rules store it. */
   model: string;
   payload: JsonObject;
-  eventName: string;
+  /**
+   * The Event this payload arrived on, null where nothing named one. The key
+   * reaches CEL either way, because an absent root raises where a null value
+   * compares false.
+   */
+  eventName: string | null;
 }): CelEvaluationResult {
   const parsed = parseConditionModel(input.model);
   if (!parsed.valid) {

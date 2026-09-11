@@ -1,5 +1,4 @@
 import { Plus, Trash2 } from "lucide-react";
-import { nanoid } from "nanoid";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "#src/components/ui/button";
@@ -15,6 +14,11 @@ import { whenChosen } from "#src/lib/select-choice";
 import { TemplateBadgeInput } from "#src/components/ui/template-badge-input";
 import type { ConditionSelectableField } from "#src/lib/upstream-node-fields";
 import { ConditionFieldCombobox } from "./condition-field-combobox";
+import { enumOptionLabel } from "./condition-field-label";
+import {
+  EnumMultiValueInput,
+  TextSetValueInput,
+} from "./condition-set-value-input";
 import { ConfigSection } from "./config-section";
 import { ConditionSummary } from "./condition-summary";
 import {
@@ -26,11 +30,13 @@ import {
   createDefaultConditionRule,
   GROUP_LOGIC_OPTIONS,
   isNullCheckConditionRule,
+  isStringSetConditionRule,
   isTimestampAbsoluteConditionRule,
   isTimestampRelativeConditionRule,
   parseConditionModel,
   reconcileModelWithFields,
   serializeConditionModel,
+  STRING_SET_OPERATOR_OPTIONS,
   TIME_UNIT_OPTIONS,
   type TimeUnit,
 } from "@wfgraph/shared/conditions/conditions";
@@ -38,6 +44,7 @@ import {
   appendOutputPathKey,
   displayTemplateText,
 } from "@wfgraph/shared/graph/node-references";
+import { generateId } from "@wfgraph/shared/utils/id";
 import {
   applyOperatorValueToCondition,
   getOperatorOptionsByFieldType,
@@ -74,6 +81,12 @@ type ConditionBuilderRowProps = {
    * one click would produce a summary of a rule nobody has filled in yet.
    */
   defaultEditing?: boolean | undefined;
+  /**
+   * Offers `is one of` and `is not one of` only on string fields that declare
+   * enum values. Entity Eligibility sets it, because it refuses a set
+   * comparison on any other string field.
+   */
+  setOperatorsRequireEnumValues?: boolean | undefined;
   disabled: boolean;
 };
 
@@ -104,13 +117,13 @@ function toIsoDateTime(localDateTime: string): string {
 
 function createInitialModel(field: ConditionFieldDefinition): ConditionModel {
   return createDefaultConditionModel(field, {
-    groupId: nanoid(),
-    conditionId: nanoid(),
+    groupId: generateId(),
+    conditionId: generateId(),
   });
 }
 
 function createInitialRule(field: ConditionFieldDefinition): ConditionRule {
-  return createDefaultConditionRule(field, nanoid());
+  return createDefaultConditionRule(field, generateId());
 }
 
 function LogicToggle({
@@ -144,13 +157,6 @@ function LogicToggle({
       })}
     </div>
   );
-}
-
-function enumOptionLabel(
-  field: ConditionSelectableField | undefined,
-  value: string
-): string {
-  return field?.enumLabels?.[value] ?? value;
 }
 
 function ConditionValueInput(input: {
@@ -240,6 +246,36 @@ function ConditionValueInput(input: {
   }
 
   if (condition.fieldType === "string") {
+    if (isStringSetConditionRule(condition)) {
+      // Both inputs show every stored value as a chip. The popup of a field
+      // with enum values offers those values, and any other string field
+      // takes typed values.
+      if (!(enumValues && enumValues.length > 0)) {
+        return (
+          <TextSetValueInput
+            disabled={disabled}
+            name={field?.label ?? condition.field}
+            onValueChange={(values) =>
+              onConditionChange({ ...condition, values })
+            }
+            values={condition.values}
+          />
+        );
+      }
+
+      return (
+        <EnumMultiValueInput
+          disabled={disabled}
+          field={field}
+          name={field?.label ?? condition.field}
+          onValueChange={(values) =>
+            onConditionChange({ ...condition, values })
+          }
+          values={condition.values}
+        />
+      );
+    }
+
     if (
       enumValues &&
       enumValues.length > 0 &&
@@ -324,6 +360,7 @@ export function ConditionBuilderRow({
   onChange,
   currentNodeId,
   defaultEditing = false,
+  setOperatorsRequireEnumValues = false,
   disabled,
 }: ConditionBuilderRowProps) {
   const seedField = availableFields[0] ?? null;
@@ -491,7 +528,7 @@ export function ConditionBuilderRow({
       groups: [
         ...parsedModel.groups,
         {
-          id: nanoid(),
+          id: generateId(),
           logic: "and",
           conditions: [createInitialRule(seedField)],
         },
@@ -515,7 +552,11 @@ export function ConditionBuilderRow({
       stickyHeader={stickyHeader}
       view={
         parsedModel ? (
-          <ConditionSummary fields={availableFields} model={parsedModel} />
+          <ConditionSummary
+            fields={availableFields}
+            model={parsedModel}
+            setOperatorsRequireEnumValues={setOperatorsRequireEnumValues}
+          />
         ) : (
           <div className="space-y-2">
             {availableFields.length > 0 ? (
@@ -608,11 +649,27 @@ export function ConditionBuilderRow({
                   const pickedPath = fieldByPath.has(namedPath)
                     ? namedPath
                     : condition.field;
-                  const operatorOptions = getOperatorOptionsByFieldType(
+                  const offeredOperators = getOperatorOptionsByFieldType(
                     condition.fieldType,
                     selectedFieldDef?.nullable ||
-                      condition.recordKey !== undefined
+                      condition.recordKey !== undefined,
+                    selectedFieldDef?.enumValues,
+                    { setOperatorsRequireEnumValues }
                   );
+                  // A stored set operator this context no longer offers stays
+                  // in the list, so the picker shows the operator the rule
+                  // holds. The summary and the Eligibility check say why it is
+                  // refused.
+                  const operatorOptions = offeredOperators.some(
+                    (option) => option.value === condition.operator
+                  )
+                    ? offeredOperators
+                    : [
+                        ...offeredOperators,
+                        ...STRING_SET_OPERATOR_OPTIONS.filter(
+                          (option) => option.value === condition.operator
+                        ),
+                      ];
                   // Names the row's delete button. Several rows can sit in one
                   // group, and a list of buttons all called "Remove" says
                   // nothing about which rule each one drops.
@@ -707,7 +764,10 @@ export function ConditionBuilderRow({
                           })}
                           value={condition.operator}
                         >
-                          <SelectTrigger className="min-w-[190px]">
+                          <SelectTrigger
+                            aria-label={`${conditionName} operator`}
+                            className="min-w-[190px]"
+                          >
                             <SelectValue placeholder="Select operator" />
                           </SelectTrigger>
                           <SelectContent>

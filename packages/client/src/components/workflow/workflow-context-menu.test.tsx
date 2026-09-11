@@ -14,7 +14,12 @@ import {
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 
-const catalog: ExtensionCatalog = { actions: [], events: [], integrations: [] };
+const catalog: ExtensionCatalog = {
+  actions: [],
+  entities: [],
+  events: [],
+  integrations: [],
+};
 
 function actionNode(enabled?: boolean): WorkflowNode {
   return {

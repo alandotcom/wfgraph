@@ -9,6 +9,7 @@
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 
 export const fixtureCatalog: ExtensionCatalog = {
+  entities: [],
   events: [
     {
       name: "applicant.created",

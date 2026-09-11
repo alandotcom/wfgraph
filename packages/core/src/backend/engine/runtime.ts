@@ -12,6 +12,7 @@
  */
 
 import type { BranchHandoff } from "#src/backend/engine/branch";
+import type { ExecutionSide } from "@wfgraph/shared/lifecycle/execution-contracts";
 
 export type WaitForEventOptions = {
   event: string;
@@ -61,15 +62,32 @@ export type WorkflowExecutionRuntime = {
    *
    * `releasedNodeIds` are the nodes this run has already let its downstream
    * follow, which is what tells the branch it may enter its entry node at all.
-   * A runtime that starts no durable runs leaves this out, and the engine then
-   * enters the Wait where it stands.
+   * `side` is which side of the Lifecycle Node the entry node sits on, which the
+   * branch cannot work out for itself: it routes no cancellation, so it has no
+   * boundary of its own to ask. A runtime that starts no durable runs leaves
+   * this method out, and the engine then enters the Wait where it stands.
    */
   startBranch?:
     | ((
         step: DurableStepRef,
-        input: { entryNodeId: string; releasedNodeIds: readonly string[] }
+        input: {
+          entryNodeId: string;
+          releasedNodeIds: readonly string[];
+          side: ExecutionSide;
+        }
       ) => Promise<BranchHandoff>)
     | undefined;
+  /**
+   * Sends a `lifecycle-exit` wait signal to every Wait of this Execution that is
+   * still parked, which is how the run that claimed an Exit ends the sibling
+   * branches waiting beside it. The caller runs it inside a durable step, and a
+   * rejection means at least one signal was refused.
+   *
+   * The Waits of this run and of the runs that started it have already resumed,
+   * so the read of parked Waits never names them. A runtime that starts no
+   * durable runs leaves this out, since every Wait then parks in the one run.
+   */
+  wakeParkedWaits?: (() => Promise<void>) | undefined;
   /**
    * Zero-indexed retry counter for the current attempt, which holds across every
    * replay within that attempt and rises when the runtime retries the body. A

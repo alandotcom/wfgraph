@@ -7,6 +7,7 @@
  * because a wait signal addresses a run and a node by id.
  */
 
+import { Effect } from "effect";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import { type JsonObject, readJsonObject } from "@wfgraph/shared/types/json";
@@ -14,6 +15,11 @@ import {
   type ExecutionResult,
   executionData,
 } from "#src/backend/engine/contracts";
+import type { RecordingWorkflowStore } from "#src/backend/engine/recording-store";
+import type {
+  ExecutionTerminationState,
+  WorkflowStore,
+} from "#src/backend/engine/store";
 
 /** The execution the fixture graph's runs are recorded against. */
 export const WAIT_EXECUTION_ID = "exec_wait";
@@ -126,6 +132,29 @@ export function waitMigrateSignal() {
       token: "token_1",
       signalType: "version-migrate",
     },
+  };
+}
+
+/**
+ * A store that lands an execution-wide claim the moment the run parks.
+ *
+ * Both backends refuse a Started-side park under a claim, so a case that set the
+ * claim up front would never park at all, and the case is about what reaches a
+ * run that is already waiting: a resume signal whose producer took the row
+ * first, or a Migration's wake.
+ */
+export function claimOnceParked(
+  store: RecordingWorkflowStore,
+  claim: ExecutionTerminationState
+): WorkflowStore {
+  return {
+    ...store,
+    createWaitState: (input) =>
+      Effect.tap(store.createWaitState(input), () =>
+        Effect.sync(() => {
+          store.terminationState = claim;
+        })
+      ),
   };
 }
 

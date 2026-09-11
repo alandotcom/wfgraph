@@ -1,6 +1,7 @@
 import { Effect, Layer } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppLogger } from "#src/backend/lib/effect/app-logger";
+import { DatabaseError } from "#src/backend/lib/effect/database";
 import {
   InngestError,
   type InngestClient,
@@ -381,6 +382,26 @@ describe("resumeWaitsMatchingEvent", () => {
     expect(result).toBe(2);
     expect(sendWaitSignalMock).toHaveBeenCalledTimes(3);
     expect(releaseWaitingStateClaimMock).toHaveBeenCalledTimes(1);
+  });
+
+  // The signal is with the durable runtime before the settle is attempted, so a
+  // database failure here is a run that woke and a row the run itself closes.
+  // Counting it as unsent would tell the delivery nothing reached that run.
+  it("counts a wake whose settle write failed as sent", async () => {
+    settleWaitingStateClaimMock.mockImplementationOnce(() =>
+      Effect.fail(new DatabaseError({ cause: new Error("connection reset") }))
+    );
+
+    const result = await resumeWaits({
+      workflowId: "workflow_1",
+      eventType: "event.update",
+      payload: {},
+      waitStates: [createWaitState("1", "exec_1")],
+    });
+
+    expect(result).toBe(1);
+    expect(sendWaitSignalMock).toHaveBeenCalledTimes(1);
+    expect(releaseWaitingStateClaimMock).not.toHaveBeenCalled();
   });
 
   it("counts only fenced claims that settle", async () => {

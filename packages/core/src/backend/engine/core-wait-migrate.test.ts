@@ -18,7 +18,9 @@ import {
 } from "#src/backend/engine/recording-store";
 import { noWorkflowActions } from "#src/backend/engine/actions";
 import { driveWithReplay } from "#src/backend/engine/testing/replay-runtime";
+import type { ExecutionTerminationState } from "#src/backend/engine/store";
 import {
+  claimOnceParked,
   createWaitGraph,
   waitMigrateSignal,
   waitOutput,
@@ -39,6 +41,8 @@ function runMigratedWait(options: {
   events: Record<string, unknown>;
   startEventName?: string | undefined;
   startPayload?: JsonObject | undefined;
+  /** An execution-wide claim that lands once the run has parked. */
+  claimOnPark?: ExecutionTerminationState | undefined;
 }) {
   return driveWithReplay(
     (runtime) => {
@@ -55,7 +59,9 @@ function runMigratedWait(options: {
           startPayload: options.startPayload,
         },
         runtime,
-        options.store,
+        options.claimOnPark
+          ? claimOnceParked(options.store, options.claimOnPark)
+          : options.store,
         noWorkflowActions
       );
     },
@@ -340,9 +346,11 @@ describe("wait node - migration to a later workflow version", () => {
       hops: 1,
     });
     expect(run.value.outputs.lifecycle_1?.data).toEqual({ id: "pay_1" });
-    expect(store.callsOf("markWaitStateStatus")).toHaveLength(0);
+    expect(store.callsOf("markWaitStateStatus")).toEqual([
+      { waitStateId: "wait_state_1", status: "resumed" },
+    ]);
     expect(store.callsOf("markExecutionRunning")).toEqual([
-      { executionId: "exec_wait", workflowVersionId: "ver_2" },
+      { executionId: "exec_wait", workflowVersionId: "ver_2", side: "started" },
     ]);
     expect(
       store
@@ -378,6 +386,56 @@ describe("wait node - migration to a later workflow version", () => {
       "cancelled"
     );
     expect(run.value.results.after_wait).toBeUndefined();
+  });
+
+  // A re-park is refused while the row is still waiting when the run holds a
+  // Cancel or Exit claim. The claim is then the wake, so the Wait resumes as an
+  // Exit and halts its branch.
+  it("resumes as an Exit when an Exit claim refused the re-park", async () => {
+    store.reparkAnswer = { ok: false, reason: "not_waiting" };
+    store.waitState = { status: "waiting", arrival: null };
+
+    const run = await runMigratedWait({
+      store,
+      claimOnPark: {
+        status: "running",
+        claim: {
+          kind: "exit",
+          requestedAt: "2026-10-19T15:00:00.000Z",
+          reason: "entity_condition_not_met",
+          nodeId: "other_branch",
+        },
+        didWrite: false,
+      },
+      parked: {
+        waitMode: "event",
+        waitFor: [{ event: "billing/payment.settled" }],
+        waitTimeout: "7d",
+      },
+      migrated: {
+        waitMode: "event",
+        waitFor: [{ event: "billing/payment.settled" }],
+        waitTimeout: "7d",
+      },
+      events: { "wait-park-wait_1-0": waitMigrateSignal() },
+    });
+
+    expect(run.value.results.wait_1?.success).toBe(true);
+    expect(run.value.results.after_wait).toBeUndefined();
+    expect(store.callsOf("markWaitStateStatus")).toEqual([
+      { waitStateId: "wait_state_1", status: "cancelled" },
+    ]);
+    expect(store.callsOf("markExecutionRunning")).toEqual([]);
+    expect(
+      store
+        .callsOf("recordAuditEvent")
+        .filter((event) => event.eventType === "run_resumed")
+    ).toEqual([
+      expect.objectContaining({
+        message: "Run woken by an Exit in node 'Wait'",
+        metadata: { nodeId: "wait_1", hops: 1 },
+      }),
+    ]);
   });
 
   it("fails the node when the row that left waiting records no wake", async () => {

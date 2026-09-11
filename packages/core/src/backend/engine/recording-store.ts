@@ -8,15 +8,21 @@
  */
 
 import { type JsonValue, readJsonValue } from "@wfgraph/shared/types/json";
+import {
+  claimKindAdmits,
+  type ExecutionSide,
+} from "@wfgraph/shared/lifecycle/execution-contracts";
 import { Effect } from "effect";
 import type {
   CompleteRunInput,
   CompleteStepLogInput,
   CreateWaitStateInput,
+  ExecutionTerminationState,
   MarkWaitStateStatusInput,
   ReparkWaitStateInput,
   ReparkWaitStateOutcome,
   RecordAuditEventInput,
+  RequestExecutionExitInput,
   StartStepLogInput,
   WaitStateSnapshot,
   WorkflowStore,
@@ -31,8 +37,15 @@ type StoreCallInputs = {
   reparkWaitState: ReparkWaitStateInput;
   markWaitStateStatus: MarkWaitStateStatusInput;
   readWaitState: { waitStateId: string };
-  markExecutionRunning: { executionId: string; workflowVersionId: string };
+  markExecutionRunning: {
+    executionId: string;
+    workflowVersionId: string;
+    side: ExecutionSide;
+  };
   markExecutionWaitingIfParked: { executionId: string };
+  admitNode: { executionId: string };
+  requestExit: RequestExecutionExitInput;
+  readTerminationState: { executionId: string };
   readPendingCancel: { executionId: string };
   completeRun: CompleteRunInput;
   readNodeOutputs: { executionId: string };
@@ -53,7 +66,7 @@ export type RecordingWorkflowStore = WorkflowStore & {
   /**
    * Set to `undefined` to model a first park the execution row refused, which
    * is a run that ended or was moved to another Workflow Version. Left unset,
-   * every park opens a row.
+   * every park opens a row, subject to the claim on `terminationState`.
    */
   createWaitStateAnswer: { waitStateId: string } | undefined | "open";
   /**
@@ -65,9 +78,9 @@ export type RecordingWorkflowStore = WorkflowStore & {
   /** What `readWaitState` answers, for the case a re-park was refused. */
   waitState: WaitStateSnapshot | null;
   /**
-   * What `markExecutionRunning` answers. False models a Migration landing
-   * between a Wait's wake and its resume, which the resume treats as a step
-   * failure.
+   * What `markExecutionRunning` answers, subject to the claim on
+   * `terminationState`. False models a Migration landing between a Wait's wake
+   * and its resume, which the resume treats as a step failure.
    */
   markRunningAnswer: boolean;
   /**
@@ -75,8 +88,21 @@ export type RecordingWorkflowStore = WorkflowStore & {
    * branch is still parked when this branch finishes.
    */
   waitingIfParkedAnswer: boolean;
+  /** Shared execution boundary state used by node-admission and exit tests. */
+  terminationState: ExecutionTerminationState | null;
   reset(): void;
 };
+
+/**
+ * The claim guard both real backends put on a park and on a resume, modelled
+ * here because a Canceled-side Wait parking at all depends on it.
+ */
+function claimAdmits(
+  terminationState: ExecutionTerminationState | null,
+  side: ExecutionSide
+): boolean {
+  return claimKindAdmits(terminationState?.claim?.kind ?? null, side);
+}
 
 export function createRecordingWorkflowStore(): RecordingWorkflowStore {
   const calls: RecordedStoreCall[] = [];
@@ -94,6 +120,9 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
     readWaitState: [],
     markExecutionRunning: [],
     markExecutionWaitingIfParked: [],
+    admitNode: [],
+    requestExit: [],
+    readTerminationState: [],
     readPendingCancel: [],
     completeRun: [],
     readNodeOutputs: [],
@@ -110,6 +139,7 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
     waitState: null,
     markRunningAnswer: true,
     waitingIfParkedAnswer: false,
+    terminationState: null,
 
     reset() {
       calls.length = 0;
@@ -150,9 +180,12 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
       return Effect.sync(() => {
         calls.push({ method: "createWaitState", input });
         byMethod.createWaitState.push(input);
-        return store.createWaitStateAnswer === "open"
+        if (store.createWaitStateAnswer !== "open") {
+          return store.createWaitStateAnswer;
+        }
+        return claimAdmits(store.terminationState, input.side)
           ? { waitStateId: `wait_state_${byMethod.createWaitState.length}` }
-          : store.createWaitStateAnswer;
+          : undefined;
       });
     },
 
@@ -184,7 +217,10 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
       return Effect.sync(() => {
         calls.push({ method: "markExecutionRunning", input });
         byMethod.markExecutionRunning.push(input);
-        return store.markRunningAnswer;
+        return (
+          store.markRunningAnswer &&
+          claimAdmits(store.terminationState, input.side)
+        );
       });
     },
 
@@ -196,12 +232,56 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
       });
     },
 
+    admitNode(executionId) {
+      return Effect.sync(() => {
+        const input = { executionId };
+        calls.push({ method: "admitNode", input });
+        byMethod.admitNode.push(input);
+        return store.terminationState === null;
+      });
+    },
+
+    requestExit(input) {
+      return Effect.sync(() => {
+        calls.push({ method: "requestExit", input });
+        byMethod.requestExit.push(input);
+        if (store.terminationState) {
+          return { ...store.terminationState, didWrite: false };
+        }
+        store.terminationState = {
+          status: "running",
+          claim: {
+            kind: "exit",
+            requestedAt: input.checkedAt,
+            reason: input.reason,
+            nodeId: input.nodeId,
+          },
+          didWrite: true,
+        };
+        return store.terminationState;
+      });
+    },
+
+    readTerminationState(executionId) {
+      return Effect.sync(() => {
+        const input = { executionId };
+        calls.push({ method: "readTerminationState", input });
+        byMethod.readTerminationState.push(input);
+        return store.terminationState;
+      });
+    },
+
+    // The boundary read and the claim guard answer from the one row here, as
+    // they do in both backends: a case that lands a claim gets it from either.
     readPendingCancel(executionId) {
       return Effect.sync(() => {
         const input = { executionId };
         calls.push({ method: "readPendingCancel", input });
         byMethod.readPendingCancel.push(input);
-        return null;
+        const claim = store.terminationState?.claim;
+        return claim?.kind === "cancel"
+          ? { eventName: claim.eventName, payload: claim.payload }
+          : null;
       });
     },
 
@@ -209,7 +289,26 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
       return Effect.sync(() => {
         calls.push({ method: "completeRun", input });
         byMethod.completeRun.push(input);
-        return true;
+        const current = store.terminationState;
+        const claimMatches =
+          !current?.claim ||
+          (current.claim.kind === "exit" && input.status === "exited") ||
+          (current.claim.kind === "cancel" && input.status === "canceled");
+        const stillInFlight =
+          !current ||
+          current.status === "pending" ||
+          current.status === "running" ||
+          current.status === "waiting";
+        if (!claimMatches || !stillInFlight) {
+          return current ? { ...current, didWrite: false } : null;
+        }
+
+        store.terminationState = {
+          status: input.status,
+          claim: current?.claim ?? null,
+          didWrite: true,
+        };
+        return store.terminationState;
       });
     },
 

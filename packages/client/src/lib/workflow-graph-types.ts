@@ -114,7 +114,12 @@ export function comparisonNodeTitle(
   const actionLabel =
     typeof actionType === "string" && actionType.trim()
       ? findAction(
-          catalog ?? { actions: [], events: [], integrations: [] },
+          catalog ?? {
+            actions: [],
+            entities: [],
+            events: [],
+            integrations: [],
+          },
           actionType
         )?.label.trim()
       : undefined;

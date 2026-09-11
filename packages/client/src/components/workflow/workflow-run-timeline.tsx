@@ -13,11 +13,13 @@ import {
 
 export function WorkflowRunNodeIndex({
   logs,
+  exit,
   focusLogId,
   onFocusRestored,
   onSelect,
 }: {
   logs: ExecutionLog[];
+  exit?: { nodeLabel: string } | undefined;
   focusLogId?: string | null;
   onFocusRestored?: () => void;
   onSelect?: (log: ExecutionLog) => void;
@@ -33,7 +35,7 @@ export function WorkflowRunNodeIndex({
     onFocusRestored?.();
   });
 
-  if (logs.length === 0) {
+  if (logs.length === 0 && !exit) {
     return (
       <p className="py-4 text-muted-foreground text-xs">
         No steps were recorded for this run
@@ -48,11 +50,11 @@ export function WorkflowRunNodeIndex({
 
   return (
     <section>
-      <h3 className="mb-1 font-medium text-xs/relaxed">Node journey</h3>
+      <h3 className="mb-1 font-semibold text-sm">Node journey</h3>
       <ol>
         {logs.map((log, index) => (
           <li className="relative pl-5" key={log.id}>
-            {index < logs.length - 1 ? (
+            {index < logs.length - 1 || exit ? (
               <span
                 aria-hidden="true"
                 className="absolute top-4 bottom-[-1rem] left-[0.4375rem] w-px bg-border"
@@ -107,6 +109,25 @@ export function WorkflowRunNodeIndex({
             </button>
           </li>
         ))}
+        {exit ? (
+          <li className="relative pl-5">
+            <span
+              aria-hidden="true"
+              className="absolute top-[1.125rem] left-1 size-2 rounded-full bg-cancelled ring-2 ring-background"
+            />
+            <div className="grid min-h-13 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 px-2 py-1.5">
+              <span className="min-w-0">
+                <span className="block truncate font-medium text-sm">
+                  Entity eligibility
+                </span>
+                <span className="block truncate text-muted-foreground text-xs">
+                  Prevented {exit.nodeLabel}
+                </span>
+              </span>
+              <span className="text-cancelled text-xs">Exited</span>
+            </div>
+          </li>
+        ) : null}
       </ol>
     </section>
   );

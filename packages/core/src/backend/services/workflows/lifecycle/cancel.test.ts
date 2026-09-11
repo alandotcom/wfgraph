@@ -173,6 +173,7 @@ describe("requestCanceledOutlet", () => {
     expect(sendBranchKillMock).toHaveBeenCalledWith({
       executionId: "exec_1",
       workflowId: "wf_1",
+      side: "started",
       reason: "Cancellation requested by app/appointment.canceled",
     });
   });

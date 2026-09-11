@@ -1,10 +1,7 @@
 /**
- * These cases cover the wait row: what a park writes, what a re-park may write
- * over, what a claim may take, and what a Migration moves.
- *
- * A second file for one aggregate, because the run cases and the wait cases
- * together ran past a thousand lines. `executions.ts` holds how a run opens,
- * ends, and is read back; this file holds the row a parked run hangs off.
+ * The executions aggregate's wait rows: what a park writes, what a re-park may
+ * write over, what a claim may take, and what a Migration moves. `executions.ts`
+ * beside it holds how a run itself opens, ends, and is read back.
  */
 
 import { describe, expect, it } from "vitest";
@@ -79,6 +76,7 @@ export function describeExecutionWaitConformance({
           });
           if (started.status !== "started") throw new Error("start refused");
           const wait = yield* executions.startWait({
+            side: "started",
             executionId: started.execution.id,
             workflowId: "wf_1",
             runId: "run_1",
@@ -91,6 +89,7 @@ export function describeExecutionWaitConformance({
           });
           if (!wait) throw new Error("wait refused");
           const sibling = yield* executions.startWait({
+            side: "started",
             executionId: started.execution.id,
             workflowId: "wf_1",
             runId: "run_1",
@@ -139,6 +138,7 @@ export function describeExecutionWaitConformance({
           });
           if (!settled) throw new Error("Claimed wait did not settle");
           yield* executions.markRunning({
+            side: "started",
             executionId: waitStateIds.executionId,
             workflowVersionId: "ver_1",
           });
@@ -151,6 +151,623 @@ export function describeExecutionWaitConformance({
       );
 
       expect(siblingClaim).not.toBeNull();
+    });
+
+    it("does not park, re-park, list, or resume waits after an Exit claim", async () => {
+      const database = await openConnection();
+      await seedPublishedWorkflow(database);
+
+      const result = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const started = yield* executions.startForEntity({
+            execution: {
+              workflowId: "wf_1",
+              workflowVersionId: "ver_1",
+              startSource: "manual",
+              runMode: "live",
+              input: {},
+            },
+            concurrency: "unlimited",
+            supersededReason: "newer start",
+          });
+          if (started.status !== "started") {
+            throw new Error("Start was refused");
+          }
+          const firstWait = yield* executions.startWait({
+            side: "started",
+            executionId: started.execution.id,
+            workflowId: "wf_1",
+            runId: "run_1",
+            nodeId: "wait_1",
+            nodeName: "Approval",
+            workflowVersionId: "ver_1",
+            waitType: "event",
+            resumeToken: "resume_exit",
+            subscribedEvents: [EVENT_ARRIVAL.eventName],
+          });
+          if (!firstWait) throw new Error("Initial wait was refused");
+
+          yield* executions.requestExit({
+            executionId: started.execution.id,
+            reason: "entity_condition_not_met",
+            nodeId: "checkpoint_1",
+          });
+
+          return {
+            listed: yield* executions.listWaitsForEvent({
+              workflowId: "wf_1",
+              eventName: EVENT_ARRIVAL.eventName,
+              limit: 10,
+            }),
+            claimed: yield* executions.claimWaitingStateById({
+              waitStateId: firstWait.waitStateId,
+              eventName: EVENT_ARRIVAL.eventName,
+              arrival: EVENT_ARRIVAL,
+            }),
+            reparked: yield* executions.reparkWait({
+              side: "started",
+              waitStateId: firstWait.waitStateId,
+              workflowVersionId: "ver_1",
+              waitType: "event",
+              waitUntil: null,
+              subscribedEvents: [EVENT_ARRIVAL.eventName],
+              resumeToken: "resume_exit_again",
+              metadata: {},
+            }),
+            newlyParked: yield* executions.startWait({
+              side: "started",
+              executionId: started.execution.id,
+              workflowId: "wf_1",
+              runId: "run_1",
+              nodeId: "wait_2",
+              nodeName: "Second approval",
+              workflowVersionId: "ver_1",
+              waitType: "event",
+              resumeToken: "resume_exit_2",
+              subscribedEvents: [EVENT_ARRIVAL.eventName],
+            }),
+          };
+        })
+      );
+
+      expect(result).toEqual({
+        listed: [],
+        claimed: null,
+        reparked: { ok: false, reason: "not_waiting" },
+        newlyParked: undefined,
+      });
+    });
+
+    // A Cancel claim is a routed continuation rather than an ending: the run
+    // goes on to walk its Canceled outlet, and a Wait behind that outlet parks,
+    // re-parks, wakes on an Event and resumes like any other. Every one of those
+    // writes names the Canceled side, and the same write naming the Started side
+    // is refused, because the Started branch is what the claim ended. An Exit
+    // claim takes no outlet, so it refuses both sides.
+    it("admits the Canceled side of a run a Cancel claim owns", async () => {
+      const database = await openConnection();
+      await seedPublishedWorkflow(database);
+
+      const afterCancel = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const started = yield* executions.startForEntity({
+            execution: {
+              workflowId: "wf_1",
+              workflowVersionId: "ver_1",
+              startSource: "event",
+              runMode: "live",
+              entityValue: "appointment_canceled_side",
+              input: {},
+            },
+            concurrency: "unlimited",
+            supersededReason: "newer start",
+          });
+          if (started.status !== "started") throw new Error("start refused");
+          const executionId = started.execution.id;
+
+          const claimedIds = yield* executions.requestCancelForEntity({
+            workflowId: "wf_1",
+            entityValue: "appointment_canceled_side",
+            runMode: "live",
+            eventName: "appointment/cancelled",
+            payload: { reason: "customer left" },
+          });
+
+          const startedSidePark = yield* executions.startWait({
+            side: "started",
+            executionId,
+            workflowId: "wf_1",
+            runId: "run_1",
+            nodeId: "wait_started",
+            nodeName: "Reminder",
+            workflowVersionId: "ver_1",
+            waitType: "event",
+            resumeToken: "resume_started_side",
+            subscribedEvents: [EVENT_ARRIVAL.eventName],
+          });
+
+          const canceledSidePark = yield* executions.startWait({
+            side: "canceled",
+            executionId,
+            workflowId: "wf_1",
+            runId: "run_1",
+            nodeId: "grace_1",
+            nodeName: "Grace Period",
+            workflowVersionId: "ver_1",
+            waitType: "event",
+            resumeToken: "resume_canceled_side",
+            subscribedEvents: [EVENT_ARRIVAL.eventName],
+          });
+          if (!canceledSidePark) throw new Error("Canceled-side park refused");
+          const waitStateId = canceledSidePark.waitStateId;
+
+          const parked = yield* executions.findStatusById(executionId);
+
+          const canceledSideRepark = yield* executions.reparkWait({
+            side: "canceled",
+            waitStateId,
+            workflowVersionId: "ver_1",
+            waitType: "event",
+            waitUntil: null,
+            subscribedEvents: [EVENT_ARRIVAL.eventName],
+            resumeToken: "resume_canceled_side",
+            metadata: {},
+          });
+          const startedSideRepark = yield* executions.reparkWait({
+            side: "started",
+            waitStateId,
+            workflowVersionId: "ver_1",
+            waitType: "event",
+            waitUntil: null,
+            subscribedEvents: [EVENT_ARRIVAL.eventName],
+            resumeToken: "resume_canceled_side",
+            metadata: {},
+          });
+
+          const listedIds = (yield* executions.listWaitsForEvent({
+            workflowId: "wf_1",
+            eventName: EVENT_ARRIVAL.eventName,
+            limit: 10,
+          })).map((row) => row.id);
+
+          const claim = yield* executions.claimWaitingStateById({
+            waitStateId,
+            eventName: EVENT_ARRIVAL.eventName,
+            arrival: EVENT_ARRIVAL,
+          });
+          if (!claim) throw new Error("Canceled-side claim refused");
+          const settled = yield* executions.settleWaitingStateClaim({
+            waitStateId: claim.waitState.id,
+            claimedAt: claim.claimedAt,
+          });
+
+          // A second Canceled-side Wait parks beside the branch that just woke,
+          // which is what `markWaitingIfParked` is there to notice when that
+          // branch finishes and leaves the run reading `running`.
+          const secondPark = yield* executions.startWait({
+            side: "canceled",
+            executionId,
+            workflowId: "wf_1",
+            runId: "run_1",
+            nodeId: "grace_2",
+            nodeName: "Second grace period",
+            workflowVersionId: "ver_1",
+            waitType: "event",
+            resumeToken: "resume_canceled_side_2",
+            subscribedEvents: [EVENT_ARRIVAL.eventName],
+          });
+
+          const canceledSideRunning = yield* executions.markRunning({
+            side: "canceled",
+            executionId,
+            workflowVersionId: "ver_1",
+          });
+          const startedSideRunning = yield* executions.markRunning({
+            side: "started",
+            executionId,
+            workflowVersionId: "ver_1",
+          });
+          const reparkedRun = yield* executions.markWaitingIfParked({
+            executionId,
+          });
+
+          return {
+            executionId,
+            waitStateId,
+            claimedIds,
+            startedSidePark,
+            parkedStatus: parked?.status,
+            canceledSideRepark,
+            startedSideRepark,
+            listedIds,
+            claimedWaitStateId: claim.waitState.id,
+            settled,
+            secondParkOpened: secondPark !== undefined,
+            canceledSideRunning,
+            startedSideRunning,
+            reparkedRun,
+          };
+        })
+      );
+
+      expect(afterCancel).toEqual({
+        executionId: expect.any(String),
+        waitStateId: expect.any(String),
+        claimedIds: [afterCancel.executionId],
+        startedSidePark: undefined,
+        parkedStatus: "waiting",
+        canceledSideRepark: { ok: true },
+        startedSideRepark: { ok: false, reason: "not_waiting" },
+        listedIds: [afterCancel.waitStateId],
+        claimedWaitStateId: afterCancel.waitStateId,
+        settled: true,
+        secondParkOpened: true,
+        canceledSideRunning: true,
+        startedSideRunning: false,
+        reparkedRun: true,
+      });
+    });
+
+    it("refuses both sides of a run an Exit claim owns", async () => {
+      const database = await openConnection();
+      await seedPublishedWorkflow(database);
+
+      const afterExit = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const started = yield* executions.startForEntity({
+            execution: {
+              workflowId: "wf_1",
+              workflowVersionId: "ver_1",
+              startSource: "event",
+              runMode: "live",
+              entityValue: "appointment_exited",
+              input: {},
+            },
+            concurrency: "unlimited",
+            supersededReason: "newer start",
+          });
+          if (started.status !== "started") throw new Error("start refused");
+          const executionId = started.execution.id;
+
+          const parked = yield* executions.startWait({
+            side: "started",
+            executionId,
+            workflowId: "wf_1",
+            runId: "run_2",
+            nodeId: "wait_before_exit",
+            nodeName: "Approval",
+            workflowVersionId: "ver_1",
+            waitType: "event",
+            resumeToken: "resume_before_exit",
+            subscribedEvents: [EVENT_ARRIVAL.eventName],
+          });
+          if (!parked) throw new Error("Park before the Exit refused");
+
+          yield* executions.requestExit({
+            executionId,
+            reason: "entity_condition_not_met",
+            nodeId: "checkpoint_1",
+          });
+
+          const listed = yield* executions.listWaitsForEvent({
+            workflowId: "wf_1",
+            eventName: EVENT_ARRIVAL.eventName,
+            limit: 10,
+          });
+
+          return {
+            canceledSidePark: yield* executions.startWait({
+              side: "canceled",
+              executionId,
+              workflowId: "wf_1",
+              runId: "run_2",
+              nodeId: "grace_1",
+              nodeName: "Grace Period",
+              workflowVersionId: "ver_1",
+              waitType: "event",
+              resumeToken: "resume_after_exit",
+              subscribedEvents: [EVENT_ARRIVAL.eventName],
+            }),
+            canceledSideRunning: yield* executions.markRunning({
+              side: "canceled",
+              executionId,
+              workflowVersionId: "ver_1",
+            }),
+            listedIds: listed.map((row) => row.id),
+            claimed: yield* executions.claimWaitingStateById({
+              waitStateId: parked.waitStateId,
+              eventName: EVENT_ARRIVAL.eventName,
+              arrival: EVENT_ARRIVAL,
+            }),
+          };
+        })
+      );
+
+      expect(afterExit).toEqual({
+        canceledSidePark: undefined,
+        canceledSideRunning: false,
+        listedIds: [],
+        claimed: null,
+      });
+    });
+
+    // The run that wins an Exit claim reads the Waits still parked beside it and
+    // signals each, and the woken Wait closes its own row. Both need the row
+    // after the claim, which the park and claim guards above do not reach.
+    it("still lists and closes a parked wait after an Exit claim", async () => {
+      const database = await openConnection();
+      await seedPublishedWorkflow(database);
+
+      const result = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const started = yield* executions.startForEntity({
+            execution: {
+              workflowId: "wf_1",
+              workflowVersionId: "ver_1",
+              startSource: "manual",
+              runMode: "live",
+              input: {},
+            },
+            concurrency: "unlimited",
+            supersededReason: "newer start",
+          });
+          if (started.status !== "started") {
+            throw new Error("Start was refused");
+          }
+          const executionId = started.execution.id;
+          const wait = yield* executions.startWait({
+            side: "started",
+            executionId,
+            workflowId: "wf_1",
+            runId: "run_1",
+            nodeId: "wait_1",
+            nodeName: "Sibling delay",
+            workflowVersionId: "ver_1",
+            waitType: "delay",
+            subscribedEvents: [],
+          });
+          if (!wait) throw new Error("Initial wait was refused");
+
+          yield* executions.requestExit({
+            executionId,
+            reason: "entity_condition_not_met",
+            nodeId: "checkpoint_1",
+          });
+
+          const listedAfterClaim =
+            yield* executions.listWaitingStates(executionId);
+          const closed = yield* executions.markWaitStatus({
+            waitStateId: wait.waitStateId,
+            status: "cancelled",
+          });
+          return {
+            listedAfterClaim: listedAfterClaim.map((row) => row.id),
+            closed,
+            listedAfterClose: yield* executions.listWaitingStates(executionId),
+            row: (yield* executions.findWaitStateById(wait.waitStateId))
+              ?.status,
+            waitStateId: wait.waitStateId,
+          };
+        })
+      );
+
+      expect(result).toEqual({
+        listedAfterClaim: [result.waitStateId],
+        closed: true,
+        listedAfterClose: [],
+        row: "cancelled",
+        waitStateId: result.waitStateId,
+      });
+    });
+
+    // A resume producer can hold a row in `resuming` when the Exit claim lands.
+    // The Exit wake still has to find that row, and a release of the claim after
+    // the Exit must not reopen a row the woken Wait has already closed.
+    it("lists claimed waits for the Exit wake and fences a release against a closed row", async () => {
+      const database = await openConnection();
+      await seedPublishedWorkflow(database);
+
+      const result = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const started = yield* executions.startForEntity({
+            execution: {
+              workflowId: "wf_1",
+              workflowVersionId: "ver_1",
+              startSource: "manual",
+              runMode: "live",
+              input: {},
+            },
+            concurrency: "unlimited",
+            supersededReason: "newer start",
+          });
+          if (started.status !== "started") {
+            throw new Error("Start was refused");
+          }
+          const executionId = started.execution.id;
+
+          const parkAndClaim = (nodeId: string, resumeToken: string) =>
+            Effect.gen(function* () {
+              const wait = yield* executions.startWait({
+                side: "started",
+                executionId,
+                workflowId: "wf_1",
+                runId: "run_1",
+                nodeId,
+                nodeName: nodeId,
+                workflowVersionId: "ver_1",
+                waitType: "event",
+                resumeToken,
+                subscribedEvents: [EVENT_ARRIVAL.eventName],
+              });
+              if (!wait) throw new Error("Wait was refused");
+              const claim = yield* executions.claimWaitingStateByToken({
+                resumeToken,
+                arrival: EVENT_ARRIVAL,
+              });
+              if (!claim) throw new Error("Wait claim was refused");
+              return {
+                waitStateId: wait.waitStateId,
+                claimedAt: claim.claimedAt,
+              };
+            });
+
+          // Both rows are claimed before the Exit, because a claim is refused
+          // once the run holds one.
+          const released = yield* parkAndClaim("wait_released", "resume_a");
+          const closed = yield* parkAndClaim("wait_closed", "resume_b");
+
+          yield* executions.requestExit({
+            executionId,
+            reason: "entity_condition_not_met",
+            nodeId: "checkpoint_1",
+          });
+
+          const listedAfterExit =
+            yield* executions.listActiveWaitStates(executionId);
+
+          // The resume send for the first row failed, so its producer releases it.
+          const releasedAfterExit =
+            yield* executions.releaseWaitingStateClaim(released);
+          const listedAfterRelease =
+            yield* executions.listActiveWaitStates(executionId);
+
+          // The Exit signal woke the second row's Wait, which closed its row,
+          // and that row's producer then tries to release its claim.
+          const closedByWait = yield* executions.markWaitStatus({
+            waitStateId: closed.waitStateId,
+            status: "cancelled",
+          });
+          const releasedAfterClose =
+            yield* executions.releaseWaitingStateClaim(closed);
+
+          return {
+            releasedId: released.waitStateId,
+            closedId: closed.waitStateId,
+            listedAfterExit: listedAfterExit.map((row) => [row.id, row.status]),
+            releasedAfterExit,
+            listedAfterRelease: listedAfterRelease.map((row) => [
+              row.id,
+              row.status,
+            ]),
+            closedByWait,
+            releasedAfterClose,
+            closedRow: (yield* executions.findWaitStateById(closed.waitStateId))
+              ?.status,
+            listedAfterClose: (yield* executions.listActiveWaitStates(
+              executionId
+            )).map((row) => row.id),
+          };
+        })
+      );
+
+      expect(result.listedAfterExit).toEqual(
+        expect.arrayContaining([
+          [result.releasedId, "resuming"],
+          [result.closedId, "resuming"],
+        ])
+      );
+      expect(result.listedAfterExit).toHaveLength(2);
+      expect(result.releasedAfterExit).toBe(true);
+      expect(result.listedAfterRelease).toEqual(
+        expect.arrayContaining([
+          [result.releasedId, "waiting"],
+          [result.closedId, "resuming"],
+        ])
+      );
+      expect(result.listedAfterRelease).toHaveLength(2);
+      expect(result.closedByWait).toBe(true);
+      expect(result.releasedAfterClose).toBe(false);
+      expect(result.closedRow).toBe("cancelled");
+      expect(result.listedAfterClose).toEqual([result.releasedId]);
+    });
+
+    // A resume producer claims the row and sends the signal, then its settle
+    // write fails. The woken run closes the row instead, which is what keeps a
+    // claim nobody settled from being handed to a second wake once its lease
+    // expires.
+    it("lets the run settle a claimed row its producer never settled", async () => {
+      const database = await openConnection();
+      await seedPublishedWorkflow(database);
+
+      const result = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const started = yield* executions.startForEntity({
+            execution: {
+              workflowId: "wf_1",
+              workflowVersionId: "ver_1",
+              startSource: "manual",
+              runMode: "live",
+              input: {},
+            },
+            concurrency: "unlimited",
+            supersededReason: "newer start",
+          });
+          if (started.status !== "started") {
+            throw new Error("Start was refused");
+          }
+
+          const wait = yield* executions.startWait({
+            side: "started",
+            executionId: started.execution.id,
+            workflowId: "wf_1",
+            runId: "run_1",
+            nodeId: "wait_1",
+            nodeName: "Wait for approval",
+            workflowVersionId: "ver_1",
+            waitType: "event",
+            resumeToken: "resume_a",
+            subscribedEvents: [EVENT_ARRIVAL.eventName],
+          });
+          if (!wait) throw new Error("Wait was refused");
+          const claim = yield* executions.claimWaitingStateById({
+            waitStateId: wait.waitStateId,
+            eventName: EVENT_ARRIVAL.eventName,
+            arrival: EVENT_ARRIVAL,
+          });
+          if (!claim) throw new Error("Wait claim was refused");
+
+          const settledByRun = yield* executions.markWaitStatus({
+            waitStateId: wait.waitStateId,
+            status: "resumed",
+          });
+
+          return {
+            settledByRun,
+            status: (yield* executions.findWaitStateById(wait.waitStateId))
+              ?.status,
+            reclaimedById: yield* executions.claimWaitingStateById({
+              waitStateId: wait.waitStateId,
+              eventName: EVENT_ARRIVAL.eventName,
+              arrival: EVENT_ARRIVAL,
+            }),
+            reclaimedByToken: yield* executions.claimWaitingStateByToken({
+              resumeToken: "resume_a",
+              arrival: EVENT_ARRIVAL,
+            }),
+            settledByProducer: yield* executions.settleWaitingStateClaim({
+              waitStateId: wait.waitStateId,
+              claimedAt: claim.claimedAt,
+            }),
+            releasedByProducer: yield* executions.releaseWaitingStateClaim({
+              waitStateId: wait.waitStateId,
+              claimedAt: claim.claimedAt,
+            }),
+          };
+        })
+      );
+
+      expect(result.settledByRun).toBe(true);
+      expect(result.status).toBe("resumed");
+      expect(result.reclaimedById).toBeNull();
+      expect(result.reclaimedByToken).toBeNull();
+      expect(result.settledByProducer).toBe(false);
+      expect(result.releasedByProducer).toBe(false);
     });
 
     it("refuses a first park resolved from a version the run has left", async () => {
@@ -178,6 +795,7 @@ export function describeExecutionWaitConformance({
 
           const park = (workflowVersionId: string) =>
             executions.startWait({
+              side: "started",
               executionId,
               workflowId: "wf_1",
               runId: "run_1",
@@ -239,6 +857,7 @@ export function describeExecutionWaitConformance({
 
           const park = (nodeId: string, resumeToken: string) =>
             executions.startWait({
+              side: "started",
               executionId,
               workflowId: "wf_1",
               runId: "run_1",
@@ -256,6 +875,7 @@ export function describeExecutionWaitConformance({
 
           // The short branch resumes and finishes while the long one is parked.
           yield* executions.markRunning({
+            side: "started",
             executionId,
             workflowVersionId: "ver_1",
           });
@@ -271,6 +891,7 @@ export function describeExecutionWaitConformance({
 
           // The long branch resumes too, and now nothing is parked.
           yield* executions.markRunning({
+            side: "started",
             executionId,
             workflowVersionId: "ver_1",
           });
@@ -393,6 +1014,7 @@ export function describeExecutionWaitConformance({
           const executionId = started.execution.id;
 
           const wait = yield* executions.startWait({
+            side: "started",
             executionId,
             workflowId: "wf_1",
             runId: "run_1",
@@ -408,6 +1030,7 @@ export function describeExecutionWaitConformance({
           if (!wait) throw new Error("Wait was refused");
 
           yield* executions.reparkWait({
+            side: "started",
             waitStateId: wait.waitStateId,
             workflowVersionId: "ver_1",
             waitType: "event",
@@ -479,6 +1102,7 @@ export function describeExecutionWaitConformance({
             throw new Error("Start was refused");
 
           const wait = yield* executions.startWait({
+            side: "started",
             executionId: started.execution.id,
             workflowId: "wf_1",
             runId: "run_1",
@@ -501,6 +1125,7 @@ export function describeExecutionWaitConformance({
 
           return {
             reparked: yield* executions.reparkWait({
+              side: "started",
               waitStateId: wait.waitStateId,
               workflowVersionId: "ver_1",
               waitType: "event",
@@ -595,6 +1220,8 @@ export function describeExecutionWaitConformance({
           workflowVersionId: "ver_1",
           versionKind: "published",
           versionNumber: 1,
+          entityType: null,
+          entityId: null,
         },
       ]);
     });
@@ -643,6 +1270,7 @@ export function describeExecutionWaitConformance({
           });
 
           const wait = yield* executions.startWait({
+            side: "started",
             executionId,
             workflowId: "wf_1",
             runId: "run_1",
@@ -709,6 +1337,7 @@ export function describeExecutionWaitConformance({
           const executionId = started.execution.id;
 
           const wait = yield* executions.startWait({
+            side: "started",
             executionId,
             workflowId: "wf_1",
             runId: "run_1",
@@ -730,15 +1359,18 @@ export function describeExecutionWaitConformance({
           return {
             // The resuming body loaded ver_1, which the row no longer pins.
             underTheVersionLeftBehind: yield* executions.markRunning({
+              side: "started",
               executionId,
               workflowVersionId: "ver_1",
             }),
             underThePinnedVersion: yield* executions.markRunning({
+              side: "started",
               executionId,
               workflowVersionId: "ver_2",
             }),
             // A sibling Wait of the same run resumes into a row already running.
             fromASiblingWait: yield* executions.markRunning({
+              side: "started",
               executionId,
               workflowVersionId: "ver_2",
             }),
@@ -778,6 +1410,7 @@ export function describeExecutionWaitConformance({
           const executionId = started.execution.id;
 
           const wait = yield* executions.startWait({
+            side: "started",
             executionId,
             workflowId: "wf_1",
             runId: "run_1",
@@ -801,6 +1434,7 @@ export function describeExecutionWaitConformance({
 
           return {
             fromTheVersionLeftBehind: yield* executions.reparkWait({
+              side: "started",
               waitStateId: wait.waitStateId,
               workflowVersionId: "ver_1",
               waitType: "event",
@@ -813,6 +1447,7 @@ export function describeExecutionWaitConformance({
               wait.waitStateId
             ),
             fromThePinnedVersion: yield* executions.reparkWait({
+              side: "started",
               waitStateId: wait.waitStateId,
               workflowVersionId: "ver_2",
               waitType: "event",
@@ -859,6 +1494,7 @@ export function describeExecutionWaitConformance({
             throw new Error("Start was refused");
 
           const wait = yield* executions.startWait({
+            side: "started",
             executionId: started.execution.id,
             workflowId: "wf_1",
             runId: "run_1",
@@ -874,6 +1510,7 @@ export function describeExecutionWaitConformance({
           // The token stays on the row so both claims address it and the wait
           // type is the only thing refusing them.
           const reparked = yield* executions.reparkWait({
+            side: "started",
             waitStateId: wait.waitStateId,
             workflowVersionId: "ver_1",
             waitType: "delay",
@@ -926,6 +1563,7 @@ export function describeExecutionWaitConformance({
             throw new Error("Start was refused");
 
           const wait = yield* executions.startWait({
+            side: "started",
             executionId: started.execution.id,
             workflowId: "wf_1",
             runId: "run_1",
@@ -939,6 +1577,7 @@ export function describeExecutionWaitConformance({
           if (!wait) throw new Error("Wait was refused");
 
           const reparked = yield* executions.reparkWait({
+            side: "started",
             waitStateId: wait.waitStateId,
             workflowVersionId: "ver_1",
             waitType: "event",
@@ -999,6 +1638,7 @@ export function describeExecutionWaitConformance({
             }
             executionIds.push(started.execution.id);
             yield* executions.startWait({
+              side: "started",
               executionId: started.execution.id,
               workflowId: "wf_1",
               runId: `run_${suffix}`,

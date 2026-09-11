@@ -6,6 +6,7 @@ import { LifecyclePanel } from "#src/components/workflow/config/lifecycle-panel"
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 
 const testCatalog: ExtensionCatalog = {
+  entities: [],
   events: [
     {
       name: "app/appointment.created",
@@ -58,18 +59,18 @@ describe("LifecyclePanel display", () => {
   it("shows the stored configuration in the controls that set it", () => {
     const view = renderPanel();
 
-    // No summary step stands between the panel and its controls, so each
-    // stored value is read off the control that writes it.
     expect(view.getByLabelText("Start Events")).toBeTruthy();
     expect(view.getByLabelText("Cancel Events")).toBeTruthy();
     expect(
-      view.getByRole("combobox", { name: "Concurrency" }).textContent
-    ).toContain("Newest wins");
+      view.getByRole("combobox", { name: "Overlapping runs" }).textContent
+    ).toContain("Start the newest run");
     expect(
       view.getByRole("checkbox", { name: "Allow manual runs" })
     ).toBeTruthy();
-    expect(view.getByText("Appointment created")).toBeTruthy();
-    expect(view.getByText("Nightly sweep")).toBeTruthy();
+    expect(
+      view.getByRole("heading", { name: "Appointment created" })
+    ).toBeTruthy();
+    expect(view.getByRole("heading", { name: "Nightly sweep" })).toBeTruthy();
   });
 
   it("offers no button that switches the panel's mode", () => {
@@ -90,7 +91,7 @@ describe("LifecyclePanel display", () => {
     // them is refused where it stands rather than hidden.
     expect(
       view
-        .getByRole("combobox", { name: "Concurrency" })
+        .getByRole("combobox", { name: "Overlapping runs" })
         .hasAttribute("disabled")
     ).toBe(true);
     // Base UI draws this one as a span rather than a control the browser can
@@ -111,38 +112,47 @@ describe("LifecyclePanel display", () => {
     const view = renderPanel();
 
     expect(
-      view.queryByText(/A run starts when one of these Events/)
+      view.queryByText(/A run starts when one of these events/)
     ).toBeNull();
     fireEvent.click(view.getByRole("button", { name: "About Start Events" }));
     expect(
-      view.getByText(/A run starts when one of these Events/)
+      view.getByText(/A run starts when one of these events/)
     ).toBeTruthy();
   });
 
   it("puts the concurrency setting in force at the top of its help", () => {
     const view = renderPanel();
 
-    fireEvent.click(view.getByRole("button", { name: "About Concurrency" }));
+    fireEvent.click(
+      view.getByRole("button", { name: "About Overlapping runs" })
+    );
     const described = view
       .getAllByText(
-        /A new run supersedes active runs|Each Event starts a separate run/
+        /End matching active runs, then start the new run|Each event starts a separate run/
       )
       .map((node) => node.textContent ?? "");
-    expect(described.at(0)).toContain("A new run supersedes active runs");
+    expect(described.at(0)).toContain(
+      "End matching active runs, then start the new run"
+    );
   });
 
-  it("keeps concurrency and manual-run details in their help popovers", () => {
+  it("shows the selected overlap outcome and keeps alternatives and manual-run details in help", () => {
     const view = renderPanel();
 
-    expect(view.queryByText(/A new run supersedes active runs/)).toBeNull();
-    expect(view.queryByText(/Run draft, Run vN/)).toBeNull();
+    expect(
+      view.getByText(/End matching active runs, then start the new run/)
+    ).toBeTruthy();
+    expect(view.queryByText(/Each event starts a separate run/)).toBeNull();
+    expect(view.queryByText(/The editor and execute API/)).toBeNull();
 
-    fireEvent.click(view.getByRole("button", { name: "About Concurrency" }));
-    expect(view.getByText(/A new run supersedes active runs/)).toBeTruthy();
+    fireEvent.click(
+      view.getByRole("button", { name: "About Overlapping runs" })
+    );
+    expect(view.getByText(/Each event starts a separate run/)).toBeTruthy();
 
     fireEvent.click(
       view.getByRole("button", { name: "About Allow manual runs" })
     );
-    expect(view.getByText(/Run draft, Run vN/)).toBeTruthy();
+    expect(view.getByText(/The editor and execute API/)).toBeTruthy();
   });
 });

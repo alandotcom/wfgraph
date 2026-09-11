@@ -12,6 +12,19 @@ import { toJsonObject } from "@wfgraph/shared/types/json";
 const EXECUTION_EVENTS_LIMIT = 200;
 
 /**
+ * Newest first, by the timestamp and then by the identity sort key.
+ *
+ * `created_at` defaults from now(), which is the transaction start, so rows a
+ * transaction writes together tie on it. `seq` grows with each insert and
+ * settles that tie in insertion order. The SQLite reader orders on its rowid
+ * for the same reason.
+ */
+const NEWEST_FIRST = { createdAt: "desc", seq: "desc" } as const;
+
+/** `seq` is a storage detail of the PostgreSQL table, so no row carries it out. */
+const EVENT_COLUMNS = { seq: false } as const;
+
+/**
  * How many rows each workflow audit category receives. Each query applies this
  * limit after it filters by event type.
  */
@@ -56,7 +69,8 @@ export function makeAuditMethods(
       database.query((db) =>
         db.query.workflowExecutionEvents.findMany({
           where: { executionId },
-          orderBy: { createdAt: "desc" },
+          columns: EVENT_COLUMNS,
+          orderBy: NEWEST_FIRST,
           limit: EXECUTION_EVENTS_LIMIT,
         })
       ),
@@ -68,7 +82,8 @@ export function makeAuditMethods(
             workflowId: input.workflowId,
             eventType: input.eventType,
           },
-          orderBy: { createdAt: "desc" },
+          columns: EVENT_COLUMNS,
+          orderBy: NEWEST_FIRST,
           limit: WORKFLOW_EVENTS_LIMIT,
         })
       ),

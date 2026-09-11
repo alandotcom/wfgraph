@@ -8,6 +8,10 @@ import {
 import { Effect, Schema } from "effect";
 import type { WorkflowActions } from "#src/backend/engine/actions";
 import {
+  noWorkflowEntities,
+  type WorkflowEntities,
+} from "#src/backend/engine/entities";
+import {
   type BranchHandoff,
   branchRunResultSchema,
 } from "#src/backend/engine/branch";
@@ -42,6 +46,7 @@ import {
 import type { WfGraphRuntime } from "#src/backend/runtime";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import type { ExecutionSummary } from "#src/backend/services/executions/repo/contracts";
+import { wakeParkedWaitsAfterExit } from "#src/backend/services/workflows/lifecycle/signal-parked-waits";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 
 /** The engine entry the run function calls; tests inject a stand-in. */
@@ -141,9 +146,11 @@ function createDurableRuntime(input: {
   step: DurableStep;
   attempt: number;
   runId: string;
-  data: WorkflowExecutionInput;
+  data: WorkflowExecutionInput | WorkflowBranchInput;
+  /** Runs the parked-Wait wake an Exit claim sends. */
+  appRuntime: WfGraphRuntime;
 }): WorkflowExecutionRuntime {
-  const { step, attempt, runId, data } = input;
+  const { step, attempt, runId, data, appRuntime } = input;
 
   // Every port forwards the engine's `{ id, name }` straight through: Inngest's
   // step tools each take a `StepOptionsOrId`, where `id` memoizes and `name` is
@@ -169,7 +176,7 @@ function createDurableRuntime(input: {
     // Memoization boundary: Inngest stores the result under the step's id, so
     // work already done in an earlier attempt is replayed instead of repeated.
     run: (durableStep, fn) => step.run(durableStep, fn),
-    startBranch: async (durableStep, { entryNodeId, releasedNodeIds }) =>
+    startBranch: async (durableStep, { entryNodeId, releasedNodeIds, side }) =>
       readBranchHandoff(
         await step.invoke(durableStep, {
           function: workflowBranchTarget,
@@ -177,8 +184,15 @@ function createDurableRuntime(input: {
             executionId: data.executionId,
             entryNodeId,
             releasedNodeIds: [...releasedNodeIds],
+            side,
           },
         })
+      ),
+    // The engine calls this inside its own durable step, so the signals are
+    // sent once per Exit claim rather than once per replay.
+    wakeParkedWaits: () =>
+      appRuntime.runPromise(
+        wakeParkedWaitsAfterExit({ executionId: data.executionId })
       ),
     attempt,
     runId,
@@ -315,6 +329,8 @@ async function loadPersistedRunInput(
     executionId: execution.id,
     workflowId: execution.workflowId,
     workflowName: workflow.name,
+    entityType: execution.entityType ?? undefined,
+    entityId: execution.entityId ?? undefined,
     runMode: execution.runMode,
   };
 }
@@ -325,6 +341,7 @@ async function workflowRunRequestedHandler({
   attempt,
   runId,
   actions,
+  entities,
   store,
   appRuntime,
   executeWorkflow,
@@ -332,6 +349,7 @@ async function workflowRunRequestedHandler({
 }: {
   event: { data: typeof workflowRunRequestSchema.Type };
   actions: WorkflowActions;
+  entities: WorkflowEntities;
   store: WorkflowStore;
   /** The application boundary that runs the whole engine Effect. */
   appRuntime: WfGraphRuntime;
@@ -351,9 +369,10 @@ async function workflowRunRequestedHandler({
   const result = await appRuntime.runPromise(
     executeWorkflow(
       data,
-      createDurableRuntime({ step, attempt, runId, data }),
+      createDurableRuntime({ step, attempt, runId, data, appRuntime }),
       store,
-      actions
+      actions,
+      entities
     )
   );
   if (!result.success) {
@@ -399,6 +418,7 @@ async function workflowBranchRequestedHandler({
   attempt,
   runId,
   actions,
+  entities,
   store,
   appRuntime,
   executeWorkflowBranch,
@@ -406,6 +426,7 @@ async function workflowBranchRequestedHandler({
 }: {
   event: { data: typeof workflowBranchInputSchema.Type };
   actions: WorkflowActions;
+  entities: WorkflowEntities;
   store: WorkflowStore;
   appRuntime: WfGraphRuntime;
   attempt: number;
@@ -422,6 +443,7 @@ async function workflowBranchRequestedHandler({
     ...persisted,
     entryNodeId: event.data.entryNodeId,
     releasedNodeIds: event.data.releasedNodeIds,
+    side: event.data.side,
   };
 
   await writeRunMetadata({ step, write, data });
@@ -429,9 +451,10 @@ async function workflowBranchRequestedHandler({
   return await appRuntime.runPromise(
     executeWorkflowBranch(
       data,
-      createDurableRuntime({ step, attempt, runId, data }),
+      createDurableRuntime({ step, attempt, runId, data, appRuntime }),
       store,
-      actions
+      actions,
+      entities
     )
   );
 }
@@ -446,6 +469,8 @@ export type WorkflowFunctionPorts = {
    * decrypted secret must not outlive the invocation that read it.
    */
   actions: () => WorkflowActions;
+  /** Live host-owned Entity resolvers, rebuilt for each invocation. */
+  entities?: (() => WorkflowEntities) | undefined;
   /** Where a run's rows go, built by the app from its own runtime. */
   store: WorkflowStore;
   /** Runs the engine Effect at the outer Inngest execution boundary. */
@@ -519,6 +544,7 @@ export function createWorkflowRunFunction(
       await workflowRunRequestedHandler({
         ...context,
         actions: input.actions(),
+        entities: input.entities?.() ?? noWorkflowEntities,
         store: input.store,
         appRuntime: input.appRuntime,
         executeWorkflow: input.executeWorkflow,
@@ -536,9 +562,12 @@ export function createWorkflowRunFunction(
  * event is not a trigger, and the invoke payload names the execution rather
  * than carrying a graph.
  *
- * Both ways a run ends reach it. A Cancel Event kills the branches and leaves
- * the parent to route the Execution; a policy cancel kills the parent, and this
- * carries it too so a branch is never left working for a run that has ended.
+ * Both ways a run ends reach it. A Cancel Event kills the Started-side branches
+ * and leaves the parent to route the Execution; a policy cancel kills the
+ * parent, and this carries it too so a branch is never left working for a run
+ * that has ended. A Canceled-side branch survives the branch kill, and no Cancel
+ * Event reaches it either: the claim write skips a run that already holds a
+ * claim, so a second Cancel Event claims nothing.
  */
 export function createWorkflowBranchFunction(
   client: Inngest,
@@ -550,10 +579,19 @@ export function createWorkflowBranchFunction(
       name: "Workflow branch",
       retries: STEP_RETRIES,
       triggers: [workflowBranchInvoked],
+      // Inngest checks each `if` at registration against a restrictive CEL
+      // policy that refuses every macro and most functions, and a refused
+      // expression fails registration of the whole app. Each expression is
+      // therefore a comparison of fields.
       cancelOn: [
         {
+          // Joining two field equalities with `&&` still satisfies that
+          // registration policy. The side is compared because a cancellation
+          // kills the Started-side branches and then starts Canceled-side ones,
+          // and the parent can reach a Canceled-side hand-off before the kill
+          // send lands.
           event: workflowBranchKillRequested,
-          if: "async.data.executionId == event.data.executionId",
+          if: "async.data.executionId == event.data.executionId && async.data.side == event.data.side",
         },
         {
           event: workflowRunCancelRequested,
@@ -565,6 +603,7 @@ export function createWorkflowBranchFunction(
       await workflowBranchRequestedHandler({
         ...context,
         actions: input.actions(),
+        entities: input.entities?.() ?? noWorkflowEntities,
         store: input.store,
         appRuntime: input.appRuntime,
         executeWorkflowBranch: input.executeWorkflowBranch,

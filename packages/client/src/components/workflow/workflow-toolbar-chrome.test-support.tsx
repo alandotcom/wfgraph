@@ -39,6 +39,7 @@ import {
 } from "#src/lib/workflow-comparison-store";
 
 const emptyCatalog: ExtensionCatalog = {
+  entities: [],
   events: [],
   actions: [],
   integrations: [],

@@ -12,7 +12,6 @@
 
 import { Effect, Schema } from "effect";
 import { Tool } from "effect/unstable/ai";
-import { nanoid } from "nanoid";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { findAction } from "@wfgraph/shared/extensions/catalog";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
@@ -28,6 +27,7 @@ import {
 } from "@wfgraph/shared/lifecycle/event-split";
 import { isLifecycleOutlet } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import { flattenConfigFields } from "@wfgraph/shared/plugins/action-fields";
+import { generateId } from "@wfgraph/shared/utils/id";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
   type AgentDocument,
@@ -510,7 +510,7 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
           return Effect.fail({ reason: configRefusal });
         }
 
-        const nodeId = nanoid();
+        const nodeId = generateId();
         const node = actionNode({ ...input, nodeId });
 
         return Effect.as(
@@ -682,7 +682,7 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
         }
 
         const edge: WorkflowEdge = {
-          id: nanoid(),
+          id: generateId(),
           source: input.source,
           target: input.target,
           sourceHandle: input.sourceHandle,
@@ -750,11 +750,11 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
           });
         }
 
-        const nodeId = nanoid();
+        const nodeId = generateId();
         const node = actionNode({ ...input, nodeId });
         const incoming: WorkflowEdge = { ...edge, target: nodeId };
         const outgoing: WorkflowEdge = {
-          id: nanoid(),
+          id: generateId(),
           source: nodeId,
           target: edge.target,
           sourceHandle: input.outgoingSourceHandle,

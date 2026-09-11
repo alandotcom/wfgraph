@@ -49,7 +49,9 @@ export const postExecutionCancel = Effect.fn("wfgraph.execution.cancel")(
         (status) => status === execution.status
       );
 
-    if (!isInFlight) {
+    // A canceled row can be a half-finished earlier request whose Inngest signal
+    // failed. Let the operation retry its signal, wait cleanup, and final audit.
+    if (!isInFlight && execution?.status !== "canceled") {
       yield* logger.warn("Execution is not in flight and cannot be cancelled");
       yield* annotateServiceSpan({ outcome: "already_finished" });
       return yield* new Conflict({
@@ -59,16 +61,9 @@ export const postExecutionCancel = Effect.fn("wfgraph.execution.cancel")(
 
     const waitingStates = yield* repo.listWaitingStates(executionId);
 
-    yield* repo.recordAuditEvent({
-      workflowId,
-      executionId,
-      eventType: "run_cancel_requested",
-      message: "Manual cancellation requested",
-    });
-
-    // The one run-ender a person reaches: the signal, the row behind its
-    // compare-and-set, the wait rows (whatever exist -- a run standing on any
-    // other node carries none), and the timeline entry are one thing. A Cancel
+    // The one run-ender a person reaches: the row behind its compare-and-set,
+    // the signal, the wait rows (whatever exist -- a run standing on any other
+    // node carries none), and the timeline entry are one thing. A Cancel
     // Event takes the other path, flagging the run for its Canceled outlet
     // rather than ending it (`lifecycle/cancel.ts`).
     const ended = yield* cancelInFlightRuns({
@@ -79,6 +74,29 @@ export const postExecutionCancel = Effect.fn("wfgraph.execution.cancel")(
         executionId,
       })),
       reason: "Cancelled manually",
+    });
+
+    // A Cancel Event claimed this run before the button did. The run is walking
+    // its Canceled outlet, which ends it with the payload that Event carried, so
+    // ending it here would take that outlet away from it.
+    if (ended.claimedExecutionIds.length > 0) {
+      yield* logger.info(
+        "Execution is already canceling under an earlier claim"
+      );
+      yield* annotateServiceSpan({ outcome: "claim_pending" });
+      return yield* new Conflict({
+        error: "Execution is already canceling",
+      });
+    }
+
+    // Written after the claim check so the timeline records a request this call
+    // acted on. A cancel refused for an earlier claim leaves no entry, because
+    // the run is already on its way out under that claim's own timeline.
+    yield* repo.recordAuditEvent({
+      workflowId,
+      executionId,
+      eventType: "run_cancel_requested",
+      message: "Manual cancellation requested",
     });
 
     if (ended.failedExecutionIds.length > 0) {

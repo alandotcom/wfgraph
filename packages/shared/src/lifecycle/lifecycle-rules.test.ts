@@ -34,6 +34,7 @@ function refusalOf(check: LifecycleRulesCheck): string {
  * rule below is stated over.
  */
 const catalog: ExtensionCatalog = {
+  entities: [],
   events: [
     {
       name: "app/appointment.created",
@@ -117,6 +118,14 @@ describe("lifecycleRulesSchema", () => {
       allowManualStart: true,
       correlationPaths: { "ops/nightly.swept": "sweep.id" },
       cancelFilters: { "app/appointment.canceled": "{}" },
+      trackedEntity: {
+        type: "appointment",
+        bindings: { "app/appointment.created": "appointment" },
+      },
+      entityEligibility: {
+        condition: "{}",
+        checkpoints: ["before-execution", "before-node"],
+      },
     });
 
     expect(decoded.concurrency).toBe("first-wins");
@@ -127,6 +136,14 @@ describe("lifecycleRulesSchema", () => {
     expect(decoded.cancelFilters).toEqual({
       "app/appointment.canceled": "{}",
     });
+    expect(decoded.trackedEntity).toEqual({
+      type: "appointment",
+      bindings: { "app/appointment.created": "appointment" },
+    });
+    expect(decoded.entityEligibility?.checkpoints).toEqual([
+      "before-execution",
+      "before-node",
+    ]);
   });
 
   it("refuses a concurrency it has never heard of", () => {
@@ -229,9 +246,41 @@ describe("resolveCorrelationPath", () => {
       resolveCorrelationPath({ rules: rules(), eventName: "ops/nightly.swept" })
     ).toBeUndefined();
   });
+
+  it("ignores declared and overridden paths when an Entity binding owns identity", () => {
+    expect(
+      resolveCorrelationPath({
+        rules: rules({
+          trackedEntity: {
+            type: "appointment",
+            bindings: { "app/appointment.created": "appointment" },
+          },
+          correlationPaths: {
+            "app/appointment.created": "override.id",
+          },
+        }),
+        eventName: "app/appointment.created",
+        declaredPath: "declared.id",
+      })
+    ).toBeUndefined();
+  });
 });
 
 describe("eventsNeedingCorrelationPath", () => {
+  it("asks for no path when selected Entity bindings supply identity", () => {
+    expect(
+      eventsNeedingCorrelationPath({
+        rules: rules({
+          trackedEntity: {
+            type: "appointment",
+            bindings: { "app/appointment.created": "appointment" },
+          },
+        }),
+        catalog,
+      })
+    ).toEqual([]);
+  });
+
   // The panel maps over this set, and an Event declaring a path is a member like
   // any other: the builder needs a control to override it with.
   it("carries both paths for an Event whose author declared one", () => {

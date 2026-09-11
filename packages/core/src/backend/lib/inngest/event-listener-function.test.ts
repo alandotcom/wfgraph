@@ -1,4 +1,4 @@
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Layer, Schema, SchemaTransformation } from "effect";
 import { Inngest } from "inngest";
 import { describe, expect, it, vi } from "vitest";
 import { DatabaseError } from "#src/backend/lib/effect/database";
@@ -26,6 +26,16 @@ const appointmentCreated = defineEvent({
 });
 
 const payload = { appointment: { id: "appt_1" } };
+const transformedEvent = defineEvent({
+  name: "app/appointment.transformed",
+  schema: Schema.Struct({
+    appointment: Schema.Struct({
+      id: Schema.String.pipe(
+        Schema.decodeTo(Schema.String, SchemaTransformation.trim())
+      ),
+    }),
+  }),
+});
 
 /** The steps a handler took, in the order it took them. */
 function recordingStep() {
@@ -131,6 +141,34 @@ describe("runEventListener", () => {
       "exec_new",
       "exec_old",
     ]);
+  });
+
+  it("passes the decoded payload to Entity bindings without rewriting workflow input", async () => {
+    const deliver = fakeDeliver();
+    deliver.listSubscribers.mockReturnValue(
+      Effect.succeed([subscriber({ roles: ["start", "wait"] })])
+    );
+    const recorder = recordingStep();
+    const wirePayload = { appointment: { id: "  appt_1  " } };
+
+    await runEventListener({
+      event: transformedEvent,
+      payload: wirePayload,
+      arrival: {},
+      runtime: testRuntime(),
+      step: recorder.step,
+      deliver,
+    });
+
+    expect(
+      deliver.applyLifecycle.mock.calls[0]?.[0].event.validatedPayload
+    ).toEqual({ appointment: { id: "appt_1" } });
+    expect(deliver.applyLifecycle.mock.calls[0]?.[0].payload).toEqual(
+      wirePayload
+    );
+    expect(deliver.deliverWaits.mock.calls[0]?.[0].payload).toEqual(
+      wirePayload
+    );
   });
 
   // A run claimed for the Canceled outlet is on its way out, so waking its wait

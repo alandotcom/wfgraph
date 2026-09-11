@@ -47,6 +47,7 @@ function anAction(id: string, paths: string[]): ActionMetadata {
 }
 
 const catalog: ExtensionCatalog = {
+  entities: [],
   events: [
     anEvent(CREATED, ["appointmentId", "bookedBy"]),
     anEvent(CANCELED, ["appointmentId", "reason"]),
@@ -159,6 +160,19 @@ function eventNameRule(
   };
 }
 
+function eventNameSetRule(
+  operator: "is_one_of" | "is_not_one_of",
+  values: string[]
+): ConditionRule {
+  return {
+    id: "rule-event",
+    field: EVENT_NAME_FIELD_PATH,
+    fieldType: "string",
+    operator,
+    values,
+  };
+}
+
 function fieldRule(path: string): ConditionRule {
   return {
     id: "rule-field",
@@ -243,6 +257,39 @@ describe("eventsReaching", () => {
     expect(namesReaching("on-true", nodes, edges)).toEqual([CANCELED]);
     expect(namesReaching("on-false", nodes, edges)).toEqual([RESCHEDULED]);
   });
+
+  it.each([
+    {
+      operator: "is_one_of" as const,
+      expectedTrue: [CANCELED, RESCHEDULED],
+      expectedFalse: [CREATED],
+    },
+    {
+      operator: "is_not_one_of" as const,
+      expectedTrue: [CREATED],
+      expectedFalse: [CANCELED, RESCHEDULED],
+    },
+  ])(
+    "narrows both lines for $operator",
+    ({ operator, expectedTrue, expectedFalse }) => {
+      const nodes = [
+        entryNode({ cancelEvents: [CANCELED, RESCHEDULED, CREATED] }),
+        conditionNode("which-1", [
+          eventNameSetRule(operator, [CANCELED, RESCHEDULED]),
+        ]),
+        actionNode("on-true"),
+        actionNode("on-false"),
+      ];
+      const edges = [
+        edge("e1", "lifecycle-1", "which-1", LIFECYCLE_CANCELED_HANDLE),
+        edge("e2", "which-1", "on-true", "true"),
+        edge("e3", "which-1", "on-false", "false"),
+      ];
+
+      expect(namesReaching("on-true", nodes, edges)).toEqual(expectedTrue);
+      expect(namesReaching("on-false", nodes, edges)).toEqual(expectedFalse);
+    }
+  );
 
   it("leaves one Event behind each Event Split outlet", () => {
     const nodes = [

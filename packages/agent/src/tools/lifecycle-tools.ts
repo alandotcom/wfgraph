@@ -10,7 +10,6 @@
 
 import { Effect, Schema } from "effect";
 import { Tool } from "effect/unstable/ai";
-import { nanoid } from "nanoid";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { findEvent } from "@wfgraph/shared/extensions/catalog";
 // The barrel keeps a historical import path and leaves these two types out, so
@@ -23,6 +22,7 @@ import { EVENT_NAME_FIELD_PATH } from "@wfgraph/shared/conditions/condition-mode
 import { serializeConditionModel } from "@wfgraph/shared/conditions/condition-schema";
 import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
+import { checkEntityEligibility } from "@wfgraph/shared/lifecycle/entity-eligibility";
 import {
   checkLifecycleRules,
   emptyLifecycleRules,
@@ -40,6 +40,7 @@ import {
   checkCancelFilters,
   pruneCancelFilters,
 } from "@wfgraph/shared/lifecycle/cancel-filters";
+import { generateId } from "@wfgraph/shared/utils/id";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { type AgentDocument, WorkflowDraft } from "#src/document";
 import {
@@ -70,7 +71,7 @@ const UNPLACED = { x: 0, y: 0 };
 
 export const SetLifecycleRules = Tool.make("set_lifecycle_rules", {
   description:
-    "Declare when a run starts and when it is cancelled. A Start Filter checks an Event before a run opens. A Cancel Filter checks an Event before it cancels a run. Creates the Lifecycle Node if the workflow has none. Find exact Event names with list_events, then use describe_event for filter fields and field types.",
+    "Declare when a run starts and is cancelled, which Entity it tracks, and optional Entity Eligibility. A Start Filter checks an Event before a run opens. A Cancel Filter checks an Event before it cancels a run. Creates the Lifecycle Node if the workflow has none. Find exact Event names with list_events, then use describe_event for filter fields, Entity bindings, and field types.",
   parameters: Schema.Struct({
     startEvents: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
       description:
@@ -114,6 +115,55 @@ export const SetLifecycleRules = Tool.make("set_lifecycle_rules", {
     ).annotate({
       description:
         "Event names whose Correlation Path overrides must be removed. Other overrides are preserved.",
+    }),
+    trackedEntity: Schema.optionalKey(
+      Schema.Struct({
+        type: Schema.String.annotate({
+          description:
+            "The exact Entity type shown by describe_event on a lifecycle Event binding.",
+        }),
+        bindings: Schema.Array(
+          Schema.Struct({
+            event: Schema.String.annotate({
+              description: "A Start or Cancel Event in this edit.",
+            }),
+            binding: Schema.String.annotate({
+              description:
+                "The exact Entity binding name shown by describe_event for this Event.",
+            }),
+          })
+        ),
+      })
+    ).annotate({
+      description:
+        "Track every run by one Entity. Supply exactly one compatible binding for every Start and Cancel Event. Omit to preserve tracking; a binding for an Event this edit no longer names as Start or Cancel is dropped. Changing the Entity type clears existing eligibility unless this edit supplies a replacement.",
+    }),
+    clearTrackedEntity: Schema.optionalKey(Schema.Boolean).annotate({
+      description:
+        "Set true to stop tracking an Entity. This also clears Entity Eligibility.",
+    }),
+    entityEligibility: Schema.optionalKey(
+      Schema.Struct({
+        checkpoints: Schema.Array(
+          Schema.Literals(["before-execution", "before-node"])
+        ).annotate({
+          description:
+            "When current Entity State must satisfy the condition: before a run starts, before each step, or both.",
+        }),
+        groupLogic: Schema.optionalKey(Schema.Literals(["and", "or"])).annotate(
+          {
+            description: "How the condition groups combine. Defaults to and.",
+          }
+        ),
+        groups: conditionGroupsSchema,
+      })
+    ).annotate({
+      description:
+        "Optional positive condition over the tracked Entity's current State. Values must be literals, never workflow references. For several accepted fixed-list values, use one is_one_of rule. Omit to preserve it.",
+    }),
+    clearEntityEligibility: Schema.optionalKey(Schema.Boolean).annotate({
+      description:
+        "Set true to remove the eligibility condition while preserving Entity tracking.",
     }),
     eventConnections: Schema.optionalKey(
       Schema.Array(
@@ -220,6 +270,20 @@ type EventConnectionInput = {
   readonly connectionId: string;
 };
 
+type TrackedEntityInput = {
+  readonly type: string;
+  readonly bindings: readonly {
+    readonly event: string;
+    readonly binding: string;
+  }[];
+};
+
+type EntityEligibilityInput = {
+  readonly checkpoints: readonly ("before-execution" | "before-node")[];
+  readonly groupLogic?: GroupLogic | undefined;
+  readonly groups: ConditionGroupsInput;
+};
+
 /** Applies per-Event updates, with an empty update list clearing the record. */
 function patchEventRecord(input: {
   stored: Record<string, string> | undefined;
@@ -248,7 +312,7 @@ function entryNodeOf(nodes: readonly WorkflowNode[]): WorkflowNode {
   const existing = nodes.find((node) => node.data.type === "lifecycle");
   return (
     existing ?? {
-      id: nanoid(),
+      id: generateId(),
       position: UNPLACED,
       type: "lifecycle",
       data: { label: "Lifecycle", type: "lifecycle", config: {} },
@@ -273,6 +337,10 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
         | readonly { readonly event: string; readonly path: string }[]
         | undefined;
       readonly clearCorrelationPaths?: readonly string[] | undefined;
+      readonly trackedEntity?: TrackedEntityInput | undefined;
+      readonly clearTrackedEntity?: boolean | undefined;
+      readonly entityEligibility?: EntityEligibilityInput | undefined;
+      readonly clearEntityEligibility?: boolean | undefined;
       readonly eventConnections?: readonly EventConnectionInput[] | undefined;
       readonly clearEventConnections?: readonly string[] | undefined;
       readonly startFilters?: readonly LifecycleFilterInput[] | undefined;
@@ -400,6 +468,88 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
           clear: input.clearCorrelationPaths,
         });
 
+        if (input.clearTrackedEntity === true && input.trackedEntity) {
+          return Effect.fail({
+            reason:
+              "Choose trackedEntity or clearTrackedEntity, not both in one edit.",
+          });
+        }
+        if (input.clearEntityEligibility === true && input.entityEligibility) {
+          return Effect.fail({
+            reason:
+              "Choose entityEligibility or clearEntityEligibility, not both in one edit.",
+          });
+        }
+        if (
+          input.clearTrackedEntity === true &&
+          input.entityEligibility !== undefined
+        ) {
+          return Effect.fail({
+            reason:
+              "Entity Eligibility needs a tracked Entity. Clear tracking or set eligibility, not both.",
+          });
+        }
+
+        // The stored tracking keeps only the bindings for this edit's Start and
+        // Cancel Events, because checkEntityEligibility refuses a binding for
+        // an Event with no lifecycle role.
+        let trackedEntity = stored?.trackedEntity
+          ? {
+              ...stored.trackedEntity,
+              bindings:
+                retainNamedKeys(
+                  stored.trackedEntity.bindings,
+                  new Set(named)
+                ) ?? {},
+            }
+          : undefined;
+        if (input.clearTrackedEntity === true) {
+          trackedEntity = undefined;
+        } else if (input.trackedEntity !== undefined) {
+          const bindings = new Map<string, string>();
+          for (const supplied of input.trackedEntity.bindings) {
+            if (!named.includes(supplied.event)) {
+              return Effect.fail({
+                reason: `${supplied.event} is not a Start or Cancel Event in this edit, so it cannot identify the tracked Entity.`,
+              });
+            }
+            if (bindings.has(supplied.event)) {
+              return Effect.fail({
+                reason: `${supplied.event} has more than one Entity binding. Supply one binding per Event.`,
+              });
+            }
+            bindings.set(supplied.event, supplied.binding);
+          }
+          trackedEntity = {
+            type: input.trackedEntity.type,
+            bindings: Object.fromEntries(bindings),
+          };
+        }
+
+        const changesTrackedEntityType =
+          input.trackedEntity !== undefined &&
+          stored?.trackedEntity?.type !== input.trackedEntity.type;
+        let entityEligibility =
+          input.clearTrackedEntity === true ||
+          input.clearEntityEligibility === true ||
+          changesTrackedEntityType
+            ? undefined
+            : stored?.entityEligibility;
+        if (input.entityEligibility !== undefined) {
+          const reading = readConditionModelInput({
+            subject: "Entity Eligibility",
+            groupLogic: input.entityEligibility.groupLogic,
+            groups: input.entityEligibility.groups,
+          });
+          if (!reading.ok) {
+            return Effect.fail({ reason: reading.reason });
+          }
+          entityEligibility = {
+            condition: serializeConditionModel(reading.model),
+            checkpoints: [...input.entityEligibility.checkpoints],
+          };
+        }
+
         let connectionUpdates: Map<string, string> | undefined;
         if (input.eventConnections !== undefined) {
           const suppliedConnections = new Map<string, string>();
@@ -431,7 +581,9 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
             cancelFilters,
             connectionIds,
             allowManualStart,
-            correlationPaths,
+            correlationPaths: trackedEntity ? undefined : correlationPaths,
+            trackedEntity,
+            entityEligibility,
           }),
           startEvents,
           cancelEvents,
@@ -493,6 +645,13 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
         if (!check.valid) {
           return Effect.fail({ reason: check.error });
         }
+        const entityCheck = checkEntityEligibility({
+          rules,
+          catalog: draft.catalog,
+        });
+        if (!entityCheck.valid) {
+          return Effect.fail({ reason: entityCheck.error });
+        }
         if (changesStartFilters) {
           const filtersCheck = checkStartFilters({
             rules,
@@ -545,7 +704,7 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
           draft.update(applyEdit),
           omitUndefined({
             nodeId: entry.id,
-            summary: `${created ? "Created the Lifecycle Node and set" : "Set"} the rules: starts on ${rules.startEvents.join(", ") || "manual start only"}.`,
+            summary: `${created ? "Created the Lifecycle Node and set" : "Set"} the rules: starts on ${rules.startEvents.join(", ") || "manual start only"}${rules.trackedEntity ? `; tracks ${rules.trackedEntity.type}` : ""}.`,
             warning,
           })
         );

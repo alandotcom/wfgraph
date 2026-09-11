@@ -72,6 +72,7 @@ describe("the persist round trip", () => {
     expect(
       workflowNodeAriaLabel(action.data, {
         events: [],
+        entities: [],
         integrations: [],
         actions: [
           {
@@ -201,6 +202,7 @@ describe("the persist round trip", () => {
     };
     const catalog = {
       events: [],
+      entities: [],
       integrations: [],
       actions: [
         {

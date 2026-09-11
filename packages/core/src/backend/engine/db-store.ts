@@ -16,8 +16,10 @@ import type { ExecutionRepo } from "#src/backend/services/executions/repo";
 import { decodeIsoTimestampOrThrow } from "@wfgraph/shared/types/timestamp";
 import type {
   CompleteRunInput,
+  ExecutionTerminationState,
   WorkflowStore,
 } from "#src/backend/engine/store";
+import type { ExecutionTerminationState as StoredTerminationState } from "#src/backend/services/executions/repo/contracts";
 import {
   isWaitSignalType,
   WAIT_ARRIVAL_METADATA_KEY,
@@ -48,6 +50,32 @@ function readWaitUntil(
  * read back as an arrival is treated as none, because the alternative is a run
  * failing on a row a future version wrote a different shape into.
  */
+function engineTerminationState(
+  state: StoredTerminationState
+): ExecutionTerminationState {
+  const claim = state.claim;
+  return {
+    status: state.status,
+    claim:
+      claim?.kind === "cancel"
+        ? {
+            kind: "cancel",
+            requestedAt: claim.requestedAt.toISOString(),
+            eventName: claim.eventName,
+            payload: claim.payload,
+          }
+        : claim?.kind === "exit"
+          ? {
+              kind: "exit",
+              requestedAt: claim.requestedAt.toISOString(),
+              reason: claim.reason,
+              nodeId: claim.nodeId,
+            }
+          : null,
+    didWrite: state.didWrite,
+  };
+}
+
 function readWaitArrival(metadata: JsonObject | null): WaitArrival | null {
   const arrival = readJsonObject(metadata?.[WAIT_ARRIVAL_METADATA_KEY]);
   if (!arrival || !isWaitSignalType(arrival.signalType)) {
@@ -65,13 +93,17 @@ export function createDbWorkflowStore(
 ): WorkflowStore {
   function completeRun(
     input: CompleteRunInput
-  ): Effect.Effect<boolean, DatabaseError> {
-    return repo.finishRun({
-      executionId: input.executionId,
-      status: input.status,
-      output: redactSensitiveData(input.output),
-      error: input.failure?.message,
-    });
+  ): Effect.Effect<ExecutionTerminationState | null, DatabaseError> {
+    return repo
+      .finishRun({
+        executionId: input.executionId,
+        status: input.status,
+        output: redactSensitiveData(input.output),
+        error: input.failure?.message,
+      })
+      .pipe(
+        Effect.map((state) => (state ? engineTerminationState(state) : null))
+      );
   }
 
   return {
@@ -119,6 +151,27 @@ export function createDbWorkflowStore(
     markExecutionRunning: (input) => repo.markRunning(input),
 
     markExecutionWaitingIfParked: (input) => repo.markWaitingIfParked(input),
+
+    admitNode: (executionId) => repo.canAdmitNode(executionId),
+
+    requestExit: (input) =>
+      repo
+        .requestExit({
+          executionId: input.executionId,
+          reason: input.reason,
+          nodeId: input.nodeId,
+          requestedAt: decodeIsoTimestampOrThrow(input.checkedAt),
+        })
+        .pipe(
+          Effect.map((state) => (state ? engineTerminationState(state) : null))
+        ),
+
+    readTerminationState: (executionId) =>
+      repo
+        .findTerminationState(executionId)
+        .pipe(
+          Effect.map((state) => (state ? engineTerminationState(state) : null))
+        ),
 
     readPendingCancel: (executionId) => repo.findPendingCancel(executionId),
 

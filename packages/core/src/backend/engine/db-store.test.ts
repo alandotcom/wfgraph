@@ -17,28 +17,56 @@ const terminalWrite = {
 } as const;
 
 describe("completeRun", () => {
-  layer(stubExecutionRepo({ finishRun: () => Effect.succeed(true) }))((it) => {
-    it.effect("answers true when the write claimed the row", () =>
+  layer(
+    stubExecutionRepo({
+      finishRun: () =>
+        Effect.succeed({
+          executionId: "exec_1",
+          status: "completed",
+          claim: null,
+          didWrite: true,
+        }),
+    })
+  )((it) => {
+    it.effect("answers the claimed terminal state", () =>
       Effect.gen(function* () {
         const repo = yield* ExecutionRepo;
         const result =
           yield* createDbWorkflowStore(repo).completeRun(terminalWrite);
 
-        expect(result).toBe(true);
+        expect(result).toEqual({
+          status: "completed",
+          claim: null,
+          didWrite: true,
+        });
       })
     );
   });
 
-  layer(stubExecutionRepo({ finishRun: () => Effect.succeed(false) }))((it) => {
+  layer(
+    stubExecutionRepo({
+      finishRun: () =>
+        Effect.succeed({
+          executionId: "exec_1",
+          status: "canceled",
+          claim: null,
+          didWrite: false,
+        }),
+    })
+  )((it) => {
     it.effect(
-      "answers false when an earlier terminal status holds the row",
+      "answers the authoritative state when another terminal status won",
       () =>
         Effect.gen(function* () {
           const repo = yield* ExecutionRepo;
           const result =
             yield* createDbWorkflowStore(repo).completeRun(terminalWrite);
 
-          expect(result).toBe(false);
+          expect(result).toEqual({
+            status: "canceled",
+            claim: null,
+            didWrite: false,
+          });
         })
     );
   });

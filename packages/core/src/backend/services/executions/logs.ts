@@ -32,6 +32,21 @@ export const getExecutionLogs = Effect.fn("getExecutionLogs")(
 
     const logs = yield* repo.listLogs(executionId);
     const waits = yield* repo.listWaitingStates(executionId);
+    const termination =
+      execution.status === "exited"
+        ? yield* repo.findTerminationState(executionId)
+        : null;
+    const exitClaim =
+      termination?.claim?.kind === "exit" ? termination.claim : null;
+    const exit =
+      exitClaim && execution.entityType
+        ? {
+            reason: exitClaim.reason,
+            entityType: execution.entityType,
+            nodeId: exitClaim.nodeId,
+            checkedAt: exitClaim.requestedAt.toISOString(),
+          }
+        : null;
 
     return {
       execution: {
@@ -76,6 +91,7 @@ export const getExecutionLogs = Effect.fn("getExecutionLogs")(
         subscribedEvents: wait.subscribedEvents ?? [],
         waitUntil: toIso(wait.waitUntil),
       })),
+      exit,
     };
   },
   (effect, executionId) =>

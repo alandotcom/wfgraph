@@ -35,12 +35,12 @@ import {
 import type { WorkflowMigrationPayload } from "@wfgraph/shared/graph/migration-contracts";
 
 /**
- * How many characters of a run id name a run on screen.
+ * How many characters from the end of a run id name a run on screen.
  *
- * The status strip uses the same eight characters of a 21-character nanoid, so
+ * The status strip shows the same last eight characters of a run's UUIDv7, so
  * a run refused here is recognisable from the run pinned to the canvas.
  */
-const RUN_ID_PREFIX_LENGTH = 8;
+const RUN_ID_SUFFIX_LENGTH = 8;
 
 /**
  * Counts one migrate call's outcomes.
@@ -177,7 +177,7 @@ export function MigrationDialog({
                       className="font-mono text-xs tabular-nums"
                       title={refusal.executionId}
                     >
-                      {refusal.executionId.slice(0, RUN_ID_PREFIX_LENGTH)}
+                      {refusal.executionId.slice(-RUN_ID_SUFFIX_LENGTH)}
                     </span>
                     <span className="text-muted-foreground text-xs">
                       {refusal.fromVersionNumber === null

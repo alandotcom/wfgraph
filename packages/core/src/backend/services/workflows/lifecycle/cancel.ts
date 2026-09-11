@@ -17,8 +17,10 @@ import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { InngestClient } from "#src/backend/lib/effect/inngest-client";
 import {
   ExecutionRepo,
+  type ExecutionEntitySelector,
   type WorkflowWaitState,
 } from "#src/backend/services/executions/repo";
+import { signalParkedWaits } from "#src/backend/services/workflows/lifecycle/signal-parked-waits";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import type { WorkflowMode } from "@wfgraph/shared/graph/types";
 
@@ -33,23 +35,18 @@ import type { WorkflowMode } from "@wfgraph/shared/graph/types";
  * next boundary either way, and a parked one at its wait timeout.
  */
 export const requestCanceledOutlet = Effect.fn("requestCanceledOutlet")(
-  function* (input: {
-    workflowId: string;
-    runMode: WorkflowMode;
-    eventName: string;
-    payload: JsonObject;
-    entityValue: string;
-  }) {
+  function* (
+    input: {
+      workflowId: string;
+      runMode: WorkflowMode;
+      eventName: string;
+      payload: JsonObject;
+    } & ExecutionEntitySelector
+  ) {
     const repo = yield* ExecutionRepo;
     const logger = (yield* AppLogger).get("lifecycle-cancel");
 
-    const claimed = yield* repo.requestCancelForEntity({
-      workflowId: input.workflowId,
-      entityValue: input.entityValue,
-      runMode: input.runMode,
-      eventName: input.eventName,
-      payload: input.payload,
-    });
+    const claimed = yield* repo.requestCancelForEntity(input);
 
     if (claimed.length === 0) {
       return claimed;
@@ -124,21 +121,19 @@ const stopClaimedRun = Effect.fn("stopClaimedRun")(function* (input: {
       executionId: input.executionId,
       workflowId: input.workflowId,
       reason: `Cancellation requested by ${input.eventName}`,
+      // The Started side alone. The run that survives this kill goes on to take
+      // the Canceled outlet, and a Wait behind that outlet is handed to a branch
+      // run of its own, which this event must not reach.
+      side: "started",
     });
 
-    yield* Effect.forEach(
-      input.parked,
-      (waitState) =>
-        inngest.sendWaitSignal({
-          executionId: input.executionId,
-          nodeId: waitState.nodeId,
-          token: waitState.resumeToken,
-          eventType: input.eventName,
-          payload: input.payload,
-          signalType: "lifecycle-cancel",
-        }),
-      { concurrency: DEFAULT_QUERY_CONNECTIONS }
-    );
+    yield* signalParkedWaits({
+      executionId: input.executionId,
+      parked: input.parked,
+      signalType: "lifecycle-cancel",
+      eventName: input.eventName,
+      payload: input.payload,
+    });
 
     yield* repo.recordAuditEvent({
       workflowId: input.workflowId,

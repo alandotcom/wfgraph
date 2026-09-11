@@ -4,6 +4,7 @@ import {
   assembleExtensions,
   type WfGraphExtensions,
 } from "#src/backend/extensions/extension-set";
+import { readEntityResolverTimeoutMs } from "#src/backend/extensions/entity-resolution";
 import {
   assertValidEncryptionKey,
   createIntegrationCipher,
@@ -49,6 +50,11 @@ export type WfGraphWorkerRequestConfig = {
 
 export type WfGraphWorkerOptions<Env> = {
   basePath?: string | undefined;
+  /**
+   * Maximum time in milliseconds for one call to a host-owned Entity resolver.
+   * Defaults to 10,000. A timeout is an operational failure.
+   */
+  entityResolverTimeoutMs?: number | undefined;
   /** Enables the authenticated stateless MCP endpoint at `${basePath}/api/mcp`. */
   mcp?: true | WfGraphMcpOptions | undefined;
   /** Public origin used in provider callback URLs and client metadata. */
@@ -81,13 +87,18 @@ export function wfWorker<Env>(
 ): WfGraphWorker<Env> {
   const basePath = normalizeBasePath(options.basePath ?? "/");
   const publicUrl = resolvePublicUrl(options.publicUrl);
+  const entityResolverTimeoutMs = readEntityResolverTimeoutMs(
+    options.entityResolverTimeoutMs
+  );
   const extensionsOption = options.extensions;
   const extensionResolver =
     typeof extensionsOption === "function" ? extensionsOption : undefined;
   const staticExtensions =
     typeof extensionsOption === "function"
       ? undefined
-      : assembleExtensions(extensionsOption ?? {});
+      : assembleExtensions(extensionsOption ?? {}, {
+          entityResolverTimeoutMs,
+        });
 
   if (options.logger) configureLoggingWithBridge(options.logger);
   else warnWhenLoggingUnconfigured();
@@ -104,7 +115,10 @@ export function wfWorker<Env>(
       assertValidEncryptionKey(config.encryption.key);
 
       const extensions =
-        staticExtensions ?? assembleExtensions(extensionResolver?.(env) ?? {});
+        staticExtensions ??
+        assembleExtensions(extensionResolver?.(env) ?? {}, {
+          entityResolverTimeoutMs,
+        });
 
       const auth = resolveAuth(config.auth);
       const cipher = createIntegrationCipher(config.encryption);

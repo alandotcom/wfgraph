@@ -1,10 +1,10 @@
 ---
 name: events
 description: >
-  defineEvent: name identity, Standard Schema payload, correlationPath, umbrella
-  source with when filter, inngest.send intake. Load when declaring host Events,
-  webhook umbrellas, Entity Value paths, or Lifecycle start/cancel names, or when
-  choosing between an Event-author `when` filter and per-workflow lifecycle filters.
+  defineEvent and defineEntity: Event schemas, typed Entity bindings, current-state
+  resolvers, Lifecycle Entity Eligibility, correlationPath, umbrella source filters,
+  and inngest.send intake. Load when declaring host Events or Entities, choosing
+  Lifecycle start/cancel behavior, or deciding between payload and current-state rules.
 metadata:
   type: sub-skill
   library: wfgraph
@@ -15,11 +15,13 @@ sources:
 
 This skill builds on wfgraph-core. Copy-paste forms live in `docs/events.md`.
 
-# Defining an Event
+# Defining Events and Entities
 
-An Event is a named payload shape the host raises. Lifecycle (which workflow
-starts or cancels) is declared in the editor, not here. Pass the value in
-`extensions.events`.
+An Event is a named payload shape the host raises. An Entity is a reusable
+host-owned current-state definition that Events may identify. Lifecycle (which
+workflow starts, cancels, or checks Entity Eligibility) is declared in the
+editor. Pass Event values in `extensions.events`; their referenced Entity
+objects are discovered transitively.
 
 ## Core Patterns
 
@@ -29,12 +31,46 @@ starts or cancels) is declared in the editor, not here. Pass the value in
 (validate + JSON Schema) from one object. Zod, arktype, and Effect Schema all
 work. A non-object root throws at definition.
 
+### Current Entity State
+
+Use `defineEntity({ type, label, state, resolve })`. `state` must encode to a
+JSON object. `resolve({ entityId })` returns current host state or `null` when the
+Entity no longer exists. The resolver has 10 seconds to settle by default;
+`createWfGraphApp({ entityResolverTimeoutMs })` or
+`wfWorker({ entityResolverTimeoutMs })` sets another positive whole-number
+deadline. A timeout, rejection, or schema-invalid result is an
+operational failure.
+
+Workflow Graph validates current state only to decide Eligibility. The state
+stays out of persistence, templates, node outputs, logs, and audit metadata.
+Keep the resolver read-only. Node checkpoints may call it concurrently across
+fan-out.
+
+### Typed Event bindings
+
+Add named bindings under `defineEvent({ entities })`. Each binding holds the
+Entity object and a synchronous `selectEntityId` typed from the decoded Event
+schema. It must return a non-empty string. The original JSON payload still flows
+through the workflow.
+
+A tracked Lifecycle selects one Entity type and one compatible binding per Start
+and Cancel Event. Tracking can stand alone for typed Concurrency and cancellation
+identity. An optional Eligibility rule can check **Before opening an Execution**,
+**Before each workflow node**, or both. Admission runs after the Start Filter and before
+Concurrency; a refusal opens no Execution. A node refusal ends the run as
+`exited` before that node starts. A host requiring immediate interruption sends
+a Cancel Event.
+
+Tracked manual and Draft runs require a Start Event plus valid payload. Tracked
+schedules cannot start. Typed Entity identity stays fixed across Wait branches,
+replay, and Migration.
+
 ### correlationPath
 
-Typed against the payload; must resolve to a string. Runs that share that
-Entity Value are about the same entity (concurrency, Cancel Events, Wait).
-Optional: a Workflow Builder can set it in the Lifecycle panel; the builder's
-path outranks the author's.
+Typed against the payload; must resolve to a string. Untracked workflows use
+that Entity Value for Concurrency and Cancel Events. Optional: a Workflow
+Builder can set it in the Lifecycle panel; the builder's path outranks the
+author's. Tracked workflows use their selected typed Entity bindings instead.
 
 ### Datetime fields
 
@@ -58,9 +94,9 @@ receive either arrival.
 ### Intake
 
 `inngest.send({ name, data })`. The gate validates declared fields and ignores
-unknown keys. Workflow Graph discards the decoded value and carries the raw JSON
-on. Do not transform at intake: a `Date` round-trip breaks Wait matches captured
-at park time.
+unknown keys. Workflow Graph uses the decoded value only for an Entity ID selector and carries
+the raw JSON on. Do not transform the workflow payload: a `Date` round-trip
+breaks Wait matches captured at park time.
 
 ### Integration-owned Events
 
@@ -68,6 +104,25 @@ Pass `events` on `defineIntegration`. Identity stays the Event name. A webhook
 is intake. Publish requires a Connection. Host Events have no Connection.
 
 ## Common Mistakes
+
+### CRITICAL Persist or expose resolved Entity State
+
+Wrong: return Entity State as node output, put it in audit metadata, or copy it
+into a Workflow Graph table.
+
+Correct: let `defineEntity.resolve` return state to the Eligibility adapter only.
+Persist typed Entity identity and the non-sensitive decision metadata.
+
+Source: alandotcom/wfgraph:docs/events.md (Current Entity State)
+
+### HIGH Register Entity definitions separately
+
+Wrong: invent an `extensions.entities` array or register on module import.
+
+Correct: reference the reusable Entity object from each Event binding and pass
+the Events in `extensions.events`.
+
+Source: alandotcom/wfgraph:docs/events.md (Current Entity State)
 
 ### HIGH One Event with a subtype field for two lifecycle roles
 

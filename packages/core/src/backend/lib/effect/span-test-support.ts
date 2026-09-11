@@ -104,6 +104,7 @@ export function expectIdentifierAttributesOnly(
  * out of the payload and gives the forbidden-fragment check something to catch.
  */
 export const spanFixtureCatalog: ExtensionCatalog = {
+  entities: [],
   events: [
     {
       name: "app/appointment.created",

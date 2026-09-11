@@ -1,6 +1,7 @@
 import { defineRelations, sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
+  bigint,
   boolean,
   check,
   index,
@@ -19,7 +20,9 @@ import {
 } from "@wfgraph/shared/types/integration";
 import { generateId } from "@wfgraph/shared/utils/id";
 import {
+  type EntityEligibilityReason,
   IN_FLIGHT_EXECUTION_STATUSES,
+  type TerminationKind,
   type WorkflowExecutionStartSource,
   type WorkflowExecutionStatus,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
@@ -273,7 +276,9 @@ export const workflowExecutions = pgTable(
       .references(() => workflowVersions.id, { onDelete: "cascade" }),
     workflowRunId: text("workflow_run_id"),
     status: text("status").notNull().$type<WorkflowExecutionStatus>(),
-    startSource: text("start_source").$type<WorkflowExecutionStartSource>(),
+    startSource: text("start_source")
+      .notNull()
+      .$type<WorkflowExecutionStartSource>(),
     // The arrival this run answers, which is what makes opening it idempotent:
     // the lifecycle step is an Inngest step and a retry re-runs it, so a second
     // attempt re-claims this row instead of opening a second run for one Event.
@@ -286,6 +291,10 @@ export const workflowExecutions = pgTable(
     runMode: text("run_mode").notNull().default("live").$type<WorkflowMode>(),
     startEventName: text("start_event_name"),
     entityValue: text("entity_value"),
+    // Stable host-owned identity for a workflow guarded by Entity Eligibility.
+    // `entityValue` remains the legacy untyped correlation value.
+    entityType: text("entity_type"),
+    entityId: text("entity_id"),
     input: jsonb("input").$type<JsonObject>(),
     // What the run finished with. A terminal row written without executing the
     // graph puts its verdict here instead, so this is not always a node output.
@@ -296,15 +305,26 @@ export const workflowExecutions = pgTable(
     cancelledAt: timestamp("cancelled_at"),
     completedAt: timestamp("completed_at"),
     duration: text("duration"),
-    // The Canceled outlet's authority (ADR-0007). A Cancel Event stamps these
-    // three and the run reads them at its next node boundary, inside a step, so
-    // the answer is memoized and a replay takes the same branch. Nothing kills
-    // the run: it routes to the `canceled` outlet carrying this payload.
-    cancelRequestedAt: timestamp("cancel_requested_at"),
+    // The first execution-boundary decision. Cancel routes the parent through
+    // its Canceled outlet; exit stops Started-side scheduling without an outlet.
+    // The terminal status is written only after the parent cleans up open work.
+    terminationKind: text("termination_kind").$type<TerminationKind>(),
+    terminationRequestedAt: timestamp("termination_requested_at"),
+    terminationReason:
+      text("termination_reason").$type<EntityEligibilityReason>(),
+    terminationNodeId: text("termination_node_id"),
     cancelEventName: text("cancel_event_name"),
     cancelPayload: jsonb("cancel_payload").$type<JsonObject>(),
   },
   (table) => [
+    check(
+      "workflow_executions_entity_identity_pair_check",
+      sql`(${table.entityType} is null and ${table.entityId} is null) or (${table.entityType} is not null and ${table.entityId} is not null)`
+    ),
+    check(
+      "workflow_executions_termination_check",
+      sql`(${table.terminationKind} is null and ${table.terminationRequestedAt} is null and ${table.terminationReason} is null and ${table.terminationNodeId} is null) or (${table.terminationKind} = 'cancel' and ${table.terminationRequestedAt} is not null and ${table.terminationReason} is null and ${table.terminationNodeId} is null) or (${table.terminationKind} = 'exit' and ${table.terminationRequestedAt} is not null and ${table.terminationReason} in ('entity_condition_not_met', 'entity_not_found') and ${table.terminationNodeId} is not null)`
+    ),
     uniqueIndex("workflow_executions_workflow_run_id_uidx").on(
       table.workflowRunId
     ),
@@ -347,6 +367,9 @@ export const workflowExecutions = pgTable(
     // list the query's guard is, so the two cannot drift.
     index("workflow_executions_in_flight_by_entity_idx")
       .on(table.workflowId, table.entityValue, table.runMode)
+      .where(sql`${table.status} in (${sql.raw(inFlightStatusLiterals)})`),
+    index("workflow_executions_in_flight_by_typed_entity_idx")
+      .on(table.workflowId, table.entityType, table.entityId, table.runMode)
       .where(sql`${table.status} in (${sql.raw(inFlightStatusLiterals)})`),
     // workflow_version_id cascades from workflow_versions, and this is the
     // largest table in the schema: without this index, deleting a version
@@ -514,22 +537,37 @@ export const workflowExecutionEvents = pgTable(
     message: text("message").notNull(),
     metadata: jsonb("metadata").$type<JsonObject>(),
     createdAt: timestamp("created_at").notNull().default(utcNow()),
+    // The identity sort key the audit readers order on after `created_at`.
+    // `created_at` defaults from now(), which is the transaction start, so every
+    // row a transaction writes carries the same timestamp and the timeline has
+    // no order of its own. Postgres draws this column from a sequence, so it
+    // grows with each insert and settles a tie in insertion order. The SQLite
+    // schema carries no matching column: its rowid already is that sequence.
+    // Nothing outside this table reads the value, and the repository leaves it
+    // out of every row it returns.
+    seq: bigint("seq", { mode: "number" }).generatedAlwaysAsIdentity(),
   },
   (table) => [
     index("workflow_execution_events_workflow_created_at_idx").on(
       table.workflowId,
-      table.createdAt
+      table.createdAt,
+      table.seq
     ),
     index("workflow_execution_events_execution_created_at_idx").on(
       table.executionId,
-      table.createdAt
+      table.createdAt,
+      table.seq
     ),
     // Each runs-panel audit category filters by workflow and type before it
-    // reads its newest 50 rows. A backward scan supplies the descending order.
+    // reads its newest 50 rows. A backward scan supplies the descending order,
+    // which is why `seq` is in each of these three indexes: the readers order
+    // on `created_at` and `seq` together, and an index holding only the first
+    // of the two would leave Postgres sorting every matching row.
     index("workflow_execution_events_workflow_type_created_at_idx").on(
       table.workflowId,
       table.eventType,
-      table.createdAt
+      table.createdAt,
+      table.seq
     ),
   ]
 );

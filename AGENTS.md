@@ -6,7 +6,7 @@ beside `@wfgraph/example-app` (`examples/`), the host app `pnpm run dev` runs.
 - `@wfgraph/shared` (`packages/shared`) runtime-agnostic types, workflow contracts, utilities
 - `@wfgraph/agent` (`packages/agent`) the build agent's tools, toolkit and system prompt.
   Private and unbuilt like `@wfgraph/shared`, and inlined into core. It depends on
-  `@wfgraph/shared`, `effect` and `nanoid` alone, so a tool is testable with no model,
+  `@wfgraph/shared` and `effect` alone, so a tool is testable with no model,
   no HTTP and no database
 - `@wfgraph/evals` (`packages/evals`) the private Vitest Evals harness, judges and
   scenarios for the build agent. `pnpm run evals` runs it manually against a live model;
@@ -197,10 +197,10 @@ ISO-string-to-`Date` conversion, and `isoTimestampString` is the spelling that a
 `@wfgraph/example-app` is written in it, which makes "an adopter needs no Effect" enforceable
 rather than promised. In `packages/` it is a devDependency of `core` and `shared` only.
 
-**The authoring vocabulary is three functions**, all in
+**The authoring vocabulary is four functions**, all in
 `packages/core/src/backend/extensions/` and walked through in `docs/events.md` and
-`docs/integrations.md`: `defineEvent` and `defineAction` for a host, `defineIntegration`
-for an integration. Nothing registers on import. An integration's actions are object
+`docs/integrations.md`: `defineEntity`, `defineEvent`, and `defineAction` for a host,
+`defineIntegration` for an integration. Nothing registers on import. An integration's actions are object
 literals inside that one call, and `defineStep` is the internal builder each is mapped
 through, reachable from no entry. `docs/integrations.md` owns the canonical JSON codec
 contract a step boundary runs both directions through; `steps/define-step.ts`'s header
@@ -344,10 +344,14 @@ waiting branch is a durable run of its own (ADR-0011). `NodeScheduler` holds eve
 and `drainDeferredWaits` hands it to `workflow-branch` through `runtime.startBranch`, which
 is `step.invoke`. The branch run inherits the outputs above its entry node from the store and
 its released node ids from the invoke payload, and leaves the terminal record to the run that
-started it. A cancellation kills it where it stands; that run observes the kill, sweeps the
-rows it left open, and routes the Execution. A runtime offering no `startBranch` enters the
-Wait in place. `driveWithReplay` (`engine/testing/replay-runtime.ts`) is how a test sees any of this:
-it owns a set of runs and keeps the measured wake policy per run.
+started it. A cancellation kills a Started-side branch where it stands; that run observes the
+kill, sweeps the rows it left open, and routes the Execution. The Canceled-side Waits it then
+reaches are handed off the same way, and each of those branch runs carries the side on its
+invoke payload and takes the parent's claim on through `CancelBoundary.carryClaim`, which is
+why the kill event carries `side` and the branch's `cancelOn` compares it. A runtime offering
+no `startBranch` enters the Wait in place. `driveWithReplay`
+(`engine/testing/replay-runtime.ts`) is how a test sees any of this: it owns a set of runs and
+keeps the measured wake policy per run.
 
 **happy-dom belongs to the client project alone.** The root `vitest.config.ts` declares
 three projects: `client` covers `packages/client`, runs in happy-dom, and is the only one

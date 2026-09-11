@@ -32,6 +32,7 @@ import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publicatio
  * page. The page stack itself is pure and lives in `command-palette.test.ts`.
  */
 const ONE_ACTION_CATALOG: ExtensionCatalog = {
+  entities: [],
   events: [],
   integrations: [],
   actions: [
@@ -391,6 +392,7 @@ describe("the command palette", () => {
 
   it("finds a custom-labelled action by its catalog label and action ID", async () => {
     const catalog: ExtensionCatalog = {
+      entities: [],
       events: [],
       integrations: [],
       actions: [

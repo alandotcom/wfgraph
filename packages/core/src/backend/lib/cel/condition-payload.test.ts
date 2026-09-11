@@ -128,6 +128,28 @@ describe("a compiled condition against a payload", () => {
     }
   });
 
+  it.each([
+    { operator: "is_one_of" as const, expected: true },
+    { operator: "is_not_one_of" as const, expected: false },
+  ])("evaluates $operator against a string set", ({ operator, expected }) => {
+    const evaluation = evaluate(
+      [
+        [
+          {
+            id: "rule-1",
+            field: "reason",
+            fieldType: "string",
+            operator,
+            values: ["no_show", "patient_request"],
+          },
+        ],
+      ],
+      cancelledPayload
+    );
+
+    expect(evaluation).toEqual({ ok: true, value: expected });
+  });
+
   it("reads a property whose name is not a CEL identifier", () => {
     const evaluation = evaluate(
       [

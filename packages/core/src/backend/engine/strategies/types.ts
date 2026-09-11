@@ -15,6 +15,7 @@ import type { NodeContext } from "#src/backend/engine/step-log";
 import type { WorkflowStore } from "#src/backend/engine/store";
 import type { Traversal } from "#src/backend/engine/traversal";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
+import type { ExecutionSide } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import type { Effect } from "effect";
 import type { EngineFailure } from "#src/backend/engine/engine-failure";
@@ -36,6 +37,8 @@ export type NodeWorkOutcome = {
    * everything underneath.
    */
   haltBranch?: boolean | undefined;
+  /** A durable child reported execution-wide Exit before entering this node. */
+  executionExited?: boolean | undefined;
   /**
    * How this node changes the Arriving Event. Absent means leave it. `null`
    * means the run names none below this node (a timeout that continues past
@@ -63,6 +66,12 @@ export type NodeWorkContext = {
   eventName: string | null;
   /** Published catalog fingerprint. */
   catalogFingerprint: string;
+  /**
+   * Which side of the Lifecycle Node this node sits on, read off the graph. The
+   * wait strategy passes it to every write that parks or resumes the run, which
+   * is what lets a Wait behind the Canceled outlet park after a Cancel claim.
+   */
+  side: ExecutionSide;
   /**
    * Whether this Wait is entered here rather than handed to a branch run.
    * Only the wait strategy reads it.

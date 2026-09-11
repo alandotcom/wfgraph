@@ -244,8 +244,11 @@ function fieldNamesOf(declared: unknown): string[] | undefined {
  *
  * Zod and arktype hand over an object of this shape already.
  */
-export type StandardSchema<T> = StandardSchemaV1<unknown, T> &
-  StandardJSONSchemaV1<unknown, T>;
+export type StandardSchema<TOutput, TInput = unknown> = StandardSchemaV1<
+  TInput,
+  TOutput
+> &
+  StandardJSONSchemaV1<TInput, TOutput>;
 
 /**
  * `Schema.isSchema` under a signature that keeps the payload type.
@@ -280,9 +283,9 @@ export function isEffectSchema<T, REncode = unknown>(
  * first-call-wins rule is satisfied by there being only one call.
  *
  * `Other` is whatever the caller's own seam already accepted, handed back
- * untouched. `defineEvent` names one shape there, its payload; `defineAction`
- * names two, its input and its output, and neither has to restate this bridge
- * to say so.
+ * untouched. The separate input and output parameters preserve codecs such as
+ * an Event payload whose wire timestamp decodes to a `Date` for an Entity ID
+ * selector.
  *
  * The discrimination is exact rather than structural: `Schema.isSchema` tests
  * for the `"~effect/Schema/Schema"` type id Effect brands every schema with, so
@@ -290,8 +293,8 @@ export function isEffectSchema<T, REncode = unknown>(
  * bridge is idempotent besides -- Effect returns a schema that already carries a
  * `validate` untouched -- so an author who bridged by hand loses nothing here.
  */
-export function asStandardSchema<T, Other>(
-  schema: Other | Schema.ConstraintDecoder<T>
-): Other | StandardSchema<T> {
-  return isEffectSchema<T>(schema) ? toStandardSchema(schema) : schema;
+export function asStandardSchema<TOutput, TInput = unknown, Other = never>(
+  schema: Other | Schema.ConstraintCodec<TOutput, TInput, never, unknown>
+): Other | StandardSchema<TOutput, TInput> {
+  return isEffectSchema<TOutput>(schema) ? toStandardSchema(schema) : schema;
 }

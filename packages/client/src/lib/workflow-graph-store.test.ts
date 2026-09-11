@@ -203,6 +203,7 @@ function groupableLookup(id: string, x: number): WorkflowNode {
  * declares no side effect, which is what lets these lookups group.
  */
 const emptyCatalog: ExtensionCatalog = {
+  entities: [],
   events: [],
   actions: [],
   integrations: [],

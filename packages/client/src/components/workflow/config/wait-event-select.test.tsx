@@ -14,6 +14,7 @@ import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 
 const testCatalog: ExtensionCatalog = {
+  entities: [],
   events: [
     {
       name: "billing/payment.settled",
@@ -423,6 +424,7 @@ describe("WaitEventSelect seeded match", () => {
 });
 
 const resendWaitCatalog: ExtensionCatalog = {
+  entities: [],
   events: [
     {
       name: "billing/payment.settled",

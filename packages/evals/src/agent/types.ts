@@ -83,6 +83,15 @@ export type AgentEvalExpectations = {
     allowManualStart?: boolean;
     correlationPaths?: Record<string, string>;
     connectionIds?: Record<string, string>;
+    trackedEntity?: {
+      type: string;
+      bindings: Record<string, string>;
+    };
+    /** `null` requires tracking without an eligibility condition. */
+    entityEligibility?: {
+      checkpoints: Array<"before-execution" | "before-node">;
+      condition: EvalCondition;
+    } | null;
   };
   requiredFlows?: Array<{
     source: EvalNodeSelector;

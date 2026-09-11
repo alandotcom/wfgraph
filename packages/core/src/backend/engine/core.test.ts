@@ -636,8 +636,8 @@ describe("run persistence through the store port", () => {
     });
   });
 
-  // Both terminal writes sit inside the step that settles the run's outcome, so
-  // an error escaping either one has the fatal handler record the run again.
+  // The timeline write runs after the terminal row has landed, so a refusal
+  // there is logged and dropped and the run keeps its verdict.
   it("keeps a completed run completed when its timeline write fails", async () => {
     const result = await executeWorkflow(
       {
@@ -655,24 +655,32 @@ describe("run persistence through the store port", () => {
     expect(store.callsOf("completeRun")[0]?.status).toBe("completed");
   });
 
-  // Terminal-record folds a refused database write into the same false answer
-  // as a terminal race, after logging the different cause.
-  it("announces nothing on the timeline when the terminal row is refused", async () => {
-    const result = await executeWorkflow(
-      {
-        graph: createLifecycleToActionGraph(),
-        executionId: "exec_terminal_row_refused",
-        workflowId: "workflow_terminal_row_refused",
-      },
-      createInMemoryWorkflowRuntime(),
-      storeRefusing("completeRun"),
-      actions
-    );
+  // A refused terminal row fails the terminal step, which a durable runtime
+  // leaves unmemoized. The next attempt of the body runs that step again and
+  // writes the row, so the run never finishes with its row still in flight.
+  it("fails the terminal step when the terminal row is refused, and a retry writes it", async () => {
+    const runtime = createInMemoryWorkflowRuntime();
+    const input = {
+      graph: createLifecycleToActionGraph(),
+      executionId: "exec_terminal_row_refused",
+      workflowId: "workflow_terminal_row_refused",
+    };
 
-    expect(result.success).toBe(true);
+    await expect(
+      executeWorkflow(input, runtime, storeRefusing("completeRun"), actions)
+    ).rejects.toThrow("run log unreachable");
+    expect(runtime.memo.has("workflow-run-completed")).toBe(false);
     expect(
       store.callsOf("recordAuditEvent").map((call) => call.eventType)
     ).not.toContain("run_completed");
+
+    const result = await executeWorkflow(input, runtime, store, actions);
+
+    expect(result.success).toBe(true);
+    expect(store.terminationState?.status).toBe("completed");
+    expect(
+      store.callsOf("recordAuditEvent").map((call) => call.eventType)
+    ).toContain("run_completed");
   });
 
   // The error a run carries is the one a person reads in the run panel, so it
@@ -762,10 +770,7 @@ describe("run persistence through the store port", () => {
     ).toContain("run_failed");
   });
 
-  /**
-   * A runtime that refuses the terminal step, which is what puts a run on the
-   * fatal path where `recordRunFailed` writes.
-   */
+  /** A runtime that exhausts retries for one terminal durable step. */
   function runtimeRefusingTerminalStep() {
     const runtime = createInMemoryWorkflowRuntime();
     return {
@@ -785,7 +790,12 @@ describe("run persistence through the store port", () => {
   function storeClaimingNothing(): RecordingWorkflowStore {
     return {
       ...store,
-      completeRun: (input) => Effect.as(store.completeRun(input), false),
+      completeRun: (input) =>
+        Effect.as(store.completeRun(input), {
+          status: "superseded" as const,
+          claim: null,
+          didWrite: false,
+        }),
     };
   }
 
@@ -810,42 +820,22 @@ describe("run persistence through the store port", () => {
     ).not.toContain("run_completed");
   });
 
-  // A superseded run reaches this path, and its row stays `superseded` because
-  // `completeRun` refuses the write. Announcing the failure anyway would put a
-  // last word on the timeline that contradicts the row.
-  it("announces a fatal failure only when the terminal write owned it", async () => {
-    await executeWorkflow(
-      {
-        graph: createLifecycleToActionGraph(),
-        executionId: "exec_displaced",
-        workflowId: "workflow_displaced",
-      },
-      runtimeRefusingTerminalStep(),
-      storeClaimingNothing(),
-      actions
-    );
+  it("lets a refused completion step escape for durable retry", async () => {
+    await expect(
+      executeWorkflow(
+        {
+          graph: createLifecycleToActionGraph(),
+          executionId: "exec_retry_completion",
+          workflowId: "workflow_retry_completion",
+        },
+        runtimeRefusingTerminalStep(),
+        store,
+        actions
+      )
+    ).rejects.toThrow("terminal write refused");
 
-    expect(store.callsOf("completeRun")).toHaveLength(1);
-    expect(
-      store.callsOf("recordAuditEvent").map((call) => call.eventType)
-    ).not.toContain("run_failed");
-  });
-
-  it("announces a fatal failure that did own the terminal write", async () => {
-    await executeWorkflow(
-      {
-        graph: createLifecycleToActionGraph(),
-        executionId: "exec_fatal",
-        workflowId: "workflow_fatal",
-      },
-      runtimeRefusingTerminalStep(),
-      store,
-      actions
-    );
-
-    expect(
-      store.callsOf("recordAuditEvent").map((call) => call.eventType)
-    ).toContain("run_failed");
+    expect(store.callsOf("completeRun")).toHaveLength(0);
+    expect(store.callsOf("recordAuditEvent")).toHaveLength(0);
   });
 });
 

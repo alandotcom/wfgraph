@@ -76,14 +76,16 @@ import { cn } from "@wfgraph/shared/utils";
 import { formatDayAndTime } from "@wfgraph/shared/utils/time";
 
 /**
- * How many characters of a run's id identify it on screen.
+ * How many characters from the end of a run's id identify it on screen.
  *
- * A run id is a 21-character nanoid, which no strip has room for. Eight
- * characters of base-36 is a fixed width in a line that must not reflow and
- * plenty to tell two runs of one workflow apart; the whole id is on the
- * element's title for anyone who needs to quote it.
+ * A run id is a 36-character UUIDv7, which no strip has room for. Its leading
+ * characters hold the millisecond it was minted in and repeat across every run
+ * started around the same time, so the last eight characters are the ones that
+ * tell two runs of one workflow apart. Eight is also a fixed width in a line
+ * that must not reflow, and the whole id is on the element's title for anyone
+ * who needs to quote it.
  */
-const RUN_ID_PREFIX_LENGTH = 8;
+const RUN_ID_SUFFIX_LENGTH = 8;
 
 /**
  * Which run is on the canvas and when it started, as one string.
@@ -100,9 +102,9 @@ export function pinnedRunLabel(
     return "";
   }
   if (!run.startedAt) {
-    return run.id.slice(0, RUN_ID_PREFIX_LENGTH);
+    return run.id.slice(-RUN_ID_SUFFIX_LENGTH);
   }
-  return `${run.id.slice(0, RUN_ID_PREFIX_LENGTH)} · ${formatDayAndTime(run.startedAt)}`;
+  return `${run.id.slice(-RUN_ID_SUFFIX_LENGTH)} · ${formatDayAndTime(run.startedAt)}`;
 }
 
 /**

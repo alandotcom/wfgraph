@@ -324,6 +324,12 @@ async function runMcpTool(testCase: ConformanceCase) {
   }
 }
 
+/**
+ * Swap every minted id in a tool's answer for a stable placeholder, so the
+ * native call and the MCP call compare equal. `generateId` mints a UUIDv7, and
+ * matching that shape leaves a fixture's hand-written ids, such as `node_1`,
+ * as they were written.
+ */
 function normalizeGeneratedIds(value: unknown): unknown {
   const replacements = new Map<string, string>();
   return JSON.parse(
@@ -331,15 +337,18 @@ function normalizeGeneratedIds(value: unknown): unknown {
       if (typeof candidate !== "string") {
         return candidate;
       }
-      return candidate.replace(/[A-Za-z0-9_-]{21}/gu, (id) => {
-        const existing = replacements.get(id);
-        if (existing) {
-          return existing;
+      return candidate.replace(
+        /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gu,
+        (id) => {
+          const existing = replacements.get(id);
+          if (existing) {
+            return existing;
+          }
+          const replacement = `<generated-${replacements.size + 1}>`;
+          replacements.set(id, replacement);
+          return replacement;
         }
-        const replacement = `<generated-${replacements.size + 1}>`;
-        replacements.set(id, replacement);
-        return replacement;
-      });
+      );
     })
   ) as unknown;
 }

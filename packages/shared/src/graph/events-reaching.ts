@@ -15,6 +15,7 @@ import {
   type ConditionRule,
   EVENT_NAME_FIELD_PATH,
   isNullCheckConditionRule,
+  isStringSetConditionRule,
   parseConditionModel,
 } from "#src/conditions/conditions";
 import {
@@ -75,6 +76,11 @@ function ruleCouldHold(input: {
     if (rule.operator === "not_equals") {
       return rule.value !== event.name;
     }
+    if (isStringSetConditionRule(rule)) {
+      return rule.operator === "is_one_of"
+        ? rule.values.includes(event.name)
+        : !rule.values.includes(event.name);
+    }
     return true;
   }
 
@@ -117,6 +123,12 @@ function ruleCouldFail(input: {
 
   if (rule.operator === "not_equals") {
     return rule.value === event.name;
+  }
+
+  if (isStringSetConditionRule(rule)) {
+    return rule.operator === "is_one_of"
+      ? !rule.values.includes(event.name)
+      : rule.values.includes(event.name);
   }
 
   return true;

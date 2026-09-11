@@ -10,6 +10,7 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
+import type { TerminationKind } from "@wfgraph/shared/lifecycle/execution-contracts";
 
 const caseInsensitiveText = customType<{ data: string }>({
   dataType: () => "text COLLATE NOCASE",
@@ -102,12 +103,14 @@ export const workflowExecutions = sqliteTable(
       .references(() => workflowVersions.id, { onDelete: "cascade" }),
     workflowRunId: text("workflow_run_id").unique(),
     status: text("status").notNull(),
-    startSource: text("start_source"),
+    startSource: text("start_source").notNull(),
     deliveryId: text("delivery_id"),
     enqueuedAt: integer("enqueued_at"),
     runMode: text("run_mode").notNull().default("live"),
     startEventName: text("start_event_name"),
     entityValue: text("entity_value"),
+    entityType: text("entity_type"),
+    entityId: text("entity_id"),
     input: text("input"),
     output: text("output"),
     error: text("error"),
@@ -116,7 +119,10 @@ export const workflowExecutions = sqliteTable(
     cancelledAt: integer("cancelled_at"),
     completedAt: integer("completed_at"),
     duration: text("duration"),
-    cancelRequestedAt: integer("cancel_requested_at"),
+    terminationKind: text("termination_kind").$type<TerminationKind>(),
+    terminationRequestedAt: integer("termination_requested_at"),
+    terminationReason: text("termination_reason"),
+    terminationNodeId: text("termination_node_id"),
     cancelEventName: text("cancel_event_name"),
     cancelPayload: text("cancel_payload"),
   },
@@ -137,16 +143,31 @@ export const workflowExecutions = sqliteTable(
       table.runMode,
       table.status
     ),
+    index("executions_typed_entity_idx").on(
+      table.workflowId,
+      table.entityType,
+      table.entityId,
+      table.runMode,
+      table.status
+    ),
     index("executions_workflow_in_flight_version_started_idx")
       .on(table.workflowId, table.workflowVersionId, table.startedAt)
       .where(sql`${table.status} in ('pending', 'running', 'waiting')`),
     check(
       "workflow_executions_status_check",
-      sql`${table.status} in ('pending', 'running', 'waiting', 'completed', 'failed', 'canceled', 'superseded')`
+      sql`${table.status} in ('pending', 'running', 'waiting', 'completed', 'failed', 'canceled', 'exited', 'superseded')`
+    ),
+    check(
+      "workflow_executions_entity_identity_pair_check",
+      sql`(${table.entityType} is null and ${table.entityId} is null) or (${table.entityType} is not null and ${table.entityId} is not null)`
+    ),
+    check(
+      "workflow_executions_termination_check",
+      sql`(${table.terminationKind} is null and ${table.terminationRequestedAt} is null and ${table.terminationReason} is null and ${table.terminationNodeId} is null) or (${table.terminationKind} = 'cancel' and ${table.terminationRequestedAt} is not null and ${table.terminationReason} is null and ${table.terminationNodeId} is null) or (${table.terminationKind} = 'exit' and ${table.terminationRequestedAt} is not null and ${table.terminationReason} in ('entity_condition_not_met', 'entity_not_found') and ${table.terminationNodeId} is not null)`
     ),
     check(
       "workflow_executions_start_source_check",
-      sql`${table.startSource} is null or ${table.startSource} in ('event', 'manual', 'schedule')`
+      sql`${table.startSource} in ('event', 'manual', 'schedule')`
     ),
     check(
       "workflow_executions_run_mode_check",

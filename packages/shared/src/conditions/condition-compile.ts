@@ -17,6 +17,7 @@ import {
   type TimestampAbsoluteConditionRule,
   type TimestampRelativeConditionRule,
   isNullCheckConditionRule,
+  isStringSetConditionRule,
   isTimestampRelativeConditionRule,
 } from "#src/conditions/condition-model";
 import { parseConditionModel } from "#src/conditions/condition-schema";
@@ -151,6 +152,24 @@ function compileStringConditionRule(
   rule: StringConditionRule,
   field: string
 ): ConditionCompileResult {
+  if (isStringSetConditionRule(rule)) {
+    if (rule.values.length === 0) {
+      return {
+        valid: false,
+        error: "String set conditions require at least one value",
+        incomplete: true,
+      };
+    }
+
+    const values = `[${rule.values.map(celStringLiteral).join(", ")}]`;
+    const membership = `${field} in ${values}`;
+    return {
+      valid: true,
+      expression:
+        rule.operator === "is_one_of" ? membership : `!(${membership})`,
+    };
+  }
+
   // An unfilled text box is a rule the user has not finished, not a comparison
   // against the empty string. `is_set` and `is_not_set` cover presence.
   if (!rule.value.trim()) {
