@@ -9,6 +9,7 @@
  */
 
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
+import type { ExecutionSide } from "@wfgraph/shared/lifecycle/execution-contracts";
 import {
   actionTypeOf,
   isConditionNode,
@@ -153,6 +154,16 @@ export class NodeScheduler {
     return (
       !this.input.runtime.startBranch || nodeId === this.input.branchEntryNodeId
     );
+  }
+
+  /**
+   * Which side of the Lifecycle Node a node sits on, read off the graph rather
+   * than off how far this run got, so it answers the same on a replay.
+   */
+  private sideOf(nodeId: string): ExecutionSide {
+    return this.input.cancelBoundary.isOnCanceledBranch(nodeId)
+      ? "canceled"
+      : "started";
   }
 
   /**
@@ -455,6 +466,7 @@ export class NodeScheduler {
           eventName: this.currentEventName(),
           catalogFingerprint: this.input.catalogFingerprint,
           workflowVersionId: this.input.workflowVersionId,
+          side: this.sideOf(node.id),
           entersInPlace: this.entersInPlace(node.id),
           handOffBranch: () => this.handOffBranch(node, nodeName),
         };
@@ -501,6 +513,7 @@ export class NodeScheduler {
             {
               entryNodeId: node.id,
               releasedNodeIds: traversal.releasedNodeIds,
+              side: this.sideOf(node.id),
             }
           )
         );

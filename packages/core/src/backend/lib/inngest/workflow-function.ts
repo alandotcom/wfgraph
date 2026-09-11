@@ -176,7 +176,7 @@ function createDurableRuntime(input: {
     // Memoization boundary: Inngest stores the result under the step's id, so
     // work already done in an earlier attempt is replayed instead of repeated.
     run: (durableStep, fn) => step.run(durableStep, fn),
-    startBranch: async (durableStep, { entryNodeId, releasedNodeIds }) =>
+    startBranch: async (durableStep, { entryNodeId, releasedNodeIds, side }) =>
       readBranchHandoff(
         await step.invoke(durableStep, {
           function: workflowBranchTarget,
@@ -184,6 +184,7 @@ function createDurableRuntime(input: {
             executionId: data.executionId,
             entryNodeId,
             releasedNodeIds: [...releasedNodeIds],
+            side,
           },
         })
       ),
@@ -442,6 +443,7 @@ async function workflowBranchRequestedHandler({
     ...persisted,
     entryNodeId: event.data.entryNodeId,
     releasedNodeIds: event.data.releasedNodeIds,
+    side: event.data.side,
   };
 
   await writeRunMetadata({ step, write, data });
@@ -560,9 +562,12 @@ export function createWorkflowRunFunction(
  * event is not a trigger, and the invoke payload names the execution rather
  * than carrying a graph.
  *
- * Both ways a run ends reach it. A Cancel Event kills the branches and leaves
- * the parent to route the Execution; a policy cancel kills the parent, and this
- * carries it too so a branch is never left working for a run that has ended.
+ * Both ways a run ends reach it. A Cancel Event kills the Started-side branches
+ * and leaves the parent to route the Execution; a policy cancel kills the
+ * parent, and this carries it too so a branch is never left working for a run
+ * that has ended. A Canceled-side branch survives the branch kill, and no Cancel
+ * Event reaches it either: the claim write skips a run that already holds a
+ * claim, so a second Cancel Event claims nothing.
  */
 export function createWorkflowBranchFunction(
   client: Inngest,
@@ -580,8 +585,13 @@ export function createWorkflowBranchFunction(
       // therefore a comparison of fields.
       cancelOn: [
         {
+          // Joining two field equalities with `&&` still satisfies that
+          // registration policy. The side is compared because a cancellation
+          // kills the Started-side branches and then starts Canceled-side ones,
+          // and the parent can reach a Canceled-side hand-off before the kill
+          // send lands.
           event: workflowBranchKillRequested,
-          if: "async.data.executionId == event.data.executionId",
+          if: "async.data.executionId == event.data.executionId && async.data.side == event.data.side",
         },
         {
           event: workflowRunCancelRequested,

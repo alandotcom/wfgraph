@@ -196,10 +196,13 @@ export function WorkflowRuns({ listActions }: { listActions?: ReactNode }) {
     refetchInterval: isRunInProgress(detailStatus) ? RUN_POLL_MS : false,
   });
 
+  // No `errorMessage`, so the cache toasts what the server said. Cancel refuses
+  // for reasons the operator has to tell apart: a run an earlier Cancel Event
+  // already claimed, and a run that finished first. A blanket message would
+  // render both as one sentence that names neither.
   const cancelExecution = useMutation(
     orpcQuery.workflow.cancelExecution.mutationOptions({
       onSuccess: () => refreshRunHistory(queryClient),
-      meta: { errorMessage: "Failed to cancel run" },
     })
   );
 

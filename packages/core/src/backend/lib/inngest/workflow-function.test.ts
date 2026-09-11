@@ -10,7 +10,8 @@ import {
 import { InngestTestEngine, InngestTestRun } from "@inngest/test";
 import { Inngest } from "inngest";
 import { metadataMiddleware } from "inngest/experimental";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
+import { omit } from "es-toolkit/object";
 import { noWorkflowActions } from "#src/backend/engine/actions";
 import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
 import {
@@ -18,10 +19,12 @@ import {
   type WorkflowStore,
 } from "#src/backend/engine/store";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import type { ExecutionSide } from "@wfgraph/shared/lifecycle/execution-contracts";
 import {
   createWorkflowBranchFunction,
   createWorkflowRunFunction,
 } from "#src/backend/lib/inngest/workflow-function";
+import { workflowBranchInputSchema } from "#src/backend/lib/inngest/events";
 import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
 import type { Workflow, WorkflowVersion } from "#src/backend/lib/db/schema";
 import type {
@@ -168,12 +171,14 @@ function branchInvokeData(
   varied: {
     entryNodeId?: string;
     releasedNodeIds?: string[];
+    side?: ExecutionSide;
   } = {}
 ) {
   return {
     executionId: testExecution.id,
     entryNodeId: varied.entryNodeId ?? "wait_1",
     releasedNodeIds: varied.releasedNodeIds ?? [],
+    side: varied.side ?? "started",
   };
 }
 
@@ -267,8 +272,10 @@ describe("the workflow run function", () => {
     const { opts: cancellationOptions } = branchFunction as {
       opts: { cancelOn: { if?: string }[] };
     };
+    // The branch kill compares the side as well, so a Canceled-side branch
+    // started before the kill send lands is not killed by it.
     expect(cancellationOptions.cancelOn[0]?.if).toBe(
-      "async.data.executionId == event.data.executionId"
+      "async.data.executionId == event.data.executionId && async.data.side == event.data.side"
     );
   });
 
@@ -435,6 +442,7 @@ describe("the workflow run function", () => {
           data: branchInvokeData({
             entryNodeId: "wait_1",
             releasedNodeIds: ["entry_1"],
+            side: "started",
           }),
         },
       ],
@@ -445,6 +453,7 @@ describe("the workflow run function", () => {
       ...persistedRunInput(),
       entryNodeId: "wait_1",
       releasedNodeIds: ["entry_1"],
+      side: "started",
     });
   });
 
@@ -663,6 +672,7 @@ describe("the workflow run function", () => {
       {
         entryNodeId: "wait_1",
         releasedNodeIds: ["entry_1"],
+        side: "started",
       }
     );
 
@@ -676,6 +686,7 @@ describe("the workflow run function", () => {
           executionId: "exec_123",
           entryNodeId: "wait_1",
           releasedNodeIds: ["entry_1"],
+          side: "started",
         },
       }
     );
@@ -700,6 +711,7 @@ describe("the workflow run function", () => {
         {
           entryNodeId: "wait_1",
           releasedNodeIds: [],
+          side: "started",
         }
       )
     ).resolves.toEqual({ status: "killed" });
@@ -711,6 +723,7 @@ describe("the workflow run function", () => {
         {
           entryNodeId: "wait_2",
           releasedNodeIds: [],
+          side: "started",
         }
       )
     ).resolves.toEqual({ status: "killed" });
@@ -720,6 +733,17 @@ describe("the workflow run function", () => {
    * The answer becomes the run's own results, so it is decoded as strictly as
    * the payload that started the branch was.
    */
+  // The branch reads which side it walks off this payload, because it routes no
+  // cancellation and so reads the run's claim at no node boundary. A payload
+  // naming no side is refused before the handler runs.
+  it("refuses a branch invoke payload that names no side", () => {
+    const withoutSide = omit(branchInvokeData(), ["side"]);
+
+    expect(() =>
+      Schema.decodeUnknownSync(workflowBranchInputSchema)(withoutSide)
+    ).toThrow(/side/);
+  });
+
   it("refuses a branch answer it cannot read", async () => {
     const { runtime, ctx } = await executeWorkflowFunctionForTest();
     vi.spyOn(ctx.step, "invoke").mockResolvedValue({ sent: true });
@@ -730,6 +754,7 @@ describe("the workflow run function", () => {
         {
           entryNodeId: "wait_1",
           releasedNodeIds: [],
+          side: "started",
         }
       )
     ).rejects.toThrow(/results: Missing key/);
@@ -748,6 +773,7 @@ describe("the workflow run function", () => {
         {
           entryNodeId: "wait_1",
           releasedNodeIds: [],
+          side: "started",
         }
       )
     ).rejects.toThrow(/shape this run cannot read/);

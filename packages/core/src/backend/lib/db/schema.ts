@@ -21,6 +21,7 @@ import { generateId } from "@wfgraph/shared/utils/id";
 import {
   type EntityEligibilityReason,
   IN_FLIGHT_EXECUTION_STATUSES,
+  type TerminationKind,
   type WorkflowExecutionStartSource,
   type WorkflowExecutionStatus,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
@@ -304,7 +305,7 @@ export const workflowExecutions = pgTable(
     // The first execution-boundary decision. Cancel routes the parent through
     // its Canceled outlet; exit stops Started-side scheduling without an outlet.
     // The terminal status is written only after the parent cleans up open work.
-    terminationKind: text("termination_kind").$type<"cancel" | "exit">(),
+    terminationKind: text("termination_kind").$type<TerminationKind>(),
     terminationRequestedAt: timestamp("termination_requested_at"),
     terminationReason:
       text("termination_reason").$type<EntityEligibilityReason>(),

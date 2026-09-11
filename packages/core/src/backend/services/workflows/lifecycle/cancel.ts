@@ -121,6 +121,10 @@ const stopClaimedRun = Effect.fn("stopClaimedRun")(function* (input: {
       executionId: input.executionId,
       workflowId: input.workflowId,
       reason: `Cancellation requested by ${input.eventName}`,
+      // The Started side alone. The run that survives this kill goes on to take
+      // the Canceled outlet, and a Wait behind that outlet is handed to a branch
+      // run of its own, which this event must not reach.
+      side: "started",
     });
 
     yield* signalParkedWaits({

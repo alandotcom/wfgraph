@@ -165,10 +165,12 @@ describe("driveWithReplay", () => {
           runtime.startBranch?.(stepRef("branch-short"), {
             entryNodeId: "short",
             releasedNodeIds: [],
+            side: "started",
           }),
           runtime.startBranch?.(stepRef("branch-long"), {
             entryNodeId: "long",
             releasedNodeIds: [],
+            side: "started",
           }),
         ]);
         return "done";
@@ -203,10 +205,12 @@ describe("driveWithReplay", () => {
           runtime.startBranch?.(stepRef("branch-short"), {
             entryNodeId: "short",
             releasedNodeIds: [],
+            side: "started",
           }),
           runtime.startBranch?.(stepRef("branch-long"), {
             entryNodeId: "long",
             releasedNodeIds: [],
+            side: "started",
           }),
         ]);
         return "done";
@@ -250,6 +254,7 @@ describe("driveWithReplay", () => {
         await runtime.startBranch?.(stepRef("branch-wait"), {
           entryNodeId: "wait",
           releasedNodeIds: [],
+          side: "started",
         }),
       { branch: () => Promise.resolve(answered) }
     );
@@ -264,6 +269,7 @@ describe("driveWithReplay", () => {
           await runtime.startBranch?.(stepRef("branch-wait"), {
             entryNodeId: "wait",
             releasedNodeIds: [],
+            side: "started",
           }),
         { branch: () => Promise.reject(new Error("the branch died")) }
       )
@@ -276,6 +282,7 @@ describe("driveWithReplay", () => {
         await runtime.startBranch?.(stepRef("branch-wait"), {
           entryNodeId: "wait",
           releasedNodeIds: [],
+          side: "started",
         }),
       {
         branch: async (runtime) => {
@@ -304,10 +311,12 @@ describe("driveWithReplay", () => {
           runtime.startBranch?.(stepRef("branch-exit"), {
             entryNodeId: "exit",
             releasedNodeIds: [],
+            side: "started",
           }),
           runtime.startBranch?.(stepRef("branch-sibling"), {
             entryNodeId: "sibling",
             releasedNodeIds: [],
+            side: "started",
           }),
         ]),
       {

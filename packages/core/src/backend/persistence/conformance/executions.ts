@@ -674,6 +674,7 @@ export function describeExecutionConformance({
           });
 
           const wait = yield* executions.startWait({
+            side: "started",
             executionId,
             workflowId: "wf_1",
             runId: "run_1",
@@ -714,6 +715,7 @@ export function describeExecutionConformance({
             claimedAt: secondClaim.claimedAt,
           });
           yield* executions.markRunning({
+            side: "started",
             executionId,
             workflowVersionId: "ver_1",
           });

@@ -195,6 +195,54 @@ function waitGraph(input: {
   });
 }
 
+/**
+ * A target graph that opens one of the Lifecycle Node's outlets with `wait_1`.
+ *
+ * Every migration candidate is unclaimed, so its `wait_1` park was Started-side.
+ * A target that hangs `wait_1` off the Canceled outlet is therefore the case
+ * where the pinned and target versions disagree about which side the run is on.
+ */
+function outletWaitGraph(
+  outlet: "started" | "canceled"
+): SerializedWorkflowGraph {
+  return createSerializedWorkflowGraph({
+    nodes: [
+      {
+        id: "lifecycle",
+        position: { x: 0, y: -100 },
+        data: { label: "Lifecycle", type: "lifecycle" as const },
+      },
+      {
+        id: "wait_1",
+        position: { x: 0, y: 100 },
+        data: {
+          label: "Wait for approval",
+          type: "action" as const,
+          config: { actionType: BUILT_IN_ACTION_IDS.wait, waitMode: "delay" },
+        },
+      },
+      {
+        id: "after_1",
+        position: { x: 0, y: 200 },
+        data: {
+          label: "After",
+          type: "action" as const,
+          config: { actionType: "http.request" },
+        },
+      },
+    ],
+    edges: [
+      {
+        id: "entry",
+        source: "lifecycle",
+        sourceHandle: outlet,
+        target: "wait_1",
+      },
+      { id: "e2", source: "wait_1", target: "after_1" },
+    ],
+  });
+}
+
 function inFlightRow(
   overrides: Partial<InFlightExecutionRow> & { id: string }
 ): InFlightExecutionRow {
@@ -647,6 +695,54 @@ describe("previewMigration", () => {
             detail: "wait_1",
           },
         ]);
+      })
+    );
+
+    // The run is unclaimed, so its Wait parked Started-side, and only a Cancel
+    // claim admits a Canceled-side write. Woken under this target the Wait would
+    // resolve its side from the new graph and fail on the park it then tried.
+    it.effect(
+      "refuses a parked Wait the target moved behind the Canceled outlet",
+      () =>
+        Effect.gen(function* () {
+          const seams = makeMigrationSeams({
+            graph: outletWaitGraph("canceled"),
+            executions: [inFlightRow({ id: "exec_1" })],
+            waitStates: [waitRow({ id: "wait_row_1", executionId: "exec_1" })],
+          });
+
+          const report = yield* previewMigration({
+            workflowId: WORKFLOW_ID,
+          }).pipe(Effect.provide(seams.layer));
+
+          assert.deepStrictEqual(report.refused, [
+            {
+              executionId: "exec_1",
+              fromVersionNumber: 1,
+              reason: "wait_moved_to_canceled_outlet",
+              detail: "wait_1",
+            },
+          ]);
+        })
+    );
+
+    it.effect("accepts the same Wait behind the Started outlet", () =>
+      Effect.gen(function* () {
+        const seams = makeMigrationSeams({
+          graph: outletWaitGraph("started"),
+          executions: [inFlightRow({ id: "exec_1" })],
+          waitStates: [waitRow({ id: "wait_row_1", executionId: "exec_1" })],
+        });
+
+        const report = yield* previewMigration({
+          workflowId: WORKFLOW_ID,
+        }).pipe(Effect.provide(seams.layer));
+
+        assert.deepStrictEqual(report.refused, []);
+        assert.deepStrictEqual(
+          report.eligible.map((entry) => entry.executionId),
+          ["exec_1"]
+        );
       })
     );
 

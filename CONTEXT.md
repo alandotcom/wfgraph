@@ -184,7 +184,12 @@ splits on one. Recorded as an audit row with no Execution behind it.
 The branch behind the Canceled outlet. Runs inside the same Execution, so it
 reads the run's earlier node outputs and the canceling payload. Terminal: a
 run inside it finishes it regardless of later Events. The Execution then ends
-with status canceled. It cannot rejoin the Started branch.
+with status canceled. It cannot rejoin the Started branch. It may park on a
+Wait and be handed to a branch run of its own, the same way the Started branch
+is. A Cancel claim on the Execution admits Canceled-side work and refuses
+Started-side work; an Exit claim refuses both. The claim also releases the
+Entity's Concurrency slot, so a later Event for the same Entity opens a run
+beside this branch rather than waiting for it to finish.
 
 **Join**:
 A node with more than one incoming edge. The run reaches it only after every

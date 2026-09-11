@@ -13,6 +13,7 @@
 
 import { Effect } from "effect";
 import type { WaitConfig } from "@wfgraph/shared/lifecycle/wait-subscription";
+import type { ExecutionSide } from "@wfgraph/shared/lifecycle/execution-contracts";
 import {
   isWaitSignalType,
   type WaitSignalType,
@@ -43,6 +44,8 @@ export type WaitActionInput = {
   workflowId: string;
   /** The Workflow Version the running body loaded. See `WaitBranchContext`. */
   workflowVersionId: string;
+  /** Which side of the Lifecycle Node this Wait sits on. */
+  side: ExecutionSide;
   workflowRunId?: string | undefined;
   /** See `WaitBranchContext.resolveTemplates`. */
   resolveTemplates: ResolveTemplates;
@@ -64,6 +67,12 @@ export type WaitBranchContext = {
    * attempt never carries on under a graph the run has been moved off.
    */
   workflowVersionId: string;
+  /**
+   * Which side of the Lifecycle Node this Wait sits on. Every write this node
+   * makes against the execution row carries it, because a Cancel claim admits
+   * the Canceled side and refuses the Started one.
+   */
+  side: ExecutionSide;
   runId: string;
   /**
    * Resolves the `{{@nodeId:Label.field}}` references inside a match, which the
@@ -151,6 +160,10 @@ export function waitSignalMatch(input: {
  * Migration telling the Wait to prepare itself again. A signal envelope naming
  * no reason this build knows reads as a resume, because a resume is what a wake
  * with a payload and no verdict is.
+ *
+ * A `lifecycle-cancel` signal never reaches a Wait on the Canceled side: the
+ * cancellation sends it to the rows parked when the claim landed, and a
+ * Canceled-side Wait parks after that.
  */
 export type WaitWake =
   | { kind: "timeout" }

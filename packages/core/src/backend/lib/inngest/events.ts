@@ -27,6 +27,7 @@
 import { Schema } from "effect";
 import { eventType, invoke } from "inngest";
 import { jsonObjectSchema } from "@wfgraph/shared/types/json";
+import { EXECUTION_SIDES } from "@wfgraph/shared/lifecycle/execution-contracts";
 import {
   WAIT_SIGNAL_EVENT,
   WAIT_SIGNAL_TYPES,
@@ -86,6 +87,13 @@ export const workflowBranchInputSchema = Schema.Struct({
    * rows cannot answer it: a node that halted its branch has an output too.
    */
   releasedNodeIds: Schema.Array(NonEmptyTrimmedString),
+  /**
+   * Which side of the Lifecycle Node the entry node sits on. The branch routes
+   * no cancellation of its own, so it reads the side off this payload rather
+   * than off a boundary read, and a Canceled-side branch then loads the run's
+   * Cancel claim before it walks anything.
+   */
+  side: Schema.Literals([...EXECUTION_SIDES]),
   [INNGEST_META_KEY]: Schema.optional(jsonObjectSchema),
 });
 
@@ -105,6 +113,10 @@ export const workflowBranchInvoked = invoke(
  * Distinct from `workflowRunCancelRequested` because the run that started them
  * has to survive what kills them: it is the one thing left alive that can close
  * their rows and route the Execution into its Canceled outlet.
+ *
+ * `side` holds `started` for every kill, because the work a cancellation
+ * interrupts is Started-side work. The Canceled-side branches that same
+ * cancellation goes on to start have to survive the kill it sends.
  */
 export const workflowBranchKillRequested = eventType(
   "workflow/branch.kill.requested",
@@ -114,6 +126,7 @@ export const workflowBranchKillRequested = eventType(
         executionId: NonEmptyTrimmedString,
         workflowId: NonEmptyTrimmedString,
         reason: Schema.String,
+        side: Schema.Literal("started"),
       }),
       rejectUnknownKeys
     ),

@@ -1,22 +1,14 @@
 /**
- * The Wait node: the one action the engine runs itself and the one node it never
- * wraps in a step.
- *
- * Inngest forbids a sleep or an event wait inside a step, so this module
- * memoizes its own persistence segments around those boundaries instead: the
- * config read and the row that opens, the preparation that parks the run, and
- * the resume that closes the row. `executeWaitAction` is the whole of what the
- * traversal calls.
- *
- * The loop below is one driver for both Wait modes. It re-reads the mode from
- * the config on every attempt, so a Migration that turns a delay Wait into an
- * event Wait re-parks as the mode the new Workflow Version says. Each mode
- * supplies only what its config resolves to, what its resume writes, and the
- * shape of its output; `wait-delay.ts` and `wait-event.ts` hold those.
+ * The Wait node: the one action the engine runs itself and never wraps in a
+ * step, because Inngest forbids a sleep or an event wait inside one. This module
+ * memoizes its own persistence segments around those boundaries instead, and
+ * `executeWaitAction` is the whole of what the traversal calls. The loop below
+ * drives both Wait modes, re-reading the mode from the config on every attempt.
  */
 
 import { Effect } from "effect";
 import { readWaitConfig } from "@wfgraph/shared/lifecycle/wait-subscription";
+import { claimKindAdmits } from "@wfgraph/shared/lifecycle/execution-contracts";
 import {
   WAIT_ANCHOR_METADATA_KEY,
   WAIT_SIGNAL_EVENT,
@@ -108,6 +100,7 @@ function executeWaitActionInner(
       store,
       workflowId,
       workflowVersionId,
+      side,
       workflowRunId,
       resolveTemplates,
     } = input;
@@ -178,6 +171,7 @@ function executeWaitActionInner(
       store,
       workflowId,
       workflowVersionId,
+      side,
       runId,
       resolveTemplates,
       startLog,
@@ -460,6 +454,7 @@ function prepareWaitAttempt<Prepared, Resumed>(
           nodeId: context.nodeId,
           nodeName: context.nodeName,
           workflowVersionId: branch.workflowVersionId,
+          side: branch.side,
           waitType: park.waitType,
           resumeToken: park.resumeToken ?? undefined,
           waitUntilIso: park.waitUntilIso ?? undefined,
@@ -470,11 +465,14 @@ function prepareWaitAttempt<Prepared, Resumed>(
 
       if (!created) {
         // The write is fenced on the pinned version, on the run still being in
-        // flight, and on no Cancel or Exit claim. A claim means another branch
-        // has already ended this run's work, so the Wait halts its branch
-        // without parking, and nothing is added to the timeline because nothing
-        // parked. This also covers a branch admitted before the claim that
-        // reaches its park after the claim's parked-Wait read.
+        // flight, and on a claim that admits this Wait's side. A claim that
+        // refuses it means the run's work on that side has ended, so the Wait
+        // halts its branch without parking, and nothing is added to the
+        // timeline because nothing parked. This also covers a branch admitted
+        // before the claim that reaches its park after the claim's parked-Wait
+        // read. A Canceled-side Wait reads its own run's Cancel claim as no
+        // halt, so a park it refused was refused by the version fence or a
+        // terminal status, and the step fails instead of halting.
         const claim = yield* readClaimWake(branch);
         if (claim !== null) {
           const output = { waitType: park.waitType, haltedBy: claim.kind };
@@ -510,6 +508,7 @@ function prepareWaitAttempt<Prepared, Resumed>(
       store.reparkWaitState({
         waitStateId: input.waitStateId,
         workflowVersionId: branch.workflowVersionId,
+        side: branch.side,
         waitType: park.waitType,
         waitUntilIso: park.waitUntilIso,
         subscribedEvents: park.subscribedEvents,
@@ -607,6 +606,7 @@ function markRunningUnderLoadedVersion(
     branch.store.markExecutionRunning({
       executionId: branch.context.executionId,
       workflowVersionId: branch.workflowVersionId,
+      side: branch.side,
     })
   );
 }
@@ -814,10 +814,12 @@ function readMissedWake(
 
 /**
  * The execution-wide claim that ended this run's work, as a wake, or null when
- * the run holds no Cancel or Exit claim.
+ * the run holds none this Wait has to stop for.
  *
  * Read after the store refused a park, since a claim is one of the reasons it
- * refuses. A terminal status with no claim answers null.
+ * refuses. A claim this Wait's side admits answers null, because that claim is
+ * the run's current work rather than a reason to halt, and so does a terminal
+ * status carrying no claim at all.
  */
 function readClaimWake(
   branch: WaitBranchContext
@@ -825,8 +827,10 @@ function readClaimWake(
   return Effect.map(
     fromStore(branch.store.readTerminationState(branch.context.executionId)),
     (state) => {
-      const kind = state?.claim?.kind;
-      return kind === undefined ? null : { kind };
+      const kind = state?.claim?.kind ?? null;
+      return kind === null || claimKindAdmits(kind, branch.side)
+        ? null
+        : { kind };
     }
   );
 }

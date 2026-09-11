@@ -12,6 +12,7 @@
  */
 
 import type { BranchHandoff } from "#src/backend/engine/branch";
+import type { ExecutionSide } from "@wfgraph/shared/lifecycle/execution-contracts";
 
 export type WaitForEventOptions = {
   event: string;
@@ -61,13 +62,19 @@ export type WorkflowExecutionRuntime = {
    *
    * `releasedNodeIds` are the nodes this run has already let its downstream
    * follow, which is what tells the branch it may enter its entry node at all.
-   * A runtime that starts no durable runs leaves this out, and the engine then
-   * enters the Wait where it stands.
+   * `side` is which side of the Lifecycle Node the entry node sits on, which the
+   * branch cannot work out for itself: it routes no cancellation, so it has no
+   * boundary of its own to ask. A runtime that starts no durable runs leaves
+   * this method out, and the engine then enters the Wait where it stands.
    */
   startBranch?:
     | ((
         step: DurableStepRef,
-        input: { entryNodeId: string; releasedNodeIds: readonly string[] }
+        input: {
+          entryNodeId: string;
+          releasedNodeIds: readonly string[];
+          side: ExecutionSide;
+        }
       ) => Promise<BranchHandoff>)
     | undefined;
   /**

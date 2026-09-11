@@ -10,6 +10,7 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
+import type { TerminationKind } from "@wfgraph/shared/lifecycle/execution-contracts";
 
 const caseInsensitiveText = customType<{ data: string }>({
   dataType: () => "text COLLATE NOCASE",
@@ -118,7 +119,7 @@ export const workflowExecutions = sqliteTable(
     cancelledAt: integer("cancelled_at"),
     completedAt: integer("completed_at"),
     duration: text("duration"),
-    terminationKind: text("termination_kind"),
+    terminationKind: text("termination_kind").$type<TerminationKind>(),
     terminationRequestedAt: integer("termination_requested_at"),
     terminationReason: text("termination_reason"),
     terminationNodeId: text("termination_node_id"),

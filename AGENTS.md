@@ -344,10 +344,14 @@ waiting branch is a durable run of its own (ADR-0011). `NodeScheduler` holds eve
 and `drainDeferredWaits` hands it to `workflow-branch` through `runtime.startBranch`, which
 is `step.invoke`. The branch run inherits the outputs above its entry node from the store and
 its released node ids from the invoke payload, and leaves the terminal record to the run that
-started it. A cancellation kills it where it stands; that run observes the kill, sweeps the
-rows it left open, and routes the Execution. A runtime offering no `startBranch` enters the
-Wait in place. `driveWithReplay` (`engine/testing/replay-runtime.ts`) is how a test sees any of this:
-it owns a set of runs and keeps the measured wake policy per run.
+started it. A cancellation kills a Started-side branch where it stands; that run observes the
+kill, sweeps the rows it left open, and routes the Execution. The Canceled-side Waits it then
+reaches are handed off the same way, and each of those branch runs carries the side on its
+invoke payload and takes the parent's claim on through `CancelBoundary.carryClaim`, which is
+why the kill event carries `side` and the branch's `cancelOn` compares it. A runtime offering
+no `startBranch` enters the Wait in place. `driveWithReplay`
+(`engine/testing/replay-runtime.ts`) is how a test sees any of this: it owns a set of runs and
+keeps the measured wake policy per run.
 
 **happy-dom belongs to the client project alone.** The root `vitest.config.ts` declares
 three projects: `client` covers `packages/client`, runs in happy-dom, and is the only one

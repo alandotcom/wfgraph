@@ -42,6 +42,7 @@ import {
 import { Traversal } from "#src/backend/engine/traversal";
 import {
   type EngineFailure,
+  engineFailure,
   failureFromCause,
 } from "#src/backend/engine/engine-failure";
 import { runDurable, runDurableUnit } from "#src/backend/engine/durable";
@@ -50,6 +51,7 @@ import { entityEligibilityConditionId } from "#src/backend/lib/entity-eligibilit
 import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import type {
   EntityEligibilityReason,
+  ExecutionSide,
   WorkflowExecutionStatus,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
 
@@ -108,6 +110,13 @@ export type WorkflowExecutionInput = {
 export type WorkflowBranchInput = WorkflowExecutionInput & {
   entryNodeId: string;
   releasedNodeIds: readonly string[];
+  /**
+   * Which side of the Lifecycle Node the entry node sits on. The branch cannot
+   * work it out on its own, because it routes no cancellation and so reads the
+   * claim at no node boundary. A Canceled-side branch takes its parent's claim
+   * on before it walks anything.
+   */
+  side: ExecutionSide;
 };
 
 /** What one call of the engine builds before it can execute a node. */
@@ -144,8 +153,9 @@ type WorkflowExecutionResult = {
  * with.
  *
  * A branch run names its entry node, and that is the whole of the difference
- * here: its cancel boundary is inert, because the run that started the branch is
- * the one that routes a cancellation and the branch itself is killed outright.
+ * here: its cancel boundary routes nothing, because the run that started the
+ * branch is the one that routes a cancellation. It still answers which side each
+ * node sits on, which is what guards a Canceled-side Wait's park.
  */
 function prepareRun(
   input: WorkflowExecutionInput | WorkflowBranchInput,
@@ -189,10 +199,11 @@ function prepareRun(
     runtime,
     store,
     executionId,
+    lifecycleNodes,
   };
   const cancelBoundary = branchEntryNodeId
-    ? CancelBoundary.inert(boundaryInput)
-    : new CancelBoundary({ ...boundaryInput, lifecycleNodes });
+    ? CancelBoundary.forBranch(boundaryInput)
+    : new CancelBoundary({ ...boundaryInput, routesCancellation: true });
 
   const scheduler = new NodeScheduler({
     traversal,
@@ -632,7 +643,7 @@ function executeWorkflowBranchInner(
 ): Effect.Effect<BranchRunResult, EngineFailure> {
   return Effect.gen(function* () {
     const { entryNodeId, executionId } = input;
-    const { nodes, traversal, scheduler } = prepareRun(
+    const { nodes, traversal, scheduler, cancelBoundary } = prepareRun(
       input,
       runtime,
       store,
@@ -666,6 +677,32 @@ function executeWorkflowBranchInner(
 
     for (const nodeId of input.releasedNodeIds) {
       traversal.markReadyForDownstream(nodeId);
+    }
+
+    // A branch below the Canceled outlet takes its parent's claim on before it
+    // walks anything: the claim names the Event this branch arrived on and
+    // carries the payload its templates address the entry node for. The read is
+    // durable so a replay of this body takes on the same claim, and it runs
+    // after the inherited outputs above, which hold the Start Event's payload
+    // for the entry node and would otherwise be the answer.
+    if (input.side === "canceled") {
+      const claim = yield* runDurable(
+        runtime,
+        {
+          id: `branch-claim-${entryNodeId}`,
+          name: "Read the Cancel claim this branch carries",
+        },
+        store.readPendingCancel(executionId)
+      );
+      if (!claim) {
+        return yield* Effect.fail(
+          engineFailure(
+            "failure",
+            "Branch started on the Canceled side of a run holding no Cancel claim"
+          )
+        );
+      }
+      cancelBoundary.carryClaim(claim);
     }
 
     const branchStartTime = Date.now();

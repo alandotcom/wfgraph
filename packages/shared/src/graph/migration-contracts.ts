@@ -5,7 +5,7 @@
  * A refusal reason is a machine word the client renders its own sentence for.
  * `detail` names the node or field the reason is about, never a config value.
  *
- * The eight preview reasons:
+ * The nine preview reasons:
  *
  * - `draft_run`: the run pins a draft snapshot, which has no published history
  *   to move along.
@@ -30,6 +30,11 @@
  *   hop would time out on arrival.
  * - `entity_incompatible`: the target version does not track the same Entity
  *   type as the Execution, so it cannot preserve the run's immutable identity.
+ * - `wait_moved_to_canceled_outlet`: the target graph places the Wait this run is
+ *   parked on behind the Lifecycle Node's Canceled outlet. Every candidate run is
+ *   unclaimed, so its Wait parked on the Started side; woken under the target
+ *   graph it would write Canceled-side, which an unclaimed run refuses, and the
+ *   Wait would fail instead of parking again.
  *
  * The migrate call adds one outcome status and one reason of its own. The
  * status `failed` means a read or write for that run was refused: the run stays
@@ -58,6 +63,7 @@ export const MIGRATION_REFUSAL_REASONS = [
   "unresolved_reference",
   "wait_timeout_elapsed",
   "entity_incompatible",
+  "wait_moved_to_canceled_outlet",
 ] as const;
 
 export const migrationRefusalReasonSchema = Schema.Literals(

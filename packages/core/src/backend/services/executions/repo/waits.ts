@@ -1,3 +1,12 @@
+/**
+ * The `workflow_wait_states` slice of `ExecutionRepo`.
+ *
+ * A park, a re-park and a resume each name the side of the Lifecycle Node their
+ * Wait sits on: a Cancel claim admits the Canceled side and refuses the Started
+ * one. An Exit claim refuses both, which is what the claim and listing guards
+ * still test, because a wait row does not record which side parked it.
+ */
+
 import {
   and,
   arrayContains,
@@ -7,7 +16,6 @@ import {
   getColumns,
   gt,
   inArray,
-  isNull,
   lte,
   notInArray,
   or,
@@ -21,7 +29,10 @@ import {
 } from "#src/backend/lib/db/schema";
 import type { WfGraphDatabase } from "#src/backend/lib/db/index";
 import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
-import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
+import {
+  IN_FLIGHT_EXECUTION_STATUSES,
+  type ExecutionSide,
+} from "@wfgraph/shared/lifecycle/execution-contracts";
 import {
   type JsonObject,
   type JsonObjectDraft,
@@ -31,7 +42,11 @@ import {
   WAIT_ARRIVAL_METADATA_KEY,
   type WaitArrival,
 } from "@wfgraph/shared/lifecycle/wait-signal";
-import { inFlightExecution } from "#src/backend/services/executions/repo/runs";
+import {
+  claimAdmits,
+  inFlightExecution,
+  notExitClaimed,
+} from "#src/backend/services/executions/repo/runs";
 import type {
   SettledWaitStatus,
   WorkflowWaitState,
@@ -69,12 +84,12 @@ export type WaitsRepoMethods = {
   /**
    * Park a run on a wait, answering the new row's id.
    *
-   * The status flip runs first, behind the in-flight guard and the pinned
-   * version: a policy cancel can land between the run's last step and this park,
-   * and a cancelled execution must not gain a live wait row that resume matching
-   * would later hit, while a Migration landing in the same window would leave
-   * the row holding a park resolved from a graph the run has left. Undefined is
-   * either race lost.
+   * The status flip runs first, behind the claim guard for this Wait's side and
+   * the pinned version: a policy cancel can land between the run's last step and
+   * this park, and a cancelled execution must not gain a live wait row that
+   * resume matching would later hit, while a Migration landing in the same
+   * window would leave the row holding a park resolved from a graph the run has
+   * left. Undefined is either race lost.
    */
   readonly startWait: (input: {
     executionId: string;
@@ -84,6 +99,8 @@ export type WaitsRepoMethods = {
     nodeName: string;
     /** The version the caller resolved this park from. */
     workflowVersionId: string;
+    /** Which side of the Lifecycle Node this Wait sits on. */
+    side: ExecutionSide;
     waitType: "delay" | "event";
     resumeToken?: string | undefined;
     waitUntil?: Date | undefined;
@@ -106,6 +123,8 @@ export type WaitsRepoMethods = {
     waitStateId: string;
     /** The version the caller resolved this park from. */
     workflowVersionId: string;
+    /** Which side of the Lifecycle Node this Wait sits on. */
+    side: ExecutionSide;
     waitType: "delay" | "event";
     waitUntil: Date | null;
     subscribedEvents: string[];
@@ -253,7 +272,7 @@ export function makeWaitsMethods(
             .set({ status: "waiting", waitingAt: new Date() })
             .where(
               and(
-                inFlightExecution(input.executionId),
+                inFlightExecution(input.executionId, input.side),
                 eq(
                   workflowExecutions.workflowVersionId,
                   input.workflowVersionId
@@ -303,7 +322,7 @@ export function makeWaitsMethods(
               and(
                 eq(workflowWaitStates.id, input.waitStateId),
                 eq(workflowWaitStates.status, "waiting"),
-                pinnedVersionIs(db, input.workflowVersionId)
+                pinsVersionAndAdmits(db, input.workflowVersionId, input.side)
               )
             )
             .returning({ id: workflowWaitStates.id });
@@ -421,7 +440,7 @@ export function makeWaitsMethods(
               inArray(workflowExecutions.status, [
                 ...IN_FLIGHT_EXECUTION_STATUSES,
               ]),
-              isNull(workflowExecutions.terminationKind),
+              notExitClaimed,
               input.afterId
                 ? gt(workflowWaitStates.id, input.afterId)
                 : undefined,
@@ -547,13 +566,18 @@ export function makeWaitsMethods(
 }
 
 /**
- * Whether the active execution a wait row belongs to still pins this Workflow Version.
+ * Whether the execution a wait row belongs to still pins this Workflow Version
+ * and still admits work on this side.
  *
  * Correlated against `workflow_wait_states.execution_id`, so it is evaluated by
  * the statement it guards rather than as a separate read the caller could be
  * overtaken after.
  */
-function pinnedVersionIs(db: WfGraphDatabase, workflowVersionId: string): SQL {
+function pinsVersionAndAdmits(
+  db: WfGraphDatabase,
+  workflowVersionId: string,
+  side: ExecutionSide
+): SQL {
   return exists(
     db
       .select({ id: workflowExecutions.id })
@@ -562,7 +586,7 @@ function pinnedVersionIs(db: WfGraphDatabase, workflowVersionId: string): SQL {
         and(
           eq(workflowExecutions.id, workflowWaitStates.executionId),
           eq(workflowExecutions.workflowVersionId, workflowVersionId),
-          isNull(workflowExecutions.terminationKind)
+          claimAdmits(side)
         )
       )
   );
@@ -614,7 +638,7 @@ async function claimWaitState(
                 inArray(workflowExecutions.status, [
                   ...IN_FLIGHT_EXECUTION_STATUSES,
                 ]),
-                isNull(workflowExecutions.terminationKind)
+                notExitClaimed
               )
             )
         )

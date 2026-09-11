@@ -67,6 +67,7 @@ export async function sendWorkflowBranchKill(
     executionId: string;
     workflowId: string;
     reason: string;
+    side: "started";
   }
 ) {
   return await client.send(

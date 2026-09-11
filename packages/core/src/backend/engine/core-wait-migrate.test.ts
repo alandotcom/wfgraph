@@ -18,7 +18,9 @@ import {
 } from "#src/backend/engine/recording-store";
 import { noWorkflowActions } from "#src/backend/engine/actions";
 import { driveWithReplay } from "#src/backend/engine/testing/replay-runtime";
+import type { ExecutionTerminationState } from "#src/backend/engine/store";
 import {
+  claimOnceParked,
   createWaitGraph,
   waitMigrateSignal,
   waitOutput,
@@ -39,6 +41,8 @@ function runMigratedWait(options: {
   events: Record<string, unknown>;
   startEventName?: string | undefined;
   startPayload?: JsonObject | undefined;
+  /** An execution-wide claim that lands once the run has parked. */
+  claimOnPark?: ExecutionTerminationState | undefined;
 }) {
   return driveWithReplay(
     (runtime) => {
@@ -55,7 +59,9 @@ function runMigratedWait(options: {
           startPayload: options.startPayload,
         },
         runtime,
-        options.store,
+        options.claimOnPark
+          ? claimOnceParked(options.store, options.claimOnPark)
+          : options.store,
         noWorkflowActions
       );
     },
@@ -344,7 +350,7 @@ describe("wait node - migration to a later workflow version", () => {
       { waitStateId: "wait_state_1", status: "resumed" },
     ]);
     expect(store.callsOf("markExecutionRunning")).toEqual([
-      { executionId: "exec_wait", workflowVersionId: "ver_2" },
+      { executionId: "exec_wait", workflowVersionId: "ver_2", side: "started" },
     ]);
     expect(
       store
@@ -388,19 +394,19 @@ describe("wait node - migration to a later workflow version", () => {
   it("resumes as an Exit when an Exit claim refused the re-park", async () => {
     store.reparkAnswer = { ok: false, reason: "not_waiting" };
     store.waitState = { status: "waiting", arrival: null };
-    store.terminationState = {
-      status: "running",
-      claim: {
-        kind: "exit",
-        requestedAt: "2026-10-19T15:00:00.000Z",
-        reason: "entity_condition_not_met",
-        nodeId: "other_branch",
-      },
-      didWrite: false,
-    };
 
     const run = await runMigratedWait({
       store,
+      claimOnPark: {
+        status: "running",
+        claim: {
+          kind: "exit",
+          requestedAt: "2026-10-19T15:00:00.000Z",
+          reason: "entity_condition_not_met",
+          nodeId: "other_branch",
+        },
+        didWrite: false,
+      },
       parked: {
         waitMode: "event",
         waitFor: [{ event: "billing/payment.settled" }],

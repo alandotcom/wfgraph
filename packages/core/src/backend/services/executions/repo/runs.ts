@@ -1,3 +1,11 @@
+/**
+ * The `workflow_executions` slice of `ExecutionRepo`.
+ *
+ * A Cancel claim is a routed continuation rather than an ending, so a write that
+ * names `side: "canceled"` reaches a Cancel-claimed row. Every other guard here
+ * still requires an unclaimed row, and an Exit claim reaches no side at all.
+ */
+
 import {
   and,
   count,
@@ -24,6 +32,8 @@ import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
 import {
   IN_FLIGHT_EXECUTION_STATUSES,
   type EntityEligibilityReason,
+  type ExecutionSide,
+  type TerminationKind,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { JsonObject, JsonValue } from "@wfgraph/shared/types/json";
 import type {
@@ -77,16 +87,42 @@ const pinnedVersion = eq(
 const WORKFLOW_EXECUTIONS_LIMIT = 50;
 
 /**
+ * `claimKindAdmits` as a condition on the execution row, which is where every
+ * guarded write asks it.
+ */
+export function claimAdmits(side: ExecutionSide): SQL {
+  return side === "canceled"
+    ? eq(workflowExecutions.terminationKind, "cancel")
+    : isNull(workflowExecutions.terminationKind);
+}
+
+/**
+ * The guard a write carries when it serves both sides and cannot say which one
+ * it is for: whatever either side admits, which is every claim but an Exit.
+ *
+ * Claiming a wait row and re-parking a run behind a sibling's open wait are both
+ * about whichever side parked that row, and no row records the side.
+ *
+ * Written as one `sql` chunk because drizzle's `or` answers `SQL | undefined`
+ * for any argument list, and a guard this is always part of should not be
+ * optional at its call sites.
+ */
+export const notExitClaimed: SQL = sql`(${claimAdmits("started")} or ${claimAdmits("canceled")})`;
+
+/**
  * The compare-and-set every write that ends or parks a run from outside it
- * carries: only a run that has not reached a verdict may be moved.
+ * carries: the run has not reached a verdict, and its claim admits this side.
  *
  * Shared with `waits.ts`, whose `startWait` parks a run behind the same guard.
  */
-export function inFlightExecution(executionId: string): SQL | undefined {
+export function inFlightExecution(
+  executionId: string,
+  side: ExecutionSide
+): SQL | undefined {
   return and(
     eq(workflowExecutions.id, executionId),
     inArray(workflowExecutions.status, [...IN_FLIGHT_EXECUTION_STATUSES]),
-    isNull(workflowExecutions.terminationKind)
+    claimAdmits(side)
   );
 }
 
@@ -104,7 +140,7 @@ const TERMINATION_COLUMNS = {
 type TerminationRow = {
   executionId: string;
   status: WorkflowExecution["status"];
-  kind: "cancel" | "exit" | null;
+  kind: TerminationKind | null;
   requestedAt: Date | null;
   reason: EntityEligibilityReason | null;
   nodeId: string | null;
@@ -311,6 +347,8 @@ export type RunsRepoMethods = {
   readonly markRunning: (input: {
     executionId: string;
     workflowVersionId: string;
+    /** Which side of the Lifecycle Node the resuming Wait sits on. */
+    side: ExecutionSide;
   }) => Effect.Effect<boolean, DatabaseError>;
   /**
    * Move a `running` run back to `waiting` when it still holds a waiting wait
@@ -642,7 +680,7 @@ export function makeRunsMethods(
               eq(workflowExecutions.id, input.executionId),
               inArray(workflowExecutions.status, ["waiting", "running"]),
               eq(workflowExecutions.workflowVersionId, input.workflowVersionId),
-              isNull(workflowExecutions.terminationKind)
+              claimAdmits(input.side)
             )
           )
           .returning({ id: workflowExecutions.id });
@@ -659,7 +697,7 @@ export function makeRunsMethods(
             and(
               eq(workflowExecutions.id, input.executionId),
               eq(workflowExecutions.status, "running"),
-              isNull(workflowExecutions.terminationKind),
+              notExitClaimed,
               exists(
                 db
                   .select({ id: workflowWaitStates.id })
@@ -690,7 +728,7 @@ export function makeRunsMethods(
             completedAt: now,
             error: input.error,
           })
-          .where(inFlightExecution(input.executionId))
+          .where(inFlightExecution(input.executionId, "started"))
           .returning(TERMINATION_COLUMNS);
 
         const [written] = updated;
@@ -751,7 +789,7 @@ export function makeRunsMethods(
             terminationReason: input.reason,
             terminationNodeId: input.nodeId,
           })
-          .where(inFlightExecution(input.executionId))
+          .where(inFlightExecution(input.executionId, "started"))
           .returning(TERMINATION_COLUMNS);
 
         const [written] = updated;
@@ -771,7 +809,7 @@ export function makeRunsMethods(
         const [execution] = await db
           .select({ id: workflowExecutions.id })
           .from(workflowExecutions)
-          .where(inFlightExecution(executionId))
+          .where(inFlightExecution(executionId, "started"))
           .limit(1);
         return execution !== undefined;
       }),

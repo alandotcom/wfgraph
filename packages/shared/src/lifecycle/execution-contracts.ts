@@ -21,6 +21,47 @@ export const WORKFLOW_EXECUTION_STATUSES = [
 export type WorkflowExecutionStatus =
   (typeof WORKFLOW_EXECUTION_STATUSES)[number];
 
+/**
+ * Which side of the Lifecycle Node a piece of work sits on: the Started outlet's
+ * branch, or the Canceled outlet's.
+ *
+ * A Cancel claim ends the Started side and starts the Canceled one, so every
+ * write that admits, parks or resumes work states which side it is for. A write
+ * gets that side by reading the graph at the node the write is for, which
+ * answers the same on a replay as on the first attempt because the outlet a node
+ * sits behind is a property of the graph.
+ */
+export const EXECUTION_SIDES = ["started", "canceled"] as const;
+
+export type ExecutionSide = (typeof EXECUTION_SIDES)[number];
+
+/**
+ * How a run was claimed for termination: by a Cancel Event, or by an Entity
+ * Eligibility Exit.
+ */
+export const TERMINATION_KINDS = ["cancel", "exit"] as const;
+
+export type TerminationKind = (typeof TERMINATION_KINDS)[number];
+
+/**
+ * Whether a run carrying this termination claim admits work on one side of the
+ * Lifecycle Node.
+ *
+ * Started-side work needs an unclaimed run, because a Cancel claim and an Exit
+ * claim both end the branch the run was walking. A Cancel claim is what starts
+ * Canceled-side work, so that claim admits the Canceled side. An Exit claim
+ * takes no graph outlet and admits neither side.
+ *
+ * This is the whole of the rule. Each persistence backend builds its own SQL
+ * guard from it, and the engine asks it of a claim already read back off a row.
+ */
+export function claimKindAdmits(
+  kind: TerminationKind | null,
+  side: ExecutionSide
+): boolean {
+  return side === "canceled" ? kind === "cancel" : kind === null;
+}
+
 /** Why Entity Eligibility refused admission or exited an active Execution. */
 export const ENTITY_ELIGIBILITY_REASONS = [
   "entity_condition_not_met",

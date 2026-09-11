@@ -232,3 +232,43 @@ The Wait could not close it from its own side, because no code ran between
 Inngest registering the listener and the wake. Closing it from the winning run
 needed a sleep port and retry rounds in the scheduler, and the cost of leaving
 it open was a sibling branch that halted at its own timeout.
+
+## Amendment: A Cancel claim admits the Canceled side
+
+Date: 2026-09-10
+
+"After a Cancel or Exit claim, no new node may be admitted" was written for the
+Started branch and applied to every write. It was therefore also true of the
+Canceled outlet, whose nodes the same claim exists to run. A Canceled-side Wait
+could not write its park row, so a graph whose Canceled outlet opened with a Wait
+halted at that Wait and everything behind it never ran.
+
+The claim guard became a question per side of the Lifecycle Node. Started-side
+admission, park, re-park and resume stayed refused after either claim. Canceled-side
+park, re-park, resume, Event wake and branch hand-off were admitted after a Cancel
+claim and stayed refused after an Exit claim, which takes no graph outlet. The
+guard `claimAdmits(side)` carries that in both backends, and `notExitClaimed`
+carries the two writes that serve either side without knowing which one parked the
+row: the wait-row claim and the run's re-park behind a sibling's open wait.
+
+Which side a node sits on is read off the graph through
+`CancelBoundary.isOnCanceledBranch`, which is derived from the edges rather than
+from how far the run got, so a replay reaches the same answer as the attempt. No
+column records it, and the engine carries it as `side` on the three writes that
+park, re-park and resume a run.
+
+A branch run reads no claim at any node boundary, so it cannot work the side out
+for itself; the invoke payload states it, and a Canceled-side branch loads the
+run's Cancel claim in a durable step before it walks anything. A Cancel claim read
+by a Wait on the Canceled side is that Wait's own reason for existing rather than a
+halt, so `readClaimWake` answers `null` for it. An Exit claim halts both sides.
+
+The Runs panel's cancel button can now reach a run walking a Canceled outlet that
+parked for a week. It answers a conflict rather than an internal failure, because
+the run is canceling already and ending it would take the outlet away from it.
+
+A canceling run releases the Entity's Concurrency slot at the claim; its
+Canceled-side work runs beside any run a later Event opens for the same Entity.
+The in-flight probe inside `startForEntity` still requires an unclaimed row, which
+is what the rule was before this change, when a claimed run reached its terminal
+row at once and freed the slot there.

@@ -14,7 +14,7 @@
  */
 
 import { Effect } from "effect";
-import { partition, uniq } from "es-toolkit/array";
+import { groupBy, uniq } from "es-toolkit/array";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { InngestClient } from "#src/backend/lib/effect/inngest-client";
@@ -46,6 +46,13 @@ export type EndedRunsSummary = {
   endedExecutionIds: string[];
   /** The runs no signal reached, which may still be live against a dead row. */
   failedExecutionIds: string[];
+  /**
+   * The runs an earlier Cancel or Exit claim already owns. Each is still in
+   * flight, walking the Canceled outlet or on its way to an `exited` row, and
+   * its own durable run is what ends it. Separate from `failedExecutionIds`
+   * because nothing here went wrong.
+   */
+  claimedExecutionIds: string[];
 };
 
 /**
@@ -222,23 +229,24 @@ export const cancelInFlightRuns = Effect.fn("cancelInFlightRuns")(function* (
     { concurrency: "unbounded" }
   );
 
-  const [unreachable, settled] = partition(
-    outcomes,
-    (entry) => entry.kind === "unreachable" || entry.kind === "claim-pending"
-  );
+  const byKind = groupBy(outcomes, (entry) => entry.kind);
+  const executionIdsOf = (kind: RunEndOutcome["kind"]) =>
+    (byKind[kind] ?? []).map((entry) => entry.executionId);
 
+  // A run this call ended and a run that reached a terminal status first are
+  // both over, so both have their wait rows cleaned. The two that are not are a
+  // run the signal never reached and a run another claim still owns.
   yield* repo.cancelWaits(
-    waitStateIdsFor(
-      input.waitStates,
-      settled.map((entry) => entry.executionId)
-    )
+    waitStateIdsFor(input.waitStates, [
+      ...executionIdsOf("ended"),
+      ...executionIdsOf("lost-race"),
+    ])
   );
 
   const summary: EndedRunsSummary = {
-    endedExecutionIds: settled
-      .filter((entry) => entry.kind === "ended")
-      .map((entry) => entry.executionId),
-    failedExecutionIds: unreachable.map((entry) => entry.executionId),
+    endedExecutionIds: executionIdsOf("ended"),
+    failedExecutionIds: executionIdsOf("unreachable"),
+    claimedExecutionIds: executionIdsOf("claim-pending"),
   };
   return summary;
 });

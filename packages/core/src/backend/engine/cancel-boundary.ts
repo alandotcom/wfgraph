@@ -1,9 +1,8 @@
 /**
  * Where a run leaves the Started branch of the Lifecycle Node for the Canceled
- * one, and everything that decides whether it may.
- *
- * A cancellation is that routing and nothing else: the flag on the execution row
- * is the whole authority, and the branch runs inside the same Execution.
+ * one, and everything that decides whether it may. The claim on the execution
+ * row is the whole authority, and the Canceled branch runs inside the same
+ * Execution.
  */
 
 import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
@@ -27,6 +26,12 @@ export type CancelBoundaryInput = {
   runtime: WorkflowExecutionRuntime;
   store: WorkflowStore;
   executionId: string;
+  /**
+   * Whether this run may take the Canceled outlet itself. A branch run may not:
+   * the run that started it is the one that routes a cancellation, so a second
+   * reader of the flag would put two runs on the outlet.
+   */
+  routesCancellation: boolean;
 };
 
 /**
@@ -75,24 +80,27 @@ export class CancelBoundary {
   private cancelEventName: string | null = null;
 
   /**
-   * A boundary that never claims a run, for a branch run (ADR-0011). The run
-   * that started the branch is the one a cancellation routes, and the branch is
-   * killed where it stands, so a second reader of the flag would put two runs on
-   * the Canceled outlet.
+   * A boundary for a branch run (ADR-0011), which routes no cancellation of its
+   * own: `settle` answers nothing at every node, so the run that started the
+   * branch stays the one thing that takes the Canceled outlet.
    *
-   * With no entry node there is no rule to be canceled by and no outlet to
-   * enter, so every answer below is already the inert one.
+   * It keeps the graph-derived node set, because a branch still has to know
+   * which side each of its nodes sits on: that is what a Canceled-side Wait's
+   * park write is guarded with, and what holds a Started-side node back once
+   * `carryClaim` has been called.
    */
-  static inert(input: Omit<CancelBoundaryInput, "lifecycleNodes">) {
-    return new CancelBoundary({ ...input, lifecycleNodes: [] });
+  static forBranch(input: Omit<CancelBoundaryInput, "routesCancellation">) {
+    return new CancelBoundary({ ...input, routesCancellation: false });
   }
 
   constructor(input: CancelBoundaryInput) {
     this.input = input;
 
-    this.canBeCanceled = input.lifecycleNodes.some((node) =>
-      configDeclaresCancelEvent(node.data.config)
-    );
+    this.canBeCanceled =
+      input.routesCancellation &&
+      input.lifecycleNodes.some((node) =>
+        configDeclaresCancelEvent(node.data.config)
+      );
 
     this.canceledBranchNodeIds = nodesBehindOutlet({
       entryNodeIds: new Set(input.lifecycleNodes.map((node) => node.id)),
@@ -168,6 +176,39 @@ export class CancelBoundary {
   }
 
   /**
+   * Takes on the Cancel claim the run that started this branch already routed.
+   *
+   * Nothing is scheduled and nothing is logged: the run that started the branch
+   * already did both.
+   */
+  carryClaim(claim: PendingCancel): void {
+    this.adoptClaim(claim);
+  }
+
+  /**
+   * Records the claim this run is now on and writes its payload over the entry
+   * nodes' outputs, which is everything both the routing run and a branch run do
+   * with a claim.
+   *
+   * A node below the Canceled outlet addresses the entry node in its templates,
+   * and on that side the entry node's output is the payload the canceling Event
+   * carried. The stored output the entry node's row holds is the Start Event's
+   * payload, recorded before the claim landed.
+   */
+  private adoptClaim(claim: PendingCancel): void {
+    this.entered = true;
+    this.cancelEventName = claim.eventName;
+
+    const { lifecycleNodes, traversal } = this.input;
+    for (const lifecycleNode of lifecycleNodes) {
+      traversal.setOutput(lifecycleNode.id, {
+        label: lifecycleNode.data.label || lifecycleNode.id,
+        data: claim.payload,
+      });
+    }
+  }
+
+  /**
    * Takes the Canceled outlet for a Cancel claim the caller has already read,
    * and answers with the branch's first nodes.
    *
@@ -185,24 +226,18 @@ export class CancelBoundary {
    * the branch's first nodes.
    *
    * The branch runs inside the same Execution, so every node that already
-   * landed keeps its output; what changes is the entry node's, which becomes
-   * the payload the canceling Event carried. An outlet with no edge leaves
-   * nothing to schedule, and the run ends on the status alone.
+   * landed keeps its output. An outlet with no edge leaves nothing to schedule,
+   * and the run ends on the status alone.
    */
   private enter(pending: PendingCancel): Effect.Effect<readonly string[]> {
     return Effect.gen(
       function* (this: CancelBoundary) {
-        this.entered = true;
-        this.cancelEventName = pending.eventName;
+        this.adoptClaim(pending);
 
         const { lifecycleNodes, traversal } = this.input;
 
         const nextNodes: string[] = [];
         for (const lifecycleNode of lifecycleNodes) {
-          traversal.setOutput(lifecycleNode.id, {
-            label: lifecycleNode.data.label || lifecycleNode.id,
-            data: pending.payload,
-          });
           // The entry node may not have scheduled anything yet, and the branch's
           // first node waits on it the way any node waits on its source.
           traversal.markReadyForDownstream(lifecycleNode.id);

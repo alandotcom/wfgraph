@@ -1,22 +1,9 @@
 /**
- * Persistence port for the workflow engine.
- *
- * The engine records what a run did - step logs, timeline events, wait states,
- * the terminal run row - but it must not know how any of that is stored. Every
- * write goes through this interface, so the engine module itself never imports
- * the database layer. Which adapter is handed in decides whether a run persists
- * at all: the Postgres-backed adapter for real runs, `noopWorkflowStore` for
- * runs that should leave no trace, a recording adapter in tests.
- *
- * Sibling port: `WorkflowExecutionRuntime` in ./runtime covers durability (step
- * memoization, sleeping, waiting for events). Keep the two apart - nothing in
- * here may know about replay, and nothing there may know about wait-state rows.
- *
- * Every value crossing this interface is JSON-safe (timestamps travel as ISO
- * strings) because store calls happen inside memoized steps whose results
- * round-trip through the durable runtime's storage. A step's own payload is
- * still `unknown` here, because that is all a step result carries; the adapter
- * that stores it is where it is read back as JSON.
+ * Persistence port for the workflow engine: every write a run makes crosses this
+ * interface, so the engine module never imports the database layer, and the
+ * adapter handed in decides whether a run persists at all. `./runtime` is the
+ * sibling port for durability. Every value crossing here is JSON-safe, because a
+ * store call sits inside a memoized step that round-trips through that runtime.
  */
 
 import type {
@@ -27,6 +14,7 @@ import type {
 import type { WaitArrival } from "@wfgraph/shared/lifecycle/wait-signal";
 import type {
   EntityEligibilityReason,
+  ExecutionSide,
   WorkflowExecutionStatus,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
 import { Effect } from "effect";
@@ -99,6 +87,8 @@ export type CreateWaitStateInput = {
    * left.
    */
   workflowVersionId: string;
+  /** Which side of the Lifecycle Node this Wait sits on. */
+  side: ExecutionSide;
   waitType: "delay" | "event";
   /**
    * What the authenticated runs panel uses to address this parked run. Generated
@@ -141,6 +131,8 @@ export type ReparkWaitStateInput = {
    * step refuses the park instead of writing one from the graph the run left.
    */
   workflowVersionId: string;
+  /** Which side of the Lifecycle Node this Wait sits on. */
+  side: ExecutionSide;
   waitType: "delay" | "event";
   /** Target timestamp as ISO 8601, and null for a wait with no target. */
   waitUntilIso: string | null;
@@ -270,11 +262,14 @@ export type WorkflowStore = {
    * The write requires the row to still pin `workflowVersionId`, which makes it
    * the fence a resuming Wait stands on: false means a Migration moved the run
    * while this resume was in flight, and the caller must not carry on under the
-   * graph it loaded.
+   * graph it loaded. It also requires the run's claim to admit `side`, so a
+   * Started-side resume is refused once a Cancel claim has landed.
    */
   markExecutionRunning(input: {
     executionId: string;
     workflowVersionId: string;
+    /** Which side of the Lifecycle Node the resuming Wait sits on. */
+    side: ExecutionSide;
   }): Effect.Effect<boolean, DatabaseError>;
   /**
    * Moves a "running" execution back to "waiting" when it still holds a waiting

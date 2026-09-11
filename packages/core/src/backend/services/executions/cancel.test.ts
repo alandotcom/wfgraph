@@ -115,6 +115,12 @@ describe("postExecutionCancel", () => {
         cancelledWaitStates: 0,
       });
       assert.strictEqual(endInFlight.mock.calls.length, 1);
+      assert.strictEqual(
+        recordAuditEvent.mock.calls.filter(
+          ([event]) => event.eventType === "run_cancel_requested"
+        ).length,
+        1
+      );
     })
   );
 
@@ -214,6 +220,45 @@ describe("postExecutionCancel", () => {
 
       assert.strictEqual(failure._tag, "Conflict");
       assert.strictEqual(endInFlight.mock.calls.length, 0);
+    })
+  );
+
+  // A Cancel Event claims a run without ending it, and the run then walks its
+  // Canceled outlet, which may park on a Wait of its own for a week. The Runs
+  // panel button reaches that run while it is still in flight, and ending it
+  // here would take the outlet away from it.
+  it.effect("refuses a run an earlier Cancel claim already owns", () =>
+    Effect.gen(function* () {
+      endInFlight.mockImplementation(() =>
+        Effect.succeed({
+          executionId: "exec_1",
+          status: "running",
+          claim: {
+            kind: "cancel",
+            requestedAt: new Date("2026-10-19T15:00:00.000Z"),
+            eventName: "app/appointment.canceled",
+            payload: { reason: "customer left" },
+          },
+          didWrite: false,
+        })
+      );
+
+      const failure = yield* postExecutionCancel("exec_1").pipe(
+        Effect.provide(services),
+        Effect.flip
+      );
+
+      assert.strictEqual(failure._tag, "Conflict");
+      assert.strictEqual(failure.error, "Execution is already canceling");
+      assert.strictEqual(sendCancelRequested.mock.calls.length, 0);
+      // The run is already on its way out under the earlier claim, so this call
+      // leaves no request on its timeline.
+      assert.deepStrictEqual(
+        recordAuditEvent.mock.calls.filter(
+          ([event]) => event.eventType === "run_cancel_requested"
+        ),
+        []
+      );
     })
   );
 

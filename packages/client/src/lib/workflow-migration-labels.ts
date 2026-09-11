@@ -45,6 +45,8 @@ export function migrationRefusalSentence(
       return `The Wait in version ${targetVersionNumber} would time out at once for this run.`;
     case "entity_incompatible":
       return `Version ${targetVersionNumber} has Entity configuration that is incompatible with this run.`;
+    case "wait_moved_to_canceled_outlet":
+      return `Version ${targetVersionNumber} puts the Wait this run is parked on behind the Canceled outlet.`;
     case "not_requested_version":
       return "This run moved or ended before the migration reached it.";
     default: {

@@ -102,6 +102,7 @@ describe("cancelInFlightRuns", () => {
         assert.deepStrictEqual(summary, {
           endedExecutionIds: ["exec_success"],
           failedExecutionIds: ["exec_failed"],
+          claimedExecutionIds: [],
         });
       })
   );
@@ -131,9 +132,12 @@ describe("cancelInFlightRuns", () => {
 
       assert.strictEqual(sendCancelRequested.mock.calls.length, 0);
       assert.deepStrictEqual(cancelWaits.mock.calls, [[[]]]);
+      // The claim is not a failure: the run that owns it is still walking, and
+      // the caller answers a conflict rather than an internal failure.
       assert.deepStrictEqual(summary, {
         endedExecutionIds: [],
-        failedExecutionIds: ["exec_claimed"],
+        failedExecutionIds: [],
+        claimedExecutionIds: ["exec_claimed"],
       });
     })
   );
@@ -163,6 +167,7 @@ describe("cancelInFlightRuns", () => {
       assert.deepStrictEqual(summary, {
         endedExecutionIds: ["exec_running"],
         failedExecutionIds: [],
+        claimedExecutionIds: [],
       });
     })
   );
@@ -257,6 +262,7 @@ describe("cancelInFlightRuns", () => {
         assert.deepStrictEqual(summary, {
           endedExecutionIds: ["exec_still_waiting"],
           failedExecutionIds: [],
+          claimedExecutionIds: [],
         });
       })
   );

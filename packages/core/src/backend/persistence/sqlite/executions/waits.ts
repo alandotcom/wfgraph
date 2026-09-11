@@ -5,7 +5,6 @@ import {
   eq,
   gt,
   inArray,
-  isNull,
   lte,
   notInArray,
   or,
@@ -14,7 +13,14 @@ import {
 } from "drizzle-orm";
 import { generateId } from "@wfgraph/shared/utils/id";
 import { toJsonObject } from "@wfgraph/shared/types/json";
-import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
+import {
+  claimKindAdmits,
+  IN_FLIGHT_EXECUTION_STATUSES,
+} from "@wfgraph/shared/lifecycle/execution-contracts";
+import {
+  claimAdmits,
+  notExitClaimed,
+} from "#src/backend/persistence/sqlite/executions/runs";
 import {
   WAIT_ARRIVAL_METADATA_KEY,
   type WaitArrival,
@@ -111,7 +117,7 @@ function claimWait(
           identity,
           claimable,
           inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES),
-          isNull(workflowExecutions.terminationKind)
+          notExitClaimed
         )
       )
       .get();
@@ -158,7 +164,7 @@ export function makeSqliteWaitsMethods(
                   workflowExecutions.status,
                   IN_FLIGHT_EXECUTION_STATUSES
                 ),
-                isNull(workflowExecutions.terminationKind)
+                claimAdmits(input.side)
               )
             )
             .returning({ id: workflowExecutions.id });
@@ -207,7 +213,7 @@ export function makeSqliteWaitsMethods(
           if (row.pinnedVersionId !== input.workflowVersionId) {
             return refusedRepark("version_moved");
           }
-          if (row.terminationKind !== null) {
+          if (!claimKindAdmits(row.terminationKind, input.side)) {
             return refusedRepark("not_waiting");
           }
 
@@ -295,7 +301,7 @@ export function makeSqliteWaitsMethods(
           eq(workflowWaitStates.workflowId, input.workflowId),
           eq(workflowWaitStates.status, "waiting"),
           inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES),
-          isNull(workflowExecutions.terminationKind),
+          notExitClaimed,
           subscribedTo(input.eventName),
         ];
         if (input.afterId) {

@@ -29,6 +29,7 @@ import type {
   WaitForEventOptions,
   WorkflowExecutionRuntime,
 } from "#src/backend/engine/runtime";
+import type { ExecutionSide } from "@wfgraph/shared/lifecycle/execution-contracts";
 
 /** One memoized step the driver ran, and where in the run tree it ran. */
 export type ReplayExecution = {
@@ -55,7 +56,11 @@ export type ReplayRunOptions = {
    */
   branch?: (
     runtime: WorkflowExecutionRuntime,
-    input: { entryNodeId: string; releasedNodeIds: readonly string[] }
+    input: {
+      entryNodeId: string;
+      releasedNodeIds: readonly string[];
+      side: ExecutionSide;
+    }
   ) => Promise<unknown>;
   /**
    * Virtual clock at which every live branch run is killed, which is what a
@@ -417,6 +422,7 @@ async function driveWithReplayInstalled<T>(
             input: {
               entryNodeId: string;
               releasedNodeIds: readonly string[];
+              side: ExecutionSide;
             }
           ) =>
             withActivity(() => {

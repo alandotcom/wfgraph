@@ -24,7 +24,10 @@ import {
 } from "@wfgraph/shared/conditions/conditions";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
-import { executeTestWorkflow as executeWorkflow } from "#src/backend/engine/test-execution";
+import {
+  executeTestWorkflow as executeWorkflow,
+  executeTestWorkflowBranch as executeWorkflowBranch,
+} from "#src/backend/engine/test-execution";
 import {
   createRecordingWorkflowStore,
   type RecordingWorkflowStore,
@@ -771,10 +774,143 @@ describe("a Cancel claim that lands after the last boundary read", () => {
     expect(rowsOpenedFor(store, "cleanup_1")).toBe(1);
     expect(recorded.Cleanup).toBeDefined();
     expect(store.callsOf("createWaitState")).toHaveLength(1);
+    // The park names the Canceled side, which is what the run's own Cancel claim
+    // admits. The same park on the Started side is refused (`core-wait.test.ts`).
+    expect(store.callsOf("createWaitState")[0]?.side).toBe("canceled");
     expect(store.callsOf("completeRun").map((call) => call.status)).toEqual([
       "completed",
       "canceled",
     ]);
+    expect(cancelledAudits(store)).toHaveLength(1);
+  });
+
+  /**
+   * The Canceled outlet, opening with one Wait and one Recorder behind it, for
+   * the cases that hand that Wait to a durable run of its own.
+   */
+  function createCanceledWaitGraph(waitConfig: Record<string, unknown>) {
+    return createSerializedWorkflowGraph({
+      nodes: [
+        createLifecycleNode("lifecycle_1"),
+        createProducerNode("producer_1", "Producer"),
+        {
+          id: "grace_1",
+          type: "action",
+          position: { x: 0, y: 0 },
+          data: {
+            label: "Grace Period",
+            type: "action",
+            config: { actionType: "Wait", ...waitConfig },
+          },
+        },
+        createRecorderNode("cleanup_1", "Cleanup", {
+          reason: "{{@lifecycle_1:Lifecycle.reason}}",
+          invoiceId: "{{@lifecycle_1:Lifecycle.invoiceId}}",
+        }),
+      ],
+      edges: [
+        lifecycleEdge("edge_started", "producer_1", "started"),
+        lifecycleEdge("edge_canceled", "grace_1", "canceled"),
+        { id: "edge_cleanup", source: "grace_1", target: "cleanup_1" },
+      ],
+    });
+  }
+
+  /**
+   * Drives a Canceled-side Wait the way a live run does: a root run that takes
+   * the outlet and hands the Wait off, and the branch run that walks it. Both
+   * write to the one store, which is how the branch reads the outputs above it.
+   */
+  function driveCanceledBranch(
+    waitConfig: Record<string, unknown>,
+    events: Record<string, unknown> = {}
+  ) {
+    const input = {
+      ...cancelInput,
+      graph: createCanceledWaitGraph(waitConfig),
+    };
+    const claiming = claimBeforeOutcomeRead(store);
+
+    return driveWithReplay(
+      (runtime) => executeWorkflow(input, runtime, claiming, actions),
+      {
+        events,
+        branch: (runtime, branchInput) =>
+          executeWorkflowBranch(
+            { ...input, ...branchInput },
+            runtime,
+            claiming,
+            actions
+          ),
+      }
+    );
+  }
+
+  // The outlet's Wait is handed to a branch run of its own, exactly as a
+  // Started-side Wait is. That run routes no cancellation, so it takes the claim
+  // on from the execution row before it walks anything, and the branch below the
+  // Wait then addresses the canceling payload as the entry node's output.
+  it("hands a Canceled-side Wait to a branch that parks and reads the canceling payload", async () => {
+    const run = await driveCanceledBranch({
+      waitMode: "delay",
+      waitDuration: "1h",
+    });
+
+    // The root run, and the branch run the Wait was handed to.
+    expect(run.runs).toBe(2);
+    expect(store.callsOf("createWaitState")[0]?.side).toBe("canceled");
+    expect(store.callsOf("markExecutionRunning")[0]?.side).toBe("canceled");
+    // The branch reads the claim in a durable step of its own, under its own run.
+    expect(
+      run.executed.find((step) => step.stepId === "branch-claim-grace_1")?.run
+    ).toBe("branch-grace_1");
+    // The entry node's output on this side is the payload the Cancel Event
+    // carried. The outputs the branch inherited hold the Start Event's instead,
+    // because that is what the entry node's row recorded before the claim.
+    expect(recorded.Cleanup).toMatchObject({ reason: "customer left" });
+    expect(run.value.status).toBe("canceled");
+    expect(store.callsOf("completeRun").map((call) => call.status)).toEqual([
+      "canceled",
+    ]);
+    expect(cancelledAudits(store)).toHaveLength(1);
+  });
+
+  // An Event reaches the branch the same way it reaches a Started-side one: the
+  // row is listed, claimed and resumed under the run's Cancel claim. The Event
+  // that woke the Wait becomes the Arriving Event below it, which is what
+  // replaces the canceling payload on the entry node.
+  it("wakes a Canceled-side branch on an Event and carries that Event below the Wait", async () => {
+    const run = await driveCanceledBranch(
+      {
+        waitMode: "event",
+        waitFor: [{ event: "billing/payment.settled" }],
+        waitTimeout: "7d",
+      },
+      {
+        "wait-park-grace_1-0": {
+          name: "workflow/wait.signal",
+          id: "evt_settled",
+          ts: 0,
+          data: {
+            executionId: "exec_cancel",
+            nodeId: "grace_1",
+            signalType: "wait-resume",
+            eventType: "billing/payment.settled",
+            payload: { invoiceId: "inv_1" },
+          },
+        },
+      }
+    );
+
+    const parked = store.callsOf("createWaitState")[0];
+    expect(parked?.side).toBe("canceled");
+    expect(parked?.subscribedEvents).toEqual(["billing/payment.settled"]);
+    expect(store.callsOf("markExecutionRunning")[0]?.side).toBe("canceled");
+    expect(store.callsOf("markWaitStateStatus")).toEqual([
+      { waitStateId: "wait_state_1", status: "resumed" },
+    ]);
+    expect(recorded.Cleanup).toMatchObject({ invoiceId: "inv_1" });
+    expect(run.value.status).toBe("canceled");
     expect(cancelledAudits(store)).toHaveLength(1);
   });
 

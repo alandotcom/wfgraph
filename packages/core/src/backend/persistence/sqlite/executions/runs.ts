@@ -13,7 +13,10 @@ import {
 } from "drizzle-orm";
 import { generateId } from "@wfgraph/shared/utils/id";
 import { readJsonObject, type JsonValue } from "@wfgraph/shared/types/json";
-import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
+import {
+  IN_FLIGHT_EXECUTION_STATUSES,
+  type ExecutionSide,
+} from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { RunsRepoMethods } from "#src/backend/services/executions/repo/runs";
 import type {
   ExecutionSummary,
@@ -203,7 +206,27 @@ function executionSummary(
   };
 }
 
-function inFlightExecution(row: {
+/**
+ * `claimKindAdmits` as a condition on the execution row, which is where every
+ * guarded write asks it.
+ */
+export function claimAdmits(side: ExecutionSide): SQL {
+  return side === "canceled"
+    ? eq(workflowExecutions.terminationKind, "cancel")
+    : isNull(workflowExecutions.terminationKind);
+}
+
+/**
+ * The guard a write carries when it serves both sides and cannot say which one
+ * it is for: whatever either side admits, which is every claim but an Exit.
+ *
+ * Written as one `sql` chunk because drizzle's `or` answers `SQL | undefined`
+ * for any argument list, and a guard this is always part of should not be
+ * optional at its call sites.
+ */
+export const notExitClaimed: SQL = sql`(${claimAdmits("started")} or ${claimAdmits("canceled")})`;
+
+function inFlightExecutionRow(row: {
   id: string;
   status: string;
   workflowVersionId: string;
@@ -358,7 +381,7 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
             desc(workflowExecutions.startedAt),
             desc(workflowExecutions.id)
           )
-          .pipe(Effect.map((rows) => rows.map(inFlightExecution)))
+          .pipe(Effect.map((rows) => rows.map(inFlightExecutionRow)))
       ),
     findSummaryById: (executionId) =>
       store.read((database) =>
@@ -495,7 +518,7 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
               eq(workflowExecutions.id, input.executionId),
               eq(workflowExecutions.workflowVersionId, input.workflowVersionId),
               inArray(workflowExecutions.status, ["waiting", "running"]),
-              isNull(workflowExecutions.terminationKind)
+              claimAdmits(input.side)
             )
           )
           .returning({ id: workflowExecutions.id })
@@ -510,7 +533,7 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
             and(
               eq(workflowExecutions.id, input.executionId),
               eq(workflowExecutions.status, "running"),
-              isNull(workflowExecutions.terminationKind),
+              notExitClaimed,
               stillParked()
             )
           )

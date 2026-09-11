@@ -8,6 +8,10 @@
  */
 
 import { type JsonValue, readJsonValue } from "@wfgraph/shared/types/json";
+import {
+  claimKindAdmits,
+  type ExecutionSide,
+} from "@wfgraph/shared/lifecycle/execution-contracts";
 import { Effect } from "effect";
 import type {
   CompleteRunInput,
@@ -33,7 +37,11 @@ type StoreCallInputs = {
   reparkWaitState: ReparkWaitStateInput;
   markWaitStateStatus: MarkWaitStateStatusInput;
   readWaitState: { waitStateId: string };
-  markExecutionRunning: { executionId: string; workflowVersionId: string };
+  markExecutionRunning: {
+    executionId: string;
+    workflowVersionId: string;
+    side: ExecutionSide;
+  };
   markExecutionWaitingIfParked: { executionId: string };
   admitNode: { executionId: string };
   requestExit: RequestExecutionExitInput;
@@ -58,7 +66,7 @@ export type RecordingWorkflowStore = WorkflowStore & {
   /**
    * Set to `undefined` to model a first park the execution row refused, which
    * is a run that ended or was moved to another Workflow Version. Left unset,
-   * every park opens a row.
+   * every park opens a row, subject to the claim on `terminationState`.
    */
   createWaitStateAnswer: { waitStateId: string } | undefined | "open";
   /**
@@ -70,9 +78,9 @@ export type RecordingWorkflowStore = WorkflowStore & {
   /** What `readWaitState` answers, for the case a re-park was refused. */
   waitState: WaitStateSnapshot | null;
   /**
-   * What `markExecutionRunning` answers. False models a Migration landing
-   * between a Wait's wake and its resume, which the resume treats as a step
-   * failure.
+   * What `markExecutionRunning` answers, subject to the claim on
+   * `terminationState`. False models a Migration landing between a Wait's wake
+   * and its resume, which the resume treats as a step failure.
    */
   markRunningAnswer: boolean;
   /**
@@ -84,6 +92,17 @@ export type RecordingWorkflowStore = WorkflowStore & {
   terminationState: ExecutionTerminationState | null;
   reset(): void;
 };
+
+/**
+ * The claim guard both real backends put on a park and on a resume, modelled
+ * here because a Canceled-side Wait parking at all depends on it.
+ */
+function claimAdmits(
+  terminationState: ExecutionTerminationState | null,
+  side: ExecutionSide
+): boolean {
+  return claimKindAdmits(terminationState?.claim?.kind ?? null, side);
+}
 
 export function createRecordingWorkflowStore(): RecordingWorkflowStore {
   const calls: RecordedStoreCall[] = [];
@@ -161,9 +180,12 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
       return Effect.sync(() => {
         calls.push({ method: "createWaitState", input });
         byMethod.createWaitState.push(input);
-        return store.createWaitStateAnswer === "open"
+        if (store.createWaitStateAnswer !== "open") {
+          return store.createWaitStateAnswer;
+        }
+        return claimAdmits(store.terminationState, input.side)
           ? { waitStateId: `wait_state_${byMethod.createWaitState.length}` }
-          : store.createWaitStateAnswer;
+          : undefined;
       });
     },
 
@@ -195,7 +217,10 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
       return Effect.sync(() => {
         calls.push({ method: "markExecutionRunning", input });
         byMethod.markExecutionRunning.push(input);
-        return store.markRunningAnswer;
+        return (
+          store.markRunningAnswer &&
+          claimAdmits(store.terminationState, input.side)
+        );
       });
     },
 
@@ -246,12 +271,17 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
       });
     },
 
+    // The boundary read and the claim guard answer from the one row here, as
+    // they do in both backends: a case that lands a claim gets it from either.
     readPendingCancel(executionId) {
       return Effect.sync(() => {
         const input = { executionId };
         calls.push({ method: "readPendingCancel", input });
         byMethod.readPendingCancel.push(input);
-        return null;
+        const claim = store.terminationState?.claim;
+        return claim?.kind === "cancel"
+          ? { eventName: claim.eventName, payload: claim.payload }
+          : null;
       });
     },
 

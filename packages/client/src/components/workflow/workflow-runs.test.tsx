@@ -1,4 +1,8 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  MutationCache,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
 import {
   createMemoryHistory,
   createRootRoute,
@@ -9,6 +13,7 @@ import {
   type SearchSchemaInput,
 } from "@tanstack/react-router";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
+import { toast } from "sonner";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -34,9 +39,11 @@ import {
   answerWorkflowRunRpc,
   extractRpcProcedurePath,
   parseRpcRequestInput,
+  rpcErrorResponse,
   rpcUrl,
   type WorkflowRunRpcFixture,
 } from "#src/lib/rpc-fetch-test-support";
+import { mutationErrorToast } from "#src/lib/query-client";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import { savedWorkflow } from "#src/lib/workflow-save-test-support";
@@ -192,7 +199,17 @@ function renderRuns(options?: {
   panel?: boolean;
 }) {
   const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
+    // The production cache handler, so a case can read what a failed write
+    // says to the operator.
+    mutationCache: new MutationCache({
+      onError: (error, _variables, _context, mutation) => {
+        const message = mutationErrorToast(error, mutation.meta);
+        if (message !== null) {
+          toast.error(message);
+        }
+      },
+    }),
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   const store = createStore();
   store.set(currentWorkflowIdAtom, "wf_1");
@@ -323,6 +340,35 @@ describe("WorkflowRuns", () => {
     expect(view.getByText("Cancellation Failures")).toBeTruthy();
     expect(view.getByText("Start Filter declined the event")).toBeTruthy();
     expect(view.getByText("Cancel Filter declined the event")).toBeTruthy();
+  });
+
+  // A Cancel Event can claim a run before the panel button reaches it, and the
+  // server answers that with its own sentence. A blanket `meta.errorMessage` on
+  // the mutation would replace it with one that names no reason.
+  it("shows the server's sentence when a cancel is refused", async () => {
+    served.items = [execution("exec_1", "running")];
+    const answerRunQueries = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) =>
+        extractRpcProcedurePath(rpcUrl(input)) === "workflow/cancelExecution"
+          ? rpcErrorResponse({
+              code: "CONFLICT",
+              status: 409,
+              message: "Execution is already canceling",
+            })
+          : answerRunQueries(input, init)
+      )
+    );
+    const toastError = vi.spyOn(toast, "error");
+
+    const { view } = renderRuns({ executionId: "exec_1" });
+
+    fireEvent.click(await view.findByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => {
+      expect(toastError).toHaveBeenCalledWith("Execution is already canceling");
+    });
   });
 
   it("shows each run-list action once in the populated mobile sheet", async () => {

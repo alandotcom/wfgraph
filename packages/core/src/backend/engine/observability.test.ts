@@ -148,6 +148,7 @@ describe("engine Effect spans", () => {
     const result = await Effect.runPromise(
       executeWaitAction({
         config: { waitMode: "not-supported" },
+        side: "started",
         context: {
           executionId: "execution_2",
           nodeId: "wait_1",
@@ -187,6 +188,7 @@ describe("engine Effect spans", () => {
     await Effect.runPromise(
       executeWaitAction({
         config: { waitMode: "not-supported" },
+        side: "started",
         context: {
           executionId: "execution_context",
           nodeId: "wait_context",
