@@ -4,6 +4,8 @@
  * The Lifecycle Rules apply first, then the Event reaches the Wait Subscriptions
  * of the runs that survived them (ADR-0007). A role's filter runs before that
  * role changes any run. An admitted start then reaches Concurrency (ADR-0016).
+ * A retried delivery is answered from the decision its first attempt committed,
+ * ahead of every gate that reads the workflow as it stands now.
  *
  * The two halves are separate entry points because the listener runs each in its
  * own durable step: a wait delivery that fails then retries without replaying the
@@ -51,6 +53,10 @@ import {
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { readCancelFilter } from "@wfgraph/shared/lifecycle/cancel-filters";
 import { readStartFilter } from "@wfgraph/shared/lifecycle/start-filters";
+import {
+  IN_FLIGHT_EXECUTION_STATUSES,
+  type WorkflowExecutionStatus,
+} from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { WorkflowMode } from "@wfgraph/shared/graph/types";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import { asNonEmptyString } from "@wfgraph/shared/types/string";
@@ -230,6 +236,23 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
     }
 
     const { workflow, publishedVersion: version } = loaded;
+
+    // Ahead of every gate that reads the workflow as it stands now, because a
+    // decision this delivery already committed outranks all of them. The
+    // subscriber list is memoized per arrival, so `roles` is what the workflow
+    // held when the first attempt ran: a delivery that never carried the start
+    // role then can have committed nothing for these reads to find.
+    if (input.deliveryId && input.subscriber.roles.includes("start")) {
+      const recovered = yield* answerFromCommittedDecision({
+        workflowId: workflow.id,
+        deliveryId: input.deliveryId,
+        logger,
+      });
+      if (recovered) {
+        return recovered;
+      }
+    }
+
     if (!version) {
       // A workflow that has never been published has no graph this half can
       // read. That holds even while a draft-snapshot run is in flight
@@ -368,61 +391,6 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
       version: { kind: "published", number: version.version },
     });
 
-    // A retried delivery of a guarded start reads what the durable admission
-    // already decided before the Start Filter, Entity selection, or the host
-    // resolver run. A recorded refusal is answered as recorded. An Execution an
-    // earlier attempt committed is sent to the bus, because that attempt may
-    // have died before its send, and a resolver or Entity binding that fails
-    // on this attempt would otherwise leave the row in flight with no run.
-    if (rules.trackedEntity && input.deliveryId) {
-      const executionRepo = yield* ExecutionRepo;
-      const priorRefusal = yield* executionRepo.findAdmissionRefusal({
-        workflowId: workflow.id,
-        decisionId: startAdmissionDecisionId(workflow.id, input.deliveryId),
-      });
-      if (priorRefusal) {
-        return {
-          kind: "refused" as const,
-          workflowId: workflow.id,
-          reason: priorRefusal,
-        };
-      }
-
-      const committed = yield* executionRepo.findByDelivery({
-        workflowId: workflow.id,
-        deliveryId: input.deliveryId,
-      });
-      if (committed) {
-        // The timeline entry names the version the committed row pinned, which
-        // a Publish since the first attempt may no longer be the published one.
-        const pinned = yield* repo.findVersionById(committed.workflowVersionId);
-        if (!pinned) {
-          // A run's version row cascades with the run, so a committed Execution
-          // pointing at a version that is gone is an invariant break rather
-          // than a state a retry can recover from.
-          return yield* new InternalFailure({
-            error:
-              "The Execution this delivery committed pins a workflow version that no longer exists",
-          });
-        }
-
-        // Inngest drops a second send under the run's idempotency key, so a
-        // row the earlier attempt already sent starts nothing new here.
-        const sent = yield* enqueueStartedRun({
-          execution: committed,
-          version: { kind: pinned.kind, number: pinned.version },
-        });
-        const outcome: LifecycleDeliveryOutcome = {
-          kind: "started",
-          workflowId: workflow.id,
-          executionId: sent.executionId,
-          supersededExecutionIds: [],
-          failedToSupersede: [],
-        };
-        return outcome;
-      }
-    }
-
     const entityValue = rules.trackedEntity
       ? undefined
       : readEntityValue({
@@ -530,6 +498,137 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
       failedToSupersede: started.failedToSupersede,
     };
     return outcome;
+  }
+);
+
+function isInFlightStatus(status: WorkflowExecutionStatus): boolean {
+  return IN_FLIGHT_EXECUTION_STATUSES.some((inFlight) => inFlight === status);
+}
+
+/**
+ * The decision an earlier attempt of this delivery committed, or `undefined`
+ * where it committed none and this attempt owns the delivery.
+ *
+ * An attempt can die between committing its Execution and sending it to the
+ * bus, and nothing sweeps a row left that way: it stays `pending` until a later
+ * start for the same entity reclaims it, which for a workflow nothing else
+ * starts is never. So the retry answers from what the first attempt recorded
+ * rather than from the workflow as it stands now, and a Publish, an unpublish
+ * or a catalog change between the two attempts cannot strand the row.
+ *
+ * These are the two reads `ExecutionRepo.startForEntity` repeats inside its own
+ * transaction, so one delivery's decision is honoured at either seam.
+ *
+ * The save rules refuse one Event holding both the start role and the cancel
+ * role in one workflow, so a row or a refusal keyed on this delivery id proves
+ * the arrival held the start role when its first attempt ran, and the Cancel
+ * arm can never own what these reads find. A delivery to a workflow that tracks
+ * no Entity pays one extra indexed read for the same guarantee.
+ */
+const answerFromCommittedDecision = Effect.fn("answerFromCommittedDecision")(
+  function* (input: {
+    workflowId: string;
+    deliveryId: string;
+    logger: EffectLogger;
+  }) {
+    const workflowRepo = yield* WorkflowRepo;
+    const executionRepo = yield* ExecutionRepo;
+
+    const priorRefusal = yield* executionRepo.findAdmissionRefusal({
+      workflowId: input.workflowId,
+      decisionId: startAdmissionDecisionId(input.workflowId, input.deliveryId),
+    });
+    if (priorRefusal) {
+      yield* input.logger.info("Answered a retried delivery from its refusal", {
+        delivery: { id: input.deliveryId },
+        refusal: { reason: priorRefusal },
+      });
+
+      const refused: LifecycleDeliveryOutcome = {
+        kind: "refused",
+        workflowId: input.workflowId,
+        reason: priorRefusal,
+      };
+      return refused;
+    }
+
+    const committed = yield* executionRepo.findByDelivery({
+      workflowId: input.workflowId,
+      deliveryId: input.deliveryId,
+    });
+    if (!committed) {
+      return undefined;
+    }
+
+    // The row is only worth resending while its run can still act on the send.
+    // `findByDelivery` reads whatever status the row holds now, and a run that
+    // has already reached a verdict would take a second `enqueued_at`, a second
+    // `workflow_run_id` and a "run started" entry filed after its own closing
+    // one.
+    if (!isInFlightStatus(committed.status)) {
+      yield* input.logger.info(
+        "Answered a retried delivery from an Execution that has already ended",
+        {
+          run: {
+            executionId: committed.id,
+            versionId: committed.workflowVersionId,
+            status: committed.status,
+          },
+          delivery: { id: input.deliveryId },
+        }
+      );
+
+      const ended: LifecycleDeliveryOutcome = {
+        kind: "started",
+        workflowId: input.workflowId,
+        executionId: committed.id,
+        supersededExecutionIds: [],
+        failedToSupersede: [],
+      };
+      return ended;
+    }
+
+    // The timeline entry names the version the committed row pinned, which a
+    // Publish since the first attempt may no longer have as the published one.
+    const pinned = yield* workflowRepo.findVersionById(
+      committed.workflowVersionId
+    );
+    if (!pinned) {
+      // A run's version row cascades with the run, so a committed Execution
+      // pointing at a version that is gone is an invariant break rather than a
+      // state a retry can recover from.
+      return yield* new InternalFailure({
+        error:
+          "The Execution this delivery committed pins a workflow version that no longer exists",
+      });
+    }
+
+    yield* input.logger.info(
+      "Resent the Execution a retried delivery had already committed",
+      {
+        run: {
+          executionId: committed.id,
+          versionId: committed.workflowVersionId,
+        },
+        delivery: { id: input.deliveryId },
+      }
+    );
+
+    // Inngest drops a second send under the run's idempotency key, so a row the
+    // earlier attempt already sent starts nothing new here.
+    const sent = yield* enqueueStartedRun({
+      execution: committed,
+      version: { kind: pinned.kind, number: pinned.version },
+    });
+
+    const started: LifecycleDeliveryOutcome = {
+      kind: "started",
+      workflowId: input.workflowId,
+      executionId: sent.executionId,
+      supersededExecutionIds: [],
+      failedToSupersede: [],
+    };
+    return started;
   }
 );
 

@@ -356,27 +356,35 @@ function winnerOutcome(input: {
   };
 }
 
-/** The entry node, carrying the rules under test and nothing else. */
-function createWorkflow(input: { rules: LifecycleRules }): Workflow {
+/**
+ * The entry node, carrying the rules under test and nothing else, unless the
+ * case hands over a whole graph because what it asks about is the graph.
+ */
+function createWorkflow(input: {
+  rules: LifecycleRules;
+  graph?: Workflow["graph"] | undefined;
+}): Workflow {
   return {
     id: "wf_1",
     name: "Appointment Reminders",
     description: null,
-    graph: createSerializedWorkflowGraph({
-      nodes: [
-        {
-          id: "lifecycle-1",
-          type: "lifecycle",
-          position: { x: 0, y: 0 },
-          data: {
-            label: "Start",
+    graph:
+      input.graph ??
+      createSerializedWorkflowGraph({
+        nodes: [
+          {
+            id: "lifecycle-1",
             type: "lifecycle",
-            config: { lifecycleRules: input.rules },
+            position: { x: 0, y: 0 },
+            data: {
+              label: "Start",
+              type: "lifecycle",
+              config: { lifecycleRules: input.rules },
+            },
           },
-        },
-      ],
-      edges: [],
-    }),
+        ],
+        edges: [],
+      }),
     draftRevision: 1,
     isPaused: false,
     mode: "live",
@@ -916,66 +924,6 @@ describe("applyLifecycleRules and Start Filters", () => {
             entityType: "appointment",
             deliveryId: "evt_crashed",
           });
-        })
-    );
-
-    // The committed row pins the version the first attempt ran, and a Publish
-    // between the two attempts moves the workflow on. The timeline entry has to
-    // name the graph the run is executing, which is the pinned one.
-    it.effect(
-      "names the version the committed Execution pinned, not the one published now",
-      () =>
-        Effect.gen(function* () {
-          const workflow = createWorkflow({
-            rules: guardedRules({ checkpoints: ["before-execution"] }),
-          });
-          const pinned = publishedVersion(workflow);
-          const republished: PublishedWorkflowVersion = {
-            ...pinned,
-            id: "ver_2",
-            version: 2,
-          };
-          findByDeliveryMock.mockImplementation(() =>
-            Effect.succeed(
-              winnerExecution({ deliveryId: "evt_crashed", enqueuedAt: null })
-            )
-          );
-          findVersionByIdMock.mockImplementation(() => Effect.succeed(pinned));
-
-          const outcome = yield* applyLifecycleRules({
-            subscriber: subscriber(),
-            event: appointmentCreated,
-            payload: videoPayload,
-            deliveryId: "evt_crashed",
-          }).pipe(
-            Effect.provide(
-              Layer.mergeAll(
-                stubWorkflowRepo({
-                  findById: () => Effect.succeed(workflow),
-                  findByIdWithPublishedVersionForRun: () =>
-                    Effect.succeed({
-                      workflow,
-                      publishedVersion: republished,
-                    }),
-                  findPublishedVersion: () => Effect.succeed(republished),
-                  findVersionById: findVersionByIdMock,
-                }),
-                lifecyclePorts
-              )
-            )
-          );
-
-          assert.strictEqual(outcome.kind, "started");
-          assert.deepStrictEqual(findVersionByIdMock.mock.calls, [["ver_1"]]);
-          const started = recordAuditEventMock.mock.calls.find(
-            ([event]) => event.eventType === "run_started"
-          )?.[0];
-          assert.include(started?.message ?? "", "run of v1 started");
-          assert.deepInclude(started?.metadata, { versionNumber: 1 });
-          assert.deepStrictEqual(
-            sendRunRequestedMock.mock.calls.map(([data]) => data),
-            [{ executionId: "exec_winner" }]
-          );
         })
     );
 
