@@ -17,6 +17,7 @@ import {
   createRecordingWorkflowStore,
   type RecordingWorkflowStore,
 } from "#src/backend/engine/recording-store";
+import type { ExecutionTerminationState } from "#src/backend/engine/store";
 import { noWorkflowActions } from "#src/backend/engine/actions";
 import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
 import {
@@ -77,6 +78,75 @@ function matchOn(field: string, value: string): string {
       },
     ],
   });
+}
+
+/**
+ * A run still in flight that holds an execution-wide claim, as another branch's
+ * Exit or a Cancel Event leaves it.
+ */
+function claimedRun(kind: "cancel" | "exit"): ExecutionTerminationState {
+  return {
+    status: "running",
+    claim:
+      kind === "exit"
+        ? {
+            kind: "exit",
+            requestedAt: "2026-10-19T15:00:00.000Z",
+            reason: "entity_condition_not_met",
+            nodeId: "other_branch",
+          }
+        : {
+            kind: "cancel",
+            requestedAt: "2026-10-19T15:00:00.000Z",
+            eventName: "appointment.cancelled",
+            payload: null,
+          },
+    didWrite: false,
+  };
+}
+
+/** The timeline sentence a claim wake records for the fixture's Wait node. */
+const CLAIM_WAKE_MESSAGE = {
+  cancel: "Run woken by a cancel request in node 'Wait'",
+  exit: "Run woken by an Exit in node 'Wait'",
+} as const;
+
+/**
+ * Asserts that a resume refused by the running write, on a run holding a claim,
+ * halted the Wait as that claim's wake: the node succeeds with no arrival in its
+ * output, the row closes as cancelled, the timeline records the claim wake, and
+ * nothing below the Wait runs.
+ */
+function expectHaltedByClaim(
+  store: RecordingWorkflowStore,
+  result: Awaited<ReturnType<typeof runWait>["execution"]>,
+  kind: "cancel" | "exit"
+) {
+  expect(result.results.wait_1?.success).toBe(true);
+  expect(result.results.after_wait).toBeUndefined();
+  expect(waitOutput(result)).not.toHaveProperty("payload");
+  expect(waitOutput(result)).not.toHaveProperty("event");
+  // The refused fence is the one running write, and the claim read follows it.
+  expect(store.callsOf("markExecutionRunning")).toEqual([
+    { executionId: "exec_wait", workflowVersionId: "ver_test" },
+  ]);
+  expect(store.callsOf("markWaitStateStatus")).toEqual([
+    { waitStateId: "wait_state_1", status: "cancelled" },
+  ]);
+  expect(
+    store
+      .callsOf("recordAuditEvent")
+      .filter((event) => event.eventType === "run_resumed")
+  ).toEqual([
+    expect.objectContaining({
+      message: CLAIM_WAKE_MESSAGE[kind],
+      metadata: { nodeId: "wait_1", hops: 1 },
+    }),
+  ]);
+  expect(store.callsOf("startStepLog").map((open) => open.nodeId)).toEqual([
+    "lifecycle_1",
+    "wait_1",
+  ]);
 }
 
 function runWait(options: RunWaitOptions) {
@@ -271,6 +341,25 @@ describe("wait node - delay mode", () => {
       expect.objectContaining({ status: "success" }),
     ]);
   });
+
+  // A resume signal can reach the park after a claim, when its producer took the
+  // row before the claim and its signal arrives first. The running write refuses
+  // the claimed run, and the Wait halts as the claim's own wake would.
+  it.each(["exit", "cancel"] as const)(
+    "halts as the %s claim when the running write refuses a resume wake",
+    async (kind) => {
+      store.markRunningAnswer = false;
+      store.terminationState = claimedRun(kind);
+
+      const { execution } = runWait({
+        config: { waitMode: "delay", waitDuration: "1h" },
+        store,
+        resumeEvent: waitResumeSignal({ orderId: "ord_1" }),
+      });
+
+      expectHaltedByClaim(store, await execution, kind);
+    }
+  );
 
   it("reuses the memoized wait state and step log across a replay", async () => {
     const memo = new Map<string, unknown>();
@@ -548,6 +637,53 @@ describe("wait node - event mode", () => {
     expect(store.callsOf("markWaitStateStatus")).toEqual([
       { waitStateId: "wait_state_1", status: "cancelled" },
     ]);
+  });
+
+  // A resume producer can take the row before a claim and have its signal reach
+  // the park first. The running write refuses the claimed run, so the resume
+  // reads the claim and halts as the claim's own wake would, dropping the
+  // arrival. A refusal with no claim is a Migration, and the step still fails:
+  // `core-wait-migrate.test.ts` covers that case.
+  it.each(["exit", "cancel"] as const)(
+    "halts as the %s claim when the running write refuses a resume wake",
+    async (kind) => {
+      store.markRunningAnswer = false;
+      store.terminationState = claimedRun(kind);
+
+      const { execution } = runWait({
+        config: {
+          waitMode: "event",
+          waitFor: [{ event: "billing/payment.settled" }],
+          waitTimeout: "7d",
+        },
+        store,
+        resumeEvent: waitResumeSignal({ orderId: "ord_1" }),
+      });
+
+      expectHaltedByClaim(store, await execution, kind);
+    }
+  );
+
+  // The resume step memoizes the claim wake it substituted, so a replay that
+  // skips the step body still halts the branch.
+  it("halts on replay from the memoized claim wake", async () => {
+    store.markRunningAnswer = false;
+    store.terminationState = claimedRun("exit");
+    const memo = new Map<string, unknown>();
+    const config = {
+      waitMode: "event",
+      waitFor: [{ event: "billing/payment.settled" }],
+      waitTimeout: "7d",
+    };
+    const resumeEvent = waitResumeSignal({ orderId: "ord_1" });
+
+    await runWait({ config, store, resumeEvent, memo }).execution;
+    const replayed = await runWait({ config, store, resumeEvent, memo })
+      .execution;
+
+    expect(replayed.results.after_wait).toBeUndefined();
+    expect(waitOutput(replayed)).not.toHaveProperty("payload");
+    expect(store.callsOf("markExecutionRunning")).toHaveLength(1);
   });
 
   // A wait with no end is an immortal run, so the timeout the editor writes is

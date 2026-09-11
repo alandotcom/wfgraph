@@ -370,7 +370,10 @@ function runWaitAttempt<Prepared, Resumed>(
       return { status: "reprepare" };
     }
 
-    const resumed = yield* runDurable(
+    // The step memoizes the wake it acted on beside the mode's output. A claim
+    // found behind the version fence replaces the wake that arrived, and the
+    // outcome has to read that same wake on every replay.
+    const settled = yield* runDurable(
       runtime,
       {
         id: stepIds.resume,
@@ -383,22 +386,26 @@ function runWaitAttempt<Prepared, Resumed>(
       // The step opens with the writes every resume makes, the version fence
       // among them, and each mode then writes its own output.
       Effect.gen(function* () {
-        yield* openResume(branch, {
+        const woke = yield* openResume(branch, {
           mode: mode.mode,
           waitStateId: prepared.carry.waitStateId,
           wake,
           hops: state.hops,
         });
-        return yield* mode.resume({
+        const resumed = yield* mode.resume({
           branch,
           prepared: prepared.prepared,
-          wake,
+          wake: woke,
           hops: state.hops,
         });
+        return { wake: woke, resumed };
       })
     );
 
-    return { status: "finished", outcome: mode.outcome({ resumed, wake }) };
+    return {
+      status: "finished",
+      outcome: mode.outcome({ resumed: settled.resumed, wake: settled.wake }),
+    };
   });
 }
 
@@ -586,51 +593,47 @@ function abandonWait(
 
 /**
  * Moves the run back to `running` under the Workflow Version this body loaded,
- * failing the step when no row moved.
+ * answering false when no row moved.
  *
  * The guarded write is the resume's version fence, and it is the first thing a
- * resume does. A Migration that lands between the wake and this write leaves the
- * execution row pinned to another version, so nothing moves and the step fails;
- * Inngest retries the body, which reloads the graph from the new pointer and
- * prepares the Wait again. Running it first leaves the wait row untouched for
- * that retry to re-park.
+ * resume does. It refuses a run pinned to another version, and it also refuses
+ * a run that holds a Cancel or Exit claim. `openResume` reads which of the two
+ * refused it.
  */
 function markRunningUnderLoadedVersion(
   branch: WaitBranchContext
-): Effect.Effect<void, EngineFailure> {
-  return Effect.flatMap(
-    fromStore(
-      branch.store.markExecutionRunning({
-        executionId: branch.context.executionId,
-        workflowVersionId: branch.workflowVersionId,
-      })
-    ),
-    (moved) =>
-      moved
-        ? Effect.void
-        : Effect.fail(
-            engineFailure(
-              "failure",
-              `This run has been moved off workflow version ${branch.workflowVersionId} since its graph was loaded.`
-            )
-          )
+): Effect.Effect<boolean, EngineFailure> {
+  return fromStore(
+    branch.store.markExecutionRunning({
+      executionId: branch.context.executionId,
+      workflowVersionId: branch.workflowVersionId,
+    })
   );
 }
 
 /**
  * The writes every resume opens with, whichever mode is resuming: the version
  * fence, the wait row settled for the wakes that have no producer, and the run's
- * one timeline entry for this wake.
+ * one timeline entry for this wake. It answers the wake the resume acts on.
  *
  * Only this engine invocation knows it consumed the wake, so it owns the
  * Execution's running status and that entry. The wait row is settled here only
  * for a timeout and a claim wake; an ordinary resume was settled by the producer
  * that sent the signal, through its own claim fence.
  *
- * A claim wake (a Cancel or an Exit) skips the version fence. The running write
- * refuses a claimed run, so the fence would fail every claim wake. A claimed run
- * cannot be migrated either, because the Migration's repin write refuses a
- * claimed run too, so the version this body loaded is still the pinned one.
+ * A claim wake (a Cancel or an Exit) skips the version fence, because the
+ * running write refuses a claimed run. A claimed run cannot be migrated either,
+ * because the Migration's repin write refuses a claimed run too, so the version
+ * this body loaded is still the pinned one.
+ *
+ * Any other wake can arrive after a claim: a resume producer can take the row
+ * before a claim and have its signal reach the park first. When the fence
+ * refuses such a wake, the run's claim is read, and a Cancel or Exit claim
+ * replaces the wake, so the Wait halts as that claim wake would. A refusal with
+ * no claim is a Migration that moved the version between the wake and this
+ * write, and the step fails; Inngest retries the body, which reloads the graph
+ * from the new pointer and prepares the Wait again. The fence runs first, so the
+ * wait row is untouched for that retry to re-park.
  */
 function openResume(
   branch: WaitBranchContext,
@@ -640,15 +643,26 @@ function openResume(
     wake: WaitResumeWake;
     hops: number;
   }
-): Effect.Effect<void, EngineFailure> {
+): Effect.Effect<WaitResumeWake, EngineFailure> {
   return Effect.gen(function* () {
     const { context, store, workflowId } = branch;
-    const { mode, wake, hops } = input;
+    const { mode, hops } = input;
+
+    let wake = input.wake;
+    if (!isClaimWake(wake) && !(yield* markRunningUnderLoadedVersion(branch))) {
+      const claim = yield* readClaimWake(branch);
+      if (claim === null) {
+        return yield* Effect.fail(
+          engineFailure(
+            "failure",
+            `This run has been moved off workflow version ${branch.workflowVersionId} since its graph was loaded.`
+          )
+        );
+      }
+      wake = claim;
+    }
 
     const claimed = isClaimWake(wake);
-    if (!claimed) {
-      yield* markRunningUnderLoadedVersion(branch);
-    }
 
     if (wake.kind === "timeout" || claimed) {
       yield* fromStore(
@@ -677,6 +691,8 @@ function openResume(
         }),
       })
     );
+
+    return wake;
   });
 }
 
