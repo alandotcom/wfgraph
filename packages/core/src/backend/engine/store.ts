@@ -313,9 +313,10 @@ export type WorkflowStore = {
   ): Effect.Effect<PendingCancel | null, DatabaseError>;
   /**
    * Attempts the terminal state and returns the authoritative stored outcome.
-   * `didWrite` identifies this call as the compare-and-set winner. A database
-   * refusal remains in the error channel; terminal-record policy logs it and
-   * emits no audit announcement.
+   * `didWrite` identifies this call as the compare-and-set winner, and `null`
+   * means no execution row exists. A database refusal remains in the error
+   * channel; terminal-record policy logs it and fails the durable step, so
+   * Inngest retries the write.
    */
   completeRun(
     input: CompleteRunInput

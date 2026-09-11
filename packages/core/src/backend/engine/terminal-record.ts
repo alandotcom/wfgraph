@@ -111,7 +111,10 @@ function claimedStatus(
 /**
  * Attempts the caller's verdict, then finalizes a racing Cancel or Exit claim.
  * The returned state is authoritative, so the engine never reports its stale
- * local traversal verdict after persistence selected another outcome.
+ * local traversal verdict after persistence selected another outcome. A
+ * `DatabaseError` from either write is logged and fails the enclosing durable
+ * step, so Inngest retries the step. `null` means the store found no execution
+ * row.
  */
 function finalizeRun(input: {
   store: WorkflowStore;
@@ -119,14 +122,13 @@ function finalizeRun(input: {
 }): Effect.Effect<ExecutionTerminationState | null, DatabaseError> {
   return Effect.gen(function* () {
     const first = yield* input.store.completeRun(input.run).pipe(
-      Effect.catchTag("DatabaseError", (error) =>
+      Effect.tapError((error) =>
         Effect.logWarning("Terminal run record not written").pipe(
           Effect.annotateLogs({
             executionId: input.run.executionId,
             status: input.run.status,
             error,
-          }),
-          Effect.as(null)
+          })
         )
       )
     );

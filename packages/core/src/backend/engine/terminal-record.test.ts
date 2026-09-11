@@ -1,8 +1,14 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Effect, Layer, Logger, References } from "effect";
-import { createRecordingWorkflowStore } from "#src/backend/engine/recording-store";
+import {
+  createRecordingWorkflowStore,
+  type RecordingWorkflowStore,
+} from "#src/backend/engine/recording-store";
 import type { WorkflowStore } from "#src/backend/engine/store";
-import { recordRunCompleted } from "#src/backend/engine/terminal-record";
+import {
+  recordRunCompleted,
+  recordRunFailed,
+} from "#src/backend/engine/terminal-record";
 import { DatabaseError } from "#src/backend/lib/effect/database";
 
 const terminalInput = {
@@ -36,36 +42,166 @@ function recordingLogger() {
   };
 }
 
+/**
+ * A recording store whose first `completeRun` fails with `databaseError`, the
+ * way a transient connection loss does, and whose later calls write through to
+ * the recording store. Each call of the recorder models one attempt of the
+ * durable step.
+ */
+function storeRefusingFirstCompletion(
+  recording: RecordingWorkflowStore,
+  databaseError: DatabaseError
+): WorkflowStore {
+  let attempts = 0;
+  return {
+    ...recording,
+    completeRun: (input) => {
+      attempts += 1;
+      return attempts === 1
+        ? Effect.fail(databaseError)
+        : recording.completeRun(input);
+    },
+  };
+}
+
+const exitClaim = {
+  kind: "exit",
+  requestedAt: "2026-10-19T15:00:00.000Z",
+  reason: "entity_condition_not_met",
+  nodeId: "send-reminder",
+} as const;
+
 describe("terminal record completion policy", () => {
-  it.effect("warns and skips the audit when the database refuses", () =>
-    Effect.gen(function* () {
-      const databaseError = new DatabaseError({
-        cause: new Error("no connection"),
-      });
-      const recording = createRecordingWorkflowStore();
-      const store: WorkflowStore = {
-        ...recording,
-        completeRun: () => Effect.fail(databaseError),
-      };
-      const recordingLoggerLayer = recordingLogger();
+  it.effect(
+    "fails so the step retries when the database refuses a run with no claim",
+    () =>
+      Effect.gen(function* () {
+        const databaseError = new DatabaseError({
+          cause: new Error("no connection"),
+        });
+        const recording = createRecordingWorkflowStore();
+        recording.terminationState = {
+          status: "running",
+          claim: null,
+          didWrite: false,
+        };
+        const store = storeRefusingFirstCompletion(recording, databaseError);
+        const recordingLoggerLayer = recordingLogger();
 
-      yield* recordRunCompleted({ ...terminalInput, store }).pipe(
-        Effect.provide(recordingLoggerLayer.layer)
-      );
+        const failure = yield* Effect.flip(
+          recordRunCompleted({ ...terminalInput, store }).pipe(
+            Effect.provide(recordingLoggerLayer.layer)
+          )
+        );
 
-      expect(recordingLoggerLayer.lines).toEqual([
-        {
-          level: "Warn",
-          message: "Terminal run record not written",
-          properties: {
-            executionId: "exec_1",
-            status: "completed",
-            error: databaseError,
+        expect(failure).toBe(databaseError);
+        expect(recordingLoggerLayer.lines).toEqual([
+          {
+            level: "Warn",
+            message: "Terminal run record not written",
+            properties: {
+              executionId: "exec_1",
+              status: "completed",
+              error: databaseError,
+            },
           },
-        },
-      ]);
-      expect(recording.callsOf("recordAuditEvent")).toHaveLength(0);
-    })
+        ]);
+        expect(recording.terminationState?.status).toBe("running");
+        expect(recording.callsOf("recordAuditEvent")).toHaveLength(0);
+
+        const retried = yield* recordRunCompleted({ ...terminalInput, store });
+
+        expect(retried).toEqual({ status: "completed" });
+        expect(recording.terminationState?.status).toBe("completed");
+        expect(
+          recording.callsOf("recordAuditEvent").map((call) => call.eventType)
+        ).toEqual(["run_completed"]);
+      })
+  );
+
+  it.effect(
+    "fails so the step retries when the database refuses a run holding an Exit claim",
+    () =>
+      Effect.gen(function* () {
+        const databaseError = new DatabaseError({
+          cause: new Error("connection interrupted"),
+        });
+        const recording = createRecordingWorkflowStore();
+        recording.terminationState = {
+          status: "running",
+          claim: exitClaim,
+          didWrite: false,
+        };
+        const store = storeRefusingFirstCompletion(recording, databaseError);
+        const exitInput = {
+          ...terminalInput,
+          status: "exited",
+          store,
+          exitContext: {
+            entityType: "appointment",
+            conditionId: "condition_1",
+          },
+        } as const;
+
+        const failure = yield* Effect.flip(recordRunCompleted(exitInput));
+
+        expect(failure).toBe(databaseError);
+        expect(recording.terminationState).toMatchObject({
+          status: "running",
+          claim: exitClaim,
+        });
+        expect(recording.callsOf("recordAuditEvent")).toHaveLength(0);
+
+        const retried = yield* recordRunCompleted(exitInput);
+
+        expect(retried).toEqual({
+          status: "exited",
+          exit: {
+            reason: "entity_condition_not_met",
+            entityType: "appointment",
+            conditionId: "condition_1",
+            nodeId: "send-reminder",
+            checkedAt: "2026-10-19T15:00:00.000Z",
+          },
+        });
+        expect(recording.terminationState?.status).toBe("exited");
+        expect(
+          recording.callsOf("recordAuditEvent").map((call) => call.eventType)
+        ).toEqual(["run_exited"]);
+      })
+  );
+
+  it.effect(
+    "fails the failed-run record so the step retries when the database refuses",
+    () =>
+      Effect.gen(function* () {
+        const databaseError = new DatabaseError({
+          cause: new Error("no connection"),
+        });
+        const recording = createRecordingWorkflowStore();
+        const store = storeRefusingFirstCompletion(recording, databaseError);
+        const failedInput = {
+          store,
+          executionId: "exec_1",
+          workflowId: "workflow_1",
+          status: "failed",
+          failure: { kind: "failure", message: "node exploded" },
+          runMode: "live",
+        } as const;
+
+        const failure = yield* Effect.flip(recordRunFailed(failedInput));
+
+        expect(failure).toBe(databaseError);
+        expect(recording.callsOf("recordAuditEvent")).toHaveLength(0);
+
+        const retried = yield* recordRunFailed(failedInput);
+
+        expect(retried).toEqual({ status: "failed" });
+        expect(recording.terminationState?.status).toBe("failed");
+        expect(
+          recording.callsOf("recordAuditEvent").map((call) => call.eventType)
+        ).toEqual(["run_failed"]);
+      })
   );
 
   it.effect("finalizes and announces an Exit claim that raced completion", () =>

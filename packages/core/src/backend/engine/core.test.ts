@@ -636,8 +636,8 @@ describe("run persistence through the store port", () => {
     });
   });
 
-  // Both terminal writes sit inside the step that settles the run's outcome, so
-  // an error escaping either one has the fatal handler record the run again.
+  // The timeline write runs after the terminal row has landed, so a refusal
+  // there is logged and dropped and the run keeps its verdict.
   it("keeps a completed run completed when its timeline write fails", async () => {
     const result = await executeWorkflow(
       {
@@ -655,24 +655,32 @@ describe("run persistence through the store port", () => {
     expect(store.callsOf("completeRun")[0]?.status).toBe("completed");
   });
 
-  // Terminal-record folds a refused database write into the same false answer
-  // as a terminal race, after logging the different cause.
-  it("announces nothing on the timeline when the terminal row is refused", async () => {
-    const result = await executeWorkflow(
-      {
-        graph: createLifecycleToActionGraph(),
-        executionId: "exec_terminal_row_refused",
-        workflowId: "workflow_terminal_row_refused",
-      },
-      createInMemoryWorkflowRuntime(),
-      storeRefusing("completeRun"),
-      actions
-    );
+  // A refused terminal row fails the terminal step, which a durable runtime
+  // leaves unmemoized. The next attempt of the body runs that step again and
+  // writes the row, so the run never finishes with its row still in flight.
+  it("fails the terminal step when the terminal row is refused, and a retry writes it", async () => {
+    const runtime = createInMemoryWorkflowRuntime();
+    const input = {
+      graph: createLifecycleToActionGraph(),
+      executionId: "exec_terminal_row_refused",
+      workflowId: "workflow_terminal_row_refused",
+    };
 
-    expect(result.success).toBe(true);
+    await expect(
+      executeWorkflow(input, runtime, storeRefusing("completeRun"), actions)
+    ).rejects.toThrow("run log unreachable");
+    expect(runtime.memo.has("workflow-run-completed")).toBe(false);
     expect(
       store.callsOf("recordAuditEvent").map((call) => call.eventType)
     ).not.toContain("run_completed");
+
+    const result = await executeWorkflow(input, runtime, store, actions);
+
+    expect(result.success).toBe(true);
+    expect(store.terminationState?.status).toBe("completed");
+    expect(
+      store.callsOf("recordAuditEvent").map((call) => call.eventType)
+    ).toContain("run_completed");
   });
 
   // The error a run carries is the one a person reads in the run panel, so it
