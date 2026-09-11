@@ -865,13 +865,16 @@ function emailSetModel(values: string[]): string {
 }
 
 // The build agent writes `is one of` on any string field, so a field with no
-// enum values needs a list the builder types into.
+// enum values needs a list the builder types into. The list itself (adding
+// and removing chips) is `TextSetValueInput`'s own suite; this case only
+// checks that the row wires a typed value through to the operator and the
+// compiled expression it feeds `ConditionSummary`.
 describe("ConditionBuilderRow set comparison on a plain string field", () => {
-  it("shows every stored value and edits the list by typing", () => {
+  it("adds a value to a plain string field's set and compiles it", () => {
     const onChange = vi.fn();
     const view = renderRow(
       DONOR_FIELDS,
-      emailSetModel(["a@example.com", "b@example.com"]),
+      emailSetModel(["a@example.com"]),
       onChange
     );
 
@@ -881,82 +884,19 @@ describe("ConditionBuilderRow set comparison on a plain string field", () => {
     expect(
       view.getByRole("combobox", { name: "email operator" }).textContent
     ).toContain("is one of");
-    expect(view.getByText("a@example.com")).toBeTruthy();
-    expect(view.getByText("b@example.com")).toBeTruthy();
     expect(view.queryByLabelText("Select email values")).toBeNull();
 
     const input = view.getByLabelText("Add email values");
-    fireEvent.change(input, { target: { value: "  c@example.com " } });
+    fireEvent.change(input, { target: { value: "c@example.com" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
     expect(writtenRule(onChange)).toMatchObject({
       operator: "is_one_of",
-      values: ["a@example.com", "b@example.com", "c@example.com"],
-    });
-    expect(input).toHaveProperty("value", "");
-
-    fireEvent.click(view.getByRole("button", { name: "Remove b@example.com" }));
-
-    expect(writtenRule(onChange)).toMatchObject({
       values: ["a@example.com", "c@example.com"],
     });
     expect(onChange.mock.calls.at(-1)?.[0].expression).toContain(
       'payload.email in ["a@example.com", "c@example.com"]'
     );
-  });
-
-  it("offers no entry for blank text or a value already listed", () => {
-    const onChange = vi.fn();
-    const view = renderRow(
-      DONOR_FIELDS,
-      emailSetModel(["a@example.com"]),
-      onChange
-    );
-
-    enterEdit(view);
-    const input = view.getByLabelText("Add email values");
-    // Open the popup, so a missing Add entry is one the list left out.
-    fireEvent.keyDown(input, { key: "ArrowDown" });
-
-    fireEvent.change(input, { target: { value: "   " } });
-    expect(view.queryByRole("option", { name: /^Add / })).toBeNull();
-
-    fireEvent.change(input, { target: { value: " a@example.com " } });
-    expect(view.queryByRole("option", { name: /^Add / })).toBeNull();
-    fireEvent.keyDown(input, { key: "Enter" });
-
-    expect(onChange).not.toHaveBeenCalled();
-  });
-
-  it("adds typed text from its Add entry", () => {
-    const onChange = vi.fn();
-    const view = renderRow(DONOR_FIELDS, emailSetModel([]), onChange);
-
-    enterEdit(view);
-    const input = view.getByLabelText("Add email values");
-    fireEvent.keyDown(input, { key: "ArrowDown" });
-    fireEvent.change(input, { target: { value: "d@example.com" } });
-    fireEvent.click(view.getByRole("option", { name: 'Add "d@example.com"' }));
-
-    expect(writtenRule(onChange)).toMatchObject({
-      values: ["d@example.com"],
-    });
-  });
-
-  it("adds typed text once when Enter picks the highlighted Add entry", () => {
-    const onChange = vi.fn();
-    const view = renderRow(DONOR_FIELDS, emailSetModel([]), onChange);
-
-    enterEdit(view);
-    const input = view.getByLabelText("Add email values");
-    fireEvent.keyDown(input, { key: "ArrowDown" });
-    fireEvent.change(input, { target: { value: "e@example.com" } });
-    fireEvent.keyDown(input, { key: "Enter" });
-
-    expect(onChange).toHaveBeenCalledTimes(1);
-    expect(writtenRule(onChange)).toMatchObject({
-      values: ["e@example.com"],
-    });
   });
 
   it("keeps the enum picker for a field with enum values", () => {
@@ -1039,48 +979,11 @@ const STATUS_FIELDS: ConditionSelectableField[] = [
   field("status", "Lifecycle", { enumValues: ["active", "paused"] }),
 ];
 
-// The build agent's `set_wait` tool accepts a set that mixes enum literals with
-// a template reference, so the enum picker holds every operand it does not
-// offer until the builder removes that operand's chip.
+// `EnumMultiValueInput` has its own suite for picking, keeping, and removing
+// operands. This describe block covers only the row's view-mode summary: the
+// text it shows for a set rule without opening the editor.
 describe("ConditionBuilderRow set comparison on an enum field", () => {
   const reference = "{{@entry:Lifecycle.email}}";
-
-  it("keeps a template reference while enum values are picked and removed", () => {
-    const onChange = vi.fn();
-    const view = renderRow(
-      STATUS_FIELDS,
-      statusSetModel(["active", reference]),
-      onChange
-    );
-
-    enterEdit(view);
-    expect(view.getByText("active")).toBeTruthy();
-    expect(view.getByText("Lifecycle.email")).toBeTruthy();
-    expect(view.queryByText(/\{\{@/)).toBeNull();
-
-    const values = view.getByLabelText("Select status values");
-    fireEvent.keyDown(values, { key: "ArrowDown" });
-    // The popup offers the field's enum values alone.
-    expect(
-      view.getAllByRole("option").map((option) => option.textContent)
-    ).toEqual(["active", "paused"]);
-    fireEvent.click(view.getByRole("option", { name: "paused" }));
-    fireEvent.keyDown(values, { key: "Escape" });
-
-    expect(writtenRule(onChange)).toMatchObject({
-      values: ["active", reference, "paused"],
-    });
-
-    fireEvent.click(view.getByRole("button", { name: "Remove active" }));
-    expect(writtenRule(onChange)).toMatchObject({
-      values: [reference, "paused"],
-    });
-
-    fireEvent.click(
-      view.getByRole("button", { name: "Remove Lifecycle.email" })
-    );
-    expect(writtenRule(onChange)).toMatchObject({ values: ["paused"] });
-  });
 
   // A reference is resolved when the run reaches the rule, so the summary has
   // no enum value to hold it to.
@@ -1131,35 +1034,6 @@ describe("ConditionBuilderRow set comparison on an enum field", () => {
 
     expect(view.getByText(/Lifecycle\.email/)).toBeTruthy();
     expect(view.queryByText(/no longer offers/)).toBeNull();
-  });
-
-  it("keeps a literal the field no longer offers until its chip is removed", () => {
-    const onChange = vi.fn();
-    const view = renderRow(
-      STATUS_FIELDS,
-      statusSetModel(["active", "cancelled"]),
-      onChange
-    );
-
-    enterEdit(view);
-    expect(view.getByText("cancelled")).toBeTruthy();
-
-    const values = view.getByLabelText("Select status values");
-    fireEvent.keyDown(values, { key: "ArrowDown" });
-    fireEvent.click(view.getByRole("option", { name: "paused" }));
-    fireEvent.keyDown(values, { key: "Escape" });
-
-    expect(writtenRule(onChange)).toMatchObject({
-      values: ["active", "cancelled", "paused"],
-    });
-
-    fireEvent.click(view.getByRole("button", { name: "Remove active" }));
-    expect(writtenRule(onChange)).toMatchObject({
-      values: ["cancelled", "paused"],
-    });
-
-    fireEvent.click(view.getByRole("button", { name: "Remove cancelled" }));
-    expect(writtenRule(onChange)).toMatchObject({ values: ["paused"] });
   });
 });
 

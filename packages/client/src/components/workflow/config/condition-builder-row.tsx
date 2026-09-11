@@ -1,20 +1,8 @@
 import { Plus, Trash2 } from "lucide-react";
 import { nanoid } from "nanoid";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "#src/components/ui/button";
-import {
-  Combobox,
-  ComboboxChip,
-  ComboboxChips,
-  ComboboxChipsInput,
-  ComboboxContent,
-  ComboboxEmpty,
-  ComboboxItem,
-  ComboboxList,
-  ComboboxTrigger,
-  ComboboxValue,
-} from "#src/components/ui/combobox";
 import { Input } from "#src/components/ui/input";
 import {
   Select,
@@ -27,6 +15,11 @@ import { whenChosen } from "#src/lib/select-choice";
 import { TemplateBadgeInput } from "#src/components/ui/template-badge-input";
 import type { ConditionSelectableField } from "#src/lib/upstream-node-fields";
 import { ConditionFieldCombobox } from "./condition-field-combobox";
+import { enumOptionLabel } from "./condition-field-label";
+import {
+  EnumMultiValueInput,
+  TextSetValueInput,
+} from "./condition-set-value-input";
 import { ConfigSection } from "./config-section";
 import { ConditionSummary } from "./condition-summary";
 import {
@@ -52,8 +45,6 @@ import {
   appendOutputPathKey,
   displayTemplateText,
 } from "@wfgraph/shared/graph/node-references";
-import { isBlank } from "@wfgraph/shared/types/string";
-import { uniq } from "es-toolkit/array";
 import {
   applyOperatorValueToCondition,
   getOperatorOptionsByFieldType,
@@ -165,222 +156,6 @@ function LogicToggle({
         );
       })}
     </div>
-  );
-}
-
-function enumOptionLabel(
-  field: ConditionSelectableField | undefined,
-  value: string
-): string {
-  return field?.enumLabels?.[value] ?? value;
-}
-
-type EnumChoice = { value: string; label: string };
-
-function sameEnumChoice(a: EnumChoice, b: EnumChoice): boolean {
-  return a.value === b.value;
-}
-
-/**
- * The value list of a set comparison on a string field that declares enum
- * values.
- *
- * The popup offers the field's enum values. Every stored operand is a chip in
- * its stored order, including an operand the field does not offer: a template
- * reference, shown by its display text, or a literal the field no longer
- * names, shown as written. Such an operand stays in the list until its own chip
- * is removed, and a pick appends to the end of the list.
- */
-function EnumMultiValueInput({
-  disabled,
-  field,
-  name,
-  onValueChange,
-  values,
-}: {
-  disabled: boolean;
-  field: ConditionSelectableField | undefined;
-  name: string;
-  onValueChange: (values: string[]) => void;
-  values: string[];
-}) {
-  const choices = (field?.enumValues ?? []).map((value) => ({
-    value,
-    label: enumOptionLabel(field, value),
-  }));
-  const selected = values.map(
-    (value) =>
-      choices.find((choice) => choice.value === value) ?? {
-        value,
-        label: displayTemplateText(value),
-      }
-  );
-
-  return (
-    <Combobox<EnumChoice, true>
-      disabled={disabled}
-      isItemEqualToValue={sameEnumChoice}
-      items={choices}
-      itemToStringLabel={(choice) => choice.label}
-      multiple
-      onValueChange={(next) =>
-        onValueChange(next.map((choice) => choice.value))
-      }
-      value={selected}
-    >
-      <ComboboxChips className="min-w-[240px]">
-        <ComboboxValue>
-          {(picked: EnumChoice[]) => (
-            <>
-              {picked.map((choice) => (
-                <ComboboxChip
-                  key={choice.value}
-                  removeLabel={`Remove ${choice.label}`}
-                >
-                  <span className="max-w-40 truncate" title={choice.label}>
-                    {choice.label}
-                  </span>
-                </ComboboxChip>
-              ))}
-              <ComboboxChipsInput
-                aria-label={`Select ${name} values`}
-                disabled={disabled}
-                placeholder={picked.length === 0 ? "Select values" : ""}
-              />
-              <ComboboxTrigger aria-label={`Show ${name} values`} />
-            </>
-          )}
-        </ComboboxValue>
-      </ComboboxChips>
-      <ComboboxContent>
-        <ComboboxEmpty>No value matches that.</ComboboxEmpty>
-        <ComboboxList>
-          {(choice: EnumChoice) => (
-            <ComboboxItem key={choice.value} value={choice}>
-              {choice.label}
-            </ComboboxItem>
-          )}
-        </ComboboxList>
-      </ComboboxContent>
-    </Combobox>
-  );
-}
-
-/**
- * One value of a free-text set, or the entry that adds the text typed so far.
- * `adding` marks that entry, whose `label` is the "Add" wording.
- */
-type TextSetChoice = { value: string; label: string; adding: boolean };
-
-/**
- * The value list of a set comparison on a string field with no enum values.
- *
- * Every stored value is a chip the builder can remove. Typed text is trimmed
- * and offered as one "Add" entry, which a click appends. Enter appends it too,
- * including while the popup is closed. Blank text and a value already in the
- * list offer no entry, so neither is added.
- */
-function TextSetValueInput({
-  disabled,
-  name,
-  onValueChange,
-  values,
-}: {
-  disabled: boolean;
-  name: string;
-  onValueChange: (values: string[]) => void;
-  values: string[];
-}) {
-  const [query, setQuery] = useState("");
-  // The entry Enter would pick, if any. Base UI handles Enter on a highlighted
-  // entry itself, so the input's own Enter handler acts only when none is.
-  const highlighted = useRef<TextSetChoice | undefined>(undefined);
-  const typed = query.trim();
-  const selected = values.map((value) => ({
-    value,
-    label: displayTemplateText(value),
-    adding: false,
-  }));
-  const addable =
-    isBlank(typed) || values.includes(typed)
-      ? []
-      : [{ value: typed, label: `Add "${typed}"`, adding: true }];
-
-  return (
-    <Combobox<TextSetChoice, true>
-      autoHighlight
-      disabled={disabled}
-      // The one entry is built from the query, so matching it against the
-      // query again could only hide it.
-      filter={null}
-      inputValue={query}
-      isItemEqualToValue={sameEnumChoice}
-      items={addable}
-      itemToStringLabel={(choice) => choice.label}
-      multiple
-      onInputValueChange={setQuery}
-      onItemHighlighted={(choice) => {
-        highlighted.current = choice;
-      }}
-      // A closed popup highlights nothing, whatever it last reported.
-      onOpenChange={(open) => {
-        if (!open) {
-          highlighted.current = undefined;
-        }
-      }}
-      onValueChange={(next) => {
-        onValueChange(uniq(next.map((choice) => choice.value)));
-        if (next.some((choice) => choice.adding)) {
-          setQuery("");
-        }
-      }}
-      value={selected}
-    >
-      <ComboboxChips className="min-w-[240px]">
-        <ComboboxValue>
-          {(picked: TextSetChoice[]) => (
-            <>
-              {picked.map((choice) => (
-                <ComboboxChip
-                  key={choice.value}
-                  removeLabel={`Remove ${choice.label}`}
-                >
-                  <span className="max-w-40 truncate" title={choice.label}>
-                    {choice.label}
-                  </span>
-                </ComboboxChip>
-              ))}
-              <ComboboxChipsInput
-                aria-label={`Add ${name} values`}
-                disabled={disabled}
-                onKeyDown={(event) => {
-                  if (event.key !== "Enter" || highlighted.current) {
-                    return;
-                  }
-                  event.preventDefault();
-                  const [adding] = addable;
-                  if (adding) {
-                    onValueChange([...values, adding.value]);
-                    setQuery("");
-                  }
-                }}
-                placeholder={picked.length === 0 ? "Type a value" : ""}
-              />
-            </>
-          )}
-        </ComboboxValue>
-      </ComboboxChips>
-      <ComboboxContent>
-        <ComboboxEmpty>Type a value to add it.</ComboboxEmpty>
-        <ComboboxList>
-          {(choice: TextSetChoice) => (
-            <ComboboxItem key={choice.value} value={choice}>
-              {choice.label}
-            </ComboboxItem>
-          )}
-        </ComboboxList>
-      </ComboboxContent>
-    </Combobox>
   );
 }
 
