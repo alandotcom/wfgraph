@@ -268,6 +268,9 @@ function stubPublishedWorkflow(workflow: Workflow) {
         publishedVersion: publishedVersion(workflow),
       }),
     findPublishedVersion: () => Effect.succeed(publishedVersion(workflow)),
+    // The enqueue reads the version the opened row pins, because that is what
+    // the run's opening timeline entry names.
+    findVersionById: () => Effect.succeed(publishedVersion(workflow)),
   });
 }
 

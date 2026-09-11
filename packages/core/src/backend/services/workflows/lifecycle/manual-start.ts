@@ -183,18 +183,17 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
     // Both loads return the same fields, so every gate below reads the same
     // way whichever graph the run uses.
     const source = body.graph ?? "published";
-    const { workflow, preflight, version, pinVersion, releaseVersion } =
-      yield* (
-        source === "draft"
-          ? loadDraftForRun(workflowId)
-          : loadWorkflowForRun(workflowId)
-      ).pipe(
-        Effect.tapError((failure) =>
-          "error" in failure
-            ? logger.error("Refused a manual run", { error: failure.error })
-            : Effect.void
-        )
-      );
+    const { workflow, preflight, pinVersion, releaseVersion } = yield* (
+      source === "draft"
+        ? loadDraftForRun(workflowId)
+        : loadWorkflowForRun(workflowId)
+    ).pipe(
+      Effect.tapError((failure) =>
+        "error" in failure
+          ? logger.error("Refused a manual run", { error: failure.error })
+          : Effect.void
+      )
+    );
 
     // The staleness gate comes before every other check, because a request
     // built against a version or a mode that has since moved is about a run
@@ -390,7 +389,6 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
         versionId: preflight.workflowVersionId,
         catalogFingerprint: preflight.catalogFingerprint,
         graph: preflight.workflowGraph,
-        version,
       }),
       concurrency: rules.concurrency,
       start: guarded

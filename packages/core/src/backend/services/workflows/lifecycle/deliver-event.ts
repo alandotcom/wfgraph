@@ -23,7 +23,6 @@ import {
   type EffectLogger,
 } from "#src/backend/lib/effect/app-logger";
 import { evaluateSerializedCondition } from "#src/backend/lib/cel/condition-payload";
-import { InternalFailure } from "#src/backend/lib/effect/failures";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import { requestCanceledOutlet } from "#src/backend/services/workflows/lifecycle/cancel";
 import {
@@ -388,7 +387,6 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
       versionId: version.id,
       catalogFingerprint: version.catalogFingerprint,
       graph: preflight.workflowGraph,
-      version: { kind: "published", number: version.version },
     });
 
     const entityValue = rules.trackedEntity
@@ -531,7 +529,6 @@ const answerFromCommittedDecision = Effect.fn("answerFromCommittedDecision")(
     deliveryId: string;
     logger: EffectLogger;
   }) {
-    const workflowRepo = yield* WorkflowRepo;
     const executionRepo = yield* ExecutionRepo;
 
     const priorRefusal = yield* executionRepo.findAdmissionRefusal({
@@ -588,21 +585,6 @@ const answerFromCommittedDecision = Effect.fn("answerFromCommittedDecision")(
       return ended;
     }
 
-    // The timeline entry names the version the committed row pinned, which a
-    // Publish since the first attempt may no longer have as the published one.
-    const pinned = yield* workflowRepo.findVersionById(
-      committed.workflowVersionId
-    );
-    if (!pinned) {
-      // A run's version row cascades with the run, so a committed Execution
-      // pointing at a version that is gone is an invariant break rather than a
-      // state a retry can recover from.
-      return yield* new InternalFailure({
-        error:
-          "The Execution this delivery committed pins a workflow version that no longer exists",
-      });
-    }
-
     yield* input.logger.info(
       "Resent the Execution a retried delivery had already committed",
       {
@@ -615,10 +597,11 @@ const answerFromCommittedDecision = Effect.fn("answerFromCommittedDecision")(
     );
 
     // Inngest drops a second send under the run's idempotency key, so a row the
-    // earlier attempt already sent starts nothing new here.
+    // earlier attempt already sent starts nothing new here. The timeline entry
+    // names the version the committed row pinned, which a Publish since the
+    // first attempt may no longer have as the published one.
     const sent = yield* enqueueStartedRun({
       execution: committed,
-      version: { kind: pinned.kind, number: pinned.version },
     });
 
     const started: LifecycleDeliveryOutcome = {

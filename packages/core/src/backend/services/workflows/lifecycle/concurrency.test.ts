@@ -12,17 +12,21 @@ import {
   SilentAppLoggerLayer,
   stubExecutionRepo,
   stubInngestClient,
+  stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
+import type { WorkflowVersion } from "#src/backend/lib/db/schema";
 import type {
   EntityStartOutcome,
   ExecutionRepo,
   WorkflowExecution,
 } from "#src/backend/services/executions/repo";
+import type { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { startWithConcurrency } from "#src/backend/services/workflows/lifecycle/concurrency";
 
 type Repo = ExecutionRepo["Service"];
 
 const recordAuditEventMock = vi.fn<Repo["recordAuditEvent"]>(() => Effect.void);
+const findVersionByIdMock = vi.fn<WorkflowRepo["Service"]["findVersionById"]>();
 const sendCancelRequestedMock = vi.fn<
   InngestClient["Service"]["sendCancelRequested"]
 >(() => Effect.void);
@@ -36,7 +40,6 @@ const workflow = {
   graph: { nodes: [], edges: [] },
   versionId: "ver_1",
   catalogFingerprint: "fp",
-  version: { kind: "published" as const, number: 3 },
 };
 
 const eventStart = {
@@ -45,6 +48,24 @@ const eventStart = {
   entityValue: "appt_8813",
   deliveryId: "dlv_4021",
 };
+
+/**
+ * A `workflow_versions` row as `findVersionById` answers with it. The enqueue
+ * reads the row an Execution's `workflowVersionId` names, and the timeline entry
+ * it writes takes the version number from there.
+ */
+function versionRow(input: { id: string; version: number }): WorkflowVersion {
+  return {
+    id: input.id,
+    workflowId: "wf_1",
+    version: input.version,
+    kind: "published",
+    graph: { nodes: [], edges: [] },
+    catalogFingerprint: "fp",
+    graphDigest: "digest",
+    publishedAt: new Date("2026-03-01T00:00:00.000Z"),
+  };
+}
 
 function createExecution(
   overrides: Partial<WorkflowExecution> = {}
@@ -102,7 +123,8 @@ function stubStart(outcome: EntityStartOutcome) {
       stubInngestClient({
         sendRunRequested: sendRunRequestedMock,
         sendCancelRequested: sendCancelRequestedMock,
-      })
+      }),
+      stubWorkflowRepo({ findVersionById: findVersionByIdMock })
     ),
   };
 }
@@ -116,10 +138,14 @@ const startedOutcome: EntityStartOutcome = {
 
 beforeEach(() => {
   recordAuditEventMock.mockReset();
+  findVersionByIdMock.mockReset();
   sendCancelRequestedMock.mockReset();
   sendRunRequestedMock.mockReset();
 
   recordAuditEventMock.mockImplementation(() => Effect.void);
+  findVersionByIdMock.mockImplementation(() =>
+    Effect.succeed(versionRow({ id: "ver_1", version: 3 }))
+  );
   sendCancelRequestedMock.mockImplementation(() => Effect.void);
   sendRunRequestedMock.mockImplementation(() =>
     Effect.succeed({ eventId: "evt_1" })
@@ -217,7 +243,10 @@ describe("startWithConcurrency", () => {
           Effect.provide(
             Layer.mergeAll(
               stubExecutionRepo({ recordAuditEvent: recordAuditEventMock }),
-              stubInngestClient()
+              stubInngestClient(),
+              // The version read is left refusing as well: no row is opened
+              // here, so nothing has a pinned version to be named by.
+              stubWorkflowRepo()
             )
           )
         );
@@ -299,7 +328,8 @@ describe("startWithConcurrency", () => {
               stubInngestClient({
                 sendCancelRequested: sendCancelRequestedMock,
                 sendRunRequested: sendRunRequestedMock,
-              })
+              }),
+              stubWorkflowRepo({ findVersionById: findVersionByIdMock })
             )
           )
         );
@@ -319,6 +349,40 @@ describe("startWithConcurrency", () => {
           requestedBy: "wf_1",
           eventType: "app/appointment.created",
         });
+      })
+    );
+
+    // Two attempts of one delivery: the transaction answers this attempt with
+    // the row the other attempt committed, which pins the version that attempt
+    // loaded. The timeline entry has to name the graph the run is executing,
+    // which is that older pinned version rather than the one this attempt holds.
+    it.effect("names the version the committed row pins", () =>
+      Effect.gen(function* () {
+        findVersionByIdMock.mockImplementation(() =>
+          Effect.succeed(versionRow({ id: "ver_1", version: 1 }))
+        );
+        const repo = stubStart({
+          status: "started",
+          execution: createExecution({ workflowVersionId: "ver_1" }),
+          supersededExecutionIds: [],
+          reclaimedExecutionIds: [],
+        });
+
+        yield* startWithConcurrency({
+          workflow: { ...workflow, versionId: "ver_2" },
+          concurrency: "first-wins",
+          start: eventStart,
+          runMode: "live",
+          payload: {},
+          logger: makeRecordingLogger().logger,
+        }).pipe(Effect.provide(repo.layer));
+
+        assert.deepStrictEqual(findVersionByIdMock.mock.calls, [["ver_1"]]);
+        const started = recordAuditEventMock.mock.calls.find(
+          ([event]) => event.eventType === "run_started"
+        )?.[0];
+        assert.include(started?.message ?? "", "run of v1 started");
+        assert.deepInclude(started?.metadata, { versionNumber: 1 });
       })
     );
 

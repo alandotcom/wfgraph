@@ -5,13 +5,17 @@ import type {
   WorkflowExecution,
 } from "#src/backend/services/executions/repo";
 import { DatabaseError } from "#src/backend/lib/effect/database";
+import { InternalFailure } from "#src/backend/lib/effect/failures";
 import { InngestError } from "#src/backend/lib/effect/inngest-client";
 import {
   makeRecordingLogger,
   SilentAppLoggerLayer,
   stubExecutionRepo,
   stubInngestClient,
+  stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
+import type { WorkflowVersion } from "#src/backend/lib/db/schema";
+import type { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import {
   buildIgnoredRunAuditMessage,
   buildRunStartedAuditMessage,
@@ -54,8 +58,31 @@ function createExecution(
   };
 }
 
-/** The version each fixture Execution pinned, as `workflow_versions` holds it. */
-const pinnedVersion = { kind: "published" as const, number: 3 };
+/**
+ * The `workflow_versions` row the fixture Execution's `workflowVersionId` names.
+ *
+ * The enqueue reads it to name the version on the timeline, so every case that
+ * gets as far as the send provides one.
+ */
+function pinnedVersionLayer(
+  version: Pick<WorkflowVersion, "id" | "version"> = {
+    id: "ver_1",
+    version: 3,
+  }
+): Layer.Layer<WorkflowRepo> {
+  return stubWorkflowRepo({
+    findVersionById: () =>
+      Effect.succeed({
+        ...version,
+        workflowId: "wf_1",
+        kind: "published",
+        graph: { nodes: [], edges: [] },
+        catalogFingerprint: "fp",
+        graphDigest: "digest",
+        publishedAt: new Date("2026-03-01T00:00:00.000Z"),
+      }),
+  });
+}
 
 describe("buildRunStartedAuditMessage", () => {
   it("names the start source that opened the run", () => {
@@ -170,10 +197,10 @@ describe("enqueueStartedRun", () => {
         // path would kill the test rather than pass unnoticed.
         const started = yield* enqueueStartedRun({
           execution: createExecution({ input: { order: "o1" } }),
-          version: pinnedVersion,
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
+              pinnedVersionLayer(),
               stubExecutionRepo({
                 markEnqueued: (input) =>
                   Effect.sync(() => {
@@ -220,10 +247,10 @@ describe("enqueueStartedRun", () => {
               entityId: "appt_8813",
               deliveryId: "dlv_1",
             }),
-            version: pinnedVersion,
           }).pipe(
             Effect.provide(
               Layer.mergeAll(
+                pinnedVersionLayer(),
                 stubExecutionRepo({
                   markEnqueued: () => Effect.void,
                   recordAuditEvent: (input) =>
@@ -259,6 +286,90 @@ describe("enqueueStartedRun", () => {
         })
     );
 
+    // Two attempts of one delivery hand this the same row, and the attempt that
+    // committed it may have loaded an older version than the one running now.
+    // The label is read from the row's own version id, so a caller has no way to
+    // name a version for a run it did not open.
+    serviceIt.effect(
+      "names the version the row pins, not the one the caller loaded",
+      () =>
+        Effect.gen(function* () {
+          const calls = {
+            versionIds: [] as string[],
+            audits: [] as Array<
+              Parameters<ExecutionRepo["Service"]["recordAuditEvent"]>[0]
+            >,
+          };
+
+          yield* enqueueStartedRun({
+            execution: createExecution({ workflowVersionId: "ver_1" }),
+          }).pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                stubWorkflowRepo({
+                  findVersionById: (versionId) =>
+                    Effect.sync(() => {
+                      calls.versionIds.push(versionId);
+                      return {
+                        id: "ver_1",
+                        workflowId: "wf_1",
+                        version: 1,
+                        kind: "published" as const,
+                        graph: { nodes: [], edges: [] },
+                        catalogFingerprint: "fp",
+                        graphDigest: "digest",
+                        publishedAt: new Date("2026-03-01T00:00:00.000Z"),
+                      };
+                    }),
+                }),
+                stubExecutionRepo({
+                  markEnqueued: () => Effect.void,
+                  recordAuditEvent: (input) =>
+                    Effect.sync(() => {
+                      calls.audits.push(input);
+                    }),
+                }),
+                stubInngestClient({
+                  sendRunRequested: () => Effect.succeed({ eventId: "evt_1" }),
+                })
+              )
+            )
+          );
+
+          assert.deepStrictEqual(calls.versionIds, ["ver_1"]);
+          const audit = calls.audits[0];
+          assert.isDefined(audit);
+          assert.strictEqual(
+            audit.message,
+            "Event-triggered run of v1 started, to real recipients"
+          );
+          assert.deepInclude(audit.metadata, { versionNumber: 1 });
+        })
+    );
+
+    // The version row cascades with the run it belongs to, so a row pointing at
+    // a version that is gone is an invariant break. Sending the run anyway would
+    // enqueue a run nothing can name.
+    serviceIt.effect("fails when the version the row pins is gone", () =>
+      Effect.gen(function* () {
+        const failure = yield* enqueueStartedRun({
+          execution: createExecution(),
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              // Every Inngest call is left refusing: nothing may reach the bus.
+              stubWorkflowRepo({ findVersionById: () => Effect.succeed(null) }),
+              stubExecutionRepo(),
+              stubInngestClient()
+            )
+          ),
+          Effect.flip
+        );
+
+        assert.instanceOf(failure, InternalFailure);
+      })
+    );
+
     // The row is closed before the failure travels on, so a run is never left
     // sitting in "running" with nothing behind it that could finish it.
     serviceIt.effect("closes the row when the enqueue is refused", () =>
@@ -271,10 +382,10 @@ describe("enqueueStartedRun", () => {
         // one as though it had would be the bug.
         const failure = yield* enqueueStartedRun({
           execution: createExecution(),
-          version: pinnedVersion,
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
+              pinnedVersionLayer(),
               stubExecutionRepo({
                 markEnqueueFailed: (input) =>
                   Effect.sync(() => {
@@ -313,10 +424,10 @@ describe("enqueueStartedRun", () => {
 
           yield* enqueueStartedRun({
             execution: createExecution(),
-            version: pinnedVersion,
           }).pipe(
             Effect.provide(
               Layer.mergeAll(
+                pinnedVersionLayer(),
                 stubExecutionRepo({
                   markEnqueueFailed: (input) =>
                     Effect.sync(() => {
@@ -350,10 +461,10 @@ describe("enqueueStartedRun", () => {
 
         yield* enqueueStartedRun({
           execution: createExecution(),
-          version: pinnedVersion,
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
+              pinnedVersionLayer(),
               stubExecutionRepo({
                 markEnqueueFailed: () => Effect.succeed(false),
               }),
@@ -391,10 +502,10 @@ describe("enqueueStartedRun", () => {
           execution: createExecution({
             startEventName: "app/appointment.created",
           }),
-          version: pinnedVersion,
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
+              pinnedVersionLayer(),
               stubExecutionRepo({
                 markEnqueueFailed: () =>
                   Effect.sync(() => {
@@ -433,10 +544,10 @@ describe("enqueueStartedRun", () => {
 
           const started = yield* enqueueStartedRun({
             execution: createExecution({ deliveryId: "dlv_1" }),
-            version: pinnedVersion,
           }).pipe(
             Effect.provide(
               Layer.mergeAll(
+                pinnedVersionLayer(),
                 stubExecutionRepo({
                   markEnqueued: () =>
                     Effect.fail(

@@ -314,6 +314,19 @@ function makeDraftRepo(workflow: Workflow) {
     layer: stubWorkflowRepo({
       findByIdWithDraftGraphForRun: () =>
         Effect.succeed({ workflow, draftGraph: workflow.graph }),
+      // The enqueue reads the version the opened row pins, which for a draft run
+      // is the snapshot it was frozen against.
+      findVersionById: (versionId) =>
+        Effect.succeed({
+          id: versionId,
+          workflowId: workflow.id,
+          version: null,
+          kind: "draft_snapshot" as const,
+          graph: workflow.graph,
+          catalogFingerprint: "fp",
+          graphDigest: "digest",
+          publishedAt: new Date("2026-03-01T00:00:00.000Z"),
+        }),
       deleteUnreferencedDraftSnapshot: (versionId) =>
         Effect.sync(() => {
           released.push(versionId);
@@ -370,33 +383,25 @@ function graphWithUnconfiguredAction() {
 }
 
 function workflowLayer(workflow: Workflow) {
+  const published = {
+    id: "ver_1",
+    workflowId: workflow.id,
+    version: 1,
+    kind: "published" as const,
+    graph: workflow.graph,
+    catalogFingerprint: "fp",
+    graphDigest: "digest",
+    publishedAt: new Date("2026-03-01T00:00:00.000Z"),
+  };
+
   return stubWorkflowRepo({
     findById: () => Effect.succeed(workflow),
     findByIdWithPublishedVersionForRun: () =>
-      Effect.succeed({
-        workflow,
-        publishedVersion: {
-          id: "ver_1",
-          workflowId: workflow.id,
-          version: 1,
-          kind: "published",
-          graph: workflow.graph,
-          catalogFingerprint: "fp",
-          graphDigest: "digest",
-          publishedAt: new Date("2026-03-01T00:00:00.000Z"),
-        },
-      }),
-    findPublishedVersion: () =>
-      Effect.succeed({
-        id: "ver_1",
-        workflowId: workflow.id,
-        version: 1,
-        kind: "published",
-        graph: workflow.graph,
-        catalogFingerprint: "fp",
-        graphDigest: "digest",
-        publishedAt: new Date("2026-03-01T00:00:00.000Z"),
-      }),
+      Effect.succeed({ workflow, publishedVersion: published }),
+    findPublishedVersion: () => Effect.succeed(published),
+    // The enqueue reads the version the opened row pins, because that is what
+    // the run's opening timeline entry names.
+    findVersionById: () => Effect.succeed(published),
   });
 }
 

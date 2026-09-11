@@ -79,21 +79,23 @@ function workflowRow(rules: LifecycleRules, label: string): Workflow {
 }
 
 function workflowRepoFor(workflow: Workflow) {
+  const published = {
+    id: "ver_1",
+    workflowId: workflow.id,
+    version: 1,
+    kind: "published" as const,
+    graph: workflow.graph,
+    catalogFingerprint: "fp",
+    graphDigest: "digest",
+    publishedAt: new Date("2026-03-01T00:00:00.000Z"),
+  };
+
   return stubWorkflowRepo({
     findByIdWithPublishedVersionForRun: () =>
-      Effect.succeed({
-        workflow,
-        publishedVersion: {
-          id: "ver_1",
-          workflowId: workflow.id,
-          version: 1,
-          kind: "published",
-          graph: workflow.graph,
-          catalogFingerprint: "fp",
-          graphDigest: "digest",
-          publishedAt: new Date("2026-03-01T00:00:00.000Z"),
-        },
-      }),
+      Effect.succeed({ workflow, publishedVersion: published }),
+    // The enqueue reads the version the opened row pins, because that is what
+    // the run's opening timeline entry names.
+    findVersionById: () => Effect.succeed(published),
   });
 }
 

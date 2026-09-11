@@ -5,6 +5,7 @@ import {
   type EffectLogger,
 } from "#src/backend/lib/effect/app-logger";
 import type { DatabaseError } from "#src/backend/lib/effect/database";
+import { InternalFailure } from "#src/backend/lib/effect/failures";
 import {
   InngestClient,
   type InngestError,
@@ -15,6 +16,7 @@ import {
   ExecutionRepo,
   type WorkflowExecution,
 } from "#src/backend/services/executions/repo";
+import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import type { JsonObject, JsonObjectDraft } from "@wfgraph/shared/types/json";
 import type {
   EntityEligibilityReason,
@@ -38,14 +40,19 @@ export type PinnedRunVersion = {
   number: number | null;
 };
 
-/** Identity of the workflow plus the version the run will execute. */
+/**
+ * Identity of the workflow plus the version the run will execute.
+ *
+ * The version is named by id alone. How the timeline words it is read from the
+ * `workflow_versions` row at the enqueue, so a start path cannot label a run
+ * with a version other than the one its committed row pins.
+ */
 export type WorkflowRunTarget = {
   id: string;
   name: string;
   graph: SerializedWorkflowGraph;
   versionId: string;
   catalogFingerprint: string;
-  version: PinnedRunVersion;
 };
 
 /** Build the run target every start path hands to concurrency / enqueue. */
@@ -54,7 +61,6 @@ export function toWorkflowRunTarget(input: {
   versionId: string;
   catalogFingerprint: string;
   graph: SerializedWorkflowGraph;
-  version: PinnedRunVersion;
 }): WorkflowRunTarget {
   return {
     id: input.workflow.id,
@@ -62,7 +68,6 @@ export function toWorkflowRunTarget(input: {
     graph: input.graph,
     versionId: input.versionId,
     catalogFingerprint: input.catalogFingerprint,
-    version: input.version,
   };
 }
 
@@ -109,11 +114,6 @@ export type EnqueueStartedRunInput = {
    * the bus message and the timeline entry are written from.
    */
   execution: WorkflowExecution;
-  /**
-   * The version the run pinned, read from `workflow_versions`. The row carries
-   * only the version id, and the timeline entry names the version by number.
-   */
-  version: PinnedRunVersion;
 };
 
 export type StartedWorkflowRun = {
@@ -376,24 +376,48 @@ const loggerFor = (workflowId: string) =>
  * Concurrency a decision rather than a race, and the send stays out here because
  * a transaction has no business waiting on Inngest.
  *
- * The send is the only step here that may fail the caller, and the ordering says
- * why. Before it, nothing irreversible has happened, so a compensation can close
- * the row. After it the run exists and this call is bookkeeping, so a refused
- * write is logged and the run is reported as started: failing would put the
- * caller's Inngest step into a retry that enqueues nothing new and re-runs
- * everything around it.
+ * The version the timeline entry names is read here from the id on the row, so
+ * no caller can label a run with a version other than the one that run pinned.
+ * An attempt answering a delivery another attempt committed is handed that other
+ * attempt's row, which may pin an older version than this attempt loaded.
  *
- * Everything the bus message and the timeline entry need is on the row, so an
- * attempt that finds an Execution a previous attempt already committed resends
- * it with nothing recomputed.
+ * The version read and the send are the two steps that may fail the caller, and
+ * the ordering says why. Before the send, nothing irreversible has happened, so
+ * a refusal travels back for the caller's step to retry and a refused send can
+ * close the row. After the send the run exists and this call is bookkeeping, so
+ * a refused write is logged and the run is reported as started: failing would
+ * put the caller's Inngest step into a retry that enqueues nothing new and
+ * re-runs everything around it.
+ *
+ * Everything the bus message and the timeline entry need is on the row or on the
+ * version it pins, so an attempt that finds an Execution a previous attempt
+ * already committed resends it with nothing recomputed.
  */
 export const enqueueStartedRun = Effect.fn("enqueueStartedRun")(function* (
   input: EnqueueStartedRunInput
 ) {
   const repo = yield* ExecutionRepo;
+  const workflowRepo = yield* WorkflowRepo;
   const inngest = yield* InngestClient;
-  const { execution, version } = input;
+  const { execution } = input;
   const logger = yield* loggerFor(execution.workflowId);
+
+  const pinned = yield* workflowRepo.findVersionById(
+    execution.workflowVersionId
+  );
+  if (!pinned) {
+    // A run's version row cascades with the run, so a committed Execution
+    // pointing at a version that is gone is an invariant break rather than a
+    // state a retry can recover from.
+    return yield* new InternalFailure({
+      error:
+        "The Execution to enqueue pins a workflow version that no longer exists",
+    });
+  }
+  const version: PinnedRunVersion = {
+    kind: pinned.kind,
+    number: pinned.version,
+  };
 
   const run = yield* inngest
     .sendRunRequested({

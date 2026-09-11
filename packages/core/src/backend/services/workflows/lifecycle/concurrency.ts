@@ -172,7 +172,6 @@ export const startWithConcurrency = Effect.fn("startWithConcurrency")(
 
     const started = yield* enqueueStartedRun({
       execution: opened.execution,
-      version: workflow.version,
     });
 
     const outcome: StartOutcome = {
