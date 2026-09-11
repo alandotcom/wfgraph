@@ -424,6 +424,20 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
           .get()
           .pipe(Effect.map((row) => row?.workflowId ?? null))
       ),
+    findByDelivery: (input) =>
+      store.read((database) =>
+        database
+          .select()
+          .from(workflowExecutions)
+          .where(
+            and(
+              eq(workflowExecutions.workflowId, input.workflowId),
+              eq(workflowExecutions.deliveryId, input.deliveryId)
+            )
+          )
+          .get()
+          .pipe(Effect.map((row) => (row ? sqliteExecution(row) : null)))
+      ),
     insertTerminal: (input) =>
       store.write((database) =>
         insertExecution(database, input, input.status, input)

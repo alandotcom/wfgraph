@@ -240,6 +240,16 @@ export type RunsRepoMethods = {
   readonly findWorkflowIdById: (
     executionId: string
   ) => Effect.Effect<string | null, DatabaseError>;
+  /**
+   * The Execution one Event delivery opened in one workflow, or `null` when the
+   * delivery opened none. The unique index is on `(workflowId, deliveryId)`, so
+   * the pair names at most one row. A delivery retry reads this to find the run
+   * an earlier attempt committed.
+   */
+  readonly findByDelivery: (input: {
+    workflowId: string;
+    deliveryId: string;
+  }) => Effect.Effect<WorkflowExecution | null, DatabaseError>;
   /** Record a run that never started, already in its terminal status. */
   readonly insertTerminal: (
     input: NewTerminalExecution
@@ -535,6 +545,15 @@ export function makeRunsMethods(
         });
 
         return execution?.workflowId ?? null;
+      }),
+
+    findByDelivery: (input) =>
+      database.query(async (db) => {
+        const execution = await db.query.workflowExecutions.findFirst({
+          where: { workflowId: input.workflowId, deliveryId: input.deliveryId },
+        });
+
+        return execution ?? null;
       }),
 
     insertTerminal: (input) =>

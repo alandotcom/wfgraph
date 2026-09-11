@@ -47,6 +47,7 @@ const startForEntityMock = vi.fn<Repo["startForEntity"]>();
 const requestCancelForEntityMock = vi.fn<Repo["requestCancelForEntity"]>();
 const findAdmissionRefusalMock = vi.fn<Repo["findAdmissionRefusal"]>();
 const recordAdmissionRefusalMock = vi.fn<Repo["recordAdmissionRefusal"]>();
+const findByDeliveryMock = vi.fn<Repo["findByDelivery"]>();
 const recordAuditEventMock = vi.fn<Repo["recordAuditEvent"]>(() => Effect.void);
 const sendRunRequestedMock = vi.fn<
   InngestClient["Service"]["sendRunRequested"]
@@ -316,9 +317,28 @@ const startedOutcome: EntityStartOutcome = {
 };
 
 /**
+ * The Execution an earlier attempt of a delivery committed. `enqueuedAt` is
+ * null when that attempt died before the send.
+ */
+function winnerExecution(input: {
+  deliveryId: string;
+  enqueuedAt: Date | null;
+}): WorkflowExecution {
+  return {
+    ...createExecution(),
+    id: "exec_winner",
+    deliveryId: input.deliveryId,
+    enqueuedAt: input.enqueuedAt,
+    workflowRunId: input.enqueuedAt ? "evt_winner" : null,
+    entityValue: null,
+    entityType: "appointment",
+    entityId: "appt_8813",
+  };
+}
+
+/**
  * What `startForEntity` answers a replayed delivery with: the Execution an
  * earlier attempt of that delivery committed, and nothing displaced.
- * `enqueuedAt` is null when that attempt died before the send.
  */
 function winnerOutcome(input: {
   deliveryId: string;
@@ -326,16 +346,7 @@ function winnerOutcome(input: {
 }): EntityStartOutcome {
   return {
     status: "started",
-    execution: {
-      ...createExecution(),
-      id: "exec_winner",
-      deliveryId: input.deliveryId,
-      enqueuedAt: input.enqueuedAt,
-      workflowRunId: input.enqueuedAt ? "evt_winner" : null,
-      entityValue: null,
-      entityType: "appointment",
-      entityId: "appt_8813",
-    },
+    execution: winnerExecution(input),
     supersededExecutionIds: [],
     reclaimedExecutionIds: [],
   };
@@ -412,6 +423,7 @@ const lifecyclePorts = Layer.mergeAll(
     requestCancelForEntity: requestCancelForEntityMock,
     findAdmissionRefusal: findAdmissionRefusalMock,
     recordAdmissionRefusal: recordAdmissionRefusalMock,
+    findByDelivery: findByDeliveryMock,
     recordAuditEvent: recordAuditEventMock,
     listWaitingStatesForExecutions: () => Effect.succeed(new Map()),
     markEnqueued: () => Effect.void,
@@ -436,6 +448,7 @@ beforeEach(() => {
   requestCancelForEntityMock.mockReset();
   findAdmissionRefusalMock.mockReset();
   recordAdmissionRefusalMock.mockReset();
+  findByDeliveryMock.mockReset();
   recordAuditEventMock.mockReset();
   sendRunRequestedMock.mockReset();
   sendCancelRequestedMock.mockReset();
@@ -453,6 +466,7 @@ beforeEach(() => {
   recordAdmissionRefusalMock.mockImplementation((input) =>
     Effect.succeed({ kind: "refused", reason: input.reason })
   );
+  findByDeliveryMock.mockImplementation(() => Effect.succeed(null));
   recordAuditEventMock.mockImplementation(() => Effect.void);
   sendRunRequestedMock.mockImplementation(() =>
     Effect.succeed({ eventId: "evt_1" })
@@ -788,11 +802,12 @@ describe("applyLifecycleRules and Start Filters", () => {
       })
     );
 
-    // An eligible attempt committed the Execution and the step died before the
-    // send. The retry reads the Entity as ineligible, and the delivery still has
-    // to reach the bus, or the row stays in flight with no run behind it.
+    // Another attempt of the same delivery found the Entity eligible and
+    // committed the Execution after this attempt's `findByDelivery` read came
+    // back empty. This attempt reads the Entity as ineligible, and the delivery
+    // still has to reach the bus, or the row stays in flight with no run.
     it.effect(
-      "sends the unsent Execution an earlier attempt committed when the retry finds the Entity ineligible",
+      "sends the Execution a concurrent attempt committed when this attempt finds the Entity ineligible",
       () =>
         Effect.gen(function* () {
           resolveEntityMock.mockResolvedValue({
@@ -836,6 +851,60 @@ describe("applyLifecycleRules and Start Filters", () => {
             sendRunRequestedMock.mock.calls.map(([data]) => data),
             [{ executionId: "exec_winner" }]
           );
+        })
+    );
+
+    // An earlier attempt committed the Execution and the step died before the
+    // send. On retry the host resolver fails, and the delivery still has to
+    // reach the bus. The committed row is read before selection and the
+    // resolver, so neither runs.
+    it.effect(
+      "sends the Execution an earlier attempt committed without selecting or resolving the Entity again",
+      () =>
+        Effect.gen(function* () {
+          resolveEntityMock.mockRejectedValue(new Error("host unavailable"));
+          findByDeliveryMock.mockImplementation(() =>
+            Effect.succeed(
+              winnerExecution({ deliveryId: "evt_crashed", enqueuedAt: null })
+            )
+          );
+
+          const outcome = yield* applyLifecycleRules({
+            subscriber: subscriber(),
+            event: appointmentCreated,
+            payload: videoPayload,
+            deliveryId: "evt_crashed",
+          }).pipe(
+            Effect.provide(
+              workflowWith(guardedRules({ checkpoints: ["before-execution"] }))
+            )
+          );
+
+          assert.deepStrictEqual(outcome, {
+            kind: "started",
+            workflowId: "wf_1",
+            executionId: "exec_winner",
+            supersededExecutionIds: [],
+            failedToSupersede: [],
+          });
+          assert.deepStrictEqual(findByDeliveryMock.mock.calls, [
+            [{ workflowId: "wf_1", deliveryId: "evt_crashed" }],
+          ]);
+          assert.strictEqual(selectEntityIdMock.mock.calls.length, 0);
+          assert.strictEqual(resolveEntityMock.mock.calls.length, 0);
+          assert.strictEqual(startForEntityMock.mock.calls.length, 0);
+          assert.strictEqual(recordAdmissionRefusalMock.mock.calls.length, 0);
+          assert.deepStrictEqual(
+            sendRunRequestedMock.mock.calls.map(([data]) => data),
+            [{ executionId: "exec_winner" }]
+          );
+          const started = recordAuditEventMock.mock.calls.find(
+            ([event]) => event.eventType === "run_started"
+          )?.[0];
+          assert.deepInclude(started?.metadata, {
+            entityType: "appointment",
+            deliveryId: "evt_crashed",
+          });
         })
     );
 

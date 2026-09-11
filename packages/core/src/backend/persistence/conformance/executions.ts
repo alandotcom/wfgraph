@@ -192,6 +192,51 @@ export function describeExecutionConformance({
       expect(refusals).toEqual([]);
     });
 
+    it("finds the Execution a delivery opened by its delivery id", async () => {
+      const database = await openConnection();
+      await seedPublishedWorkflow(database);
+      const started = await attemptStart(database, {
+        deliveryId: "delivery_lookup",
+        entityType: "appointment",
+        entityId: "appt_8813",
+        admissionDecisionId: "admission_lookup",
+      });
+      if (started.status !== "started") {
+        throw new Error("The delivery did not open a run");
+      }
+
+      const found = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          return {
+            own: yield* executions.findByDelivery({
+              workflowId: "wf_1",
+              deliveryId: "delivery_lookup",
+            }),
+            unknown: yield* executions.findByDelivery({
+              workflowId: "wf_1",
+              deliveryId: "delivery_never_started",
+            }),
+            otherWorkflow: yield* executions.findByDelivery({
+              workflowId: "wf_other",
+              deliveryId: "delivery_lookup",
+            }),
+          };
+        })
+      );
+
+      expect(found.own).toMatchObject({
+        id: started.execution.id,
+        workflowId: "wf_1",
+        deliveryId: "delivery_lookup",
+        entityType: "appointment",
+        entityId: "appt_8813",
+        runMode: "live",
+      });
+      expect(found.unknown).toBeNull();
+      expect(found.otherWorkflow).toBeNull();
+    });
+
     it("settles a concurrent admission start/refusal race once", async () => {
       const store = await openDatabase();
       const database = await store.open();

@@ -21,7 +21,10 @@ import {
   type EffectLogger,
 } from "#src/backend/lib/effect/app-logger";
 import { evaluateSerializedCondition } from "#src/backend/lib/cel/condition-payload";
-import { ExecutionRepo } from "#src/backend/services/executions/repo";
+import {
+  ExecutionRepo,
+  type WorkflowExecution,
+} from "#src/backend/services/executions/repo";
 import { requestCanceledOutlet } from "#src/backend/services/workflows/lifecycle/cancel";
 import {
   startWithConcurrency,
@@ -38,9 +41,11 @@ import {
   WorkflowRepo,
 } from "#src/backend/services/workflows/repo";
 import {
+  enqueueStartedRun,
   recordStartRefusal,
   startAdmissionDecisionId,
   toWorkflowRunTarget,
+  type WorkflowRunStart,
 } from "#src/backend/services/executions/run-rows";
 import { connectionMatches } from "@wfgraph/shared/lifecycle/event-connections";
 import {
@@ -358,6 +363,20 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
       return { kind: "waits_only" as const, workflowId: workflow.id };
     }
 
+    const runTarget = toWorkflowRunTarget({
+      workflow,
+      versionId: version.id,
+      catalogFingerprint: version.catalogFingerprint,
+      graph: preflight.workflowGraph,
+      version: { kind: "published", number: version.version },
+    });
+
+    // A retried delivery of a guarded start reads what the durable admission
+    // already decided before the Start Filter, Entity selection, or the host
+    // resolver run. A recorded refusal is answered as recorded. An Execution an
+    // earlier attempt committed is sent to the bus, because that attempt may
+    // have died before its send, and a resolver or Entity binding that fails
+    // on this attempt would otherwise leave the row in flight with no run.
     if (rules.trackedEntity && input.deliveryId) {
       const executionRepo = yield* ExecutionRepo;
       const priorRefusal = yield* executionRepo.findAdmissionRefusal({
@@ -370,6 +389,34 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
           workflowId: workflow.id,
           reason: priorRefusal,
         };
+      }
+
+      const committed = yield* executionRepo.findByDelivery({
+        workflowId: workflow.id,
+        deliveryId: input.deliveryId,
+      });
+      if (committed) {
+        // Inngest drops a second send under the run's idempotency key, so a
+        // row the earlier attempt already sent starts nothing new here.
+        const sent = yield* enqueueStartedRun({
+          workflow: runTarget,
+          start: committedRunStart({
+            execution: committed,
+            eventName: input.event.name,
+            deliveryId: input.deliveryId,
+          }),
+          runMode: committed.runMode,
+          payload: input.payload,
+          executionId: committed.id,
+        });
+        const outcome: LifecycleDeliveryOutcome = {
+          kind: "started",
+          workflowId: workflow.id,
+          executionId: sent.executionId,
+          supersededExecutionIds: [],
+          failedToSupersede: [],
+        };
+        return outcome;
       }
     }
 
@@ -428,12 +475,11 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
           })
         : yield* recordStartRefusal(refusalInput);
 
-      // A "started" decision means an earlier attempt of this delivery already
-      // committed its Execution, possibly without sending it to the bus. That
-      // decision falls through to `startWithConcurrency`, which finds the row by
-      // delivery id and hands it to `enqueueStartedRun` under the run's
-      // idempotency key. A row the earlier attempt never sent reaches the bus,
-      // and Inngest drops a second send for a row it already took.
+      // A "started" decision means another attempt of this delivery committed
+      // its Execution after this attempt's `findByDelivery` read, which two
+      // attempts of one delivery running at once can do. That decision falls
+      // through to `startWithConcurrency`, which finds the row by delivery id
+      // and hands it to `enqueueStartedRun` under the run's idempotency key.
       if (decision?.kind !== "started") {
         return {
           kind: "refused" as const,
@@ -444,13 +490,7 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
     }
 
     const started = yield* startWithConcurrency({
-      workflow: toWorkflowRunTarget({
-        workflow,
-        versionId: version.id,
-        catalogFingerprint: version.catalogFingerprint,
-        graph: preflight.workflowGraph,
-        version: { kind: "published", number: version.version },
-      }),
+      workflow: runTarget,
       concurrency: rules.concurrency,
       start: guarded
         ? {
@@ -556,6 +596,31 @@ export const deliverToWaits = Effect.fn("deliverToWaits")(function* (input: {
 
   return { workflowId: input.workflowId, resumedWaits };
 });
+
+/**
+ * The start a committed Execution was opened with, read off its row. The typed
+ * Entity identity is used where the row holds one, because that is the identity
+ * Concurrency serialized the run on.
+ */
+function committedRunStart(input: {
+  execution: WorkflowExecution;
+  eventName: string;
+  deliveryId: string;
+}): WorkflowRunStart {
+  const { execution } = input;
+  const origin = {
+    source: "event" as const,
+    eventName: input.eventName,
+    deliveryId: input.deliveryId,
+  };
+  return execution.entityType !== null && execution.entityId !== null
+    ? {
+        ...origin,
+        entityType: execution.entityType,
+        entityId: execution.entityId,
+      }
+    : { ...origin, entityValue: execution.entityValue ?? undefined };
+}
 
 function skipped(
   workflowId: string,
