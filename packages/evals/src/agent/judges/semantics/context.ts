@@ -1,4 +1,4 @@
-import { compact } from "es-toolkit/array";
+import { compact, uniq } from "es-toolkit/array";
 import type { ConditionModel } from "@wfgraph/shared/conditions/condition-model";
 import { enabledActionTypeOf } from "@wfgraph/shared/graph/node-config";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
@@ -148,19 +148,21 @@ export function nodesSatisfy(
 }
 
 /**
- * Sorts the `values` operand of every string-set rule (`is_one_of`,
- * `is_not_one_of`) in a condition shape.
+ * Deduplicates and sorts the `values` operand of every string-set rule
+ * (`is_one_of`, `is_not_one_of`) in a condition shape.
  *
  * Those two operators test set membership, so listing the same values in a
- * different order describes the same rule. Every other rule keeps its
- * operands as written, because their position carries meaning: a scalar
- * comparison value, a timestamp amount, or a timestamp unit.
+ * different order, or listing a value more than once, describes the same
+ * rule. Every other rule keeps its operands as written, because their
+ * position carries meaning: a scalar comparison value, a timestamp amount,
+ * or a timestamp unit.
  *
  * A judge calls this on both sides of a condition comparison: once through
  * `conditionShape` for the condition parsed off the graph, and once directly
  * for a scenario's required condition, which is already in this shape. Doing
- * both keeps the comparison order-insensitive regardless of which side listed
- * its set in which order.
+ * both keeps the comparison order-insensitive and duplicate-insensitive
+ * regardless of which side listed its set in which order or with which
+ * repeats.
  */
 export function normalizeConditionShape(shape: EvalCondition): EvalCondition {
   return {
@@ -168,7 +170,9 @@ export function normalizeConditionShape(shape: EvalCondition): EvalCondition {
     groups: shape.groups.map((group) => ({
       logic: group.logic,
       rules: group.rules.map((rule) =>
-        "values" in rule ? { ...rule, values: rule.values.toSorted() } : rule
+        "values" in rule
+          ? { ...rule, values: uniq(rule.values).toSorted() }
+          : rule
       ),
     })),
   };
@@ -178,7 +182,7 @@ export function normalizeConditionShape(shape: EvalCondition): EvalCondition {
  * The comparison shape for a parsed condition model.
  *
  * Strips each rule's `id`, which the graph editor assigns and a scenario's
- * required condition never declares, and sorts every string-set rule's
+ * required condition never declares, and normalizes every string-set rule's
  * `values` through `normalizeConditionShape`. The result compares against a
  * scenario's required condition with `isEqual`.
  */
