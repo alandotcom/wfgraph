@@ -52,7 +52,10 @@ export function resolveEntityState(input: {
   definition: AnyEntityDefinition;
   entityId: string;
   timeoutMs: number;
-}): Effect.Effect<JsonObject | null, unknown> {
+}): Effect.Effect<
+  JsonObject | null,
+  EntityResolutionFailed | EntityResolutionTimedOut | EntityStateRejected
+> {
   return Effect.tryPromise({
     try: () => input.definition.resolve({ entityId: input.entityId }),
     catch: (cause) =>

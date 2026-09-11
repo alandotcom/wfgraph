@@ -342,7 +342,7 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
     const guarded = selectedEntity
       ? yield* evaluateSelectedEntityAdmission({
           rules,
-          eventName: definition?.name ?? eventName ?? "manual",
+          eventName: definition?.name ?? null,
           entity: selectedEntity,
         })
       : undefined;

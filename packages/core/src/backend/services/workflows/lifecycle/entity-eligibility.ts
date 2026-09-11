@@ -1,13 +1,7 @@
 import { Effect } from "effect";
 import type { AnyEventDefinition } from "#src/backend/extensions/define-event";
-import {
-  EntityStateRejected,
-  type AnyEntityDefinition,
-} from "#src/backend/extensions/define-entity";
-import { resolveEntityState } from "#src/backend/extensions/entity-resolution";
-import { toEntityMetadata } from "#src/backend/extensions/extension-set";
-import { checkEntityEligibilityCondition } from "@wfgraph/shared/lifecycle/entity-eligibility";
-import { evaluateSerializedCondition } from "#src/backend/lib/cel/condition-payload";
+import type { AnyEntityDefinition } from "#src/backend/extensions/define-entity";
+import { decideEntityEligibility } from "#src/backend/extensions/entity-eligibility-decision";
 import { Extensions } from "#src/backend/lib/effect/extensions";
 import { InternalFailure } from "#src/backend/lib/effect/failures";
 import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
@@ -91,12 +85,18 @@ export const selectTrackedEntity = Effect.fn("selectTrackedEntity")(
   }
 );
 
-/** Evaluates admission for an identity already selected from the Event. */
+/**
+ * Evaluates admission for an identity already selected from the Event, when
+ * the workflow's Lifecycle Rules gate the "before-execution" checkpoint.
+ * Every cause `decideEntityEligibility` reports becomes `configurationFailure`,
+ * which fixes the sentence a caller reads and keeps the schema, resolver, or
+ * CEL detail in that failure's `cause` for the operator-facing log.
+ */
 export const evaluateSelectedEntityAdmission = Effect.fn(
   "evaluateSelectedEntityAdmission"
 )(function* (input: {
   rules: LifecycleRules;
-  eventName: string;
+  eventName: string | null;
   entity: TrackedEntitySelection;
 }) {
   const { entity } = input;
@@ -105,71 +105,27 @@ export const evaluateSelectedEntityAdmission = Effect.fn(
     return { entity } satisfies GuardedStartDecision;
   }
 
-  // The condition is the one stored on the version the run pins, and the host may
-  // have changed the Entity's State schema since. A rule the current schema
-  // refuses can still evaluate, with a different meaning, so it fails the
-  // delivery here, before the host resolver is called.
-  const check = checkEntityEligibilityCondition(
-    toEntityMetadata(entity.definition),
-    eligibility.condition
-  );
-  if (!check.valid) {
-    return yield* configurationFailure(check.error);
-  }
-
   const extensions = yield* Extensions;
   const conditionId = entityEligibilityConditionId(eligibility.condition);
-  const state = yield* resolveEntityState({
+  const decision = yield* decideEntityEligibility({
     definition: entity.definition,
     entityId: entity.entityId,
-    timeoutMs: extensions.entityResolverTimeoutMs,
-  }).pipe(
-    Effect.mapError(
-      (cause) =>
-        new InternalFailure({
-          error:
-            cause instanceof EntityStateRejected
-              ? cause.message
-              : `Failed to resolve Entity "${entity.entityType}" for Eligibility`,
-        })
-    )
-  );
-
-  if (state === null) {
-    return {
-      entity,
-      refusal: {
-        reason: "entity_not_found",
-        entityType: entity.entityType,
-        conditionId,
-        checkedAt: new Date().toISOString(),
-      },
-    } satisfies GuardedStartDecision;
-  }
-
-  const evaluated = evaluateSerializedCondition({
-    model: eligibility.condition,
-    payload: state,
+    condition: eligibility.condition,
     eventName: input.eventName,
-  });
-  if (!evaluated.ok) {
-    return yield* configurationFailure(
-      `Entity Eligibility could not be evaluated: ${evaluated.error}`
-    );
-  }
-  if (!evaluated.value) {
-    return {
-      entity,
-      refusal: {
-        reason: "entity_condition_not_met",
-        entityType: entity.entityType,
-        conditionId,
-        checkedAt: new Date().toISOString(),
-      },
-    } satisfies GuardedStartDecision;
-  }
+    timeoutMs: extensions.entityResolverTimeoutMs,
+  }).pipe(Effect.mapError((cause) => configurationFailure(cause.message)));
 
-  return { entity } satisfies GuardedStartDecision;
+  return decision.outcome === "eligible"
+    ? ({ entity } satisfies GuardedStartDecision)
+    : ({
+        entity,
+        refusal: {
+          reason: decision.reason,
+          entityType: entity.entityType,
+          conditionId,
+          checkedAt: decision.checkedAt,
+        },
+      } satisfies GuardedStartDecision);
 });
 
 /**

@@ -1,5 +1,5 @@
 import { it as effectIt } from "@effect/vitest";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { Cause, Effect, Exit, Fiber, Option, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { defineEntity } from "#src/backend/extensions/define-entity";
@@ -31,7 +31,8 @@ function eligibleWhenActive(): string {
 function surface(
   resolve: (input: {
     entityId: string;
-  }) => { active: boolean } | null | Promise<{ active: boolean } | null>
+  }) => { active: boolean } | null | Promise<{ active: boolean } | null>,
+  options?: { entityResolverTimeoutMs?: number }
 ) {
   const entity = defineEntity({
     type: "appointment",
@@ -49,7 +50,9 @@ function surface(
       },
     },
   });
-  return createWorkflowEntities(assembleExtensions({ events: [event] }));
+  return createWorkflowEntities(
+    assembleExtensions({ events: [event] }, options)
+  );
 }
 
 const settle = Effect.promise(
@@ -65,133 +68,67 @@ const input = {
 };
 
 describe("Workflow Entity Eligibility port", () => {
-  it("returns only the eligible verdict for matching current state", async () => {
-    const result = await Effect.runPromise(
-      surface(() => ({ active: true })).evaluateEligibility(input)
+  it("fails a run whose Entity type the surface no longer declares", async () => {
+    const exit = await Effect.runPromiseExit(
+      surface(() => ({ active: true })).evaluateEligibility({
+        ...input,
+        entityType: "missing",
+      })
     );
 
-    expect(result).toEqual({ outcome: "eligible" });
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      expect(Option.getOrUndefined(Cause.findErrorOption(exit.cause))).toEqual({
+        kind: "defect",
+        message: 'Entity "missing" is unavailable for this workflow run',
+      });
+    }
   });
 
-  it("distinguishes missing and ineligible current state", async () => {
-    const missing = await Effect.runPromise(
-      surface(() => null).evaluateEligibility(input)
-    );
-    const ineligible = await Effect.runPromise(
-      surface(() => ({ active: false })).evaluateEligibility(input)
-    );
-
-    expect(missing).toMatchObject({
-      outcome: "exit",
-      reason: "entity_not_found",
-    });
-    expect(ineligible).toMatchObject({
-      outcome: "exit",
-      reason: "entity_condition_not_met",
-    });
-  });
-
-  effectIt.effect("times out a resolver as an operational failure", () =>
-    Effect.gen(function* () {
-      const fiber = yield* Effect.forkChild(
-        Effect.exit(
-          surface(
-            () => new Promise<{ active: boolean } | null>(() => undefined)
-          ).evaluateEligibility(input)
-        )
-      );
-      yield* settle;
-      yield* TestClock.adjust("10 seconds");
-
-      const exit = yield* Fiber.join(fiber);
-      expect(Exit.isFailure(exit)).toBe(true);
-      if (Exit.isFailure(exit)) {
-        expect(
-          Option.getOrUndefined(Cause.findErrorOption(exit.cause))
-        ).toEqual({
-          kind: "failure",
-          message: 'Failed to resolve Entity "appointment" for Eligibility',
-        });
-      }
-    })
-  );
-
-  it("keeps resolver and state-schema defects in the failure channel", async () => {
+  it("maps a resolver failure to a retryable failure and every other cause to a defect", async () => {
     const resolverFailure = await Effect.runPromiseExit(
       surface(() =>
-        Promise.reject(
-          new Error("host unavailable for appt_secret with state active=true")
-        )
+        Promise.reject(new Error("host unavailable"))
       ).evaluateEligibility(input)
     );
-    const invalidState = await Effect.runPromiseExit(
-      surface(
-        // @ts-expect-error Runtime validation covers JavaScript and unsafe callers.
-        () => ({ active: "yes" })
-      ).evaluateEligibility(input)
+    const schemaRefused = await Effect.runPromiseExit(
+      surface(() => ({ active: true })).evaluateEligibility({
+        ...input,
+        condition: JSON.stringify({
+          version: 2,
+          groupLogic: "and",
+          groups: [
+            {
+              id: "group",
+              logic: "and",
+              conditions: [
+                {
+                  id: "archived",
+                  field: "archivedAt",
+                  fieldType: "string",
+                  operator: "is_not_set",
+                },
+              ],
+            },
+          ],
+        }),
+      })
     );
 
     expect(Exit.isFailure(resolverFailure)).toBe(true);
     if (Exit.isFailure(resolverFailure)) {
-      const failure = Option.getOrUndefined(
-        Cause.findErrorOption(resolverFailure.cause)
-      );
-      expect(failure).toEqual({
+      expect(
+        Option.getOrUndefined(Cause.findErrorOption(resolverFailure.cause))
+      ).toEqual({
         kind: "failure",
         message: 'Failed to resolve Entity "appointment" for Eligibility',
       });
-      expect(JSON.stringify(failure)).not.toContain("appt_secret");
-      expect(JSON.stringify(failure)).not.toContain("active=true");
     }
-    expect(Exit.isFailure(invalidState)).toBe(true);
-    if (Exit.isFailure(invalidState)) {
-      const failure = Option.getOrUndefined(
-        Cause.findErrorOption(invalidState.cause)
-      );
-      expect(failure).toMatchObject({
-        kind: "defect",
-        message: expect.stringContaining(
-          'Entity "appointment" returned current state its schema does not accept'
-        ),
-      });
-      expect(JSON.stringify(failure)).not.toContain('"active":"yes"');
-    }
-  });
-
-  // `is_not_set` on a field the State schema no longer declares compiles and
-  // evaluates true against any state, so evaluating it would answer eligible.
-  it("fails a stored rule the current State schema refuses without resolving", async () => {
-    const resolve = vi.fn(() => ({ active: true }));
-    const guardedOnRemovedField = JSON.stringify({
-      version: 2,
-      groupLogic: "and",
-      groups: [
-        {
-          id: "group",
-          logic: "and",
-          conditions: [
-            {
-              id: "archived",
-              field: "archivedAt",
-              fieldType: "string",
-              operator: "is_not_set",
-            },
-          ],
-        },
-      ],
-    });
-
-    const exit = await Effect.runPromiseExit(
-      surface(resolve).evaluateEligibility({
-        ...input,
-        condition: guardedOnRemovedField,
-      })
-    );
-
-    expect(resolve).not.toHaveBeenCalled();
-    expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit)) {
-      expect(Option.getOrUndefined(Cause.findErrorOption(exit.cause))).toEqual({
+    expect(Exit.isFailure(schemaRefused)).toBe(true);
+    if (Exit.isFailure(schemaRefused)) {
+      expect(
+        Option.getOrUndefined(Cause.findErrorOption(schemaRefused.cause))
+      ).toMatchObject({
         kind: "defect",
         message: expect.stringContaining(
           'reads "archivedAt", which Entity "appointment" does not declare'
@@ -200,14 +137,31 @@ describe("Workflow Entity Eligibility port", () => {
     }
   });
 
-  it("resolves and evaluates a stored rule the current State schema accepts", async () => {
-    const resolve = vi.fn(() => ({ active: true }));
+  effectIt.effect(
+    "passes the surface's resolver deadline to the decision",
+    () =>
+      Effect.gen(function* () {
+        const fiber = yield* Effect.forkChild(
+          Effect.exit(
+            surface(
+              () => new Promise<{ active: boolean } | null>(() => undefined),
+              { entityResolverTimeoutMs: 50 }
+            ).evaluateEligibility(input)
+          )
+        );
+        yield* settle;
+        yield* TestClock.adjust("50 millis");
 
-    const result = await Effect.runPromise(
-      surface(resolve).evaluateEligibility(input)
-    );
-
-    expect(resolve).toHaveBeenCalledTimes(1);
-    expect(result).toEqual({ outcome: "eligible" });
-  });
+        const exit = yield* Fiber.join(fiber);
+        expect(Exit.isFailure(exit)).toBe(true);
+        if (Exit.isFailure(exit)) {
+          expect(
+            Option.getOrUndefined(Cause.findErrorOption(exit.cause))
+          ).toEqual({
+            kind: "failure",
+            message: 'Failed to resolve Entity "appointment" for Eligibility',
+          });
+        }
+      })
+  );
 });
