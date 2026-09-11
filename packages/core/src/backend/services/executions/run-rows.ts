@@ -530,8 +530,11 @@ const bookkeeping = <A>(
  * run holding it, and a stamped row belongs to the send that landed.
  *
  * One case stays open. A Cancel claim can land on a row whose first send was
- * refused, and that row may have no run behind it. The compensation leaves
- * every claimed row to its claim owner, so that row stays in flight.
+ * refused, and that row may have no run behind it. The retry of the Event
+ * delivery sends such a row again, and the run then reads the claim at its
+ * first boundary and takes the Canceled outlet. A row started by hand has no
+ * delivery to retry, and neither has a delivery that meets the same refusal on
+ * every attempt, so a row in one of those two cases stays in flight.
  *
  * A close the database refuses sends no signal either, since the row may hold
  * a claim this call cannot see. The row stays in flight and unstamped, so the
