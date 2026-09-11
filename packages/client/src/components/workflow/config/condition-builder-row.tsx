@@ -181,6 +181,16 @@ function sameEnumChoice(a: EnumChoice, b: EnumChoice): boolean {
   return a.value === b.value;
 }
 
+/**
+ * The value list of a set comparison on a string field that declares enum
+ * values.
+ *
+ * The popup offers the field's enum values. Every stored operand is a chip in
+ * its stored order, including an operand the field does not offer: a template
+ * reference, shown by its display text, or a literal the field no longer
+ * names, shown as written. Such an operand stays in the list until its own chip
+ * is removed, and a pick appends to the end of the list.
+ */
 function EnumMultiValueInput({
   disabled,
   field,
@@ -198,8 +208,12 @@ function EnumMultiValueInput({
     value,
     label: enumOptionLabel(field, value),
   }));
-  const selected = values.flatMap(
-    (value) => choices.find((choice) => choice.value === value) ?? []
+  const selected = values.map(
+    (value) =>
+      choices.find((choice) => choice.value === value) ?? {
+        value,
+        label: displayTemplateText(value),
+      }
   );
 
   return (
@@ -458,8 +472,9 @@ function ConditionValueInput(input: {
 
   if (condition.fieldType === "string") {
     if (isStringSetConditionRule(condition)) {
-      // A field with enum values offers only those. Any other string field
-      // takes typed values, and a stored rule shows every value it holds.
+      // Both inputs show every stored value as a chip. The popup of a field
+      // with enum values offers those values, and any other string field
+      // takes typed values.
       if (!(enumValues && enumValues.length > 0)) {
         return (
           <TextSetValueInput

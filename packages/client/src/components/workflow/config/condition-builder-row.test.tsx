@@ -1012,6 +1012,157 @@ describe("ConditionBuilderRow set comparison on a plain string field", () => {
   });
 });
 
+/** A stored `is one of` rule on `status`, a string field with enum values. */
+function statusSetModel(values: string[]): string {
+  return serializeConditionModel({
+    version: 2,
+    groupLogic: "and",
+    groups: [
+      {
+        id: "g",
+        logic: "and",
+        conditions: [
+          {
+            id: "r",
+            field: "status",
+            fieldType: "string",
+            operator: "is_one_of",
+            values,
+          },
+        ],
+      },
+    ],
+  });
+}
+
+const STATUS_FIELDS: ConditionSelectableField[] = [
+  field("status", "Lifecycle", { enumValues: ["active", "paused"] }),
+];
+
+// The build agent's `set_wait` tool accepts a set that mixes enum literals with
+// a template reference, so the enum picker holds every operand it does not
+// offer until the builder removes that operand's chip.
+describe("ConditionBuilderRow set comparison on an enum field", () => {
+  const reference = "{{@entry:Lifecycle.email}}";
+
+  it("keeps a template reference while enum values are picked and removed", () => {
+    const onChange = vi.fn();
+    const view = renderRow(
+      STATUS_FIELDS,
+      statusSetModel(["active", reference]),
+      onChange
+    );
+
+    enterEdit(view);
+    expect(view.getByText("active")).toBeTruthy();
+    expect(view.getByText("Lifecycle.email")).toBeTruthy();
+    expect(view.queryByText(/\{\{@/)).toBeNull();
+
+    const values = view.getByLabelText("Select status values");
+    fireEvent.keyDown(values, { key: "ArrowDown" });
+    // The popup offers the field's enum values alone.
+    expect(
+      view.getAllByRole("option").map((option) => option.textContent)
+    ).toEqual(["active", "paused"]);
+    fireEvent.click(view.getByRole("option", { name: "paused" }));
+    fireEvent.keyDown(values, { key: "Escape" });
+
+    expect(writtenRule(onChange)).toMatchObject({
+      values: ["active", reference, "paused"],
+    });
+
+    fireEvent.click(view.getByRole("button", { name: "Remove active" }));
+    expect(writtenRule(onChange)).toMatchObject({
+      values: [reference, "paused"],
+    });
+
+    fireEvent.click(
+      view.getByRole("button", { name: "Remove Lifecycle.email" })
+    );
+    expect(writtenRule(onChange)).toMatchObject({ values: ["paused"] });
+  });
+
+  // A reference is resolved when the run reaches the rule, so the summary has
+  // no enum value to hold it to.
+  it("reports no refusal in view mode for a set holding a reference", () => {
+    const view = renderRow(
+      STATUS_FIELDS,
+      statusSetModel(["active", reference])
+    );
+
+    expect(view.getByText(/Lifecycle\.email/)).toBeTruthy();
+    expect(view.queryByText(/no longer offers/)).toBeNull();
+  });
+
+  it("still reports a literal the field no longer offers in view mode", () => {
+    const view = renderRow(
+      STATUS_FIELDS,
+      statusSetModel(["active", "cancelled"])
+    );
+
+    expect(
+      view.getByText(/no longer offers one or more selected values/)
+    ).toBeTruthy();
+  });
+
+  it("reports no refusal in view mode for equals holding a reference", () => {
+    const view = renderRow(
+      STATUS_FIELDS,
+      serializeConditionModel({
+        version: 2,
+        groupLogic: "and",
+        groups: [
+          {
+            id: "g",
+            logic: "and",
+            conditions: [
+              {
+                id: "r",
+                field: "status",
+                fieldType: "string",
+                operator: "equals",
+                value: reference,
+              },
+            ],
+          },
+        ],
+      })
+    );
+
+    expect(view.getByText(/Lifecycle\.email/)).toBeTruthy();
+    expect(view.queryByText(/no longer offers/)).toBeNull();
+  });
+
+  it("keeps a literal the field no longer offers until its chip is removed", () => {
+    const onChange = vi.fn();
+    const view = renderRow(
+      STATUS_FIELDS,
+      statusSetModel(["active", "cancelled"]),
+      onChange
+    );
+
+    enterEdit(view);
+    expect(view.getByText("cancelled")).toBeTruthy();
+
+    const values = view.getByLabelText("Select status values");
+    fireEvent.keyDown(values, { key: "ArrowDown" });
+    fireEvent.click(view.getByRole("option", { name: "paused" }));
+    fireEvent.keyDown(values, { key: "Escape" });
+
+    expect(writtenRule(onChange)).toMatchObject({
+      values: ["active", "cancelled", "paused"],
+    });
+
+    fireEvent.click(view.getByRole("button", { name: "Remove active" }));
+    expect(writtenRule(onChange)).toMatchObject({
+      values: ["cancelled", "paused"],
+    });
+
+    fireEvent.click(view.getByRole("button", { name: "Remove cancelled" }));
+    expect(writtenRule(onChange)).toMatchObject({ values: ["paused"] });
+  });
+});
+
 /**
  * A model of two groups, each holding one rule, for the cases about what a
  * removal takes with it.

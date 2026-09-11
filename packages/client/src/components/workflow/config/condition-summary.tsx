@@ -20,7 +20,10 @@ import {
   TIME_UNIT_OPTIONS,
   TIMESTAMP_OPERATOR_OPTIONS,
 } from "@wfgraph/shared/conditions/conditions";
-import { displayTemplateText } from "@wfgraph/shared/graph/node-references";
+import {
+  displayTemplateText,
+  matchTemplateToken,
+} from "@wfgraph/shared/graph/node-references";
 import { unavailableFieldLabel } from "./condition-field-label";
 
 /**
@@ -161,9 +164,12 @@ function RuleLine({
  * The compiler answers first, because it is the same verdict the row shows
  * while editing and the same one a run is held to. The enum case is the one
  * refusal it cannot reach: a value the field no longer names still compiles,
- * still runs, and matches nothing, and the picker in edit mode shows it as an
- * empty box. A set comparison on a field with no enum values is refused only
- * where `setOperatorsRequireEnumValues` says so.
+ * still runs, and matches nothing. The set picker in edit mode shows it as a
+ * chip, and the single-value picker shows it as an empty box. An operand holding a template reference is exempt from the enum
+ * check, because its value is known only when the run resolves it; Entity
+ * Eligibility refuses such an operand through its own check. A set comparison
+ * on a field with no enum values is refused only where
+ * `setOperatorsRequireEnumValues` says so.
  */
 function ruleRefusal(
   condition: ConditionRule,
@@ -194,7 +200,12 @@ function ruleRefusal(
     const values = isStringSetConditionRule(condition)
       ? condition.values
       : [condition.value];
-    if (values.some((value) => !offered.includes(value))) {
+    if (
+      values.some(
+        (value) =>
+          matchTemplateToken(value) === null && !offered.includes(value)
+      )
+    ) {
       return `${field.label} no longer offers one or more selected values. Choose from the available values.`;
     }
   }
