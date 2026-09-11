@@ -575,6 +575,54 @@ describe("a delivery retried after its Execution was committed", () => {
         })
     );
 
+    // An earlier attempt committed the Execution and the step died before the
+    // send. On retry the host resolver fails, and the delivery still has to
+    // reach the bus. The committed row is read before selection and the
+    // resolver, so neither runs.
+    it.effect(
+      "sends the Execution an earlier attempt committed without selecting or resolving the Entity again",
+      () =>
+        Effect.gen(function* () {
+          resolveEntityMock.mockRejectedValue(new Error("host unavailable"));
+          findByDeliveryMock.mockImplementation(() =>
+            Effect.succeed(
+              winnerExecution({ deliveryId: "evt_crashed", enqueuedAt: null })
+            )
+          );
+
+          const outcome = yield* applyLifecycleRules({
+            subscriber: subscriber(),
+            event: appointmentCreated,
+            payload: videoPayload,
+            deliveryId: "evt_crashed",
+          }).pipe(
+            Effect.provide(
+              workflowWith(guardedRules({ checkpoints: ["before-execution"] }))
+            )
+          );
+
+          assert.deepStrictEqual(outcome, committedOutcome);
+          assert.deepStrictEqual(findByDeliveryMock.mock.calls, [
+            [{ workflowId: "wf_1", deliveryId: "evt_crashed" }],
+          ]);
+          assert.strictEqual(selectEntityIdMock.mock.calls.length, 0);
+          assert.strictEqual(resolveEntityMock.mock.calls.length, 0);
+          assert.strictEqual(startForEntityMock.mock.calls.length, 0);
+          assert.strictEqual(recordAdmissionRefusalMock.mock.calls.length, 0);
+          assert.deepStrictEqual(
+            sendRunRequestedMock.mock.calls.map(([data]) => data),
+            [{ executionId: "exec_winner" }]
+          );
+          const started = recordAuditEventMock.mock.calls.find(
+            ([event]) => event.eventType === "run_started"
+          )?.[0];
+          assert.deepInclude(started?.metadata, {
+            entityType: "appointment",
+            deliveryId: "evt_crashed",
+          });
+        })
+    );
+
     it.effect("resends when tracking was removed from the rules", () =>
       Effect.gen(function* () {
         findByDeliveryMock.mockImplementation(() =>
