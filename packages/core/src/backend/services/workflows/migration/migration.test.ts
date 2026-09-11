@@ -251,6 +251,8 @@ function inFlightRow(
     workflowVersionId: OLD_VERSION_ID,
     versionKind: "published",
     versionNumber: 1,
+    entityType: null,
+    entityId: null,
     ...overrides,
   };
 }

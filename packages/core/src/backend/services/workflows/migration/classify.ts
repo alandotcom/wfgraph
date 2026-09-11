@@ -487,7 +487,7 @@ const classifyOne = Effect.fn("classifyOne")(function* (input: {
     } satisfies MigrationClassification;
   }
 
-  if ((candidate.entityType ?? null) !== target.trackedEntityType) {
+  if (candidate.entityType !== target.trackedEntityType) {
     return refuse(
       "entity_incompatible",
       target.trackedEntityType ?? "no tracked Entity"

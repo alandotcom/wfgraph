@@ -73,6 +73,8 @@ const testExecution: ExecutionSummary = {
   runMode: "live",
   startEventName: "donor/intake.submitted",
   entityValue: null,
+  entityType: null,
+  entityId: null,
   input: {},
   output: null,
   error: null,

@@ -25,6 +25,8 @@ function summary(overrides: Partial<ExecutionSummary> = {}): ExecutionSummary {
     runMode: "live",
     startEventName: "app/appointment.created",
     entityValue: "appt_1",
+    entityType: null,
+    entityId: null,
     input: null,
     output: null,
     error: null,
