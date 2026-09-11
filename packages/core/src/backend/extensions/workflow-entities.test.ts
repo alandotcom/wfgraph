@@ -1,5 +1,5 @@
 import { it as effectIt } from "@effect/vitest";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Cause, Effect, Exit, Fiber, Option, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { defineEntity } from "#src/backend/extensions/define-entity";
@@ -156,5 +156,58 @@ describe("Workflow Entity Eligibility port", () => {
       });
       expect(JSON.stringify(failure)).not.toContain('"active":"yes"');
     }
+  });
+
+  // `is_not_set` on a field the State schema no longer declares compiles and
+  // evaluates true against any state, so evaluating it would answer eligible.
+  it("fails a stored rule the current State schema refuses without resolving", async () => {
+    const resolve = vi.fn(() => ({ active: true }));
+    const guardedOnRemovedField = JSON.stringify({
+      version: 2,
+      groupLogic: "and",
+      groups: [
+        {
+          id: "group",
+          logic: "and",
+          conditions: [
+            {
+              id: "archived",
+              field: "archivedAt",
+              fieldType: "string",
+              operator: "is_not_set",
+            },
+          ],
+        },
+      ],
+    });
+
+    const exit = await Effect.runPromiseExit(
+      surface(resolve).evaluateEligibility({
+        ...input,
+        condition: guardedOnRemovedField,
+      })
+    );
+
+    expect(resolve).not.toHaveBeenCalled();
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      expect(Option.getOrUndefined(Cause.findErrorOption(exit.cause))).toEqual({
+        kind: "defect",
+        message: expect.stringContaining(
+          'reads "archivedAt", which Entity "appointment" does not declare'
+        ),
+      });
+    }
+  });
+
+  it("resolves and evaluates a stored rule the current State schema accepts", async () => {
+    const resolve = vi.fn(() => ({ active: true }));
+
+    const result = await Effect.runPromise(
+      surface(resolve).evaluateEligibility(input)
+    );
+
+    expect(resolve).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ outcome: "eligible" });
   });
 });

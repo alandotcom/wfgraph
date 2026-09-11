@@ -327,7 +327,12 @@ function toEventMetadata(
   });
 }
 
-function toEntityMetadata(entity: AnyEntityDefinition): EntityMetadata {
+/**
+ * The catalog's description of an Entity. The runtime Eligibility checkpoints
+ * also build it from the host definition they hold, to check a stored condition
+ * against the Entity's current State schema.
+ */
+export function toEntityMetadata(entity: AnyEntityDefinition): EntityMetadata {
   return {
     type: entity.type,
     label: entity.label,

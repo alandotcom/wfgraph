@@ -2,7 +2,7 @@ import { assert, describe, layer } from "@effect/vitest";
 // The mocks API has to be the one vitest itself exports; reaching it through the
 // `@effect/vitest` re-export leaves it unable to find the module registry.
 import { beforeEach, vi } from "vitest";
-import { Effect, Fiber, Layer, Schema } from "effect";
+import { Cause, Effect, Fiber, Layer, Option, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import type {
   PublishedWorkflowVersion,
@@ -877,6 +877,67 @@ describe("applyLifecycleRules and Start Filters", () => {
 
           assert.strictEqual(exit._tag, "Failure");
           assert.strictEqual(startForEntityMock.mock.calls.length, 0);
+          assert.strictEqual(recordAuditEventMock.mock.calls.length, 0);
+        })
+    );
+
+    // `is_not_set` on a field the State schema no longer declares evaluates true
+    // against any state, so evaluating it would admit the run.
+    it.effect(
+      "fails admission on a stored rule the current State schema refuses, without resolving",
+      () =>
+        Effect.gen(function* () {
+          const rules = guardedRules({ checkpoints: ["before-execution"] });
+          const guardedOnRemovedField = serializeConditionModel({
+            version: 2,
+            groupLogic: "and",
+            groups: [
+              {
+                id: "group",
+                logic: "and",
+                conditions: [
+                  {
+                    id: "archived",
+                    field: "archivedAt",
+                    fieldType: "string",
+                    operator: "is_not_set",
+                  },
+                ],
+              },
+            ],
+          });
+
+          const exit = yield* Effect.exit(
+            applyLifecycleRules({
+              subscriber: subscriber(),
+              event: appointmentCreated,
+              payload: videoPayload,
+            }).pipe(
+              Effect.provide(
+                workflowWith({
+                  ...rules,
+                  entityEligibility: {
+                    condition: guardedOnRemovedField,
+                    checkpoints: ["before-execution"],
+                  },
+                })
+              )
+            )
+          );
+
+          assert.strictEqual(exit._tag, "Failure");
+          if (exit._tag === "Failure") {
+            const failure = Option.getOrUndefined(
+              Cause.findErrorOption(exit.cause)
+            );
+            assert.include(
+              String(failure?.cause),
+              'reads "archivedAt", which Entity "appointment" does not declare'
+            );
+          }
+          assert.strictEqual(resolveEntityMock.mock.calls.length, 0);
+          assert.strictEqual(startForEntityMock.mock.calls.length, 0);
+          assert.strictEqual(recordAdmissionRefusalMock.mock.calls.length, 0);
           assert.strictEqual(recordAuditEventMock.mock.calls.length, 0);
         })
     );

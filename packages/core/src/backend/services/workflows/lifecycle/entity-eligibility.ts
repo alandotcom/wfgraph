@@ -5,6 +5,8 @@ import {
   type AnyEntityDefinition,
 } from "#src/backend/extensions/define-entity";
 import { resolveEntityState } from "#src/backend/extensions/entity-resolution";
+import { toEntityMetadata } from "#src/backend/extensions/extension-set";
+import { checkEntityEligibilityCondition } from "@wfgraph/shared/lifecycle/entity-eligibility";
 import { evaluateSerializedCondition } from "#src/backend/lib/cel/condition-payload";
 import { Extensions } from "#src/backend/lib/effect/extensions";
 import { InternalFailure } from "#src/backend/lib/effect/failures";
@@ -101,6 +103,18 @@ export const evaluateSelectedEntityAdmission = Effect.fn(
   const eligibility = input.rules.entityEligibility;
   if (!eligibility?.checkpoints.includes("before-execution")) {
     return { entity } satisfies GuardedStartDecision;
+  }
+
+  // The condition is the one stored on the version the run pins, and the host may
+  // have changed the Entity's State schema since. A rule the current schema
+  // refuses can still evaluate, with a different meaning, so it fails the
+  // delivery here, before the host resolver is called.
+  const check = checkEntityEligibilityCondition(
+    toEntityMetadata(entity.definition),
+    eligibility.condition
+  );
+  if (!check.valid) {
+    return yield* configurationFailure(check.error);
   }
 
   const extensions = yield* Extensions;
