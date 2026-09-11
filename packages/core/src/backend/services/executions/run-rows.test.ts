@@ -496,15 +496,16 @@ describe("enqueueStartedRun", () => {
         })
     );
 
-    // A refused send is ambiguous: Inngest may have taken the event and failed
-    // on the way back, in which case the run is already executing and reached a
-    // verdict the compensation may not overwrite. The line is how an operator
-    // learns that is what happened.
-    serviceIt.effect("says so when the run got to a verdict first", () =>
+    // The close refuses a row holding a Cancel or Exit claim, a row another
+    // attempt's send stamped, and a row that reached a verdict. The run behind
+    // each of them is the one that must finish it, and a stop signal would kill
+    // that run. `sendCancelRequested` is left refusing, so a signal kills the
+    // test.
+    serviceIt.effect("sends no stop signal when the close is refused", () =>
       Effect.gen(function* () {
         const recorder = makeRecordingLogger();
 
-        yield* enqueueStartedRun({
+        const failure = yield* enqueueStartedRun({
           execution: createExecution(),
         }).pipe(
           Effect.provide(
@@ -518,7 +519,6 @@ describe("enqueueStartedRun", () => {
                   Effect.fail(
                     new InngestError({ cause: new Error("gateway timeout") })
                   ),
-                sendCancelRequested: () => Effect.succeed({ eventId: "c_1" }),
               }),
               recorder.layer
             )
@@ -526,20 +526,64 @@ describe("enqueueStartedRun", () => {
           Effect.flip
         );
 
+        assert.instanceOf(failure, InngestError);
         assert.deepStrictEqual(recorder.infoLines, [
           {
             message:
-              "Enqueue reported failure but the run had already left the in-flight statuses",
-            properties: { executionId: "exec_1" },
+              "Enqueue reported failure, but the row holds a claim, was enqueued by another attempt, or has ended, so no stop signal was sent",
+            properties: { run: { executionId: "exec_1" } },
           },
         ]);
       })
     );
 
-    // The in-flight guard on the close defers to a terminal status and nothing
-    // more, so a run Inngest accepted a moment ago is `running` and the close
-    // would relabel a live run. The cancel is what makes it true.
-    serviceIt.effect("tells the run to stop before closing its row", () =>
+    // A close the database refused says nothing about whether the row holds a
+    // claim, so the signal stays unsent and the unstamped row is left for
+    // `reclaimStuckRuns`. The caller still sees the refused send.
+    serviceIt.effect(
+      "sends no stop signal when the close cannot be written",
+      () =>
+        Effect.gen(function* () {
+          const recorder = makeRecordingLogger();
+
+          const failure = yield* enqueueStartedRun({
+            execution: createExecution(),
+          }).pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                pinnedVersionLayer(),
+                stubExecutionRepo({
+                  markEnqueueFailed: () =>
+                    Effect.fail(
+                      new DatabaseError({ cause: new Error("connection lost") })
+                    ),
+                }),
+                stubInngestClient({
+                  sendRunRequested: () =>
+                    Effect.fail(
+                      new InngestError({ cause: new Error("gateway timeout") })
+                    ),
+                }),
+                recorder.layer
+              )
+            ),
+            Effect.flip
+          );
+
+          assert.instanceOf(failure, InngestError);
+          assert.deepStrictEqual(
+            recorder.lines.map((line) => line.message),
+            [
+              "Enqueue reported failure, and the database refused to close the row, so no stop signal was sent",
+            ]
+          );
+        })
+    );
+
+    // The close decides whether the compensation may touch the row, and only a
+    // row it closed has its run told to stop. A run Inngest accepted a moment
+    // ago is then stopped, and its own writes meet the terminal status.
+    serviceIt.effect("closes the row before telling the run to stop", () =>
       Effect.gen(function* () {
         const order: string[] = [];
 
@@ -574,7 +618,7 @@ describe("enqueueStartedRun", () => {
           Effect.flip
         );
 
-        assert.deepStrictEqual(order, ["cancel", "close"]);
+        assert.deepStrictEqual(order, ["close", "cancel"]);
       })
     );
 

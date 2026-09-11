@@ -531,6 +531,90 @@ export function describeExecutionConformance({
       });
     });
 
+    // A refused send closes a row only when no run could still need it: a
+    // claimed row is finished by the run holding the claim, and a stamped row
+    // was taken by the bus through another attempt's send.
+    it("closes a refused enqueue only for an unclaimed row the bus never took", async () => {
+      const database = await openConnection();
+      await seedPublishedWorkflow(database);
+
+      const startFor = async (entityId: string) => {
+        const started = await attemptStart(database, {
+          deliveryId: `delivery_${entityId}`,
+          entityType: "appointment",
+          entityId,
+        });
+        if (started.status !== "started") {
+          throw new Error("The unlimited start was refused");
+        }
+        return started.execution.id;
+      };
+      const cancelClaimed = await startFor("appt_cancel");
+      const exitClaimed = await startFor("appt_exit");
+      const enqueued = await startFor("appt_enqueued");
+      const unsent = await startFor("appt_unsent");
+
+      const result = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          yield* executions.requestCancelForEntity({
+            workflowId: "wf_1",
+            entityType: "appointment",
+            entityId: "appt_cancel",
+            runMode: "live",
+            eventName: "appointment/cancelled",
+            payload: {},
+          });
+          yield* executions.requestExit({
+            executionId: exitClaimed,
+            reason: "entity_condition_not_met",
+            nodeId: "node_check",
+          });
+          yield* executions.markEnqueued({
+            executionId: enqueued,
+            runId: "run_enqueued",
+          });
+
+          const close = (executionId: string) =>
+            executions.markEnqueueFailed({ executionId, error: "refused" });
+          const closed = {
+            cancelClaimed: yield* close(cancelClaimed),
+            exitClaimed: yield* close(exitClaimed),
+            enqueued: yield* close(enqueued),
+            unsent: yield* close(unsent),
+            unsentAgain: yield* close(unsent),
+          };
+
+          const statusOf = (executionId: string) =>
+            Effect.map(
+              executions.findSummaryById(executionId),
+              (summary) => summary?.status
+            );
+          const statuses = {
+            cancelClaimed: yield* statusOf(cancelClaimed),
+            exitClaimed: yield* statusOf(exitClaimed),
+            enqueued: yield* statusOf(enqueued),
+            unsent: yield* statusOf(unsent),
+          };
+          return { closed, statuses };
+        })
+      );
+
+      expect(result.closed).toEqual({
+        cancelClaimed: false,
+        exitClaimed: false,
+        enqueued: false,
+        unsent: true,
+        unsentAgain: false,
+      });
+      expect(result.statuses).toEqual({
+        cancelClaimed: "running",
+        exitClaimed: "running",
+        enqueued: "running",
+        unsent: "failed",
+      });
+    });
+
     it("enforces workflow-name and workflow-run uniqueness", async () => {
       const database = await openConnection();
       await database.run(

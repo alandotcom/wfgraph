@@ -486,7 +486,8 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
             and(
               eq(workflowExecutions.id, executionId),
               inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES),
-              isNull(workflowExecutions.terminationKind)
+              isNull(workflowExecutions.terminationKind),
+              isNull(workflowExecutions.enqueuedAt)
             )
           )
           .returning({ id: workflowExecutions.id })

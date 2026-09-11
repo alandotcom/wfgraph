@@ -517,17 +517,27 @@ const bookkeeping = <A>(
   );
 
 /**
- * Undoes a start whose send was refused: the run is told to stop, then its row
- * is closed.
+ * Undoes a start whose send was refused: the row is closed, and only a run
+ * whose row this call closed is told to stop.
  *
- * The order is what makes the close safe. A refused send is ambiguous --
- * Inngest may have taken the event and failed on the way back, in which case
- * the run is already executing -- and the row's in-flight guard cannot tell
- * those apart, because a run that started a moment ago is `running` like one
- * that never started. The cancel resolves it: an accepted run is stopped, and a
- * signal for a run that does not exist is a no-op at Inngest. A cancel that
- * itself fails to send leaves the row closed anyway and says so on the
- * timeline, which is the same half-failure `cancelInFlightRuns` reports.
+ * A refused send is ambiguous, because Inngest may have taken the event and
+ * failed on the way back, leaving the run already executing. `markEnqueueFailed`
+ * is the decision: it closes only an in-flight row with no Cancel or Exit claim
+ * and no `enqueuedAt`. A run behind a row it closed is stopped by the signal,
+ * and its own writes are refused by the terminal status; a signal for a run
+ * that never started is a no-op at Inngest. Every other row is left to the run
+ * that must finish it, which the signal would kill: a claim is finished by the
+ * run holding it, and a stamped row belongs to the send that landed.
+ *
+ * One case stays open. A Cancel claim can land on a row whose first send was
+ * refused, and that row may have no run behind it. The compensation leaves
+ * every claimed row to its claim owner, so that row stays in flight.
+ *
+ * A close the database refuses sends no signal either, since the row may hold
+ * a claim this call cannot see. The row stays in flight and unstamped, so the
+ * next start for its entity can close it through `reclaimStuckRuns` once it is
+ * past `UNSENT_RUN_GRACE_MS`. The Inngest failure travels on to the caller in
+ * every case.
  */
 const closeRefusedEnqueue = Effect.fn("closeRefusedEnqueue")(function* (
   input: EnqueueStartedRunInput,
@@ -541,26 +551,38 @@ const closeRefusedEnqueue = Effect.fn("closeRefusedEnqueue")(function* (
       ? failure.cause.message
       : "Failed to enqueue run";
 
+  const closed = yield* repo
+    .markEnqueueFailed({ executionId: execution.id, error })
+    .pipe(
+      Effect.catchTag("DatabaseError", (databaseError) =>
+        Effect.as(
+          logger.error(
+            "Enqueue reported failure, and the database refused to close the row, so no stop signal was sent",
+            { run: { executionId: execution.id }, error: databaseError }
+          ),
+          null
+        )
+      )
+    );
+
+  if (closed === null) {
+    return;
+  }
+
+  if (!closed) {
+    yield* logger.info(
+      "Enqueue reported failure, but the row holds a claim, was enqueued by another attempt, or has ended, so no stop signal was sent",
+      { run: { executionId: execution.id } }
+    );
+    return;
+  }
+
   yield* signalRunToStop({
     workflowId: execution.workflowId,
     executionId: execution.id,
     reason: error,
     eventName: execution.startEventName ?? undefined,
   });
-
-  const closed = yield* repo.markEnqueueFailed({
-    executionId: execution.id,
-    error,
-  });
-
-  if (!closed) {
-    // The run reached a verdict of its own, which the compensation is not
-    // allowed to overwrite.
-    yield* logger.info(
-      "Enqueue reported failure but the run had already left the in-flight statuses",
-      { executionId: execution.id }
-    );
-  }
 });
 
 /**

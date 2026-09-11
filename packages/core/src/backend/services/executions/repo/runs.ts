@@ -308,11 +308,11 @@ export type RunsRepoMethods = {
    * written. Without it the row sits in "running" with nothing behind it that
    * could ever finish it.
    *
-   * The in-flight guard defers to a terminal status and nothing more, so a run
-   * Inngest accepted and started milliseconds ago is still `running` and this
-   * write would relabel it. What makes the ambiguity safe is the cancel the
-   * caller sends first: a run that did start is stopped, and one that never
-   * started ignores a signal addressed to it.
+   * The guard is the whole compensation decision: only a row still in flight,
+   * holding no Cancel or Exit claim, and with no `enqueuedAt` is closed. A
+   * claimed row belongs to the run that must finish it, and a stamped row was
+   * taken by the bus through another attempt's send. The caller signals the
+   * run to stop only after this answers true.
    */
   readonly markEnqueueFailed: (input: {
     executionId: string;
@@ -644,7 +644,8 @@ export function makeRunsMethods(
               inArray(workflowExecutions.status, [
                 ...IN_FLIGHT_EXECUTION_STATUSES,
               ]),
-              isNull(workflowExecutions.terminationKind)
+              isNull(workflowExecutions.terminationKind),
+              isNull(workflowExecutions.enqueuedAt)
             )
           )
           .returning({ id: workflowExecutions.id });
