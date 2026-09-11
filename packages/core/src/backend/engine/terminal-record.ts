@@ -6,6 +6,7 @@
 import type {
   CompleteRunInput,
   ExecutionTerminationState,
+  PendingCancel,
   RecordAuditEventInput,
   WorkflowRunAuditEventType,
   WorkflowStore,
@@ -62,19 +63,33 @@ function buildRunCompletedMessage(
   );
 }
 
+/**
+ * What the timeline says about a run a fatal error ended. A canceled run says
+ * whether the Canceled outlet was entered before the error, because a Cancel
+ * claim found only by the terminal write takes the status without the outlet.
+ */
 function buildRunFailedMessage(
   runMode: "live" | "test",
-  status: TraversalTerminalStatus
+  status: TraversalTerminalStatus,
+  canceledOutlet: CanceledOutletOutcome
 ): string {
   return withRecipients(
     status === "canceled"
-      ? "Run cancelled while waiting"
+      ? canceledOutlet === "entered"
+        ? "Run canceled at the Canceled outlet, then ended on a fatal error"
+        : "Run canceled after a fatal error; the Canceled outlet did not run"
       : status === "exited"
         ? "Run exited because the Entity was ineligible"
         : "Run failed with fatal error",
     runMode
   );
 }
+
+/**
+ * Whether a run the fatal path records as canceled had entered the Canceled
+ * outlet before the error. Recorded on the `run_cancelled` audit row.
+ */
+type CanceledOutletOutcome = "entered" | "not_run";
 
 const TERMINAL_AUDIT_EVENT = {
   completed: "run_completed",
@@ -98,23 +113,54 @@ function isInFlight(status: ExecutionTerminationState["status"]): boolean {
   return IN_FLIGHT_EXECUTION_STATUSES.some((candidate) => candidate === status);
 }
 
-function claimedStatus(
-  state: ExecutionTerminationState
-): "canceled" | "exited" | undefined {
-  return state.claim?.kind === "cancel"
-    ? "canceled"
-    : state.claim?.kind === "exit"
-      ? "exited"
-      : undefined;
+/**
+ * The Cancel claim that refused this terminal write, or undefined when the
+ * write landed, the run had already ended, or no Cancel claim stands.
+ */
+function refusingCancelClaim(
+  state: ExecutionTerminationState | null
+): PendingCancel | undefined {
+  return state &&
+    !state.didWrite &&
+    isInFlight(state.status) &&
+    state.claim?.kind === "cancel"
+    ? { eventName: state.claim.eventName, payload: state.claim.payload }
+    : undefined;
 }
 
 /**
- * Attempts the caller's verdict, then finalizes a racing Cancel or Exit claim.
- * The returned state is authoritative, so the engine never reports its stale
- * local traversal verdict after persistence selected another outcome. A
- * `DatabaseError` from either write is logged and fails the enclosing durable
- * step, so Inngest retries the step. `null` means the store found no execution
- * row.
+ * Writes the status a standing Cancel or Exit claim selected, after the run's
+ * own verdict was refused. A `DatabaseError` is logged and fails the enclosing
+ * durable step, so Inngest retries the step.
+ */
+function writeClaimedStatus(input: {
+  store: WorkflowStore;
+  run: CompleteRunInput;
+}): Effect.Effect<ExecutionTerminationState | null, DatabaseError> {
+  return input.store.completeRun(input.run).pipe(
+    Effect.tapError((error) =>
+      Effect.logWarning("Claimed terminal run record not written").pipe(
+        Effect.annotateLogs({
+          executionId: input.run.executionId,
+          status: input.run.status,
+          error,
+        })
+      )
+    )
+  );
+}
+
+/**
+ * Attempts the caller's verdict, then finalizes a racing Exit claim. The
+ * returned state is authoritative, so the engine never reports its stale local
+ * traversal verdict after persistence selected another outcome.
+ *
+ * A racing Cancel claim is returned unwritten, still in flight, because what
+ * follows it depends on the caller: a run that finished its traversal takes
+ * the Canceled outlet before it records canceled, and a run a fatal error
+ * ended records canceled at once. A `DatabaseError` from either write is logged
+ * and fails the enclosing durable step, so Inngest retries the step. `null`
+ * means the store found no execution row.
  */
 function finalizeRun(input: {
   store: WorkflowStore;
@@ -132,30 +178,19 @@ function finalizeRun(input: {
         )
       )
     );
-    if (!first || first.didWrite || !isInFlight(first.status)) {
+    if (
+      !first ||
+      first.didWrite ||
+      !isInFlight(first.status) ||
+      first.claim?.kind !== "exit"
+    ) {
       return first;
     }
 
-    const status = claimedStatus(first);
-    if (!status) {
-      return first;
-    }
-
-    const claimedRun: CompleteRunInput =
-      status === "exited"
-        ? { ...input.run, status, failure: undefined }
-        : { ...input.run, status };
-    return yield* input.store.completeRun(claimedRun).pipe(
-      Effect.tapError((error) =>
-        Effect.logWarning("Claimed terminal run record not written").pipe(
-          Effect.annotateLogs({
-            executionId: input.run.executionId,
-            status,
-            error,
-          })
-        )
-      )
-    );
+    return yield* writeClaimedStatus({
+      store: input.store,
+      run: { ...input.run, status: "exited", failure: undefined },
+    });
   });
 }
 
@@ -185,7 +220,13 @@ function announce(
   );
 }
 
-/** Writes the terminal record and timeline event for a completed traversal. */
+/**
+ * Writes the terminal record and timeline event for a completed traversal.
+ *
+ * A Cancel claim that refused the write comes back as `cancelClaim`, with
+ * nothing written and `status` still the in-flight status the row holds. The
+ * caller runs the Canceled outlet for that claim and then records `canceled`.
+ */
 export function recordRunCompleted(input: {
   store: WorkflowStore;
   executionId: string;
@@ -200,6 +241,7 @@ export function recordRunCompleted(input: {
   {
     status: WorkflowExecutionStatus;
     exit?: RunExitOutcome | undefined;
+    cancelClaim?: PendingCancel | undefined;
   },
   DatabaseError
 > {
@@ -213,6 +255,13 @@ export function recordRunCompleted(input: {
         failure: input.failure,
       },
     });
+    const cancelClaim = refusingCancelClaim(state);
+    if (state && cancelClaim) {
+      yield* Effect.logInfo(
+        "A Cancel claim refused the terminal record; the Canceled outlet runs next"
+      ).pipe(Effect.annotateLogs({ status: input.status }));
+      return { status: state.status, cancelClaim };
+    }
     const status = state?.status ?? input.status;
     const exit = state ? exitMetadata(state, input.exitContext) : undefined;
     if (!state?.didWrite) {
@@ -245,7 +294,14 @@ export function recordRunCompleted(input: {
   });
 }
 
-/** Terminal record for an error escaping the traversal. */
+/**
+ * Terminal record for an error escaping the traversal.
+ *
+ * `status` is `canceled` when the run had entered the Canceled outlet before
+ * the error. A Cancel claim that refuses a `failed` verdict is recorded as
+ * canceled at once, because the scheduler that would run the outlet is the
+ * one that just died, and the timeline says the outlet did not run.
+ */
 export function recordRunFailed(input: {
   store: WorkflowStore;
   executionId: string;
@@ -262,14 +318,20 @@ export function recordRunFailed(input: {
   DatabaseError
 > {
   return Effect.gen(function* () {
-    const state = yield* finalizeRun({
-      store: input.store,
-      run: {
-        executionId: input.executionId,
-        status: input.status,
-        failure: input.failure,
-      },
-    });
+    const run: CompleteRunInput = {
+      executionId: input.executionId,
+      status: input.status,
+      failure: input.failure,
+    };
+    const verdict = yield* finalizeRun({ store: input.store, run });
+    const state = refusingCancelClaim(verdict)
+      ? yield* writeClaimedStatus({
+          store: input.store,
+          run: { ...run, status: "canceled" },
+        })
+      : verdict;
+    const canceledOutlet: CanceledOutletOutcome =
+      input.status === "canceled" ? "entered" : "not_run";
     const status = state?.status ?? input.status;
     const exit = state ? exitMetadata(state, input.exitContext) : undefined;
     if (!state?.didWrite) {
@@ -288,18 +350,25 @@ export function recordRunFailed(input: {
       workflowId: input.workflowId,
       executionId: input.executionId,
       eventType: TERMINAL_AUDIT_EVENT[status],
-      message: buildRunFailedMessage(input.runMode, status),
+      message: buildRunFailedMessage(input.runMode, status, canceledOutlet),
       metadata: exit
         ? {
             ...exit,
             checkpoint: "before-node",
             runMode: input.runMode,
           }
-        : {
-            error: input.failure.message,
-            failureKind: input.failure.kind,
-            runMode: input.runMode,
-          },
+        : status === "canceled"
+          ? {
+              error: input.failure.message,
+              failureKind: input.failure.kind,
+              runMode: input.runMode,
+              canceledOutlet,
+            }
+          : {
+              error: input.failure.message,
+              failureKind: input.failure.kind,
+              runMode: input.runMode,
+            },
     });
     return { status, ...(exit ? { exit } : {}) };
   });

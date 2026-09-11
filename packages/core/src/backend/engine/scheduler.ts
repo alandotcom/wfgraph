@@ -27,7 +27,7 @@ import {
   failedExecution,
 } from "#src/backend/engine/contracts";
 import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
-import type { WorkflowStore } from "#src/backend/engine/store";
+import type { PendingCancel, WorkflowStore } from "#src/backend/engine/store";
 import type { Traversal } from "#src/backend/engine/traversal";
 import {
   resolveStrategy,
@@ -696,6 +696,25 @@ export class NodeScheduler {
     );
 
     return execute;
+  }
+
+  /**
+   * Runs the Canceled outlet for a Cancel claim read after the Started branch
+   * ran out, in the order a boundary read runs it mid-traversal: enter the
+   * outlet, run its first nodes, then enter the Waits held back on its side.
+   *
+   * The Started-side Waits were drained before the claim was read, so the drain
+   * here finds only Waits behind the outlet, and one of them may park the run
+   * the way any Wait does.
+   */
+  runCanceledOutlet(claim: PendingCancel): Effect.Effect<void> {
+    return Effect.gen(
+      function* (this: NodeScheduler) {
+        const nextNodes = yield* this.input.cancelBoundary.enterClaimed(claim);
+        yield* this.runAll(nextNodes);
+        yield* this.drainDeferredWaits();
+      }.bind(this)
+    );
   }
 
   /** Runs a set of nodes side by side, which is how every branch fans out. */

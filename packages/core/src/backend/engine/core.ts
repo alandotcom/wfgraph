@@ -348,13 +348,24 @@ function executeWorkflowInner(
       // suspend nothing are finished by now and the run may park.
       yield* scheduler.drainDeferredWaits();
 
-      const finalSuccess = traversal.allSucceeded();
-      const finalOutput = traversal.deterministicTerminalOutput();
       const termination = yield* runDurable(
         runtime,
         { id: "execution-termination-final", name: "Read run outcome" },
         store.readTerminationState(executionId)
       );
+      // A Cancel claim that landed after the last node's boundary read found no
+      // node left to route it, so the run takes the Canceled outlet here. The
+      // read is memoized, so a replay enters the outlet at the same point, and
+      // each outlet node's durable steps answer from the memo.
+      if (
+        termination?.claim?.kind === "cancel" &&
+        !cancelBoundary.hasLeftStartedBranch()
+      ) {
+        yield* scheduler.runCanceledOutlet({
+          eventName: termination.claim.eventName,
+          payload: termination.claim.payload,
+        });
+      }
       const exitClaim =
         termination?.claim?.kind === "exit" ? termination.claim : undefined;
       const exitContext = entityEligibility?.entityType
@@ -364,17 +375,16 @@ function executeWorkflowInner(
           }
         : undefined;
       // The persisted first claim outranks traversal results. Exit takes no
-      // graph outlet; cancellation retains its distinct Canceled branch.
+      // graph outlet, and a Cancel claim has taken the Canceled outlet by now.
       const terminalStatus: TraversalTerminalStatus = exitClaim
         ? "exited"
-        : cancelBoundary.hasLeftStartedBranch() ||
-            termination?.claim?.kind === "cancel"
+        : cancelBoundary.hasLeftStartedBranch()
           ? "canceled"
-          : finalSuccess
+          : traversal.allSucceeded()
             ? "completed"
             : "failed";
 
-      return { terminalStatus, finalOutput, exitContext };
+      return { terminalStatus, exitContext };
     });
 
     return Effect.gen(function* () {
@@ -436,24 +446,50 @@ function executeWorkflowInner(
         };
       }
 
-      // Wrapped as a durable step so the terminal record and its audit event are
-      // written exactly once, even though the body replays after every wait. A
-      // refusal escapes the traversal catch above and lets this step retry.
-      const recorded = yield* runDurable(
-        runtime,
-        { id: "workflow-run-completed", name: "Run completed" },
+      // The output, failure and count are read when each step is built, so the
+      // record written after the Canceled outlet runs includes that outlet.
+      const recordCompletion = (status: TraversalTerminalStatus) =>
         recordRunCompleted({
           store,
           executionId,
           workflowId,
-          status: outcome.value.terminalStatus,
-          output: outcome.value.finalOutput,
+          status,
+          output: traversal.deterministicTerminalOutput(),
           failure: traversal.firstFailure(),
           resultCount: traversal.resultCount,
           runMode,
           exitContext: outcome.value.exitContext,
-        })
+        });
+
+      // Wrapped as a durable step so the terminal record and its audit event are
+      // written exactly once, even though the body replays after every wait. A
+      // refusal escapes the traversal catch above and lets this step retry.
+      const completed = yield* runDurable(
+        runtime,
+        { id: "workflow-run-completed", name: "Run completed" },
+        recordCompletion(outcome.value.terminalStatus)
       );
+
+      // A Cancel claim that landed after the outcome read refused the record
+      // above, which wrote nothing and memoized the claim. The run takes the
+      // Canceled outlet for that claim and records canceled in a step of its
+      // own, so the outlet's nodes run before the terminal row ends the run.
+      const recorded =
+        completed.cancelClaim === undefined
+          ? completed
+          : yield* scheduler
+              .runCanceledOutlet(completed.cancelClaim)
+              .pipe(
+                Effect.andThen(
+                  Effect.suspend(() =>
+                    runDurable(
+                      runtime,
+                      { id: "workflow-run-canceled", name: "Run canceled" },
+                      recordCompletion("canceled")
+                    )
+                  )
+                )
+              );
 
       const attemptMs = Date.now() - attemptStartTime;
       yield* Effect.logInfo(`Run ${recorded.status} in ${attemptMs}ms`).pipe(

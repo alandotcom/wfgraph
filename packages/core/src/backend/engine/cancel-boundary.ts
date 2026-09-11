@@ -168,6 +168,19 @@ export class CancelBoundary {
   }
 
   /**
+   * Takes the Canceled outlet for a Cancel claim the caller has already read,
+   * and answers with the branch's first nodes.
+   *
+   * A root run reads its claim once more after its Started branch has run out,
+   * and a claim that landed after the last boundary read reaches the outlet
+   * through here. A boundary already crossed answers with no nodes, because the
+   * outlet's nodes went to whichever node crossed it.
+   */
+  enterClaimed(claim: PendingCancel): Effect.Effect<readonly string[]> {
+    return this.entered ? Effect.succeed([]) : this.enter(claim);
+  }
+
+  /**
    * Routes the run into the Lifecycle Node's Canceled outlet, and answers with
    * the branch's first nodes.
    *
