@@ -305,6 +305,127 @@ export function describeExecutionWaitConformance({
       });
     });
 
+    // A resume producer can hold a row in `resuming` when the Exit claim lands.
+    // The Exit wake still has to find that row, and a release of the claim after
+    // the Exit must not reopen a row the woken Wait has already closed.
+    it("lists claimed waits for the Exit wake and fences a release against a closed row", async () => {
+      const database = await openConnection();
+      await seedPublishedWorkflow(database);
+
+      const result = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const started = yield* executions.startForEntity({
+            execution: {
+              workflowId: "wf_1",
+              workflowVersionId: "ver_1",
+              startSource: "manual",
+              runMode: "live",
+              input: {},
+            },
+            concurrency: "unlimited",
+            supersededReason: "newer start",
+          });
+          if (started.status !== "started") {
+            throw new Error("Start was refused");
+          }
+          const executionId = started.execution.id;
+
+          const parkAndClaim = (nodeId: string, resumeToken: string) =>
+            Effect.gen(function* () {
+              const wait = yield* executions.startWait({
+                executionId,
+                workflowId: "wf_1",
+                runId: "run_1",
+                nodeId,
+                nodeName: nodeId,
+                workflowVersionId: "ver_1",
+                waitType: "event",
+                resumeToken,
+                subscribedEvents: [EVENT_ARRIVAL.eventName],
+              });
+              if (!wait) throw new Error("Wait was refused");
+              const claim = yield* executions.claimWaitingStateByToken({
+                resumeToken,
+                arrival: EVENT_ARRIVAL,
+              });
+              if (!claim) throw new Error("Wait claim was refused");
+              return {
+                waitStateId: wait.waitStateId,
+                claimedAt: claim.claimedAt,
+              };
+            });
+
+          // Both rows are claimed before the Exit, because a claim is refused
+          // once the run holds one.
+          const released = yield* parkAndClaim("wait_released", "resume_a");
+          const closed = yield* parkAndClaim("wait_closed", "resume_b");
+
+          yield* executions.requestExit({
+            executionId,
+            reason: "entity_condition_not_met",
+            nodeId: "checkpoint_1",
+          });
+
+          const listedAfterExit =
+            yield* executions.listActiveWaitStates(executionId);
+
+          // The resume send for the first row failed, so its producer releases it.
+          const releasedAfterExit =
+            yield* executions.releaseWaitingStateClaim(released);
+          const listedAfterRelease =
+            yield* executions.listActiveWaitStates(executionId);
+
+          // The Exit signal woke the second row's Wait, which closed its row,
+          // and that row's producer then tries to release its claim.
+          const closedByWait = yield* executions.markWaitStatus({
+            waitStateId: closed.waitStateId,
+            status: "cancelled",
+          });
+          const releasedAfterClose =
+            yield* executions.releaseWaitingStateClaim(closed);
+
+          return {
+            releasedId: released.waitStateId,
+            closedId: closed.waitStateId,
+            listedAfterExit: listedAfterExit.map((row) => [row.id, row.status]),
+            releasedAfterExit,
+            listedAfterRelease: listedAfterRelease.map((row) => [
+              row.id,
+              row.status,
+            ]),
+            closedByWait,
+            releasedAfterClose,
+            closedRow: (yield* executions.findWaitStateById(closed.waitStateId))
+              ?.status,
+            listedAfterClose: (yield* executions.listActiveWaitStates(
+              executionId
+            )).map((row) => row.id),
+          };
+        })
+      );
+
+      expect(result.listedAfterExit).toEqual(
+        expect.arrayContaining([
+          [result.releasedId, "resuming"],
+          [result.closedId, "resuming"],
+        ])
+      );
+      expect(result.listedAfterExit).toHaveLength(2);
+      expect(result.releasedAfterExit).toBe(true);
+      expect(result.listedAfterRelease).toEqual(
+        expect.arrayContaining([
+          [result.releasedId, "waiting"],
+          [result.closedId, "resuming"],
+        ])
+      );
+      expect(result.listedAfterRelease).toHaveLength(2);
+      expect(result.closedByWait).toBe(true);
+      expect(result.releasedAfterClose).toBe(false);
+      expect(result.closedRow).toBe("cancelled");
+      expect(result.listedAfterClose).toEqual([result.releasedId]);
+    });
+
     it("refuses a first park resolved from a version the run has left", async () => {
       const database = await openConnection();
       await seedPublishedWorkflow(database);

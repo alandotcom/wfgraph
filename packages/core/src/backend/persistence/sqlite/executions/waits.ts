@@ -387,6 +387,19 @@ export function makeSqliteWaitsMethods(
           )
           .pipe(Effect.map((rows) => rows.map(sqliteWaitState)))
       ),
+    listActiveWaitStates: (executionId) =>
+      store.read((database) =>
+        database
+          .select()
+          .from(workflowWaitStates)
+          .where(
+            and(
+              eq(workflowWaitStates.executionId, executionId),
+              inArray(workflowWaitStates.status, ["waiting", "resuming"])
+            )
+          )
+          .pipe(Effect.map((rows) => rows.map(sqliteWaitState)))
+      ),
     listWaitingStatesForExecutions: (executionIds) =>
       store.read((database) => {
         if (executionIds.length === 0) {

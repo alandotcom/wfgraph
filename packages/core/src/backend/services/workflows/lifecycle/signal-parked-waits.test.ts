@@ -20,7 +20,7 @@ import {
 
 type Repo = ExecutionRepo["Service"];
 
-const listWaitingStatesMock = vi.fn<Repo["listWaitingStates"]>(() =>
+const listActiveWaitStatesMock = vi.fn<Repo["listActiveWaitStates"]>(() =>
   Effect.succeed([])
 );
 const sendWaitSignalMock = vi.fn<InngestClient["Service"]["sendWaitSignal"]>(
@@ -28,7 +28,7 @@ const sendWaitSignalMock = vi.fn<InngestClient["Service"]["sendWaitSignal"]>(
 );
 
 const services = Layer.mergeAll(
-  stubExecutionRepo({ listWaitingStates: listWaitingStatesMock }),
+  stubExecutionRepo({ listActiveWaitStates: listActiveWaitStatesMock }),
   stubInngestClient({ sendWaitSignal: sendWaitSignalMock })
 );
 
@@ -69,7 +69,7 @@ const threeWaits = [
 
 beforeEach(() => {
   vi.clearAllMocks();
-  listWaitingStatesMock.mockReturnValue(Effect.succeed([]));
+  listActiveWaitStatesMock.mockReturnValue(Effect.succeed([]));
   sendWaitSignalMock.mockReturnValue(Effect.void);
 });
 
@@ -130,7 +130,7 @@ describe("signalParkedWaits", () => {
 
 describe("wakeParkedWaitsAfterExit", () => {
   it("signals every Wait the Execution still has parked and records the count", async () => {
-    listWaitingStatesMock.mockReturnValue(Effect.succeed(threeWaits));
+    listActiveWaitStatesMock.mockReturnValue(Effect.succeed(threeWaits));
     const recorder = makeRecordingLogger();
 
     await Effect.runPromise(
@@ -139,7 +139,7 @@ describe("wakeParkedWaitsAfterExit", () => {
       )
     );
 
-    expect(listWaitingStatesMock).toHaveBeenCalledWith("exec_1");
+    expect(listActiveWaitStatesMock).toHaveBeenCalledWith("exec_1");
     expect(sendWaitSignalMock).toHaveBeenCalledTimes(3);
     expect(
       sendWaitSignalMock.mock.calls.every(
@@ -153,6 +153,36 @@ describe("wakeParkedWaitsAfterExit", () => {
           run: { executionId: "exec_1" },
           outcome: { parkedWaits: 3 },
         },
+      },
+    ]);
+  });
+
+  // A resume producer holds this row while its own signal is in flight. If that
+  // send fails, the release returns the row to waiting after the Exit claim has
+  // already refused every later resume, so the Exit wake signals the row now.
+  it("signals a Wait whose row a resume producer holds, with that row's token", async () => {
+    listActiveWaitStatesMock.mockReturnValue(
+      Effect.succeed([
+        parkedWait({
+          status: "resuming",
+          resumeToken: "token_claimed",
+          resumedAt: new Date("2026-03-02T00:00:00.000Z"),
+        }),
+      ])
+    );
+
+    await Effect.runPromise(
+      wakeParkedWaitsAfterExit({ executionId: "exec_1" }).pipe(
+        Effect.provide(Layer.mergeAll(services, makeRecordingLogger().layer))
+      )
+    );
+
+    expect(sendWaitSignalMock.mock.calls.map(([signal]) => signal)).toEqual([
+      {
+        executionId: "exec_1",
+        nodeId: "node_wait",
+        token: "token_claimed",
+        signalType: "lifecycle-exit",
       },
     ]);
   });

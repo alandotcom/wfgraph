@@ -96,12 +96,12 @@ const parkedWait: WorkflowWaitState = {
   resumedAt: null,
   cancelledAt: null,
 };
-const listWaitingStates = vi.fn(() => Effect.succeed([parkedWait]));
+const listActiveWaitStates = vi.fn(() => Effect.succeed([parkedWait]));
 const sendWaitSignal = vi.fn(() => Effect.void);
 const testAppRuntime = stubWfGraphRuntime({
   executionRepo: {
     findSummaryById,
-    listWaitingStates,
+    listActiveWaitStates,
   },
   inngestClient: { sendWaitSignal },
   workflowRepo: {
@@ -637,12 +637,12 @@ describe("the workflow run function", () => {
   // the execution this run was requested for.
   it("wakes the execution's parked Waits with an Exit signal", async () => {
     const { runtime } = await executeWorkflowFunctionForTest();
-    listWaitingStates.mockClear();
+    listActiveWaitStates.mockClear();
     sendWaitSignal.mockClear();
 
     await runtime.wakeParkedWaits?.();
 
-    expect(listWaitingStates).toHaveBeenCalledWith("exec_123");
+    expect(listActiveWaitStates).toHaveBeenCalledWith("exec_123");
     expect(sendWaitSignal).toHaveBeenCalledWith({
       executionId: "exec_123",
       nodeId: "wait_1",

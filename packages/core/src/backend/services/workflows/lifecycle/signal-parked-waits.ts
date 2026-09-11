@@ -67,16 +67,25 @@ export const signalParkedWaits = Effect.fn("signalParkedWaits")(
  * Wakes every Wait of an Execution still parked after an Exit claim, which is
  * how the run that won the claim ends the sibling branches parked beside it.
  *
- * The Waits of the winning run and of the runs that started it have already
- * resumed, so the read never names them. A refused send fails this after every
- * send was tried, and the durable step that runs it retries it.
+ * The read answers rows in `waiting` and in `resuming`. A `resuming` row is a
+ * resume producer's claim whose signal may not have reached Inngest, so the Wait
+ * behind it can still be parked, and the Exit signal carries that row's token.
+ * The read can also name the winning run's own Wait while its producer has yet
+ * to settle the claim; that signal finds no listener and changes nothing. A
+ * refused send fails this after every send was tried, and the durable step that
+ * runs it retries it.
+ *
+ * A Wait writes its row inside its prepare step and registers its Inngest
+ * listener in a later step. A signal sent between those two moments finds no
+ * listener and is dropped, so that Wait stays parked until its own timeout, its
+ * next node is then refused under the claim, and its branch halts.
  */
 export const wakeParkedWaitsAfterExit = Effect.fn("wakeParkedWaitsAfterExit")(
   function* (input: { executionId: string }) {
     const repo = yield* ExecutionRepo;
     const logger = (yield* AppLogger).get("lifecycle-exit");
 
-    const parked = yield* repo.listWaitingStates(input.executionId);
+    const parked = yield* repo.listActiveWaitStates(input.executionId);
     yield* signalParkedWaits({
       executionId: input.executionId,
       parked,

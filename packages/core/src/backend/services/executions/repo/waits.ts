@@ -213,6 +213,17 @@ export type WaitsRepoMethods = {
     executionId: string
   ) => Effect.Effect<WorkflowWaitState[], DatabaseError>;
   /**
+   * Every wait row of one run in `waiting` or `resuming`, for the Exit wake.
+   *
+   * A `resuming` row is a resume producer's claim whose signal may not have
+   * reached Inngest yet, so the Wait behind it can still be parked. A release
+   * returns that row to `waiting` if the send fails, and an Exit claim then
+   * refuses every later resume claim, so the Exit wake has to signal it too.
+   */
+  readonly listActiveWaitStates: (
+    executionId: string
+  ) => Effect.Effect<WorkflowWaitState[], DatabaseError>;
+  /**
    * The same question asked of a set of runs at once, grouped by run.
    *
    * A cancellation claims every in-flight run of one entity in one statement,
@@ -493,6 +504,16 @@ export function makeWaitsMethods(
           where: {
             executionId,
             status: "waiting",
+          },
+        })
+      ),
+
+    listActiveWaitStates: (executionId) =>
+      database.query((db) =>
+        db.query.workflowWaitStates.findMany({
+          where: {
+            executionId,
+            status: { in: ["waiting", "resuming"] },
           },
         })
       ),

@@ -204,3 +204,31 @@ retries left that sibling parked until its own timeout.
 The wait-signal payload schema gained the `lifecycle-exit` literal, which
 ADR-0015 counts as an incompatible durable protocol change during a mixed
 deployment.
+
+## Amendment: The Exit wake signals claimed Waits, and the listener window is accepted
+
+Date: 2026-09-10
+
+The Exit wake read the Execution's wait rows in `waiting` and in `resuming`
+through `listActiveWaitStates`. A `resuming` row was a resume producer's claim
+whose `wait-resume` signal might not have reached Inngest yet. When that send
+failed, the producer released the row back to `waiting`, and the Exit claim then
+refused every later resume claim, so a Wait the Exit wake had skipped stayed
+parked until its timeout. The `lifecycle-exit` signal carried the row's resume
+token, so it addressed the Wait behind a claimed row in the same way as a Wait
+whose row was still `waiting`. `listWaitingStates` kept answering `waiting` rows
+alone, because the runs panel offered a manual resume for each row it listed
+and a Migration re-parked each row it paired.
+
+A Wait wrote its row inside its durable prepare step and registered its Inngest
+listener in a later step. An Exit signal sent between those two moments reached
+a row that had no listener, and Inngest dropped it. That Wait stayed parked until
+its own timeout, its next node was then refused under the claim, and its branch
+halted. This window differed from the park-after-read window that the amendment
+"The Exit winner wakes parked sibling Waits" described, where the sibling had
+written no row yet when the winner read the parked Waits. This window was
+accepted.
+The Wait could not close it from its own side, because no code ran between
+Inngest registering the listener and the wake. Closing it from the winning run
+needed a sleep port and retry rounds in the scheduler, and the cost of leaving
+it open was a sibling branch that halted at its own timeout.
