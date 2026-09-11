@@ -108,13 +108,24 @@ function schemaDigest(schema: StandardSchema<unknown>): string {
     .digest("hex");
 }
 
-function invalidState(
+// A schema failure's path can name a key straight out of the host's data, for
+// example a record keyed by an email address. `EntityStateRejected` reaches
+// persisted run failures and HTTP answers, so this message stays generic:
+// it names the Entity type and nothing from the rejected state.
+function invalidState(entityType: string): EntityStateRejected {
+  return new EntityStateRejected(
+    entityType,
+    `Entity "${entityType}" returned current state its schema does not accept.`
+  );
+}
+
+function invalidStateShape(
   entityType: string,
-  failure: string
+  detail: string
 ): EntityStateRejected {
   return new EntityStateRejected(
     entityType,
-    `Entity "${entityType}" returned current state its schema does not accept: ${failure}`
+    `Entity "${entityType}" returned current state its schema does not accept: ${detail}`
   );
 }
 
@@ -131,12 +142,15 @@ function buildStateReader<TState extends object>(
   return (value) => {
     const result = read(value);
     if (Result.isFailure(result)) {
-      throw invalidState(entityType, result.failure);
+      throw invalidState(entityType);
     }
 
     const state = readJsonObject(result.success);
     if (state === null) {
-      throw invalidState(entityType, "the encoded state is not a JSON object");
+      throw invalidStateShape(
+        entityType,
+        "the encoded state is not a JSON object"
+      );
     }
     return state;
   };

@@ -215,4 +215,30 @@ describe("Entity resolution", () => {
     await expect(resolution).rejects.toBeInstanceOf(EntityStateRejected);
     await expect(resolution).rejects.not.toThrow("SECRET_BAD_STATUS");
   });
+
+  it("rejects a record-keyed state failure without naming its key or value", async () => {
+    // A schema failure's path names every key on its way to the bad field.
+    // A Record schema's keys come straight from the host's data, so a record
+    // keyed by a private email address must not put that key, or the
+    // wrong-typed value behind it, into the persisted failure message.
+    const entity = defineEntity({
+      type: "contact-directory",
+      label: "Contact directory",
+      state: Schema.Struct({
+        contacts: Schema.Record(Schema.String, Schema.String),
+      }),
+      resolve: () =>
+        ({
+          contacts: { "private@example.com": 42 },
+        }) as never,
+    });
+
+    const resolution = entity.resolve({ entityId: "dir_123" });
+    await expect(resolution).rejects.toBeInstanceOf(EntityStateRejected);
+    await expect(resolution).rejects.not.toThrow("private@example.com");
+    await expect(resolution).rejects.not.toThrow("42");
+    await expect(resolution).rejects.toThrow(
+      'Entity "contact-directory" returned current state its schema does not accept.'
+    );
+  });
 });
