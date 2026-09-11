@@ -198,7 +198,7 @@ describe("terminal record completion policy", () => {
           store,
           executionId: "exec_1",
           workflowId: "workflow_1",
-          status: "failed",
+          outcome: { kind: "failed" },
           failure: { kind: "failure", message: "node exploded" },
           runMode: "live",
         } as const;
@@ -392,41 +392,37 @@ describe("terminal record completion policy", () => {
   );
 
   it.effect(
-    "records a fatal run a Cancel claim refused as canceled, saying the outlet did not run",
+    "hands a refusing Cancel claim back unwritten whatever the failure kind",
     () =>
       Effect.gen(function* () {
-        const recording = createRecordingWorkflowStore();
-        recording.terminationState = {
-          status: "running",
-          claim: cancelClaim,
-          didWrite: false,
-        };
+        for (const kind of ["failure", "defect", "interrupt"] as const) {
+          const recording = createRecordingWorkflowStore();
+          recording.terminationState = {
+            status: "running",
+            claim: cancelClaim,
+            didWrite: false,
+          };
 
-        const result = yield* recordRunFailed({
-          ...fatalInput,
-          status: "failed",
-          store: recording,
-        });
+          const result = yield* recordRunFailed({
+            ...fatalInput,
+            failure: { kind, message: "outcome read exhausted its retries" },
+            outcome: { kind: "failed" },
+            store: recording,
+          });
 
-        expect(result).toEqual({ status: "canceled" });
-        expect(
-          recording.callsOf("completeRun").map((call) => call.status)
-        ).toEqual(["failed", "canceled"]);
-        expect(recording.callsOf("recordAuditEvent")).toEqual([
-          {
-            workflowId: "workflow_1",
-            executionId: "exec_1",
-            eventType: "run_cancelled",
-            message:
-              "Run canceled after a fatal error; the Canceled outlet did not run",
-            metadata: {
-              error: "outcome read exhausted its retries",
-              failureKind: "failure",
-              runMode: "live",
-              canceledOutlet: "not_run",
+          expect(result).toEqual({
+            status: "running",
+            cancelClaim: {
+              eventName: "billing/subscription.canceled",
+              payload: { reason: "customer left" },
             },
-          },
-        ]);
+          });
+          expect(
+            recording.callsOf("completeRun").map((call) => call.status)
+          ).toEqual(["failed"]);
+          expect(recording.terminationState?.status).toBe("running");
+          expect(recording.callsOf("recordAuditEvent")).toHaveLength(0);
+        }
       })
   );
 
@@ -443,7 +439,7 @@ describe("terminal record completion policy", () => {
 
         const result = yield* recordRunFailed({
           ...fatalInput,
-          status: "canceled",
+          outcome: { kind: "canceled", outlet: "entered" },
           store: recording,
         });
 
@@ -463,16 +459,85 @@ describe("terminal record completion policy", () => {
   );
 
   it.effect(
-    "fails so the step retries when the canceled write of a fatal run is refused",
+    "records canceled at the Canceled outlet after a fatal error once the caller has run it",
+    () =>
+      Effect.gen(function* () {
+        const recording = createRecordingWorkflowStore();
+        recording.terminationState = {
+          status: "running",
+          claim: cancelClaim,
+          didWrite: false,
+        };
+
+        const result = yield* recordRunFailed({
+          ...fatalInput,
+          outcome: { kind: "canceled", outlet: "ran" },
+          store: recording,
+        });
+
+        expect(result).toEqual({ status: "canceled" });
+        expect(
+          recording.callsOf("completeRun").map((call) => call.status)
+        ).toEqual(["canceled"]);
+        expect(recording.callsOf("recordAuditEvent")).toEqual([
+          {
+            workflowId: "workflow_1",
+            executionId: "exec_1",
+            eventType: "run_cancelled",
+            message: "Run canceled at the Canceled outlet after a fatal error",
+            metadata: {
+              error: "outcome read exhausted its retries",
+              failureKind: "failure",
+              runMode: "live",
+              canceledOutlet: "ran",
+            },
+          },
+        ]);
+      })
+  );
+
+  it.effect(
+    "says the Canceled outlet failed when the caller reports it did",
+    () =>
+      Effect.gen(function* () {
+        const recording = createRecordingWorkflowStore();
+        recording.terminationState = {
+          status: "running",
+          claim: cancelClaim,
+          didWrite: false,
+        };
+
+        const result = yield* recordRunFailed({
+          ...fatalInput,
+          outcome: { kind: "canceled", outlet: "failed" },
+          store: recording,
+        });
+
+        expect(result).toEqual({ status: "canceled" });
+        expect(recording.callsOf("recordAuditEvent")).toEqual([
+          expect.objectContaining({
+            eventType: "run_cancelled",
+            message:
+              "Run canceled after a fatal error; the Canceled outlet failed",
+            metadata: expect.objectContaining({ canceledOutlet: "failed" }),
+          }),
+        ]);
+      })
+  );
+
+  it.effect(
+    "fails so the step retries when the exited write of a fatal run is refused",
     () =>
       Effect.gen(function* () {
         const databaseError = new DatabaseError({
           cause: new Error("connection interrupted"),
         });
         const recording = createRecordingWorkflowStore();
+        // An Exit claim refuses the `failed` verdict, and the claimed `exited`
+        // status is written in place because no graph outlet answers an Exit.
         recording.terminationState = {
           status: "running",
-          claim: cancelClaim,
+          claim: exitClaim,
           didWrite: false,
         };
         let call = 0;
@@ -487,7 +552,11 @@ describe("terminal record completion policy", () => {
         };
 
         const failure = yield* Effect.flip(
-          recordRunFailed({ ...fatalInput, status: "failed", store })
+          recordRunFailed({
+            ...fatalInput,
+            outcome: { kind: "failed" },
+            store,
+          })
         );
 
         expect(failure).toBe(databaseError);

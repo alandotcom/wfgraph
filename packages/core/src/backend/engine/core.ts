@@ -31,10 +31,12 @@ import {
   NodeScheduler,
   type NodeSchedulerInput,
 } from "#src/backend/engine/scheduler";
-import type { WorkflowStore } from "#src/backend/engine/store";
+import type { PendingCancel, WorkflowStore } from "#src/backend/engine/store";
 import {
+  type CanceledOutletOutcome,
   recordRunCompleted,
   recordRunFailed,
+  type RunFailureOutcome,
   type TraversalTerminalStatus,
 } from "#src/backend/engine/terminal-record";
 import { Traversal } from "#src/backend/engine/traversal";
@@ -403,13 +405,20 @@ function executeWorkflowInner(
           })
         );
 
+        // An interrupted invocation is one the durability runtime retries, and
+        // the retry replays the memoized steps, reads the claim at the terminal
+        // read and runs the Canceled outlet from there. A terminal status
+        // written by this dying attempt would leave that retry reading a row
+        // that is no longer in flight, so the attempt ends the way it was
+        // interrupted and writes nothing.
+        if (failure.kind === "interrupt") {
+          return yield* Effect.failCause(outcome.cause);
+        }
+
         // The flag is the authority here as it is on the success path: a run is
         // canceled because a Cancel Event claimed it, never because the text of
         // whatever died happens to contain the word.
         const cancelled = cancelBoundary.hasLeftStartedBranch();
-        const terminalStatus: TraversalTerminalStatus = cancelled
-          ? "canceled"
-          : "failed";
 
         const exitContext = entityEligibility?.entityType
           ? {
@@ -418,22 +427,45 @@ function executeWorkflowInner(
             }
           : undefined;
 
-        // Same exactly-once treatment as the success path. A refusal here
-        // escapes so the durable step can retry instead of being mistaken for
-        // another traversal failure.
-        const recorded = yield* runDurable(
-          runtime,
-          { id: "workflow-run-failed", name: "Run failed" },
+        const recordFailure = (failureOutcome: RunFailureOutcome) =>
           recordRunFailed({
             store,
             executionId,
             workflowId,
-            status: terminalStatus,
+            outcome: failureOutcome,
             failure,
             runMode,
             exitContext,
-          })
+          });
+
+        // Same exactly-once treatment as the success path. A refusal here
+        // escapes so the durable step can retry instead of being mistaken for
+        // another traversal failure.
+        const failedRecord = yield* runDurable(
+          runtime,
+          { id: "workflow-run-failed", name: "Run failed" },
+          recordFailure(
+            cancelled
+              ? { kind: "canceled", outlet: "entered" }
+              : { kind: "failed" }
+          )
         );
+
+        // A Cancel claim the terminal write was the first to see refused the
+        // `workflow-run-failed` record, which wrote nothing and memoized the
+        // claim. Every claimed Execution jumps to the Canceled outlet
+        // (ADR-0007), so the outlet runs for that claim and a step of its own
+        // records canceled after it.
+        const claim = failedRecord.cancelClaim;
+        const recorded =
+          claim === undefined
+            ? failedRecord
+            : yield* runCanceledOutletThenRecord({
+                runtime,
+                scheduler,
+                claim,
+                record: (outlet) => recordFailure({ kind: "canceled", outlet }),
+              });
 
         return {
           status: recorded.status,
@@ -448,7 +480,10 @@ function executeWorkflowInner(
 
       // The output, failure and count are read when each step is built, so the
       // record written after the Canceled outlet runs includes that outlet.
-      const recordCompletion = (status: TraversalTerminalStatus) =>
+      const recordCompletion = (
+        status: TraversalTerminalStatus,
+        canceledOutlet?: CanceledOutletOutcome
+      ) =>
         recordRunCompleted({
           store,
           executionId,
@@ -459,6 +494,7 @@ function executeWorkflowInner(
           resultCount: traversal.resultCount,
           runMode,
           exitContext: outcome.value.exitContext,
+          canceledOutlet,
         });
 
       // Wrapped as a durable step so the terminal record and its audit event are
@@ -471,25 +507,20 @@ function executeWorkflowInner(
       );
 
       // A Cancel claim that landed after the outcome read refused the record
-      // above, which wrote nothing and memoized the claim. The run takes the
-      // Canceled outlet for that claim and records canceled in a step of its
-      // own, so the outlet's nodes run before the terminal row ends the run.
+      // written just above, which wrote nothing and memoized the claim. The run
+      // takes the Canceled outlet for that claim and records canceled in a step
+      // of its own, so the outlet's nodes run before the terminal row ends the
+      // run.
+      const claim = completed.cancelClaim;
       const recorded =
-        completed.cancelClaim === undefined
+        claim === undefined
           ? completed
-          : yield* scheduler
-              .runCanceledOutlet(completed.cancelClaim)
-              .pipe(
-                Effect.andThen(
-                  Effect.suspend(() =>
-                    runDurable(
-                      runtime,
-                      { id: "workflow-run-canceled", name: "Run canceled" },
-                      recordCompletion("canceled")
-                    )
-                  )
-                )
-              );
+          : yield* runCanceledOutletThenRecord({
+              runtime,
+              scheduler,
+              claim,
+              record: (outlet) => recordCompletion("canceled", outlet),
+            });
 
       const attemptMs = Date.now() - attemptStartTime;
       yield* Effect.logInfo(`Run ${recorded.status} in ${attemptMs}ms`).pipe(
@@ -511,6 +542,52 @@ function executeWorkflowInner(
         exit: recorded.exit,
       };
     });
+  });
+}
+
+/**
+ * Runs the Canceled outlet for a Cancel claim that refused a terminal record,
+ * then writes the canceled record its caller built, as a durable step.
+ *
+ * Both terminal paths reach this, so both treat a dying outlet the same way. An
+ * outlet that raises a defect still ends the run: `record` is called with
+ * `failed` and the audit row says the outlet died partway. An interrupt is no
+ * outlet failure: the cause is re-raised, the attempt ends with nothing
+ * written, and the retry the durability runtime starts runs the outlet.
+ *
+ * The step id is shared with whichever terminal path did not call this. An
+ * execution takes one of the two paths, and a replay takes the path it took
+ * before, so the two never claim the id inside one run.
+ */
+function runCanceledOutletThenRecord<A, E>(input: {
+  runtime: WorkflowExecutionRuntime;
+  scheduler: NodeScheduler;
+  claim: PendingCancel;
+  record: (outlet: CanceledOutletOutcome) => Effect.Effect<A, E>;
+}): Effect.Effect<A, EngineFailure> {
+  return Effect.gen(function* () {
+    const outlet = yield* input.scheduler.runCanceledOutlet(input.claim).pipe(
+      Effect.as("ran" as const),
+      Effect.catchCause((outletCause) => {
+        const outletFailure = failureFromCause(outletCause);
+        return outletFailure.kind === "interrupt"
+          ? Effect.failCause(outletCause)
+          : Effect.logError("The Canceled outlet failed").pipe(
+              Effect.annotateLogs({
+                error: {
+                  kind: outletFailure.kind,
+                  cause: Cause.squash(outletCause),
+                },
+              }),
+              Effect.as("failed" as const)
+            );
+      })
+    );
+    return yield* runDurable(
+      input.runtime,
+      { id: "workflow-run-canceled", name: "Run canceled" },
+      input.record(outlet)
+    );
   });
 }
 

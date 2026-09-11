@@ -11,6 +11,7 @@ import type {
   WorkflowRunAuditEventType,
   WorkflowStore,
 } from "#src/backend/engine/store";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { Cause, Effect } from "effect";
 import { type EngineFailure } from "#src/backend/engine/engine-failure";
 import type { DatabaseError } from "#src/backend/lib/effect/database";
@@ -64,32 +65,49 @@ function buildRunCompletedMessage(
 }
 
 /**
- * What the timeline says about a run a fatal error ended. A canceled run says
- * whether the Canceled outlet was entered before the error, because a Cancel
- * claim found only by the terminal write takes the status without the outlet.
+ * What became of the Canceled outlet for a run a fatal error ended. The caller
+ * decides it, and the `run_cancelled` audit row carries it.
+ *
+ * `entered` is a run that had taken the outlet before the error. `ran` and
+ * `failed` cover a Cancel claim the terminal write was the first to see: the
+ * caller ran the outlet for that claim, and the outlet either finished or died
+ * partway.
  */
+export type CanceledOutletOutcome = "entered" | "ran" | "failed";
+
+/**
+ * What `recordRunFailed` is asked to write: a run that died with no Cancel
+ * claim standing, or a canceled run together with what became of its Canceled
+ * outlet. The outlet outcome belongs to the canceled case alone, so a failed
+ * record cannot carry one.
+ */
+export type RunFailureOutcome =
+  | { kind: "failed" }
+  | { kind: "canceled"; outlet: CanceledOutletOutcome };
+
+/** The `run_cancelled` message each outlet outcome is worded as. */
+const CANCELED_FATAL_MESSAGE = {
+  entered: "Run canceled at the Canceled outlet, then ended on a fatal error",
+  ran: "Run canceled at the Canceled outlet after a fatal error",
+  failed: "Run canceled after a fatal error; the Canceled outlet failed",
+} as const satisfies Record<CanceledOutletOutcome, string>;
+
+/** What the timeline says about a run a fatal error ended. */
 function buildRunFailedMessage(
   runMode: "live" | "test",
   status: TraversalTerminalStatus,
-  canceledOutlet: CanceledOutletOutcome
+  outcome: RunFailureOutcome
 ): string {
+  if (status === "canceled" && outcome.kind === "canceled") {
+    return withRecipients(CANCELED_FATAL_MESSAGE[outcome.outlet], runMode);
+  }
   return withRecipients(
-    status === "canceled"
-      ? canceledOutlet === "entered"
-        ? "Run canceled at the Canceled outlet, then ended on a fatal error"
-        : "Run canceled after a fatal error; the Canceled outlet did not run"
-      : status === "exited"
-        ? "Run exited because the Entity was ineligible"
-        : "Run failed with fatal error",
+    status === "exited"
+      ? "Run exited because the Entity was ineligible"
+      : "Run failed with fatal error",
     runMode
   );
 }
-
-/**
- * Whether a run the fatal path records as canceled had entered the Canceled
- * outlet before the error. Recorded on the `run_cancelled` audit row.
- */
-type CanceledOutletOutcome = "entered" | "not_run";
 
 const TERMINAL_AUDIT_EVENT = {
   completed: "run_completed",
@@ -155,12 +173,11 @@ function writeClaimedStatus(input: {
  * returned state is authoritative, so the engine never reports its stale local
  * traversal verdict after persistence selected another outcome.
  *
- * A racing Cancel claim is returned unwritten, still in flight, because what
- * follows it depends on the caller: a run that finished its traversal takes
- * the Canceled outlet before it records canceled, and a run a fatal error
- * ended records canceled at once. A `DatabaseError` from either write is logged
- * and fails the enclosing durable step, so Inngest retries the step. `null`
- * means the store found no execution row.
+ * A racing Cancel claim is returned unwritten, still in flight, because the
+ * caller takes the Canceled outlet for that claim before it records canceled.
+ * A `DatabaseError` from either write is logged and fails the enclosing
+ * durable step, so Inngest retries the step. `null` means the store found no
+ * execution row.
  */
 function finalizeRun(input: {
   store: WorkflowStore;
@@ -237,6 +254,12 @@ export function recordRunCompleted(input: {
   resultCount: number;
   runMode: "live" | "test";
   exitContext?: RunExitContext | undefined;
+  /**
+   * What became of the Canceled outlet the caller ran for a Cancel claim that
+   * refused this record's first attempt. Absent on every other call, including
+   * a traversal that reached the outlet on its own.
+   */
+  canceledOutlet?: CanceledOutletOutcome | undefined;
 }): Effect.Effect<
   {
     status: WorkflowExecutionStatus;
@@ -288,7 +311,12 @@ export function recordRunCompleted(input: {
             ...exit,
             checkpoint: "before-node",
           }
-        : { resultCount: input.resultCount, runMode: input.runMode },
+        : omitUndefined({
+            resultCount: input.resultCount,
+            runMode: input.runMode,
+            canceledOutlet:
+              status === "canceled" ? input.canceledOutlet : undefined,
+          }),
     });
     return { status, ...(exit ? { exit } : {}) };
   });
@@ -297,16 +325,18 @@ export function recordRunCompleted(input: {
 /**
  * Terminal record for an error escaping the traversal.
  *
- * `status` is `canceled` when the run had entered the Canceled outlet before
- * the error. A Cancel claim that refuses a `failed` verdict is recorded as
- * canceled at once, because the scheduler that would run the outlet is the
- * one that just died, and the timeline says the outlet did not run.
+ * `outcome` is the canceled case when the run had entered the Canceled outlet
+ * before the error, and it carries what the caller did about that outlet.
+ *
+ * A Cancel claim that refuses the verdict comes back as `cancelClaim` with
+ * nothing written, so the caller runs the Canceled outlet for that claim and
+ * calls this again with `canceled`.
  */
 export function recordRunFailed(input: {
   store: WorkflowStore;
   executionId: string;
   workflowId: string;
-  status: "failed" | "canceled";
+  outcome: RunFailureOutcome;
   failure: EngineFailure;
   runMode: "live" | "test";
   exitContext?: RunExitContext | undefined;
@@ -314,25 +344,23 @@ export function recordRunFailed(input: {
   {
     status: WorkflowExecutionStatus;
     exit?: RunExitOutcome | undefined;
+    cancelClaim?: PendingCancel | undefined;
   },
   DatabaseError
 > {
   return Effect.gen(function* () {
+    const requestedStatus = input.outcome.kind;
     const run: CompleteRunInput = {
       executionId: input.executionId,
-      status: input.status,
+      status: requestedStatus,
       failure: input.failure,
     };
-    const verdict = yield* finalizeRun({ store: input.store, run });
-    const state = refusingCancelClaim(verdict)
-      ? yield* writeClaimedStatus({
-          store: input.store,
-          run: { ...run, status: "canceled" },
-        })
-      : verdict;
-    const canceledOutlet: CanceledOutletOutcome =
-      input.status === "canceled" ? "entered" : "not_run";
-    const status = state?.status ?? input.status;
+    const state = yield* finalizeRun({ store: input.store, run });
+    const cancelClaim = refusingCancelClaim(state);
+    if (state && cancelClaim) {
+      return { status: state.status, cancelClaim };
+    }
+    const status = state?.status ?? requestedStatus;
     const exit = state ? exitMetadata(state, input.exitContext) : undefined;
     if (!state?.didWrite) {
       if (state) {
@@ -350,19 +378,19 @@ export function recordRunFailed(input: {
       workflowId: input.workflowId,
       executionId: input.executionId,
       eventType: TERMINAL_AUDIT_EVENT[status],
-      message: buildRunFailedMessage(input.runMode, status, canceledOutlet),
+      message: buildRunFailedMessage(input.runMode, status, input.outcome),
       metadata: exit
         ? {
             ...exit,
             checkpoint: "before-node",
             runMode: input.runMode,
           }
-        : status === "canceled"
+        : status === "canceled" && input.outcome.kind === "canceled"
           ? {
               error: input.failure.message,
               failureKind: input.failure.kind,
               runMode: input.runMode,
-              canceledOutlet,
+              canceledOutlet: input.outcome.outlet,
             }
           : {
               error: input.failure.message,

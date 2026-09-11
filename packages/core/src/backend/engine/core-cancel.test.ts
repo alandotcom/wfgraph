@@ -58,6 +58,12 @@ const actions = createWorkflowActions(
         input: Schema.StructWithRest(Schema.Struct({}), unknownRest),
         handler: ({ input }) => {
           const label = String(input.label ?? "");
+          // A node configured with `throws` raises the way any handler that
+          // fails does, which is how a case fails one node of a branch without
+          // failing the run around it.
+          if (input.throws === true) {
+            throw new Error(`${label} exploded`);
+          }
           recorded[label] = input;
           return { seen: label };
         },
@@ -547,6 +553,26 @@ function claimAtTerminalWrite(
   };
 }
 
+/**
+ * A store whose Cancel claim lands as the run reads its outcome, and whose read
+ * then fails the way an exhausted retry does. The error ends the traversal, so
+ * the fatal path's terminal write is the first thing to see the claim.
+ */
+function claimAtFatalOutcomeRead(store: RecordingWorkflowStore): WorkflowStore {
+  return {
+    ...store,
+    readTerminationState: () =>
+      Effect.suspend(() => {
+        landCancelClaim(store);
+        return Effect.fail(
+          new DatabaseError({
+            cause: new Error("outcome read exhausted its retries"),
+          })
+        );
+      }),
+  };
+}
+
 /** The `run_cancelled` rows the run wrote to its timeline. */
 function cancelledAudits(store: RecordingWorkflowStore) {
   return store
@@ -626,6 +652,9 @@ describe("a Cancel claim that lands after the last boundary read", () => {
     expect(cancelledAudits(store)).toEqual([
       expect.objectContaining({
         message: "Run canceled at the Canceled outlet",
+        // The outlet ran for the claim that refused the completed record, and
+        // the timeline says so, as it does on the path a fatal error ended.
+        metadata: expect.objectContaining({ canceledOutlet: "ran" }),
       }),
     ]);
     expect(
@@ -747,5 +776,141 @@ describe("a Cancel claim that lands after the last boundary read", () => {
       "canceled",
     ]);
     expect(cancelledAudits(store)).toHaveLength(1);
+  });
+
+  // A run a fatal error ended takes the outlet too, because the claim decides
+  // where a claimed Execution goes (ADR-0007).
+  describe("a Cancel claim a fatal failure finds at the terminal write", () => {
+    // The replay here is two `executeWorkflow` calls over one memo rather than
+    // `driveWithReplay`, which cannot express a durable step that fails: a
+    // rejecting step function escapes its driver loop.
+    it("runs the Canceled outlet once and records canceled in a step of its own", async () => {
+      const memo = new Map<string, unknown>();
+      const fatalStore = claimAtFatalOutcomeRead(store);
+
+      const run = await executeWorkflow(
+        cancelInput,
+        createInMemoryWorkflowRuntime({ memo }),
+        fatalStore,
+        actions
+      );
+
+      expect(run.status).toBe("canceled");
+      expect(rowsOpenedFor(store, "cleanup_1")).toBe(1);
+      expect(recorded.Cleanup).toMatchObject({
+        reason: "customer left",
+        orderId: "o_1",
+      });
+      expect(store.callsOf("completeRun").map((call) => call.status)).toEqual([
+        "failed",
+        "canceled",
+      ]);
+      expect(cancelledAudits(store)).toEqual([
+        expect.objectContaining({
+          message: "Run canceled at the Canceled outlet after a fatal error",
+          metadata: expect.objectContaining({ canceledOutlet: "ran" }),
+        }),
+      ]);
+      expect(memo.has("workflow-run-failed")).toBe(true);
+      expect(memo.has("workflow-run-canceled")).toBe(true);
+
+      // The outcome read fails again, so the body walks the fatal path a second
+      // time and both terminal steps answer from the memo.
+      const replayed = await executeWorkflow(
+        cancelInput,
+        createInMemoryWorkflowRuntime({ memo }),
+        fatalStore,
+        actions
+      );
+
+      expect(replayed.status).toBe("canceled");
+      expect(rowsOpenedFor(store, "cleanup_1")).toBe(1);
+      expect(store.callsOf("completeRun")).toHaveLength(2);
+    });
+
+    // An interrupted invocation is one the durability runtime retries, so the
+    // attempt that dies leaves the row in flight for the retry to finish. A
+    // terminal status written here would make the retry read a row that is no
+    // longer in flight and abandon the Canceled outlet.
+    it("writes nothing when an interruption finds the claim, so the retry runs the outlet", async () => {
+      const memo = new Map<string, unknown>();
+      const interruptedStore: WorkflowStore = {
+        ...store,
+        readTerminationState: () =>
+          Effect.suspend(() => {
+            landCancelClaim(store);
+            return Effect.interrupt;
+          }),
+      };
+
+      await expect(
+        executeWorkflow(
+          cancelInput,
+          createInMemoryWorkflowRuntime({ memo }),
+          interruptedStore,
+          actions
+        )
+      ).rejects.toBeDefined();
+
+      expect(store.callsOf("completeRun")).toHaveLength(0);
+      expect(store.callsOf("recordAuditEvent")).toHaveLength(0);
+      expect(rowsOpenedFor(store, "cleanup_1")).toBe(0);
+
+      // The claim the interrupted attempt left behind is what the retry's own
+      // terminal read finds, and the outlet runs from there.
+      const retried = await executeWorkflow(
+        cancelInput,
+        createInMemoryWorkflowRuntime({ memo }),
+        store,
+        actions
+      );
+
+      expect(retried.status).toBe("canceled");
+      expect(rowsOpenedFor(store, "cleanup_1")).toBe(1);
+      expect(store.callsOf("completeRun").map((call) => call.status)).toEqual([
+        "canceled",
+      ]);
+      expect(cancelledAudits(store)).toEqual([
+        expect.objectContaining({
+          message: "Run canceled at the Canceled outlet",
+        }),
+      ]);
+    });
+
+    it("records a node that fails inside the outlet on its own row and still ends canceled", async () => {
+      const graph = createSerializedWorkflowGraph({
+        nodes: [
+          createLifecycleNode("lifecycle_1"),
+          createProducerNode("producer_1", "Producer"),
+          createRecorderNode("after_1", "After"),
+          createRecorderNode("cleanup_1", "Cleanup", { throws: true }),
+        ],
+        edges: [
+          lifecycleEdge("edge_started", "producer_1", "started"),
+          { id: "edge_after", source: "producer_1", target: "after_1" },
+          lifecycleEdge("edge_canceled", "cleanup_1", "canceled"),
+        ],
+      });
+
+      const run = await executeWorkflow(
+        { ...cancelInput, graph },
+        createInMemoryWorkflowRuntime(),
+        claimAtFatalOutcomeRead(store),
+        actions
+      );
+
+      expect(run.status).toBe("canceled");
+      expect(rowsOpenedFor(store, "cleanup_1")).toBe(1);
+      expect(run.results.cleanup_1).toMatchObject({
+        success: false,
+        error: { message: "Cleanup exploded" },
+      });
+      expect(cancelledAudits(store)).toEqual([
+        expect.objectContaining({
+          message: "Run canceled at the Canceled outlet after a fatal error",
+          metadata: expect.objectContaining({ canceledOutlet: "ran" }),
+        }),
+      ]);
+    });
   });
 });
