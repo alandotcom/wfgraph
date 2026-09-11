@@ -5,12 +5,12 @@
  * the clone; tokens that name a node left behind keep pointing at it.
  */
 
-import { nanoid } from "nanoid";
 import { omit } from "es-toolkit/object";
 import {
   formatTemplateToken,
   mapTemplateTokens,
 } from "@wfgraph/shared/graph/node-references";
+import { generateId } from "@wfgraph/shared/utils/id";
 import {
   expandGroupCopyIds,
   isGroupNode,
@@ -106,7 +106,7 @@ export function cloneSelection(
     createId?: () => string;
   }
 ): CopiedSelection {
-  const createId = options.createId ?? nanoid;
+  const createId = options.createId ?? generateId;
   const idMap = new Map<string, string>();
 
   for (const node of selection.nodes) {

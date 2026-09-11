@@ -1,6 +1,5 @@
 import { Effect } from "effect";
 import { omit } from "es-toolkit/object";
-import { nanoid } from "nanoid";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
 import {
@@ -21,7 +20,7 @@ import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
  * the row is written, so the copy starts unbound.
  */
 function withFreshNodeIds(nodes: WorkflowNode[]): WorkflowNode[] {
-  return nodes.map((node) => ({ ...node, id: nanoid() }));
+  return nodes.map((node) => ({ ...node, id: generateId() }));
 }
 
 /**
@@ -58,7 +57,7 @@ function updateEdgeReferences(
 
   return edges.map((edge) => ({
     ...edge,
-    id: nanoid(),
+    id: generateId(),
     source: idMap.get(edge.source) || edge.source,
     target: idMap.get(edge.target) || edge.target,
   }));

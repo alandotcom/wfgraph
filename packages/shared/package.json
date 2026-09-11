@@ -19,8 +19,8 @@
     "effect": "catalog:",
     "es-toolkit": "catalog:",
     "graphology": "catalog:",
-    "nanoid": "catalog:",
-    "tailwind-merge": "^3.6.0"
+    "tailwind-merge": "^3.6.0",
+    "uuid": "catalog:"
   },
   "devDependencies": {
     "@standard-schema/spec": "catalog:",

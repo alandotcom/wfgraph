@@ -58,11 +58,13 @@ catalog:
   # pnpm rewrites `catalog:` inside peerDependencies at pack and publish time,
   # the same as it does in the other three dependency blocks.
   inngest: ^4.20.0
-  nanoid: ^6.0.1
   postgres: ^3.4.9
   react: 19.2.8
   react-dom: 19.2.8
   tsx: ^4.23.13
+  # The RFC 9562 generator behind `generateId` in @wfgraph/shared. Its `v7()` is
+  # the only export the repository calls.
+  uuid: ^14.0.2
   vite: ^8.2.2
   vitest-evals: ^0.16.1
   # The example app writes its Events and its custom action in it, and the schema

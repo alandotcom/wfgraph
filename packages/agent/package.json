@@ -10,8 +10,7 @@
     "./*": "./src/*.ts"
   },
   "dependencies": {
-    "effect": "catalog:",
-    "nanoid": "catalog:"
+    "effect": "catalog:"
   },
   "devDependencies": {
     "@wfgraph/shared": "workspace:*"

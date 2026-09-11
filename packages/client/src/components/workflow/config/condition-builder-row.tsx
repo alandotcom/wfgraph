@@ -1,5 +1,4 @@
 import { Plus, Trash2 } from "lucide-react";
-import { nanoid } from "nanoid";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "#src/components/ui/button";
@@ -45,6 +44,7 @@ import {
   appendOutputPathKey,
   displayTemplateText,
 } from "@wfgraph/shared/graph/node-references";
+import { generateId } from "@wfgraph/shared/utils/id";
 import {
   applyOperatorValueToCondition,
   getOperatorOptionsByFieldType,
@@ -117,13 +117,13 @@ function toIsoDateTime(localDateTime: string): string {
 
 function createInitialModel(field: ConditionFieldDefinition): ConditionModel {
   return createDefaultConditionModel(field, {
-    groupId: nanoid(),
-    conditionId: nanoid(),
+    groupId: generateId(),
+    conditionId: generateId(),
   });
 }
 
 function createInitialRule(field: ConditionFieldDefinition): ConditionRule {
-  return createDefaultConditionRule(field, nanoid());
+  return createDefaultConditionRule(field, generateId());
 }
 
 function LogicToggle({
@@ -528,7 +528,7 @@ export function ConditionBuilderRow({
       groups: [
         ...parsedModel.groups,
         {
-          id: nanoid(),
+          id: generateId(),
           logic: "and",
           conditions: [createInitialRule(seedField)],
         },

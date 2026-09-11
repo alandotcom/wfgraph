@@ -6,7 +6,6 @@
  */
 
 import { Schema } from "effect";
-import { nanoid } from "nanoid";
 import { compileConditionModel } from "@wfgraph/shared/conditions/condition-compile";
 import type {
   ConditionFieldType,
@@ -17,6 +16,7 @@ import type {
 } from "@wfgraph/shared/conditions/condition-model";
 import { findTemplateTokens } from "@wfgraph/shared/graph/node-references";
 import { isBlank } from "@wfgraph/shared/types/string";
+import { generateId } from "@wfgraph/shared/utils/id";
 
 export const conditionRuleSchema = Schema.Struct({
   field: Schema.String.annotate({
@@ -266,8 +266,8 @@ const RULE_READERS: Record<
 function readRule(input: ConditionRuleInput): RuleReading {
   const base =
     input.recordKey === undefined
-      ? { id: nanoid(), field: input.field }
-      : { id: nanoid(), field: input.field, recordKey: input.recordKey };
+      ? { id: generateId(), field: input.field }
+      : { id: generateId(), field: input.field, recordKey: input.recordKey };
 
   if (input.operator === "is_set" || input.operator === "is_not_set") {
     return {
@@ -317,7 +317,7 @@ function readConditionModelShape(
       rules.push(reading.rule);
     }
     groups.push({
-      id: nanoid(),
+      id: generateId(),
       logic: group.logic ?? "and",
       conditions: rules,
     });

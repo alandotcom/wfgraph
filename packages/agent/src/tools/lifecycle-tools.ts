@@ -10,7 +10,6 @@
 
 import { Effect, Schema } from "effect";
 import { Tool } from "effect/unstable/ai";
-import { nanoid } from "nanoid";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { findEvent } from "@wfgraph/shared/extensions/catalog";
 // The barrel keeps a historical import path and leaves these two types out, so
@@ -41,6 +40,7 @@ import {
   checkCancelFilters,
   pruneCancelFilters,
 } from "@wfgraph/shared/lifecycle/cancel-filters";
+import { generateId } from "@wfgraph/shared/utils/id";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { type AgentDocument, WorkflowDraft } from "#src/document";
 import {
@@ -312,7 +312,7 @@ function entryNodeOf(nodes: readonly WorkflowNode[]): WorkflowNode {
   const existing = nodes.find((node) => node.data.type === "lifecycle");
   return (
     existing ?? {
-      id: nanoid(),
+      id: generateId(),
       position: UNPLACED,
       type: "lifecycle",
       data: { label: "Lifecycle", type: "lifecycle", config: {} },

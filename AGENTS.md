@@ -6,7 +6,7 @@ beside `@wfgraph/example-app` (`examples/`), the host app `pnpm run dev` runs.
 - `@wfgraph/shared` (`packages/shared`) runtime-agnostic types, workflow contracts, utilities
 - `@wfgraph/agent` (`packages/agent`) the build agent's tools, toolkit and system prompt.
   Private and unbuilt like `@wfgraph/shared`, and inlined into core. It depends on
-  `@wfgraph/shared`, `effect` and `nanoid` alone, so a tool is testable with no model,
+  `@wfgraph/shared` and `effect` alone, so a tool is testable with no model,
   no HTTP and no database
 - `@wfgraph/evals` (`packages/evals`) the private Vitest Evals harness, judges and
   scenarios for the build agent. `pnpm run evals` runs it manually against a live model;

@@ -88,8 +88,8 @@
     "effect": "catalog:",
     "es-toolkit": "catalog:",
     "graphology": "catalog:",
-    "nanoid": "catalog:",
-    "postgres": "catalog:"
+    "postgres": "catalog:",
+    "uuid": "catalog:"
   },
   "devDependencies": {
     "@fastify/middie": "^9.3.4",

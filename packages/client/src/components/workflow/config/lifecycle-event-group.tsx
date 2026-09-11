@@ -18,7 +18,7 @@ import {
   type ExtensionCatalog,
   findEvent,
 } from "@wfgraph/shared/extensions/catalog";
-import { nanoid } from "nanoid";
+import { generateId } from "@wfgraph/shared/utils/id";
 import {
   EVENT_NAME_FIELD_PATH,
   serializeConditionModel,
@@ -461,8 +461,8 @@ function LifecycleFilterEditor({
     onChange(
       serializeConditionModel(
         seedConditionModelForField(seedField, {
-          groupId: nanoid(),
-          conditionId: nanoid(),
+          groupId: generateId(),
+          conditionId: generateId(),
         })
       )
     );
