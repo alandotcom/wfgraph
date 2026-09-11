@@ -599,10 +599,11 @@ const answerFromCommittedDecision = Effect.fn("answerFromCommittedDecision")(
       }
     );
 
-    // Inngest drops a second send under the run's idempotency key, so a row the
-    // earlier attempt already sent starts nothing new here. The timeline entry
-    // names the version the committed row pinned, which a Publish since the
-    // first attempt may no longer have as the published one.
+    // A row the earlier attempt already sent carries `enqueuedAt`, and
+    // `enqueueStartedRun` answers it from the row without sending. A row the
+    // earlier attempt never sent is sent now, and its timeline entry names the
+    // version the committed row pinned, which a Publish since the first attempt
+    // may no longer have as the published one.
     const sent = yield* enqueueStartedRun({
       execution: committed,
     });

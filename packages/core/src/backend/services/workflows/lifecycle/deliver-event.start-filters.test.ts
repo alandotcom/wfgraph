@@ -775,9 +775,9 @@ describe("applyLifecycleRules and Start Filters", () => {
         })
     );
 
-    // The bus drops a second send carrying the same `workflow-run-<executionId>`
-    // id, so resending a winner that was already sent starts nothing new. The
-    // replayed start through `startWithConcurrency` resends the same way.
+    // The winner was already sent by the attempt that committed it, so the
+    // replayed start through `startWithConcurrency` answers from its row and
+    // sends nothing a second time.
     it.effect("returns the start that won a racing admission refusal", () =>
       Effect.gen(function* () {
         resolveEntityMock.mockResolvedValue({
@@ -814,10 +814,7 @@ describe("applyLifecycleRules and Start Filters", () => {
           supersededExecutionIds: [],
           failedToSupersede: [],
         });
-        assert.deepStrictEqual(
-          sendRunRequestedMock.mock.calls.map(([data]) => data),
-          [{ executionId: "exec_winner" }]
-        );
+        assert.strictEqual(sendRunRequestedMock.mock.calls.length, 0);
       })
     );
 

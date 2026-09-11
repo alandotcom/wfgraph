@@ -227,8 +227,8 @@ describe("enqueueStartedRun", () => {
     );
 
     // Every field of the entry comes off the committed row, which is what lets a
-    // retried delivery resend a row an earlier attempt opened without rebuilding
-    // the start it was opened from.
+    // retried delivery send a row an earlier attempt opened and never sent
+    // without rebuilding the start it was opened from.
     serviceIt.effect(
       "writes the opening timeline entry from the row alone",
       () =>
@@ -344,6 +344,51 @@ describe("enqueueStartedRun", () => {
             "Event-triggered run of v1 started, to real recipients"
           );
           assert.deepInclude(audit.metadata, { versionNumber: 1 });
+        })
+    );
+
+    // A retried delivery hands back the row an earlier attempt already sent, and
+    // that run may be parked in a Wait. Sending again could only fail into the
+    // compensation, which would stop a healthy run, and a second `markEnqueued`
+    // and "run started" entry would misdate it.
+    serviceIt.effect(
+      "sends nothing and writes nothing for an enqueued row",
+      () =>
+        Effect.gen(function* () {
+          const recorder = makeRecordingLogger();
+
+          // Every repository method and Inngest call is left refusing, so any
+          // send, stamp, timeline entry or version read kills the test.
+          const started = yield* enqueueStartedRun({
+            execution: createExecution({
+              status: "waiting",
+              enqueuedAt: new Date("2026-03-01T00:00:01.000Z"),
+              workflowRunId: "evt_first",
+            }),
+          }).pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                stubWorkflowRepo(),
+                stubExecutionRepo(),
+                stubInngestClient(),
+                recorder.layer
+              )
+            )
+          );
+
+          assert.deepStrictEqual(started, {
+            executionId: "exec_1",
+            runId: "evt_first",
+            runMode: "live",
+          });
+          assert.deepStrictEqual(recorder.infoLines, [
+            {
+              message: "Skipped the send for a run the bus already took",
+              properties: {
+                run: { executionId: "exec_1", runId: "evt_first" },
+              },
+            },
+          ]);
         })
     );
 

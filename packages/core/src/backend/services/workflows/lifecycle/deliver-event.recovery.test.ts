@@ -774,6 +774,39 @@ describe("a delivery retried after its Execution was committed", () => {
       })
     );
 
+    // The earlier attempt sent the run, and the run is parked in a Wait. A
+    // second send could only fail into the compensation, which would stop a
+    // healthy run, so the retry answers from the row.
+    it.effect("sends nothing for a committed row the bus already took", () =>
+      Effect.gen(function* () {
+        findByDeliveryMock.mockImplementation(() =>
+          Effect.succeed({
+            ...winnerExecution({
+              deliveryId: "evt_crashed",
+              enqueuedAt: new Date("2026-03-01T00:00:30.000Z"),
+            }),
+            status: "waiting",
+          })
+        );
+
+        const outcome = yield* applyLifecycleRules({
+          subscriber: subscriber(),
+          event: appointmentCreated,
+          payload: videoPayload,
+          deliveryId: "evt_crashed",
+        }).pipe(
+          Effect.provide(
+            workflowWith(guardedRules({ checkpoints: ["before-execution"] }))
+          )
+        );
+
+        assert.deepStrictEqual(outcome, committedOutcome);
+        assert.strictEqual(sendRunRequestedMock.mock.calls.length, 0);
+        assert.strictEqual(markEnqueuedMock.mock.calls.length, 0);
+        assert.strictEqual(recordAuditEventMock.mock.calls.length, 0);
+      })
+    );
+
     // A delivery that held the cancel role committed no start, so neither read
     // can find anything and both are skipped.
     it.effect("skips a cancel-role delivery's recovery reads", () =>

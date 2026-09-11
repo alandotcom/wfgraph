@@ -391,7 +391,12 @@ const loggerFor = (workflowId: string) =>
  *
  * Everything the bus message and the timeline entry need is on the row or on the
  * version it pins, so an attempt that finds an Execution a previous attempt
- * already committed resends it with nothing recomputed.
+ * committed and never sent sends it with nothing recomputed.
+ *
+ * A row whose `enqueuedAt` is set was already taken by the bus, so it is
+ * answered from the row: no send, no second `markEnqueued`, and no second
+ * "run started" entry. `enqueuedAt` only moves from null to set, so a row read
+ * with a stale null costs one resend, which Inngest drops by idempotency key.
  */
 export const enqueueStartedRun = Effect.fn("enqueueStartedRun")(function* (
   input: EnqueueStartedRunInput
@@ -401,6 +406,22 @@ export const enqueueStartedRun = Effect.fn("enqueueStartedRun")(function* (
   const inngest = yield* InngestClient;
   const { execution } = input;
   const logger = yield* loggerFor(execution.workflowId);
+
+  if (execution.enqueuedAt !== null) {
+    yield* logger.info("Skipped the send for a run the bus already took", {
+      run: {
+        executionId: execution.id,
+        runId: execution.workflowRunId,
+      },
+    });
+    const alreadyStarted: StartedWorkflowRun = {
+      executionId: execution.id,
+      // `markEnqueued` stores null when the bus answered with no event id.
+      runId: execution.workflowRunId ?? undefined,
+      runMode: execution.runMode,
+    };
+    return alreadyStarted;
+  }
 
   const pinned = yield* workflowRepo.findVersionById(
     execution.workflowVersionId
