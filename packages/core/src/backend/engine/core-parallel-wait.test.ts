@@ -399,8 +399,11 @@ describe("a wait node beside another branch", () => {
         nodeId: "after_short",
       },
     });
-    // The short Wait's 30 seconds, when the Exit was claimed.
-    expect(run.elapsedMs).toBe(30_000);
+    // The run ends at the short Wait's 30 seconds, when the Exit was claimed,
+    // long before the sibling's 10-minute Wait. The delay derives its remaining
+    // time from Date.now(), so the replay clock can land a millisecond early.
+    expect(run.elapsedMs).toBeGreaterThan(29_000);
+    expect(run.elapsedMs).toBeLessThanOrEqual(30_000);
     expect(checkedNodes).toContain("short_wait");
     expect(checkedNodes).toContain("long_wait");
     expect(checkedNodes).toContain("after_short");
