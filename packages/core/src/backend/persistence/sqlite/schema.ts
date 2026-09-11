@@ -103,7 +103,7 @@ export const workflowExecutions = sqliteTable(
       .references(() => workflowVersions.id, { onDelete: "cascade" }),
     workflowRunId: text("workflow_run_id").unique(),
     status: text("status").notNull(),
-    startSource: text("start_source"),
+    startSource: text("start_source").notNull(),
     deliveryId: text("delivery_id"),
     enqueuedAt: integer("enqueued_at"),
     runMode: text("run_mode").notNull().default("live"),
@@ -167,7 +167,7 @@ export const workflowExecutions = sqliteTable(
     ),
     check(
       "workflow_executions_start_source_check",
-      sql`${table.startSource} is null or ${table.startSource} in ('event', 'manual', 'schedule')`
+      sql`${table.startSource} in ('event', 'manual', 'schedule')`
     ),
     check(
       "workflow_executions_run_mode_check",

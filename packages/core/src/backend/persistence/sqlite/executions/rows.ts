@@ -94,13 +94,8 @@ function terminationReason(
   return value;
 }
 
-function startSource(value: string | null): WorkflowExecution["startSource"] {
-  if (
-    value !== null &&
-    value !== "event" &&
-    value !== "manual" &&
-    value !== "schedule"
-  ) {
+function startSource(value: string): WorkflowExecution["startSource"] {
+  if (value !== "event" && value !== "manual" && value !== "schedule") {
     throw new Error("Invalid SQLite execution start source");
   }
   return value;

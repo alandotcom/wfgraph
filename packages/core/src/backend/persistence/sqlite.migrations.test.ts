@@ -147,9 +147,9 @@ describe("SQLite migration execution", () => {
         values
           ('wv_cancel', 'wf_cancel', 1, '{"nodes":[],"edges":[]}', 'catalog', 'graph', 1000);
         insert into workflow_executions
-          (id, workflow_id, workflow_version_id, status, started_at, cancel_requested_at, cancel_event_name, cancel_payload)
+          (id, workflow_id, workflow_version_id, status, start_source, started_at, cancel_requested_at, cancel_event_name, cancel_payload)
         values
-          ('exec_cancel', 'wf_cancel', 'wv_cancel', 'running', 1000, 2000, 'appointment.canceled', '{"reason":"host request"}');
+          ('exec_cancel', 'wf_cancel', 'wv_cancel', 'running', 'event', 1000, 2000, 'appointment.canceled', '{"reason":"host request"}');
       `);
     } finally {
       inspection.close();
@@ -265,7 +265,7 @@ describe("SQLite migration execution", () => {
     });
     await database.close();
 
-    const invalid = join(migrations, "20260911000000_invalid_schema");
+    const invalid = join(migrations, "20991231000000_invalid_schema");
     await mkdir(invalid);
     await writeFile(
       join(invalid, "migration.sql"),

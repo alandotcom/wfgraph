@@ -171,13 +171,10 @@ const IGNORED_SUBJECTS: Record<WorkflowExecutionStartSource, string> = {
  * version.
  */
 function runStartedSubject(
-  startSource: WorkflowExecutionStartSource | null,
+  startSource: WorkflowExecutionStartSource,
   version: PinnedRunVersion | undefined
 ): string {
-  // `workflow_executions.start_source` is nullable, so a row written before the
-  // column was filled in names no start source and the sentence opens with the
-  // graph instead.
-  const label = startSource ? `${RUN_STARTED_LABELS[startSource]} ` : "";
+  const label = `${RUN_STARTED_LABELS[startSource]} `;
 
   if (version?.kind === "draft_snapshot") {
     return `${label}Draft run started`;
@@ -198,7 +195,7 @@ function runRecipientsPhrase(runMode: WorkflowMode): string {
 }
 
 export function buildRunStartedAuditMessage(input: {
-  startSource: WorkflowExecutionStartSource | null;
+  startSource: WorkflowExecutionStartSource;
   runMode: WorkflowMode;
   eventName?: string | undefined;
   /** The version this run pinned, which names the graph that ran. */
@@ -431,7 +428,7 @@ export const enqueueStartedRun = Effect.fn("enqueueStartedRun")(function* (
       // `entityId` stays off the timeline: it is the host's own record id, and
       // the row that carries it is what an operator reads it from.
       metadata: omitUndefined({
-        startSource: execution.startSource ?? undefined,
+        startSource: execution.startSource,
         runMode: execution.runMode,
         versionKind: version.kind,
         versionNumber: version.number ?? undefined,

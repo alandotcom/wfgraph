@@ -135,9 +135,9 @@ describePostgres("PostgreSQL migrations", () => {
         values
           ('wv_cancel', 'wf_cancel', 1, '{"nodes":[],"edges":[]}'::jsonb, 'catalog', 'graph');
         insert into "${schema}"."workflow_executions"
-          (id, workflow_id, workflow_version_id, status, started_at, cancel_requested_at, cancel_event_name, cancel_payload)
+          (id, workflow_id, workflow_version_id, status, start_source, started_at, cancel_requested_at, cancel_event_name, cancel_payload)
         values
-          ('exec_cancel', 'wf_cancel', 'wv_cancel', 'running', '2026-03-01 00:00:00', '2026-03-01 00:01:00', 'appointment.canceled', '{"reason":"host request"}'::jsonb);
+          ('exec_cancel', 'wf_cancel', 'wv_cancel', 'running', 'event', '2026-03-01 00:00:00', '2026-03-01 00:01:00', 'appointment.canceled', '{"reason":"host request"}'::jsonb);
       `);
     });
 

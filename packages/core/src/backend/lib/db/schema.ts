@@ -275,7 +275,9 @@ export const workflowExecutions = pgTable(
       .references(() => workflowVersions.id, { onDelete: "cascade" }),
     workflowRunId: text("workflow_run_id"),
     status: text("status").notNull().$type<WorkflowExecutionStatus>(),
-    startSource: text("start_source").$type<WorkflowExecutionStartSource>(),
+    startSource: text("start_source")
+      .notNull()
+      .$type<WorkflowExecutionStartSource>(),
     // The arrival this run answers, which is what makes opening it idempotent:
     // the lifecycle step is an Inngest step and a retry re-runs it, so a second
     // attempt re-claims this row instead of opening a second run for one Event.

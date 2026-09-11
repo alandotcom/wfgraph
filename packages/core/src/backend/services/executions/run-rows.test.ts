@@ -99,18 +99,6 @@ describe("buildRunStartedAuditMessage", () => {
     ).toBe("Manual run of v7 started, to test recipients");
   });
 
-  // `workflow_executions.start_source` is nullable, so the builder has to read a
-  // row that names none rather than index a label table with null.
-  it("drops the label when the row names no start source", () => {
-    expect(
-      buildRunStartedAuditMessage({
-        startSource: null,
-        runMode: "live",
-        version: { kind: "published", number: 7 },
-      })
-    ).toBe("run of v7 started, to real recipients");
-  });
-
   it("appends the Event that started the run", () => {
     expect(
       buildRunStartedAuditMessage({
