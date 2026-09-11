@@ -421,9 +421,6 @@ describe("wait node - event mode", () => {
     expect(store.callsOf("createWaitState")[0]).toMatchObject({
       waitType: "event",
     });
-    // The signal producer settles its fenced claim. The engine records the
-    // resume only after consuming that durable wake.
-    expect(store.callsOf("markWaitStateStatus")).toHaveLength(0);
     expect(store.callsOf("markExecutionRunning")).toEqual([
       { executionId: "exec_wait", workflowVersionId: "ver_test" },
     ]);
@@ -435,6 +432,27 @@ describe("wait node - event mode", () => {
       expect.objectContaining({
         message: "Run resumed from wait on billing/payment.settled",
       }),
+    ]);
+  });
+
+  // The run is the consumer of the wake, so it closes the row whichever producer
+  // sent the signal. A producer whose own settle write failed leaves a
+  // `resuming` row that a later wake could otherwise reclaim once its lease
+  // expires and signal a park this node has long left.
+  it("settles the wait row as resumed when an Event wakes it", async () => {
+    const { execution } = runWait({
+      config: {
+        waitMode: "event",
+        waitFor: [{ event: "billing/payment.settled" }],
+        waitTimeout: "7d",
+      },
+      store,
+      resumeEvent: waitResumeSignal({ approved: true }),
+    });
+    await execution;
+
+    expect(store.callsOf("markWaitStateStatus")).toEqual([
+      { waitStateId: "wait_state_1", status: "resumed" },
     ]);
   });
 

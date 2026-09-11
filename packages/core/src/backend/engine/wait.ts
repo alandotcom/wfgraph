@@ -613,13 +613,15 @@ function markRunningUnderLoadedVersion(
 
 /**
  * The writes every resume opens with, whichever mode is resuming: the version
- * fence, the wait row settled for the wakes that have no producer, and the run's
- * one timeline entry for this wake. It answers the wake the resume acts on.
+ * fence, the wait row, and the run's one timeline entry for this wake. It
+ * answers the wake the resume acts on.
  *
  * Only this engine invocation knows it consumed the wake, so it owns the
- * Execution's running status and that entry. The wait row is settled here only
- * for a timeout and a claim wake; an ordinary resume was settled by the producer
- * that sent the signal, through its own claim fence.
+ * Execution's running status, that entry, and the row it woke from, whichever
+ * producer sent the signal. A producer settles its own claim as well, and
+ * whichever write lands first wins; what matters is that a row the run has
+ * consumed holds no claim, so no later wake can reclaim it at any lease age and
+ * signal a park this node has left.
  *
  * A claim wake (a Cancel or an Exit) skips the version fence, because the
  * running write refuses a claimed run. A claimed run cannot be migrated either,
@@ -663,19 +665,18 @@ function openResume(
     }
 
     const claimed = isClaimWake(wake);
-
-    if (wake.kind === "timeout" || claimed) {
-      yield* fromStore(
-        store.markWaitStateStatus({
-          waitStateId: input.waitStateId,
-          status: claimed
-            ? "cancelled"
-            : mode === "event"
-              ? "timed_out"
-              : "resumed",
-        })
-      );
-    }
+    // A delay park ends on its own clock, so reaching the target is that Wait
+    // resuming. Only an event park that ran out of time timed out.
+    yield* fromStore(
+      store.markWaitStateStatus({
+        waitStateId: input.waitStateId,
+        status: claimed
+          ? "cancelled"
+          : wake.kind === "timeout" && mode === "event"
+            ? "timed_out"
+            : "resumed",
+      })
+    );
 
     yield* fromStore(
       store.recordAuditEvent({

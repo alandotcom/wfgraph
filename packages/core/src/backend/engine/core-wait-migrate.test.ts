@@ -340,7 +340,9 @@ describe("wait node - migration to a later workflow version", () => {
       hops: 1,
     });
     expect(run.value.outputs.lifecycle_1?.data).toEqual({ id: "pay_1" });
-    expect(store.callsOf("markWaitStateStatus")).toHaveLength(0);
+    expect(store.callsOf("markWaitStateStatus")).toEqual([
+      { waitStateId: "wait_state_1", status: "resumed" },
+    ]);
     expect(store.callsOf("markExecutionRunning")).toEqual([
       { executionId: "exec_wait", workflowVersionId: "ver_2" },
     ]);

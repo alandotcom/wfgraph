@@ -117,10 +117,12 @@ export type WaitsRepoMethods = {
     waitStateId: string
   ) => Effect.Effect<WorkflowWaitState | null, DatabaseError>;
   /**
-   * Close out one wait row, answering whether it was still active. A normal
-   * resume starts from `waiting`; timeout and cancellation may also overtake an
-   * in-flight resume claim. Only the fenced claim method can settle `resuming`
-   * as successfully resumed.
+   * Close out one wait row, answering whether it was still active.
+   *
+   * Every settled status is accepted from `waiting` and from `resuming`, so the
+   * run that consumed a wake can close the row whether or not the producer that
+   * sent the signal settled its own claim. A row closed this way no longer
+   * carries a claim, so no later wake can reclaim it at any lease age.
    */
   readonly markWaitStatus: (input: {
     waitStateId: string;
@@ -356,9 +358,7 @@ export function makeWaitsMethods(
           .where(
             and(
               eq(workflowWaitStates.id, input.waitStateId),
-              input.status === "resumed"
-                ? eq(workflowWaitStates.status, "waiting")
-                : inArray(workflowWaitStates.status, ["waiting", "resuming"])
+              inArray(workflowWaitStates.status, ["waiting", "resuming"])
             )
           )
           .returning({ id: workflowWaitStates.id });

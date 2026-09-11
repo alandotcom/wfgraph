@@ -242,10 +242,10 @@ export function makeSqliteWaitsMethods(
       ),
     markWaitStatus: (input) =>
       store.write((database) => {
-        const allowed =
-          input.status === "resumed"
-            ? eq(workflowWaitStates.status, "waiting")
-            : inArray(workflowWaitStates.status, ["waiting", "resuming"]);
+        const allowed = inArray(workflowWaitStates.status, [
+          "waiting",
+          "resuming",
+        ]);
         const now = Date.now();
         return database
           .update(workflowWaitStates)

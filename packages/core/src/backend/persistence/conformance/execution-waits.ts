@@ -426,6 +426,89 @@ export function describeExecutionWaitConformance({
       expect(result.listedAfterClose).toEqual([result.releasedId]);
     });
 
+    // A resume producer claims the row and sends the signal, then its settle
+    // write fails. The woken run closes the row instead, which is what keeps a
+    // claim nobody settled from being handed to a second wake once its lease
+    // expires.
+    it("lets the run settle a claimed row its producer never settled", async () => {
+      const database = await openConnection();
+      await seedPublishedWorkflow(database);
+
+      const result = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const started = yield* executions.startForEntity({
+            execution: {
+              workflowId: "wf_1",
+              workflowVersionId: "ver_1",
+              startSource: "manual",
+              runMode: "live",
+              input: {},
+            },
+            concurrency: "unlimited",
+            supersededReason: "newer start",
+          });
+          if (started.status !== "started") {
+            throw new Error("Start was refused");
+          }
+
+          const wait = yield* executions.startWait({
+            executionId: started.execution.id,
+            workflowId: "wf_1",
+            runId: "run_1",
+            nodeId: "wait_1",
+            nodeName: "Wait for approval",
+            workflowVersionId: "ver_1",
+            waitType: "event",
+            resumeToken: "resume_a",
+            subscribedEvents: [EVENT_ARRIVAL.eventName],
+          });
+          if (!wait) throw new Error("Wait was refused");
+          const claim = yield* executions.claimWaitingStateById({
+            waitStateId: wait.waitStateId,
+            eventName: EVENT_ARRIVAL.eventName,
+            arrival: EVENT_ARRIVAL,
+          });
+          if (!claim) throw new Error("Wait claim was refused");
+
+          const settledByRun = yield* executions.markWaitStatus({
+            waitStateId: wait.waitStateId,
+            status: "resumed",
+          });
+
+          return {
+            settledByRun,
+            status: (yield* executions.findWaitStateById(wait.waitStateId))
+              ?.status,
+            reclaimedById: yield* executions.claimWaitingStateById({
+              waitStateId: wait.waitStateId,
+              eventName: EVENT_ARRIVAL.eventName,
+              arrival: EVENT_ARRIVAL,
+            }),
+            reclaimedByToken: yield* executions.claimWaitingStateByToken({
+              resumeToken: "resume_a",
+              arrival: EVENT_ARRIVAL,
+            }),
+            settledByProducer: yield* executions.settleWaitingStateClaim({
+              waitStateId: wait.waitStateId,
+              claimedAt: claim.claimedAt,
+            }),
+            releasedByProducer: yield* executions.releaseWaitingStateClaim({
+              waitStateId: wait.waitStateId,
+              claimedAt: claim.claimedAt,
+            }),
+          };
+        })
+      );
+
+      expect(result.settledByRun).toBe(true);
+      expect(result.status).toBe("resumed");
+      expect(result.reclaimedById).toBeNull();
+      expect(result.reclaimedByToken).toBeNull();
+      expect(result.settledByProducer).toBe(false);
+      expect(result.releasedByProducer).toBe(false);
+    });
+
     it("refuses a first park resolved from a version the run has left", async () => {
       const database = await openConnection();
       await seedPublishedWorkflow(database);

@@ -13,7 +13,11 @@ import {
   stubExecutionRepo,
   stubInngestClient,
 } from "#src/backend/lib/effect/test-layers";
-import type { WorkflowWaitState } from "#src/backend/services/executions/repo";
+import { DatabaseError } from "#src/backend/lib/effect/database";
+import type {
+  ExecutionRepo,
+  WorkflowWaitState,
+} from "#src/backend/services/executions/repo";
 import { resumeWaitByToken } from "#src/backend/services/workflows/lifecycle/resume";
 
 const RESUME_TOKEN = "resume_token_1";
@@ -42,6 +46,11 @@ function makeResumeSeams(input: {
   sendWaitSignal?: InngestClient["Service"]["sendWaitSignal"] | undefined;
   /** What `settleWaitingStateClaim` answers. Defaults to the claim settling. */
   settled?: boolean | undefined;
+  /**
+   * The whole `settleWaitingStateClaim` seam, for a case that needs the write
+   * to fail rather than to answer false.
+   */
+  settle?: ExecutionRepo["Service"]["settleWaitingStateClaim"] | undefined;
 }) {
   const calls = {
     tokenLookups: [] as string[],
@@ -68,7 +77,8 @@ function makeResumeSeams(input: {
             calls.claimed = false;
             return true;
           }),
-        settleWaitingStateClaim: () => Effect.succeed(input.settled ?? true),
+        settleWaitingStateClaim:
+          input.settle ?? (() => Effect.succeed(input.settled ?? true)),
       }),
       // Left refusing unless a test supplies one, so a send from a request that
       // should never have got this far kills the test.
@@ -173,6 +183,54 @@ describe("resumeWaitByToken", () => {
           executionId: "exec_1",
         });
       })
+    );
+
+    // The durable runtime has the signal, so the run wakes whether or not this
+    // bookkeeping write lands. The woken run settles the row itself, and a
+    // failure here that reached the caller would report a failed resume for a
+    // run that resumed.
+    it.effect(
+      "answers resumed when the settle write fails after the signal was accepted",
+      () =>
+        Effect.gen(function* () {
+          const signals: Array<
+            Parameters<InngestClient["Service"]["sendWaitSignal"]>[0]
+          > = [];
+          const seams = makeResumeSeams({
+            waitState: liveWaitState,
+            sendWaitSignal: (signal) =>
+              Effect.sync(() => {
+                signals.push(signal);
+              }),
+            settle: () =>
+              Effect.fail(
+                new DatabaseError({ cause: new Error("connection reset") })
+              ),
+          });
+
+          const resumed = yield* resumeWaitByToken({
+            token: RESUME_TOKEN,
+            body: { approved: true },
+          }).pipe(Effect.provide(seams.layer));
+
+          assert.deepStrictEqual(resumed, {
+            success: true,
+            status: "resumed",
+            executionId: "exec_1",
+          });
+          assert.strictEqual(signals.length, 1);
+          // A released claim would return the row to `waiting`, where a second
+          // wake could take it and send the signal again.
+          assert.strictEqual(seams.calls.claimed, true);
+
+          const second = yield* resumeWaitByToken({
+            token: RESUME_TOKEN,
+            body: { approved: true },
+          }).pipe(Effect.provide(seams.layer), Effect.exit);
+
+          assert.strictEqual(second._tag, "Failure");
+          assert.strictEqual(signals.length, 1);
+        })
     );
 
     it.effect("allows a retry when the wake signal is refused", () =>
