@@ -21,9 +21,17 @@ export type WorkflowExecution = typeof workflowExecutions.$inferSelect;
 /** One row of `workflow_execution_logs`, one node's attempt within a run. */
 export type WorkflowExecutionLog = typeof workflowExecutionLogs.$inferSelect;
 
-/** One row of `workflow_execution_events`, the audit trail beside a run. */
-export type WorkflowExecutionEvent =
-  typeof workflowExecutionEvents.$inferSelect;
+/**
+ * One row of `workflow_execution_events`, the audit trail beside a run.
+ *
+ * `seq` is absent: it is the PostgreSQL identity column the audit readers order
+ * on after `created_at`, the SQLite table has no counterpart for it, and no
+ * caller reads it.
+ */
+export type WorkflowExecutionEvent = Omit<
+  typeof workflowExecutionEvents.$inferSelect,
+  "seq"
+>;
 
 /** One row of `workflow_wait_states`, a node parked waiting to be woken. */
 export type WorkflowWaitState = typeof workflowWaitStates.$inferSelect;

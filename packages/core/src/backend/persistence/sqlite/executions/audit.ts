@@ -12,7 +12,10 @@ const EXECUTION_EVENTS_LIMIT = 200;
 
 // `created_at` holds whole milliseconds, and a park followed by its in-place
 // resume writes two rows inside one millisecond. The rowid grows with each
-// insert, so it breaks the tie in insertion order.
+// insert, so it breaks the tie in insertion order. The PostgreSQL table settles
+// the same tie with a `seq` identity column, which is the column its reader
+// orders on after `created_at`; SQLite needs no such column because every table
+// here already has a rowid.
 const newestFirst = [desc(workflowExecutionEvents.createdAt), desc(sql`rowid`)];
 const WORKFLOW_EVENTS_LIMIT = 50;
 

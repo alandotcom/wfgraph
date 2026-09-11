@@ -1,6 +1,7 @@
 import { defineRelations, sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
+  bigint,
   boolean,
   check,
   index,
@@ -536,22 +537,37 @@ export const workflowExecutionEvents = pgTable(
     message: text("message").notNull(),
     metadata: jsonb("metadata").$type<JsonObject>(),
     createdAt: timestamp("created_at").notNull().default(utcNow()),
+    // The identity sort key the audit readers order on after `created_at`.
+    // `created_at` defaults from now(), which is the transaction start, so every
+    // row a transaction writes carries the same timestamp and the timeline has
+    // no order of its own. Postgres draws this column from a sequence, so it
+    // grows with each insert and settles a tie in insertion order. The SQLite
+    // schema carries no matching column: its rowid already is that sequence.
+    // Nothing outside this table reads the value, and the repository leaves it
+    // out of every row it returns.
+    seq: bigint("seq", { mode: "number" }).generatedAlwaysAsIdentity(),
   },
   (table) => [
     index("workflow_execution_events_workflow_created_at_idx").on(
       table.workflowId,
-      table.createdAt
+      table.createdAt,
+      table.seq
     ),
     index("workflow_execution_events_execution_created_at_idx").on(
       table.executionId,
-      table.createdAt
+      table.createdAt,
+      table.seq
     ),
     // Each runs-panel audit category filters by workflow and type before it
-    // reads its newest 50 rows. A backward scan supplies the descending order.
+    // reads its newest 50 rows. A backward scan supplies the descending order,
+    // which is why `seq` is in each of these three indexes: the readers order
+    // on `created_at` and `seq` together, and an index holding only the first
+    // of the two would leave Postgres sorting every matching row.
     index("workflow_execution_events_workflow_type_created_at_idx").on(
       table.workflowId,
       table.eventType,
-      table.createdAt
+      table.createdAt,
+      table.seq
     ),
   ]
 );

@@ -923,6 +923,67 @@ export function describeExecutionConformance({
       ]);
     });
 
+    it("returns a run's timeline newest first, in insertion order", async () => {
+      const database = await openConnection();
+      await seedPublishedWorkflow(database);
+
+      const result = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const started = yield* executions.startForEntity({
+            execution: {
+              workflowId: "wf_1",
+              workflowVersionId: "ver_1",
+              startSource: "event",
+              runMode: "live",
+              entityValue: "appointment_1",
+              input: {},
+            },
+            concurrency: "unlimited",
+            supersededReason: "newer start",
+          });
+          if (started.status !== "started") {
+            throw new Error("Start was refused");
+          }
+
+          // The repository offers no way for a caller to put several audit rows
+          // in one transaction, so these three are written back to back. They
+          // still land in the same millisecond often enough to decide the
+          // assertion: SQLite stores whole milliseconds, and PostgreSQL takes
+          // created_at from now(), which any transaction writing more than one
+          // row repeats. Each backend carries a sort key that grows with every
+          // insert, the rowid on SQLite and the seq identity column on
+          // PostgreSQL, and that key is what puts these three in order.
+          yield* executions.recordAuditEvent({
+            workflowId: "wf_1",
+            executionId: started.execution.id,
+            eventType: "run_started",
+            message: "Started",
+          });
+          yield* executions.recordAuditEvent({
+            workflowId: "wf_1",
+            executionId: started.execution.id,
+            eventType: "run_waiting",
+            message: "Waiting",
+          });
+          yield* executions.recordAuditEvent({
+            workflowId: "wf_1",
+            executionId: started.execution.id,
+            eventType: "run_resumed",
+            message: "Resumed",
+          });
+
+          return yield* executions.listEvents(started.execution.id);
+        })
+      );
+
+      expect(result.map((event) => event.message)).toEqual([
+        "Resumed",
+        "Waiting",
+        "Started",
+      ]);
+    });
+
     it("limits each workflow audit event type independently", async () => {
       const database = await openConnection();
       await seedPublishedWorkflow(database);
