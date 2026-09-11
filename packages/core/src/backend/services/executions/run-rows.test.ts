@@ -54,14 +54,8 @@ function createExecution(
   };
 }
 
-const runTarget = {
-  id: "wf_1",
-  name: "Appointment Reminders",
-  graph: { nodes: [], edges: [] },
-  versionId: "ver_1",
-  catalogFingerprint: "fp",
-  version: { kind: "published" as const, number: 3 },
-};
+/** The version each fixture Execution pinned, as `workflow_versions` holds it. */
+const pinnedVersion = { kind: "published" as const, number: 3 };
 
 describe("buildRunStartedAuditMessage", () => {
   it("names the start source that opened the run", () => {
@@ -103,6 +97,18 @@ describe("buildRunStartedAuditMessage", () => {
         version: { kind: "published", number: 7 },
       })
     ).toBe("Manual run of v7 started, to test recipients");
+  });
+
+  // `workflow_executions.start_source` is nullable, so the builder has to read a
+  // row that names none rather than index a label table with null.
+  it("drops the label when the row names no start source", () => {
+    expect(
+      buildRunStartedAuditMessage({
+        startSource: null,
+        runMode: "live",
+        version: { kind: "published", number: 7 },
+      })
+    ).toBe("run of v7 started, to real recipients");
   });
 
   it("appends the Event that started the run", () => {
@@ -175,11 +181,8 @@ describe("enqueueStartedRun", () => {
         // `markEnqueueFailed` is left refusing, so a compensation on the happy
         // path would kill the test rather than pass unnoticed.
         const started = yield* enqueueStartedRun({
-          workflow: runTarget,
-          start: { source: "event" },
-          executionId: "exec_1",
-          runMode: "live",
-          payload: { order: "o1" },
+          execution: createExecution({ input: { order: "o1" } }),
+          version: pinnedVersion,
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
@@ -208,6 +211,66 @@ describe("enqueueStartedRun", () => {
       })
     );
 
+    // Every field of the entry comes off the committed row, which is what lets a
+    // retried delivery resend a row an earlier attempt opened without rebuilding
+    // the start it was opened from.
+    serviceIt.effect(
+      "writes the opening timeline entry from the row alone",
+      () =>
+        Effect.gen(function* () {
+          const calls = {
+            audits: [] as Array<
+              Parameters<ExecutionRepo["Service"]["recordAuditEvent"]>[0]
+            >,
+          };
+
+          yield* enqueueStartedRun({
+            execution: createExecution({
+              runMode: "test",
+              startEventName: "app/appointment.created",
+              entityType: "appointment",
+              entityId: "appt_8813",
+              deliveryId: "dlv_1",
+            }),
+            version: pinnedVersion,
+          }).pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                stubExecutionRepo({
+                  markEnqueued: () => Effect.void,
+                  recordAuditEvent: (input) =>
+                    Effect.sync(() => {
+                      calls.audits.push(input);
+                    }),
+                }),
+                stubInngestClient({
+                  sendRunRequested: () => Effect.succeed({ eventId: "evt_1" }),
+                })
+              )
+            )
+          );
+
+          const audit = calls.audits[0];
+          assert.isDefined(audit);
+          assert.strictEqual(audit.eventType, "run_started");
+          assert.strictEqual(
+            audit.message,
+            "Event-triggered run of v3 started for app/appointment.created, to test recipients"
+          );
+          // `entityId` is the host's own record id and stays off the timeline.
+          assert.deepStrictEqual(audit.metadata, {
+            startSource: "event",
+            runMode: "test",
+            versionKind: "published",
+            versionNumber: 3,
+            eventName: "app/appointment.created",
+            entityType: "appointment",
+            deliveryId: "dlv_1",
+            runId: "evt_1",
+          });
+        })
+    );
+
     // The row is closed before the failure travels on, so a run is never left
     // sitting in "running" with nothing behind it that could finish it.
     serviceIt.effect("closes the row when the enqueue is refused", () =>
@@ -219,11 +282,8 @@ describe("enqueueStartedRun", () => {
         // `markEnqueued` is left refusing: no run reached the bus, and stamping
         // one as though it had would be the bug.
         const failure = yield* enqueueStartedRun({
-          workflow: runTarget,
-          start: { source: "event" },
-          executionId: "exec_1",
-          runMode: "live",
-          payload: {},
+          execution: createExecution(),
+          version: pinnedVersion,
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
@@ -264,11 +324,8 @@ describe("enqueueStartedRun", () => {
           };
 
           yield* enqueueStartedRun({
-            workflow: runTarget,
-            start: { source: "event" },
-            executionId: "exec_1",
-            runMode: "live",
-            payload: {},
+            execution: createExecution(),
+            version: pinnedVersion,
           }).pipe(
             Effect.provide(
               Layer.mergeAll(
@@ -304,11 +361,8 @@ describe("enqueueStartedRun", () => {
         const recorder = makeRecordingLogger();
 
         yield* enqueueStartedRun({
-          workflow: runTarget,
-          start: { source: "event" },
-          executionId: "exec_1",
-          runMode: "live",
-          payload: {},
+          execution: createExecution(),
+          version: pinnedVersion,
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
@@ -346,11 +400,10 @@ describe("enqueueStartedRun", () => {
         const order: string[] = [];
 
         yield* enqueueStartedRun({
-          workflow: runTarget,
-          start: { source: "event", eventName: "app/appointment.created" },
-          executionId: "exec_1",
-          runMode: "live",
-          payload: {},
+          execution: createExecution({
+            startEventName: "app/appointment.created",
+          }),
+          version: pinnedVersion,
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
@@ -391,11 +444,8 @@ describe("enqueueStartedRun", () => {
           const recorder = makeRecordingLogger();
 
           const started = yield* enqueueStartedRun({
-            workflow: runTarget,
-            start: { source: "event", deliveryId: "dlv_1" },
-            executionId: "exec_1",
-            runMode: "live",
-            payload: {},
+            execution: createExecution({ deliveryId: "dlv_1" }),
+            version: pinnedVersion,
           }).pipe(
             Effect.provide(
               Layer.mergeAll(

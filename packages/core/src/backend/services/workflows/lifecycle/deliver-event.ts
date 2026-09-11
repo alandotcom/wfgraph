@@ -21,10 +21,8 @@ import {
   type EffectLogger,
 } from "#src/backend/lib/effect/app-logger";
 import { evaluateSerializedCondition } from "#src/backend/lib/cel/condition-payload";
-import {
-  ExecutionRepo,
-  type WorkflowExecution,
-} from "#src/backend/services/executions/repo";
+import { InternalFailure } from "#src/backend/lib/effect/failures";
+import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import { requestCanceledOutlet } from "#src/backend/services/workflows/lifecycle/cancel";
 import {
   startWithConcurrency,
@@ -45,7 +43,6 @@ import {
   recordStartRefusal,
   startAdmissionDecisionId,
   toWorkflowRunTarget,
-  type WorkflowRunStart,
 } from "#src/backend/services/executions/run-rows";
 import { connectionMatches } from "@wfgraph/shared/lifecycle/event-connections";
 import {
@@ -396,18 +393,24 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
         deliveryId: input.deliveryId,
       });
       if (committed) {
+        // The timeline entry names the version the committed row pinned, which
+        // a Publish since the first attempt may no longer be the published one.
+        const pinned = yield* repo.findVersionById(committed.workflowVersionId);
+        if (!pinned) {
+          // A run's version row cascades with the run, so a committed Execution
+          // pointing at a version that is gone is an invariant break rather
+          // than a state a retry can recover from.
+          return yield* new InternalFailure({
+            error:
+              "The Execution this delivery committed pins a workflow version that no longer exists",
+          });
+        }
+
         // Inngest drops a second send under the run's idempotency key, so a
         // row the earlier attempt already sent starts nothing new here.
         const sent = yield* enqueueStartedRun({
-          workflow: runTarget,
-          start: committedRunStart({
-            execution: committed,
-            eventName: input.event.name,
-            deliveryId: input.deliveryId,
-          }),
-          runMode: committed.runMode,
-          payload: input.payload,
-          executionId: committed.id,
+          execution: committed,
+          version: { kind: pinned.kind, number: pinned.version },
         });
         const outcome: LifecycleDeliveryOutcome = {
           kind: "started",
@@ -596,31 +599,6 @@ export const deliverToWaits = Effect.fn("deliverToWaits")(function* (input: {
 
   return { workflowId: input.workflowId, resumedWaits };
 });
-
-/**
- * The start a committed Execution was opened with, read off its row. The typed
- * Entity identity is used where the row holds one, because that is the identity
- * Concurrency serialized the run on.
- */
-function committedRunStart(input: {
-  execution: WorkflowExecution;
-  eventName: string;
-  deliveryId: string;
-}): WorkflowRunStart {
-  const { execution } = input;
-  const origin = {
-    source: "event" as const,
-    eventName: input.eventName,
-    deliveryId: input.deliveryId,
-  };
-  return execution.entityType !== null && execution.entityId !== null
-    ? {
-        ...origin,
-        entityType: execution.entityType,
-        entityId: execution.entityId,
-      }
-    : { ...origin, entityValue: execution.entityValue ?? undefined };
-}
 
 function skipped(
   workflowId: string,

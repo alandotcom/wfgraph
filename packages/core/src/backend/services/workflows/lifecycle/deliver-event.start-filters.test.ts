@@ -29,7 +29,10 @@ import type {
   WorkflowExecution,
 } from "#src/backend/services/executions/repo";
 import type { EntityEligibilityReason } from "@wfgraph/shared/lifecycle/execution-contracts";
-import type { EventSubscriber } from "#src/backend/services/workflows/repo";
+import type {
+  EventSubscriber,
+  WorkflowRepo,
+} from "#src/backend/services/workflows/repo";
 import { applyLifecycleRules } from "#src/backend/services/workflows/lifecycle/deliver-event";
 
 /**
@@ -48,6 +51,7 @@ const requestCancelForEntityMock = vi.fn<Repo["requestCancelForEntity"]>();
 const findAdmissionRefusalMock = vi.fn<Repo["findAdmissionRefusal"]>();
 const recordAdmissionRefusalMock = vi.fn<Repo["recordAdmissionRefusal"]>();
 const findByDeliveryMock = vi.fn<Repo["findByDelivery"]>();
+const findVersionByIdMock = vi.fn<WorkflowRepo["Service"]["findVersionById"]>();
 const recordAuditEventMock = vi.fn<Repo["recordAuditEvent"]>(() => Effect.void);
 const sendRunRequestedMock = vi.fn<
   InngestClient["Service"]["sendRunRequested"]
@@ -405,6 +409,9 @@ function stubPublishedWorkflow(workflow: Workflow) {
         publishedVersion: publishedVersion(workflow),
       }),
     findPublishedVersion: () => Effect.succeed(publishedVersion(workflow)),
+    // A recovered Execution names the version it pinned, which the timeline
+    // entry reads the version number off.
+    findVersionById: findVersionByIdMock,
   });
 }
 
@@ -449,6 +456,7 @@ beforeEach(() => {
   findAdmissionRefusalMock.mockReset();
   recordAdmissionRefusalMock.mockReset();
   findByDeliveryMock.mockReset();
+  findVersionByIdMock.mockReset();
   recordAuditEventMock.mockReset();
   sendRunRequestedMock.mockReset();
   sendCancelRequestedMock.mockReset();
@@ -467,6 +475,9 @@ beforeEach(() => {
     Effect.succeed({ kind: "refused", reason: input.reason })
   );
   findByDeliveryMock.mockImplementation(() => Effect.succeed(null));
+  findVersionByIdMock.mockImplementation(() =>
+    Effect.succeed(publishedVersion(createWorkflow({ rules: startRules })))
+  );
   recordAuditEventMock.mockImplementation(() => Effect.void);
   sendRunRequestedMock.mockImplementation(() =>
     Effect.succeed({ eventId: "evt_1" })
@@ -905,6 +916,66 @@ describe("applyLifecycleRules and Start Filters", () => {
             entityType: "appointment",
             deliveryId: "evt_crashed",
           });
+        })
+    );
+
+    // The committed row pins the version the first attempt ran, and a Publish
+    // between the two attempts moves the workflow on. The timeline entry has to
+    // name the graph the run is executing, which is the pinned one.
+    it.effect(
+      "names the version the committed Execution pinned, not the one published now",
+      () =>
+        Effect.gen(function* () {
+          const workflow = createWorkflow({
+            rules: guardedRules({ checkpoints: ["before-execution"] }),
+          });
+          const pinned = publishedVersion(workflow);
+          const republished: PublishedWorkflowVersion = {
+            ...pinned,
+            id: "ver_2",
+            version: 2,
+          };
+          findByDeliveryMock.mockImplementation(() =>
+            Effect.succeed(
+              winnerExecution({ deliveryId: "evt_crashed", enqueuedAt: null })
+            )
+          );
+          findVersionByIdMock.mockImplementation(() => Effect.succeed(pinned));
+
+          const outcome = yield* applyLifecycleRules({
+            subscriber: subscriber(),
+            event: appointmentCreated,
+            payload: videoPayload,
+            deliveryId: "evt_crashed",
+          }).pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                stubWorkflowRepo({
+                  findById: () => Effect.succeed(workflow),
+                  findByIdWithPublishedVersionForRun: () =>
+                    Effect.succeed({
+                      workflow,
+                      publishedVersion: republished,
+                    }),
+                  findPublishedVersion: () => Effect.succeed(republished),
+                  findVersionById: findVersionByIdMock,
+                }),
+                lifecyclePorts
+              )
+            )
+          );
+
+          assert.strictEqual(outcome.kind, "started");
+          assert.deepStrictEqual(findVersionByIdMock.mock.calls, [["ver_1"]]);
+          const started = recordAuditEventMock.mock.calls.find(
+            ([event]) => event.eventType === "run_started"
+          )?.[0];
+          assert.include(started?.message ?? "", "run of v1 started");
+          assert.deepInclude(started?.metadata, { versionNumber: 1 });
+          assert.deepStrictEqual(
+            sendRunRequestedMock.mock.calls.map(([data]) => data),
+            [{ executionId: "exec_winner" }]
+          );
         })
     );
 

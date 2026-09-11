@@ -40,7 +40,6 @@ export type StartWithConcurrencyInput = {
   start: WorkflowRunStart;
   runMode: WorkflowMode;
   payload: JsonObject;
-  requestPayload?: JsonObject | undefined;
   logger: EffectLogger;
 };
 
@@ -172,12 +171,8 @@ export const startWithConcurrency = Effect.fn("startWithConcurrency")(
     }
 
     const started = yield* enqueueStartedRun({
-      workflow,
-      start,
-      runMode,
-      payload,
-      requestPayload: input.requestPayload,
-      executionId: opened.execution.id,
+      execution: opened.execution,
+      version: workflow.version,
     });
 
     const outcome: StartOutcome = {

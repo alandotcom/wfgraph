@@ -11,7 +11,10 @@ import {
 } from "#src/backend/lib/effect/inngest-client";
 import type { RunScopedAuditEventType } from "@wfgraph/shared/lifecycle/audit-event-types";
 import { signalRunToStop } from "#src/backend/services/executions/end-runs";
-import { ExecutionRepo } from "#src/backend/services/executions/repo";
+import {
+  ExecutionRepo,
+  type WorkflowExecution,
+} from "#src/backend/services/executions/repo";
 import type { JsonObject, JsonObjectDraft } from "@wfgraph/shared/types/json";
 import type {
   EntityEligibilityReason,
@@ -101,23 +104,16 @@ function workflowRunIdentity(start: WorkflowRunStart) {
 }
 
 export type EnqueueStartedRunInput = {
-  workflow: WorkflowRunTarget;
-  start: WorkflowRunStart;
-  runMode: WorkflowMode;
-  /** The row Concurrency opened, which this hands to the bus. */
-  executionId: string;
   /**
-   * The payload the entry node and downstream templates read from. It is JSON
-   * because it arrived as JSON and is stored as JSON in the JSONB
-   * `workflow_executions.input` column.
+   * The committed `workflow_executions` row: the run to send, and every column
+   * the bus message and the timeline entry are written from.
    */
-  payload: JsonObject;
+  execution: WorkflowExecution;
   /**
-   * The untouched request body, kept alongside the payload so steps can reach
-   * the raw shape. Entrypoints that never substitute a mock payload leave this
-   * out and get the payload itself.
+   * The version the run pinned, read from `workflow_versions`. The row carries
+   * only the version id, and the timeline entry names the version by number.
    */
-  requestPayload?: JsonObject | undefined;
+  version: PinnedRunVersion;
 };
 
 export type StartedWorkflowRun = {
@@ -175,18 +171,21 @@ const IGNORED_SUBJECTS: Record<WorkflowExecutionStartSource, string> = {
  * version.
  */
 function runStartedSubject(
-  startSource: WorkflowExecutionStartSource,
+  startSource: WorkflowExecutionStartSource | null,
   version: PinnedRunVersion | undefined
 ): string {
-  const label = RUN_STARTED_LABELS[startSource];
+  // `workflow_executions.start_source` is nullable, so a row written before the
+  // column was filled in names no start source and the sentence opens with the
+  // graph instead.
+  const label = startSource ? `${RUN_STARTED_LABELS[startSource]} ` : "";
 
   if (version?.kind === "draft_snapshot") {
-    return `${label} Draft run started`;
+    return `${label}Draft run started`;
   }
   if (version?.number != null) {
-    return `${label} run of v${version.number} started`;
+    return `${label}run of v${version.number} started`;
   }
-  return `${label} run started`;
+  return `${label}run started`;
 }
 
 /**
@@ -199,7 +198,7 @@ function runRecipientsPhrase(runMode: WorkflowMode): string {
 }
 
 export function buildRunStartedAuditMessage(input: {
-  startSource: WorkflowExecutionStartSource;
+  startSource: WorkflowExecutionStartSource | null;
   runMode: WorkflowMode;
   eventName?: string | undefined;
   /** The version this run pinned, which names the graph that ran. */
@@ -386,15 +385,18 @@ const loggerFor = (workflowId: string) =>
  * write is logged and the run is reported as started: failing would put the
  * caller's Inngest step into a retry that enqueues nothing new and re-runs
  * everything around it.
+ *
+ * Everything the bus message and the timeline entry need is on the row, so an
+ * attempt that finds an Execution a previous attempt already committed resends
+ * it with nothing recomputed.
  */
 export const enqueueStartedRun = Effect.fn("enqueueStartedRun")(function* (
   input: EnqueueStartedRunInput
 ) {
   const repo = yield* ExecutionRepo;
   const inngest = yield* InngestClient;
-  const { workflow, start, runMode } = input;
-  const logger = yield* loggerFor(workflow.id);
-  const execution = { id: input.executionId };
+  const { execution, version } = input;
+  const logger = yield* loggerFor(execution.workflowId);
 
   const run = yield* inngest
     .sendRunRequested({
@@ -417,24 +419,26 @@ export const enqueueStartedRun = Effect.fn("enqueueStartedRun")(function* (
     "write the run's opening timeline entry",
     execution.id,
     repo.recordAuditEvent({
-      workflowId: workflow.id,
+      workflowId: execution.workflowId,
       executionId: execution.id,
       eventType: "run_started",
       message: buildRunStartedAuditMessage({
-        startSource: start.source,
-        runMode,
-        eventName: start.eventName,
-        version: workflow.version,
+        startSource: execution.startSource,
+        runMode: execution.runMode,
+        eventName: execution.startEventName ?? undefined,
+        version,
       }),
+      // `entityId` stays off the timeline: it is the host's own record id, and
+      // the row that carries it is what an operator reads it from.
       metadata: omitUndefined({
-        startSource: start.source,
-        runMode,
-        versionKind: workflow.version.kind,
-        versionNumber: workflow.version.number ?? undefined,
-        eventName: start.eventName,
-        entityValue: start.entityValue,
-        entityType: start.entityType,
-        deliveryId: start.deliveryId,
+        startSource: execution.startSource ?? undefined,
+        runMode: execution.runMode,
+        versionKind: version.kind,
+        versionNumber: version.number ?? undefined,
+        eventName: execution.startEventName ?? undefined,
+        entityValue: execution.entityValue ?? undefined,
+        entityType: execution.entityType ?? undefined,
+        deliveryId: execution.deliveryId ?? undefined,
         runId: run.eventId,
       }),
     })
@@ -443,7 +447,7 @@ export const enqueueStartedRun = Effect.fn("enqueueStartedRun")(function* (
   const started: StartedWorkflowRun = {
     executionId: execution.id,
     runId: run.eventId,
-    runMode,
+    runMode: execution.runMode,
   };
   return started;
 });
@@ -488,21 +492,22 @@ const closeRefusedEnqueue = Effect.fn("closeRefusedEnqueue")(function* (
   failure: InngestError
 ) {
   const repo = yield* ExecutionRepo;
-  const logger = yield* loggerFor(input.workflow.id);
+  const { execution } = input;
+  const logger = yield* loggerFor(execution.workflowId);
   const error =
     failure.cause instanceof Error
       ? failure.cause.message
       : "Failed to enqueue run";
 
   yield* signalRunToStop({
-    workflowId: input.workflow.id,
-    executionId: input.executionId,
+    workflowId: execution.workflowId,
+    executionId: execution.id,
     reason: error,
-    eventName: input.start.eventName,
+    eventName: execution.startEventName ?? undefined,
   });
 
   const closed = yield* repo.markEnqueueFailed({
-    executionId: input.executionId,
+    executionId: execution.id,
     error,
   });
 
@@ -511,7 +516,7 @@ const closeRefusedEnqueue = Effect.fn("closeRefusedEnqueue")(function* (
     // allowed to overwrite.
     yield* logger.info(
       "Enqueue reported failure but the run had already left the in-flight statuses",
-      { executionId: input.executionId }
+      { executionId: execution.id }
     );
   }
 });
