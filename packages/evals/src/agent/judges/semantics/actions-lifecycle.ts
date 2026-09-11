@@ -1,10 +1,11 @@
 import { compact } from "es-toolkit/array";
 import { isEqual } from "es-toolkit/predicate";
-import type { ConditionModel } from "@wfgraph/shared/conditions/condition-model";
 import { parseConditionModel } from "@wfgraph/shared/conditions/condition-schema";
 import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import {
   checkEach,
+  conditionShape,
+  normalizeConditionShape,
   type SemanticsContext,
 } from "#src/agent/judges/semantics/context";
 import type { EvalLifecycleFilter } from "#src/agent/types";
@@ -105,8 +106,8 @@ function wrongRequiredLifecycleRules(context: SemanticsContext): string[] {
           new Set(requiredEligibility.checkpoints)
         ) &&
         isEqual(
-          lifecycleFilterShape(parsedEligibility.model),
-          requiredEligibility.condition
+          conditionShape(parsedEligibility.model),
+          normalizeConditionShape(requiredEligibility.condition)
         ));
   return compact([
     required.concurrency === undefined ||
@@ -149,16 +150,6 @@ function includesRequiredEntries(
   );
 }
 
-function lifecycleFilterShape(model: ConditionModel) {
-  return {
-    groupLogic: model.groupLogic,
-    groups: model.groups.map((group) => ({
-      logic: group.logic,
-      rules: group.conditions.map(({ id: _id, ...rule }) => rule),
-    })),
-  };
-}
-
 function missingLifecycleFilters(input: {
   context: SemanticsContext;
   requiredFilters: readonly EvalLifecycleFilter[] | undefined;
@@ -181,7 +172,10 @@ function missingLifecycleFilters(input: {
         );
         return (
           parsed.valid &&
-          isEqual(lifecycleFilterShape(parsed.model), required.filter)
+          isEqual(
+            conditionShape(parsed.model),
+            normalizeConditionShape(required.filter)
+          )
         );
       });
     return hasFilter

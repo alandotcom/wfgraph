@@ -216,6 +216,155 @@ describe("assessScenarioSemantics", () => {
     });
   });
 
+  it("accepts a set eligibility condition with its values in a different order", () => {
+    const document = completedDocument();
+    const lifecycle = document.nodes[0];
+    if (!lifecycle) {
+      throw new Error("Lifecycle fixture is missing");
+    }
+    lifecycle.data.config = {
+      lifecycleRules: {
+        startEvents: ["applicant.created"],
+        cancelEvents: [],
+        concurrency: "unlimited",
+        trackedEntity: {
+          type: "applicant",
+          bindings: { "applicant.created": "applicant" },
+        },
+        entityEligibility: {
+          checkpoints: ["before-execution"],
+          // The graph lists the eligible statuses as paused, then active.
+          condition: JSON.stringify({
+            version: 2,
+            groupLogic: "and",
+            groups: [
+              {
+                id: "group",
+                logic: "and",
+                conditions: [
+                  {
+                    id: "rule",
+                    field: "status",
+                    fieldType: "string",
+                    operator: "is_one_of",
+                    values: ["paused", "active"],
+                  },
+                ],
+              },
+            ],
+          }),
+        },
+      },
+    };
+    const lifecycleInput: AgentEvalInput = {
+      ...input,
+      expected: {
+        requiredLifecycleRules: {
+          entityEligibility: {
+            checkpoints: ["before-execution"],
+            // The scenario requires the same statuses, active then paused.
+            // Membership is the same set, so the comparison must still score
+            // a match.
+            condition: {
+              groupLogic: "and",
+              groups: [
+                {
+                  logic: "and",
+                  rules: [
+                    {
+                      field: "status",
+                      fieldType: "string",
+                      operator: "is_one_of",
+                      values: ["active", "paused"],
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      },
+    };
+
+    expect(assessScenarioSemantics(lifecycleInput, document)).toMatchObject({
+      score: 1,
+    });
+  });
+
+  it("rejects a set eligibility condition missing a required member", () => {
+    const document = completedDocument();
+    const lifecycle = document.nodes[0];
+    if (!lifecycle) {
+      throw new Error("Lifecycle fixture is missing");
+    }
+    lifecycle.data.config = {
+      lifecycleRules: {
+        startEvents: ["applicant.created"],
+        cancelEvents: [],
+        concurrency: "unlimited",
+        trackedEntity: {
+          type: "applicant",
+          bindings: { "applicant.created": "applicant" },
+        },
+        entityEligibility: {
+          checkpoints: ["before-execution"],
+          // "cancelled" is not one of the statuses lifecycleInput requires.
+          condition: JSON.stringify({
+            version: 2,
+            groupLogic: "and",
+            groups: [
+              {
+                id: "group",
+                logic: "and",
+                conditions: [
+                  {
+                    id: "rule",
+                    field: "status",
+                    fieldType: "string",
+                    operator: "is_one_of",
+                    values: ["paused", "cancelled"],
+                  },
+                ],
+              },
+            ],
+          }),
+        },
+      },
+    };
+    const lifecycleInput: AgentEvalInput = {
+      ...input,
+      expected: {
+        requiredLifecycleRules: {
+          entityEligibility: {
+            checkpoints: ["before-execution"],
+            condition: {
+              groupLogic: "and",
+              groups: [
+                {
+                  logic: "and",
+                  rules: [
+                    {
+                      field: "status",
+                      fieldType: "string",
+                      operator: "is_one_of",
+                      values: ["active", "paused"],
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      },
+    };
+
+    expect(assessScenarioSemantics(lifecycleInput, document)).toEqual({
+      score: 0,
+      rationale:
+        "Lifecycle Entity Eligibility does not match the required checkpoints and condition.",
+    });
+  });
+
   it("rejects duplicate eligibility checkpoints", () => {
     const document = completedDocument();
     const lifecycle = document.nodes[0];
