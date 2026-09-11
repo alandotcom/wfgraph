@@ -615,6 +615,62 @@ export function describeExecutionConformance({
       });
     });
 
+    // A row can be `waiting` with no `enqueuedAt` when the send landed and the
+    // `markEnqueued` write was refused. Closing it leaves no parked time on a
+    // terminal row, the same as every other terminal write.
+    it("clears the parked time on a waiting row a refused enqueue closes", async () => {
+      const database = await openConnection();
+      await seedPublishedWorkflow(database);
+      const started = await attemptStart(database, {
+        deliveryId: "delivery_waiting",
+        entityType: "appointment",
+        entityId: "appt_waiting",
+      });
+      if (started.status !== "started") {
+        throw new Error("The unlimited start was refused");
+      }
+      const executionId = started.execution.id;
+
+      const result = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const wait = yield* executions.startWait({
+            executionId,
+            workflowId: "wf_1",
+            runId: "run_waiting",
+            nodeId: "wait_1",
+            nodeName: "Wait a day",
+            workflowVersionId: "ver_1",
+            side: "started",
+            waitType: "delay",
+            waitUntil: new Date("2026-10-20T15:00:00.000Z"),
+          });
+          if (!wait) throw new Error("Wait was refused");
+
+          const readRow = executions.findByDelivery({
+            workflowId: "wf_1",
+            deliveryId: "delivery_waiting",
+          });
+          const parked = yield* readRow;
+          const closed = yield* executions.markEnqueueFailed({
+            executionId,
+            error: "refused",
+          });
+          const after = yield* readRow;
+          return { parked, closed, after };
+        })
+      );
+
+      expect(result.parked?.status).toBe("waiting");
+      expect(result.parked?.enqueuedAt).toBeNull();
+      expect(result.parked?.waitingAt).toBeInstanceOf(Date);
+      expect(result.closed).toBe(true);
+      expect(result.after).toMatchObject({
+        status: "failed",
+        waitingAt: null,
+      });
+    });
+
     it("enforces workflow-name and workflow-run uniqueness", async () => {
       const database = await openConnection();
       await database.run(

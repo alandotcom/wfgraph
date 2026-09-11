@@ -637,6 +637,7 @@ export function makeRunsMethods(
             status: "failed",
             error: input.error,
             completedAt: new Date(),
+            waitingAt: null,
           })
           .where(
             and(
