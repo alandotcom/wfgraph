@@ -25,7 +25,12 @@ const DEVELOPMENT_HARNESS_TESTS = "scripts/**/*.test.ts";
 // client projects both exclude it by name. Without that, one file would run
 // twice: once against a database and once against a runner with none.
 const POSTGRES_TESTS = "packages/*/src/**/*.pg.test.ts";
-const ALWAYS_EXCLUDED = ["**/node_modules/**", "**/dist/**"];
+const ALWAYS_EXCLUDED = [
+  "**/node_modules/**",
+  "**/dist/**",
+  // The full-stack properties start Inngest and run through their own command.
+  "**/*.reliability.test.ts",
+];
 
 export default defineConfig({
   resolve: {

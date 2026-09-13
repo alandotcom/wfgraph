@@ -150,6 +150,7 @@ minimumReleaseAgeExclude:
   - "@effect/sql-sqlite-node@4.0.0-rc.113"
   - "@effect/vitest@4.0.0-rc.113"
   - effect@4.0.0-rc.113
+  - fast-check@4.10.0
 
 patchedDependencies:
   # RC4 calls Effect's removed Schema.TaggedErrorClass API. Upstream replaced it

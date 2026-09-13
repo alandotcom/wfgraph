@@ -16,6 +16,7 @@
     "test": "vitest run && pnpm --filter @wfgraph/evals test",
     "test:watch": "vitest",
     "test:postgres": "vitest run --project=postgres",
+    "test:reliability": "vitest run --config vitest.reliability.config.ts",
     "evals": "pnpm --filter @wfgraph/evals evals",
     "evals:ui": "pnpm --filter @wfgraph/evals evals:ui",
     "type-check": "pnpm exec tsc --noEmit",
