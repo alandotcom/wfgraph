@@ -1,6 +1,7 @@
 # Accelerated time for full-stack reliability tests
 
-Research status: feasibility investigation, not an implemented clock controller.
+Research status: an initial all-in-guest QEMU probe is implemented and measured.
+It is separate from the Workflow Graph reliability suite.
 Inspected the installed Inngest CLI 1.44.0, commit
 `a54673a45b00ea10917620ab3e05a21d04579db7`.
 
@@ -97,5 +98,41 @@ rate multiplier, but requires knowing that relevant work has finished and all
 components are ready for the advance. Existing per-component fake clocks do not
 provide that distributed readiness guarantee.
 
-This investigation did not benchmark startup versus waiting, so it does not
-predict the end-to-end speedup for the current 50-scenario suite.
+These source-level findings do not predict the end-to-end speedup for the
+current 50-scenario suite. Standalone measurements follow.
+
+## Initial QEMU result
+
+The [standalone experiment](../../scripts/experiments/accelerated-time/README.md)
+runs Node 24.16.0, PostgreSQL 17.11, and Inngest 1.44.0 in one ARM64 Linux guest
+under QEMU 10.0.0. The host enforces its own watchdog and timestamps serial output.
+The accelerated mode uses `-icount shift=3,align=off,sleep=off`; the baseline uses
+the same guest and ordinary QEMU time.
+
+One paired run on the local ARM64 Mac with OrbStack produced:
+
+| Host-observed interval                     | QEMU baseline | QEMU accelerated |
+| ------------------------------------------ | ------------: | ---------------: |
+| Five-second Node timer                     |        5.02 s |          0.025 s |
+| Five-second durable sleep                  |        5.34 s |           2.06 s |
+| 35-second callback                         |       35.06 s |           5.38 s |
+| Whole run, including VM setup and shutdown |       56.57 s |          25.91 s |
+
+Both runs passed the clock-agreement assertions, PostgreSQL transaction-time
+checks, one-time retry, and single-execution checks for the callback exceeding
+the queue's 30-second lease. All three Inngest runs reached `COMPLETED` before
+shutdown. This exercises lease renewal but does not instrument renewal counts or
+inject failures during renewal. A separate SIGINT check left no experiment
+container running.
+
+Local raw evidence is under
+`test-results/clock-experiment/2026-09-13T01-53-56.167Z/`. These are serial-receipt
+measurements from one pair, not exact CPU timings or a statistical benchmark.
+The speedup is relative to the emulated baseline, not native execution. The
+large difference between the idle timer and real workflow results shows why
+clock advancement alone cannot predict the suite's speedup.
+
+The result supports further experiments with real engine time acceleration.
+It does not establish the speed or reliability of moving the full Workflow
+Graph suite into the VM; event/timeout races and broader failure coverage remain
+to be tested.

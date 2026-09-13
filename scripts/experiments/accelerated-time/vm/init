@@ -1,0 +1,31 @@
+#!/bin/sh
+export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev
+mkdir -p /dev/pts /dev/shm /run/postgresql
+mount -t devpts devpts /dev/pts
+mount -t tmpfs tmpfs /dev/shm
+ip link set lo up
+export HOME=/root
+export INNGEST_BINARY=/usr/local/bin/inngest
+export DATABASE_URL=postgres://workflow:workflow@127.0.0.1:5432/workflow_builder
+export WFGRAPH_TEST_DATABASE_URL="$DATABASE_URL"
+# This optional file is trusted shell input supplied by the experiment runner.
+if [ -f /work/guest.env ]; then set -a; . /work/guest.env; set +a; fi
+finish() {
+    echo "VM_PROBE_EXIT=$1"
+    sync
+    poweroff -f
+}
+mkdir -p /data/postgres
+chown -R postgres:postgres /data/postgres /run/postgresql
+su postgres -c 'initdb -D /data/postgres --auth=trust --encoding=UTF8 --locale=C' >/work/postgres-init.log 2>&1 || { cat /work/postgres-init.log; finish 91; }
+su postgres -c 'pg_ctl -D /data/postgres -l /work/postgres.log -o "-h 127.0.0.1 -p 5432 -F" -w start' || finish 92
+psql -U postgres -h 127.0.0.1 -v ON_ERROR_STOP=1 -c "CREATE ROLE workflow LOGIN PASSWORD 'workflow'" -c 'CREATE DATABASE workflow_builder OWNER workflow' || finish 93
+printf 'VM_READY node=%s postgres=%s\n' "$(node --version)" "$(postgres --version)"
+cd /work || finish 94
+node /work/probe.mjs
+result=$?
+if [ "$result" -ne 0 ]; then cat /work/postgres.log; fi
+finish "$result"

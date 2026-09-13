@@ -134,7 +134,11 @@ const config: KnipConfig = {
       // The SQLite schema is an input to drizzle-kit rather than runtime code.
       // Its config is registered above, but knip's Drizzle plugin does not carry
       // a schema reached from a second config across workspace boundaries.
-      entry: ["src/backend/persistence/sqlite/schema.ts"],
+      entry: [
+        "src/backend/persistence/sqlite/schema.ts",
+        // Bundled into the isolated QEMU guest by test:clock-experiment.
+        "src/backend/testing/accelerated-time/probe.ts",
+      ],
       project: ["src/**/*.{ts,tsx}"],
 
       ignoreDependencies: [

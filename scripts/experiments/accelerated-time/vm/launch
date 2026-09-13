@@ -1,0 +1,25 @@
+#!/bin/sh
+set -eu
+mode=${1:-baseline}
+case "$mode" in baseline|accelerated) ;; *) echo 'Expected baseline or accelerated' >&2; exit 2;; esac
+cp -a /input/. /guest/work/
+# PostgreSQL writes its own log in the shared scratch directory.
+chmod 1777 /guest/work
+cd /guest
+find . -print0 | cpio --null -o -H newc 2>/dev/null | gzip -1 > /tmp/guest.cpio.gz
+# QEMU documents one instruction per 2^shift ns, and sleep=off jumps only
+# when the whole vCPU sleeps: https://www.qemu.org/docs/master/system/invocation.html
+# This does not promise a fixed ratio between host and guest elapsed time.
+qemu-system-aarch64 --version | head -1
+set -- -machine virt -cpu cortex-a72 -accel tcg,thread=single -smp 1 \
+    -m "${VM_MEMORY_MB:-2048}" -kernel /guest/boot/vmlinuz-virt \
+    -initrd /tmp/guest.cpio.gz \
+    -append 'console=ttyAMA0 rdinit=/init panic=-1 loglevel=3' \
+    -nographic -monitor none -no-reboot -nic none \
+    -rtc base=2026-09-12T12:00:00,clock=vm \
+    -object rng-random,id=rng0,filename=/dev/urandom -device virtio-rng-device,rng=rng0
+if [ "$mode" = accelerated ]; then
+    set -- "$@" -icount "shift=${VM_ICOUNT_SHIFT:-3},align=off,sleep=off"
+fi
+printf 'VM_MODE=%s VM_ICOUNT_SHIFT=%s\n' "$mode" "${VM_ICOUNT_SHIFT:-3}"
+exec qemu-system-aarch64 "$@"
