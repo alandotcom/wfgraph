@@ -72,6 +72,73 @@ overhead, its TCG threading constraints, guest wall-clock behavior, and external
 network traffic need measurement. The application, Inngest, and database must all
 live inside the guest; a database on the host would retain real time.
 
+## CI startup and VM reuse
+
+The first CI run gives a useful startup breakdown. In the accelerated run,
+`VM_READY` arrived at 33.39 seconds, `primitive-start` at 38.59 seconds,
+`engine-ready` at 46.01 seconds, and the complete probe at 67.08 seconds; the
+whole process took 67.67 seconds. The ordinary QEMU baseline reached `VM_READY`
+at 27.26 seconds and took 85.51 seconds overall. `VM_READY` is emitted after the
+launcher has packaged the guest, the kernel has booted, and PostgreSQL has been
+initialized and started. It is not a kernel-boot-only measurement.
+
+One experiment can amortize guest boot and PostgreSQL startup across the whole
+reliability corpus. Stage the existing suite before boot and execute it inside
+one guest. Keep the harness's existing per-scenario application and Inngest
+instances so that scenario isolation remains unchanged. This needs no live
+host-to-guest control channel. Reusing Inngest between scenarios would be a
+separate change requiring a proven reset boundary.
+
+The current [launcher](../../scripts/experiments/accelerated-time/vm/launch)
+copies the per-run input into `/guest` and compresses the entire tree into one
+initramfs archive. A base archive can be generated during the image build, then
+the launcher can append a small per-run archive containing `/work`. The Linux
+kernel accepts a sequence of compressed or uncompressed cpio archives in one
+initramfs buffer, and a `TRAILER!!!` marker permits independently generated
+archives to be concatenated. This should remove repeated packaging of the
+immutable guest files; it still needs a measurement because decompression and
+guest boot remain.
+[Linux initramfs buffer format](https://docs.kernel.org/driver-api/early-userspace/buffer-format.html)
+
+A booted QEMU snapshot is possible, but the clock state needs a proof. QEMU's
+documented snapshot path for instruction-counted execution is attached to
+record/replay: `rrsnapshot` creates a starting snapshot and replay restores it
+at the recorded point. The QEMU QMP reference exposes an `icount` field for a
+snapshot only when record/replay is enabled. That does not establish that a
+generic `savevm`/`loadvm` cycle preserves the ordinary `-icount shift=...`
+clock used by this experiment. A snapshot taken after all services are ready
+could remove boot work, but it would need a probe for restored monotonic time,
+timers, PostgreSQL, and Inngest state. QEMU's fast snapshot-load implementation
+uses Linux `userfaultfd` and is Linux-only, which also needs checking inside the
+GitHub runner's Docker environment.
+[QEMU record/replay snapshots](https://www.qemu.org/docs/master/system/replay.html)
+[QEMU QMP snapshot state](https://www.qemu.org/docs/master/interop/qemu-qmp-ref.html)
+[QEMU fast snapshot load](https://www.qemu.org/docs/master/devel/migration/fast-snapshot-load.html)
+
+Hardware virtualization is unlikely to be a dependable option on the hosted
+runner. GitHub currently documents `ubuntu-24.04-arm` as a four-vCPU, 16-GB
+ARM64 Linux runner for public repositories, but separately says nested VMs are
+technically possible and officially unsupported. QEMU KVM or Firecracker could
+reduce ordinary boot and execution costs only where nested KVM actually works;
+they do not provide QEMU's instruction-counted virtual clock. Firecracker's
+official design documents that vCPUs run through `KVM_RUN` and that AArch64
+guests use `arch_sys_counter`, while its snapshot support is optimized for fast
+resume. That makes Firecracker a possible self-hosted KVM boot optimization,
+but not a drop-in accelerated-clock engine for this test.
+[GitHub-hosted runners](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)
+[GitHub nested virtualization note](https://docs.github.com/en/actions/concepts/runners/github-hosted-runners)
+[Firecracker design](https://github.com/firecracker-microvm/firecracker/blob/main/docs/design.md)
+[Firecracker snapshots](https://github.com/firecracker-microvm/firecracker/blob/main/docs/snapshotting/snapshot-support.md)
+
+Docker layer caching can remove repeated image-build work in CI. Docker's GitHub
+Actions cache backend supports `cache-from: type=gha` and
+`cache-to: type=gha,mode=max`, so the kernel, PostgreSQL, and Inngest download
+layers can be reused between workflow runs. This caches BuildKit image layers;
+it does not cache the running VM, initramfs packaging performed by `launch`, or
+the guest's PostgreSQL/Inngest startup. It is useful alongside the boot changes,
+not a substitute for them.
+[Docker GitHub Actions cache backend](https://docs.docker.com/build/cache/backends/gha/)
+
 ## Assessment
 
 Two approaches merit a small proof before a harness redesign:
@@ -136,3 +203,48 @@ The result supports further experiments with real engine time acceleration.
 It does not establish the speed or reliability of moving the full Workflow
 Graph suite into the VM; event/timeout races and broader failure coverage remain
 to be tested.
+
+## Full reliability suite comparison
+
+The next experiment ran the existing three reliability test files with seed
+`424242`, five generated cases per property, both database backends, and the
+original three-worker Vitest configuration. Fixed examples bring a successful
+campaign to 50 scenarios across six property groups. The VM booted once; each
+scenario retained its existing application, database isolation, and Inngest
+lifecycle. Assertions and deadlines were unchanged.
+
+The native run used Node 24.16.0, PostgreSQL 17.10, and Inngest 1.44.0 on the
+ARM64 Mac. It passed all six property groups in 49.43 seconds of host time.
+The accelerated guest used Node 24.16.0, PostgreSQL 17.11, Inngest 1.44.0,
+4 GB RAM, and the existing single-vCPU `icount shift=3` configuration. It
+finished unsuccessfully after 231.85 host seconds, with one property group
+passing and five failing. The suite started at 20.60 seconds and ran for
+210.62 seconds.
+
+The saved failure artifacts report Inngest health timeouts against the
+unchanged 30-second guest-clock deadline. Reproduction and shrinking can
+replace earlier scenario evidence, so these artifacts do not prove that every
+initial failure had that cause. The failed campaign includes reproduction and
+shrinking work; its elapsed time cannot establish a speed ratio for completing
+all 50 scenarios. It does show that this setup did not produce a faster,
+successful run of the existing suite.
+
+The guest runs compiled copies of the original tests through Vitest, with
+small discovery files importing the bundles as native dependencies. This
+avoids asking Vite to transform all bundled application dependencies again.
+Preparation, including bundling and installation of the Linux Vitest toolchain,
+is outside the measured VM launch interval. Native PostgreSQL was already
+running, while the VM timing includes PostgreSQL setup. The comparison evaluates
+the practical configurations, not the isolated cost of instruction counting:
+the native suite can use multiple host CPUs while the guest has one vCPU.
+
+Raw evidence is in `test-results/full-suite-clock/native-node24.{json,log}` and
+`test-results/clock-experiment/2026-09-13T22-22-25.802Z/`. The latter contains
+the guest's Vitest report, five failure artifacts, and host-clock observations.
+
+As a packaging control, the exact compiled test bundles were then run natively
+with the host's Vitest toolchain and Inngest binary under Node 24.16.0. All six
+property groups passed in 47.82 seconds. This supports attributing the failed
+comparison to the guest setup rather than changed test bodies. Control evidence
+is in `test-results/full-suite-clock/native-payload-control.{json,log}` and
+`test-results/full-suite-clock/native-payload/vitest-control-results.json`.

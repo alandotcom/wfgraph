@@ -50,14 +50,56 @@ PR Checks runs both modes sequentially on an `ubuntu-24.04-arm` runner. The
 `clock-experiment` artifact contains the logs and JSON measurements, including
 failure evidence. CI checks correctness without requiring a minimum speedup.
 
+## Run the existing reliability suite
+
+```sh
+pnpm run test:clock-experiment accelerated reliability
+```
+
+This workload boots one VM and runs the three existing reliability test files
+against both SQLite and PostgreSQL. It uses the original Vitest configuration:
+three isolated fork workers, unchanged assertions and deadlines. The campaign
+uses `WFGRAPH_RELIABILITY_RUNS=5` and seed `424242`, configuring 50 scenarios
+including fixed examples. Failures stop a property and trigger its normal replay
+and shrinking.
+
+Preparation bundles the checkout's tests and application dependencies, then
+installs Linux Vitest and Vite at the checkout's installed versions using pnpm.
+The existing lockfile supplies dependency resolutions; the reduced importer is
+regenerated. Bundles are loaded as native modules through small test entrypoints
+to avoid transforming application dependencies again inside the guest. The work
+directory and its generated lockfile are retained with the results.
+
+The reliability workload defaults to 4 GB guest memory and a ten-minute host
+watchdog. Reported host time starts after preparation and includes packaging,
+boot, service startup, test execution, artifact export, and shutdown. A separate
+`suite` interval measures the time between the guest starting and finishing
+Vitest. Vitest's own durations use the guest clock, so use the host measurements
+for speed comparisons.
+
+Artifacts include `accelerated-vitest-results.json`, the full serial transcript,
+and the original failure evidence for any failed properties. A pass requires all
+six Vitest properties to pass. The VM's 50-scenario configuration matches this
+native command:
+
+```sh
+WFGRAPH_RELIABILITY_RUNS=5 WFGRAPH_RELIABILITY_SEED=424242 \
+  WFGRAPH_RELIABILITY_BACKEND=all pnpm run test:reliability
+```
+
+The native command also needs `WFGRAPH_TEST_DATABASE_URL`. The VM provisions its
+own PostgreSQL. Bundling, operating system, and database versions can differ
+between native and guest runs; retain those differences when interpreting the
+comparison. Current CI continues to run the smaller clock probe.
+
 ## Limits
 
-This fixture tests the SDK, durable engine, and database directly. It is not the
+The default probe tests the SDK, durable engine, and database directly. It is not the
 Workflow Graph application and is not a replacement for `test:reliability`.
 It does not yet test event-versus-timeout races, fault recovery during lease
 renewal, or other database engines. A single paired run is a feasibility result,
-not a benchmark distribution. Any speedup is relative to the same QEMU baseline,
-not the native reliability suite.
+not a benchmark distribution. The default probe compares QEMU modes; the reliability workload can be compared
+with a separately timed native suite.
 
 See [the clock research](../../../docs/internal/reliability-clock-research.md)
 for source references and the alternatives considered.

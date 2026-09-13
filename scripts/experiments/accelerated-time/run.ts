@@ -1,8 +1,14 @@
 import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
+import { prepareFullSuite } from "./full-suite.ts";
 import { build } from "esbuild";
 
+const workload = process.argv[3] ?? "probe";
+if (!["probe", "reliability"].includes(workload))
+  throw new Error("Expected probe or reliability workload");
+const memoryMb =
+  process.env.VM_MEMORY_MB ?? (workload === "reliability" ? "4096" : "2048");
 const selectedMode = process.argv[2] ?? "both";
 if (!["both", "baseline", "accelerated"].includes(selectedMode)) {
   throw new Error("Expected baseline, accelerated, or both");
@@ -13,17 +19,22 @@ const directory = resolve(
 );
 const work = resolve(directory, "work");
 await mkdir(work, { recursive: true });
-await build({
-  entryPoints: ["packages/core/src/backend/testing/accelerated-time/probe.ts"],
-  outfile: resolve(work, "probe.mjs"),
-  bundle: true,
-  platform: "node",
-  format: "esm",
-  target: "node24",
-  banner: {
-    js: 'import { createRequire as clockCreateRequire } from "node:module"; const require = clockCreateRequire(import.meta.url);',
-  },
-});
+if (workload === "reliability") {
+  await prepareFullSuite(work);
+} else
+  await build({
+    entryPoints: [
+      "packages/core/src/backend/testing/accelerated-time/probe.ts",
+    ],
+    outfile: resolve(work, "probe.mjs"),
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    target: "node24",
+    banner: {
+      js: 'import { createRequire as clockCreateRequire } from "node:module"; const require = clockCreateRequire(import.meta.url);',
+    },
+  });
 
 const measurements: Array<{
   mode: string;
@@ -37,6 +48,7 @@ for (const mode of modes) {
   const name = `wfgraph-clock-${crypto.randomUUID()}`;
   const started = performance.now();
   const events: Array<{ hostElapsedMs: number; line: string }> = [];
+  const artifacts: string[] = [];
   let output = "";
   let pending = "";
   let timedOut = false;
@@ -45,7 +57,7 @@ for (const mode of modes) {
     "sh",
     ["scripts/experiments/accelerated-time/vm/run.sh", mode, work],
     {
-      env: { ...process.env, VM_CONTAINER_NAME: name },
+      env: { ...process.env, VM_CONTAINER_NAME: name, VM_MEMORY_MB: memoryMb },
       stdio: ["ignore", "pipe", "pipe"],
     }
   );
@@ -56,6 +68,9 @@ for (const mode of modes) {
     const lines = pending.split("\n");
     pending = lines.pop() ?? "";
     for (const line of lines) {
+      if (line.startsWith("CLOCK_SUITE_ARTIFACT ")) {
+        artifacts.push(line.slice("CLOCK_SUITE_ARTIFACT ".length));
+      }
       if (
         line.includes("CLOCK_PROBE_EVENT ") ||
         line.includes("VM_READY") ||
@@ -84,23 +99,62 @@ for (const mode of modes) {
   };
   process.once("SIGINT", interrupt);
   process.once("SIGTERM", interrupt);
-  const deadline = setTimeout(() => {
-    timedOut = true;
-    // This name belongs only to this run, including any guest grandchildren.
-    void stopContainer();
-  }, 240_000);
+  const deadline = setTimeout(
+    () => {
+      timedOut = true;
+      // This name belongs only to this run, including any guest grandchildren.
+      void stopContainer();
+    },
+    workload === "reliability" ? 600_000 : 240_000
+  );
   // Each mode gets the machine to itself for a meaningful wall-clock comparison.
   // eslint-disable-next-line no-await-in-loop
   const exitCode = await new Promise<number | null>((done, reject) => {
     child.once("error", reject);
-    child.once("exit", (code) => done(code));
+    child.once("close", (code) => done(code));
   }).finally(async () => {
     clearTimeout(deadline);
     process.removeListener("SIGINT", interrupt);
     process.removeListener("SIGTERM", interrupt);
     await stopContainer();
   });
+  // Preserve the serial transcript even if a malformed artifact cannot be decoded.
+  // eslint-disable-next-line no-await-in-loop
+  await writeFile(resolve(directory, `${mode}.log`), output);
+  let suitePassed = workload !== "reliability";
+  let artifactError: string | undefined;
+  try {
+    // eslint-disable-next-line no-await-in-loop
+    await Promise.all(
+      artifacts.map(async (serialized) => {
+        const artifact = JSON.parse(serialized);
+        if (
+          typeof artifact.path !== "string" ||
+          typeof artifact.content !== "string"
+        ) {
+          throw new Error("Invalid guest artifact");
+        }
+        await writeFile(
+          resolve(directory, `${mode}-${basename(artifact.path)}`),
+          artifact.content
+        );
+        if (artifact.path === "vitest-results.json") {
+          const report = JSON.parse(artifact.content);
+          suitePassed =
+            report.success === true &&
+            report.numTotalTests === 6 &&
+            report.numPassedTests === 6 &&
+            report.numFailedTests === 0 &&
+            report.numPendingTests === 0;
+        }
+      })
+    );
+  } catch (error) {
+    artifactError = String(error);
+  }
   const success =
+    suitePassed &&
+    !artifactError &&
     exitCode === 0 &&
     !timedOut &&
     !interrupted &&
@@ -108,11 +162,15 @@ for (const mode of modes) {
     output.includes("VM_PROBE_EXIT=0");
   // These are serial-console receipt intervals, not instrumented host CPU timings.
   const intervalsMs: Record<string, number> = {};
-  for (const phase of ["primitive", "sleep", "lease"]) {
+  for (const phase of ["primitive", "sleep", "lease", "suite"]) {
     const firstLabel =
-      phase === "primitive" ? "primitive-start" : `${phase}-before`;
+      phase === "primitive" || phase === "suite"
+        ? `${phase}-start`
+        : `${phase}-before`;
     const lastLabel =
-      phase === "primitive" ? "primitive-end" : `${phase}-after`;
+      phase === "primitive" || phase === "suite"
+        ? `${phase}-end`
+        : `${phase}-after`;
     const first = events.find((event) =>
       event.line.includes(`"phase":"${firstLabel}"`)
     );
@@ -124,17 +182,18 @@ for (const mode of modes) {
   }
   const result = {
     mode,
+    workload,
+    memoryMb,
     shift: process.env.VM_ICOUNT_SHIFT ?? "3",
     exitCode,
     timedOut,
     interrupted,
+    artifactError,
     intervalsMs,
     success,
     hostElapsedMs: performance.now() - started,
     events,
   };
-  // eslint-disable-next-line no-await-in-loop
-  await writeFile(resolve(directory, `${mode}.log`), output);
   // eslint-disable-next-line no-await-in-loop
   await writeFile(
     resolve(directory, `${mode}.json`),
@@ -160,12 +219,16 @@ const accelerated = measurements.find(
 if (baseline?.success && accelerated?.success) {
   const comparison = {
     totalHostSpeedup: baseline.hostElapsedMs / accelerated.hostElapsedMs,
-    intervalSpeedups: {
-      primitive:
-        baseline.intervalsMs.primitive / accelerated.intervalsMs.primitive,
-      sleep: baseline.intervalsMs.sleep / accelerated.intervalsMs.sleep,
-      lease: baseline.intervalsMs.lease / accelerated.intervalsMs.lease,
-    },
+    intervalSpeedups:
+      workload === "reliability"
+        ? { suite: baseline.intervalsMs.suite / accelerated.intervalsMs.suite }
+        : {
+            primitive:
+              baseline.intervalsMs.primitive /
+              accelerated.intervalsMs.primitive,
+            sleep: baseline.intervalsMs.sleep / accelerated.intervalsMs.sleep,
+            lease: baseline.intervalsMs.lease / accelerated.intervalsMs.lease,
+          },
     measurements,
     note: "Single paired observation; intervals include serial output delivery. Correctness PASS does not imply a speedup.",
   };

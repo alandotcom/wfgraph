@@ -60,8 +60,12 @@ const config: KnipConfig = {
         // Named in the concurrently command line scripts/dev.ts builds, which
         // is a string knip cannot follow:
         "scripts/dev-client.ts",
+        // Bundled into the isolated clock experiment guest by full-suite.ts:
+        "scripts/experiments/accelerated-time/guest-suite.ts",
       ],
       project: ["*.ts", "scripts/**/*.ts"],
+      // BusyBox supplies this diagnostic command inside the Linux guest.
+      ignoreBinaries: ["dmesg"],
 
       ignoreDependencies: [
         // @effect/tsgo embeds the Effect language-service plugin into its
