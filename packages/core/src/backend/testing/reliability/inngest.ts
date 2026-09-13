@@ -51,6 +51,26 @@ type InngestRunner = {
   send: (name: string, data: JsonObject, id?: string) => Promise<void>;
 };
 export async function startInngest(directory: string): Promise<InngestRunner> {
+  // The CLI cannot inherit our listening sockets. Another worker or an outgoing
+  // connection can take a port between releasing it and the CLI binding it.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      // Each failed process must stop before another can use its data directory.
+      // eslint-disable-next-line no-await-in-loop
+      return await startInngestAttempt(directory);
+    } catch (error) {
+      if (
+        attempt >= 3 ||
+        !(error instanceof Error) ||
+        !error.message.includes("bind: address already in use")
+      ) {
+        throw error;
+      }
+    }
+  }
+}
+
+async function startInngestAttempt(directory: string): Promise<InngestRunner> {
   const ports = await freePorts();
   const url = `http://127.0.0.1:${ports[0]}`;
   const child = spawn(
