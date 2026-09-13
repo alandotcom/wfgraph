@@ -26,6 +26,7 @@ import {
 } from "#src/lib/authorization-test-support";
 
 const catalog: ExtensionCatalog = {
+  entities: [],
   events: [],
   actions: [],
   integrations: [

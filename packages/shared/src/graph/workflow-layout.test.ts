@@ -34,6 +34,7 @@ const RESCHEDULED_EVENT = "app/appointment.rescheduled";
 const CONFIRMED_EVENT = "app/appointment.confirmed";
 
 const layoutCatalog: ExtensionCatalog = {
+  entities: [],
   integrations: [],
   actions: [],
   events: [

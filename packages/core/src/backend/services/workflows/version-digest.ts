@@ -74,8 +74,17 @@ export function catalogFingerprint(catalog: ExtensionCatalog): string {
         payloadFields: event.payloadFields
           .map((field) => field.path)
           .toSorted(),
+        entityBindings: sortBy(event.entityBindings ?? [], ["name"]),
       })),
       ["name"]
+    ),
+    entities: sortBy(
+      catalog.entities.map((entity) => ({
+        type: entity.type,
+        stateFields: sortBy(entity.stateFields, ["path"]),
+        stateSchemaDigest: entity.stateSchemaDigest,
+      })),
+      ["type"]
     ),
     actions: sortBy(
       catalog.actions.map((action) => ({

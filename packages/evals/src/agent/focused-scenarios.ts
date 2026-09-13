@@ -6,6 +6,7 @@ import {
   configuredApplicantDocument,
   connectedIntegrations,
   emptyDocument,
+  entityEvalCatalog,
   evalCatalog,
   scenario,
 } from "#src/agent/scenario-fixtures";
@@ -108,6 +109,119 @@ export const focusedScenarios: Array<{
   name: string;
   input: AgentEvalInput;
 }> = [
+  {
+    name: "tracks an Entity without adding eligibility",
+    input: {
+      ...scenario({
+        messages: [
+          {
+            role: "user",
+            content:
+              "When an applicant is created, score them. Track every run by Applicant. Do not add an eligibility condition.",
+          },
+        ],
+        document: emptyDocument,
+        integrations: [],
+        expected: {
+          exactActions: { "score-applicant": 1 },
+          exactEvents: { start: ["applicant.created"], cancel: [] },
+          requiredLifecycleRules: {
+            trackedEntity: {
+              type: "applicant",
+              bindings: { "applicant.created": "applicant" },
+            },
+            entityEligibility: null,
+          },
+          requiredFlows: [
+            {
+              source: { kind: "lifecycle" },
+              target: { kind: "action", actionId: "score-applicant" },
+              sourceHandle: "started",
+            },
+          ],
+          requiredReferences: [
+            {
+              node: { kind: "action", actionId: "score-applicant" },
+              key: "applicantId",
+              path: "applicantId",
+            },
+          ],
+        },
+        expectedCompletion: { outcome: "ready" },
+        intentCriteria: [
+          "The workflow tracks Applicant identity through the Event's declared binding.",
+          "Entity tracking remains valid without an eligibility condition.",
+        ],
+      }),
+      catalog: entityEvalCatalog,
+    },
+  },
+  {
+    name: "authors enum-based Entity Eligibility",
+    input: {
+      ...scenario({
+        messages: [
+          {
+            role: "user",
+            content:
+              "When an applicant is created, score them. Track every run by Applicant. The applicant is eligible while their current status is active or paused. Check before the run starts and before every step.",
+          },
+        ],
+        document: emptyDocument,
+        integrations: [],
+        expected: {
+          exactActions: { "score-applicant": 1 },
+          exactEvents: { start: ["applicant.created"], cancel: [] },
+          requiredLifecycleRules: {
+            trackedEntity: {
+              type: "applicant",
+              bindings: { "applicant.created": "applicant" },
+            },
+            entityEligibility: {
+              checkpoints: ["before-execution", "before-node"],
+              condition: {
+                groupLogic: "and",
+                groups: [
+                  {
+                    logic: "and",
+                    rules: [
+                      {
+                        field: "status",
+                        fieldType: "string",
+                        operator: "is_one_of",
+                        values: ["active", "paused"],
+                      },
+                    ],
+                  },
+                ],
+              },
+            },
+          },
+          requiredFlows: [
+            {
+              source: { kind: "lifecycle" },
+              target: { kind: "action", actionId: "score-applicant" },
+              sourceHandle: "started",
+            },
+          ],
+          requiredReferences: [
+            {
+              node: { kind: "action", actionId: "score-applicant" },
+              key: "applicantId",
+              path: "applicantId",
+            },
+          ],
+        },
+        expectedCompletion: { outcome: "ready" },
+        intentCriteria: [
+          "Eligibility reads current Applicant State rather than the arriving Event payload.",
+          "The two accepted enum values are represented by one is-one-of rule.",
+          "Eligibility is checked before the run starts and before every step.",
+        ],
+      }),
+      catalog: entityEvalCatalog,
+    },
+  },
   {
     name: "finds requested capabilities in a large catalog",
     input: {

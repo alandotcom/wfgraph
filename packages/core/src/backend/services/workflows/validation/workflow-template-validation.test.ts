@@ -19,6 +19,7 @@ function anEvent(name: string, payloadFields: ReferenceField[]): EventMetadata {
 }
 
 const catalog: ExtensionCatalog = {
+  entities: [],
   events: [
     anEvent(CREATED, [
       { path: "appointmentId", type: "string" },

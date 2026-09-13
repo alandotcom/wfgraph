@@ -49,7 +49,9 @@ export type TimestampOperator =
   | TimestampRelativeOperator
   | TimestampAbsoluteOperator;
 
-export type StringOperator = "equals" | "not_equals" | "contains";
+export type StringScalarOperator = "equals" | "not_equals" | "contains";
+
+export type StringSetOperator = "is_one_of" | "is_not_one_of";
 
 export type NumberOperator =
   | "equals"
@@ -104,11 +106,19 @@ export type TimestampAbsoluteConditionRule = ConditionRuleBase & {
   dateTime: string;
 };
 
-export type StringConditionRule = ConditionRuleBase & {
-  fieldType: "string";
-  operator: StringOperator;
-  value: string;
-};
+export type StringConditionRule = ConditionRuleBase &
+  (
+    | {
+        fieldType: "string";
+        operator: StringScalarOperator;
+        value: string;
+      }
+    | {
+        fieldType: "string";
+        operator: StringSetOperator;
+        values: string[];
+      }
+  );
 
 export type NumberConditionRule = ConditionRuleBase & {
   fieldType: "number";
@@ -201,6 +211,12 @@ export function isNullCheckConditionRule(
   return isNullCheckOperator(rule.operator);
 }
 
+export function isStringSetConditionRule(
+  rule: ConditionRule
+): rule is Extract<StringConditionRule, { operator: StringSetOperator }> {
+  return rule.operator === "is_one_of" || rule.operator === "is_not_one_of";
+}
+
 /**
  * The field paths this model reads as timestamps.
  *
@@ -235,36 +251,24 @@ export function collectTimestampFieldPaths(model: ConditionModel): string[] {
   return [...paths];
 }
 
-/**
- * The text operand a rule compares against, when it has one.
- *
- * Only two rule shapes carry authored text: what a string rule compares against,
- * and the moment an absolute timestamp rule names. A count of time units and a
- * number are already literal, and a null check has no operand at all.
- *
- * Callers ask this to find text that is not yet a value -- a Wait match resolving
- * `{{@node:Label.field}}` references at park time, and a Start Filter refusing one
- * outright, having no run to resolve it from.
- */
-export function readConditionRuleOperand(
-  rule: ConditionRule
-): string | undefined {
+/** The authored text operands a rule compares against. */
+export function readConditionRuleOperands(rule: ConditionRule): string[] {
   if (isNullCheckConditionRule(rule)) {
-    return undefined;
+    return [];
   }
 
   if (rule.fieldType === "string") {
-    return rule.value;
+    return isStringSetConditionRule(rule) ? rule.values : [rule.value];
   }
 
   if (
     rule.fieldType === "timestamp" &&
     isTimestampAbsoluteConditionRule(rule)
   ) {
-    return rule.dateTime;
+    return [rule.dateTime];
   }
 
-  return undefined;
+  return [];
 }
 
 export function createDefaultConditionRule(

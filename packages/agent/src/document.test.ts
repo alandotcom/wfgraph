@@ -21,7 +21,7 @@ describe("makeWorkflowDraft", () => {
       Effect.gen(function* () {
         const draft = yield* makeWorkflowDraft({
           document: initialDocument,
-          catalog: { actions: [], events: [], integrations: [] },
+          catalog: { actions: [], entities: [], events: [], integrations: [] },
           integrations: [],
           validateUpdate: () => null,
           validateDraft: () => ({

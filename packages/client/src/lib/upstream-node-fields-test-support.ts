@@ -14,6 +14,7 @@ import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 // name. A case says what the surface holds by writing this object.
 export type MutableCatalog = {
   events: EventMetadata[];
+  entities: ExtensionCatalog["entities"];
   actions: ActionMetadata[];
   integrations: ExtensionCatalog["integrations"];
 };
@@ -32,6 +33,7 @@ export type MutableCatalog = {
 export function createSurface(): MutableCatalog {
   return {
     events: [],
+    entities: [],
     actions: [],
     integrations: [],
   };

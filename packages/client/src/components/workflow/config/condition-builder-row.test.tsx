@@ -103,12 +103,14 @@ function ControlledRow({
   fields,
   initialValue,
   onChange = vi.fn(),
+  setOperatorsRequireEnumValues,
 }: {
   fields: ConditionSelectableField[];
   initialValue: string;
   onChange?:
     | ((next: { model: string; expression: string }) => void)
     | undefined;
+  setOperatorsRequireEnumValues?: boolean | undefined;
 }) {
   const [value, setValue] = useState(initialValue);
 
@@ -125,6 +127,7 @@ function ControlledRow({
         setValue(next.model);
         onChange(next);
       }}
+      setOperatorsRequireEnumValues={setOperatorsRequireEnumValues}
       stickyHeader
       value={value}
     />
@@ -134,7 +137,8 @@ function ControlledRow({
 function renderRow(
   fields: ConditionSelectableField[],
   initialValue: string,
-  onChange?: (next: { model: string; expression: string }) => void
+  onChange?: (next: { model: string; expression: string }) => void,
+  options?: { setOperatorsRequireEnumValues?: boolean | undefined }
 ) {
   return render(
     <ExtensionCatalogProvider value={emptyExtensionCatalog}>
@@ -142,6 +146,7 @@ function renderRow(
         fields={fields}
         initialValue={initialValue}
         onChange={onChange}
+        setOperatorsRequireEnumValues={options?.setOperatorsRequireEnumValues}
       />
     </ExtensionCatalogProvider>
   );
@@ -382,6 +387,58 @@ describe("ConditionBuilderRow field picker", () => {
         { value: "is_not_set", label: "is not set" },
       ])
     );
+  });
+
+  it("offers set operators on every string field by default", () => {
+    const setOperators = expect.arrayContaining([
+      { value: "is_one_of", label: "is one of" },
+      { value: "is_not_one_of", label: "is not one of" },
+    ]);
+    expect(
+      getOperatorOptionsByFieldType("string", false, ["confirmed", "booked"])
+    ).toEqual(setOperators);
+    expect(getOperatorOptionsByFieldType("string", false)).toEqual(
+      setOperators
+    );
+  });
+
+  it("offers set operators only for enumerated strings when asked to", () => {
+    const restricted = { setOperatorsRequireEnumValues: true };
+    expect(
+      getOperatorOptionsByFieldType(
+        "string",
+        false,
+        ["confirmed", "booked"],
+        restricted
+      )
+    ).toEqual(
+      expect.arrayContaining([{ value: "is_one_of", label: "is one of" }])
+    );
+    expect(
+      getOperatorOptionsByFieldType("string", false, undefined, restricted)
+    ).not.toEqual(
+      expect.arrayContaining([{ value: "is_one_of", label: "is one of" }])
+    );
+  });
+
+  it("carries a scalar enum value into and out of a set operator", () => {
+    const setRule = applyOperatorValueToCondition(
+      {
+        id: "r",
+        field: "status",
+        fieldType: "string",
+        operator: "equals",
+        value: "confirmed",
+      },
+      "is_one_of"
+    );
+    expect(setRule).toMatchObject({
+      operator: "is_one_of",
+      values: ["confirmed"],
+    });
+    expect(
+      setRule && applyOperatorValueToCondition(setRule, "equals")
+    ).toMatchObject({ operator: "equals", value: "confirmed" });
   });
 
   it("preserves an open-record key when a timestamp operator is rewritten", () => {
@@ -635,7 +692,39 @@ describe("ConditionBuilderRow view mode names what a rule still owes", () => {
     ];
     const view = renderRow(withEnum, stringRule("status", "cancelled"));
 
-    expect(view.getByText(/no longer offers this value/)).toBeTruthy();
+    expect(view.getByText(/no longer offers/)).toBeTruthy();
+  });
+
+  it("names a stale value in an enum set", () => {
+    const withEnum = [
+      field("status", "Look Up Donor", { enumValues: ["confirmed", "booked"] }),
+    ];
+    const view = renderRow(
+      withEnum,
+      serializeConditionModel({
+        version: 2,
+        groupLogic: "and",
+        groups: [
+          {
+            id: "g",
+            logic: "and",
+            conditions: [
+              {
+                id: "r",
+                field: "status",
+                fieldType: "string",
+                operator: "is_one_of",
+                values: ["confirmed", "cancelled"],
+              },
+            ],
+          },
+        ],
+      })
+    );
+
+    expect(
+      view.getByText(/no longer offers one or more selected values/)
+    ).toBeTruthy();
   });
 
   it("says nothing about a value the field still offers", () => {
@@ -644,7 +733,58 @@ describe("ConditionBuilderRow view mode names what a rule still owes", () => {
     ];
     const view = renderRow(withEnum, stringRule("status", "confirmed"));
 
-    expect(view.queryByText(/no longer offers this value/)).toBeNull();
+    expect(view.queryByText(/no longer offers/)).toBeNull();
+  });
+
+  it("allows substring operands that are not exact enum values", () => {
+    const withEnum = [
+      field("status", "Look Up Donor", { enumValues: ["confirmed", "booked"] }),
+    ];
+    const view = renderRow(withEnum, stringRule("status", "firm", "contains"));
+
+    expect(view.queryByText(/no longer offers/)).toBeNull();
+  });
+
+  it("selects multiple offered values for an enum set operator", () => {
+    const onChange = vi.fn();
+    const withEnum = [
+      field("status", "Look Up Donor", {
+        enumValues: ["confirmed", "booked"],
+        enumLabels: { confirmed: "Confirmed", booked: "Booked" },
+      }),
+    ];
+    const view = renderRow(
+      withEnum,
+      stringRule("status", "confirmed"),
+      onChange
+    );
+
+    enterEdit(view);
+    fireEvent.click(view.getByRole("combobox", { name: "status operator" }));
+    const operator = view.getByRole("option", { name: "is one of" });
+    fireEvent.pointerDown(operator);
+    fireEvent.click(operator);
+
+    const values = view.getByLabelText("Select status values");
+    fireEvent.keyDown(values, { key: "ArrowDown" });
+    fireEvent.click(view.getByRole("option", { name: "Booked" }));
+    fireEvent.keyDown(values, { key: "Escape" });
+
+    expect(writtenRule(onChange)).toMatchObject({
+      field: "status",
+      operator: "is_one_of",
+      values: ["confirmed", "booked"],
+    });
+    expect(onChange.mock.calls.at(-1)?.[0].expression).toContain(
+      'payload.status in ["confirmed", "booked"]'
+    );
+
+    fireEvent.click(view.getByRole("button", { name: "Remove Confirmed" }));
+    expect(writtenRule(onChange)).toMatchObject({ values: ["booked"] });
+
+    fireEvent.click(view.getByRole("button", { name: "Remove Booked" }));
+    expect(writtenRule(onChange)).toMatchObject({ values: [] });
+    expect(onChange.mock.calls.at(-1)?.[0].expression).toBe("");
   });
 
   // The field picker marks a path the graph no longer offers; the summary marks
@@ -698,6 +838,202 @@ describe("ConditionBuilderRow view mode names what a rule still owes", () => {
     const compiled = view.getByText(/Compiled CEL/);
     expect(compiled.textContent).toContain("Lifecycle.data.email_id");
     expect(compiled.textContent).not.toContain("V1StGXR8_Z5jdHi6B-myT");
+  });
+});
+
+/** A stored `is one of` rule on `email`, a string field with no enum values. */
+function emailSetModel(values: string[]): string {
+  return serializeConditionModel({
+    version: 2,
+    groupLogic: "and",
+    groups: [
+      {
+        id: "g",
+        logic: "and",
+        conditions: [
+          {
+            id: "r",
+            field: "email",
+            fieldType: "string",
+            operator: "is_one_of",
+            values,
+          },
+        ],
+      },
+    ],
+  });
+}
+
+// The build agent writes `is one of` on any string field, so a field with no
+// enum values needs a list the builder types into. The list itself (adding
+// and removing chips) is `TextSetValueInput`'s own suite; this case only
+// checks that the row wires a typed value through to the operator and the
+// compiled expression it feeds `ConditionSummary`.
+describe("ConditionBuilderRow set comparison on a plain string field", () => {
+  it("adds a value to a plain string field's set and compiles it", () => {
+    const onChange = vi.fn();
+    const view = renderRow(
+      DONOR_FIELDS,
+      emailSetModel(["a@example.com"]),
+      onChange
+    );
+
+    expect(view.queryByText(/fixed list/)).toBeNull();
+
+    enterEdit(view);
+    expect(
+      view.getByRole("combobox", { name: "email operator" }).textContent
+    ).toContain("is one of");
+    expect(view.queryByLabelText("Select email values")).toBeNull();
+
+    const input = view.getByLabelText("Add email values");
+    fireEvent.change(input, { target: { value: "c@example.com" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(writtenRule(onChange)).toMatchObject({
+      operator: "is_one_of",
+      values: ["a@example.com", "c@example.com"],
+    });
+    expect(onChange.mock.calls.at(-1)?.[0].expression).toContain(
+      'payload.email in ["a@example.com", "c@example.com"]'
+    );
+  });
+
+  it("keeps the enum picker for a field with enum values", () => {
+    const withEnum = [
+      field("status", "Look Up Donor", { enumValues: ["confirmed", "booked"] }),
+    ];
+    const view = renderRow(
+      withEnum,
+      serializeConditionModel({
+        version: 2,
+        groupLogic: "and",
+        groups: [
+          {
+            id: "g",
+            logic: "and",
+            conditions: [
+              {
+                id: "r",
+                field: "status",
+                fieldType: "string",
+                operator: "is_one_of",
+                values: ["confirmed"],
+              },
+            ],
+          },
+        ],
+      })
+    );
+
+    enterEdit(view);
+
+    expect(view.getByLabelText("Select status values")).toBeTruthy();
+    expect(view.queryByLabelText("Add status values")).toBeNull();
+  });
+
+  // Where set comparisons need enum values, a stored one still reads back
+  // whole: the operator the rule holds and every value it compares.
+  it("shows a stored set rule the restricted builder no longer offers", () => {
+    const view = renderRow(
+      DONOR_FIELDS,
+      emailSetModel(["a@example.com"]),
+      undefined,
+      { setOperatorsRequireEnumValues: true }
+    );
+
+    expect(view.getByText(/no longer offers a fixed list/)).toBeTruthy();
+
+    enterEdit(view);
+    expect(
+      view.getByRole("combobox", { name: "email operator" }).textContent
+    ).toContain("is one of");
+    expect(view.getByText("a@example.com")).toBeTruthy();
+  });
+});
+
+/** A stored `is one of` rule on `status`, a string field with enum values. */
+function statusSetModel(values: string[]): string {
+  return serializeConditionModel({
+    version: 2,
+    groupLogic: "and",
+    groups: [
+      {
+        id: "g",
+        logic: "and",
+        conditions: [
+          {
+            id: "r",
+            field: "status",
+            fieldType: "string",
+            operator: "is_one_of",
+            values,
+          },
+        ],
+      },
+    ],
+  });
+}
+
+const STATUS_FIELDS: ConditionSelectableField[] = [
+  field("status", "Lifecycle", { enumValues: ["active", "paused"] }),
+];
+
+// `EnumMultiValueInput` has its own suite for picking, keeping, and removing
+// operands. This describe block covers only the row's view-mode summary: the
+// text it shows for a set rule without opening the editor.
+describe("ConditionBuilderRow set comparison on an enum field", () => {
+  const reference = "{{@entry:Lifecycle.email}}";
+
+  // A reference is resolved when the run reaches the rule, so the summary has
+  // no enum value to hold it to.
+  it("reports no refusal in view mode for a set holding a reference", () => {
+    const view = renderRow(
+      STATUS_FIELDS,
+      statusSetModel(["active", reference])
+    );
+
+    expect(view.getByText(/Lifecycle\.email/)).toBeTruthy();
+    expect(view.queryByText(/no longer offers/)).toBeNull();
+  });
+
+  it("still reports a literal the field no longer offers in view mode", () => {
+    const view = renderRow(
+      STATUS_FIELDS,
+      statusSetModel(["active", "cancelled"])
+    );
+
+    expect(
+      view.getByText(/no longer offers one or more selected values/)
+    ).toBeTruthy();
+  });
+
+  it("reports no refusal in view mode for equals holding a reference", () => {
+    const view = renderRow(
+      STATUS_FIELDS,
+      serializeConditionModel({
+        version: 2,
+        groupLogic: "and",
+        groups: [
+          {
+            id: "g",
+            logic: "and",
+            conditions: [
+              {
+                id: "r",
+                field: "status",
+                fieldType: "string",
+                operator: "equals",
+                value: reference,
+              },
+            ],
+          },
+        ],
+      })
+    );
+
+    expect(view.getByText(/Lifecycle\.email/)).toBeTruthy();
+    expect(view.queryByText(/no longer offers/)).toBeNull();
   });
 });
 

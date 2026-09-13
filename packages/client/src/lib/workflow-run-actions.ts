@@ -45,6 +45,10 @@ export const IGNORED_REASON_MESSAGES = {
     "The payload does not satisfy this Start Event's filter, so no run was started.",
   start_filter_unevaluable:
     "This Start Event's filter could not be read against the payload, so no run was started.",
+  entity_condition_not_met:
+    "Current Entity State does not satisfy Entity Eligibility, so no run was started.",
+  entity_not_found:
+    "The tracked Entity no longer exists, so no run was started.",
 } satisfies Record<WorkflowExecutionIgnoredReason, string>;
 
 /**

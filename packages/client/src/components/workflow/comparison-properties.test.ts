@@ -7,7 +7,7 @@ import {
 } from "#src/components/workflow/comparison-properties";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 
-const catalog = { actions: [], events: [], integrations: [] };
+const catalog = { actions: [], entities: [], events: [], integrations: [] };
 
 describe("comparisonNodeTitle", () => {
   it("keeps internal action ids out of comparison labels", () => {
@@ -45,6 +45,7 @@ describe("Lifecycle comparison fields", () => {
   it("labels Event test payload values from their declared payload paths", () => {
     const eventName = "app/appointment.created";
     const eventCatalog: ExtensionCatalog = {
+      entities: [],
       actions: [],
       integrations: [],
       events: [

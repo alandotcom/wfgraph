@@ -26,10 +26,11 @@ type WaitWakeTarget =
  * How far a wake got.
  *
  * `unclaimed` is no row this wake could take, so nothing was sent and no run
- * woke. `resumed` is the signal delivered and this caller's claim settled.
- * `raced` is the signal delivered and the claim settled by someone else in the
- * meantime, which is a run that did resume: the wake reached the engine, and
- * only the bookkeeping was lost.
+ * woke. `resumed` is the signal with the durable runtime, which is what the
+ * caller asked for: the claim settled here, or the settle write failed and the
+ * woken run settles the row instead. `raced` is the signal delivered and the
+ * row settled by someone else in the meantime, which is a run that did resume:
+ * the wake reached the engine, and only the bookkeeping was lost.
  */
 export type WaitWakeOutcome =
   | { status: "unclaimed" }
@@ -40,9 +41,10 @@ export type WaitWakeOutcome =
  * Claims one Wait and delivers its wake to the durable runtime.
  *
  * The claim is released when the durable runtime refuses the signal. Once the
- * signal lands, this module settles that exact fenced claim. The resumed engine
- * owns the Execution's running status and timeline entry because it knows the
- * wake was consumed.
+ * signal lands, this module settles that exact fenced claim, and the woken run
+ * settles the same row again, so a settle that fails here costs nothing. The
+ * resumed engine owns the Execution's running status and timeline entry because
+ * it knows the wake was consumed.
  */
 export const wakeWait = Effect.fn("wakeWait")(function* (input: {
   target: WaitWakeTarget;
@@ -114,14 +116,34 @@ export const wakeWait = Effect.fn("wakeWait")(function* (input: {
     )
   );
 
-  const settled = yield* repo.settleWaitingStateClaim({
-    waitStateId: waitState.id,
-    claimedAt,
-  });
-  if (!settled) {
+  // True while this wake's claim is the one the row still holds: either this
+  // write settled it, or the write failed and the claim stands until the woken
+  // run settles the row.
+  const claimStillOurs = yield* repo
+    .settleWaitingStateClaim({
+      waitStateId: waitState.id,
+      claimedAt,
+    })
+    .pipe(
+      // The signal was accepted before this write, so the caller is owed the
+      // resume it asked for and the claim must not be released. The woken run
+      // settles the row it consumed, which is what stops the claim left behind
+      // here from being handed to a second wake once its lease expires.
+      Effect.catchTag("DatabaseError", (failure) =>
+        logger
+          .warn("Wait wake claim settle failed after the signal was accepted", {
+            run: { executionId: waitState.executionId },
+            node: { waitStateId: waitState.id },
+            error: failure.cause,
+          })
+          .pipe(Effect.as(true))
+      )
+    );
+  if (!claimStillOurs) {
     // The signal is already with the durable runtime, so the run wakes whatever
-    // this write found. Something else settled the row first, which is what
-    // separates this from a wake that reached no run at all.
+    // this write found. Another writer settled the row first, which is either
+    // the woken run closing the row it consumed or a second wake, and either
+    // one separates this from a wake that reached no run at all.
     yield* logger.warn("Wait wake claim was already settled", {
       run: { executionId: waitState.executionId },
       node: { waitStateId: waitState.id },

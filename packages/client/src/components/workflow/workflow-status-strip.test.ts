@@ -6,8 +6,8 @@ import {
 import { generateId } from "@wfgraph/shared/utils/id";
 
 describe("pinnedRunLabel", () => {
-  // The ids this takes are what `generateId` produces: 21 characters of
-  // lowercase base-36, no prefix and no separator.
+  // The ids this takes are what `generateId` produces: a 36-character UUIDv7,
+  // whose leading characters repeat across runs minted around the same time.
   const runId = generateId();
 
   it("shortens the run id to a fixed width and says when the run started", () => {
@@ -16,7 +16,7 @@ describe("pinnedRunLabel", () => {
       startedAt: new Date(2026, 7, 2, 14, 32),
     });
 
-    expect(label).toBe(`${runId.slice(0, 8)} · 02 Aug, 14:32`);
+    expect(label).toBe(`${runId.slice(-8)} · 02 Aug, 14:32`);
   });
 
   it("holds its width across ids and dates, so the row cannot reflow", () => {
@@ -36,7 +36,7 @@ describe("pinnedRunLabel", () => {
     // `startedAt` crosses the wire as a plain string. Printing the parts of an
     // invalid date would put "NaN undefined, NaN:NaN" in the strip.
     expect(pinnedRunLabel({ id: runId, startedAt: null })).toBe(
-      runId.slice(0, 8)
+      runId.slice(-8)
     );
   });
 

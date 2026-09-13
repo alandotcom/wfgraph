@@ -27,7 +27,14 @@ const listWaitingStates = vi.fn<Repo["listWaitingStates"]>(() =>
   Effect.succeed([])
 );
 const recordAuditEvent = vi.fn<Repo["recordAuditEvent"]>(() => Effect.void);
-const endInFlight = vi.fn<Repo["endInFlight"]>(() => Effect.succeed(true));
+const endInFlight = vi.fn<Repo["endInFlight"]>(() =>
+  Effect.succeed({
+    executionId: "exec_1",
+    status: "canceled",
+    claim: null,
+    didWrite: true,
+  })
+);
 const cancelWaits = vi.fn<Repo["cancelWaits"]>(() => Effect.succeed([]));
 const sendCancelRequested = vi.fn(
   () => Effect.void as Effect.Effect<void, InngestError>
@@ -66,7 +73,14 @@ beforeEach(() => {
   );
   listWaitingStates.mockImplementation(() => Effect.succeed([]));
   recordAuditEvent.mockImplementation(() => Effect.void);
-  endInFlight.mockImplementation(() => Effect.succeed(true));
+  endInFlight.mockImplementation(() =>
+    Effect.succeed({
+      executionId: "exec_1",
+      status: "canceled",
+      claim: null,
+      didWrite: true,
+    })
+  );
   cancelWaits.mockImplementation(() => Effect.succeed([]));
   sendCancelRequested.mockImplementation(() => Effect.void);
 });
@@ -101,6 +115,12 @@ describe("postExecutionCancel", () => {
         cancelledWaitStates: 0,
       });
       assert.strictEqual(endInFlight.mock.calls.length, 1);
+      assert.strictEqual(
+        recordAuditEvent.mock.calls.filter(
+          ([event]) => event.eventType === "run_cancel_requested"
+        ).length,
+        1
+      );
     })
   );
 
@@ -126,6 +146,67 @@ describe("postExecutionCancel", () => {
     })
   );
 
+  it.effect("retries a cancel signal after its terminal write succeeded", () =>
+    Effect.gen(function* () {
+      findStatusById
+        .mockImplementationOnce(() =>
+          Effect.succeed({ id: "exec_1", status: "running" })
+        )
+        .mockImplementationOnce(() =>
+          Effect.succeed({ id: "exec_1", status: "canceled" })
+        );
+      listWaitingStates.mockImplementation(() =>
+        Effect.succeed([createWaitState()])
+      );
+      endInFlight
+        .mockImplementationOnce(() =>
+          Effect.succeed({
+            executionId: "exec_1",
+            status: "canceled",
+            claim: null,
+            didWrite: true,
+          })
+        )
+        .mockImplementationOnce(() =>
+          Effect.succeed({
+            executionId: "exec_1",
+            status: "canceled",
+            claim: null,
+            didWrite: false,
+          })
+        );
+      sendCancelRequested
+        .mockImplementationOnce(() =>
+          Effect.fail(new InngestError({ cause: "no route" }))
+        )
+        .mockImplementationOnce(() => Effect.void);
+
+      const firstFailure = yield* postExecutionCancel("exec_1").pipe(
+        Effect.provide(services),
+        Effect.flip
+      );
+      const retried = yield* postExecutionCancel("exec_1").pipe(
+        Effect.provide(services)
+      );
+
+      assert.strictEqual(firstFailure._tag, "InternalFailure");
+      assert.deepStrictEqual(retried, {
+        success: true,
+        status: "canceled",
+        cancelledWaitStates: 1,
+      });
+      assert.strictEqual(endInFlight.mock.calls.length, 2);
+      assert.strictEqual(sendCancelRequested.mock.calls.length, 2);
+      assert.deepStrictEqual(cancelWaits.mock.calls, [[[]], [["wait_1"]]]);
+      assert.strictEqual(
+        recordAuditEvent.mock.calls.filter(
+          ([event]) => event.eventType === "run_cancelled"
+        ).length,
+        1
+      );
+    })
+  );
+
   it.effect("refuses a run that already reached a terminal status", () =>
     Effect.gen(function* () {
       findStatusById.mockImplementation(() =>
@@ -139,6 +220,45 @@ describe("postExecutionCancel", () => {
 
       assert.strictEqual(failure._tag, "Conflict");
       assert.strictEqual(endInFlight.mock.calls.length, 0);
+    })
+  );
+
+  // A Cancel Event claims a run without ending it, and the run then walks its
+  // Canceled outlet, which may park on a Wait of its own for a week. The Runs
+  // panel button reaches that run while it is still in flight, and ending it
+  // here would take the outlet away from it.
+  it.effect("refuses a run an earlier Cancel claim already owns", () =>
+    Effect.gen(function* () {
+      endInFlight.mockImplementation(() =>
+        Effect.succeed({
+          executionId: "exec_1",
+          status: "running",
+          claim: {
+            kind: "cancel",
+            requestedAt: new Date("2026-10-19T15:00:00.000Z"),
+            eventName: "app/appointment.canceled",
+            payload: { reason: "customer left" },
+          },
+          didWrite: false,
+        })
+      );
+
+      const failure = yield* postExecutionCancel("exec_1").pipe(
+        Effect.provide(services),
+        Effect.flip
+      );
+
+      assert.strictEqual(failure._tag, "Conflict");
+      assert.strictEqual(failure.error, "Execution is already canceling");
+      assert.strictEqual(sendCancelRequested.mock.calls.length, 0);
+      // The run is already on its way out under the earlier claim, so this call
+      // leaves no request on its timeline.
+      assert.deepStrictEqual(
+        recordAuditEvent.mock.calls.filter(
+          ([event]) => event.eventType === "run_cancel_requested"
+        ),
+        []
+      );
     })
   );
 

@@ -1,22 +1,14 @@
 /**
- * The Wait node: the one action the engine runs itself and the one node it never
- * wraps in a step.
- *
- * Inngest forbids a sleep or an event wait inside a step, so this module
- * memoizes its own persistence segments around those boundaries instead: the
- * config read and the row that opens, the preparation that parks the run, and
- * the resume that closes the row. `executeWaitAction` is the whole of what the
- * traversal calls.
- *
- * The loop below is one driver for both Wait modes. It re-reads the mode from
- * the config on every attempt, so a Migration that turns a delay Wait into an
- * event Wait re-parks as the mode the new Workflow Version says. Each mode
- * supplies only what its config resolves to, what its resume writes, and the
- * shape of its output; `wait-delay.ts` and `wait-event.ts` hold those.
+ * The Wait node: the one action the engine runs itself and never wraps in a
+ * step, because Inngest forbids a sleep or an event wait inside one. This module
+ * memoizes its own persistence segments around those boundaries instead, and
+ * `executeWaitAction` is the whole of what the traversal calls. The loop below
+ * drives both Wait modes, re-reading the mode from the config on every attempt.
  */
 
 import { Effect } from "effect";
 import { readWaitConfig } from "@wfgraph/shared/lifecycle/wait-subscription";
+import { claimKindAdmits } from "@wfgraph/shared/lifecycle/execution-contracts";
 import {
   WAIT_ANCHOR_METADATA_KEY,
   WAIT_SIGNAL_EVENT,
@@ -34,6 +26,7 @@ import { delayWaitMode } from "#src/backend/engine/wait-delay";
 import { eventWaitMode } from "#src/backend/engine/wait-event";
 import {
   fromStore,
+  isClaimWake,
   parkUntil,
   readAllowedHoursConfig,
   readWaitGateMode,
@@ -107,6 +100,7 @@ function executeWaitActionInner(
       store,
       workflowId,
       workflowVersionId,
+      side,
       workflowRunId,
       resolveTemplates,
     } = input;
@@ -177,6 +171,7 @@ function executeWaitActionInner(
       store,
       workflowId,
       workflowVersionId,
+      side,
       runId,
       resolveTemplates,
       startLog,
@@ -251,9 +246,10 @@ type WaitAttemptResult =
 /**
  * What the prepare step of one attempt settled.
  *
- * `woken` is the row having left `waiting` between a Migration's wake and this
- * park: a resume claim recorded its arrival on the row, and this attempt takes
- * that arrival instead of parking on a signal that has already been sent.
+ * `woken` is a re-park refused between a Migration's wake and this park. Either
+ * a resume claim recorded its arrival on the row, and this attempt takes that
+ * arrival instead of parking on a signal that has already been sent, or a Cancel
+ * or Exit claim on the run refused the park, and the claim is the wake.
  *
  * `workflowVersionId` is the version that wrote the preparation. A replay
  * returns the earlier body's memoized value, so the driver starts a new attempt
@@ -368,7 +364,10 @@ function runWaitAttempt<Prepared, Resumed>(
       return { status: "reprepare" };
     }
 
-    const resumed = yield* runDurable(
+    // The step memoizes the wake it acted on beside the mode's output. A claim
+    // found behind the version fence replaces the wake that arrived, and the
+    // outcome has to read that same wake on every replay.
+    const settled = yield* runDurable(
       runtime,
       {
         id: stepIds.resume,
@@ -381,22 +380,26 @@ function runWaitAttempt<Prepared, Resumed>(
       // The step opens with the writes every resume makes, the version fence
       // among them, and each mode then writes its own output.
       Effect.gen(function* () {
-        yield* openResume(branch, {
+        const woke = yield* openResume(branch, {
           mode: mode.mode,
           waitStateId: prepared.carry.waitStateId,
           wake,
           hops: state.hops,
         });
-        return yield* mode.resume({
+        const resumed = yield* mode.resume({
           branch,
           prepared: prepared.prepared,
-          wake,
+          wake: woke,
           hops: state.hops,
         });
+        return { wake: woke, resumed };
       })
     );
 
-    return { status: "finished", outcome: mode.outcome({ resumed, wake }) };
+    return {
+      status: "finished",
+      outcome: mode.outcome({ resumed: settled.resumed, wake: settled.wake }),
+    };
   });
 }
 
@@ -451,6 +454,7 @@ function prepareWaitAttempt<Prepared, Resumed>(
           nodeId: context.nodeId,
           nodeName: context.nodeName,
           workflowVersionId: branch.workflowVersionId,
+          side: branch.side,
           waitType: park.waitType,
           resumeToken: park.resumeToken ?? undefined,
           waitUntilIso: park.waitUntilIso ?? undefined,
@@ -460,12 +464,34 @@ function prepareWaitAttempt<Prepared, Resumed>(
       );
 
       if (!created) {
-        // The write is fenced on the pinned version as well as on the run still
-        // being in flight, so it refuses either a Migration that landed inside
-        // this step or a policy cancel that ended the run. Failing the step
-        // covers both: Inngest retries the body, which reloads the graph from
-        // the pointer the row now names, and a run Inngest is already killing
-        // never reaches that retry.
+        // The write is fenced on the pinned version, on the run still being in
+        // flight, and on a claim that admits this Wait's side. A claim that
+        // refuses it means the run's work on that side has ended, so the Wait
+        // halts its branch without parking, and nothing is added to the
+        // timeline because nothing parked. This also covers a branch admitted
+        // before the claim that reaches its park after the claim's parked-Wait
+        // read. A Canceled-side Wait reads its own run's Cancel claim as no
+        // halt, so a park it refused was refused by the version fence or a
+        // terminal status, and the step fails instead of halting.
+        const claim = yield* readClaimWake(branch);
+        if (claim !== null) {
+          const output = { waitType: park.waitType, haltedBy: claim.kind };
+          yield* closeStepLog(store, branch.startLog, {
+            status: "success",
+            output,
+          });
+          const halted: WaitAttemptPreparation<Prepared> = {
+            status: "skipped",
+            output,
+          };
+          return halted;
+        }
+
+        // With no claim, the refusal is a Migration that landed inside this
+        // step or a policy cancel that ended the run. Failing the step covers
+        // both: Inngest retries the body, which reloads the graph from the
+        // pointer the row now names, and a run Inngest is already killing never
+        // reaches that retry.
         return yield* Effect.fail(
           engineFailure(
             "failure",
@@ -482,6 +508,7 @@ function prepareWaitAttempt<Prepared, Resumed>(
       store.reparkWaitState({
         waitStateId: input.waitStateId,
         workflowVersionId: branch.workflowVersionId,
+        side: branch.side,
         waitType: park.waitType,
         waitUntilIso: park.waitUntilIso,
         subscribedEvents: park.subscribedEvents,
@@ -504,7 +531,11 @@ function prepareWaitAttempt<Prepared, Resumed>(
         );
       }
 
-      const missed = yield* readMissedWake(branch, input.waitStateId);
+      // The row can also still be waiting, when a Cancel or Exit claim is what
+      // refused the re-park. That claim is then the wake.
+      const missed =
+        (yield* readMissedWake(branch, input.waitStateId)) ??
+        (yield* readClaimWake(branch));
       if (missed === null) {
         return yield* failPreparation<Prepared>(
           branch,
@@ -561,46 +592,50 @@ function abandonWait(
 
 /**
  * Moves the run back to `running` under the Workflow Version this body loaded,
- * failing the step when no row moved.
+ * answering false when no row moved.
  *
  * The guarded write is the resume's version fence, and it is the first thing a
- * resume does. A Migration that lands between the wake and this write leaves the
- * execution row pinned to another version, so nothing moves and the step fails;
- * Inngest retries the body, which reloads the graph from the new pointer and
- * prepares the Wait again. Running it first leaves the wait row untouched for
- * that retry to re-park.
+ * resume does. It refuses a run pinned to another version, and it also refuses
+ * a run that holds a Cancel or Exit claim. `openResume` reads which of the two
+ * refused it.
  */
 function markRunningUnderLoadedVersion(
   branch: WaitBranchContext
-): Effect.Effect<void, EngineFailure> {
-  return Effect.flatMap(
-    fromStore(
-      branch.store.markExecutionRunning({
-        executionId: branch.context.executionId,
-        workflowVersionId: branch.workflowVersionId,
-      })
-    ),
-    (moved) =>
-      moved
-        ? Effect.void
-        : Effect.fail(
-            engineFailure(
-              "failure",
-              `This run has been moved off workflow version ${branch.workflowVersionId} since its graph was loaded.`
-            )
-          )
+): Effect.Effect<boolean, EngineFailure> {
+  return fromStore(
+    branch.store.markExecutionRunning({
+      executionId: branch.context.executionId,
+      workflowVersionId: branch.workflowVersionId,
+      side: branch.side,
+    })
   );
 }
 
 /**
- * The three writes every resume opens with, whichever mode is resuming: the
- * version fence, the wait row settled for the wakes that have no producer, and
- * the run's one timeline entry for this wake.
+ * The writes every resume opens with, whichever mode is resuming: the version
+ * fence, the wait row, and the run's one timeline entry for this wake. It
+ * answers the wake the resume acts on.
  *
  * Only this engine invocation knows it consumed the wake, so it owns the
- * Execution's running status and that entry. The wait row is settled here only
- * for a timeout and a cancellation; an ordinary resume was settled by the
- * producer that sent the signal, through its own claim fence.
+ * Execution's running status, that entry, and the row it woke from, whichever
+ * producer sent the signal. A producer settles its own claim as well, and
+ * whichever write lands first wins; what matters is that a row the run has
+ * consumed holds no claim, so no later wake can reclaim it at any lease age and
+ * signal a park this node has left.
+ *
+ * A claim wake (a Cancel or an Exit) skips the version fence, because the
+ * running write refuses a claimed run. A claimed run cannot be migrated either,
+ * because the Migration's repin write refuses a claimed run too, so the version
+ * this body loaded is still the pinned one.
+ *
+ * Any other wake can arrive after a claim: a resume producer can take the row
+ * before a claim and have its signal reach the park first. When the fence
+ * refuses such a wake, the run's claim is read, and a Cancel or Exit claim
+ * replaces the wake, so the Wait halts as that claim wake would. A refusal with
+ * no claim is a Migration that moved the version between the wake and this
+ * write, and the step fails; Inngest retries the body, which reloads the graph
+ * from the new pointer and prepares the Wait again. The fence runs first, so the
+ * wait row is untouched for that retry to re-park.
  */
 function openResume(
   branch: WaitBranchContext,
@@ -610,26 +645,38 @@ function openResume(
     wake: WaitResumeWake;
     hops: number;
   }
-): Effect.Effect<void, EngineFailure> {
+): Effect.Effect<WaitResumeWake, EngineFailure> {
   return Effect.gen(function* () {
     const { context, store, workflowId } = branch;
-    const { mode, wake, hops } = input;
+    const { mode, hops } = input;
 
-    yield* markRunningUnderLoadedVersion(branch);
-
-    if (wake.kind === "timeout" || wake.kind === "cancel") {
-      yield* fromStore(
-        store.markWaitStateStatus({
-          waitStateId: input.waitStateId,
-          status:
-            wake.kind === "cancel"
-              ? "cancelled"
-              : mode === "event"
-                ? "timed_out"
-                : "resumed",
-        })
-      );
+    let wake = input.wake;
+    if (!isClaimWake(wake) && !(yield* markRunningUnderLoadedVersion(branch))) {
+      const claim = yield* readClaimWake(branch);
+      if (claim === null) {
+        return yield* Effect.fail(
+          engineFailure(
+            "failure",
+            `This run has been moved off workflow version ${branch.workflowVersionId} since its graph was loaded.`
+          )
+        );
+      }
+      wake = claim;
     }
+
+    const claimed = isClaimWake(wake);
+    // A delay park ends on its own clock, so reaching the target is that Wait
+    // resuming. Only an event park that ran out of time timed out.
+    yield* fromStore(
+      store.markWaitStateStatus({
+        waitStateId: input.waitStateId,
+        status: claimed
+          ? "cancelled"
+          : wake.kind === "timeout" && mode === "event"
+            ? "timed_out"
+            : "resumed",
+      })
+    );
 
     yield* fromStore(
       store.recordAuditEvent({
@@ -645,6 +692,8 @@ function openResume(
         }),
       })
     );
+
+    return wake;
   });
 }
 
@@ -689,6 +738,14 @@ function resumeAuditEntry(input: {
     return {
       eventType: "run_resumed",
       message: `Run woken by a cancel request in node '${nodeName}'`,
+      metadata: where,
+    };
+  }
+
+  if (wake.kind === "exit") {
+    return {
+      eventType: "run_resumed",
+      message: `Run woken by an Exit in node '${nodeName}'`,
       metadata: where,
     };
   }
@@ -751,6 +808,29 @@ function readMissedWake(
         eventName: arrival.eventName,
         payload: arrival.payload,
       };
+    }
+  );
+}
+
+/**
+ * The execution-wide claim that ended this run's work, as a wake, or null when
+ * the run holds none this Wait has to stop for.
+ *
+ * Read after the store refused a park, since a claim is one of the reasons it
+ * refuses. A claim this Wait's side admits answers null, because that claim is
+ * the run's current work rather than a reason to halt, and so does a terminal
+ * status carrying no claim at all.
+ */
+function readClaimWake(
+  branch: WaitBranchContext
+): Effect.Effect<{ kind: "cancel" } | { kind: "exit" } | null, EngineFailure> {
+  return Effect.map(
+    fromStore(branch.store.readTerminationState(branch.context.executionId)),
+    (state) => {
+      const kind = state?.claim?.kind ?? null;
+      return kind === null || claimKindAdmits(kind, branch.side)
+        ? null
+        : { kind };
     }
   );
 }

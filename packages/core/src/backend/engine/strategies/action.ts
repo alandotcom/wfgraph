@@ -148,6 +148,7 @@ function runAction(context: NodeWorkContext) {
         store,
         workflowId,
         workflowVersionId,
+        side: context.side,
         workflowRunId,
         resolveTemplates: (value) =>
           resolveTemplateString(value, traversal.outputs),

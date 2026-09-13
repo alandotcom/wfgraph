@@ -4,6 +4,8 @@
  * The Lifecycle Rules apply first, then the Event reaches the Wait Subscriptions
  * of the runs that survived them (ADR-0007). A role's filter runs before that
  * role changes any run. An admitted start then reaches Concurrency (ADR-0016).
+ * A retried delivery is answered from the decision its first attempt committed,
+ * ahead of every gate that reads the workflow as it stands now.
  *
  * The two halves are separate entry points because the listener runs each in its
  * own durable step: a wait delivery that fails then retries without replaying the
@@ -15,14 +17,25 @@
  */
 
 import { Effect } from "effect";
+import type { AnyEventDefinition } from "#src/backend/extensions/define-event";
 import {
   AppLogger,
   type EffectLogger,
 } from "#src/backend/lib/effect/app-logger";
 import { evaluateSerializedCondition } from "#src/backend/lib/cel/condition-payload";
-import { ExecutionRepo } from "#src/backend/services/executions/repo";
+import {
+  ExecutionRepo,
+  type ExecutionEntitySelector,
+} from "#src/backend/services/executions/repo";
 import { requestCanceledOutlet } from "#src/backend/services/workflows/lifecycle/cancel";
-import { startWithConcurrency } from "#src/backend/services/workflows/lifecycle/concurrency";
+import {
+  startWithConcurrency,
+  type StartRefusalReason,
+} from "#src/backend/services/workflows/lifecycle/concurrency";
+import {
+  evaluateGuardedStart,
+  selectTrackedEntity,
+} from "#src/backend/services/workflows/lifecycle/entity-eligibility";
 import { resumeWaitsMatchingEvent } from "#src/backend/services/workflows/lifecycle/resume-waits";
 import { runWorkflowExecutionPreflight } from "#src/backend/services/executions/preflight";
 import {
@@ -30,7 +43,9 @@ import {
   WorkflowRepo,
 } from "#src/backend/services/workflows/repo";
 import {
+  enqueueStartedRun,
   recordStartRefusal,
+  startAdmissionDecisionId,
   toWorkflowRunTarget,
 } from "#src/backend/services/executions/run-rows";
 import { connectionMatches } from "@wfgraph/shared/lifecycle/event-connections";
@@ -40,6 +55,10 @@ import {
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { readCancelFilter } from "@wfgraph/shared/lifecycle/cancel-filters";
 import { readStartFilter } from "@wfgraph/shared/lifecycle/start-filters";
+import {
+  IN_FLIGHT_EXECUTION_STATUSES,
+  type WorkflowExecutionStatus,
+} from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { WorkflowMode } from "@wfgraph/shared/graph/types";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import { asNonEmptyString } from "@wfgraph/shared/types/string";
@@ -63,7 +82,22 @@ export type DeliveredEvent = {
    * these agree.
    */
   readonly connectionId?: string | undefined;
+  /** Server-only bindings used after the Start/Cancel Filter has accepted. */
+  readonly entityBindings?: AnyEventDefinition["entities"];
+  /** The decoded Event value those typed bindings select from. */
+  readonly validatedPayload?: unknown;
 };
+
+type LifecycleDeliveryRefusalReason =
+  | StartRefusalReason
+  /** The arrival did not satisfy this Cancel Event's Cancel Filter. */
+  | "cancel_filter_not_met"
+  /** The Cancel Filter could not be read against this payload at all. */
+  | "cancel_filter_unevaluable"
+  /** The arrival did not satisfy this Start Event's Start Filter. */
+  | "start_filter_not_met"
+  /** The Start Filter could not be read against this payload at all. */
+  | "start_filter_unevaluable";
 
 /** What the Lifecycle Rules did to one workflow, as the listener records it. */
 export type LifecycleDeliveryOutcome =
@@ -77,17 +111,7 @@ export type LifecycleDeliveryOutcome =
   | {
       kind: "refused";
       workflowId: string;
-      reason:
-        | "concurrency_first_wins"
-        | "entity_value_missing"
-        /** The arrival did not satisfy this Cancel Event's Cancel Filter. */
-        | "cancel_filter_not_met"
-        /** The Cancel Filter could not be read against this payload at all. */
-        | "cancel_filter_unevaluable"
-        /** The arrival did not satisfy this Start Event's Start Filter. */
-        | "start_filter_not_met"
-        /** The Start Filter could not be read against this payload at all. */
-        | "start_filter_unevaluable";
+      reason: LifecycleDeliveryRefusalReason;
     }
   /**
    * This Event holds the cancel role here; the ids are the runs it claimed. A
@@ -214,6 +238,23 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
     }
 
     const { workflow, publishedVersion: version } = loaded;
+
+    // Ahead of every gate that reads the workflow as it stands now, because a
+    // decision this delivery already committed outranks all of them. The
+    // subscriber list is memoized per arrival, so `roles` is what the workflow
+    // held when the first attempt ran: a delivery that never carried the start
+    // role then can have committed nothing for these reads to find.
+    if (input.deliveryId && input.subscriber.roles.includes("start")) {
+      const recovered = yield* answerFromCommittedDecision({
+        workflowId: workflow.id,
+        deliveryId: input.deliveryId,
+        logger,
+      });
+      if (recovered) {
+        return recovered;
+      }
+    }
+
     if (!version) {
       // A workflow that has never been published has no graph this half can
       // read. That holds even while a draft-snapshot run is in flight
@@ -274,44 +315,55 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
         return filterRefusal;
       }
 
-      const entityValue = readEntityValue({
+      const trackedEntity = yield* selectTrackedEntity({
+        rules,
         event: input.event,
-        subscriber: input.subscriber,
-        payload: input.payload,
       });
-
-      // A cancel matches by Entity Value and has nothing else to match on, so a
-      // payload carrying none reaches no run. The save rules require a path for
-      // every Cancel Event, which is what makes this the payload's own gap.
-      //
-      // The row is what a Refused Start gets for the same reason: without it the
-      // builder watches the runs carry on and finds nothing anywhere saying the
-      // cancel was refused.
-      if (!entityValue) {
-        const executionRepo = yield* ExecutionRepo;
-        yield* executionRepo.recordAuditEvent({
-          workflowId: workflow.id,
-          eventType: "cancel_not_delivered",
-          message: `Cancel from ${input.event.name} reached no run: nothing at this workflow's Correlation Path`,
-          metadata: {
-            reason: "entity_value_missing",
-            eventName: input.event.name,
-            correlationPath: correlationPathFor(input),
-            deliveryId: input.deliveryId,
-            runMode: workflow.mode,
-          },
-        });
-
-        yield* logger.info("Cancel refused", {
-          reason: "entity_value_missing",
-          deliveryId: input.deliveryId,
-        });
-
-        return {
-          kind: "refused" as const,
-          workflowId: workflow.id,
-          reason: "entity_value_missing" as const,
+      // The runs a Cancel reaches are chosen by the typed Entity identity when
+      // the rules track one, and by the legacy Entity Value otherwise.
+      let selector: ExecutionEntitySelector;
+      if (trackedEntity) {
+        selector = {
+          entityType: trackedEntity.entityType,
+          entityId: trackedEntity.entityId,
         };
+      } else {
+        const entityValue = readEntityValue({
+          event: input.event,
+          subscriber: input.subscriber,
+          payload: input.payload,
+        });
+
+        // An unguarded cancel matches by legacy Entity Value and has nothing
+        // else to match on, so a payload carrying none reaches no run.
+        if (!entityValue) {
+          const executionRepo = yield* ExecutionRepo;
+          yield* executionRepo.recordAuditEvent({
+            workflowId: workflow.id,
+            eventType: "cancel_not_delivered",
+            message: `Cancel from ${input.event.name} reached no run: nothing at this workflow's Correlation Path`,
+            metadata: {
+              reason: "entity_value_missing",
+              eventName: input.event.name,
+              correlationPath: correlationPathFor(input),
+              deliveryId: input.deliveryId,
+              runMode: workflow.mode,
+            },
+          });
+
+          yield* logger.info("Cancel refused", {
+            reason: "entity_value_missing",
+            deliveryId: input.deliveryId,
+          });
+
+          return {
+            kind: "refused" as const,
+            workflowId: workflow.id,
+            reason: "entity_value_missing" as const,
+          };
+        }
+
+        selector = { entityValue };
       }
 
       const canceledExecutionIds = yield* requestCanceledOutlet({
@@ -319,7 +371,7 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
         runMode: workflow.mode,
         eventName: input.event.name,
         payload: input.payload,
-        entityValue,
+        ...selector,
       });
 
       return {
@@ -333,11 +385,20 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
       return { kind: "waits_only" as const, workflowId: workflow.id };
     }
 
-    const entityValue = readEntityValue({
-      event: input.event,
-      subscriber: input.subscriber,
-      payload: input.payload,
+    const runTarget = toWorkflowRunTarget({
+      workflow,
+      versionId: version.id,
+      catalogFingerprint: version.catalogFingerprint,
+      graph: preflight.workflowGraph,
     });
+
+    const entityValue = rules.trackedEntity
+      ? undefined
+      : readEntityValue({
+          event: input.event,
+          subscriber: input.subscriber,
+          payload: input.payload,
+        });
 
     // The Start Filter is read before Concurrency, which is the whole of why it
     // exists: a Condition node behind the Started outlet reads the same payload,
@@ -356,21 +417,67 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
       return filterRefusal;
     }
 
-    const started = yield* startWithConcurrency({
-      workflow: toWorkflowRunTarget({
-        workflow,
-        versionId: version.id,
-        catalogFingerprint: version.catalogFingerprint,
-        graph: preflight.workflowGraph,
-        version: { kind: "published", number: version.version },
-      }),
-      concurrency: rules.concurrency,
-      start: {
-        source: "event",
+    // Selection and the optional resolver read follow the cheap payload filter.
+    // Both precede Concurrency, so an ineligible arrival cannot refuse or
+    // supersede another run and opens no Execution of its own.
+    const guarded = yield* evaluateGuardedStart({
+      rules,
+      event: input.event,
+    });
+    if (guarded?.refusal) {
+      const refusalInput = {
+        workflowId: workflow.id,
+        startSource: "event" as const,
+        reason: guarded.refusal.reason,
+        runMode: workflow.mode,
+        logger,
         eventName: input.event.name,
-        deliveryId: input.deliveryId,
-        entityValue,
-      },
+        entityType: guarded.refusal.entityType,
+        extra: {
+          conditionId: guarded.refusal.conditionId,
+          checkpoint: "before-execution",
+          checkedAt: guarded.refusal.checkedAt,
+        },
+      };
+      const decision = input.deliveryId
+        ? yield* recordStartRefusal({
+            ...refusalInput,
+            deliveryId: input.deliveryId,
+            durableEntityAdmission: true,
+          })
+        : yield* recordStartRefusal(refusalInput);
+
+      // A "started" decision means another attempt of this delivery committed
+      // its Execution after this attempt's `findByDelivery` read, which two
+      // attempts of one delivery running at once can do. That decision falls
+      // through to `startWithConcurrency`, which finds the row by delivery id
+      // and hands it to `enqueueStartedRun` under the run's idempotency key.
+      if (decision?.kind !== "started") {
+        return {
+          kind: "refused" as const,
+          workflowId: workflow.id,
+          reason: decision?.reason ?? guarded.refusal.reason,
+        };
+      }
+    }
+
+    const started = yield* startWithConcurrency({
+      workflow: runTarget,
+      concurrency: rules.concurrency,
+      start: guarded
+        ? {
+            source: "event",
+            eventName: input.event.name,
+            deliveryId: input.deliveryId,
+            entityType: guarded.entity.entityType,
+            entityId: guarded.entity.entityId,
+          }
+        : {
+            source: "event",
+            eventName: input.event.name,
+            deliveryId: input.deliveryId,
+            entityValue,
+          },
       runMode: workflow.mode,
       payload: input.payload,
       logger,
@@ -392,6 +499,123 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
       failedToSupersede: started.failedToSupersede,
     };
     return outcome;
+  }
+);
+
+function isInFlightStatus(status: WorkflowExecutionStatus): boolean {
+  return IN_FLIGHT_EXECUTION_STATUSES.some((inFlight) => inFlight === status);
+}
+
+/**
+ * The decision an earlier attempt of this delivery committed, or `undefined`
+ * where it committed none and this attempt owns the delivery.
+ *
+ * An attempt can die between committing its Execution and sending it to the
+ * bus, and nothing sweeps a row left that way: it stays `pending` until a later
+ * start for the same entity reclaims it, which for a workflow nothing else
+ * starts is never. So the retry answers from what the first attempt recorded
+ * rather than from the workflow as it stands now, and a Publish, an unpublish
+ * or a catalog change between the two attempts cannot strand the row.
+ *
+ * These are the two reads `ExecutionRepo.startForEntity` repeats inside its own
+ * transaction, so one delivery's decision is honoured at either seam.
+ *
+ * The save rules refuse one Event holding both the start role and the cancel
+ * role in one workflow, so a row or a refusal keyed on this delivery id proves
+ * the arrival held the start role when its first attempt ran, and the Cancel
+ * arm can never own what these reads find. A delivery to a workflow that tracks
+ * no Entity pays one extra indexed read for the same guarantee.
+ */
+const answerFromCommittedDecision = Effect.fn("answerFromCommittedDecision")(
+  function* (input: {
+    workflowId: string;
+    deliveryId: string;
+    logger: EffectLogger;
+  }) {
+    const executionRepo = yield* ExecutionRepo;
+
+    const priorRefusal = yield* executionRepo.findAdmissionRefusal({
+      workflowId: input.workflowId,
+      decisionId: startAdmissionDecisionId(input.workflowId, input.deliveryId),
+    });
+    if (priorRefusal) {
+      yield* input.logger.info("Answered a retried delivery from its refusal", {
+        delivery: { id: input.deliveryId },
+        refusal: { reason: priorRefusal },
+      });
+
+      const refused: LifecycleDeliveryOutcome = {
+        kind: "refused",
+        workflowId: input.workflowId,
+        reason: priorRefusal,
+      };
+      return refused;
+    }
+
+    const committed = yield* executionRepo.findByDelivery({
+      workflowId: input.workflowId,
+      deliveryId: input.deliveryId,
+    });
+    if (!committed) {
+      return undefined;
+    }
+
+    // The row is only worth resending while its run can still act on the send.
+    // `findByDelivery` reads whatever status the row holds now, and a run that
+    // has already reached a verdict would take a second `enqueued_at`, a second
+    // `workflow_run_id` and a "run started" entry filed after its own closing
+    // one.
+    if (!isInFlightStatus(committed.status)) {
+      yield* input.logger.info(
+        "Answered a retried delivery from an Execution that has already ended",
+        {
+          run: {
+            executionId: committed.id,
+            versionId: committed.workflowVersionId,
+            status: committed.status,
+          },
+          delivery: { id: input.deliveryId },
+        }
+      );
+
+      const ended: LifecycleDeliveryOutcome = {
+        kind: "started",
+        workflowId: input.workflowId,
+        executionId: committed.id,
+        supersededExecutionIds: [],
+        failedToSupersede: [],
+      };
+      return ended;
+    }
+
+    yield* input.logger.info(
+      "Resent the Execution a retried delivery had already committed",
+      {
+        run: {
+          executionId: committed.id,
+          versionId: committed.workflowVersionId,
+        },
+        delivery: { id: input.deliveryId },
+      }
+    );
+
+    // A row the earlier attempt already sent carries `enqueuedAt`, and
+    // `enqueueStartedRun` answers it from the row without sending. A row the
+    // earlier attempt never sent is sent now, and its timeline entry names the
+    // version the committed row pinned, which a Publish since the first attempt
+    // may no longer have as the published one.
+    const sent = yield* enqueueStartedRun({
+      execution: committed,
+    });
+
+    const started: LifecycleDeliveryOutcome = {
+      kind: "started",
+      workflowId: input.workflowId,
+      executionId: sent.executionId,
+      supersededExecutionIds: [],
+      failedToSupersede: [],
+    };
+    return started;
   }
 );
 

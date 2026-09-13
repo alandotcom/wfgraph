@@ -1,5 +1,5 @@
-import { nanoid } from "nanoid";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
+import { generateId } from "@wfgraph/shared/utils/id";
 import type {
   PublishedWorkflowVersion,
   Workflow,
@@ -105,7 +105,7 @@ export function withDefaultLifecycleNode(graph: unknown): unknown {
   return createSerializedWorkflowGraph({
     nodes: [
       {
-        id: nanoid(),
+        id: generateId(),
         type: "lifecycle",
         position: { x: 0, y: 0 },
         data: {

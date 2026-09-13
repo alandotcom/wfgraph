@@ -13,6 +13,7 @@ import { Tool } from "effect/unstable/ai";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import {
   findAction,
+  findEntity,
   findEvent,
   selectableActions,
   selectableActionsByCategory,
@@ -69,6 +70,13 @@ const eventSummarySchema = Schema.Struct({
   label: Schema.String,
   description: Schema.optionalKey(Schema.String),
   integration: Schema.optionalKey(Schema.String),
+});
+
+const entityBindingSchema = Schema.Struct({
+  name: Schema.String,
+  entityType: Schema.String,
+  entityLabel: Schema.optionalKey(Schema.String),
+  stateFields: Schema.Array(referenceFieldSchema),
 });
 
 const BUILT_IN_AUTHORING = new Map<
@@ -261,7 +269,7 @@ export const ListEvents = Tool.make("list_events", {
 
 export const DescribeEvent = Tool.make("describe_event", {
   description:
-    "The full definition of one Event, including payload fields, correlation path, and integration ownership. Read this before configuring Lifecycle rules or an Event Wait.",
+    "The full definition of one Event, including payload fields, Entity bindings, correlation path, and integration ownership. Read this before configuring Lifecycle rules or an Event Wait.",
   parameters: Schema.Struct({
     eventName: Schema.String.annotate({
       description: "The exact Event name returned by list_events.",
@@ -274,6 +282,7 @@ export const DescribeEvent = Tool.make("describe_event", {
     integration: Schema.optionalKey(Schema.String),
     correlationPath: Schema.optionalKey(Schema.String),
     payloadFields: Schema.Array(referenceFieldSchema),
+    entityBindings: Schema.Array(entityBindingSchema),
   }),
   failure: Schema.Struct({ reason: Schema.String }),
   failureMode: "return",
@@ -402,6 +411,15 @@ export const catalogToolHandlers = Effect.gen(function* () {
           ...toEventSummary(event),
           correlationPath: event.correlationPath,
           payloadFields: event.payloadFields.map(toReferenceField),
+          entityBindings: (event.entityBindings ?? []).map((binding) => {
+            const entity = findEntity(catalog, binding.entityType);
+            return omitUndefined({
+              name: binding.name,
+              entityType: binding.entityType,
+              entityLabel: entity?.label,
+              stateFields: (entity?.stateFields ?? []).map(toReferenceField),
+            });
+          }),
         })
       );
     },

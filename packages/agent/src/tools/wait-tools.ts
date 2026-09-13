@@ -12,7 +12,7 @@ import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { conditionTypeOf } from "@wfgraph/shared/conditions/condition-field-type";
 import {
   type ConditionModel,
-  readConditionRuleOperand,
+  readConditionRuleOperands,
 } from "@wfgraph/shared/conditions/condition-model";
 import { serializeConditionModel } from "@wfgraph/shared/conditions/condition-schema";
 import { findEvent } from "@wfgraph/shared/extensions/catalog";
@@ -242,26 +242,24 @@ function matchReferenceFailure(input: {
 
   for (const group of input.model.groups) {
     for (const rule of group.conditions) {
-      const operand = readConditionRuleOperand(rule);
-      if (!operand) {
-        continue;
-      }
-      const tokens = findTemplateTokens(operand);
-      if (tokens.length === 0 && operand.includes("{{")) {
-        return "A Wait match reference must be one exact token from list_references.";
-      }
-      if (tokens.length === 0) {
-        continue;
-      }
-      if (tokens.length !== 1 || tokens[0]?.raw !== operand) {
-        return "A Wait match reference must be one exact token from list_references.";
-      }
-      const reference = byToken.get(operand);
-      if (!reference) {
-        return "A Wait match uses an unavailable reference. Use an exact token from list_references.";
-      }
-      if (reference.conditionFieldType !== rule.fieldType) {
-        return `The Wait match reference must have type ${rule.fieldType}.`;
+      for (const operand of readConditionRuleOperands(rule)) {
+        const tokens = findTemplateTokens(operand);
+        if (tokens.length === 0 && operand.includes("{{")) {
+          return "A Wait match reference must be one exact token from list_references.";
+        }
+        if (tokens.length === 0) {
+          continue;
+        }
+        if (tokens.length !== 1 || tokens[0]?.raw !== operand) {
+          return "A Wait match reference must be one exact token from list_references.";
+        }
+        const reference = byToken.get(operand);
+        if (!reference) {
+          return "A Wait match uses an unavailable reference. Use an exact token from list_references.";
+        }
+        if (reference.conditionFieldType !== rule.fieldType) {
+          return `The Wait match reference must have type ${rule.fieldType}.`;
+        }
       }
     }
   }

@@ -15,7 +15,7 @@ import {
 import { ConfigGroup, ConfigHelp } from "./config-section";
 
 const MANUAL_RUNS_HELP =
-  "Run draft, Run vN, and the execute API can start a run. When manual runs are off, only a Start Event can start one.";
+  "The editor and execute API can start runs manually. When this is off, only start events can start runs.";
 
 export function LifecycleConcurrencyGroup({
   rules,
@@ -34,7 +34,8 @@ export function LifecycleConcurrencyGroup({
     <ConfigGroup
       className="py-3 first:pt-0 last:pb-0"
       help={<ConcurrencyHelp concurrency={rules.concurrency} />}
-      label="Concurrency"
+      label="Overlapping runs"
+      prominent
     >
       <div className="space-y-2">
         {/* A dropdown rather than a stack of radio cards, which is what every
@@ -55,7 +56,7 @@ export function LifecycleConcurrencyGroup({
           })}
           value={rules.concurrency}
         >
-          <SelectTrigger aria-label="Concurrency" className="w-full">
+          <SelectTrigger aria-label="Overlapping runs" className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -66,6 +67,13 @@ export function LifecycleConcurrencyGroup({
             ))}
           </SelectContent>
         </Select>
+        <p className="text-muted-foreground text-xs">
+          {
+            CONCURRENCY_OPTIONS.find(
+              (option) => option.value === rules.concurrency
+            )?.description
+          }
+        </p>
 
         <div className="flex items-center gap-2">
           <Checkbox
@@ -134,19 +142,17 @@ export const CONCURRENCY_OPTIONS: ReadonlyArray<{
 }> = [
   {
     value: "unlimited",
-    label: "Unlimited",
-    description: "Each Event starts a separate run.",
+    label: "Start every run",
+    description: "Each event starts a separate run.",
   },
   {
     value: "newest-wins",
-    label: "Newest wins",
-    description:
-      "A new run supersedes active runs for the same entity. The active runs end with the Superseded status.",
+    label: "Start the newest run",
+    description: "End matching active runs, then start the new run.",
   },
   {
     value: "first-wins",
-    label: "First wins",
-    description:
-      "For the same entity, the active run continues. Workflow Graph records the new Event as a Refused Start.",
+    label: "Keep the active run",
+    description: "Keep matching active runs and do not start the new run.",
   },
 ];

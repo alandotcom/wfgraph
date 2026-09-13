@@ -1,18 +1,25 @@
+import { createHash } from "node:crypto";
 import { Effect } from "effect";
 import {
   AppLogger,
   type EffectLogger,
 } from "#src/backend/lib/effect/app-logger";
 import type { DatabaseError } from "#src/backend/lib/effect/database";
+import { InternalFailure } from "#src/backend/lib/effect/failures";
 import {
   InngestClient,
   type InngestError,
 } from "#src/backend/lib/effect/inngest-client";
 import type { RunScopedAuditEventType } from "@wfgraph/shared/lifecycle/audit-event-types";
 import { signalRunToStop } from "#src/backend/services/executions/end-runs";
-import { ExecutionRepo } from "#src/backend/services/executions/repo";
+import {
+  ExecutionRepo,
+  type WorkflowExecution,
+} from "#src/backend/services/executions/repo";
+import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import type { JsonObject, JsonObjectDraft } from "@wfgraph/shared/types/json";
 import type {
+  EntityEligibilityReason,
   WorkflowExecutionIgnoredReason,
   WorkflowExecutionStartSource,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
@@ -20,6 +27,7 @@ import type {
   SerializedWorkflowGraph,
   WorkflowMode,
 } from "@wfgraph/shared/graph/types";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import type { WorkflowVersionKind } from "@wfgraph/shared/graph/version-kinds";
 
 /**
@@ -32,14 +40,19 @@ export type PinnedRunVersion = {
   number: number | null;
 };
 
-/** Identity of the workflow plus the version the run will execute. */
+/**
+ * Identity of the workflow plus the version the run will execute.
+ *
+ * The version is named by id alone. How the timeline words it is read from the
+ * `workflow_versions` row at the enqueue, so a start path cannot label a run
+ * with a version other than the one its committed row pins.
+ */
 export type WorkflowRunTarget = {
   id: string;
   name: string;
   graph: SerializedWorkflowGraph;
   versionId: string;
   catalogFingerprint: string;
-  version: PinnedRunVersion;
 };
 
 /** Build the run target every start path hands to concurrency / enqueue. */
@@ -48,7 +61,6 @@ export function toWorkflowRunTarget(input: {
   versionId: string;
   catalogFingerprint: string;
   graph: SerializedWorkflowGraph;
-  version: PinnedRunVersion;
 }): WorkflowRunTarget {
   return {
     id: input.workflow.id,
@@ -56,7 +68,6 @@ export function toWorkflowRunTarget(input: {
     graph: input.graph,
     versionId: input.versionId,
     catalogFingerprint: input.catalogFingerprint,
-    version: input.version,
   };
 }
 
@@ -70,33 +81,39 @@ export function toWorkflowRunTarget(input: {
 export type WorkflowRunStart = {
   source: WorkflowExecutionStartSource;
   eventName?: string | undefined;
-  entityValue?: string | undefined;
   /**
    * The arrival this start answers, which for an Event is the id the bus carried
    * it under. It goes on the audit row so one arrival can be traced across every
    * workflow it started or was refused by.
    */
   deliveryId?: string | undefined;
-};
+} & (
+  | {
+      /** Stable identity selected from an Event binding for a guarded workflow. */
+      entityType: string;
+      entityId: string;
+      entityValue?: never;
+    }
+  | {
+      /** Legacy untyped Correlation Path identity. */
+      entityValue?: string | undefined;
+      entityType?: never;
+      entityId?: never;
+    }
+);
+
+function workflowRunIdentity(start: WorkflowRunStart) {
+  return start.entityType === undefined
+    ? { entityValue: start.entityValue }
+    : { entityType: start.entityType, entityId: start.entityId };
+}
 
 export type EnqueueStartedRunInput = {
-  workflow: WorkflowRunTarget;
-  start: WorkflowRunStart;
-  runMode: WorkflowMode;
-  /** The row Concurrency opened, which this hands to the bus. */
-  executionId: string;
   /**
-   * The payload the entry node and downstream templates read from. It is JSON
-   * because it arrived as JSON and is stored as JSON in the JSONB
-   * `workflow_executions.input` column.
+   * The committed `workflow_executions` row: the run to send, and every column
+   * the bus message and the timeline entry are written from.
    */
-  payload: JsonObject;
-  /**
-   * The untouched request body, kept alongside the payload so steps can reach
-   * the raw shape. Entrypoints that never substitute a mock payload leave this
-   * out and get the payload itself.
-   */
-  requestPayload?: JsonObject | undefined;
+  execution: WorkflowExecution;
 };
 
 export type StartedWorkflowRun = {
@@ -157,15 +174,15 @@ function runStartedSubject(
   startSource: WorkflowExecutionStartSource,
   version: PinnedRunVersion | undefined
 ): string {
-  const label = RUN_STARTED_LABELS[startSource];
+  const label = `${RUN_STARTED_LABELS[startSource]} `;
 
   if (version?.kind === "draft_snapshot") {
-    return `${label} Draft run started`;
+    return `${label}Draft run started`;
   }
   if (version?.number != null) {
-    return `${label} run of v${version.number} started`;
+    return `${label}run of v${version.number} started`;
   }
-  return `${label} run started`;
+  return `${label}run started`;
 }
 
 /**
@@ -223,6 +240,14 @@ export function buildIgnoredRunAuditMessage(input: {
     return `Refused a start from ${named}: the payload does not satisfy this workflow's start filter`;
   }
 
+  if (input.reason === "entity_not_found") {
+    return `Refused a start from ${named}: the tracked Entity no longer exists`;
+  }
+
+  if (input.reason === "entity_condition_not_met") {
+    return `Refused a start from ${named}: current Entity State does not satisfy Entity Eligibility`;
+  }
+
   // The filter's own error is not repeated here. It is a message from the CEL
   // library about a payload this row does not carry, and it goes to the log,
   // which is where an operator reads it.
@@ -245,48 +270,97 @@ export function buildIgnoredRunAuditMessage(input: {
  * `extra` is what one reason knows and the others do not: the runs first-wins
  * found already going, or the error a Start Filter could not be read past.
  */
-export const recordStartRefusal = Effect.fn("recordStartRefusal")(
-  function* (input: {
-    workflowId: string;
-    startSource: WorkflowExecutionStartSource;
-    reason: WorkflowExecutionIgnoredReason;
-    runMode: WorkflowMode;
-    logger: EffectLogger;
-    eventName?: string | undefined;
-    entityValue?: string | undefined;
-    deliveryId?: string | undefined;
-    extra?: JsonObject | undefined;
-  }) {
-    const repo = yield* ExecutionRepo;
+export function startAdmissionDecisionId(
+  workflowId: string,
+  deliveryId: string
+): string {
+  return `admission_${createHash("sha256")
+    .update(`${workflowId}\0${deliveryId}`)
+    .digest("hex")}`;
+}
 
+type RecordStartRefusalInput = {
+  workflowId: string;
+  startSource: WorkflowExecutionStartSource;
+  runMode: WorkflowMode;
+  logger: EffectLogger;
+  eventName?: string | undefined;
+  entityValue?: string | undefined;
+  entityType?: string | undefined;
+  extra?: JsonObject | undefined;
+} & (
+  | {
+      reason: EntityEligibilityReason;
+      deliveryId: string;
+      /** Coordinates an Event's Entity refusal with a racing start transaction. */
+      durableEntityAdmission: true;
+    }
+  | {
+      reason: WorkflowExecutionIgnoredReason;
+      deliveryId?: string | undefined;
+      durableEntityAdmission?: false | undefined;
+    }
+);
+
+export const recordStartRefusal = Effect.fn("recordStartRefusal")(function* (
+  input: RecordStartRefusalInput
+) {
+  const repo = yield* ExecutionRepo;
+  const message = buildIgnoredRunAuditMessage({
+    startSource: input.startSource,
+    reason: input.reason,
+    eventName: input.eventName,
+  });
+  const metadata = omitUndefined({
+    // The refusal's own keys are written last, so what one reason knows and
+    // the others do not cannot rename the row it is written on.
+    ...input.extra,
+    reason: input.reason,
+    startSource: input.startSource,
+    eventName: input.eventName,
+    entityValue: input.entityValue,
+    entityType: input.entityType,
+    deliveryId: input.deliveryId,
+    runMode: input.runMode,
+  });
+
+  const admissionDecision =
+    input.durableEntityAdmission && input.deliveryId
+      ? yield* repo.recordAdmissionRefusal({
+          workflowId: input.workflowId,
+          deliveryId: input.deliveryId,
+          decisionId: startAdmissionDecisionId(
+            input.workflowId,
+            input.deliveryId
+          ),
+          reason: input.reason,
+          message,
+          metadata,
+        })
+      : undefined;
+
+  if (!admissionDecision) {
     yield* repo.recordAuditEvent({
       workflowId: input.workflowId,
       eventType: "run_refused",
-      message: buildIgnoredRunAuditMessage({
-        startSource: input.startSource,
-        reason: input.reason,
-        eventName: input.eventName,
-      }),
-      metadata: {
-        // The refusal's own keys are written last, so what one reason knows and
-        // the others do not cannot rename the row it is written on.
-        ...input.extra,
-        reason: input.reason,
-        startSource: input.startSource,
-        eventName: input.eventName,
-        entityValue: input.entityValue,
-        deliveryId: input.deliveryId,
-        runMode: input.runMode,
-      },
-    });
-
-    yield* input.logger.info("Start refused", {
-      ...input.extra,
-      reason: input.reason,
-      entityValue: input.entityValue,
+      message,
+      metadata,
     });
   }
-);
+
+  if (!admissionDecision || admissionDecision.kind === "refused") {
+    yield* input.logger.info(
+      "Start refused",
+      omitUndefined({
+        ...input.extra,
+        reason: input.reason,
+        entityValue: input.entityValue,
+        entityType: input.entityType,
+      })
+    );
+  }
+  return admissionDecision;
+});
 
 /** This module's logger, as the Effect that produces it (see `services/workflows/workflow.ts`). */
 const loggerFor = (workflowId: string) =>
@@ -302,21 +376,69 @@ const loggerFor = (workflowId: string) =>
  * Concurrency a decision rather than a race, and the send stays out here because
  * a transaction has no business waiting on Inngest.
  *
- * The send is the only step here that may fail the caller, and the ordering says
- * why. Before it, nothing irreversible has happened, so a compensation can close
- * the row. After it the run exists and this call is bookkeeping, so a refused
- * write is logged and the run is reported as started: failing would put the
- * caller's Inngest step into a retry that enqueues nothing new and re-runs
- * everything around it.
+ * The version the timeline entry names is read here from the id on the row, so
+ * no caller can label a run with a version other than the one that run pinned.
+ * An attempt answering a delivery another attempt committed is handed that other
+ * attempt's row, which may pin an older version than this attempt loaded.
+ *
+ * The version read and the send are the two steps that may fail the caller, and
+ * the ordering says why. Before the send, nothing irreversible has happened, so
+ * a refusal travels back for the caller's step to retry and a refused send can
+ * close the row. After the send the run exists and this call is bookkeeping, so
+ * a refused write is logged and the run is reported as started: failing would
+ * put the caller's Inngest step into a retry that enqueues nothing new and
+ * re-runs everything around it.
+ *
+ * Everything the bus message and the timeline entry need is on the row or on the
+ * version it pins, so an attempt that finds an Execution a previous attempt
+ * committed and never sent sends it with nothing recomputed.
+ *
+ * A row whose `enqueuedAt` is set was already taken by the bus, so it is
+ * answered from the row: no send, no second `markEnqueued`, and no second
+ * "run started" entry. `enqueuedAt` only moves from null to set, so a row read
+ * with a stale null costs one resend, which Inngest drops by idempotency key.
  */
 export const enqueueStartedRun = Effect.fn("enqueueStartedRun")(function* (
   input: EnqueueStartedRunInput
 ) {
   const repo = yield* ExecutionRepo;
+  const workflowRepo = yield* WorkflowRepo;
   const inngest = yield* InngestClient;
-  const { workflow, start, runMode } = input;
-  const logger = yield* loggerFor(workflow.id);
-  const execution = { id: input.executionId };
+  const { execution } = input;
+  const logger = yield* loggerFor(execution.workflowId);
+
+  if (execution.enqueuedAt !== null) {
+    yield* logger.info("Skipped the send for a run the bus already took", {
+      run: {
+        executionId: execution.id,
+        runId: execution.workflowRunId,
+      },
+    });
+    const alreadyStarted: StartedWorkflowRun = {
+      executionId: execution.id,
+      // `markEnqueued` stores null when the bus answered with no event id.
+      runId: execution.workflowRunId ?? undefined,
+      runMode: execution.runMode,
+    };
+    return alreadyStarted;
+  }
+
+  const pinned = yield* workflowRepo.findVersionById(
+    execution.workflowVersionId
+  );
+  if (!pinned) {
+    // A run's version row cascades with the run, so a committed Execution
+    // pointing at a version that is gone is an invariant break rather than a
+    // state a retry can recover from.
+    return yield* new InternalFailure({
+      error:
+        "The Execution to enqueue pins a workflow version that no longer exists",
+    });
+  }
+  const version: PinnedRunVersion = {
+    kind: pinned.kind,
+    number: pinned.version,
+  };
 
   const run = yield* inngest
     .sendRunRequested({
@@ -339,32 +461,35 @@ export const enqueueStartedRun = Effect.fn("enqueueStartedRun")(function* (
     "write the run's opening timeline entry",
     execution.id,
     repo.recordAuditEvent({
-      workflowId: workflow.id,
+      workflowId: execution.workflowId,
       executionId: execution.id,
       eventType: "run_started",
       message: buildRunStartedAuditMessage({
-        startSource: start.source,
-        runMode,
-        eventName: start.eventName,
-        version: workflow.version,
+        startSource: execution.startSource,
+        runMode: execution.runMode,
+        eventName: execution.startEventName ?? undefined,
+        version,
       }),
-      metadata: {
-        startSource: start.source,
-        runMode,
-        versionKind: workflow.version.kind,
-        versionNumber: workflow.version.number ?? undefined,
-        eventName: start.eventName,
-        entityValue: start.entityValue,
-        deliveryId: start.deliveryId,
+      // `entityId` stays off the timeline: it is the host's own record id, and
+      // the row that carries it is what an operator reads it from.
+      metadata: omitUndefined({
+        startSource: execution.startSource,
+        runMode: execution.runMode,
+        versionKind: version.kind,
+        versionNumber: version.number ?? undefined,
+        eventName: execution.startEventName ?? undefined,
+        entityValue: execution.entityValue ?? undefined,
+        entityType: execution.entityType ?? undefined,
+        deliveryId: execution.deliveryId ?? undefined,
         runId: run.eventId,
-      },
+      }),
     })
   );
 
   const started: StartedWorkflowRun = {
     executionId: execution.id,
     runId: run.eventId,
-    runMode,
+    runMode: execution.runMode,
   };
   return started;
 });
@@ -392,49 +517,75 @@ const bookkeeping = <A>(
   );
 
 /**
- * Undoes a start whose send was refused: the run is told to stop, then its row
- * is closed.
+ * Undoes a start whose send was refused: the row is closed, and only a run
+ * whose row this call closed is told to stop.
  *
- * The order is what makes the close safe. A refused send is ambiguous --
- * Inngest may have taken the event and failed on the way back, in which case
- * the run is already executing -- and the row's in-flight guard cannot tell
- * those apart, because a run that started a moment ago is `running` like one
- * that never started. The cancel resolves it: an accepted run is stopped, and a
- * signal for a run that does not exist is a no-op at Inngest. A cancel that
- * itself fails to send leaves the row closed anyway and says so on the
- * timeline, which is the same half-failure `cancelInFlightRuns` reports.
+ * A refused send is ambiguous, because Inngest may have taken the event and
+ * failed on the way back, leaving the run already executing. `markEnqueueFailed`
+ * is the decision: it closes only an in-flight row with no Cancel or Exit claim
+ * and no `enqueuedAt`. A run behind a row it closed is stopped by the signal,
+ * and its own writes are refused by the terminal status; a signal for a run
+ * that never started is a no-op at Inngest. Every other row is left to the run
+ * that must finish it, which the signal would kill: a claim is finished by the
+ * run holding it, and a stamped row belongs to the send that landed.
+ *
+ * One case stays open. A Cancel claim can land on a row whose first send was
+ * refused, and that row may have no run behind it. The retry of the Event
+ * delivery sends such a row again, and the run then reads the claim at its
+ * first boundary and takes the Canceled outlet. A row started by hand has no
+ * delivery to retry, and neither has a delivery that meets the same refusal on
+ * every attempt, so a row in one of those two cases stays in flight.
+ *
+ * A close the database refuses sends no signal either, since the row may hold
+ * a claim this call cannot see. The row stays in flight and unstamped, so the
+ * next start for its entity can close it through `reclaimStuckRuns` once it is
+ * past `UNSENT_RUN_GRACE_MS`. The Inngest failure travels on to the caller in
+ * every case.
  */
 const closeRefusedEnqueue = Effect.fn("closeRefusedEnqueue")(function* (
   input: EnqueueStartedRunInput,
   failure: InngestError
 ) {
   const repo = yield* ExecutionRepo;
-  const logger = yield* loggerFor(input.workflow.id);
+  const { execution } = input;
+  const logger = yield* loggerFor(execution.workflowId);
   const error =
     failure.cause instanceof Error
       ? failure.cause.message
       : "Failed to enqueue run";
 
-  yield* signalRunToStop({
-    workflowId: input.workflow.id,
-    executionId: input.executionId,
-    reason: error,
-    eventName: input.start.eventName,
-  });
+  const closed = yield* repo
+    .markEnqueueFailed({ executionId: execution.id, error })
+    .pipe(
+      Effect.catchTag("DatabaseError", (databaseError) =>
+        Effect.as(
+          logger.error(
+            "Enqueue reported failure, and the database refused to close the row, so no stop signal was sent",
+            { run: { executionId: execution.id }, error: databaseError }
+          ),
+          null
+        )
+      )
+    );
 
-  const closed = yield* repo.markEnqueueFailed({
-    executionId: input.executionId,
-    error,
-  });
+  if (closed === null) {
+    return;
+  }
 
   if (!closed) {
-    // The run reached a verdict of its own, which the compensation is not
-    // allowed to overwrite.
     yield* logger.info(
-      "Enqueue reported failure but the run had already left the in-flight statuses",
-      { executionId: input.executionId }
+      "Enqueue reported failure, but the row holds a claim, was enqueued by another attempt, or has ended, so no stop signal was sent",
+      { run: { executionId: execution.id } }
     );
+    return;
   }
+
+  yield* signalRunToStop({
+    workflowId: execution.workflowId,
+    executionId: execution.id,
+    reason: error,
+    eventName: execution.startEventName ?? undefined,
+  });
 });
 
 /**
@@ -457,7 +608,7 @@ export const recordTerminalWorkflowRun = Effect.fn("recordTerminalWorkflowRun")(
       startSource: input.start.source,
       runMode: input.runMode,
       startEventName: input.start.eventName,
-      entityValue: input.start.entityValue,
+      ...workflowRunIdentity(input.start),
       input: input.payload,
       output: input.output,
       error: input.error,
@@ -491,11 +642,24 @@ export const recordPausedRunIgnored = Effect.fn("recordPausedRunIgnored")(
     startSource: WorkflowExecutionStartSource;
     runMode: WorkflowMode;
     payload: JsonObject;
+    eventName?: string | undefined;
+    entityType?: string | undefined;
+    entityId?: string | undefined;
   }) {
+    const start: WorkflowRunStart =
+      input.entityType && input.entityId
+        ? {
+            source: input.startSource,
+            eventName: input.eventName,
+            entityType: input.entityType,
+            entityId: input.entityId,
+          }
+        : { source: input.startSource, eventName: input.eventName };
+
     return yield* recordTerminalWorkflowRun({
       workflowId: input.workflowId,
       workflowVersionId: input.workflowVersionId,
-      start: { source: input.startSource },
+      start,
       runMode: input.runMode,
       payload: input.payload,
       status: "completed",

@@ -18,7 +18,7 @@ import {
   type ExtensionCatalog,
   findEvent,
 } from "@wfgraph/shared/extensions/catalog";
-import { nanoid } from "nanoid";
+import { generateId } from "@wfgraph/shared/utils/id";
 import {
   EVENT_NAME_FIELD_PATH,
   serializeConditionModel,
@@ -50,34 +50,34 @@ import { EventMultiCombobox } from "./event-combobox";
 const ROLE_COPY = {
   start: {
     label: "Start Events",
+    pickerPlaceholder: "Add start event",
     help: [
-      "A run starts when one of these Events arrives.",
-      "The Correlation Path is the payload field that identifies the entity. Runs with the same value belong to the same entity.",
-      "A Filter stops an arrival from starting a run when its condition is false. Concurrency does not receive the arrival.",
-      "With several Events, Concurrency decides what happens to a run already in progress.",
+      "A run starts when one of these events occurs.",
+      "A correlation path identifies related runs when this workflow does not track an Entity.",
+      "A start filter limits which events can start a run.",
     ],
   },
   cancel: {
     label: "Cancel Events",
+    pickerPlaceholder: "Add cancel event",
     help: [
-      "Workflow Graph checks the Cancel Filter before reading the Correlation Path.",
-      "If the Cancel Filter declines the Event, the runs in progress stay active.",
-      "If the Cancel Filter accepts the Event, Workflow Graph reads the entity from the Event's Correlation Path and cancels matching runs.",
-      "A canceled run leaves through the Canceled outlet.",
+      "A cancel event stops matching active runs and sends them down the Canceled branch.",
+      "A cancel filter limits which events can stop a run.",
+      "Matching uses the tracked Entity, or the correlation path when no Entity is tracked.",
     ],
   },
 } as const;
 
 const FILTER_COPY = {
   start: {
-    actionForAll: "filter for all Start Events",
-    filterEach: "Filter each Event separately",
-    recollapse: "Use one filter for every Event",
+    actionForAll: "filter for all start events",
+    filterEach: "Use a different filter for each event",
+    recollapse: "Use one filter for all events",
   },
   cancel: {
-    actionForAll: "filter for all Cancel Events",
-    filterEach: "Filter each Cancel Event separately",
-    recollapse: "Use one filter for every Cancel Event",
+    actionForAll: "filter for all cancel events",
+    filterEach: "Use a different filter for each cancel event",
+    recollapse: "Use one filter for all cancel events",
   },
 } as const;
 
@@ -181,6 +181,7 @@ export function LifecycleEventGroup(props: LifecycleEventGroupProps) {
             disabled={disabled}
             inputId={inputId}
             onValueChange={onEventNamesChange}
+            placeholder={copy.pickerPlaceholder}
             value={eventNames}
           />
         </EventPicker>
@@ -415,6 +416,9 @@ function LifecycleFilterEditor({
   const catalog = useExtensionCatalog();
   const nodes = useAtomValue(nodesAtom);
   const shared = eventNames.length > 1;
+  const eventLabels = eventNames.map(
+    (eventName) => findEvent(catalog, eventName)?.label ?? eventName
+  );
 
   const fields: ConditionSelectableField[] = useMemo(
     () => getSharedEventConditionFields(catalog, eventNames, nodes),
@@ -457,8 +461,8 @@ function LifecycleFilterEditor({
     onChange(
       serializeConditionModel(
         seedConditionModelForField(seedField, {
-          groupId: nanoid(),
-          conditionId: nanoid(),
+          groupId: generateId(),
+          conditionId: generateId(),
         })
       )
     );
@@ -471,11 +475,11 @@ function LifecycleFilterEditor({
         <p className="text-muted-foreground text-xs">
           {shared
             ? role === "start"
-              ? "Every arrival of these Events starts a run, whatever it carries."
-              : "Every arrival of these Events cancels matching runs, whatever it carries."
+              ? "Any selected event starts a run. No filter is set."
+              : "Any selected event stops matching active runs. No filter is set."
             : role === "start"
-              ? `Every ${eventNames[0]} arrival starts a run, whatever it carries.`
-              : `Every ${eventNames[0]} arrival cancels matching runs, whatever it carries.`}
+              ? `${eventLabels[0]} starts a run. No filter is set.`
+              : `${eventLabels[0]} stops matching active runs. No filter is set.`}
         </p>
         <Button
           disabled={disabled || payloadFields.length === 0}
@@ -496,20 +500,20 @@ function LifecycleFilterEditor({
       description={
         shared
           ? role === "start"
-            ? "An arrival that does not satisfy this starts no run. Only the fields every Start Event declares can be read here."
-            : "An arrival that does not satisfy this cancels no runs. Only the fields every Cancel Event declares can be read here."
+            ? "Events that do not match this filter do not start a run. Only shared fields are available."
+            : "Events that do not match this filter leave active runs unchanged. Only shared fields are available."
           : role === "start"
-            ? "An arrival that does not satisfy this starts no run. Compare a payload field against a literal."
-            : "An arrival that does not satisfy this cancels no runs. Compare a payload field against a literal."
+            ? "If this event does not match, no run starts."
+            : "If this event does not match, active runs continue."
       }
       disabled={disabled}
       editActionName={actionName}
       emptyFieldsMessage={
         shared
           ? role === "start"
-            ? "These Events declare no fields in common, so there is nothing one filter can read. Filter each Event separately."
-            : "These Events declare no fields in common, so there is nothing one filter can read. Filter each Cancel Event separately."
-          : "This Event declares no fields, so there is nothing to filter on."
+            ? "These events have no fields in common. Use a different filter for each event."
+            : "These events have no fields in common. Use a different filter for each cancel event."
+          : "This event has no fields to filter."
       }
       fields={fields}
       label="Filter"

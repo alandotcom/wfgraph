@@ -26,6 +26,7 @@ const ACTION = "linear/find-issues";
 
 const linearCatalog = {
   events: [],
+  entities: [],
   actions: [
     {
       id: ACTION,

@@ -66,6 +66,7 @@ beforeEach(() => {
 });
 
 const providerCatalog: ExtensionCatalog = {
+  entities: [],
   actions: [
     {
       id: "resend/send-email",

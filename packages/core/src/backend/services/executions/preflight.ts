@@ -17,7 +17,6 @@ import {
   type WorkflowRunRow,
 } from "#src/backend/services/workflows/repo";
 import type { DatabaseError } from "#src/backend/lib/effect/database";
-import type { PinnedRunVersion } from "#src/backend/services/executions/run-rows";
 import {
   catalogFingerprint,
   graphDigest,
@@ -71,8 +70,6 @@ export type WorkflowExecutionPreflight = {
 export type LoadedForRun = {
   workflow: WorkflowRunRow;
   preflight: WorkflowExecutionPreflight;
-  /** Which graph the run pins, in the wording the timeline uses. */
-  version: PinnedRunVersion;
   pinVersion: Effect.Effect<void, DatabaseError>;
   releaseVersion: Effect.Effect<void>;
 };
@@ -301,7 +298,6 @@ export const loadWorkflowForRun = Effect.fn("wfgraph.execution.load_workflow")(
     const result: LoadedForRun = {
       workflow,
       preflight,
-      version: { kind: "published", number: version.version },
       pinVersion: Effect.void,
       releaseVersion: Effect.void,
     };
@@ -387,7 +383,6 @@ export const loadDraftForRun = Effect.fn("wfgraph.execution.load_draft")(
     const result: LoadedForRun = {
       workflow,
       preflight,
-      version: { kind: "draft_snapshot", number: null },
       pinVersion,
       releaseVersion,
     };

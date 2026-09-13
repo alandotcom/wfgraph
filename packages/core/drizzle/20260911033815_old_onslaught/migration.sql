@@ -1,0 +1,1 @@
+ALTER TABLE "workflow_executions" ALTER COLUMN "start_source" SET NOT NULL;

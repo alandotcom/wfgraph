@@ -21,9 +21,10 @@ import {
   type ConditionModel,
   type ConditionRule,
   isNullCheckConditionRule,
+  isStringSetConditionRule,
   isTimestampAbsoluteConditionRule,
   parseConditionModel,
-  readConditionRuleOperand,
+  readConditionRuleOperands,
 } from "@wfgraph/shared/conditions/conditions";
 import type { EventSubscription } from "@wfgraph/shared/lifecycle/wait-subscription";
 
@@ -106,7 +107,9 @@ function resolveRuleTemplates(
   }
 
   if (rule.fieldType === "string") {
-    return { ...rule, value: resolveTemplates(rule.value) };
+    return isStringSetConditionRule(rule)
+      ? { ...rule, values: rule.values.map(resolveTemplates) }
+      : { ...rule, value: resolveTemplates(rule.value) };
   }
 
   if (
@@ -138,9 +141,11 @@ function resolveModelTemplates(
 function findUnresolvedReference(model: ConditionModel): string | undefined {
   for (const group of model.groups) {
     for (const rule of group.conditions) {
-      const operand = readConditionRuleOperand(rule);
-      if (operand?.includes("{{")) {
-        return operand.trim();
+      const unresolved = readConditionRuleOperands(rule).find((operand) =>
+        operand.includes("{{")
+      );
+      if (unresolved) {
+        return unresolved.trim();
       }
     }
   }

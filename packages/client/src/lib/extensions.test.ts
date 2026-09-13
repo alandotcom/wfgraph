@@ -12,6 +12,7 @@ import { can } from "#src/lib/authorization";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 
 const served: ExtensionCatalog = {
+  entities: [],
   events: [
     {
       name: "app/appointment.created",

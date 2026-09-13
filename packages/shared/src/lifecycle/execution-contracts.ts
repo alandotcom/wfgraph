@@ -3,7 +3,7 @@
  * written: the column's type, the RPC literals, and the run-history filter all
  * derive from this list.
  *
- * An Execution ends with exactly one of four (CONTEXT.md). `superseded` is how
+ * An Execution ends with exactly one terminal outcome (CONTEXT.md). `superseded` is how
  * newest-wins Concurrency ends a run a newer start displaced, which is quiet:
  * no outlet fires and the status is the whole of the record.
  */
@@ -13,12 +13,69 @@ export const WORKFLOW_EXECUTION_STATUSES = [
   "waiting",
   "completed",
   "canceled",
+  "exited",
   "superseded",
   "failed",
 ] as const;
 
 export type WorkflowExecutionStatus =
   (typeof WORKFLOW_EXECUTION_STATUSES)[number];
+
+/**
+ * Which side of the Lifecycle Node a piece of work sits on: the Started outlet's
+ * branch, or the Canceled outlet's.
+ *
+ * A Cancel claim ends the Started side and starts the Canceled one, so every
+ * write that admits, parks or resumes work states which side it is for. A write
+ * gets that side by reading the graph at the node the write is for, which
+ * answers the same on a replay as on the first attempt because the outlet a node
+ * sits behind is a property of the graph.
+ */
+export const EXECUTION_SIDES = ["started", "canceled"] as const;
+
+export type ExecutionSide = (typeof EXECUTION_SIDES)[number];
+
+/**
+ * How a run was claimed for termination: by a Cancel Event, or by an Entity
+ * Eligibility Exit.
+ */
+export const TERMINATION_KINDS = ["cancel", "exit"] as const;
+
+export type TerminationKind = (typeof TERMINATION_KINDS)[number];
+
+/**
+ * Whether a run carrying this termination claim admits work on one side of the
+ * Lifecycle Node.
+ *
+ * Started-side work needs an unclaimed run, because a Cancel claim and an Exit
+ * claim both end the branch the run was walking. A Cancel claim is what starts
+ * Canceled-side work, so that claim admits the Canceled side. An Exit claim
+ * takes no graph outlet and admits neither side.
+ *
+ * This is the whole of the rule. Each persistence backend builds its own SQL
+ * guard from it, and the engine asks it of a claim already read back off a row.
+ */
+export function claimKindAdmits(
+  kind: TerminationKind | null,
+  side: ExecutionSide
+): boolean {
+  return side === "canceled" ? kind === "cancel" : kind === null;
+}
+
+/** Why Entity Eligibility refused admission or exited an active Execution. */
+export const ENTITY_ELIGIBILITY_REASONS = [
+  "entity_condition_not_met",
+  "entity_not_found",
+] as const;
+
+export type EntityEligibilityReason =
+  (typeof ENTITY_ELIGIBILITY_REASONS)[number];
+
+export function isEntityEligibilityReason(
+  value: unknown
+): value is EntityEligibilityReason {
+  return ENTITY_ELIGIBILITY_REASONS.some((reason) => reason === value);
+}
 
 /**
  * The statuses a run can still leave.
@@ -66,8 +123,12 @@ export type WorkflowExecutionStartSource =
  *   workflow put on that Start Event.
  * - `start_filter_unevaluable`: the Start Filter could not be read against the
  *   payload at all, which a payload carrying a field of the wrong type does.
+ * - `entity_condition_not_met`: current Entity State did not satisfy the
+ *   workflow's positive Entity Eligibility condition.
+ * - `entity_not_found`: the host reported that the tracked Entity no longer
+ *   exists.
  *
- * The last two reach no manual start, because a manual start is a person asking
+ * The two Start Filter reasons reach no manual start, because a manual start is a person asking
  * for this run rather than an arrival being admitted. They are listed here so the
  * sentence every refusal is recorded with keeps one home,
  * `buildIgnoredRunAuditMessage`.
@@ -80,6 +141,8 @@ export const WORKFLOW_EXECUTION_IGNORED_REASONS = [
   "start_event_required",
   "start_filter_not_met",
   "start_filter_unevaluable",
+  "entity_condition_not_met",
+  "entity_not_found",
 ] as const;
 
 export type WorkflowExecutionIgnoredReason =

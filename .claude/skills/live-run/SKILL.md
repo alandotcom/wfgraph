@@ -72,12 +72,18 @@ each:
   nothing outside the process. **Never put a `twilio/*` or any other integration
   action in a probe**: those send real messages to real numbers.
 
-Create it through the RPC rather than with SQL, so the graph is validated and
-its Event subscriptions are written:
+Create it through the RPC rather than with SQL, so the graph is validated:
 
 ```bash
 node /path/to/scratchpad/make-probe.mjs "Two waits probe"
 ```
+
+**Trap.** `workflow/create` writes no Event subscriptions. Only `workflow/publish`
+does, so an unpublished probe receives no Start Event, no Cancel Event and no
+wait Event. Publish the draft (`expectedDraftRevision: 1`,
+`expectedPublishedVersionId: null` on a fresh probe) before sending anything,
+and read the `workflow_event_subscriptions` rows to confirm. `workflow/getById`
+takes `workflowId`.
 
 ## 3. Trigger a run
 

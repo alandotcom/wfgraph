@@ -79,21 +79,23 @@ function workflowRow(rules: LifecycleRules, label: string): Workflow {
 }
 
 function workflowRepoFor(workflow: Workflow) {
+  const published = {
+    id: "ver_1",
+    workflowId: workflow.id,
+    version: 1,
+    kind: "published" as const,
+    graph: workflow.graph,
+    catalogFingerprint: "fp",
+    graphDigest: "digest",
+    publishedAt: new Date("2026-03-01T00:00:00.000Z"),
+  };
+
   return stubWorkflowRepo({
     findByIdWithPublishedVersionForRun: () =>
-      Effect.succeed({
-        workflow,
-        publishedVersion: {
-          id: "ver_1",
-          workflowId: workflow.id,
-          version: 1,
-          kind: "published",
-          graph: workflow.graph,
-          catalogFingerprint: "fp",
-          graphDigest: "digest",
-          publishedAt: new Date("2026-03-01T00:00:00.000Z"),
-        },
-      }),
+      Effect.succeed({ workflow, publishedVersion: published }),
+    // The enqueue reads the version the opened row pins, because that is what
+    // the run's opening timeline entry names.
+    findVersionById: () => Effect.succeed(published),
   });
 }
 
@@ -109,6 +111,8 @@ function executionRow(): WorkflowExecution {
     runMode: "live",
     startEventName: null,
     entityValue: null,
+    entityType: null,
+    entityId: null,
     input: {},
     output: null,
     error: null,
@@ -117,7 +121,10 @@ function executionRow(): WorkflowExecution {
     cancelledAt: null,
     completedAt: null,
     duration: null,
-    cancelRequestedAt: null,
+    terminationKind: null,
+    terminationRequestedAt: null,
+    terminationReason: null,
+    terminationNodeId: null,
     cancelEventName: null,
     cancelPayload: null,
     workflowVersionId: "ver_1",
@@ -228,7 +235,13 @@ describe("execution start and cancel spans", () => {
           Effect.succeed({ id: "exec_1", status: "running" }),
         listWaitingStates: () => Effect.succeed([]),
         recordAuditEvent: () => Effect.void,
-        endInFlight: () => Effect.succeed(true),
+        endInFlight: () =>
+          Effect.succeed({
+            executionId: "exec_1",
+            status: "canceled",
+            claim: null,
+            didWrite: true,
+          }),
         cancelWaits: () => Effect.succeed([]),
       }),
       stubInngestClient({ sendCancelRequested: () => Effect.void })

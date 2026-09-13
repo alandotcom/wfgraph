@@ -1,6 +1,7 @@
 import {
   IN_FLIGHT_EXECUTION_STATUSES,
   WORKFLOW_EXECUTION_STATUSES,
+  type EntityEligibilityReason,
   type WorkflowExecutionStartSource,
   type WorkflowExecutionStatus,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
@@ -65,6 +66,13 @@ export type ExecutionEvent = {
   createdAt: Date;
 };
 
+export type ExecutionExit = {
+  reason: EntityEligibilityReason;
+  entityType: string;
+  nodeId: string;
+  checkedAt: Date;
+};
+
 /**
  * One node this run is parked at, with what would unpark it.
  *
@@ -99,6 +107,18 @@ type RawRefusedStart = Omit<RefusedStart, "createdAt"> & { createdAt: string };
 /** A run status that can still change, and so is still worth polling. */
 export function isRunInProgress(status: string | undefined): boolean {
   return IN_FLIGHT_EXECUTION_STATUSES.some((inFlight) => inFlight === status);
+}
+
+/**
+ * Keeps detail polling until the detail response itself observes a verdict.
+ * Its status outranks the list because a deep link may be outside that list,
+ * and the list can observe the terminal row before detail fetches it.
+ */
+export function shouldPollExecutionDetail(
+  detailStatus: string | undefined,
+  listedStatus: string | undefined
+): boolean {
+  return isRunInProgress(detailStatus ?? listedStatus);
 }
 
 /**
@@ -162,6 +182,7 @@ export function toExecutionDetail(payload: ExecutionLogsResult): {
   logs: ExecutionLog[];
   waits: ExecutionWait[];
   execution: WorkflowExecution & { workflowVersionId: string };
+  exit: ExecutionExit | null;
 } {
   return {
     logs: toExecutionLogs(payload),
@@ -173,6 +194,9 @@ export function toExecutionDetail(payload: ExecutionLogsResult): {
       ...toWorkflowExecutionFromSummary(payload.execution),
       workflowVersionId: payload.execution.workflowVersionId,
     },
+    exit: payload.exit
+      ? { ...payload.exit, checkedAt: new Date(payload.exit.checkedAt) }
+      : null,
   };
 }
 

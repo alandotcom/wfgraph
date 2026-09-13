@@ -16,6 +16,10 @@ import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { Cause, Effect } from "effect";
 import type { WorkflowActions } from "#src/backend/engine/actions";
 import type { BranchRunResult } from "#src/backend/engine/branch";
+import {
+  noWorkflowEntities,
+  type WorkflowEntities,
+} from "#src/backend/engine/entities";
 import { CancelBoundary } from "#src/backend/engine/cancel-boundary";
 import {
   type ExecutionResult,
@@ -23,20 +27,33 @@ import {
   wrapStoredOutput,
 } from "#src/backend/engine/contracts";
 import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
-import { NodeScheduler } from "#src/backend/engine/scheduler";
-import type { WorkflowStore } from "#src/backend/engine/store";
 import {
+  NodeScheduler,
+  type NodeSchedulerInput,
+} from "#src/backend/engine/scheduler";
+import type { PendingCancel, WorkflowStore } from "#src/backend/engine/store";
+import {
+  type CanceledOutletOutcome,
   recordRunCompleted,
   recordRunFailed,
+  type RunFailureOutcome,
   type TraversalTerminalStatus,
 } from "#src/backend/engine/terminal-record";
 import { Traversal } from "#src/backend/engine/traversal";
 import {
   type EngineFailure,
+  engineFailure,
   failureFromCause,
 } from "#src/backend/engine/engine-failure";
 import { runDurable, runDurableUnit } from "#src/backend/engine/durable";
 import { withAppLogCategory } from "#src/backend/lib/effect/app-logger";
+import { entityEligibilityConditionId } from "#src/backend/lib/entity-eligibility";
+import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
+import type {
+  EntityEligibilityReason,
+  ExecutionSide,
+  WorkflowExecutionStatus,
+} from "@wfgraph/shared/lifecycle/execution-contracts";
 
 export type { WorkflowActions } from "#src/backend/engine/actions";
 export type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
@@ -75,6 +92,9 @@ export type WorkflowExecutionInput = {
   /** Owning workflow. Also how steps look up integration credentials. */
   workflowId: string;
   workflowName?: string | undefined;
+  /** Immutable typed identity selected when a guarded Execution was opened. */
+  entityType?: string | undefined;
+  entityId?: string | undefined;
   workflowRunId?: string | undefined;
   runMode?: "live" | "test" | undefined;
 };
@@ -90,6 +110,13 @@ export type WorkflowExecutionInput = {
 export type WorkflowBranchInput = WorkflowExecutionInput & {
   entryNodeId: string;
   releasedNodeIds: readonly string[];
+  /**
+   * Which side of the Lifecycle Node the entry node sits on. The branch cannot
+   * work it out on its own, because it routes no cancellation and so reads the
+   * claim at no node boundary. A Canceled-side branch takes its parent's claim
+   * on before it walks anything.
+   */
+  side: ExecutionSide;
 };
 
 /** What one call of the engine builds before it can execute a node. */
@@ -100,14 +127,25 @@ type PreparedRun = {
   cancelBoundary: CancelBoundary;
   scheduler: NodeScheduler;
   lifecycleNodeIds: string[];
+  entityEligibility?: NodeSchedulerInput["entityEligibility"];
 };
 
 type WorkflowExecutionResult = {
+  status: WorkflowExecutionStatus;
   success: boolean;
   results: Readonly<Record<string, ExecutionResult>>;
   outputs: Readonly<NodeOutputs>;
   error?: string | undefined;
   cancelled?: boolean | undefined;
+  exit?:
+    | {
+        reason: EntityEligibilityReason;
+        entityType: string;
+        conditionId: string;
+        nodeId: string;
+        checkedAt: string;
+      }
+    | undefined;
 };
 
 /**
@@ -115,14 +153,16 @@ type WorkflowExecutionResult = {
  * with.
  *
  * A branch run names its entry node, and that is the whole of the difference
- * here: its cancel boundary is inert, because the run that started the branch is
- * the one that routes a cancellation and the branch itself is killed outright.
+ * here: its cancel boundary routes nothing, because the run that started the
+ * branch is the one that routes a cancellation. It still answers which side each
+ * node sits on, which is what guards a Canceled-side Wait's park.
  */
 function prepareRun(
   input: WorkflowExecutionInput | WorkflowBranchInput,
   runtime: WorkflowExecutionRuntime,
   store: WorkflowStore,
-  actions: WorkflowActions
+  actions: WorkflowActions,
+  entities: WorkflowEntities
 ): PreparedRun {
   const branchEntryNodeId =
     "entryNodeId" in input ? input.entryNodeId : undefined;
@@ -141,6 +181,17 @@ function prepareRun(
 
   const traversal = new Traversal(nodes, edges);
   const lifecycleNodes = traversal.lifecycleNodes;
+  const eligibility = readLifecycleRules(
+    lifecycleNodes[0]?.data.config
+  )?.entityEligibility;
+  const entityEligibility = eligibility?.checkpoints.includes("before-node")
+    ? {
+        entityType: input.entityType ?? "",
+        entityId: input.entityId ?? "",
+        condition: eligibility.condition,
+        conditionId: entityEligibilityConditionId(eligibility.condition),
+      }
+    : undefined;
 
   const boundaryInput = {
     edges,
@@ -148,10 +199,11 @@ function prepareRun(
     runtime,
     store,
     executionId,
+    lifecycleNodes,
   };
   const cancelBoundary = branchEntryNodeId
-    ? CancelBoundary.inert(boundaryInput)
-    : new CancelBoundary({ ...boundaryInput, lifecycleNodes });
+    ? CancelBoundary.forBranch(boundaryInput)
+    : new CancelBoundary({ ...boundaryInput, routesCancellation: true });
 
   const scheduler = new NodeScheduler({
     traversal,
@@ -159,6 +211,7 @@ function prepareRun(
     runtime,
     store,
     actions,
+    entities,
     executionId,
     workflowId,
     workflowRunId: currentWorkflowRunId,
@@ -167,6 +220,7 @@ function prepareRun(
     startEventName,
     catalogFingerprint: input.catalogFingerprint,
     workflowVersionId: input.workflowVersionId,
+    entityEligibility,
     branchEntryNodeId,
   });
 
@@ -177,6 +231,7 @@ function prepareRun(
     cancelBoundary,
     scheduler,
     lifecycleNodeIds: lifecycleNodes.map((node) => node.id),
+    entityEligibility,
   };
 }
 
@@ -243,9 +298,16 @@ export function executeWorkflow(
   input: WorkflowExecutionInput,
   runtime: WorkflowExecutionRuntime,
   store: WorkflowStore,
-  actions: WorkflowActions
+  actions: WorkflowActions,
+  entities: WorkflowEntities = noWorkflowEntities
 ): Effect.Effect<WorkflowExecutionResult, EngineFailure> {
-  const execute = executeWorkflowInner(input, runtime, store, actions).pipe(
+  const execute = executeWorkflowInner(
+    input,
+    runtime,
+    store,
+    actions,
+    entities
+  ).pipe(
     Effect.annotateLogs(runLogAnnotations(input, runtime)),
     Effect.withSpan("wfgraph.workflow.execution", {
       attributes: workflowSpanAttributes(input),
@@ -258,7 +320,8 @@ function executeWorkflowInner(
   input: WorkflowExecutionInput,
   runtime: WorkflowExecutionRuntime,
   store: WorkflowStore,
-  actions: WorkflowActions
+  actions: WorkflowActions,
+  entities: WorkflowEntities
 ) {
   return Effect.suspend(() => {
     const { executionId, workflowId, runMode = "live" } = input;
@@ -269,7 +332,8 @@ function executeWorkflowInner(
       cancelBoundary,
       scheduler,
       lifecycleNodeIds,
-    } = prepareRun(input, runtime, store, actions);
+      entityEligibility,
+    } = prepareRun(input, runtime, store, actions, entities);
 
     // This body is re-run on every attempt and after every wait, so this clock
     // measures the current attempt alone. The run's own elapsed is derived from
@@ -297,90 +361,243 @@ function executeWorkflowInner(
       // suspend nothing are finished by now and the run may park.
       yield* scheduler.drainDeferredWaits();
 
-      const finalSuccess = traversal.allSucceeded();
-      const finalOutput = traversal.deterministicTerminalOutput();
-      // A cancel outranks what the nodes did: the run reached the end of the
-      // Canceled branch, and that is the whole of what it means to be canceled.
-      const terminalStatus: TraversalTerminalStatus =
-        cancelBoundary.hasLeftStartedBranch()
+      const termination = yield* runDurable(
+        runtime,
+        { id: "execution-termination-final", name: "Read run outcome" },
+        store.readTerminationState(executionId)
+      );
+      // A Cancel claim that landed after the last node's boundary read found no
+      // node left to route it, so the run takes the Canceled outlet here. The
+      // read is memoized, so a replay enters the outlet at the same point, and
+      // each outlet node's durable steps answer from the memo.
+      if (
+        termination?.claim?.kind === "cancel" &&
+        !cancelBoundary.hasLeftStartedBranch()
+      ) {
+        yield* scheduler.runCanceledOutlet({
+          eventName: termination.claim.eventName,
+          payload: termination.claim.payload,
+        });
+      }
+      const exitClaim =
+        termination?.claim?.kind === "exit" ? termination.claim : undefined;
+      const exitContext = entityEligibility?.entityType
+        ? {
+            entityType: entityEligibility.entityType,
+            conditionId: entityEligibility.conditionId,
+          }
+        : undefined;
+      // The persisted first claim outranks traversal results. Exit takes no
+      // graph outlet, and a Cancel claim has taken the Canceled outlet by now.
+      const terminalStatus: TraversalTerminalStatus = exitClaim
+        ? "exited"
+        : cancelBoundary.hasLeftStartedBranch()
           ? "canceled"
-          : finalSuccess
+          : traversal.allSucceeded()
             ? "completed"
             : "failed";
 
+      return { terminalStatus, exitContext };
+    });
+
+    return Effect.gen(function* () {
+      const outcome = yield* execute.pipe(
+        Effect.map((value) => ({ kind: "completed" as const, value })),
+        Effect.catchCause((cause) =>
+          Effect.succeed({ kind: "failed" as const, cause })
+        )
+      );
+
+      if (outcome.kind === "failed") {
+        const failure = failureFromCause(outcome.cause);
+        yield* Effect.logError("Fatal error during workflow execution").pipe(
+          Effect.annotateLogs({
+            error: { kind: failure.kind, cause: Cause.squash(outcome.cause) },
+          })
+        );
+
+        // An interrupted invocation is one the durability runtime retries, and
+        // the retry replays the memoized steps, reads the claim at the terminal
+        // read and runs the Canceled outlet from there. A terminal status
+        // written by this dying attempt would leave that retry reading a row
+        // that is no longer in flight, so the attempt ends the way it was
+        // interrupted and writes nothing.
+        if (failure.kind === "interrupt") {
+          return yield* Effect.failCause(outcome.cause);
+        }
+
+        // The flag is the authority here as it is on the success path: a run is
+        // canceled because a Cancel Event claimed it, never because the text of
+        // whatever died happens to contain the word.
+        const cancelled = cancelBoundary.hasLeftStartedBranch();
+
+        const exitContext = entityEligibility?.entityType
+          ? {
+              entityType: entityEligibility.entityType,
+              conditionId: entityEligibility.conditionId,
+            }
+          : undefined;
+
+        const recordFailure = (failureOutcome: RunFailureOutcome) =>
+          recordRunFailed({
+            store,
+            executionId,
+            workflowId,
+            outcome: failureOutcome,
+            failure,
+            runMode,
+            exitContext,
+          });
+
+        // Same exactly-once treatment as the success path. A refusal here
+        // escapes so the durable step can retry instead of being mistaken for
+        // another traversal failure.
+        const failedRecord = yield* runDurable(
+          runtime,
+          { id: "workflow-run-failed", name: "Run failed" },
+          recordFailure(
+            cancelled
+              ? { kind: "canceled", outlet: "entered" }
+              : { kind: "failed" }
+          )
+        );
+
+        // A Cancel claim the terminal write was the first to see refused the
+        // `workflow-run-failed` record, which wrote nothing and memoized the
+        // claim. Every claimed Execution jumps to the Canceled outlet
+        // (ADR-0007), so the outlet runs for that claim and a step of its own
+        // records canceled after it.
+        const claim = failedRecord.cancelClaim;
+        const recorded =
+          claim === undefined
+            ? failedRecord
+            : yield* runCanceledOutletThenRecord({
+                runtime,
+                scheduler,
+                claim,
+                record: (outlet) => recordFailure({ kind: "canceled", outlet }),
+              });
+
+        return {
+          status: recorded.status,
+          success: recorded.status !== "failed",
+          results: traversal.results,
+          outputs: traversal.outputs,
+          error: recorded.status === "failed" ? failure.message : undefined,
+          cancelled: recorded.status === "canceled" || cancelled,
+          exit: recorded.exit,
+        };
+      }
+
+      // The output, failure and count are read when each step is built, so the
+      // record written after the Canceled outlet runs includes that outlet.
+      const recordCompletion = (
+        status: TraversalTerminalStatus,
+        canceledOutlet?: CanceledOutletOutcome
+      ) =>
+        recordRunCompleted({
+          store,
+          executionId,
+          workflowId,
+          status,
+          output: traversal.deterministicTerminalOutput(),
+          failure: traversal.firstFailure(),
+          resultCount: traversal.resultCount,
+          runMode,
+          exitContext: outcome.value.exitContext,
+          canceledOutlet,
+        });
+
+      // Wrapped as a durable step so the terminal record and its audit event are
+      // written exactly once, even though the body replays after every wait. A
+      // refusal escapes the traversal catch above and lets this step retry.
+      const completed = yield* runDurable(
+        runtime,
+        { id: "workflow-run-completed", name: "Run completed" },
+        recordCompletion(outcome.value.terminalStatus)
+      );
+
+      // A Cancel claim that landed after the outcome read refused the record
+      // written just above, which wrote nothing and memoized the claim. The run
+      // takes the Canceled outlet for that claim and records canceled in a step
+      // of its own, so the outlet's nodes run before the terminal row ends the
+      // run.
+      const claim = completed.cancelClaim;
+      const recorded =
+        claim === undefined
+          ? completed
+          : yield* runCanceledOutletThenRecord({
+              runtime,
+              scheduler,
+              claim,
+              record: (outlet) => recordCompletion("canceled", outlet),
+            });
+
       const attemptMs = Date.now() - attemptStartTime;
-      yield* Effect.logInfo(`Run ${terminalStatus} in ${attemptMs}ms`).pipe(
+      yield* Effect.logInfo(`Run ${recorded.status} in ${attemptMs}ms`).pipe(
         Effect.annotateLogs({
           outcome: {
-            status: terminalStatus,
-            success: finalSuccess,
+            status: recorded.status,
+            success: recorded.status !== "failed",
             nodes: traversal.resultCount,
             ms: attemptMs,
           },
         })
       );
 
-      // Wrapped as a durable step so the terminal record and its audit event are
-      // written exactly once, even though the body replays after every wait.
-      yield* runDurable(
-        runtime,
-        { id: "workflow-run-completed", name: "Run completed" },
-        recordRunCompleted({
-          store,
-          executionId,
-          workflowId,
-          status: terminalStatus,
-          output: finalOutput,
-          failure: traversal.firstFailure(),
-          resultCount: traversal.resultCount,
-          runMode,
-        })
-      );
-
       return {
-        success: finalSuccess,
+        status: recorded.status,
+        success: recorded.status !== "failed",
         results: traversal.results,
         outputs: traversal.outputs,
+        exit: recorded.exit,
       };
     });
+  });
+}
 
-    return Effect.catchCause(execute, (cause) =>
-      Effect.gen(function* () {
-        const failure = failureFromCause(cause);
-        yield* Effect.logError("Fatal error during workflow execution").pipe(
-          Effect.annotateLogs({
-            error: { kind: failure.kind, cause: Cause.squash(cause) },
-          })
-        );
-
-        // The flag is the authority here as it is on the success path: a run is
-        // canceled because a Cancel Event claimed it, never because the text of
-        // whatever died happens to contain the word.
-        const cancelled = cancelBoundary.hasLeftStartedBranch();
-        const terminalStatus = cancelled ? "canceled" : "failed";
-
-        // Same exactly-once treatment as the success path above.
-        yield* runDurable(
-          runtime,
-          { id: "workflow-run-failed", name: "Run failed" },
-          recordRunFailed({
-            store,
-            executionId,
-            workflowId,
-            status: terminalStatus,
-            failure,
-            runMode,
-          })
-        );
-
-        return {
-          success: false,
-          results: traversal.results,
-          outputs: traversal.outputs,
-          error: failure.message,
-          cancelled,
-        };
+/**
+ * Runs the Canceled outlet for a Cancel claim that refused a terminal record,
+ * then writes the canceled record its caller built, as a durable step.
+ *
+ * Both terminal paths reach this, so both treat a dying outlet the same way. An
+ * outlet that raises a defect still ends the run: `record` is called with
+ * `failed` and the audit row says the outlet died partway. An interrupt is no
+ * outlet failure: the cause is re-raised, the attempt ends with nothing
+ * written, and the retry the durability runtime starts runs the outlet.
+ *
+ * The step id is shared with whichever terminal path did not call this. An
+ * execution takes one of the two paths, and a replay takes the path it took
+ * before, so the two never claim the id inside one run.
+ */
+function runCanceledOutletThenRecord<A, E>(input: {
+  runtime: WorkflowExecutionRuntime;
+  scheduler: NodeScheduler;
+  claim: PendingCancel;
+  record: (outlet: CanceledOutletOutcome) => Effect.Effect<A, E>;
+}): Effect.Effect<A, EngineFailure> {
+  return Effect.gen(function* () {
+    const outlet = yield* input.scheduler.runCanceledOutlet(input.claim).pipe(
+      Effect.as("ran" as const),
+      Effect.catchCause((outletCause) => {
+        const outletFailure = failureFromCause(outletCause);
+        return outletFailure.kind === "interrupt"
+          ? Effect.failCause(outletCause)
+          : Effect.logError("The Canceled outlet failed").pipe(
+              Effect.annotateLogs({
+                error: {
+                  kind: outletFailure.kind,
+                  cause: Cause.squash(outletCause),
+                },
+              }),
+              Effect.as("failed" as const)
+            );
       })
+    );
+    return yield* runDurable(
+      input.runtime,
+      { id: "workflow-run-canceled", name: "Run canceled" },
+      input.record(outlet)
     );
   });
 }
@@ -396,13 +613,15 @@ export function executeWorkflowBranch(
   input: WorkflowBranchInput,
   runtime: WorkflowExecutionRuntime,
   store: WorkflowStore,
-  actions: WorkflowActions
+  actions: WorkflowActions,
+  entities: WorkflowEntities = noWorkflowEntities
 ): Effect.Effect<BranchRunResult, EngineFailure> {
   const execute = executeWorkflowBranchInner(
     input,
     runtime,
     store,
-    actions
+    actions,
+    entities
   ).pipe(
     Effect.annotateLogs(runLogAnnotations(input, runtime)),
     Effect.withSpan("wfgraph.workflow.branch", {
@@ -419,15 +638,17 @@ function executeWorkflowBranchInner(
   input: WorkflowBranchInput,
   runtime: WorkflowExecutionRuntime,
   store: WorkflowStore,
-  actions: WorkflowActions
+  actions: WorkflowActions,
+  entities: WorkflowEntities
 ): Effect.Effect<BranchRunResult, EngineFailure> {
   return Effect.gen(function* () {
     const { entryNodeId, executionId } = input;
-    const { nodes, traversal, scheduler } = prepareRun(
+    const { nodes, traversal, scheduler, cancelBoundary } = prepareRun(
       input,
       runtime,
       store,
-      actions
+      actions,
+      entities
     );
 
     // Templates behind the Wait address the nodes above it, which this run never
@@ -458,6 +679,32 @@ function executeWorkflowBranchInner(
       traversal.markReadyForDownstream(nodeId);
     }
 
+    // A branch below the Canceled outlet takes its parent's claim on before it
+    // walks anything: the claim names the Event this branch arrived on and
+    // carries the payload its templates address the entry node for. The read is
+    // durable so a replay of this body takes on the same claim, and it runs
+    // after the inherited outputs above, which hold the Start Event's payload
+    // for the entry node and would otherwise be the answer.
+    if (input.side === "canceled") {
+      const claim = yield* runDurable(
+        runtime,
+        {
+          id: `branch-claim-${entryNodeId}`,
+          name: "Read the Cancel claim this branch carries",
+        },
+        store.readPendingCancel(executionId)
+      );
+      if (!claim) {
+        return yield* Effect.fail(
+          engineFailure(
+            "failure",
+            "Branch started on the Canceled side of a run holding no Cancel claim"
+          )
+        );
+      }
+      cancelBoundary.carryClaim(claim);
+    }
+
     const branchStartTime = Date.now();
     yield* Effect.logInfo(`Branch started at ${entryNodeId}`).pipe(
       Effect.annotateLogs({
@@ -486,8 +733,25 @@ function executeWorkflowBranchInner(
       Effect.asVoid(store.markExecutionWaitingIfParked({ executionId }))
     );
 
+    const termination = yield* runDurable(
+      runtime,
+      {
+        id: `branch-termination-${entryNodeId}`,
+        name: "Read branch outcome",
+      },
+      store.readTerminationState(executionId)
+    );
+    const exit =
+      termination?.claim?.kind === "exit"
+        ? {
+            reason: termination.claim.reason,
+            nodeId: termination.claim.nodeId,
+            checkedAt: termination.claim.requestedAt,
+          }
+        : undefined;
+
     yield* Effect.logInfo(
-      `Branch at ${entryNodeId} completed in ${Date.now() - branchStartTime}ms`
+      `Branch at ${entryNodeId} ${exit ? "exited" : "completed"} in ${Date.now() - branchStartTime}ms`
     ).pipe(
       Effect.annotateLogs({
         branch: {
@@ -498,6 +762,10 @@ function executeWorkflowBranchInner(
       })
     );
 
-    return { results: { ...traversal.results }, outputs: traversal.ownOutputs };
+    return {
+      results: { ...traversal.results },
+      outputs: traversal.ownOutputs,
+      ...(exit ? { exit } : {}),
+    };
   });
 }

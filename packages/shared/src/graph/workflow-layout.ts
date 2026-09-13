@@ -287,8 +287,8 @@ function rankOfHandle(
  * two edges leave the same handle the graph says nothing about which belongs
  * left, so the tie goes to where the targets already sit, and two at the same
  * place keep the order they were wired in, `orderBy` being stable. Nothing here
- * reads a node id: those are nanoids, so ordering on one decides left from right
- * at random and can flip between reflows.
+ * reads a node id: a node id is a UUIDv7, so ordering on one sorts the branches
+ * by the moment each node was added, which says nothing about which belongs left.
  */
 function sortOutEdges(input: {
   edges: readonly WorkflowEdge[];

@@ -22,6 +22,7 @@ const EVERY_FIELD_TYPE: WorkflowSchemaFieldType[] = [
 function aCatalog(payloadFields: ReferenceField[]): ExtensionCatalog {
   return {
     events: [{ name: "app/thing.happened", label: "Thing", payloadFields }],
+    entities: [],
     actions: [],
     integrations: [],
   };
@@ -84,6 +85,7 @@ describe("readExtensionCatalog", () => {
   // would look like a lookup to the browser.
   it("carries an action's side effect across the wire", () => {
     const catalog: ExtensionCatalog = {
+      entities: [],
       events: [],
       actions: [
         {
@@ -104,6 +106,7 @@ describe("readExtensionCatalog", () => {
 
   it("carries sanitized OAuth capability metadata across the wire", () => {
     const catalog: ExtensionCatalog = {
+      entities: [],
       events: [],
       actions: [],
       integrations: [
@@ -122,8 +125,37 @@ describe("readExtensionCatalog", () => {
     expect(readExtensionCatalog(catalog)).toEqual(catalog);
   });
 
+  it("carries Entity metadata and Event bindings across the wire", () => {
+    const catalog: ExtensionCatalog = {
+      entities: [
+        {
+          type: "appointment",
+          label: "Appointment",
+          stateFields: [
+            { path: "status", type: "string" },
+            { path: "startsAt", type: "timestamp" },
+          ],
+          stateSchemaDigest: "abc123",
+        },
+      ],
+      events: [
+        {
+          name: "app/appointment.created",
+          label: "Appointment created",
+          payloadFields: [{ path: "appointmentId", type: "string" }],
+          entityBindings: [{ name: "appointment", entityType: "appointment" }],
+        },
+      ],
+      actions: [],
+      integrations: [],
+    };
+
+    expect(readExtensionCatalog(catalog)).toEqual(catalog);
+  });
+
   it("carries Event ownership and webhook capability across the wire", () => {
     const catalog: ExtensionCatalog = {
+      entities: [],
       events: [
         {
           name: "resend/email.delivered",
@@ -154,6 +186,7 @@ describe("readExtensionCatalog", () => {
 
   it("carries a provider-backed field's optionsSource across the wire", () => {
     const catalog: ExtensionCatalog = {
+      entities: [],
       events: [],
       actions: [
         {
@@ -191,6 +224,7 @@ describe("readExtensionCatalog", () => {
 
   it("carries a field's connectionDefaultKey across the wire", () => {
     const catalog: ExtensionCatalog = {
+      entities: [],
       events: [],
       actions: [
         {
@@ -218,6 +252,7 @@ describe("readExtensionCatalog", () => {
 
   it("refuses a reserved config field key on the wire", () => {
     const catalog: ExtensionCatalog = {
+      entities: [],
       events: [],
       actions: [
         {
@@ -239,6 +274,7 @@ describe("readExtensionCatalog", () => {
     "refuses the reserved credential name %s on the wire",
     (key) => {
       const catalog: ExtensionCatalog = {
+        entities: [],
         events: [],
         actions: [],
         integrations: [
@@ -276,7 +312,7 @@ describe("readExtensionCatalog", () => {
 
 describe("readExtensionsResponse", () => {
   const envelope = {
-    catalog: { events: [], actions: [], integrations: [] },
+    catalog: { events: [], entities: [], actions: [], integrations: [] },
     agent: { enabled: false },
     authorization: {
       operationIds: [

@@ -178,6 +178,8 @@ function createExecution(
     runMode: "live",
     startEventName: "app/appointment.created",
     entityValue: "appt_8813",
+    entityType: null,
+    entityId: null,
     input: {},
     output: null,
     error: null,
@@ -186,7 +188,10 @@ function createExecution(
     cancelledAt: null,
     completedAt: null,
     duration: null,
-    cancelRequestedAt: null,
+    terminationKind: null,
+    terminationRequestedAt: null,
+    terminationReason: null,
+    terminationNodeId: null,
     cancelEventName: null,
     cancelPayload: null,
     workflowVersionId: "ver_1",
@@ -263,6 +268,9 @@ function stubPublishedWorkflow(workflow: Workflow) {
         publishedVersion: publishedVersion(workflow),
       }),
     findPublishedVersion: () => Effect.succeed(publishedVersion(workflow)),
+    // The enqueue reads the version the opened row pins, because that is what
+    // the run's opening timeline entry names.
+    findVersionById: () => Effect.succeed(publishedVersion(workflow)),
   });
 }
 

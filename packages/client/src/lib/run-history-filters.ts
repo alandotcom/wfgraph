@@ -28,6 +28,7 @@ export const DEFAULT_STATUS_OPTIONS: WorkflowExecutionStatus[] = [
   "failed",
   "completed",
   "canceled",
+  "exited",
   "pending",
 ];
 

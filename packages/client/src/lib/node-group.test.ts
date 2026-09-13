@@ -24,6 +24,7 @@ import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
  * side effect, which is what lets these fixtures group.
  */
 const emptyCatalog: ExtensionCatalog = {
+  entities: [],
   events: [],
   actions: [],
   integrations: [],

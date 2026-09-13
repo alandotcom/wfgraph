@@ -11,13 +11,15 @@ import { isBlank } from "@wfgraph/shared/types/string";
 import { parseDurationMs } from "@wfgraph/shared/utils/wait-time";
 import {
   checkEach,
+  conditionShape,
   matchesSelector,
+  normalizeConditionShape,
   nodesMatching,
   nodesSatisfy,
   selectorName,
   type SemanticsContext,
 } from "#src/agent/judges/semantics/context";
-import type { EvalCondition, EvalWaitMatchRule } from "#src/agent/types";
+import type { EvalWaitMatchRule } from "#src/agent/types";
 
 function missingConfigs(context: SemanticsContext): string[] {
   return checkEach(context.input.expected.requiredConfigs, (required) => {
@@ -90,16 +92,6 @@ function missingWaitEvents(context: SemanticsContext): string[] {
   });
 }
 
-function conditionShape(model: ConditionModel): EvalCondition {
-  return {
-    groupLogic: model.groupLogic,
-    groups: model.groups.map((group) => ({
-      logic: group.logic,
-      rules: group.conditions.map(({ id: _id, ...rule }) => rule),
-    })),
-  };
-}
-
 function hasRequiredWaitMatchRule(
   model: ConditionModel,
   required: EvalWaitMatchRule,
@@ -164,7 +156,10 @@ function missingWaitSubscriptions(context: SemanticsContext): string[] {
           return (
             parsed.valid &&
             (required.match === undefined ||
-              isEqual(conditionShape(parsed.model), required.match)) &&
+              isEqual(
+                conditionShape(parsed.model),
+                normalizeConditionShape(required.match)
+              )) &&
             (required.matchRule === undefined ||
               hasRequiredWaitMatchRule(
                 parsed.model,

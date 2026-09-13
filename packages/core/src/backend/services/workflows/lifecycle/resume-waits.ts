@@ -2,8 +2,9 @@
  * Waking the runs an arriving Event was the thing they parked for.
  *
  * Claim and delivery are one unit: a run is counted once its durable signal is
- * accepted and its exact claim is settled. The claim stops two deliveries from
- * waking one node, while the resumed engine records the consumed wake.
+ * accepted and no other writer has taken over its claim. The claim stops two
+ * deliveries from waking one node, while the resumed engine records the
+ * consumed wake and closes the row it woke from.
  */
 
 import { Effect } from "effect";
@@ -189,7 +190,8 @@ const resumeOneWait = Effect.fn("resumeOneWait")(function* (input: {
       payload: input.payload,
     }),
     // A raced settle counts as none here: the run did wake, but another writer
-    // owns that claim and is the one counting it.
+    // took the row first, which is either a second wake counting it or the
+    // woken run closing the row it consumed.
     (outcome) => (outcome.status === "resumed" ? 1 : 0)
   ).pipe(
     Effect.catch((error) =>

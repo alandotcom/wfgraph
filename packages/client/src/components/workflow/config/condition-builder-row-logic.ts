@@ -3,11 +3,13 @@ import {
   type ConditionFieldType,
   type ConditionRule,
   isNullCheckConditionRule,
+  isStringSetConditionRule,
   isTimestampAbsoluteConditionRule,
   isTimestampRelativeConditionRule,
   NULLCHECK_OPERATOR_OPTIONS,
   NUMBER_OPERATOR_OPTIONS,
   STRING_OPERATOR_OPTIONS,
+  STRING_SET_OPERATOR_OPTIONS,
   TIMESTAMP_OPERATOR_OPTIONS,
   type TimestampAbsoluteOperator,
   type TimestampRelativeOperator,
@@ -31,10 +33,16 @@ function isTimestampAbsoluteOperatorValue(
   return value === "before" || value === "after";
 }
 
-function isStringOperatorValue(
+function isStringScalarOperatorValue(
   value: string
 ): value is "equals" | "not_equals" | "contains" {
   return value === "equals" || value === "not_equals" || value === "contains";
+}
+
+function isStringSetOperatorValue(
+  value: string
+): value is "is_one_of" | "is_not_one_of" {
+  return value === "is_one_of" || value === "is_not_one_of";
 }
 
 function isNumberOperatorValue(
@@ -62,9 +70,19 @@ function isBooleanOperatorValue(
   return value === "is_true" || value === "is_false";
 }
 
+/**
+ * The operators a rule on a field of this type may pick.
+ *
+ * `is one of` and `is not one of` compile for any string field, so they are
+ * offered on every string field by default. `setOperatorsRequireEnumValues`
+ * limits them to fields declaring enum values, which is what Entity Eligibility
+ * accepts.
+ */
 export function getOperatorOptionsByFieldType(
   fieldType: ConditionFieldType,
-  nullable?: boolean
+  nullable?: boolean,
+  enumValues?: readonly string[],
+  options?: { setOperatorsRequireEnumValues?: boolean | undefined }
 ) {
   const nullOpts = nullable ? NULLCHECK_OPERATOR_OPTIONS : [];
 
@@ -73,7 +91,12 @@ export function getOperatorOptionsByFieldType(
   }
 
   if (fieldType === "string") {
-    return [...STRING_OPERATOR_OPTIONS, ...nullOpts];
+    const hasEnumValues = enumValues !== undefined && enumValues.length > 0;
+    const setOptions =
+      hasEnumValues || !options?.setOperatorsRequireEnumValues
+        ? STRING_SET_OPERATOR_OPTIONS
+        : [];
+    return [...STRING_OPERATOR_OPTIONS, ...setOptions, ...nullOpts];
   }
 
   if (fieldType === "number") {
@@ -164,11 +187,26 @@ export function applyOperatorValueToCondition(
   }
 
   if (condition.fieldType === "string") {
-    if (!isStringOperatorValue(operatorValue)) {
+    if (isStringSetOperatorValue(operatorValue)) {
+      const values = isStringSetConditionRule(condition)
+        ? condition.values
+        : !isNullCheckConditionRule(condition) && condition.value
+          ? [condition.value]
+          : [];
+      return {
+        ...base,
+        fieldType: "string",
+        operator: operatorValue,
+        values,
+      };
+    }
+
+    if (!isStringScalarOperatorValue(operatorValue)) {
       return null;
     }
-    const value =
-      !isNullCheckConditionRule(condition) && "value" in condition
+    const value = isStringSetConditionRule(condition)
+      ? (condition.values[0] ?? "")
+      : !isNullCheckConditionRule(condition)
         ? condition.value
         : "";
     return { ...base, fieldType: "string", operator: operatorValue, value };

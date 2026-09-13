@@ -378,6 +378,58 @@ describe("describe_event", () => {
     })
   );
 
+  it.effect("returns Entity bindings and current State fields", () =>
+    Effect.gen(function* () {
+      const entityCatalog: ExtensionCatalog = {
+        ...catalog,
+        entities: [
+          {
+            type: "applicant",
+            label: "Applicant",
+            stateSchemaDigest: "applicant-state-v1",
+            stateFields: [
+              {
+                path: "status",
+                type: "string",
+                enumValues: ["active", "paused", "closed"],
+              },
+            ],
+          },
+        ],
+        events: catalog.events.map((event) =>
+          event.name === "applicant.created"
+            ? {
+                ...event,
+                entityBindings: [
+                  { name: "applicant", entityType: "applicant" },
+                ],
+              }
+            : event
+        ),
+      };
+      const { tools } = yield* agentToolsFor({ catalog: entityCatalog });
+
+      const result = yield* tools.describe_event({
+        eventName: "applicant.created",
+      });
+
+      expect(result.entityBindings).toEqual([
+        {
+          name: "applicant",
+          entityType: "applicant",
+          entityLabel: "Applicant",
+          stateFields: [
+            {
+              path: "status",
+              type: "string",
+              enumValues: ["active", "paused", "closed"],
+            },
+          ],
+        },
+      ]);
+    })
+  );
+
   it.effect("identifies the value type of an open-record Event field", () =>
     Effect.gen(function* () {
       const openRecordCatalog: ExtensionCatalog = {

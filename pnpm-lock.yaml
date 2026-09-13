@@ -72,15 +72,15 @@ catalogs:
     inngest:
       specifier: ^4.20.0
       version: 4.20.0
-    nanoid:
-      specifier: ^6.0.1
-      version: 6.0.1
     postgres:
       specifier: ^3.4.9
       version: 3.4.9
     tsx:
       specifier: ^4.23.13
       version: 4.23.13
+    uuid:
+      specifier: ^14.0.2
+      version: 14.0.2
     vite:
       specifier: ^8.2.2
       version: 8.2.2
@@ -230,9 +230,6 @@ importers:
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.113
-      nanoid:
-        specifier: 'catalog:'
-        version: 6.0.1
     devDependencies:
       '@wfgraph/shared':
         specifier: workspace:*
@@ -330,9 +327,6 @@ importers:
       motion:
         specifier: ^13.2.0
         version: 13.2.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      nanoid:
-        specifier: 'catalog:'
-        version: 6.0.1
       next-themes:
         specifier: ^0.4.6
         version: 0.4.6(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -423,12 +417,12 @@ importers:
       graphology:
         specifier: 'catalog:'
         version: 0.26.0(graphology-types@0.24.8)
-      nanoid:
-        specifier: 'catalog:'
-        version: 6.0.1
       postgres:
         specifier: 'catalog:'
         version: 3.4.9
+      uuid:
+        specifier: 'catalog:'
+        version: 14.0.2
     devDependencies:
       '@fastify/middie':
         specifier: ^9.3.4
@@ -554,12 +548,12 @@ importers:
       graphology:
         specifier: 'catalog:'
         version: 0.26.0(graphology-types@0.24.8)
-      nanoid:
-        specifier: 'catalog:'
-        version: 6.0.1
       tailwind-merge:
         specifier: ^3.6.0
         version: 3.6.0
+      uuid:
+        specifier: 'catalog:'
+        version: 14.0.2
     devDependencies:
       '@standard-schema/spec':
         specifier: 'catalog:'
@@ -7025,6 +7019,10 @@ packages:
 
   util-deprecate@1.0.2:
     resolution: {integrity: sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw==}
+
+  uuid@14.0.2:
+    resolution: {integrity: sha512-xZe/16rV4aa+HGSOCiY2YeLT1OybRLrrkL/Rqaq7p7GMVXjFh+6wN4oMYgjFmnSnhY8t6Xpdl2l9qmnHYuMHwQ==}
+    hasBin: true
 
   validate-npm-package-name@7.0.2:
     resolution: {integrity: sha512-hVDIBwsRruT73PbK7uP5ebUt+ezEtCmzZz3F59BSr2F6OVFnJ/6h8liuvdLrQ88Xmnk6/+xGGuq+pG9WwTuy3A==}
@@ -13911,6 +13909,8 @@ snapshots:
       react: 19.2.8
 
   util-deprecate@1.0.2: {}
+
+  uuid@14.0.2: {}
 
   validate-npm-package-name@7.0.2: {}
 

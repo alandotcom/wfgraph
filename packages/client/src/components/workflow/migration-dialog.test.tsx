@@ -171,7 +171,7 @@ describe("MigrationDialog", () => {
         "A field below the Wait reads an output this run never produced (after_1.subject)."
       )
     ).toBeTruthy();
-    expect(view.getByText("run_cccc")).toBeTruthy();
+    expect(view.getByText("cccccccc")).toBeTruthy();
     expect(view.getByText("Draft")).toBeTruthy();
   });
 

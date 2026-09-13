@@ -1,7 +1,10 @@
 import { Effect } from "effect";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { partition } from "es-toolkit/array";
-import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
+import {
+  IN_FLIGHT_EXECUTION_STATUSES,
+  isEntityEligibilityReason,
+} from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { Concurrency } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import type {
   EntityStartOutcome,
@@ -15,7 +18,9 @@ import {
 import type {
   SqliteDatabase,
   SqliteExecutor,
+  SqliteReadExecutor,
 } from "#src/backend/persistence/sqlite/database";
+import { encodeJson } from "#src/backend/persistence/sqlite/database";
 import {
   workflowExecutionEvents,
   workflowExecutions,
@@ -28,7 +33,35 @@ import {
 import { makeSqliteNodeLogsMethods } from "#src/backend/persistence/sqlite/executions/logs";
 import { makeSqliteWaitsMethods } from "#src/backend/persistence/sqlite/executions/waits";
 import { makeSqliteAuditMethods } from "#src/backend/persistence/sqlite/executions/audit";
-import { sqliteExecution } from "#src/backend/persistence/sqlite/executions/rows";
+import {
+  optionalJsonObject,
+  sqliteExecution,
+} from "#src/backend/persistence/sqlite/executions/rows";
+
+function findAdmissionRefusal(
+  database: SqliteReadExecutor,
+  input: { workflowId: string; decisionId: string }
+) {
+  return database
+    .select({ metadata: workflowExecutionEvents.metadata })
+    .from(workflowExecutionEvents)
+    .where(
+      and(
+        eq(workflowExecutionEvents.id, input.decisionId),
+        eq(workflowExecutionEvents.workflowId, input.workflowId),
+        eq(workflowExecutionEvents.eventType, "run_refused")
+      )
+    )
+    .get()
+    .pipe(
+      Effect.map((row) => {
+        const reason = row
+          ? optionalJsonObject(row.metadata, "metadata")?.reason
+          : undefined;
+        return isEntityEligibilityReason(reason) ? reason : null;
+      })
+    );
+}
 
 function findByDelivery(database: SqliteExecutor, execution: NewExecution) {
   if (!execution.deliveryId) return Effect.succeed(null);
@@ -53,7 +86,8 @@ function endInFlightExecutions(
   if (ids.length === 0) return Effect.succeed<string[]>([]);
   const inFlight = and(
     inArray(workflowExecutions.id, ids),
-    inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES)
+    inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES),
+    isNull(workflowExecutions.terminationKind)
   );
   return Effect.gen(function* () {
     const rows = yield* database
@@ -73,7 +107,8 @@ function endInFlightExecutions(
       .where(
         and(
           inArray(workflowExecutions.id, eligible),
-          inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES)
+          inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES),
+          isNull(workflowExecutions.terminationKind)
         )
       );
     return eligible;
@@ -84,9 +119,20 @@ function startForEntity(
   database: SqliteExecutor,
   execution: NewExecution,
   concurrency: Concurrency,
-  supersededReason: string
+  supersededReason: string,
+  admissionDecisionId?: string
 ): Effect.Effect<EntityStartOutcome, unknown> {
   return Effect.gen(function* () {
+    if (admissionDecisionId) {
+      const refusal = yield* findAdmissionRefusal(database, {
+        workflowId: execution.workflowId,
+        decisionId: admissionDecisionId,
+      });
+      if (refusal) {
+        return { status: "admission_refused" as const, reason: refusal };
+      }
+    }
+
     const own = yield* findByDelivery(database, execution);
     if (own) {
       return {
@@ -96,7 +142,16 @@ function startForEntity(
         reclaimedExecutionIds: [],
       };
     }
-    if (concurrency === "unlimited" || !execution.entityValue) {
+    const entityPredicate =
+      execution.entityType !== undefined && execution.entityId !== undefined
+        ? and(
+            eq(workflowExecutions.entityType, execution.entityType),
+            eq(workflowExecutions.entityId, execution.entityId)
+          )
+        : execution.entityValue === undefined
+          ? undefined
+          : eq(workflowExecutions.entityValue, execution.entityValue);
+    if (concurrency === "unlimited" || !entityPredicate) {
       return {
         status: "started" as const,
         execution: yield* insertExecution(database, execution, "running"),
@@ -115,9 +170,10 @@ function startForEntity(
       .where(
         and(
           eq(workflowExecutions.workflowId, execution.workflowId),
-          eq(workflowExecutions.entityValue, execution.entityValue),
+          entityPredicate,
           eq(workflowExecutions.runMode, execution.runMode),
-          inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES)
+          inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES),
+          isNull(workflowExecutions.terminationKind)
         )
       );
 
@@ -179,9 +235,62 @@ export function makeSqliteExecutionRepo(
     ...makeSqliteNodeLogsMethods(store),
     ...makeSqliteWaitsMethods(store),
     ...makeSqliteAuditMethods(store),
-    startForEntity: ({ execution, concurrency, supersededReason }) =>
+    startForEntity: ({
+      execution,
+      concurrency,
+      supersededReason,
+      admissionDecisionId,
+    }) =>
       store.write((database) =>
-        startForEntity(database, execution, concurrency, supersededReason)
+        startForEntity(
+          database,
+          execution,
+          concurrency,
+          supersededReason,
+          admissionDecisionId
+        )
+      ),
+    findAdmissionRefusal: (input) =>
+      store.read((database) => findAdmissionRefusal(database, input)),
+    recordAdmissionRefusal: (input) =>
+      store.write((database) =>
+        Effect.gen(function* () {
+          const existingExecution = yield* database
+            .select({ id: workflowExecutions.id })
+            .from(workflowExecutions)
+            .where(
+              and(
+                eq(workflowExecutions.workflowId, input.workflowId),
+                eq(workflowExecutions.deliveryId, input.deliveryId)
+              )
+            )
+            .get();
+          if (existingExecution) {
+            return {
+              kind: "started" as const,
+              executionId: existingExecution.id,
+            };
+          }
+
+          const existingRefusal = yield* findAdmissionRefusal(database, {
+            workflowId: input.workflowId,
+            decisionId: input.decisionId,
+          });
+          if (existingRefusal) {
+            return { kind: "refused" as const, reason: existingRefusal };
+          }
+
+          yield* database.insert(workflowExecutionEvents).values({
+            id: input.decisionId,
+            workflowId: input.workflowId,
+            executionId: null,
+            eventType: "run_refused",
+            message: input.message,
+            metadata: encodeJson(input.metadata),
+            createdAt: Date.now(),
+          });
+          return { kind: "refused" as const, reason: input.reason };
+        })
       ),
     deleteAllForWorkflow: (workflowId) =>
       store.write((database) =>

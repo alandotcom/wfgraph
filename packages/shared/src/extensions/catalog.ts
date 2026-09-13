@@ -28,6 +28,11 @@ import type { ReferenceField } from "#src/graph/node-references";
  * which cancel it is the Workflow Builder's declaration on the Lifecycle Node,
  * per workflow, so the catalog states vocabulary and nothing else.
  */
+export type EventEntityBindingMetadata = {
+  readonly name: string;
+  readonly entityType: string;
+};
+
 export type EventMetadata = {
   readonly name: string;
   readonly label: string;
@@ -40,6 +45,15 @@ export type EventMetadata = {
    */
   readonly integration?: string;
   readonly payloadFields: readonly ReferenceField[];
+  readonly entityBindings?: readonly EventEntityBindingMetadata[];
+};
+
+/** One host-owned Entity type whose current state may guard a lifecycle. */
+export type EntityMetadata = {
+  readonly type: string;
+  readonly label: string;
+  readonly stateFields: readonly ReferenceField[];
+  readonly stateSchemaDigest: string;
 };
 
 /**
@@ -122,6 +136,7 @@ export type IntegrationMetadata = {
 
 export type ExtensionCatalog = {
   readonly events: readonly EventMetadata[];
+  readonly entities: readonly EntityMetadata[];
   readonly actions: readonly ActionMetadata[];
   readonly integrations: readonly IntegrationMetadata[];
 };
@@ -134,6 +149,7 @@ export type ExtensionCatalog = {
  */
 export const emptyExtensionCatalog: ExtensionCatalog = {
   events: [],
+  entities: [],
   actions: [],
   integrations: [],
 };
@@ -174,6 +190,13 @@ export function uniqueIntegrationsOfEvents(
     compact(),
     uniq()
   );
+}
+
+export function findEntity(
+  catalog: ExtensionCatalog,
+  type: string
+): EntityMetadata | undefined {
+  return catalog.entities.find((entity) => entity.type === type);
 }
 
 export function findAction(

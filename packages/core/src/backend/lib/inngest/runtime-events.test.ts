@@ -88,24 +88,26 @@ describe("sendCatalogEvent", () => {
 });
 
 describe("sendWorkflowWaitSignal", () => {
-  // The three reasons a parked run is woken. A schema that admitted fewer would
+  // Every reason a parked run is woken. A schema that admitted fewer would
   // refuse the send rather than the wait, so this is checked where it is built.
-  it.each(["wait-resume", "lifecycle-cancel", "version-migrate"] as const)(
-    "accepts a %s signal",
-    async (signalType) => {
-      const { send, client } = clientSpy();
+  it.each([
+    "wait-resume",
+    "lifecycle-cancel",
+    "lifecycle-exit",
+    "version-migrate",
+  ] as const)("accepts a %s signal", async (signalType) => {
+    const { send, client } = clientSpy();
 
-      await sendWorkflowWaitSignal(client, {
-        executionId: "exec_1",
-        nodeId: "wait_1",
-        signalType,
-      });
+    await sendWorkflowWaitSignal(client, {
+      executionId: "exec_1",
+      nodeId: "wait_1",
+      signalType,
+    });
 
-      expect(send).toHaveBeenCalledTimes(1);
-      const sent = send.mock.calls[0]?.[0] as { data: { signalType: string } };
-      expect(sent.data.signalType).toBe(signalType);
-    }
-  );
+    expect(send).toHaveBeenCalledTimes(1);
+    const sent = send.mock.calls[0]?.[0] as { data: { signalType: string } };
+    expect(sent.data.signalType).toBe(signalType);
+  });
 
   // Inngest validates the payload through this schema on send, which is where a
   // reason no wait admits is stopped.

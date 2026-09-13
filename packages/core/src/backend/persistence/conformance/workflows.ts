@@ -737,6 +737,7 @@ export function describeWorkflowConformance({
               throw new Error("Start was refused");
             }
             yield* executions.startWait({
+              side: "started",
               executionId: started.execution.id,
               workflowId: "wf_1",
               runId: `run_${suffix}`,
@@ -837,6 +838,7 @@ export function describeWorkflowConformance({
             throw new Error("Start was refused");
           }
           yield* executions.startWait({
+            side: "started",
             executionId: started.execution.id,
             workflowId: "wf_1",
             runId: "run_1",

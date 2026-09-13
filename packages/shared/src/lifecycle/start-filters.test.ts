@@ -31,6 +31,7 @@ function refusalOf(check: LifecycleRulesCheck): string {
  * carrying an open record. That is every shape a filter has to be held to.
  */
 const catalog: ExtensionCatalog = {
+  entities: [],
   events: [
     {
       name: "app/appointment.created",

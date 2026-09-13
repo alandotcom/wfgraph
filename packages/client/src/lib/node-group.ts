@@ -4,7 +4,7 @@
  */
 
 import { countBy, uniqBy } from "es-toolkit/array";
-import { nanoid } from "nanoid";
+import { generateId } from "@wfgraph/shared/utils/id";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { toast } from "sonner";
 import type { EdgeChange } from "@xyflow/react";
@@ -95,7 +95,7 @@ export function groupSelection(input: {
     analysis.entryIds
   );
   const size = groupFrameSize(bounds.columns, bounds.rows);
-  const groupId = (input.createId ?? nanoid)();
+  const groupId = (input.createId ?? generateId)();
   const positionById = childPositions(slots, bounds.columns);
   const conditionExit = analysis.exitIds
     .map((id) => byId.get(id))
@@ -144,7 +144,7 @@ export function groupSelection(input: {
     edges: alignEntryIncoming({
       edges: input.edges,
       entryIds: analysis.entryIds,
-      createEdgeId: input.createEdgeId ?? nanoid,
+      createEdgeId: input.createEdgeId ?? generateId,
     }),
     analysis,
   };

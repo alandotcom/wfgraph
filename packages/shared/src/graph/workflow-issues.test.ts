@@ -9,6 +9,7 @@ import {
 } from "#src/graph/workflow-issues";
 
 const catalog: ExtensionCatalog = {
+  entities: [],
   events: [],
   actions: [
     {

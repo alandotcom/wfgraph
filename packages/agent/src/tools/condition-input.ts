@@ -6,7 +6,6 @@
  */
 
 import { Schema } from "effect";
-import { nanoid } from "nanoid";
 import { compileConditionModel } from "@wfgraph/shared/conditions/condition-compile";
 import type {
   ConditionFieldType,
@@ -17,6 +16,7 @@ import type {
 } from "@wfgraph/shared/conditions/condition-model";
 import { findTemplateTokens } from "@wfgraph/shared/graph/node-references";
 import { isBlank } from "@wfgraph/shared/types/string";
+import { generateId } from "@wfgraph/shared/utils/id";
 
 export const conditionRuleSchema = Schema.Struct({
   field: Schema.String.annotate({
@@ -37,11 +37,15 @@ export const conditionRuleSchema = Schema.Struct({
   }),
   operator: Schema.String.annotate({
     description:
-      "string: equals, not_equals, contains. number: equals, not_equals, greater_than, greater_or_equal, less_than, less_or_equal. boolean: is_true, is_false. timestamp: within_next, more_than_from_now, less_than_ago, more_than_ago, before, after. Any type also takes is_set and is_not_set.",
+      "string: equals, not_equals, contains, is_one_of, is_not_one_of. For several allowed or excluded values from published enumValues, use one is_one_of or is_not_one_of rule instead of multiple equals rules. number: equals, not_equals, greater_than, greater_or_equal, less_than, less_or_equal. boolean: is_true, is_false. timestamp: within_next, more_than_from_now, less_than_ago, more_than_ago, before, after. Any type also takes is_set and is_not_set.",
   }),
   value: Schema.optionalKey(Schema.String).annotate({
     description:
-      "The value compared against, for a string or number operator. A number is written as digits.",
+      "The value compared against, for a scalar string or number operator. A number is written as digits.",
+  }),
+  values: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
+    description:
+      "One or more values for a string is_one_of or is_not_one_of operator.",
   }),
   amount: Schema.optionalKey(Schema.Number).annotate({
     description: "How many units, for a relative timestamp operator.",
@@ -73,6 +77,7 @@ export type ConditionRuleInput = {
   readonly fieldType: ConditionFieldType;
   readonly operator: string;
   readonly value?: string | undefined;
+  readonly values?: readonly string[] | undefined;
   readonly amount?: number | undefined;
   readonly unit?: "minutes" | "hours" | "days" | "weeks" | undefined;
   readonly dateTime?: string | undefined;
@@ -95,6 +100,24 @@ function readStringRule(
   base: RuleBase,
   input: ConditionRuleInput
 ): RuleReading {
+  if (input.operator === "is_one_of" || input.operator === "is_not_one_of") {
+    if (!input.values || input.values.length === 0) {
+      return {
+        ok: false,
+        reason: `The ${input.operator} operator on ${input.field} needs one or more values.`,
+      };
+    }
+    return {
+      ok: true,
+      rule: {
+        ...base,
+        fieldType: "string",
+        operator: input.operator,
+        values: [...input.values],
+      },
+    };
+  }
+
   if (
     input.operator !== "equals" &&
     input.operator !== "not_equals" &&
@@ -102,7 +125,7 @@ function readStringRule(
   ) {
     return {
       ok: false,
-      reason: `${input.operator} is not a string operator. Use equals, not_equals, contains, is_set or is_not_set.`,
+      reason: `${input.operator} is not a string operator. Use equals, not_equals, contains, is_one_of, is_not_one_of, is_set or is_not_set.`,
     };
   }
   if (input.value === undefined) {
@@ -243,8 +266,8 @@ const RULE_READERS: Record<
 function readRule(input: ConditionRuleInput): RuleReading {
   const base =
     input.recordKey === undefined
-      ? { id: nanoid(), field: input.field }
-      : { id: nanoid(), field: input.field, recordKey: input.recordKey };
+      ? { id: generateId(), field: input.field }
+      : { id: generateId(), field: input.field, recordKey: input.recordKey };
 
   if (input.operator === "is_set" || input.operator === "is_not_set") {
     return {
@@ -294,7 +317,7 @@ function readConditionModelShape(
       rules.push(reading.rule);
     }
     groups.push({
-      id: nanoid(),
+      id: generateId(),
       logic: group.logic ?? "and",
       conditions: rules,
     });

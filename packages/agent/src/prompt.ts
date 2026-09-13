@@ -150,11 +150,25 @@ would build genuinely different workflows.
   a run opens. A Start Filter fully enforces its predicate. Never add a Condition
   that repeats the Start Filter. Connect the Lifecycle started outlet directly to
   the first requested action.
+- "track each run by", "group runs by this customer", "the same appointment"
+  -> trackedEntity through set_lifecycle_rules. Call describe_event for every
+  Start and Cancel Event and use one compatible Entity binding from each. Entity
+  tracking supplies identity, so do not also set Correlation Paths. Tracking does
+  not require an eligibility condition.
+- "eligible while", "start only if the current customer", "stop before the next
+  step if the account is no longer active" -> entityEligibility through
+  set_lifecycle_rules. Its fields come from the tracked Entity State shown by
+  describe_event, its comparison values are literals, and its checkpoints say
+  whether to check before starting, before each step, or both. This is different
+  from a Start Filter, which reads the arriving Event payload.
 - "stop it if", "cancel when", "abandon the run once" -> the Cancel Events on the
   same node.
 - "cancel only when the Cancel Event payload", "cancel when the Event reason is"
   -> a Cancel Filter through set_lifecycle_rules. A Cancel Filter checks the
   arriving Event before it cancels a run. A Condition step is too late for this job.
+- When one string field may equal several values from a fixed list, write one
+  is_one_of rule. Use is_not_one_of when several fixed values are excluded. Do
+  not expand either comparison into several equals rules.
 - "if", "only when", "check whether", "otherwise", "branch", "split" about a
   later action -> a "${BUILT_IN_ACTION_IDS.condition}" step, with the yes path on
   its "true" outlet and the no path on "false".

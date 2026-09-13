@@ -11,6 +11,7 @@ import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
 import { annotateServiceSpan } from "#src/backend/lib/telemetry";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
+import { Extensions } from "#src/backend/lib/effect/extensions";
 import { classifyMigrationCandidates } from "#src/backend/services/workflows/migration/classify";
 import { resolveTargetVersion } from "#src/backend/services/workflows/migration/target-version";
 import type {
@@ -31,9 +32,11 @@ export const previewMigration = Effect.fn("wfgraph.workflow.preview_migration")(
     yield* annotateServiceSpan({ targetVersionId: targetVersion.id });
 
     const repo = yield* ExecutionRepo;
+    const extensions = yield* Extensions;
     const classifications = yield* classifyMigrationCandidates({
       candidates: yield* repo.listInFlightByWorkflow(input.workflowId),
       targetVersion,
+      catalog: extensions.catalog,
     });
 
     const payload: WorkflowMigrationPreviewPayload = {

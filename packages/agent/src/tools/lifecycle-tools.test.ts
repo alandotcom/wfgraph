@@ -85,6 +85,36 @@ const catalogWithCancelPath: ExtensionCatalog = {
       : event
   ),
 };
+const catalogWithEntity: ExtensionCatalog = {
+  ...catalog,
+  entities: [
+    {
+      type: "applicant",
+      label: "Applicant",
+      stateSchemaDigest: "applicant-state-v1",
+      stateFields: [
+        {
+          path: "status",
+          type: "string",
+          enumValues: ["active", "paused", "closed"],
+        },
+      ],
+    },
+    {
+      type: "organization",
+      label: "Organization",
+      stateSchemaDigest: "organization-state-v1",
+      stateFields: [{ path: "status", type: "string" }],
+    },
+  ],
+  events: catalog.events.map((event) => ({
+    ...event,
+    entityBindings: [
+      { name: "applicant", entityType: "applicant" },
+      { name: "organization", entityType: "organization" },
+    ],
+  })),
+};
 
 const entry: WorkflowNode = {
   id: "entry",
@@ -249,6 +279,321 @@ describe("set_lifecycle_rules", () => {
       expect(result.nodeId).toBe(node?.id);
       expect(result.summary).toContain("Created");
     })
+  );
+
+  it.effect("tracks an Entity without requiring eligibility", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({
+        catalog: catalogWithEntity,
+      });
+
+      yield* tools.set_lifecycle_rules({
+        startEvents: ["applicant.created"],
+        cancelEvents: ["applicant.withdrawn"],
+        trackedEntity: {
+          type: "applicant",
+          bindings: [
+            { event: "applicant.created", binding: "applicant" },
+            { event: "applicant.withdrawn", binding: "applicant" },
+          ],
+        },
+      });
+
+      expect(
+        readLifecycleRules((yield* draft.current).nodes[0]?.data.config)
+      ).toMatchObject({
+        trackedEntity: {
+          type: "applicant",
+          bindings: {
+            "applicant.created": "applicant",
+            "applicant.withdrawn": "applicant",
+          },
+        },
+      });
+      expect(
+        readLifecycleRules((yield* draft.current).nodes[0]?.data.config)
+          ?.entityEligibility
+      ).toBeUndefined();
+    })
+  );
+
+  it.effect("refuses an incomplete tracked Entity binding map", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({
+        catalog: catalogWithEntity,
+      });
+
+      const failure = yield* Effect.flip(
+        tools.set_lifecycle_rules({
+          startEvents: ["applicant.created"],
+          trackedEntity: { type: "applicant", bindings: [] },
+        })
+      );
+
+      expect(failure.reason).toContain(
+        'Event "applicant.created" has no selected Entity binding'
+      );
+      expect((yield* draft.current).nodes).toEqual([]);
+    })
+  );
+
+  it.effect("refuses invalid Entity Eligibility declarations", () =>
+    Effect.gen(function* () {
+      const duplicateCheckpoint = yield* agentToolsFor({
+        catalog: catalogWithEntity,
+      });
+      const duplicateFailure = yield* Effect.flip(
+        duplicateCheckpoint.tools.set_lifecycle_rules({
+          startEvents: ["applicant.created"],
+          trackedEntity: {
+            type: "applicant",
+            bindings: [{ event: "applicant.created", binding: "applicant" }],
+          },
+          entityEligibility: {
+            checkpoints: ["before-execution", "before-execution"],
+            groups: [
+              {
+                rules: [
+                  {
+                    field: "status",
+                    fieldType: "string",
+                    operator: "equals",
+                    value: "active",
+                  },
+                ],
+              },
+            ],
+          },
+        })
+      );
+      expect(duplicateFailure.reason).toContain("must not contain duplicates");
+
+      const unknownField = yield* agentToolsFor({
+        catalog: catalogWithEntity,
+      });
+      const fieldFailure = yield* Effect.flip(
+        unknownField.tools.set_lifecycle_rules({
+          startEvents: ["applicant.created"],
+          trackedEntity: {
+            type: "applicant",
+            bindings: [{ event: "applicant.created", binding: "applicant" }],
+          },
+          entityEligibility: {
+            checkpoints: ["before-execution"],
+            groups: [
+              {
+                rules: [
+                  {
+                    field: "missing",
+                    fieldType: "string",
+                    operator: "equals",
+                    value: "active",
+                  },
+                ],
+              },
+            ],
+          },
+        })
+      );
+      expect(fieldFailure.reason).toContain(
+        'reads "missing", which Entity "applicant" does not declare'
+      );
+
+      const referenceValue = yield* agentToolsFor({
+        catalog: catalogWithEntity,
+      });
+      const referenceFailure = yield* Effect.flip(
+        referenceValue.tools.set_lifecycle_rules({
+          startEvents: ["applicant.created"],
+          trackedEntity: {
+            type: "applicant",
+            bindings: [{ event: "applicant.created", binding: "applicant" }],
+          },
+          entityEligibility: {
+            checkpoints: ["before-execution"],
+            groups: [
+              {
+                rules: [
+                  {
+                    field: "status",
+                    fieldType: "string",
+                    operator: "equals",
+                    value: "{{@entry:Lifecycle.applicantId}}",
+                  },
+                ],
+              },
+            ],
+          },
+        })
+      );
+      expect(referenceFailure.reason).toContain(
+        "Entity Eligibility accepts literal values only"
+      );
+    })
+  );
+
+  it.effect("writes Entity Eligibility with enum set values", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({
+        catalog: catalogWithEntity,
+      });
+
+      yield* tools.set_lifecycle_rules({
+        startEvents: ["applicant.created"],
+        trackedEntity: {
+          type: "applicant",
+          bindings: [{ event: "applicant.created", binding: "applicant" }],
+        },
+        entityEligibility: {
+          checkpoints: ["before-execution", "before-node"],
+          groups: [
+            {
+              rules: [
+                {
+                  field: "status",
+                  fieldType: "string",
+                  operator: "is_one_of",
+                  values: ["active", "paused"],
+                },
+              ],
+            },
+          ],
+        },
+      });
+
+      const rules = readLifecycleRules(
+        (yield* draft.current).nodes[0]?.data.config
+      );
+      expect(rules?.entityEligibility?.checkpoints).toEqual([
+        "before-execution",
+        "before-node",
+      ]);
+      const parsed = parseConditionModel(rules?.entityEligibility?.condition);
+      expect(parsed.valid).toBe(true);
+      if (parsed.valid) {
+        expect(parsed.model.groups[0]?.conditions[0]).toMatchObject({
+          field: "status",
+          fieldType: "string",
+          operator: "is_one_of",
+          values: ["active", "paused"],
+        });
+      }
+    })
+  );
+
+  it.effect("removes eligibility while preserving Entity tracking", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({
+        catalog: catalogWithEntity,
+      });
+      yield* tools.set_lifecycle_rules({
+        startEvents: ["applicant.created"],
+        trackedEntity: {
+          type: "applicant",
+          bindings: [{ event: "applicant.created", binding: "applicant" }],
+        },
+        entityEligibility: {
+          checkpoints: ["before-execution"],
+          groups: [
+            {
+              rules: [
+                {
+                  field: "status",
+                  fieldType: "string",
+                  operator: "equals",
+                  value: "active",
+                },
+              ],
+            },
+          ],
+        },
+      });
+
+      yield* tools.set_lifecycle_rules({ clearEntityEligibility: true });
+
+      const rules = readLifecycleRules(
+        (yield* draft.current).nodes[0]?.data.config
+      );
+      expect(rules?.trackedEntity?.type).toBe("applicant");
+      expect(rules?.entityEligibility).toBeUndefined();
+    })
+  );
+
+  it.effect("clears stale eligibility when the tracked Entity changes", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({
+        catalog: catalogWithEntity,
+      });
+      yield* tools.set_lifecycle_rules({
+        startEvents: ["applicant.created"],
+        trackedEntity: {
+          type: "applicant",
+          bindings: [{ event: "applicant.created", binding: "applicant" }],
+        },
+        entityEligibility: {
+          checkpoints: ["before-execution"],
+          groups: [
+            {
+              rules: [
+                {
+                  field: "status",
+                  fieldType: "string",
+                  operator: "equals",
+                  value: "active",
+                },
+              ],
+            },
+          ],
+        },
+      });
+
+      yield* tools.set_lifecycle_rules({
+        trackedEntity: {
+          type: "organization",
+          bindings: [{ event: "applicant.created", binding: "organization" }],
+        },
+      });
+
+      const rules = readLifecycleRules(
+        (yield* draft.current).nodes[0]?.data.config
+      );
+      expect(rules?.trackedEntity?.type).toBe("organization");
+      expect(rules?.entityEligibility).toBeUndefined();
+    })
+  );
+
+  it.effect(
+    "drops a tracked Entity binding when its Event loses its lifecycle role",
+    () =>
+      Effect.gen(function* () {
+        const { tools, draft } = yield* agentToolsFor({
+          catalog: catalogWithEntity,
+        });
+
+        yield* tools.set_lifecycle_rules({
+          startEvents: ["applicant.created"],
+          cancelEvents: ["applicant.withdrawn"],
+          trackedEntity: {
+            type: "applicant",
+            bindings: [
+              { event: "applicant.created", binding: "applicant" },
+              { event: "applicant.withdrawn", binding: "applicant" },
+            ],
+          },
+        });
+
+        // Drops the Cancel Event and omits trackedEntity, so the tool has to
+        // keep tracking but trim the binding the removed Event held.
+        yield* tools.set_lifecycle_rules({ cancelEvents: [] });
+
+        const rules = readLifecycleRules(
+          (yield* draft.current).nodes[0]?.data.config
+        );
+        expect(rules?.trackedEntity).toEqual({
+          type: "applicant",
+          bindings: { "applicant.created": "applicant" },
+        });
+      })
   );
 
   it.effect("writes onto the entry node the workflow already has", () =>
@@ -924,6 +1269,47 @@ describe("set_condition", () => {
     })
   );
 
+  it.effect("writes a string set rule", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [conditionLifecycle, score, condition],
+        edges: conditionEdges,
+        catalog,
+      });
+
+      yield* tools.set_condition({
+        nodeId: "branch",
+        groups: [
+          {
+            rules: [
+              {
+                field: "email",
+                fieldType: "string",
+                operator: "is_not_one_of",
+                values: ["blocked@example.com", "held@example.com"],
+              },
+            ],
+          },
+        ],
+      });
+
+      const config = (yield* draft.current).nodes.find(
+        (node) => node.id === "branch"
+      )?.data.config;
+      const parsed = parseConditionModel(
+        readConfigString(config, "conditionModel") ?? ""
+      );
+      expect(parsed.valid).toBe(true);
+      if (parsed.valid) {
+        expect(parsed.model.groups[0]?.conditions[0]).toMatchObject({
+          operator: "is_not_one_of",
+          values: ["blocked@example.com", "held@example.com"],
+        });
+      }
+      expect(readConfigString(config, "condition")).toContain("!(");
+    })
+  );
+
   it.effect("writes a named key under an open-record field", () =>
     Effect.gen(function* () {
       const { tools, draft } = yield* agentToolsFor({
@@ -1162,6 +1548,25 @@ describe("set_condition", () => {
       );
       expect(blankValue.reason).toContain("numeric value");
 
+      const emptyValues = yield* Effect.flip(
+        tools.set_condition({
+          nodeId: "branch",
+          groups: [
+            {
+              rules: [
+                {
+                  field: "email",
+                  fieldType: "string",
+                  operator: "is_one_of",
+                  values: [],
+                },
+              ],
+            },
+          ],
+        })
+      );
+      expect(emptyValues.reason).toContain("one or more values");
+
       const { tools: timestampTools } = yield* agentToolsFor({
         nodes: [conditionLifecycle, score, condition],
         edges: conditionEdges,
@@ -1244,6 +1649,45 @@ describe("set_lifecycle_rules and start filters", () => {
           fieldType: "number",
           operator: "greater_or_equal",
           value: 80,
+        });
+      }
+    })
+  );
+
+  it.effect("writes a string set Start Filter", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({ catalog });
+
+      yield* tools.set_lifecycle_rules({
+        startEvents: ["applicant.created"],
+        startFilters: [
+          {
+            event: "applicant.created",
+            groups: [
+              {
+                rules: [
+                  {
+                    field: "applicantId",
+                    fieldType: "string",
+                    operator: "is_one_of",
+                    values: ["applicant-1", "applicant-2"],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+
+      const parsed = parseConditionModel(
+        readLifecycleRules((yield* draft.current).nodes[0]?.data.config)
+          ?.startFilters?.["applicant.created"]
+      );
+      expect(parsed.valid).toBe(true);
+      if (parsed.valid) {
+        expect(parsed.model.groups[0]?.conditions[0]).toMatchObject({
+          operator: "is_one_of",
+          values: ["applicant-1", "applicant-2"],
         });
       }
     })

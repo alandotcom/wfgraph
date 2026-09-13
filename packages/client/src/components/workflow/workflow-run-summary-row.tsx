@@ -100,6 +100,8 @@ export function getRunOutcome(
       ).length;
       return `Canceled after ${completedSteps} ${completedSteps === 1 ? "step" : "steps"}`;
     }
+    case "exited":
+      return "Exited by Entity eligibility";
     case "superseded":
       return "Replaced by a newer start";
   }
@@ -213,7 +215,7 @@ function HeaderSummary({
         ) : null}
         <div className="min-w-0 flex-1 pt-0.5">
           <h2
-            className="break-words font-semibold text-sm outline-none"
+            className="break-words font-semibold text-base outline-none"
             ref={headingRef}
             tabIndex={-1}
           >
@@ -221,7 +223,7 @@ function HeaderSummary({
           </h2>
           <p
             aria-live="polite"
-            className={cn("mt-1 text-xs", getStatusTextClass(execution.status))}
+            className={cn("mt-1 text-sm", getStatusTextClass(execution.status))}
             role="status"
           >
             {outcome ?? getRunOutcome(execution, [])}

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   applyExecutionStatusToLogs,
   isRunInProgress,
+  shouldPollExecutionDetail,
+  toExecutionDetail,
   toPinnedRunSummary,
   toWorkflowExecutionFromSummary,
   toWorkflowExecutions,
@@ -89,6 +91,13 @@ describe("isRunInProgress", () => {
     expect(isRunInProgress("superseded")).toBe(false);
     expect(isRunInProgress(undefined)).toBe(false);
   });
+
+  it("polls from detail status for deep links and list/detail races", () => {
+    expect(shouldPollExecutionDetail("running", undefined)).toBe(true);
+    expect(shouldPollExecutionDetail("running", "exited")).toBe(true);
+    expect(shouldPollExecutionDetail("exited", "running")).toBe(false);
+    expect(shouldPollExecutionDetail(undefined, "waiting")).toBe(true);
+  });
 });
 
 describe("toWorkflowExecutionFromSummary", () => {
@@ -175,6 +184,7 @@ describe("toPinnedRunSummary", () => {
     },
     logs: [],
     waits: [],
+    exit: null,
   };
 
   it("carries the pinned run's version and run mode", () => {
@@ -200,6 +210,46 @@ describe("toPinnedRunSummary", () => {
     expect(summary.versionKind).toBe("draft_snapshot");
     expect(summary.versionNumber).toBeNull();
     expect(summary.runMode).toBe("test");
+  });
+});
+
+describe("toExecutionDetail", () => {
+  it("converts the authoritative Exit timestamp", () => {
+    const detail = toExecutionDetail({
+      execution: {
+        id: "exec_exit",
+        workflowId: "wf_1",
+        workflowVersionId: "ver_1",
+        versionKind: "published",
+        versionNumber: 7,
+        status: "exited",
+        input: {},
+        output: {},
+        error: null,
+        startedAt: "2026-03-01T10:00:00.000Z",
+        completedAt: "2026-03-01T10:00:05.000Z",
+        duration: "5000",
+        runMode: "live",
+        startSource: "event",
+        startEventName: "appointment.updated",
+        entityValue: null,
+      },
+      logs: [],
+      waits: [],
+      exit: {
+        reason: "entity_condition_not_met",
+        entityType: "patient",
+        nodeId: "send-reminder",
+        checkedAt: "2026-03-01T10:00:05.000Z",
+      },
+    });
+
+    expect(detail.exit).toEqual({
+      reason: "entity_condition_not_met",
+      entityType: "patient",
+      nodeId: "send-reminder",
+      checkedAt: new Date("2026-03-01T10:00:05.000Z"),
+    });
   });
 });
 

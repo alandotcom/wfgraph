@@ -14,6 +14,7 @@ import type { WorkflowNode } from "#src/lib/workflow-graph-types";
  * none.
  */
 const served: ExtensionCatalog = {
+  entities: [],
   events: [
     {
       name: "twilio/message.received",

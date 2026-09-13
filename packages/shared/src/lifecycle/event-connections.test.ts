@@ -8,6 +8,7 @@ import {
 } from "./event-connections";
 
 const catalog: ExtensionCatalog = {
+  entities: [],
   events: [
     {
       name: "app/appointment.created",

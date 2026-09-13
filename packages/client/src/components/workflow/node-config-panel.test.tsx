@@ -43,6 +43,7 @@ import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 
 const catalog: ExtensionCatalog = {
+  entities: [],
   events: [
     {
       name: "app/appointment.created",

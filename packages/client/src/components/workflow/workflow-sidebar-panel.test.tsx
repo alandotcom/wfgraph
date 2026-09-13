@@ -37,6 +37,7 @@ import {
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 
 const emptyCatalog: ExtensionCatalog = {
+  entities: [],
   events: [],
   actions: [],
   integrations: [],

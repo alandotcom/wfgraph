@@ -1,20 +1,22 @@
 import { createHash } from "node:crypto";
-import { Data, Effect } from "effect";
+import { Data, Effect, Exit } from "effect";
 import { sql } from "drizzle-orm";
 import type { EffectSQLiteNodeDatabase } from "drizzle-orm/effect-sqlite-node";
 import type { MigrationMeta } from "drizzle-orm/migrator";
 import { sqliteMigrations } from "#src/backend/persistence/sqlite/generated-migrations";
 
 const MIGRATIONS_TABLE = "__wfgraph_sqlite_migrations";
+const ENTITY_TERMINATION_MIGRATION = "20260910085613_jittery_madripoor";
+const LEGACY_CANCEL_CLAIMS_TABLE = "__wfgraph_legacy_cancel_claims";
 const LEGACY_SCHEMA_FINGERPRINTS = new Map([
   [6, "77261cee4c909093d042849e5bbd650020c27546c6f2cc6bcc38504ae7c3a839"],
   [7, "e73822bda63d0602c7a357a6fcd7e603df1eabc26db4da2de723a260ced7f225"],
 ]);
 const CURRENT_SCHEMA_FINGERPRINTS = new Set([
   // A database created by all generated migrations.
-  "88401776a5d04e0089b4a9bd4c4c9e0e4468da7c7a8eeabbba3c72bd79b59872",
+  "df51f770693b034de37ce9144df12e762a9a9835458c37cb380385cd89ffe14d",
   // An adopted version-6 or version-7 database keeps its original table DDL.
-  "1b21b793f1ac82dae9691cd1d3ae3f1b0d46cff59e731026248396e7a1c14f4d",
+  "c28be3ae58375de1d807235b13e6f03a47100f3a1bc58625481085cd1dad267c",
 ]);
 const EXPECTED_TABLES = [
   "integrations",
@@ -41,8 +43,63 @@ class SqliteInitializationError extends Data.TaggedError(
 
 type SqliteMigrationDatabase = Pick<
   EffectSQLiteNodeDatabase,
-  "all" | "get" | "run" | "transaction"
+  "all" | "get" | "run"
 >;
+
+/**
+ * Tries for an exclusive migration lock without joining SQLite's lock queue.
+ * A queued second initializer can prevent the current holder from upgrading
+ * its schema lock during a table rebuild, so contenders poll instead.
+ */
+function acquireExclusiveMigrationLock(
+  database: SqliteMigrationDatabase,
+  attemptsRemaining: number
+): Effect.Effect<void, unknown> {
+  return database
+    .run(sql`begin exclusive`)
+    .pipe(
+      Effect.catch((error) =>
+        attemptsRemaining <= 1
+          ? Effect.fail(error)
+          : Effect.sleep(10).pipe(
+              Effect.flatMap(() =>
+                acquireExclusiveMigrationLock(database, attemptsRemaining - 1)
+              )
+            )
+      )
+    );
+}
+
+function exclusiveMigrationTransaction<A, E>(
+  database: SqliteMigrationDatabase,
+  effect: Effect.Effect<A, E>
+): Effect.Effect<A, unknown> {
+  const acquire = Effect.gen(function* () {
+    const setting = yield* database.get<{ timeout: number }>(
+      sql`pragma busy_timeout`
+    );
+    yield* database.run(sql`pragma busy_timeout = 0`);
+    yield* acquireExclusiveMigrationLock(
+      database,
+      Math.max(1, Math.ceil(setting.timeout / 10))
+    ).pipe(
+      Effect.ensuring(
+        database
+          .run(sql.raw(`pragma busy_timeout = ${setting.timeout}`))
+          .pipe(Effect.orDie)
+      )
+    );
+  });
+
+  return Effect.acquireUseRelease(
+    acquire,
+    () => effect,
+    (_, exit) =>
+      database
+        .run(Exit.isSuccess(exit) ? sql`commit` : sql`rollback`)
+        .pipe(Effect.orDie)
+  );
+}
 
 type SqliteMigrationExecutor = Pick<
   EffectSQLiteNodeDatabase,
@@ -206,6 +263,60 @@ function violationKey(violation: ForeignKeyViolation): string {
   ]);
 }
 
+/**
+ * Holds legacy Cancel claim timestamps across the immutable Entity termination
+ * migration, whose generated table rebuild removed their old column.
+ */
+const preserveLegacyCancelClaims = Effect.fn("preserveLegacyCancelClaims")(
+  function* (
+    database: SqliteMigrationDatabase,
+    pending: readonly MigrationMeta[]
+  ) {
+    if (
+      !pending.some(
+        (migration) => migration.name === ENTITY_TERMINATION_MIGRATION
+      )
+    ) {
+      return false;
+    }
+
+    const columns = yield* database.all<{ name: string }>(
+      sql`select name from pragma_table_info('workflow_executions')`
+    );
+    if (!columns.some((column) => column.name === "cancel_requested_at")) {
+      return false;
+    }
+
+    yield* database.run(
+      sql.raw(`
+      create temporary table ${LEGACY_CANCEL_CLAIMS_TABLE} as
+      select id, cancel_requested_at
+      from workflow_executions
+      where cancel_requested_at is not null
+    `)
+    );
+    return true;
+  }
+);
+
+const restoreLegacyCancelClaims = Effect.fn("restoreLegacyCancelClaims")(
+  function* (database: SqliteMigrationDatabase) {
+    yield* database.run(
+      sql.raw(`
+      update workflow_executions
+      set termination_kind = 'cancel',
+          termination_requested_at = (
+            select cancel_requested_at
+            from ${LEGACY_CANCEL_CLAIMS_TABLE}
+            where ${LEGACY_CANCEL_CLAIMS_TABLE}.id = workflow_executions.id
+          )
+      where id in (select id from ${LEGACY_CANCEL_CLAIMS_TABLE})
+    `)
+    );
+    yield* database.run(sql.raw(`drop table ${LEGACY_CANCEL_CLAIMS_TABLE}`));
+  }
+);
+
 const adoptLegacySchema = Effect.fn("adoptLegacySqliteSchema")(function* (
   database: SqliteMigrationExecutor,
   migrations: readonly MigrationMeta[],
@@ -293,8 +404,10 @@ export const runSqliteMigrations = Effect.fn("runSqliteMigrations")(function* (
   yield* Effect.acquireUseRelease(
     database.run(sql`pragma foreign_keys = off`),
     () =>
-      database.transaction((transaction) =>
+      exclusiveMigrationTransaction(
+        database,
         Effect.gen(function* () {
+          const transaction = database;
           const existingViolations = new Set(
             (yield* transaction.all<ForeignKeyViolation>(
               sql`pragma foreign_key_check`
@@ -329,6 +442,10 @@ export const runSqliteMigrations = Effect.fn("runSqliteMigrations")(function* (
             transaction,
             migrations
           );
+          const preservedLegacyCancelClaims = yield* preserveLegacyCancelClaims(
+            transaction,
+            pending
+          );
           for (const migration of pending) {
             for (const statement of migration.sql) {
               yield* transaction.run(sql.raw(statement));
@@ -341,6 +458,9 @@ export const runSqliteMigrations = Effect.fn("runSqliteMigrations")(function* (
                 ${new Date().toISOString()}
               )
             `);
+          }
+          if (preservedLegacyCancelClaims) {
+            yield* restoreLegacyCancelClaims(transaction);
           }
 
           const newViolations = (yield* transaction.all<ForeignKeyViolation>(

@@ -24,6 +24,7 @@ import {
   createRequestListener,
   createWfGraphApp,
   defineAction,
+  defineEntity,
   defineEvent,
 } from "@wfgraph/core";
 import { configureWfGraphLogging } from "@wfgraph/core/logging";
@@ -64,12 +65,38 @@ const demoAuth = createDemoAuth({
 // node's date field. A `.describe()` replaces the derived label, so it earns its
 // place only where the key reads badly alone.
 const appointmentIdSchema = z.string().describe("Appointment ID");
+const patientIdSchema = z.string().describe("Patient ID");
 
 const appointmentSchema = z.object({
   id: appointmentIdSchema,
   startsAt: z.iso.datetime(),
+  patientId: patientIdSchema,
   patientName: z.string(),
   status: z.string(),
+});
+
+const patientStateSchema = z.object({
+  status: z.enum(["active", "inactive"]),
+  appointmentRemindersEnabled: z.boolean(),
+});
+
+// This map stands in for the host application's patient store. The appointment
+// Event identifies a different domain object, which makes the Event-to-Entity
+// binding explicit. Workflow Graph receives the Patient id and a validated
+// decision surface, never the record itself.
+const patientStates = new Map<string, z.infer<typeof patientStateSchema>>([
+  ["pat_demo_active", { status: "active", appointmentRemindersEnabled: true }],
+  [
+    "pat_demo_opted_out",
+    { status: "active", appointmentRemindersEnabled: false },
+  ],
+]);
+
+const patientEntity = defineEntity({
+  type: "patient",
+  label: "Patient",
+  state: patientStateSchema,
+  resolve: ({ entityId }) => patientStates.get(entityId) ?? null,
 });
 
 /**
@@ -90,6 +117,12 @@ const appointmentCreated = defineEvent({
   description: "Raised when a new appointment is booked.",
   schema: z.object({ appointment: appointmentSchema, occurredAt }),
   correlationPath: "appointment.id",
+  entities: {
+    patient: {
+      entity: patientEntity,
+      selectEntityId: (event) => event.appointment.patientId,
+    },
+  },
 });
 
 const appointmentRescheduled = defineEvent({
@@ -102,6 +135,12 @@ const appointmentRescheduled = defineEvent({
     previousStartsAt: z.iso.datetime(),
   }),
   correlationPath: "appointment.id",
+  entities: {
+    patient: {
+      entity: patientEntity,
+      selectEntityId: (event) => event.appointment.patientId,
+    },
+  },
 });
 
 const appointmentCanceled = defineEvent({
@@ -114,6 +153,12 @@ const appointmentCanceled = defineEvent({
     reason: z.string().describe("Why it was canceled"),
   }),
   correlationPath: "appointment.id",
+  entities: {
+    patient: {
+      entity: patientEntity,
+      selectEntityId: (event) => event.appointment.patientId,
+    },
+  },
 });
 
 /**

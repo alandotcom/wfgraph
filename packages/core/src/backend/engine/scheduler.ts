@@ -9,6 +9,7 @@
  */
 
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
+import type { ExecutionSide } from "@wfgraph/shared/lifecycle/execution-contracts";
 import {
   actionTypeOf,
   isConditionNode,
@@ -19,6 +20,7 @@ import { type JsonObject, readJsonValue } from "@wfgraph/shared/types/json";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { Cause, Effect } from "effect";
 import type { WorkflowActions } from "#src/backend/engine/actions";
+import type { WorkflowEntities } from "#src/backend/engine/entities";
 import type { CancelBoundary } from "#src/backend/engine/cancel-boundary";
 import {
   executionData,
@@ -26,7 +28,7 @@ import {
   failedExecution,
 } from "#src/backend/engine/contracts";
 import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
-import type { WorkflowStore } from "#src/backend/engine/store";
+import type { PendingCancel, WorkflowStore } from "#src/backend/engine/store";
 import type { Traversal } from "#src/backend/engine/traversal";
 import {
   resolveStrategy,
@@ -40,6 +42,7 @@ import {
 } from "#src/backend/engine/engine-failure";
 import {
   fromUnknownPromise,
+  runDurable,
   runDurableUnit,
 } from "#src/backend/engine/durable";
 
@@ -73,6 +76,7 @@ export type NodeSchedulerInput = {
   runtime: WorkflowExecutionRuntime;
   store: WorkflowStore;
   actions: WorkflowActions;
+  entities: WorkflowEntities;
   executionId: string;
   workflowId: string;
   /** The Workflow Version whose graph this run is walking. */
@@ -88,6 +92,15 @@ export type NodeSchedulerInput = {
    * catalog when an action resolves.
    */
   catalogFingerprint: string;
+  /** Immutable identity and authored rule for per-node Entity Eligibility. */
+  entityEligibility?:
+    | {
+        entityType: string;
+        entityId: string;
+        condition: string;
+        conditionId: string;
+      }
+    | undefined;
   /**
    * The Wait node this run was handed, on a run that is itself a branch. It is
    * the one Wait this run enters in place rather than hands on again, which is
@@ -144,6 +157,16 @@ export class NodeScheduler {
   }
 
   /**
+   * Which side of the Lifecycle Node a node sits on, read off the graph rather
+   * than off how far this run got, so it answers the same on a replay.
+   */
+  private sideOf(nodeId: string): ExecutionSide {
+    return this.input.cancelBoundary.isOnCanceledBranch(nodeId)
+      ? "canceled"
+      : "started";
+  }
+
+  /**
    * The Event the nodes running now arrived on: the Cancel Event once the run
    * has taken the Canceled outlet, the Event that woke the most recent
    * event-mode Wait below that, and the Start Event before either. A timeout
@@ -153,6 +176,117 @@ export class NodeScheduler {
   private currentEventName(): string | null {
     return (
       this.input.cancelBoundary.canceledByEvent() ?? this.arrivingEventName
+    );
+  }
+
+  /**
+   * Resolves one durable Eligibility verdict and linearizes this node's
+   * admission against execution-wide Cancel and Exit claims.
+   *
+   * Only enabled action nodes on the Started side are checkpoints. The action
+   * node shape also represents Conditions, Event Splits, and Waits; Lifecycle,
+   * Group, add-placeholder, disabled, and Canceled-side nodes resolve nothing.
+   * Durable ids follow node identity across Migration, so replay keeps a verdict
+   * already taken while the first newly reached node reads the target rule.
+   */
+  private admitExecutableNode(
+    node: WorkflowNode,
+    nodeName: string
+  ): Effect.Effect<boolean, EngineFailure> {
+    const eligibility = this.input.entityEligibility;
+    if (
+      !eligibility ||
+      node.data.enabled === false ||
+      node.data.type !== "action" ||
+      this.input.cancelBoundary.isOnCanceledBranch(node.id) ||
+      (isWaitNode(node) && !this.entersInPlace(node.id))
+    ) {
+      return Effect.succeed(true);
+    }
+
+    const { runtime, store, entities, executionId } = this.input;
+
+    return Effect.gen(
+      function* (this: NodeScheduler) {
+        const boundaryOpen = yield* runDurable(
+          runtime,
+          {
+            id: `node-boundary:${node.id}`,
+            name: `${nodeName} (boundary)`,
+          },
+          store.admitNode(executionId)
+        );
+        if (!boundaryOpen) {
+          return false;
+        }
+
+        const decision = yield* runDurable(
+          runtime,
+          {
+            id: `entity-eligibility:${node.id}`,
+            name: `${nodeName} (Eligibility)`,
+          },
+          entities.evaluateEligibility({
+            entityType: eligibility.entityType,
+            entityId: eligibility.entityId,
+            nodeId: node.id,
+            condition: eligibility.condition,
+            eventName: this.currentEventName(),
+          })
+        );
+
+        if (decision.outcome === "exit") {
+          const claimed = yield* runDurable(
+            runtime,
+            {
+              id: `entity-exit:${node.id}`,
+              name: `${nodeName} (Exit)`,
+            },
+            store.requestExit({
+              executionId,
+              reason: decision.reason,
+              nodeId: node.id,
+              checkedAt: decision.checkedAt,
+            })
+          );
+
+          // The run that wins the Exit claim wakes the Waits parked in sibling
+          // branch runs, so each halts and returns to the run that started it.
+          // A refused wake leaves those siblings parked until their own Waits
+          // end. It does not fail this node, which was never admitted.
+          const wakeParkedWaits = runtime.wakeParkedWaits;
+          if (
+            claimed?.didWrite &&
+            claimed.claim?.kind === "exit" &&
+            wakeParkedWaits
+          ) {
+            yield* runDurableUnit(
+              runtime,
+              {
+                id: `entity-exit-wake-waits:${node.id}`,
+                name: `${nodeName} (wake parked Waits)`,
+              },
+              fromUnknownPromise(wakeParkedWaits)
+            ).pipe(
+              Effect.catch((failure) =>
+                Effect.logError(
+                  "Failed to wake parked Waits after an Exit"
+                ).pipe(Effect.annotateLogs({ error: failure.message }))
+              )
+            );
+          }
+          return false;
+        }
+
+        return yield* runDurable(
+          runtime,
+          {
+            id: `node-admission:${node.id}`,
+            name: `${nodeName} (admit)`,
+          },
+          store.admitNode(executionId)
+        );
+      }.bind(this)
     );
   }
 
@@ -220,6 +354,15 @@ export class NodeScheduler {
 
         const nodeName = getNodeName(node, actions);
         const actionType = actionTypeOf(node);
+
+        const admitted = yield* this.admitExecutableNode(node, nodeName);
+        if (!admitted) {
+          const cancel = yield* this.input.cancelBoundary.settle(nodeId);
+          if (cancel.entered) {
+            yield* this.runAll(cancel.nextNodes);
+          }
+          return;
+        }
 
         const nodeExecution = this.executeNodeInner(
           nodeId,
@@ -323,6 +466,7 @@ export class NodeScheduler {
           eventName: this.currentEventName(),
           catalogFingerprint: this.input.catalogFingerprint,
           workflowVersionId: this.input.workflowVersionId,
+          side: this.sideOf(node.id),
           entersInPlace: this.entersInPlace(node.id),
           handOffBranch: () => this.handOffBranch(node, nodeName),
         };
@@ -369,6 +513,7 @@ export class NodeScheduler {
             {
               entryNodeId: node.id,
               releasedNodeIds: traversal.releasedNodeIds,
+              side: this.sideOf(node.id),
             }
           )
         );
@@ -388,6 +533,13 @@ export class NodeScheduler {
         }
 
         traversal.absorbBranch(handoff.result);
+        if (handoff.result.exit) {
+          return {
+            result: { success: true as const, data: null },
+            haltBranch: true,
+            executionExited: true,
+          };
+        }
 
         const own = handoff.result.results[node.id] ?? {
           success: true as const,
@@ -480,6 +632,10 @@ export class NodeScheduler {
         const outcome = yield* this.runNodeWork(node, nodeName);
         const { result } = outcome;
 
+        if (outcome.executionExited) {
+          return;
+        }
+
         // A node with no action type never produced an output, so it is recorded
         // as failed without becoming available to downstream templates.
         if (outcome.unconfigured) {
@@ -553,6 +709,25 @@ export class NodeScheduler {
     );
 
     return execute;
+  }
+
+  /**
+   * Runs the Canceled outlet for a Cancel claim read after the Started branch
+   * ran out, in the order a boundary read runs it mid-traversal: enter the
+   * outlet, run its first nodes, then enter the Waits held back on its side.
+   *
+   * The Started-side Waits were drained before the claim was read, so the drain
+   * here finds only Waits behind the outlet, and one of them may park the run
+   * the way any Wait does.
+   */
+  runCanceledOutlet(claim: PendingCancel): Effect.Effect<void> {
+    return Effect.gen(
+      function* (this: NodeScheduler) {
+        const nextNodes = yield* this.input.cancelBoundary.enterClaimed(claim);
+        yield* this.runAll(nextNodes);
+        yield* this.drainDeferredWaits();
+      }.bind(this)
+    );
   }
 
   /** Runs a set of nodes side by side, which is how every branch fans out. */

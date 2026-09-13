@@ -165,10 +165,12 @@ describe("driveWithReplay", () => {
           runtime.startBranch?.(stepRef("branch-short"), {
             entryNodeId: "short",
             releasedNodeIds: [],
+            side: "started",
           }),
           runtime.startBranch?.(stepRef("branch-long"), {
             entryNodeId: "long",
             releasedNodeIds: [],
+            side: "started",
           }),
         ]);
         return "done";
@@ -203,10 +205,12 @@ describe("driveWithReplay", () => {
           runtime.startBranch?.(stepRef("branch-short"), {
             entryNodeId: "short",
             releasedNodeIds: [],
+            side: "started",
           }),
           runtime.startBranch?.(stepRef("branch-long"), {
             entryNodeId: "long",
             releasedNodeIds: [],
+            side: "started",
           }),
         ]);
         return "done";
@@ -250,6 +254,7 @@ describe("driveWithReplay", () => {
         await runtime.startBranch?.(stepRef("branch-wait"), {
           entryNodeId: "wait",
           releasedNodeIds: [],
+          side: "started",
         }),
       { branch: () => Promise.resolve(answered) }
     );
@@ -264,6 +269,7 @@ describe("driveWithReplay", () => {
           await runtime.startBranch?.(stepRef("branch-wait"), {
             entryNodeId: "wait",
             releasedNodeIds: [],
+            side: "started",
           }),
         { branch: () => Promise.reject(new Error("the branch died")) }
       )
@@ -276,6 +282,7 @@ describe("driveWithReplay", () => {
         await runtime.startBranch?.(stepRef("branch-wait"), {
           entryNodeId: "wait",
           releasedNodeIds: [],
+          side: "started",
         }),
       {
         branch: async (runtime) => {
@@ -291,6 +298,59 @@ describe("driveWithReplay", () => {
     // The step behind the park never ran, and the tree ended at the kill
     // rather than at the branch's own target.
     expect(run.executed).toEqual([]);
+    expect(run.elapsedMs).toBe(30_000);
+  });
+
+  // The run that wins an Exit claim signals every Wait parked in another run.
+  // The runs that started it are parked on a branch hand-off, which is no Wait,
+  // so they wake only when the branch they started returns.
+  it("wakes the Waits other runs are parked on with an Exit signal", async () => {
+    const run = await driveWithReplay(
+      async (runtime) =>
+        await Promise.all([
+          runtime.startBranch?.(stepRef("branch-exit"), {
+            entryNodeId: "exit",
+            releasedNodeIds: [],
+            side: "started",
+          }),
+          runtime.startBranch?.(stepRef("branch-sibling"), {
+            entryNodeId: "sibling",
+            releasedNodeIds: [],
+            side: "started",
+          }),
+        ]),
+      {
+        branch: async (runtime, input) => {
+          if (input.entryNodeId === "exit") {
+            await park(runtime, "wait-short", 30_000);
+            await runtime.run(stepRef("wake-parked-waits"), async () => {
+              await runtime.wakeParkedWaits?.();
+              return null;
+            });
+            return NOTHING_RAN;
+          }
+          const woken = await park(runtime, "wait-long", 600_000);
+          return {
+            results: { sibling: { success: true, data: woken } },
+            outputs: {},
+          };
+        },
+      }
+    );
+
+    expect(run.value[1]).toEqual({
+      status: "finished",
+      result: {
+        results: {
+          sibling: {
+            success: true,
+            data: { data: { signalType: "lifecycle-exit" } },
+          },
+        },
+        outputs: {},
+      },
+    });
+    // The sibling woke at the signal rather than at its own target.
     expect(run.elapsedMs).toBe(30_000);
   });
 

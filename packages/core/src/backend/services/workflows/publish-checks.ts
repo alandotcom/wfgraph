@@ -23,6 +23,7 @@ import { validateWorkflowIntegrations } from "#src/backend/services/workflows/va
 import { validateWorkflowTemplates } from "#src/backend/services/workflows/validation/workflow-template-validation";
 import {
   validateCancelFilters,
+  validateEntityEligibility,
   validateEventSplitOutlets,
   validateStartFilters,
   validateWorkflowEvents,
@@ -45,6 +46,7 @@ export type SynchronousPublicationFailure = {
   kind:
     | "missing_required_field"
     | "invalid_event"
+    | "invalid_entity_eligibility"
     | "invalid_start_filter"
     | "invalid_cancel_filter"
     | "invalid_event_split"
@@ -76,6 +78,10 @@ function synchronousPublicationChecks(input: {
       () => validateWorkflowActionConfigs(nodes, catalog),
     ],
     ["invalid_event", () => validateWorkflowEvents(nodes, catalog)],
+    [
+      "invalid_entity_eligibility",
+      () => validateEntityEligibility(nodes, catalog),
+    ],
     // Publish only. `validateWorkflowEvents` also runs in preflight, where a
     // Start Filter must not stop the whole workflow.
     ["invalid_start_filter", () => validateStartFilters(nodes, catalog)],

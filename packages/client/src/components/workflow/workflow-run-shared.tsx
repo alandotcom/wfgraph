@@ -18,7 +18,7 @@ import { readAs } from "@wfgraph/shared/types/schema";
 /**
  * How a status reads on screen, for the two vocabularies that reach these.
  *
- * An Execution ends `completed`, `failed`, `canceled` or `superseded`; a node
+ * An Execution ends `completed`, `failed`, `canceled`, `exited` or `superseded`; a node
  * inside one ends `success`, `error` or `cancelled`. Both arrive here as strings
  * off a payload, so the lookups are records rather than switches and `satisfies`
  * is what holds each to naming every member of its own union.
@@ -31,6 +31,7 @@ const RUN_STATUS_TONES = {
   waiting: "pending",
   completed: "good",
   canceled: "quiet",
+  exited: "quiet",
   superseded: "quiet",
   failed: "bad",
 } satisfies Record<WorkflowExecutionStatus, StatusTone>;
@@ -79,6 +80,7 @@ const RUN_STATUS_LABELS = {
   waiting: "Waiting",
   completed: "Completed",
   canceled: "Canceled",
+  exited: "Exited",
   superseded: "Superseded",
   failed: "Failed",
 } satisfies Record<WorkflowExecutionStatus, string>;

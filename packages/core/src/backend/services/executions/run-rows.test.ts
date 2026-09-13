@@ -5,13 +5,17 @@ import type {
   WorkflowExecution,
 } from "#src/backend/services/executions/repo";
 import { DatabaseError } from "#src/backend/lib/effect/database";
+import { InternalFailure } from "#src/backend/lib/effect/failures";
 import { InngestError } from "#src/backend/lib/effect/inngest-client";
 import {
   makeRecordingLogger,
   SilentAppLoggerLayer,
   stubExecutionRepo,
   stubInngestClient,
+  stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
+import type { WorkflowVersion } from "#src/backend/lib/db/schema";
+import type { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import {
   buildIgnoredRunAuditMessage,
   buildRunStartedAuditMessage,
@@ -33,6 +37,8 @@ function createExecution(
     runMode: "live",
     startEventName: null,
     entityValue: null,
+    entityType: null,
+    entityId: null,
     input: {},
     output: null,
     error: null,
@@ -41,7 +47,10 @@ function createExecution(
     cancelledAt: null,
     completedAt: null,
     duration: null,
-    cancelRequestedAt: null,
+    terminationKind: null,
+    terminationRequestedAt: null,
+    terminationReason: null,
+    terminationNodeId: null,
     cancelEventName: null,
     cancelPayload: null,
     workflowVersionId: "ver_1",
@@ -49,14 +58,31 @@ function createExecution(
   };
 }
 
-const runTarget = {
-  id: "wf_1",
-  name: "Appointment Reminders",
-  graph: { nodes: [], edges: [] },
-  versionId: "ver_1",
-  catalogFingerprint: "fp",
-  version: { kind: "published" as const, number: 3 },
-};
+/**
+ * The `workflow_versions` row the fixture Execution's `workflowVersionId` names.
+ *
+ * The enqueue reads it to name the version on the timeline, so every case that
+ * gets as far as the send provides one.
+ */
+function pinnedVersionLayer(
+  version: Pick<WorkflowVersion, "id" | "version"> = {
+    id: "ver_1",
+    version: 3,
+  }
+): Layer.Layer<WorkflowRepo> {
+  return stubWorkflowRepo({
+    findVersionById: () =>
+      Effect.succeed({
+        ...version,
+        workflowId: "wf_1",
+        kind: "published",
+        graph: { nodes: [], edges: [] },
+        catalogFingerprint: "fp",
+        graphDigest: "digest",
+        publishedAt: new Date("2026-03-01T00:00:00.000Z"),
+      }),
+  });
+}
 
 describe("buildRunStartedAuditMessage", () => {
   it("names the start source that opened the run", () => {
@@ -170,14 +196,11 @@ describe("enqueueStartedRun", () => {
         // `markEnqueueFailed` is left refusing, so a compensation on the happy
         // path would kill the test rather than pass unnoticed.
         const started = yield* enqueueStartedRun({
-          workflow: runTarget,
-          start: { source: "event" },
-          executionId: "exec_1",
-          runMode: "live",
-          payload: { order: "o1" },
+          execution: createExecution({ input: { order: "o1" } }),
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
+              pinnedVersionLayer(),
               stubExecutionRepo({
                 markEnqueued: (input) =>
                   Effect.sync(() => {
@@ -203,6 +226,195 @@ describe("enqueueStartedRun", () => {
       })
     );
 
+    // Every field of the entry comes off the committed row, which is what lets a
+    // retried delivery send a row an earlier attempt opened and never sent
+    // without rebuilding the start it was opened from.
+    serviceIt.effect(
+      "writes the opening timeline entry from the row alone",
+      () =>
+        Effect.gen(function* () {
+          const calls = {
+            audits: [] as Array<
+              Parameters<ExecutionRepo["Service"]["recordAuditEvent"]>[0]
+            >,
+          };
+
+          yield* enqueueStartedRun({
+            execution: createExecution({
+              runMode: "test",
+              startEventName: "app/appointment.created",
+              entityType: "appointment",
+              entityId: "appt_8813",
+              deliveryId: "dlv_1",
+            }),
+          }).pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                pinnedVersionLayer(),
+                stubExecutionRepo({
+                  markEnqueued: () => Effect.void,
+                  recordAuditEvent: (input) =>
+                    Effect.sync(() => {
+                      calls.audits.push(input);
+                    }),
+                }),
+                stubInngestClient({
+                  sendRunRequested: () => Effect.succeed({ eventId: "evt_1" }),
+                })
+              )
+            )
+          );
+
+          const audit = calls.audits[0];
+          assert.isDefined(audit);
+          assert.strictEqual(audit.eventType, "run_started");
+          assert.strictEqual(
+            audit.message,
+            "Event-triggered run of v3 started for app/appointment.created, to test recipients"
+          );
+          // `entityId` is the host's own record id and stays off the timeline.
+          assert.deepStrictEqual(audit.metadata, {
+            startSource: "event",
+            runMode: "test",
+            versionKind: "published",
+            versionNumber: 3,
+            eventName: "app/appointment.created",
+            entityType: "appointment",
+            deliveryId: "dlv_1",
+            runId: "evt_1",
+          });
+        })
+    );
+
+    // Two attempts of one delivery hand this the same row, and the attempt that
+    // committed it may have loaded an older version than the one running now.
+    // The label is read from the row's own version id, so a caller has no way to
+    // name a version for a run it did not open.
+    serviceIt.effect(
+      "names the version the row pins, not the one the caller loaded",
+      () =>
+        Effect.gen(function* () {
+          const calls = {
+            versionIds: [] as string[],
+            audits: [] as Array<
+              Parameters<ExecutionRepo["Service"]["recordAuditEvent"]>[0]
+            >,
+          };
+
+          yield* enqueueStartedRun({
+            execution: createExecution({ workflowVersionId: "ver_1" }),
+          }).pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                stubWorkflowRepo({
+                  findVersionById: (versionId) =>
+                    Effect.sync(() => {
+                      calls.versionIds.push(versionId);
+                      return {
+                        id: "ver_1",
+                        workflowId: "wf_1",
+                        version: 1,
+                        kind: "published" as const,
+                        graph: { nodes: [], edges: [] },
+                        catalogFingerprint: "fp",
+                        graphDigest: "digest",
+                        publishedAt: new Date("2026-03-01T00:00:00.000Z"),
+                      };
+                    }),
+                }),
+                stubExecutionRepo({
+                  markEnqueued: () => Effect.void,
+                  recordAuditEvent: (input) =>
+                    Effect.sync(() => {
+                      calls.audits.push(input);
+                    }),
+                }),
+                stubInngestClient({
+                  sendRunRequested: () => Effect.succeed({ eventId: "evt_1" }),
+                })
+              )
+            )
+          );
+
+          assert.deepStrictEqual(calls.versionIds, ["ver_1"]);
+          const audit = calls.audits[0];
+          assert.isDefined(audit);
+          assert.strictEqual(
+            audit.message,
+            "Event-triggered run of v1 started, to real recipients"
+          );
+          assert.deepInclude(audit.metadata, { versionNumber: 1 });
+        })
+    );
+
+    // A retried delivery hands back the row an earlier attempt already sent, and
+    // that run may be parked in a Wait. Sending again could only fail into the
+    // compensation, which would stop a healthy run, and a second `markEnqueued`
+    // and "run started" entry would misdate it.
+    serviceIt.effect(
+      "sends nothing and writes nothing for an enqueued row",
+      () =>
+        Effect.gen(function* () {
+          const recorder = makeRecordingLogger();
+
+          // Every repository method and Inngest call is left refusing, so any
+          // send, stamp, timeline entry or version read kills the test.
+          const started = yield* enqueueStartedRun({
+            execution: createExecution({
+              status: "waiting",
+              enqueuedAt: new Date("2026-03-01T00:00:01.000Z"),
+              workflowRunId: "evt_first",
+            }),
+          }).pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                stubWorkflowRepo(),
+                stubExecutionRepo(),
+                stubInngestClient(),
+                recorder.layer
+              )
+            )
+          );
+
+          assert.deepStrictEqual(started, {
+            executionId: "exec_1",
+            runId: "evt_first",
+            runMode: "live",
+          });
+          assert.deepStrictEqual(recorder.infoLines, [
+            {
+              message: "Skipped the send for a run the bus already took",
+              properties: {
+                run: { executionId: "exec_1", runId: "evt_first" },
+              },
+            },
+          ]);
+        })
+    );
+
+    // The version row cascades with the run it belongs to, so a row pointing at
+    // a version that is gone is an invariant break. Sending the run anyway would
+    // enqueue a run nothing can name.
+    serviceIt.effect("fails when the version the row pins is gone", () =>
+      Effect.gen(function* () {
+        const failure = yield* enqueueStartedRun({
+          execution: createExecution(),
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              // Every Inngest call is left refusing: nothing may reach the bus.
+              stubWorkflowRepo({ findVersionById: () => Effect.succeed(null) }),
+              stubExecutionRepo(),
+              stubInngestClient()
+            )
+          ),
+          Effect.flip
+        );
+
+        assert.instanceOf(failure, InternalFailure);
+      })
+    );
+
     // The row is closed before the failure travels on, so a run is never left
     // sitting in "running" with nothing behind it that could finish it.
     serviceIt.effect("closes the row when the enqueue is refused", () =>
@@ -214,14 +426,11 @@ describe("enqueueStartedRun", () => {
         // `markEnqueued` is left refusing: no run reached the bus, and stamping
         // one as though it had would be the bug.
         const failure = yield* enqueueStartedRun({
-          workflow: runTarget,
-          start: { source: "event" },
-          executionId: "exec_1",
-          runMode: "live",
-          payload: {},
+          execution: createExecution(),
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
+              pinnedVersionLayer(),
               stubExecutionRepo({
                 markEnqueueFailed: (input) =>
                   Effect.sync(() => {
@@ -259,14 +468,11 @@ describe("enqueueStartedRun", () => {
           };
 
           yield* enqueueStartedRun({
-            workflow: runTarget,
-            start: { source: "event" },
-            executionId: "exec_1",
-            runMode: "live",
-            payload: {},
+            execution: createExecution(),
           }).pipe(
             Effect.provide(
               Layer.mergeAll(
+                pinnedVersionLayer(),
                 stubExecutionRepo({
                   markEnqueueFailed: (input) =>
                     Effect.sync(() => {
@@ -290,23 +496,21 @@ describe("enqueueStartedRun", () => {
         })
     );
 
-    // A refused send is ambiguous: Inngest may have taken the event and failed
-    // on the way back, in which case the run is already executing and reached a
-    // verdict the compensation may not overwrite. The line is how an operator
-    // learns that is what happened.
-    serviceIt.effect("says so when the run got to a verdict first", () =>
+    // The close refuses a row holding a Cancel or Exit claim, a row another
+    // attempt's send stamped, and a row that reached a verdict. The run behind
+    // each of them is the one that must finish it, and a stop signal would kill
+    // that run. `sendCancelRequested` is left refusing, so a signal kills the
+    // test.
+    serviceIt.effect("sends no stop signal when the close is refused", () =>
       Effect.gen(function* () {
         const recorder = makeRecordingLogger();
 
-        yield* enqueueStartedRun({
-          workflow: runTarget,
-          start: { source: "event" },
-          executionId: "exec_1",
-          runMode: "live",
-          payload: {},
+        const failure = yield* enqueueStartedRun({
+          execution: createExecution(),
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
+              pinnedVersionLayer(),
               stubExecutionRepo({
                 markEnqueueFailed: () => Effect.succeed(false),
               }),
@@ -315,7 +519,6 @@ describe("enqueueStartedRun", () => {
                   Effect.fail(
                     new InngestError({ cause: new Error("gateway timeout") })
                   ),
-                sendCancelRequested: () => Effect.succeed({ eventId: "c_1" }),
               }),
               recorder.layer
             )
@@ -323,32 +526,75 @@ describe("enqueueStartedRun", () => {
           Effect.flip
         );
 
+        assert.instanceOf(failure, InngestError);
         assert.deepStrictEqual(recorder.infoLines, [
           {
             message:
-              "Enqueue reported failure but the run had already left the in-flight statuses",
-            properties: { executionId: "exec_1" },
+              "Enqueue reported failure, but the row holds a claim, was enqueued by another attempt, or has ended, so no stop signal was sent",
+            properties: { run: { executionId: "exec_1" } },
           },
         ]);
       })
     );
 
-    // The in-flight guard on the close defers to a terminal status and nothing
-    // more, so a run Inngest accepted a moment ago is `running` and the close
-    // would relabel a live run. The cancel is what makes it true.
-    serviceIt.effect("tells the run to stop before closing its row", () =>
+    // A close the database refused says nothing about whether the row holds a
+    // claim, so the signal stays unsent and the unstamped row is left for
+    // `reclaimStuckRuns`. The caller still sees the refused send.
+    serviceIt.effect(
+      "sends no stop signal when the close cannot be written",
+      () =>
+        Effect.gen(function* () {
+          const recorder = makeRecordingLogger();
+
+          const failure = yield* enqueueStartedRun({
+            execution: createExecution(),
+          }).pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                pinnedVersionLayer(),
+                stubExecutionRepo({
+                  markEnqueueFailed: () =>
+                    Effect.fail(
+                      new DatabaseError({ cause: new Error("connection lost") })
+                    ),
+                }),
+                stubInngestClient({
+                  sendRunRequested: () =>
+                    Effect.fail(
+                      new InngestError({ cause: new Error("gateway timeout") })
+                    ),
+                }),
+                recorder.layer
+              )
+            ),
+            Effect.flip
+          );
+
+          assert.instanceOf(failure, InngestError);
+          assert.deepStrictEqual(
+            recorder.lines.map((line) => line.message),
+            [
+              "Enqueue reported failure, and the database refused to close the row, so no stop signal was sent",
+            ]
+          );
+        })
+    );
+
+    // The close decides whether the compensation may touch the row, and only a
+    // row it closed has its run told to stop. A run Inngest accepted a moment
+    // ago is then stopped, and its own writes meet the terminal status.
+    serviceIt.effect("closes the row before telling the run to stop", () =>
       Effect.gen(function* () {
         const order: string[] = [];
 
         yield* enqueueStartedRun({
-          workflow: runTarget,
-          start: { source: "event", eventName: "app/appointment.created" },
-          executionId: "exec_1",
-          runMode: "live",
-          payload: {},
+          execution: createExecution({
+            startEventName: "app/appointment.created",
+          }),
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
+              pinnedVersionLayer(),
               stubExecutionRepo({
                 markEnqueueFailed: () =>
                   Effect.sync(() => {
@@ -372,7 +618,7 @@ describe("enqueueStartedRun", () => {
           Effect.flip
         );
 
-        assert.deepStrictEqual(order, ["cancel", "close"]);
+        assert.deepStrictEqual(order, ["close", "cancel"]);
       })
     );
 
@@ -386,14 +632,11 @@ describe("enqueueStartedRun", () => {
           const recorder = makeRecordingLogger();
 
           const started = yield* enqueueStartedRun({
-            workflow: runTarget,
-            start: { source: "event", deliveryId: "dlv_1" },
-            executionId: "exec_1",
-            runMode: "live",
-            payload: {},
+            execution: createExecution({ deliveryId: "dlv_1" }),
           }).pipe(
             Effect.provide(
               Layer.mergeAll(
+                pinnedVersionLayer(),
                 stubExecutionRepo({
                   markEnqueued: () =>
                     Effect.fail(

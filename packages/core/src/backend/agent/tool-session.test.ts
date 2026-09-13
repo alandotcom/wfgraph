@@ -7,7 +7,7 @@ describe("makeAgentToolSession", () => {
     Effect.gen(function* () {
       const session = yield* makeAgentToolSession({
         document: { nodes: [], edges: [] },
-        catalog: { actions: [], events: [], integrations: [] },
+        catalog: { actions: [], entities: [], events: [], integrations: [] },
         integrations: [],
         validateDraft: () => ({
           draftValid: true,

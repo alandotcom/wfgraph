@@ -1,22 +1,9 @@
 /**
- * Persistence port for the workflow engine.
- *
- * The engine records what a run did - step logs, timeline events, wait states,
- * the terminal run row - but it must not know how any of that is stored. Every
- * write goes through this interface, so the engine module itself never imports
- * the database layer. Which adapter is handed in decides whether a run persists
- * at all: the Postgres-backed adapter for real runs, `noopWorkflowStore` for
- * runs that should leave no trace, a recording adapter in tests.
- *
- * Sibling port: `WorkflowExecutionRuntime` in ./runtime covers durability (step
- * memoization, sleeping, waiting for events). Keep the two apart - nothing in
- * here may know about replay, and nothing there may know about wait-state rows.
- *
- * Every value crossing this interface is JSON-safe (timestamps travel as ISO
- * strings) because store calls happen inside memoized steps whose results
- * round-trip through the durable runtime's storage. A step's own payload is
- * still `unknown` here, because that is all a step result carries; the adapter
- * that stores it is where it is read back as JSON.
+ * Persistence port for the workflow engine: every write a run makes crosses this
+ * interface, so the engine module never imports the database layer, and the
+ * adapter handed in decides whether a run persists at all. `./runtime` is the
+ * sibling port for durability. Every value crossing here is JSON-safe, because a
+ * store call sits inside a memoized step that round-trips through that runtime.
  */
 
 import type {
@@ -25,6 +12,11 @@ import type {
   JsonValue,
 } from "@wfgraph/shared/types/json";
 import type { WaitArrival } from "@wfgraph/shared/lifecycle/wait-signal";
+import type {
+  EntityEligibilityReason,
+  ExecutionSide,
+  WorkflowExecutionStatus,
+} from "@wfgraph/shared/lifecycle/execution-contracts";
 import { Effect } from "effect";
 import type { EngineFailure } from "#src/backend/engine/engine-failure";
 import type { DatabaseError } from "#src/backend/lib/effect/database";
@@ -40,6 +32,7 @@ export type WorkflowRunAuditEventType =
   | "run_resumed"
   | "run_timed_out"
   | "run_cancelled"
+  | "run_exited"
   | "run_completed"
   | "run_failed";
 
@@ -94,6 +87,8 @@ export type CreateWaitStateInput = {
    * left.
    */
   workflowVersionId: string;
+  /** Which side of the Lifecycle Node this Wait sits on. */
+  side: ExecutionSide;
   waitType: "delay" | "event";
   /**
    * What the authenticated runs panel uses to address this parked run. Generated
@@ -136,6 +131,8 @@ export type ReparkWaitStateInput = {
    * step refuses the park instead of writing one from the graph the run left.
    */
   workflowVersionId: string;
+  /** Which side of the Lifecycle Node this Wait sits on. */
+  side: ExecutionSide;
   waitType: "delay" | "event";
   /** Target timestamp as ISO 8601, and null for a wait with no target. */
   waitUntilIso: string | null;
@@ -182,9 +179,35 @@ export type PendingCancel = {
   payload: JsonObject | null;
 };
 
+export type ExecutionTerminationState = {
+  status: WorkflowExecutionStatus;
+  claim:
+    | {
+        kind: "cancel";
+        requestedAt: string;
+        eventName: string | null;
+        payload: JsonObject | null;
+      }
+    | {
+        kind: "exit";
+        requestedAt: string;
+        reason: EntityEligibilityReason;
+        nodeId: string;
+      }
+    | null;
+  didWrite: boolean;
+};
+
+export type RequestExecutionExitInput = {
+  executionId: string;
+  reason: EntityEligibilityReason;
+  nodeId: string;
+  checkedAt: string;
+};
+
 export type CompleteRunInput = {
   executionId: string;
-  status: "completed" | "failed" | "canceled";
+  status: "completed" | "failed" | "canceled" | "exited";
   output?: unknown;
   failure?: EngineFailure | undefined;
 };
@@ -213,9 +236,10 @@ export type WorkflowStore = {
   /**
    * Writes a re-parked wait's whole park onto the row it already holds, saying
    * which guard refused when none was written: `not_waiting` for the row having
-   * left `waiting`, which the caller answers by reading the wake the row
-   * records, and `version_moved` for a Migration having moved the execution off
-   * the version this park was resolved from.
+   * left `waiting` or the run holding a Cancel or Exit claim, which the caller
+   * answers by reading the wake the row records and then the run's claim, and
+   * `version_moved` for a Migration having moved the execution off the version
+   * this park was resolved from.
    */
   reparkWaitState(
     input: ReparkWaitStateInput
@@ -238,11 +262,14 @@ export type WorkflowStore = {
    * The write requires the row to still pin `workflowVersionId`, which makes it
    * the fence a resuming Wait stands on: false means a Migration moved the run
    * while this resume was in flight, and the caller must not carry on under the
-   * graph it loaded.
+   * graph it loaded. It also requires the run's claim to admit `side`, so a
+   * Started-side resume is refused once a Cancel claim has landed.
    */
   markExecutionRunning(input: {
     executionId: string;
     workflowVersionId: string;
+    /** Which side of the Lifecycle Node the resuming Wait sits on. */
+    side: ExecutionSide;
   }): Effect.Effect<boolean, DatabaseError>;
   /**
    * Moves a "running" execution back to "waiting" when it still holds a waiting
@@ -257,6 +284,21 @@ export type WorkflowStore = {
     executionId: string;
   }): Effect.Effect<boolean, DatabaseError>;
   /**
+   * Atomically admits one Started-side node only while no execution-wide
+   * termination claim or terminal status exists. The durable caller treats a
+   * true answer as the node's linearized admission, so a later claim may let
+   * that already-admitted node finish but cannot admit its successors.
+   */
+  admitNode(executionId: string): Effect.Effect<boolean, DatabaseError>;
+  /** Atomically claims execution-wide Entity Eligibility exit. */
+  requestExit(
+    input: RequestExecutionExitInput
+  ): Effect.Effect<ExecutionTerminationState | null, DatabaseError>;
+  /** Reads the authoritative execution-wide claim and terminal status. */
+  readTerminationState(
+    executionId: string
+  ): Effect.Effect<ExecutionTerminationState | null, DatabaseError>;
+  /**
    * Whether a Cancel Event has claimed this run, and what it carried. Read at
    * each node boundary inside a step, so the answer is memoized and a replay
    * takes the branch the first pass took.
@@ -265,12 +307,15 @@ export type WorkflowStore = {
     executionId: string
   ): Effect.Effect<PendingCancel | null, DatabaseError>;
   /**
-   * Writes the terminal state of the run. True when this write claimed the row
-   * and false when a terminal status already won the race. A database refusal
-   * remains in the error channel; the terminal-record policy converts it to the
-   * same no-audit outcome after logging it distinctly.
+   * Attempts the terminal state and returns the authoritative stored outcome.
+   * `didWrite` identifies this call as the compare-and-set winner, and `null`
+   * means no execution row exists. A database refusal remains in the error
+   * channel; terminal-record policy logs it and fails the durable step, so
+   * Inngest retries the write.
    */
-  completeRun(input: CompleteRunInput): Effect.Effect<boolean, DatabaseError>;
+  completeRun(
+    input: CompleteRunInput
+  ): Effect.Effect<ExecutionTerminationState | null, DatabaseError>;
   /**
    * What the nodes of this run that have already finished left behind, keyed by
    * node id. A branch run starts partway down the graph, so this is how the
@@ -305,8 +350,12 @@ export const noopWorkflowStore: WorkflowStore = {
   markWaitStateStatus: () => Effect.void,
   markExecutionRunning: () => Effect.succeed(true),
   markExecutionWaitingIfParked: () => Effect.succeed(false),
+  admitNode: () => Effect.succeed(true),
+  requestExit: () => Effect.succeed(null),
+  readTerminationState: () => Effect.succeed(null),
   readPendingCancel: () => Effect.succeed(null),
-  completeRun: () => Effect.succeed(true),
+  completeRun: (input) =>
+    Effect.succeed({ status: input.status, claim: null, didWrite: true }),
   readNodeOutputs: () => Effect.succeed({}),
   cancelOpenWork: () => Effect.void,
 };

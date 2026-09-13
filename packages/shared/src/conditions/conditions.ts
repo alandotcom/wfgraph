@@ -21,9 +21,10 @@ export {
   createDefaultConditionModel,
   createDefaultConditionRule,
   isNullCheckConditionRule,
+  isStringSetConditionRule,
   isTimestampAbsoluteConditionRule,
   isTimestampRelativeConditionRule,
-  readConditionRuleOperand,
+  readConditionRuleOperands,
   reconcileModelWithFields,
 } from "#src/conditions/condition-model";
 export {
@@ -32,6 +33,7 @@ export {
   NULLCHECK_OPERATOR_OPTIONS,
   NUMBER_OPERATOR_OPTIONS,
   STRING_OPERATOR_OPTIONS,
+  STRING_SET_OPERATOR_OPTIONS,
   TIME_UNIT_OPTIONS,
   TIMESTAMP_OPERATOR_OPTIONS,
 } from "#src/conditions/condition-options";

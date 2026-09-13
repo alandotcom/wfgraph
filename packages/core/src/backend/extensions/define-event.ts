@@ -1,6 +1,6 @@
 /**
- * An Event: a name, a payload shape, and where that payload carries its Entity
- * Value.
+ * An Event: a name, a payload shape, and the host-owned Entities that payload
+ * can identify.
  *
  * An Event holds no lifecycle role and no routing. Which Events start a run and
  * which cancel it is the Workflow Builder's declaration on the Lifecycle Node,
@@ -18,6 +18,7 @@ import {
   rewriteInngestOptions,
 } from "#src/backend/extensions/inngest-options";
 import type { JsonObject } from "@wfgraph/shared/types/json";
+import type { AnyEntityDefinition } from "#src/backend/extensions/define-entity";
 import type { StringPath } from "@wfgraph/shared/types/payload-path";
 import {
   formatSchemaFailure,
@@ -31,7 +32,10 @@ import {
 import type { ReferenceField } from "@wfgraph/shared/graph/node-references";
 import { compileEventDataEquals } from "@wfgraph/shared/lifecycle/inngest-event-data";
 import { requireOutputFieldsFromSchema } from "@wfgraph/shared/graph/output-fields";
-import { isSafeRecordPath } from "@wfgraph/shared/types/record-key";
+import {
+  isSafeRecordKey,
+  isSafeRecordPath,
+} from "@wfgraph/shared/types/record-key";
 
 /**
  * What an Event's payload schema may be written in: any Standard Schema library,
@@ -42,33 +46,21 @@ import { isSafeRecordPath } from "@wfgraph/shared/types/record-key";
  * comes from, so a library that describes only how to validate cannot define an
  * Event. Zod and arktype each publish both.
  *
- * `TPayload` is an Effect schema's **encoded** side, which is the payload as it
- * arrives and the shape every path in an Event definition addresses. A schema may
- * therefore carry a transform: a codec reading an ISO string into a `Date` still
- * declares a JSON payload, and the Correlation Path still names the string on the
- * wire.
- * Nothing consumes the decoded value -- the gate discards it and the raw JSON
- * travels -- so a transform buys validation precision and derivation, and the
- * decoded type it produces has no reader to serve. `OutputSchema` in
- * `@wfgraph/shared/graph/output-fields` is the deliberate opposite: an action's
- * handler produces the decoded value, so that one constrains the decoded side.
- *
- * The foreign arm names the other side, and Standard Schema leaves no way to say
- * otherwise: it publishes one output type, so a Zod or arktype schema's
- * `TPayload` is what that library validates *to*. It agrees with the wire for the
- * schemas anyone writes here, and diverges for a JSON-to-JSON morph -- an arktype
- * pipe renaming a key, say -- whose paths would then address a shape no sender
- * ever posts. An Event wanting a transform is written in Effect Schema.
+ * `TPayload` is the schema's input or encoded side: the JSON payload as it
+ * arrives and the shape every path in an Event definition addresses.
+ * `TValidated` is the decoded output passed to Entity ID selectors. A codec may
+ * therefore read an ISO string into a `Date` for a selector while the Correlation
+ * Path and the workflow continue to see the original wire string.
  */
-export type PayloadSchema<TPayload> =
+export type PayloadSchema<TPayload extends JsonObject, TValidated> =
   // The positions are `<Type, Encoded, DecodingServices, EncodingServices>`.
   // `never` in the decoding-services slot is what keeps this assignable to the
   // decode-side APIs that `Schema.ConstraintDecoder<unknown>` names, which is how
   // `asStandardSchema` and the gate's direct decode still accept it.
-  // `Schema.ConstraintEncoder<TPayload>` names the encoded side too and is not a
-  // substitute: it fills that slot with `unknown`, and no decode would take it.
-  | StandardSchema<TPayload>
-  | Schema.ConstraintCodec<unknown, TPayload, never, unknown>;
+  // The encoded side is the JSON payload that travels through the workflow; the
+  // decoded side is what an Entity ID selector receives.
+  | StandardSchema<TValidated, TPayload>
+  | Schema.ConstraintCodec<TValidated, TPayload, never, unknown>;
 
 /** How an Event arrives, when the transport differs from the Event's identity. */
 export type EventSource = {
@@ -78,7 +70,15 @@ export type EventSource = {
     | undefined;
 };
 
-export type EventDefinition<TPayload extends JsonObject> = {
+export type EventEntityBinding<TValidated> = {
+  readonly entity: AnyEntityDefinition;
+  selectEntityId(event: TValidated): string;
+};
+
+export type EventDefinition<
+  TPayload extends JsonObject,
+  TValidated = TPayload,
+> = {
   readonly kind: "event";
   /** The Event's identity in Workflow Graph, and by default the name it arrives under. */
   readonly name: string;
@@ -94,6 +94,10 @@ export type EventDefinition<TPayload extends JsonObject> = {
   readonly decodePayload: (
     payload: unknown
   ) => Effect.Effect<void, PayloadRejected>;
+  /** The validated representation an Entity ID selector reads. */
+  readonly decodePayloadValue: (
+    payload: unknown
+  ) => Effect.Effect<TValidated, PayloadRejected>;
   /**
    * Where this payload carries its Entity Value.
    *
@@ -110,6 +114,10 @@ export type EventDefinition<TPayload extends JsonObject> = {
   readonly inngestFunctionOptions?: Record<string, unknown> | undefined;
   /** Derived once, at definition. What the editor lists. */
   readonly payloadFields: readonly ReferenceField[];
+  /** Named ways this Event identifies host-owned Entities. */
+  readonly entities?:
+    | Readonly<Record<string, EventEntityBinding<TValidated>>>
+    | undefined;
   /**
    * Phantom, and the only occurrence of `TPayload` left on this type.
    *
@@ -119,10 +127,11 @@ export type EventDefinition<TPayload extends JsonObject> = {
    * have no occurrence to infer from and every definition would widen.
    */
   readonly _payload?: TPayload | undefined;
+  readonly _validatedPayload?: TValidated | undefined;
 };
 
 /** An Event definition of any payload, which is what a list of them holds. */
-export type AnyEventDefinition = EventDefinition<JsonObject>;
+export type AnyEventDefinition = EventDefinition<JsonObject, unknown>;
 
 /**
  * A payload that is not the Event it arrived as.
@@ -158,19 +167,16 @@ export class PayloadRejected extends Schema.TaggedError<PayloadRejected>()(
  * `rejectUnknownKeys`, and the consequence is worth stating: drift on a declared
  * field fails loudly, drift by addition is silent by choice.
  *
- * What it decodes to is **discarded**. Nothing downstream of an Event consumes a
- * typed value: the lifecycle reads a string at the Correlation Path, a wait match
- * evaluates CEL over JSON, templates resolve strings, and JSONB holds JSON. So the
- * raw payload is what travels, and a schema carrying a transform cannot rewrite
- * it on the way through -- a `Date` round trip would hand a run
- * `"2026-03-01T10:00:00.000Z"` where the sender wrote `"2026-03-01T10:00:00Z"`,
- * which is enough to break a wait match comparing a literal captured at park time.
+ * The decoded value exists only for an Entity ID selector. The raw payload still
+ * travels through lifecycle filters, waits, templates, and persistence, so a
+ * transform cannot rewrite Event data on the way through. A `Date` produced for
+ * a selector therefore does not replace the sender's original timestamp string.
  */
-function buildPayloadGate(
+function buildPayloadGate<TPayload extends JsonObject, TValidated>(
   eventName: string,
-  authored: PayloadSchema<unknown>,
-  bridged: StandardSchema<unknown>
-): (payload: unknown) => Effect.Effect<void, PayloadRejected> {
+  authored: PayloadSchema<TPayload, TValidated>,
+  bridged: StandardSchema<TValidated, TPayload>
+): (payload: unknown) => Effect.Effect<TValidated, PayloadRejected> {
   const reject = (error: string, detail: string = error) =>
     Effect.fail(new PayloadRejected({ eventName, error, detail }));
 
@@ -184,7 +190,6 @@ function buildPayloadGate(
     const decode = Schema.decodeUnknownEffect(authored, { errors: "all" });
     return (payload) =>
       decode(payload).pipe(
-        Effect.asVoid,
         Effect.catchTag("SchemaError", (failure) =>
           reject(formatSchemaFailure(failure.issue))
         )
@@ -197,7 +202,7 @@ function buildPayloadGate(
   // operator's string keeps each library's own message, because it never leaves
   // the process.
   return (payload) =>
-    Effect.suspend<void, PayloadRejected, never>(() => {
+    Effect.suspend<TValidated, PayloadRejected, never>(() => {
       const result = bridged["~standard"].validate(payload);
 
       if (result instanceof Promise) {
@@ -207,7 +212,7 @@ function buildPayloadGate(
       }
 
       if (!result.issues) {
-        return Effect.void;
+        return Effect.succeed(result.value);
       }
 
       const paths = uniq(
@@ -225,7 +230,66 @@ function buildPayloadGate(
     });
 }
 
-export type DefineEventInput<TPayload extends JsonObject> = {
+function normalizeEntityBindings<TValidated>(
+  eventName: string,
+  bindings:
+    | Readonly<
+        Record<
+          string,
+          {
+            readonly entity: AnyEntityDefinition;
+            readonly selectEntityId: (event: NoInfer<TValidated>) => string;
+          }
+        >
+      >
+    | undefined
+): Readonly<Record<string, EventEntityBinding<TValidated>>> | undefined {
+  if (!bindings) {
+    return undefined;
+  }
+
+  const normalized = new Map<string, EventEntityBinding<TValidated>>();
+  for (const [authoredName, binding] of Object.entries(bindings)) {
+    const name = authoredName.trim();
+    if (!name) {
+      throw new Error(
+        `Event "${eventName}" declares a blank Entity binding name`
+      );
+    }
+    if (!isSafeRecordKey(name)) {
+      throw new Error(
+        `Event "${eventName}" declares an Entity binding name reserved by JavaScript objects.`
+      );
+    }
+    if (normalized.has(name)) {
+      throw new Error(
+        `Event "${eventName}" declares more than one Entity binding named "${name}".`
+      );
+    }
+
+    normalized.set(name, {
+      entity: binding.entity,
+      selectEntityId: (event) => {
+        const selected = binding.selectEntityId(event);
+        if (typeof selected !== "string" || selected.trim().length === 0) {
+          throw new Error(
+            `Event "${eventName}" Entity binding "${name}" must select a non-empty string Entity ID.`
+          );
+        }
+        return selected.trim();
+      },
+    });
+  }
+
+  return normalized.size === 0
+    ? undefined
+    : Object.fromEntries(normalized.entries());
+}
+
+export type DefineEventInput<
+  TPayload extends JsonObject,
+  TValidated = TPayload,
+> = {
   /**
    * The Event's identity in Workflow Graph. One Event per name, and per thing that
    * happened: an app declares `appointment.created` and `appointment.canceled`
@@ -236,7 +300,19 @@ export type DefineEventInput<TPayload extends JsonObject> = {
   /** Defaults to the name. */
   readonly label?: string | undefined;
   readonly description?: string | undefined;
-  readonly schema: PayloadSchema<TPayload>;
+  readonly schema: PayloadSchema<TPayload, TValidated>;
+  /** Named Entity identities this Event can establish for a workflow. */
+  readonly entities?:
+    | Readonly<
+        Record<
+          string,
+          {
+            readonly entity: AnyEntityDefinition;
+            readonly selectEntityId: (event: NoInfer<TValidated>) => string;
+          }
+        >
+      >
+    | undefined;
   /**
    * Where the payload carries its Entity Value. An Entity Value is a string, so
    * only a path resolving to one is admitted.
@@ -275,9 +351,9 @@ export type DefineEventInput<TPayload extends JsonObject> = {
  * path and falls back to the title-cased key. A schema the derivation cannot
  * read at all throws here naming the Event.
  */
-export function defineEvent<TPayload extends JsonObject>(
-  input: DefineEventInput<TPayload>
-): EventDefinition<TPayload> {
+export function defineEvent<TPayload extends JsonObject, TValidated = TPayload>(
+  input: DefineEventInput<TPayload, TValidated>
+): EventDefinition<TPayload, TValidated> {
   const name = input.name.trim();
   if (!name) {
     throw new Error("An Event's name must be a non-empty string");
@@ -317,15 +393,20 @@ export function defineEvent<TPayload extends JsonObject>(
     ? rewriteInngestOptions(name, input.inngest, schema)
     : undefined;
 
+  const decodePayloadValue = buildPayloadGate(name, input.schema, schema);
+  const entities = normalizeEntityBindings<TValidated>(name, input.entities);
+
   return {
     kind: "event",
     name,
     label,
     description: input.description,
-    decodePayload: buildPayloadGate(name, input.schema, schema),
+    decodePayload: (payload) => decodePayloadValue(payload).pipe(Effect.asVoid),
+    decodePayloadValue,
     correlationPath,
     source: when ? { event: sourceEvent, when } : { event: sourceEvent },
     inngestFunctionOptions,
     payloadFields: requireOutputFieldsFromSchema(`Event "${name}"`, schema),
+    entities,
   };
 }

@@ -147,6 +147,32 @@ export const evalCatalog: ExtensionCatalog = {
   ],
 };
 
+export const entityEvalCatalog: ExtensionCatalog = {
+  ...evalCatalog,
+  entities: [
+    {
+      type: "applicant",
+      label: "Applicant",
+      stateSchemaDigest: "applicant-state-v1",
+      stateFields: [
+        {
+          path: "status",
+          type: "string",
+          enumValues: ["active", "paused", "closed"],
+        },
+      ],
+    },
+  ],
+  events: evalCatalog.events.map((event) =>
+    event.name === "applicant.created" || event.name === "applicant.withdrawn"
+      ? {
+          ...event,
+          entityBindings: [{ name: "applicant", entityType: "applicant" }],
+        }
+      : event
+  ),
+};
+
 export const connectedIntegrations = [
   { id: "slack-primary", type: "slack" },
   { id: "linear-primary", type: "linear" },

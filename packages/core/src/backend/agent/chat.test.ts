@@ -42,7 +42,7 @@ const draft: WorkflowDraftService = {
   }),
   update: () => Effect.die("unused"),
   revision: () => Effect.succeed(document),
-  catalog: { actions: [], events: [], integrations: [] },
+  catalog: { actions: [], entities: [], events: [], integrations: [] },
   integrations: [],
   validateDraft: () => ({
     draftValid: true,
@@ -292,7 +292,7 @@ describe("withGraphParts", () => {
               return next;
             }),
           revision: (revision) => Effect.succeed(revisions[revision]!),
-          catalog: { actions: [], events: [], integrations: [] },
+          catalog: { actions: [], entities: [], events: [], integrations: [] },
           integrations: [],
           validateDraft: () => ({
             draftValid: true,

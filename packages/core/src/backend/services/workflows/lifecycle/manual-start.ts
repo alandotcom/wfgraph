@@ -10,12 +10,17 @@ import { annotateServiceSpan } from "#src/backend/lib/telemetry";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import { startWithConcurrency } from "#src/backend/services/workflows/lifecycle/concurrency";
 import {
+  evaluateSelectedEntityAdmission,
+  selectTrackedEntity,
+} from "#src/backend/services/workflows/lifecycle/entity-eligibility";
+import {
   loadDraftForRun,
   loadWorkflowForRun,
 } from "#src/backend/services/executions/preflight";
 import {
   buildIgnoredRunAuditMessage,
   recordPausedRunIgnored,
+  recordStartRefusal,
   toWorkflowRunTarget,
 } from "#src/backend/services/executions/run-rows";
 import {
@@ -178,18 +183,17 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
     // Both loads return the same fields, so every gate below reads the same
     // way whichever graph the run uses.
     const source = body.graph ?? "published";
-    const { workflow, preflight, version, pinVersion, releaseVersion } =
-      yield* (
-        source === "draft"
-          ? loadDraftForRun(workflowId)
-          : loadWorkflowForRun(workflowId)
-      ).pipe(
-        Effect.tapError((failure) =>
-          "error" in failure
-            ? logger.error("Refused a manual run", { error: failure.error })
-            : Effect.void
-        )
-      );
+    const { workflow, preflight, pinVersion, releaseVersion } = yield* (
+      source === "draft"
+        ? loadDraftForRun(workflowId)
+        : loadWorkflowForRun(workflowId)
+    ).pipe(
+      Effect.tapError((failure) =>
+        "error" in failure
+          ? logger.error("Refused a manual run", { error: failure.error })
+          : Effect.void
+      )
+    );
 
     // The staleness gate comes before every other check, because a request
     // built against a version or a mode that has since moved is about a run
@@ -226,6 +230,10 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
     const rules = preflight.lifecycleRules ?? emptyLifecycleRules;
     const extensions = yield* Extensions;
     const eventName = body.eventName;
+    const definition = eventName
+      ? extensions.eventByName(eventName)
+      : undefined;
+    let validatedPayload: unknown;
 
     // The Event gate comes before every lifecycle question below, because a
     // request naming an Event this workflow does not take, or carrying a payload
@@ -239,20 +247,20 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
         });
       }
 
-      const definition = extensions.eventByName(eventName);
       if (!definition) {
         return yield* new InvalidInput({
           error: unknownEventMessage(eventName),
         });
       }
 
-      const rejection = yield* definition.decodePayload(payload).pipe(
+      const decoded = yield* definition.decodePayloadValue(payload).pipe(
         Effect.match({
-          onSuccess: () => undefined,
-          onFailure: (rejected) => rejected,
+          onSuccess: (value) => ({ success: true as const, value }),
+          onFailure: (rejection) => ({ success: false as const, rejection }),
         })
       );
-      if (rejection) {
+      if (!decoded.success) {
+        const { rejection } = decoded;
         // The sentence the caller reads names the Event; the operator's line
         // carries the detail, which quotes paths rather than values.
         yield* logger.info("Refused a manual run payload", {
@@ -263,7 +271,29 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
           error: `Payload refused for Event "${eventName}": ${rejection.error}`,
         });
       }
+      validatedPayload = decoded.value;
     }
+
+    if (rules.trackedEntity && !eventName) {
+      return yield* refuseManualStart({
+        workflowId,
+        runMode,
+        reason: "start_event_required",
+        logger,
+      });
+    }
+
+    const selectedEntity =
+      definition && rules.trackedEntity
+        ? yield* selectTrackedEntity({
+            rules,
+            event: {
+              name: definition.name,
+              entityBindings: definition.entities,
+              validatedPayload,
+            },
+          })
+        : undefined;
 
     if (workflow.isPaused) {
       yield* pinVersion;
@@ -273,6 +303,9 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
         startSource: "manual",
         runMode,
         payload,
+        eventName,
+        entityType: selectedEntity?.entityType,
+        entityId: selectedEntity?.entityId,
       });
 
       const response: WorkflowExecuteResponse = {
@@ -305,6 +338,37 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
       });
     }
 
+    const guarded = selectedEntity
+      ? yield* evaluateSelectedEntityAdmission({
+          rules,
+          eventName: definition?.name ?? null,
+          entity: selectedEntity,
+        })
+      : undefined;
+    if (guarded?.refusal) {
+      yield* recordStartRefusal({
+        workflowId,
+        startSource: "manual",
+        reason: guarded.refusal.reason,
+        runMode,
+        logger,
+        eventName,
+        entityType: guarded.refusal.entityType,
+        extra: {
+          conditionId: guarded.refusal.conditionId,
+          checkpoint: "before-execution",
+          checkedAt: guarded.refusal.checkedAt,
+        },
+      });
+
+      const response: WorkflowExecuteResponse = {
+        status: "ignored",
+        runMode,
+        reason: guarded.refusal.reason,
+      };
+      return response;
+    }
+
     yield* logger.info("Workflow execute request received", {
       request: {
         workflowName: workflow.name,
@@ -325,20 +389,26 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
         versionId: preflight.workflowVersionId,
         catalogFingerprint: preflight.catalogFingerprint,
         graph: preflight.workflowGraph,
-        version,
       }),
       concurrency: rules.concurrency,
-      start: {
-        source: "manual",
-        eventName,
-        entityValue: readManualEntityValue({
-          workflowId,
-          rules,
-          payload,
-          catalog: extensions.catalog,
-          eventName,
-        }),
-      },
+      start: guarded
+        ? {
+            source: "manual",
+            eventName,
+            entityType: guarded.entity.entityType,
+            entityId: guarded.entity.entityId,
+          }
+        : {
+            source: "manual",
+            eventName,
+            entityValue: readManualEntityValue({
+              workflowId,
+              rules,
+              payload,
+              catalog: extensions.catalog,
+              eventName,
+            }),
+          },
       runMode,
       payload,
       logger,

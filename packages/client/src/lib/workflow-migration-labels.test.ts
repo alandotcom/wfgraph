@@ -31,6 +31,17 @@ describe("migrationRefusalSentence", () => {
     ).toBe("Version 8 adds a node that would run before this run's Wait.");
   });
 
+  it("names the outlet a target version moved the parked Wait behind", () => {
+    expect(
+      migrationRefusalSentence(
+        { reason: "wait_moved_to_canceled_outlet", detail: "wait_1" },
+        8
+      )
+    ).toBe(
+      "Version 8 puts the Wait this run is parked on behind the Canceled outlet."
+    );
+  });
+
   it("explains two Waits the target version places one below the other", () => {
     expect(
       migrationRefusalSentence({ reason: "waits_nested", detail: "wait_1" }, 8)
@@ -64,6 +75,12 @@ describe("migrationRefusalSentence", () => {
     expect(
       migrationRefusalSentence({ reason: "wait_timeout_elapsed" }, 8)
     ).toBe("The Wait in version 8 would time out at once for this run.");
+  });
+
+  it("explains an incompatible tracked Entity", () => {
+    expect(migrationRefusalSentence({ reason: "entity_incompatible" }, 8)).toBe(
+      "Version 8 has Entity configuration that is incompatible with this run."
+    );
   });
 
   it("explains an outcome the migrate call refused after the preview", () => {

@@ -115,11 +115,6 @@ export async function runEventListener(input: {
   deliver: EventListenerDeliverPorts;
 }): Promise<{ eventName: string; workflows: WorkflowDelivery[] }> {
   const { event, payload, runtime, step, deliver } = input;
-  const deliveredEvent = {
-    name: event.name,
-    correlationPath: event.correlationPath,
-    connectionId: input.connectionId,
-  };
   const arrivalLogger = logger.with({
     eventName: event.name,
     ...input.arrival,
@@ -128,15 +123,16 @@ export async function runEventListener(input: {
   // The gate, because what arrives is a host's own message onto the bus rather
   // than a contract between Workflow Graph's two halves. A refusal is not
   // retried, because the same payload fails the same way on the next attempt.
-  const rejection = await runtime.runPromise(
-    event.decodePayload(payload).pipe(
+  const decoded = await runtime.runPromise(
+    event.decodePayloadValue(payload).pipe(
       Effect.match({
-        onSuccess: () => undefined,
-        onFailure: (rejected) => rejected,
+        onSuccess: (value) => ({ success: true as const, value }),
+        onFailure: (rejection) => ({ success: false as const, rejection }),
       })
     )
   );
-  if (rejection) {
+  if (!decoded.success) {
+    const { rejection } = decoded;
     // The thrown sentence reaches Inngest's own run history, which a host can
     // read, so it takes the answer string; the log line takes the operator's.
     arrivalLogger.warn("Refused an event payload", { error: rejection.detail });
@@ -144,6 +140,14 @@ export async function runEventListener(input: {
       `Payload refused for Event "${event.name}": ${rejection.error}`
     );
   }
+
+  const deliveredEvent = {
+    name: event.name,
+    correlationPath: event.correlationPath,
+    connectionId: input.connectionId,
+    entityBindings: event.entities,
+    validatedPayload: decoded.value,
+  };
 
   const subscribers = await step.run(
     `subscribers-${event.name}`,

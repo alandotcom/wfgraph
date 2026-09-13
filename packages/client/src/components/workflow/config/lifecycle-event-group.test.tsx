@@ -11,6 +11,7 @@ import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 
 const resendCatalog: ExtensionCatalog = {
+  entities: [],
   events: [
     {
       name: "app/appointment.created",
@@ -155,8 +156,8 @@ describe("LifecyclePanel Connection picker", () => {
       },
     });
 
-    expect(view.getByText("Email sent")).toBeTruthy();
-    expect(view.getByText("Email delivered")).toBeTruthy();
+    expect(view.getByRole("heading", { name: "Email sent" })).toBeTruthy();
+    expect(view.getByRole("heading", { name: "Email delivered" })).toBeTruthy();
     expect(
       view.getAllByRole("combobox", { name: "Resend connection" })
     ).toHaveLength(1);
@@ -171,8 +172,8 @@ describe("LifecyclePanel Connection picker", () => {
       },
     });
 
-    expect(view.getByText("Email sent")).toBeTruthy();
-    expect(view.getByText("Email bounced")).toBeTruthy();
+    expect(view.getByRole("heading", { name: "Email sent" })).toBeTruthy();
+    expect(view.getByRole("heading", { name: "Email bounced" })).toBeTruthy();
     expect(
       view.getAllByRole("combobox", { name: "Resend connection" })
     ).toHaveLength(1);

@@ -110,13 +110,17 @@ export function workflowTopologyRefusalReason(input: {
   const lifecycleNodes = input.nodes.filter(
     (node) => node.data.type === "lifecycle"
   );
-  if (lifecycleNodes.length === 0) {
-    return "Workflow must contain at least one Lifecycle Node";
+  const lifecycleNode = lifecycleNodes[0];
+  if (!lifecycleNode) {
+    return "Workflow must contain one Lifecycle Node";
+  }
+  if (lifecycleNodes.length > 1) {
+    return "Workflow must contain only one Lifecycle Node";
   }
 
   const incoming = new Set(input.edges.map((edge) => edge.target));
-  if (!lifecycleNodes.some((node) => !incoming.has(node.id))) {
-    return "Workflow must contain at least one root Lifecycle Node";
+  if (incoming.has(lifecycleNode.id)) {
+    return "The Lifecycle Node must be a root node";
   }
 
   return (

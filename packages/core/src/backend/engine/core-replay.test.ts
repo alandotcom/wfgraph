@@ -292,7 +292,7 @@ describe("workflow engine replay safety", () => {
    * row alone, so the correction is refused twice over. That is the whole reason
    * `workflow-function.ts` ends a failed run non-retriably.
    */
-  it("closes a node's row with the later verdict, while the run row keeps the first", async () => {
+  it("closes a node's row with the later verdict and returns the first terminal verdict", async () => {
     let attempts = 0;
     const flaky = vi.fn<() => Record<string, unknown>>(() => {
       attempts += 1;
@@ -328,7 +328,8 @@ describe("workflow engine replay safety", () => {
     );
 
     expect(first.success).toBe(false);
-    expect(second.success).toBe(true);
+    expect(second.success).toBe(false);
+    expect(second.status).toBe("failed");
 
     // Handles are handed out in order, so the row opened for the email node is
     // the one its two closes name.

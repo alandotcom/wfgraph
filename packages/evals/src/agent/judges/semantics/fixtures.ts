@@ -9,7 +9,7 @@ const initialDocument: AgentEvalDocument = {
 export const input: AgentEvalInput = {
   messages: [{ role: "user", content: "Score each new applicant." }],
   document: initialDocument,
-  catalog: { events: [], actions: [], integrations: [] },
+  catalog: { events: [], entities: [], actions: [], integrations: [] },
   integrations: [],
   expected: {
     exactActions: { "score-applicant": 1 },

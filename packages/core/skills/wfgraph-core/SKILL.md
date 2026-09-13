@@ -6,7 +6,7 @@ description: >
   MCP authoring, configureWfGraphLogging, wfPostgres, wfSqlite, wfWorker,
   migrateWfGraphDatabase.
   Load when mounting the host app or choosing persistence. Not for defineEvent,
-  defineAction, or defineIntegration (those are sub-skills).
+  defineEntity, defineAction, or defineIntegration (those are sub-skills).
 metadata:
   type: core
   library: wfgraph
@@ -37,7 +37,7 @@ the editor.
 
 | Need to...                               | Load                      |
 | ---------------------------------------- | ------------------------- |
-| `defineEvent`, intake, Lifecycle         | wfgraph-core/events       |
+| `defineEvent`, `defineEntity`, Lifecycle | wfgraph-core/events       |
 | `defineAction` (Promise host actions)    | wfgraph-core/host-actions |
 | Write a vendor integration               | wfgraph-core/integrations |
 | Turn on Clerk/Linear/Resend/Slack/Twilio | wfgraph-plugins           |

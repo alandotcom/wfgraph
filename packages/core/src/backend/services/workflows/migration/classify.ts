@@ -2,8 +2,9 @@
  * Decides, for each in-flight run, whether the target version can take it over.
  *
  * A run qualifies while it is parked on Wait nodes the target graph still has,
- * none of which the target graph places below another, whose timeout has not
- * already passed when that target Wait waits for an Event, no enabled node
+ * none of which the target graph places below another or behind the Canceled
+ * outlet, whose timeout has not already passed when that target Wait waits for
+ * an Event, no enabled node
  * outside the parked Waits' descendant sets is new to the run, and every
  * template below a Wait resolves from a recorded output or from a node upstream
  * of its consumer. Both the preview and the migrate call read their verdicts
@@ -29,6 +30,16 @@ import {
 import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
 import type { MigrationRefusalReason } from "@wfgraph/shared/graph/migration-contracts";
 import { DEFAULT_WAIT_TIMEOUT } from "@wfgraph/shared/lifecycle/wait-subscription";
+import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
+import {
+  LIFECYCLE_CANCELED_HANDLE,
+  nodesBehindOutlet,
+} from "@wfgraph/shared/lifecycle/lifecycle-outlets";
+import { checkEntityEligibilityCondition } from "@wfgraph/shared/lifecycle/entity-eligibility";
+import {
+  findEntity,
+  type ExtensionCatalog,
+} from "@wfgraph/shared/extensions/catalog";
 import {
   type JsonValue,
   readJsonObjectLeniently,
@@ -435,8 +446,14 @@ type MigrationTarget = {
   edges: readonly WorkflowEdge[];
   /** Every enabled Wait node of the target graph, by node id. */
   waitNodes: Map<string, WaitNodeScan>;
+  /** The target graph's nodes behind the Lifecycle Node's Canceled outlet. */
+  canceledOutletNodeIds: ReadonlySet<string>;
   /** The target nodes a run has to hold a node log row for, unless a parked Wait reaches them. */
   checkedNodes: readonly WorkflowNode[];
+  /** Immutable Entity type a guarded run must retain across migration. */
+  trackedEntityType: string | null;
+  /** Current catalog incompatibility with the target's authored condition. */
+  entityCompatibilityError?: string | undefined;
 };
 
 const classifyOne = Effect.fn("classifyOne")(function* (input: {
@@ -470,6 +487,19 @@ const classifyOne = Effect.fn("classifyOne")(function* (input: {
     } satisfies MigrationClassification;
   }
 
+  if (candidate.entityType !== target.trackedEntityType) {
+    return refuse(
+      "entity_incompatible",
+      target.trackedEntityType ?? "no tracked Entity"
+    );
+  }
+  if (candidate.entityType && !candidate.entityId) {
+    return refuse("entity_incompatible", candidate.entityType);
+  }
+  if (target.entityCompatibilityError) {
+    return refuse("entity_incompatible", target.entityCompatibilityError);
+  }
+
   if (candidate.status !== "waiting" || waitStates.length === 0) {
     return refuse("executing");
   }
@@ -483,6 +513,19 @@ const classifyOne = Effect.fn("classifyOne")(function* (input: {
   const nested = nestedWaitNodeId(parked);
   if (nested) {
     return refuse("waits_nested", nested);
+  }
+
+  // Every candidate is unclaimed, because `listInFlightByWorkflow` requires it,
+  // and only a Cancel claim admits a Canceled-side park. So each parked Wait
+  // parked on the Started side, and the target graph placing it behind the
+  // Canceled outlet is exactly the case where the two versions disagree about
+  // which side the run is on. The woken Wait would resolve its side from the
+  // target graph, write Canceled-side against an unclaimed row, and fail.
+  const movedSide = parked.find((entry) =>
+    target.canceledOutletNodeIds.has(entry.waitState.nodeId)
+  );
+  if (movedSide) {
+    return refuse("wait_moved_to_canceled_outlet", movedSide.waitState.nodeId);
   }
 
   // Every reference the target graph alone cannot answer, in one list: the
@@ -553,18 +596,51 @@ export const classifyMigrationCandidates = Effect.fn(
 )(function* (input: {
   candidates: readonly InFlightExecutionRow[];
   targetVersion: PublishedWorkflowVersion;
+  catalog?: ExtensionCatalog | undefined;
 }) {
   const graph = toWorkflowGraphData(input.targetVersion.graph);
+  const targetEligibility = graph.nodes
+    .filter(isLifecycleNode)
+    .map((node) => readLifecycleRules(node.data.config))
+    .find((rules) => rules?.trackedEntity);
+  const trackedEntityType = targetEligibility?.trackedEntity?.type ?? null;
+  const currentEntity =
+    trackedEntityType && input.catalog
+      ? findEntity(input.catalog, trackedEntityType)
+      : undefined;
+  const conditionCheck =
+    currentEntity && targetEligibility?.entityEligibility
+      ? checkEntityEligibilityCondition(
+          currentEntity,
+          targetEligibility.entityEligibility.condition
+        )
+      : undefined;
+  const entityCompatibilityError =
+    trackedEntityType && input.catalog && !currentEntity
+      ? `Entity "${trackedEntityType}" is unavailable in the current catalog`
+      : conditionCheck && !conditionCheck.valid
+        ? conditionCheck.error
+        : undefined;
+
   const target: MigrationTarget = {
     version: input.targetVersion,
     edges: graph.edges,
     waitNodes: scanWaitNodes(graph.nodes, graph.edges),
+    canceledOutletNodeIds: nodesBehindOutlet({
+      entryNodeIds: new Set(
+        graph.nodes.filter(isLifecycleNode).map((node) => node.id)
+      ),
+      outlet: LIFECYCLE_CANCELED_HANDLE,
+      edges: graph.edges,
+    }),
     // A disabled node never runs, and the Lifecycle node is the run's entry
     // rather than work a target version adds, so neither can be a node this run
     // is missing.
     checkedNodes: graph.nodes.filter(
       (node) => node.data.enabled !== false && !isLifecycleNode(node)
     ),
+    trackedEntityType,
+    entityCompatibilityError,
   };
   const executionIds = input.candidates.map((candidate) => candidate.id);
   const waitsByExecution = yield* listParkedWaits(executionIds);

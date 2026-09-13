@@ -58,6 +58,7 @@ import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 const CONNECTED_ACTION = "twilio/send-sms";
 
 const served: ExtensionCatalog = {
+  entities: [],
   events: [],
   actions: [
     {

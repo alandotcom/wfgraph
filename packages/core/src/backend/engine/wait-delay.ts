@@ -7,9 +7,10 @@
  * so a Migration changes the target without restarting the clock. A timeout is
  * the ordinary end of the delay.
  *
- * The match admits `version-migrate` alone. A delay wait carries no resume
- * token, so nothing else may wake it through a signal: cancellation reaches it
- * through the function-level `cancelOn` and the sweep the run above it does.
+ * The match admits `version-migrate` and `lifecycle-exit`. A delay wait carries
+ * no resume token, so no Event and no manual resume can wake it. A Cancel Event
+ * reaches it through the function-level `cancelOn` and the sweep the run above
+ * it does, and an Exit claimed by another branch wakes it through the signal.
  */
 
 import { encodeIsoTimestamp } from "@wfgraph/shared/types/timestamp";
@@ -18,6 +19,7 @@ import { Effect } from "effect";
 import { closeStepLog } from "#src/backend/engine/step-log";
 import {
   fromStore,
+  isClaimWake,
   readAllowedHoursConfig,
   readWaitGateMode,
   type WaitAttempt,
@@ -121,7 +123,7 @@ const prepareDelayWait = Effect.fn("prepareDelayWait")(function* (
       // Everything a later attempt needs beside the columns the row already has.
       metadata: { waitGateMode, waitTimezone: waitTimezone ?? null },
       timeoutMs: plannedWaitMs,
-      signalTypes: ["version-migrate"],
+      signalTypes: ["version-migrate", "lifecycle-exit"],
     },
     prepared: { waitUntilIso },
   };
@@ -134,9 +136,10 @@ const resumeDelayWait = Effect.fn("resumeDelayWait")(function* (
   const { branch, prepared, wake, hops } = input;
   const { store, startLog } = branch;
 
-  // A delay park answers no cancel signal. This wake reaches it only through a
-  // row a Cancel Event claimed while the run was between two parks.
-  const canceled = wake.kind === "cancel";
+  // A claim wake stops the branch. An Exit reaches a delay park through its
+  // signal. A Cancel reaches it only through a row a Cancel Event claimed while
+  // the run was between two parks, or through a claim that refused the park.
+  const canceled = isClaimWake(wake);
 
   const output = {
     waitType: "delay",
@@ -155,8 +158,9 @@ export const delayWaitMode: WaitMode<DelayPrepared, DelayResumed> = {
   mode: "delay",
   prepare: prepareDelayWait,
   resume: resumeDelayWait,
-  // A cancel wake halts the branch because the run has been claimed. An Event
-  // arrival can reach this mode after a Migration and replaces the Arriving Event.
+  // A Cancel or Exit wake halts the branch because the run has been claimed. An
+  // Event arrival can reach this mode after a Migration and replaces the
+  // Arriving Event.
   outcome: ({ resumed, wake }): WaitOutcome => ({
     result: { success: true, data: resumed.output },
     haltBranch: resumed.canceled,

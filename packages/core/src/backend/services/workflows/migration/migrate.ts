@@ -37,6 +37,7 @@ import type {
   WorkflowMigrationPayload,
 } from "@wfgraph/shared/graph/migration-contracts";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
+import { Extensions } from "#src/backend/lib/effect/extensions";
 
 const loggerFor = (workflowId: string) =>
   Effect.map(AppLogger, (appLogger) =>
@@ -338,9 +339,11 @@ export const migrateExecutions = Effect.fn("wfgraph.workflow.migrate_runs")(
       workflowId: input.workflowId,
     });
 
+    const extensions = yield* Extensions;
     const classifications = yield* classifyMigrationCandidates({
       candidates,
       targetVersion,
+      catalog: extensions.catalog,
     });
 
     const classifiedOutcomes = yield* Effect.forEach(

@@ -25,12 +25,14 @@ import {
 import {
   recordStartRefusal,
   enqueueStartedRun,
+  startAdmissionDecisionId,
   type WorkflowRunStart,
   type WorkflowRunTarget,
 } from "#src/backend/services/executions/run-rows";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import type { Concurrency } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import type { WorkflowMode } from "@wfgraph/shared/graph/types";
+import type { EntityEligibilityReason } from "@wfgraph/shared/lifecycle/execution-contracts";
 
 export type StartWithConcurrencyInput = {
   workflow: WorkflowRunTarget;
@@ -38,7 +40,6 @@ export type StartWithConcurrencyInput = {
   start: WorkflowRunStart;
   runMode: WorkflowMode;
   payload: JsonObject;
-  requestPayload?: JsonObject | undefined;
   logger: EffectLogger;
 };
 
@@ -52,7 +53,8 @@ export type StartWithConcurrencyInput = {
  */
 export type StartRefusalReason =
   | "concurrency_first_wins"
-  | "entity_value_missing";
+  | "entity_value_missing"
+  | EntityEligibilityReason;
 
 /**
  * What a start attempt did.
@@ -81,7 +83,11 @@ export const startWithConcurrency = Effect.fn("startWithConcurrency")(
     const { workflow, start, runMode, payload, logger } = input;
     const repo = yield* ExecutionRepo;
 
-    if (input.concurrency !== "unlimited" && !start.entityValue) {
+    if (
+      input.concurrency !== "unlimited" &&
+      start.entityValue === undefined &&
+      start.entityType === undefined
+    ) {
       return yield* refuseStart({
         workflow,
         start,
@@ -92,6 +98,10 @@ export const startWithConcurrency = Effect.fn("startWithConcurrency")(
       });
     }
 
+    const executionIdentity =
+      start.entityType === undefined
+        ? { entityValue: start.entityValue }
+        : { entityType: start.entityType, entityId: start.entityId };
     const opened = yield* repo.startForEntity({
       execution: {
         workflowId: workflow.id,
@@ -99,13 +109,25 @@ export const startWithConcurrency = Effect.fn("startWithConcurrency")(
         startSource: start.source,
         runMode,
         startEventName: start.eventName,
-        entityValue: start.entityValue,
         input: payload,
         deliveryId: start.deliveryId,
+        ...executionIdentity,
       },
       concurrency: input.concurrency,
       supersededReason: supersededReason(start.eventName),
+      admissionDecisionId:
+        start.source === "event" && start.entityType && start.deliveryId
+          ? startAdmissionDecisionId(workflow.id, start.deliveryId)
+          : undefined,
     });
+
+    if (opened.status === "admission_refused") {
+      return {
+        status: "not_started" as const,
+        reason: opened.reason,
+        inFlightExecutionIds: [],
+      };
+    }
 
     if (opened.status === "refused") {
       return yield* refuseStart({
@@ -149,12 +171,7 @@ export const startWithConcurrency = Effect.fn("startWithConcurrency")(
     }
 
     const started = yield* enqueueStartedRun({
-      workflow,
-      start,
-      runMode,
-      payload,
-      requestPayload: input.requestPayload,
-      executionId: opened.execution.id,
+      execution: opened.execution,
     });
 
     const outcome: StartOutcome = {

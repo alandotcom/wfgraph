@@ -10,15 +10,20 @@ import {
   type ConditionRule,
   GROUP_LOGIC_OPTIONS,
   isNullCheckConditionRule,
+  isStringSetConditionRule,
   isTimestampAbsoluteConditionRule,
   isTimestampRelativeConditionRule,
   NULLCHECK_OPERATOR_OPTIONS,
   NUMBER_OPERATOR_OPTIONS,
   STRING_OPERATOR_OPTIONS,
+  STRING_SET_OPERATOR_OPTIONS,
   TIME_UNIT_OPTIONS,
   TIMESTAMP_OPERATOR_OPTIONS,
 } from "@wfgraph/shared/conditions/conditions";
-import { displayTemplateText } from "@wfgraph/shared/graph/node-references";
+import {
+  displayTemplateText,
+  matchTemplateToken,
+} from "@wfgraph/shared/graph/node-references";
 import { unavailableFieldLabel } from "./condition-field-label";
 
 /**
@@ -38,10 +43,35 @@ import { unavailableFieldLabel } from "./condition-field-label";
 export function ConditionSummary({
   model,
   fields,
+  compact = false,
+  setOperatorsRequireEnumValues = false,
 }: {
   model: ConditionModel;
   fields: readonly ConditionSelectableField[];
+  compact?: boolean;
+  /**
+   * Refuses a set comparison on a string field with no enum values, as Entity
+   * Eligibility does. See `ConditionBuilderRow`.
+   */
+  setOperatorsRequireEnumValues?: boolean | undefined;
 }) {
+  const onlyGroup = model.groups.length === 1 ? model.groups[0] : undefined;
+  const onlyCondition =
+    onlyGroup?.conditions.length === 1 ? onlyGroup.conditions[0] : undefined;
+
+  if (compact && onlyCondition) {
+    return (
+      <ul>
+        <RuleLine
+          condition={onlyCondition}
+          field={conditionFieldForPath(fields, onlyCondition.field)}
+          joiner={null}
+          setOperatorsRequireEnumValues={setOperatorsRequireEnumValues}
+        />
+      </ul>
+    );
+  }
+
   return (
     <div>
       {model.groups.map((group, groupIndex) => (
@@ -67,6 +97,7 @@ export function ConditionSummary({
                 field={conditionFieldForPath(fields, condition.field)}
                 joiner={conditionIndex > 0 ? logicLabel(group.logic) : null}
                 key={condition.id}
+                setOperatorsRequireEnumValues={setOperatorsRequireEnumValues}
               />
             ))}
           </ul>
@@ -97,12 +128,16 @@ function RuleLine({
   condition,
   field,
   joiner,
+  setOperatorsRequireEnumValues,
 }: {
   condition: ConditionRule;
   field: ConditionSelectableField | undefined;
   joiner: string | null;
+  setOperatorsRequireEnumValues: boolean;
 }) {
-  const refusal = ruleRefusal(condition, field);
+  const refusal = ruleRefusal(condition, field, {
+    setOperatorsRequireEnumValues,
+  });
 
   return (
     <li>
@@ -129,12 +164,17 @@ function RuleLine({
  * The compiler answers first, because it is the same verdict the row shows
  * while editing and the same one a run is held to. The enum case is the one
  * refusal it cannot reach: a value the field no longer names still compiles,
- * still runs, and matches nothing, and the picker in edit mode shows it as an
- * empty box.
+ * still runs, and matches nothing. The set picker in edit mode shows it as a
+ * chip, and the single-value picker shows it as an empty box. An operand holding a template reference is exempt from the enum
+ * check, because its value is known only when the run resolves it; Entity
+ * Eligibility refuses such an operand through its own check. A set comparison
+ * on a field with no enum values is refused only where
+ * `setOperatorsRequireEnumValues` says so.
  */
 function ruleRefusal(
   condition: ConditionRule,
-  field: ConditionSelectableField | undefined
+  field: ConditionSelectableField | undefined,
+  options: { setOperatorsRequireEnumValues: boolean }
 ): string | null {
   const compiled = compileConditionRule(condition);
   if (!compiled.valid) {
@@ -143,14 +183,31 @@ function ruleRefusal(
 
   const offered = field?.enumValues;
   if (
+    options.setOperatorsRequireEnumValues &&
+    isStringSetConditionRule(condition) &&
+    (!offered || offered.length === 0)
+  ) {
+    return `${ruleFieldLabel(condition, field)} no longer offers a fixed list of values. Choose another operator.`;
+  }
+
+  if (
     offered &&
     offered.length > 0 &&
     !isNullCheckConditionRule(condition) &&
     condition.fieldType === "string" &&
-    (condition.operator === "equals" || condition.operator === "not_equals") &&
-    !offered.includes(condition.value)
+    condition.operator !== "contains"
   ) {
-    return `${field.label} no longer offers this value. Choose one it does.`;
+    const values = isStringSetConditionRule(condition)
+      ? condition.values
+      : [condition.value];
+    if (
+      values.some(
+        (value) =>
+          matchTemplateToken(value) === null && !offered.includes(value)
+      )
+    ) {
+      return `${field.label} no longer offers one or more selected values. Choose from the available values.`;
+    }
   }
 
   return null;
@@ -196,7 +253,7 @@ function operatorTable(
     return TIMESTAMP_OPERATOR_OPTIONS;
   }
   if (fieldType === "string") {
-    return STRING_OPERATOR_OPTIONS;
+    return [...STRING_OPERATOR_OPTIONS, ...STRING_SET_OPERATOR_OPTIONS];
   }
   if (fieldType === "number") {
     return NUMBER_OPERATOR_OPTIONS;
@@ -238,6 +295,13 @@ function valueLabel(
   }
 
   if (rule.fieldType === "string") {
+    if (isStringSetConditionRule(rule)) {
+      return rule.values
+        .map((value) =>
+          displayTemplateText(field?.enumLabels?.[value] ?? value)
+        )
+        .join(", ");
+    }
     return displayTemplateText(field?.enumLabels?.[rule.value] ?? rule.value);
   }
 

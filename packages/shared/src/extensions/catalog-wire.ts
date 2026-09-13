@@ -150,6 +150,11 @@ const referenceFieldWireSchema: Schema.Codec<ReferenceField> = Schema.Struct({
   showWhen: Schema.optionalKey(showWhenWireSchema),
 });
 
+const eventEntityBindingMetadataSchema = Schema.Struct({
+  name: safeNonEmptyRecordKey,
+  entityType: NonEmptyTrimmedString,
+});
+
 const eventMetadataSchema = Schema.Struct({
   name: NonEmptyTrimmedString,
   label: NonEmptyTrimmedString,
@@ -157,6 +162,16 @@ const eventMetadataSchema = Schema.Struct({
   correlationPath: Schema.optionalKey(safeRecordPath),
   integration: Schema.optionalKey(Schema.String),
   payloadFields: Schema.Array(referenceFieldWireSchema),
+  entityBindings: Schema.optionalKey(
+    Schema.Array(eventEntityBindingMetadataSchema)
+  ),
+});
+
+const entityMetadataSchema = Schema.Struct({
+  type: NonEmptyTrimmedString,
+  label: NonEmptyTrimmedString,
+  stateFields: Schema.Array(referenceFieldWireSchema),
+  stateSchemaDigest: NonEmptyTrimmedString,
 });
 
 const actionMetadataSchema = Schema.Struct({
@@ -209,6 +224,7 @@ const integrationMetadataSchema = Schema.Struct({
 
 const extensionCatalogSchema: Schema.Codec<ExtensionCatalog> = Schema.Struct({
   events: Schema.Array(eventMetadataSchema),
+  entities: Schema.Array(entityMetadataSchema),
   actions: Schema.Array(actionMetadataSchema),
   integrations: Schema.Array(integrationMetadataSchema),
 });

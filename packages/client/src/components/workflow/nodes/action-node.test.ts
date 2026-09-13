@@ -25,7 +25,7 @@ describe("actionNodeDisplayTitle", () => {
       config: { actionType: "private/internal-action" },
       [COMPARISON_NODE_ANNOTATION]: { kind: "removed" as const },
     };
-    const catalog = { actions: [], events: [], integrations: [] };
+    const catalog = { actions: [], entities: [], events: [], integrations: [] };
 
     expect(actionNodeDisplayTitle(data, catalog)).toBe("Unavailable action");
     expect(

@@ -10,6 +10,7 @@ import {
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 
 const testCatalog: ExtensionCatalog = {
+  entities: [],
   events: [],
   integrations: [],
   actions: [

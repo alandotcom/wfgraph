@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { Context, Duration, Effect, Layer, Schedule } from "effect";
 import { partition } from "es-toolkit/array";
 import {
@@ -15,7 +15,11 @@ import {
   type DatabaseError,
   hasDatabaseErrorCode,
 } from "#src/backend/lib/effect/database";
-import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
+import {
+  IN_FLIGHT_EXECUTION_STATUSES,
+  isEntityEligibilityReason,
+  type EntityEligibilityReason,
+} from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { Concurrency } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import {
   type AuditRepoMethods,
@@ -36,7 +40,9 @@ import {
 import type {
   EntityStartOutcome,
   NewExecution,
+  StartAdmissionDecision,
 } from "#src/backend/services/executions/repo/contracts";
+import type { JsonObject } from "@wfgraph/shared/types/json";
 
 export * from "#src/backend/services/executions/repo/contracts";
 
@@ -85,6 +91,22 @@ function isSerializationFailure(error: DatabaseError): boolean {
   return hasDatabaseErrorCode(error, SERIALIZATION_FAILURE_CODE);
 }
 
+async function findAdmissionRefusal(
+  database: WfGraphDatabase | WfGraphTransaction,
+  input: { workflowId: string; decisionId: string }
+): Promise<EntityEligibilityReason | null> {
+  const row = await database.query.workflowExecutionEvents.findFirst({
+    where: {
+      id: input.decisionId,
+      workflowId: input.workflowId,
+      eventType: "run_refused",
+    },
+    columns: { metadata: true },
+  });
+  const reason = row?.metadata?.reason;
+  return isEntityEligibilityReason(reason) ? reason : null;
+}
+
 function isStuckBeforeTheBus(row: {
   enqueuedAt: Date | null;
   startedAt: Date;
@@ -121,7 +143,8 @@ async function reclaimStuckRuns(
     .where(
       and(
         inArray(workflowExecutions.id, executionIds),
-        inArray(workflowExecutions.status, [...IN_FLIGHT_EXECUTION_STATUSES])
+        inArray(workflowExecutions.status, [...IN_FLIGHT_EXECUTION_STATUSES]),
+        isNull(workflowExecutions.terminationKind)
       )
     )
     .returning({ id: workflowExecutions.id });
@@ -156,15 +179,31 @@ type CrossTableRepoMethods = {
    */
   readonly startForEntity: (input: {
     /**
-     * The row to open. Its `entityValue` is what Concurrency serializes on as
-     * well as what the column stores, and a start with nothing to serialize on
-     * leaves it out.
+     * The row to open. Concurrency serializes on its typed Entity identity when
+     * present, otherwise on the legacy `entityValue`. A start with neither
+     * identity leaves Entity-scoped Concurrency out.
      */
     execution: NewExecution;
     concurrency: Concurrency;
+    /** Stable key shared with an admission refusal for this Event delivery. */
+    admissionDecisionId?: string | undefined;
     /** Written onto a displaced run's `error`, which run history shows. */
     supersededReason: string;
   }) => Effect.Effect<EntityStartOutcome, DatabaseError>;
+  /** Read a durable Entity admission refusal before repeating its resolver. */
+  readonly findAdmissionRefusal: (input: {
+    workflowId: string;
+    decisionId: string;
+  }) => Effect.Effect<EntityEligibilityReason | null, DatabaseError>;
+  /** Atomically records a refusal or returns the start that won the delivery. */
+  readonly recordAdmissionRefusal: (input: {
+    workflowId: string;
+    deliveryId: string;
+    decisionId: string;
+    reason: EntityEligibilityReason;
+    message: string;
+    metadata: JsonObject;
+  }) => Effect.Effect<StartAdmissionDecision, DatabaseError>;
   /**
    * Erase one workflow's run history, answering how many runs went. Node logs
    * and wait states follow the runs by cascade; the audit rows are deleted here
@@ -209,10 +248,24 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
         ...makeWaitsMethods(database),
         ...makeAuditMethods(database),
 
-        startForEntity: ({ execution, concurrency, supersededReason }) =>
+        startForEntity: ({
+          execution,
+          concurrency,
+          supersededReason,
+          admissionDecisionId,
+        }) =>
           database
             .query(async (db) => {
-              const { entityValue } = execution;
+              const entityPredicate =
+                execution.entityType !== undefined &&
+                execution.entityId !== undefined
+                  ? and(
+                      eq(workflowExecutions.entityType, execution.entityType),
+                      eq(workflowExecutions.entityId, execution.entityId)
+                    )
+                  : execution.entityValue === undefined
+                    ? undefined
+                    : eq(workflowExecutions.entityValue, execution.entityValue);
 
               const findByDelivery = async (
                 tx: WfGraphDatabase | WfGraphTransaction
@@ -245,6 +298,8 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
                     runMode: execution.runMode,
                     startEventName: execution.startEventName,
                     entityValue: execution.entityValue,
+                    entityType: execution.entityType,
+                    entityId: execution.entityId,
                     deliveryId: execution.deliveryId,
                     input: execution.input,
                   })
@@ -262,7 +317,10 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
                 return row ?? (await findByDelivery(tx));
               };
 
-              if (concurrency === "unlimited" || !entityValue) {
+              if (
+                (concurrency === "unlimited" || !entityPredicate) &&
+                !admissionDecisionId
+              ) {
                 const opened = await insertRunning(db);
                 return {
                   status: "started" as const,
@@ -274,6 +332,19 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
 
               return await db.transaction(
                 async (tx) => {
+                  if (admissionDecisionId) {
+                    const refusal = await findAdmissionRefusal(tx, {
+                      workflowId: execution.workflowId,
+                      decisionId: admissionDecisionId,
+                    });
+                    if (refusal) {
+                      return {
+                        status: "admission_refused" as const,
+                        reason: refusal,
+                      };
+                    }
+                  }
+
                   // Asked before Concurrency is, because this arrival's own row is
                   // not a run to defer to or displace. It is this call's answer.
                   const own = await findByDelivery(tx);
@@ -281,6 +352,15 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
                     return {
                       status: "started" as const,
                       execution: own,
+                      supersededExecutionIds: [],
+                      reclaimedExecutionIds: [],
+                    };
+                  }
+
+                  if (concurrency === "unlimited" || !entityPredicate) {
+                    return {
+                      status: "started" as const,
+                      execution: await insertRunning(tx),
                       supersededExecutionIds: [],
                       reclaimedExecutionIds: [],
                     };
@@ -296,11 +376,12 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
                     .where(
                       and(
                         eq(workflowExecutions.workflowId, execution.workflowId),
-                        eq(workflowExecutions.entityValue, entityValue),
+                        entityPredicate,
                         eq(workflowExecutions.runMode, execution.runMode),
                         inArray(workflowExecutions.status, [
                           ...IN_FLIGHT_EXECUTION_STATUSES,
-                        ])
+                        ]),
+                        isNull(workflowExecutions.terminationKind)
                       )
                     );
 
@@ -345,7 +426,8 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
                           inArray(workflowExecutions.id, ids),
                           inArray(workflowExecutions.status, [
                             ...IN_FLIGHT_EXECUTION_STATUSES,
-                          ])
+                          ]),
+                          isNull(workflowExecutions.terminationKind)
                         )
                       )
                       .returning({ id: workflowExecutions.id });
@@ -378,6 +460,59 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
                 { isolationLevel: "serializable" }
               );
             })
+            .pipe(
+              Effect.retry({
+                schedule: serializationRetrySchedule,
+                while: isSerializationFailure,
+              })
+            ),
+
+        findAdmissionRefusal: (input) =>
+          database.query((db) => findAdmissionRefusal(db, input)),
+
+        recordAdmissionRefusal: (input) =>
+          database
+            .query((db) =>
+              db.transaction(
+                async (tx) => {
+                  const existingExecution =
+                    await tx.query.workflowExecutions.findFirst({
+                      where: {
+                        workflowId: input.workflowId,
+                        deliveryId: input.deliveryId,
+                      },
+                      columns: { id: true },
+                    });
+                  if (existingExecution) {
+                    return {
+                      kind: "started" as const,
+                      executionId: existingExecution.id,
+                    };
+                  }
+
+                  const existingRefusal = await findAdmissionRefusal(tx, {
+                    workflowId: input.workflowId,
+                    decisionId: input.decisionId,
+                  });
+                  if (existingRefusal) {
+                    return {
+                      kind: "refused" as const,
+                      reason: existingRefusal,
+                    };
+                  }
+
+                  await tx.insert(workflowExecutionEvents).values({
+                    id: input.decisionId,
+                    workflowId: input.workflowId,
+                    eventType: "run_refused",
+                    message: input.message,
+                    metadata: input.metadata,
+                  });
+                  return { kind: "refused" as const, reason: input.reason };
+                },
+                { isolationLevel: "serializable" }
+              )
+            )
             .pipe(
               Effect.retry({
                 schedule: serializationRetrySchedule,

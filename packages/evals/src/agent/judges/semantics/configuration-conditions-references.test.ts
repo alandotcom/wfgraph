@@ -288,6 +288,83 @@ describe("assessScenarioSemantics", () => {
     });
   });
 
+  it("accepts a Wait match whose set operand is listed in a different order", () => {
+    const document = completedDocument();
+    document.nodes.push({
+      id: "wait",
+      type: "action",
+      position: { x: 0, y: 0 },
+      data: {
+        label: "Wait for an active or paused status",
+        type: "action",
+        config: {
+          actionType: "Wait",
+          waitMode: "event",
+          waitFor: [
+            {
+              event: "applicant.updated",
+              // The graph lists the eligible statuses as paused, then active.
+              match: serializeConditionModel({
+                version: 2,
+                groupLogic: "and",
+                groups: [
+                  {
+                    id: "group",
+                    logic: "and",
+                    conditions: [
+                      {
+                        id: "rule",
+                        field: "status",
+                        fieldType: "string",
+                        operator: "is_one_of",
+                        values: ["paused", "active"],
+                      },
+                    ],
+                  },
+                ],
+              }),
+            },
+          ],
+        },
+      },
+    });
+    const waitInput: AgentEvalInput = {
+      ...input,
+      expected: {
+        requiredWaitSubscriptions: [
+          {
+            node: { kind: "action", actionId: "Wait" },
+            event: "applicant.updated",
+            // The scenario requires the same statuses, active then paused.
+            // Membership is the same set, so the comparison must still score
+            // a match.
+            match: {
+              groupLogic: "and",
+              groups: [
+                {
+                  logic: "and",
+                  rules: [
+                    {
+                      field: "status",
+                      fieldType: "string",
+                      operator: "is_one_of",
+                      values: ["active", "paused"],
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        ],
+      },
+    };
+
+    expect(assessScenarioSemantics(waitInput, document)).toEqual({
+      score: 1,
+      rationale: "The graph satisfies the scenario constraints.",
+    });
+  });
+
   it("rejects a Wait subscription with the wrong Connection", () => {
     const document = completedDocument();
     document.nodes.push({

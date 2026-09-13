@@ -304,6 +304,49 @@ describe("set_wait", () => {
     })
   );
 
+  it.effect("writes a string set Event match", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor(documentInput);
+
+      yield* tools.set_wait({
+        nodeId: "wait",
+        wait: {
+          mode: "event",
+          events: [
+            {
+              event: "applicant.withdrawn",
+              match: {
+                groups: [
+                  {
+                    rules: [
+                      {
+                        field: "applicantId",
+                        fieldType: "string",
+                        operator: "is_one_of",
+                        values: ["applicant-1", "applicant-2"],
+                      },
+                    ],
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      });
+
+      const subscriptions = (yield* draft.current).nodes[1]?.data.config
+        ?.waitFor as Array<{ match?: string }> | undefined;
+      const parsed = parseConditionModel(subscriptions?.[0]?.match);
+      expect(parsed.valid).toBe(true);
+      if (parsed.valid) {
+        expect(parsed.model.groups[0]?.conditions[0]).toMatchObject({
+          operator: "is_one_of",
+          values: ["applicant-1", "applicant-2"],
+        });
+      }
+    })
+  );
+
   it.effect(
     "writes a timestamp Event match against an exact upstream reference",
     () =>

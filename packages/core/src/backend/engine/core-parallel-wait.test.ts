@@ -17,6 +17,7 @@ import { eventSplitOutlet } from "@wfgraph/shared/lifecycle/event-split";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
+import type { WorkflowEntities } from "#src/backend/engine/entities";
 import type { PendingCancel, WorkflowStore } from "#src/backend/engine/store";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
 import { defineAction } from "#src/backend/extensions/define-action";
@@ -116,6 +117,42 @@ const CANCELABLE: JsonObject = {
   },
 };
 
+const ENTITY_CONDITION = JSON.stringify({
+  version: 2,
+  groupLogic: "and",
+  groups: [
+    {
+      id: "group",
+      logic: "and",
+      conditions: [
+        {
+          id: "active",
+          field: "active",
+          fieldType: "boolean",
+          operator: "is_true",
+        },
+      ],
+    },
+  ],
+});
+
+const GUARDED: JsonObject = {
+  lifecycleRules: {
+    concurrency: "unlimited",
+    startEvents: [START_EVENT],
+    cancelEvents: [],
+    allowManualStart: false,
+    trackedEntity: {
+      type: "appointment",
+      bindings: { [START_EVENT]: "appointment" },
+    },
+    entityEligibility: {
+      condition: ENTITY_CONDITION,
+      checkpoints: ["before-node"],
+    },
+  },
+};
+
 function actionNode(id: string, config: Record<string, unknown>): WorkflowNode {
   return {
     id,
@@ -153,19 +190,32 @@ function dispatchClock(
  */
 function runGraph(
   graph: ReturnType<typeof createSerializedWorkflowGraph>,
-  options: { killBranchesAtMs?: number; store?: WorkflowStore } = {}
+  options: {
+    killBranchesAtMs?: number;
+    store?: WorkflowStore;
+    entities?: WorkflowEntities;
+    guarded?: boolean;
+  } = {}
 ) {
-  const { store = createRecordingWorkflowStore(), ...replayOptions } = options;
+  const {
+    store = createRecordingWorkflowStore(),
+    entities,
+    guarded = false,
+    ...replayOptions
+  } = options;
   const input = {
     graph,
     executionId: "exec_parallel",
     workflowId: "workflow_parallel",
     startEventName: START_EVENT,
     startPayload: { appointment: { id: "123" } },
+    ...(guarded
+      ? { entityType: "appointment", entityId: "appointment_123" }
+      : {}),
   };
 
   return driveWithReplay(
-    (runtime) => executeWorkflow(input, runtime, store, actions),
+    (runtime) => executeWorkflow(input, runtime, store, actions, entities),
     {
       ...replayOptions,
       branch: (runtime, branchInput) =>
@@ -173,7 +223,8 @@ function runGraph(
           { ...input, ...branchInput },
           runtime,
           store,
-          actions
+          actions,
+          entities
         ),
     }
   );
@@ -279,6 +330,101 @@ describe("a wait node beside another branch", () => {
     expect(dispatchClock(run.executed, "after_short")).toBeLessThan(60_000);
     // The root, and one run per waiting branch.
     expect(run.runs).toBe(3);
+  });
+
+  // The branch run that wins an Exit claim wakes the sibling branch run parked
+  // on its Wait. The sibling halts at that Wait, and the run ends `exited` at
+  // the Exit rather than at the sibling Wait's ten-minute target.
+  it("returns a child Exit to the parent and wakes a sibling parked on a Wait", async () => {
+    const store = createRecordingWorkflowStore();
+    const checkedNodes: string[] = [];
+    const entities: WorkflowEntities = {
+      evaluateEligibility: (input) =>
+        Effect.sync(() => {
+          checkedNodes.push(input.nodeId);
+          return input.nodeId === "after_short"
+            ? {
+                outcome: "exit" as const,
+                reason: "entity_condition_not_met" as const,
+                checkedAt: "2026-10-19T15:00:00.000Z",
+              }
+            : { outcome: "eligible" as const };
+        }),
+    };
+
+    const run = await runGraph(
+      createSerializedWorkflowGraph({
+        nodes: [
+          lifecycleNode("entry", GUARDED),
+          waitNode("short_wait", "30s"),
+          sendNode("after_short"),
+          waitNode("long_wait", "10m"),
+          sendNode("after_long"),
+        ],
+        edges: [
+          {
+            id: "e1",
+            source: "entry",
+            sourceHandle: "started",
+            target: "short_wait",
+          },
+          {
+            id: "e2",
+            source: "short_wait",
+            sourceHandle: null,
+            target: "after_short",
+          },
+          {
+            id: "e3",
+            source: "entry",
+            sourceHandle: "started",
+            target: "long_wait",
+          },
+          {
+            id: "e4",
+            source: "long_wait",
+            sourceHandle: null,
+            target: "after_long",
+          },
+        ],
+      }),
+      { store, entities, guarded: true }
+    );
+
+    expect(run.value).toMatchObject({
+      status: "exited",
+      success: true,
+      exit: {
+        reason: "entity_condition_not_met",
+        nodeId: "after_short",
+      },
+    });
+    // The run ends at the short Wait's 30 seconds, when the Exit was claimed,
+    // long before the sibling's 10-minute Wait. The delay derives its remaining
+    // time from Date.now(), so the replay clock can land a millisecond early.
+    expect(run.elapsedMs).toBeGreaterThan(29_000);
+    expect(run.elapsedMs).toBeLessThanOrEqual(30_000);
+    expect(checkedNodes).toContain("short_wait");
+    expect(checkedNodes).toContain("long_wait");
+    expect(checkedNodes).toContain("after_short");
+    expect(checkedNodes).not.toContain("after_long");
+    expect(dispatchClock(run.executed, "after_long")).toBeUndefined();
+    // The sibling's timeline names the Exit that woke it, and its row closed.
+    expect(
+      store
+        .callsOf("recordAuditEvent")
+        .filter((event) => event.eventType === "run_resumed")
+        .map((event) => event.message)
+    ).toContain("Run woken by an Exit in node 'long_wait'");
+    expect(
+      store
+        .callsOf("markWaitStateStatus")
+        .filter((call) => call.status === "cancelled")
+    ).toHaveLength(1);
+    // Each branch run closed its own rows before it returned, so the kill
+    // sweep has nothing to close and never runs.
+    expect(store.callsOf("cancelOpenWork")).toHaveLength(0);
+    expect(store.callsOf("completeRun")[0]?.status).toBe("exited");
   });
 
   // Only a park writes "waiting", and the short branch's resume writes

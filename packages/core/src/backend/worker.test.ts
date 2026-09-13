@@ -65,6 +65,18 @@ describe("wfWorker", () => {
     expect(WfGraphAccess.all.allows).toBeTypeOf("function");
   });
 
+  it("rejects invalid Entity resolver timeouts at startup", () => {
+    expect(() =>
+      wfWorker({
+        entityResolverTimeoutMs: 0,
+        extensions: () => ({}),
+        request: () => {
+          throw new Error("unused");
+        },
+      })
+    ).toThrow("entityResolverTimeoutMs must be a positive integer");
+  });
+
   it("resolves request-scoped extensions from the Worker environment", async () => {
     const repositories = Layer.mergeAll(
       stubExecutionRepo(),

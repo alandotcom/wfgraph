@@ -13,7 +13,14 @@ import {
 } from "drizzle-orm";
 import { generateId } from "@wfgraph/shared/utils/id";
 import { toJsonObject } from "@wfgraph/shared/types/json";
-import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
+import {
+  claimKindAdmits,
+  IN_FLIGHT_EXECUTION_STATUSES,
+} from "@wfgraph/shared/lifecycle/execution-contracts";
+import {
+  claimAdmits,
+  notExitClaimed,
+} from "#src/backend/persistence/sqlite/executions/runs";
 import {
   WAIT_ARRIVAL_METADATA_KEY,
   type WaitArrival,
@@ -109,7 +116,8 @@ function claimWait(
         and(
           identity,
           claimable,
-          inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES)
+          inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES),
+          notExitClaimed
         )
       )
       .get();
@@ -152,7 +160,11 @@ export function makeSqliteWaitsMethods(
                   workflowExecutions.workflowVersionId,
                   input.workflowVersionId
                 ),
-                inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES)
+                inArray(
+                  workflowExecutions.status,
+                  IN_FLIGHT_EXECUTION_STATUSES
+                ),
+                claimAdmits(input.side)
               )
             )
             .returning({ id: workflowExecutions.id });
@@ -185,6 +197,7 @@ export function makeSqliteWaitsMethods(
             .select({
               status: workflowWaitStates.status,
               pinnedVersionId: workflowExecutions.workflowVersionId,
+              terminationKind: workflowExecutions.terminationKind,
             })
             .from(workflowWaitStates)
             .leftJoin(
@@ -199,6 +212,9 @@ export function makeSqliteWaitsMethods(
           }
           if (row.pinnedVersionId !== input.workflowVersionId) {
             return refusedRepark("version_moved");
+          }
+          if (!claimKindAdmits(row.terminationKind, input.side)) {
+            return refusedRepark("not_waiting");
           }
 
           yield* database
@@ -232,10 +248,10 @@ export function makeSqliteWaitsMethods(
       ),
     markWaitStatus: (input) =>
       store.write((database) => {
-        const allowed =
-          input.status === "resumed"
-            ? eq(workflowWaitStates.status, "waiting")
-            : inArray(workflowWaitStates.status, ["waiting", "resuming"]);
+        const allowed = inArray(workflowWaitStates.status, [
+          "waiting",
+          "resuming",
+        ]);
         const now = Date.now();
         return database
           .update(workflowWaitStates)
@@ -285,6 +301,7 @@ export function makeSqliteWaitsMethods(
           eq(workflowWaitStates.workflowId, input.workflowId),
           eq(workflowWaitStates.status, "waiting"),
           inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES),
+          notExitClaimed,
           subscribedTo(input.eventName),
         ];
         if (input.afterId) {
@@ -372,6 +389,19 @@ export function makeSqliteWaitsMethods(
             and(
               eq(workflowWaitStates.executionId, executionId),
               eq(workflowWaitStates.status, "waiting")
+            )
+          )
+          .pipe(Effect.map((rows) => rows.map(sqliteWaitState)))
+      ),
+    listActiveWaitStates: (executionId) =>
+      store.read((database) =>
+        database
+          .select()
+          .from(workflowWaitStates)
+          .where(
+            and(
+              eq(workflowWaitStates.executionId, executionId),
+              inArray(workflowWaitStates.status, ["waiting", "resuming"])
             )
           )
           .pipe(Effect.map((rows) => rows.map(sqliteWaitState)))

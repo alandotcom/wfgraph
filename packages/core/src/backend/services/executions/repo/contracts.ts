@@ -8,6 +8,10 @@ import type {
   RunScopedAuditEventType,
   WorkflowScopedAuditEventType,
 } from "@wfgraph/shared/lifecycle/audit-event-types";
+import type {
+  EntityEligibilityReason,
+  WorkflowExecutionStatus,
+} from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { JsonObject, JsonObjectDraft } from "@wfgraph/shared/types/json";
 import type { WorkflowVersionKind } from "@wfgraph/shared/graph/version-kinds";
 
@@ -17,9 +21,17 @@ export type WorkflowExecution = typeof workflowExecutions.$inferSelect;
 /** One row of `workflow_execution_logs`, one node's attempt within a run. */
 export type WorkflowExecutionLog = typeof workflowExecutionLogs.$inferSelect;
 
-/** One row of `workflow_execution_events`, the audit trail beside a run. */
-export type WorkflowExecutionEvent =
-  typeof workflowExecutionEvents.$inferSelect;
+/**
+ * One row of `workflow_execution_events`, the audit trail beside a run.
+ *
+ * `seq` is absent: it is the PostgreSQL identity column the audit readers order
+ * on after `created_at`, the SQLite table has no counterpart for it, and no
+ * caller reads it.
+ */
+export type WorkflowExecutionEvent = Omit<
+  typeof workflowExecutionEvents.$inferSelect,
+  "seq"
+>;
 
 /** One row of `workflow_wait_states`, a node parked waiting to be woken. */
 export type WorkflowWaitState = typeof workflowWaitStates.$inferSelect;
@@ -50,7 +62,17 @@ export type NewExecution = {
    * time it is asked for.
    */
   deliveryId?: string | undefined;
-};
+} & (
+  | {
+      /** Stable typed identity for a workflow guarded by Entity Eligibility. */
+      entityType: string;
+      entityId: string;
+    }
+  | {
+      entityType?: never;
+      entityId?: never;
+    }
+);
 
 /**
  * A run that reached its verdict without executing the graph. It starts and
@@ -102,6 +124,12 @@ export type ExecutionSummary = Pick<
    * published graph a run walked ("v7"). Null on a draft snapshot.
    */
   versionNumber: number | null;
+  /**
+   * The typed Entity identity a guarded run was started for, or null on a
+   * run with no tracked Entity.
+   */
+  entityType: string | null;
+  entityId: string | null;
 };
 
 /**
@@ -120,6 +148,9 @@ export type InFlightExecutionRow = Pick<
   versionKind: WorkflowVersionKind;
   /** As on `ExecutionSummary`: that version's number, null on a snapshot. */
   versionNumber: number | null;
+  /** As on `ExecutionSummary`: the typed Entity identity, null when unguarded. */
+  entityType: string | null;
+  entityId: string | null;
 };
 
 /** A run reduced to where it got to. */
@@ -172,6 +203,10 @@ export type GlobalExecutionRow = WorkflowExecutionListRow & {
  * `refused` names the runs it deferred to, so first-wins can say what it deferred
  * to rather than only that it declined.
  */
+export type StartAdmissionDecision =
+  | { kind: "started"; executionId: string }
+  | { kind: "refused"; reason: EntityEligibilityReason };
+
 export type EntityStartOutcome =
   | {
       status: "started";
@@ -186,7 +221,54 @@ export type EntityStartOutcome =
        */
       reclaimedExecutionIds: string[];
     }
-  | { status: "refused"; inFlightExecutionIds: string[] };
+  | { status: "refused"; inFlightExecutionIds: string[] }
+  | {
+      /** An earlier or racing admission refusal owns this delivery. */
+      status: "admission_refused";
+      reason: EntityEligibilityReason;
+    };
+
+export type ExecutionTerminationClaim =
+  | {
+      kind: "cancel";
+      requestedAt: Date;
+      eventName: string | null;
+      payload: JsonObject | null;
+    }
+  | {
+      kind: "exit";
+      requestedAt: Date;
+      reason: EntityEligibilityReason;
+      nodeId: string;
+    };
+
+/**
+ * The authoritative execution boundary after a claim or terminal write.
+ *
+ * A claim may coexist with an in-flight status while the parent run cleans up.
+ * A terminal status has no pending claim unless it is the finalized result of
+ * that same cancel or exit request.
+ */
+export type ExecutionTerminationState = {
+  executionId: string;
+  status: WorkflowExecutionStatus;
+  claim: ExecutionTerminationClaim | null;
+  /** Whether this call wrote the decision or terminal status it requested. */
+  didWrite: boolean;
+};
+
+/** The typed Entity identity, or the legacy untyped correlation value. */
+export type ExecutionEntitySelector =
+  | {
+      entityType: string;
+      entityId: string;
+      entityValue?: never;
+    }
+  | {
+      entityType?: never;
+      entityId?: never;
+      entityValue: string;
+    };
 
 /**
  * A Cancel Event's request, as the run reads it back at its next node boundary.

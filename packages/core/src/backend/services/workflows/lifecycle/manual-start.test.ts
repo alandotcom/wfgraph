@@ -2,7 +2,9 @@
 // provides, so nothing here imports the bare one.
 import { assert, describe, layer } from "@effect/vitest";
 import { Effect, Layer, Schema } from "effect";
+import { beforeEach, vi } from "vitest";
 import type { Workflow } from "#src/backend/lib/db/schema";
+import { defineEntity } from "#src/backend/extensions/define-entity";
 import { defineEvent } from "#src/backend/extensions/define-event";
 import {
   SilentAppLoggerLayer,
@@ -20,6 +22,7 @@ import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { LIFECYCLE_STARTED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import { serializeConditionModel } from "@wfgraph/shared/conditions/conditions";
 
 function graphWithRules(rules: LifecycleRules) {
   return createSerializedWorkflowGraph({
@@ -45,6 +48,40 @@ const startRules: LifecycleRules = {
   concurrency: "newest-wins",
   allowManualStart: true,
 };
+
+function guardedRules(
+  checkpoints: Array<"before-execution" | "before-node">
+): LifecycleRules {
+  return {
+    ...startRules,
+    trackedEntity: {
+      type: "appointment",
+      bindings: { "app/appointment.created": "appointment" },
+    },
+    entityEligibility: {
+      condition: serializeConditionModel({
+        version: 2,
+        groupLogic: "and",
+        groups: [
+          {
+            id: "eligibility-group",
+            logic: "and",
+            conditions: [
+              {
+                id: "status-rule",
+                field: "status",
+                fieldType: "string",
+                operator: "equals",
+                value: "scheduled",
+              },
+            ],
+          },
+        ],
+      }),
+      checkpoints,
+    },
+  };
+}
 
 /**
  * A stored workflow, one save later than the last one this file built.
@@ -86,6 +123,8 @@ function executionRow(overrides: Partial<WorkflowExecution> = {}) {
     runMode: "live" as const,
     startEventName: null,
     entityValue: null,
+    entityType: null,
+    entityId: null,
     input: {},
     output: null,
     error: null,
@@ -94,7 +133,10 @@ function executionRow(overrides: Partial<WorkflowExecution> = {}) {
     cancelledAt: null,
     completedAt: null,
     duration: null,
-    cancelRequestedAt: null,
+    terminationKind: null,
+    terminationRequestedAt: null,
+    terminationReason: null,
+    terminationNodeId: null,
     cancelEventName: null,
     cancelPayload: null,
     workflowVersionId: "ver_1",
@@ -157,6 +199,15 @@ function makeRepo(overrides: Partial<ExecutionRepo["Service"]> = {}) {
  * against. The catalog metadata beside it is what the entity read uses, so a
  * test naming an Event needs both halves to agree.
  */
+const resolveEntityMock = vi.fn(
+  async (): Promise<{ status: string } | null> => ({ status: "scheduled" })
+);
+const appointmentEntity = defineEntity({
+  type: "appointment",
+  label: "Appointment",
+  state: Schema.Struct({ status: Schema.String }),
+  resolve: resolveEntityMock,
+});
 const appointmentCreated = defineEvent({
   name: "app/appointment.created",
   label: "Appointment created",
@@ -167,16 +218,31 @@ const appointmentCreated = defineEvent({
       startsAt: Schema.String,
     }),
   }),
+  entities: {
+    appointment: {
+      entity: appointmentEntity,
+      selectEntityId: (event) => event.appointment.id,
+    },
+  },
 });
 
 const catalogLayer = stubExtensions({
   catalog: {
+    entities: [
+      {
+        type: "appointment",
+        label: "Appointment",
+        stateFields: [{ path: "status", type: "string" }],
+        stateSchemaDigest: appointmentEntity.stateSchemaDigest,
+      },
+    ],
     events: [
       {
         name: "app/appointment.created",
         label: "Appointment created",
         correlationPath: "appointment.id",
         payloadFields: [],
+        entityBindings: [{ name: "appointment", entityType: "appointment" }],
       },
     ],
     actions: [],
@@ -248,6 +314,19 @@ function makeDraftRepo(workflow: Workflow) {
     layer: stubWorkflowRepo({
       findByIdWithDraftGraphForRun: () =>
         Effect.succeed({ workflow, draftGraph: workflow.graph }),
+      // The enqueue reads the version the opened row pins, which for a draft run
+      // is the snapshot it was frozen against.
+      findVersionById: (versionId) =>
+        Effect.succeed({
+          id: versionId,
+          workflowId: workflow.id,
+          version: null,
+          kind: "draft_snapshot" as const,
+          graph: workflow.graph,
+          catalogFingerprint: "fp",
+          graphDigest: "digest",
+          publishedAt: new Date("2026-03-01T00:00:00.000Z"),
+        }),
       deleteUnreferencedDraftSnapshot: (versionId) =>
         Effect.sync(() => {
           released.push(versionId);
@@ -304,35 +383,32 @@ function graphWithUnconfiguredAction() {
 }
 
 function workflowLayer(workflow: Workflow) {
+  const published = {
+    id: "ver_1",
+    workflowId: workflow.id,
+    version: 1,
+    kind: "published" as const,
+    graph: workflow.graph,
+    catalogFingerprint: "fp",
+    graphDigest: "digest",
+    publishedAt: new Date("2026-03-01T00:00:00.000Z"),
+  };
+
   return stubWorkflowRepo({
     findById: () => Effect.succeed(workflow),
     findByIdWithPublishedVersionForRun: () =>
-      Effect.succeed({
-        workflow,
-        publishedVersion: {
-          id: "ver_1",
-          workflowId: workflow.id,
-          version: 1,
-          kind: "published",
-          graph: workflow.graph,
-          catalogFingerprint: "fp",
-          graphDigest: "digest",
-          publishedAt: new Date("2026-03-01T00:00:00.000Z"),
-        },
-      }),
-    findPublishedVersion: () =>
-      Effect.succeed({
-        id: "ver_1",
-        workflowId: workflow.id,
-        version: 1,
-        kind: "published",
-        graph: workflow.graph,
-        catalogFingerprint: "fp",
-        graphDigest: "digest",
-        publishedAt: new Date("2026-03-01T00:00:00.000Z"),
-      }),
+      Effect.succeed({ workflow, publishedVersion: published }),
+    findPublishedVersion: () => Effect.succeed(published),
+    // The enqueue reads the version the opened row pins, because that is what
+    // the run's opening timeline entry names.
+    findVersionById: () => Effect.succeed(published),
   });
 }
+
+beforeEach(() => {
+  resolveEntityMock.mockReset();
+  resolveEntityMock.mockResolvedValue({ status: "scheduled" });
+});
 
 describe("postWorkflowExecute", () => {
   layer(
@@ -365,6 +441,108 @@ describe("postWorkflowExecute", () => {
           runMode: "live",
         });
       })
+    );
+
+    it.effect("requires a Start Event for a guarded manual run", () =>
+      Effect.gen(function* () {
+        const repo = makeRepo();
+        const row = workflowRow({
+          graph: graphWithRules(guardedRules(["before-node"])),
+        });
+
+        const response = yield* postWorkflowExecute("wf_1", {
+          input: validPayload,
+        }).pipe(Effect.provide(Layer.mergeAll(repo.layer, workflowLayer(row))));
+
+        assert.deepStrictEqual(response, {
+          status: "ignored",
+          runMode: "live",
+          reason: "start_event_required",
+        });
+        assert.deepStrictEqual(repo.starts, []);
+      })
+    );
+
+    it.effect(
+      "opens a node-guarded manual run with typed identity and no admission read",
+      () =>
+        Effect.gen(function* () {
+          const repo = makeRepo();
+          const row = workflowRow({
+            graph: graphWithRules(guardedRules(["before-node"])),
+          });
+
+          const response = yield* postWorkflowExecute("wf_1", {
+            eventName: appointmentCreated.name,
+            input: validPayload,
+          }).pipe(
+            Effect.provide(Layer.mergeAll(repo.layer, workflowLayer(row)))
+          );
+
+          assert.strictEqual(response.status, "running");
+          assert.strictEqual(resolveEntityMock.mock.calls.length, 0);
+          assert.deepInclude(repo.starts[0]?.execution, {
+            entityType: "appointment",
+            entityId: "appt_1",
+          });
+          assert.notProperty(repo.starts[0]?.execution ?? {}, "entityValue");
+        })
+    );
+
+    it.effect(
+      "refuses an ineligible manual run before pinning or opening an Execution",
+      () =>
+        Effect.gen(function* () {
+          resolveEntityMock.mockResolvedValue({ status: "cancelled" });
+          const repo = makeRepo();
+          const row = workflowRow({
+            graph: graphWithRules(guardedRules(["before-execution"])),
+          });
+
+          const response = yield* postWorkflowExecute("wf_1", {
+            eventName: appointmentCreated.name,
+            input: validPayload,
+          }).pipe(
+            Effect.provide(Layer.mergeAll(repo.layer, workflowLayer(row)))
+          );
+
+          assert.deepStrictEqual(response, {
+            status: "ignored",
+            runMode: "live",
+            reason: "entity_condition_not_met",
+          });
+          assert.deepStrictEqual(repo.starts, []);
+          assert.deepInclude(repo.audits[0]?.metadata, {
+            reason: "entity_condition_not_met",
+            entityType: "appointment",
+            checkpoint: "before-execution",
+          });
+        })
+    );
+
+    it.effect(
+      "treats a manual resolver rejection as an operational failure",
+      () =>
+        Effect.gen(function* () {
+          resolveEntityMock.mockRejectedValue(new Error("host unavailable"));
+          const repo = makeRepo();
+          const row = workflowRow({
+            graph: graphWithRules(guardedRules(["before-execution"])),
+          });
+
+          const exit = yield* Effect.exit(
+            postWorkflowExecute("wf_1", {
+              eventName: appointmentCreated.name,
+              input: validPayload,
+            }).pipe(
+              Effect.provide(Layer.mergeAll(repo.layer, workflowLayer(row)))
+            )
+          );
+
+          assert.strictEqual(exit._tag, "Failure");
+          assert.deepStrictEqual(repo.starts, []);
+          assert.deepStrictEqual(repo.audits, []);
+        })
     );
 
     // The entity space is shared with values a sender controls, so the fallback
@@ -455,6 +633,32 @@ describe("postWorkflowExecute", () => {
           ["run_ignored"]
         );
       })
+    );
+
+    it.effect(
+      "stores typed identity without resolving a paused guarded manual run",
+      () =>
+        Effect.gen(function* () {
+          const repo = makeRepo();
+          const row = workflowRow({
+            isPaused: true,
+            graph: graphWithRules(guardedRules(["before-execution"])),
+          });
+
+          const response = yield* postWorkflowExecute("wf_1", {
+            eventName: appointmentCreated.name,
+            input: validPayload,
+          }).pipe(
+            Effect.provide(Layer.mergeAll(repo.layer, workflowLayer(row)))
+          );
+
+          assert.strictEqual(response.status, "ignored");
+          assert.strictEqual(resolveEntityMock.mock.calls.length, 0);
+          assert.deepInclude(repo.terminals[0], {
+            entityType: "appointment",
+            entityId: "appt_1",
+          });
+        })
     );
 
     // The workflow's own checkbox declining, which the Refused Starts panel has
@@ -633,6 +837,34 @@ describe("postWorkflowExecute", () => {
           repo.starts[0]?.execution.workflowVersionId,
           snapshot?.versionId
         );
+      })
+    );
+
+    it.effect("applies Entity admission before pinning a Draft snapshot", () =>
+      Effect.gen(function* () {
+        resolveEntityMock.mockResolvedValue({ status: "cancelled" });
+        const repo = makeRepo();
+        const workflows = makeDraftRepo(
+          workflowRow({
+            mode: "test",
+            publishedVersionId: null,
+            graph: graphWithRules(guardedRules(["before-execution"])),
+          })
+        );
+
+        const response = yield* postWorkflowExecute("wf_1", {
+          graph: "draft",
+          eventName: appointmentCreated.name,
+          input: validPayload,
+        }).pipe(Effect.provide(Layer.mergeAll(repo.layer, workflows.layer)));
+
+        assert.deepStrictEqual(response, {
+          status: "ignored",
+          runMode: "test",
+          reason: "entity_condition_not_met",
+        });
+        assert.deepStrictEqual(workflows.snapshots, []);
+        assert.deepStrictEqual(repo.starts, []);
       })
     );
 

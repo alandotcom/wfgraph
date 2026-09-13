@@ -12,8 +12,8 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useReactFlow } from "@xyflow/react";
 import { useSetAtom, useStore } from "jotai";
-import { nanoid } from "nanoid";
 import { useCallback } from "react";
+import { generateId } from "@wfgraph/shared/utils/id";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import type { CanvasPosition } from "#src/lib/command-palette";
 import { repairNodeIntegration } from "#src/lib/node-integration";
@@ -70,7 +70,7 @@ export function useAddStep(): (request: AddStepRequest) => void {
       }
 
       const node: WorkflowNode = {
-        id: nanoid(),
+        id: generateId(),
         type: "action",
         position,
         data: {
