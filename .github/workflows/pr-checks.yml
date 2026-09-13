@@ -4,6 +4,39 @@ on:
   pull_request:
 
 jobs:
+  clock-experiment:
+    # Match the ARM64 image without a second layer of CPU emulation.
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          cache: true
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build isolated clock experiment VM
+        run: sh scripts/experiments/accelerated-time/vm/build.sh
+      - name: Compare baseline and accelerated guest clocks
+        run: pnpm run test:clock-experiment
+      - name: Upload clock experiment evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: clock-experiment
+          path: |
+            test-results/clock-experiment/**/*.log
+            test-results/clock-experiment/**/*.json
+          if-no-files-found: warn
+
   checks:
     runs-on: ubuntu-latest
 

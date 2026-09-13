@@ -46,6 +46,10 @@ logs, correctness results, host-observed intervals, and a comparison when both
 modes run. Console receipt times include output buffering and are approximate
 measurements. A correctness PASS does not itself establish a speedup.
 
+PR Checks runs both modes sequentially on an `ubuntu-24.04-arm` runner. The
+`clock-experiment` artifact contains the logs and JSON measurements, including
+failure evidence. CI checks correctness without requiring a minimum speedup.
+
 ## Limits
 
 This fixture tests the SDK, durable engine, and database directly. It is not the
