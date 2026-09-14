@@ -57,12 +57,12 @@ export async function checkScenarios<S>(input: {
 
   // fast-check interrupts its wait, not the trial that owns the live resources.
   await Promise.allSettled(activeTrials);
+  // A deadline can mark replay failed without observing a counterexample.
+  const reproduced =
+    replayResult.failed && replayResult.counterexample !== null;
   return {
-    details:
-      replayResult.failed && replayResult.counterexample !== null
-        ? replayResult
-        : initialResult,
-    reproduced: replayResult.failed,
+    details: reproduced ? replayResult : initialResult,
+    reproduced,
     interrupted: replayResult.interrupted,
   };
 }

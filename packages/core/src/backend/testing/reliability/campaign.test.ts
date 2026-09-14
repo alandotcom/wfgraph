@@ -23,6 +23,42 @@ test("a failure remains reportable when replay passes", async () => {
   expect(result.details.counterexamplePath).toBe("0");
 });
 
+test("a failing replay reports reproduction", async () => {
+  const result = await checkScenarios({
+    arbitrary: fc.constant("original"),
+    parameters: { seed: 12, numRuns: 1 },
+    execute: async () => {
+      throw new Error("repeatable");
+    },
+  });
+  expect(result.reproduced).toBe(true);
+  expect(result.interrupted).toBe(false);
+  expect(result.details.counterexample).toEqual(["original"]);
+});
+
+test("an interrupted replay that succeeds does not reproduce the failure", async () => {
+  const original = new Error("intermittent");
+  let attempts = 0;
+  let replayFinished = false;
+  const result = await checkScenarios({
+    arbitrary: fc.constant("original"),
+    parameters: { seed: 12, numRuns: 1 },
+    shrinkTimeMs: 5,
+    execute: async () => {
+      if (++attempts === 1) throw original;
+      await delay(30);
+      replayFinished = true;
+    },
+  });
+  expect(attempts).toBe(2);
+  expect(replayFinished).toBe(true);
+  expect(result.interrupted).toBe(true);
+  expect(result.reproduced).toBe(false);
+  expect(result.details.failed).toBe(true);
+  expect(result.details.errorInstance).toBe(original);
+  expect(result.details.counterexample).toEqual(["original"]);
+});
+
 test("interrupted shrinking waits for the active trial cleanup", async () => {
   let attempts = 0;
   let closed = 0;
