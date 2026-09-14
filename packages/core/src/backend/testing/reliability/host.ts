@@ -13,7 +13,10 @@ import type { WfGraphPersistence } from "#src/backend/persistence/types";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import { fixtureExtensions } from "#src/backend/testing/reliability/fixtures";
 import { boundary } from "#src/backend/testing/reliability/control";
-import { startInngest } from "#src/backend/testing/reliability/inngest";
+import {
+  InngestStartupFailure,
+  startInngest,
+} from "#src/backend/testing/reliability/inngest";
 
 export class HostSetupFailure extends Error {
   constructor(
@@ -158,6 +161,7 @@ export async function createHost(backend: Backend): Promise<ReliabilityHost> {
       },
     };
   } catch (error) {
+    if (error instanceof InngestStartupFailure) runtimeLogs = error.logs;
     try {
       await close();
     } catch (cleanupError) {

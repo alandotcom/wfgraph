@@ -50,31 +50,57 @@ type InngestRunner = {
   register: (sdkUrl: string) => Promise<void>;
   send: (name: string, data: JsonObject, id?: string) => Promise<void>;
 };
-export async function startInngest(directory: string): Promise<InngestRunner> {
+export class InngestStartupFailure extends Error {
+  constructor(
+    cause: unknown,
+    readonly logs: string[]
+  ) {
+    super(`Inngest startup failed: ${String(cause)}`, { cause });
+  }
+}
+
+type StartupOptions = {
+  binary?: string | undefined;
+  timeoutMs?: number | undefined;
+};
+
+export async function startInngest(
+  directory: string,
+  options: StartupOptions = {}
+): Promise<InngestRunner> {
+  const previousLogs: string[] = [];
   // The CLI cannot inherit our listening sockets. Another worker or an outgoing
   // connection can take a port between releasing it and the CLI binding it.
   for (let attempt = 1; ; attempt++) {
+    const logs: string[] = [`Inngest startup attempt ${attempt}\n`];
     try {
       // Each failed process must stop before another can use its data directory.
       // eslint-disable-next-line no-await-in-loop
-      return await startInngestAttempt(directory);
+      const runner = await startInngestAttempt(directory, logs, options);
+      runner.logs.unshift(...previousLogs);
+      return runner;
     } catch (error) {
+      previousLogs.push(...logs);
       if (
         attempt >= 3 ||
         !(error instanceof Error) ||
         !error.message.includes("bind: address already in use")
       ) {
-        throw error;
+        throw new InngestStartupFailure(error, previousLogs);
       }
     }
   }
 }
 
-async function startInngestAttempt(directory: string): Promise<InngestRunner> {
+async function startInngestAttempt(
+  directory: string,
+  logs: string[],
+  options: StartupOptions
+): Promise<InngestRunner> {
   const ports = await freePorts();
   const url = `http://127.0.0.1:${ports[0]}`;
   const child = spawn(
-    resolve("node_modules/.bin/inngest"),
+    options.binary ?? resolve("node_modules/.bin/inngest"),
     [
       "dev",
       "--no-discovery",
@@ -97,23 +123,22 @@ async function startInngestAttempt(directory: string): Promise<InngestRunner> {
       stdio: ["ignore", "pipe", "pipe"],
     }
   );
-  const logs: string[] = [];
   child.stdout.on("data", (value) => logs.push(String(value)));
   child.stderr.on("data", (value) => logs.push(String(value)));
   let spawnError: Error | undefined;
   child.on("error", (error) => {
     spawnError = error;
   });
-  const exited = new Promise<void>((done) => {
-    child.once("exit", () => done());
-    child.once("error", () => done());
+  const closed = new Promise<void>((done) => {
+    // close follows exit/error and drains the process's final diagnostics.
+    child.once("close", () => done());
   });
   const close = async () => {
     if (child.exitCode === null && child.signalCode === null)
       child.kill("SIGTERM");
     const timer = setTimeout(() => child.kill("SIGKILL"), 5000);
     try {
-      await exited;
+      await closed;
     } finally {
       clearTimeout(timer);
     }
@@ -132,7 +157,8 @@ async function startInngestAttempt(directory: string): Promise<InngestRunner> {
           return false;
         }
       },
-      Boolean
+      Boolean,
+      options.timeoutMs
     );
   } catch (error) {
     await close();
