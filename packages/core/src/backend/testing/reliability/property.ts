@@ -63,11 +63,7 @@ async function runScenario<S>(input: {
         } catch (error) {
           // Read persisted state before cleanup closes the database.
           input.evidence.set(scenarioKey, {
-            error: String(error),
             persisted: await captureSnapshot(resource),
-            ledger: resource.ledger,
-            applicationLogs: resource.logs,
-            runtimeLogs: resource.runtime.logs,
           });
           throw error;
         }

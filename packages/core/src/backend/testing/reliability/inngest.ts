@@ -183,45 +183,13 @@ async function startInngestAttempt(
         "query($id: ID!) { functionRun(query: {functionRunId: $id}) { id status history { type stepName } } }",
         { id: runId }
       );
-      return Schema.decodeUnknownSync(
-        Schema.Struct({
-          data: Schema.Struct({
-            functionRun: Schema.NullOr(
-              Schema.Struct({
-                id: Schema.String,
-                status: Schema.NullOr(Schema.String),
-                history: Schema.Array(
-                  Schema.Struct({
-                    type: Schema.String,
-                    stepName: Schema.NullOr(Schema.String),
-                  })
-                ),
-              })
-            ),
-          }),
-        })
-      )(body).data.functionRun;
+      return decodeRunState(body).data.functionRun;
     },
     async allRuns() {
       const body = await query(
         'query { runs(first: 100, orderBy: [{field: QUEUED_AT, direction: DESC}], filter: {from: "2020-01-01T00:00:00Z"}) { edges { node { id status } } } }'
       );
-      return Schema.decodeUnknownSync(
-        Schema.Struct({
-          data: Schema.Struct({
-            runs: Schema.Struct({
-              edges: Schema.Array(
-                Schema.Struct({
-                  node: Schema.Struct({
-                    id: Schema.String,
-                    status: Schema.String,
-                  }),
-                })
-              ),
-            }),
-          }),
-        })
-      )(body).data.runs.edges.map((edge) => edge.node);
+      return decodeAllRuns(body).data.runs.edges.map((edge) => edge.node);
     },
     async register(sdkUrl: string) {
       const response = await fetch(`${url}/v0/gql`, {
@@ -256,3 +224,39 @@ async function startInngestAttempt(
     },
   };
 }
+
+const decodeRunState = Schema.decodeUnknownSync(
+  Schema.Struct({
+    data: Schema.Struct({
+      functionRun: Schema.NullOr(
+        Schema.Struct({
+          id: Schema.String,
+          status: Schema.NullOr(Schema.String),
+          history: Schema.Array(
+            Schema.Struct({
+              type: Schema.String,
+              stepName: Schema.NullOr(Schema.String),
+            })
+          ),
+        })
+      ),
+    }),
+  })
+);
+
+const decodeAllRuns = Schema.decodeUnknownSync(
+  Schema.Struct({
+    data: Schema.Struct({
+      runs: Schema.Struct({
+        edges: Schema.Array(
+          Schema.Struct({
+            node: Schema.Struct({
+              id: Schema.String,
+              status: Schema.String,
+            }),
+          })
+        ),
+      }),
+    }),
+  })
+);

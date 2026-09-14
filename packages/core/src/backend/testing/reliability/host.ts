@@ -185,28 +185,26 @@ function createPersistence(
 ): WfGraphPersistence {
   if (backend === "sqlite")
     return wfSqlite({ filename: join(directory, "workflow.sqlite") });
-  else {
-    const url = process.env.WFGRAPH_TEST_DATABASE_URL;
-    if (!url)
-      throw new Error(
-        "WFGRAPH_TEST_DATABASE_URL is required for reliability PostgreSQL tests"
-      );
-    const schema = `wfgraph_test_reliability_${crypto.randomUUID().replaceAll("-", "")}`;
-    cleanup.push(async () => {
-      const client = postgres(url, { max: 1, onnotice: () => undefined });
-      try {
-        await client.unsafe(`drop schema if exists "${schema}" cascade`);
-      } finally {
-        await client.end();
-      }
-    });
-    return wfPostgres({
-      url,
-      schema,
-      maxConnections: 5,
-      migrations: { runOnStartup: true },
-    });
-  }
+  const url = process.env.WFGRAPH_TEST_DATABASE_URL;
+  if (!url)
+    throw new Error(
+      "WFGRAPH_TEST_DATABASE_URL is required for reliability PostgreSQL tests"
+    );
+  const schema = `wfgraph_test_reliability_${crypto.randomUUID().replaceAll("-", "")}`;
+  cleanup.push(async () => {
+    const client = postgres(url, { max: 1, onnotice: () => undefined });
+    try {
+      await client.unsafe(`drop schema if exists "${schema}" cascade`);
+    } finally {
+      await client.end();
+    }
+  });
+  return wfPostgres({
+    url,
+    schema,
+    maxConnections: 5,
+    migrations: { runOnStartup: true },
+  });
 }
 
 function injectRepositoryFaults(
