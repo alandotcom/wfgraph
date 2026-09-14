@@ -1,5 +1,6 @@
 import { expect } from "vitest";
 import { Schema } from "effect";
+import type { JsonObject } from "@wfgraph/shared/types/json";
 import * as fc from "fast-check";
 import {
   admissionGraph,
@@ -14,13 +15,15 @@ import { reliabilityProperty } from "#src/backend/testing/reliability/property";
 // A Start creates an Execution, but the caller loses the successful response.
 // Change the current workflow or Entity before Inngest retries that same Start.
 // The retry must finish the original Execution and run its original action once.
-const changeBeforeRetry = fc.constantFrom(
+const changesBeforeRetry = [
   "publish",
   "remove-start",
   "ineligible",
   "unavailable",
-  "pause"
-);
+  "pause",
+] as const;
+type ChangeBeforeRetry = (typeof changesBeforeRetry)[number];
+const changeBeforeRetry = fc.constantFrom(...changesBeforeRetry);
 const admissionScenarios = fc.record({
   changesBeforeRetry: fc.array(changeBeforeRetry, {
     minLength: 1,
@@ -32,13 +35,11 @@ const admissionScenarios = fc.record({
 reliabilityProperty(
   "committed admission survives retry",
   admissionScenarios,
-  ["publish", "remove-start", "ineligible", "unavailable", "pause"].map(
-    (change) => ({
-      changesBeforeRetry: change === "publish" ? [change, change] : [change],
-      repeatedStartDeliveries: 2,
-      originalActionMarker: "original",
-    })
-  ),
+  changesBeforeRetry.map((change) => ({
+    changesBeforeRetry: change === "publish" ? [change, change] : [change],
+    repeatedStartDeliveries: 2,
+    originalActionMarker: "original",
+  })),
   async (host, scenario) => {
     // Pause after admission commits. Releasing this gate will fail the response.
     const workflowId = await host.publish(
@@ -101,29 +102,45 @@ reliabilityProperty(
 async function applyChange(
   host: ReliabilityHost,
   workflowId: string,
-  change: string,
+  change: ChangeBeforeRetry,
   replacementMarker: string
 ) {
-  if (change === "pause") {
-    await host.rpc("bulkLifecycle", {
-      workflowIds: [workflowId],
-      action: "pause",
-    });
-    return;
+  switch (change) {
+    case "pause":
+      await host.rpc("bulkLifecycle", {
+        workflowIds: [workflowId],
+        action: "pause",
+      });
+      return;
+    case "ineligible":
+      host.state.active = false;
+      return;
+    case "unavailable":
+      host.state.unavailable = true;
+      return;
+    case "publish":
+      return publishReplacement(
+        host,
+        workflowId,
+        admissionGraph(replacementMarker)
+      );
+    case "remove-start":
+      return publishReplacement(
+        host,
+        workflowId,
+        admissionGraphWithoutStart(replacementMarker)
+      );
+    default:
+      change satisfies never;
+      throw new Error("Unknown admission scenario change");
   }
-  if (change === "ineligible") {
-    host.state.active = false;
-    return;
-  }
-  if (change === "unavailable") {
-    host.state.unavailable = true;
-    return;
-  }
+}
 
-  const graph =
-    change === "remove-start"
-      ? admissionGraphWithoutStart(replacementMarker)
-      : admissionGraph(replacementMarker);
+async function publishReplacement(
+  host: ReliabilityHost,
+  workflowId: string,
+  graph: JsonObject
+) {
   const current = Schema.decodeUnknownSync(
     Schema.Struct({
       json: Schema.Struct({
