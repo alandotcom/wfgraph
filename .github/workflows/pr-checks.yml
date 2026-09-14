@@ -131,3 +131,47 @@ jobs:
           # a machine without one. Without this variable, the suite could report
           # green having run nothing, which is the failure it exists to catch.
           WFGRAPH_REQUIRE_POSTGRES: "1"
+
+  reliability:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: workflow_builder
+          POSTGRES_USER: workflow
+          POSTGRES_PASSWORD: workflow
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U workflow -d workflow_builder"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          cache: true
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Exercise real workflow execution on both databases
+        run: pnpm run test:reliability
+        env:
+          WFGRAPH_TEST_DATABASE_URL: postgresql://workflow:workflow@localhost:5432/workflow_builder
+          WFGRAPH_RELIABILITY_BACKEND: all
+          WFGRAPH_RELIABILITY_RUNS: "5"
+      - name: Upload reliability failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: reliability-failures
+          path: test-results/reliability/
+          if-no-files-found: ignore
