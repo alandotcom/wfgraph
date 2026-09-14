@@ -60,12 +60,8 @@ const config: KnipConfig = {
         // Named in the concurrently command line scripts/dev.ts builds, which
         // is a string knip cannot follow:
         "scripts/dev-client.ts",
-        // Bundled into the isolated clock experiment guest by full-suite.ts:
-        "scripts/experiments/accelerated-time/guest-suite.ts",
       ],
       project: ["*.ts", "scripts/**/*.ts"],
-      // BusyBox supplies this diagnostic command inside the Linux guest.
-      ignoreBinaries: ["dmesg"],
 
       ignoreDependencies: [
         // @effect/tsgo embeds the Effect language-service plugin into its
@@ -138,11 +134,7 @@ const config: KnipConfig = {
       // The SQLite schema is an input to drizzle-kit rather than runtime code.
       // Its config is registered above, but knip's Drizzle plugin does not carry
       // a schema reached from a second config across workspace boundaries.
-      entry: [
-        "src/backend/persistence/sqlite/schema.ts",
-        // Bundled into the isolated QEMU guest by test:clock-experiment.
-        "src/backend/testing/accelerated-time/probe.ts",
-      ],
+      entry: ["src/backend/persistence/sqlite/schema.ts"],
       project: ["src/**/*.{ts,tsx}"],
 
       ignoreDependencies: [

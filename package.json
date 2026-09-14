@@ -31,8 +31,7 @@
     "db:generate:sqlite": "pnpm exec drizzle-kit generate --config packages/core/drizzle-sqlite.config.ts && tsx scripts/validate-sqlite-migrations.ts",
     "db:migrate": "tsx scripts/migrate.ts",
     "release:version": "changeset version && pnpm install --lockfile-only",
-    "release:publish": "pnpm run build && changeset publish",
-    "test:clock-experiment": "tsx scripts/experiments/accelerated-time/run.ts"
+    "release:publish": "pnpm run build && changeset publish"
   },
   "dependencies": {
     "dotenv": "^17.4.2"

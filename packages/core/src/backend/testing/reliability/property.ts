@@ -107,11 +107,9 @@ async function writeFailureArtifact(input: {
       {
         name,
         backend,
-        revision:
-          process.env.WFGRAPH_RELIABILITY_REVISION ??
-          execFileSync("git", ["rev-parse", "HEAD"], {
-            encoding: "utf8",
-          }).trim(),
+        revision: execFileSync("git", ["rev-parse", "HEAD"], {
+          encoding: "utf8",
+        }).trim(),
         seed: details.seed,
         path: details.counterexamplePath,
         counterexample: details.counterexample,
