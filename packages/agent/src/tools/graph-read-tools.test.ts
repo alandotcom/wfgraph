@@ -136,6 +136,48 @@ describe("read_workflow", () => {
       });
     })
   );
+
+  it.effect("reports each node's Group and each Group's members", () =>
+    Effect.gen(function* () {
+      const frame: WorkflowNode = {
+        id: "lookups",
+        position: { x: 0, y: 0 },
+        type: "group",
+        data: { label: "Lookups", type: "group" },
+      };
+      const members = ["a", "b"].map((id): WorkflowNode => ({
+        ...slackNode,
+        id,
+        parentId: frame.id,
+        data: { ...slackNode.data, label: id },
+      }));
+      const { tools } = yield* agentToolsFor({
+        nodes: [lifecycle, frame, ...members, slackNode],
+        edges: [],
+        catalog,
+      });
+
+      const topology = yield* tools.read_workflow({});
+      const detail = yield* tools.read_nodes({ nodeIds: ["lookups", "a"] });
+
+      expect(
+        topology.nodes.map(({ id, label, groupId, memberIds }) => ({
+          id,
+          label,
+          groupId,
+          memberIds,
+        }))
+      ).toEqual([
+        { id: "entry", label: "Lifecycle" },
+        { id: "lookups", label: "Lookups", memberIds: ["a", "b"] },
+        { id: "a", label: "a", groupId: "lookups" },
+        { id: "b", label: "b", groupId: "lookups" },
+        { id: "notify", label: "Notify the team" },
+      ]);
+      expect(detail.nodes[0]).toMatchObject({ memberIds: ["a", "b"] });
+      expect(detail.nodes[1]).toMatchObject({ groupId: "lookups" });
+    })
+  );
 });
 
 describe("read_nodes", () => {

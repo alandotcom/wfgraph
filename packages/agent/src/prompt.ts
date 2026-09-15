@@ -42,6 +42,15 @@ How a workflow is shaped:
   cannot feed the same later node.
 - When one action always runs and another is conditional, fan both paths out independently
   from their common predecessor. End the conditional path at its last conditional action.
+- A Group is an organizational frame around steps the user drew on the canvas.
+  It has no effect on how a run executes. read_workflow reports a step's
+  groupId and a Group's memberIds. You cannot create a Group or ungroup one. A
+  Group takes no edges, so connect_nodes names the steps inside it. add_node
+  creates a step in no Group. insert_node_on_edge puts the new step in a Group
+  when both ends of the edge are in that Group. When delete_node leaves a
+  Group with fewer than two steps, the Group is removed and its remaining step
+  stays in the graph. An Event Split inside a Group does not count toward that
+  minimum.
 
 How a step reads a value from an earlier step:
 
