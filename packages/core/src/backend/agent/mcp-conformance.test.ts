@@ -381,6 +381,47 @@ describe("native and MCP tool conformance", () => {
     });
   }
 
+  it("dissolves a Group left with one step in the stored MCP write", async () => {
+    const frame: WorkflowNode = {
+      id: "scoring",
+      position: { x: 0, y: 160 },
+      type: "group",
+      data: { label: "Scoring", type: "group" },
+    };
+    const grouped: ConformanceCase = {
+      name: "delete_node",
+      arguments: { nodeId: "condition" },
+      document: {
+        nodes: [
+          frame,
+          ...nodes.map((node) =>
+            node.id === "score" || node.id === "condition"
+              ? { ...node, parentId: frame.id }
+              : node
+          ),
+        ],
+        edges,
+      },
+    };
+
+    const direct = await runCanonicalTool(grouped);
+    const mcp = await runMcpTool(grouped);
+
+    expect(mcp.isFailure).toBe(false);
+    expect(mcp.result).toEqual(direct.result);
+    expect(mcp.result.summary).toContain('Group "Scoring"');
+    expect(mcp.graph).toEqual(direct.graph);
+    expect(mcp.graph.nodes.map((node) => node.id)).toEqual([
+      "entry",
+      "score",
+      "wait",
+      "notify",
+    ]);
+    expect(mcp.graph.nodes.some((node) => node.parentId !== undefined)).toBe(
+      false
+    );
+  });
+
   for (const testCase of refusalCases) {
     it(`returns the same refusal without changing the graph for ${testCase.name}`, async () => {
       const initial = documentFor(testCase);
