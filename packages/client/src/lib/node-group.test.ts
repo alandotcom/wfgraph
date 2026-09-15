@@ -13,7 +13,10 @@ import {
   refuseDelete,
   ungroupNode,
 } from "#src/lib/node-group";
-import { orderGroupParentsFirst } from "@wfgraph/shared/graph/node-group";
+import {
+  fanOutStoreEdges,
+  orderGroupParentsFirst,
+} from "@wfgraph/shared/graph/node-group";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
@@ -92,7 +95,6 @@ function framedNodes(): WorkflowNode[] {
     selectedIds: new Set(["a", "b", "c"]),
     catalog: emptyCatalog,
     createId: () => "g1",
-    createEdgeId: () => "in-b",
   });
   if (!grouped) {
     throw new Error("expected the parallel fixture to group");
@@ -112,7 +114,6 @@ describe("groupSelection", () => {
       selectedIds: new Set(["a", "b", "c"]),
       catalog: emptyCatalog,
       createId: () => "g1",
-      createEdgeId: () => "in-b",
     });
     if (!first) {
       throw new Error("expected the parallel fixture to group");
@@ -145,7 +146,6 @@ describe("groupSelection", () => {
       selectedIds: new Set(["a", "b", "c"]),
       catalog: emptyCatalog,
       createId: () => "g1",
-      createEdgeId: () => "in-b",
     });
     const second = groupSelection({
       nodes: [
@@ -185,11 +185,7 @@ describe("groupSelection", () => {
     expect(grouped).not.toBeNull();
     const frame = grouped?.nodes.find((node) => node.id === "g1");
     const children = grouped?.nodes.filter((node) => node.parentId === "g1");
-    expect(frame?.data.config).toEqual({
-      entryNodeIds: ["a"],
-      exitNodeIds: ["c"],
-      outletHandle: "true",
-    });
+    expect(frame?.data).toEqual({ label: "Group", type: "group" });
     expect(frame?.position).toEqual({ x: 100, y: 200 });
     expect(children?.map((node) => node.id)).toEqual(["a", "b", "c"]);
     expect(children?.every((node) => node.extent === "parent")).toBe(true);
@@ -202,14 +198,13 @@ describe("groupSelection", () => {
     expect(restored.every((node) => !node.parentId)).toBe(true);
   });
 
-  it("places parallel lookups side by side and fans incoming onto both", () => {
+  it("places parallel lookups side by side and leaves the stored edges alone", () => {
     const grouped = groupSelection({
       nodes: parallelNodes(),
       edges: parallelEdges(),
       selectedIds: new Set(["a", "b", "c"]),
       catalog: emptyCatalog,
       createId: () => "g1",
-      createEdgeId: () => "in-b",
     });
 
     expect(grouped).not.toBeNull();
@@ -217,11 +212,7 @@ describe("groupSelection", () => {
     const childA = grouped?.nodes.find((node) => node.id === "a");
     const childB = grouped?.nodes.find((node) => node.id === "b");
     const childC = grouped?.nodes.find((node) => node.id === "c");
-    expect(frame?.data.config).toEqual({
-      entryNodeIds: ["a", "b"],
-      exitNodeIds: ["c"],
-      outletHandle: "true",
-    });
+    expect(frame?.data).toEqual({ label: "Group", type: "group" });
     // Row 0 fills the frame: `GROUP_PAD`, then one card and one gap over.
     expect(childA?.position.x).toBe(12);
     expect(childB?.position.x).toBe(224);
@@ -231,9 +222,7 @@ describe("groupSelection", () => {
     // the centre of the row above and the interior edges paint as a fan-in.
     expect(childC?.position.x).toBe(118);
     expect(childC?.position.y).toBe(144);
-    expect(
-      grouped?.edges.map((item) => `${item.source}->${item.target}`)
-    ).toEqual(["life->a", "a->c", "b->c", "life->b"]);
+    expect(grouped?.edges).toEqual(parallelEdges());
   });
 
   it("groups parallel terminal lookups side by side", () => {
@@ -252,10 +241,7 @@ describe("groupSelection", () => {
     const frame = grouped?.nodes.find((node) => node.id === "g1");
     const childA = grouped?.nodes.find((node) => node.id === "a");
     const childB = grouped?.nodes.find((node) => node.id === "b");
-    expect(frame?.data.config).toEqual({
-      entryNodeIds: ["a", "b"],
-      exitNodeIds: ["a", "b"],
-    });
+    expect(frame?.data).toEqual({ label: "Group", type: "group" });
     expect(childA?.position.y).toBe(childB?.position.y);
     expect(childA?.position.x).toBeLessThan(childB?.position.x ?? 0);
   });
@@ -287,6 +273,66 @@ describe("groupSelection", () => {
   });
 });
 
+/**
+ * What the engine walks: the stored edges, and each executable node's id and
+ * data. Membership and geometry are editor organization and stay out of it.
+ */
+function traversalGraph(nodes: readonly WorkflowNode[], edges: WorkflowEdge[]) {
+  return {
+    nodes: nodes
+      .filter((node) => node.data.type !== "group")
+      .map((node) => ({ id: node.id, data: node.data })),
+    edges,
+  };
+}
+
+describe("grouping and the engine traversal graph", () => {
+  it("groups and ungroups without changing the stored edges or executable nodes", () => {
+    const nodes = parallelNodes().map((node) => ({ ...node, selected: false }));
+    const edges = parallelEdges();
+    const before = traversalGraph(nodes, edges);
+
+    const grouped = groupSelection({
+      nodes,
+      edges,
+      selectedIds: new Set(["a", "b", "c"]),
+      catalog: emptyCatalog,
+      createId: () => "g1",
+    });
+    if (!grouped) {
+      throw new Error("expected the parallel fixture to group");
+    }
+    expect(traversalGraph(grouped.nodes, grouped.edges)).toEqual(before);
+
+    const freed = ungroupNode(grouped.nodes, "g1");
+    expect(traversalGraph(freed, grouped.edges)).toEqual(before);
+  });
+});
+
+describe("connecting onto a grouped frame", () => {
+  // Grouping adds no edge, so `b` keeps no incoming edge while `a` is entered
+  // from the Lifecycle Node. The frame's inlet stands for both.
+  it("wires every member an edge enters and every member no edge enters", () => {
+    const nodes = [
+      ...framedNodes(),
+      action("x", "fountain/get-user", { x: 0, y: 0 }),
+    ];
+
+    expect(
+      fanOutStoreEdges({
+        nodes,
+        edges: parallelEdges(),
+        sourceId: "x",
+        targetId: "g1",
+        sourceHandle: undefined,
+      })
+    ).toEqual([
+      { source: "x", target: "a", sourceHandle: undefined },
+      { source: "x", target: "b", sourceHandle: undefined },
+    ]);
+  });
+});
+
 describe("refuseDelete", () => {
   const frame: WorkflowNode = {
     id: "g1",
@@ -295,7 +341,6 @@ describe("refuseDelete", () => {
     data: {
       label: "Group",
       type: "group",
-      config: { entryNodeIds: ["a"], exitNodeIds: ["a"] },
     },
   };
   const member: WorkflowNode = {

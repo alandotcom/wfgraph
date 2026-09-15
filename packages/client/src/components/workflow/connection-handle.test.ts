@@ -247,30 +247,54 @@ describe("normalizeSourceHandleForConnection - Event Split", () => {
 });
 
 describe("group outlet handle", () => {
-  it("uses the handle baked into the Group, not a graph scan", () => {
-    const group: WorkflowNode = {
-      id: "g",
-      type: "group",
-      position: { x: 0, y: 0 },
-      data: {
-        label: "Group",
-        type: "group",
-        config: {
-          entryNodeIds: ["a"],
-          exitNodeIds: ["c"],
-          outletHandle: "true",
-        },
-      },
-    };
+  const group: WorkflowNode = {
+    id: "g",
+    type: "group",
+    position: { x: 0, y: 0 },
+    data: { label: "Group", type: "group" },
+  };
+  const lookup: WorkflowNode = {
+    id: "a",
+    parentId: "g",
+    position: { x: 0, y: 0 },
+    data: {
+      label: "Lookup",
+      type: "action",
+      config: { actionType: "fountain/get-user" },
+    },
+  };
+  const condition: WorkflowNode = {
+    id: "c",
+    parentId: "g",
+    position: { x: 0, y: 0 },
+    data: {
+      label: "Condition",
+      type: "action",
+      config: { actionType: BUILT_IN_ACTION_IDS.condition },
+    },
+  };
 
+  it("derives True from a Condition the Group exits through", () => {
     expect(
       normalizeSourceHandleForConnection({
-        nodes: [group],
-        edges: [],
+        nodes: [group, lookup, condition],
+        edges: [{ id: "ac", source: "a", target: "c" }],
         sourceNodeId: "g",
         sourceHandle: null,
         catalog: emptyCatalog,
       })
     ).toBe("true");
+  });
+
+  it("names no handle for a Group that exits through a lookup", () => {
+    expect(
+      normalizeSourceHandleForConnection({
+        nodes: [group, lookup, { ...lookup, id: "b" }],
+        edges: [{ id: "ab", source: "a", target: "b" }],
+        sourceNodeId: "g",
+        sourceHandle: null,
+        catalog: emptyCatalog,
+      })
+    ).toBeNull();
   });
 });

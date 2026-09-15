@@ -1,6 +1,7 @@
 /**
  * Group mutations on the canvas graph: wrap a selection, lift it back out,
- * connect through a frame (fan-out onto entries), and delete a painted inlet.
+ * connect through a frame (fan-out onto its derived entries), and delete a
+ * painted inlet.
  *
  * Graph cells stay in workflow-graph-cells; this file is the operations.
  */
@@ -15,8 +16,8 @@ import {
   fanOutStoreEdges,
   fanOutStoreEdgeIds,
   groupOutletHandle,
-  isGroupNode,
 } from "@wfgraph/shared/graph/node-group";
+import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowEdge } from "#src/lib/workflow-graph-types";
 import {
@@ -142,9 +143,9 @@ export const connectNodesAtom = atom(null, (get, set, edge: WorkflowEdge) => {
   }
 
   const nodes = get(nodesStateAtom);
-  const sourceNode = nodes.find((node) => node.id === edge.source);
-  const sourceHandle = groupOutletHandle(sourceNode) ?? edge.sourceHandle;
   const currentEdges = get(edgesStateAtom);
+  const sourceHandle =
+    groupOutletHandle(nodes, currentEdges, edge.source) ?? edge.sourceHandle;
   const additions = fanOutStoreEdges({
     nodes,
     edges: currentEdges,

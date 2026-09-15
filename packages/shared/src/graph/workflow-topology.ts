@@ -3,6 +3,10 @@ import {
   normalizeConditionBranch,
 } from "#src/conditions/condition-branch";
 import { andJoinRefusalReason } from "#src/graph/and-join";
+import {
+  groupStructureRefusalReason,
+  nodeLabel,
+} from "#src/graph/group-structure";
 import type { WorkflowEdge, WorkflowNode } from "#src/graph/types";
 import { upstreamNodeIds } from "#src/graph/upstream-nodes";
 import { isLifecycleOutlet } from "#src/lifecycle/lifecycle-outlets";
@@ -15,10 +19,6 @@ function hasCycle(edges: readonly WorkflowEdge[]): boolean {
   return edges.some((edge) =>
     upstreamNodeIds(edge.source, edges).has(edge.target)
   );
-}
-
-function nodeLabel(node: WorkflowNode): string {
-  return node.data.label?.trim() || node.id;
 }
 
 function conditionBranchRefusal(input: {
@@ -124,6 +124,7 @@ export function workflowTopologyRefusalReason(input: {
   }
 
   return (
+    groupStructureRefusalReason(input) ??
     conditionBranchRefusal(input) ??
     lifecycleOutletRefusal(input) ??
     andJoinRefusalReason(input)

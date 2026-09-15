@@ -11,10 +11,7 @@ import {
   mapTemplateTokens,
 } from "@wfgraph/shared/graph/node-references";
 import { generateId } from "@wfgraph/shared/utils/id";
-import {
-  expandGroupCopyIds,
-  isGroupNode,
-} from "@wfgraph/shared/graph/node-group";
+import { expandGroupCopyIds } from "@wfgraph/shared/graph/node-group";
 import {
   toEditorEdge,
   toEditorNode,
@@ -134,11 +131,7 @@ export function cloneSelection(
       dragging: false,
       data: {
         ...node.data,
-        config: remapGroupEndpoints(
-          remapConfig(node.data.config, idMap),
-          idMap,
-          node
-        ),
+        config: remapConfig(node.data.config, idMap),
       },
     };
     if (nextParentId !== undefined) {
@@ -196,35 +189,6 @@ function snapshotEdge(edge: WorkflowEdge): WorkflowEdge {
     ...toEditorEdge(toPersistedEdge(edge)),
     selected: false,
   };
-}
-
-function remapGroupEndpoints(
-  config: Record<string, unknown> | undefined,
-  idMap: ReadonlyMap<string, string>,
-  node: WorkflowNode
-): Record<string, unknown> | undefined {
-  if (!config || !isGroupNode(node)) {
-    return config;
-  }
-
-  const next = { ...config };
-  const entryIds = Array.isArray(config.entryNodeIds)
-    ? config.entryNodeIds
-        .map((id) => (typeof id === "string" ? idMap.get(id) : undefined))
-        .filter((id): id is string => typeof id === "string")
-    : [];
-  const exitIds = Array.isArray(config.exitNodeIds)
-    ? config.exitNodeIds
-        .map((id) => (typeof id === "string" ? idMap.get(id) : undefined))
-        .filter((id): id is string => typeof id === "string")
-    : [];
-  if (entryIds.length > 0) {
-    next.entryNodeIds = entryIds;
-  }
-  if (exitIds.length > 0) {
-    next.exitNodeIds = exitIds;
-  }
-  return next;
 }
 
 function remapConfig(

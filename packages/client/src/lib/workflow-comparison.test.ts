@@ -107,7 +107,6 @@ describe("buildComparisonDisplayGraph", () => {
       data: {
         label: "Group",
         type: "group",
-        config: { entryNodeIds: [], exitNodeIds: [] },
       },
     };
     const child = { ...node("removed", { x: 20, y: 30 }), parentId: "group" };
@@ -138,7 +137,6 @@ describe("buildComparisonDisplayGraph", () => {
       data: {
         label: "Group",
         type: "group",
-        config: { entryNodeIds: ["child"], exitNodeIds: ["child"] },
       },
     };
     const child = { ...node("child", { x: 20, y: 30 }), parentId: "group" };

@@ -174,15 +174,25 @@ const workflowAddNodeDataSchema = Schema.StructWithRest(
   unknownRest
 );
 
-const workflowGroupConfigSchema = Schema.Struct({
-  entryNodeIds: Schema.optional(listOf(NonEmptyTrimmedString)),
-  exitNodeIds: Schema.optional(listOf(NonEmptyTrimmedString)),
-  // Baked at nest time so GroupNode can paint its one outlet without
-  // scanning the graph for the exit Condition.
-  outletHandle: Schema.optional(Schema.Literal("true")),
-}).annotate({
-  message: "Group config must be an object",
-});
+/**
+ * A Group frame holds no configuration keys. Membership is each member's
+ * `parentId`, and the boundary is derived from the stored edges
+ * (`group-boundary.ts`). The schema is a string-keyed record, which admits any
+ * object, and its check refuses every key the object holds, `entryNodeIds`,
+ * `exitNodeIds`, and `outletHandle` included. The check is needed because Effect
+ * skips the excess-property check for a `Schema.Struct` with no fields, so an
+ * empty Struct accepts extra keys even under `rejectUnknownKeys`.
+ */
+const workflowGroupConfigSchema = Schema.Record(Schema.String, Schema.Unknown)
+  .annotate({ message: "Group config must be an object" })
+  .check(
+    Schema.makeFilter((config: Record<string, unknown>) =>
+      Object.keys(config).map((key) => ({
+        path: [key],
+        issue: "Group config holds no keys",
+      }))
+    )
+  );
 
 const workflowGroupNodeDataSchema = Schema.StructWithRest(
   Schema.Struct({
