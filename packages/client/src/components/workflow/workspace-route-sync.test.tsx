@@ -44,7 +44,10 @@ import type { WorkflowRouteSearch } from "#src/lib/workflow-navigation-state";
 import { authorizedWorkflowSearch } from "#src/lib/workflow-route-state";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { selectedExecutionIdAtom } from "#src/lib/workflow-ui-store";
-import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
+import {
+  activeDesktopRevealLevelAtom,
+  activeSelectionAtom,
+} from "#src/lib/workflow-workspace-navigation";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 
 const draftNodes: WorkflowNode[] = [
@@ -160,6 +163,9 @@ function Probe() {
       </button>
       <button onClick={() => goToStep("draft_step")} type="button">
         Go to step
+      </button>
+      <button onClick={() => goToStep("draft_step", "to")} type="button">
+        Go to field
       </button>
     </>
   );
@@ -520,5 +526,21 @@ describe("WorkspaceRouteSync", () => {
       expect(search()).toEqual({ view: "runs", executionId: "run_1" })
     );
     expect(store.get(selectedNodeAtom)).toBe("run_step");
+  });
+
+  it("opens Canvas Reveal in Focus for a step field an issue names", async () => {
+    stubServer();
+    const { store, search, click } = await renderEditorRoute(
+      "/workflows/workflow_1?view=runs&executionId=run_1"
+    );
+
+    click("Go to field");
+    await waitFor(() => expect(search()).toEqual({}));
+
+    expect(store.get(selectedNodeAtom)).toBe("draft_step");
+    expect(store.get(activeDesktopRevealLevelAtom)).toBe("focus");
+
+    click("Go to step");
+    expect(store.get(activeDesktopRevealLevelAtom)).toBe("focus");
   });
 });

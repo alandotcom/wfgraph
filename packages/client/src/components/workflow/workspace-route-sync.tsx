@@ -26,9 +26,11 @@ import {
 import { isNotFoundError } from "#src/lib/workflow-route-state";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
+  activeRevealPresentationAtom,
   activeSelectionAtom,
   activeWorkspaceAddressAtom,
   applyWorkspaceRouteAtom,
+  keepActiveInspectionInGraphAtom,
 } from "#src/lib/workflow-workspace-navigation";
 
 const workflowRouteApi = getRouteApi("/workflows/$workflowId");
@@ -95,6 +97,7 @@ function useWorkspaceRouteSync(): void {
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
   const address = useAtomValue(activeWorkspaceAddressAtom);
   const selection = useAtomValue(activeSelectionAtom);
+  const inspected = useAtomValue(activeRevealPresentationAtom).inspected;
   // The structure alone, so a drag that only moves nodes does not re-render.
   const presentedStructure = useAtomValue(presentedGraphStructureAtom);
   const session = useAtomValue(comparisonSessionAtom);
@@ -160,14 +163,15 @@ function useWorkspaceRouteSync(): void {
     };
   };
 
-  // Selected ids the presented graph no longer holds are dropped. The key
-  // names only the graph structure, so moving a node does not run it again.
+  // Selected ids, and the object Canvas Reveal inspects, that the presented
+  // graph no longer holds are dropped. The key names only the graph structure,
+  // so moving a node does not run it again.
   const renderedGraph = recoveryGraph(renderedInputs);
   const hasSelection =
     selection.nodeIds.length > 0 || selection.edgeIds.length > 0;
   useAfterCommit(
-    renderedGraph && presentedStructure && hasSelection
-      ? `${workspaceAddressId(address)}|${selection.nodeIds.join(",")}|${selection.edgeIds.join(",")}|${presentedStructure.key}`
+    renderedGraph && presentedStructure && (hasSelection || inspected)
+      ? `${workspaceAddressId(address)}|${selection.nodeIds.join(",")}|${selection.edgeIds.join(",")}|${inspected?.id ?? ""}|${presentedStructure.key}`
       : null,
     () => {
       const graph = recoveryGraph(storedInputs());
@@ -176,6 +180,7 @@ function useWorkspaceRouteSync(): void {
           activeSelectionAtom,
           selectionInGraph(store.get(activeSelectionAtom), graph)
         );
+        store.set(keepActiveInspectionInGraphAtom, graph);
       }
     }
   );

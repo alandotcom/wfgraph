@@ -121,7 +121,7 @@ export const settleWorkflowComparisonRequestAtom = atom(
       workflowId: string;
       epoch: number;
       outcome?: "success" | "error";
-      /** Set when the request failed because this base version does not exist. */
+      /** The base version id the request named, when that version does not exist. */
       missingBaseVersionId?: string | undefined;
     }
   ) => {

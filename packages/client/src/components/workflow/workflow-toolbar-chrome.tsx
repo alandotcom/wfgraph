@@ -647,11 +647,9 @@ export function ToolbarPublishControls({
       ) : null}
       {state.canUpdate ? (
         <>
-          {/* Config and Delete, shown only while the properties rail is absent.
-          Gated on the same test the rail uses, not on the toolbar's container
-          width: those two disagreed, so a narrow canvas on a wide window showed
-          the sheet button while the rail was still mounted, and both edited the
-          same node. */}
+          {/* Config and Delete, shown only while Canvas Reveal is absent.
+          Gated on `useIsMobile`, the same test that unmounts Canvas Reveal, so
+          the sheet button and Canvas Reveal are never on screen together. */}
           <ButtonGroup
             className={cn("flex", isMobile ? "" : "hidden")}
             orientation="horizontal"

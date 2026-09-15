@@ -12,7 +12,8 @@ produced it. Every claim below was verified against the code at commit `af208e8`
 Two components render the same three tabs over the same Jotai state:
 
 - `packages/client/src/components/workflow/node-config-panel.tsx` (519 lines), mounted by
-  `workflow-sidebar-panel.tsx:116` on desktop and `:121` on mobile.
+  `canvas-reveal/canvas-reveal.tsx` on desktop and
+  `overlays/configuration-overlay.tsx` on mobile.
 - `packages/client/src/components/overlays/configuration-overlay.tsx` (545 lines), pushed
   from `workflow-toolbar.tsx:960` (the Settings button) and from
   `workflow-issues-overlay.tsx:75` on mobile.
