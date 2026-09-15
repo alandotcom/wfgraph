@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { ExtensionCatalog } from "#src/extensions/catalog";
+import { groupContractMatrix } from "#src/graph/group-contract-test-support";
 import type { WorkflowNode } from "#src/graph/types";
 import {
   collectWorkflowIssues,
   findUnconfiguredIntegrationNodes,
   groupWorkflowIssuesForOverlay,
   hasBlockingWorkflowIssues,
+  hasDraftRunBlockingIssues,
 } from "#src/graph/workflow-issues";
 
 const catalog: ExtensionCatalog = {
@@ -66,6 +68,7 @@ describe("collectWorkflowIssues", () => {
   it("reports missing required fields as blocking", () => {
     const issues = collectWorkflowIssues({
       nodes: [actionNode("a1", { actionType: "custom/send" }, "Notify")],
+      edges: [],
       catalog,
       integrations: [{ id: "int_1", type: "slack" }],
     });
@@ -92,6 +95,7 @@ describe("collectWorkflowIssues", () => {
           "Notify"
         ),
       ],
+      edges: [],
       catalog,
       integrations: [],
     });
@@ -119,6 +123,7 @@ describe("collectWorkflowIssues", () => {
           "Notify"
         ),
       ],
+      edges: [],
       catalog,
       integrations: [{ id: "int_1", type: "slack" }],
     });
@@ -144,6 +149,7 @@ describe("collectWorkflowIssues", () => {
           "Notify"
         ),
       ],
+      edges: [],
       catalog,
       integrations: [{ id: "int_1", type: "slack" }],
     });
@@ -174,6 +180,7 @@ describe("collectWorkflowIssues", () => {
           "Second"
         ),
       ],
+      edges: [],
       catalog,
       integrations: [],
     });
@@ -202,6 +209,7 @@ describe("collectWorkflowIssues", () => {
       nodes: [
         actionNode("__proto__", { actionType: "custom/send" }, "Prototype"),
       ],
+      edges: [],
       catalog,
       integrations: [],
     });
@@ -210,6 +218,76 @@ describe("collectWorkflowIssues", () => {
     expect(grouped.missingRequiredFields).toEqual([
       expect.objectContaining({ nodeId: "__proto__", nodeLabel: "Prototype" }),
     ]);
+  });
+});
+
+describe("collectWorkflowIssues Group rules", () => {
+  // The editor's badges and publish preflight read this list, so every matrix
+  // case must name the same rules publication refuses with.
+  it.each(groupContractMatrix)("$name", (matrixCase) => {
+    const issues = collectWorkflowIssues({
+      nodes: matrixCase.nodes,
+      edges: matrixCase.edges,
+      catalog,
+      integrations: [],
+    }).filter((issue) => issue.kind === "invalid_group");
+
+    expect(issues.map((issue) => issue.rule)).toEqual(matrixCase.rules);
+    expect(hasBlockingWorkflowIssues(issues)).toBe(matrixCase.rules.length > 0);
+    for (const issue of issues) {
+      expect(issue).toMatchObject({ nodeId: "g", nodeLabel: "Lookups" });
+    }
+  });
+
+  it("lists each Group's messages under the Group in the overlay", () => {
+    const twoContinuations = groupContractMatrix.find(
+      (matrixCase) =>
+        matrixCase.name === "two continuation ports to the same target"
+    );
+    if (!twoContinuations) {
+      throw new Error("matrix case missing");
+    }
+
+    const grouped = groupWorkflowIssuesForOverlay(
+      collectWorkflowIssues({ ...twoContinuations, catalog, integrations: [] })
+    );
+
+    expect(grouped.invalidGroups).toEqual([
+      {
+        nodeId: "g",
+        nodeLabel: "Lookups",
+        problems: [
+          {
+            rule: "multiple_continuations",
+            message: expect.stringContaining("continues from 2 outlets"),
+          },
+        ],
+      },
+    ]);
+  });
+
+  // Group membership does not change how a run executes, so a Group problem
+  // stops Publish and leaves the draft run free.
+  it("blocks Publish and leaves a draft run free", () => {
+    const oneMember = groupContractMatrix.find(
+      (matrixCase) => matrixCase.name === "one member"
+    );
+    if (!oneMember) {
+      throw new Error("matrix case missing");
+    }
+
+    const issues = collectWorkflowIssues({
+      ...oneMember,
+      catalog,
+      integrations: [],
+    });
+
+    expect(hasBlockingWorkflowIssues(issues)).toBe(true);
+    expect(hasDraftRunBlockingIssues(issues)).toBe(false);
+    expect(groupWorkflowIssuesForOverlay(issues)).toMatchObject({
+      draftRunBlockingCount: 0,
+      publishBlockingCount: 1,
+    });
   });
 });
 

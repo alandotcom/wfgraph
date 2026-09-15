@@ -24,8 +24,15 @@ import {
 } from "#src/hooks/effects";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
 import { can } from "#src/lib/authorization";
-import { nodesAtom, selectedNodeAtom } from "#src/lib/workflow-graph-store";
-import { toPersistedNodes } from "#src/lib/workflow-graph-types";
+import {
+  edgesAtom,
+  nodesAtom,
+  selectedNodeAtom,
+} from "#src/lib/workflow-graph-store";
+import {
+  toPersistedEdge,
+  toPersistedNodes,
+} from "#src/lib/workflow-graph-types";
 import {
   collectAllWorkflowIssues,
   NO_ISSUES,
@@ -42,6 +49,7 @@ const SETTLE_MS = 300;
 
 export function useCollectWorkflowIssues(): void {
   const nodes = useAtomValue(nodesAtom);
+  const edges = useAtomValue(edgesAtom);
   const catalog = useExtensionCatalog();
   const { data: integrations } = useQuery({
     ...integrationsQueryOptions(),
@@ -49,10 +57,17 @@ export function useCollectWorkflowIssues(): void {
   });
   const setIssues = useSetAtom(workflowIssuesAtom);
 
-  const settledNodes = useDebouncedValue(nodes, SETTLE_MS);
+  // Nodes and edges settle together, so the Group rules never pair one pass's
+  // members with another pass's edges.
+  const graph = useMemo(() => ({ nodes, edges }), [nodes, edges]);
+  const settledGraph = useDebouncedValue(graph, SETTLE_MS);
   const persisted = useMemo(
-    () => toPersistedNodes(settledNodes),
-    [settledNodes]
+    () => toPersistedNodes(settledGraph.nodes),
+    [settledGraph]
+  );
+  const persistedEdges = useMemo(
+    () => settledGraph.edges.map(toPersistedEdge),
+    [settledGraph]
   );
   // What the operator's own connections say a provider-backed field still needs.
   // The shared collector cannot ask, so these are raised here and merged into
@@ -71,11 +86,12 @@ export function useCollectWorkflowIssues(): void {
 
     return collectAllWorkflowIssues({
       nodes: persisted,
+      edges: persistedEdges,
       catalog,
       integrations,
       providerIssues,
     });
-  }, [persisted, catalog, integrations, providerIssues]);
+  }, [persisted, persistedEdges, catalog, integrations, providerIssues]);
 
   // Keeping the previous list when the verdict has not changed is what stops
   // this from undoing #116: every settle recollects, and a content-identical
