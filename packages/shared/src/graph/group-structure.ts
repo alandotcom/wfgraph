@@ -5,18 +5,27 @@
  * Group's boundary is one a published workflow may hold is a separate question.
  */
 
-import { isGroupNode } from "#src/graph/group-boundary";
-import type { WorkflowEdge, WorkflowNode } from "#src/graph/types";
+import {
+  type GroupBoundaryEdge,
+  type GroupGraphNode,
+  isGroupNode,
+} from "#src/graph/group-boundary";
+
+/** Edge fields the integrity check reads; shared and editor edges both satisfy it. */
+export type GroupStructureEdge = GroupBoundaryEdge & { id: string };
 
 /** The name a refusal message gives a node: its trimmed label, or its id. */
-export function nodeLabel(node: WorkflowNode): string {
+export function nodeLabel(node: {
+  id: string;
+  data: { label?: string | undefined };
+}): string {
   return node.data.label?.trim() || node.id;
 }
 
 function memberRefusal(
-  node: WorkflowNode,
+  node: GroupGraphNode,
   parentId: string,
-  nodeById: ReadonlyMap<string, WorkflowNode>
+  nodeById: ReadonlyMap<string, GroupGraphNode>
 ): string | null {
   const parent = nodeById.get(parentId);
   if (!parent) {
@@ -40,12 +49,14 @@ function memberRefusal(
  * own missing-node check.
  */
 export function groupStructureRefusalReason(input: {
-  nodes: readonly WorkflowNode[];
-  edges: readonly WorkflowEdge[];
+  nodes: readonly GroupGraphNode[];
+  edges: readonly GroupStructureEdge[];
 }): string | null {
   // A Map, because node ids are chosen by the builder and a plain object would
   // answer a node named `constructor` with a prototype member.
-  const nodeById = new Map(input.nodes.map((node) => [node.id, node]));
+  const nodeById = new Map<string, GroupGraphNode>(
+    input.nodes.map((node) => [node.id, node])
+  );
 
   for (const node of input.nodes) {
     if (node.parentId === undefined) {

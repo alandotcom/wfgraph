@@ -10,6 +10,7 @@ import { ReactFlowProvider } from "@xyflow/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
+import { OverlayContainer } from "#src/components/overlays/overlay-container";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import {
   ToolbarActions,
@@ -258,6 +259,8 @@ export function renderChrome(
                     />
                   </>
                 ) : null}
+                {/* Renders what the chrome pushes, such as a delete confirmation. */}
+                <OverlayContainer />
               </OverlayProvider>
             </ExtensionCatalogProvider>
           </ReactFlowProvider>

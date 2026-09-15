@@ -304,6 +304,72 @@ describe("NodeConfigPanel multiple selection", () => {
       await view.findByText("2 steps and 1 connection selected")
     ).toBeTruthy();
   });
+
+  it("counts a selected frame as a Group the delete ungroups", async () => {
+    installAuthorizationGrantsForTests([WfGraphOperations.workflowUpdate.id]);
+    const member = (id: string, selected: boolean): WorkflowNode => ({
+      id,
+      type: "action",
+      parentId: "group_1",
+      extent: "parent",
+      position: { x: 0, y: 0 },
+      selected,
+      data: {
+        label: id,
+        type: "action",
+        config: { actionType: "fountain/get-user" },
+      },
+    });
+
+    const { view, confirmed } = renderPanel({
+      nodes: [
+        { ...groupNode(), selected: true },
+        member("a", true),
+        member("b", false),
+      ],
+    });
+
+    expect(await view.findByText("1 step and 1 Group selected")).toBeTruthy();
+    fireEvent.click(view.getByRole("button", { name: /Delete/ }));
+
+    expect(confirmed.map((request) => request.message)).toEqual([
+      "Are you sure you want to delete 1 step? The selected Group is ungrouped, and the steps inside that are not selected stay in the workflow.",
+    ]);
+  });
+});
+
+describe("NodeConfigPanel on a Group frame", () => {
+  it("asks for the destructive Delete Group and Steps confirmation", async () => {
+    installAuthorizationGrantsForTests([WfGraphOperations.workflowUpdate.id]);
+    const member = (id: string): WorkflowNode => ({
+      id,
+      type: "action",
+      parentId: "group_1",
+      extent: "parent",
+      position: { x: 0, y: 0 },
+      data: {
+        label: id,
+        type: "action",
+        config: { actionType: "fountain/get-user" },
+      },
+    });
+    const { view, confirmed } = renderPanel({
+      nodes: [groupNode(), member("a"), member("b")],
+      selected: "group_1",
+    });
+
+    fireEvent.click(
+      await view.findByRole("button", { name: "Delete Group and Steps" })
+    );
+
+    expect(confirmed).toMatchObject([
+      {
+        title: "Delete Group and Steps",
+        confirmLabel: "Delete Group and Steps",
+        confirmVariant: "destructive",
+      },
+    ]);
+  });
 });
 
 describe("NodeConfigPanel workspace inspector", () => {
