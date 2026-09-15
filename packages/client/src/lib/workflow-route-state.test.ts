@@ -3,10 +3,8 @@ import { ApiError } from "#src/lib/rpc-client";
 import {
   classifyWorkflowLoadFailure,
   authorizedWorkflowSearch,
-  executionIdFromWorkflowSearch,
   publishWorkflowAfterCompletedSaves,
   WORKFLOW_LOAD_ERROR_MESSAGE,
-  workflowWorkspaceView,
 } from "#src/lib/workflow-route-state";
 
 describe("workflow route state", () => {
@@ -25,29 +23,57 @@ describe("workflow route state", () => {
     });
   });
 
-  it("opens runs only while a run is named in the URL", () => {
-    expect(workflowWorkspaceView("exec_1")).toBe("runs");
-    // Null rather than "properties": closing a run must leave the panel's own
-    // tab alone, so the Back button lands on the runs list it names.
-    expect(workflowWorkspaceView(undefined)).toBeNull();
+  it("keeps a run only in Runs and a comparison base only in Changes", () => {
+    const access = { canOpenRuns: true, canOpenComparison: true };
+    expect(
+      authorizedWorkflowSearch(
+        { view: "runs", executionId: "exec_1", compare: "version_1" },
+        access
+      )
+    ).toEqual({ view: "runs", executionId: "exec_1" });
+    expect(
+      authorizedWorkflowSearch(
+        { view: "changes", executionId: "exec_1", compare: "version_1" },
+        access
+      )
+    ).toEqual({ view: "changes", compare: "version_1" });
+    // Draft is the absent view, so a run or base without its view is dropped.
+    expect(
+      authorizedWorkflowSearch(
+        { executionId: "exec_1", compare: "version_1", group: "group_1" },
+        access
+      )
+    ).toEqual({ group: "group_1" });
   });
 
-  it("reads only a non-empty string execution id from search", () => {
-    expect(executionIdFromWorkflowSearch({ executionId: "exec_1" })).toBe(
-      "exec_1"
-    );
-    expect(executionIdFromWorkflowSearch({ executionId: "" })).toBeUndefined();
-    expect(executionIdFromWorkflowSearch({ executionId: 1 })).toBeUndefined();
-    expect(executionIdFromWorkflowSearch(null)).toBeUndefined();
+  it("drops values that are not non-empty strings", () => {
+    expect(
+      authorizedWorkflowSearch(
+        { view: "runs", executionId: "", group: ["group_1"] },
+        { canOpenRuns: true, canOpenComparison: true }
+      )
+    ).toEqual({ view: "runs" });
+    expect(
+      authorizedWorkflowSearch(
+        { view: "elsewhere", compare: 3 },
+        { canOpenRuns: true, canOpenComparison: true }
+      )
+    ).toEqual({});
   });
 
-  it("removes a latent run selection when run detail access is denied", () => {
-    expect(authorizedWorkflowSearch({ executionId: "exec_1" }, false)).toEqual(
-      {}
-    );
-    expect(authorizedWorkflowSearch({ executionId: "exec_1" }, true)).toEqual({
-      executionId: "exec_1",
-    });
+  it("returns a view the viewer cannot open to Draft", () => {
+    expect(
+      authorizedWorkflowSearch(
+        { view: "runs", executionId: "exec_1", group: "group_1" },
+        { canOpenRuns: false, canOpenComparison: true }
+      )
+    ).toEqual({ group: "group_1" });
+    expect(
+      authorizedWorkflowSearch(
+        { view: "changes", compare: "version_1" },
+        { canOpenRuns: true, canOpenComparison: false }
+      )
+    ).toEqual({});
   });
 
   it("refetches until no save completes during a workflow load", async () => {

@@ -14,7 +14,7 @@ import {
 } from "@tanstack/react-router";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { toast } from "sonner";
-import { createStore, Provider as JotaiProvider } from "jotai";
+import { createStore, Provider as JotaiProvider, useAtomValue } from "jotai";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -33,6 +33,7 @@ import {
   executionOverlayGraphAtom,
   hydrateWorkflowAtom,
   selectedNodeAtom,
+  selectOnlyNodeAtom,
   setNodeStatusesAtom,
 } from "#src/lib/workflow-graph-store";
 import {
@@ -52,6 +53,9 @@ import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
 import { WfGraphOperationIds } from "@wfgraph/shared/authorization/operations";
+import type { WorkflowRouteSearch } from "#src/lib/workflow-navigation-state";
+import { authorizedWorkflowSearch } from "#src/lib/workflow-route-state";
+import { WorkspaceRouteSync } from "./workspace-route-sync";
 
 type RawExecution = {
   id: string;
@@ -187,13 +191,22 @@ function EditorShell({ children }: { children?: ReactNode }) {
   return (
     <>
       <ExecutionOverlaySync />
+      <WorkspaceRouteSync />
       {children ?? null}
     </>
   );
 }
 
+/** The Runs panel mounted only while the route names Runs, as the inspector does. */
+function RunsPanelInRuns({ listActions }: { listActions?: ReactNode }) {
+  const view = useAtomValue(workflowWorkspaceViewAtom);
+  return view === "runs" ? <WorkflowRuns listActions={listActions} /> : null;
+}
+
 function renderRuns(options?: {
   executionId?: string;
+  /** Start in Draft, with the panel mounted only while Runs shows. */
+  startInDraft?: boolean;
   listActions?: ReactNode;
   mobileOverlay?: boolean;
   panel?: boolean;
@@ -213,7 +226,6 @@ function renderRuns(options?: {
   });
   const store = createStore();
   store.set(currentWorkflowIdAtom, "wf_1");
-  store.set(workflowWorkspaceViewAtom, "runs");
 
   const showPanel = options?.panel !== false;
 
@@ -223,17 +235,18 @@ function renderRuns(options?: {
   const workflowRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/workflows/$workflowId",
-    validateSearch: (search: { executionId?: string } & SearchSchemaInput) => ({
-      executionId:
-        typeof search.executionId === "string" && search.executionId.length > 0
-          ? search.executionId
-          : undefined,
-    }),
+    validateSearch: (search: WorkflowRouteSearch & SearchSchemaInput) =>
+      authorizedWorkflowSearch(search, {
+        canOpenRuns: true,
+        canOpenComparison: true,
+      }),
     component: () => (
       <EditorShell>
         {showPanel ? (
           options?.mobileOverlay ? (
             <ConfigurationOverlay overlayId="configuration-test" />
+          ) : options?.startInDraft ? (
+            <RunsPanelInRuns listActions={options.listActions} />
           ) : (
             <WorkflowRuns listActions={options?.listActions} />
           )
@@ -245,9 +258,11 @@ function renderRuns(options?: {
     routeTree: rootRoute.addChildren([workflowRoute]),
     history: createMemoryHistory({
       initialEntries: [
-        options?.executionId === undefined
+        options?.startInDraft
           ? "/workflows/wf_1"
-          : `/workflows/wf_1?executionId=${options.executionId}`,
+          : options?.executionId === undefined
+            ? "/workflows/wf_1?view=runs"
+            : `/workflows/wf_1?view=runs&executionId=${options.executionId}`,
       ],
     }),
   });
@@ -392,9 +407,14 @@ describe("WorkflowRuns", () => {
       await view.findByRole("button", { name: "Back to runs list" })
     ).toBeTruthy();
     expect(router.state.location.search).toEqual({
+      view: "runs",
       executionId: "exec_newest",
     });
     expect(view.queryByText("Execution Inspector")).toBeNull();
+    // The automatic open replaces the run list's entry, so Back leaves Runs
+    // and no run list sits in history to reopen the run again.
+    expect(router.history.length).toBe(1);
+    expect(router.history.canGoBack()).toBe(false);
   });
 
   it("keeps the list open after leaving the initially selected run", async () => {
@@ -406,9 +426,67 @@ describe("WorkflowRuns", () => {
     );
 
     await waitFor(() => {
-      expect(router.state.location.search).toEqual({});
+      expect(router.state.location.search).toEqual({ view: "runs" });
       expect(view.getByText("Execution Inspector")).toBeTruthy();
     });
+    expect(
+      view.queryByRole("button", { name: "Back to runs list" })
+    ).toBeNull();
+  });
+
+  it("opens the newest run on the first Runs visit from Draft", async () => {
+    served.items = [execution("exec_newest", "completed")];
+    const { view, router } = renderRuns({ startInDraft: true });
+
+    await act(async () => {
+      await router.navigate({
+        to: "/workflows/$workflowId",
+        params: { workflowId: "wf_1" },
+        search: { view: "runs" },
+      });
+    });
+
+    expect(
+      await view.findByRole("button", { name: "Back to runs list" })
+    ).toBeTruthy();
+    expect(router.state.location.search).toEqual({
+      view: "runs",
+      executionId: "exec_newest",
+    });
+  });
+
+  it("returns to the run list left in Runs after a visit to Draft", async () => {
+    served.items = [execution("exec_newest", "completed")];
+    const { view, router } = renderRuns({ startInDraft: true });
+    const show = async (search: { view?: "runs" }) => {
+      await act(async () => {
+        await router.navigate({
+          to: "/workflows/$workflowId",
+          params: { workflowId: "wf_1" },
+          search,
+        });
+      });
+    };
+
+    await show({ view: "runs" });
+    fireEvent.click(
+      await view.findByRole("button", { name: "Back to runs list" })
+    );
+    await waitFor(() => {
+      expect(router.state.location.search).toEqual({ view: "runs" });
+    });
+
+    await show({});
+    expect(view.queryByText("Execution Inspector")).toBeNull();
+    await show({ view: "runs" });
+
+    expect(await view.findByTestId("workflow-run-summary-row")).toBeTruthy();
+    // The list query has resolved in the remounted panel, which is when the
+    // automatic open would navigate.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(router.state.location.search).toEqual({ view: "runs" });
     expect(
       view.queryByRole("button", { name: "Back to runs list" })
     ).toBeNull();
@@ -509,7 +587,7 @@ describe("WorkflowRuns", () => {
     );
 
     await waitFor(() => {
-      expect(router.state.location.search).toEqual({});
+      expect(router.state.location.search).toEqual({ view: "runs" });
     });
     expect(
       view.queryByRole("button", { name: "Back to runs list" })
@@ -522,7 +600,7 @@ describe("WorkflowRuns", () => {
       router.history.back();
     });
     await waitFor(() => {
-      expect(router.state.location.search).toEqual({});
+      expect(router.state.location.search).toEqual({ view: "runs" });
     });
   });
 
@@ -554,6 +632,8 @@ describe("WorkflowRuns", () => {
 
   it("opens the node inspector from a canvas selection without leaving Runs", async () => {
     served.items = [execution("exec_1", "completed")];
+    // Selection belongs to the run's pinned graph, which holds the node.
+    served.graphs = { [versionIdFor("exec_1")]: pinnedGraph("wait_1") };
     served.logsByExecutionId = {
       exec_1: [
         {
@@ -578,7 +658,7 @@ describe("WorkflowRuns", () => {
     ).toBeTruthy();
 
     act(() => {
-      store.set(selectedNodeAtom, "wait_1");
+      store.set(selectOnlyNodeAtom, "wait_1");
     });
 
     expect(await view.findByRole("heading", { name: "Wait" })).toBeTruthy();
@@ -598,6 +678,20 @@ describe("WorkflowRuns", () => {
 
   it("selects the canvas node from an executed-node row", async () => {
     served.items = [execution("exec_1", "completed")];
+    // Selection belongs to the run's pinned graph, which holds the node.
+    served.graphs = {
+      [versionIdFor("exec_1")]: createSerializedWorkflowGraph({
+        nodes: [
+          {
+            id: "lifecycle_1",
+            type: "lifecycle",
+            position: { x: 0, y: 0 },
+            data: { label: "Lifecycle", type: "lifecycle" },
+          },
+        ],
+        edges: [],
+      }),
+    };
     served.logsByExecutionId = {
       exec_1: [
         {
@@ -653,7 +747,7 @@ describe("WorkflowRuns", () => {
     ).toBeTruthy();
 
     act(() => {
-      store.set(selectedNodeAtom, "wait_1");
+      store.set(selectOnlyNodeAtom, "wait_1");
     });
 
     fireEvent.click(view.getByRole("button", { name: "Technical details" }));
@@ -733,7 +827,7 @@ describe("ExecutionOverlaySync", () => {
       await router.navigate({
         to: "/workflows/$workflowId",
         params: { workflowId: "wf_1" },
-        search: { executionId: "exec_old" },
+        search: { view: "runs", executionId: "exec_old" },
       });
     });
 
@@ -772,7 +866,7 @@ describe("ExecutionOverlaySync", () => {
       await router.navigate({
         to: "/workflows/$workflowId",
         params: { workflowId: "wf_2" },
-        search: { executionId: "exec_b" },
+        search: { view: "runs", executionId: "exec_b" },
       });
     });
 
@@ -875,7 +969,7 @@ describe("ExecutionOverlaySync", () => {
       await router.navigate({
         to: "/workflows/$workflowId",
         params: { workflowId: "wf_1" },
-        search: { executionId: "exec_old" },
+        search: { view: "runs", executionId: "exec_old" },
       });
     });
 
@@ -897,11 +991,10 @@ describe("ExecutionOverlaySync", () => {
     ).toBe("idle");
   });
 
-  // Leaving Runs is the other way out of a run. Workspace navigation writes no
-  // URL itself, so `executionId` stays in the
-  // search. The pinned graph has to step aside anyway, or the canvas keeps
-  // painting the run's graph and `canvasEditingLockedAtom` keeps refusing every
-  // edit, with nothing on screen to say why.
+  // Leaving Runs is the other way out of a run. The pinned graph has to step
+  // aside, or the canvas keeps painting the run's graph and
+  // `canvasEditingLockedAtom` keeps refusing every edit, with nothing on screen
+  // to say why.
   it("hands the canvas back to the draft when Runs is left", async () => {
     served.items = [execution("exec_1", "completed")];
     served.graphs = { [versionIdFor("exec_1")]: pinnedGraph("v1_lifecycle") };
@@ -928,20 +1021,26 @@ describe("ExecutionOverlaySync", () => {
       expect(store.get(canvasEditingLockedAtom)).toBe(true);
     });
 
-    await act(() => {
-      store.set(workflowWorkspaceViewAtom, "draft");
+    await act(async () => {
+      await router.navigate({
+        to: "/workflows/$workflowId",
+        params: { workflowId: "wf_1" },
+        search: {},
+      });
     });
 
     expect(store.get(canvasEditingLockedAtom)).toBe(false);
     expect(store.get(displayNodesAtom).map((node) => node.id)).toEqual([
       "draft_lifecycle",
     ]);
-    // The run stays open in the URL, so coming back to the tab paints it again
-    // without a refetch.
-    expect(router.state.location.search).toEqual({ executionId: "exec_1" });
 
-    await act(() => {
-      store.set(workflowWorkspaceViewAtom, "runs");
+    // Returning to the run paints it again without a refetch.
+    await act(async () => {
+      await router.navigate({
+        to: "/workflows/$workflowId",
+        params: { workflowId: "wf_1" },
+        search: { view: "runs", executionId: "exec_1" },
+      });
     });
 
     await waitFor(() =>

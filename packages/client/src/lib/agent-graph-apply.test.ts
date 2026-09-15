@@ -21,8 +21,8 @@ import {
   activeAgentTurnIdAtom,
   isGeneratingAtom,
   workflowGraphUpdateAtom,
-  workflowWorkspaceViewAtom,
 } from "#src/lib/workflow-ui-store";
+import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
 
 const catalog = emptyExtensionCatalog;
 const turnId = Symbol("agent-turn");
@@ -142,7 +142,7 @@ describe("applyAgentGraphAtom", () => {
     const store = createGraphStore([actionNode("a")]);
     // The overlay only owns the canvas while the owner has Runs open,
     // so both have to be true for the refusal to be the one under test.
-    store.set(workflowWorkspaceViewAtom, "runs");
+    showWorkspaceRoute(store, { view: "runs" });
     store.set(executionOverlayGraphAtom, {
       nodes: [actionNode("a")],
       edges: [],

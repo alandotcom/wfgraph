@@ -5,6 +5,7 @@ import { type ReactElement, useState } from "react";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import {
   loadWorkflowGraphAtom,
+  selectOnlyNodeAtom,
   updateNodeDataAtom,
 } from "#src/lib/workflow-graph-store";
 import {
@@ -104,7 +105,6 @@ async function seedTemplateContext(selectedNodeId = "wait_1") {
         type: "action",
         config: { actionType: "Wait" },
       },
-      selected: selectedNodeId === "wait_1",
     },
   ];
   const edges: WorkflowEdge[] = [
@@ -117,6 +117,9 @@ async function seedTemplateContext(selectedNodeId = "wait_1") {
   ];
 
   store.set(loadWorkflowGraphAtom, { nodes, edges });
+  if (selectedNodeId === "wait_1") {
+    store.set(selectOnlyNodeAtom, "wait_1");
+  }
 }
 
 /**
@@ -810,7 +813,6 @@ describe("Template badge autocomplete node rows", () => {
           id: "wait_1",
           position: { x: 0, y: 300 },
           data: { label: "Wait", type: "action", config: { actionType: "Wait" } },
-          selected: true,
         },
       ],
       edges: [
@@ -829,6 +831,7 @@ describe("Template badge autocomplete node rows", () => {
         { id: "e3", source: "send_1", target: "wait_1" },
       ],
     });
+    store.set(selectOnlyNodeAtom, "wait_1");
 
     const view = renderWithCatalog(
       <PlaceholderTemplateBadgeInput onValueChange={() => {}} />
@@ -918,7 +921,6 @@ describe("Template badge autocomplete node rows", () => {
             type: "action",
             config: { actionType: "Wait" },
           },
-          selected: true,
         },
       ],
       edges: [
@@ -932,6 +934,7 @@ describe("Template badge autocomplete node rows", () => {
         { id: "edge_3", source: "send_2", target: "wait_1" },
       ],
     });
+    store.set(selectOnlyNodeAtom, "wait_1");
 
     let latestValue = "";
     const view = renderWithCatalog(
@@ -1026,7 +1029,6 @@ describe("Template badge autocomplete node rows", () => {
             type: "action",
             config: { actionType: "Wait" },
           },
-          selected: true,
         },
       ],
       edges: [
@@ -1039,6 +1041,7 @@ describe("Template badge autocomplete node rows", () => {
         { id: "edge_2", source: "send_1", target: "wait_1" },
       ],
     });
+    store.set(selectOnlyNodeAtom, "wait_1");
 
     const view = renderWithCatalog(
       <ControlledTemplateBadgeInput onValueChange={() => {}} />

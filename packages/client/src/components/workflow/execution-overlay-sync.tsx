@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { getRouteApi } from "@tanstack/react-router";
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
+import { useRef } from "react";
 import { useAfterCommit } from "#src/hooks/effects";
 import { toExecutionOverlaySource } from "#src/lib/execution-logs";
 import { orpcQuery } from "#src/lib/rpc-query";
@@ -15,22 +15,20 @@ import { selectedExecutionIdAtom } from "#src/lib/workflow-ui-store";
 import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 
-const workflowRouteApi = getRouteApi("/workflows/$workflowId");
-
 /**
- * URL search → selection atom and pinned-graph overlay for the open run.
+ * The open run → pinned-graph overlay. The run is the one the route names,
+ * read through `selectedExecutionIdAtom`.
  *
  * Private to `ExecutionOverlaySync`: the headless component is the mount API
  * so the editor tree shows who owns the sync.
  */
 function useExecutionOverlaySync(): void {
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
-  const [selectedExecutionId, setSelectedExecutionId] = useAtom(
-    selectedExecutionIdAtom
-  );
+  const executionId = useAtomValue(selectedExecutionIdAtom) ?? undefined;
   const setExecutionOverlay = useSetAtom(executionOverlayGraphAtom);
   const resetNodeStatuses = useSetAtom(resetNodeStatusesAtom);
-  const { executionId } = workflowRouteApi.useSearch();
+  // The run whose statuses the canvas last painted.
+  const paintedExecutionIdRef = useRef<string | undefined>(undefined);
   const canReadLogs = can(WfGraphOperations.workflowGetExecutionLogs.id);
   const canReadVersionGraph = can(WfGraphOperations.workflowGetVersionGraph.id);
 
@@ -60,11 +58,11 @@ function useExecutionOverlaySync(): void {
     staleTime: Number.POSITIVE_INFINITY,
   });
 
-  // URL search owns which run is open. One sync: selection and the
-  // pinned-graph overlay. Paint only when the run's workflowId matches the
-  // hydrated editor (`currentWorkflowId`) — never before, or the new run's
-  // graph lands on the previous workflow's canvas. Never fetch timestamps, so
-  // a logs poll cannot rebuild nodes as idle and wipe statuses.
+  // The route owns which run is open. One sync: the pinned-graph overlay.
+  // Paint only when the run's workflowId matches the hydrated editor
+  // (`currentWorkflowId`), never before, or the new run's graph lands on the
+  // previous workflow's canvas. Never fetch timestamps, so a logs poll cannot
+  // rebuild nodes as idle and wipe statuses.
   const detail = detailQuery.data;
   const graph = graphQuery.data;
   const workflowAligned =
@@ -79,7 +77,7 @@ function useExecutionOverlaySync(): void {
         : `open:${executionId}:${currentWorkflowId ?? ""}`,
     () => {
       if (executionId === undefined) {
-        setSelectedExecutionId(null);
+        paintedExecutionIdRef.current = undefined;
         setExecutionOverlay(null);
         resetNodeStatuses();
         return;
@@ -93,11 +91,10 @@ function useExecutionOverlaySync(): void {
       // open (a logs poll, or the open→ready transition of the same run)
       // must not reset, or it would wipe statuses the status poll just
       // painted for this very run.
-      if (selectedExecutionId !== executionId) {
+      if (paintedExecutionIdRef.current !== executionId) {
         resetNodeStatuses();
+        paintedExecutionIdRef.current = executionId;
       }
-
-      setSelectedExecutionId(executionId);
 
       if (
         detail === undefined ||
@@ -113,10 +110,7 @@ function useExecutionOverlaySync(): void {
 
       const graphData = toWorkflowGraphData(graph);
       setExecutionOverlay({
-        nodes: graphData.nodes.map((node) => ({
-          ...toEditorNode(node),
-          selected: false,
-        })),
+        nodes: graphData.nodes.map(toEditorNode),
         edges: graphData.edges.map(toEditorEdge),
       });
     }
@@ -124,14 +118,10 @@ function useExecutionOverlaySync(): void {
 }
 
 /**
- * Headless owner of URL → canvas overlay wiring for the open run.
+ * Headless owner of the canvas overlay for the run the route opens.
  *
- * Mount on the workflow editor shell so selection and the pinned-graph
- * overlay outlive the Runs panel. ActionNode badges and
- * `useExecutionLogsByNode` read the selection atom this writes; the panel
- * only queries what its list and detail views display.
- *
- * Route integration makes a deep-linked execution open the Runs workspace.
+ * Mount on the workflow editor shell so the pinned-graph overlay outlives the
+ * Runs panel; the panel only queries what its list and detail views display.
  */
 export function ExecutionOverlaySync() {
   useExecutionOverlaySync();

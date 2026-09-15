@@ -6,6 +6,7 @@ import { Button } from "#src/components/ui/button";
 import { useAfterCommit } from "#src/hooks/effects";
 import {
   displayNodesAtom,
+  clearSelectionAtom,
   selectedNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import type { ExecutionLog } from "#src/lib/execution-logs";
@@ -175,7 +176,7 @@ export function WorkflowRunNodeInspector({
 }) {
   const selectedNodeId = useAtomValue(selectedNodeAtom);
   const displayNodes = useAtomValue(displayNodesAtom);
-  const setSelectedNode = useSetAtom(selectedNodeAtom);
+  const clearSelection = useSetAtom(clearSelectionAtom);
   const headingRef = useRef<HTMLHeadingElement>(null);
 
   useAfterCommit(`${selectedNodeId}:${selectedLogId ?? ""}`, () =>
@@ -216,7 +217,7 @@ export function WorkflowRunNodeInspector({
   );
 
   const handleBack = () => {
-    setSelectedNode(null);
+    clearSelection();
     onBack?.();
   };
 

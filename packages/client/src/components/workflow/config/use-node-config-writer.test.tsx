@@ -31,11 +31,11 @@ import {
 import {
   loadWorkflowGraphAtom,
   nodesAtom,
-  selectedNodeAtom,
+  selectOnlyNodeAtom,
 } from "#src/lib/workflow-graph-store";
-import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import { type ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
 
 /**
  * The connection a node points at is settled inside `updateConfig`, from the
@@ -124,6 +124,7 @@ function renderInWorkflowRoute(
     getParentRoute: () => rootRoute,
     path: "/workflows/$workflowId",
     validateSearch: (search: Record<string, unknown>) => ({
+      view: search.view === "runs" ? ("runs" as const) : undefined,
       executionId:
         typeof search.executionId === "string" ? search.executionId : undefined,
     }),
@@ -161,7 +162,7 @@ function renderWriter(
 ) {
   const store = createStore();
   store.set(loadWorkflowGraphAtom, { nodes: [node], edges: [] });
-  store.set(selectedNodeAtom, node.id);
+  store.set(selectOnlyNodeAtom, node.id);
 
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -254,7 +255,7 @@ describe("deleteRuns", () => {
       nodes: [connectedNode({ actionType: CONNECTED_ACTION })],
       edges: [],
     });
-    store.set(workflowWorkspaceViewAtom, "runs");
+    showWorkspaceRoute(store, { view: "runs" });
 
     const queryClient = new QueryClient({
       defaultOptions: {
@@ -295,7 +296,7 @@ describe("deleteRuns", () => {
       store,
       queryClient,
       Deleter,
-      "/workflows/wf_1?executionId=exec_1"
+      "/workflows/wf_1?view=runs&executionId=exec_1"
     );
 
     // The button is found before `act` opens, because a find is itself an async
@@ -308,7 +309,7 @@ describe("deleteRuns", () => {
     });
 
     await waitFor(() => {
-      expect(router.state.location.search).toEqual({});
+      expect(router.state.location.search).toEqual({ view: "runs" });
     });
     expect(refreshSpy).toHaveBeenCalled();
     expect(toast.success).toHaveBeenCalledWith("All runs deleted");

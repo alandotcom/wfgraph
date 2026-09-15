@@ -28,7 +28,6 @@ function actionNode(
     id,
     type: "action",
     position,
-    selected: true,
     data: {
       label: id,
       type: "action",
@@ -79,21 +78,22 @@ describe("extractCopyableSelection", () => {
     ];
     const edges = [edge("e-t-a", "t", "a"), edge("e-a-b", "a", "b")];
 
-    const copied = extractCopyableSelection({ nodes, edges });
+    const copied = extractCopyableSelection({
+      nodes,
+      edges,
+      nodeIds: new Set(["t", "a", "b"]),
+    });
 
     expect(copied?.nodes.map((node) => node.id)).toEqual(["a", "b"]);
     expect(copied?.edges.map((item) => item.id)).toEqual(["e-a-b"]);
   });
 
   it("drops an edge that leaves the selection", () => {
-    const nodes = [
-      lifecycleNode("t"),
-      { ...actionNode("a"), selected: true },
-      { ...actionNode("b"), selected: false },
-    ];
+    const nodes = [lifecycleNode("t"), actionNode("a"), actionNode("b")];
     const copied = extractCopyableSelection({
       nodes,
       edges: [edge("e-a-b", "a", "b")],
+      nodeIds: new Set(["a"]),
     });
 
     expect(copied?.nodes.map((node) => node.id)).toEqual(["a"]);
@@ -103,23 +103,11 @@ describe("extractCopyableSelection", () => {
   it("returns nothing when only the Lifecycle Node is selected", () => {
     expect(
       extractCopyableSelection({
-        nodes: [
-          { ...lifecycleNode("t"), selected: true },
-          { ...actionNode("a"), selected: false },
-        ],
+        nodes: [lifecycleNode("t"), actionNode("a")],
         edges: [],
+        nodeIds: new Set(["t"]),
       })
     ).toBeNull();
-  });
-
-  it("copies by id even when the node is not selected", () => {
-    const copied = extractCopyableSelection({
-      nodes: [{ ...actionNode("a"), selected: false }],
-      edges: [],
-      nodeIds: new Set(["a"]),
-    });
-
-    expect(copied?.nodes.map((node) => node.id)).toEqual(["a"]);
   });
 
   it("strips run status so a paste cannot write overlay state into the draft", () => {
@@ -131,6 +119,7 @@ describe("extractCopyableSelection", () => {
         },
       ],
       edges: [],
+      nodeIds: new Set(["a"]),
     });
 
     expect(copied?.nodes[0]?.data.status).toBeUndefined();
@@ -139,28 +128,24 @@ describe("extractCopyableSelection", () => {
 
 describe("nodeIdsForContextCopy", () => {
   it("copies the whole selection when the clicked node is already selected", () => {
-    const nodes = [
-      { ...actionNode("a"), selected: true },
-      { ...actionNode("b"), selected: true },
-      { ...actionNode("c"), selected: false },
-    ];
+    const nodes = [actionNode("a"), actionNode("b"), actionNode("c")];
 
-    expect([...nodeIdsForContextCopy(nodes, "a")].sort()).toEqual(["a", "b"]);
+    expect(
+      [...nodeIdsForContextCopy(nodes, "a", new Set(["a", "b"]))].sort()
+    ).toEqual(["a", "b"]);
   });
 
   it("copies only the clicked node when it is not in the selection", () => {
-    const nodes = [
-      { ...actionNode("a"), selected: true },
-      { ...actionNode("b"), selected: false },
-    ];
+    const nodes = [actionNode("a"), actionNode("b")];
 
-    expect([...nodeIdsForContextCopy(nodes, "b")]).toEqual(["b"]);
+    expect([...nodeIdsForContextCopy(nodes, "b", new Set(["a"]))]).toEqual([
+      "b",
+    ]);
   });
 
   it("copies nothing for the Lifecycle Node", () => {
     expect(
-      nodeIdsForContextCopy([{ ...lifecycleNode("t"), selected: true }], "t")
-        .size
+      nodeIdsForContextCopy([lifecycleNode("t")], "t", new Set(["t"])).size
     ).toBe(0);
   });
 });
@@ -173,6 +158,7 @@ describe("cloneSelection", () => {
         actionNode("b", { x: 30, y: 40 }),
       ],
       edges: [edge("e-a-b", "a", "b")],
+      nodeIds: new Set(["a", "b"]),
     });
     if (!extracted) {
       throw new Error("expected a copyable selection");
@@ -193,10 +179,8 @@ describe("cloneSelection", () => {
         id: "e2",
         source: "a2",
         target: "b2",
-        selected: true,
       },
     ]);
-    expect(cloned.nodes.every((node) => node.selected)).toBe(true);
   });
 
   it("rewrites template tokens that name a copied node, and leaves the rest", () => {
@@ -225,6 +209,7 @@ describe("cloneSelection", () => {
         ),
       ],
       edges: [],
+      nodeIds: new Set(["a", "b"]),
     });
     if (!extracted) {
       throw new Error("expected a copyable selection");
@@ -264,6 +249,7 @@ describe("cloneSelection", () => {
         ),
       ],
       edges: [],
+      nodeIds: new Set(["a", "b"]),
     });
     if (!extracted) {
       throw new Error("expected a copyable selection");
@@ -291,7 +277,6 @@ describe("copying a Group", () => {
       id: "g",
       type: "group",
       position: { x: 40, y: 80 },
-      selected: true,
       data: { label: "Lookups", type: "group" },
     };
   }
@@ -305,7 +290,6 @@ describe("copying a Group", () => {
       ...actionNode(id, { x: 12, y }),
       parentId: "g",
       extent: "parent",
-      selected: false,
       data: {
         label: id,
         type: "action",
@@ -322,6 +306,7 @@ describe("copying a Group", () => {
         child("c", 112, { actionType: "Condition" }),
       ],
       edges: [{ ...edge("e-a-c", "a", "c"), sourceHandle: "true" }],
+      nodeIds: new Set(["g"]),
     });
     if (!extracted) {
       throw new Error("expected a copyable group");
@@ -359,12 +344,8 @@ describe("copying a Group", () => {
   });
 
   it("copies the whole group when a child is the context target", () => {
-    const nodes = [
-      { ...groupNode(), selected: false },
-      child("a", 48),
-      child("c", 112),
-    ];
-    expect([...nodeIdsForContextCopy(nodes, "a")].sort()).toEqual([
+    const nodes = [groupNode(), child("a", 48), child("c", 112)];
+    expect([...nodeIdsForContextCopy(nodes, "a", new Set())].sort()).toEqual([
       "a",
       "c",
       "g",

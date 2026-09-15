@@ -1,7 +1,6 @@
 import {
   ConnectionMode,
   MiniMap,
-  type Node,
   type NodeMouseHandler,
   type OnConnect,
   type OnConnectEnd,
@@ -41,8 +40,8 @@ import {
   onEdgesChangeAtom,
   onNodesChangeAtom,
   redoAtom,
-  selectedEdgeAtom,
-  selectedNodeAtom,
+  canvasSelectionAtom,
+  clearSelectionAtom,
   selectOnlyNodeAtom,
   snapshotHistoryAtom,
   undoAtom,
@@ -71,6 +70,7 @@ import { GroupNode } from "./nodes/group-node";
 import { LifecycleNode } from "./nodes/lifecycle-node";
 import { useCanvasCopyPaste } from "./use-canvas-copy-paste";
 import { useReflowLayout } from "./use-reflow-layout";
+import { useWorkspaceCamera } from "./use-workspace-camera";
 import { useCollectWorkflowIssues } from "#src/hooks/use-workflow-issues";
 import { useWorkflowNodeInspection } from "./use-workflow-node-inspection";
 import {
@@ -162,8 +162,8 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const onNodesChange = useSetAtom(onNodesChangeAtom);
   const moveComparisonNodes = useSetAtom(moveComparisonNodesAtom);
   const onEdgesChange = useSetAtom(onEdgesChangeAtom);
-  const setSelectedNode = useSetAtom(selectedNodeAtom);
-  const setSelectedEdge = useSetAtom(selectedEdgeAtom);
+  const selection = useAtomValue(canvasSelectionAtom);
+  const clearSelection = useSetAtom(clearSelectionAtom);
   const addNode = useSetAtom(addNodeAtom);
   const connectNodes = useSetAtom(connectNodesAtom);
   const selectOnlyNode = useSetAtom(selectOnlyNodeAtom);
@@ -181,6 +181,11 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   } = useReactFlow();
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const fittedWorkflowIdRef = useRef<string | null>(null);
+  // Declared ahead of the synchronized canvas below, so the camera of the
+  // workspace being left is stored before any placement for the next one.
+  const workspaceCamera = useWorkspaceCamera({
+    isCanvasPlaced: (workflowId) => fittedWorkflowIdRef.current === workflowId,
+  });
   const fitGenerationRef = useRef(0);
   // React Flow owns the semantic wrappers around custom nodes and edges. Build
   // their names from the same catalog labels the cards render, while preserving
@@ -234,6 +239,9 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
       canvasHeight
     ) {
       fitGenerationRef.current += 1;
+      if (workspaceCamera.placeReplacedGraph()) {
+        return;
+      }
       void setViewport(
         presentationViewport({
           canvas: { width: canvasWidth, height: canvasHeight },
@@ -319,9 +327,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
       if (event.button !== 2) {
         return;
       }
-      rightClickSelectionRef.current = new Set(
-        nodes.filter((node) => node.selected).map((node) => node.id)
-      );
+      rightClickSelectionRef.current = new Set(selection.nodeIds);
     },
     { capture: true, enabled: !graphEditingLocked }
   );
@@ -363,6 +369,14 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
     }
     const fitGeneration = fitGenerationRef.current;
     fittedWorkflowIdRef.current = currentWorkflowId;
+    // A workflow reopened in the same session returns to the camera its
+    // workspace was left with.
+    const savedViewport = workspaceCamera.savedViewport();
+    if (savedViewport) {
+      void setViewport(savedViewport, { duration: 0 });
+      setReadyWorkflowId(currentWorkflowId);
+      return;
+    }
     void fitInitialWorkflowViewport({
       fitView: () =>
         fitView({
@@ -555,9 +569,15 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
     [deleteSelectedItems, graphEditingLocked, snapshotHistory]
   );
 
+  // React Flow writes the selection itself through `select` changes wherever
+  // it receives the node change handler for the Draft; everywhere else a click
+  // selects the node here.
+  const canvasWritesSelection =
+    !graphEditingLocked && !interaction.comparisonVisible;
   const onNodeClick: NodeMouseHandler = useCallback(
-    (_event, node) => inspectNode(node.id),
-    [inspectNode]
+    (_event, node) =>
+      inspectNode(node.id, { selectionApplied: canvasWritesSelection }),
+    [canvasWritesSelection, inspectNode]
   );
 
   const onComparisonNodesChange = useCallback(
@@ -696,11 +716,10 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
           config: {},
           status: "idle",
         }),
-        selected: true,
       };
 
+      // Adding the node makes it the selection.
       addNode(newNode);
-      setSelectedNode(newNode.id);
 
       // Deselect all other nodes and select only the new node
       // Need to do this after a delay because panOnDrag will clear selection
@@ -732,7 +751,6 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
       screenToFlowPosition,
       addNode,
       selectOnlyNode,
-      setSelectedNode,
       normalizeSourceHandleForConnection,
       onConnect,
       isValidConnection,
@@ -827,26 +845,9 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
     if (justCreatedNodeFromConnection.current) {
       return;
     }
-    setSelectedNode(null);
-    setSelectedEdge(null);
+    clearSelection();
     closeContextMenu();
-  }, [setSelectedNode, setSelectedEdge, closeContextMenu]);
-
-  const onSelectionChange = useCallback(
-    ({ nodes: selectedNodes }: { nodes: Node[] }) => {
-      // Don't clear selection if we just created a node from a connection
-      if (justCreatedNodeFromConnection.current && selectedNodes.length === 0) {
-        return;
-      }
-
-      if (selectedNodes.length === 0) {
-        setSelectedNode(null);
-      } else if (selectedNodes.length === 1) {
-        setSelectedNode(selectedNodes[0].id);
-      }
-    },
-    [setSelectedNode]
-  );
+  }, [clearSelection, closeContextMenu]);
 
   return (
     // Size comes from the editor shell, which gives this box whatever the panel
@@ -897,11 +898,10 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
               ? undefined
               : handleNodesChange
         }
+        onMoveEnd={workspaceCamera.onMoveEnd}
+        onMoveStart={workspaceCamera.onMoveStart}
         onPaneClick={onPaneClick}
         onPaneContextMenu={graphEditingLocked ? undefined : onPaneContextMenu}
-        onSelectionChange={
-          interaction.elementsSelectable ? onSelectionChange : undefined
-        }
       >
         <Panel
           className="[--workflow-controls-bottom:3.5rem] border-none bg-transparent p-0 md:[--workflow-controls-bottom:0px]"

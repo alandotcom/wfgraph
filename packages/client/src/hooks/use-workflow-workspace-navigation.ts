@@ -3,20 +3,24 @@ import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { useCallback } from "react";
 import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
 import { useIsMobile } from "#src/hooks/use-mobile";
+import { comparisonSessionAtom } from "#src/lib/workflow-comparison-store";
+import {
+  workspaceAddressFromSearch,
+  type WorkflowRouteSearch,
+  type WorkspaceView,
+} from "#src/lib/workflow-navigation-state";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
+import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import {
-  isSidebarCollapsedAtom,
-  workflowWorkspaceViewAtom,
-} from "#src/lib/workflow-ui-store";
-import {
-  beginWorkspaceTransitionAtom,
-  enterChangesWorkspaceAtom,
-  enterDraftWorkspaceAtom,
-  enterRunsWorkspaceAtom,
-  workspaceTransitionEpochAtom,
+  activeWorkspaceAddressAtom,
+  rememberedRouteSearchesAtom,
+  setWorkspaceRevealLevelAtom,
 } from "#src/lib/workflow-workspace-navigation";
 
-type OpenComparison = (options: { fresh: true }) => Promise<void>;
+type OpenComparison = (options: {
+  current?: boolean;
+  force?: boolean;
+}) => Promise<void>;
 
 export type WorkflowWorkspaceNavigation = {
   showDraft: () => void;
@@ -24,76 +28,88 @@ export type WorkflowWorkspaceNavigation = {
   showChanges: () => void;
 };
 
-/** Coordinates workspace state, route state, and inspector visibility. */
+/**
+ * Switches Draft, Runs, and Changes by navigating to the route search the
+ * target view last showed, so each view comes back as it was left. Each switch
+ * pushes a history entry, so Back returns to the workspace left. The inspector
+ * opens on a view's first visit, and on mobile, where the sheet is not
+ * remembered.
+ */
 export function useWorkflowWorkspaceNavigation(
   openComparison?: OpenComparison
 ): WorkflowWorkspaceNavigation {
   const navigate = useNavigate({ from: "/workflows/$workflowId" });
   const store = useStore();
-  const beginTransition = useSetAtom(beginWorkspaceTransitionAtom);
   const isMobile = useIsMobile();
   const { openSheet } = useConfigurationSheet();
   const workspaceView = useAtomValue(workflowWorkspaceViewAtom);
-  const setSidebarCollapsed = useSetAtom(isSidebarCollapsedAtom);
-  const enterDraft = useSetAtom(enterDraftWorkspaceAtom);
-  const enterRuns = useSetAtom(enterRunsWorkspaceAtom);
-  const enterChanges = useSetAtom(enterChangesWorkspaceAtom);
+  const setRevealLevel = useSetAtom(setWorkspaceRevealLevelAtom);
 
-  const openInspector = useCallback(() => {
-    if (isMobile) {
-      openSheet();
-    } else {
-      setSidebarCollapsed(false);
-    }
-  }, [isMobile, openSheet, setSidebarCollapsed]);
+  /** Open the inspector for the address a search names, without the cookie. */
+  const openInspector = useCallback(
+    (search: WorkflowRouteSearch | null) => {
+      if (isMobile) {
+        openSheet();
+        return;
+      }
+      const address =
+        search === null
+          ? store.get(activeWorkspaceAddressAtom)
+          : workspaceAddressFromSearch(
+              store.get(currentWorkflowIdAtom) ?? "",
+              search
+            );
+      setRevealLevel({ address, level: "browse" });
+    },
+    [isMobile, openSheet, setRevealLevel, store]
+  );
 
-  const showDraft = useCallback(() => {
-    enterDraft();
-    void navigate({ search: {}, replace: true });
-  }, [enterDraft, navigate]);
+  const switchTo = useCallback(
+    (view: WorkspaceView, search?: WorkflowRouteSearch) => {
+      const remembered = store.get(rememberedRouteSearchesAtom)[view];
+      const target = search ?? remembered ?? (view === "draft" ? {} : { view });
+      void navigate({ search: target });
+      if (view !== "draft" && (isMobile || remembered === undefined)) {
+        openInspector(target);
+      }
+    },
+    [isMobile, navigate, openInspector, store]
+  );
+
+  const showDraft = useCallback(() => switchTo("draft"), [switchTo]);
 
   const showRuns = useCallback(() => {
-    if (workspaceView !== "runs") {
-      enterRuns();
-    } else {
-      beginTransition();
+    if (workspaceView === "runs") {
+      openInspector(null);
+      return;
     }
-    openInspector();
-  }, [beginTransition, enterRuns, openInspector, workspaceView]);
+    switchTo("runs");
+  }, [openInspector, switchTo, workspaceView]);
 
   const showChanges = useCallback(() => {
     if (workspaceView === "changes") {
-      openInspector();
+      openInspector(null);
       return;
     }
-    const epoch = beginTransition();
-    const workflowId = store.get(currentWorkflowIdAtom);
-    void (async () => {
-      // Clearing a run search re-runs the workflow loader, which restores the
-      // route's default Draft workspace. Enter Changes only after that loader
-      // has settled so the route cannot overwrite this transition.
-      if (workspaceView === "runs") {
-        await navigate({ search: {}, replace: true });
-      }
-      if (
-        store.get(workspaceTransitionEpochAtom) !== epoch ||
-        store.get(currentWorkflowIdAtom) !== workflowId
-      ) {
-        return;
-      }
-      enterChanges();
-      openInspector();
-      await openComparison?.({ fresh: true });
-    })();
-  }, [
-    enterChanges,
-    beginTransition,
-    navigate,
-    openComparison,
-    openInspector,
-    store,
-    workspaceView,
-  ]);
+    const session = store.get(comparisonSessionAtom);
+    if (!session) {
+      // The Changes route opens its comparison once it is applied.
+      switchTo("changes");
+      return;
+    }
+    // A comparison chosen while its base was the current publication follows
+    // the current publication, which a publish since then has replaced. A
+    // comparison against an older version refreshes against that version. The
+    // request starts first, so route recovery sees it pending.
+    const base = session.payload.baseVersion;
+    if (base === null || base.isCurrent) {
+      void openComparison?.({ current: true });
+      switchTo("changes", { view: "changes" });
+    } else {
+      void openComparison?.({ force: true });
+      switchTo("changes");
+    }
+  }, [openComparison, openInspector, store, switchTo, workspaceView]);
 
   return { showDraft, showRuns, showChanges };
 }

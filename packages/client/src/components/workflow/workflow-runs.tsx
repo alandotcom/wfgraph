@@ -5,7 +5,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
-import { useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue } from "jotai";
 import { type ReactNode, useState } from "react";
 import { Button } from "#src/components/ui/button";
 import {
@@ -21,8 +21,8 @@ import { orpcQuery, refreshRunHistory } from "#src/lib/rpc-query";
 import { can } from "#src/lib/authorization";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
-import { selectedNodeAtom } from "#src/lib/workflow-graph-store";
 import { selectedExecutionIdAtom } from "#src/lib/workflow-ui-store";
+import { hasNamedRunAtom } from "#src/lib/workflow-workspace-navigation";
 import { WorkflowCancellationFailures } from "./workflow-cancellation-failures";
 import { WorkflowRefusedStarts } from "./workflow-refused-starts";
 import { WorkflowRunDetail } from "./workflow-run-detail";
@@ -87,10 +87,9 @@ function RunsListHeader({ actions }: { actions?: ReactNode }) {
 export function WorkflowRuns({ listActions }: { listActions?: ReactNode }) {
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
   const selectedExecutionId = useAtomValue(selectedExecutionIdAtom);
-  const setSelectedNode = useSetAtom(selectedNodeAtom);
   const queryClient = useQueryClient();
   // Which run is open is URL state. ExecutionOverlaySync on the editor shell
-  // derives the selection atom and pinned graph; this panel only reads search.
+  // pins the run's graph; this panel only reads search.
   const { executionId } = workflowRouteApi.useSearch();
   const navigate = useNavigate({ from: "/workflows/$workflowId" });
   const exitRun = useExitRun();
@@ -99,14 +98,10 @@ export function WorkflowRuns({ listActions }: { listActions?: ReactNode }) {
   const canReadEvents = can(WfGraphOperations.workflowGetExecutionEvents.id);
   const canCancel = can(WfGraphOperations.workflowCancelExecution.id);
   const canResume = can(WfGraphOperations.workflowResumeWait.id);
-  const [selectedInitialRunForWorkflowId, setSelectedInitialRunForWorkflowId] =
-    useState<string | null>(null);
-  useAfterCommit(executionId, () => {
-    setSelectedNode(null);
-    if (executionId !== undefined) {
-      setSelectedInitialRunForWorkflowId(currentWorkflowId);
-    }
-  });
+  // Workspace navigation records whether a route has named a run of this
+  // workflow. The panel unmounts outside Runs, so a value held here would
+  // forget the run closed before leaving and reopen the newest on return.
+  const hasNamedRun = useAtomValue(hasNamedRunAtom);
 
   // Superseded runs are the ones a newer start displaced. They are hidden by
   // default because a newest-wins workflow makes one on every reschedule, and a
@@ -140,7 +135,7 @@ export function WorkflowRuns({ listActions }: { listActions?: ReactNode }) {
   const shouldSelectInitialRun =
     executionId === undefined &&
     currentWorkflowId !== null &&
-    selectedInitialRunForWorkflowId !== currentWorkflowId &&
+    !hasNamedRun &&
     executionsQuery.isSuccess;
   const initialRunId = shouldSelectInitialRun ? executions[0]?.id : undefined;
 
@@ -149,8 +144,13 @@ export function WorkflowRuns({ listActions }: { listActions?: ReactNode }) {
       return;
     }
 
+    // Opening the newest run is automatic, so it replaces the run list's
+    // history entry, and Back from the run returns to the page before Runs.
     if (initialRunId) {
-      void navigate({ search: { executionId: initialRunId } });
+      void navigate({
+        search: { view: "runs", executionId: initialRunId },
+        replace: true,
+      });
     }
   });
 
@@ -215,7 +215,7 @@ export function WorkflowRuns({ listActions }: { listActions?: ReactNode }) {
 
   const handleSelectRun = (id: string) => {
     setReturnFocusRunId(id);
-    void navigate({ search: { executionId: id } });
+    void navigate({ search: { view: "runs", executionId: id } });
   };
 
   if (executionsQuery.isPending && executionId === undefined) {

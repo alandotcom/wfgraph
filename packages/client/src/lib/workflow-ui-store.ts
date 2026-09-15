@@ -1,4 +1,11 @@
 import { atom } from "jotai";
+import type { WorkspaceView } from "#src/lib/workflow-navigation-state";
+import { readCookie, writeCookie } from "#src/lib/preference-cookies";
+import {
+  activeDesktopRevealLevelAtom,
+  activeWorkspaceAddressAtom,
+  chooseDesktopRevealLevelAtom,
+} from "#src/lib/workflow-workspace-navigation";
 
 /**
  * Editor chrome: which panel is open, how wide it is, which run is on screen.
@@ -7,35 +14,19 @@ import { atom } from "jotai";
  * `workflow-graph-store`. Authorization is server state and each UI surface
  * reads it through its own bounded authorization query.
  *
- * Two of these preferences survive a reload, in cookies. Both are read once as
- * the atom's initial value and written from the atom's own setter, so there is
- * exactly one place each preference is persisted and no effect mirroring state
- * into storage after the fact.
+ * The sidebar width and the agent panel survive a reload, in cookies. Each is
+ * read once as the atom's initial value and written from the atom's own setter,
+ * so there is exactly one place each preference is persisted and no effect
+ * mirroring state into storage after the fact.
  */
 
 const SIDEBAR_WIDTH_COOKIE = "sidebar-width";
-const SIDEBAR_COLLAPSED_COOKIE = "sidebar-collapsed";
 const AGENT_PANEL_OPEN_COOKIE = "agent-panel-open";
 const AGENT_PANEL_SIZE_COOKIE = "agent-panel-size";
-const COOKIE_MAX_AGE_SECONDS = 31_536_000; // one year
 
 const MIN_SIDEBAR_PERCENT = 20;
 const MAX_SIDEBAR_PERCENT = 50;
 const DEFAULT_SIDEBAR_PERCENT = 30;
-
-function readCookie(name: string): string | undefined {
-  if (typeof document === "undefined") {
-    return undefined;
-  }
-  return document.cookie
-    .split("; ")
-    .find((row) => row.startsWith(`${name}=`))
-    ?.split("=")[1];
-}
-
-function writeCookie(name: string, value: string) {
-  document.cookie = `${name}=${value}; path=/; max-age=${COOKIE_MAX_AGE_SECONDS}`;
-}
 
 function readInitialSidebarPercent(): number {
   const value = Number.parseFloat(readCookie(SIDEBAR_WIDTH_COOKIE) ?? "");
@@ -44,34 +35,29 @@ function readInitialSidebarPercent(): number {
     : DEFAULT_SIDEBAR_PERCENT;
 }
 
-export type WorkflowWorkspaceView = "draft" | "runs" | "changes";
-
-const workflowWorkspaceViewStateAtom = atom<WorkflowWorkspaceView>("draft");
+export type WorkflowWorkspaceView = WorkspaceView;
 
 /**
- * The editor-wide surface that owns the canvas and inspector.
+ * The editor-wide surface that owns the canvas and inspector, as the route
+ * names it.
  */
 export const workflowWorkspaceViewAtom = atom(
-  (get) => get(workflowWorkspaceViewStateAtom),
-  (_get, set, view: WorkflowWorkspaceView) => {
-    set(workflowWorkspaceViewStateAtom, view);
-  }
+  (get) => get(activeWorkspaceAddressAtom).key.workspace
 );
 
 export const showMinimapAtom = atom(false);
 
-const sidebarCollapsedStateAtom = atom(
-  readCookie(SIDEBAR_COLLAPSED_COOKIE) === "true"
-);
-
-/** Reading is plain; writing also persists, because that is the whole point. */
+/**
+ * Whether the desktop sidebar is closed for the active workspace scope. Writing
+ * is a person toggling the sidebar, which sets the scope's Reveal level and the
+ * preference a scope shown for the first time starts from.
+ */
 export const isSidebarCollapsedAtom = atom(
-  (get) => get(sidebarCollapsedStateAtom),
+  (get) => get(activeDesktopRevealLevelAtom) === "closed",
   (get, set, next: boolean | ((previous: boolean) => boolean)) => {
     const value =
-      typeof next === "function" ? next(get(sidebarCollapsedStateAtom)) : next;
-    set(sidebarCollapsedStateAtom, value);
-    writeCookie(SIDEBAR_COLLAPSED_COOKIE, String(value));
+      typeof next === "function" ? next(get(isSidebarCollapsedAtom)) : next;
+    set(chooseDesktopRevealLevelAtom, value ? "closed" : "browse");
   }
 );
 
@@ -211,21 +197,12 @@ export const agentPanelSizeAtom = atom(
   }
 );
 
-/** The run last opened in the Runs panel, whether or not that panel is up. */
-const watchedExecutionIdAtom = atom<string | null>(null);
-
 /**
- * The run the canvas is painting. It reports a run only while the Runs workspace
- * is active, so leaving it takes the chips, borders, and countdown off
- * the graph and stops both polls, without any caller having to remember to
- * clear it.
+ * The run the canvas is painting, as the route names it. It reports a run only
+ * while the Runs workspace is active, so leaving it takes the chips, borders,
+ * and countdown off the graph and stops both polls.
  */
-export const selectedExecutionIdAtom = atom(
-  (get) =>
-    get(workflowWorkspaceViewAtom) === "runs"
-      ? get(watchedExecutionIdAtom)
-      : null,
-  (_get, set, executionId: string | null) => {
-    set(watchedExecutionIdAtom, executionId);
-  }
-);
+export const selectedExecutionIdAtom = atom((get) => {
+  const { key } = get(activeWorkspaceAddressAtom);
+  return key.workspace === "runs" ? key.executionId : null;
+});

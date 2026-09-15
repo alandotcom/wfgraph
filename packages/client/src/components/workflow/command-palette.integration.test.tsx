@@ -1,4 +1,4 @@
-import { act, fireEvent } from "@testing-library/react";
+import { act, fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ToolbarActions } from "#src/components/workflow/workflow-toolbar-chrome";
 import { renderChrome } from "#src/components/workflow/workflow-toolbar-chrome.test-support";
@@ -6,7 +6,6 @@ import {
   currentWorkflowDraftRevisionAtom,
   currentWorkflowIdAtom,
 } from "#src/lib/workflow-save-store";
-import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import {
   canUndoAtom,
   displayEdgesAtom,
@@ -24,6 +23,8 @@ import {
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
+import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
+import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
 
 /**
  * The command palette is mounted by `ToolbarActions`, so what is exercised here
@@ -100,6 +101,25 @@ function persistedDraft(input: ReturnType<typeof renderChrome>["store"]) {
   });
 }
 
+/** Draft still selects, and paints, the node and edge the fixture selected. */
+function expectDraftSelectionKept(
+  store: ReturnType<typeof renderChrome>["store"]
+) {
+  act(() => showWorkspaceRoute(store, {}));
+  const kept = { nodeIds: ["lifecycle_1"], edgeIds: ["lifecycle-to-group"] };
+  expect(store.get(activeSelectionAtom)).toEqual(kept);
+  expect({
+    nodeIds: store
+      .get(displayNodesAtom)
+      .filter((node) => node.selected)
+      .map((node) => node.id),
+    edgeIds: store
+      .get(displayEdgesAtom)
+      .filter((edge) => edge.selected)
+      .map((edge) => edge.id),
+  }).toEqual(kept);
+}
+
 describe("the command palette", () => {
   it("opens on Cmd+K, at the root page", async () => {
     const { findByRole } = renderChrome(ToolbarActions);
@@ -162,7 +182,10 @@ describe("the command palette", () => {
     fireEvent.click(
       rendered.getByRole("option", { name: "Go to run history" })
     );
-    expect(rendered.store.get(workflowWorkspaceViewAtom)).toBe("runs");
+    // The command names Runs in the route, which `WorkspaceRouteSync` applies.
+    await waitFor(() =>
+      expect(rendered.router.state.location.search).toEqual({ view: "runs" })
+    );
   });
 
   // The same rule Cmd+Enter follows: a chord is not worth a keystroke taken out
@@ -320,7 +343,7 @@ describe("the command palette", () => {
 
   it("keeps node search read-only in Changes without enabling run commands", async () => {
     const rendered = renderChrome(ToolbarActions);
-    act(() => rendered.store.set(workflowWorkspaceViewAtom, "changes"));
+    act(() => showWorkspaceRoute(rendered.store, { view: "changes" }));
 
     await openedPalette(rendered);
 
@@ -464,18 +487,7 @@ describe("the command palette", () => {
         .map((node) => node.id)
     ).toEqual(["notify_customer"]);
     expect(persistedDraft(rendered.store)).toEqual(draftBefore);
-    expect(
-      rendered.store
-        .get(nodesAtom)
-        .filter((node) => node.selected)
-        .map((node) => node.id)
-    ).toEqual(["lifecycle_1"]);
-    expect(
-      rendered.store
-        .get(edgesAtom)
-        .filter((edge) => edge.selected)
-        .map((edge) => edge.id)
-    ).toEqual(["lifecycle-to-group"]);
+    expectDraftSelectionKept(rendered.store);
     expect(rendered.actions.handleExecute).not.toHaveBeenCalled();
   });
 
@@ -514,18 +526,7 @@ describe("the command palette", () => {
         .map((node) => node.id)
     ).toEqual(["notify_customer"]);
     expect(persistedDraft(rendered.store)).toEqual(draftBefore);
-    expect(
-      rendered.store
-        .get(nodesAtom)
-        .filter((node) => node.selected)
-        .map((node) => node.id)
-    ).toEqual(["lifecycle_1"]);
-    expect(
-      rendered.store
-        .get(edgesAtom)
-        .filter((edge) => edge.selected)
-        .map((edge) => edge.id)
-    ).toEqual(["lifecycle-to-group"]);
+    expectDraftSelectionKept(rendered.store);
   });
 
   // A held palette belongs to the workflow it was opened over. Opening another
