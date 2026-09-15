@@ -2,13 +2,14 @@
  * The three tools that answer "what does this workflow look like right now".
  *
  * `read_workflow` speaks the vocabulary a tool writes back in: node ids, the
- * four node types, and the action id a node's config carries. Positions are left
- * out on purpose, because the editor lays the graph out and the agent never
- * chooses coordinates.
+ * four node types, the action id a node's config carries, and Group membership.
+ * Positions are left out on purpose, because the editor lays the graph out and
+ * the agent never chooses coordinates.
  */
 
 import { Effect, Schema } from "effect";
 import { Tool } from "effect/unstable/ai";
+import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
 import { persistedNodeEnabled } from "@wfgraph/shared/graph/node-enabled";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
@@ -35,6 +36,10 @@ const graphNodeSummarySchema = Schema.Struct({
   description: Schema.optionalKey(Schema.String),
   /** False when the node is switched off and the run walks past it. */
   enabled: Schema.optionalKey(Schema.Boolean),
+  /** The id of the Group this node belongs to, absent for a node in no Group. */
+  groupId: Schema.optionalKey(Schema.String),
+  /** The ids of the steps inside this Group, present on Group nodes alone. */
+  memberIds: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 
 const graphNodeDetailSchema = Schema.Struct({
@@ -47,6 +52,10 @@ const graphNodeDetailSchema = Schema.Struct({
   description: Schema.optionalKey(Schema.String),
   /** False when the node is switched off and a run walks past it. */
   enabled: Schema.optionalKey(Schema.Boolean),
+  /** The id of the Group this node belongs to, absent for a node in no Group. */
+  groupId: Schema.optionalKey(Schema.String),
+  /** The ids of the steps inside this Group, present on Group nodes alone. */
+  memberIds: Schema.optionalKey(Schema.Array(Schema.String)),
   config: jsonObjectSchema,
 });
 
@@ -84,7 +93,14 @@ function readableConfig(node: WorkflowNode): JsonObject {
   return readJsonObject(omitUndefined(config)) ?? {};
 }
 
-function readableNodeSummary(node: WorkflowNode) {
+/**
+ * A node as the read tools answer it. `nodes` is the whole graph, which a Group
+ * node reads its member ids from, in graph order.
+ */
+function readableNodeSummary(
+  node: WorkflowNode,
+  nodes: readonly WorkflowNode[]
+) {
   return omitUndefined({
     id: node.id,
     label: node.data.label,
@@ -92,11 +108,20 @@ function readableNodeSummary(node: WorkflowNode) {
     actionType: actionTypeOf(node),
     description: node.data.description,
     enabled: persistedNodeEnabled(node.data.enabled),
+    groupId: node.parentId,
+    memberIds: isGroupNode(node)
+      ? nodes
+          .filter((candidate) => candidate.parentId === node.id)
+          .map((member) => member.id)
+      : undefined,
   });
 }
 
-function readableNodeDetail(node: WorkflowNode) {
-  return { ...readableNodeSummary(node), config: readableConfig(node) };
+function readableNodeDetail(
+  node: WorkflowNode,
+  nodes: readonly WorkflowNode[]
+) {
+  return { ...readableNodeSummary(node, nodes), config: readableConfig(node) };
 }
 
 function readableEdge(edge: {
@@ -115,7 +140,7 @@ function readableEdge(edge: {
 
 export const ReadWorkflow = Tool.make("read_workflow", {
   description:
-    "Read the workflow topology in bounded pages: compact node identities and edges. Use read_nodes for selected node config. Node positions are omitted because the editor owns layout.",
+    "Read the workflow topology in bounded pages: compact node identities and edges. A step inside a Group carries groupId, and a Group node carries memberIds. Use read_nodes for selected node config. Node positions are omitted because the editor owns layout.",
   parameters: Schema.Struct({
     nodeOffset: Schema.optionalKey(
       resultOffsetSchema.annotate({
@@ -197,7 +222,9 @@ export const graphReadToolHandlers = Effect.gen(function* () {
           limit: input.limit,
         });
         return omitUndefined({
-          nodes: nodes.items.map(readableNodeSummary),
+          nodes: nodes.items.map((node) =>
+            readableNodeSummary(node, document.nodes)
+          ),
           edges: edges.items.map(readableEdge),
           totalNodes: nodes.total,
           totalEdges: edges.total,
@@ -226,7 +253,7 @@ export const graphReadToolHandlers = Effect.gen(function* () {
         return Effect.succeed({
           nodes: input.nodeIds.flatMap((nodeId) => {
             const node = nodesById.get(nodeId);
-            return node ? [readableNodeDetail(node)] : [];
+            return node ? [readableNodeDetail(node, document.nodes)] : [];
           }),
         });
       }),
