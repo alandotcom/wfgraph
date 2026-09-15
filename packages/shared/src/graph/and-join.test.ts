@@ -139,6 +139,22 @@ describe("andJoinRefusalReason", () => {
     ).toBeNull();
   });
 
+  // The Wait runs before either arm starts, so the direct edge from it to the
+  // join is an arm of its own and the Wait sits above the fan-out.
+  it("allows a Wait whose own edge skips to the join", () => {
+    expect(
+      andJoinRefusalReason({
+        nodes: [lifecycle(), wait("wait_1"), action("b"), action("join")],
+        edges: [
+          edge("e1", "lifecycle_1", "wait_1", LIFECYCLE_STARTED_HANDLE),
+          edge("e2", "wait_1", "b"),
+          edge("e3", "b", "join"),
+          edge("e4", "wait_1", "join"),
+        ],
+      })
+    ).toBeNull();
+  });
+
   it("allows a join entirely on one Condition branch", () => {
     expect(
       andJoinRefusalReason({

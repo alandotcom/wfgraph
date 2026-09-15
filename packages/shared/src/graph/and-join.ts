@@ -1,13 +1,11 @@
 /**
  * AND-join rules for a multi-incoming node. Illegal: two exclusive outlets of
  * one split, a Wait on an arm, or an arm that never leaves a Lifecycle Node.
- * Save and the canvas share this; the engine's readiness gate is separate.
- *
- * A disabled step on an arm holds the join just as long, and is shown rather
- * than refused: the canvas mutes the join and everything past it.
+ * Save and the canvas refuse through this, Group publication reads the arms
+ * `andJoinArms` finds, and the engine's readiness gate is separate. A disabled
+ * step on an arm is shown rather than refused; the canvas mutes the join.
  */
 
-import { countBy } from "es-toolkit/array";
 import {
   isConditionActionNode,
   normalizeConditionBranch,
@@ -28,6 +26,10 @@ function nodeLabel(node: WorkflowNode | undefined, fallbackId: string): string {
   return node?.data.label?.trim() || fallbackId;
 }
 
+/**
+ * Whether a node sends a run down only some of its outlets: the Lifecycle Node,
+ * a Condition, or an Event Split.
+ */
 function isExclusiveSplit(node: WorkflowNode): boolean {
   return (
     node.data.type === "lifecycle" ||
@@ -47,8 +49,10 @@ function exclusiveHandleKey(edge: JoinGraphEdge): string {
 }
 
 /**
- * Nodes on the parallel arms into a join: upstream of the join, minus ancestors
- * shared by every direct predecessor (the graph above the fan-out).
+ * Nodes on the parallel arms into a join: upstream of the join, minus the nodes
+ * every direct predecessor has run through by the time it finishes. Each
+ * predecessor counts as run through by itself, so a fan-out node with its own
+ * edge into the join sits above the fan-out and on no arm.
  */
 function nodesOnJoinArms(input: {
   joinNodeId: string;
@@ -56,27 +60,18 @@ function nodesOnJoinArms(input: {
   edges: readonly JoinGraphEdge[];
 }): Set<string> {
   const { joinNodeId, predecessorIds, edges } = input;
-  if (predecessorIds.length === 0) {
-    return new Set();
-  }
-
-  let commonAncestors: Set<string> | null = null;
-  for (const predecessorId of predecessorIds) {
-    const upstream = upstreamNodeIds(predecessorId, edges);
-    if (!commonAncestors) {
-      commonAncestors = upstream;
-      continue;
-    }
-    for (const id of commonAncestors) {
-      if (!upstream.has(id)) {
-        commonAncestors.delete(id);
-      }
-    }
-  }
-
+  const reachedBy = predecessorIds.map((predecessorId) =>
+    upstreamNodeIds(predecessorId, edges).add(predecessorId)
+  );
+  const [first, ...rest] = reachedBy;
   const onArms = upstreamNodeIds(joinNodeId, edges);
-  for (const id of commonAncestors ?? []) {
-    onArms.delete(id);
+  if (!first) {
+    return onArms;
+  }
+  for (const id of first) {
+    if (rest.every((reached) => reached.has(id))) {
+      onArms.delete(id);
+    }
   }
   return onArms;
 }
@@ -98,16 +93,13 @@ function reachesLifecycleNode(input: {
 }
 
 function refusalForJoin(input: {
-  joinNodeId: string;
-  nodes: readonly WorkflowNode[];
+  join: AndJoin;
+  nodeById: ReadonlyMap<string, WorkflowNode>;
   edges: readonly JoinGraphEdge[];
 }): string | null {
-  const { joinNodeId, nodes, edges } = input;
-  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const { join, nodeById, edges } = input;
+  const { joinNodeId, predecessorIds } = join;
   const joinLabel = nodeLabel(nodeById.get(joinNodeId), joinNodeId);
-  const predecessorIds = edges
-    .filter((edge) => edge.target === joinNodeId)
-    .map((edge) => edge.source);
   const upstream = upstreamNodeIds(joinNodeId, edges);
 
   for (const predecessorId of predecessorIds) {
@@ -147,11 +139,7 @@ function refusalForJoin(input: {
     return `Node "${joinLabel}" cannot join mutually exclusive branches from "${nodeLabel(source, sourceId)}"`;
   }
 
-  for (const armNodeId of nodesOnJoinArms({
-    joinNodeId,
-    predecessorIds,
-    edges,
-  })) {
+  for (const armNodeId of join.armNodeIds) {
     const armNode = nodeById.get(armNodeId);
     if (armNode && isWaitNode(armNode)) {
       return `Node "${joinLabel}" cannot join branches that include a Wait (found "${nodeLabel(armNode, armNodeId)}")`;
@@ -162,24 +150,55 @@ function refusalForJoin(input: {
 }
 
 /**
- * Why any AND-join in the graph is refused, or null when every multi-incoming
- * node is an allowed join.
+ * One AND-join. `predecessorIds` holds the source of each incoming edge, so a
+ * split with two outlets into the join is named twice. The join node itself and
+ * the graph above the fan-out are not in `armNodeIds`.
+ */
+export type AndJoin = {
+  joinNodeId: string;
+  predecessorIds: string[];
+  armNodeIds: Set<string>;
+};
+
+/** Every node with more than one incoming edge, in node order, as an `AndJoin`. */
+export function andJoinArms(input: {
+  nodes: readonly { id: string }[];
+  edges: readonly JoinGraphEdge[];
+}): AndJoin[] {
+  // A Map, because node ids are chosen by the builder.
+  const incomingByTarget = Map.groupBy(input.edges, (edge) => edge.target);
+  return input.nodes.flatMap((node) => {
+    const predecessorIds = (incomingByTarget.get(node.id) ?? []).map(
+      (edge) => edge.source
+    );
+    if (predecessorIds.length <= 1) {
+      return [];
+    }
+    return [
+      {
+        joinNodeId: node.id,
+        predecessorIds,
+        armNodeIds: nodesOnJoinArms({
+          joinNodeId: node.id,
+          predecessorIds,
+          edges: input.edges,
+        }),
+      },
+    ];
+  });
+}
+
+/**
+ * Why the first refused AND-join in node order is refused, or null when every
+ * multi-incoming node is an allowed join.
  */
 export function andJoinRefusalReason(input: {
   nodes: readonly WorkflowNode[];
   edges: readonly JoinGraphEdge[];
 }): string | null {
-  const incomingCount = countBy(input.edges, (edge) => edge.target);
-
-  for (const [targetId, count] of Object.entries(incomingCount)) {
-    if (count <= 1) {
-      continue;
-    }
-    const reason = refusalForJoin({
-      joinNodeId: targetId,
-      nodes: input.nodes,
-      edges: input.edges,
-    });
+  const nodeById = new Map(input.nodes.map((node) => [node.id, node]));
+  for (const join of andJoinArms(input)) {
+    const reason = refusalForJoin({ join, nodeById, edges: input.edges });
     if (reason) {
       return reason;
     }

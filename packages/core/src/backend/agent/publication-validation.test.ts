@@ -212,6 +212,66 @@ describe("validateAgentPublication", () => {
     );
   });
 
+  // Publication's own check names only the first Group problem, and the agent
+  // needs every one, each tied to the Group it has to change.
+  it("reports one blocker for each Group problem", () => {
+    const frame: WorkflowNode = {
+      id: "lookups",
+      type: "group",
+      position: { x: 0, y: 0 },
+      data: { label: "Lookups", type: "group", config: {} },
+    };
+    const member = (id: string, label: string, actionType: string) =>
+      ({
+        id,
+        type: "action",
+        position: { x: 0, y: 0 },
+        parentId: frame.id,
+        data: { label, type: "action", config: { actionType } },
+      }) satisfies WorkflowNode;
+
+    const result = validateAgentPublication({
+      document: {
+        nodes: [
+          manualLifecycle,
+          frame,
+          member("score", "Score", "score-applicant"),
+          member("split", "Split", "Event Split"),
+        ],
+        edges: [
+          {
+            id: "start-score",
+            source: manualLifecycle.id,
+            target: "score",
+            sourceHandle: LIFECYCLE_STARTED_HANDLE,
+          },
+          { id: "score-split", source: "score", target: "split" },
+        ],
+      },
+      catalog: fixtureCatalog,
+      integrations: [],
+    });
+
+    expect(
+      result.publishBlockers.filter(
+        (blocker) => blocker.kind === "invalid_group"
+      )
+    ).toEqual([
+      {
+        kind: "invalid_group",
+        nodeId: "lookups",
+        nodeLabel: "Lookups",
+        message: 'Group "Lookups" needs at least two steps',
+      },
+      {
+        kind: "invalid_group",
+        nodeId: "lookups",
+        nodeLabel: "Lookups",
+        message: 'Group "Lookups" cannot contain an Event Split ("Split")',
+      },
+    ]);
+  });
+
   it("keeps deleted-node references as warnings", () => {
     const action: WorkflowNode = {
       id: "notify",

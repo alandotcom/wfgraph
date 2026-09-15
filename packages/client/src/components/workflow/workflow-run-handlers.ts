@@ -17,6 +17,7 @@ import { useOverlay } from "#src/components/overlays/overlay-provider";
 import { useGoToStep } from "#src/hooks/use-workflow-issues";
 import {
   PREFLIGHT_BUSY_MESSAGE,
+  type WorkflowIssuePreflightInput,
   type WorkflowIssuePreflightResult,
 } from "#src/hooks/use-workflow-issue-preflight";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
@@ -66,7 +67,7 @@ import {
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import {
   groupWorkflowIssuesForOverlay,
-  hasBlockingWorkflowIssues,
+  hasDraftRunBlockingIssues,
 } from "@wfgraph/shared/graph/workflow-issues";
 import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
@@ -108,10 +109,9 @@ type SaveWorkflow = (
 
 export type WorkflowHandlerInput = {
   state: WorkflowToolbarState;
-  checkWorkflowIssues: (input: {
-    workflowId: string;
-    nodes: WorkflowNode[];
-  }) => Promise<WorkflowIssuePreflightResult>;
+  checkWorkflowIssues: (
+    input: WorkflowIssuePreflightInput
+  ) => Promise<WorkflowIssuePreflightResult>;
   saveWorkflow: SaveWorkflow;
 };
 
@@ -412,6 +412,7 @@ export function useWorkflowHandlers({
     const preflight = await checkWorkflowIssues({
       workflowId: currentWorkflowId,
       nodes,
+      edges,
     });
     if (preflight.status !== "ready") {
       // Cmd+Enter reaches this without passing the command palette's disabled
@@ -427,7 +428,9 @@ export function useWorkflowHandlers({
     const draftFacts = runOverlayGraphFacts(nodes, edges, catalog);
 
     if (issues.length > 0) {
-      const hasBlocking = hasBlockingWorkflowIssues(issues);
+      // A Group problem stops Publish only, so a draft whose only blockers are
+      // Group problems is offered "Run draft anyway".
+      const hasBlocking = hasDraftRunBlockingIssues(issues);
       openOverlay(WorkflowIssuesOverlay, {
         issues: groupWorkflowIssuesForOverlay(issues),
         onGoToStep: handleGoToStep,
