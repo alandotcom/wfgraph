@@ -31,10 +31,12 @@ import {
   WORKFLOW_NODE_WIDTH,
 } from "#src/graph/workflow-layout-geometry";
 import {
-  edgesForGroupLayout,
-  groupEntryIds,
-  groupInteriorLayout,
+  analyzeGroupBoundaryById,
   isGroupNode,
+} from "#src/graph/group-boundary";
+import {
+  edgesForGroupLayout,
+  groupInteriorLayout,
 } from "#src/graph/node-group";
 import { layoutGroupChildren } from "#src/graph/layout-group-children";
 
@@ -218,19 +220,12 @@ function readNodeShape(input: {
   catalog: ExtensionCatalog;
 }): NodeShape {
   if (isGroupNode(input.node)) {
-    const children = input.nodes.filter(
-      (node) => node.parentId === input.node.id
-    );
-    const memberIds = children.map((child) => child.id);
-    const memberSet = new Set(memberIds);
-    const interior = input.edges.filter(
-      (edge) => memberSet.has(edge.source) && memberSet.has(edge.target)
-    );
-    const { bounds } = groupInteriorLayout(
-      memberIds,
-      interior,
-      groupEntryIds(input.node)
-    );
+    const { memberIds, interiorEdges } = analyzeGroupBoundaryById({
+      nodes: input.nodes,
+      edges: input.edges,
+      groupId: input.node.id,
+    });
+    const { bounds } = groupInteriorLayout(memberIds, interiorEdges);
     const size = groupFrameSize(bounds.columns, bounds.rows);
     return {
       width: size.width,

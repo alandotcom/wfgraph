@@ -1,9 +1,7 @@
 import { countBy } from "es-toolkit/array";
+import { analyzeGroupBoundary, isGroupNode } from "#src/graph/group-boundary";
 import {
-  groupEntryIds,
   groupInteriorLayout,
-  isEdgeBetweenMembers,
-  isGroupNode,
   type GroupMemberSlot,
 } from "#src/graph/node-group";
 import type { WorkflowEdge, WorkflowNode } from "#src/graph/types";
@@ -36,17 +34,11 @@ export function layoutGroupChildren(
   const childById = new Map<string, WorkflowNode>();
   const sizeByGroup = new Map<string, { width: number; height: number }>();
   for (const [groupId, children] of byParent) {
-    const group = nodes.find((node) => node.id === groupId);
-    const memberIds = children.map((child) => child.id);
-    const memberSet = new Set(memberIds);
-    const interior = edges.filter((edge) =>
-      isEdgeBetweenMembers(memberSet, edge)
-    );
-    const { slots, bounds } = groupInteriorLayout(
-      memberIds,
-      interior,
-      groupEntryIds(group)
-    );
+    const { memberIds, interiorEdges } = analyzeGroupBoundary({
+      memberIds: children.map((child) => child.id),
+      edges,
+    });
+    const { slots, bounds } = groupInteriorLayout(memberIds, interiorEdges);
     sizeByGroup.set(groupId, groupFrameSize(bounds.columns, bounds.rows));
     const positionById = childPositions(slots, bounds.columns);
     for (const child of children) {

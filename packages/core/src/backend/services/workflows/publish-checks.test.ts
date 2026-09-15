@@ -286,7 +286,6 @@ describe("publish-checks", () => {
       data: {
         label: "Lookups",
         type: "group" as const,
-        config: { entryNodeIds: [lookup.id], exitNodeIds: [lookup.id] },
       },
     };
     const { nodes, edges } = toWorkflowGraphData(

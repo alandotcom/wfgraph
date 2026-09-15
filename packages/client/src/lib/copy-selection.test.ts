@@ -292,11 +292,7 @@ describe("copying a Group", () => {
       type: "group",
       position: { x: 40, y: 80 },
       selected: true,
-      data: {
-        label: "Lookups",
-        type: "group",
-        config: { entryNodeIds: ["a"], exitNodeIds: ["c"] },
-      },
+      data: { label: "Lookups", type: "group" },
     };
   }
 
@@ -325,7 +321,7 @@ describe("copying a Group", () => {
         child("a", 48, { actionType: "fountain/get-user" }),
         child("c", 112, { actionType: "Condition" }),
       ],
-      edges: [edge("e-a-c", "a", "c")],
+      edges: [{ ...edge("e-a-c", "a", "c"), sourceHandle: "true" }],
     });
     if (!extracted) {
       throw new Error("expected a copyable group");
@@ -350,11 +346,12 @@ describe("copying a Group", () => {
       x: 40 + PASTE_OFFSET,
       y: 80 + PASTE_OFFSET,
     });
-    expect(frame?.data.config).toEqual({
-      entryNodeIds: ["a2"],
-      exitNodeIds: ["c2"],
-    });
+    expect(frame?.data).toEqual({ label: "Lookups", type: "group" });
     expect(nested.every((node) => node.parentId === "g2")).toBe(true);
+    // The clone keeps the same executable topology under the fresh ids.
+    expect(
+      cloned.edges.map((item) => [item.source, item.target, item.sourceHandle])
+    ).toEqual([["a2", "c2", "true"]]);
     expect(nested.map((node) => node.position)).toEqual([
       { x: 12, y: 48 },
       { x: 12, y: 112 },

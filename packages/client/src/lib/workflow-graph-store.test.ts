@@ -3,9 +3,13 @@ import type { createStore as createJotaiStore } from "jotai";
 import { createStore } from "jotai";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import {
-  isGroupNode,
+  fanOutStoreEdges,
   orderGroupParentsFirst,
 } from "@wfgraph/shared/graph/node-group";
+import { connectionRefusalReason } from "#src/components/workflow/connection-validation";
+import { normalizeSourceHandleForConnection } from "#src/components/workflow/connection-handle";
+import { groupOutletHandlesAtom } from "#src/lib/workflow-graph-presentation-store";
+import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import {
   addNodeAtom,
   applyNodeLayoutAtom,
@@ -117,16 +121,12 @@ function actionNode(id: string, x = 0): WorkflowNode {
   };
 }
 
-function groupNode(id: string, entryId: string, exitId: string): WorkflowNode {
+function groupNode(id: string): WorkflowNode {
   return {
     id,
     type: "group",
     position: { x: 0, y: 0 },
-    data: {
-      label: "Group",
-      type: "group",
-      config: { entryNodeIds: [entryId], exitNodeIds: [exitId] },
-    },
+    data: { label: "Group", type: "group" },
   };
 }
 
@@ -135,11 +135,7 @@ function multiExitGroupNode(id: string): WorkflowNode {
     id,
     type: "group",
     position: { x: 0, y: 0 },
-    data: {
-      label: "Group",
-      type: "group",
-      config: { entryNodeIds: ["a", "b"], exitNodeIds: ["a", "b"] },
-    },
+    data: { label: "Group", type: "group" },
   };
 }
 
@@ -484,6 +480,105 @@ describe("multi-exit Group outlet", () => {
         .map((item) => `${item.source}->${item.target}`)
         .sort()
     ).toEqual(["a->next", "b->next"]);
+  });
+
+  /**
+   * A Condition `c` wired True to `x` and a lookup `b` wired to `y`, with the
+   * lookup's edge stored first. The frame's continuation names two handles.
+   */
+  function mixedContinuationStore() {
+    return createGraphStore(
+      [
+        lifecycleNode("t"),
+        multiExitGroupNode("g"),
+        groupedLookup("b"),
+        {
+          ...groupedLookup("c"),
+          data: {
+            label: "c",
+            type: "action",
+            config: { actionType: BUILT_IN_ACTION_IDS.condition },
+          },
+        },
+        actionNode("x"),
+        actionNode("y"),
+        actionNode("z"),
+      ],
+      [
+        { ...edge("t-b", "t", "b"), sourceHandle: "started" },
+        { ...edge("t-c", "t", "c"), sourceHandle: "started" },
+        edge("b-y", "b", "y"),
+        { ...edge("c-x", "c", "x"), sourceHandle: "true" },
+      ]
+    );
+  }
+
+  it.each([null, "true"])(
+    "validates and saves a connection from handle %s with the same stored edges",
+    (draggedHandle) => {
+      const store = mixedContinuationStore();
+      const nodes = store.get(nodesAtom);
+      const storeEdges = store.get(edgesAtom);
+      const connection = {
+        source: "g",
+        target: "z",
+        sourceHandle: draggedHandle,
+        targetHandle: null,
+      };
+
+      expect(
+        connectionRefusalReason({
+          connection,
+          nodes,
+          storeEdges,
+          catalog: emptyCatalog,
+        })
+      ).toBeNull();
+      const sourceHandle = normalizeSourceHandleForConnection({
+        nodes,
+        edges: storeEdges,
+        sourceNodeId: "g",
+        sourceHandle: draggedHandle,
+        catalog: emptyCatalog,
+      });
+      // The lookup's edge is the first continuation, and it names no handle.
+      expect(sourceHandle).toBe(draggedHandle);
+      const validated = fanOutStoreEdges({
+        nodes,
+        edges: storeEdges,
+        sourceId: "g",
+        targetId: "z",
+        sourceHandle,
+      });
+
+      store.set(connectNodesAtom, { id: "new", ...connection, sourceHandle });
+
+      const saved = store
+        .get(edgesAtom)
+        .filter((item) => item.target === "z")
+        .map((item) => ({
+          source: item.source,
+          target: item.target,
+          sourceHandle: item.sourceHandle,
+        }));
+      expect(saved).toEqual(validated);
+      expect(saved.map((item) => item.source)).toEqual(["b", "c"]);
+    }
+  );
+
+  it("draws a frame handle for every painted edge leaving the frame", () => {
+    const store = mixedContinuationStore();
+
+    const handles = store.get(groupOutletHandlesAtom("g"));
+    const leaving = store
+      .get(displayEdgesAtom)
+      .filter((item) => item.source === "g");
+
+    expect(handles).toEqual([null, "true"]);
+    expect(leaving).toHaveLength(2);
+    for (const painted of leaving) {
+      expect(handles).toContain(painted.sourceHandle ?? null);
+    }
   });
 
   it("deletes every stored edge represented by the collapsed outlet", () => {
@@ -990,7 +1085,7 @@ describe("displayNodesAtom memoization", () => {
 
   it("orders a loaded Group graph so display can reuse the store array", () => {
     const rest = lifecycleNode("t");
-    const frame = groupNode("g", "a", "a");
+    const frame = groupNode("g");
     const child = groupedChild("a", "g");
     const store = createGraphStore([child, rest, frame]);
 
@@ -1004,11 +1099,7 @@ describe("displayNodesAtom memoization", () => {
     store.set(
       hydrateWorkflowAtom,
       savedWorkflow("workflow_grouped", {
-        nodes: [
-          groupedChild("a", "g"),
-          lifecycleNode("t"),
-          groupNode("g", "a", "a"),
-        ],
+        nodes: [groupedChild("a", "g"), lifecycleNode("t"), groupNode("g")],
         edges: [],
       })
     );
@@ -1022,7 +1113,7 @@ describe("displayNodesAtom memoization", () => {
     const store = createGraphStore(...standardGraph());
     store.set(workflowWorkspaceViewAtom, "runs");
     const rest = lifecycleNode("pinned_t");
-    const frame = groupNode("pinned_g", "pinned_a", "pinned_a");
+    const frame = groupNode("pinned_g");
     const child = groupedChild("pinned_a", "pinned_g");
     store.set(executionOverlayGraphAtom, {
       nodes: [child, rest, frame],
@@ -1114,7 +1205,7 @@ describe("displayNodesAtom keeps what the stored node already carries", () => {
       ...comparisonPayload,
       baseGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
       draftGraph: createSerializedWorkflowGraph({
-        nodes: [groupNode("g", "a", "a"), child],
+        nodes: [groupNode("g"), child],
         edges: [],
       }),
       nodeChanges: [{ nodeId: "g", kind: "modified", fields: [] }],
@@ -1613,11 +1704,13 @@ describe("groupSelectionAtom", () => {
 
     expect(store.set(groupSelectionAtom, { catalog: emptyCatalog })).toBe(true);
     const frame = store.get(nodesAtom).find((node) => isGroupNode(node));
-    expect(frame?.data.config).toMatchObject({
-      entryNodeIds: ["a", "b"],
-      exitNodeIds: ["c"],
-      outletHandle: "true",
-    });
+    expect(frame?.data).toEqual({ label: "Group", type: "group" });
+    expect(
+      store
+        .get(nodesAtom)
+        .filter((node) => node.parentId === frame?.id)
+        .map((node) => node.id)
+    ).toEqual(["a", "b", "c"]);
   });
 
   // A pasted frame lands after the members already on the canvas, which costs

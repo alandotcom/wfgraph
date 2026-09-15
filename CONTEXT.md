@@ -201,16 +201,14 @@ together. A Wait on either arm, a join across exclusive Condition or Event
 Split outlets, and a rejoin of Started with Canceled are refused.
 
 **Group**:
-A visual bundle of lookup steps plus an optional Condition. The engine walks
-the children; the frame is editor chrome with one visible inlet and outlet.
-Parallel entries share one predecessor. Lookup exits can remain separate when
-they are terminal or their outgoing edges share a target and target handle;
-the visible outlet represents every such edge. A Condition is the only exit,
-and only True can continue. False with no outgoing edge ends that path. That is
-how a sequence stops; it is not a Cancel Event. Sends stay outside the frame, which an action
-declares with `sideEffect: true` and the editor refuses on. After a Wait, the
-builder pastes the group so the next send reads a fresh fetch: node outputs are
-memoized, and nothing above a Wait re-runs.
+An organizational frame the editor draws around executable steps. Each member
+names the frame as its parent. The stored edges connect steps to steps, and the
+engine walks those edges, so a run takes the same path whether or not its steps
+sit in a Group. A frame sits at the top level of the graph and connects to the
+graph only through its members. The Group's boundary is derived from membership
+and the stored edges: the outside steps that enter the Group, the members they
+enter, the members whose edges leave it, the outside steps those edges reach,
+and the members where a path ends inside it.
 
 **Precedence**:
 One fixed order when an Event arrives: Lifecycle Rules apply first, then the
@@ -228,6 +226,8 @@ expression over the arriving payload. Independent of the Lifecycle Rules: an
 Event needs no lifecycle role to wake a wait, and waking follows Precedence.
 The Events it parks on become the Arriving Event for everything below the
 Wait, which is how an Event Split after a Wait tells those arrivals apart.
+A step above a Wait keeps its memoized output when the run resumes, so fresh
+data after a Wait comes from a copy of the lookup steps placed below the Wait.
 
 **Hop**:
 One park of a Wait node. A Wait parks again on a further hop when a Migration
