@@ -4,6 +4,7 @@ import { rejectUnknownKeys } from "#src/types/schema";
 import { formatSchemaFailure } from "#src/types/schema-message";
 import {
   createSerializedWorkflowGraph,
+  getSerializedWorkflowGraphError,
   parseSerializedWorkflowGraph,
   toWorkflowGraphData,
 } from "#src/graph/graph";
@@ -167,60 +168,90 @@ describe("persisted node data", () => {
     });
   });
 
-  it("round-trips a Group frame and a child's parentId", () => {
-    const encoded = createSerializedWorkflowGraph({
-      nodes: [
-        {
-          id: "g1",
-          type: "group",
-          position: { x: 10, y: 20 },
-          width: 212,
-          height: 180,
-          data: {
-            label: "Lookups",
-            type: "group",
-            config: { entryNodeIds: ["a1"], exitNodeIds: ["c1"] },
-          },
+  it("round-trips a Group's membership and executable edges", () => {
+    const nodes = [
+      {
+        id: "g1",
+        type: "group",
+        position: { x: 10, y: 20 },
+        width: 212,
+        height: 180,
+        data: { label: "Lookups", type: "group" as const },
+      },
+      {
+        id: "a1",
+        type: "action",
+        position: { x: 12, y: 48 },
+        parentId: "g1",
+        data: {
+          label: "Get User",
+          type: "action" as const,
+          config: { actionType: "fountain/get-user" },
         },
-        {
-          id: "a1",
-          type: "action",
-          position: { x: 12, y: 48 },
-          parentId: "g1",
-          data: {
-            label: "Get User",
-            type: "action",
-            config: { actionType: "fountain/get-user" },
-          },
+      },
+      {
+        id: "b1",
+        type: "action",
+        position: { x: 12, y: 144 },
+        parentId: "g1",
+        data: {
+          label: "Get Appointment",
+          type: "action" as const,
+          config: { actionType: "fountain/get-appointment" },
         },
-      ],
-      edges: [],
-    });
+      },
+      {
+        id: "send",
+        type: "action",
+        position: { x: 0, y: 400 },
+        data: {
+          label: "Send",
+          type: "action" as const,
+          config: { actionType: "resend/send-email" },
+        },
+      },
+    ];
+    const edges = [
+      { id: "ab", source: "a1", target: "b1" },
+      { id: "out", source: "b1", target: "send", targetHandle: "input" },
+    ];
 
-    const loaded = toWorkflowGraphData(encoded);
-    expect(loaded.nodes[0]?.data.type).toBe("group");
-    expect(loaded.nodes[0]?.width).toBe(212);
-    expect(loaded.nodes[1]?.parentId).toBe("g1");
+    const loaded = toWorkflowGraphData(
+      createSerializedWorkflowGraph({ nodes, edges })
+    );
+    const reloaded = toWorkflowGraphData(createSerializedWorkflowGraph(loaded));
+
+    for (const graph of [loaded, reloaded]) {
+      expect(graph.nodes[0]?.data).toEqual({ label: "Lookups", type: "group" });
+      expect(graph.nodes[0]?.width).toBe(212);
+      expect(
+        graph.nodes.map((node) => [node.id, node.parentId ?? null])
+      ).toEqual([
+        ["g1", null],
+        ["a1", "g1"],
+        ["b1", "g1"],
+        ["send", null],
+      ]);
+      expect(graph.edges).toEqual(edges);
+    }
   });
 
-  it("rejects the singular Group exit field", () => {
-    expect(() =>
-      createSerializedWorkflowGraph({
-        nodes: [
-          {
-            id: "g1",
-            type: "group",
-            position: { x: 10, y: 20 },
-            data: {
-              label: "Lookups",
-              type: "group",
-              config: { entryNodeIds: ["a1"], exitNodeId: "a1" },
-            },
-          },
-        ],
-        edges: [],
-      })
-    ).toThrow();
+  it.each([
+    ["entryNodeIds", ["a1"]],
+    ["exitNodeIds", ["a1"]],
+    ["outletHandle", "true"],
+  ])("refuses the Group config key %s", (key, value) => {
+    const graph = graphWithNode({
+      id: "g1",
+      type: "group",
+      position: { x: 10, y: 20 },
+      data: { label: "Lookups", type: "group", config: { [key]: value } },
+    });
+
+    expect(getSerializedWorkflowGraphError(graph)).toBe(
+      `nodes[0].attributes.data.config.${key}: Group config holds no keys`
+    );
+    expect(() => parseSerializedWorkflowGraph(graph)).toThrow();
   });
 
   it("accepts a closed Condition config and rejects a stray key", () => {

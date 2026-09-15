@@ -28,7 +28,6 @@ describe("connectionRefusalReason", () => {
           targetHandle: null,
         },
         nodes: [node],
-        edges: [],
         storeEdges: [],
         catalog: emptyExtensionCatalog,
       })
@@ -49,7 +48,6 @@ describe("connectionRefusalReason", () => {
           targetHandle: null,
         },
         nodes: [source, target],
-        edges: [edge],
         storeEdges: [edge],
         catalog: emptyExtensionCatalog,
       })
@@ -74,7 +72,6 @@ describe("connectionRefusalReason", () => {
           targetHandle: null,
         },
         nodes: [source, addNode],
-        edges: [],
         storeEdges: [],
         catalog: emptyExtensionCatalog,
       })

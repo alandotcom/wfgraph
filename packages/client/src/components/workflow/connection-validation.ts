@@ -12,17 +12,20 @@ export function connectionHandleTypesMatch(
   return from !== to;
 }
 
-/** Explain a refused canvas connection, or return null when it can be saved. */
+/**
+ * Explain a refused canvas connection, or return null when it can be saved.
+ * `storeEdges` are the stored edges, which name Group members; the painted
+ * edges name frames and would give a Group outlet a different handle from the
+ * one `connectNodesAtom` saves.
+ */
 export function connectionRefusalReason({
   connection,
   nodes,
-  edges,
   storeEdges,
   catalog,
 }: {
   connection: Connection | Edge;
   nodes: WorkflowNode[];
-  edges: WorkflowEdge[];
   storeEdges: WorkflowEdge[];
   catalog: ExtensionCatalog;
 }): string | null {
@@ -54,7 +57,7 @@ export function connectionRefusalReason({
       : null;
   const sourceHandle = normalizeSourceHandleForConnection({
     nodes,
-    edges,
+    edges: storeEdges,
     sourceNodeId,
     sourceHandle: connection.sourceHandle,
     catalog,

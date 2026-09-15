@@ -1,7 +1,11 @@
 import { assert, describe, it as effectIt, layer } from "@effect/vitest";
 import { Effect, Layer, Stream } from "effect";
 import type { Workflow } from "#src/backend/lib/db/schema";
-import { DraftConflict, NotFound } from "#src/backend/lib/effect/failures";
+import {
+  DraftConflict,
+  InternalFailure,
+  NotFound,
+} from "#src/backend/lib/effect/failures";
 import {
   SilentAppLoggerLayer,
   stubExtensionCatalog,
@@ -9,6 +13,7 @@ import {
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
 import {
+  getWorkflow,
   getWorkflowDraftRevision,
   patchWorkflow,
   streamWorkflowDraftRevisions,
@@ -113,6 +118,47 @@ describe("getWorkflowDraftRevision", () => {
 
       assert.instanceOf(failure, NotFound);
     })
+  );
+});
+
+describe("getWorkflow", () => {
+  effectIt.effect(
+    "refuses to load a draft whose Group config carries entry node ids",
+    () =>
+      Effect.gen(function* () {
+        const graph = structuredClone(stored.graph);
+        graph.nodes.push({
+          key: "group-1",
+          attributes: {
+            id: "group-1",
+            type: "group",
+            position: { x: 0, y: 0 },
+            data: {
+              label: "Lookups",
+              type: "group",
+              config: { entryNodeIds: ["lookup-1"] },
+            },
+          },
+        });
+
+        const failure = yield* getWorkflow("wf_1").pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              SilentAppLoggerLayer,
+              stubWorkflowRepo({
+                findByIdWithPublishedVersion: () =>
+                  Effect.succeed({
+                    workflow: { ...stored, graph },
+                    publishedVersion: null,
+                  }),
+              })
+            )
+          ),
+          Effect.flip
+        );
+
+        assert.instanceOf(failure, InternalFailure);
+      })
   );
 });
 

@@ -3,22 +3,21 @@
  * size, and React Flow parent constraints. Analysis lives in shared.
  */
 
-import { countBy, uniqBy } from "es-toolkit/array";
+import { countBy } from "es-toolkit/array";
 import { generateId } from "@wfgraph/shared/utils/id";
-import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { toast } from "sonner";
 import type { EdgeChange } from "@xyflow/react";
-import { isConditionNode } from "@wfgraph/shared/graph/node-config";
+import {
+  analyzeGroupBoundary,
+  isGroupNode,
+} from "@wfgraph/shared/graph/group-boundary";
 import {
   analyzeGroupableSelection,
   childIdsOfGroup,
   fanOutStoreEdgeIds,
   groupInteriorLayout,
-  isEdgeBetweenMembers,
-  isGroupNode,
   isInteriorEdge,
   orderGroupParentsFirst,
-  predecessorKey,
   undersizedGroupIds,
   type GroupAnalysis,
   type GroupMemberSlot,
@@ -56,7 +55,6 @@ export function groupSelection(input: {
   /** Read for `sideEffect`, which decides whether a step may join a frame. */
   catalog: ExtensionCatalog;
   createId?: () => string;
-  createEdgeId?: () => string;
 }): {
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
@@ -86,20 +84,17 @@ export function groupSelection(input: {
     y: Math.min(...members.map((node) => node.position.y)),
   };
   const memberSet = new Set(analysis.memberIds);
-  const interior = input.edges.filter((edge) =>
-    isEdgeBetweenMembers(memberSet, edge)
-  );
+  const { interiorEdges } = analyzeGroupBoundary({
+    memberIds: analysis.memberIds,
+    edges: input.edges,
+  });
   const { slots, bounds } = groupInteriorLayout(
     analysis.memberIds,
-    interior,
-    analysis.entryIds
+    interiorEdges
   );
   const size = groupFrameSize(bounds.columns, bounds.rows);
   const groupId = (input.createId ?? generateId)();
   const positionById = childPositions(slots, bounds.columns);
-  const conditionExit = analysis.exitIds
-    .map((id) => byId.get(id))
-    .find((node) => isConditionNode(node));
 
   const groupNode: WorkflowNode = {
     id: groupId,
@@ -112,11 +107,6 @@ export function groupSelection(input: {
     data: {
       label: "Group",
       type: "group",
-      config: {
-        entryNodeIds: analysis.entryIds,
-        exitNodeIds: analysis.exitIds,
-        outletHandle: conditionExit ? ("true" as const) : undefined,
-      },
     },
   };
 
@@ -141,11 +131,9 @@ export function groupSelection(input: {
     // frame and its members. Appending here would put the new frame after those
     // members, and `displayNodesAtom` would then re-sort on every render.
     nodes: orderGroupParentsFirst([...rest, groupNode, ...children]),
-    edges: alignEntryIncoming({
-      edges: input.edges,
-      entryIds: analysis.entryIds,
-      createEdgeId: input.createEdgeId ?? generateId,
-    }),
+    // Grouping writes membership only. The stored edges are the engine's
+    // traversal graph, so the Group's boundary is read off them unchanged.
+    edges: input.edges,
     analysis,
   };
 }
@@ -225,11 +213,11 @@ export function dissolveUndersizedGroups(
 }
 
 /**
- * Why this batch cannot be deleted, or null when it can. A frame's entry ids
- * and exit ids are derived from the members it was built from, so a member that
- * goes without its frame leaves a config naming a step that is gone, and the
- * next edge painted off the frame names it too. A batch holding the frame is
- * allowed, because the frame takes its members with it; see `idsRemovedWith`.
+ * Why this batch cannot be deleted, or null when it can. A member deleted
+ * without its frame changes the boundary the frame paints and can leave the
+ * frame holding fewer than two members, so the editor asks for an ungroup
+ * first. A batch holding the frame is allowed, because the frame takes its
+ * members with it; see `idsRemovedWith`.
  *
  * Every delete path asks this one question, with a batch of one where it has
  * one node, so the delete key, the context menu, and the panel cannot disagree.
@@ -324,52 +312,6 @@ export function dropOrphanedEdges(
     (edge) => liveIds.has(edge.source) && liveIds.has(edge.target)
   );
   return kept.length === edges.length ? edges : kept;
-}
-
-function alignEntryIncoming(input: {
-  edges: WorkflowEdge[];
-  entryIds: readonly string[];
-  createEdgeId: () => string;
-}): WorkflowEdge[] {
-  const { edges, entryIds, createEdgeId } = input;
-  const entrySet = new Set(entryIds);
-  const incoming = edges.filter((edge) => entrySet.has(edge.target));
-  const templates = uniqBy(incoming, predecessorKey);
-  if (templates.length !== 1) {
-    return edges;
-  }
-
-  const template = templates[0];
-  if (!template) {
-    return edges;
-  }
-  const templateKey = predecessorKey(template);
-  const have = new Set(
-    edges
-      .filter((edge) => predecessorKey(edge) === templateKey)
-      .map((edge) => edge.target)
-  );
-  const extra: WorkflowEdge[] = [];
-  for (const entryId of entryIds) {
-    if (have.has(entryId)) {
-      continue;
-    }
-    // No `type`: the canvas names the edge component for every edge through
-    // `defaultEdgeOptions`, and React Flow merges that under the edge, so an
-    // explicit `type: undefined` here would shadow it back to the bezier.
-    // React Flow declares both handle keys as optional, so a handle the
-    // template does not name is omitted.
-    extra.push(
-      omitUndefined({
-        id: createEdgeId(),
-        source: template.source,
-        target: entryId,
-        sourceHandle: template.sourceHandle,
-        targetHandle: template.targetHandle,
-      })
-    );
-  }
-  return extra.length === 0 ? edges : [...edges, ...extra];
 }
 
 /**

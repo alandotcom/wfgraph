@@ -43,8 +43,8 @@ import { cn } from "@wfgraph/shared/utils";
 import {
   analyzeGroupableSelection,
   disabledGroupIds,
-  isGroupNode,
 } from "@wfgraph/shared/graph/node-group";
+import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 
 export type ContextMenuType = "node" | "edge" | "pane" | null;
 
