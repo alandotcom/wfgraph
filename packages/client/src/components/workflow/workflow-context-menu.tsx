@@ -32,7 +32,7 @@ import {
   hasCopiedSelectionAtom,
   nodesAtom,
   pasteCopiedSelectionAtom,
-  selectedNodeAtom,
+  selectOnlyNodeAtom,
   ungroupNodeAtom,
   updateNodeDataAtom,
 } from "#src/lib/workflow-graph-store";
@@ -92,7 +92,7 @@ export function WorkflowContextMenu({
   const groupSelected = useSetAtom(groupSelectionAtom);
   const ungroupSelected = useSetAtom(ungroupNodeAtom);
   const hasCopiedSelection = useAtomValue(hasCopiedSelectionAtom);
-  const setSelectedNode = useSetAtom(selectedNodeAtom);
+  const selectOnlyNode = useSetAtom(selectOnlyNodeAtom);
   const deleteGroupWithMembers = useSetAtom(deleteGroupWithMembersAtom);
   const updateNodeData = useSetAtom(updateNodeDataAtom);
   const catalog = useExtensionCatalog();
@@ -132,14 +132,14 @@ export function WorkflowContextMenu({
     if (menuState?.nodeId) {
       const nodeId = menuState.nodeId;
       onClose();
-      setSelectedNode(nodeId);
+      selectOnlyNode(nodeId);
       // On a narrow canvas no rail is mounted to show the selection, so the
       // sheet is the only surface that can answer this click.
       if (isMobile) {
         openSheet();
       }
     }
-  }, [menuState, onClose, setSelectedNode, isMobile, openSheet]);
+  }, [menuState, onClose, selectOnlyNode, isMobile, openSheet]);
 
   const handleDeleteGroupWithSteps = useCallback(() => {
     if (canEdit && menuState?.nodeId) {

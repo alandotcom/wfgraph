@@ -9,14 +9,20 @@ import {
 import {
   isExecutionOverlayActiveAtom,
   selectOnlyNodeAtom,
-  selectedNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 
-/** Select a displayed node and reveal the inspector appropriate to its workspace. */
-export function useWorkflowNodeInspection(): (nodeId: string) => void {
-  const setSelectedNode = useSetAtom(selectedNodeAtom);
+/**
+ * Select a displayed node and reveal the inspector appropriate to its
+ * workspace. `selectionApplied` says React Flow's own `select` changes have
+ * already written the selection, as for a click on the editable Draft canvas,
+ * where a modifier click adds to a multi-selection this must not replace.
+ */
+export function useWorkflowNodeInspection(): (
+  nodeId: string,
+  options?: { selectionApplied?: boolean }
+) => void {
   const selectOnlyNode = useSetAtom(selectOnlyNodeAtom);
   const overlayActive = useAtomValue(isExecutionOverlayActiveAtom);
   const comparisonActive = useAtomValue(activeComparisonAtom) !== null;
@@ -27,14 +33,10 @@ export function useWorkflowNodeInspection(): (nodeId: string) => void {
   const { openSheet } = useConfigurationSheet();
 
   return useCallback(
-    (nodeId) => {
+    (nodeId, options) => {
       const isRunsOverlay = workspaceView === "runs" && overlayActive;
-      const isResolvedReadOnlyPresentation =
-        isRunsOverlay || (workspaceView === "changes" && comparisonActive);
-      if (isResolvedReadOnlyPresentation) {
+      if (!options?.selectionApplied) {
         selectOnlyNode(nodeId);
-      } else {
-        setSelectedNode(nodeId);
       }
       if (isRunsOverlay) {
         return;
@@ -57,7 +59,6 @@ export function useWorkflowNodeInspection(): (nodeId: string) => void {
       overlayActive,
       selectOnlyNode,
       setComparisonSubview,
-      setSelectedNode,
       workspaceView,
     ]
   );

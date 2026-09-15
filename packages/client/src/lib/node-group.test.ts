@@ -51,7 +51,6 @@ function action(
     id,
     type: "action",
     position,
-    selected: true,
     data: {
       label: id,
       type: "action",
@@ -79,7 +78,6 @@ function parallelNodes(): WorkflowNode[] {
     {
       ...action("life", "ignored", { x: 0, y: 0 }),
       type: "lifecycle",
-      selected: false,
       data: { label: "Start", type: "lifecycle", config: {} },
     },
     action("a", "fountain/get-user", { x: 40, y: 200 }),

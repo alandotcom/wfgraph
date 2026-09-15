@@ -1,4 +1,6 @@
+import { useAtomValue } from "jotai";
 import { cn } from "@wfgraph/shared/utils";
+import { selectedNodeAtom } from "#src/lib/workflow-graph-store";
 import { TemplateAutocomplete } from "./template-autocomplete";
 import { useTemplateBadgeField } from "./use-template-badge-field";
 
@@ -56,10 +58,9 @@ export function TemplateBadgeInput({
     handleInput,
     handleKeyDown,
     handlePaste,
-    nodes,
     showAutocomplete,
   } = useTemplateBadgeField({ value, onChange, placeholder });
-  const selectedNodeId = nodes.find((node) => node.selected)?.id;
+  const selectedNodeId = useAtomValue(selectedNodeAtom);
 
   return (
     <>

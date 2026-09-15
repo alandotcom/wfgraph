@@ -35,23 +35,26 @@ export function isCopyableNode(node: WorkflowNode): boolean {
 
 /**
  * The copyable nodes a node-context Copy should take: the whole selection when
- * the clicked node is already selected, otherwise just that node.
+ * the clicked node is in `selectedNodeIds`, otherwise just that node.
  */
 export function nodeIdsForContextCopy(
   nodes: readonly WorkflowNode[],
-  clickedNodeId: string
+  clickedNodeId: string,
+  selectedNodeIds: ReadonlySet<string>
 ): ReadonlySet<string> {
   const clicked = nodes.find((node) => node.id === clickedNodeId);
   if (!clicked || !isCopyableNode(clicked)) {
     return new Set();
   }
 
-  if (clicked.selected) {
+  if (selectedNodeIds.has(clicked.id)) {
     return expandGroupCopyIds(
       nodes,
       new Set(
         nodes
-          .filter((node) => node.selected && isCopyableNode(node))
+          .filter(
+            (node) => selectedNodeIds.has(node.id) && isCopyableNode(node)
+          )
           .map((node) => node.id)
       )
     );
@@ -60,17 +63,15 @@ export function nodeIdsForContextCopy(
   return expandGroupCopyIds(nodes, new Set([clicked.id]));
 }
 
+/** The copyable subgraph `nodeIds` names, or null when it names none. */
 export function extractCopyableSelection(input: {
   nodes: readonly WorkflowNode[];
   edges: readonly WorkflowEdge[];
-  nodeIds?: ReadonlySet<string> | undefined;
+  nodeIds: ReadonlySet<string>;
 }): CopiedSelection | null {
-  const requested = input.nodes.filter((node) => {
-    if (!isCopyableNode(node)) {
-      return false;
-    }
-    return input.nodeIds ? input.nodeIds.has(node.id) : Boolean(node.selected);
-  });
+  const requested = input.nodes.filter(
+    (node) => isCopyableNode(node) && input.nodeIds.has(node.id)
+  );
 
   if (requested.length === 0) {
     return null;
@@ -127,7 +128,6 @@ export function cloneSelection(
             x: node.position.x + options.offset.x,
             y: node.position.y + options.offset.y,
           },
-      selected: true,
       dragging: false,
       data: {
         ...node.data,
@@ -145,7 +145,6 @@ export function cloneSelection(
     id: createId(),
     source: mappedId(idMap, edge.source),
     target: mappedId(idMap, edge.target),
-    selected: true,
   }));
 
   return { nodes, edges };
@@ -179,16 +178,12 @@ function mappedId(idMap: ReadonlyMap<string, string>, id: string): string {
 function snapshotNode(node: WorkflowNode): WorkflowNode {
   return {
     ...toEditorNode(toPersistedNode(node)),
-    selected: false,
     dragging: false,
   };
 }
 
 function snapshotEdge(edge: WorkflowEdge): WorkflowEdge {
-  return {
-    ...toEditorEdge(toPersistedEdge(edge)),
-    selected: false,
-  };
+  return toEditorEdge(toPersistedEdge(edge));
 }
 
 function remapConfig(

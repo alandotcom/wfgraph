@@ -27,7 +27,6 @@ import {
   refreshWorkflowPublication,
 } from "#src/lib/rpc-query";
 import {
-  clearGraphSelectionAtom,
   executionOverlayGraphAtom,
   setNodeStatusesAtom,
 } from "#src/lib/workflow-graph-store";
@@ -55,7 +54,6 @@ import {
   type WorkflowPatch,
 } from "#src/lib/workflow-save-store";
 import { ApiError } from "#src/lib/rpc-client";
-import { enterRunsWorkspaceAtom } from "#src/lib/workflow-workspace-navigation";
 import {
   readEntryLifecycleRules,
   readEntryTestPayloads,
@@ -167,7 +165,6 @@ export function useWorkflowHandlers({
     nodes,
     publication,
     setIsExecuting,
-    setSelectedNodeId,
     updateNodeData,
     workflowMode,
   } = state;
@@ -187,10 +184,8 @@ export function useWorkflowHandlers({
   const { open: openOverlay } = useOverlay();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const clearGraphSelection = useSetAtom(clearGraphSelectionAtom);
   const setExecutionOverlay = useSetAtom(executionOverlayGraphAtom);
   const setNodeStatuses = useSetAtom(setNodeStatusesAtom);
-  const enterRuns = useSetAtom(enterRunsWorkspaceAtom);
   const setCurrentWorkflowMode = useSetAtom(currentWorkflowModeAtom);
 
   /**
@@ -268,15 +263,18 @@ export function useWorkflowHandlers({
       rememberTestPayload({ nodes, updateNodeData, request });
     }
 
-    enterRuns();
+    // Show the run list while the run starts. The run list is its own
+    // workspace address, so its selection starts empty and Draft keeps its own.
+    void navigate({
+      to: "/workflows/$workflowId",
+      params: { workflowId: currentWorkflowId },
+      search: { view: "runs" },
+      replace: true,
+    });
 
-    // Drop any run overlay so optimistic status and the new selection paint the
-    // draft until the new run's pinned graph arrives.
+    // Drop any run overlay so optimistic status paints the draft until the new
+    // run's pinned graph arrives.
     setExecutionOverlay(null);
-
-    // Deselect all nodes and edges
-    clearGraphSelection();
-    setSelectedNodeId(null);
 
     setIsExecuting(true);
     await executeWorkflowRun({
@@ -302,13 +300,13 @@ export function useWorkflowHandlers({
       setNodeStatuses,
       setIsExecuting,
       runLabel: runCommandLabel(target),
-      // The URL is the one writer of which run is open; workflow-runs.tsx
-      // derives the selection atom and the pinned-graph overlay from it.
+      // The URL is the one writer of which run is open; the run selection and
+      // the pinned-graph overlay are derived from it.
       navigateToExecution: (executionId) =>
         navigate({
           to: "/workflows/$workflowId",
           params: { workflowId: currentWorkflowId },
-          search: { executionId },
+          search: { view: "runs", executionId },
         }),
     });
     // Don't set executing to false here - let polling handle it

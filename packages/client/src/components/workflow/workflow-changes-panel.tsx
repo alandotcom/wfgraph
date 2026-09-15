@@ -19,7 +19,10 @@ import {
   comparisonNodeTitle,
 } from "#src/components/workflow/comparison-properties";
 import { WorkflowVersionHistory } from "#src/components/workflow/workflow-version-history";
-import { selectedNodeAtom } from "#src/lib/workflow-graph-store";
+import {
+  selectedNodeAtom,
+  selectOnlyNodeAtom,
+} from "#src/lib/workflow-graph-store";
 import {
   comparisonSessionAtom,
   resetComparisonLayoutAtom,
@@ -46,7 +49,7 @@ export function WorkflowChangesPanel({
   const catalog = useExtensionCatalog();
   const workflowId = useAtomValue(currentWorkflowIdAtom);
   const session = useAtomValue(comparisonSessionAtom);
-  const setSelectedNode = useSetAtom(selectedNodeAtom);
+  const selectOnlyNode = useSetAtom(selectOnlyNodeAtom);
   const selectedNodeId = useAtomValue(selectedNodeAtom);
   const setSubview = useSetAtom(setComparisonSubviewAtom);
   const resetLayout = useSetAtom(resetComparisonLayoutAtom);
@@ -97,7 +100,7 @@ export function WorkflowChangesPanel({
 
   const selectNodeChange = (change: WorkflowNodeChange) => {
     if (!workflowId) return;
-    setSelectedNode(change.nodeId);
+    selectOnlyNode(change.nodeId);
     setSubview({ workflowId, subview: "properties" });
     if (isMobile) openSheet();
   };
@@ -105,7 +108,7 @@ export function WorkflowChangesPanel({
   const moveSelection = (delta: number) => {
     const next = payload.nodeChanges.at(selectedIndex + delta);
     if (!next || !workflowId) return;
-    setSelectedNode(next.nodeId);
+    selectOnlyNode(next.nodeId);
   };
 
   if (session.subview === "history") {
