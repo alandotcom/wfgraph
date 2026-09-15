@@ -21,7 +21,6 @@ import {
   edgesAtom,
   nodesAtom,
   type NodeDataUpdate,
-  selectedNodeAtom,
   updateNodeDataAtom,
   canRedoAtom,
   canUndoAtom,
@@ -116,7 +115,6 @@ export type WorkflowToolbarState = WorkflowToolbarCapabilities & {
   setIsExecuting: (value: boolean) => void;
   clearWorkflow: () => void;
   updateNodeData: (update: NodeDataUpdate) => void;
-  setSelectedNodeId: (id: string | null) => void;
   undo: () => void;
   redo: () => void;
   canUndo: boolean;
@@ -142,7 +140,6 @@ export function useWorkflowToolbarState(): WorkflowToolbarState {
   const redo = useSetAtom(redoAtom);
   const [canUndo] = useAtom(canUndoAtom);
   const [canRedo] = useAtom(canRedoAtom);
-  const setSelectedNodeId = useSetAtom(selectedNodeAtom);
   const { data: userIntegrations = [] } = useQuery({
     ...integrationsQueryOptions(),
     enabled: can(WfGraphOperations.integrationGetAll.id),
@@ -176,7 +173,6 @@ export function useWorkflowToolbarState(): WorkflowToolbarState {
     canUndo,
     canRedo,
     allWorkflows,
-    setSelectedNodeId,
     userIntegrations,
     publication,
   };

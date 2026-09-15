@@ -27,30 +27,26 @@ import {
   workflowLoadErrorAtom,
   workflowNotFoundAtom,
 } from "#src/lib/workflow-save-store";
+import type { WorkflowRouteSearch } from "#src/lib/workflow-navigation-state";
 import {
   classifyWorkflowLoadFailure,
   authorizedWorkflowSearch,
-  executionIdFromWorkflowSearch,
   publishWorkflowAfterCompletedSaves,
   WORKFLOW_LOAD_ERROR_MESSAGE,
 } from "#src/lib/workflow-route-state";
-import { enterRunsWorkspaceAtom } from "#src/lib/workflow-workspace-navigation";
 import WorkflowEditorPage from "#src/routes/workflows/[workflowId]/page";
 import WorkflowsPage from "#src/routes/workflows/page";
-
-/** Which run the Runs panel has open, when any. */
-export type WorkflowRouteSearch = {
-  executionId?: string | undefined;
-};
 
 function validateWorkflowSearch(
   search: WorkflowRouteSearch & SearchSchemaInput
 ): WorkflowRouteSearch {
-  return authorizedWorkflowSearch(search, canOpenDeepLinkedRun());
-}
-
-function canOpenDeepLinkedRun(): boolean {
-  return can(WfGraphOperations.workflowGetById.id) && canInspectWorkflowRuns();
+  return authorizedWorkflowSearch(search, {
+    canOpenRuns:
+      can(WfGraphOperations.workflowGetById.id) && canInspectWorkflowRuns(),
+    canOpenComparison:
+      can(WfGraphOperations.workflowCompareVersion.id) &&
+      can(WfGraphOperations.workflowGetVersionHistory.id),
+  });
 }
 
 /**
@@ -134,10 +130,12 @@ const workflowRoute = createRoute({
    * every time, and the connection list is refetched only when it has gone
    * stale or a connection write invalidated it.
    *
-   * Run selection is not a loader concern: hydrating on `executionId` cleared
-   * the pinned-graph overlay and left the canvas on the live draft.
+   * The search is not a loader concern. The loader has no `loaderDeps`, so the
+   * router runs it again when `workflowId` changes and skips it when only the
+   * search does: the search names a workspace inside the open workflow, and
+   * re-hydrating would clear the selection, undo history, and comparison.
    */
-  loader: async ({ params, location, abortController }) => {
+  loader: async ({ params, abortController }) => {
     const initialSaveGeneration =
       appStore.get(successfulSaveGenerationAtom).get(params.workflowId) ?? 0;
     const workflowQueryOptions = orpcQuery.workflow.getById.queryOptions({
@@ -166,9 +164,6 @@ const workflowRoute = createRoute({
         ? queryClient.query(integrationsQueryOptions())
         : Promise.resolve([]),
     ]);
-    const hasDeepLinkRunAccess =
-      executionIdFromWorkflowSearch(location.search) !== undefined &&
-      canOpenDeepLinkedRun();
 
     // Query cancellation and route cancellation are separate concerns. The
     // checks keep a loader that no longer owns the navigation from publishing
@@ -208,9 +203,6 @@ const workflowRoute = createRoute({
               integrationsResult.value
             ),
           });
-          if (hasDeepLinkRunAccess) {
-            appStore.set(enterRunsWorkspaceAtom);
-          }
         },
         signal: abortController.signal,
       });

@@ -75,14 +75,16 @@ export function WorkflowSidebarPanel() {
   });
 
   /**
-   * The single write to the collapsed preference. Workspace state is preserved;
-   * the persistent toolbar switcher remains the route back to Draft.
+   * The single write to the active scope's desktop Reveal level and the
+   * collapsed preference. A narrow viewport has no rail, so it writes neither.
    */
   const setPanelCollapsed = useCallback(
     (collapsed: boolean) => {
-      setPanelCollapsedState(collapsed);
+      if (!isMobile) {
+        setPanelCollapsedState(collapsed);
+      }
     },
-    [setPanelCollapsedState]
+    [isMobile, setPanelCollapsedState]
   );
 
   const [isDraggingResize, setIsDraggingResize] = useState(false);

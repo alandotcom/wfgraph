@@ -120,15 +120,17 @@ export function useNodeConfigWriter() {
    * success toast is part of it: written once per panel back when there were
    * two, one of them toasted and the other finished in silence.
    *
-   * Destroying every run includes the one being shown, so clear `executionId`
-   * from the URL the same way Back does (#40 / #75). The URL is the one writer
-   * of which run is open; ExecutionOverlaySync derives the selection atom from it.
+   * Destroying every run includes the one being shown, so the route moves to
+   * the empty run list with `{ view: "runs" }`, the same search `useExitRun`
+   * writes. An empty search names Draft, which would leave Runs entirely. The
+   * URL is the one writer of which run is open; ExecutionOverlaySync derives
+   * the selection atom from it.
    */
   const deleteRuns = useMutation(
     orpcQuery.workflow.deleteExecutions.mutationOptions({
       onSuccess: async () => {
         clearNodeStatuses();
-        void navigate({ search: {}, replace: true });
+        void navigate({ search: { view: "runs" }, replace: true });
         await refreshRunHistory(queryClient);
         toast.success("All runs deleted");
       },

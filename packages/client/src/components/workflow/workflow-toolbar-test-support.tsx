@@ -20,6 +20,8 @@ import {
   RouterProvider,
   type SearchSchemaInput,
 } from "@tanstack/react-router";
+import type { WorkflowRouteSearch } from "#src/lib/workflow-navigation-state";
+import { authorizedWorkflowSearch } from "#src/lib/workflow-route-state";
 import { render } from "@testing-library/react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { createStore, Provider as JotaiProvider, useAtomValue } from "jotai";
@@ -113,7 +115,6 @@ export function state(): WorkflowToolbarState {
     canUndo: false,
     canRedo: false,
     allWorkflows: [],
-    setSelectedNodeId: vi.fn(),
     userIntegrations: [],
     publication: {
       isPublished: true,
@@ -205,12 +206,11 @@ export function renderProbe({
   const workflowRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/workflows/$workflowId",
-    validateSearch: (search: { executionId?: string } & SearchSchemaInput) => ({
-      executionId:
-        typeof search.executionId === "string" && search.executionId.length > 0
-          ? search.executionId
-          : undefined,
-    }),
+    validateSearch: (search: WorkflowRouteSearch & SearchSchemaInput) =>
+      authorizedWorkflowSearch(search, {
+        canOpenRuns: true,
+        canOpenComparison: true,
+      }),
     component: () => null,
   });
 

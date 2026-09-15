@@ -12,7 +12,8 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { useAtomValue, useSetAtom } from "jotai";
+import { useNavigate } from "@tanstack/react-router";
+import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { useCallback, useMemo, useState } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
@@ -24,11 +25,9 @@ import {
 } from "#src/hooks/effects";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
 import { can } from "#src/lib/authorization";
-import {
-  edgesAtom,
-  nodesAtom,
-  selectedNodeAtom,
-} from "#src/lib/workflow-graph-store";
+import { edgesAtom, nodesAtom } from "#src/lib/workflow-graph-store";
+import { workspaceAddressFromSearch } from "#src/lib/workflow-navigation-state";
+import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
   toPersistedEdge,
   toPersistedNodes,
@@ -40,7 +39,10 @@ import {
   workflowIssuesAtom,
 } from "#src/lib/workflow-issues-store";
 import { useProviderFieldIssues } from "#src/hooks/use-provider-field-issues";
-import { enterDraftWorkspaceAtom } from "#src/lib/workflow-workspace-navigation";
+import {
+  rememberedRouteSearchesAtom,
+  setWorkspaceSelectionAtom,
+} from "#src/lib/workflow-workspace-navigation";
 import { groupWorkflowIssuesForOverlay } from "@wfgraph/shared/graph/workflow-issues";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 
@@ -110,8 +112,9 @@ export function useCollectWorkflowIssues(): void {
  * replaced raced the panel and won only because the panel is fast.
  */
 export function useGoToStep(): (nodeId: string, fieldKey?: string) => void {
-  const setSelectedNodeId = useSetAtom(selectedNodeAtom);
-  const enterDraft = useSetAtom(enterDraftWorkspaceAtom);
+  const store = useStore();
+  const navigate = useNavigate({ from: "/workflows/$workflowId" });
+  const setWorkspaceSelection = useSetAtom(setWorkspaceSelectionAtom);
   const [pendingFieldFocus, setPendingFieldFocus] = useState<string | null>(
     null
   );
@@ -131,11 +134,20 @@ export function useGoToStep(): (nodeId: string, fieldKey?: string) => void {
 
   return useCallback(
     (nodeId: string, fieldKey?: string) => {
-      setSelectedNodeId(nodeId);
-      enterDraft();
+      // The step is selected in the Draft address the route is about to show,
+      // so the selection is Draft's own whichever workspace asked.
+      const search = store.get(rememberedRouteSearchesAtom).draft ?? {};
+      setWorkspaceSelection({
+        address: workspaceAddressFromSearch(
+          store.get(currentWorkflowIdAtom) ?? "",
+          search
+        ),
+        selection: { nodeIds: [nodeId], edgeIds: [] },
+      });
+      void navigate({ search, replace: true });
       setPendingFieldFocus(fieldKey ?? null);
     },
-    [enterDraft, setSelectedNodeId]
+    [navigate, setWorkspaceSelection, store]
   );
 }
 

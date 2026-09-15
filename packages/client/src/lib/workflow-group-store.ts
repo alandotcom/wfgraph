@@ -28,9 +28,12 @@ import {
   nodesStateAtom,
   pushHistory,
   requestGraphSave,
-  selectedEdgeAtom,
-  selectedNodeAtom,
 } from "#src/lib/workflow-graph-cells";
+import {
+  EMPTY_SELECTION,
+  selectionInGraph,
+} from "#src/lib/workflow-navigation-state";
+import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
 
 /**
  * Wrap a valid lookup+Condition selection in a Group frame.
@@ -38,7 +41,8 @@ import {
  * The catalog is an argument rather than a read, because this runs outside
  * React and the analysis needs each member's `sideEffect`. `selectedIds` is
  * for a caller whose live selection has already collapsed; omitting it groups
- * whatever the canvas has selected.
+ * the selected nodes of the active address. The new frame becomes the
+ * selection.
  */
 export const groupSelectionAtom = atom(
   null,
@@ -52,9 +56,7 @@ export const groupSelectionAtom = atom(
     }
 
     const nodes = get(nodesStateAtom);
-    const ids =
-      input.selectedIds ??
-      new Set(nodes.filter((node) => node.selected).map((node) => node.id));
+    const ids = input.selectedIds ?? new Set(get(activeSelectionAtom).nodeIds);
     const grouped = groupSelection({
       nodes,
       edges: get(edgesStateAtom),
@@ -68,11 +70,10 @@ export const groupSelectionAtom = atom(
     pushHistory(get, set);
     set(nodesStateAtom, grouped.nodes);
     set(edgesStateAtom, grouped.edges);
-    const frame = grouped.nodes.find(
-      (node) => isGroupNode(node) && node.selected
-    );
-    set(selectedNodeAtom, frame?.id ?? null);
-    set(selectedEdgeAtom, null);
+    set(activeSelectionAtom, {
+      nodeIds: [grouped.groupId],
+      edgeIds: [],
+    });
     requestGraphSave(get, set, { immediate: true });
     return true;
   }
@@ -98,8 +99,7 @@ export const ungroupNodeAtom = atom(null, (get, set, nodeId: string) => {
 
   pushHistory(get, set);
   set(nodesStateAtom, next);
-  set(selectedNodeAtom, null);
-  set(selectedEdgeAtom, null);
+  set(activeSelectionAtom, EMPTY_SELECTION);
   requestGraphSave(get, set, { immediate: true });
   return true;
 });
@@ -130,8 +130,7 @@ export const deleteGroupWithMembersAtom = atom(
     pushHistory(get, set);
     set(nodesStateAtom, next.nodes);
     set(edgesStateAtom, next.edges);
-    set(selectedNodeAtom, null);
-    set(selectedEdgeAtom, null);
+    set(activeSelectionAtom, EMPTY_SELECTION);
     requestGraphSave(get, set, { immediate: true });
     return true;
   }
@@ -193,9 +192,13 @@ export const deleteEdgeAtom = atom(null, (get, set, edgeId: string) => {
   pushHistory(get, set);
   set(edgesStateAtom, remaining);
 
-  if (get(selectedEdgeAtom) && removedIds.has(get(selectedEdgeAtom) ?? "")) {
-    set(selectedEdgeAtom, null);
-  }
+  set(
+    activeSelectionAtom,
+    selectionInGraph(get(activeSelectionAtom), {
+      nodes: get(nodesStateAtom),
+      edges: remaining,
+    })
+  );
 
   requestGraphSave(get, set, { immediate: true });
 });

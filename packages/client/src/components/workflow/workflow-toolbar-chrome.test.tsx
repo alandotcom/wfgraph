@@ -11,9 +11,8 @@ import {
   REAL_NODES,
   renderChrome,
 } from "#src/components/workflow/workflow-toolbar-chrome.test-support";
-import { nodesAtom, selectedNodeAtom } from "#src/lib/workflow-graph-store";
+import { nodesAtom, selectOnlyNodeAtom } from "#src/lib/workflow-graph-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
-import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import { can } from "#src/lib/authorization";
 import {
   installAuthorizationGrantsForTests,
@@ -121,13 +120,13 @@ describe("ToolbarActions publish gating", () => {
 
 describe("mobile editing actions", () => {
   it("keeps Configuration available and disables Delete while editing is locked", async () => {
-    const selectedNode = { ...REAL_NODES[0], selected: true };
+    const selectedNode = REAL_NODES[0];
     const view = renderChrome(ToolbarActions, {
       generating: true,
       graph: [selectedNode],
       state: { nodes: [selectedNode] },
     });
-    act(() => view.store.set(selectedNodeAtom, selectedNode.id));
+    act(() => view.store.set(selectOnlyNodeAtom, selectedNode.id));
 
     expect(
       (await view.findByTitle("Configuration")).hasAttribute("disabled")
@@ -164,7 +163,7 @@ describe("mobile editing actions", () => {
       graph,
       state: { nodes: graph },
     });
-    act(() => view.store.set(selectedNodeAtom, "group_1"));
+    act(() => view.store.set(selectOnlyNodeAtom, "group_1"));
 
     fireEvent.click(await view.findByTitle("Delete"));
 
@@ -264,7 +263,7 @@ describe("WorkflowToolbarChrome", () => {
   });
 
   it("shows available workspace views and moves the editor to Runs", async () => {
-    const { findAllByRole, findByRole, store } = renderChrome(
+    const { findAllByRole, findByRole, router } = renderChrome(
       WorkflowToolbarChrome,
       {
         state: {
@@ -294,8 +293,11 @@ describe("WorkflowToolbarChrome", () => {
     expect(selectedView?.className).toContain("bg-primary");
     expect(selectedView?.className).toContain("text-primary-foreground");
 
+    // The switch names Runs in the route, which `WorkspaceRouteSync` applies.
     fireEvent.click(await findByRole("button", { name: "Runs" }));
-    expect(store.get(workflowWorkspaceViewAtom)).toBe("runs");
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual({ view: "runs" })
+    );
   });
 
   it("puts navigation, Actions and Settings on the left and the views and Publish on the right", async () => {

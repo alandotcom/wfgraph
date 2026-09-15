@@ -30,6 +30,8 @@ type ComparisonSessions = Readonly<Record<string, WorkflowComparisonSession>>;
 type ComparisonRequestState = {
   epoch: number;
   status: "idle" | "pending" | "error";
+  /** The base version the latest request named when the server had none. */
+  missingBaseVersionId?: string | undefined;
 };
 
 const comparisonSessionsStateAtom = atom<ComparisonSessions>({});
@@ -83,6 +85,18 @@ export const isComparisonErrorAtom = atom((get) => {
     : false;
 });
 
+/**
+ * The base version id the current workflow's latest comparison request named
+ * when that version does not exist, or null.
+ */
+export const missingComparisonBaseIdAtom = atom((get) => {
+  const workflowId = get(currentWorkflowIdAtom);
+  return workflowId
+    ? (requestStateFor(get(comparisonRequestStateAtom), workflowId)
+        .missingBaseVersionId ?? null)
+    : null;
+});
+
 /** Start a request in this editor lifetime and return its workflow-local epoch. */
 export const beginWorkflowComparisonRequestAtom = atom(
   null,
@@ -107,6 +121,8 @@ export const settleWorkflowComparisonRequestAtom = atom(
       workflowId: string;
       epoch: number;
       outcome?: "success" | "error";
+      /** Set when the request failed because this base version does not exist. */
+      missingBaseVersionId?: string | undefined;
     }
   ) => {
     const state = requestStateFor(
@@ -119,8 +135,9 @@ export const settleWorkflowComparisonRequestAtom = atom(
     set(comparisonRequestStateAtom, (states) => ({
       ...states,
       [input.workflowId]: {
-        ...state,
+        epoch: state.epoch,
         status: input.outcome === "error" ? "error" : "idle",
+        missingBaseVersionId: input.missingBaseVersionId,
       },
     }));
     return true;

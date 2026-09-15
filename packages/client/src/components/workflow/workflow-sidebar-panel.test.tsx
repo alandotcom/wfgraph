@@ -20,7 +20,9 @@ import {
   canvasEditingLockedAtom,
   executionOverlayGraphAtom,
 } from "#src/lib/workflow-graph-store";
-import { workflowWorkspaceView } from "#src/lib/workflow-route-state";
+import type { WorkflowRouteSearch } from "#src/lib/workflow-navigation-state";
+import { authorizedWorkflowSearch } from "#src/lib/workflow-route-state";
+import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
   isSidebarCollapsedAtom,
   workflowWorkspaceViewAtom,
@@ -35,6 +37,7 @@ import {
   type WorkflowRunRpcFixture,
 } from "#src/lib/rpc-fetch-test-support";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
 
 const emptyCatalog: ExtensionCatalog = {
   entities: [],
@@ -79,7 +82,9 @@ function stubRunQueries(): void {
 
 function renderPanel() {
   const store = createStore();
-  store.set(workflowWorkspaceViewAtom, "runs");
+  store.set(currentWorkflowIdAtom, "wf_1");
+  // The route this harness opens, applied as `WorkspaceRouteSync` would.
+  showWorkspaceRoute(store, { view: "runs", executionId: "exec_1" });
   store.set(isSidebarCollapsedAtom, false);
   store.set(executionOverlayGraphAtom, {
     nodes: [
@@ -97,24 +102,17 @@ function renderPanel() {
   const workflowRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/workflows/$workflowId",
-    validateSearch: (search: { executionId?: string } & SearchSchemaInput) => ({
-      executionId:
-        typeof search.executionId === "string" && search.executionId.length > 0
-          ? search.executionId
-          : undefined,
-    }),
-    beforeLoad: ({ search }) => {
-      const tab = workflowWorkspaceView(search.executionId);
-      if (tab !== null) {
-        store.set(workflowWorkspaceViewAtom, tab);
-      }
-    },
+    validateSearch: (search: WorkflowRouteSearch & SearchSchemaInput) =>
+      authorizedWorkflowSearch(search, {
+        canOpenRuns: true,
+        canOpenComparison: true,
+      }),
     component: () => <WorkflowSidebarPanel />,
   });
   const router = createRouter({
     routeTree: rootRoute.addChildren([workflowRoute]),
     history: createMemoryHistory({
-      initialEntries: ["/workflows/wf_1?executionId=exec_1"],
+      initialEntries: ["/workflows/wf_1?view=runs&executionId=exec_1"],
     }),
   });
 
@@ -286,7 +284,10 @@ describe("WorkflowSidebarPanel", () => {
 
     expect(store.get(isSidebarCollapsedAtom)).toBe(true);
     expect(store.get(workflowWorkspaceViewAtom)).toBe("runs");
-    expect(router.state.location.search).toEqual({ executionId: "exec_1" });
+    expect(router.state.location.search).toEqual({
+      view: "runs",
+      executionId: "exec_1",
+    });
     expect(store.get(canvasEditingLockedAtom)).toBe(true);
   });
 
@@ -305,7 +306,10 @@ describe("WorkflowSidebarPanel", () => {
 
     expect(store.get(isSidebarCollapsedAtom)).toBe(true);
     expect(store.get(workflowWorkspaceViewAtom)).toBe("runs");
-    expect(router.state.location.search).toEqual({ executionId: "exec_1" });
+    expect(router.state.location.search).toEqual({
+      view: "runs",
+      executionId: "exec_1",
+    });
   });
 
   // The percentage the drag stores is a share of the editor shell, which is the
@@ -392,6 +396,9 @@ describe("WorkflowSidebarPanel", () => {
 
     expect(store.get(isSidebarCollapsedAtom)).toBe(false);
     expect(store.get(workflowWorkspaceViewAtom)).toBe("runs");
-    expect(router.state.location.search).toEqual({ executionId: "exec_1" });
+    expect(router.state.location.search).toEqual({
+      view: "runs",
+      executionId: "exec_1",
+    });
   });
 });

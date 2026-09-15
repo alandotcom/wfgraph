@@ -17,6 +17,7 @@ import {
   canvasEditingLockedAtom,
   canUndoAtom,
   clearNodeStatusesAtom,
+  clearSelectionAtom,
   clearWorkflowAtom,
   connectNodesAtom,
   copySelectionAtom,
@@ -29,7 +30,6 @@ import {
   edgesAtom,
   endWorkflowEditorLifetimeAtom,
   executionOverlayGraphAtom,
-  exitWorkflowComparisonAtom,
   groupSelectionAtom,
   hasCopiedSelectionAtom,
   hydrateWorkflowAtom,
@@ -41,10 +41,12 @@ import {
   onNodesChangeAtom,
   pasteCopiedSelectionAtom,
   selectedNodeAtom,
+  selectOnlyNodeAtom,
   recordObservedRemoteDraftRevisionAtom,
   remoteDraftChangeAtom,
   setNodeStatusesAtom,
   snapshotHistoryAtom,
+  redoAtom,
   undoAtom,
   updateNodeDataAtom,
 } from "#src/lib/workflow-graph-store";
@@ -84,6 +86,8 @@ import {
   beginPublicationReviewAtom,
   installPublicationReviewAtom,
 } from "#src/lib/workflow-publication-review-store";
+import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
+import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
 
 type Store = ReturnType<typeof createJotaiStore>;
 
@@ -93,6 +97,9 @@ const updateMock = vi.fn(() => Promise.resolve(savedWorkflow("workflow_1")));
  * A store with a real workflow id, so graph mutations actually reach the save
  * queue. Running these without one would hide the defect the suite exists for:
  * a mutation that changes the graph and never persists it.
+ *
+ * A fixture node or edge marked `selected` starts selected. The store keeps
+ * that selection in the active workspace address, apart from the graph.
  */
 function createGraphStore(nodes: WorkflowNode[], edges: WorkflowEdge[] = []) {
   const store = createStore();
@@ -100,7 +107,19 @@ function createGraphStore(nodes: WorkflowNode[], edges: WorkflowEdge[] = []) {
   store.set(autosaveDelayAtom, 0);
   store.set(currentWorkflowIdAtom, "workflow_1");
   store.set(loadWorkflowGraphAtom, { nodes, edges });
+  store.set(activeSelectionAtom, {
+    nodeIds: nodes.filter((node) => node.selected).map((node) => node.id),
+    edgeIds: edges.filter((item) => item.selected).map((item) => item.id),
+  });
   return store;
+}
+
+/** The node ids the active canvas paints as selected. */
+function paintedNodeIds(store: Store): string[] {
+  return store
+    .get(displayNodesAtom)
+    .filter((node) => node.selected)
+    .map((node) => node.id);
 }
 
 function lifecycleNode(id: string): WorkflowNode {
@@ -334,6 +353,50 @@ describe("graph mutations are undoable and persisted", () => {
       expect(store.get(hasUnsavedChangesAtom)).toBe(false);
     });
   }
+});
+
+describe("selection", () => {
+  it("records no undo step, no dirty flag, and no save", async () => {
+    const store = createGraphStore(...standardGraph());
+    const nodesBefore = store.get(nodesAtom);
+    const edgesBefore = store.get(edgesAtom);
+
+    store.set(onNodesChangeAtom, [
+      { type: "select", id: "a", selected: true },
+      { type: "select", id: "b", selected: true },
+    ]);
+    store.set(onEdgesChangeAtom, [
+      { type: "select", id: "e1", selected: true },
+    ]);
+    store.set(selectOnlyNodeAtom, "t");
+    await tick();
+
+    expect(store.get(nodesAtom)).toBe(nodesBefore);
+    expect(store.get(edgesAtom)).toBe(edgesBefore);
+    expect(store.get(canUndoAtom)).toBe(false);
+    expect(store.get(hasUnsavedChangesAtom)).toBe(false);
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it("deletes the nodes the active address selects", () => {
+    const store = createGraphStore(
+      [lifecycleNode("t"), actionNode("a"), actionNode("b", 80)],
+      [edge("e1", "t", "a")]
+    );
+    store.set(onNodesChangeAtom, [
+      { type: "select", id: "a", selected: true },
+      { type: "select", id: "b", selected: true },
+    ]);
+
+    store.set(deleteSelectedItemsAtom);
+
+    expect(store.get(nodesAtom).map((node) => node.id)).toEqual(["t"]);
+    expect(store.get(edgesAtom)).toEqual([]);
+    expect(store.get(activeSelectionAtom)).toEqual({
+      nodeIds: [],
+      edgeIds: [],
+    });
+  });
 });
 
 describe("graph history", () => {
@@ -615,7 +678,7 @@ describe("clearWorkflowAtom", () => {
 describe("hydrateWorkflowAtom", () => {
   it("returns a different workflow to Draft", () => {
     const store = createGraphStore(...standardGraph());
-    store.set(workflowWorkspaceViewAtom, "changes");
+    showWorkspaceRoute(store, { view: "changes" });
 
     store.set(hydrateWorkflowAtom, savedWorkflow("workflow_2"));
 
@@ -624,8 +687,7 @@ describe("hydrateWorkflowAtom", () => {
 
   it("clears the watched run so the previous workflow's overlay cannot repaint", () => {
     const store = createStore();
-    store.set(workflowWorkspaceViewAtom, "runs");
-    store.set(selectedExecutionIdAtom, "exec_previous");
+    showWorkspaceRoute(store, { view: "runs", executionId: "exec_previous" });
     expect(store.get(selectedExecutionIdAtom)).toBe("exec_previous");
 
     store.set(hydrateWorkflowAtom, savedWorkflow("workflow_2"));
@@ -659,8 +721,7 @@ describe("hydrateWorkflowAtom", () => {
 
   it("keeps the open run when the same workflow is hydrated again", () => {
     const store = createGraphStore(...standardGraph());
-    store.set(workflowWorkspaceViewAtom, "runs");
-    store.set(selectedExecutionIdAtom, "exec_1");
+    showWorkspaceRoute(store, { view: "runs", executionId: "exec_1" });
     store.set(executionOverlayGraphAtom, {
       nodes: [lifecycleNode("v1_lifecycle")],
       edges: [],
@@ -1018,34 +1079,7 @@ describe("installRemoteWorkflowAtom", () => {
   });
 });
 
-describe("comparison exit and restore installation", () => {
-  it("restores draft selection only when the comparison selection exists in the draft", () => {
-    const store = createGraphStore([
-      { ...actionNode("draft"), selected: true },
-      { ...actionNode("other"), selected: true },
-    ]);
-    openComparison(store);
-    store.set(selectedNodeAtom, "historical");
-
-    expect(store.set(exitWorkflowComparisonAtom)).toBe(true);
-    expect(store.get(selectedNodeAtom)).toBeNull();
-    expect(store.get(nodesAtom).every((node) => !node.selected)).toBe(true);
-    expect(store.get(canUndoAtom)).toBe(false);
-    expect(store.get(hasUnsavedChangesAtom)).toBe(false);
-
-    openComparison(store);
-    store.set(selectedNodeAtom, "draft");
-    store.set(exitWorkflowComparisonAtom);
-
-    expect(store.get(selectedNodeAtom)).toBe("draft");
-    expect(
-      store
-        .get(nodesAtom)
-        .filter((node) => node.selected)
-        .map((node) => node.id)
-    ).toEqual(["draft"]);
-  });
-
+describe("restore installation", () => {
   it("does not install a late restored workflow after the editor navigates", () => {
     const store = createGraphStore([actionNode("a")]);
     store.set(currentWorkflowIdAtom, "workflow_b");
@@ -1117,7 +1151,7 @@ describe("displayNodesAtom memoization", () => {
 
   it("orders a pinned Group overlay so display can reuse that array", () => {
     const store = createGraphStore(...standardGraph());
-    store.set(workflowWorkspaceViewAtom, "runs");
+    showWorkspaceRoute(store, { view: "runs" });
     const rest = lifecycleNode("pinned_t");
     const frame = groupNode("pinned_g");
     const child = groupedChild("pinned_a", "pinned_g");
@@ -1137,13 +1171,13 @@ describe("displayNodesAtom memoization", () => {
 
   it("paints the inspector's selected node onto a pinned overlay", () => {
     const store = createGraphStore(...standardGraph());
-    store.set(workflowWorkspaceViewAtom, "runs");
+    showWorkspaceRoute(store, { view: "runs" });
     store.set(executionOverlayGraphAtom, {
       nodes: [lifecycleNode("pinned_t"), actionNode("pinned_a")],
       edges: [],
     });
 
-    store.set(selectedNodeAtom, "pinned_a");
+    store.set(selectOnlyNodeAtom, "pinned_a");
 
     expect(
       store.get(displayNodesAtom).find((node) => node.id === "pinned_a")
@@ -1157,7 +1191,7 @@ describe("displayNodesAtom memoization", () => {
 
   it("lets only the active workspace view choose the displayed graph", () => {
     const store = createGraphStore([actionNode("draft")]);
-    store.set(workflowWorkspaceViewAtom, "changes");
+    showWorkspaceRoute(store, { view: "changes" });
     openComparison(store);
     store.set(executionOverlayGraphAtom, {
       nodes: [actionNode("run")],
@@ -1169,10 +1203,10 @@ describe("displayNodesAtom memoization", () => {
       "historical",
     ]);
 
-    store.set(workflowWorkspaceViewAtom, "runs");
+    showWorkspaceRoute(store, { view: "runs" });
     expect(store.get(displayNodesAtom).map((node) => node.id)).toEqual(["run"]);
 
-    store.set(workflowWorkspaceViewAtom, "draft");
+    showWorkspaceRoute(store, {});
     expect(store.get(displayNodesAtom).map((node) => node.id)).toEqual([
       "draft",
     ]);
@@ -1202,7 +1236,7 @@ describe("displayNodesAtom keeps what the stored node already carries", () => {
 
   it("paints no enabled state onto a frame whose members are all disabled", () => {
     const store = createGraphStore(...standardGraph());
-    store.set(workflowWorkspaceViewAtom, "changes");
+    showWorkspaceRoute(store, { view: "changes" });
     const child: WorkflowNode = {
       ...groupedChild("a", "g"),
       data: { label: "a", type: "action", enabled: false },
@@ -1231,13 +1265,13 @@ describe("canvasEditingLockedAtom", () => {
   it("locks Runs and Changes even before their display graph loads", () => {
     const store = createGraphStore(...standardGraph());
 
-    store.set(workflowWorkspaceViewAtom, "runs");
+    showWorkspaceRoute(store, { view: "runs" });
     expect(store.get(canvasEditingLockedAtom)).toBe(true);
 
-    store.set(workflowWorkspaceViewAtom, "changes");
+    showWorkspaceRoute(store, { view: "changes" });
     expect(store.get(canvasEditingLockedAtom)).toBe(true);
 
-    store.set(workflowWorkspaceViewAtom, "draft");
+    showWorkspaceRoute(store, {});
     expect(store.get(canvasEditingLockedAtom)).toBe(false);
   });
 });
@@ -1278,7 +1312,7 @@ describe("run status", () => {
     const store = createGraphStore(...standardGraph());
     // The overlay reaches the canvas only while Runs is active, so a case
     // about what the canvas paints has to say the tab is open.
-    store.set(workflowWorkspaceViewAtom, "runs");
+    showWorkspaceRoute(store, { view: "runs" });
     store.set(executionOverlayGraphAtom, {
       nodes: [lifecycleNode("pinned_t"), actionNode("pinned_a")],
       edges: [],
@@ -1302,7 +1336,7 @@ describe("run status", () => {
     const store = createGraphStore(...standardGraph());
     // Without the tab open the overlay reads null anyway, and the assertion
     // below would hold whether or not the clear did its job.
-    store.set(workflowWorkspaceViewAtom, "runs");
+    showWorkspaceRoute(store, { view: "runs" });
     store.set(executionOverlayGraphAtom, {
       nodes: [lifecycleNode("t")],
       edges: [],
@@ -1377,8 +1411,37 @@ describe("copy and paste", () => {
       x: 100 + PASTE_OFFSET,
       y: PASTE_OFFSET,
     });
-    expect(pasted?.selected).toBe(true);
-    expect(nodes.find((node) => node.id === "a")?.selected).toBe(false);
+    expect(store.get(selectedNodeAtom)).toBe(pasted?.id);
+    expect(paintedNodeIds(store)).toEqual([pasted?.id]);
+    expect(nodes.some((node) => "selected" in node)).toBe(false);
+  });
+
+  it("drops pasted ids from the selection when undo and redo remove them", () => {
+    const store = createGraphStore(
+      [lifecycleNode("t"), { ...actionNode("a", 100), selected: true }],
+      []
+    );
+    store.set(copySelectionAtom);
+    store.set(pasteCopiedSelectionAtom);
+    const pastedId = store.get(selectedNodeAtom);
+    expect(pastedId).not.toBeNull();
+
+    store.set(undoAtom);
+    expect(store.get(activeSelectionAtom)).toEqual({
+      nodeIds: [],
+      edgeIds: [],
+    });
+
+    store.set(redoAtom);
+    store.set(selectOnlyNodeAtom, "a");
+    store.set(undoAtom);
+    expect(store.get(activeSelectionAtom).nodeIds).toEqual(["a"]);
+    store.set(deleteSelectedItemsAtom);
+    store.set(undoAtom);
+    store.set(selectOnlyNodeAtom, "a");
+    store.set(redoAtom);
+    expect(store.get(nodesAtom).map((node) => node.id)).toEqual(["t"]);
+    expect(store.get(activeSelectionAtom).nodeIds).toEqual([]);
   });
 
   it("keeps edges that ran between the copied nodes", () => {
@@ -1495,7 +1558,7 @@ describe("copy and paste", () => {
       []
     );
     store.set(copySelectionAtom);
-    store.set(workflowWorkspaceViewAtom, "runs");
+    showWorkspaceRoute(store, { view: "runs" });
     store.set(executionOverlayGraphAtom, {
       nodes: [lifecycleNode("pinned")],
       edges: [],
@@ -1717,6 +1780,8 @@ describe("groupSelectionAtom", () => {
         .filter((node) => node.parentId === frame?.id)
         .map((node) => node.id)
     ).toEqual(["a", "b", "c"]);
+    expect(store.get(selectedNodeAtom)).toBe(frame?.id);
+    expect(paintedNodeIds(store)).toEqual([frame?.id]);
   });
 
   // A pasted frame lands after the members already on the canvas, which costs
@@ -1913,7 +1978,7 @@ describe("what the canvas paints for a node the validator flagged", () => {
     const store = createGraphStore([lifecycleNode("t"), actionNode("a")]);
     store.set(workflowIssuesAtom, [brokenA]);
     // The overlay reaches the canvas only while Runs is active.
-    store.set(workflowWorkspaceViewAtom, "runs");
+    showWorkspaceRoute(store, { view: "runs" });
     store.set(executionOverlayGraphAtom, {
       nodes: [lifecycleNode("t"), actionNode("a")],
       edges: [],
@@ -1998,6 +2063,8 @@ describe("a Group frame has no enabled state", () => {
     const frameId = store.get(nodesAtom).find((node) => isGroupNode(node))?.id;
     store.set(updateNodeDataAtom, { id: "b", data: { enabled: false } });
     store.set(updateNodeDataAtom, { id: "c", data: { enabled: false } });
+    // Grouping selects the new frame, and the selected paint is a copy.
+    store.set(clearSelectionAtom);
 
     const stored = store.get(nodesAtom).find((node) => node.id === frameId);
     const frame = store

@@ -147,6 +147,34 @@ export function presentationViewport(input: {
       });
 }
 
+/**
+ * The flow-coordinate point at the middle of the canvas, with the zoom. Stored
+ * in flow coordinates so a camera restored onto a canvas of another size keeps
+ * the same point in the middle.
+ */
+export function worldCameraFromViewport(
+  viewport: Viewport,
+  canvas: CanvasSize
+): { centerX: number; centerY: number; zoom: number } {
+  return {
+    centerX: (canvas.width / 2 - viewport.x) / viewport.zoom,
+    centerY: (canvas.height / 2 - viewport.y) / viewport.zoom,
+    zoom: viewport.zoom,
+  };
+}
+
+/** The viewport that puts a stored camera's center in the middle of the canvas. */
+export function viewportFromWorldCamera(
+  camera: { centerX: number; centerY: number; zoom: number },
+  canvas: CanvasSize
+): Viewport {
+  return {
+    x: canvas.width / 2 - camera.centerX * camera.zoom,
+    y: canvas.height / 2 - camera.centerY * camera.zoom,
+    zoom: camera.zoom,
+  };
+}
+
 /** Maps a continuous zoom value to the canvas's two presentation densities. */
 export function workflowZoomPresentation(zoom: number): "detail" | "overview" {
   return zoom <= WORKFLOW_OVERVIEW_ZOOM ? "overview" : "detail";

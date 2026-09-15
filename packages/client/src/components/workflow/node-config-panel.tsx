@@ -17,6 +17,7 @@ import {
   deleteGroupWithMembersAtom,
   deleteNodeAtom,
   deleteSelectedItemsAtom,
+  canvasSelectionAtom,
   edgesAtom,
   newlyCreatedNodeIdAtom,
   nodesAtom,
@@ -204,8 +205,13 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
   const selectedNode = nodes.find((node) => node.id === selectedNodeId);
   const selectedEdge = edges.find((edge) => edge.id === selectedEdgeId);
 
-  const selectedNodes = nodes.filter((node) => node.selected);
-  const selectedEdges = edges.filter((edge) => edge.selected);
+  const selection = useAtomValue(canvasSelectionAtom);
+  const selectedNodes = nodes.filter((node) =>
+    selection.nodeIds.includes(node.id)
+  );
+  const selectedEdges = edges.filter((edge) =>
+    selection.edgeIds.includes(edge.id)
+  );
   const hasMultipleSelections = selectedNodes.length + selectedEdges.length > 1;
 
   // A selected frame is ungrouped by a delete, so it is counted as a Group

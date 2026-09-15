@@ -8,11 +8,11 @@ import type {
   WorkflowExecution,
 } from "#src/lib/execution-logs";
 import {
+  clearSelectionAtom,
   executionOverlayGraphAtom,
   loadWorkflowGraphAtom,
-  selectedNodeAtom,
+  selectOnlyNodeAtom,
 } from "#src/lib/workflow-graph-store";
-import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import { serializeConditionModel } from "@wfgraph/shared/conditions/conditions";
 import {
@@ -20,6 +20,7 @@ import {
   type ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
 import { WorkflowRunDetail } from "./workflow-run-detail";
+import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
 
 const BASE_EXECUTION: WorkflowExecution = {
   cancelledAt: null,
@@ -59,14 +60,14 @@ function renderDetail(
     store.set(loadWorkflowGraphAtom, { nodes: extras.nodes, edges: [] });
   }
   if (extras?.executionNodes) {
-    store.set(workflowWorkspaceViewAtom, "runs");
+    showWorkspaceRoute(store, { view: "runs" });
     store.set(executionOverlayGraphAtom, {
       nodes: extras.executionNodes,
       edges: [],
     });
   }
   if (extras?.selectedNodeId) {
-    store.set(selectedNodeAtom, extras.selectedNodeId);
+    store.set(selectOnlyNodeAtom, extras.selectedNodeId);
   }
   return {
     store,
@@ -482,7 +483,7 @@ describe("WorkflowRunDetail", () => {
 
     fireEvent.click(view.getByRole("button", { name: "Back to run overview" }));
     act(() => {
-      view.store.set(selectedNodeAtom, "loop_1");
+      view.store.set(selectOnlyNodeAtom, "loop_1");
     });
 
     expect(view.queryByText("The first attempt failed")).toBeNull();
@@ -527,10 +528,10 @@ describe("WorkflowRunDetail", () => {
     expect(view.getByText("The first attempt failed")).toBeTruthy();
 
     act(() => {
-      view.store.set(selectedNodeAtom, null);
+      view.store.set(clearSelectionAtom);
     });
     act(() => {
-      view.store.set(selectedNodeAtom, "loop_1");
+      view.store.set(selectOnlyNodeAtom, "loop_1");
     });
 
     expect(view.queryByText("The first attempt failed")).toBeNull();
@@ -588,10 +589,10 @@ describe("WorkflowRunDetail", () => {
     expect(view.getByText("Node A first attempt failed")).toBeTruthy();
 
     act(() => {
-      view.store.set(selectedNodeAtom, "node_b");
+      view.store.set(selectOnlyNodeAtom, "node_b");
     });
     act(() => {
-      view.store.set(selectedNodeAtom, "node_a");
+      view.store.set(selectOnlyNodeAtom, "node_a");
     });
 
     expect(view.queryByText("Node A first attempt failed")).toBeNull();

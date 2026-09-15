@@ -10,6 +10,7 @@ import { WorkflowDraftSync } from "#src/components/workflow/workflow-draft-sync"
 import { WorkflowSidebarPanel } from "#src/components/workflow/workflow-sidebar-panel";
 import { WorkflowStatusStrip } from "#src/components/workflow/workflow-status-strip";
 import { WorkflowToolbar } from "#src/components/workflow/workflow-toolbar";
+import { WorkspaceRouteSync } from "#src/components/workflow/workspace-route-sync";
 import { useAfterCommit, useUnmountCleanup } from "#src/hooks/effects";
 import { isAgentEnabled } from "#src/lib/extensions";
 import { isRunInProgress } from "#src/lib/execution-logs";
@@ -159,9 +160,13 @@ const WorkflowEditor = () => {
             editor still has to be portalled out to escape the corner, which is
             what every one of them already does. */}
         <div className="relative flex size-full flex-col overflow-hidden md:rounded-xl md:border md:[clip-path:inset(0_round_var(--editor-shell-radius))]">
-          {/* URL → selection + pinned-graph overlay. Sibling of the sidebar so it
+          {/* Route → pinned-graph overlay. Sibling of the sidebar so it
               outlives the Runs panel; the status projection above reads what it writes. */}
           <ExecutionOverlaySync />
+          {/* Route → workspace address, and route recovery. After the overlay
+              sync, so recovery in the same commit reads a run graph the
+              overlay sync has already dropped. */}
+          <WorkspaceRouteSync />
 
           {/* Workflow not found overlay */}
           {workflowNotFound && (

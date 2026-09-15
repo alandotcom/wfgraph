@@ -64,6 +64,8 @@ export function groupSelection(input: {
 }): {
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
+  /** The id of the new frame. */
+  groupId: string;
   analysis: GroupAnalysis;
 } | null {
   const analysis = analyzeGroupableSelection(
@@ -109,7 +111,6 @@ export function groupSelection(input: {
     width: size.width,
     height: size.height,
     style: { width: size.width, height: size.height },
-    selected: true,
     data: {
       label: "Group",
       type: "group",
@@ -121,9 +122,7 @@ export function groupSelection(input: {
   const children = members.map((node) =>
     nestInGroup(node, groupId, childPosition(positionById, node.id))
   );
-  const rest = input.nodes
-    .filter((node) => !memberSet.has(node.id))
-    .map((node) => ({ ...node, selected: false }));
+  const rest = input.nodes.filter((node) => !memberSet.has(node.id));
 
   return {
     // Sorted rather than appended, because `rest` already holds any earlier
@@ -133,6 +132,7 @@ export function groupSelection(input: {
     // Grouping writes membership only. The stored edges are the engine's
     // traversal graph, so the Group's boundary is read off them unchanged.
     edges: input.edges,
+    groupId,
     analysis,
   };
 }
@@ -349,7 +349,6 @@ function nestInGroup(
     extent: "parent",
     draggable: false,
     connectable: false,
-    selected: false,
     width: GROUP_CHILD_WIDTH,
     height: GROUP_CHILD_HEIGHT,
     position,
