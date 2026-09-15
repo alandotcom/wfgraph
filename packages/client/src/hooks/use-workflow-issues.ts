@@ -26,7 +26,10 @@ import {
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
 import { can } from "#src/lib/authorization";
 import { edgesAtom, nodesAtom } from "#src/lib/workflow-graph-store";
-import { workspaceAddressFromSearch } from "#src/lib/workflow-navigation-state";
+import {
+  workspaceAddressFromSearch,
+  workspaceAddressId,
+} from "#src/lib/workflow-navigation-state";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
   toPersistedEdge,
@@ -40,9 +43,16 @@ import {
 } from "#src/lib/workflow-issues-store";
 import { useProviderFieldIssues } from "#src/hooks/use-provider-field-issues";
 import {
+  openWorkspaceRevealAtom,
   rememberedRouteSearchesAtom,
   setWorkspaceSelectionAtom,
 } from "#src/lib/workflow-workspace-navigation";
+import { isOrdinaryStep } from "#src/components/workflow/canvas-reveal/reveal-subject";
+import {
+  requestRevealPlacementAtom,
+  revealFieldRequestAtom,
+} from "#src/components/workflow/canvas-reveal/reveal-requests";
+import { isMobileViewport } from "#src/hooks/use-mobile";
 import { groupWorkflowIssuesForOverlay } from "@wfgraph/shared/graph/workflow-issues";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 
@@ -105,16 +115,19 @@ export function useCollectWorkflowIssues(): void {
 }
 
 /**
- * Open a step, and optionally put the cursor in the field an issue named.
- *
- * The panel holding that field mounts in the commit this triggers, which is why
- * the focus waits for the next paint rather than for a timeout: the version this
- * replaced raced the panel and won only because the panel is fast.
+ * Open a step, and optionally put the cursor in the field an issue named. On a
+ * wide viewport the step opens in Canvas Reveal, in Focus when a field of an
+ * ordinary step is named, and Reveal places the step and focuses the field once
+ * its form has painted. On a narrow viewport the sheet shows the step, and the
+ * field is focused after the next paint, once the sheet's panel has mounted.
  */
 export function useGoToStep(): (nodeId: string, fieldKey?: string) => void {
   const store = useStore();
   const navigate = useNavigate({ from: "/workflows/$workflowId" });
   const setWorkspaceSelection = useSetAtom(setWorkspaceSelectionAtom);
+  const openWorkspaceReveal = useSetAtom(openWorkspaceRevealAtom);
+  const requestPlacement = useSetAtom(requestRevealPlacementAtom);
+  const setRevealFieldRequest = useSetAtom(revealFieldRequestAtom);
   const [pendingFieldFocus, setPendingFieldFocus] = useState<string | null>(
     null
   );
@@ -137,17 +150,43 @@ export function useGoToStep(): (nodeId: string, fieldKey?: string) => void {
       // The step is selected in the Draft address the route is about to show,
       // so the selection is Draft's own whichever workspace asked.
       const search = store.get(rememberedRouteSearchesAtom).draft ?? {};
+      const address = workspaceAddressFromSearch(
+        store.get(currentWorkflowIdAtom) ?? "",
+        search
+      );
       setWorkspaceSelection({
-        address: workspaceAddressFromSearch(
-          store.get(currentWorkflowIdAtom) ?? "",
-          search
-        ),
+        address,
         selection: { nodeIds: [nodeId], edgeIds: [] },
       });
       void navigate({ search, replace: true });
-      setPendingFieldFocus(fieldKey ?? null);
+      if (isMobileViewport()) {
+        setPendingFieldFocus(fieldKey ?? null);
+        return;
+      }
+      const node = store.get(nodesAtom).find((item) => item.id === nodeId);
+      openWorkspaceReveal({
+        address,
+        level:
+          fieldKey !== undefined && node && isOrdinaryStep(node)
+            ? "focus"
+            : undefined,
+      });
+      requestPlacement({
+        addressId: workspaceAddressId(address),
+        nodeIds: [nodeId],
+      });
+      setRevealFieldRequest(
+        fieldKey === undefined ? null : { nodeId, fieldKey }
+      );
     },
-    [navigate, setWorkspaceSelection, store]
+    [
+      navigate,
+      openWorkspaceReveal,
+      requestPlacement,
+      setRevealFieldRequest,
+      setWorkspaceSelection,
+      store,
+    ]
   );
 }
 

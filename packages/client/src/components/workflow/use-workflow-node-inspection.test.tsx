@@ -20,7 +20,12 @@ import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
-import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
+import {
+  activeDesktopRevealLevelAtom,
+  activeSelectionAtom,
+  activeWorkspaceAddressAtom,
+  setWorkspaceRevealLevelAtom,
+} from "#src/lib/workflow-workspace-navigation";
 
 const DRAFT_NODES: WorkflowNode[] = [
   {
@@ -143,6 +148,24 @@ describe("useWorkflowNodeInspection", () => {
     const only = { nodeIds: ["draft_a"], edgeIds: [] };
     expect(selectionState(store)).toEqual({ owner: only, painted: only });
     expect(store.get(selectedNodeAtom)).toBe("draft_a");
+  });
+
+  it("reopens a closed Canvas Reveal when the selected node is clicked again", () => {
+    const store = selectionStore();
+    store.set(activeSelectionAtom, { nodeIds: ["draft_a"], edgeIds: [] });
+    store.set(setWorkspaceRevealLevelAtom, {
+      address: store.get(activeWorkspaceAddressAtom),
+      level: "focus",
+    });
+    store.set(setWorkspaceRevealLevelAtom, {
+      address: store.get(activeWorkspaceAddressAtom),
+      level: "closed",
+    });
+    const view = renderInspector(store, "draft_a", true);
+
+    fireEvent.click(view.getByRole("button", { name: /Inspect/ }));
+
+    expect(store.get(activeDesktopRevealLevelAtom)).toBe("focus");
   });
 
   it("clears a stale edge selection when clicking a node in Runs", () => {

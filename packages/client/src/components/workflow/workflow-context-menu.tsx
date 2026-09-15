@@ -133,7 +133,7 @@ export function WorkflowContextMenu({
       const nodeId = menuState.nodeId;
       onClose();
       selectOnlyNode(nodeId);
-      // On a narrow canvas no rail is mounted to show the selection, so the
+      // On a narrow canvas no Canvas Reveal is mounted to show the selection, so the
       // sheet is the only surface that can answer this click.
       if (isMobile) {
         openSheet();
@@ -249,9 +249,12 @@ export function WorkflowContextMenu({
     [onClose]
   );
 
+  // Escape closes the menu, and `preventDefault` tells Canvas Reveal, which
+  // listens in the document's capture phase, to leave the key alone.
   const handleEscape = useCallback(
     (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        event.preventDefault();
         onClose();
       }
     },
@@ -266,7 +269,11 @@ export function WorkflowContextMenu({
     deferAttach: true,
     enabled: isMenuOpen,
   });
-  useDomEvent(document, "keydown", handleEscape, { enabled: isMenuOpen });
+  // On the window in the capture phase, which runs ahead of Reveal's listener.
+  useDomEvent(window, "keydown", handleEscape, {
+    capture: true,
+    enabled: isMenuOpen,
+  });
   // The menu is positioned in viewport coordinates against a node that has since
   // moved, so a resize leaves it pointing at nothing. It also survived the
   // breakpoint change that swaps the canvas layout.

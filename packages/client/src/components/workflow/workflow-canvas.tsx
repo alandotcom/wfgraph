@@ -71,6 +71,9 @@ import { LifecycleNode } from "./nodes/lifecycle-node";
 import { useCanvasCopyPaste } from "./use-canvas-copy-paste";
 import { useReflowLayout } from "./use-reflow-layout";
 import { useWorkspaceCamera } from "./use-workspace-camera";
+import { useRevealCamera } from "./canvas-reveal/use-reveal-camera";
+import { useRevealOccupiedWidth } from "./canvas-reveal/use-reveal-width";
+import { CANVAS_OBSTACLE_SLOTS } from "./canvas-reveal/reveal-geometry";
 import { useCollectWorkflowIssues } from "#src/hooks/use-workflow-issues";
 import { useWorkflowNodeInspection } from "./use-workflow-node-inspection";
 import {
@@ -159,6 +162,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const workflowGraphUpdate = useAtomValue(workflowGraphUpdateAtom);
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
   const [showMinimap] = useAtom(showMinimapAtom);
+  const revealOccupiedWidth = useRevealOccupiedWidth();
   const onNodesChange = useSetAtom(onNodesChangeAtom);
   const moveComparisonNodes = useSetAtom(moveComparisonNodesAtom);
   const onEdgesChange = useSetAtom(onEdgesChangeAtom);
@@ -181,11 +185,12 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   } = useReactFlow();
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const fittedWorkflowIdRef = useRef<string | null>(null);
+  /** Whether the canvas has made its first placement for a workflow. */
+  const isCanvasPlaced = (workflowId: string) =>
+    fittedWorkflowIdRef.current === workflowId;
   // Declared ahead of the synchronized canvas below, so the camera of the
   // workspace being left is stored before any placement for the next one.
-  const workspaceCamera = useWorkspaceCamera({
-    isCanvasPlaced: (workflowId) => fittedWorkflowIdRef.current === workflowId,
-  });
+  const workspaceCamera = useWorkspaceCamera({ isCanvasPlaced });
   const fitGenerationRef = useRef(0);
   // React Flow owns the semantic wrappers around custom nodes and edges. Build
   // their names from the same catalog labels the cards render, while preserving
@@ -283,6 +288,14 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const [readyWorkflowId, setReadyWorkflowId] = useState<string | null>(null);
   const isCanvasReady =
     currentWorkflowId !== null && readyWorkflowId === currentWorkflowId;
+  // The workspace camera restores a scope's saved camera before paint, and
+  // Canvas Reveal's camera runs after paint, so a placement always compares
+  // against the restored camera.
+  const revealCamera = useRevealCamera({
+    isCanvasPlaced,
+    isCanvasReady,
+    canvas: canvasContainerRef,
+  });
   const [contextMenuState, setContextMenuState] =
     useState<ContextMenuState>(null);
   const rightClickSelectionRef = useRef<ReadonlySet<string>>(new Set());
@@ -850,10 +863,9 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   }, [clearSelection, closeContextMenu]);
 
   return (
-    // Size comes from the editor shell, which gives this box whatever the panel
-    // beside it leaves over. The shell is also where the rule against animating
-    // that size lives, because React Flow observes the parent box and a
-    // transition on it is what produces ResizeObserver loop warnings.
+    // Size comes from the canvas box, which Canvas Reveal floats over without
+    // resizing. Nothing animates that size, because React Flow observes the
+    // parent box and a transition on it produces ResizeObserver loop warnings.
     <div
       className="relative h-full w-full bg-background"
       data-testid="workflow-canvas"
@@ -898,14 +910,17 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
               ? undefined
               : handleNodesChange
         }
-        onMoveEnd={workspaceCamera.onMoveEnd}
+        onMoveEnd={() => {
+          workspaceCamera.onMoveEnd();
+          revealCamera.onMoveEnd();
+        }}
         onMoveStart={workspaceCamera.onMoveStart}
         onPaneClick={onPaneClick}
         onPaneContextMenu={graphEditingLocked ? undefined : onPaneContextMenu}
       >
         <Panel
           className="[--workflow-controls-bottom:3.5rem] border-none bg-transparent p-0 md:[--workflow-controls-bottom:0px]"
-          data-slot="workflow-canvas-controls"
+          data-slot={CANVAS_OBSTACLE_SLOTS.controls}
           position="bottom-left"
           style={{ bottom: "var(--workflow-controls-bottom)" }}
         >
@@ -926,6 +941,9 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
             nodeColor="var(--muted-foreground)"
             nodeStrokeColor="var(--border)"
             pannable
+            // Sits beside open Canvas Reveal. The panel's own margin keeps the
+            // gap to Reveal's edge.
+            style={{ right: revealOccupiedWidth }}
             zoomable
           />
         )}

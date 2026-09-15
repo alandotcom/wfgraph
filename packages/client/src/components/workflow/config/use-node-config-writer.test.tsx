@@ -29,6 +29,7 @@ import {
   rpcUrl,
 } from "#src/lib/rpc-fetch-test-support";
 import {
+  clearSelectionAtom,
   loadWorkflowGraphAtom,
   nodesAtom,
   selectOnlyNodeAtom,
@@ -172,7 +173,7 @@ function renderWriter(
   }
 
   function Writer() {
-    const { updateConfig } = useNodeConfigWriter();
+    const { updateConfig } = useNodeConfigWriter(node.id);
     return (
       <button onClick={() => updateConfig(patch)} type="button">
         write
@@ -183,6 +184,7 @@ function renderWriter(
   renderInWorkflowRoute(store, queryClient, Writer);
 
   return {
+    store,
     queryClient,
     write: async () => {
       fireEvent.click(await screen.findByRole("button", { name: "write" }));
@@ -197,6 +199,20 @@ function setConnections(queryClient: QueryClient, ids: string[]) {
     ids.map(integration)
   );
 }
+
+describe("updateConfig and the node it writes", () => {
+  it("writes to the node it was given whatever the canvas selects", async () => {
+    const { store, write, config } = renderWriter(
+      connectedNode({ actionType: CONNECTED_ACTION }),
+      { smsTo: "+15550001111" }
+    );
+    store.set(clearSelectionAtom);
+
+    await write();
+
+    expect(config()?.smsTo).toBe("+15550001111");
+  });
+});
 
 describe("updateConfig and the connection a node points at", () => {
   it("keeps a connection that was created after this render", async () => {
@@ -281,7 +297,7 @@ describe("deleteRuns", () => {
       .mockResolvedValue(undefined as never);
 
     function Deleter() {
-      const { deleteRuns } = useNodeConfigWriter();
+      const { deleteRuns } = useNodeConfigWriter(null);
       return (
         <button
           onClick={() => deleteRuns.mutate({ workflowId: "wf_1" })}

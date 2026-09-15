@@ -26,14 +26,18 @@ import {
   hasUnsavedChangesAtom,
 } from "#src/lib/workflow-save-store";
 import {
-  isSidebarCollapsedAtom,
   selectedExecutionIdAtom,
   workflowGraphUpdateAtom,
   workflowWorkspaceViewAtom,
 } from "#src/lib/workflow-ui-store";
 import {
+  activeDesktopRevealLevelAtom,
+  activeRevealPresentationAtom,
   activeSelectionAtom,
   activeWorkspaceAddressAtom,
+  chooseDesktopRevealLevelAtom,
+  recordInspectorScrollAtom,
+  setWorkspaceRevealLevelAtom,
   activeWorkspaceCamerasAtom,
   forgetWorkflowNavigationAtom,
   recordWorkspaceCameraAtom,
@@ -286,39 +290,125 @@ describe("selection", () => {
 });
 
 describe("desktop Reveal level", () => {
-  it("starts a scope first shown from another view at the preference", () => {
+  it("starts a Runs or Changes scope first shown from another view at the preference", () => {
     const store = draftStore();
-    store.set(isSidebarCollapsedAtom, true);
+    showWorkspaceRoute(store, { view: "runs" });
+    store.set(chooseDesktopRevealLevelAtom, "closed");
+
+    showWorkspaceRoute(store, { view: "changes" });
+    expect(store.get(activeDesktopRevealLevelAtom)).toBe("closed");
+    store.set(chooseDesktopRevealLevelAtom, "browse");
 
     showWorkspaceRoute(store, { view: "runs" });
-    expect(store.get(isSidebarCollapsedAtom)).toBe(true);
-    store.set(isSidebarCollapsedAtom, false);
+    expect(store.get(activeDesktopRevealLevelAtom)).toBe("closed");
+    showWorkspaceRoute(store, { view: "changes" });
+    expect(store.get(activeDesktopRevealLevelAtom)).toBe("browse");
+  });
 
+  it("starts a Draft scope closed whatever the preference is", () => {
+    const store = draftStore();
+    showWorkspaceRoute(store, { view: "runs" });
+    store.set(chooseDesktopRevealLevelAtom, "browse");
+
+    showWorkspaceRoute(store, { group: "group_1" });
+    expect(store.get(activeDesktopRevealLevelAtom)).toBe("closed");
+  });
+
+  it("opens Draft Reveal at the reopen level when a step becomes the selection", () => {
+    const store = draftStore();
+    store.set(selectOnlyNodeAtom, "draft_step");
+    expect(store.get(activeDesktopRevealLevelAtom)).toBe("browse");
+
+    store.set(setWorkspaceRevealLevelAtom, {
+      address: store.get(activeWorkspaceAddressAtom),
+      level: "focus",
+    });
+    store.set(setWorkspaceRevealLevelAtom, {
+      address: store.get(activeWorkspaceAddressAtom),
+      level: "closed",
+    });
+    store.set(clearSelectionAtom);
+    store.set(selectOnlyNodeAtom, "child_step");
+
+    expect(store.get(activeDesktopRevealLevelAtom)).toBe("focus");
+    expect(store.get(activeRevealPresentationAtom).inspected).toEqual({
+      kind: "node",
+      id: "child_step",
+    });
+  });
+
+  it("keeps each scope's Focus level, inspected step, and scroll apart", () => {
+    const store = draftStore();
+    store.set(selectOnlyNodeAtom, "draft_step");
+    const draft = store.get(activeWorkspaceAddressAtom);
+    store.set(setWorkspaceRevealLevelAtom, { address: draft, level: "focus" });
+    store.set(recordInspectorScrollAtom, {
+      address: draft,
+      inspectedId: "draft_step",
+      level: "focus",
+      top: 240,
+    });
+
+    showWorkspaceRoute(store, { group: "group_1" });
+    store.set(selectOnlyNodeAtom, "child_step");
+    expect(store.get(activeDesktopRevealLevelAtom)).toBe("browse");
+    expect(store.get(activeRevealPresentationAtom).inspectorScroll).toEqual({
+      browse: 0,
+      focus: 0,
+    });
+
+    showWorkspaceRoute(store, { view: "runs", executionId: "run_1" });
     showWorkspaceRoute(store, {});
-    expect(store.get(isSidebarCollapsedAtom)).toBe(true);
-    showWorkspaceRoute(store, { view: "runs" });
-    expect(store.get(isSidebarCollapsedAtom)).toBe(false);
+    expect(store.get(activeDesktopRevealLevelAtom)).toBe("focus");
+    expect(store.get(activeRevealPresentationAtom)).toMatchObject({
+      inspected: { kind: "node", id: "draft_step" },
+      inspectorScroll: { browse: 0, focus: 240 },
+    });
+  });
+
+  it("drops a scroll read for a step the scope no longer inspects", () => {
+    const store = draftStore();
+    store.set(selectOnlyNodeAtom, "draft_step");
+    store.set(selectOnlyNodeAtom, "child_step");
+
+    store.set(recordInspectorScrollAtom, {
+      address: store.get(activeWorkspaceAddressAtom),
+      inspectedId: "draft_step",
+      level: "browse",
+      top: 300,
+    });
+
+    expect(store.get(activeRevealPresentationAtom).inspectorScroll.browse).toBe(
+      0
+    );
   });
 
   it("keeps the level a scope showed when another workspace is toggled", () => {
     const store = draftStore();
-    const draftCollapsed = store.get(isSidebarCollapsedAtom);
+    showWorkspaceRoute(store, { view: "changes" });
+    const changesLevel = store.get(activeDesktopRevealLevelAtom);
 
     showWorkspaceRoute(store, { view: "runs" });
-    store.set(isSidebarCollapsedAtom, !draftCollapsed);
-    showWorkspaceRoute(store, {});
+    store.set(
+      chooseDesktopRevealLevelAtom,
+      changesLevel === "closed" ? "browse" : "closed"
+    );
+    showWorkspaceRoute(store, { view: "changes" });
 
-    expect(store.get(isSidebarCollapsedAtom)).toBe(draftCollapsed);
+    expect(store.get(activeDesktopRevealLevelAtom)).toBe(changesLevel);
   });
 
   it("never writes the cookie when a workspace is restored", () => {
     const store = draftStore();
-    store.set(isSidebarCollapsedAtom, true);
     showWorkspaceRoute(store, { view: "runs" });
-    store.set(isSidebarCollapsedAtom, false);
+    store.set(chooseDesktopRevealLevelAtom, "closed");
+    showWorkspaceRoute(store, { view: "changes" });
+    store.set(chooseDesktopRevealLevelAtom, "browse");
+    store.set(selectOnlyNodeAtom, "draft_step");
     const cookie = document.cookie;
 
     showWorkspaceRoute(store, {});
+    store.set(selectOnlyNodeAtom, "draft_step");
     showWorkspaceRoute(store, { view: "runs" });
     showWorkspaceRoute(store, {});
 
@@ -383,7 +473,10 @@ describe("navigation and the workflow definition", () => {
       formFactor: "desktop",
       camera: { centerX: 1, centerY: 2, zoom: 3 },
     });
-    store.set(isSidebarCollapsedAtom, true);
+    store.set(setWorkspaceRevealLevelAtom, {
+      address: store.get(activeWorkspaceAddressAtom),
+      level: "focus",
+    });
     showWorkspaceRoute(store, { view: "runs", executionId: "run_1" });
     showWorkspaceRoute(store, { view: "changes", compare: "version_1" });
     store.set(setWorkspaceSelectionAtom, {

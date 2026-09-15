@@ -1,5 +1,10 @@
 /** Shared viewport limits and fitting rules for the workflow canvas. */
 
+import {
+  REVEAL_CONTEXT_PX,
+  REVEAL_PADDING_PX,
+} from "./canvas-reveal/reveal-geometry";
+
 export const WORKFLOW_CANVAS_MIN_ZOOM = 0.025;
 export const WORKFLOW_FIT_VIEW_PADDING = 0.2;
 export const WORKFLOW_FIT_VIEW_MAX_ZOOM = 1;
@@ -178,4 +183,103 @@ export function viewportFromWorldCamera(
 /** Maps a continuous zoom value to the canvas's two presentation densities. */
 export function workflowZoomPresentation(zoom: number): "detail" | "overview" {
   return zoom <= WORKFLOW_OVERVIEW_ZOOM ? "overview" : "detail";
+}
+
+/**
+ * The minimum axis translation that moves the span `[start, end]` inside
+ * `[min, max]`. A span wider than the range is centered in it.
+ */
+function axisShift(input: {
+  start: number;
+  end: number;
+  min: number;
+  max: number;
+}): number {
+  const { start, end, min, max } = input;
+  if (end - start > max - min) {
+    return (min + max) / 2 - (start + end) / 2;
+  }
+  if (start < min) {
+    return min - start;
+  }
+  if (end > max) {
+    return max - end;
+  }
+  return 0;
+}
+
+/**
+ * The viewport that places `bounds` (flow coordinates) inside `usable` (canvas
+ * pixels) for Canvas Reveal. The zoom is kept when the bounds fit and otherwise
+ * decreases just enough to fit them, scaled around their center. Each axis then
+ * moves the least distance that brings the bounds, with `context` screen pixels
+ * of neighboring canvas on every side when that still fits, inside `usable`
+ * less `padding`. The answer is `viewport` itself when nothing needs to move.
+ */
+export function revealViewport(input: {
+  viewport: Viewport;
+  usable: Bounds;
+  bounds: Bounds;
+  padding?: number | undefined;
+  context?: number | undefined;
+}): Viewport {
+  const { viewport, usable, bounds } = input;
+  const padding = input.padding ?? REVEAL_PADDING_PX;
+  const context = input.context ?? REVEAL_CONTEXT_PX;
+  const room = {
+    width: usable.width - 2 * padding,
+    height: usable.height - 2 * padding,
+  };
+  const fitZoom = Math.min(
+    room.width / Math.max(bounds.width, 1),
+    room.height / Math.max(bounds.height, 1)
+  );
+  const zoom = Math.min(
+    viewport.zoom,
+    Math.max(fitZoom, WORKFLOW_CANVAS_MIN_ZOOM)
+  );
+  const centerX = bounds.x + bounds.width / 2;
+  const centerY = bounds.y + bounds.height / 2;
+  const scaled = {
+    x: viewport.x + centerX * (viewport.zoom - zoom),
+    y: viewport.y + centerY * (viewport.zoom - zoom),
+  };
+  const withContext =
+    zoom === viewport.zoom &&
+    bounds.width * zoom + 2 * context <= room.width &&
+    bounds.height * zoom + 2 * context <= room.height
+      ? context
+      : 0;
+  const min = { x: usable.x + padding, y: usable.y + padding };
+  const shiftX = axisShift({
+    start: scaled.x + bounds.x * zoom - withContext,
+    end: scaled.x + (bounds.x + bounds.width) * zoom + withContext,
+    min: min.x,
+    max: min.x + room.width,
+  });
+  const shiftY = axisShift({
+    start: scaled.y + bounds.y * zoom - withContext,
+    end: scaled.y + (bounds.y + bounds.height) * zoom + withContext,
+    min: min.y,
+    max: min.y + room.height,
+  });
+  if (zoom === viewport.zoom && shiftX === 0 && shiftY === 0) {
+    return viewport;
+  }
+  return { x: scaled.x + shiftX, y: scaled.y + shiftY, zoom };
+}
+
+/**
+ * Whether two cameras show the same view: centers within half a screen pixel
+ * and zooms within a thousandth.
+ */
+export function sameWorldCamera(
+  left: { centerX: number; centerY: number; zoom: number },
+  right: { centerX: number; centerY: number; zoom: number }
+): boolean {
+  return (
+    Math.abs(left.zoom - right.zoom) < 1e-3 &&
+    Math.abs(left.centerX - right.centerX) * left.zoom < 0.5 &&
+    Math.abs(left.centerY - right.centerY) * left.zoom < 0.5
+  );
 }

@@ -1,5 +1,5 @@
 import { sortBy } from "es-toolkit/array";
-import { useAtom } from "jotai";
+import { useAtomValue } from "jotai";
 import { Check } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -37,9 +37,7 @@ type TemplateAutocompleteProps = {
   anchor: TemplateAutocompleteAnchor;
   onSelect: (template: string) => void;
   onClose: () => void;
-  currentNodeId?: string | undefined;
-  filter?: string | undefined;
-  fieldType?: ValueTargetType | undefined;
+  rows: TemplateAutocompleteRows;
 };
 
 /** What the menu offers a typed target: the save's rule, without the numbers. */
@@ -165,22 +163,30 @@ function keyUnderOpenRecordOptions(
     });
 }
 
-export function TemplateAutocomplete({
-  isOpen,
-  anchor,
-  onSelect,
-  onClose,
-  currentNodeId,
-  filter = "",
-  fieldType,
-}: TemplateAutocompleteProps) {
+/** The rows a template field's autocomplete menu offers, and whether it shows. */
+export type TemplateAutocompleteRows = {
+  filteredOptions: TemplateOption[];
+  emptyMessage: string | null;
+  /**
+   * Whether the menu has anything to draw. The menu and its key listener exist
+   * only while this and the field's open state are both true.
+   */
+  hasRowsToShow: boolean;
+};
+
+/**
+ * The autocomplete rows for one template field. The field calls this so it can
+ * mark itself open on exactly the condition that draws the menu.
+ */
+export function useTemplateAutocompleteRows(input: {
+  currentNodeId?: string | undefined;
+  filter?: string | undefined;
+  fieldType?: ValueTargetType | undefined;
+}): TemplateAutocompleteRows {
+  const { currentNodeId, filter = "", fieldType } = input;
   const catalog = useExtensionCatalog();
-  const [nodes] = useAtom(nodesAtom);
-  const [edges] = useAtom(edgesAtom);
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  // The scroll box, not the positioned wrapper around it: the rows are its
-  // children, and indexing them is how a highlight below the fold is found.
-  const optionListRef = useRef<HTMLDivElement>(null);
+  const nodes = useAtomValue(nodesAtom);
+  const edges = useAtomValue(edgesAtom);
 
   const upstreamNodes = useMemo(() => {
     return getUpstreamNodes({
@@ -339,10 +345,6 @@ export function TemplateAutocomplete({
     return [...typedKeys, ...matched];
   }, [filter, options, fieldType]);
 
-  const selectedOptionIndex =
-    filteredOptions.length === 0
-      ? 0
-      : Math.min(selectedIndex, filteredOptions.length - 1);
 
   // A typed target whose menu is empty says so, because the reason is a fact
   // about the payloads rather than about what was typed: nothing upstream is a
@@ -355,6 +357,27 @@ export function TemplateAutocomplete({
       : null;
 
   const hasRowsToShow = filteredOptions.length > 0 || emptyMessage !== null;
+
+  return { filteredOptions, emptyMessage, hasRowsToShow };
+}
+
+export function TemplateAutocomplete({
+  isOpen,
+  anchor,
+  onSelect,
+  onClose,
+  rows,
+}: TemplateAutocompleteProps) {
+  const { filteredOptions, emptyMessage, hasRowsToShow } = rows;
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  // The scroll box, not the positioned wrapper around it: the rows are its
+  // children, and indexing them is how a highlight below the fold is found.
+  const optionListRef = useRef<HTMLDivElement>(null);
+
+  const selectedOptionIndex =
+    filteredOptions.length === 0
+      ? 0
+      : Math.min(selectedIndex, filteredOptions.length - 1);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {

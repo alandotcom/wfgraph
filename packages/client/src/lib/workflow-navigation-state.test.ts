@@ -6,6 +6,7 @@ import {
   cameraStep,
   graphStructureKey,
   groupScopeExists,
+  inspectionInGraph,
   recoveredRouteSearch,
   rememberRouteSearch,
   scopeNavigationAt,
@@ -16,8 +17,11 @@ import {
   updateScopeNavigation,
   withCamera,
   withDesktopRevealLevel,
+  withInspectorScroll,
+  withRevealCamera,
   withoutDraftSelections,
   withSelection,
+  withSelectionOpeningReveal,
   workspaceAddressFromSearch,
   workspaceKeyId,
   workspaceRouteSearch,
@@ -478,5 +482,99 @@ describe("cameraStep", () => {
         savedForNext: saved,
       })
     ).toEqual({ recordShown: false, restore: null });
+  });
+});
+
+describe("Canvas Reveal state", () => {
+  const nodeSelection = (id: string) => ({ nodeIds: [id], edgeIds: [] });
+  const EMPTY = scopeNavigationAt(
+    EMPTY_WORKFLOW_NAVIGATION,
+    workspaceAddressFromSearch("workflow_1", {})
+  );
+
+  it("remembers the open level a scope reopens at, and keeps it on close", () => {
+    const focused = withDesktopRevealLevel(EMPTY, "focus");
+    const closed = withDesktopRevealLevel(focused, "closed");
+    expect(closed.desktop).toMatchObject({
+      revealLevel: "closed",
+      reopenLevel: "focus",
+    });
+    expect(withDesktopRevealLevel(closed, "browse").desktop.reopenLevel).toBe(
+      "browse"
+    );
+  });
+
+  it("opens at the reopen level when one object becomes the selection", () => {
+    const closedFromFocus = withDesktopRevealLevel(
+      withDesktopRevealLevel(EMPTY, "focus"),
+      "closed"
+    );
+    const opened = withSelectionOpeningReveal(
+      closedFromFocus,
+      nodeSelection("step_a")
+    );
+    expect(opened.desktop).toMatchObject({
+      revealLevel: "focus",
+      inspected: { kind: "node", id: "step_a" },
+    });
+  });
+
+  it("leaves the level alone for a multi-selection or an unchanged object", () => {
+    const opened = withSelectionOpeningReveal(EMPTY, nodeSelection("step_a"));
+    const closed = withDesktopRevealLevel(opened, "closed");
+
+    const same = withSelectionOpeningReveal(closed, nodeSelection("step_a"));
+    expect(same).toBe(closed);
+
+    const multi = withSelectionOpeningReveal(closed, {
+      nodeIds: ["step_a", "step_b"],
+      edgeIds: [],
+    });
+    expect(multi.desktop.revealLevel).toBe("closed");
+  });
+
+  it("reopens the inspected object with its scroll after the selection emptied", () => {
+    const opened = withInspectorScroll(
+      withSelectionOpeningReveal(EMPTY, nodeSelection("step_a")),
+      "browse",
+      180
+    );
+    const cleared = withDesktopRevealLevel(
+      withSelection(opened, EMPTY_SELECTION),
+      "closed"
+    );
+
+    const again = withSelectionOpeningReveal(cleared, nodeSelection("step_a"));
+    expect(again.desktop.revealLevel).toBe("browse");
+    expect(again.desktop.inspectorScroll.browse).toBe(180);
+
+    const other = withSelectionOpeningReveal(again, nodeSelection("step_b"));
+    expect(other.desktop.inspectorScroll).toEqual({ browse: 0, focus: 0 });
+  });
+
+  it("forgets an inspected object the graph no longer holds", () => {
+    const inspected = withInspectorScroll(
+      withSelectionOpeningReveal(EMPTY, nodeSelection("gone")),
+      "focus",
+      90
+    );
+    const kept = withSelectionOpeningReveal(EMPTY, nodeSelection("child"));
+
+    expect(inspectionInGraph(kept, graph)).toBe(kept);
+    expect(inspectionInGraph(inspected, graph).desktop).toMatchObject({
+      inspected: null,
+      inspectorScroll: { browse: 0, focus: 0 },
+    });
+  });
+
+  it("stores an automatic placement and answers the scope when unchanged", () => {
+    const placement = {
+      before: { centerX: 0, centerY: 0, zoom: 1 },
+      placed: { centerX: 40, centerY: 0, zoom: 1 },
+    };
+    const placed = withRevealCamera(EMPTY, placement);
+    expect(placed.desktop.revealCamera).toBe(placement);
+    expect(withRevealCamera(placed, placement)).toBe(placed);
+    expect(withRevealCamera(placed, null).desktop.revealCamera).toBeNull();
   });
 });

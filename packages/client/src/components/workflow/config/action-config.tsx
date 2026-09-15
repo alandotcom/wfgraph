@@ -50,6 +50,14 @@ import { ActionConfigRenderer } from "./action-config-renderer";
 import { ConditionBuilderRow } from "./condition-builder-row";
 import type { UpdateNodeConfig } from "./node-config-patch";
 import { WaitEventSelect } from "./wait-event-select";
+import {
+  WAIT_DELAY_TIMING_OPTIONS,
+  WAIT_FIELD_LABELS,
+  WAIT_GATE_OPTIONS,
+  WAIT_MODE_OPTIONS,
+  WAIT_TIMEOUT_OPTIONS,
+  WAIT_WINDOW_OPTIONS,
+} from "./wait-options";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
 import { can } from "#src/lib/authorization";
 import { settledProviderParameter } from "#src/lib/provider-parameters";
@@ -72,27 +80,6 @@ type CategoryActionOption = {
   logoUrl?: string | undefined;
   integration?: string | undefined;
 };
-
-const WAIT_DELAY_TIMING_OPTIONS = [
-  { value: "duration", label: "Wait for duration" },
-  { value: "until", label: "Wait until date/time" },
-];
-const WAIT_GATE_OPTIONS = [
-  { value: "off", label: "Off (continue immediately)" },
-  { value: "require_actual_wait", label: "Skip branch when already due" },
-];
-const WAIT_WINDOW_OPTIONS = [
-  { value: "off", label: "Off (allow any time)" },
-  { value: "daily_window", label: "Daily window" },
-];
-const WAIT_TIMEOUT_OPTIONS = [
-  { value: "continue", label: "Continue workflow" },
-  { value: "skip", label: "Skip remaining branch" },
-];
-const WAIT_MODE_OPTIONS = [
-  { value: "delay", label: "Wait for time" },
-  { value: "event", label: "Wait for an event" },
-];
 
 function OptionLogo({
   logoUrl,
@@ -258,7 +245,9 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
       <p className="font-medium text-sm">Time-Based Wait</p>
 
       <div className="space-y-2">
-        <Label htmlFor="waitDelayTimingMode">Time input mode</Label>
+        <Label htmlFor="waitDelayTimingMode">
+          {WAIT_FIELD_LABELS.waitDelayTimingMode}
+        </Label>
         <Select
           disabled={disabled}
           items={WAIT_DELAY_TIMING_OPTIONS}
@@ -283,7 +272,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
 
       {delayTimingMode === "duration" ? (
         <div className="space-y-2">
-          <Label htmlFor="waitDuration">Wait for (duration)</Label>
+          <Label htmlFor="waitDuration">{WAIT_FIELD_LABELS.waitDuration}</Label>
           <TemplateBadgeInput
             disabled={disabled}
             fieldType={WAIT_VALUE_TARGETS.waitDuration.type}
@@ -299,7 +288,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
       ) : (
         <>
           <div className="space-y-2">
-            <Label htmlFor="waitUntil">Wait until this date/time</Label>
+            <Label htmlFor="waitUntil">{WAIT_FIELD_LABELS.waitUntil}</Label>
             <TemplateBadgeInput
               disabled={disabled}
               fieldType={WAIT_VALUE_TARGETS.waitUntil.type}
@@ -315,9 +304,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="waitOffset">
-              Send before/after that time (optional)
-            </Label>
+            <Label htmlFor="waitOffset">{WAIT_FIELD_LABELS.waitOffset}</Label>
             <TemplateBadgeInput
               disabled={disabled}
               fieldType={WAIT_VALUE_TARGETS.waitOffset.type}
@@ -334,9 +321,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
       )}
 
       <div className="space-y-2">
-        <Label htmlFor="waitGateMode">
-          Continue only if time actually elapsed
-        </Label>
+        <Label htmlFor="waitGateMode">{WAIT_FIELD_LABELS.waitGateMode}</Label>
         <Select
           disabled={disabled}
           items={WAIT_GATE_OPTIONS}
@@ -361,7 +346,9 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="waitAllowedHoursMode">Allowed send window</Label>
+        <Label htmlFor="waitAllowedHoursMode">
+          {WAIT_FIELD_LABELS.waitAllowedHoursMode}
+        </Label>
         <Select
           disabled={disabled}
           items={WAIT_WINDOW_OPTIONS}
@@ -390,7 +377,9 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
       {isWindowEnabled && (
         <div className="grid grid-cols-2 gap-2">
           <div className="space-y-2">
-            <Label htmlFor="waitAllowedStartTime">Window start</Label>
+            <Label htmlFor="waitAllowedStartTime">
+              {WAIT_FIELD_LABELS.waitAllowedStartTime}
+            </Label>
             <Input
               disabled={disabled}
               id="waitAllowedStartTime"
@@ -402,7 +391,9 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="waitAllowedEndTime">Window end</Label>
+            <Label htmlFor="waitAllowedEndTime">
+              {WAIT_FIELD_LABELS.waitAllowedEndTime}
+            </Label>
             <Input
               disabled={disabled}
               id="waitAllowedEndTime"
@@ -422,7 +413,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
 
       <div className="space-y-2">
         <Label htmlFor="waitTimezone">
-          Timezone
+          {WAIT_FIELD_LABELS.waitTimezone}
           {isWindowEnabled ? " (required for send window)" : " (optional)"}
         </Label>
         <TimezoneSelect
@@ -452,7 +443,7 @@ function EventWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
       />
 
       <div className="space-y-2">
-        <Label htmlFor="waitTimeout">Stop waiting after</Label>
+        <Label htmlFor="waitTimeout">{WAIT_FIELD_LABELS.waitTimeout}</Label>
         <TemplateBadgeInput
           disabled={disabled}
           fieldType={WAIT_VALUE_TARGETS.waitTimeout.type}
@@ -468,7 +459,9 @@ function EventWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="waitTimeoutBehavior">On timeout</Label>
+        <Label htmlFor="waitTimeoutBehavior">
+          {WAIT_FIELD_LABELS.waitTimeoutBehavior}
+        </Label>
         <Select
           disabled={disabled}
           items={WAIT_TIMEOUT_OPTIONS}
@@ -536,7 +529,7 @@ function WaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
   return (
     <>
       <div className="space-y-2">
-        <Label htmlFor="waitMode">How should this step wait?</Label>
+        <Label htmlFor="waitMode">{WAIT_FIELD_LABELS.waitMode}</Label>
         <Select
           disabled={disabled}
           items={WAIT_MODE_OPTIONS}
