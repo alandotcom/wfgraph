@@ -10,6 +10,7 @@ import { connectionRefusalReason } from "#src/components/workflow/connection-val
 import { normalizeSourceHandleForConnection } from "#src/components/workflow/connection-handle";
 import { groupOutletHandlesAtom } from "#src/lib/workflow-graph-presentation-store";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
   addNodeAtom,
   applyNodeLayoutAtom,
@@ -42,7 +43,6 @@ import {
   selectedNodeAtom,
   recordObservedRemoteDraftRevisionAtom,
   remoteDraftChangeAtom,
-  setGroupEnabledAtom,
   setNodeStatusesAtom,
   snapshotHistoryAtom,
   undoAtom,
@@ -1087,10 +1087,11 @@ describe("displayNodesAtom memoization", () => {
     const rest = lifecycleNode("t");
     const frame = groupNode("g");
     const child = groupedChild("a", "g");
-    const store = createGraphStore([child, rest, frame]);
+    const sibling = groupedChild("b", "g");
+    const store = createGraphStore([child, rest, frame, sibling]);
 
     const draft = store.get(nodesAtom);
-    expect(draft.map((node) => node.id)).toEqual(["t", "g", "a"]);
+    expect(draft.map((node) => node.id)).toEqual(["t", "g", "a", "b"]);
     expect(store.get(displayNodesAtom)).toBe(draft);
   });
 
@@ -1099,13 +1100,18 @@ describe("displayNodesAtom memoization", () => {
     store.set(
       hydrateWorkflowAtom,
       savedWorkflow("workflow_grouped", {
-        nodes: [groupedChild("a", "g"), lifecycleNode("t"), groupNode("g")],
+        nodes: [
+          groupedChild("a", "g"),
+          lifecycleNode("t"),
+          groupNode("g"),
+          groupedChild("b", "g"),
+        ],
         edges: [],
       })
     );
 
     const draft = store.get(nodesAtom);
-    expect(draft.map((node) => node.id)).toEqual(["t", "g", "a"]);
+    expect(draft.map((node) => node.id)).toEqual(["t", "g", "a", "b"]);
     expect(store.get(displayNodesAtom)).toBe(draft);
   });
 
@@ -1194,7 +1200,7 @@ describe("displayNodesAtom keeps what the stored node already carries", () => {
     expect(painted?.data.status).toBe("running");
   });
 
-  it("keeps the comparison marker on a frame it repaints as disabled", () => {
+  it("paints no enabled state onto a frame whose members are all disabled", () => {
     const store = createGraphStore(...standardGraph());
     store.set(workflowWorkspaceViewAtom, "changes");
     const child: WorkflowNode = {
@@ -1211,10 +1217,10 @@ describe("displayNodesAtom keeps what the stored node already carries", () => {
       nodeChanges: [{ nodeId: "g", kind: "modified", fields: [] }],
     });
 
-    // Every member of the frame is disabled, so the frame is painted disabled,
-    // and that repaint is where the marker used to be dropped.
+    // A frame is organization only, so a disabled member leaves the frame's
+    // own data, comparison marker included, exactly as it was stored.
     const frame = store.get(displayNodesAtom).find((node) => node.id === "g");
-    expect(frame?.data.enabled).toBe(false);
+    expect(frame?.data).not.toHaveProperty("enabled");
     expect(frame?.data[COMPARISON_NODE_ANNOTATION]).toEqual({
       kind: "modified",
     });
@@ -1750,13 +1756,11 @@ describe("groupSelectionAtom", () => {
   });
 
   /**
-   * React Flow deletes a frame by expanding it into its children, and it asks
-   * for no edge it was told it cannot delete. A frame's interior edges are
-   * painted `deletable: false`, and a collapsed inlet edge never reaches React
-   * Flow at all, so both survive a delete the node pass alone. The next save
-   * then refuses the graph, because those edges name nodes that are gone.
+   * A removal batch naming a frame ungroups it and removes the members the
+   * batch also names, with their stored edges, so no edge names a node that
+   * is gone and no member names the frame.
    */
-  it("drops the edges a removed frame leaves behind", () => {
+  it("ungroups a removed frame and removes the members the batch names", () => {
     const store = createGraphStore(
       [
         lifecycleNode("life"),
@@ -1787,23 +1791,18 @@ describe("groupSelectionAtom", () => {
     expect(frameId).toBeDefined();
 
     store.set(snapshotHistoryAtom);
-    // The one painted edge React Flow can see and delete.
-    store.set(onEdgesChangeAtom, [{ type: "remove", id: "e-start-a" }]);
     store.set(onNodesChangeAtom, [
       { type: "remove", id: frameId ?? "" },
       { type: "remove", id: "a" },
-      { type: "remove", id: "b" },
-      { type: "remove", id: "c" },
     ]);
 
-    const liveIds = new Set(store.get(nodesAtom).map((node) => node.id));
-    expect(
-      store
-        .get(edgesAtom)
-        .filter(
-          (item) => !liveIds.has(item.source) || !liveIds.has(item.target)
-        )
-    ).toEqual([]);
+    const nodes = store.get(nodesAtom);
+    expect(nodes.map((node) => node.id)).toEqual(["life", "b", "c"]);
+    expect(nodes.some((node) => node.parentId !== undefined)).toBe(false);
+    expect(store.get(edgesAtom).map((item) => item.id)).toEqual([
+      "e-start-b",
+      "e-b",
+    ]);
   });
 });
 
@@ -1925,21 +1924,22 @@ describe("what the canvas paints for a node the validator flagged", () => {
   });
 });
 
-describe("setGroupEnabledAtom", () => {
+describe("a Group frame has no enabled state", () => {
   function groupedGraph(): Store {
-    const lookup = (id: string, x: number): WorkflowNode => ({
+    const lookup = (id: string, x: number, enabled?: false): WorkflowNode => ({
       ...actionNode(id, x),
       selected: true,
-      data: {
+      data: omitUndefined({
         label: id,
-        type: "action",
+        type: "action" as const,
         config: { actionType: "fountain/get-user" },
-      },
+        enabled,
+      }),
     });
     const store = createGraphStore(
       [
         lifecycleNode("life"),
-        lookup("a", 0),
+        lookup("a", 0, false),
         lookup("b", 200),
         {
           ...actionNode("c", 100),
@@ -1964,65 +1964,46 @@ describe("setGroupEnabledAtom", () => {
     return store;
   }
 
-  it("writes the flag onto every member in one undo step", () => {
+  it("keeps each member's enabled state and configuration when grouping", () => {
     const store = groupedGraph();
-    const frameId = store.get(nodesAtom).find((node) => isGroupNode(node))?.id;
-
-    expect(
-      store.set(setGroupEnabledAtom, {
-        groupId: frameId ?? "",
-        enabled: false,
-      })
-    ).toBe(true);
 
     const members = store
       .get(nodesAtom)
-      .filter((node) => node.parentId === frameId);
-    expect(members).toHaveLength(3);
-    expect(members.every((node) => node.data.enabled === false)).toBe(true);
-
-    store.set(undoAtom);
+      .filter((node) => node.parentId !== undefined);
     expect(
-      store
-        .get(nodesAtom)
-        .filter((node) => node.parentId === frameId)
-        .every((node) => node.data.enabled === undefined)
-    ).toBe(true);
+      members.map((node) => [node.id, node.data.enabled, node.data.config])
+    ).toEqual([
+      ["a", false, { actionType: "fountain/get-user" }],
+      ["b", undefined, { actionType: "fountain/get-user" }],
+      ["c", undefined, { actionType: BUILT_IN_ACTION_IDS.condition }],
+    ]);
   });
 
-  it("clears the flag when the frame is switched back on", () => {
+  it("switches a member off by itself, leaving the frame and its siblings", () => {
     const store = groupedGraph();
     const frameId = store.get(nodesAtom).find((node) => isGroupNode(node))?.id;
 
-    store.set(setGroupEnabledAtom, { groupId: frameId ?? "", enabled: false });
-    store.set(setGroupEnabledAtom, { groupId: frameId ?? "", enabled: true });
+    store.set(updateNodeDataAtom, { id: "b", data: { enabled: false } });
 
-    expect(
-      store
-        .get(nodesAtom)
-        .filter((node) => node.parentId === frameId)
-        .every((node) => node.data.enabled === undefined)
-    ).toBe(true);
+    const nodes = store.get(nodesAtom);
+    expect(nodes.find((node) => node.id === "b")?.data.enabled).toBe(false);
+    expect(nodes.find((node) => node.id === "c")?.data.enabled).toBeUndefined();
+    expect(nodes.find((node) => node.id === frameId)?.data).not.toHaveProperty(
+      "enabled"
+    );
   });
 
-  it("greys the frame and everything the run can no longer reach", () => {
+  it("paints the frame the same while its members are switched off", () => {
     const store = groupedGraph();
     const frameId = store.get(nodesAtom).find((node) => isGroupNode(node))?.id;
-    store.set(setGroupEnabledAtom, { groupId: frameId ?? "", enabled: false });
+    store.set(updateNodeDataAtom, { id: "b", data: { enabled: false } });
+    store.set(updateNodeDataAtom, { id: "c", data: { enabled: false } });
 
+    const stored = store.get(nodesAtom).find((node) => node.id === frameId);
     const frame = store
       .get(displayNodesAtom)
       .find((node) => node.id === frameId);
-    expect(frame?.data.enabled).toBe(false);
-
-    const after = store
-      .get(displayNodesAtom)
-      .find((node) => node.id === "after");
-    expect(after?.style).toMatchObject({ opacity: 0.5 });
-
-    const outlet = store
-      .get(displayEdgesAtom)
-      .find((item) => item.target === "after");
-    expect(outlet?.data?.inactive).toBe(true);
+    expect(frame).toBe(stored);
+    expect(frame?.data).not.toHaveProperty("enabled");
   });
 });

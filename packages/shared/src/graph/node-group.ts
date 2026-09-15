@@ -8,6 +8,7 @@
 import { groupBy, uniq, uniqBy } from "es-toolkit/array";
 import { normalizeConditionBranch } from "#src/conditions/condition-branch";
 import { type ExtensionCatalog, findAction } from "#src/extensions/catalog";
+import { groupStepCount } from "#src/graph/group-contract";
 import {
   analyzeGroupBoundary,
   analyzeGroupBoundaryById,
@@ -464,36 +465,6 @@ export function childIdsOfGroup(
 }
 
 /**
- * The frames that read as disabled, which is every member being disabled.
- *
- * The engine walks members and never sees the frame, so the members hold the
- * fact and the frame's face is read back off them. One pass, because the canvas
- * asks this on every render, including every drag frame.
- */
-export function disabledGroupIds(
-  nodes: readonly GroupGraphNode[]
-): Set<string> {
-  const enabledByFrame = new Map<string, boolean>();
-  for (const node of nodes) {
-    if (!node.parentId) {
-      continue;
-    }
-    const allDisabled =
-      (enabledByFrame.get(node.parentId) ?? true) &&
-      node.data.enabled === false;
-    enabledByFrame.set(node.parentId, allDisabled);
-  }
-
-  const disabled = new Set<string>();
-  for (const [frameId, allDisabled] of enabledByFrame) {
-    if (allDisabled) {
-      disabled.add(frameId);
-    }
-  }
-  return disabled;
-}
-
-/**
  * React Flow paints a parent before its children, and deletes them the same
  * way: `getElementsToRemove` pulls a child in by searching the nodes it has
  * already collected, so a frame sitting after its members takes none of them
@@ -548,19 +519,17 @@ function isRestGroupsChildrenOrder(nodes: readonly GroupGraphNode[]): boolean {
   return true;
 }
 
+/**
+ * The Group frames holding fewer than two steps, counted by `groupStepCount`.
+ * Dissolution reads this list and Publish's `too_few_members` rule reads the
+ * same count, so the two agree on which Groups are too small.
+ */
 export function undersizedGroupIds(nodes: readonly GroupGraphNode[]): string[] {
-  // A Map rather than a countBy record: `parentId` comes from the persisted
-  // graph, and a plain object would answer a group named `constructor` with a
-  // prototype member instead of undefined.
-  const childCount = new Map<string, number>();
-  for (const node of nodes) {
-    if (node.parentId) {
-      childCount.set(node.parentId, (childCount.get(node.parentId) ?? 0) + 1);
-    }
-  }
-
   return nodes
-    .filter((node) => isGroupNode(node) && (childCount.get(node.id) ?? 0) < 2)
+    .filter(
+      (node) =>
+        isGroupNode(node) && groupStepCount({ groupId: node.id, nodes }) < 2
+    )
     .map((node) => node.id);
 }
 

@@ -1,4 +1,4 @@
-import { act, fireEvent, waitFor } from "@testing-library/react";
+import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ToolbarActions,
@@ -11,7 +11,8 @@ import {
   REAL_NODES,
   renderChrome,
 } from "#src/components/workflow/workflow-toolbar-chrome.test-support";
-import { selectedNodeAtom } from "#src/lib/workflow-graph-store";
+import { nodesAtom, selectedNodeAtom } from "#src/lib/workflow-graph-store";
+import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import { can } from "#src/lib/authorization";
 import {
@@ -132,6 +133,53 @@ describe("mobile editing actions", () => {
       (await view.findByTitle("Configuration")).hasAttribute("disabled")
     ).toBe(false);
     expect(view.getByTitle("Delete").hasAttribute("disabled")).toBe(true);
+  });
+
+  it("confirms Delete on a Group frame as an ungroup that keeps its steps", async () => {
+    const member = (id: string): WorkflowNode => ({
+      id,
+      type: "action",
+      parentId: "group_1",
+      extent: "parent",
+      position: { x: 0, y: 0 },
+      data: {
+        label: id,
+        type: "action",
+        config: { actionType: "fountain/get-user" },
+      },
+    });
+    const graph: WorkflowNode[] = [
+      {
+        id: "group_1",
+        type: "group",
+        position: { x: 0, y: 0 },
+        width: 400,
+        height: 300,
+        data: { label: "Lookups", type: "group" },
+      },
+      member("a"),
+      member("b"),
+    ];
+    const view = renderChrome(ToolbarActions, {
+      graph,
+      state: { nodes: graph },
+    });
+    act(() => view.store.set(selectedNodeAtom, "group_1"));
+
+    fireEvent.click(await view.findByTitle("Delete"));
+
+    const dialog = await view.findByRole("dialog");
+    expect(dialog.textContent).toContain(
+      "Are you sure you want to ungroup this Group?"
+    );
+    expect(dialog.textContent).not.toContain("cannot be undone");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Ungroup" }));
+
+    const nodes = view.store.get(nodesAtom);
+    expect(nodes.map((node) => [node.id, node.parentId])).toEqual([
+      ["a", undefined],
+      ["b", undefined],
+    ]);
   });
 });
 
