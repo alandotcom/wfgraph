@@ -90,6 +90,7 @@ import {
   selectedNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import { cn } from "@wfgraph/shared/utils";
+import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 
 /**
  * Put the workflow's id on the clipboard.
@@ -594,12 +595,25 @@ export function ToolbarPublishControls({
   const handleDeleteConfirm = () => {
     const isNode = Boolean(selectedNodeId);
     const itemType = isNode ? "Node" : "Connection";
+    // Deleting a frame ungroups it and keeps its steps and connections, so the
+    // confirmation says that and uses the ordinary button style.
+    const wording = isGroupNode(selectedNode)
+      ? {
+          title: "Ungroup",
+          message:
+            "Are you sure you want to ungroup this Group? Its steps and their connections stay in the workflow.",
+          confirmLabel: "Ungroup",
+          confirmVariant: "default" as const,
+        }
+      : {
+          title: `Delete ${itemType}`,
+          message: `Are you sure you want to delete this ${itemType.toLowerCase()}? This action cannot be undone.`,
+          confirmLabel: "Delete",
+          confirmVariant: "destructive" as const,
+        };
 
     push(ConfirmOverlay, {
-      title: `Delete ${itemType}`,
-      message: `Are you sure you want to delete this ${itemType.toLowerCase()}? This action cannot be undone.`,
-      confirmLabel: "Delete",
-      confirmVariant: "destructive" as const,
+      ...wording,
       onConfirm: () => {
         if (selectedNodeId) {
           deleteNode(selectedNodeId);

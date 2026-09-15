@@ -24,12 +24,11 @@ import {
 } from "@wfgraph/shared/graph/node-references";
 import { layoutWorkflowNodes } from "#src/components/workflow/workflow-layout";
 import {
-  dissolveUndersizedGroups,
-  dropOrphanedEdges,
   expandEdgeRemovals,
-  idsRemovedWith,
-  refuseDeleteWithNotice,
+  removeNodes,
+  repairCanvasGroups,
 } from "#src/lib/node-group";
+import { getClientLogger } from "#src/lib/logger";
 import {
   canonicalizeNodeEnabled,
   persistedNodeEnabled,
@@ -72,8 +71,8 @@ export {
 export {
   connectNodesAtom,
   deleteEdgeAtom,
+  deleteGroupWithMembersAtom,
   groupSelectionAtom,
-  setGroupEnabledAtom,
   ungroupNodeAtom,
 } from "#src/lib/workflow-group-store";
 export {
@@ -112,6 +111,8 @@ export {
 /** Read-only draft. Mutate through the action atoms below so undo always sees it. */
 export const nodesAtom = atom((get) => get(nodesStateAtom));
 export const edgesAtom = atom((get) => get(edgesStateAtom));
+
+const logger = getClientLogger("workflow", "graph");
 
 type CopiedClipboard = {
   selection: CopiedSelection;
@@ -285,16 +286,34 @@ export const onNodesChangeAtom = atom(
       set(workflowDragActiveAtom, false);
     }
 
-    const newNodes = dissolveUndersizedGroups(
-      applyNodeChanges<WorkflowNode>(filteredChanges, currentNodes)
+    const changedNodes = applyNodeChanges<WorkflowNode>(
+      filteredChanges.filter((change) => change.type !== "remove"),
+      currentNodes
     );
+    // Removals go through `removeNodes`, which every delete path shares. It
+    // removes the stored edges React Flow never offered to delete, such as a
+    // member's locked interior edges, ungroups a removed frame, and ungroups a
+    // frame the removal leaves holding fewer than two steps, all inside the
+    // undo step `snapshotHistoryAtom` recorded. A drag or a selection change
+    // removes nothing and skips it.
+    const removal = hasRemoval
+      ? removeNodes({
+          nodes: changedNodes,
+          edges: get(edgesStateAtom),
+          nodeIds: new Set(
+            filteredChanges.flatMap((change) =>
+              change.type === "remove" ? [change.id] : []
+            )
+          ),
+        })
+      : undefined;
+    const newNodes = removal?.nodes ?? changedNodes;
     set(nodesStateAtom, newNodes);
 
-    // A removal here can strand an edge React Flow never offered to delete;
-    // `dropOrphanedEdges` says which and why. It answers the same array when
-    // there is nothing to drop, and jotai skips a write of the value it holds.
-    if (hasRemoval) {
-      const remainingEdges = dropOrphanedEdges(newNodes, get(edgesStateAtom));
+    // `removeNodes` answers the same edge array when it removed no edge, and
+    // jotai skips a write of the value it already holds.
+    if (removal) {
+      const remainingEdges = removal.edges;
       set(edgesStateAtom, remainingEdges);
       // The paths that remove an edge clear the selection naming it, and this
       // one answers to the same rule even though today's stranded edges are all
@@ -545,12 +564,27 @@ export const applyAgentGraphAtom = atom(
       return false;
     }
 
+    // The graph arrives from the server, so it is held to the Group rules
+    // before it can reach the canvas or the save below. A graph whose Group
+    // structure a draft save would refuse is left off the canvas, and a Group
+    // holding fewer than two steps is ungrouped.
+    const repair = repairCanvasGroups({
+      nodes: input.nodes,
+      edges: input.edges,
+    });
+    if (!repair.ok) {
+      logger.error("Agent graph refused for its Group structure", {
+        workflowId: input.workflowId,
+      });
+      return false;
+    }
+
     const existingById = new Map(
       get(nodesStateAtom).map((node) => [node.id, node] as const)
     );
 
     const { nodes: laidOut } = layoutWorkflowNodes({
-      nodes: input.nodes,
+      nodes: repair.nodes,
       edges: input.edges,
       catalog: input.catalog,
     });
@@ -702,30 +736,30 @@ export const deleteNodeAtom = atom(null, (get, set, nodeId: string) => {
   }
 
   const currentNodes = get(nodesStateAtom);
+  const currentEdges = get(edgesStateAtom);
 
-  const nodeToDelete = currentNodes.find((node) => node.id === nodeId);
-  if (nodeToDelete?.data.type === "lifecycle") {
-    return;
-  }
-  if (nodeToDelete && refuseDeleteWithNotice([nodeToDelete])) {
+  // A frame is ungrouped and keeps its members, a step goes with its stored
+  // edges, and a frame left holding fewer than two steps is ungrouped.
+  const next = removeNodes({
+    nodes: currentNodes,
+    edges: currentEdges,
+    nodeIds: new Set([nodeId]),
+  });
+  if (next.nodes === currentNodes && next.edges === currentEdges) {
     return;
   }
 
   pushHistory(get, set);
+  set(nodesStateAtom, next.nodes);
+  set(edgesStateAtom, next.edges);
 
-  const removed = idsRemovedWith(currentNodes, nodeId);
-  const remainingNodes = dissolveUndersizedGroups(
-    currentNodes.filter((node) => !removed.has(node.id))
-  );
-  set(nodesStateAtom, remainingNodes);
-  set(
-    edgesStateAtom,
-    get(edgesStateAtom).filter(
-      (edge) => !removed.has(edge.source) && !removed.has(edge.target)
-    )
-  );
-
-  if (get(selectedNodeAtom) && removed.has(get(selectedNodeAtom) ?? "")) {
+  // The selection can name the deleted step, a frame the delete ungrouped, or
+  // a frame dissolved because the delete left it too small.
+  const selectedNodeId = get(selectedNodeAtom);
+  if (
+    selectedNodeId &&
+    !next.nodes.some((node) => node.id === selectedNodeId)
+  ) {
     set(selectedNodeAtom, null);
   }
 
@@ -739,31 +773,10 @@ export const deleteSelectedItemsAtom = atom(null, (get, set) => {
 
   const currentNodes = get(nodesStateAtom);
   const currentEdges = get(edgesStateAtom);
-  // The delete key asks the same question through `onBeforeDelete`, so a
-  // selection reaching into a frame without taking the frame is refused whole
-  // here too rather than quietly losing the member and taking the rest.
-  const selectedNodes = currentNodes.filter((node) => node.selected);
-  if (refuseDeleteWithNotice(selectedNodes)) {
-    return;
-  }
 
-  const selectedNodeIds = new Set(
-    selectedNodes
-      .filter((node) => node.data.type !== "lifecycle")
-      .map((node) => node.id)
-  );
-  for (const node of currentNodes) {
-    if (node.parentId && selectedNodeIds.has(node.parentId)) {
-      selectedNodeIds.add(node.id);
-    }
-  }
-
-  // Lifecycle Nodes survive being selected; the graph needs an entrypoint.
-  const remainingNodes = dissolveUndersizedGroups(
-    currentNodes.filter(
-      (node) => node.data.type === "lifecycle" || !selectedNodeIds.has(node.id)
-    )
-  );
+  // `removeNodes` keeps the Lifecycle Node, which the graph needs as its
+  // entrypoint, removes the selected steps, ungroups a selected frame, and
+  // ungroups a frame the removal leaves holding fewer than two steps.
   const selectedFanOut = new Set(
     currentEdges
       .filter((edge) => edge.selected)
@@ -771,17 +784,23 @@ export const deleteSelectedItemsAtom = atom(null, (get, set) => {
         fanOutStoreEdgeIds(currentNodes, currentEdges, edge.id)
       )
   );
-  const remainingEdges = currentEdges.filter(
-    (edge) =>
-      !selectedFanOut.has(edge.id) &&
-      !selectedNodeIds.has(edge.source) &&
-      !selectedNodeIds.has(edge.target)
-  );
+  const removal = removeNodes({
+    nodes: currentNodes,
+    edges: currentEdges,
+    nodeIds: new Set(
+      currentNodes.filter((node) => node.selected).map((node) => node.id)
+    ),
+  });
+  const remainingNodes = removal.nodes;
+  const remainingEdges =
+    selectedFanOut.size === 0
+      ? removal.edges
+      : removal.edges.filter((edge) => !selectedFanOut.has(edge.id));
 
   // Selecting only the Lifecycle Node and pressing delete removes nothing, and
   // an undo step for a change that did not happen is worse than no undo step.
   if (
-    remainingNodes.length === currentNodes.length &&
+    remainingNodes === currentNodes &&
     remainingEdges.length === currentEdges.length
   ) {
     return;

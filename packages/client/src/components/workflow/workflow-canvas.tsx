@@ -35,6 +35,7 @@ import {
   displayNodesAtom,
   edgesAtom,
   canvasEditingLockedAtom,
+  deleteSelectedItemsAtom,
   executionOverlayGraphAtom,
   isExecutionOverlayActiveAtom,
   onEdgesChangeAtom,
@@ -62,7 +63,7 @@ import {
   WORKFLOW_EDGE_TYPE,
 } from "#src/lib/workflow-graph-types";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
-import { refuseDeleteWithNotice } from "#src/lib/node-group";
+import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { normalizeSourceHandleForConnection as normalizeSourceHandle } from "./connection-handle";
 import { ActionNode } from "./nodes/action-node";
 import { AddNode } from "./nodes/add-node";
@@ -167,6 +168,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const connectNodes = useSetAtom(connectNodesAtom);
   const selectOnlyNode = useSetAtom(selectOnlyNodeAtom);
   const snapshotHistory = useSetAtom(snapshotHistoryAtom);
+  const deleteSelectedItems = useSetAtom(deleteSelectedItemsAtom);
   const undo = useSetAtom(undoAtom);
   const redo = useSetAtom(redoAtom);
   const inspectNode = useWorkflowNodeInspection();
@@ -536,16 +538,21 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
         return Promise.resolve(false);
       }
 
-      // A Group's entry and exit are derived from the members it was built
-      // from, so a member only goes when its frame does.
-      if (refuseDeleteWithNotice(nodesToDelete)) {
+      // Removing a frame ungroups it. React Flow would instead take every
+      // member and the painted edges on the frame's handles, which stand for
+      // stored edges on the members. A batch holding a frame is therefore
+      // handed to the store's selection delete, which removes only the selected
+      // members and records its own undo step. The delete key only ever deletes
+      // the selection, so both name one batch.
+      if (nodesToDelete.some((node) => isGroupNode(node))) {
+        deleteSelectedItems();
         return Promise.resolve(false);
       }
 
       snapshotHistory();
       return Promise.resolve(true);
     },
-    [graphEditingLocked, snapshotHistory]
+    [deleteSelectedItems, graphEditingLocked, snapshotHistory]
   );
 
   const onNodeClick: NodeMouseHandler = useCallback(

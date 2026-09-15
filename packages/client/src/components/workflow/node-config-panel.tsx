@@ -14,6 +14,7 @@ import { Input } from "#src/components/ui/input";
 import { Label } from "#src/components/ui/label";
 import {
   deleteEdgeAtom,
+  deleteGroupWithMembersAtom,
   deleteNodeAtom,
   deleteSelectedItemsAtom,
   edgesAtom,
@@ -21,12 +22,10 @@ import {
   nodesAtom,
   selectedEdgeAtom,
   selectedNodeAtom,
-  setGroupEnabledAtom,
   ungroupNodeAtom,
   updateNodeDataAtom,
 } from "#src/lib/workflow-graph-store";
-import { canUngroup, refuseDelete } from "#src/lib/node-group";
-import { disabledGroupIds } from "@wfgraph/shared/graph/node-group";
+import { canUngroup } from "#src/lib/node-group";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { can } from "#src/lib/authorization";
@@ -42,6 +41,7 @@ import { ActionGrid } from "./config/action-grid";
 import { LifecyclePanel } from "./config/lifecycle-panel";
 import { useNodeConfigWriter } from "./config/use-node-config-writer";
 import { WorkflowRuns } from "./workflow-runs";
+import { deleteGroupWithStepsConfirmation } from "./group-delete-confirmation";
 
 /**
  * Configuring the selected node, edge, or the workflow itself.
@@ -151,6 +151,36 @@ export function RunsPanelActions({
   );
 }
 
+/** "1 step", "2 steps", or undefined for none. */
+function countPart(
+  count: number,
+  singular: string,
+  plural: string
+): string | undefined {
+  return count > 0 ? `${count} ${count === 1 ? singular : plural}` : undefined;
+}
+
+/**
+ * The confirmation wording for deleting a multiple selection. `deletedText`
+ * names the selected steps and connections the delete removes, and
+ * `frameCount` is the number of selected Group frames the delete ungroups.
+ */
+function deleteSelectionMessage(input: {
+  deletedText: string;
+  frameCount: number;
+}): string {
+  const { deletedText, frameCount } = input;
+  const groups = frameCount === 1 ? "Group" : "Groups";
+  if (deletedText === "") {
+    return `Are you sure you want to ungroup ${frameCount} ${groups}? Their steps and connections stay in the workflow.`;
+  }
+  const ungroupSentence =
+    frameCount === 0
+      ? ""
+      : ` The selected ${groups} ${frameCount === 1 ? "is" : "are"} ungrouped, and the steps inside that are not selected stay in the workflow.`;
+  return `Are you sure you want to delete ${deletedText}?${ungroupSentence}`;
+}
+
 export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
   const { updateConfig: handleUpdateConfig } = useNodeConfigWriter();
   const workspaceView = useAtomValue(workflowWorkspaceViewAtom);
@@ -164,7 +194,7 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
   const updateNodeData = useSetAtom(updateNodeDataAtom);
   const deleteNode = useSetAtom(deleteNodeAtom);
   const ungroupSelected = useSetAtom(ungroupNodeAtom);
-  const setGroupEnabled = useSetAtom(setGroupEnabledAtom);
+  const deleteGroupWithMembers = useSetAtom(deleteGroupWithMembersAtom);
   const deleteEdge = useSetAtom(deleteEdgeAtom);
   const deleteSelectedItems = useSetAtom(deleteSelectedItemsAtom);
   const [newlyCreatedNodeId, setNewlyCreatedNodeId] = useAtom(
@@ -178,15 +208,28 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
   const selectedEdges = edges.filter((edge) => edge.selected);
   const hasMultipleSelections = selectedNodes.length + selectedEdges.length > 1;
 
-  const selectedNodesPart =
-    selectedNodes.length > 0
-      ? `${selectedNodes.length} ${selectedNodes.length === 1 ? "step" : "steps"}`
-      : undefined;
-  const selectedEdgesPart =
-    selectedEdges.length > 0
-      ? `${selectedEdges.length} ${selectedEdges.length === 1 ? "connection" : "connections"}`
-      : undefined;
-  const selectionText = compact([selectedNodesPart, selectedEdgesPart]).join(
+  // A selected frame is ungrouped by a delete, so it is counted as a Group
+  // and kept out of the steps the delete removes.
+  const selectedFrameCount = selectedNodes.filter((node) =>
+    isGroupNode(node)
+  ).length;
+  const selectedStepsPart = countPart(
+    selectedNodes.length - selectedFrameCount,
+    "step",
+    "steps"
+  );
+  const selectedFramesPart = countPart(selectedFrameCount, "Group", "Groups");
+  const selectedEdgesPart = countPart(
+    selectedEdges.length,
+    "connection",
+    "connections"
+  );
+  const selectionText = compact([
+    selectedStepsPart,
+    selectedFramesPart,
+    selectedEdgesPart,
+  ]).join(" and ");
+  const deletedText = compact([selectedStepsPart, selectedEdgesPart]).join(
     " and "
   );
 
@@ -202,30 +245,13 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
     }
   };
 
-  const frameDisabled =
-    selectedNode && isGroupNode(selectedNode)
-      ? disabledGroupIds(nodes).has(selectedNode.id)
-      : false;
-  const showDisabledToggle = Boolean(
-    selectedNode &&
-    !selectedNode.parentId &&
-    (selectedNode.data.type === "action" || isGroupNode(selectedNode))
-  );
-  const isSelectionDisabled = selectedNode
-    ? isGroupNode(selectedNode)
-      ? frameDisabled
-      : selectedNode.data.enabled === false
-    : false;
+  // A step switches on and off by itself, inside a Group or outside one. A
+  // frame is organization only and has no enabled state of its own.
+  const showDisabledToggle = selectedNode?.data.type === "action";
+  const isSelectionDisabled = selectedNode?.data.enabled === false;
 
   const handleToggleEnabled = () => {
     if (!selectedNode) {
-      return;
-    }
-    if (isGroupNode(selectedNode)) {
-      setGroupEnabled({
-        groupId: selectedNode.id,
-        enabled: frameDisabled,
-      });
       return;
     }
     updateNodeData({
@@ -251,6 +277,19 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
     });
   };
 
+  const confirmDeleteGroupWithSteps = () => {
+    if (!selectedNode) {
+      return;
+    }
+    const groupId = selectedNode.id;
+    frame.confirm(
+      deleteGroupWithStepsConfirmation(() => {
+        deleteGroupWithMembers(groupId);
+        frame.dismiss?.();
+      })
+    );
+  };
+
   const confirmDeleteEdge = () => {
     if (!selectedEdgeId) {
       return;
@@ -270,7 +309,10 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
   const confirmDeleteSelection = () => {
     frame.confirm({
       title: "Delete Selected Items",
-      message: `Are you sure you want to delete ${selectionText}? This action cannot be undone.`,
+      message: deleteSelectionMessage({
+        deletedText,
+        frameCount: selectedFrameCount,
+      }),
       confirmLabel: "Delete",
       onConfirm: () => {
         deleteSelectedItems();
@@ -452,12 +494,6 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
           />
         ) : null}
 
-        {canUpdate && selectedNode.parentId ? (
-          <p className="pt-4 text-muted-foreground text-xs">
-            This step runs with its Group. Select the frame to switch it off.
-          </p>
-        ) : null}
-
         {canUpdate ? (
           <div className="flex items-center gap-2 pt-4">
             {showDisabledToggle ? (
@@ -485,9 +521,18 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
                 Ungroup
               </Button>
             ) : null}
-            {/* A member is deleted by deleting or ungrouping its frame, which
-                is what keeps the frame's entry and exit naming a live step. */}
-            {refuseDelete([selectedNode]) ? null : (
+            {/* Ungroup is how a frame alone is removed, so a frame's delete
+                button is the explicit, confirmed delete of the Group's steps. */}
+            {isGroupNode(selectedNode) ? (
+              <Button
+                onClick={confirmDeleteGroupWithSteps}
+                size="sm"
+                variant="outline"
+              >
+                <Trash2 className="mr-2 size-4 text-destructive" />
+                <span className="text-destructive">Delete Group and Steps</span>
+              </Button>
+            ) : (
               <Button onClick={confirmDeleteNode} size="sm" variant="outline">
                 <Trash2 className="mr-2 size-4 text-destructive" />
                 <span className="text-destructive">Delete</span>

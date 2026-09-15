@@ -10,15 +10,24 @@ import {
   canUngroup,
   groupSelection,
   lockGroupInteriorEdges,
-  refuseDelete,
+  removeGroupWithMembers,
+  removeNodes,
+  repairCanvasGroups,
   ungroupNode,
 } from "#src/lib/node-group";
 import {
   fanOutStoreEdges,
   orderGroupParentsFirst,
+  undersizedGroupIds,
 } from "@wfgraph/shared/graph/node-group";
+import { groupStructureRefusalReason } from "@wfgraph/shared/graph/group-structure";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
-import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
+import {
+  toPersistedEdge,
+  toPersistedNodes,
+  type WorkflowEdge,
+  type WorkflowNode,
+} from "#src/lib/workflow-graph-types";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 /**
@@ -333,35 +342,187 @@ describe("connecting onto a grouped frame", () => {
   });
 });
 
-describe("refuseDelete", () => {
-  const frame: WorkflowNode = {
-    id: "g1",
-    type: "group",
-    position: { x: 0, y: 0 },
-    data: {
-      label: "Group",
-      type: "group",
-    },
-  };
-  const member: WorkflowNode = {
-    ...action("a", "fountain/get-user", { x: 0, y: 0 }),
-    parentId: "g1",
-  };
-  const free = action("free", "fountain/get-user", { x: 0, y: 0 });
+/** Holds every Group in `nodes` to the rules a save checks. */
+function expectWholeGroups(nodes: WorkflowNode[], edges: WorkflowEdge[]) {
+  expect(
+    groupStructureRefusalReason({
+      nodes: toPersistedNodes(nodes),
+      edges: edges.map(toPersistedEdge),
+    })
+  ).toBeNull();
+  expect(undersizedGroupIds(nodes)).toEqual([]);
+}
 
-  it("allows a frame taking its members, and a step of its own", () => {
-    expect(refuseDelete([frame, member])).toBeNull();
-    expect(refuseDelete([free])).toBeNull();
-    expect(refuseDelete([])).toBeNull();
+describe("removeNodes", () => {
+  it("ungroups a removed frame and keeps its members and stored edges", () => {
+    const nodes = framedNodes();
+    const edges = parallelEdges();
+
+    const removed = removeNodes({ nodes, edges, nodeIds: new Set(["g1"]) });
+
+    expect(removed.nodes.map((node) => node.id)).toEqual([
+      "life",
+      "a",
+      "b",
+      "c",
+    ]);
+    expect(removed.edges).toBe(edges);
+    const freed = removed.nodes.find((node) => node.id === "a");
+    expect(freed).not.toHaveProperty("parentId");
+    expect(freed).not.toHaveProperty("extent");
+    expect(freed?.draggable).toBe(true);
+    expect(freed?.connectable).toBe(true);
+    expectWholeGroups(removed.nodes, removed.edges);
   });
 
-  it("refuses a batch reaching into a frame it does not take", () => {
-    expect(refuseDelete([member])).toBe(
-      "Ungroup the frame before deleting a step inside it"
-    );
-    expect(refuseDelete([free, member])).toBe(
-      "Ungroup the frame before deleting a step inside it"
-    );
+  it("removes the members a batch names beside their ungrouped frame", () => {
+    // A box selection over a frame and one member: the member goes with its
+    // stored edges, and the frame is ungrouped, freeing the members left.
+    const removed = removeNodes({
+      nodes: framedNodes(),
+      edges: parallelEdges(),
+      nodeIds: new Set(["g1", "a"]),
+    });
+
+    expect(removed.nodes.map((node) => [node.id, node.parentId])).toEqual([
+      ["life", undefined],
+      ["b", undefined],
+      ["c", undefined],
+    ]);
+    expect(removed.nodes[1]?.draggable).toBe(true);
+    expect(removed.edges.map((item) => item.id)).toEqual(["b-c"]);
+    expectWholeGroups(removed.nodes, removed.edges);
+  });
+
+  it("removes every member and the frame when a batch names them all", () => {
+    const removed = removeNodes({
+      nodes: framedNodes(),
+      edges: parallelEdges(),
+      nodeIds: new Set(["g1", "a", "b", "c"]),
+    });
+
+    expect(removed.nodes.map((node) => node.id)).toEqual(["life"]);
+    expect(removed.edges).toEqual([]);
+  });
+
+  it("removes a member with its stored edges and keeps a Group of two", () => {
+    const removed = removeNodes({
+      nodes: framedNodes(),
+      edges: parallelEdges(),
+      nodeIds: new Set(["a"]),
+    });
+
+    expect(removed.nodes.map((node) => [node.id, node.parentId])).toEqual([
+      ["life", undefined],
+      ["g1", undefined],
+      ["b", "g1"],
+      ["c", "g1"],
+    ]);
+    expect(removed.edges.map((item) => item.id)).toEqual(["b-c"]);
+    expectWholeGroups(removed.nodes, removed.edges);
+  });
+
+  it("ungroups a Group the removal leaves with one member", () => {
+    const removed = removeNodes({
+      nodes: framedNodes(),
+      edges: parallelEdges(),
+      nodeIds: new Set(["a", "b"]),
+    });
+
+    expect(removed.nodes.map((node) => node.id)).toEqual(["life", "c"]);
+    expect(removed.nodes[1]).not.toHaveProperty("parentId");
+    expect(removed.edges).toEqual([]);
+    expectWholeGroups(removed.nodes, removed.edges);
+  });
+
+  it("keeps the Lifecycle Node and answers the same arrays for nothing", () => {
+    const nodes = framedNodes();
+    const edges = parallelEdges();
+
+    const removed = removeNodes({ nodes, edges, nodeIds: new Set(["life"]) });
+
+    expect(removed.nodes).toBe(nodes);
+    expect(removed.edges).toBe(edges);
+  });
+});
+
+describe("removeGroupWithMembers", () => {
+  it("removes the frame, its members, and every edge touching a member", () => {
+    const nodes = [
+      ...framedNodes(),
+      action("after", "fountain/get-user", { x: 0, y: 600 }),
+    ];
+    const edges = [...parallelEdges(), edge("c-after", "c", "after", "true")];
+
+    const removed = removeGroupWithMembers({ nodes, edges, groupId: "g1" });
+
+    expect(removed.nodes.map((node) => node.id)).toEqual(["life", "after"]);
+    expect(removed.edges).toEqual([]);
+    expectWholeGroups(removed.nodes, removed.edges);
+  });
+
+  it("answers the same arrays for an id that names no frame", () => {
+    const nodes = framedNodes();
+    const edges = parallelEdges();
+
+    const removed = removeGroupWithMembers({ nodes, edges, groupId: "a" });
+
+    expect(removed.nodes).toBe(nodes);
+    expect(removed.edges).toBe(edges);
+  });
+});
+
+describe("repairCanvasGroups", () => {
+  it("frees a lone member at canvas size and leaves a whole Group alone", () => {
+    const whole = framedNodes();
+    expect(repairCanvasGroups({ nodes: whole, edges: [] })).toEqual({
+      ok: true,
+      nodes: whole,
+      dissolvedGroupIds: [],
+    });
+
+    const lone = whole.filter((node) => node.id !== "a" && node.id !== "b");
+    const repair = repairCanvasGroups({ nodes: lone, edges: [] });
+    if (!repair.ok) {
+      throw new Error("expected the repair to succeed");
+    }
+
+    expect(repair.dissolvedGroupIds).toEqual(["g1"]);
+    expect(repair.nodes.map((node) => node.id)).toEqual(["life", "c"]);
+    expect(repair.nodes[1]?.width).toBe(WORKFLOW_NODE_WIDTH);
+    expect(repair.nodes[1]?.height).toBe(WORKFLOW_NODE_HEIGHT);
+    expect(repair.nodes[1]).not.toHaveProperty("extent");
+  });
+
+  it("frees a member of a frame no editor has sized where it drew", () => {
+    const nodes: WorkflowNode[] = [
+      {
+        id: "g1",
+        type: "group",
+        position: { x: 100, y: 50 },
+        data: { label: "Group", type: "group" },
+      },
+      {
+        ...action("a", "fountain/get-user", { x: 12, y: 40 }),
+        parentId: "g1",
+        extent: "parent",
+      },
+    ];
+
+    const repair = repairCanvasGroups({ nodes, edges: [] });
+
+    expect(
+      repair.ok && repair.nodes.map((node) => [node.id, node.position])
+    ).toEqual([["a", { x: 112, y: 90 }]]);
+  });
+
+  it("refuses a graph whose stored edge names a frame", () => {
+    const repair = repairCanvasGroups({
+      nodes: framedNodes(),
+      edges: [edge("in-g", "life", "g1", "started")],
+    });
+
+    expect(repair.ok).toBe(false);
   });
 });
 

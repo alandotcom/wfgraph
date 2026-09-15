@@ -8,7 +8,11 @@
 import { compact } from "es-toolkit/array";
 import { isConditionActionNode } from "#src/conditions/condition-branch";
 import { type AndJoin, andJoinArms } from "#src/graph/and-join";
-import { analyzeGroupBoundary, isGroupNode } from "#src/graph/group-boundary";
+import {
+  analyzeGroupBoundary,
+  type GroupGraphNode,
+  isGroupNode,
+} from "#src/graph/group-boundary";
 import { nodeLabel } from "#src/graph/group-structure";
 import { isEventSplitActionNode } from "#src/graph/node-config";
 import type { WorkflowEdge, WorkflowNode } from "#src/graph/types";
@@ -37,7 +41,7 @@ export type GroupContractViolation = {
 type RuleBreak = Pick<GroupContractViolation, "rule" | "message">;
 
 /** Whether a member is a step a Group may contain: any action but an Event Split. */
-function isGroupableStep(node: WorkflowNode): boolean {
+function isGroupableStep(node: GroupGraphNode): boolean {
   return node.data.type === "action" && !isEventSplitActionNode(node);
 }
 
@@ -48,7 +52,7 @@ function isGroupableStep(node: WorkflowNode): boolean {
  */
 export function groupStepCount(input: {
   groupId: string;
-  nodes: readonly WorkflowNode[];
+  nodes: readonly GroupGraphNode[];
 }): number {
   return input.nodes.filter(
     (node) => node.parentId === input.groupId && isGroupableStep(node)

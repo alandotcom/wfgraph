@@ -15,7 +15,6 @@ import {
 } from "#src/lib/workflow-issues-store";
 import {
   displayEdgesForGroups,
-  disabledGroupIds,
   groupOutletHandles,
   orderGroupParentsFirst,
 } from "@wfgraph/shared/graph/node-group";
@@ -72,7 +71,6 @@ const INACTIVE_NODE_STYLE = { opacity: 0.5 } as const;
 
 type PaintedNode = {
   status: NodeRunStatus | undefined;
-  disabledFrame: boolean;
   muted: boolean;
   issues: NodeIssueSummary | undefined;
   painted: WorkflowNode;
@@ -91,7 +89,6 @@ export const displayNodesAtom = atom((get) => {
   const statusByNodeId = get(statusByNodeIdAtom);
   const { nodeIds } = get(inactiveBranchAtom);
   const ordered = orderGroupParentsFirst(nodes);
-  const disabledFrameIds = disabledGroupIds(nodes);
   const issuesByNodeId = displayGraph
     ? EMPTY_ISSUES
     : get(workflowIssuesByNodeIdAtom);
@@ -105,7 +102,6 @@ export const displayNodesAtom = atom((get) => {
   if (
     statusByNodeId.size === 0 &&
     nodeIds.size === 0 &&
-    disabledFrameIds.size === 0 &&
     issuesByNodeId.size === 0 &&
     selectionAlreadyMatches
   ) {
@@ -115,12 +111,10 @@ export const displayNodesAtom = atom((get) => {
   const paintingRun =
     (overlay !== null || comparison === null) && statusByNodeId.size > 0;
   const painted = ordered.map((node) => {
-    const disabledFrame = disabledFrameIds.has(node.id);
-    const muted =
-      nodeIds.has(node.id) && !disabledFrame && node.data.enabled !== false;
+    const muted = nodeIds.has(node.id) && node.data.enabled !== false;
     const issues = issuesByNodeId.get(node.id);
 
-    if (!(paintingRun || disabledFrame || muted || issues)) {
+    if (!(paintingRun || muted || issues)) {
       return node;
     }
 
@@ -131,7 +125,6 @@ export const displayNodesAtom = atom((get) => {
     if (
       cached &&
       cached.status === status &&
-      cached.disabledFrame === disabledFrame &&
       cached.muted === muted &&
       cached.issues === issues
     ) {
@@ -140,18 +133,14 @@ export const displayNodesAtom = atom((get) => {
 
     // The paint is spread over the stored data rather than merged into the
     // same literal: `omitUndefined` drops the keys this paint has nothing to
-    // say about, so the node keeps its own `enabled`, `status` and `issues`,
+    // say about, so the node keeps its own `status` and `issues`,
     // and it reads only string keys, so a symbol such as the comparison
     // annotation survives outside it.
     const withStatus: WorkflowNode = {
       ...node,
       data: {
         ...node.data,
-        ...omitUndefined({
-          status,
-          enabled: disabledFrame ? false : undefined,
-          issues,
-        }),
+        ...omitUndefined({ status, issues }),
       },
     };
     const paintedNode = muted
@@ -163,7 +152,6 @@ export const displayNodesAtom = atom((get) => {
 
     paintedNodes.set(node, {
       status,
-      disabledFrame,
       muted,
       issues,
       painted: paintedNode,
