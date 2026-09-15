@@ -35,6 +35,7 @@ import {
   nodesBehindOutlet,
 } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import { configDeclaresCancelEvent } from "@wfgraph/shared/lifecycle/lifecycle-rules";
+import { groupContractViolations } from "@wfgraph/shared/graph/group-contract";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
 
@@ -50,6 +51,7 @@ export type SynchronousPublicationFailure = {
     | "invalid_start_filter"
     | "invalid_cancel_filter"
     | "invalid_event_split"
+    | "invalid_group"
     | "invalid_template"
     | "unreachable_node";
   error: string;
@@ -90,6 +92,7 @@ function synchronousPublicationChecks(input: {
       "invalid_event_split",
       () => validateEventSplitOutlets(nodes, edges, catalog),
     ],
+    ["invalid_group", () => checkGroupContract({ nodes, edges })],
     [
       "invalid_template",
       () => validateWorkflowTemplates({ nodes, edges, catalog }),
@@ -178,6 +181,26 @@ export function checkUnreachableSubtrees(input: {
     valid: false,
     error: `Unreachable ${named}: nothing from the Lifecycle Node reaches them. Connect them or delete them before publishing.`,
   };
+}
+
+/**
+ * Refuse a Group that breaks a v1 Group rule. The error is the first violation's
+ * message with a count of the rest, and `groupContractViolations` returns the
+ * full list.
+ */
+function checkGroupContract(input: {
+  nodes: readonly WorkflowNode[];
+  edges: readonly WorkflowEdge[];
+}): PublishCheckResult {
+  const [first, ...rest] = groupContractViolations(input);
+  if (!first) {
+    return { valid: true };
+  }
+  const error =
+    rest.length === 0
+      ? first.message
+      : `${first.message} (${rest.length} more Group ${rest.length === 1 ? "problem" : "problems"})`;
+  return { valid: false, error };
 }
 
 /** Returns every synchronous publication failure in production priority order. */

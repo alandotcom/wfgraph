@@ -209,6 +209,15 @@ graph only through its members. The Group's boundary is derived from membership
 and the stored edges: the outside steps that enter the Group, the members they
 enter, the members whose edges leave it, the outside steps those edges reach,
 and the members where a path ends inside it.
+A draft save refuses a Group member that is the Lifecycle Node, an Add node, or
+another Group. Publish refuses a Group that holds an Event Split or holds fewer
+than two other steps. Its edges may enter from one outside outlet and may leave
+from one inside outlet, and a path may end inside it. A join inside a Group
+takes every arm and every predecessor from inside the Group. A Group may sit on
+an arm of a join outside it. Publish refuses a Group whose Condition sits on an
+arm of any join, because the branch the Condition does not take leaves that
+join unreleased. A draft that breaks the Publish rules still saves, and a draft
+run ignores them, because a Group does not change how a run executes.
 
 **Precedence**:
 One fixed order when an Event arrives: Lifecycle Rules apply first, then the
@@ -258,12 +267,12 @@ can see catalog drift or missing actions before those runs need attention.
 **Publish**:
 The hard gate that turns a draft into a Workflow Version, and the only place a
 graph is held to whether it can run: required fields, Events, Event Split
-outlets, template references, connections, and unreachable subtrees. A draft
-save asks none of that and stores whatever parses, because a half-built node is
-the ordinary state of an editor session. Publish refuses a draft that is
-semantically identical to the current version. A confirmed Publish advances
-the version number even when the draft restores content from an older version.
-A draft snapshot takes no number and never moves the pointer. The event
+outlets, Group boundaries, template references, connections, and unreachable
+subtrees. A draft save asks none of that and stores whatever parses, because a
+half-built node is the ordinary state of an editor session. Publish refuses a
+draft that is semantically identical to the current version. A confirmed Publish
+advances the version number even when the draft restores content from an older
+version. A draft snapshot takes no number and never moves the pointer. The event
 subscription index tracks the published graph, so a half-built draft cannot
 start runs on an Event.
 

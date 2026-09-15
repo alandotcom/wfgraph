@@ -16,6 +16,7 @@ import {
   type WorkflowNodeData,
 } from "#src/lib/workflow-graph-types";
 import { ComparisonMarker } from "#src/components/flow-elements/comparison-marker";
+import { NodeIssueBadge } from "#src/components/flow-elements/node-issue-badge";
 
 type GroupNodeProps = NodeProps & {
   data?: WorkflowNodeData;
@@ -74,7 +75,11 @@ export const GroupNode = memo(({ data, selected, id }: GroupNodeProps) => {
             <EyeOff className="size-3.5 text-background" />
           </span>
         )}
-        {data.label || "Group"}
+        <span className="min-w-0 flex-1 truncate">{data.label || "Group"}</span>
+        {/* The Group rules judge the frame as a whole, so their badge sits on
+            the frame's header. It shows on a disabled frame too, because
+            publication still refuses a disabled Group that breaks them. */}
+        <NodeIssueBadge issues={data.issues} placement="inline" />
       </div>
       {outletHandles.map((handle, index) => (
         <Handle

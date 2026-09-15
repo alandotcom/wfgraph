@@ -17,7 +17,7 @@ import {
   hasBlockingWorkflowIssues,
   type WorkflowIssue,
 } from "@wfgraph/shared/graph/workflow-issues";
-import type { WorkflowNode } from "@wfgraph/shared/graph/types";
+import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
 import type { NodeIssueSummary } from "#src/lib/workflow-graph-types";
 
 /**
@@ -47,10 +47,12 @@ export const workflowIssuesAtom = atom<WorkflowIssue[]>(NO_ISSUES);
  * that writes that atom is also a caller and must use the answers it just
  * received rather than the ones it is about to store. `nodes` arrives already
  * through `toPersistedNodes`, which is the same shape the provider half is asked
- * about, so both halves judge one graph.
+ * about, so both halves judge one graph. `edges` are the stored edges the Group
+ * rules read.
  */
 export function collectAllWorkflowIssues(input: {
   nodes: WorkflowNode[];
+  edges: readonly WorkflowEdge[];
   catalog: ExtensionCatalog;
   integrations: ReadonlyArray<{ id: string; type: string }>;
   providerIssues: readonly WorkflowIssue[];
@@ -58,6 +60,7 @@ export function collectAllWorkflowIssues(input: {
   return [
     ...collectWorkflowIssues({
       nodes: input.nodes,
+      edges: input.edges,
       catalog: input.catalog,
       integrations: input.integrations,
     }),
