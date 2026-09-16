@@ -13,6 +13,13 @@ import { type JsonObject, jsonObjectSchema } from "#src/types/json";
 import { readAs } from "#src/types/schema";
 
 /**
+ * The entry node config key holding the samples. Publication comparisons leave
+ * this key out, so pressing Run never makes a draft differ from its published
+ * version.
+ */
+export const TEST_PAYLOADS_CONFIG_KEY = "testPayloads";
+
+/**
  * A sample per Event, keyed by Event name, plus the one a run that names no
  * Event carries. Both are `optional` rather than `optionalKey` because the
  * editor writes this object in process, where a cleared field is a key holding
@@ -35,7 +42,7 @@ const readPayloads = readAs(testPayloadsSchema);
 export function readTestPayloads(
   config: Record<string, unknown> | undefined
 ): TestPayloads | undefined {
-  return readPayloads(config?.testPayloads);
+  return readPayloads(config?.[TEST_PAYLOADS_CONFIG_KEY]);
 }
 
 /** The sample for one Event, or the Event-less one when no Event is named. */

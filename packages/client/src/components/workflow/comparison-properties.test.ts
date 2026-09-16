@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import { emptyLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
 import {
   comparisonFields,
   comparisonNodeTitle,
 } from "#src/components/workflow/comparison-properties";
-import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 
 const catalog = { actions: [], entities: [], events: [], integrations: [] };
 
@@ -42,84 +42,45 @@ describe("comparisonNodeTitle", () => {
 });
 
 describe("Lifecycle comparison fields", () => {
-  it("labels Event test payload values from their declared payload paths", () => {
-    const eventName = "app/appointment.created";
-    const eventCatalog: ExtensionCatalog = {
-      entities: [],
-      actions: [],
-      integrations: [],
-      events: [
-        {
-          name: eventName,
-          label: "Appointment created",
-          payloadFields: [
-            {
-              path: "appointment.id",
-              description: "Appointment ID",
-            },
-            { path: "appointment.patientName" },
-            { path: "appointment.startsAt" },
-            { path: "appointment.status" },
-            { path: "occurredAt" },
-          ],
-        },
-      ],
-    };
-    const graph = createSerializedWorkflowGraph({
-      nodes: [
-        {
-          id: "lifecycle",
-          type: "lifecycle",
-          position: { x: 0, y: 0 },
-          data: { label: "Lifecycle", type: "lifecycle", config: {} },
-        },
-      ],
-      edges: [],
-    });
-    const fieldPaths = [
-      ["appointment", "id"],
-      ["appointment", "patientName"],
-      ["appointment", "startsAt"],
-      ["appointment", "status"],
-      ["occurredAt"],
-    ];
+  it("leaves test payloads out of an added Lifecycle node's values", () => {
     const payload: WorkflowComparisonPayload = {
       baseVersion: null,
       proposedVersion: 1,
-      baseGraph: graph,
-      draftGraph: graph,
+      baseGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+      draftGraph: createSerializedWorkflowGraph({
+        nodes: [
+          {
+            id: "lifecycle",
+            type: "lifecycle",
+            position: { x: 0, y: 0 },
+            data: {
+              label: "Lifecycle",
+              type: "lifecycle",
+              config: {
+                lifecycleRules: {
+                  ...emptyLifecycleRules,
+                  allowManualStart: true,
+                },
+                testPayloads: { manual: { patientId: "pat_1" } },
+              },
+            },
+          },
+        ],
+        edges: [],
+      }),
       hasChanges: true,
-      nodeChanges: [
-        {
-          nodeId: "lifecycle",
-          kind: "modified",
-          fields: fieldPaths.map((fieldPath) => ({
-            path: [
-              "data",
-              "config",
-              "testPayloads",
-              "byEvent",
-              eventName,
-              ...fieldPath,
-            ],
-            kind: "added" as const,
-            after: "value",
-          })),
-        },
-      ],
+      nodeChanges: [{ nodeId: "lifecycle", kind: "added", fields: [] }],
       edgeChanges: [],
     };
 
     expect(
-      comparisonFields(eventCatalog, payload, payload.nodeChanges[0]!).map(
-        (field) => field.label
+      comparisonFields(catalog, payload, payload.nodeChanges[0]!).map(
+        (field) => field.key
       )
     ).toEqual([
-      "Appointment ID",
-      "Patient Name",
-      "Starts At",
-      "Status",
-      "Occurred At",
+      "snapshot:type",
+      "snapshot:label",
+      "snapshot:config:lifecycleRules",
     ]);
   });
 });

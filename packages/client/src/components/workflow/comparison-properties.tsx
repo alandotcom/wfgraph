@@ -1,7 +1,6 @@
 import { useAtomValue } from "jotai";
 import {
   findAction,
-  findEvent,
   type ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
 import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
@@ -10,6 +9,7 @@ import type {
   WorkflowFieldChange,
   WorkflowNodeChange,
 } from "@wfgraph/shared/graph/publication-contracts";
+import { TEST_PAYLOADS_CONFIG_KEY } from "@wfgraph/shared/lifecycle/test-payloads";
 import { flattenConfigFields } from "@wfgraph/shared/plugins/action-fields";
 import { compareText } from "@wfgraph/shared/types/string";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
@@ -88,22 +88,7 @@ function configFieldLabel(
   return labels.get(key) ?? "Configuration value";
 }
 
-function titleFromPath(path: string): string {
-  const key =
-    path
-      .split(".")
-      .at(-1)
-      ?.replace(/\[\d+\]$/g, "") ?? "Value";
-  return key
-    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-    .replace(/[_-]+/g, " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function lifecycleConfigFieldLabel(
-  catalog: ExtensionCatalog,
-  path: readonly string[]
-): string {
+function lifecycleConfigFieldLabel(path: readonly string[]): string {
   const configKey = path[2];
   if (configKey === "lifecycleRules") {
     const labels: Record<string, string> = {
@@ -118,26 +103,7 @@ function lifecycleConfigFieldLabel(
     };
     return labels[path[3] ?? ""] ?? "Lifecycle rule";
   }
-  if (configKey !== "testPayloads") {
-    return "Configuration value";
-  }
-
-  const payloadKind = path[3];
-  const eventName = payloadKind === "byEvent" ? path[4] : undefined;
-  const payloadPath = path
-    .slice(eventName ? 5 : 4)
-    .filter((segment) => !/^\d+$/.test(segment))
-    .join(".");
-  if (!payloadPath) {
-    return "Test payload";
-  }
-
-  const field = eventName
-    ? findEvent(catalog, eventName)?.payloadFields.find(
-        (candidate) => candidate.path === payloadPath
-      )
-    : undefined;
-  return field?.description?.trim() || titleFromPath(payloadPath);
+  return "Configuration value";
 }
 
 export function comparisonFieldLabel(
@@ -160,7 +126,7 @@ export function comparisonFieldLabel(
   if (configKey === "actionType") return "Action";
   const node = afterNode ?? beforeNode;
   if (node?.data.type === "lifecycle") {
-    return lifecycleConfigFieldLabel(catalog, path);
+    return lifecycleConfigFieldLabel(path);
   }
   return configFieldLabel(
     catalog,
@@ -211,7 +177,12 @@ function snapshotFields(
   return [
     ...fields,
     ...Object.entries(config)
-      .filter(([key]) => key !== "actionType")
+      // The server comparison leaves test payloads out of a workflow's meaning,
+      // so an added or removed node lists the same config keys a modified one
+      // can report.
+      .filter(
+        ([key]) => key !== "actionType" && key !== TEST_PAYLOADS_CONFIG_KEY
+      )
       .toSorted(([left], [right]) => compareText(left, right))
       .map(([key, value]) => ({
         key: `snapshot:config:${key}`,

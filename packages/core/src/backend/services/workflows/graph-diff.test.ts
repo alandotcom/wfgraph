@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { diffWorkflowGraphs } from "#src/backend/services/workflows/graph-diff";
+import { semanticWorkflowGraphsEqual } from "#src/backend/services/workflows/semantic-graph";
+import {
+  draftDiffersFromPublished,
+  graphDigest,
+} from "#src/backend/services/workflows/version-digest";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import { emptyLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import type {
   SerializedWorkflowGraph,
   WorkflowEdge,
@@ -441,5 +447,69 @@ describe("diffWorkflowGraphs", () => {
         after: "2026-01-02T00:00:00.000Z",
       },
     ]);
+  });
+
+  describe("test payloads on the entry node", () => {
+    function lifecycleGraph(config: Record<string, unknown>) {
+      return graph([
+        node("lifecycle", {
+          type: "lifecycle",
+          data: { label: "Lifecycle", type: "lifecycle", config },
+        }),
+      ]);
+    }
+
+    it("counts a draft that only stored a test payload as unchanged", () => {
+      const published = lifecycleGraph({});
+      const draft = lifecycleGraph({
+        testPayloads: {
+          manual: { patientId: "pat_1" },
+          byEvent: { "app/appointment.created": { id: "apt_1" } },
+        },
+      });
+
+      expect(diffWorkflowGraphs(published, draft)).toEqual({
+        hasChanges: false,
+        nodeChanges: [],
+        edgeChanges: [],
+      });
+      expect(semanticWorkflowGraphsEqual(published, draft)).toBe(true);
+      expect(graphDigest(draft)).toBe(graphDigest(published));
+      expect(draftDiffersFromPublished(draft, published)).toBe(false);
+    });
+
+    it("reports a real config change beside a test payload change", () => {
+      const published = lifecycleGraph({
+        lifecycleRules: {
+          ...emptyLifecycleRules,
+          allowManualStart: false,
+        },
+        testPayloads: { manual: { patientId: "pat_1" } },
+      });
+      const draft = lifecycleGraph({
+        lifecycleRules: {
+          ...emptyLifecycleRules,
+          allowManualStart: true,
+        },
+        testPayloads: { manual: { patientId: "pat_2" } },
+      });
+
+      expect(diffWorkflowGraphs(published, draft).nodeChanges).toEqual([
+        {
+          nodeId: "lifecycle",
+          kind: "modified",
+          fields: [
+            {
+              path: ["data", "config", "lifecycleRules", "allowManualStart"],
+              kind: "modified",
+              before: false,
+              after: true,
+            },
+          ],
+        },
+      ]);
+      expect(semanticWorkflowGraphsEqual(published, draft)).toBe(false);
+      expect(draftDiffersFromPublished(draft, published)).toBe(true);
+    });
   });
 });
