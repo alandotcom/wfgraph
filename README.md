@@ -41,7 +41,8 @@ pnpm run dev
 
 Open the editor at [http://localhost:5173](http://localhost:5173). The example host app lives
 in `examples/app.ts`. Sign in at `/login` as `admin`, `editor`, or `readonly`. Each local
-demo account uses the password `password`.
+demo account uses the password `password`. Set `WFGRAPH_DEMO_USER=admin` in `.env.local` to
+skip the login page in development.
 
 The example app stores its data in SQLite, at `examples/wfgraph.sqlite`, which is gitignored
 and created on first boot. There is no migration step and no separate service. Point

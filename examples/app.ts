@@ -52,10 +52,13 @@ const publicUrl =
   (isProduction
     ? undefined
     : `http://localhost:${process.env.PORT ?? DEFAULT_PORT}`);
+// A demo account every request signs in as during local development.
+const demoUser = process.env.WFGRAPH_DEMO_USER?.trim() || undefined;
 
 const demoAuth = createDemoAuth({
   isProduction,
   publicUrl,
+  demoUser,
 });
 
 // Workflow Graph reads a schema through Standard Schema and asks nothing else of it. The

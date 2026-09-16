@@ -49,7 +49,8 @@ until curl -sSf -o /dev/null http://localhost:4017/login; do sleep 2; done
 
 Open `http://localhost:5173/login` (or Vite's printed port) and sign in with a
 demo account before calling protected API routes. Every account uses `password`;
-`editor` has the permissions a live run needs.
+`editor` has the permissions a live run needs. Set `WFGRAPH_DEMO_USER=admin` in
+`.env.local` to skip the login page in development.
 
 Then give the Connect handshake another few seconds. The log line to look for is
 `Inngest Connect worker ready`. A run enqueued before that handshake sits
