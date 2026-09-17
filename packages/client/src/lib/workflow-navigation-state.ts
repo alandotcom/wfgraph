@@ -78,11 +78,13 @@ export function revealFollowsSelection(workspace: WorkspaceView): boolean {
 }
 
 /**
- * Whether a workspace shows the mobile Reveal sequence below `md`. Draft and
- * Runs do; any other workspace opens the configuration sheet there.
+ * Whether a workspace shows the mobile Reveal sequence below `md`. Draft, Runs
+ * and Changes all do.
  */
 export function usesMobileSheetSequence(workspace: WorkspaceView): boolean {
-  return workspace === "draft" || workspace === "runs";
+  return (
+    workspace === "draft" || workspace === "runs" || workspace === "changes"
+  );
 }
 
 /** The one node or edge Canvas Reveal shows. */

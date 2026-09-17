@@ -70,8 +70,8 @@ export const canvasRevealAtom = atom((get): CanvasRevealState => {
 
 /**
  * What the mobile Reveal sequence shows for the active address: its last sheet
- * and the sheet beneath it, and the level on screen, which is the summary when
- * the subject offers no Focus. Null in a workspace outside
+ * and the sheet beneath it, and the level on screen, which is the summary for
+ * an object's inspector when the subject offers no Focus. Null in a workspace outside
  * `usesMobileSheetSequence`, with no sheet open, and while the last sheet's
  * object is no longer what the subject inspects. Form factor is the reader's to
  * check.
@@ -107,7 +107,8 @@ export const mobileRevealAtom = atom((get): MobileRevealState | null => {
     beneath: sheets.at(-2) ?? null,
     depth: sheets.length,
     level:
-      sheet.level === "inspector" && subject.levels.includes("focus")
+      sheet.level === "inspector" &&
+      (sheet.inspected === null || subject.levels.includes("focus"))
         ? "inspector"
         : "summary",
   };

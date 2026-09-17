@@ -8,6 +8,7 @@
 import { atom, type Getter } from "jotai";
 import { readCookie, writeCookie } from "#src/lib/preference-cookies";
 import {
+  withMobileAddressSection,
   withMobileAddressSheet,
   withMobileInspectorOverAddress,
   withMobileSequenceFrom,
@@ -116,7 +117,8 @@ const revealLevelPreferenceAtom = atom<"closed" | "browse">(
  * sheets show the address itself, which is every such workspace but Draft:
  * when the previous address had a sheet open and the next has none, the next
  * opens its address sheet. Selecting a run, the newest run opening by itself,
- * Back to the run list, and a newly started run all keep the sequence this way.
+ * Back to the run list, a newly started run, and choosing another comparison
+ * base all keep the sequence this way.
  */
 export const applyWorkspaceRouteAtom = atom(
   null,
@@ -654,10 +656,71 @@ export const openMobileInspectorOverAddressAtom = atom(
 );
 
 /**
+ * Show one section of a named address as a sheet at `level` over its open
+ * sheets, as `withMobileAddressSection` describes: in Changes the change list
+ * as a summary sheet, or version history as an inspector sheet.
+ */
+export const openMobileAddressSectionAtom = atom(
+  null,
+  (
+    _get,
+    set,
+    input: {
+      address: WorkspaceAddress;
+      level: MobileRevealLevel;
+      section: string;
+    }
+  ) => {
+    set(writeNavigationAtom, input.address.workflowId, (navigation) =>
+      updateScopeNavigation(navigation, input.address, (scope) =>
+        withMobileAddressSection(scope, input)
+      )
+    );
+  }
+);
+
+/**
+ * Show the field differences of one changed object in a named comparison
+ * address, selecting it alone, in one navigation write. When that address has
+ * no sheet open and is another scope of the active comparison, the active
+ * address's sheets are carried first, as applying its route would carry them,
+ * so Back from a Group member reaches the change list the member was chosen
+ * from. The inspector then opens as `withMobileInspectorOverAddress` describes.
+ */
+export const openMobileChangeAtom = atom(
+  null,
+  (
+    get,
+    set,
+    input: { address: WorkspaceAddress; inspected: InspectedObject }
+  ) => {
+    const { address, inspected } = input;
+    const active = get(activeWorkspaceAddressAtom);
+    const sameComparison =
+      workspaceAddressId({ ...active, scope: address.scope }) ===
+      workspaceAddressId(address);
+    const sheets = sameComparison ? get(activeMobileSheetsAtom) : [];
+    set(writeNavigationAtom, address.workflowId, (navigation) =>
+      updateScopeNavigation(navigation, address, (scope) =>
+        withMobileInspectorOverAddress(
+          withSelection(
+            withMobileSequenceFrom(scope, { sheets, sameKey: true }),
+            inspected.kind === "node"
+              ? { nodeIds: [inspected.id], edgeIds: [] }
+              : { nodeIds: [], edgeIds: [inspected.id] }
+          ),
+          inspected
+        )
+      )
+    );
+  }
+);
+
+/**
  * Open the mobile Reveal sequence of a named address, unless a sheet is
  * already open there: in Draft the summary sheet of the one object the address
  * selects, and in any other workspace that uses the sequence the address sheet,
- * such as a run list or a run. Answers whether the address shows the mobile
+ * such as a run list, a run, or a comparison's summary. Answers whether the address shows the mobile
  * Reveal sequence, which a workspace outside `usesMobileSheetSequence` and a
  * Draft address whose selection holds no single object do not.
  */

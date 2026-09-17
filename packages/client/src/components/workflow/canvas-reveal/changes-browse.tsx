@@ -1,4 +1,3 @@
-import { groupBy } from "es-toolkit/array";
 import { isEmptyObject } from "es-toolkit/predicate";
 import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { History, RefreshCw, RotateCcw, X } from "lucide-react";
@@ -7,7 +6,7 @@ import { useExtensionCatalog } from "#src/components/extension-catalog-provider"
 import { ComparisonMarker } from "#src/components/flow-elements/comparison-marker";
 import { Button } from "#src/components/ui/button";
 import { useWorkflowComparisonActions } from "#src/components/workflow/use-workflow-comparison-actions";
-import { PanelState } from "#src/components/workflow/workflow-changes-panel-state";
+import { PanelState } from "#src/components/workflow/panel-state";
 import { WorkflowVersionHistory } from "#src/components/workflow/workflow-version-history";
 import { useAfterCommit, useAfterPaint } from "#src/hooks/effects";
 import { useWorkflowWorkspaceNavigation } from "#src/hooks/use-workflow-workspace-navigation";
@@ -33,12 +32,19 @@ import {
 } from "#src/lib/workflow-workspace-navigation";
 import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
 import { cn } from "@wfgraph/shared/utils";
-import { ChangeNavigation, useChangedObjects } from "./changes-navigation";
 import {
+  ChangeNavigation,
+  useChangedObjects,
+  useSelectChange,
+  type ChooseChange,
+} from "./changes-navigation";
+import {
+  changeListSections,
   changeRowFocusRequestAtom,
   changesHeaderModel,
   comparisonRevealContextAtom,
   inspectChange,
+  noChangesLabel,
   type ChangedObject,
   type ComparisonShownStatus,
   type ComparisonWaitingStatus,
@@ -113,6 +119,7 @@ export function ChangesBrowse(_props: RevealBodyProps) {
   const showsList = "payload" in comparison && !comparison.showsHistory;
   const rowFocusRequest = useAtomValue(changeRowFocusRequestAtom);
   const setRowFocusRequest = useSetAtom(changeRowFocusRequestAtom);
+  const setSubview = useSetAtom(setComparisonSubviewAtom);
 
   // A row focus request is for the change list alone. Without the list it is
   // dropped, so it cannot take focus when the list mounts later.
@@ -143,6 +150,9 @@ export function ChangesBrowse(_props: RevealBodyProps) {
       <WorkflowVersionHistory
         actions={actions}
         headingRef={historyHeadingRef}
+        onBack={() =>
+          setSubview({ workflowId: address.workflowId, subview: "review" })
+        }
       />
     );
   }
@@ -321,7 +331,7 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
  * only changes are Group organization says that execution behavior is
  * unchanged in place of the Behavior counts.
  */
-function ComparisonSummarySection({
+export function ComparisonSummarySection({
   payload,
   status,
 }: {
@@ -370,22 +380,6 @@ function ComparisonSummarySection({
   );
 }
 
-/** The change list's sections, in the order `changedObjects` lists objects. */
-const CHANGE_LIST_SECTIONS = [
-  { id: "groups", title: "Groups", label: "Changed Groups" },
-  { id: "steps", title: "Steps", label: "Changed steps" },
-  { id: "connections", title: "Connections", label: "Changed connections" },
-] as const;
-
-function changeListSection(
-  item: ChangedObject
-): (typeof CHANGE_LIST_SECTIONS)[number]["id"] {
-  if (item.object.kind === "edge") {
-    return "connections";
-  }
-  return item.groupFrame ? "groups" : "steps";
-}
-
 /**
  * The comparison's counts, its changed Groups, steps, then connections, and
  * Previous and Next. Choosing a row selects that object on the canvas, which places it, and
@@ -401,9 +395,8 @@ function ChangeList({
   payload: WorkflowComparisonPayload;
   status: ComparisonShownStatus;
 }) {
-  const { objects, selectedIndex, selectedKey, select } =
-    useChangedObjects(payload);
-  const sections = groupBy(objects, changeListSection);
+  const { objects, selectedIndex, selectedKey } = useChangedObjects(payload);
+  const select = useSelectChange();
   const rows = useRef(new Map<string, HTMLButtonElement>());
   const store = useStore();
   const addressId = workspaceAddressId(address);
@@ -455,53 +448,11 @@ function ChangeList({
     }
   });
 
-  const renderRows = (items: readonly ChangedObject[]) =>
-    items.map((item) => {
-      const pressed = item.key === selectedKey;
-      return (
-        <button
-          aria-pressed={pressed}
-          className={cn(
-            "flex w-full items-center gap-2 px-4 py-2.5 text-left hover:bg-muted",
-            pressed && "bg-muted"
-          )}
-          data-change={item.change}
-          key={item.key}
-          onClick={() => select(item)}
-          ref={(element) => {
-            if (element) {
-              rows.current.set(item.key, element);
-            } else {
-              rows.current.delete(item.key);
-            }
-          }}
-          type="button"
-        >
-          <ComparisonMarker
-            className="static shrink-0"
-            comparison={{ kind: item.change }}
-          />
-          <span className="min-w-0 flex-1 truncate font-medium text-xs">
-            {item.title}
-          </span>
-          <span className="shrink-0 text-muted-foreground text-xs">
-            {item.detail}
-          </span>
-        </button>
-      );
-    });
-
   return (
     <>
       <ComparisonSummarySection payload={payload} status={status} />
       {objects.length === 0 ? (
-        <PanelState
-          label={
-            payload.baseVersion
-              ? `This draft has no changes from version ${payload.baseVersion.version}.`
-              : "This draft has no steps to publish."
-          }
-        />
+        <PanelState label={noChangesLabel(payload)} />
       ) : (
         <div
           className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
@@ -510,22 +461,12 @@ function ChangeList({
           onScrollEnd={onScrollEnd}
           ref={scrollRef}
         >
-          {CHANGE_LIST_SECTIONS.flatMap((section) => {
-            const items = sections[section.id] ?? [];
-            return items.length > 0 ? [{ ...section, items }] : [];
-          }).map((section, index) => (
-            <section aria-label={section.label} key={section.id}>
-              <h3
-                className={cn(
-                  "border-b bg-muted/30 px-4 py-1.5 font-medium text-muted-foreground text-xs",
-                  index > 0 && "border-t"
-                )}
-              >
-                {section.title}
-              </h3>
-              <div className="divide-y">{renderRows(section.items)}</div>
-            </section>
-          ))}
+          <ChangeListSections
+            objects={objects}
+            onChoose={select}
+            rows={rows}
+            selectedKey={selectedKey}
+          />
         </div>
       )}
       <ChangeNavigation
@@ -535,4 +476,71 @@ function ChangeList({
       />
     </>
   );
+}
+
+/**
+ * The change list's sections of changed Groups, steps, then connections, one
+ * row per object. Choosing a row calls `onChoose`, and the row of `selectedKey`
+ * is pressed. `rows`, when given, holds each mounted row by its object's key.
+ */
+export function ChangeListSections({
+  objects,
+  selectedKey,
+  onChoose,
+  rows,
+}: {
+  objects: readonly ChangedObject[];
+  selectedKey: string | null;
+  onChoose: ChooseChange;
+  rows?: RefObject<Map<string, HTMLButtonElement>> | undefined;
+}) {
+  return changeListSections(objects).map((section, index) => (
+    <section aria-label={section.label} key={section.id}>
+      <h3
+        className={cn(
+          "border-b bg-muted/30 px-4 py-1.5 font-medium text-muted-foreground text-xs",
+          index > 0 && "border-t"
+        )}
+      >
+        {section.title}
+      </h3>
+      <div className="divide-y">
+        {section.items.map((item) => {
+          const pressed = item.key === selectedKey;
+          return (
+            <button
+              aria-pressed={pressed}
+              className={cn(
+                "flex w-full items-center gap-2 px-4 py-2.5 text-left hover:bg-muted",
+                pressed && "bg-muted"
+              )}
+              data-change={item.change}
+              key={item.key}
+              onClick={() => onChoose(item)}
+              ref={(element) => {
+                if (element) {
+                  rows?.current.set(item.key, element);
+                } else {
+                  rows?.current.delete(item.key);
+                }
+              }}
+              type="button"
+            >
+              <ComparisonMarker
+                className="static shrink-0"
+                comparison={{ kind: item.change }}
+              />
+              {/* A phone's row reads at body size, and Browse's at caption size. */}
+              <span className="min-w-0 flex-1 truncate font-medium text-sm md:text-xs">
+                {item.title}
+              </span>
+              <span className="shrink-0 text-muted-foreground text-xs">
+                {item.detail}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  ));
 }

@@ -122,9 +122,9 @@ describe("buildComparisonDisplayGraph", () => {
     // A flattened node has no `parentId` key, which is how React Flow
     // represents a top-level node.
     expect(removed).not.toHaveProperty("parentId");
+    expect(removed).not.toHaveProperty("draggable");
     expect(removed).toMatchObject({
       position: { x: 120, y: 230 },
-      draggable: true,
       focusable: true,
       deletable: false,
     });
@@ -162,14 +162,17 @@ describe("buildComparisonDisplayGraph", () => {
     ]);
     expect(graph.nodes.find((item) => item.id === "group")).toMatchObject({
       position: { x: 500, y: 600 },
-      draggable: true,
     });
     expect(graph.nodes.find((item) => item.id === "child")).toMatchObject({
       parentId: "group",
       position: { x: 20, y: 30 },
-      draggable: true,
       focusable: true,
     });
+    for (const id of ["group", "child"]) {
+      expect(graph.nodes.find((item) => item.id === id)).not.toHaveProperty(
+        "draggable"
+      );
+    }
   });
 
   it("freezes draft nodes and all comparison edges while retaining deleted-node movement", () => {
@@ -195,8 +198,10 @@ describe("buildComparisonDisplayGraph", () => {
       focusable: false,
       deletable: false,
     });
-    expect(graph.nodes.find((item) => item.id === "deleted")).toMatchObject({
-      draggable: true,
+    const deleted = graph.nodes.find((item) => item.id === "deleted");
+    // The canvas's `nodesDraggable` decides whether a removed node moves.
+    expect(deleted).not.toHaveProperty("draggable");
+    expect(deleted).toMatchObject({
       focusable: true,
       deletable: false,
     });

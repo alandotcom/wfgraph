@@ -34,6 +34,7 @@ import type { createStore, Getter } from "jotai";
 import { activeChosenExecutionAtom } from "#src/lib/workflow-workspace-navigation";
 import { ChangesBrowse, ChangesHeader } from "./changes-browse";
 import { ChangesFocus } from "./changes-focus";
+import { ChangesMobileBody, ChangesMobileHeader } from "./changes-mobile";
 import {
   changeRowFocusRequestAtom,
   comparisonRevealContextAtom,
@@ -488,7 +489,10 @@ const RUNS_KIND: RevealKind = {
  * The Changes workspace: the comparison summary, the changed-object list, and
  * version history in Browse, and the selected object's before-and-after
  * properties side by side in a wide Focus, under a header naming the
- * comparison. Each body keeps its own scroll.
+ * comparison. Each body keeps its own scroll. On mobile the summary and the
+ * change list are address sheets, version history an address inspector, and
+ * the field differences the inspector of one object, each scrolled by the
+ * shell.
  */
 const CHANGES_KIND: RevealKind = {
   id: "changes",
@@ -498,6 +502,17 @@ const CHANGES_KIND: RevealKind = {
   Browse: ChangesBrowse,
   Focus: ChangesFocus,
   unwind: unwindChanges,
+  mobile: {
+    Header: ChangesMobileHeader,
+    Body: ChangesMobileBody,
+    // The row of the object the field differences showed last, which Previous
+    // and Next can have moved away from the row that opened them.
+    backFocusTarget: (sheet) =>
+      sheet.querySelector<HTMLElement>(
+        '[data-slot="change-list"] [aria-pressed="true"]'
+      ),
+    shellOwnsScroll: true,
+  },
   focusReturnTarget: canvasNodeElement,
   shellOwnsScroll: false,
   focusWidth: "wide",

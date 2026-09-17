@@ -403,15 +403,16 @@ describe("NodeConfigPanel workspace inspector", () => {
     expect(view.queryByRole("tab", { name: "Changes" })).toBeNull();
   });
 
-  it("follows the active workspace view", async () => {
+  it("follows the active workspace view, and leaves Changes to its own inspector", async () => {
     const { view, store } = renderPanel({ hasPublishedVersion: true });
+    await view.findByText("Select a step on the canvas to configure it.");
 
     act(() => showWorkspaceRoute(store, { view: "changes" }));
+    expect(view.getByTestId("properties-panel").textContent).toBe("");
 
+    act(() => showWorkspaceRoute(store, {}));
     expect(
-      await view.findByText(
-        "Open a comparison of this draft and its published version."
-      )
+      await view.findByText("Select a step on the canvas to configure it.")
     ).toBeTruthy();
   });
 });

@@ -8,7 +8,7 @@
  */
 
 import { useNavigate } from "@tanstack/react-router";
-import { useAtomValue, useSetAtom, useStore } from "jotai";
+import { useAtomValue, useSetAtom, useStore, type createStore } from "jotai";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { useMemo } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
@@ -27,6 +27,7 @@ import {
   activeRevealPresentationAtom,
   activeSelectionAtom,
   activeWorkspaceAddressAtom,
+  openMobileChangeAtom,
   recordInspectorScrollAtom,
   setWorkspaceRevealLevelAtom,
   setWorkspaceSelectionAtom,
@@ -48,24 +49,24 @@ export type SelectChangeOptions = {
   openReveal?: boolean | undefined;
 };
 
+/** Choose one changed object, doing nothing for an undefined one. */
+export type ChooseChange = (
+  item: ChangedObject | undefined,
+  options?: SelectChangeOptions
+) => void;
+
 /**
- * The changed objects of `payload` on the comparison canvas, the index and key
- * of the selected one (-1 and null when the selection holds none of them), and
- * `select`, which selects one object on the canvas.
+ * The changed objects of `payload` on the comparison canvas, and the index and
+ * key of the selected one (-1 and null when the selection holds none of them).
  */
 export function useChangedObjects(payload: WorkflowComparisonPayload): {
   objects: readonly ChangedObject[];
   selectedIndex: number;
   selectedKey: string | null;
-  select: (
-    item: ChangedObject | undefined,
-    options?: SelectChangeOptions
-  ) => void;
 } {
   const catalog = useExtensionCatalog();
   const graph = useAtomValue(comparisonDisplayGraphAtom);
   const selection = useAtomValue(activeSelectionAtom);
-  const selectChange = useSelectChangedObject();
   const objects = useMemo(
     () => (graph ? changedObjects({ payload, graph, catalog }) : []),
     [catalog, graph, payload]
@@ -75,11 +76,61 @@ export function useChangedObjects(payload: WorkflowComparisonPayload): {
     objects,
     selectedIndex,
     selectedKey: objects[selectedIndex]?.key ?? null,
-    select: (item, options) => {
-      if (item) {
-        selectChange(item.object, options);
-      }
-    },
+  };
+}
+
+/**
+ * Select a changed object on the canvas, as `useSelectChangedObject`
+ * describes, which Canvas Reveal's Browse and Focus follow.
+ */
+export function useSelectChange(): ChooseChange {
+  const selectChange = useSelectChangedObject();
+  return (item, options) => {
+    if (item) {
+      selectChange(item.object, options);
+    }
+  };
+}
+
+/**
+ * The scope of the comparison canvas that shows `object`: the focused canvas
+ * of the Group frame holding a node, and the overview for every other node and
+ * every connection.
+ */
+function changedObjectScope(
+  store: ReturnType<typeof createStore>,
+  object: InspectedObject
+): WorkspaceScope {
+  const nodes = store.get(comparisonDisplayGraphAtom)?.nodes ?? [];
+  return object.kind === "node"
+    ? scopeOfNode(nodes, object.id)
+    : { kind: "overview" };
+}
+
+/**
+ * Show the field differences of a changed object in the mobile Reveal sequence
+ * of the scope that shows it, through `openMobileChangeAtom`. Reaching another
+ * scope writes that scope's sequence, then pushes its route, or replaces it
+ * with `options.replace`.
+ */
+export function useOpenMobileChange(): ChooseChange {
+  const store = useStore();
+  const navigate = useNavigate({ from: "/workflows/$workflowId" });
+  const openChange = useSetAtom(openMobileChangeAtom);
+  return (item, options) => {
+    if (!item) {
+      return;
+    }
+    const active = store.get(activeWorkspaceAddressAtom);
+    const scope = changedObjectScope(store, item.object);
+    const target = { ...active, scope };
+    openChange({ address: target, inspected: item.object });
+    if (scopeId(scope) !== scopeId(active.scope)) {
+      void navigate({
+        search: workspaceRouteSearch(target),
+        replace: options?.replace ?? false,
+      });
+    }
   };
 }
 
@@ -104,11 +155,7 @@ function useSelectChangedObject(): (
   const recordScroll = useSetAtom(recordInspectorScrollAtom);
   return (object, options) => {
     const active = store.get(activeWorkspaceAddressAtom);
-    const nodes = store.get(comparisonDisplayGraphAtom)?.nodes ?? [];
-    const scope: WorkspaceScope =
-      object.kind === "node"
-        ? scopeOfNode(nodes, object.id)
-        : { kind: "overview" };
+    const scope = changedObjectScope(store, object);
     const selection = changeSelection(object);
     const shownLevel = store.get(activeDesktopRevealLevelAtom);
     const level =

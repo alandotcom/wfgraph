@@ -1,6 +1,6 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue } from "jotai";
 import { ArrowLeft, RotateCcw } from "lucide-react";
 import { type Ref, useMemo, useState } from "react";
 import { Button } from "#src/components/ui/button";
@@ -12,12 +12,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "#src/components/ui/dialog";
-import { PanelState } from "#src/components/workflow/workflow-changes-panel-state";
+import { PanelState } from "#src/components/workflow/panel-state";
 import { WorkflowVersionUsage } from "#src/components/workflow/workflow-version-usage";
-import {
-  comparisonSessionAtom,
-  setComparisonSubviewAtom,
-} from "#src/lib/workflow-comparison-store";
+import { comparisonSessionAtom } from "#src/lib/workflow-comparison-store";
 import {
   currentWorkflowDraftRevisionAtom,
   currentWorkflowIdAtom,
@@ -35,20 +32,27 @@ type WorkflowComparisonActions = ReturnType<
 >;
 
 /**
- * Version history for the open comparison, with Back to changes and Restore.
- * `headingRef` receives the "Version history" heading, which can take focus.
+ * Version history for the open comparison, with Restore. `onBack` adds a
+ * header holding Back to changes and the "Version history" heading, which
+ * `headingRef` receives and which can take focus; a frame that names the
+ * history itself leaves both out. Choosing a version calls `onChooseBase`
+ * first, then navigates to that version's comparison, or refreshes the
+ * comparison when that version is the one already compared.
  */
 export function WorkflowVersionHistory({
   actions,
   headingRef,
+  onBack,
+  onChooseBase,
 }: {
   actions: WorkflowComparisonActions;
   headingRef?: Ref<HTMLHeadingElement> | undefined;
+  onBack?: (() => void) | undefined;
+  onChooseBase?: (() => void) | undefined;
 }) {
   const workflowId = useAtomValue(currentWorkflowIdAtom);
   const draftRevision = useAtomValue(currentWorkflowDraftRevisionAtom);
   const session = useAtomValue(comparisonSessionAtom);
-  const setSubview = useSetAtom(setComparisonSubviewAtom);
   const navigate = useNavigate({ from: "/workflows/$workflowId" });
   const [restoreOpen, setRestoreOpen] = useState(false);
   const canReadHistory = can(WfGraphOperations.workflowGetVersionHistory.id);
@@ -65,9 +69,7 @@ export function WorkflowVersionHistory({
         }),
       initialPageParam: undefined as WorkflowVersionCursor | undefined,
       getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
-      enabled: Boolean(
-        workflowId && session?.subview === "history" && canReadHistory
-      ),
+      enabled: Boolean(workflowId && session && canReadHistory),
       meta: { errorMessage: "Unable to load version history" },
     }),
   });
@@ -83,26 +85,26 @@ export function WorkflowVersionHistory({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="version-history">
-      <div className="flex items-center gap-2 border-b p-3">
-        <Button
-          aria-label="Back to changes"
-          onClick={() =>
-            workflowId && setSubview({ workflowId, subview: "review" })
-          }
-          size="icon-sm"
-          type="button"
-          variant="ghost"
-        >
-          <ArrowLeft />
-        </Button>
-        <h2
-          className="font-semibold text-sm outline-none"
-          ref={headingRef}
-          tabIndex={-1}
-        >
-          Version history
-        </h2>
-      </div>
+      {onBack ? (
+        <div className="flex items-center gap-2 border-b p-3">
+          <Button
+            aria-label="Back to changes"
+            onClick={onBack}
+            size="icon-sm"
+            type="button"
+            variant="ghost"
+          >
+            <ArrowLeft />
+          </Button>
+          <h2
+            className="font-semibold text-sm outline-none"
+            ref={headingRef}
+            tabIndex={-1}
+          >
+            Version history
+          </h2>
+        </div>
+      ) : null}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {canReadUsage && workflowId ? (
           <WorkflowVersionUsage workflowId={workflowId} />
@@ -142,6 +144,7 @@ export function WorkflowVersionHistory({
                     // Choosing another base is navigation: the route names the
                     // comparison, and applying the route opens it. Choosing the
                     // base already shown refreshes it.
+                    onChooseBase?.();
                     if (session.payload.baseVersion?.id === item.id) {
                       void actions.openComparison({ baseVersionId: item.id });
                     } else {

@@ -18,6 +18,7 @@ import {
   useOverlay,
 } from "#src/components/overlays/overlay-provider";
 import { WorkspaceRouteSync } from "#src/components/workflow/workspace-route-sync";
+import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
 import { useWorkflowWorkspaceNavigation } from "#src/hooks/use-workflow-workspace-navigation";
 import {
   loadWorkflowGraphAtom,
@@ -66,10 +67,14 @@ function setViewportWidth(width: number): void {
 
 function SwitcherHost() {
   const navigation = useWorkflowWorkspaceNavigation();
+  const { openSheet } = useConfigurationSheet();
   return (
     <>
       <WorkspaceRouteSync />
       <OverlayStack />
+      <button onClick={() => openSheet()} type="button">
+        Configuration
+      </button>
       <button onClick={navigation.showDraft} type="button">
         Draft
       </button>
@@ -216,7 +221,7 @@ describe("useWorkflowWorkspaceNavigation", () => {
   describe("below md", () => {
     afterEach(() => setViewportWidth(1440));
 
-    it("opens the Runs address sheet and the Changes configuration sheet over a Draft sheet, and closes the configuration sheet on return to Draft", async () => {
+    it("opens the Runs and Changes address sheets over a Draft sheet, and shows the Draft sheet again on return to Draft", async () => {
       setViewportWidth(390);
       const { store, router, click, view } = await renderSwitcher(
         "/workflows/workflow_1"
@@ -246,31 +251,36 @@ describe("useWorkflowWorkspaceNavigation", () => {
       await waitFor(() =>
         expect(store.get(workflowWorkspaceViewAtom)).toBe("changes")
       );
-      await waitFor(() => expect(configurationSheet()).not.toBeNull());
+      await waitFor(() =>
+        expect(store.get(activeMobileSheetsAtom)).toMatchObject([
+          { level: "summary", inspected: null, section: null },
+        ])
+      );
+      expect(configurationSheet()).toBeNull();
 
       click("Draft");
       await waitFor(() => expect(router.state.location.search).toEqual({}));
-      await waitFor(() => expect(configurationSheet()).toBeNull());
+      expect(configurationSheet()).toBeNull();
       expect(store.get(selectedNodeAtom)).toBe("draft_step");
       expect(
         store.get(activeMobileSheetsAtom).map((sheet) => sheet.level)
       ).toEqual(["summary"]);
     });
 
-    it("closes the Changes configuration sheet when the view becomes Runs, where the Runs address sheet shows", async () => {
+    it("closes the configuration sheet of a Draft with nothing selected when the view becomes Changes, where the comparison summary sheet shows", async () => {
       setViewportWidth(390);
-      const { store, router, click, view } = await renderSwitcher(
+      const { store, click, view } = await renderSwitcher(
         "/workflows/workflow_1"
       );
       const configurationSheet = () =>
         view.queryByTestId(`overlay:${ConfigurationOverlay.name}`);
 
-      click("Changes");
+      click("Configuration");
       await waitFor(() => expect(configurationSheet()).not.toBeNull());
 
-      click("Runs");
+      click("Changes");
       await waitFor(() =>
-        expect(router.state.location.search).toEqual({ view: "runs" })
+        expect(store.get(workflowWorkspaceViewAtom)).toBe("changes")
       );
       await waitFor(() => expect(configurationSheet()).toBeNull());
       expect(

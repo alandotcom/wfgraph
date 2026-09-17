@@ -24,7 +24,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "#src/components/ui/dialog";
-import { PanelState } from "#src/components/workflow/workflow-changes-panel-state";
+import { PanelState } from "#src/components/workflow/panel-state";
 import { orpcQuery, refreshRunHistory } from "#src/lib/rpc-query";
 import {
   type MigrationOutcomeCounts,

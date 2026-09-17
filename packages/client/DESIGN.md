@@ -507,13 +507,14 @@ duplicated, grouped, or ungrouped, connections cannot be drawn, the canvas has
 no context menu, multi-select, delete keys, or Tidy layout control, and a
 Group's layout direction is shown as text. Undo and redo stay available on a
 phone, because restoring an earlier state of the workflow is not topology
-authoring. **Changes** keeps the configuration sheet below `md`, and moving to
-Draft or Runs closes that sheet.
+authoring. The configuration sheet opens below `md` only for a Draft with
+nothing selected, and moving to another workspace closes it.
 
 Below `md`, **Runs** uses the same sequence of sheets. A sheet has one of two
 shapes: a summary sheet over the bottom of the canvas, or an inspector that
-covers it. A Draft sheet is about one object, and a Runs sheet is about the
-address itself or about one node. Entering Runs, or **Configuration** in Runs,
+covers it. A Draft sheet is about one object, and a Runs or **Changes** sheet
+is about the address itself or about one object; **Changes** is described under
+Publication review. Entering Runs, or **Configuration** in Runs,
 opens the run list or the open run as a summary sheet, and the first visit opens
 the newest run. A run row opens that run's summary sheet, which holds its
 status, **Cancel**, active waits with **Resume now**, exit details, the failure
@@ -656,13 +657,35 @@ nodes use Signal Green, modified nodes use Signal Amber, and deleted nodes use
 Signal Red. Deleted edges use a distinct dotted treatment. Node position,
 dimensions, and measured geometry never create a change marker.
 
-Below `md`, selecting a changed node opens comparison properties on the
-configuration sheet. Modified nodes show published and draft values side by
-side. Added nodes show draft values only. Deleted nodes show published values
-only. Field labels come from the extension catalog; machine paths don't appear
-as labels. Deleted nodes remain movable for comparison clarity, and **Reset
-comparison layout**, offered only after one has moved, restores historical
-positions. Comparison movement never changes the draft or its save history.
+Below `md`, **Changes** uses the mobile sequence of sheets. Switching to
+Changes, or **Configuration** with no sheet open, opens the comparison summary
+sheet: its title names the comparison, it counts changes under **Behavior** and
+**Organization**, and it holds **Review N changes**, **Refresh comparison**,
+**Version history**, and **Exit comparison**. **Review N changes** opens the
+change list as a summary sheet with the same sections and rows as Browse. A row,
+or a changed node tapped on the canvas, opens that object's field differences as
+the inspector, titled by the object over its change; a tap with no sheet open
+puts the comparison summary beneath it. Each setting lists "Version N" and
+**Current draft** under it, with only the sides that hold the object, so no two
+versions sit side by side. **Previous** and **Next** stay pinned to the bottom
+and show the next object in the same sheet. Choosing a changed step inside a
+Group opens that Group's view with the summary and the change list beneath the
+field differences, so Back reaches the list. **Version history** opens as an
+inspector over the summary, and Back from history returns to the summary with
+its scroll. Choosing a version in history closes history and opens that
+comparison's summary; choosing the version already compared refreshes it. Back
+from the field differences returns to the list with its scroll and the
+selection, leaves the camera where it is, and puts focus on the row of the
+object shown last, scrolled into view. Each comparison, and each Group view of it, keeps its own sheets, so
+switching to Draft and back returns to the same comparison at the same sheet. A
+phone cannot move deleted nodes, so it offers no **Reset comparison layout**.
+
+On desktop, modified nodes show published and draft values side by side, added
+nodes show draft values only, and deleted nodes show published values only.
+Deleted nodes remain movable for comparison clarity, and **Reset comparison
+layout**, offered only after one has moved, restores historical positions.
+Comparison movement never changes the draft or its save history. Field labels
+come from the extension catalog; machine paths don't appear as labels.
 
 ## 6. Do's and Don'ts
 

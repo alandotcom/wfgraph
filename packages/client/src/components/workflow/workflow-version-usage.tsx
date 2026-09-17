@@ -4,7 +4,7 @@ import { ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { Button } from "#src/components/ui/button";
 import { MigrationDialog } from "#src/components/workflow/migration-dialog";
-import { PanelState } from "#src/components/workflow/workflow-changes-panel-state";
+import { PanelState } from "#src/components/workflow/panel-state";
 import { versionUsagePollInterval } from "#src/components/workflow/version-usage-poll";
 import { can } from "#src/lib/authorization";
 import { orpcQuery } from "#src/lib/rpc-query";

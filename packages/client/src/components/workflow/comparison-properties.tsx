@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useAtomValue } from "jotai";
+import { compact } from "es-toolkit/array";
 import { useState } from "react";
 import {
   findAction,
@@ -19,7 +19,6 @@ import type {
 import { TEST_PAYLOADS_CONFIG_KEY } from "@wfgraph/shared/lifecycle/test-payloads";
 import { compareText } from "@wfgraph/shared/types/string";
 import { cn } from "@wfgraph/shared/utils";
-import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { Button } from "#src/components/ui/button";
 import {
   type ComparisonConnection,
@@ -35,10 +34,7 @@ import {
   ValueNote,
 } from "#src/components/workflow/comparison-field-labels";
 import { ConditionSummary } from "#src/components/workflow/config/condition-summary";
-import { PanelState } from "#src/components/workflow/workflow-changes-panel-state";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
-import { comparisonSessionAtom } from "#src/lib/workflow-comparison-store";
-import { selectedNodeAtom } from "#src/lib/workflow-graph-store";
 import { comparisonNodeTitle } from "#src/lib/workflow-graph-types";
 
 /**
@@ -467,8 +463,16 @@ export function useCachedConnections():
 }
 
 /**
+ * How property rows are laid out: `columns` puts each side's value in a column
+ * beside the property, and `stacked` lists each side's value under the
+ * property, for a phone's width.
+ */
+export type ComparisonLayout = "columns" | "stacked";
+
+/**
  * Property rows as a table: a row per property, with a column for each side
- * `sides` names, headed `beforeLabel` and `afterLabel`.
+ * `sides` names, headed `beforeLabel` and `afterLabel`. In the `stacked`
+ * layout each property is a group of its own that names each side's value.
  */
 export function ComparisonFieldTable({
   fields,
@@ -476,6 +480,7 @@ export function ComparisonFieldTable({
   beforeLabel,
   afterLabel,
   caption,
+  layout,
 }: {
   fields: readonly ComparisonField[];
   sides: ComparisonSides;
@@ -483,9 +488,46 @@ export function ComparisonFieldTable({
   afterLabel: string;
   /** The table's accessible name. */
   caption: string;
+  layout: ComparisonLayout;
 }) {
   const showsBefore = sides !== "after";
   const showsAfter = sides !== "before";
+  if (layout === "stacked") {
+    const values = (field: ComparisonField) =>
+      compact([
+        showsBefore ? { label: beforeLabel, value: field.before } : null,
+        showsAfter ? { label: afterLabel, value: field.after } : null,
+      ]);
+    return (
+      <div
+        aria-label={caption}
+        className="divide-y text-xs"
+        data-layout="stacked"
+        role="list"
+      >
+        {fields.map((field) => (
+          <div
+            aria-label={field.label}
+            className="space-y-1 py-2"
+            key={field.key}
+            role="listitem"
+          >
+            <p className="font-medium text-muted-foreground">{field.label}</p>
+            <dl className="space-y-1">
+              {values(field).map((side) => (
+                <div className="min-w-0 break-words" key={side.label}>
+                  <dt className="text-muted-foreground">{side.label}</dt>
+                  <dd>
+                    <ComparisonValue value={side.value} />
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        ))}
+      </div>
+    );
+  }
   const cell = "min-w-0 px-2 py-1.5 align-top break-words";
   return (
     <table className="w-full table-fixed border-collapse text-xs">
@@ -540,65 +582,5 @@ export function ComparisonFieldTable({
         ))}
       </tbody>
     </table>
-  );
-}
-
-export function ComparisonProperties({
-  catalog,
-  change,
-  payload,
-}: {
-  catalog: ExtensionCatalog;
-  change: WorkflowNodeChange;
-  payload: WorkflowComparisonPayload;
-}) {
-  const connections = useCachedConnections();
-  const fields = comparisonFields(catalog, payload, change, { connections });
-  return (
-    <section className="border-t p-4" data-testid="comparison-properties">
-      <h3 className="font-medium text-sm">
-        {changedNodeTitle(catalog, payload, change)}
-      </h3>
-      <p className="mt-1 text-muted-foreground text-xs">
-        {change.kind === "modified"
-          ? "Published and current draft values"
-          : change.kind === "added"
-            ? "Current draft values"
-            : "Published values"}
-      </p>
-      <div className="mt-3">
-        <ComparisonFieldTable
-          afterLabel="Current draft"
-          beforeLabel="Published"
-          caption="Changed settings"
-          fields={fields}
-          sides={comparisonSides(change.kind)}
-        />
-      </div>
-    </section>
-  );
-}
-
-/** Read-only Properties content for a node selected from an active comparison. */
-export function WorkflowComparisonPropertiesPanel() {
-  const catalog = useExtensionCatalog();
-  const session = useAtomValue(comparisonSessionAtom);
-  const selectedNodeId = useAtomValue(selectedNodeAtom);
-  const change = session?.payload.nodeChanges.find(
-    (candidate) => candidate.nodeId === selectedNodeId
-  );
-
-  if (!(session && change)) {
-    return <PanelState label="Select a changed step to inspect its values." />;
-  }
-
-  return (
-    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable_both-edges]">
-      <ComparisonProperties
-        catalog={catalog}
-        change={change}
-        payload={session.payload}
-      />
-    </div>
   );
 }

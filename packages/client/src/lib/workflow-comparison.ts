@@ -200,10 +200,12 @@ export function buildComparisonDisplayGraph(
         const position = historicalParentDeleted
           ? node.position
           : absoluteBasePosition(node, baseNodesById);
+        // A removed node leaves `draggable` unset, so the canvas's
+        // `nodesDraggable` decides whether it moves: on desktop it can be
+        // dragged clear of the draft, and on a phone it cannot.
         const historical: WorkflowNode = {
-          ...omit(node, ["parentId", "extent"]),
+          ...omit(node, ["parentId", "extent", "draggable"]),
           position,
-          draggable: true,
           connectable: false,
           focusable: true,
           deletable: false,

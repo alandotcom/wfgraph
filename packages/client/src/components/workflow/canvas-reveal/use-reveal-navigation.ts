@@ -20,6 +20,7 @@ import {
   inspectRunNodeAtom,
   openInspectorSectionAtom,
   openMobileAddressSheetAtom,
+  openMobileChangeAtom,
   openMobileInspectorOverAddressAtom,
   openMobileSheetAtom,
   openNodeRevealFromOriginAtom,
@@ -88,10 +89,11 @@ export type RevealNavigation = {
    */
   followSelection: (address: WorkspaceAddress) => void;
   /**
-   * Show a node pressed on a canvas outside a run once the press has written
-   * the selection. Desktop reopens a closed Canvas Reveal when the address
-   * follows its selection and holds `nodeId` alone; below `md` the inspector
-   * of the address opens.
+   * Show a node pressed on a canvas outside a run, or chosen elsewhere, once
+   * the selection is written. Desktop reopens a closed Canvas Reveal when the
+   * address follows its selection and holds `nodeId` alone. Below `md` a
+   * comparison shows the node's field differences, and any other address opens
+   * its inspector.
    */
   showPressedNode: (input: {
     address: WorkspaceAddress;
@@ -187,7 +189,16 @@ export function useRevealNavigation(): RevealNavigation {
         shownSectionAtom: mobileShownSectionAtom,
         openInspector: openSheet,
         followSelection: openSheet,
-        showPressedNode: ({ address }) => openSheet(address),
+        showPressedNode: ({ address, nodeId }) => {
+          if (address.key.workspace === "changes") {
+            store.set(openMobileChangeAtom, {
+              address,
+              inspected: node(nodeId),
+            });
+          } else {
+            openSheet(address);
+          }
+        },
         inspectRunNode,
         pressRunCanvasNode: (input) => {
           recordRunCanvasPress(input, null);

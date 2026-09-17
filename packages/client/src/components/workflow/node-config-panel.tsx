@@ -18,8 +18,6 @@ import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { can } from "#src/lib/authorization";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
-import { WorkflowChangesPanel } from "./workflow-changes-panel";
-import { useWorkflowComparisonActions } from "./use-workflow-comparison-actions";
 import { useTopologyCapabilities } from "./canvas-interaction";
 import { useNodeConfigWriter } from "./config/use-node-config-writer";
 import { NodePropertiesForm } from "./node-properties-form";
@@ -27,10 +25,10 @@ import { NodePropertiesForm } from "./node-properties-form";
 /**
  * Configuring the selected node, edge, or the workflow itself.
  *
- * The editor mounts this in two places: Canvas Reveal, for Changes and the
- * Draft selections no other Reveal kind shows, on a wide viewport and in the
- * mobile Reveal sequence, and the configuration sheet a narrow viewport opens
- * for Changes and a Draft with nothing selected.
+ * The editor mounts this in two places: Canvas Reveal, for the Draft
+ * selections no other Reveal kind shows, on a wide viewport and in the mobile
+ * Reveal sequence, and the configuration sheet a narrow viewport opens for a
+ * Draft with nothing selected.
  * Everything the two placements share is here; what a frame genuinely owns is
  * `NodeConfigFrame`.
  */
@@ -58,16 +56,12 @@ export type NodeConfigFrame = {
 
 /**
  * What the panel is currently configuring, for a frame that shows a title.
- * Derived from the workspace so the header and canvas cannot disagree.
+ * Derived from the selection so the header and canvas cannot disagree.
  */
 export function useNodeConfigTitle(): string {
-  const workspaceView = useAtomValue(workflowWorkspaceViewAtom);
   const selectedNodeId = useAtomValue(selectedNodeAtom);
   const selectedEdgeId = useAtomValue(selectedEdgeAtom);
 
-  if (workspaceView === "changes") {
-    return "Changes";
-  }
   // An edge on its own is the one selection with a title of its own. Everything
   // else is Properties, including nothing at all: "Workflow" named a set of
   // fields this panel no longer holds.
@@ -168,7 +162,6 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
   const nodes = useAtomValue(nodesAtom);
   const edges = useAtomValue(edgesAtom);
   const { canDelete } = useTopologyCapabilities();
-  const comparisonActions = useWorkflowComparisonActions();
   const deleteEdge = useSetAtom(deleteEdgeAtom);
   const deleteSelectedItems = useSetAtom(deleteSelectedItemsAtom);
 
@@ -327,8 +320,6 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable_both-edges]">
             {renderPropertiesContent()}
           </div>
-        ) : workspaceView === "changes" ? (
-          <WorkflowChangesPanel actions={comparisonActions} />
         ) : null}
       </div>
     </div>

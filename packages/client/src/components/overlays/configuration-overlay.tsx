@@ -26,8 +26,8 @@ type ConfigurationOverlayProps = OverlayComponentProps;
  * The sheet exists only while Canvas Reveal does not, so one surface edits a
  * node at any width. Widening the window past the `md` breakpoint, where
  * Canvas Reveal mounts, dismisses the sheet. Moving to a workspace that uses
- * the mobile Reveal sequence, such as Draft or Runs, also dismisses it, because
- * that sequence is the inspector there.
+ * the mobile Reveal sequence, which Draft, Runs and Changes all do, also
+ * dismisses it, because that sequence is the inspector there.
  */
 export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
   const { push, closeAll } = useOverlay();
