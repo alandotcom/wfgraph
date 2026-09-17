@@ -1,4 +1,4 @@
-import { partition } from "es-toolkit/array";
+import { groupBy } from "es-toolkit/array";
 import { isEmptyObject } from "es-toolkit/predicate";
 import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { History, RefreshCw, RotateCcw, X } from "lucide-react";
@@ -22,7 +22,10 @@ import {
   workspaceAddressId,
   type WorkspaceAddress,
 } from "#src/lib/workflow-navigation-state";
-import { COMPARISON_CHANGE_KIND_LABEL } from "#src/lib/workflow-graph-types";
+import {
+  comparisonSummary,
+  ORGANIZATION_ONLY_STATEMENT,
+} from "#src/lib/workflow-change-summary";
 import { currentWorkflowNameAtom } from "#src/lib/workflow-save-store";
 import {
   activeSelectionAtom,
@@ -35,7 +38,6 @@ import {
   changeRowFocusRequestAtom,
   changesHeaderModel,
   comparisonRevealContextAtom,
-  describeChangeCounts,
   inspectChange,
   type ChangedObject,
   type ComparisonShownStatus,
@@ -304,9 +306,89 @@ const LIVE_STATUS: Record<ComparisonShownStatus, string> = {
   "refresh-failed": "Unable to refresh this comparison",
 };
 
+/** A label and value row of the comparison summary. */
+function SummaryRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <dt className="text-muted-foreground text-xs">{label}</dt>
+      <dd className="text-right text-xs">{value}</dd>
+    </div>
+  );
+}
+
 /**
- * The comparison's counts, its changed nodes then connections, and Previous and
- * Next. Choosing a row selects that object on the canvas, which places it, and
+ * The comparison's counts under Behavior and Organization. A comparison whose
+ * only changes are Group organization says that execution behavior is
+ * unchanged in place of the Behavior counts.
+ */
+function ComparisonSummarySection({
+  payload,
+  status,
+}: {
+  payload: WorkflowComparisonPayload;
+  status: ComparisonShownStatus;
+}) {
+  const summary = comparisonSummary(payload);
+  const heading = "font-medium text-muted-foreground text-xs";
+  return (
+    <section
+      aria-label="Comparison summary"
+      className="shrink-0 space-y-3 border-b px-4 py-3"
+    >
+      <div className="space-y-1.5">
+        <h3 className={heading}>Behavior</h3>
+        {summary.behavior ? (
+          <dl className="space-y-1.5">
+            <SummaryRow label="Steps" value={summary.behavior.steps} />
+            <SummaryRow
+              label="Connections"
+              value={summary.behavior.connections}
+            />
+          </dl>
+        ) : (
+          <p className="text-xs" data-state="behavior-unchanged">
+            {ORGANIZATION_ONLY_STATEMENT}
+          </p>
+        )}
+      </div>
+      {summary.organization ? (
+        <div className="space-y-1.5">
+          <h3 className={heading}>Organization</h3>
+          <dl className="space-y-1.5">
+            <SummaryRow label="Groups" value={summary.organization.groups} />
+            <SummaryRow
+              label="Group membership"
+              value={summary.organization.membership}
+            />
+          </dl>
+        </div>
+      ) : null}
+      <p aria-live="polite" className="sr-only">
+        {LIVE_STATUS[status]}
+      </p>
+    </section>
+  );
+}
+
+/** The change list's sections, in the order `changedObjects` lists objects. */
+const CHANGE_LIST_SECTIONS = [
+  { id: "groups", title: "Groups", label: "Changed Groups" },
+  { id: "steps", title: "Steps", label: "Changed steps" },
+  { id: "connections", title: "Connections", label: "Changed connections" },
+] as const;
+
+function changeListSection(
+  item: ChangedObject
+): (typeof CHANGE_LIST_SECTIONS)[number]["id"] {
+  if (item.object.kind === "edge") {
+    return "connections";
+  }
+  return item.groupFrame ? "groups" : "steps";
+}
+
+/**
+ * The comparison's counts, its changed Groups, steps, then connections, and
+ * Previous and Next. Choosing a row selects that object on the canvas, which places it, and
  * Compare fields in the header shows it in Focus. The list keeps its scroll for
  * the address, and a selection made anywhere scrolls its row into view.
  */
@@ -321,10 +403,7 @@ function ChangeList({
 }) {
   const { objects, selectedIndex, selectedKey, select } =
     useChangedObjects(payload);
-  const [nodeObjects, edgeObjects] = partition(
-    objects,
-    (item) => item.object.kind === "node"
-  );
+  const sections = groupBy(objects, changeListSection);
   const rows = useRef(new Map<string, HTMLButtonElement>());
   const store = useStore();
   const addressId = workspaceAddressId(address);
@@ -406,7 +485,7 @@ function ChangeList({
             {item.title}
           </span>
           <span className="shrink-0 text-muted-foreground text-xs">
-            {COMPARISON_CHANGE_KIND_LABEL[item.change]}
+            {item.detail}
           </span>
         </button>
       );
@@ -414,28 +493,7 @@ function ChangeList({
 
   return (
     <>
-      <section
-        aria-label="Comparison summary"
-        className="shrink-0 border-b px-4 py-3"
-      >
-        <dl className="space-y-1.5">
-          <div className="flex items-baseline justify-between gap-3">
-            <dt className="text-muted-foreground text-xs">Steps</dt>
-            <dd className="text-right text-xs">
-              {describeChangeCounts(payload.nodeChanges)}
-            </dd>
-          </div>
-          <div className="flex items-baseline justify-between gap-3">
-            <dt className="text-muted-foreground text-xs">Connections</dt>
-            <dd className="text-right text-xs">
-              {describeChangeCounts(payload.edgeChanges)}
-            </dd>
-          </div>
-        </dl>
-        <p aria-live="polite" className="sr-only">
-          {LIVE_STATUS[status]}
-        </p>
-      </section>
+      <ComparisonSummarySection payload={payload} status={status} />
       {objects.length === 0 ? (
         <PanelState
           label={
@@ -452,22 +510,22 @@ function ChangeList({
           onScrollEnd={onScrollEnd}
           ref={scrollRef}
         >
-          {nodeObjects.length > 0 ? (
-            <section aria-label="Changed steps">
-              <h3 className="border-b bg-muted/30 px-4 py-1.5 font-medium text-muted-foreground text-xs">
-                Steps
+          {CHANGE_LIST_SECTIONS.flatMap((section) => {
+            const items = sections[section.id] ?? [];
+            return items.length > 0 ? [{ ...section, items }] : [];
+          }).map((section, index) => (
+            <section aria-label={section.label} key={section.id}>
+              <h3
+                className={cn(
+                  "border-b bg-muted/30 px-4 py-1.5 font-medium text-muted-foreground text-xs",
+                  index > 0 && "border-t"
+                )}
+              >
+                {section.title}
               </h3>
-              <div className="divide-y">{renderRows(nodeObjects)}</div>
+              <div className="divide-y">{renderRows(section.items)}</div>
             </section>
-          ) : null}
-          {edgeObjects.length > 0 ? (
-            <section aria-label="Changed connections">
-              <h3 className="border-y bg-muted/30 px-4 py-1.5 font-medium text-muted-foreground text-xs">
-                Connections
-              </h3>
-              <div className="divide-y">{renderRows(edgeObjects)}</div>
-            </section>
-          ) : null}
+          ))}
         </div>
       )}
       <ChangeNavigation

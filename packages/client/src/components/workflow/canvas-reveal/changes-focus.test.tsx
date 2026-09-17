@@ -1011,3 +1011,194 @@ describe("Changes Focus navigation", () => {
     expect(settingsTable(view).rows).toEqual([["Label", "Old inner", "Inner"]]);
   });
 });
+
+describe("Changes Group organization", () => {
+  const frame = (label: string, direction: string): PersistedWorkflowNode => ({
+    id: "group",
+    type: "group",
+    position: { x: 0, y: 0 },
+    data: { label, type: "group", config: { direction } },
+  });
+  const inGroup = (node: PersistedWorkflowNode): PersistedWorkflowNode => ({
+    ...node,
+    parentId: "group",
+  });
+  const draftNodes = [
+    frame("Follow-ups", "horizontal"),
+    inGroup(changesStep("inner", "Inner")),
+    inGroup(changesStep("moved", "Moved")),
+  ];
+  /**
+   * Version 3 against a draft that renames the Group "Reminders" to
+   * "Follow-ups", turns it horizontal, and moves the step "Moved" into it.
+   */
+  const organizationOnly: WorkflowComparisonPayload = {
+    ...comparisonAgainst(3),
+    baseGraph: createSerializedWorkflowGraph({
+      nodes: [
+        frame("Reminders", "vertical"),
+        inGroup(changesStep("inner", "Inner")),
+        changesStep("moved", "Moved"),
+      ],
+      edges: [],
+    }),
+    draftGraph: createSerializedWorkflowGraph({ nodes: draftNodes, edges: [] }),
+    nodeChanges: [
+      {
+        nodeId: "group",
+        kind: "modified",
+        fields: [
+          {
+            path: ["data", "config", "direction"],
+            kind: "modified",
+            before: "vertical",
+            after: "horizontal",
+          },
+          {
+            path: ["data", "label"],
+            kind: "modified",
+            before: "Reminders",
+            after: "Follow-ups",
+          },
+        ],
+      },
+      {
+        nodeId: "moved",
+        kind: "modified",
+        fields: [{ path: ["parentId"], kind: "added", after: "group" }],
+      },
+    ],
+    edgeChanges: [],
+  };
+
+  function tableRows(view: View, name: string) {
+    const table = view.inReveal().getByRole("table", { name });
+    return within(table)
+      .getAllByRole("row")
+      .slice(1)
+      .map((row) =>
+        [...row.querySelectorAll("th, td")].map((cell) => cell.textContent)
+      );
+  }
+
+  it("says an Organization-only comparison leaves execution behavior unchanged", async () => {
+    const view = await renderFocus({ installed: organizationOnly, draftNodes });
+
+    const summary = view.inReveal().getByRole("region", {
+      name: "Comparison summary",
+    });
+    expect(summary.textContent).toContain(
+      "Execution behavior is unchanged. Only how steps are organized in Groups differs."
+    );
+    expect(summary.textContent).toContain("Groups1 modified");
+    expect(summary.textContent).toContain("Group membership1 step changed");
+    expect(summary.textContent).not.toContain("Connections");
+    expect(
+      within(
+        view.inReveal().getByRole("region", { name: "Changed Groups" })
+      ).getByRole("button", { name: "Follow-ups Modified" })
+    ).toBeTruthy();
+    expect(
+      within(
+        view.inReveal().getByRole("region", { name: "Changed steps" })
+      ).getByRole("button", { name: "Moved Group membership" })
+    ).toBeTruthy();
+  });
+
+  it("shows a Group's settings in Group words and leads to its changed steps", async () => {
+    const view = await renderFocus({ installed: organizationOnly, draftNodes });
+    compare(view, "Follow-ups Modified");
+
+    expect(tableRows(view, "Settings of this Group")).toEqual([
+      ["Layout direction", "Top to bottom", "Left to right"],
+      ["Label", "Reminders", "Follow-ups"],
+    ]);
+    expect(
+      view.aside().querySelector("[data-state=missing-metadata]")
+    ).toBeNull();
+    expect(view.aside().textContent).toContain(
+      "1 step inside it changed. Groups only organize steps, so execution behavior is unchanged."
+    );
+
+    view.click("Moved Group membership");
+    await waitFor(() =>
+      expect(view.router.state.location.search).toEqual({
+        ...CHANGES_V3,
+        group: "group",
+      })
+    );
+    await view.show({ ...CHANGES_V3, group: "group" });
+    expect(view.store.get(activeSelectionAtom)).toEqual({
+      nodeIds: ["moved"],
+      edgeIds: [],
+    });
+    expect(view.aside().dataset.level).toBe("focus");
+    expect(tableRows(view, "Group membership of this step")).toEqual([
+      ["Group", "Not in a Group", "Follow-ups"],
+    ]);
+    expect(
+      view.inReveal().queryByRole("table", { name: "Settings of this step" })
+    ).toBeNull();
+    expect(view.aside().textContent).toContain(
+      "It now sits in the Group Follow-ups. Execution behavior is unchanged for this step."
+    );
+  });
+
+  it("keeps a new Group holding new steps from saying execution is unchanged", async () => {
+    const addedDraft = [
+      frame("Follow-ups", "vertical"),
+      inGroup(changesStep("fresh", "Fresh")),
+    ];
+    const addedWithSteps: WorkflowComparisonPayload = {
+      ...comparisonAgainst(3),
+      baseGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+      draftGraph: createSerializedWorkflowGraph({
+        nodes: addedDraft,
+        edges: [],
+      }),
+      nodeChanges: [
+        { nodeId: "group", kind: "added", fields: [] },
+        { nodeId: "fresh", kind: "added", fields: [] },
+      ],
+      edgeChanges: [],
+    };
+    const view = await renderFocus({
+      installed: addedWithSteps,
+      draftNodes: addedDraft,
+    });
+    compare(view, "Follow-ups Added");
+
+    expect(view.aside().textContent).toContain(
+      "1 step inside it changed. The Group's own change does not affect execution."
+    );
+    expect(view.aside().textContent).not.toMatch(/behavior is unchanged/i);
+  });
+
+  it("keeps a renamed Group whose step changed settings from saying execution is unchanged", async () => {
+    const mixed: WorkflowComparisonPayload = {
+      ...organizationOnly,
+      nodeChanges: [
+        organizationOnly.nodeChanges[0]!,
+        {
+          nodeId: "moved",
+          kind: "modified",
+          fields: [
+            { path: ["parentId"], kind: "added", after: "group" },
+            {
+              path: ["data", "config", "subject"],
+              kind: "added",
+              after: "Hello",
+            },
+          ],
+        },
+      ],
+    };
+    const view = await renderFocus({ installed: mixed, draftNodes });
+    compare(view, "Follow-ups Modified");
+
+    expect(view.aside().textContent).toContain(
+      "1 step inside it changed. The Group's own change does not affect execution."
+    );
+    expect(view.aside().textContent).not.toMatch(/behavior is unchanged/i);
+  });
+});

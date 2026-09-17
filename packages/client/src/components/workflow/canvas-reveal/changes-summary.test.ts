@@ -1,9 +1,18 @@
 import { describe, expect, it } from "vitest";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
-import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
+import type {
+  WorkflowComparisonPayload,
+  WorkflowNodeChange,
+} from "@wfgraph/shared/graph/publication-contracts";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import type { WorkflowIssue } from "@wfgraph/shared/graph/workflow-issues";
+import { comparisonFields } from "#src/components/workflow/comparison-properties";
+import {
+  comparisonSummary,
+  describeChangeCounts,
+  ORGANIZATION_ONLY_STATEMENT,
+} from "#src/lib/workflow-change-summary";
 import { buildComparisonDisplayGraph } from "#src/lib/workflow-comparison";
 import type { WorkflowComparisonSession } from "#src/lib/workflow-comparison-store";
 import {
@@ -11,8 +20,8 @@ import {
   changesHeaderModel,
   comparisonRevealContext,
   comparisonTitle,
-  describeChangeCounts,
   describeInspection,
+  describeMembershipChange,
   describeValidationDifference,
   inspectChange,
   issueIdentity,
@@ -406,5 +415,257 @@ describe("nodeValidationSides", () => {
     });
     expect(sides.before).toEqual({ kind: "unknown" });
     expect(sides.after.kind).toBe("checked");
+  });
+});
+
+describe("Group organization in a comparison", () => {
+  const frame = (label: string, direction: string): WorkflowNode => ({
+    id: "group",
+    type: "group",
+    position: { x: 0, y: 0 },
+    data: { label, type: "group", config: { direction } },
+  });
+  const inGroup = (node: WorkflowNode): WorkflowNode => ({
+    ...node,
+    parentId: "group",
+  });
+  const groupChange: WorkflowNodeChange = {
+    nodeId: "group",
+    kind: "modified",
+    fields: [
+      {
+        path: ["data", "config", "direction"],
+        kind: "modified",
+        before: "vertical",
+        after: "horizontal",
+      },
+      {
+        path: ["data", "label"],
+        kind: "modified",
+        before: "Reminders",
+        after: "Follow-ups",
+      },
+    ],
+  };
+  const organizationOnly: WorkflowComparisonPayload = {
+    ...payload,
+    baseGraph: createSerializedWorkflowGraph({
+      nodes: [
+        frame("Reminders", "vertical"),
+        inGroup(step("inner", "Inner")),
+        step("moved", "Moved"),
+      ],
+      edges: [],
+    }),
+    draftGraph: createSerializedWorkflowGraph({
+      nodes: [
+        frame("Follow-ups", "horizontal"),
+        inGroup(step("inner", "Inner")),
+        inGroup(step("moved", "Moved")),
+      ],
+      edges: [],
+    }),
+    nodeChanges: [
+      groupChange,
+      {
+        nodeId: "moved",
+        kind: "modified",
+        fields: [{ path: ["parentId"], kind: "added", after: "group" }],
+      },
+    ],
+    edgeChanges: [],
+  };
+  const mixed: WorkflowComparisonPayload = {
+    ...organizationOnly,
+    nodeChanges: [
+      groupChange,
+      {
+        nodeId: "moved",
+        kind: "modified",
+        fields: [
+          { path: ["data", "enabled"], kind: "added", after: false },
+          { path: ["parentId"], kind: "added", after: "group" },
+        ],
+      },
+    ],
+    edgeChanges: [{ edgeId: "inner-moved", kind: "added" }],
+  };
+  const inspectNode = (source: WorkflowComparisonPayload, id: string) => {
+    const graph = buildComparisonDisplayGraph(source);
+    const objects = changedObjects({ payload: source, graph, catalog });
+    const inspection = inspectChange({
+      payload: source,
+      graph,
+      catalog,
+      objects,
+      object: { kind: "node", id },
+    });
+    if (inspection.kind !== "node") {
+      throw new Error(`${id} is not a node on the comparison canvas`);
+    }
+    return inspection;
+  };
+
+  it("states that behavior is unchanged when only Group organization changed", () => {
+    expect(comparisonSummary(organizationOnly)).toEqual({
+      behavior: null,
+      organization: { groups: "1 modified", membership: "1 step changed" },
+    });
+    expect(ORGANIZATION_ONLY_STATEMENT).toBe(
+      "Execution behavior is unchanged. Only how steps are organized in Groups differs."
+    );
+  });
+
+  it("counts behavior and organization apart in a mixed comparison", () => {
+    expect(comparisonSummary(mixed)).toEqual({
+      behavior: { steps: "1 modified", connections: "1 added" },
+      organization: { groups: "1 modified", membership: "1 step changed" },
+    });
+    expect(comparisonSummary(payload)).toEqual({
+      behavior: {
+        steps: "1 added, 1 modified, 1 removed",
+        connections: "1 added, 1 removed",
+      },
+      organization: null,
+    });
+  });
+
+  it("lists changed Groups first and names a membership-only step by its Group", () => {
+    const graph = buildComparisonDisplayGraph(organizationOnly);
+    expect(
+      changedObjects({ payload: organizationOnly, graph, catalog }).map(
+        ({ key, title, detail, groupFrame }) => ({
+          key,
+          title,
+          detail,
+          groupFrame,
+        })
+      )
+    ).toEqual([
+      {
+        key: "node:group",
+        title: "Follow-ups",
+        detail: "Modified",
+        groupFrame: true,
+      },
+      {
+        key: "node:moved",
+        title: "Moved",
+        detail: "Group membership",
+        groupFrame: false,
+      },
+    ]);
+  });
+
+  it("describes a Group with its changed steps and says it leaves behavior unchanged", () => {
+    const inspection = inspectNode(organizationOnly, "group");
+    expect(inspection).toMatchObject({
+      groupFrame: true,
+      categories: { organization: true, behavior: false },
+      membership: null,
+      changedMembers: [{ key: "node:moved" }],
+    });
+    expect(describeInspection(inspection, organizationOnly)).toBe(
+      "2 Group settings differ between version 3 and the draft. 1 step inside it changed. Groups only organize steps, so execution behavior is unchanged."
+    );
+  });
+
+  it("keeps a Group with behavior-changing steps from claiming unchanged behavior", () => {
+    const addedWithSteps: WorkflowComparisonPayload = {
+      ...payload,
+      baseGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+      draftGraph: createSerializedWorkflowGraph({
+        nodes: [frame("Follow-ups", "vertical"), inGroup(step("new", "New"))],
+        edges: [],
+      }),
+      nodeChanges: [
+        { nodeId: "group", kind: "added", fields: [] },
+        { nodeId: "new", kind: "added", fields: [] },
+      ],
+      edgeChanges: [],
+    };
+    expect(
+      describeInspection(inspectNode(addedWithSteps, "group"), addedWithSteps)
+    ).toBe(
+      "This Group is new in the draft. It is not in version 3. 1 step inside it changed. The Group's own change does not affect execution."
+    );
+    expect(describeInspection(inspectNode(mixed, "group"), mixed)).toBe(
+      "2 Group settings differ between version 3 and the draft. 1 step inside it changed. The Group's own change does not affect execution."
+    );
+  });
+
+  it("names a renamed Group by its published title when a step leaves it", () => {
+    const renamedAndLeft: WorkflowComparisonPayload = {
+      ...payload,
+      baseGraph: createSerializedWorkflowGraph({
+        nodes: [
+          frame("Old Group", "vertical"),
+          inGroup(step("inner", "Inner")),
+          inGroup(step("leaving", "Leaving")),
+        ],
+        edges: [],
+      }),
+      draftGraph: createSerializedWorkflowGraph({
+        nodes: [
+          frame("Renamed Group", "vertical"),
+          inGroup(step("inner", "Inner")),
+          step("leaving", "Leaving"),
+        ],
+        edges: [],
+      }),
+      nodeChanges: [
+        {
+          nodeId: "group",
+          kind: "modified",
+          fields: [
+            {
+              path: ["data", "label"],
+              kind: "modified",
+              before: "Old Group",
+              after: "Renamed Group",
+            },
+          ],
+        },
+        {
+          nodeId: "leaving",
+          kind: "modified",
+          fields: [{ path: ["parentId"], kind: "removed", before: "group" }],
+        },
+      ],
+      edgeChanges: [],
+    };
+    const leavingChange = renamedAndLeft.nodeChanges[1];
+    if (!leavingChange) {
+      throw new Error("the step change is missing");
+    }
+
+    const inspection = inspectNode(renamedAndLeft, "leaving");
+
+    expect(inspection.membership).toEqual({ before: "Old Group", after: null });
+    expect(describeInspection(inspection, renamedAndLeft)).toBe(
+      "It no longer sits in the Group Old Group. Execution behavior is unchanged for this step."
+    );
+    expect(
+      comparisonFields(catalog, renamedAndLeft, leavingChange).map(
+        ({ before, after }) => ({ before, after })
+      )
+    ).toEqual([{ before: "Old Group", after: "Not in a Group" }]);
+  });
+
+  it("names the Groups a step moved between in Group words", () => {
+    const moved = inspectNode(organizationOnly, "moved");
+    expect(moved.membership).toEqual({ before: null, after: "Follow-ups" });
+    expect(describeInspection(moved, organizationOnly)).toBe(
+      "It now sits in the Group Follow-ups. Execution behavior is unchanged for this step."
+    );
+    expect(describeInspection(inspectNode(mixed, "moved"), mixed)).toBe(
+      "1 setting differs between version 3 and the draft. It now sits in the Group Follow-ups."
+    );
+    expect(
+      describeMembershipChange({ before: "Reminders", after: "Follow-ups" })
+    ).toBe("It moved from the Group Reminders to the Group Follow-ups.");
+    expect(describeMembershipChange({ before: "Reminders", after: null })).toBe(
+      "It no longer sits in the Group Reminders."
+    );
   });
 });

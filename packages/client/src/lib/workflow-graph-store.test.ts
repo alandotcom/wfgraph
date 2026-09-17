@@ -933,7 +933,13 @@ describe("installRemoteWorkflowAtom", () => {
       graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
       expectedDraftRevision: 1,
       expectedPublishedVersionId: null,
-      review: { proposedVersion: 1, nodeChanges: [], edgeChanges: [] },
+      review: {
+        proposedVersion: 1,
+        baseGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+        draftGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+        nodeChanges: [],
+        edgeChanges: [],
+      },
     });
 
     const installed = store.set(installRemoteWorkflowAtom, {

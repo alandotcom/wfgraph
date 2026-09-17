@@ -52,7 +52,12 @@ import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { ActionNode } from "./nodes/action-node";
 import { AddNode } from "./nodes/add-node";
-import { GroupNode } from "./nodes/group-node";
+import {
+  GroupChangedStepsSlot,
+  type GroupChangedStepsControlProps,
+  GroupNode,
+} from "./nodes/group-node";
+import { GroupChangedStepsButton } from "./canvas-reveal/changes-navigation";
 import { groupBoundaryNodeTypes } from "./nodes/group-boundary-node";
 import { GroupScopeBar } from "./group-scope-bar";
 import { useGroupScopeNavigation } from "./use-group-scope-navigation";
@@ -109,6 +114,11 @@ const edgeTypes = {
  * orthogonal path.
  */
 const defaultEdgeOptions = { type: WORKFLOW_EDGE_TYPE };
+
+/** The changed-steps control a Group card draws on a comparison canvas. */
+function renderGroupChangedSteps(props: GroupChangedStepsControlProps) {
+  return <GroupChangedStepsButton {...props} />;
+}
 
 const nodeTypes = {
   lifecycle: LifecycleNode,
@@ -600,81 +610,86 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
         opacity: isCanvasReady ? 1 : 0,
       }}
     >
-      {/* React Flow Canvas */}
-      <Canvas
-        className="bg-background"
-        connectionLineComponent={Connection}
-        connectionMode={ConnectionMode.Strict}
-        defaultEdgeOptions={defaultEdgeOptions}
-        deleteKeyCode={interaction.deleteKeyCode}
-        edges={accessibleGraph.edges}
-        edgesFocusable={interaction.edgesFocusable}
-        edgeTypes={edgeTypes}
-        elementsSelectable={interaction.elementsSelectable}
-        isValidConnection={isValidConnection}
-        minZoom={WORKFLOW_CANVAS_MIN_ZOOM}
-        nodes={accessibleGraph.nodes}
-        nodesConnectable={!graphEditingLocked && !interaction.comparisonVisible}
-        nodesDraggable={interaction.nodesDraggable}
-        nodeTypes={nodeTypes}
-        onBeforeDelete={
-          interaction.comparisonVisible
-            ? () => Promise.resolve(false)
-            : onBeforeDelete
-        }
-        onConnect={graphEditingLocked ? undefined : onConnect}
-        onConnectEnd={graphEditingLocked ? undefined : onConnectEnd}
-        onConnectStart={graphEditingLocked ? undefined : onConnectStart}
-        onEdgeContextMenu={graphEditingLocked ? undefined : onEdgeContextMenu}
-        onEdgesChange={graphEditingLocked ? undefined : handleEdgesChange}
-        onNodeClick={isGenerating ? undefined : onNodeClick}
-        onNodeDoubleClick={onNodeDoubleClick}
-        onNodeContextMenu={graphEditingLocked ? undefined : onNodeContextMenu}
-        onNodesChange={
-          interaction.comparisonVisible
-            ? onComparisonNodesChange
-            : graphEditingLocked
-              ? undefined
-              : handleNodesChange
-        }
-        onMoveEnd={() => {
-          workspaceCamera.onMoveEnd();
-          revealCamera.onMoveEnd();
-        }}
-        onMoveStart={workspaceCamera.onMoveStart}
-        onPaneClick={onPaneClick}
-        onPaneContextMenu={graphEditingLocked ? undefined : onPaneContextMenu}
-      >
-        <Panel
-          className="[--workflow-controls-bottom:3.5rem] border-none bg-transparent p-0 md:[--workflow-controls-bottom:0px]"
-          data-slot={CANVAS_OBSTACLE_SLOTS.controls}
-          position="bottom-left"
-          style={{ bottom: "var(--workflow-controls-bottom)" }}
+      {/* React Flow Canvas. A Group card on a comparison canvas leads to its
+          changed steps through the control the slot supplies. */}
+      <GroupChangedStepsSlot.Provider value={renderGroupChangedSteps}>
+        <Canvas
+          className="bg-background"
+          connectionLineComponent={Connection}
+          connectionMode={ConnectionMode.Strict}
+          defaultEdgeOptions={defaultEdgeOptions}
+          deleteKeyCode={interaction.deleteKeyCode}
+          edges={accessibleGraph.edges}
+          edgesFocusable={interaction.edgesFocusable}
+          edgeTypes={edgeTypes}
+          elementsSelectable={interaction.elementsSelectable}
+          isValidConnection={isValidConnection}
+          minZoom={WORKFLOW_CANVAS_MIN_ZOOM}
+          nodes={accessibleGraph.nodes}
+          nodesConnectable={
+            !graphEditingLocked && !interaction.comparisonVisible
+          }
+          nodesDraggable={interaction.nodesDraggable}
+          nodeTypes={nodeTypes}
+          onBeforeDelete={
+            interaction.comparisonVisible
+              ? () => Promise.resolve(false)
+              : onBeforeDelete
+          }
+          onConnect={graphEditingLocked ? undefined : onConnect}
+          onConnectEnd={graphEditingLocked ? undefined : onConnectEnd}
+          onConnectStart={graphEditingLocked ? undefined : onConnectStart}
+          onEdgeContextMenu={graphEditingLocked ? undefined : onEdgeContextMenu}
+          onEdgesChange={graphEditingLocked ? undefined : handleEdgesChange}
+          onNodeClick={isGenerating ? undefined : onNodeClick}
+          onNodeDoubleClick={onNodeDoubleClick}
+          onNodeContextMenu={graphEditingLocked ? undefined : onNodeContextMenu}
+          onNodesChange={
+            interaction.comparisonVisible
+              ? onComparisonNodesChange
+              : graphEditingLocked
+                ? undefined
+                : handleNodesChange
+          }
+          onMoveEnd={() => {
+            workspaceCamera.onMoveEnd();
+            revealCamera.onMoveEnd();
+          }}
+          onMoveStart={workspaceCamera.onMoveStart}
+          onPaneClick={onPaneClick}
+          onPaneContextMenu={graphEditingLocked ? undefined : onPaneContextMenu}
         >
-          <Controls
-            canReflow={!graphEditingLocked && canReflow}
-            onReflow={graphEditingLocked ? undefined : reflow}
-          />
-        </Panel>
-        {showMinimap && (
-          // maskColor and nodeColor default to hardcoded light-mode values that
-          // never invert: the viewport rectangle was invisible in light (1.05:1)
-          // and a bright reversed frame in dark (6.58:1). The test-mode banner
-          // moved to bottom-centre, so this corner is no longer contested.
-          <MiniMap
-            bgColor="var(--sidebar)"
-            className="rounded-lg border shadow-sm"
-            maskColor="color-mix(in oklch, var(--muted) 60%, transparent)"
-            nodeColor="var(--muted-foreground)"
-            nodeStrokeColor="var(--border)"
-            pannable
-            // Sits beside open Canvas Reveal. The panel's own margin keeps the
-            // gap to Reveal's edge.
-            style={{ right: revealOccupiedWidth }}
-            zoomable
-          />
-        )}
-      </Canvas>
+          <Panel
+            className="[--workflow-controls-bottom:3.5rem] border-none bg-transparent p-0 md:[--workflow-controls-bottom:0px]"
+            data-slot={CANVAS_OBSTACLE_SLOTS.controls}
+            position="bottom-left"
+            style={{ bottom: "var(--workflow-controls-bottom)" }}
+          >
+            <Controls
+              canReflow={!graphEditingLocked && canReflow}
+              onReflow={graphEditingLocked ? undefined : reflow}
+            />
+          </Panel>
+          {showMinimap && (
+            // maskColor and nodeColor default to hardcoded light-mode values that
+            // never invert: the viewport rectangle was invisible in light (1.05:1)
+            // and a bright reversed frame in dark (6.58:1). The test-mode banner
+            // moved to bottom-centre, so this corner is no longer contested.
+            <MiniMap
+              bgColor="var(--sidebar)"
+              className="rounded-lg border shadow-sm"
+              maskColor="color-mix(in oklch, var(--muted) 60%, transparent)"
+              nodeColor="var(--muted-foreground)"
+              nodeStrokeColor="var(--border)"
+              pannable
+              // Sits beside open Canvas Reveal. The panel's own margin keeps the
+              // gap to Reveal's edge.
+              style={{ right: revealOccupiedWidth }}
+              zoomable
+            />
+          )}
+        </Canvas>
+      </GroupChangedStepsSlot.Provider>
 
       <GroupScopeBar />
 
