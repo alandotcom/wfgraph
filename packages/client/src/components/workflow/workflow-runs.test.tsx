@@ -750,7 +750,9 @@ describe("WorkflowRuns", () => {
       store.set(selectOnlyNodeAtom, "wait_1");
     });
 
-    fireEvent.click(view.getByRole("button", { name: "Technical details" }));
+    fireEvent.click(
+      await view.findByRole("button", { name: "Technical details" })
+    );
     fireEvent.click(view.getByRole("tab", { name: "Input" }));
     expect(await view.findByText(/inv_9/)).toBeTruthy();
   });

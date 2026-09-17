@@ -317,9 +317,10 @@ which opens Focus on the field it names. Focus holds the complete form, and
 **Return to summary** goes back to Browse. Edits write to the draft as they are
 made, so changing level loses nothing and autosave carries on. A step with no
 action chosen shows the action picker in Browse and has no Focus. A Lifecycle,
-Event Split, Group, connection, multiple selection, and **Runs** show their
-panel at Browse width, under a header holding the panel's title and **Close**.
-**Changes** has its own Browse, described under Publication review.
+Event Split, Group, connection, and multiple selection show their panel at
+Browse width, under a header holding the panel's title and **Close**. **Runs**
+and **Changes** each have a Browse of their own, and **Changes** is described
+under Publication review.
 
 A selected Condition opens the same header. Its Browse reads the decision: an
 editable label, one sentence stating when the Condition takes True and which
@@ -334,8 +335,23 @@ keeps each True and False label on its outgoing edges inside the usable canvas
 too when the label fits at that zoom. A label on an edge to a distant step stays
 off screen.
 
-Escape and **Back** take one step back as the shown object's kind defines it,
-which for a step or Condition is one level: Focus to Browse to Closed. **Close**
+**Runs** has Browse and no Focus. On the run list the header path names the
+workflow and Runs, and **Refresh** and **Clear All** sit above the superseded
+count, the Refused Starts, the Cancellation Failures, and the run rows. Selecting
+a run adds a browser history entry and puts the graph version the run pinned on
+the canvas. The header then titles the run by its list number, shows its status,
+and offers **Back**. Browse holds the run's start identity, outcome, timing, and
+entity, then its active waits with **Resume now**, **Cancel**, exit details, the
+failure summary, the node journey, and activity. **Back** and Escape on a run
+replace the history entry with the run list and put focus on that run's row, or
+on the header title when the list shows no row for it. A run past the newest 50,
+or one that leaves the list, keeps its view and says why it is not listed. A
+node selected on a run's canvas shows its evidence in place of the overview.
+Each run list remembers whether it shows superseded runs.
+
+Escape and **Back** take one step back as the shown object's kind defines it.
+For a step or Condition that step is one level: Focus to Browse to Closed. For a
+run it is the run list, and on the run list Escape closes Reveal. **Close**
 closes Reveal from any level. Escape belongs to an open select, combobox, menu, autocomplete, or
 dialog first. Opening Focus moves focus to the step title, returning to Browse
 puts focus on **Focus editor**, and closing returns focus to the canvas object or
@@ -343,7 +359,7 @@ control that opened Browse. Closing keeps the canvas selection. Selecting a step
 again, or the chevron on the canvas's right edge, reopens the level Reveal was
 closed from. Cmd+B opens and closes Canvas Reveal. The level, the inspected step, and the
 inspector's scroll position are remembered separately for Draft, each Group
-view, each run, and each comparison. Levels add no browser history.
+view, the run list, each run, and each comparison. Levels add no browser history.
 
 Opening or changing Reveal moves the camera and nothing else: it never runs
 layout, moves a node, or marks the draft changed. The camera keeps its zoom when

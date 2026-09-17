@@ -14,8 +14,11 @@ import {
 import { NodePropertiesForm } from "#src/components/workflow/node-properties-form";
 import { setComparisonSubviewAtom } from "#src/lib/workflow-comparison-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import type {
+  OpenRevealLevel,
+  WorkflowRouteSearch,
+} from "#src/lib/workflow-navigation-state";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
-import type { OpenRevealLevel } from "#src/lib/workflow-navigation-state";
 import {
   findAction,
   type ExtensionCatalog,
@@ -37,11 +40,13 @@ import {
   matchChangesSubject,
   matchConditionSubject,
   matchPanelSubject,
+  matchRunsSubject,
   matchStepSubject,
   type RevealKindId,
   type RevealMatchInput,
   type RevealSubject,
 } from "./reveal-subject";
+import { RunsBrowse, RunsHeader, unwindRuns } from "./runs-browse";
 import { StepBrowse } from "./step-browse";
 
 export type RevealBodyProps = {
@@ -106,6 +111,8 @@ export type RevealKind = {
     level: OpenRevealLevel;
     store: ReturnType<typeof createStore>;
     unwindLevel: () => void;
+    /** Replace the editor route search, adding no history entry. */
+    replaceRouteSearch: (search: WorkflowRouteSearch) => void;
   }) => void;
   /** The canvas element focus returns to when Reveal closes, when there is one. */
   focusReturnTarget: (
@@ -180,17 +187,17 @@ function PanelBrowse({ frame }: RevealBodyProps) {
 }
 
 /**
- * The node config panel's header: its own title, which names Runs,
- * Properties, or Connection, with no path and no status.
+ * The node config panel's header in Draft: its own title, which names
+ * Properties or Connection, with no path and no status.
  */
-function PanelHeader({ subject, level, controls }: RevealKindHeaderProps) {
+function PanelHeader({ level, controls }: RevealKindHeaderProps) {
   const title = useNodeConfigTitle();
   return (
     <RevealHeader
       controls={controls}
       level={level}
       model={{
-        workspaceLabel: subject.workspace === "draft" ? "Draft" : null,
+        workspaceLabel: "Draft",
         title,
         path: [],
         status: null,
@@ -245,6 +252,22 @@ const CONDITION_KIND: RevealKind = {
 };
 
 /**
+ * Runs at Browse: the run list, or the open run's summary, journey, and
+ * actions. Its header names the open run, and Back leaves the run for the list.
+ */
+const RUNS_KIND: RevealKind = {
+  id: "runs",
+  match: matchRunsSubject,
+  regionLabel: "Runs inspector",
+  header: { owner: "kind", Header: RunsHeader },
+  Browse: RunsBrowse,
+  Focus: null,
+  unwind: unwindRuns,
+  focusReturnTarget: canvasNodeElement,
+  shellOwnsScroll: false,
+};
+
+/**
  * The Changes workspace: the comparison summary, the changed-object list, and
  * version history in Browse, under a header naming the comparison. It has no
  * Focus, and the list keeps its own scroll.
@@ -262,8 +285,8 @@ const CHANGES_KIND: RevealKind = {
 };
 
 /**
- * The node config panel at Browse, for every subject no other kind shows: Runs
- * and any other Draft selection. It scrolls inside its own body.
+ * The node config panel at Browse, for every Draft selection no other kind
+ * shows. It scrolls inside its own body.
  */
 const PANEL_KIND: RevealKind = {
   id: "panel",
@@ -280,6 +303,7 @@ const PANEL_KIND: RevealKind = {
 const REVEAL_KINDS: readonly RevealKind[] = [
   STEP_KIND,
   CONDITION_KIND,
+  RUNS_KIND,
   CHANGES_KIND,
   PANEL_KIND,
 ];
@@ -287,6 +311,7 @@ const REVEAL_KINDS: readonly RevealKind[] = [
 const REVEAL_KINDS_BY_ID: Readonly<Record<RevealKindId, RevealKind>> = {
   step: STEP_KIND,
   condition: CONDITION_KIND,
+  runs: RUNS_KIND,
   changes: CHANGES_KIND,
   panel: PANEL_KIND,
 };

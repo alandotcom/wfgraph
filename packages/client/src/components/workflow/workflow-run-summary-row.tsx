@@ -26,7 +26,6 @@ type WorkflowRunSummaryRowProps = {
   variant?: "list" | "header" | undefined;
   outcome?: string | undefined;
   onClick?: (() => void) | undefined;
-  selected?: boolean | undefined;
   onBack?: (() => void) | undefined;
   onCancel?: ((executionId: string) => void) | undefined;
   isCanceling?: boolean | undefined;
@@ -292,7 +291,6 @@ export function WorkflowRunSummaryRow({
   variant = "list",
   outcome,
   onClick,
-  selected = false,
   onBack,
   onCancel,
   isCanceling = false,
@@ -316,11 +314,7 @@ export function WorkflowRunSummaryRow({
 
   return (
     <button
-      aria-current={selected ? "true" : undefined}
-      className={cn(
-        "min-h-13 w-full border-border border-b px-2 py-2 text-left transition-colors duration-100 hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/30",
-        selected && "bg-muted"
-      )}
+      className="min-h-13 w-full border-border border-b px-2 py-2 text-left transition-colors duration-100 hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/30"
       data-testid="workflow-run-summary-row"
       onClick={onClick}
       type="button"

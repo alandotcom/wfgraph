@@ -96,10 +96,15 @@ export type DesktopScopePresentation = ScopePresentation & {
   inspectorScroll: Readonly<Record<OpenRevealLevel, number>>;
 };
 
+/**
+ * `showSuperseded` is whether a run list shows the runs a newer start
+ * superseded, on either form factor. Only a run list address reads it.
+ */
 export type ScopeNavigation = {
   selection: CanvasSelection;
   desktop: DesktopScopePresentation;
   mobile: ScopePresentation;
+  showSuperseded: boolean;
 };
 
 /** A key's overview scope and the one focused Group scope it last held. */
@@ -154,6 +159,7 @@ export const EMPTY_SCOPE_NAVIGATION: ScopeNavigation = {
     inspectorScroll: { browse: 0, focus: 0 },
   },
   mobile: { camera: null },
+  showSuperseded: false,
 };
 
 export const EMPTY_WORKFLOW_NAVIGATION: WorkflowNavigation = {
@@ -584,6 +590,15 @@ export function withInspectorScroll(
           inspectorScroll: { ...stored, [level]: top },
         },
       };
+}
+
+export function withShowSuperseded(
+  scope: ScopeNavigation,
+  showSuperseded: boolean
+): ScopeNavigation {
+  return scope.showSuperseded === showSuperseded
+    ? scope
+    : { ...scope, showSuperseded };
 }
 
 /**

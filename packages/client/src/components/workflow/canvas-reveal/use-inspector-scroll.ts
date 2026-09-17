@@ -27,9 +27,10 @@ type Shown = {
  * address, object, or level changes, and on unmount. A new address, object, or
  * level restores its stored position before paint, and once more after paint
  * for content that mounted late. `input` is null while no such level is open.
- * A null `inspectedId` keeps the scroll of a scope that inspects no object. A
- * kind whose subjects never record `inspected`, such as Changes, passes null,
- * so its body scroll is stored under a null inspected id whatever it selects.
+ * A null `inspectedId` keeps the scroll of an address that inspects no object.
+ * A kind whose subjects never record `inspected`, such as Runs or Changes,
+ * passes null, so its body scroll is stored under a null inspected id whatever
+ * it selects.
  */
 export function useInspectorScroll(
   input: {
