@@ -69,8 +69,8 @@ export function ConfigSection({
       {/* Sticky while editing only. Compressing view mode moves a panel's
           height into edit rather than removing it, so the label of the block
           being edited has to survive the scroll that height costs. The
-          background is the one both frames paint on that column: `bg-card` on
-          the rail's <aside> and on the sheet's drawer. */}
+          background is the one both frames paint behind the form: `bg-card`
+          on Canvas Reveal's body and on the sheet's drawer. */}
       <ConfigHeading
         className={cn(stickyHeader && isEditing && "sticky top-0 z-20 bg-card")}
         help={help}

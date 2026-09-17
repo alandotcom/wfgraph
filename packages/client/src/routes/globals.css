@@ -234,12 +234,7 @@
 
 /* The editor shell's inset from the viewport edge.
 
-   A variable rather than a padding utility because three things have to agree
-   on it: the padding in `routes/workflows/[workflowId]/page.tsx`, the panel
-   width `sidebarWidthCss` writes, and the panel's resize drag. The last two
-   measure the shell rectangle, which is the viewport less this inset per side,
-   so a drag that measured the viewport instead would release the panel edge a
-   whole inset away from the pointer.
+   The padding in `routes/workflows/[workflowId]/page.tsx` reads it.
 
    Zero below the breakpoint, where the shell is the screen: 24px of a phone's
    width buys nothing, and the status strip's home-indicator padding assumes the
@@ -357,7 +352,7 @@
   /* Panel and node transitions collapse to an instant state change rather than
      being removed, so hierarchy and position still update. */
   .node-container,
-  .workflow-sidebar-panel {
+  .canvas-reveal {
     transition-duration: 1ms !important;
   }
 }

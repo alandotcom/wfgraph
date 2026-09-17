@@ -1,7 +1,10 @@
 import { useAtomValue } from "jotai";
 import { cn } from "@wfgraph/shared/utils";
 import { selectedNodeAtom } from "#src/lib/workflow-graph-store";
-import { TemplateAutocomplete } from "./template-autocomplete";
+import {
+  TemplateAutocomplete,
+  useTemplateAutocompleteRows,
+} from "./template-autocomplete";
 import { useTemplateBadgeField } from "./use-template-badge-field";
 
 export interface TemplateBadgeTextareaProps {
@@ -62,6 +65,12 @@ export function TemplateBadgeTextarea({
     multiline: true,
   });
   const selectedNodeId = useAtomValue(selectedNodeAtom);
+  const autocompleteRows = useTemplateAutocompleteRows({
+    currentNodeId: selectedNodeId || undefined,
+    filter: autocompleteFilter,
+    fieldType,
+  });
+  const isMenuShown = showAutocomplete && autocompleteRows.hasRowsToShow;
 
   return (
     <>
@@ -86,6 +95,8 @@ export function TemplateBadgeTextarea({
           aria-required={required || undefined}
           className="w-full whitespace-pre-wrap break-words outline-none"
           contentEditable={!disabled}
+          // Canvas Reveal leaves Escape to the autocomplete menu while it shows.
+          data-autocomplete-open={isMenuShown || undefined}
           id={id}
           onBlur={handleBlur}
           onFocus={handleFocus}
@@ -99,13 +110,11 @@ export function TemplateBadgeTextarea({
       </div>
 
       <TemplateAutocomplete
-        currentNodeId={selectedNodeId || undefined}
-        fieldType={fieldType}
-        filter={autocompleteFilter}
+        anchor={autocompleteAnchor}
         isOpen={showAutocomplete}
         onClose={closeAutocomplete}
         onSelect={handleAutocompleteSelect}
-        anchor={autocompleteAnchor}
+        rows={autocompleteRows}
       />
     </>
   );

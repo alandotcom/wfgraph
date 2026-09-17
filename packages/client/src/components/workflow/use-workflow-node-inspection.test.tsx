@@ -1,6 +1,6 @@
 import { act, fireEvent, render } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider, useAtomValue } from "jotai";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import { useWorkflowNodeInspection } from "#src/components/workflow/use-workflow-node-inspection";
 import {
@@ -20,7 +20,12 @@ import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
-import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
+import {
+  activeDesktopRevealLevelAtom,
+  activeSelectionAtom,
+  activeWorkspaceAddressAtom,
+  setWorkspaceRevealLevelAtom,
+} from "#src/lib/workflow-workspace-navigation";
 
 const DRAFT_NODES: WorkflowNode[] = [
   {
@@ -122,6 +127,22 @@ function assertReadOnlySelection(
   expect(selectionState(store).owner).toEqual(readOnly);
 }
 
+/**
+ * Happy-dom's viewport, which `useIsMobile` answers from. It is one value per
+ * test worker, and the suite runs with `isolate: false`, so a file that ran a
+ * phone-width case before this one would leave the mobile Reveal in place of
+ * the desktop one these cases read.
+ */
+function setDesktopViewport(): void {
+  (
+    window as unknown as {
+      happyDOM: { setViewport: (viewport: { width: number }) => void };
+    }
+  ).happyDOM.setViewport({ width: 1440 });
+}
+
+beforeEach(setDesktopViewport);
+
 describe("useWorkflowNodeInspection", () => {
   it("keeps the multi-selection React Flow wrote on a Draft canvas click", () => {
     const store = selectionStore();
@@ -143,6 +164,24 @@ describe("useWorkflowNodeInspection", () => {
     const only = { nodeIds: ["draft_a"], edgeIds: [] };
     expect(selectionState(store)).toEqual({ owner: only, painted: only });
     expect(store.get(selectedNodeAtom)).toBe("draft_a");
+  });
+
+  it("reopens a closed Canvas Reveal when the selected node is clicked again", () => {
+    const store = selectionStore();
+    store.set(activeSelectionAtom, { nodeIds: ["draft_a"], edgeIds: [] });
+    store.set(setWorkspaceRevealLevelAtom, {
+      address: store.get(activeWorkspaceAddressAtom),
+      level: "focus",
+    });
+    store.set(setWorkspaceRevealLevelAtom, {
+      address: store.get(activeWorkspaceAddressAtom),
+      level: "closed",
+    });
+    const view = renderInspector(store, "draft_a", true);
+
+    fireEvent.click(view.getByRole("button", { name: /Inspect/ }));
+
+    expect(store.get(activeDesktopRevealLevelAtom)).toBe("focus");
   });
 
   it("clears a stale edge selection when clicking a node in Runs", () => {
