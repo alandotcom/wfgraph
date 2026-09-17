@@ -245,9 +245,10 @@ describe("NodeConfigPanel config scoping", () => {
 
     const label = await view.findByLabelText("Label");
     const description = view.getByLabelText("Description");
-    const startEvents = view.getByRole("heading", {
+    // The policy summary and the Start Events editor both carry the heading.
+    const startEvents = view.getAllByRole("heading", {
       name: "Start Events",
-    });
+    })[0];
 
     expect(view.queryByText("Node Metadata")).toBeNull();
     expect(view.queryByText("Lifecycle Rules")).toBeNull();
@@ -377,6 +378,18 @@ describe("NodeConfigPanel on a Group frame", () => {
         confirmVariant: "destructive",
       },
     ]);
+  });
+});
+
+describe("NodeConfigPanel on the Lifecycle Node", () => {
+  // The Lifecycle Node is the workflow's entry and the graph refuses to delete
+  // it, so its form offers no Delete that would do nothing.
+  it("offers no Delete to a person who may update the workflow", async () => {
+    installAuthorizationGrantsForTests([WfGraphOperations.workflowUpdate.id]);
+    const { view } = renderPanel({ selected: "lifecycle_1" });
+
+    await view.findByLabelText("Label");
+    expect(view.queryByRole("button", { name: /Delete/ })).toBeNull();
   });
 });
 

@@ -18,6 +18,7 @@ import {
   withCamera,
   withDesktopRevealLevel,
   withInspectorScroll,
+  withInspectorSection,
   withoutDraftSelections,
   withSelection,
   withSelectionOpeningReveal,
@@ -549,6 +550,40 @@ describe("Canvas Reveal state", () => {
 
     const other = withSelectionOpeningReveal(again, nodeSelection("step_b"));
     expect(other.desktop.inspectorScroll).toEqual({ browse: 0, focus: 0 });
+  });
+
+  it("keeps the inspected object's section and starts another object's over", () => {
+    const opened = withInspectorSection(
+      withSelectionOpeningReveal(EMPTY, nodeSelection("step_a")),
+      "entity-eligibility"
+    );
+    expect(opened.desktop.inspectorSection).toBe("entity-eligibility");
+    expect(withInspectorSection(opened, "entity-eligibility")).toBe(opened);
+
+    const scrolled = withInspectorScroll(
+      withInspectorScroll(opened, "browse", 90),
+      "focus",
+      240
+    );
+    expect(
+      withInspectorSection(scrolled, "validation").desktop.inspectorScroll
+    ).toEqual({ browse: 90, focus: 0 });
+
+    const cleared = withSelection(opened, EMPTY_SELECTION);
+    const again = withSelectionOpeningReveal(cleared, nodeSelection("step_a"));
+    expect(again.desktop.inspectorSection).toBe("entity-eligibility");
+
+    const other = withSelectionOpeningReveal(again, nodeSelection("step_b"));
+    expect(other.desktop.inspectorSection).toBeNull();
+    expect(
+      inspectionInGraph(
+        withInspectorSection(
+          withSelectionOpeningReveal(EMPTY, nodeSelection("gone")),
+          "validation"
+        ),
+        graph
+      ).desktop.inspectorSection
+    ).toBeNull();
   });
 
   it("forgets an inspected object the graph no longer holds", () => {

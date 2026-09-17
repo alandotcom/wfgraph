@@ -17,6 +17,7 @@ import {
   withCamera,
   withDesktopRevealLevel,
   withInspectorScroll,
+  withInspectorSection,
   withSelection,
   withSelectionOpeningReveal,
   withShowSuperseded,
@@ -284,6 +285,62 @@ export const recordInspectorScrollAtom = atom(
         (scope.desktop.inspected?.id ?? null) === input.inspectedId
           ? withInspectorScroll(scope, input.level, input.top)
           : scope
+      )
+    );
+  }
+);
+
+/**
+ * Record the Focus section a sectioned inspector shows for a named address.
+ * Like a scroll, the write is dropped when the address no longer inspects the
+ * node `inspectedId` names.
+ */
+export const recordInspectorSectionAtom = atom(
+  null,
+  (
+    _get,
+    set,
+    input: {
+      address: WorkspaceAddress;
+      inspectedId: string;
+      section: string;
+    }
+  ) => {
+    set(writeNavigationAtom, input.address.workflowId, (navigation) =>
+      updateScopeNavigation(navigation, input.address, (scope) =>
+        scope.desktop.inspected?.id === input.inspectedId
+          ? withInspectorSection(scope, input.section)
+          : scope
+      )
+    );
+  }
+);
+
+/**
+ * Select the node `nodeId` alone in a named address, record `section` as the
+ * Focus section its inspector shows, and open Canvas Reveal at Focus. One
+ * navigation write holds all three, so the selection cannot start the new
+ * object's section over after the section is recorded.
+ */
+export const openInspectorSectionAtom = atom(
+  null,
+  (
+    _get,
+    set,
+    input: { address: WorkspaceAddress; nodeId: string; section: string }
+  ) => {
+    const select = revealFollowsSelection(input.address.key.workspace)
+      ? withSelectionOpeningReveal
+      : withSelection;
+    set(writeNavigationAtom, input.address.workflowId, (navigation) =>
+      updateScopeNavigation(navigation, input.address, (scope) =>
+        withDesktopRevealLevel(
+          withInspectorSection(
+            select(scope, { nodeIds: [input.nodeId], edgeIds: [] }),
+            input.section
+          ),
+          "focus"
+        )
       )
     );
   }

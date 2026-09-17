@@ -300,12 +300,17 @@ the canvas box's top, right, and bottom edges with a hairline border and
 shadow-sm, and it never resizes the canvas. Its width is fixed per level and
 canvas width, and no control resizes it:
 
-| Canvas width     | Browse | Focus                                   |
-| ---------------- | ------ | --------------------------------------- |
-| Under 1024px     | 320px  | 640px, at most the canvas less 16px     |
-| 1024px to 1279px | 360px  | 640px, leaving at least 256px of canvas |
-| 1280px to 1535px | 380px  | 720px, leaving at least 256px of canvas |
-| 1536px and wider | 400px  | 800px, leaving at least 256px of canvas |
+| Canvas width     | Browse | Focus       | Lifecycle Focus      |
+| ---------------- | ------ | ----------- | -------------------- |
+| Under 1024px     | 320px  | Up to 640px | The canvas less 16px |
+| 1024px to 1279px | 360px  | 640px       | Up to 840px          |
+| 1280px to 1535px | 380px  | 720px       | 920px                |
+| 1536px and wider | 400px  | 800px       | 1000px               |
+
+Under 1024px, Focus is 640px or the canvas less 16px, whichever is narrower,
+so a window between 768px and 1023px keeps part of the canvas visible beside
+it. From 1024px up, Focus and its 8px inset always leave at least 256px of canvas, so a
+Lifecycle Focus on a canvas narrower than 1104px is narrower than 840px.
 
 The Draft canvas rests with Reveal closed. Selecting an ordinary step, which is
 any Action or Wait, opens Browse. A context header names the workspace, the step,
@@ -316,11 +321,29 @@ label and value with "Not set" for a missing one, and the step's issues, each of
 which opens Focus on the field it names. Focus holds the complete form, and
 **Return to summary** goes back to Browse. Edits write to the draft as they are
 made, so changing level loses nothing and autosave carries on. A step with no
-action chosen shows the action picker in Browse and has no Focus. A Lifecycle,
-Event Split, Group, connection, and multiple selection show their panel at
-Browse width, under a header holding the panel's title and **Close**. **Runs**
-and **Changes** each have a Browse of their own, and **Changes** is described
-under Publication review.
+action chosen shows the action picker in Browse and has no Focus. An Event
+Split, Group, connection, and multiple selection show their panel at Browse
+width, under a header holding the panel's title and **Close**. **Runs** and
+**Changes** each have a Browse of their own, and **Changes** is described under
+Publication review.
+
+Selecting the Lifecycle node opens Browse with the workflow's lifecycle policy:
+an editable label, the Start Events with each payload Start Filter, the
+overlapping-run behavior and whether manual runs are allowed, the Cancel Events,
+the tracked Entity with its binding in each Event, the eligibility rule and when
+it is checked, and the validation issues. Start Filters and eligibility sit in
+separate sections, and each says what it reads: the arriving Event's payload,
+or the Entity's current state from the host. Each section's edit button opens
+Focus on the matching section, and each issue opens the section that edits what
+it names. Every Lifecycle Rules problem Publish refuses, including a Start or
+Cancel Filter reading a path its Event does not declare, is a blocking issue.
+Lifecycle Focus is wider: a section list beside one section at a time, for
+Start Events, Overlapping runs, Cancel Events, Entity eligibility, Evaluation
+checkpoints, Connections, and Validation. The list counts Start Events, Cancel
+Events, and issues. A control that shows another section moves focus to that
+section's entry in the list. The mobile sheet shows the same policy summary,
+without edit buttons, above the Lifecycle form, and offers no Delete for the
+Lifecycle node.
 
 A selected Condition opens the same header. Its Browse reads the decision: an
 editable label, one sentence stating when the Condition takes True and which
@@ -357,9 +380,10 @@ dialog first. Opening Focus moves focus to the step title, returning to Browse
 puts focus on **Focus editor**, and closing returns focus to the canvas object or
 control that opened Browse. Closing keeps the canvas selection. Selecting a step
 again, or the chevron on the canvas's right edge, reopens the level Reveal was
-closed from. Cmd+B opens and closes Canvas Reveal. The level, the inspected step, and the
-inspector's scroll position are remembered separately for Draft, each Group
-view, the run list, each run, and each comparison. Levels add no browser history.
+closed from. Cmd+B opens and closes Canvas Reveal. The level, the inspected step, the
+inspector's scroll position, and the Lifecycle Focus section are remembered
+separately for Draft, each Group view, the run list, each run, and each
+comparison. Levels add no browser history.
 
 Opening or changing Reveal moves the camera and nothing else: it never runs
 layout, moves a node, or marks the draft changed. The camera keeps its zoom when

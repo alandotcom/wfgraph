@@ -38,7 +38,15 @@ type PublicationBlocker = Omit<AgentValidationIssue, "kind"> & {
   readonly kind: AgentPublicationBlockerKind;
 };
 
-type BlockingWorkflowIssue = Extract<WorkflowIssue, { severity: "blocking" }>;
+/**
+ * The blocking editor issues the agent reads one per node. A Lifecycle Rules
+ * issue is left out, because the publication checks report the same refusal
+ * under their own kinds.
+ */
+type BlockingWorkflowIssue = Extract<
+  WorkflowIssue,
+  { severity: "blocking"; kind: AgentPublicationBlockerKind }
+>;
 
 function integrationBlockerKey(nodeId: string, requiredType: string): string {
   return `${nodeId}\u0000${requiredType}`;
@@ -71,7 +79,8 @@ export function validateAgentPublication(input: {
     integrations: input.integrations,
   });
   const blockingWorkflowIssues = workflowIssues.filter(
-    (issue): issue is BlockingWorkflowIssue => issue.severity === "blocking"
+    (issue): issue is BlockingWorkflowIssue =>
+      issue.severity === "blocking" && issue.kind !== "invalid_lifecycle_rules"
   );
   const warnings: AgentValidationIssue[] = workflowIssues
     .filter((issue) => issue.severity === "warning")

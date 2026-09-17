@@ -27,7 +27,7 @@ export const CANVAS_OBSTACLE_SLOTS = {
   agentPanel: "agent-panel",
 } as const;
 
-/** The margin Focus leaves for the canvas beside it at 1024px and wider. */
+/** The canvas width Focus and its inset leave beside them at 1024px and wider. */
 const FOCUS_CANVAS_MARGIN = 256;
 
 /** Focus's widest size on a canvas narrower than 1024px. */
@@ -37,27 +37,50 @@ const NARROW_FOCUS_WIDTH = 640;
 export const MIN_USABLE_SIZE = { width: 240, height: 160 } as const;
 
 /**
- * The width of Canvas Reveal at one level on a canvas box of `canvasWidth`.
- * Below 1024px Focus is at most 640px, so on a 768px to 1023px window part of
- * the canvas stays visible beside it; wider boxes step through three sizes.
+ * How wide a subject kind's Focus is. Standard fits one form column. Wide adds
+ * 200px for an editor that pairs a section list with its form, such as the
+ * Lifecycle policy editor.
  */
-export function revealWidth(level: RevealLevel, canvasWidth: number): number {
+export type RevealFocusWidth = "standard" | "wide";
+
+/** The Browse and Focus widths at 1024px, 1280px, and 1536px canvas widths. */
+const WIDTH_STEPS = [
+  { minCanvas: 1536, browse: 400, standard: 800, wide: 1000 },
+  { minCanvas: 1280, browse: 380, standard: 720, wide: 920 },
+  { minCanvas: 1024, browse: 360, standard: 640, wide: 840 },
+] as const;
+
+/**
+ * The width of Canvas Reveal at one level on a canvas box of `canvasWidth`.
+ * Below 1024px a standard Focus is at most 640px, so part of the canvas stays
+ * visible beside it, and a wide Focus covers the canvas. Wider boxes step
+ * through three sizes, and Focus is narrowed where needed to leave 256px of
+ * canvas beside its inset.
+ */
+export function revealWidth(
+  level: RevealLevel,
+  canvasWidth: number,
+  focusWidth: RevealFocusWidth
+): number {
   if (level === "closed") {
     return 0;
   }
   const available = Math.max(0, canvasWidth - 2 * REVEAL_INSET);
-  if (canvasWidth < 1024) {
-    return Math.min(level === "browse" ? 320 : NARROW_FOCUS_WIDTH, available);
+  const step = WIDTH_STEPS.find((entry) => canvasWidth >= entry.minCanvas);
+  if (!step) {
+    if (level === "browse") {
+      return Math.min(320, available);
+    }
+    return focusWidth === "wide"
+      ? available
+      : Math.min(NARROW_FOCUS_WIDTH, available);
   }
-  const [browse, focus] =
-    canvasWidth < 1280
-      ? [360, 640]
-      : canvasWidth < 1536
-        ? [380, 720]
-        : [400, 800];
   return level === "browse"
-    ? browse
-    : Math.min(focus, canvasWidth - FOCUS_CANVAS_MARGIN);
+    ? step.browse
+    : Math.min(
+        step[focusWidth],
+        canvasWidth - FOCUS_CANVAS_MARGIN - REVEAL_INSET
+      );
 }
 
 /**
@@ -66,9 +89,10 @@ export function revealWidth(level: RevealLevel, canvasWidth: number): number {
  */
 export function revealOccupiedWidth(
   level: RevealLevel,
-  canvasWidth: number
+  canvasWidth: number,
+  focusWidth: RevealFocusWidth
 ): number {
-  const width = revealWidth(level, canvasWidth);
+  const width = revealWidth(level, canvasWidth, focusWidth);
   return width > 0 ? width + REVEAL_INSET : 0;
 }
 

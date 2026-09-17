@@ -140,6 +140,7 @@ export function CanvasReveal() {
     onScroll,
     onScrollEnd,
     adoptScroll,
+    scrollToTop,
   } = useInspectorScroll(
     kind?.shellOwnsScroll && subject?.nodeId && level !== "closed"
       ? {
@@ -227,6 +228,7 @@ export function CanvasReveal() {
         frame={frame}
         key={subject.kind}
         openFocus={openFocus}
+        scrollToTop={scrollToTop}
         subject={subject}
       />
     ) : null;
@@ -264,7 +266,7 @@ export function CanvasReveal() {
           top: REVEAL_INSET,
           right: REVEAL_INSET,
           bottom: REVEAL_INSET,
-          width: revealWidth(displayedLevel, canvasWidth),
+          width: revealWidth(displayedLevel, canvasWidth, reveal.focusWidth),
           transform:
             level === "closed"
               ? `translateX(calc(100% + ${REVEAL_INSET}px))`

@@ -291,6 +291,164 @@ describe("collectWorkflowIssues Group rules", () => {
   });
 });
 
+describe("collectWorkflowIssues Lifecycle Rules", () => {
+  const lifecycleCatalog: ExtensionCatalog = {
+    ...catalog,
+    events: [
+      {
+        name: "app/appointment.created",
+        label: "Appointment created",
+        correlationPath: "appointment.id",
+        payloadFields: [{ path: "appointment.id", type: "string" }],
+      },
+      {
+        name: "app/appointment.canceled",
+        label: "Appointment canceled",
+        correlationPath: "appointment.id",
+        payloadFields: [{ path: "appointment.id", type: "string" }],
+      },
+    ],
+  };
+
+  function rule(field: string): string {
+    return JSON.stringify({
+      version: 2,
+      groupLogic: "and",
+      groups: [
+        {
+          id: "group",
+          logic: "and",
+          conditions: [
+            {
+              id: "rule",
+              field,
+              fieldType: "string",
+              operator: "equals",
+              value: "x",
+            },
+          ],
+        },
+      ],
+    });
+  }
+
+  function lifecycle(rules: Record<string, unknown>): WorkflowNode {
+    return {
+      id: "lifecycle",
+      type: "lifecycle",
+      position: { x: 0, y: 0 },
+      data: {
+        label: "Lifecycle",
+        type: "lifecycle",
+        config: { lifecycleRules: rules },
+      },
+    };
+  }
+
+  function collect(rules: Record<string, unknown>) {
+    return collectWorkflowIssues({
+      nodes: [lifecycle(rules)],
+      edges: [],
+      catalog: lifecycleCatalog,
+      integrations: [],
+    });
+  }
+
+  // ADR-0016: a filter reading a path its Event does not declare compiles and
+  // reads false on every arrival, so Publish refuses it and the editor says so.
+  it("reports a Start Filter and a Cancel Filter reading undeclared paths as Publish blockers", () => {
+    const issues = collect({
+      startEvents: ["app/appointment.created"],
+      cancelEvents: ["app/appointment.canceled"],
+      concurrency: "unlimited",
+      startFilters: { "app/appointment.created": rule("tenantId") },
+      cancelFilters: { "app/appointment.canceled": rule("reason") },
+    });
+
+    expect(issues).toEqual([
+      expect.objectContaining({
+        kind: "invalid_lifecycle_rules",
+        severity: "blocking",
+        nodeId: "lifecycle",
+        nodeLabel: "Lifecycle",
+        check: "start_filter",
+        message: expect.stringContaining("tenantId"),
+      }),
+      expect.objectContaining({
+        kind: "invalid_lifecycle_rules",
+        check: "cancel_filter",
+        message: expect.stringContaining("reason"),
+      }),
+    ]);
+    expect(hasBlockingWorkflowIssues(issues)).toBe(true);
+    expect(hasDraftRunBlockingIssues(issues)).toBe(false);
+    expect(groupWorkflowIssuesForOverlay(issues)).toMatchObject({
+      draftRunBlockingCount: 0,
+      publishBlockingCount: 2,
+      invalidLifecycleRules: [
+        {
+          nodeId: "lifecycle",
+          problems: [{ check: "start_filter" }, { check: "cancel_filter" }],
+        },
+      ],
+    });
+  });
+
+  it("reports rules preflight refuses as blocking the draft run too", () => {
+    const issues = collect({
+      startEvents: ["app/appointment.created"],
+      cancelEvents: ["app/appointment.created"],
+      concurrency: "unlimited",
+    });
+
+    expect(issues).toEqual([
+      expect.objectContaining({
+        kind: "invalid_lifecycle_rules",
+        check: "rules",
+        message: expect.stringContaining("cannot both start and cancel runs"),
+      }),
+    ]);
+    expect(hasDraftRunBlockingIssues(issues)).toBe(true);
+  });
+
+  it("reports Entity Eligibility with no tracked Entity", () => {
+    const issues = collect({
+      startEvents: ["app/appointment.created"],
+      cancelEvents: [],
+      concurrency: "unlimited",
+      entityEligibility: {
+        condition: rule("status"),
+        checkpoints: ["before-execution"],
+      },
+    });
+
+    expect(issues).toEqual([
+      expect.objectContaining({ check: "entity_eligibility" }),
+    ]);
+  });
+
+  it("passes a valid policy and a Lifecycle Node with no stored rules", () => {
+    expect(
+      collect({
+        startEvents: ["app/appointment.created"],
+        cancelEvents: [],
+        concurrency: "unlimited",
+        startFilters: { "app/appointment.created": rule("appointment.id") },
+      })
+    ).toEqual([]);
+    expect(
+      collectWorkflowIssues({
+        nodes: [
+          { ...lifecycle({}), data: { ...lifecycle({}).data, config: {} } },
+        ],
+        edges: [],
+        catalog: lifecycleCatalog,
+        integrations: [],
+      })
+    ).toEqual([]);
+  });
+});
+
 describe("findUnconfiguredIntegrationNodes", () => {
   it("names enabled actions that need a connection and carry none", () => {
     const results = findUnconfiguredIntegrationNodes({

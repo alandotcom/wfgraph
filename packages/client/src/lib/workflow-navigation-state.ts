@@ -86,14 +86,17 @@ export type ScopePresentation = { camera: WorldCamera | null };
 /**
  * The desktop presentation adds Canvas Reveal. A null `revealLevel` belongs to
  * a scope that has never been shown. `reopenLevel` is the level a newly
- * selected object opens at. `inspected` is the object the stored level and
- * `inspectorScroll` (pixels from the top, per open level) belong to.
+ * selected object opens at. `inspected` is the object the stored level,
+ * `inspectorScroll` (pixels from the top, per open level), and
+ * `inspectorSection` belong to. `inspectorSection` is the id of the Focus
+ * section a sectioned inspector shows, and null shows its first section.
  */
 export type DesktopScopePresentation = ScopePresentation & {
   revealLevel: RevealLevel | null;
   reopenLevel: OpenRevealLevel;
   inspected: InspectedObject | null;
   inspectorScroll: Readonly<Record<OpenRevealLevel, number>>;
+  inspectorSection: string | null;
 };
 
 /**
@@ -157,6 +160,7 @@ export const EMPTY_SCOPE_NAVIGATION: ScopeNavigation = {
     reopenLevel: "browse",
     inspected: null,
     inspectorScroll: { browse: 0, focus: 0 },
+    inspectorSection: null,
   },
   mobile: { camera: null },
   showSuperseded: false,
@@ -546,7 +550,7 @@ function sameObject(
  * Write a Draft selection and open Canvas Reveal for it. When the selection
  * comes to hold one object it did not hold alone before, Reveal opens at the
  * scope's `reopenLevel`. A different object than the one inspected becomes the
- * inspected object, and its inspector scroll starts at the top.
+ * inspected object, and its inspector scroll and section start over.
  */
 export function withSelectionOpeningReveal(
   scope: ScopeNavigation,
@@ -570,6 +574,7 @@ export function withSelectionOpeningReveal(
       ...opened.desktop,
       inspected: selected,
       inspectorScroll: EMPTY_SCOPE_NAVIGATION.desktop.inspectorScroll,
+      inspectorSection: null,
     },
   };
 }
@@ -602,8 +607,28 @@ export function withShowSuperseded(
 }
 
 /**
+ * Record the Focus section a sectioned inspector shows. Another section starts
+ * its Focus scroll at the top.
+ */
+export function withInspectorSection(
+  scope: ScopeNavigation,
+  section: string | null
+): ScopeNavigation {
+  return scope.desktop.inspectorSection === section
+    ? scope
+    : {
+        ...scope,
+        desktop: {
+          ...scope.desktop,
+          inspectorSection: section,
+          inspectorScroll: { ...scope.desktop.inspectorScroll, focus: 0 },
+        },
+      };
+}
+
+/**
  * The scope without an inspected object the graph no longer holds, and without
- * the scroll recorded for it.
+ * the scroll and section recorded for it.
  */
 export function inspectionInGraph(
   scope: ScopeNavigation,
@@ -625,6 +650,7 @@ export function inspectionInGraph(
           ...scope.desktop,
           inspected: null,
           inspectorScroll: EMPTY_SCOPE_NAVIGATION.desktop.inspectorScroll,
+          inspectorSection: null,
         },
       };
 }

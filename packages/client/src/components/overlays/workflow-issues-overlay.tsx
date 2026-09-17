@@ -47,6 +47,7 @@ export function WorkflowIssuesOverlay({
     publishBlockingCount,
     brokenReferences,
     invalidGroups,
+    invalidLifecycleRules,
     missingRequiredFields,
     missingIntegrations,
     unverifiedProviderFields,
@@ -115,8 +116,8 @@ export function WorkflowIssuesOverlay({
       title={workflowIssuesLabel(totalIssues)}
     >
       {/* One sentence, and the hardest fact is the one that survives: an
-          issue stopping the run outranks a Group problem, which stops only
-          Publish, and that outranks a warning. */}
+          issue stopping the run outranks an issue that stops only Publish,
+          such as a Group problem, and that outranks a warning. */}
       {draftRunBlockingCount > 0 ? (
         <div className="flex items-center gap-2 text-destructive">
           <AlertTriangle className="size-5" />
@@ -128,7 +129,7 @@ export function WorkflowIssuesOverlay({
         <div className="flex items-center gap-2 text-warning">
           <AlertTriangle className="size-5" />
           <p className="text-sm">
-            Resolve the Group problems before publishing. The draft can still
+            Resolve the blocking issues before publishing. The draft can still
             run.
           </p>
         </div>
@@ -205,6 +206,39 @@ export function WorkflowIssuesOverlay({
                 <Button
                   className="shrink-0"
                   onClick={() => handleGoToStep(group.nodeId)}
+                  size="sm"
+                  variant="outline"
+                >
+                  Show
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {invalidLifecycleRules.length > 0 && (
+          <div className="space-y-2">
+            <h4 className="font-medium text-muted-foreground text-sm">
+              Lifecycle Problems
+            </h4>
+            {invalidLifecycleRules.map((lifecycle) => (
+              <div className="flex items-start gap-3" key={lifecycle.nodeId}>
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-sm">{lifecycle.nodeLabel}</p>
+                  <ul className="mt-1 space-y-0.5 pl-3">
+                    {lifecycle.problems.map((problem) => (
+                      <li
+                        className="text-muted-foreground text-sm"
+                        key={problem.check}
+                      >
+                        {problem.message}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <Button
+                  className="shrink-0"
+                  onClick={() => handleGoToStep(lifecycle.nodeId)}
                   size="sm"
                   variant="outline"
                 >
