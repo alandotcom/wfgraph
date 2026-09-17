@@ -222,8 +222,9 @@ export function matchRunsSubject(
 
 /**
  * The Changes workspace, whatever it has selected. A single selected node or
- * connection is placed on the canvas, and any other selection places the whole
- * comparison graph. It offers Browse alone.
+ * connection is placed on the canvas and offers Browse and Focus, where its
+ * before-and-after properties show. Any other selection places the whole
+ * comparison graph and offers Browse alone.
  */
 export function matchChangesSubject(
   input: RevealMatchInput
@@ -235,7 +236,7 @@ export function matchChangesSubject(
   const base = {
     kind: "changes" as const,
     workspace: input.workspace,
-    levels: ["browse"] as const,
+    levels: ["browse", "focus"] as const,
   };
   if (nodes.length === 1 && edges.length === 0) {
     return {
@@ -256,7 +257,13 @@ export function matchChangesSubject(
       },
     };
   }
-  return { ...base, key: "graph", nodeId: null, placement: { kind: "graph" } };
+  return {
+    ...base,
+    key: "graph",
+    nodeId: null,
+    placement: { kind: "graph" },
+    levels: ["browse"],
+  };
 }
 
 /**

@@ -7,6 +7,7 @@ import {
   createRouter,
   RouterContextProvider,
 } from "@tanstack/react-router";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
@@ -105,13 +106,13 @@ describe("comparison properties", () => {
 
     expect(fields).toEqual([
       {
-        key: 'field:["data","label"]:0',
+        key: 'field:["data","label"]',
         label: "Label",
         before: "Published email",
         after: "Current email",
       },
       {
-        key: 'field:["data","config","subject"]:1',
+        key: 'field:["data","config","subject"]',
         label: "Subject",
         before: "Before",
         after: "After",
@@ -142,7 +143,7 @@ describe("comparison properties", () => {
     expect(removed.find((field) => field.label === "Subject")).toEqual({
       key: "snapshot:config:subject",
       label: "Subject",
-      after: "Before",
+      before: "Before",
     });
   });
 
@@ -265,13 +266,15 @@ function renderPanel(
 ) {
   return render(
     <RouterContextProvider router={router}>
-      <JotaiProvider store={store}>
-        <OverlayProvider>
-          <ExtensionCatalogProvider value={catalog}>
-            <WorkflowChangesPanel actions={actions} />
-          </ExtensionCatalogProvider>
-        </OverlayProvider>
-      </JotaiProvider>
+      <QueryClientProvider client={new QueryClient()}>
+        <JotaiProvider store={store}>
+          <OverlayProvider>
+            <ExtensionCatalogProvider value={catalog}>
+              <WorkflowChangesPanel actions={actions} />
+            </ExtensionCatalogProvider>
+          </OverlayProvider>
+        </JotaiProvider>
+      </QueryClientProvider>
     </RouterContextProvider>
   );
 }
@@ -351,5 +354,46 @@ describe("WorkflowChangesPanel", () => {
     expect(store.get(workflowWorkspaceViewAtom)).toBe("changes");
     expect(store.get(comparisonSessionAtom)?.subview).toBe("properties");
     expect(view.getByRole("button", { name: "Back to changes" })).toBeTruthy();
+  });
+
+  it("shows a masked or redacted value as hidden in the properties view", () => {
+    const store = createStore();
+    store.set(currentWorkflowIdAtom, "workflow_1");
+    showWorkspaceRoute(store, { view: "changes" });
+    const epoch = store.set(beginWorkflowComparisonRequestAtom, "workflow_1");
+    const [change] = payload.nodeChanges;
+    store.set(installWorkflowComparisonAtom, {
+      workflowId: "workflow_1",
+      epoch,
+      payload: {
+        ...payload,
+        nodeChanges: [
+          {
+            nodeId: "step_1",
+            kind: "modified",
+            fields: [
+              ...(change?.fields ?? []).slice(0, 1),
+              {
+                path: ["data", "config", "subject"],
+                kind: "modified",
+                before: "********cret",
+                after: "Bearer [REDACTED]",
+              },
+            ],
+          },
+        ],
+      },
+    });
+    const actions = {
+      isPending: false,
+      compare: { isError: false },
+      openComparison: async () => undefined,
+    } as never;
+    const view = renderPanel(store, actions);
+
+    fireEvent.click(view.getByRole("button", { name: /Current email/ }));
+
+    expect(view.getAllByText("Hidden for security")).toHaveLength(2);
+    expect(view.queryByText(/cret|REDACTED/)).toBeNull();
   });
 });

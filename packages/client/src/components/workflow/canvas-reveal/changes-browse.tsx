@@ -1,14 +1,7 @@
 import { partition } from "es-toolkit/array";
 import { isEmptyObject } from "es-toolkit/predicate";
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import {
-  ArrowLeft,
-  ArrowRight,
-  History,
-  RefreshCw,
-  RotateCcw,
-  X,
-} from "lucide-react";
+import { useAtomValue, useSetAtom, useStore } from "jotai";
+import { History, RefreshCw, RotateCcw, X } from "lucide-react";
 import { type RefObject, useMemo, useRef } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { ComparisonMarker } from "#src/components/flow-elements/comparison-marker";
@@ -16,7 +9,7 @@ import { Button } from "#src/components/ui/button";
 import { useWorkflowComparisonActions } from "#src/components/workflow/use-workflow-comparison-actions";
 import { PanelState } from "#src/components/workflow/workflow-changes-panel-state";
 import { WorkflowVersionHistory } from "#src/components/workflow/workflow-version-history";
-import { useAfterCommit } from "#src/hooks/effects";
+import { useAfterCommit, useAfterPaint } from "#src/hooks/effects";
 import { useWorkflowWorkspaceNavigation } from "#src/hooks/use-workflow-workspace-navigation";
 import {
   comparisonDisplayGraphAtom,
@@ -25,6 +18,7 @@ import {
   setComparisonSubviewAtom,
 } from "#src/lib/workflow-comparison-store";
 import {
+  selectedObject,
   workspaceAddressId,
   type WorkspaceAddress,
 } from "#src/lib/workflow-navigation-state";
@@ -36,13 +30,13 @@ import {
 } from "#src/lib/workflow-workspace-navigation";
 import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
 import { cn } from "@wfgraph/shared/utils";
+import { ChangeNavigation, useChangedObjects } from "./changes-navigation";
 import {
-  changedObjects,
-  changeSelection,
+  changeRowFocusRequestAtom,
   changesHeaderModel,
   comparisonRevealContextAtom,
   describeChangeCounts,
-  selectedChangeIndex,
+  inspectChange,
   type ChangedObject,
   type ComparisonShownStatus,
   type ComparisonWaitingStatus,
@@ -54,18 +48,49 @@ import { useInspectorScroll } from "./use-inspector-scroll";
 type ComparisonActions = ReturnType<typeof useWorkflowComparisonActions>;
 
 /**
- * The Changes header: the comparison's name and path, and what its latest
- * request is doing. It reads the comparison itself, so the shell passes only
- * its level controls.
+ * The Changes header: the comparison's name and path, what its latest request
+ * is doing, and at Focus the title of the inspected object. It reads the
+ * comparison and selection itself, so the shell passes only its level controls.
  */
 export function ChangesHeader({ level, controls }: RevealKindHeaderProps) {
   const comparison = useAtomValue(comparisonRevealContextAtom);
   const workflowName = useAtomValue(currentWorkflowNameAtom);
+  const graph = useAtomValue(comparisonDisplayGraphAtom);
+  const selection = useAtomValue(activeSelectionAtom);
+  const catalog = useExtensionCatalog();
+  const object = selectedObject(selection);
+  const objectKind = object?.kind;
+  const objectId = object?.id;
+  const payload = "payload" in comparison ? comparison.payload : null;
+  const inspectedTitle = useMemo(() => {
+    if (
+      level !== "focus" ||
+      payload === null ||
+      graph === null ||
+      objectKind === undefined ||
+      objectId === undefined
+    ) {
+      return null;
+    }
+    const inspection = inspectChange({
+      payload,
+      graph,
+      catalog,
+      objects: [],
+      object: { kind: objectKind, id: objectId },
+    });
+    return inspection.kind === "unavailable" ? null : inspection.title;
+  }, [catalog, graph, level, objectId, objectKind, payload]);
   return (
     <RevealHeader
       controls={controls}
       level={level}
-      model={changesHeaderModel({ comparison, workflowName })}
+      model={changesHeaderModel({
+        comparison,
+        workflowName,
+        level,
+        inspectedTitle,
+      })}
     />
   );
 }
@@ -83,6 +108,18 @@ export function ChangesBrowse(_props: RevealBodyProps) {
   const historyHeadingRef = useRef<HTMLHeadingElement>(null);
   const historyButtonRef = useRef<HTMLButtonElement>(null);
   const showsHistory = "payload" in comparison && comparison.showsHistory;
+  const showsList = "payload" in comparison && !comparison.showsHistory;
+  const rowFocusRequest = useAtomValue(changeRowFocusRequestAtom);
+  const setRowFocusRequest = useSetAtom(changeRowFocusRequestAtom);
+
+  // A row focus request is for the change list alone. Without the list it is
+  // dropped, so it cannot take focus when the list mounts later.
+  const unusedRequest = showsList ? null : rowFocusRequest;
+  useAfterCommit(unusedRequest, () => {
+    if (unusedRequest !== null) {
+      setRowFocusRequest(null);
+    }
+  });
 
   // Opening or leaving version history unmounts the control that did it, so
   // focus moves to the history heading, or back to Version history. The view
@@ -214,8 +251,11 @@ function ChangesControls({
   );
 }
 
-/** What Browse shows while the comparison the address names is not installed. */
-function ComparisonState({
+/**
+ * What a Changes body shows while the comparison the address names is not
+ * installed: loading, a retryable failure, or the offer to open one.
+ */
+export function ComparisonState({
   actions,
   address,
   status,
@@ -251,6 +291,13 @@ function ComparisonState({
   );
 }
 
+/** Whether any part of `row` lies outside the visible area of `scroller`. */
+function isOutsideScroller(row: HTMLElement, scroller: HTMLElement): boolean {
+  const rowBox = row.getBoundingClientRect();
+  const scrollerBox = scroller.getBoundingClientRect();
+  return rowBox.top < scrollerBox.top || rowBox.bottom > scrollerBox.bottom;
+}
+
 const LIVE_STATUS: Record<ComparisonShownStatus, string> = {
   ready: "",
   refreshing: "Refreshing comparison",
@@ -259,9 +306,9 @@ const LIVE_STATUS: Record<ComparisonShownStatus, string> = {
 
 /**
  * The comparison's counts, its changed nodes then connections, and Previous and
- * Next. Choosing a row selects that object on the canvas, which places it. The
- * list keeps its scroll for the address, and a selection made anywhere scrolls
- * its row into view.
+ * Next. Choosing a row selects that object on the canvas, which places it, and
+ * Compare fields in the header shows it in Focus. The list keeps its scroll for
+ * the address, and a selection made anywhere scrolls its row into view.
  */
 function ChangeList({
   address,
@@ -272,20 +319,15 @@ function ChangeList({
   payload: WorkflowComparisonPayload;
   status: ComparisonShownStatus;
 }) {
-  const catalog = useExtensionCatalog();
-  const graph = useAtomValue(comparisonDisplayGraphAtom);
-  const [selection, setSelection] = useAtom(activeSelectionAtom);
-  const objects = useMemo(
-    () => (graph ? changedObjects({ payload, graph, catalog }) : []),
-    [catalog, graph, payload]
-  );
+  const { objects, selectedIndex, selectedKey, select } =
+    useChangedObjects(payload);
   const [nodeObjects, edgeObjects] = partition(
     objects,
     (item) => item.object.kind === "node"
   );
-  const selectedIndex = selectedChangeIndex(objects, selection);
-  const selectedKey = objects[selectedIndex]?.key ?? null;
   const rows = useRef(new Map<string, HTMLButtonElement>());
+  const store = useStore();
+  const addressId = workspaceAddressId(address);
   const {
     ref: scrollRef,
     onScroll,
@@ -293,9 +335,30 @@ function ChangeList({
     adoptScroll,
   } = useInspectorScroll({
     address,
-    addressId: workspaceAddressId(address),
+    addressId,
     inspectedId: null,
     level: "browse",
+  });
+
+  // Back from Focus mounts the list with its restored scroll, then hands DOM
+  // focus to the row of the object Focus showed. A row outside the list's
+  // visible area, which Previous and Next in Focus can select, is scrolled
+  // into view first and that scroll is kept.
+  useAfterPaint(addressId, () => {
+    if (store.get(changeRowFocusRequestAtom) !== addressId) {
+      return;
+    }
+    store.set(changeRowFocusRequestAtom, null);
+    const row = selectedKey === null ? null : rows.current.get(selectedKey);
+    if (!row) {
+      return;
+    }
+    const scroller = scrollRef.current;
+    if (scroller && isOutsideScroller(row, scroller)) {
+      row.scrollIntoView?.({ block: "nearest" });
+      adoptScroll();
+    }
+    row.focus({ preventScroll: true });
   });
 
   // A selection that changes while the list is shown brings its row into view.
@@ -312,12 +375,6 @@ function ChangeList({
       adoptScroll();
     }
   });
-
-  const select = (item: ChangedObject | undefined) => {
-    if (item) {
-      setSelection(changeSelection(item.object));
-    }
-  };
 
   const renderRows = (items: readonly ChangedObject[]) =>
     items.map((item) => {
@@ -413,38 +470,11 @@ function ChangeList({
           ) : null}
         </div>
       )}
-      <nav
-        aria-label="Changed objects"
-        className="flex shrink-0 items-center justify-between border-t px-2 py-1.5"
-      >
-        <Button
-          aria-label="Previous change"
-          disabled={selectedIndex <= 0}
-          onClick={() => select(objects[selectedIndex - 1])}
-          size="sm"
-          type="button"
-          variant="ghost"
-        >
-          <ArrowLeft data-icon="inline-start" />
-          Previous
-        </Button>
-        <span className="text-muted-foreground text-xs">
-          {selectedIndex >= 0
-            ? `${selectedIndex + 1} of ${objects.length}`
-            : `${objects.length} ${objects.length === 1 ? "change" : "changes"}`}
-        </span>
-        <Button
-          aria-label="Next change"
-          disabled={selectedIndex >= objects.length - 1}
-          onClick={() => select(objects[selectedIndex + 1])}
-          size="sm"
-          type="button"
-          variant="ghost"
-        >
-          Next
-          <ArrowRight data-icon="inline-end" />
-        </Button>
-      </nav>
+      <ChangeNavigation
+        objects={objects}
+        onSelect={select}
+        selectedIndex={selectedIndex}
+      />
     </>
   );
 }

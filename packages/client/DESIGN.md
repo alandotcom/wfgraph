@@ -456,7 +456,30 @@ change markers until the comparison the route names arrives. Version history ope
 on its heading. **Back to changes** or Escape returns to the list with its
 selection and scroll, and focus on **Version history**; Escape from the list
 closes Reveal. **Reset comparison layout** also hands focus to **Version
-history**. Restore
+history**.
+
+With one changed step or connection selected, on the canvas or from the list,
+**Compare fields** opens a wide Focus for that object. Its path ends with the
+object's title. A table lists each setting under readable names, with a column
+for the published version ("Version N") and one for **Current draft**: both
+columns for a modified step, the draft column alone for an added one, and the
+published column alone for a removed one. A long value starts shortened with
+its length and **Show full value**, and a value the server redacted or masked
+reads "Hidden for security". A Lifecycle rule keyed by Event names that Event,
+as "Start filter › Appointment booked", a Start or Cancel Filter reads as its
+rules or "Filter changed" when it cannot be read, and a Connection reads as its
+name or "Connection changed". Focus says so when a step's action is missing from
+the catalog and its settings show general names, when the comparison lacks a
+side's values, and when a step is unchanged and only its connections changed,
+listing those connections. A changed step also shows how the editor's issue
+checks differ between the two versions, and says validation is unknown for a
+version whose action is missing from the catalog. **Previous** and **Next** in Focus move the canvas selection and
+Focus together, and a changed step inside a collapsed Group is selected on that
+Group's focused canvas. Previous and Next replace the
+route's history entry when they reach another scope. Back or Escape returns to
+the change list in Browse with the list scroll Focus was entered with, the
+selection, and the camera, and focus on the object's row, scrolled into view
+when it is outside the list. Restore
 always says "Restore version N as draft" and requires confirmation that the
 published version remains unchanged.
 

@@ -204,7 +204,7 @@ describe("matchRunsSubject", () => {
 });
 
 describe("matchChangesSubject", () => {
-  it("places the selected node, the selected connection's steps, or the whole graph", () => {
+  it("places the selected node, the selected connection's steps, or the whole graph, offering Focus for one object", () => {
     expect(matchChangesSubject(input("changes", []))).toMatchObject({
       kind: "changes",
       key: "graph",
@@ -216,11 +216,13 @@ describe("matchChangesSubject", () => {
       key: "node:send",
       nodeId: "send",
       placement: { kind: "nodes", nodeIds: ["send"] },
+      levels: ["browse", "focus"],
     });
     expect(matchChangesSubject(input("changes", [], ["e1"]))).toMatchObject({
       key: "edge:e1",
       nodeId: null,
       placement: { kind: "nodes", nodeIds: ["send", "wait"] },
+      levels: ["browse", "focus"],
     });
     expect(
       matchChangesSubject(input("changes", ["send", "wait"]))
