@@ -3,10 +3,8 @@ import { useCallback } from "react";
 import { ConfigurationOverlay } from "#src/components/overlays/configuration-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
 import type { WorkspaceAddress } from "#src/lib/workflow-navigation-state";
-import {
-  activeWorkspaceAddressAtom,
-  openMobileSelectionAtom,
-} from "#src/lib/workflow-workspace-navigation";
+import { openMobileSelectionAtom } from "#src/lib/mobile-sheet-store";
+import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
 
 /**
  * Open the inspector a narrow viewport shows for `address`, the active address

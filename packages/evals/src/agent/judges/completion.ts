@@ -13,10 +13,10 @@ function failure(rationale: string): DeterministicAssessment {
 }
 
 function answerRequirementFailure(
-  expected: Exclude<
-    AgentEvalExpectedCompletion,
-    { outcome: "ready" } | { outcome: "clarification" }
-  >,
+  expected: {
+    answerMustMention?: string[] | undefined;
+    answerMustMentionOneOf?: string[] | undefined;
+  },
   finalText: string
 ): string | undefined {
   const normalized = finalText.toLocaleLowerCase();
@@ -175,6 +175,13 @@ export function assessExpectedCompletion(
       return failure(
         "The answer claims a publish blocker while the workflow is ready."
       );
+    }
+    const readyAnswerFailure = answerRequirementFailure(
+      input.expected,
+      input.finalText
+    );
+    if (readyAnswerFailure) {
+      return failure(readyAnswerFailure);
     }
     return {
       score: 1,

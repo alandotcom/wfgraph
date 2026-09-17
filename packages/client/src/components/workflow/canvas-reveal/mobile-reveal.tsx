@@ -10,7 +10,6 @@ import {
   useNodeConfigTitle,
 } from "#src/components/workflow/node-config-panel";
 import { useAfterPaint } from "#src/hooks/effects";
-import { sheetObjectKey } from "#src/lib/mobile-sheet-navigation";
 import { nodesAtom, presentedGraphAtom } from "#src/lib/workflow-graph-store";
 import {
   comparisonNodeTitle,
@@ -28,7 +27,7 @@ import {
   closeMobileSheetAtom,
   openMobileInspectorOverAddressAtom,
   openMobileSheetAtom,
-} from "#src/lib/workflow-workspace-navigation";
+} from "#src/lib/mobile-sheet-store";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { cn } from "@wfgraph/shared/utils";
 import {
@@ -66,19 +65,16 @@ function sheetTitle(
 
 /**
  * Where the Back control of a sheet whose kind has no `mobile` record leads, as
- * its visible label. The first sheet takes `scopeBackLabel`, which names the
- * focused Group and is null on the overview, where the first sheet offers
- * Close.
+ * its visible label: the sheet beneath, or null for the first sheet.
  */
 function draftBackLabel(
   state: MobileRevealState,
-  scopeBackLabel: string | null,
   nodes: readonly WorkflowNode[],
   catalog: ExtensionCatalog
 ): string | null {
   const { beneath, sheet } = state;
   if (beneath === null) {
-    return scopeBackLabel;
+    return null;
   }
   return beneath.inspected !== null &&
     sheet.inspected !== null &&
@@ -153,13 +149,12 @@ export function MobileReveal() {
   const catalog = useExtensionCatalog();
   // The first sheet inside a focused Group leads back to that Group's canvas,
   // and its Back control is named for the Group in every workspace.
-  const scopeBackLabel = state
-    ? scopeGroupLabel(presentedNodes ?? [], state.address.scope)
-    : null;
+  const scopeBackLabel =
+    state && state.beneath === null
+      ? scopeGroupLabel(presentedNodes ?? [], state.address.scope)
+      : null;
   const inspected = state?.sheet.inspected ?? null;
-  const sheetKey = state
-    ? `${state.addressId}|${state.depth}|${state.level}|${sheetObjectKey(inspected)}`
-    : null;
+  const sheetKey = state?.sheetKey ?? null;
 
   // A kind that scrolls inside its own body keeps that scroll itself.
   const { ref, onScroll, onScrollEnd, adoptScroll, scrollToTop } =
@@ -167,7 +162,7 @@ export function MobileReveal() {
       state && shellOwnsScroll
         ? {
             address: state.address,
-            addressId: state.addressId,
+            sheetKey: state.sheetKey,
             depth: state.depth,
             level: state.level,
             inspected,
@@ -275,6 +270,7 @@ export function MobileReveal() {
     openInspector:
       offersInspector && !isInspector ? () => openInspector() : null,
     titleRef,
+    scopeBackLabel,
   };
   const level: OpenRevealLevel = isInspector ? "focus" : "browse";
   const Body =
@@ -316,15 +312,10 @@ export function MobileReveal() {
         }}
       >
         {mobile ? (
-          <mobile.Header
-            controls={controls}
-            key={kind.id}
-            scopeBackLabel={scopeBackLabel}
-            state={state}
-          />
+          <mobile.Header controls={controls} key={kind.id} state={state} />
         ) : (
           <MobileSheetHeader
-            backLabel={draftBackLabel(state, scopeBackLabel, nodes, catalog)}
+            backLabel={draftBackLabel(state, nodes, catalog)}
             controls={controls}
             inspectorLabel="Open editor"
             status={heading.status}

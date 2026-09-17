@@ -16,7 +16,7 @@ import {
   useAtomValue,
   useSetAtom,
 } from "jotai";
-import { type ReactNode, useState } from "react";
+import { type CSSProperties, type ReactNode, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
@@ -30,6 +30,7 @@ import {
   type RevealKind,
   revealKind,
 } from "#src/components/workflow/canvas-reveal/reveal-kinds";
+import { useRevealOccupiedWidth } from "#src/components/workflow/canvas-reveal/use-reveal-width";
 import { WorkflowContextMenu } from "#src/components/workflow/workflow-context-menu";
 import {
   installAuthorizationGrantsForTests,
@@ -158,6 +159,17 @@ function FakeCanvas() {
       </div>
     </div>
   );
+}
+
+/**
+ * A canvas box publishing `--reveal-occupied-width`, the value the canvas
+ * overlays beside open Reveal read, as the editor canvas publishes it.
+ */
+function OccupiedWidthCanvas() {
+  const style: CSSProperties & Record<"--reveal-occupied-width", string> = {
+    "--reveal-occupied-width": `${useRevealOccupiedWidth()}px`,
+  };
+  return <div data-testid="workflow-canvas" style={style} />;
 }
 
 /**
@@ -316,6 +328,22 @@ describe("Canvas Reveal presentation states", () => {
     expect(level()).toBe("closed");
     expect(view.queryByRole("separator")).toBeNull();
     expect(view.queryByLabelText("Open inspector")).toBeNull();
+  });
+
+  it("publishes the width open Canvas Reveal covers on the canvas box", async () => {
+    const { view, select } = await renderReveal(
+      {},
+      { canvas: OccupiedWidthCanvas }
+    );
+    const occupied = () =>
+      view
+        .getByTestId("workflow-canvas")
+        .style.getPropertyValue("--reveal-occupied-width");
+    expect(occupied()).toBe("0px");
+
+    await select("send");
+
+    await waitFor(() => expect(occupied()).toMatch(/^[1-9]\d*px$/));
   });
 
   it("opens Browse with the workspace, step, path, and status for an Action", async () => {
@@ -670,7 +698,7 @@ describe("Canvas Reveal in Runs", () => {
     return rendered;
   }
 
-  it("closes and reopens the run panel from the header and Cmd+B, keeping the run", async () => {
+  it("closes and reopens Canvas Reveal in Runs from the header and Cmd+B, keeping the run", async () => {
     const { view, store, router, level } = await renderRuns();
     await waitFor(() => expect(level()).toBe("browse"));
 

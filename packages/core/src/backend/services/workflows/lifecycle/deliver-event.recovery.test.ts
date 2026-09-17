@@ -174,7 +174,7 @@ const videoPayload = {
   appointment: { id: "appt_8813", channel: "video", seats: "two" },
 };
 
-/** One finished rule over `path`, as the Lifecycle panel would serialize it. */
+/** One finished rule over `path`, as the Lifecycle Node inspector would serialize it. */
 function filterOn(input: {
   path: string;
   fieldType: "string" | "number";

@@ -213,7 +213,9 @@ export const GroupNode = memo(
                 style={alongOutletSide(Position.Bottom, offset)}
                 type="source"
               />
-              {outlet.label === null ? null : (
+              {/* An edge leaving the Group draws its Condition branch name on
+                  itself, so the card captions only a path-end outlet. */}
+              {outlet.label === null || outlet.continues ? null : (
                 <OutletLabel
                   // A member's name can be long, and several labels share the
                   // card's bottom edge, so a long name truncates within its

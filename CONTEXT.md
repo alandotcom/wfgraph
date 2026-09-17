@@ -209,24 +209,27 @@ graph only through its members. The Group's boundary is derived from membership
 and the stored edges: the outside steps that enter the Group, the members they
 enter, the members whose edges leave it, the outside steps those edges reach,
 and the members where a path ends inside it. A frame has no enabled state or
-run behavior of its own. It stores a layout direction, vertical or horizontal,
-which decides only how the editor draws its members when the Group is entered.
+run behavior of its own. Its config holds one key, `direction`, vertical or
+horizontal, which decides only how the editor draws its members when the Group
+is entered. The editor shows a Group on the workflow canvas as one collapsed
+card, and entering the Group shows its members on a canvas of their own.
 Removing a frame ungroups its members and keeps every stored edge, and an edit
 that leaves a Group with fewer than two steps ungroups it the same way. The
 editor groups a selection only when the Group it would form meets the Publish
 rules below.
 A draft save refuses a Group member that is the Lifecycle Node, an Add node,
-or another Group. Publish refuses a Group that holds an Event Split or holds
-fewer than two other steps. Its edges may enter from one outside outlet and
-may leave from one inside outlet, and a path may end inside it. That inside
-outlet may be one branch of a Condition whose other branch ends inside the
-Group, and two outlets leaving it are refused even when they reach the same
-outside step. A join inside a Group takes every arm and every predecessor from
-inside the Group. A Group may sit on an arm of a join outside it. Publish
-refuses a Group whose Condition sits on an arm of any join, because the branch
-the Condition does not take leaves that join unreleased. A draft that breaks
-the Publish rules still saves, and a draft run ignores them, because a Group
-does not change how a run executes.
+or another Group, and refuses a stored edge that touches a frame. Publish
+refuses a Group that holds an Event Split or holds fewer than two other steps.
+Edges may enter the Group from one outside outlet, which may connect to several
+members, and may leave it from one inside outlet, and a path may end inside the
+Group. That inside outlet may be one branch of a Condition whose other branch
+ends inside the Group, and two outlets leaving it are refused even when they
+reach the same outside step. A join inside a Group takes every arm and every
+predecessor from inside the Group. A Group may sit on an arm of a join outside
+it. Publish refuses a Group whose Condition sits on an arm of any join, because
+the branch the Condition does not take leaves that join unreleased. A draft
+that breaks the Publish rules still saves, and a draft run ignores them,
+because a Group does not change how a run executes.
 
 **Precedence**:
 One fixed order when an Event arrives: Lifecycle Rules apply first, then the
@@ -352,6 +355,18 @@ credentials an operator entered or an OAuth grant the External System issued.
 An application may hold several for the same system, which is two Slack
 workspaces or two Twilio accounts. An action node names the one it runs as.
 An integration-owned Event names the one it arrives through.
+
+### Editor
+
+**Canvas Reveal**:
+The editor's inspector, a panel that floats over the right side of the canvas
+in one of three levels: Closed, Browse, and Focus. Browse summarizes the
+selected object in the active workspace (Draft, Runs, or Changes), and Focus
+holds the object's complete editor, a run node's evidence, or a comparison's
+field differences. Draft, each run, each comparison, and each entered Group
+remember their own level, inspected object, scroll position, and camera. On a
+phone a sequence of sheets takes its place.
+_Avoid_: sidebar (the retired resizable panel beside the canvas)
 
 ### Build Agent
 

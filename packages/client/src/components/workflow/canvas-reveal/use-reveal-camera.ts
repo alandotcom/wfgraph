@@ -1,5 +1,4 @@
 import {
-  type ReactFlowInstance,
   useReactFlow,
   useStore as useFlowStore,
   useStoreApi,
@@ -21,71 +20,13 @@ import {
 import { canvasRevealAtom } from "./canvas-reveal-state";
 import { revealCameraStep, type RevealCameraSlot } from "./reveal-camera";
 import {
-  CANVAS_OBSTACLE_SLOTS,
-  type Rect,
+  measureObstacles,
   revealOccupiedWidth,
+  subjectBounds,
+  type SubjectBounds,
   usableCanvasRect,
 } from "./reveal-geometry";
-import { outletPlacement } from "./reveal-outlets";
-import type { RevealPlacement } from "./reveal-subject";
 import { revealPlacementRequestAtom } from "./reveal-requests";
-
-/** Elements floating over the canvas that a placed step must not sit under. */
-const OBSTACLE_SELECTORS = [
-  `[data-slot="${CANVAS_OBSTACLE_SLOTS.controls}"]`,
-  `[data-slot="${CANVAS_OBSTACLE_SLOTS.agentPanel}"]`,
-  `[data-slot="${CANVAS_OBSTACLE_SLOTS.groupScopeBar}"]`,
-  ".react-flow__minimap",
-];
-
-/** Where each obstacle sits, relative to the canvas element's top left. */
-export function measureObstacles(canvas: HTMLElement): Rect[] {
-  const origin = canvas.getBoundingClientRect();
-  const area = canvas.parentElement ?? canvas;
-  return OBSTACLE_SELECTORS.flatMap((selector) =>
-    [...area.querySelectorAll(selector)].map((element) => {
-      const rect = element.getBoundingClientRect();
-      return {
-        x: rect.left - origin.left,
-        y: rect.top - origin.top,
-        width: rect.width,
-        height: rect.height,
-      };
-    })
-  );
-}
-
-/** The box a placement must show, and the boxes it shows when they also fit. */
-export type SubjectBounds = { bounds: Rect; optionalBounds: readonly Rect[] };
-
-/**
- * The flow-space boxes a Reveal subject's placement names: its nodes, a node
- * with its outlet labels as optional boxes, or the whole graph.
- */
-export function subjectBounds(
-  placement: RevealPlacement,
-  flow: Pick<
-    ReactFlowInstance<WorkflowNode, WorkflowEdge>,
-    "getEdges" | "getInternalNode" | "getNodes" | "getNodesBounds"
-  >
-): SubjectBounds {
-  if (placement.kind === "nodes") {
-    return {
-      bounds: flow.getNodesBounds([...placement.nodeIds]),
-      optionalBounds: [],
-    };
-  }
-  if (placement.kind === "node-outlets") {
-    const { bounds, labels } = outletPlacement({
-      nodeId: placement.nodeId,
-      nodeBounds: flow.getNodesBounds([placement.nodeId]),
-      edges: flow.getEdges(),
-      getInternalNode: flow.getInternalNode,
-    });
-    return { bounds, optionalBounds: labels };
-  }
-  return { bounds: flow.getNodesBounds(flow.getNodes()), optionalBounds: [] };
-}
 
 /**
  * Moves the desktop camera the least it must when Canvas Reveal opens, changes

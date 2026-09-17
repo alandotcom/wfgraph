@@ -4,6 +4,7 @@ import type { DeterministicAssessment } from "#src/agent/assessment";
 import { assessActionAndLifecycleSemantics } from "#src/agent/judges/semantics/actions-lifecycle";
 import { assessConfigurationSemantics } from "#src/agent/judges/semantics/configuration-conditions-references";
 import { createSemanticsContext } from "#src/agent/judges/semantics/context";
+import { assessGroupSemantics } from "#src/agent/judges/semantics/groups";
 import { assessTopologyAndBranchingSemantics } from "#src/agent/judges/semantics/topology-branching";
 
 /** Checks the graph facts a scenario declares, allowing other valid graph details. */
@@ -16,6 +17,7 @@ export function assessScenarioSemantics(
     ...assessActionAndLifecycleSemantics(context),
     ...assessTopologyAndBranchingSemantics(context),
     ...assessConfigurationSemantics(context),
+    ...assessGroupSemantics(context),
   ];
 
   return issues.length === 0

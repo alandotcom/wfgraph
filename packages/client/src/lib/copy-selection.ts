@@ -13,6 +13,11 @@ import {
 import { generateId } from "@wfgraph/shared/utils/id";
 import { expandGroupCopyIds } from "@wfgraph/shared/graph/node-group";
 import {
+  offsetClearOfRectangles,
+  overviewCardRectangle,
+  overviewCardRectangles,
+} from "@wfgraph/shared/graph/node-placement";
+import {
   toEditorEdge,
   toEditorNode,
   toPersistedEdge,
@@ -150,15 +155,47 @@ export function cloneSelection(
   return { nodes, edges };
 }
 
+/**
+ * `offset`, grown down and right by `offsetClearOfRectangles` until no top-level
+ * node of `selection` placed at it overlaps a card the overview draws from
+ * `canvasNodes`. A copied Group counts at its collapsed card size.
+ */
+export function pasteOffsetClearOfCanvas(input: {
+  selection: CopiedSelection;
+  offset: { x: number; y: number };
+  canvasNodes: readonly WorkflowNode[];
+}): { x: number; y: number } {
+  const block = topLevelNodes(input.selection.nodes).map((node) =>
+    overviewCardRectangle({
+      ...node,
+      position: {
+        x: node.position.x + input.offset.x,
+        y: node.position.y + input.offset.y,
+      },
+    })
+  );
+  const clearance = offsetClearOfRectangles(
+    block,
+    overviewCardRectangles(input.canvasNodes)
+  );
+  return {
+    x: input.offset.x + clearance.x,
+    y: input.offset.y + clearance.y,
+  };
+}
+
+/** The nodes of a copied subgraph whose frame was not copied with them. */
+function topLevelNodes(nodes: readonly WorkflowNode[]): WorkflowNode[] {
+  const ids = new Set(nodes.map((node) => node.id));
+  return nodes.filter((node) => !node.parentId || !ids.has(node.parentId));
+}
+
 /** Translate so the copied bounding-box origin lands on `origin`. */
 export function offsetToOrigin(
   nodes: readonly WorkflowNode[],
   origin: { x: number; y: number }
 ): { x: number; y: number } {
-  const ids = new Set(nodes.map((node) => node.id));
-  const topLevel = nodes.filter(
-    (node) => !node.parentId || !ids.has(node.parentId)
-  );
+  const topLevel = topLevelNodes(nodes);
   const xs = topLevel.map((node) => node.position.x);
   const ys = topLevel.map((node) => node.position.y);
   return {

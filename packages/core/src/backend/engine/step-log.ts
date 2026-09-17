@@ -146,7 +146,7 @@ function closeStepLogQuietly(
  * because nothing has happened yet and Inngest's retry of it costs one wasted
  * call. A refused close is swallowed inside its own step, because a run that
  * did its work has not failed because a row could not be closed. The price is a
- * row left open, which the run panel shows.
+ * row left open, which the Runs view shows.
  */
 export function runWithStepLog<T extends StepResult, E, R>(
   target: {

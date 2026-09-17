@@ -14,9 +14,8 @@ import {
   presentedGraphAtom,
   presentedGraphStructureAtom,
 } from "#src/lib/workflow-graph-store";
+import { graphInScope, groupScopeExists } from "#src/lib/workflow-scope-graph";
 import {
-  graphInScope,
-  groupScopeExists,
   recoveredRouteSearch,
   selectionInGraph,
   workspaceAddressFromSearch,

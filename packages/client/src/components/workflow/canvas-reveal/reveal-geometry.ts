@@ -1,11 +1,16 @@
 /**
- * Canvas Reveal's fixed geometry and the part of the canvas it leaves usable.
- * All values are CSS pixels measured inside the canvas box. One `revealWidth`
- * feeds both the rendered width and the camera, so the two always agree.
+ * Canvas Reveal's fixed geometry, the part of the canvas it leaves usable, and
+ * the boxes a placement measures. All values are CSS pixels measured inside the
+ * canvas box, except `subjectBounds`, which answers in flow space. One
+ * `revealWidth` feeds both the rendered width and the camera.
  */
 
+import type { ReactFlowInstance } from "@xyflow/react";
 import { maxBy } from "es-toolkit/array";
+import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import type { RevealLevel } from "#src/lib/workflow-navigation-state";
+import { outletPlacement } from "./reveal-outlets";
+import type { RevealPlacement } from "./reveal-subject";
 
 export type Rect = { x: number; y: number; width: number; height: number };
 
@@ -197,4 +202,61 @@ export function usableAboveSheet(input: {
     obstacles: [sheet, ...input.obstacles],
     minSize,
   });
+}
+
+/** Elements floating over the canvas that a placed step must not sit under. */
+const OBSTACLE_SELECTORS = [
+  `[data-slot="${CANVAS_OBSTACLE_SLOTS.controls}"]`,
+  `[data-slot="${CANVAS_OBSTACLE_SLOTS.agentPanel}"]`,
+  `[data-slot="${CANVAS_OBSTACLE_SLOTS.groupScopeBar}"]`,
+  ".react-flow__minimap",
+];
+
+/** Where each obstacle sits, relative to the canvas element's top left. */
+export function measureObstacles(canvas: HTMLElement): Rect[] {
+  const origin = canvas.getBoundingClientRect();
+  const canvasArea = canvas.parentElement ?? canvas;
+  return OBSTACLE_SELECTORS.flatMap((selector) =>
+    [...canvasArea.querySelectorAll(selector)].map((element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        x: rect.left - origin.left,
+        y: rect.top - origin.top,
+        width: rect.width,
+        height: rect.height,
+      };
+    })
+  );
+}
+
+/** The box a placement must show, and the boxes it shows when they also fit. */
+export type SubjectBounds = { bounds: Rect; optionalBounds: readonly Rect[] };
+
+/**
+ * The flow-space boxes a Reveal subject's placement names: its nodes, a node
+ * with its outlet labels as optional boxes, or the whole graph.
+ */
+export function subjectBounds(
+  placement: RevealPlacement,
+  flow: Pick<
+    ReactFlowInstance<WorkflowNode, WorkflowEdge>,
+    "getEdges" | "getInternalNode" | "getNodes" | "getNodesBounds"
+  >
+): SubjectBounds {
+  if (placement.kind === "nodes") {
+    return {
+      bounds: flow.getNodesBounds([...placement.nodeIds]),
+      optionalBounds: [],
+    };
+  }
+  if (placement.kind === "node-outlets") {
+    const { bounds, labels } = outletPlacement({
+      nodeId: placement.nodeId,
+      nodeBounds: flow.getNodesBounds([placement.nodeId]),
+      edges: flow.getEdges(),
+      getInternalNode: flow.getInternalNode,
+    });
+    return { bounds, optionalBounds: labels };
+  }
+  return { bounds: flow.getNodesBounds(flow.getNodes()), optionalBounds: [] };
 }

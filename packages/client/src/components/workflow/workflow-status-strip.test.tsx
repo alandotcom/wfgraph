@@ -382,7 +382,7 @@ describe("WorkflowStatusStrip", () => {
     expect(view.getByText("Editing is off")).toBeTruthy();
     expect(store.get(canvasEditingLockedAtom)).toBe(true);
 
-    // #96: no run panel is mounted in this tree at all, which is the state a
+    // #96: no Runs view is mounted in this tree at all, which is the state a
     // collapsed rail leaves behind. The strip is the only way out.
     await act(async () => {
       fireEvent.click(view.getByText("Back to draft"));

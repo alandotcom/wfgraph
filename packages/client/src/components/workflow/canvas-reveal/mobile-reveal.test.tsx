@@ -45,14 +45,14 @@ import {
   workflowApiAtom,
 } from "#src/lib/workflow-save-store";
 import { savedWorkflow } from "#src/lib/workflow-save-test-support";
+import { openMobileSheetAtom } from "#src/lib/mobile-sheet-store";
 import {
   activeMobileSheetsAtom,
   activeRevealPresentationAtom,
   activeSelectionAtom,
   activeWorkspaceAddressAtom,
-  activeWorkspaceCamerasAtom,
-  openMobileSheetAtom,
   recordWorkspaceCameraAtom,
+  activeWorkspaceCamerasAtom,
 } from "#src/lib/workflow-workspace-navigation";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";

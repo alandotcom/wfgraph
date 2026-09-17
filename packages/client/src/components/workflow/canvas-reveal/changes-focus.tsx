@@ -22,7 +22,7 @@ import {
   type ComparisonLayout,
 } from "#src/components/workflow/comparison-properties";
 import { useWorkflowComparisonActions } from "#src/components/workflow/use-workflow-comparison-actions";
-import { PanelState } from "#src/components/workflow/panel-state";
+import { StatusPlaceholder } from "#src/components/workflow/status-placeholder";
 import { comparisonDisplayGraphAtom } from "#src/lib/workflow-comparison-store";
 import { COMPARISON_CHANGE_KIND_LABEL } from "#src/lib/workflow-graph-types";
 import { workspaceAddressId } from "#src/lib/workflow-navigation-state";
@@ -213,7 +213,7 @@ function ChangeFocusContent({
         ref={scrollRef}
       >
         {inspection.kind === "unavailable" ? (
-          <PanelState label="This object is not part of the comparison. Choose a changed step or connection." />
+          <StatusPlaceholder label="This object is not part of the comparison. Choose a changed step or connection." />
         ) : (
           <InspectionView
             inspection={inspection}

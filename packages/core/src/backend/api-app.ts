@@ -68,7 +68,7 @@ const readWebhookParams = Schema.decodeUnknownResult(
 const httpLogger = getAppLogger("http");
 
 /**
- * The RPC procedures the editor's run panel reads on a timer while a run is on
+ * The RPC procedures the editor's Runs view reads on a timer while a run is on
  * screen. One open workflow turns them into a line every two seconds, which
  * buries whatever the person was reading, so a successful poll logs at trace.
  * `LOG_LEVEL=trace` brings them back; a failing one still logs at its status.

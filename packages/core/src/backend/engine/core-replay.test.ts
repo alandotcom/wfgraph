@@ -246,7 +246,7 @@ describe("workflow engine replay safety", () => {
 
   // The other half of the contract, and the trap worth knowing: Workflow Graph wraps no
   // handler body, so work left outside `step.run` happens again on every attempt
-  // while the node's log rows stay memoized. The run panel then shows one row for
+  // while the node's log rows stay memoized. The Runs view then shows one row for
   // however many times the work ran.
   it("repeats an unwrapped handler on a replay, under one log row", async () => {
     const unwrapped = vi.fn<() => Record<string, unknown>>(() => ({

@@ -23,9 +23,9 @@ import { readAs } from "@wfgraph/shared/types/schema";
  * How a status reads on screen, for the two vocabularies that reach these.
  *
  * An Execution ends `completed`, `failed`, `canceled`, `exited` or `superseded`; a node
- * inside one ends `success`, `error` or `cancelled`. Both arrive here as strings
- * off a payload, so the lookups are records rather than switches and `satisfies`
- * is what holds each to naming every member of its own union.
+ * inside one ends `success`, `error` or `cancelled`. Each vocabulary has its own
+ * label and tone function, and `satisfies` holds each record to naming every
+ * member of its own union.
  */
 const logger = getClientLogger("workflow", "run");
 
@@ -58,15 +58,21 @@ export type StatusTone =
   | "muted";
 
 /** A node's own statuses, which the engine writes and the canvas draws. */
-type NodeStatus = "pending" | "running" | "success" | "error" | "cancelled";
+export type NodeStatus =
+  | "pending"
+  | "running"
+  | "success"
+  | "error"
+  | "cancelled";
 
-/** The tone of a run or node status, and `muted` for a status neither names. */
-export function statusTone(status: string): StatusTone {
-  return (
-    (RUN_STATUS_TONES as Record<string, StatusTone | undefined>)[status] ??
-    (NODE_STATUS_TONES as Record<string, StatusTone | undefined>)[status] ??
-    "muted"
-  );
+/** The tone of a run's status. */
+export function runStatusTone(status: WorkflowExecutionStatus): StatusTone {
+  return RUN_STATUS_TONES[status];
+}
+
+/** The tone of a node execution's status. */
+export function nodeStatusTone(status: NodeStatus): StatusTone {
+  return NODE_STATUS_TONES[status];
 }
 
 const DOT_CLASSES: Record<StatusTone, string> = {
@@ -100,9 +106,9 @@ const RUN_STATUS_LABELS = {
 const NODE_STATUS_LABELS = {
   pending: "Pending",
   running: "Running",
-  success: "Success",
-  error: "Error",
-  cancelled: "Cancelled",
+  success: "Successful",
+  error: "Failed",
+  cancelled: "Canceled",
 } satisfies Record<NodeStatus, string>;
 
 const BADGE_CLASSES: Record<StatusTone, string> = {
@@ -114,20 +120,22 @@ const BADGE_CLASSES: Record<StatusTone, string> = {
   muted: "border-muted bg-muted/40 text-muted-foreground",
 };
 
-export function getStatusDotClass(status: string): string {
-  return DOT_CLASSES[statusTone(status)];
+export function statusToneDotClass(tone: StatusTone): string {
+  return DOT_CLASSES[tone];
 }
 
-export function getStatusLabel(status: string): string {
-  return (
-    (RUN_STATUS_LABELS as Record<string, string | undefined>)[status] ??
-    (NODE_STATUS_LABELS as Record<string, string | undefined>)[status] ??
-    "Unknown"
-  );
+/** How a run's status reads. */
+export function runStatusLabel(status: WorkflowExecutionStatus): string {
+  return RUN_STATUS_LABELS[status];
 }
 
-export function getStatusBadgeClass(status: string): string {
-  return BADGE_CLASSES[statusTone(status)];
+/** How a node execution's status reads. */
+export function nodeStatusLabel(status: NodeStatus): string {
+  return NODE_STATUS_LABELS[status];
+}
+
+export function statusToneBadgeClass(tone: StatusTone): string {
+  return BADGE_CLASSES[tone];
 }
 
 const TEXT_CLASSES: Record<StatusTone, string> = {
@@ -138,10 +146,6 @@ const TEXT_CLASSES: Record<StatusTone, string> = {
   cancelled: "text-cancelled",
   muted: "text-muted-foreground",
 };
-
-export function getStatusTextClass(status: string): string {
-  return TEXT_CLASSES[statusTone(status)];
-}
 
 export function statusToneTextClass(tone: StatusTone): string {
   return TEXT_CLASSES[tone];
@@ -176,7 +180,7 @@ export function runNodeEvidenceLabel(status: RunNodeEvidenceStatus): {
   if (status === "waiting") {
     return { text: "Waiting", tone: "warning" };
   }
-  return { text: getStatusLabel(status), tone: statusTone(status) };
+  return { text: nodeStatusLabel(status), tone: nodeStatusTone(status) };
 }
 
 export function formatDuration(duration: string): string {

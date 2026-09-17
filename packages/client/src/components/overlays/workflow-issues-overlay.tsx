@@ -1,4 +1,5 @@
 import { AlertTriangle } from "lucide-react";
+import { cn } from "@wfgraph/shared/utils";
 import { Button } from "#src/components/ui/button";
 import { IntegrationIcon } from "#src/components/ui/integration-icon";
 import { useConnectionRepair } from "#src/hooks/use-connection-repair";
@@ -9,38 +10,41 @@ import { useOverlay } from "./overlay-provider";
 import type { OverlayComponentProps } from "./types";
 import type { WorkflowIssuesOverlayModel } from "@wfgraph/shared/graph/workflow-issues";
 
-type WorkflowIssuesOverlayProps = OverlayComponentProps<{
+/**
+ * What opened the list: a Run draft or Publish that the issues stopped, or a
+ * person opening the list from the status strip. A list a Run draft opened
+ * carries `onRunDraftAnyway`, which starts the draft run the issues were
+ * collected for; it is absent whenever an issue that stops a draft run stands.
+ * A run of the published version never arrives here, because publish refused
+ * that graph's blocking issues before it became a version.
+ */
+type WorkflowIssuesTrigger =
+  | { trigger: "run"; onRunDraftAnyway?: (() => void) | undefined }
+  | { trigger: "publish" }
+  | { trigger: "list" };
+
+/** What a caller opening the issues list passes. */
+export type WorkflowIssuesOverlayInput = {
   issues: WorkflowIssuesOverlayModel;
   onGoToStep: (nodeId: string, fieldKey?: string) => void;
-  /**
-   * Starts the draft run these issues were collected for. Absent whenever an
-   * issue that stops a draft run stands, and absent for every reader who
-   * opened the list on their own. A run of the published version never
-   * arrives here: publish refused that graph's blocking issues before it
-   * became a version.
-   */
-  onRunDraftAnyway?: (() => void) | undefined;
-  allowRunDraftAnyway?: boolean | undefined;
-}>;
+} & WorkflowIssuesTrigger;
+
+type WorkflowIssuesOverlayProps =
+  OverlayComponentProps<WorkflowIssuesOverlayInput>;
 
 /** Count the individual repairs represented by the overlay's grouped rows. */
 export function workflowIssueCount(issues: WorkflowIssuesOverlayModel): number {
   return issues.totalIssues;
 }
 
-export function WorkflowIssuesOverlay({
-  overlayId,
-  issues,
-  onGoToStep,
-  onRunDraftAnyway,
-  allowRunDraftAnyway = false,
-}: WorkflowIssuesOverlayProps) {
+export function WorkflowIssuesOverlay(props: WorkflowIssuesOverlayProps) {
+  const { overlayId, issues, trigger, onGoToStep } = props;
+  const onRunDraftAnyway =
+    props.trigger === "run" ? props.onRunDraftAnyway : undefined;
   const { push, closeAll } = useOverlay();
   const repairAgainstConnectionList = useConnectionRepair();
 
   const {
-    draftRunBlockingCount,
-    publishBlockingCount,
     brokenReferences,
     invalidGroups,
     invalidLifecycleRules,
@@ -80,7 +84,7 @@ export function WorkflowIssuesOverlay({
   return (
     <Overlay
       actions={
-        allowRunDraftAnyway && onRunDraftAnyway
+        onRunDraftAnyway
           ? [
               {
                 label: "Run draft anyway",
@@ -106,31 +110,10 @@ export function WorkflowIssuesOverlay({
       title={workflowIssuesLabel(totalIssues)}
     >
       {/* One sentence, and the hardest fact is the one that survives: an
-          issue stopping the run outranks an issue that stops only Publish,
-          such as a Group problem, and that outranks a warning. */}
-      {draftRunBlockingCount > 0 ? (
-        <div className="flex items-center gap-2 text-destructive">
-          <AlertTriangle className="size-5" />
-          <p className="text-sm">
-            Resolve blocking issues before running the draft.
-          </p>
-        </div>
-      ) : publishBlockingCount > 0 ? (
-        <div className="flex items-center gap-2 text-warning">
-          <AlertTriangle className="size-5" />
-          <p className="text-sm">
-            Resolve the blocking issues before publishing. The draft can still
-            run.
-          </p>
-        </div>
-      ) : (
-        <div className="flex items-center gap-2 text-warning">
-          <AlertTriangle className="size-5" />
-          <p className="text-sm">
-            The draft has issues that might cause the run to fail.
-          </p>
-        </div>
-      )}
+          issue stopping the action that opened the list outranks one that
+          stops only Publish, such as a Group problem, and that outranks a
+          warning. */}
+      <IssuesHeadline issues={issues} trigger={trigger} />
 
       <div className="mt-4 space-y-4">
         {/* Missing Connections Section */}
@@ -354,5 +337,61 @@ export function WorkflowIssuesOverlay({
         )}
       </div>
     </Overlay>
+  );
+}
+
+function IssuesHeadline({
+  issues,
+  trigger,
+}: {
+  issues: WorkflowIssuesOverlayModel;
+  trigger: WorkflowIssuesTrigger["trigger"];
+}) {
+  const { draftRunBlockingCount, publishBlockingCount } = issues;
+  if (trigger === "publish" && publishBlockingCount > 0) {
+    return (
+      <IssuesSentence tone="destructive">
+        Resolve blocking issues before publishing.
+      </IssuesSentence>
+    );
+  }
+  if (draftRunBlockingCount > 0) {
+    return (
+      <IssuesSentence tone="destructive">
+        Resolve blocking issues before running the draft.
+      </IssuesSentence>
+    );
+  }
+  if (publishBlockingCount > 0) {
+    return (
+      <IssuesSentence tone="warning">
+        Resolve the blocking issues before publishing. The draft can still run.
+      </IssuesSentence>
+    );
+  }
+  return (
+    <IssuesSentence tone="warning">
+      The draft has issues that might cause the run to fail.
+    </IssuesSentence>
+  );
+}
+
+function IssuesSentence({
+  tone,
+  children,
+}: {
+  tone: "destructive" | "warning";
+  children: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-2",
+        tone === "destructive" ? "text-destructive" : "text-warning"
+      )}
+    >
+      <AlertTriangle className="size-5" />
+      <p className="text-sm">{children}</p>
+    </div>
   );
 }

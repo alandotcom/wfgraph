@@ -267,7 +267,7 @@ export class WorkflowRepo extends Context.Service<
     ) => Effect.Effect<WorkflowVersionUsageRow[], DatabaseError>;
     /**
      * One version by id, of either kind, or null when it is gone. The engine and
-     * the run panel read a run's pinned version through this, so it must also
+     * the Runs view read a run's pinned version through this, so it must also
      * return the draft snapshots that the other version reads exclude.
      */
     readonly findVersionById: (

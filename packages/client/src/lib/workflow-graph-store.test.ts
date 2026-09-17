@@ -10,6 +10,7 @@ import {
 import { groupOutletsAtom } from "#src/lib/workflow-graph-presentation-store";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
+import { WORKFLOW_NODE_HEIGHT } from "#src/lib/workflow-node-dimensions";
 import {
   addNodeAtom,
   applyNodeLayoutAtom,
@@ -631,6 +632,7 @@ describe("multi-exit Group outlet", () => {
         handleId: "true",
         label: "True",
         ports: [{ nodeId: "gate", handle: "true" }],
+        continues: true,
       },
     ]);
   });
@@ -1518,7 +1520,7 @@ describe("updateNodeDataAtom enabled flag", () => {
 });
 
 describe("copy and paste", () => {
-  it("pastes a clone beside the original and selects it", () => {
+  it("pastes a clone down and right of the original, clear of it, and selects it", () => {
     const store = createGraphStore(
       [lifecycleNode("t"), { ...actionNode("a", 100), selected: true }],
       []
@@ -1530,10 +1532,11 @@ describe("copy and paste", () => {
     const nodes = store.get(nodesAtom);
     const pasted = nodes.find((node) => node.id !== "t" && node.id !== "a");
     expect(nodes).toHaveLength(3);
-    expect(pasted?.position).toEqual({
-      x: 100 + PASTE_OFFSET,
-      y: PASTE_OFFSET,
-    });
+    // One offset steps down and right, and the clone starts past the
+    // original's bottom edge, since a 48px step alone would overlap it.
+    expect((pasted?.position.x ?? 0) - 100).toBe(pasted?.position.y);
+    expect(pasted?.position.y).toBeGreaterThanOrEqual(WORKFLOW_NODE_HEIGHT);
+    expect(pasted?.position.y).toBeGreaterThan(PASTE_OFFSET);
     expect(store.get(selectedNodeAtom)).toBe(pasted?.id);
     expect(paintedNodeIds(store)).toEqual([pasted?.id]);
     expect(nodes.some((node) => "selected" in node)).toBe(false);

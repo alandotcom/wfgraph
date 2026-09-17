@@ -12,7 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "#src/components/ui/dialog";
-import { PanelState } from "#src/components/workflow/panel-state";
+import { StatusPlaceholder } from "#src/components/workflow/status-placeholder";
 import { WorkflowVersionUsage } from "#src/components/workflow/workflow-version-usage";
 import { comparisonSessionAtom } from "#src/lib/workflow-comparison-store";
 import {
@@ -120,12 +120,12 @@ export function WorkflowVersionHistory({
           </div>
           {history.isPending ? (
             <div className="min-h-28">
-              <PanelState label="Loading version history" />
+              <StatusPlaceholder label="Loading version history" />
             </div>
           ) : null}
           {history.isError ? (
             <div className="min-h-28">
-              <PanelState label="Unable to load version history" />
+              <StatusPlaceholder label="Unable to load version history" />
             </div>
           ) : null}
           {!history.isPending && !history.isError ? (

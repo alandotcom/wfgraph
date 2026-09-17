@@ -142,7 +142,7 @@ where the system's keys have a known shape; it names the problem more precisely 
 
 The icon is an SVG component with an `aria-label` and a `<title>`; take the path from
 simpleicons.org. `outputComponents` beside it maps an action slug to a React renderer for
-that step's output in the runs panel.
+that step's output in the Runs view.
 
 ## Config field types
 

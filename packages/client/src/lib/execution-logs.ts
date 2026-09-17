@@ -202,7 +202,7 @@ export function toExecutionDetail(payload: ExecutionLogsResult): {
 
 /**
  * The logs endpoint's thinner execution summary, turned into the row shape the
- * Runs panel already uses. Start identity rides on the summary so a deep link
+ * Runs view already uses. Start identity rides on the summary so a deep link
  * past the newest-50 list still paints mode, source, event, and entity.
  */
 export function toWorkflowExecutionFromSummary(
@@ -247,7 +247,7 @@ export function toExecutionLogsByNodeId(
 /**
  * The fields the overlay sync needs from the logs payload: which workflow the
  * run belongs to, and which published version pins its graph. Logs and waits
- * stay on the Runs panel's own observer of the same query key.
+ * stay on the Runs view's own observer of the same query key.
  */
 export function toExecutionOverlaySource(payload: ExecutionLogsResult): {
   workflowId: string;

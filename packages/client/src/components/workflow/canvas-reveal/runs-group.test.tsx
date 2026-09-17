@@ -88,15 +88,15 @@ describe("Runs Group summary", () => {
         .getAllByRole("button")
         .map((button) => button.getAttribute("aria-label"))
     ).toEqual([
-      "Look up patient, Success",
-      "Send reminder, Error",
+      "Look up patient, Successful",
+      "Send reminder, Failed",
       "Wait for reply, Not run",
     ]);
     // The run overview stays mounted behind the summary, hidden.
     expect(view.getByText("Node journey").closest("[hidden]")).not.toBeNull();
 
     fireEvent.click(
-      within(steps).getByRole("button", { name: "Send reminder, Error" })
+      within(steps).getByRole("button", { name: "Send reminder, Failed" })
     );
     await waitFor(() =>
       expect(router.state.location.search).toEqual({
@@ -147,7 +147,7 @@ describe("Runs Group summary", () => {
     fireEvent.click(await canvasNode("Outreach"));
     const summary = await view.findByTestId("runs-group-summary");
     fireEvent.click(
-      within(summary).getByRole("button", { name: "Send reminder, Error" })
+      within(summary).getByRole("button", { name: "Send reminder, Failed" })
     );
     await waitFor(() => expect(aside()?.dataset.level).toBe("focus"));
     expect(title()).toBe("Send reminder");

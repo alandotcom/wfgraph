@@ -83,7 +83,7 @@ const loggerFor = (workflowId: string) =>
   );
 
 /**
- * Everything the editor's runs panel reads, in one answer.
+ * Everything the editor's Runs view reads, in one answer.
  *
  * The runs, how many superseded ones were left out, and workflow-level audit
  * rows that opened no run. The response separates Refused Starts from

@@ -10,7 +10,7 @@
 
 /**
  * The audit rows that belong to a run: everything a run does between opening and
- * ending. Each one has an Execution behind it, and the runs panel reads them under
+ * ending. Each one has an Execution behind it, and the Runs view reads them under
  * the run they name.
  */
 export const RUN_SCOPED_AUDIT_EVENT_TYPES = [

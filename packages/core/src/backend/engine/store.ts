@@ -91,7 +91,7 @@ export type CreateWaitStateInput = {
   side: ExecutionSide;
   waitType: "delay" | "event";
   /**
-   * What the authenticated runs panel uses to address this parked run. Generated
+   * What the authenticated Runs view uses to address this parked run. Generated
    * per park because two runs at one node would collide on an authored token.
    */
   resumeToken?: string | undefined;

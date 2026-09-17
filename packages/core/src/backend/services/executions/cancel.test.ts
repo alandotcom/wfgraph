@@ -99,7 +99,7 @@ const services = Layer.mergeAll(
 );
 
 describe("postExecutionCancel", () => {
-  // The Runs panel button used to refuse anything but a run parked on a Wait,
+  // The Runs view's Cancel button used to refuse anything but a run parked on a Wait,
   // even though a Lifecycle Rules Cancel Event reaches every in-flight status
   // (ADR-0007's routed continuation). This is the status that button was
   // missing: a run standing on an ordinary node, with no wait row at all.

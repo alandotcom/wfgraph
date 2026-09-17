@@ -7,21 +7,21 @@
 
 import type { RegisteredRouter, useNavigate } from "@tanstack/react-router";
 import type { createStore } from "jotai";
+import { openMobileChangeAtom } from "#src/lib/mobile-sheet-store";
 import { comparisonDisplayGraphAtom } from "#src/lib/workflow-comparison-store";
 import {
   scopeId,
-  scopeOfNode,
   workspaceAddressId,
   workspaceRouteSearch,
   type CanvasSelection,
   type InspectedObject,
   type WorkspaceScope,
 } from "#src/lib/workflow-navigation-state";
+import { scopeOfEdge, scopeOfNode } from "#src/lib/workflow-scope-graph";
 import {
   activeDesktopRevealLevelAtom,
   activeRevealPresentationAtom,
   activeWorkspaceAddressAtom,
-  openMobileChangeAtom,
   recordInspectorScrollAtom,
   setWorkspaceRevealLevelAtom,
   setWorkspaceSelectionAtom,
@@ -50,17 +50,20 @@ function changeSelection(object: InspectedObject): CanvasSelection {
 
 /**
  * The scope of the comparison canvas that shows `object`: the focused canvas
- * of the Group frame holding a node, and the overview for every other node and
- * every connection.
+ * of the Group frame holding a node or both ends of a connection, and the
+ * overview for every other node and connection.
  */
 function changedObjectScope(
   store: ReturnType<typeof createStore>,
   object: InspectedObject
 ): WorkspaceScope {
-  const nodes = store.get(comparisonDisplayGraphAtom)?.nodes ?? [];
-  return object.kind === "node"
-    ? scopeOfNode(nodes, object.id)
-    : { kind: "overview" };
+  const graph = store.get(comparisonDisplayGraphAtom);
+  const nodes = graph?.nodes ?? [];
+  if (object.kind === "node") {
+    return scopeOfNode(nodes, object.id);
+  }
+  const edge = graph?.edges.find((item) => item.id === object.id);
+  return edge ? scopeOfEdge(nodes, edge) : { kind: "overview" };
 }
 
 /**
@@ -92,11 +95,12 @@ export function openMobileChangedObject(
 
 /**
  * Select one changed object in the scope that shows it. A node inside a Group
- * frame shows on that Group's focused canvas, and every other node and every
- * connection on the overview. Reaching the other scope pushes its route, or
- * replaces it with `options.replace`, keeps the Reveal level showing now, or
- * Browse for a closed Reveal with `options.openReveal`, and asks the camera to
- * place the object there. From Focus it also carries the change list's scroll
+ * frame, or a connection between two of its members, shows on that Group's
+ * focused canvas, and every other node and connection on the overview.
+ * Reaching the other scope pushes its route, or replaces it with
+ * `options.replace`, keeps the Reveal level showing now, or Browse for a closed
+ * Reveal with `options.openReveal`, and asks the camera to place the object
+ * there. From Focus it also carries the change list's scroll
  * to the other scope, so Back shows the list where Focus was entered.
  */
 export function selectChangedObject(

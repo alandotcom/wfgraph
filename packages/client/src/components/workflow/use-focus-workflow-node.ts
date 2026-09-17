@@ -5,9 +5,9 @@ import {
   displayNodesAtom,
   selectOnlyNodeAtom,
 } from "#src/lib/workflow-graph-store";
+import { scopeOfNode } from "#src/lib/workflow-scope-graph";
 import {
   scopeId,
-  scopeOfNode,
   workspaceAddressId,
   workspaceRouteSearch,
 } from "#src/lib/workflow-navigation-state";

@@ -6,7 +6,7 @@ import { useExtensionCatalog } from "#src/components/extension-catalog-provider"
 import { ComparisonMarker } from "#src/components/flow-elements/comparison-marker";
 import { Button } from "#src/components/ui/button";
 import { useWorkflowComparisonActions } from "#src/components/workflow/use-workflow-comparison-actions";
-import { PanelState } from "#src/components/workflow/panel-state";
+import { StatusPlaceholder } from "#src/components/workflow/status-placeholder";
 import { WorkflowVersionHistory } from "#src/components/workflow/workflow-version-history";
 import { useAfterCommit, useAfterPaint } from "#src/hooks/effects";
 import { useWorkflowWorkspaceNavigation } from "#src/hooks/use-workflow-workspace-navigation";
@@ -284,18 +284,18 @@ export function ComparisonState({
     );
   if (status === "loading") {
     return (
-      <PanelState label="Comparing current draft with the published version" />
+      <StatusPlaceholder label="Comparing current draft with the published version" />
     );
   }
   const canOpen = actions.canCompare;
   return status === "error" ? (
-    <PanelState
+    <StatusPlaceholder
       actionLabel={canOpen ? "Try again" : undefined}
       label="Unable to compare changes"
       onAction={canOpen ? open : undefined}
     />
   ) : (
-    <PanelState
+    <StatusPlaceholder
       actionLabel={canOpen ? "Review changes" : undefined}
       label="Open a comparison of this draft and its published version."
       onAction={canOpen ? open : undefined}
@@ -452,7 +452,7 @@ function ChangeList({
     <>
       <ComparisonSummarySection payload={payload} status={status} />
       {objects.length === 0 ? (
-        <PanelState label={noChangesLabel(payload)} />
+        <StatusPlaceholder label={noChangesLabel(payload)} />
       ) : (
         <div
           className="min-h-0 flex-1 overflow-y-auto overscroll-contain"

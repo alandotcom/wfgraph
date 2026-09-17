@@ -124,7 +124,7 @@ export function readWaitGateMode(
  * from each other: the execution, the node, the reasons the mode answers to,
  * and for an event wait the token that names this park. A delay wait has no
  * token, because the execution and the node already address it and a token on
- * its row would offer the runs panel a manual resume the delay cannot honour.
+ * its row would offer the Runs view a manual resume the delay cannot honour.
  */
 export function waitSignalMatch(input: {
   nodeId: string;

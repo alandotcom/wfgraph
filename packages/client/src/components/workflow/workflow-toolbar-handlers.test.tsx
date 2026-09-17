@@ -674,7 +674,7 @@ function IssueGateProbe({
   const actions = useWorkflowActions(workflowState);
   const { stack } = useOverlay();
   const top = stack.at(-1) as
-    | { props: { allowRunDraftAnyway?: boolean } }
+    | { props: { onRunDraftAnyway?: () => void } }
     | undefined;
 
   return (
@@ -686,7 +686,7 @@ function IssueGateProbe({
         Start publish
       </button>
       <output aria-label="run draft anyway">
-        {top ? String(top.props.allowRunDraftAnyway) : "closed"}
+        {top ? String(top.props.onRunDraftAnyway !== undefined) : "closed"}
       </output>
     </>
   );

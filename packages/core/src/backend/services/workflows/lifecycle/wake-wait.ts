@@ -8,7 +8,7 @@ import { ExecutionRepo } from "#src/backend/services/executions/repo";
 /**
  * Which parked Wait the wake addresses.
  *
- * A manual resume from the runs panel names the park's own token. An Event
+ * A manual resume from the Runs view names the park's own token. An Event
  * delivery names the row it selected and the Event it is delivering, which the
  * claim requires the row to still be subscribed to: a Migration can re-park the
  * row between the selection and the claim.
@@ -48,7 +48,7 @@ export type WaitWakeOutcome =
  */
 export const wakeWait = Effect.fn("wakeWait")(function* (input: {
   target: WaitWakeTarget;
-  /** What the Event or the runs panel sent, which the woken run reads back. */
+  /** What the Event or the Runs view sent, which the woken run reads back. */
   payload: JsonObject;
 }) {
   const repo = yield* ExecutionRepo;

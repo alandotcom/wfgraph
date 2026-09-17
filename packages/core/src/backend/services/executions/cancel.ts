@@ -40,7 +40,7 @@ export const postExecutionCancel = Effect.fn("wfgraph.execution.cancel")(
 
     // The same read `getExecutionStatus` answers a poll with, checked against
     // the statuses a run can still leave. A Lifecycle Rules Cancel Event reaches
-    // every one of them (ADR-0007), so the Runs panel button does too, rather
+    // every one of them (ADR-0007), so the Runs view's Cancel button does too, rather
     // than staying narrowed to a run parked on a Wait.
     const execution = yield* repo.findStatusById(executionId);
     const isInFlight =

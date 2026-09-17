@@ -29,8 +29,8 @@ import {
 import { Fragment, useState } from "react";
 import { toast } from "sonner";
 import { useShownMobileReveal } from "#src/components/workflow/canvas-reveal/canvas-reveal-state";
-import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
-import { useIsMobile } from "#src/hooks/use-mobile";
+import { useRevealNavigation } from "#src/components/workflow/canvas-reveal/use-reveal-navigation";
+import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
 import { Button, buttonVariants } from "#src/components/ui/button";
 import {
   ButtonGroup,
@@ -566,8 +566,8 @@ export function ToolbarPublishControls({
   actions: WorkflowToolbarActions;
   state: WorkflowToolbarState;
 }) {
-  const { openSheet } = useConfigurationSheet();
-  const isMobile = useIsMobile();
+  const navigation = useRevealNavigation();
+  const address = useAtomValue(activeWorkspaceAddressAtom);
   const mobileReveal = useShownMobileReveal();
   const publish = usePublishGate(state, actions);
 
@@ -593,14 +593,14 @@ export function ToolbarPublishControls({
         </div>
       ) : null}
       {state.canUpdate && mobileReveal === null ? (
-        // Shown only while Canvas Reveal is absent. Gated on `useIsMobile`, the
-        // same test that unmounts Canvas Reveal, so this button and Canvas
-        // Reveal are never on screen together. An open mobile Reveal sheet
-        // already shows the selection, so the button is absent while one shows.
+        // Hidden at `md` and wider, the breakpoint that mounts Canvas Reveal in
+        // place of the mobile sheets, so this button and Canvas Reveal are
+        // never on screen together. An open mobile Reveal sheet already shows
+        // the selection, so the button is absent while one shows.
         <Button
           aria-label="Configuration"
-          className={isMobile ? "" : "hidden"}
-          onClick={() => openSheet()}
+          className="md:hidden"
+          onClick={() => navigation.openInspector(address)}
           size="icon"
           title="Configuration"
           variant="outline"

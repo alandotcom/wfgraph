@@ -1291,7 +1291,9 @@ describe("Group membership", () => {
       const document = yield* draft.current;
       expect(document.nodes).toEqual([
         entry,
-        { ...actionNode("a", "score-applicant"), position: { x: 110, y: 220 } },
+        // The lone member lands where the collapsed card drew, as the editor's
+        // Ungroup places it.
+        { ...actionNode("a", "score-applicant"), position: frame.position },
         outside,
       ]);
       expect(document.nodes.some((node) => "parentId" in node)).toBe(false);

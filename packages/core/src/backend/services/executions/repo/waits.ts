@@ -229,7 +229,7 @@ export type WaitsRepoMethods = {
     waitStateId: string;
     claimedAt: Date;
   }) => Effect.Effect<boolean, DatabaseError>;
-  /** Every wait one run is currently parked on, for the runs panel. */
+  /** Every wait one run is currently parked on, for the Runs view. */
   readonly listWaitingStates: (
     executionId: string
   ) => Effect.Effect<WorkflowWaitState[], DatabaseError>;

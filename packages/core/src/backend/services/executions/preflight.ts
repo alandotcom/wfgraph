@@ -353,7 +353,7 @@ export const loadDraftForRun = Effect.fn("wfgraph.execution.load_draft")(
     // semantic digest, which drops node positions and generated edge ids. A memo
     // hit therefore answers with the first graph validated for those semantics,
     // which can be an older layout of this workflow or another workflow's graph.
-    // The run panel paints this row, so a hit would show positions the builder
+    // The Runs view paints this row, so a hit would show positions the builder
     // has already moved. The digest is the memo key, so it is the same either
     // way.
     //

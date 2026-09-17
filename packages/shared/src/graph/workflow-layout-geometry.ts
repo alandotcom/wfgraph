@@ -21,19 +21,6 @@ export function workflowNodeSize(width: number = WORKFLOW_NODE_WIDTH): {
   return { width, height: WORKFLOW_NODE_HEIGHT };
 }
 
-/**
- * The compact slot geometry a Group stores its members in, relative to the
- * frame. The frame itself draws at the standard card size.
- */
-export const GROUP_CHILD_WIDTH = 188;
-export const GROUP_CHILD_HEIGHT = 56;
-export const GROUP_HEADER_HEIGHT = 36;
-export const GROUP_PAD = 12;
-/** Space between two members of one Group row. */
-export const GROUP_COLUMN_GAP = 24;
-/** Space reserved for interior edges between two Group rows. */
-export const GROUP_ROW_GAP = 40;
-
 /** Width reserved for one Event Split outlet and its Event-name chip. */
 const EVENT_SPLIT_OUTLET_WIDTH = 132;
 

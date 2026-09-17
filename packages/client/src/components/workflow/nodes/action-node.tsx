@@ -55,6 +55,7 @@ import { useAfterPaint, useNowMs } from "#src/hooks/effects";
 import { useExecutionLogsByNode } from "#src/hooks/use-execution-logs";
 import {
   alongOutletSide,
+  BranchOutletLabel,
   OutletLabel,
 } from "#src/components/workflow/nodes/outlet-label";
 import {
@@ -642,12 +643,22 @@ export const ActionNode = memo((props: ActionNodeProps) => {
 
       {isConditionAction && (
         <>
-          <OutletLabel offset={CONDITION_TRUE_OUTLET_OFFSET} outlet={outlet}>
+          <BranchOutletLabel
+            nodeId={id}
+            handleId="true"
+            offset={CONDITION_TRUE_OUTLET_OFFSET}
+            outlet={outlet}
+          >
             True
-          </OutletLabel>
-          <OutletLabel offset={CONDITION_FALSE_OUTLET_OFFSET} outlet={outlet}>
+          </BranchOutletLabel>
+          <BranchOutletLabel
+            nodeId={id}
+            handleId="false"
+            offset={CONDITION_FALSE_OUTLET_OFFSET}
+            outlet={outlet}
+          >
             False
-          </OutletLabel>
+          </BranchOutletLabel>
         </>
       )}
 

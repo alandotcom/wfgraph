@@ -565,7 +565,7 @@ describe("postWorkflowExecute", () => {
       })
     );
 
-    // A graph the Lifecycle panel has never been near is one the Run button is
+    // A graph the Lifecycle Node inspector has never been near is one the Run button is
     // how anybody tries.
     it.effect("runs a workflow whose entry node carries no rules", () =>
       Effect.gen(function* () {

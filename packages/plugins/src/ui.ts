@@ -27,7 +27,7 @@ export type IntegrationUi = {
   // connection dialogs.
   icon: ComponentType<{ className?: string }>;
 
-  // Custom renderers for step output in the workflow runs panel, keyed by the
+  // Custom renderers for step output in the workflow Runs view, keyed by the
   // action slug the plugin declares in its `actions` list (for example
   // "get-user", matching the "clerk/get-user" action ID).
   outputComponents?:

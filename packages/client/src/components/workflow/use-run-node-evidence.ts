@@ -29,9 +29,9 @@ import {
   projectedRunStatusAtom,
   runNodeEvidenceStatusesAtom,
 } from "#src/lib/workflow-graph-store";
+import { scopeOfNode } from "#src/lib/workflow-scope-graph";
 import {
   scopeId,
-  scopeOfNode,
   type WorkspaceAddress,
   workspaceAddressId,
   workspaceRouteSearch,

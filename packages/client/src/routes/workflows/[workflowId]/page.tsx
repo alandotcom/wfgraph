@@ -93,7 +93,7 @@ const WorkflowEditor = () => {
             what every one of them already does. */}
         <div className="relative flex size-full flex-col overflow-clip md:rounded-xl md:border md:[clip-path:inset(0_round_var(--editor-shell-radius))]">
           {/* Route → pinned-graph overlay. Outside Canvas Reveal so it
-              outlives the Runs panel; `RunStatusProjection` reads what it writes. */}
+              outlives the Runs view; `RunStatusProjection` reads what it writes. */}
           <ExecutionOverlaySync />
           {/* Route → workspace address, and route recovery. After the overlay
               sync, so recovery in the same commit reads a run graph the

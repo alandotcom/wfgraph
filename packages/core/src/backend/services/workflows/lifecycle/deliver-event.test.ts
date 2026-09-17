@@ -538,7 +538,7 @@ describe("applyLifecycleRules", () => {
       })
     );
 
-    // A graph carrying no rules is every graph until the Lifecycle panel writes
+    // A graph carrying no rules is every graph until the Lifecycle Node inspector writes
     // them. It starts nothing, which is not the same as being unrunnable: runs
     // parked inside it still have Events owed to them.
     it.effect("treats a graph with no rules as starting nothing", () =>

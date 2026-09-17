@@ -73,12 +73,12 @@ import {
   currentWorkflowNameAtom,
   hasUnsavedChangesAtom,
 } from "#src/lib/workflow-save-store";
+import { openMobileSelectionAtom } from "#src/lib/mobile-sheet-store";
 import {
   activeMobileSheetsAtom,
   activeSelectionAtom,
   activeWorkspaceAddressAtom,
   activeWorkspaceCamerasAtom,
-  openMobileSelectionAtom,
 } from "#src/lib/workflow-workspace-navigation";
 import { setViewportWidth } from "#src/lib/viewport-test-support";
 
@@ -503,11 +503,11 @@ describe("mobile Runs Group drill-in", () => {
       within(summary)
         .getAllByRole("button", { name: /, / })
         .map((button) => button.getAttribute("aria-label"))
-    ).toEqual(["Send welcome back, Success", "Send case study, Error"]);
+    ).toEqual(["Send welcome back, Successful", "Send case study, Failed"]);
     expectNoTopologyAuthoring(editor);
 
     // Group summary: a member enters the Group and shows its evidence.
-    press("Send case study, Error");
+    press("Send case study, Failed");
     await waitFor(() =>
       expect(search()).toEqual({
         view: "runs",
@@ -958,7 +958,7 @@ describe("mobile workspace switching inside Groups", () => {
     await waitFor(() => expect(title()).toBe("Run #1"));
     await editor.tapNode("outreach");
     await view.findByTestId("runs-group-summary");
-    press("Send case study, Error");
+    press("Send case study, Failed");
     await waitFor(() =>
       expect(editor.sheet()?.dataset.level).toBe("inspector")
     );

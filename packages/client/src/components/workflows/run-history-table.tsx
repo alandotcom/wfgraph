@@ -16,8 +16,9 @@ import { useMemo, useRef } from "react";
 import { Button } from "#src/components/ui/button";
 import {
   formatDuration,
-  getStatusBadgeClass,
-  getStatusLabel,
+  runStatusLabel,
+  runStatusTone,
+  statusToneBadgeClass,
 } from "#src/components/workflow/workflow-run-shared";
 import type { WorkflowExecutionsGlobalResult } from "#src/lib/rpc-client";
 import {
@@ -145,10 +146,10 @@ function createRunHistoryColumns(onOpenRun: (run: RunHistoryTableRow) => void) {
         <span
           className={cn(
             "inline-flex rounded border px-2 py-0.5 font-medium text-xs",
-            getStatusBadgeClass(info.getValue())
+            statusToneBadgeClass(runStatusTone(info.getValue()))
           )}
         >
-          {getStatusLabel(info.getValue())}
+          {runStatusLabel(info.getValue())}
         </span>
       ),
     }),

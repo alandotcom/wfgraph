@@ -3,7 +3,6 @@ import { useAtomValue } from "jotai";
 import { type RefObject, useRef } from "react";
 import { useAfterPaint } from "#src/hooks/effects";
 import { viewportAnimationDuration } from "#src/lib/motion";
-import { sheetObjectKey } from "#src/lib/mobile-sheet-navigation";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import {
   revealViewport,
@@ -19,8 +18,11 @@ import {
   mobileSheetCameraStep,
   type MobileSheetCameraSlot,
 } from "./reveal-camera";
-import { usableAboveSheet } from "./reveal-geometry";
-import { measureObstacles, subjectBounds } from "./use-reveal-camera";
+import {
+  measureObstacles,
+  subjectBounds,
+  usableAboveSheet,
+} from "./reveal-geometry";
 
 /**
  * Moves the phone's camera the least it must when a summary sheet opens, so the
@@ -48,9 +50,7 @@ export function useMobileSheetCamera(input: {
         },
       }
     : { addressId, sheet: null };
-  const slotKey = next.sheet
-    ? `${next.addressId}|${next.sheet.depth}|${next.sheet.level}|${sheetObjectKey(next.sheet.inspected)}`
-    : next.addressId;
+  const slotKey = state ? state.sheetKey : addressId;
 
   useAfterPaint(slotKey, () => {
     const step = mobileSheetCameraStep({ shown: shownRef.current, next });

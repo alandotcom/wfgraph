@@ -63,6 +63,19 @@ export function sheetObjectKey(inspected: InspectedObject | null): string {
   return inspected === null ? "address" : `${inspected.kind}:${inspected.id}`;
 }
 
+/**
+ * Names one mobile sheet as shown: its address, depth, level on screen, and
+ * object. The sheet's scroll, camera, and focus each change when it changes.
+ */
+export function mobileSheetKey(input: {
+  addressId: string;
+  depth: number;
+  level: MobileRevealLevel;
+  inspected: InspectedObject | null;
+}): string {
+  return `${input.addressId}|${input.depth}|${input.level}|${sheetObjectKey(input.inspected)}`;
+}
+
 /** The last mobile sheet, or null while the canvas shows alone. */
 export function topMobileSheet(scope: ScopeNavigation): MobileSheet | null {
   return scope.mobile.sheets.at(-1) ?? null;

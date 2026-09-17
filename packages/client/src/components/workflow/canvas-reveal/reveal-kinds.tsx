@@ -113,7 +113,6 @@ export type RevealHeaderContext = {
 export type MobileKindHeaderProps = {
   state: MobileRevealState;
   controls: MobileSheetControls;
-  scopeBackLabel: string | null;
 };
 
 /** What a kind's own `Header` component receives from the shell. */
@@ -178,9 +177,7 @@ export type RevealKind = {
   /**
    * How the kind shows in the mobile Reveal sequence below `md`, for a kind
    * whose sheets need more than the shell builds for Draft. `Header` renders
-   * the sheet header, usually `MobileSheetHeader`, with the shell's controls
-   * and `scopeBackLabel`, the name of the focused Group, or null on the
-   * overview, which labels Back on a sheet with no sheet beneath.
+   * the sheet header, usually `MobileSheetHeader`, with the shell's controls.
    * `Body` replaces the default body, which is `Focus` on an inspector sheet
    * and `Browse` on a summary sheet. `unwind` answers Back and Escape on a
    * phone, where `unwindLevel` removes the top sheet; the default removes the

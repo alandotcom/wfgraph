@@ -17,13 +17,13 @@ import {
   settleWorkflowComparisonRequestAtom,
 } from "#src/lib/workflow-comparison-store";
 import type { WorkflowRouteSearch } from "#src/lib/workflow-navigation-state";
+import { openMobileSelectionAtom } from "#src/lib/mobile-sheet-store";
 import {
   activeMobileSheetsAtom,
   activeSelectionAtom,
   activeWorkspaceAddressAtom,
-  activeWorkspaceCamerasAtom,
-  openMobileSelectionAtom,
   recordWorkspaceCameraAtom,
+  activeWorkspaceCamerasAtom,
 } from "#src/lib/workflow-workspace-navigation";
 import { changesMobileSheet } from "./changes-summary";
 import {

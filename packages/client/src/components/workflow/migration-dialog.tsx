@@ -24,7 +24,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "#src/components/ui/dialog";
-import { PanelState } from "#src/components/workflow/panel-state";
+import { StatusPlaceholder } from "#src/components/workflow/status-placeholder";
 import { orpcQuery, refreshRunHistory } from "#src/lib/rpc-query";
 import {
   type MigrationOutcomeCounts,
@@ -124,13 +124,13 @@ export function MigrationDialog({
 
         {preview.isFetching ? (
           <div className="min-h-28">
-            <PanelState label="Checking which runs can move" />
+            <StatusPlaceholder label="Checking which runs can move" />
           </div>
         ) : null}
 
         {preview.isError && !preview.isFetching ? (
           <div className="min-h-28">
-            <PanelState
+            <StatusPlaceholder
               actionLabel="Try again"
               label="Unable to check which runs can move"
               onAction={() => void preview.refetch()}
