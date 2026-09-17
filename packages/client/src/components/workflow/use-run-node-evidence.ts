@@ -6,19 +6,30 @@
 
 import { useNavigate } from "@tanstack/react-router";
 import { atom, useAtomValue, useSetAtom, useStore } from "jotai";
+import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
+import {
+  type GroupRunSummary,
+  summarizeGroupRun,
+} from "@wfgraph/shared/graph/group-run-status";
 import type {
   ExecutionEvent,
   ExecutionLog,
   ExecutionWait,
   WorkflowExecution,
 } from "#src/lib/execution-logs";
+import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import {
   buildRunNodeEvidence,
   type PinnedGraphState,
-  runEvidenceNodeId,
   type RunNodeEvidence,
+  type RunTarget,
+  runTarget,
 } from "#src/lib/run-node-evidence";
-import { executionOverlayGraphAtom } from "#src/lib/workflow-graph-store";
+import {
+  executionOverlayGraphAtom,
+  projectedRunStatusAtom,
+  runNodeEvidenceStatusesAtom,
+} from "#src/lib/workflow-graph-store";
 import {
   type OpenRevealLevel,
   scopeId,
@@ -72,17 +83,27 @@ export type RunEvidenceReads = {
 };
 
 /**
- * The evidence of the node the open run shows, or null when it shows none or
- * no run is open. The Runs header and body call it with the same reads, so
- * both show one value.
+ * What the active run address inspects, from its selection and chosen
+ * execution, for a surface that has no Canvas Reveal subject to read it from.
  */
-export function useRunNodeEvidence(
-  reads: RunEvidenceReads | null
-): RunNodeEvidence | null {
+export function useActiveRunTarget(): RunTarget | null {
   const selection = useAtomValue(activeSelectionAtom);
   const chosenExecution = useAtomValue(activeChosenExecutionAtom);
   const nodes = useAtomValue(executionOverlayGraphAtom)?.nodes ?? [];
-  const nodeId = runEvidenceNodeId({ selection, chosenExecution, nodes });
+  return runTarget({ selection, chosenExecution, nodes });
+}
+
+/**
+ * The evidence of `nodeId` in the open run, or null for a null `nodeId` or when
+ * no run is open. The Runs header and body call it with the node their subject
+ * targets and the same reads, so both show one value.
+ */
+export function useRunNodeEvidence(
+  reads: RunEvidenceReads | null,
+  nodeId: string | null
+): RunNodeEvidence | null {
+  const chosenExecution = useAtomValue(activeChosenExecutionAtom);
+  const nodes = useAtomValue(executionOverlayGraphAtom)?.nodes ?? [];
   if (nodeId === null || reads === null) {
     return null;
   }
@@ -99,49 +120,99 @@ export function useRunNodeEvidence(
 }
 
 /**
- * Show a node's evidence from outside the canvas, as a journey entry does, with
- * that entry's execution chosen. A node in the pinned graph is selected in the
- * scope that shows it: a Group member on its Group's focused canvas, reached by
- * pushing that scope's route. A node the pinned graph lacks, or any node while
- * that graph loads, is carried by the chosen execution with nothing selected.
+ * The run summary of the Group frame `groupId` in the open run, or null outside
+ * Runs, for an id the pinned graph holds no Group frame for, and before the
+ * run's status is projected. It counts from the page's run status projection,
+ * the same per-node statuses the step cards paint.
  */
-export function useInspectRunLog(): (
-  log: ExecutionLog,
-  options: { opensFocus: boolean }
-) => void {
+export function useRunGroupSummary(
+  groupId: string | null
+): GroupRunSummary | null {
+  const view = useAtomValue(workflowWorkspaceViewAtom);
+  const graph = useAtomValue(executionOverlayGraphAtom);
+  const evidence = useAtomValue(runNodeEvidenceStatusesAtom);
+  const executionStatus = useAtomValue(projectedRunStatusAtom);
+  if (
+    view !== "runs" ||
+    groupId === null ||
+    graph === null ||
+    executionStatus === null ||
+    !isGroupNode(graph.nodes.find((node) => node.id === groupId))
+  ) {
+    return null;
+  }
+  return summarizeGroupRun({
+    groupId,
+    nodes: graph.nodes,
+    edges: graph.edges,
+    evidence,
+    executionStatus,
+  });
+}
+
+/**
+ * Show a run node's evidence from outside the canvas. A node in the pinned
+ * graph is selected in the scope that shows it: a Group member on its Group's
+ * focused canvas, reached by pushing that scope's route. A node the pinned graph
+ * lacks, or any node while that graph loads, is carried by the chosen execution
+ * with nothing selected. A null `logId` chooses no execution, so the latest
+ * shows, and marks the canvas node as what opened the evidence.
+ */
+export function useInspectRunNode(): (input: {
+  nodeId: string;
+  logId: string | null;
+  opensFocus: boolean;
+}) => void {
   const store = useStore();
   const navigate = useNavigate({ from: "/workflows/$workflowId" });
   const requestPlacement = useSetAtom(requestRevealPlacementAtom);
-  return (log, options) => {
+  return ({ nodeId, logId, opensFocus }) => {
     const active = store.get(activeWorkspaceAddressAtom);
     const nodes = store.get(executionOverlayGraphAtom)?.nodes ?? [];
-    const inGraph = nodes.some((node) => node.id === log.nodeId);
-    const scope = scopeOfNode(nodes, log.nodeId);
+    const inGraph = nodes.some((node) => node.id === nodeId);
+    const scope = scopeOfNode(nodes, nodeId);
     const address: WorkspaceAddress =
       inGraph && scopeId(scope) !== scopeId(active.scope)
         ? { ...active, scope }
         : active;
     store.set(runEvidenceOriginAtom, {
       addressId: workspaceAddressId(address),
-      nodeId: log.nodeId,
-      logId: log.id,
+      nodeId,
+      logId,
       closedReopenLevel: null,
     });
     store.set(inspectRunNodeAtom, {
       address,
-      nodeId: log.nodeId,
-      executionLogId: log.id,
+      nodeId,
+      executionLogId: logId,
       selectsNode: inGraph,
-      opensFocus: options.opensFocus,
+      opensFocus,
     });
     if (address !== active) {
       requestPlacement({
         addressId: workspaceAddressId(address),
-        nodeIds: [log.nodeId],
+        nodeIds: [nodeId],
       });
       void navigate({ search: workspaceRouteSearch(address) });
     }
   };
+}
+
+/**
+ * Show a node's evidence from its journey entry, with that entry's execution
+ * chosen, as `useInspectRunNode` shows any run node.
+ */
+export function useInspectRunLog(): (
+  log: ExecutionLog,
+  options: { opensFocus: boolean }
+) => void {
+  const inspectNode = useInspectRunNode();
+  return (log, options) =>
+    inspectNode({
+      nodeId: log.nodeId,
+      logId: log.id,
+      opensFocus: options.opensFocus,
+    });
 }
 
 /** Choose which recorded execution of `nodeId` the evidence shows. */

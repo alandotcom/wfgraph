@@ -46,12 +46,12 @@ describe("updateNodesStatus", () => {
     const setNodeStatuses = vi.fn();
     const nodes = [lifecycleNode("t"), actionNode("a")];
 
-    updateNodesStatus(nodes, setNodeStatuses, "idle");
+    updateNodesStatus(nodes, setNodeStatuses, "none");
 
     expect(setNodeStatuses).toHaveBeenCalledTimes(1);
     expect(setNodeStatuses).toHaveBeenCalledWith([
-      { nodeId: "t", status: "idle" },
-      { nodeId: "a", status: "idle" },
+      { nodeId: "t", status: "none" },
+      { nodeId: "a", status: "none" },
     ]);
   });
 });
@@ -95,8 +95,8 @@ describe("executeWorkflowRun", () => {
     // Instant feedback happens before the mutation is awaited: reset first,
     // then show the entrypoint moving, both ahead of any server answer.
     expect(setNodeStatuses).toHaveBeenNthCalledWith(1, [
-      { nodeId: "t", status: "idle" },
-      { nodeId: "a", status: "idle" },
+      { nodeId: "t", status: "none" },
+      { nodeId: "a", status: "none" },
     ]);
     expect(setNodeStatuses).toHaveBeenNthCalledWith(2, [
       { nodeId: "t", status: "running" },
@@ -189,7 +189,7 @@ describe("executeWorkflowRun", () => {
     );
 
     expect(setNodeStatuses).toHaveBeenLastCalledWith([
-      { nodeId: "t", status: "idle" },
+      { nodeId: "t", status: "none" },
     ]);
     expect(navigateToExecution).not.toHaveBeenCalled();
     expect(setIsExecuting).toHaveBeenCalledWith(false);

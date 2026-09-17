@@ -1,14 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { useAtomValue, useSetAtom } from "jotai";
-import { useRef } from "react";
 import { useAfterCommit } from "#src/hooks/effects";
 import { toExecutionOverlaySource } from "#src/lib/execution-logs";
 import { orpcQuery } from "#src/lib/rpc-query";
 import { can } from "#src/lib/authorization";
-import {
-  executionOverlayGraphAtom,
-  resetNodeStatusesAtom,
-} from "#src/lib/workflow-graph-store";
+import { executionOverlayGraphAtom } from "#src/lib/workflow-graph-store";
 import { toEditorEdge, toEditorNode } from "#src/lib/workflow-graph-types";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { selectedExecutionIdAtom } from "#src/lib/workflow-ui-store";
@@ -26,9 +22,6 @@ function useExecutionOverlaySync(): void {
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
   const executionId = useAtomValue(selectedExecutionIdAtom) ?? undefined;
   const setExecutionOverlay = useSetAtom(executionOverlayGraphAtom);
-  const resetNodeStatuses = useSetAtom(resetNodeStatusesAtom);
-  // The run whose statuses the canvas last painted.
-  const paintedExecutionIdRef = useRef<string | undefined>(undefined);
   const canReadLogs = can(WfGraphOperations.workflowGetExecutionLogs.id);
   const canReadVersionGraph = can(WfGraphOperations.workflowGetVersionGraph.id);
 
@@ -76,24 +69,11 @@ function useExecutionOverlaySync(): void {
         ? `ready:${executionId}:${currentWorkflowId}`
         : `open:${executionId}:${currentWorkflowId ?? ""}`,
     () => {
+      // Run statuses are `RunStatusProjection`'s to write, run by run, so
+      // this sync moves only the pinned graph.
       if (executionId === undefined) {
-        paintedExecutionIdRef.current = undefined;
         setExecutionOverlay(null);
-        resetNodeStatuses();
         return;
-      }
-
-      // The server's node-status list only names nodes the run actually
-      // reached, so moving the effective selection to a different run has to
-      // drop what the previous one left behind before the new run's own
-      // statuses land -- otherwise a node the new run never reaches goes on
-      // reporting what the old run did. A repeat commit for the run already
-      // open (a logs poll, or the open→ready transition of the same run)
-      // must not reset, or it would wipe statuses the status poll just
-      // painted for this very run.
-      if (paintedExecutionIdRef.current !== executionId) {
-        resetNodeStatuses();
-        paintedExecutionIdRef.current = executionId;
       }
 
       if (

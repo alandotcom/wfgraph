@@ -367,6 +367,7 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
   settleWaitingStateClaim: refuse("settleWaitingStateClaim"),
   releaseWaitingStateClaim: refuse("releaseWaitingStateClaim"),
   listWaitingStates: refuse("listWaitingStates"),
+  listOpenWaitNodeIds: refuse("listOpenWaitNodeIds"),
   listActiveWaitStates: refuse("listActiveWaitStates"),
   listWaitingStatesForExecutions: refuse("listWaitingStatesForExecutions"),
   listLoggedNodeIdsForExecutions: refuse("listLoggedNodeIdsForExecutions"),

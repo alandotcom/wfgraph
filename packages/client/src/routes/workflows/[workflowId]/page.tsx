@@ -1,4 +1,3 @@
-import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { toast } from "sonner";
@@ -6,6 +5,7 @@ import { AgentPanel } from "#src/components/agent/agent-panel";
 import { CanvasReveal } from "#src/components/workflow/canvas-reveal/canvas-reveal";
 import { Button } from "#src/components/ui/button";
 import { ExecutionOverlaySync } from "#src/components/workflow/execution-overlay-sync";
+import { RunStatusProjection } from "#src/components/workflow/run-status-projection";
 import { WorkflowCanvas } from "#src/components/workflow/workflow-canvas";
 import { WorkflowDraftSync } from "#src/components/workflow/workflow-draft-sync";
 import { WorkflowStatusStrip } from "#src/components/workflow/workflow-status-strip";
@@ -13,40 +13,21 @@ import { WorkflowToolbar } from "#src/components/workflow/workflow-toolbar";
 import { WorkspaceRouteSync } from "#src/components/workflow/workspace-route-sync";
 import { useAfterCommit, useUnmountCleanup } from "#src/hooks/effects";
 import { isAgentEnabled } from "#src/lib/extensions";
-import { isRunInProgress } from "#src/lib/execution-logs";
-import { orpcQuery } from "#src/lib/rpc-query";
 import { can } from "#src/lib/authorization";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
-import {
-  endWorkflowEditorLifetimeAtom,
-  isExecutionOverlayActiveAtom,
-  nodesAtom,
-  setNodeStatusesAtom,
-} from "#src/lib/workflow-graph-store";
+import { endWorkflowEditorLifetimeAtom } from "#src/lib/workflow-graph-store";
 import {
   currentWorkflowIdAtom,
   lastSaveErrorAtom,
   workflowNotFoundAtom,
   workflowLoadErrorAtom,
 } from "#src/lib/workflow-save-store";
-import {
-  isExecutingAtom,
-  selectedExecutionIdAtom,
-} from "#src/lib/workflow-ui-store";
-
-/** How often a run that is still going has its progress read back. */
-const RUN_STATUS_POLL_MS = 500;
 
 const WorkflowEditor = () => {
   const endWorkflowEditorLifetime = useSetAtom(endWorkflowEditorLifetimeAtom);
   useUnmountCleanup(() => endWorkflowEditorLifetime());
   const lastSaveError = useAtomValue(lastSaveErrorAtom);
-  const nodes = useAtomValue(nodesAtom);
   const [currentWorkflowId] = useAtom(currentWorkflowIdAtom);
-  const [selectedExecutionId] = useAtom(selectedExecutionIdAtom);
-  const isExecutionOverlayActive = useAtomValue(isExecutionOverlayActiveAtom);
-  const setIsExecuting = useSetAtom(isExecutingAtom);
-  const setNodeStatuses = useSetAtom(setNodeStatusesAtom);
   const workflowNotFound = useAtomValue(workflowNotFoundAtom);
   const workflowLoadError = useAtomValue(workflowLoadErrorAtom);
   const canUpdate = can(WfGraphOperations.workflowUpdate.id);
@@ -63,66 +44,6 @@ const WorkflowEditor = () => {
       toast.error(lastSaveError.message || "Failed to save workflow");
     }
   });
-
-  // While a run is on screen its progress is read back every half second. The
-  // predicate is what stops it: once the run reaches a terminal status there is
-  // nothing further to learn, which the hand-managed interval this replaced had
-  // to work out for itself in three places, including its error path.
-  const executionStatusQuery = useQuery({
-    ...orpcQuery.workflow.getExecutionStatus.queryOptions({
-      input: { executionId: selectedExecutionId ?? "" },
-    }),
-    enabled:
-      selectedExecutionId !== null &&
-      can(WfGraphOperations.workflowGetExecutionStatus.id),
-    staleTime: 0,
-    refetchIntervalInBackground: false,
-    refetchInterval: (query) =>
-      isRunInProgress(query.state.data?.status) ? RUN_STATUS_POLL_MS : false,
-  });
-
-  const executionStatus = executionStatusQuery.data;
-
-  // Projecting a run's progress onto the graph. The statuses live on the nodes
-  // because that is where React Flow reads them from, so this is a write into a
-  // store rather than something render can return, and the thing it follows is
-  // a server response rather than anything the user did. Overlay presence is in
-  // the key so a null→present rebuild (late hydrate restore) re-projects chips
-  // onto the new nodes; completed runs do not poll, so identity alone is not enough.
-  const nodeStatusKey =
-    executionStatus?.nodeStatuses
-      .map((nodeStatus) => `${nodeStatus.nodeId}=${nodeStatus.status}`)
-      .join(",") ?? "";
-  useAfterCommit(
-    selectedExecutionId === null
-      ? "idle"
-      : `${selectedExecutionId}:${isExecutionOverlayActive}:${
-          executionStatus === undefined
-            ? "loading"
-            : `${executionStatus.status}:${nodeStatusKey}`
-        }`,
-    () => {
-      if (!selectedExecutionId) {
-        setNodeStatuses(
-          nodes.map((node) => ({ nodeId: node.id, status: "idle" }))
-        );
-        setIsExecuting(false);
-        return;
-      }
-
-      if (!executionStatus) {
-        return;
-      }
-
-      setNodeStatuses(
-        executionStatus.nodeStatuses.map((nodeStatus) => ({
-          nodeId: nodeStatus.nodeId,
-          status: nodeStatus.status === "pending" ? "idle" : nodeStatus.status,
-        }))
-      );
-      setIsExecuting(isRunInProgress(executionStatus.status));
-    }
-  );
 
   return (
     // The page the shell is inset on. It owns the viewport height, because
@@ -168,12 +89,15 @@ const WorkflowEditor = () => {
             what every one of them already does. */}
         <div className="relative flex size-full flex-col overflow-clip md:rounded-xl md:border md:[clip-path:inset(0_round_var(--editor-shell-radius))]">
           {/* Route → pinned-graph overlay. Outside Canvas Reveal so it
-              outlives the Runs panel; the status projection above reads what it writes. */}
+              outlives the Runs panel; `RunStatusProjection` reads what it writes. */}
           <ExecutionOverlaySync />
           {/* Route → workspace address, and route recovery. After the overlay
               sync, so recovery in the same commit reads a run graph the
               overlay sync has already dropped. */}
           <WorkspaceRouteSync />
+          {/* Open run → one evidence status per node, which step cards and
+              Group cards both read. */}
+          <RunStatusProjection />
 
           {/* Workflow not found overlay */}
           {workflowNotFound && (

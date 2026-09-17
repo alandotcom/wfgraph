@@ -162,6 +162,19 @@ describe("a Group around a linear sequence", () => {
       expect(after).toEqual(before);
     }
   );
+
+  it("writes run logs, results and every other store record for real steps alone", async () => {
+    const { results, storeCalls } = await run(grouped("vertical"));
+
+    const loggedNodeIds = storeCalls.flatMap((call) =>
+      call.method === "startStepLog" ? [call.input.nodeId] : []
+    );
+    expect(loggedNodeIds).toEqual(["life", "read", "send", "wait", "after"]);
+    expect(Object.keys(results)).not.toContain("group");
+    // No store call of any kind names the frame: a log, its input or output,
+    // a wait, an audit event, a cancellation sweep, or the run's completion.
+    expect(JSON.stringify(storeCalls)).not.toContain('"group"');
+  });
 });
 
 /**

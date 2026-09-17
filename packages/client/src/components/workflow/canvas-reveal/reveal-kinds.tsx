@@ -13,7 +13,7 @@ import {
 } from "#src/components/workflow/node-config-panel";
 import { NodePropertiesForm } from "#src/components/workflow/node-properties-form";
 import { setComparisonSubviewAtom } from "#src/lib/workflow-comparison-store";
-import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import { groupLabel, type WorkflowNode } from "#src/lib/workflow-graph-types";
 import {
   workspaceAddressId,
   type OpenRevealLevel,
@@ -199,7 +199,7 @@ function stepHeaderModel(
       ? node.data.label
       : ((actionType && findAction(context.catalog, actionType)?.label) ??
         "Untitled step");
-  const groupLabel = node?.parentId
+  const parentGroupLabel = node?.parentId
     ? context.nodes.find((item) => item.id === node.parentId)?.data.label
     : undefined;
   const issues = context.issues.filter(
@@ -210,7 +210,7 @@ function stepHeaderModel(
     title,
     path: compact([
       context.workflowName || "Untitled workflow",
-      groupLabel,
+      parentGroupLabel,
       title,
     ]),
     status: issueStatus(issues),
@@ -223,7 +223,7 @@ function groupHeaderModel(
   context: RevealHeaderContext
 ): RevealHeaderModel {
   const node = context.nodes.find((item) => item.id === subject.nodeId);
-  const title = node && !isBlank(node.data.label) ? node.data.label : "Group";
+  const title = groupLabel(node?.data.label);
   return {
     workspaceLabel: "Draft",
     title,

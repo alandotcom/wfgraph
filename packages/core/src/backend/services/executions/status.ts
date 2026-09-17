@@ -28,6 +28,7 @@ export const getExecutionStatus = Effect.fn("getExecutionStatus")(
     }
 
     const logs = yield* repo.listNodeStatuses(executionId);
+    const openWaitNodeIds = yield* repo.listOpenWaitNodeIds(executionId);
 
     // A run that stopped leaves its unfinished nodes recorded as pending or
     // running, because nothing writes to them once the run stops. The editor
@@ -47,6 +48,7 @@ export const getExecutionStatus = Effect.fn("getExecutionStatus")(
     return {
       status: execution.status,
       nodeStatuses,
+      openWaitNodeIds,
     };
   },
   (effect, executionId) =>

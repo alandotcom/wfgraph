@@ -1,5 +1,5 @@
 import { Handle, Position } from "@xyflow/react";
-import { Ban, Check, Loader2, XCircle } from "lucide-react";
+import { Ban, Check, Hourglass, Loader2, XCircle } from "lucide-react";
 import type { ComponentProps, CSSProperties, ReactNode } from "react";
 import { AnimatedBorder } from "#src/components/ui/animated-border";
 import { Card, CardTitle } from "#src/components/ui/card";
@@ -17,7 +17,14 @@ export type NodeProps = ComponentProps<typeof Card> & {
     target: boolean | NodeHandleConfig[];
     source: boolean | NodeHandleConfig[];
   };
-  status?: "idle" | "running" | "success" | "error" | "cancelled" | undefined;
+  status?:
+    | "idle"
+    | "running"
+    | "waiting"
+    | "success"
+    | "error"
+    | "cancelled"
+    | undefined;
   selected?: boolean | undefined;
   /** The card side a `true` source handle sits on. Bottom when unset. */
   sourcePosition?: Position | undefined;
@@ -35,6 +42,12 @@ const STATUS_CHIP = {
     Icon: Loader2,
     className: "bg-primary/5 text-foreground",
     iconClassName: "animate-spin motion-reduce:animate-none",
+  },
+  waiting: {
+    label: "Waiting",
+    Icon: Hourglass,
+    className: "bg-warning/10 text-warning",
+    iconClassName: "",
   },
   success: {
     label: "Succeeded",

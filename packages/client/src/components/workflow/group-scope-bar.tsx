@@ -5,6 +5,7 @@ import { Button } from "#src/components/ui/button";
 import { useAfterCommit } from "#src/hooks/effects";
 import { presentedGraphAtom } from "#src/lib/workflow-graph-store";
 import { groupMemberCountAtom } from "#src/lib/workflow-graph-presentation-store";
+import { groupLabel } from "#src/lib/workflow-graph-types";
 import { currentWorkflowNameAtom } from "#src/lib/workflow-save-store";
 import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
@@ -69,7 +70,7 @@ export function GroupScopeBar() {
           ›
         </li>
         <li aria-current="page" className="min-w-0 truncate font-medium">
-          {frame.data.label || "Group"}
+          {groupLabel(frame.data.label)}
         </li>
       </ol>
       <span className="shrink-0 text-muted-foreground">

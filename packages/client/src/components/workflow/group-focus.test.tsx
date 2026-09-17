@@ -16,6 +16,7 @@ import { ExtensionCatalogProvider } from "#src/components/extension-catalog-prov
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import { CanvasReveal } from "#src/components/workflow/canvas-reveal/canvas-reveal";
+import { RunStatusProjection } from "#src/components/workflow/run-status-projection";
 import { useAddStep } from "#src/components/workflow/use-add-step";
 import { WorkflowCanvas } from "#src/components/workflow/workflow-canvas";
 import { WorkflowContextMenu } from "#src/components/workflow/workflow-context-menu";
@@ -59,7 +60,17 @@ import {
   activeWorkspaceAddressAtom,
   setWorkspaceRevealLevelAtom,
 } from "#src/lib/workflow-workspace-navigation";
-import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
+import {
+  answerWorkflowRunRpc,
+  extractRpcProcedurePath,
+  parseRpcRequestInput,
+  rpcUrl,
+  type WorkflowRunRpcFixture,
+} from "#src/lib/rpc-fetch-test-support";
+import {
+  WfGraphOperationIds,
+  WfGraphOperations,
+} from "@wfgraph/shared/authorization/operations";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
@@ -160,7 +171,8 @@ async function renderEditor(
   graph: { nodes: WorkflowNode[]; edges: WorkflowEdge[] } = {
     nodes: NODES,
     edges: EDGES,
-  }
+  },
+  options: { reveal?: boolean } = {}
 ) {
   const store = createStore();
   store.set(workflowApiAtom, {
@@ -186,8 +198,9 @@ async function renderEditor(
         style={{ width: 1400, height: 900 }}
       >
         <WorkspaceRouteSync />
+        <RunStatusProjection />
         <WorkflowCanvas canEdit />
-        <CanvasReveal />
+        {options.reveal === false ? null : <CanvasReveal />}
         <Probe />
       </div>
     ),
@@ -253,6 +266,114 @@ afterEach(() => {
   vi.unstubAllGlobals();
   resetAuthorizationGrantsForTests();
 });
+
+/** Run-log rows for `statuses`, one per node, in the order given. */
+function logRows(statuses: Record<string, string>) {
+  return Object.entries(statuses).map(([nodeId, status], index) => ({
+    id: `log_${nodeId}`,
+    nodeId,
+    nodeName: nodeId,
+    nodeType: "action",
+    status,
+    startedAt: `2026-03-01T10:00:0${index}.000Z`,
+    completedAt: null,
+    duration: null,
+    error: null,
+  }));
+}
+
+/** A fixture serving one run, `run_1`, with one log row per node in `statuses`. */
+function serveRun(
+  status: string,
+  statuses: Record<string, string>
+): WorkflowRunRpcFixture {
+  return {
+    items: [
+      {
+        id: "run_1",
+        workflowId: "wf_1",
+        workflowRunId: "inngest_1",
+        status,
+        startedAt: "2026-03-01T10:00:00.000Z",
+        completedAt: null,
+        waitingAt: null,
+        cancelledAt: null,
+        duration: null,
+        error: null,
+        entityValue: null,
+        startEventName: null,
+        runMode: "live",
+        startSource: "event",
+      },
+    ],
+    supersededCount: 0,
+    graphs: {},
+    logsSummaryExtras: {},
+    logsByExecutionId: { run_1: logRows(statuses) },
+    waitsByExecutionId: {},
+  };
+}
+
+/** Grant every operation and answer each RPC call from `served` as it stands. */
+function stubRunRpc(served: WorkflowRunRpcFixture) {
+  installAuthorizationGrantsForTests(WfGraphOperationIds);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) =>
+      answerWorkflowRunRpc(
+        served,
+        extractRpcProcedurePath(rpcUrl(input)),
+        await parseRpcRequestInput(init)
+      )
+    )
+  );
+}
+
+type EditorRouter = Awaited<ReturnType<typeof renderEditor>>["router"];
+
+/** Pin the test graph as the run's graph and open `run_1` in Runs. */
+async function openRun(
+  store: ReturnType<typeof createStore>,
+  router: EditorRouter
+) {
+  await act(async () => {
+    store.set(executionOverlayGraphAtom, { nodes: NODES, edges: EDGES });
+    await router.navigate({
+      to: "/workflows/$workflowId",
+      params: { workflowId: "wf_1" },
+      search: { view: "runs", executionId: "run_1" },
+    });
+  });
+}
+
+async function enterOutreach(router: EditorRouter) {
+  await act(async () => {
+    await router.navigate({
+      to: "/workflows/$workflowId",
+      params: { workflowId: "wf_1" },
+      search: { view: "runs", executionId: "run_1", group: "outreach" },
+    });
+  });
+}
+
+async function leaveOutreach(router: EditorRouter) {
+  await act(async () => {
+    await router.navigate({
+      to: "/workflows/$workflowId",
+      params: { workflowId: "wf_1" },
+      search: { view: "runs", executionId: "run_1" },
+    });
+  });
+}
+
+/** The status chip text a step card shows, or null with no chip. */
+function chipText(view: ReturnType<typeof render>, nodeId: string) {
+  return (
+    view
+      .queryByTestId(`action-node-${nodeId}`)
+      ?.querySelector('[role="status"]')?.textContent ?? null
+  );
+}
 
 describe("the collapsed Group overview", () => {
   it("renders the Group as one card with its boundary edges on the frame", async () => {
@@ -522,6 +643,107 @@ describe("the collapsed Group overview", () => {
     expect(ids).toContain("outreach");
     expect(ids).not.toContain("welcome");
   });
+
+  it("shows a canceled run's Group status and member counts on the collapsed card", async () => {
+    const served = serveRun("canceled", {
+      welcome: "success",
+      case_study: "running",
+    });
+    stubRunRpc(served);
+    const { view, store, router } = await renderEditor();
+    await openRun(store, router);
+
+    const card = await view.findByTestId("group-run-summary-outreach");
+    await waitFor(() => expect(card.textContent).toContain("Canceled"));
+    expect(card.textContent).toContain("2 of 2 steps reached, 1 canceled");
+    expect(view.getByTestId("group-node-outreach").className).toContain(
+      "border-cancelled"
+    );
+  });
+
+  it("updates a run's Group card from the status projection alone, in agreement with its step chips", async () => {
+    const served = serveRun("running", {
+      welcome: "success",
+      case_study: "running",
+    });
+    stubRunRpc(served);
+    const { view, store, router } = await renderEditor("", undefined, {
+      reveal: false,
+    });
+    await openRun(store, router);
+    expect(view.queryByTestId("runs-browse")).toBeNull();
+
+    const card = await view.findByTestId("group-run-summary-outreach");
+    await waitFor(() => expect(card.textContent).toContain("Running"));
+    expect(card.textContent).toContain("2 of 2 steps reached, 1 running");
+    await enterOutreach(router);
+    await waitFor(() => expect(chipText(view, "case_study")).toBe("Running"));
+    expect(chipText(view, "welcome")).toBe("Succeeded");
+
+    // The run completes. Only the status poll reads it.
+    served.items[0].status = "completed";
+    served.logsByExecutionId.run_1 = logRows({
+      welcome: "success",
+      case_study: "success",
+      route: "success",
+    });
+    await waitFor(
+      () => expect(chipText(view, "case_study")).toBe("Succeeded"),
+      { timeout: 3000 }
+    );
+    expect(chipText(view, "welcome")).toBe("Succeeded");
+    await leaveOutreach(router);
+    const completedCard = await view.findByTestId("group-run-summary-outreach");
+    expect(completedCard.textContent).toContain("Successful");
+    expect(completedCard.textContent).toContain("2 of 2 steps reached");
+  });
+
+  it.each([
+    {
+      runStatus: "waiting",
+      card: "Waiting",
+      counts: "2 of 2 steps reached, 1 waiting",
+      chip: "Waiting",
+      waits: [
+        {
+          id: "wait_1",
+          nodeId: "case_study",
+          nodeName: "Send case study",
+          resumeToken: "tok_1",
+          subscribedEvents: [],
+          waitUntil: null,
+        },
+      ],
+    },
+    {
+      runStatus: "failed",
+      card: "Failed",
+      counts: "2 of 2 steps reached, 1 failed",
+      chip: "Failed",
+      waits: [],
+    },
+  ])(
+    "shows a $runStatus run's Group card and its step chip with the same status",
+    async ({ runStatus, card, counts, chip, waits }) => {
+      const served = serveRun(runStatus, {
+        welcome: "success",
+        case_study: runStatus === "failed" ? "error" : "running",
+      });
+      served.waitsByExecutionId = { run_1: waits };
+      stubRunRpc(served);
+      const { view, store, router } = await renderEditor("", undefined, {
+        reveal: false,
+      });
+      await openRun(store, router);
+
+      const summary = await view.findByTestId("group-run-summary-outreach");
+      await waitFor(() => expect(summary.textContent).toContain(card));
+      expect(summary.textContent).toContain(counts);
+      await enterOutreach(router);
+      await waitFor(() => expect(chipText(view, "case_study")).toBe(chip));
+      expect(chipText(view, "welcome")).toBe("Succeeded");
+    }
+  );
 
   it("keeps Runs Browse on a run's focused Group canvas", async () => {
     const { view, store, router, search } = await renderEditor();

@@ -234,6 +234,13 @@ export type WaitsRepoMethods = {
     executionId: string
   ) => Effect.Effect<WorkflowWaitState[], DatabaseError>;
   /**
+   * The node ids of the waits `listWaitingStates` answers, each once and in no
+   * particular order, for the run status read the editor polls.
+   */
+  readonly listOpenWaitNodeIds: (
+    executionId: string
+  ) => Effect.Effect<string[], DatabaseError>;
+  /**
    * Every wait row of one run in `waiting` or `resuming`, for the Exit wake.
    *
    * A `resuming` row is a resume producer's claim whose signal may not have
@@ -526,6 +533,20 @@ export function makeWaitsMethods(
           },
         })
       ),
+
+    listOpenWaitNodeIds: (executionId) =>
+      database.query(async (db) => {
+        const rows = await db
+          .selectDistinct({ nodeId: workflowWaitStates.nodeId })
+          .from(workflowWaitStates)
+          .where(
+            and(
+              eq(workflowWaitStates.executionId, executionId),
+              eq(workflowWaitStates.status, "waiting")
+            )
+          );
+        return rows.map((row) => row.nodeId);
+      }),
 
     listActiveWaitStates: (executionId) =>
       database.query((db) =>

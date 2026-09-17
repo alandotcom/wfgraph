@@ -992,68 +992,6 @@ describe("ExecutionOverlaySync", () => {
     ).toBe("running");
   });
 
-  // The server's node-status list is not exhaustive: it reports only nodes
-  // that have an execution-log row for that run, so a node the new run has
-  // not reached is simply absent from it rather than reported idle. Nothing
-  // clears statusByNodeIdAtom on a straight run-to-run switch other than this
-  // sync effect, so without a reset a node id shared between two runs would
-  // go on showing what the first run did.
-  it("resets stale node statuses when switching straight to another run", async () => {
-    served.items = [
-      execution("exec_new", "completed"),
-      execution("exec_old", "completed"),
-    ];
-    served.graphs = {
-      [versionIdFor("exec_old")]: pinnedGraph("shared_lifecycle"),
-      [versionIdFor("exec_new")]: pinnedGraph("shared_lifecycle"),
-    };
-    const { store, router } = renderRuns({
-      executionId: "exec_new",
-      panel: false,
-    });
-
-    await waitFor(() => {
-      expect(
-        store.get(executionOverlayGraphAtom)?.nodes.map((n) => n.id)
-      ).toEqual(["shared_lifecycle"]);
-    });
-
-    // Paint a status while exec_new is open, the way the run-status poll in
-    // page.tsx would.
-    store.set(setNodeStatusesAtom, [
-      { nodeId: "shared_lifecycle", status: "running" },
-    ]);
-    expect(
-      store.get(displayNodesAtom).find((node) => node.id === "shared_lifecycle")
-        ?.data.status
-    ).toBe("running");
-
-    await act(async () => {
-      await router.navigate({
-        to: "/workflows/$workflowId",
-        params: { workflowId: "wf_1" },
-        search: { view: "runs", executionId: "exec_old" },
-      });
-    });
-
-    await waitFor(() => {
-      expect(
-        store.get(executionOverlayGraphAtom)?.nodes.map((n) => n.id)
-      ).toEqual(["shared_lifecycle"]);
-    });
-
-    // exec_old's own status poll never ran in this test (that lives in
-    // page.tsx), so a node still reading "running" here can only be the
-    // previous run's stale entry surviving the switch. With the map reset,
-    // displayNodesAtom's fast path (no statuses, no inactive branch) hands
-    // the node back with no status field at all -- equivalent to idle, because
-    // the node components treat a missing status the same as "idle".
-    expect(
-      store.get(displayNodesAtom).find((node) => node.id === "shared_lifecycle")
-        ?.data.status ?? "idle"
-    ).toBe("idle");
-  });
-
   // Leaving Runs is the other way out of a run. The pinned graph has to step
   // aside, or the canvas keeps painting the run's graph and
   // `canvasEditingLockedAtom` keeps refusing every edit, with nothing on screen

@@ -6,8 +6,9 @@ import type {
 } from "#src/lib/execution-logs";
 import {
   buildRunNodeEvidence,
-  runEvidenceNodeId,
+  runNodeEvidenceStatuses,
   runNodeTitle,
+  runTarget,
   shownExecution,
 } from "#src/lib/run-node-evidence";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
@@ -74,37 +75,37 @@ function event(
   };
 }
 
-describe("runEvidenceNodeId", () => {
+describe("runTarget", () => {
   const nodes = [node("step", "action"), node("group", "group")];
 
-  it("names the one selected node, and no Group frame", () => {
+  it("names the one selected node, and a selected Group frame as a Group", () => {
     expect(
-      runEvidenceNodeId({
+      runTarget({
         selection: { nodeIds: ["step"], edgeIds: [] },
         chosenExecution: null,
         nodes,
       })
-    ).toBe("step");
+    ).toEqual({ kind: "node", nodeId: "step" });
     expect(
-      runEvidenceNodeId({
+      runTarget({
         selection: { nodeIds: ["group"], edgeIds: [] },
         chosenExecution: null,
         nodes,
       })
-    ).toBeNull();
+    ).toEqual({ kind: "group", groupId: "group" });
   });
 
   it("names a chosen execution's node only while nothing is selected", () => {
     const chosenExecution = { nodeId: "gone", logId: "log_1" };
     expect(
-      runEvidenceNodeId({
+      runTarget({
         selection: { nodeIds: [], edgeIds: [] },
         chosenExecution,
         nodes,
       })
-    ).toBe("gone");
+    ).toEqual({ kind: "node", nodeId: "gone" });
     expect(
-      runEvidenceNodeId({
+      runTarget({
         selection: { nodeIds: ["step", "group"], edgeIds: [] },
         chosenExecution,
         nodes,
@@ -262,5 +263,35 @@ describe("buildRunNodeEvidence", () => {
     expect(evidence.removed).toBe(false);
     expect(evidence.shownExecution).toBeNull();
     expect(evidence.title).toBe("Step");
+  });
+});
+
+describe("runNodeEvidenceStatuses", () => {
+  it("reads an unfinished node the run is parked on as waiting", () => {
+    expect(
+      runNodeEvidenceStatuses({
+        executionStatus: "waiting",
+        nodeStatuses: [
+          { nodeId: "a", status: "success" },
+          { nodeId: "w", status: "running" },
+          { nodeId: "b", status: "pending" },
+        ],
+        parkedNodeIds: ["w"],
+      })
+    ).toEqual([
+      { nodeId: "a", status: "success" },
+      { nodeId: "w", status: "waiting" },
+      { nodeId: "b", status: "pending" },
+    ]);
+  });
+
+  it("reads no node as waiting once the run stopped, whatever waits were left", () => {
+    expect(
+      runNodeEvidenceStatuses({
+        executionStatus: "canceled",
+        nodeStatuses: [{ nodeId: "w", status: "cancelled" }],
+        parkedNodeIds: ["w"],
+      })
+    ).toEqual([{ nodeId: "w", status: "cancelled" }]);
   });
 });

@@ -1,10 +1,12 @@
 /**
  * The recorded evidence of one node in one run, built from the reads the Runs
- * surface already holds. Every function is pure. A Group frame is organizational
- * and never has evidence, so no node id here ever names one.
+ * surface already holds, and the evidence status of each node a run status read
+ * names. Every function is pure. A Group frame is organizational and never has
+ * evidence.
  */
 
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
+import type { RunNodeEvidenceStatus } from "@wfgraph/shared/graph/group-run-status";
 import { isJsonObject, readJsonValue } from "@wfgraph/shared/types/json";
 import { isBlank } from "@wfgraph/shared/types/string";
 import { sortBy } from "es-toolkit/array";
@@ -30,25 +32,35 @@ import {
 export type PinnedGraphState = "ready" | "loading" | "unavailable";
 
 /**
- * The node whose evidence a run address shows, or null. It is the node the
- * selection holds alone, unless that node is a Group frame. With nothing
- * selected it is the node of the chosen execution, which covers a node the
- * canvas cannot select, such as one the pinned graph lacks.
+ * What a run address inspects: a node's evidence, or a Group frame's run
+ * summary. Only a node has evidence to show.
  */
-export function runEvidenceNodeId(input: {
+export type RunTarget =
+  | { kind: "node"; nodeId: string }
+  | { kind: "group"; groupId: string };
+
+/**
+ * What a run address inspects, or null. The node the selection holds alone is
+ * a Group when it is a Group frame and a node otherwise. With nothing selected
+ * it is the node of the chosen execution, which covers a node the canvas cannot
+ * select, such as one the pinned graph lacks.
+ */
+export function runTarget(input: {
   selection: CanvasSelection;
   chosenExecution: ChosenRunExecution | null;
   nodes: readonly Pick<WorkflowNode, "id" | "data">[];
-}): string | null {
+}): RunTarget | null {
   const { selection, chosenExecution, nodes } = input;
   const selectedId = singleSelectedNodeId(selection);
   if (selectedId !== null) {
     return isGroupNode(nodes.find((node) => node.id === selectedId))
-      ? null
-      : selectedId;
+      ? { kind: "group", groupId: selectedId }
+      : { kind: "node", nodeId: selectedId };
   }
-  return selection.nodeIds.length === 0 && selection.edgeIds.length === 0
-    ? (chosenExecution?.nodeId ?? null)
+  return selection.nodeIds.length === 0 &&
+    selection.edgeIds.length === 0 &&
+    chosenExecution !== null
+    ? { kind: "node", nodeId: chosenExecution.nodeId }
     : null;
 }
 
@@ -179,4 +191,27 @@ export function buildRunNodeEvidence(input: {
         : null,
     inProgress,
   };
+}
+
+/**
+ * The evidence status of each node a run status read names, in the order the
+ * read lists them. An unfinished node the run is parked on is `waiting` while
+ * the run is in progress. `parkedNodeIds` names the nodes of the run's open
+ * waits.
+ */
+export function runNodeEvidenceStatuses(input: {
+  executionStatus: string;
+  nodeStatuses: readonly { nodeId: string; status: ExecutionLog["status"] }[];
+  parkedNodeIds: readonly string[];
+}): Array<{ nodeId: string; status: RunNodeEvidenceStatus }> {
+  const parked = new Set(
+    isRunInProgress(input.executionStatus) ? input.parkedNodeIds : []
+  );
+  return input.nodeStatuses.map(({ nodeId, status }) => ({
+    nodeId,
+    status:
+      (status === "pending" || status === "running") && parked.has(nodeId)
+        ? "waiting"
+        : status,
+  }));
 }

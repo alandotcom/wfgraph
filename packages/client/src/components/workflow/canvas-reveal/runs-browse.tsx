@@ -7,6 +7,7 @@ import {
   runEvidenceOriginAtom,
   useChooseRunExecution,
   useInspectRunLog,
+  useRunGroupSummary,
   useRunNodeEvidence,
 } from "#src/components/workflow/use-run-node-evidence";
 import {
@@ -19,6 +20,7 @@ import { WorkflowRunDetail } from "#src/components/workflow/workflow-run-detail"
 import { WorkflowRunNodeEvidence } from "#src/components/workflow/workflow-run-node-evidence";
 import {
   getStatusLabel,
+  groupRunStatusTone,
   statusTone,
 } from "#src/components/workflow/workflow-run-shared";
 import {
@@ -30,13 +32,26 @@ import {
 } from "#src/components/workflow/workflow-runs";
 import { WorkflowRunsList } from "#src/components/workflow/workflow-runs-list";
 import { useAfterCommit } from "#src/hooks/effects";
-import { workspaceAddressId } from "#src/lib/workflow-navigation-state";
+import { executionOverlayGraphAtom } from "#src/lib/workflow-graph-store";
+import { groupLabel } from "#src/lib/workflow-graph-types";
+import {
+  type WorkspaceAddress,
+  workspaceAddressId,
+  workspaceRouteSearch,
+} from "#src/lib/workflow-navigation-state";
 import { currentWorkflowNameAtom } from "#src/lib/workflow-save-store";
 import {
   activeWorkspaceAddressAtom,
+  clearRunNodeInspectionAtom,
   closeWorkspaceRevealAtom,
+  inspectRunNodeAtom,
 } from "#src/lib/workflow-workspace-navigation";
+import {
+  type GroupRunStatus,
+  groupRunStatusLabel,
+} from "@wfgraph/shared/graph/group-run-status";
 import { RevealHeader, type RevealHeaderModel } from "./reveal-header";
+import { RunsGroupSummary } from "./runs-group-summary";
 import type {
   RevealBodyProps,
   RevealKind,
@@ -51,18 +66,29 @@ const RUNS_FOCUS_TOGGLE_TEXT = {
 };
 
 /**
+ * What the Runs header names past the run: nothing, the node whose evidence
+ * Focus shows with that execution's status, or a Group frame with its run
+ * status.
+ */
+type RunsHeaderTarget =
+  | { kind: "run" }
+  | { kind: "node"; title: string; status: string | null }
+  | { kind: "group"; title: string; status: GroupRunStatus };
+
+/**
  * The Runs header model. The run list names the workflow and Runs with no
  * Back. A run is titled by its number in the run list, or "Run" once it has
- * left the list, and carries its status and Back. A node's evidence adds the
- * node to the path, is titled by the node, and carries the shown execution's
- * status, or "Not run" for a node with no execution.
+ * left the list, and carries its status and Back. A node or Group target adds
+ * itself to the path and is titled by its name. A node carries the shown
+ * execution's status, or "Not run" for a node with no execution, and a Group
+ * carries its run status.
  */
 function runsHeaderModel(input: {
   workflowName: string;
   openRun: OpenRunIdentity | null;
-  node: { title: string; status: string | null } | null;
+  target: RunsHeaderTarget;
 }): RevealHeaderModel {
-  const { workflowName, openRun, node } = input;
+  const { workflowName, openRun, target } = input;
   const list: RevealHeaderModel = {
     workspaceLabel: "Runs",
     title: "Runs",
@@ -95,43 +121,74 @@ function runsHeaderModel(input: {
     text: getStatusLabel(execution.status),
     tone: statusTone(execution.status),
   });
-  return node === null
-    ? run
-    : {
-        ...run,
-        title: node.title,
-        path: [...run.path, node.title],
-        status:
-          node.status === null
-            ? { text: "Not run", tone: "muted" }
-            : {
-                text: getStatusLabel(node.status),
-                tone: statusTone(node.status),
-              },
-      };
+  if (target.kind === "run") {
+    return run;
+  }
+  return {
+    ...run,
+    title: target.title,
+    path: [...run.path, target.title],
+    status:
+      target.kind === "group"
+        ? {
+            text: groupRunStatusLabel(target.status),
+            tone: groupRunStatusTone(target.status),
+          }
+        : target.status === null
+          ? { text: "Not run", tone: "muted" }
+          : {
+              text: getStatusLabel(target.status),
+              tone: statusTone(target.status),
+            },
+  };
 }
 
 /**
  * The Runs header. It reads the run the route opens through the same cached
- * queries the Runs body observes, so it adds no request of its own. At Focus
- * it names the node from the same evidence the body shows.
+ * queries the Runs body observes, and a Group's status from the run status
+ * projection, so it adds no request of its own. At Focus it names the node
+ * from the same evidence the body shows.
  */
-export function RunsHeader({ level, controls }: RevealKindHeaderProps) {
+export function RunsHeader({
+  subject,
+  level,
+  controls,
+}: RevealKindHeaderProps) {
   const workflowName = useAtomValue(currentWorkflowNameAtom);
   const openRun = useOpenRunIdentity();
-  const evidence = useRunNodeEvidence(openRun?.kind === "run" ? openRun : null);
-  const node =
+  const shownRun = openRun?.kind === "run" ? openRun : null;
+  const { runsTarget } = subject;
+  const evidence = useRunNodeEvidence(
+    shownRun,
+    runsTarget?.kind === "node" ? runsTarget.nodeId : null
+  );
+  const groupId =
+    shownRun !== null && runsTarget?.kind === "group"
+      ? runsTarget.groupId
+      : null;
+  const groupSummary = useRunGroupSummary(groupId);
+  const groupFrame = useAtomValue(executionOverlayGraphAtom)?.nodes.find(
+    (node) => node.id === groupId
+  );
+  const target: RunsHeaderTarget =
     level === "focus" && evidence !== null
       ? {
+          kind: "node",
           title: evidence.title,
           status: evidence.shownExecution?.status ?? null,
         }
-      : null;
+      : groupSummary !== null
+        ? {
+            kind: "group",
+            title: groupLabel(groupFrame?.data.label),
+            status: groupSummary.status,
+          }
+        : { kind: "run" };
   return (
     <RevealHeader
       controls={controls}
       level={level}
-      model={runsHeaderModel({ workflowName, openRun, node })}
+      model={runsHeaderModel({ workflowName, openRun, target })}
     />
   );
 }
@@ -139,9 +196,12 @@ export function RunsHeader({ level, controls }: RevealKindHeaderProps) {
 /**
  * Back and Escape on Runs. At Focus they return to the run's Browse and ask it
  * to focus the journey entry or canvas node that opened the evidence, or close
- * Reveal when a canvas click opened Focus from Closed. On an open run they
- * replace the route with the run list and ask the list to focus that run's
- * row; on the run list they close.
+ * Reveal when a canvas click opened Focus from Closed. On a Group's summary
+ * they close Reveal when a canvas click opened it from Closed, and otherwise
+ * return to the run overview with focus on the Group card. In a Group's scope
+ * they return to the overview scope with the Group card selected and its
+ * summary shown. On the run overview they replace the route with the run list
+ * and ask the list to focus that run's row; on the run list they close.
  */
 export const unwindRuns: NonNullable<RevealKind["unwind"]> = ({
   subject,
@@ -152,27 +212,35 @@ export const unwindRuns: NonNullable<RevealKind["unwind"]> = ({
   replaceRouteSearch,
 }) => {
   const address = store.get(activeWorkspaceAddressAtom);
-  const { key } = address;
-  if (level === "focus" && subject.nodeId !== null) {
-    const stored = store.get(runEvidenceOriginAtom);
-    const origin =
-      stored?.addressId === workspaceAddressId(address) &&
-      stored.nodeId === subject.nodeId
-        ? stored
-        : null;
-    if (origin !== null && origin.closedReopenLevel !== null) {
-      // Closing through the address keeps the saved open or closed preference
-      // as the person last chose it.
-      store.set(runEvidenceOriginAtom, { ...origin, closedReopenLevel: null });
-      returnFocusOnClose();
-      store.set(closeWorkspaceRevealAtom, {
-        address,
-        reopenLevel: origin.closedReopenLevel,
-      });
+  const { key, scope } = address;
+  const target = subject.runsTarget;
+  const stored = store.get(runEvidenceOriginAtom);
+  const origin =
+    target !== null &&
+    stored?.addressId === workspaceAddressId(address) &&
+    stored.nodeId === (target.kind === "node" ? target.nodeId : target.groupId)
+      ? stored
+      : null;
+  const closeOpenedReveal = () => {
+    if (origin === null || origin.closedReopenLevel === null) {
+      return false;
+    }
+    // Closing through the address keeps the saved open or closed preference
+    // as the person last chose it.
+    store.set(runEvidenceOriginAtom, { ...origin, closedReopenLevel: null });
+    returnFocusOnClose();
+    store.set(closeWorkspaceRevealAtom, {
+      address,
+      reopenLevel: origin.closedReopenLevel,
+    });
+    return true;
+  };
+  if (level === "focus" && target?.kind === "node") {
+    if (closeOpenedReveal()) {
       return;
     }
     store.set(runBrowseFocusRequestAtom, {
-      nodeId: subject.nodeId,
+      nodeId: target.nodeId,
       logId: origin?.logId ?? null,
     });
     unwindLevel();
@@ -180,6 +248,36 @@ export const unwindRuns: NonNullable<RevealKind["unwind"]> = ({
   }
   if (key.workspace !== "runs" || key.executionId === null) {
     unwindLevel();
+    return;
+  }
+  if (target?.kind === "group") {
+    if (closeOpenedReveal()) {
+      return;
+    }
+    store.set(runBrowseFocusRequestAtom, {
+      nodeId: target.groupId,
+      logId: null,
+    });
+    store.set(clearRunNodeInspectionAtom);
+    return;
+  }
+  if (scope.kind === "group") {
+    const overview: WorkspaceAddress = {
+      ...address,
+      scope: { kind: "overview" },
+    };
+    store.set(inspectRunNodeAtom, {
+      address: overview,
+      nodeId: scope.groupId,
+      executionLogId: null,
+      selectsNode: true,
+      opensFocus: false,
+    });
+    store.set(runBrowseFocusRequestAtom, {
+      nodeId: scope.groupId,
+      logId: null,
+    });
+    replaceRouteSearch(workspaceRouteSearch(overview));
     return;
   }
   store.set(runRowFocusRequestAtom, key.executionId);
@@ -193,7 +291,7 @@ export const unwindRuns: NonNullable<RevealKind["unwind"]> = ({
  * overview stays mounted, hidden, while Focus shows, so returning keeps its
  * state; the run list's scroll and each overview's scroll are kept per address.
  */
-export function RunsBody({ frame, level }: RevealBodyProps) {
+export function RunsBody({ subject, frame, level }: RevealBodyProps) {
   const runs = useWorkflowRuns();
   const address = useAtomValue(activeWorkspaceAddressAtom);
   const focusRequest = useAtomValue(runBrowseFocusRequestAtom);
@@ -202,18 +300,32 @@ export function RunsBody({ frame, level }: RevealBodyProps) {
   const inspectLog = useInspectRunLog();
   const chooseExecution = useChooseRunExecution();
   const rootRef = useRef<HTMLDivElement>(null);
+  const overlayNodes = useAtomValue(executionOverlayGraphAtom)?.nodes ?? [];
   const { screen } = runs;
   const openRun = screen.kind === "run" ? screen : null;
+  const { runsTarget } = subject;
   const evidence = useRunNodeEvidence(
     openRun === null
       ? null
-      : { ...openRun.run, pinnedGraph: openRun.pinnedGraph }
+      : { ...openRun.run, pinnedGraph: openRun.pinnedGraph },
+    runsTarget?.kind === "node" ? runsTarget.nodeId : null
   );
   const evidenceScrollRef = useRef<HTMLDivElement>(null);
+  const groupId =
+    openRun !== null && runsTarget?.kind === "group"
+      ? runsTarget.groupId
+      : null;
+  const groupSummary = useRunGroupSummary(groupId);
   const showsEvidence =
     openRun !== null && evidence !== null && level === "focus";
+  // A Group frame has no evidence, so its summary replaces the run overview.
+  const shownGroup =
+    groupId !== null && groupSummary !== null
+      ? { groupId, summary: groupSummary }
+      : null;
   const showsScroller =
-    screen.kind === "list" || (openRun !== null && !showsEvidence);
+    screen.kind === "list" ||
+    (openRun !== null && !showsEvidence && shownGroup === null);
   const {
     ref: scrollRef,
     onScroll,
@@ -271,11 +383,14 @@ export function RunsBody({ frame, level }: RevealBodyProps) {
   });
 
   // Reaching Browse by any path ends a Focus a canvas click opened from Closed,
-  // so the next Back from Focus returns to Browse.
-  useAfterCommit(level, () => {
+  // so the next Back from Focus returns to Browse. A Group card click opens
+  // Browse itself, so its record stays while its summary shows.
+  useAfterCommit(`${level}:${groupId ?? ""}`, () => {
     if (level === "browse") {
       setEvidenceOrigin((origin) =>
-        origin === null || origin.closedReopenLevel === null
+        origin === null ||
+        origin.closedReopenLevel === null ||
+        origin.nodeId === groupId
           ? origin
           : { ...origin, closedReopenLevel: null }
       );
@@ -297,13 +412,13 @@ export function RunsBody({ frame, level }: RevealBodyProps) {
       ) : null}
       {openRun !== null ? (
         <div
-          className={cn("min-h-0 flex-1 flex-col", !showsEvidence && "flex")}
-          hidden={showsEvidence}
+          className={cn("min-h-0 flex-1 flex-col", showsScroller && "flex")}
+          hidden={!showsScroller}
         >
           <WorkflowRunDetail
             {...openRun.run}
-            focusLogId={showsEvidence ? null : (focusRequest?.logId ?? null)}
-            focusSummaryOnMount={!showsEvidence && focusRequest === null}
+            focusLogId={showsScroller ? (focusRequest?.logId ?? null) : null}
+            focusSummaryOnMount={showsScroller && focusRequest === null}
             // A new run starts from its own journey selection and focus.
             key={openRun.run.execution.id}
             onFocusRestored={() => setFocusRequest(null)}
@@ -311,6 +426,16 @@ export function RunsBody({ frame, level }: RevealBodyProps) {
             scroll={{ ref: scrollRef, onScroll, onScrollEnd }}
           />
         </div>
+      ) : null}
+      {openRun !== null && shownGroup !== null ? (
+        <RunsGroupSummary
+          groupId={shownGroup.groupId}
+          // Each Group starts its summary from the top.
+          key={shownGroup.groupId}
+          logs={openRun.run.logs}
+          nodes={overlayNodes}
+          summary={shownGroup.summary}
+        />
       ) : null}
       {openRun !== null && showsEvidence && evidence !== null ? (
         <div

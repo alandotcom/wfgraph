@@ -89,7 +89,9 @@ export {
   isExecutionOverlayActiveAtom,
   presentedGraphAtom,
   presentedGraphStructureAtom,
-  resetNodeStatusesAtom,
+  projectedRunStatusAtom,
+  projectRunProgressAtom,
+  runNodeEvidenceStatusesAtom,
   setNodeStatusesAtom,
 } from "#src/lib/workflow-graph-presentation-store";
 export {

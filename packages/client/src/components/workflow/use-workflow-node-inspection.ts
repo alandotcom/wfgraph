@@ -25,6 +25,7 @@ import {
   activeWorkspaceAddressAtom,
   clearRunNodeInspectionAtom,
   inspectRunNodeAtom,
+  setWorkspaceRevealLevelAtom,
 } from "#src/lib/workflow-workspace-navigation";
 import {
   canvasRevealAtom,
@@ -37,9 +38,11 @@ import { runEvidenceOriginAtom } from "./use-run-node-evidence";
  * workspace. In a workspace whose Canvas Reveal follows the selection,
  * selecting the node that is already the sole selection reopens a closed
  * Canvas Reveal at its saved level. On a run's canvas on desktop, selecting a
- * node opens Canvas Reveal at Focus on its evidence, and a Group frame, which
- * has none, is only selected. That opening writes no Reveal preference, and an
- * opening from a closed Reveal is recorded so Back closes Reveal again. The
+ * node opens Canvas Reveal at Focus on its evidence, and selecting a Group
+ * frame, which has no evidence, opens a closed Reveal at its reopen level,
+ * where the Group's run summary shows. Neither opening writes a Reveal
+ * preference, and an opening from a closed Reveal is recorded so Back closes
+ * Reveal again. The
  * `selectionApplied` option skips the selection write when React Flow's own
  * `select` handling already applied it, such as a click on the editable Draft
  * canvas where a modifier click adds to a multi-selection instead of replacing
@@ -68,24 +71,33 @@ export function useWorkflowNodeInspection(): (
         const node = store
           .get(executionOverlayGraphAtom)
           ?.nodes.find((item) => item.id === nodeId);
-        const opensFocus = !isMobile && !isGroupNode(node);
+        const isGroup = isGroupNode(node);
         const reveal = store.get(canvasRevealAtom);
+        const opensFromClosed = !isMobile && reveal.level === "closed";
         store.set(runEvidenceOriginAtom, {
           addressId: workspaceAddressId(address),
           nodeId,
           logId: null,
-          closedReopenLevel:
-            opensFocus && reveal.level === "closed"
-              ? reveal.presentation.reopenLevel
-              : null,
+          closedReopenLevel: opensFromClosed
+            ? reveal.presentation.reopenLevel
+            : null,
         });
         store.set(inspectRunNodeAtom, {
           address,
           nodeId,
           executionLogId: null,
           selectsNode: true,
-          opensFocus,
+          opensFocus: !isMobile && !isGroup,
         });
+        if (opensFromClosed && isGroup) {
+          // A Group frame's summary shows in Browse, which Runs limits the
+          // reopen level to. The address level is written without the
+          // preference, as a step's Focus is.
+          store.set(setWorkspaceRevealLevelAtom, {
+            address,
+            level: reveal.presentation.reopenLevel,
+          });
+        }
         return;
       }
       if (!options?.selectionApplied) {
