@@ -12,7 +12,7 @@ import {
 } from "#src/conditions/condition-branch";
 import { isWaitNode } from "#src/graph/node-config";
 import type { WorkflowNode } from "#src/graph/types";
-import { upstreamNodeIds } from "#src/graph/upstream-nodes";
+import { upstreamNodeIdsOver } from "#src/graph/upstream-nodes";
 import { isEventSplitNode } from "#src/lifecycle/event-split";
 
 /** The fields join policy reads off an edge. Editor and persisted edges both fit. */
@@ -21,6 +21,9 @@ export type JoinGraphEdge = {
   target: string;
   sourceHandle?: string | null | undefined;
 };
+
+/** `upstreamNodeIds` over the edge list one join analysis reads. */
+type UpstreamOf = (nodeId: string) => Set<string>;
 
 function nodeLabel(node: WorkflowNode | undefined, fallbackId: string): string {
   return node?.data.label?.trim() || fallbackId;
@@ -57,14 +60,14 @@ function exclusiveHandleKey(edge: JoinGraphEdge): string {
 function nodesOnJoinArms(input: {
   joinNodeId: string;
   predecessorIds: readonly string[];
-  edges: readonly JoinGraphEdge[];
+  upstreamOf: UpstreamOf;
 }): Set<string> {
-  const { joinNodeId, predecessorIds, edges } = input;
+  const { joinNodeId, predecessorIds, upstreamOf } = input;
   const reachedBy = predecessorIds.map((predecessorId) =>
-    upstreamNodeIds(predecessorId, edges).add(predecessorId)
+    upstreamOf(predecessorId).add(predecessorId)
   );
   const [first, ...rest] = reachedBy;
-  const onArms = upstreamNodeIds(joinNodeId, edges);
+  const onArms = upstreamOf(joinNodeId);
   if (!first) {
     return onArms;
   }
@@ -79,12 +82,12 @@ function nodesOnJoinArms(input: {
 function reachesLifecycleNode(input: {
   nodeId: string;
   nodeById: ReadonlyMap<string, WorkflowNode>;
-  edges: readonly JoinGraphEdge[];
+  upstreamOf: UpstreamOf;
 }): boolean {
   if (input.nodeById.get(input.nodeId)?.data.type === "lifecycle") {
     return true;
   }
-  for (const ancestorId of upstreamNodeIds(input.nodeId, input.edges)) {
+  for (const ancestorId of input.upstreamOf(input.nodeId)) {
     if (input.nodeById.get(ancestorId)?.data.type === "lifecycle") {
       return true;
     }
@@ -96,18 +99,19 @@ function refusalForJoin(input: {
   join: AndJoin;
   nodeById: ReadonlyMap<string, WorkflowNode>;
   edges: readonly JoinGraphEdge[];
+  upstreamOf: UpstreamOf;
 }): string | null {
-  const { join, nodeById, edges } = input;
+  const { join, nodeById, edges, upstreamOf } = input;
   const { joinNodeId, predecessorIds } = join;
   const joinLabel = nodeLabel(nodeById.get(joinNodeId), joinNodeId);
-  const upstream = upstreamNodeIds(joinNodeId, edges);
+  const upstream = upstreamOf(joinNodeId);
 
   for (const predecessorId of predecessorIds) {
     if (
       !reachesLifecycleNode({
         nodeId: predecessorId,
         nodeById,
-        edges,
+        upstreamOf,
       })
     ) {
       return `Node "${joinLabel}" cannot join an unreachable branch (found "${nodeLabel(nodeById.get(predecessorId), predecessorId)}")`;
@@ -165,6 +169,14 @@ export function andJoinArms(input: {
   nodes: readonly { id: string }[];
   edges: readonly JoinGraphEdge[];
 }): AndJoin[] {
+  return joinsOver({ ...input, upstreamOf: upstreamNodeIdsOver(input.edges) });
+}
+
+function joinsOver(input: {
+  nodes: readonly { id: string }[];
+  edges: readonly JoinGraphEdge[];
+  upstreamOf: UpstreamOf;
+}): AndJoin[] {
   // A Map, because node ids are chosen by the builder.
   const incomingByTarget = Map.groupBy(input.edges, (edge) => edge.target);
   return input.nodes.flatMap((node) => {
@@ -181,7 +193,7 @@ export function andJoinArms(input: {
         armNodeIds: nodesOnJoinArms({
           joinNodeId: node.id,
           predecessorIds,
-          edges: input.edges,
+          upstreamOf: input.upstreamOf,
         }),
       },
     ];
@@ -197,8 +209,14 @@ export function andJoinRefusalReason(input: {
   edges: readonly JoinGraphEdge[];
 }): string | null {
   const nodeById = new Map(input.nodes.map((node) => [node.id, node]));
-  for (const join of andJoinArms(input)) {
-    const reason = refusalForJoin({ join, nodeById, edges: input.edges });
+  const upstreamOf = upstreamNodeIdsOver(input.edges);
+  for (const join of joinsOver({ ...input, upstreamOf })) {
+    const reason = refusalForJoin({
+      join,
+      nodeById,
+      edges: input.edges,
+      upstreamOf,
+    });
     if (reason) {
       return reason;
     }

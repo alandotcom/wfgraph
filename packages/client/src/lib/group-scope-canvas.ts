@@ -191,8 +191,8 @@ const paintedBoundaryEdges: Record<
 };
 
 /**
- * The edge a focused Group paints for a stored edge. An interior edge is the
- * stored edge itself. An ingress edge keeps the stored id, so selecting or
+ * The edge a focused Group paints for a stored edge, before `withTurn` places
+ * its turn. An interior edge is the stored edge itself. An ingress edge keeps the stored id, so selecting or
  * deleting it names that one stored edge; its outside end moves onto the stub
  * for its outside port, and it keeps the branch label that port's handle gives
  * it. A continuation edge moves onto its stub and is display only. A stub draws
@@ -433,6 +433,61 @@ function projectedMember(
   return projected;
 }
 
+const turningEdges = new WeakMap<WorkflowEdge, WorkflowEdge>();
+
+/**
+ * `edge` with `turnAlong` on its data, or `edge` itself when `turnAlong` is
+ * undefined. The copy is kept per edge while its turn holds, so a recompute that
+ * moved nothing hands React Flow the edge objects it already holds.
+ */
+function withTurn(
+  edge: WorkflowEdge,
+  turnAlong: number | undefined
+): WorkflowEdge {
+  if (turnAlong === undefined) {
+    return edge;
+  }
+  const cached = turningEdges.get(edge);
+  if (cached?.data?.turnAlong === turnAlong) {
+    return cached;
+  }
+  const turning = { ...edge, data: { ...edge.data, turnAlong } };
+  turningEdges.set(edge, turning);
+  return turning;
+}
+
+/**
+ * Where each edge between the painted `nodes` turns across the flow, as
+ * `EditorEdgeData.turnAlong` reads it: the middle of the gap that ends where
+ * the target starts, measured back to the nearest painted card or stub end.
+ * Undefined unless the target starts at or past the source's end, so a backward
+ * or same-row edge keeps React Flow's routing.
+ */
+function turnLocator(
+  nodes: readonly WorkflowNode[],
+  direction: GroupLayoutDirection
+): (edge: WorkflowEdge) => number | undefined {
+  const vertical = direction === "vertical";
+  // A Map, because member ids are chosen by the builder.
+  const spans = new Map(
+    nodes.map((node) => {
+      const start = vertical ? node.position.y : node.position.x;
+      const depth = (vertical ? node.height : node.width) ?? 0;
+      return [node.id, { start, end: start + depth }];
+    })
+  );
+  const ends = [...spans.values()].map((span) => span.end);
+  return (edge) => {
+    const source = spans.get(edge.source);
+    const target = spans.get(edge.target);
+    if (!(source && target) || source.end > target.start) {
+      return undefined;
+    }
+    const gapStart = Math.max(...ends.filter((end) => end <= target.start));
+    return (gapStart + target.start) / 2;
+  };
+}
+
 /**
  * Positions for `count` stubs in one line across the flow, centred on `centre`
  * and sitting at `along` on the flow axis.
@@ -500,8 +555,9 @@ function endEdge(
  * outside port an edge enters the Group from or continues to, and one "Path
  * ends" stub per member port where a path ends. The frame is not painted, and
  * its stored position and every stored member position are never read. The
- * member rows follow the frame's stored direction. Null when the graph holds no
- * Group `groupId`.
+ * member rows follow the frame's stored direction, and each forward edge,
+ * including an edge into a stub, carries where it turns across them in
+ * `data.turnAlong`. Null when the graph holds no Group `groupId`.
  */
 export function focusedGroupCanvasGraph(
   input: CanvasGraph & { groupId: string }
@@ -521,9 +577,11 @@ export function focusedGroupCanvasGraph(
     memberIds: storedMembers.map((member) => member.id),
     edges: input.edges,
   });
+  const endPorts = groupEndPorts({ nodes: input.nodes, boundary });
   const positions = groupCanvasPositions({
     memberIds: boundary.memberIds,
     interiorEdges: boundary.interiorEdges,
+    trailingStubPorts: [...boundary.internalContinuation, ...endPorts],
     direction,
   });
   const members = storedMembers.map((member) =>
@@ -609,7 +667,6 @@ export function focusedGroupCanvasGraph(
     ),
     (entry) => boundaryStubId(entry.direction, entry.port)
   );
-  const endPorts = groupEndPorts({ nodes: input.nodes, boundary });
   const afterMembers = sortBy(
     [
       ...continuations,
@@ -640,6 +697,7 @@ export function focusedGroupCanvasGraph(
       .map((node) => [node.id, node])
   );
   endEdges = new Map(paintedEndEdges.map((item) => [item.id, item]));
+  const turnAlong = turnLocator(nodes, direction);
   return {
     nodes,
     edges: [
@@ -649,7 +707,7 @@ export function focusedGroupCanvasGraph(
         focusedEdge(edge, "continuation")
       ),
       ...paintedEndEdges,
-    ],
+    ].map((edge) => withTurn(edge, turnAlong(edge))),
     anchor: { nodeId: firstMember.id, pinToTop: false },
     projectedNodeIds: new Set(nodes.map((node) => node.id)),
   };

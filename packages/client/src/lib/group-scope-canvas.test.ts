@@ -213,9 +213,13 @@ describe("focusedGroupCanvasGraph", () => {
       ["before-a", ingress("before"), "a", undefined, undefined],
       ["b-after", "b", continuation("after"), false, false],
     ]);
-    // An interior edge is the stored edge, and an ingress edge keeps the stored
-    // id, so selecting or deleting either names the one edge the store holds.
-    expect(graph.edges[0]).toBe(EDGES[2]);
+    // An interior edge is the stored edge with its turn painted on, and an
+    // ingress edge keeps the stored id, so selecting or deleting either names
+    // the one edge the store holds.
+    expect(graph.edges[0]).toEqual({
+      ...EDGES[2],
+      data: { turnAlong: expect.any(Number) },
+    });
     expect(graph.anchor).toEqual({ nodeId: "a", pinToTop: false });
     expect(graph.projectedNodeIds).toEqual(new Set(byId.keys()));
   });
@@ -285,6 +289,49 @@ describe("focusedGroupCanvasGraph", () => {
     expect(y(stacked, "a")).not.toBe(y(stacked, "b"));
     expect(y(sideBySide, "a")).toBe(y(sideBySide, "b"));
     expect(nodes).toEqual(NODES);
+  });
+
+  it("turns each forward edge in the middle of the gap its layout leaves before the target", () => {
+    const nodes = [...NODES, step("c", { x: 12, y: 240 }, "g")];
+    // `a` feeds `b` and `c`, and `b` feeds `c`, so `a` -> `c` passes `b`'s row.
+    const edges = [
+      edge("before-a", "before", "a"),
+      edge("a-b", "a", "b"),
+      edge("a-c", "a", "c"),
+      edge("b-c", "b", "c"),
+      edge("c-after", "c", "after"),
+    ];
+    for (const direction of ["vertical", "horizontal"] as const) {
+      const graph = focused(
+        nodes.map((node) =>
+          node.id === "g"
+            ? { ...node, data: { ...node.data, config: { direction } } }
+            : node
+        ),
+        edges
+      );
+      const span = (id: string) => {
+        const node = graph.nodes.find((item) => item.id === id);
+        const start =
+          (direction === "vertical" ? node?.position.y : node?.position.x) ??
+          Number.NaN;
+        const depth =
+          (direction === "vertical" ? node?.height : node?.width) ?? Number.NaN;
+        return { start, end: start + depth };
+      };
+      const turnOf = (id: string) =>
+        graph.edges.find((item) => item.id === id)?.data?.turnAlong;
+
+      expect(turnOf("a-c")).toBe((span("b").end + span("c").start) / 2);
+      expect(turnOf("b-c")).toBe(turnOf("a-c"));
+      expect(turnOf("a-b")).toBe((span("a").end + span("b").start) / 2);
+      expect(turnOf("before-a")).toBe(
+        (span(ingress("before")).end + span("a").start) / 2
+      );
+      expect(turnOf("c-after")).toBe(
+        (span("c").end + span(continuation("after")).start) / 2
+      );
+    }
   });
 
   it("keeps each painted node's identity across an unchanged recompute", () => {
@@ -485,6 +532,38 @@ describe("focusedGroupCanvasGraph", () => {
         expect(across(continuation("after"))).toBeLessThan(
           across(end("gate", "false"))
         );
+      }
+    );
+
+    it.each(["vertical", "horizontal"] as const)(
+      "keeps a lane clear from an unconnected False outlet to its end stub in a %s Group",
+      (direction) => {
+        // True reaches `b` in the row after `gate`, which would otherwise
+        // stand on `gate`'s lane to the "Path ends" stub.
+        const graph = focused(nodesWith(direction), [
+          edge("before-a", "before", "a"),
+          edge("a-gate", "a", "gate"),
+          edge("gate-b", "gate", "b", "true"),
+          edge("b-after", "b", "after"),
+        ]);
+        const byId = new Map(graph.nodes.map((node) => [node.id, node]));
+        const vertical = direction === "vertical";
+        const centreAcross = (id: string) => {
+          const position = byId.get(id)?.position ?? { x: 0, y: 0 };
+          return vertical
+            ? position.x + WORKFLOW_NODE_WIDTH / 2
+            : position.y + WORKFLOW_NODE_HEIGHT / 2;
+        };
+        const cardHalf =
+          (vertical ? WORKFLOW_NODE_WIDTH : WORKFLOW_NODE_HEIGHT) / 2;
+
+        expect(
+          Math.abs(centreAcross("b") - centreAcross("gate"))
+        ).toBeGreaterThanOrEqual(cardHalf);
+        const endEdge = graph.edges.find(
+          (item) => item.target === end("gate", "false")
+        );
+        expect(endEdge?.data?.turnAlong).toEqual(expect.any(Number));
       }
     );
 
@@ -737,5 +816,9 @@ describe("scopeCanvasGraph", () => {
       scope: { kind: "group", groupId: "missing" },
     });
     expect(graph.nodes.map((node) => node.id)).toContain("g");
+    // The overview's edges carry no turn, so each turns halfway between its ends.
+    expect(graph.edges.map((item) => item.data?.turnAlong)).toEqual(
+      graph.edges.map(() => undefined)
+    );
   });
 });

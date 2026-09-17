@@ -22,8 +22,8 @@ import {
 } from "#src/graph/group-boundary";
 import { nodeLabel } from "#src/graph/group-structure";
 import { isEventSplitActionNode } from "#src/graph/node-config";
+import { upstreamNodeIdsOver } from "#src/graph/upstream-nodes";
 import { eventSplitOutletEvent } from "#src/lifecycle/event-split";
-import type { WorkflowEdge } from "#src/graph/types";
 
 export type GroupContractRule =
   /** A Group holds fewer than two steps that a Group may contain. */
@@ -44,10 +44,17 @@ export type GroupContractViolation = {
   groupLabel: string;
   rule: GroupContractRule;
   message: string;
+  /** The join node a join rule names. Absent for every other rule. */
+  joinNodeId?: string | undefined;
+  /** The Condition member a `conditional_join_arm` break names. */
+  conditionNodeId?: string | undefined;
 };
 
 /** One rule a Group breaks, before it is tied to a frame id. */
-export type GroupRuleBreak = Pick<GroupContractViolation, "rule" | "message">;
+export type GroupRuleBreak = Omit<
+  GroupContractViolation,
+  "groupId" | "groupLabel"
+>;
 
 /** Whether a member is a step a Group may contain: any action but an Event Split. */
 export function isGroupableStep(node: GroupGraphNode): boolean {
@@ -103,32 +110,31 @@ function entersFromSeveralPorts(
  * Group must have every arm node and every predecessor inside it too. A join
  * outside the Group may have the Group on an arm. Either way, a Condition member
  * on an arm is refused, because the branch it does not take leaves the join
- * unreleased.
+ * unreleased. The break names the first such Condition in `members` order.
  */
 function joinRuleBreaks(input: {
   groupName: string;
   join: AndJoin;
   memberIds: ReadonlySet<string>;
+  members: readonly GroupGraphNode[];
   nodeById: ReadonlyMap<string, GroupGraphNode>;
 }): GroupRuleBreak[] {
-  const { groupName, join, memberIds, nodeById } = input;
+  const { groupName, join, memberIds, members, nodeById } = input;
   const joinName = `"${labelOf(join.joinNodeId, nodeById)}"`;
   const joinInside = memberIds.has(join.joinNodeId);
   const reachesOutside = [...join.armNodeIds, ...join.predecessorIds].some(
     (id) => !memberIds.has(id)
   );
-  const condition = [...join.armNodeIds].find((id) => {
-    const node = nodeById.get(id);
-    return (
-      memberIds.has(id) && node !== undefined && isConditionActionNode(node)
-    );
-  });
+  const condition = members.find(
+    (member) => join.armNodeIds.has(member.id) && isConditionActionNode(member)
+  )?.id;
 
   return compact([
     joinInside && reachesOutside
       ? {
           rule: "join_crosses_boundary",
           message: `${groupName} holds the join at ${joinName}, and a branch into it starts outside the Group. Put every branch into the join inside the Group`,
+          joinNodeId: join.joinNodeId,
         }
       : undefined,
     condition === undefined
@@ -136,6 +142,8 @@ function joinRuleBreaks(input: {
       : {
           rule: "conditional_join_arm",
           message: `${groupName} has "${labelOf(condition, nodeById)}" on a branch into the join at ${joinName}, and the Condition can end that branch before the join runs`,
+          joinNodeId: join.joinNodeId,
+          conditionNodeId: condition,
         },
   ] satisfies Array<GroupRuleBreak | undefined>);
 }
@@ -144,7 +152,7 @@ function ruleBreaksForMembers(input: {
   groupLabel: string;
   memberIds: ReadonlySet<string>;
   nodes: readonly GroupGraphNode[];
-  edges: readonly WorkflowEdge[];
+  edges: readonly GroupBoundaryEdge[];
   joins: readonly AndJoin[];
   nodeById: ReadonlyMap<string, GroupGraphNode>;
 }): GroupRuleBreak[] {
@@ -180,7 +188,7 @@ function ruleBreaksForMembers(input: {
         }
       : undefined,
     ...joins.flatMap((join) =>
-      joinRuleBreaks({ groupName, join, memberIds, nodeById })
+      joinRuleBreaks({ groupName, join, memberIds, members, nodeById })
     ),
   ] satisfies Array<GroupRuleBreak | undefined>);
 }
@@ -233,6 +241,117 @@ export function addedIngressSourceRefusal(input: {
   return null;
 }
 
+/** The Group rules a join breaks, which the editor refuses to let an edge add. */
+const JOIN_RULES: ReadonlySet<GroupContractRule> = new Set([
+  "join_crosses_boundary",
+  "conditional_join_arm",
+]);
+
+/** A join rule break as a key built from the ids it names. */
+function joinBreakKey(violation: GroupContractViolation): string {
+  return [
+    violation.groupId,
+    violation.rule,
+    violation.joinNodeId ?? "",
+    violation.conditionNodeId ?? "",
+  ].join("\0");
+}
+
+function joinBreaksOf(input: {
+  nodes: readonly GroupGraphNode[];
+  edges: readonly GroupBoundaryEdge[];
+}): GroupContractViolation[] {
+  return groupContractViolations(input).filter((violation) =>
+    JOIN_RULES.has(violation.rule)
+  );
+}
+
+// Keyed by the edge list and then the node list. A drag validates many
+// connections against the same stored graph, and the store replaces both
+// arrays on every change, so a cached answer is never read for a changed graph.
+const joinBreakKeysCache = new WeakMap<
+  readonly GroupBoundaryEdge[],
+  WeakMap<readonly GroupGraphNode[], ReadonlySet<string>>
+>();
+
+/**
+ * The keys of every join rule break over `nodes` and `edges`. The answer is
+ * computed once per pair of arrays and returned again, as the same set, for
+ * the same pair.
+ */
+export function joinRuleBreakKeys(input: {
+  nodes: readonly GroupGraphNode[];
+  edges: readonly GroupBoundaryEdge[];
+}): ReadonlySet<string> {
+  const cached = joinBreakKeysCache.get(input.edges)?.get(input.nodes);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const keys = new Set(joinBreaksOf(input).map(joinBreakKey));
+  const byNodes = joinBreakKeysCache.get(input.edges) ?? new WeakMap();
+  byNodes.set(input.nodes, keys);
+  joinBreakKeysCache.set(input.edges, byNodes);
+  return keys;
+}
+
+/**
+ * Whether an edge in `additions`, or a node upstream of one over `edges`, is a
+ * Group frame or a Group member. A join rule names a Group member on the join
+ * or on its arms, and an addition that touches no Group puts none there.
+ */
+function additionsTouchGroup(input: {
+  nodes: readonly GroupGraphNode[];
+  edges: readonly GroupBoundaryEdge[];
+  additions: readonly GroupBoundaryEdge[];
+}): boolean {
+  const nodeById = new Map(input.nodes.map((node) => [node.id, node]));
+  const grouped = new Set(
+    input.nodes
+      .filter(
+        (node) =>
+          isGroupNode(node) ||
+          (node.parentId !== undefined &&
+            isGroupNode(nodeById.get(node.parentId)))
+      )
+      .map((node) => node.id)
+  );
+  if (grouped.size === 0) {
+    return false;
+  }
+  const upstreamOf = upstreamNodeIdsOver(input.edges);
+  return input.additions.some((edge) =>
+    [edge.source, edge.target].some(
+      (id) =>
+        grouped.has(id) ||
+        [...upstreamOf(id)].some((ancestor) => grouped.has(ancestor))
+    )
+  );
+}
+
+/**
+ * Why the editor refuses to add the stored edges `additions` to `edges`: they
+ * would make a Group break a join rule it does not break now, and the answer is
+ * the message Publish reports for that rule. Null when the additions add no
+ * join rule break. A break is the same break when it names the same Group,
+ * rule, join node and Condition, and a join rule a Group already breaks is left
+ * to Publish.
+ */
+export function addedJoinRuleRefusal(input: {
+  nodes: readonly GroupGraphNode[];
+  edges: readonly GroupBoundaryEdge[];
+  additions: readonly GroupBoundaryEdge[];
+}): string | null {
+  if (!additionsTouchGroup(input)) {
+    return null;
+  }
+  const current = joinRuleBreakKeys(input);
+  const added = joinBreaksOf({
+    nodes: input.nodes,
+    edges: [...input.edges, ...input.additions],
+  }).find((violation) => !current.has(joinBreakKey(violation)));
+  return added === undefined ? null : `${added.message}.`;
+}
+
 /**
  * Every v1 Group rule a Group holding exactly the nodes `memberIds` would break
  * over `nodes` and `edges`, whether or not those nodes are grouped yet. Messages
@@ -242,7 +361,7 @@ export function groupRuleBreaks(input: {
   groupLabel: string;
   memberIds: ReadonlySet<string>;
   nodes: readonly GroupGraphNode[];
-  edges: readonly WorkflowEdge[];
+  edges: readonly GroupBoundaryEdge[];
 }): GroupRuleBreak[] {
   return ruleBreaksForMembers({
     ...input,
@@ -258,7 +377,7 @@ export function groupRuleBreaks(input: {
  */
 export function groupContractViolations(input: {
   nodes: readonly GroupGraphNode[];
-  edges: readonly WorkflowEdge[];
+  edges: readonly GroupBoundaryEdge[];
 }): GroupContractViolation[] {
   const groups = input.nodes.filter((node) => isGroupNode(node));
   if (groups.length === 0) {

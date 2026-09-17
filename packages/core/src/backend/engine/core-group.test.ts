@@ -1,8 +1,9 @@
 /**
  * A Group is organizational, so grouping steps must leave every run of the
  * workflow unchanged. These cases run a linear chain, a fan-out from one outside
- * outlet, and a Condition with a path ending inside the Group, ungrouped and
- * grouped in each direction, and compare what the engine dispatched and recorded.
+ * outlet, fan-outs that join inside the Group, and a Condition with a path
+ * ending inside the Group, ungrouped and grouped in each direction, and compare
+ * what the engine dispatched and recorded.
  */
 
 import { Effect } from "effect";
@@ -480,6 +481,121 @@ describe("a Group around a Condition with a path that ends inside it", () => {
         continuesFrom === "branch" ? ["after"] : ["after", "send"];
       expect(Object.keys(before.results).sort()).toEqual(
         ["gate", "life", "read", ...(open ? trueBranch : ["notify"])].sort()
+      );
+      expect(after).toEqual(before);
+    }
+  );
+});
+
+/**
+ * `qualify` enters the Group at `split`, which fans out unconditionally onto a
+ * long arm `read` then `enrich` and a short arm `profile`. Both arms join at
+ * `merge`, which reads `enrich` and `profile` and is the Group's one
+ * continuation, to `after`.
+ */
+function internalJoin(): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } {
+  return {
+    nodes: [
+      createLifecycleNode("life"),
+      step("qualify", { actionType: "test/read", customerId: "cus_0" }),
+      step("split", { actionType: "test/read", customerId: "cus_split" }),
+      step("read", { actionType: "test/read", customerId: "cus_read" }),
+      step("enrich", { actionType: "test/read", customerId: "cus_enrich" }),
+      step("profile", { actionType: "test/read", customerId: "cus_profile" }),
+      step("merge", {
+        actionType: "test/send",
+        to: "{{@enrich:enrich.email}}",
+        cc: "{{@profile:profile.email}}",
+      }),
+      step("after", { actionType: "test/read", customerId: "cus_after" }),
+    ],
+    edges: [
+      {
+        id: "life-qualify",
+        source: "life",
+        target: "qualify",
+        sourceHandle: "started",
+      },
+      { id: "qualify-split", source: "qualify", target: "split" },
+      { id: "split-read", source: "split", target: "read" },
+      { id: "read-enrich", source: "read", target: "enrich" },
+      { id: "split-profile", source: "split", target: "profile" },
+      { id: "enrich-merge", source: "enrich", target: "merge" },
+      { id: "profile-merge", source: "profile", target: "merge" },
+      { id: "merge-after", source: "merge", target: "after" },
+    ],
+  };
+}
+
+const INTERNAL_JOIN_MEMBER_IDS = new Set([
+  "split",
+  "read",
+  "enrich",
+  "profile",
+  "merge",
+]);
+
+describe("a Group holding an internal fan-out that joins", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-19T15:00:00.000Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("is a Group the editor may create and Publish accepts", () => {
+    const { nodes, edges } = internalJoin();
+    expect(
+      analyzeGroupableSelection({
+        nodes,
+        edges,
+        selectedIds: INTERNAL_JOIN_MEMBER_IDS,
+      })
+    ).toMatchObject({ ok: true });
+    expect(
+      groupContractViolations({
+        nodes: grouped("vertical", nodes, INTERNAL_JOIN_MEMBER_IDS),
+        edges,
+      })
+    ).toEqual([]);
+  });
+
+  it.each(["vertical", "horizontal"] as const)(
+    "runs the join once, after both arms, when grouped with a %s layout",
+    async (direction) => {
+      const { nodes, edges } = internalJoin();
+      const before = await run(nodes, edges);
+      const after = await run(
+        grouped(direction, nodes, INTERNAL_JOIN_MEMBER_IDS),
+        edges
+      );
+
+      expect(before.success).toBe(true);
+      const order = before.dispatched.map((call) =>
+        call.actionType === "test/send"
+          ? "merge"
+          : String(call.input.customerId)
+      );
+      expect(order.filter((name) => name === "merge")).toHaveLength(1);
+      expect(order.indexOf("merge")).toBeGreaterThan(
+        Math.max(order.indexOf("cus_enrich"), order.indexOf("cus_profile"))
+      );
+      expect(order.indexOf("cus_after")).toBeGreaterThan(
+        order.indexOf("merge")
+      );
+      expect(Object.keys(before.results).sort()).toEqual(
+        [
+          "after",
+          "enrich",
+          "life",
+          "merge",
+          "profile",
+          "qualify",
+          "read",
+          "split",
+        ].sort()
       );
       expect(after).toEqual(before);
     }

@@ -451,6 +451,9 @@ describe("the collapsed Group overview", () => {
     expect(view.getByRole("button", { name: "Enter group" })).toBeTruthy();
     expect(view.getByRole("button", { name: "Ungroup" })).toBeTruthy();
     expect(view.getByRole("group", { name: "Layout direction" })).toBeTruthy();
+    expect(reveal()?.textContent).toContain(
+      "A Group is entered from one outlet outside it, and that outlet can lead to several steps. Inside, steps can branch, join, and end. The Group continues outside from at most one outlet."
+    );
 
     fireEvent.click(view.getByRole("button", { name: "Send welcome back" }));
     await waitFor(() => expect(search()).toEqual({ group: "outreach" }));

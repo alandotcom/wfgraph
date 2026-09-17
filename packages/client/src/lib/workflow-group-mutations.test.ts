@@ -6,6 +6,7 @@ import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { groupStructureRefusalReason } from "@wfgraph/shared/graph/group-structure";
 import { groupContractViolations } from "@wfgraph/shared/graph/group-contract";
 import { undersizedGroupIds } from "@wfgraph/shared/graph/node-group";
+import { workflowTopologyRefusalReason } from "@wfgraph/shared/graph/workflow-topology";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
   connectionRefusalReason,
@@ -1285,3 +1286,179 @@ describe("connection planning", () => {
     expect(graphOf(store)).toEqual(before);
   });
 });
+
+/**
+ * `qualify` enters a Group at `a`, which fans out unconditionally to `b`, `e`
+ * and the delay Wait `w`, and to the Condition `c`, whose branches reach `k`
+ * and `m`. `b` feeds `j`, which continues to `send`. `e`, `w`, `k` and `m` end
+ * their paths inside the Group.
+ */
+function joinGraph(): Graph {
+  const wait: WorkflowNode = {
+    ...lookup("w"),
+    data: {
+      label: "w",
+      type: "action",
+      config: {
+        actionType: BUILT_IN_ACTION_IDS.wait,
+        waitMode: "delay",
+        waitDuration: "1h",
+      },
+    },
+  };
+  return {
+    nodes: [
+      lifecycle(),
+      lookup("qualify"),
+      lookup("a"),
+      lookup("b"),
+      lookup("e"),
+      wait,
+      condition("c"),
+      lookup("k"),
+      lookup("m"),
+      lookup("j"),
+      lookup("send"),
+    ],
+    edges: [
+      edge("start-qualify", "life", "qualify", "started"),
+      edge("qualify-a", "qualify", "a"),
+      edge("a-b", "a", "b"),
+      edge("a-e", "a", "e"),
+      edge("a-w", "a", "w"),
+      edge("a-c", "a", "c"),
+      edge("c-k", "c", "k", "true"),
+      edge("c-m", "c", "m", "false"),
+      edge("b-j", "b", "j"),
+      edge("j-send", "j", "send"),
+    ],
+  };
+}
+
+describe("joins inside a Group", () => {
+  function focusedJoinGroup() {
+    const store = createGraphStore(joinGraph());
+    store.set(groupSelectionAtom, {
+      selectedIds: new Set(["a", "b", "e", "w", "c", "k", "m", "j"]),
+    });
+    const frameId =
+      store.get(nodesAtom).find((node) => isGroupNode(node))?.id ?? "";
+    expect(frameId).not.toBe("");
+    showWorkspaceRoute(store, { group: frameId });
+    vi.clearAllMocks();
+    return { store, frameId };
+  }
+
+  /** The refusal for a drag on the focused canvas from `source` onto `target`. */
+  function dragRefusal(
+    store: Store,
+    source: string,
+    target: string
+  ): string | null {
+    const translated = storedCanvasConnection(
+      { source, target, sourceHandle: null, targetHandle: null },
+      store.get(canvasNodesAtom)
+    );
+    if ("refusal" in translated) {
+      return translated.refusal;
+    }
+    return connectionRefusalReason({
+      ...translated,
+      nodes: store.get(nodesAtom),
+      storeEdges: store.get(edgesAtom),
+      catalog: emptyExtensionCatalog,
+    });
+  }
+
+  /** The stored graph with one more edge, as Publish or the draft save reads it. */
+  function withEdge(store: Store, source: string, target: string): Graph {
+    const graph = graphOf(store);
+    return {
+      nodes: graph.nodes,
+      edges: [...graph.edges, edge(`${source}-${target}`, source, target)],
+    };
+  }
+
+  it("converges an unconditional fan-out on a join that continues through one port", async () => {
+    const { store } = focusedJoinGroup();
+
+    expect(dragRefusal(store, "e", "j")).toBeNull();
+    store.set(connectNodesAtom, {
+      connection: { id: "e-j", source: "e", target: "j" },
+      catalog: emptyExtensionCatalog,
+    });
+    await tick();
+
+    expect(edgeIds(store)).toContain("e-j");
+    expect(groupContractViolations(graphOf(store))).toEqual([]);
+    expectEverySaveWhole();
+    const y = (id: string) =>
+      store.get(canvasNodesAtom).find((node) => node.id === id)?.position.y ??
+      Number.NaN;
+    expect(y("j")).toBeGreaterThan(Math.max(y("b"), y("e")));
+  });
+
+  it("refuses a branch into an inside join from the Group's outside port, as Publish does", async () => {
+    const { store } = focusedJoinGroup();
+    const history = store.get(historyAtom);
+
+    const refusal = dragRefusal(
+      store,
+      boundaryStubId("ingress", { nodeId: "qualify", handle: null }),
+      "j"
+    );
+    const [violation] = groupContractViolations(
+      withEdge(store, "qualify", "j")
+    );
+    expect(violation?.rule).toBe("join_crosses_boundary");
+    expect(refusal).toBe(`${violation?.message}.`);
+
+    expect(
+      store.set(connectNodesAtom, {
+        connection: { id: "qualify-j", source: "qualify", target: "j" },
+        fromIngressStub: true,
+        catalog: emptyExtensionCatalog,
+      })
+    ).toEqual({ refusal });
+    await tick();
+    expect(edgeIds(store)).not.toContain("qualify-j");
+    expect(store.get(historyAtom)).toBe(history);
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it("refuses a Wait on a join arm with the draft save's own reason", () => {
+    const { store } = focusedJoinGroup();
+
+    const refusal = dragRefusal(store, "w", "j");
+    expect(refusal).toBe(
+      workflowTopologyRefusalReason(persisted(withEdge(store, "w", "j")))
+    );
+    expect(refusal).toContain("cannot join branches that include a Wait");
+  });
+
+  it("refuses a join arm a Condition can leave unreached, as Publish does", async () => {
+    const { store } = focusedJoinGroup();
+
+    const refusal = dragRefusal(store, "k", "j");
+    const [violation] = groupContractViolations(withEdge(store, "k", "j"));
+    expect(violation?.rule).toBe("conditional_join_arm");
+    expect(refusal).toBe(`${violation?.message}.`);
+
+    expect(
+      store.set(connectNodesAtom, {
+        connection: { id: "k-j", source: "k", target: "j" },
+        catalog: emptyExtensionCatalog,
+      })
+    ).toEqual({ refusal });
+    await tick();
+    expect(edgeIds(store)).not.toContain("k-j");
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+});
+
+function persisted(graph: Graph) {
+  return {
+    nodes: toPersistedNodes(graph.nodes),
+    edges: graph.edges.map(toPersistedEdge),
+  };
+}

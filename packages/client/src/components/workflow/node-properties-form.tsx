@@ -133,7 +133,9 @@ export function NodePropertiesForm({
       {selectedNode.data.type === "group" ? (
         <p className="text-muted-foreground text-sm">
           Steps in a Group run the same way they would outside it. A Group is
-          entered from one outlet and continues from one outlet.
+          entered from one outlet outside it, and that outlet can lead to
+          several steps. Inside, steps can branch, join, and end. The Group
+          continues outside from at most one outlet.
         </p>
       ) : null}
 

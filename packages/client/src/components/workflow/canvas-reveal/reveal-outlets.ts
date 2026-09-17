@@ -10,6 +10,7 @@ import {
   getEdgeParams,
   getWorkflowEdgePath,
 } from "#src/components/flow-elements/edge-path";
+import type { EditorEdgeData } from "#src/lib/workflow-graph-types";
 import type { Rect } from "./reveal-geometry";
 
 /**
@@ -24,6 +25,7 @@ export type OutletEdge = {
   target: string;
   sourceHandle?: string | null | undefined;
   targetHandle?: string | null | undefined;
+  data?: Pick<EditorEdgeData, "turnAlong"> | undefined;
 };
 
 function union(rects: readonly Rect[]): Rect {
@@ -72,14 +74,17 @@ export function outletPlacement(input: {
       edge.sourceHandle,
       edge.targetHandle
     );
-    const [, labelX, labelY] = getWorkflowEdgePath({
-      sourceX: sx,
-      sourceY: sy,
-      sourcePosition: sourcePos,
-      targetX: tx,
-      targetY: ty,
-      targetPosition: targetPos,
-    });
+    const [, labelX, labelY] = getWorkflowEdgePath(
+      {
+        sourceX: sx,
+        sourceY: sy,
+        sourcePosition: sourcePos,
+        targetX: tx,
+        targetY: ty,
+        targetPosition: targetPos,
+      },
+      { turnAlong: edge.data?.turnAlong }
+    );
     return [
       {
         x: labelX - OUTLET_LABEL_SIZE.width / 2,
