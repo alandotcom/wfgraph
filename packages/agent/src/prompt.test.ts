@@ -181,6 +181,9 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain(
       "When a tool result says a Group was removed, name that Group in your reply"
     );
+    expect(prompt).toContain(
+      "A Group continues outside from one outlet inside it, which may be one branch of a Condition whose other branch ends inside the Group"
+    );
     expect(prompt).toContain("add_node creates a step in no Group");
     expect(prompt).toContain(
       "insert_node_on_edge puts the new step in a Group when both ends of the edge are in that Group"

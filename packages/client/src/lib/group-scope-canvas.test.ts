@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { type NodeChange, Position } from "@xyflow/react";
+import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { groupCanvasPositions } from "@wfgraph/shared/graph/node-group";
+import { resolveEdgeLabel } from "#src/components/flow-elements/edge-label";
 import {
   boundaryStubId,
   focusedGroupCanvasGraph,
   GROUP_BOUNDARY_NODE_TYPES,
   GROUP_BOUNDARY_STUB_HEIGHT,
+  GROUP_END_STUB_LABEL,
   overviewCanvasGraph,
   scopeCanvasGraph,
   storedCanvasConnection,
@@ -345,7 +348,9 @@ describe("focusedGroupCanvasGraph", () => {
       );
       expect(stubs.map((node) => node.id)).toEqual([ingress("before")]);
       expect(
-        graph.edges.map((item) => [item.id, item.source, item.target])
+        graph.edges
+          .filter((item) => item.source === ingress("before"))
+          .map((item) => [item.id, item.source, item.target])
       ).toEqual([
         ["before-a", ingress("before"), "a"],
         ["before-b", ingress("before"), "b"],
@@ -377,6 +382,190 @@ describe("focusedGroupCanvasGraph", () => {
     }
   );
 
+  describe("a Condition inside the Group", () => {
+    const gate: WorkflowNode = {
+      ...step("gate", { x: 0, y: 0 }, "g"),
+      data: {
+        label: "Gate",
+        type: "action",
+        config: { actionType: BUILT_IN_ACTION_IDS.condition },
+      },
+    };
+    // `a` feeds the Condition `gate`, whose True outlet continues to `after`
+    // outside the Group. False either reaches the member `b`, which ends its
+    // path, or is left unconnected.
+    const nodesWith = (direction: "vertical" | "horizontal") => [
+      ...NODES.map((node) =>
+        node.id === "g"
+          ? { ...node, data: { ...node.data, config: { direction } } }
+          : node
+      ),
+      gate,
+    ];
+    const falseToMember = [
+      edge("before-a", "before", "a"),
+      edge("a-gate", "a", "gate"),
+      edge("gate-after", "gate", "after", "true"),
+      edge("gate-b", "gate", "b", "false"),
+    ];
+    const falseUnconnected = falseToMember.filter(
+      (item) => item.id !== "gate-b"
+    );
+    const end = (nodeId: string, handle: string | null = null) =>
+      boundaryStubId("end", { nodeId, handle });
+
+    it.each(["vertical", "horizontal"] as const)(
+      "ends a False branch unconnected in a %s Group at a labelled end stub beside the True continuation",
+      (direction) => {
+        const graph = focused(nodesWith(direction), falseUnconnected);
+        const byId = new Map(graph.nodes.map((node) => [node.id, node]));
+
+        // `b` has no edge at all, so its own path ends too.
+        expect(
+          graph.nodes
+            .filter((node) => node.type !== "action")
+            .map((node) => [node.id, node.type])
+        ).toEqual([
+          [ingress("before"), GROUP_BOUNDARY_NODE_TYPES.ingress],
+          [continuation("after"), GROUP_BOUNDARY_NODE_TYPES.continuation],
+          [end("gate", "false"), GROUP_BOUNDARY_NODE_TYPES.end],
+          [end("b"), GROUP_BOUNDARY_NODE_TYPES.end],
+        ]);
+        const endStub = byId.get(end("gate", "false"));
+        expect(endStub).toMatchObject({
+          selectable: false,
+          draggable: false,
+          deletable: false,
+          connectable: false,
+          data: { label: GROUP_END_STUB_LABEL },
+        });
+
+        const endEdge = graph.edges.find(
+          (item) => item.target === end("gate", "false")
+        );
+        expect(endEdge).toMatchObject({
+          source: "gate",
+          sourceHandle: "false",
+          selectable: false,
+          deletable: false,
+          focusable: false,
+        });
+        expect(resolveEdgeLabel(endEdge?.sourceHandle, endEdge?.data)).toBe(
+          "False"
+        );
+        const continuationEdge = graph.edges.find(
+          (item) => item.id === "gate-after"
+        );
+        expect(
+          resolveEdgeLabel(
+            continuationEdge?.sourceHandle,
+            continuationEdge?.data
+          )
+        ).toBe("True");
+
+        // Both stubs sit on the one line after the members, True before False.
+        const vertical = direction === "vertical";
+        const along = (id: string) => {
+          const position = byId.get(id)?.position ?? { x: 0, y: 0 };
+          return vertical ? position.y : position.x;
+        };
+        const across = (id: string) => {
+          const position = byId.get(id)?.position ?? { x: 0, y: 0 };
+          return vertical ? position.x : position.y;
+        };
+        const lastMemberEnd = Math.max(
+          ...["a", "b", "gate"].map(
+            (id) =>
+              along(id) +
+              (vertical ? WORKFLOW_NODE_HEIGHT : WORKFLOW_NODE_WIDTH)
+          )
+        );
+        expect(along(continuation("after"))).toBeGreaterThan(lastMemberEnd);
+        expect(along(end("gate", "false"))).toBe(along(continuation("after")));
+        expect(across(continuation("after"))).toBeLessThan(
+          across(end("gate", "false"))
+        );
+      }
+    );
+
+    it("ends a False branch that reaches a member at that member", () => {
+      const graph = focused(nodesWith("vertical"), falseToMember);
+      expect(
+        graph.nodes
+          .filter((node) => node.type === GROUP_BOUNDARY_NODE_TYPES.end)
+          .map((node) => node.id)
+      ).toEqual([end("b")]);
+      expect(
+        graph.edges
+          .filter((item) => item.target === end("b"))
+          .map((item) => [item.source, item.sourceHandle])
+      ).toEqual([["b", null]]);
+    });
+
+    it("keeps end stubs and their edges across an unchanged recompute", () => {
+      const nodes = nodesWith("vertical");
+      const first = focused(nodes, falseUnconnected);
+      const second = focused([...nodes], [...falseUnconnected]);
+      second.nodes.forEach((node, index) => {
+        expect(node).toBe(first.nodes[index]);
+      });
+      second.edges.forEach((item, index) => {
+        expect(item).toBe(first.edges[index]);
+      });
+    });
+
+    it("keeps a Condition's path-end stub and edge when the Condition is selected", () => {
+      const nodes = nodesWith("vertical");
+      const first = focused(nodes, falseUnconnected);
+      const second = focused(
+        nodes.map((node) =>
+          node.id === "gate" ? { ...node, selected: true } : node
+        ),
+        falseUnconnected
+      );
+      const stubOf = (graph: typeof first) =>
+        graph.nodes.find((node) => node.id === end("gate", "false"));
+      const edgeOf = (graph: typeof first) =>
+        graph.edges.find((item) => item.target === end("gate", "false"));
+
+      expect(stubOf(first)).toBeDefined();
+      expect(stubOf(second)).toBe(stubOf(first));
+      expect(edgeOf(second)).toBe(edgeOf(first));
+    });
+
+    it("never gives a stub or display-only edge the id of a stored node or edge", () => {
+      // A stored id is trimmed, so builder ids that spell out a stub id or an
+      // end edge id without its leading space are still distinct.
+      const endEdgeId = (nodeId: string) =>
+        graph().edges.find((item) => item.target === end(nodeId))?.id ?? "";
+      const graph = () => focused(nodesWith("vertical"), falseUnconnected);
+      const lookalikeNode = step(end("b").trim(), { x: 0, y: 0 }, "g");
+      const lookalikeEdge = edge(endEdgeId("b").trim(), "a", "b");
+      const painted = focused(
+        [...nodesWith("vertical"), lookalikeNode],
+        [...falseUnconnected, lookalikeEdge]
+      );
+      const nodeIds = painted.nodes.map((node) => node.id);
+      const edgeIds = painted.edges.map((item) => item.id);
+
+      expect(nodeIds).toContain(lookalikeNode.id);
+      expect(nodeIds).toContain(end(lookalikeNode.id));
+      expect(new Set(nodeIds).size).toBe(nodeIds.length);
+      expect(edgeIds).toContain(lookalikeEdge.id);
+      expect(new Set(edgeIds).size).toBe(edgeIds.length);
+    });
+
+    it("refuses a drag from an end stub", () => {
+      const painted = focused(nodesWith("vertical"), falseUnconnected).nodes;
+      expect(
+        storedCanvasConnection(
+          { source: end("gate", "false"), target: "b", sourceHandle: null },
+          painted
+        )
+      ).toEqual({ refusal: "Connect to a step inside the Group." });
+    });
+  });
+
   it("names the Lifecycle Node through the stub's own data", () => {
     const graph = focused(NODES, [
       edge("life-a", "life", "a", "started"),
@@ -388,6 +577,37 @@ describe("focusedGroupCanvasGraph", () => {
     expect(stub?.data.type).toBe("lifecycle");
     const painted = graph.edges.find((item) => item.id === "life-a");
     expect(painted).not.toHaveProperty("sourceHandle");
+  });
+
+  it("paints a distinct stub for each port when member ids hold a lone surrogate or the separator characters", () => {
+    const memberIds = ["\ud800", "x/y", "x", "x%2Fy"];
+    const nodes: WorkflowNode[] = [
+      NODES[0] as WorkflowNode,
+      step("before", { x: 400, y: 150 }),
+      FRAME,
+      ...memberIds.map((id, index) =>
+        step(id, { x: 12, y: 48 + index * 96 }, "g")
+      ),
+    ];
+    const edges = [
+      edge("life-before", "life", "before", "started"),
+      ...memberIds.map((id) => edge(`before-${id}`, "before", id)),
+    ];
+
+    const graph = focused(nodes, edges);
+
+    const endStubIds = graph.nodes
+      .filter((node) => node.type === GROUP_BOUNDARY_NODE_TYPES.end)
+      .map((node) => node.id);
+    expect(endStubIds).toEqual(
+      memberIds.map((nodeId) => boundaryStubId("end", { nodeId, handle: null }))
+    );
+    expect(new Set(graph.nodes.map((node) => node.id)).size).toBe(
+      graph.nodes.length
+    );
+    expect(new Set(graph.edges.map((item) => item.id)).size).toBe(
+      graph.edges.length
+    );
   });
 
   it("answers null for a Group the graph does not hold", () => {

@@ -215,15 +215,18 @@ Removing a frame ungroups its members and keeps every stored edge, and an edit
 that leaves a Group with fewer than two steps ungroups it the same way. The
 editor groups a selection only when the Group it would form meets the Publish
 rules below.
-A draft save refuses a Group member that is the Lifecycle Node, an Add node, or
-another Group. Publish refuses a Group that holds an Event Split or holds fewer
-than two other steps. Its edges may enter from one outside outlet and may leave
-from one inside outlet, and a path may end inside it. A join inside a Group
-takes every arm and every predecessor from inside the Group. A Group may sit on
-an arm of a join outside it. Publish refuses a Group whose Condition sits on an
-arm of any join, because the branch the Condition does not take leaves that
-join unreleased. A draft that breaks the Publish rules still saves, and a draft
-run ignores them, because a Group does not change how a run executes.
+A draft save refuses a Group member that is the Lifecycle Node, an Add node,
+or another Group. Publish refuses a Group that holds an Event Split or holds
+fewer than two other steps. Its edges may enter from one outside outlet and
+may leave from one inside outlet, and a path may end inside it. That inside
+outlet may be one branch of a Condition whose other branch ends inside the
+Group, and two outlets leaving it are refused even when they reach the same
+outside step. A join inside a Group takes every arm and every predecessor from
+inside the Group. A Group may sit on an arm of a join outside it. Publish
+refuses a Group whose Condition sits on an arm of any join, because the branch
+the Condition does not take leaves that join unreleased. A draft that breaks
+the Publish rules still saves, and a draft run ignores them, because a Group
+does not change how a run executes.
 
 **Precedence**:
 One fixed order when an Event arrives: Lifecycle Rules apply first, then the

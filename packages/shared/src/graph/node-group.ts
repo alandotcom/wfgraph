@@ -5,8 +5,11 @@
  * frame's inlet and outlet stand for the boundary `group-boundary.ts` derives.
  */
 
-import { countBy, groupBy, uniq, uniqBy } from "es-toolkit/array";
-import { normalizeConditionBranch } from "#src/conditions/condition-branch";
+import { countBy, groupBy, uniqBy } from "es-toolkit/array";
+import {
+  getConditionBranchDisplayLabel,
+  normalizeConditionBranch,
+} from "#src/conditions/condition-branch";
 import {
   type GroupContractRule,
   groupRuleBreaks,
@@ -16,9 +19,13 @@ import {
   analyzeGroupBoundary,
   analyzeGroupBoundaryById,
   type GroupBoundary,
+  type GroupBoundaryEdge,
   type GroupGraphNode,
+  type GroupPort,
   isGroupNode,
 } from "#src/graph/group-boundary";
+import { groupPortKey } from "#src/graph/group-port-key";
+import { nodeLabel } from "#src/graph/group-structure";
 import { isConditionNode } from "#src/graph/node-config";
 import {
   type GroupLayoutDirection,
@@ -49,66 +56,128 @@ function groupEntryIds(boundary: GroupBoundary<WorkflowEdge>): string[] {
   return boundary.memberIds.filter((id) => !reached.has(id));
 }
 
-/**
- * The members a connection from the frame's outlet leaves: the Group's internal
- * continuation when stored edges already leave it, otherwise every member with
- * no outgoing stored edge. Empty when the boundary has no members.
- */
-function groupExitIds(boundary: GroupBoundary<WorkflowEdge>): string[] {
-  if (boundary.internalContinuation.length > 0) {
-    return uniq(boundary.internalContinuation.map((port) => port.nodeId));
-  }
-  return boundary.terminalMemberIds;
-}
+const CONDITION_BRANCHES = ["true", "false"] as const;
 
 /**
- * The distinct source handles of the Group's continuation, in edge order. When
- * nothing leaves the Group yet, one handle: `"true"` when the sole exit member
- * is a Condition, otherwise `null`.
+ * The member ports where a path ends inside a Group, in member order: each
+ * member no stored edge leaves, and each True or False outlet of a Condition
+ * member that no stored edge leaves by. A Condition with both outlets
+ * unconnected answers both.
  */
-function outletHandlesOf(
-  nodes: readonly GroupGraphNode[],
-  boundary: GroupBoundary<WorkflowEdge>
-): (string | null)[] {
-  if (boundary.internalContinuation.length > 0) {
-    return uniq(boundary.internalContinuation.map((port) => port.handle));
-  }
-  const [soleExitId, ...otherExitIds] = boundary.terminalMemberIds;
-  const soleExit =
-    otherExitIds.length === 0
-      ? nodes.find((node) => node.id === soleExitId)
-      : undefined;
-  return [isConditionNode(soleExit) ? "true" : null];
-}
-
-/**
- * The source handle ids a Group frame draws, one per distinct handle its stored
- * continuation edges name, so every painted edge leaving the frame has a handle
- * to attach to. See `outletHandlesOf` for a Group that does not continue yet.
- */
-export function groupOutletHandles(
-  nodes: readonly GroupGraphNode[],
-  edges: readonly WorkflowEdge[],
-  groupId: string
-): (string | null)[] {
-  return outletHandlesOf(
-    nodes,
-    analyzeGroupBoundaryById({ nodes, edges, groupId })
+export function groupEndPorts(input: {
+  nodes: readonly GroupGraphNode[];
+  boundary: Pick<
+    GroupBoundary<GroupBoundaryEdge>,
+    "memberIds" | "interiorEdges" | "continuationEdges"
+  >;
+}): GroupPort[] {
+  // Maps, because node ids are chosen by the builder.
+  const byId = new Map(input.nodes.map((node) => [node.id, node]));
+  const leavingBySource = Map.groupBy(
+    [...input.boundary.interiorEdges, ...input.boundary.continuationEdges],
+    (edge) => edge.source
   );
+  return input.boundary.memberIds.flatMap((memberId): GroupPort[] => {
+    const leaving = leavingBySource.get(memberId) ?? [];
+    if (!isConditionNode(byId.get(memberId))) {
+      return leaving.length === 0 ? [{ nodeId: memberId, handle: null }] : [];
+    }
+    const connected = new Set(
+      leaving.map((edge) => normalizeConditionBranch(edge.sourceHandle))
+    );
+    return CONDITION_BRANCHES.filter((branch) => !connected.has(branch)).map(
+      (branch) => ({ nodeId: memberId, handle: branch })
+    );
+  });
 }
 
 /**
- * The source handle a connection from the frame's outlet is stored with: the
- * first handle `groupOutletHandles` names, undefined where that is `null`.
- * Undefined for an id that is not a Group, because no node names it as a
- * parent and such an id has no continuation and no Condition exit.
+ * One source handle a collapsed Group card draws. `handleId` is the React Flow
+ * handle id, `ports` are the member ports a connection dragged from the handle
+ * stores edges from, and `label` names the outlet beside the handle, or is
+ * null when the card draws the handle unlabelled.
  */
-export function groupOutletHandle(
-  nodes: readonly GroupGraphNode[],
+export type GroupOutlet = {
+  handleId: string | null;
+  label: string | null;
+  ports: GroupPort[];
+};
+
+/**
+ * The handle id of the card outlet standing for the end port `port`. Two end
+ * ports never share a port key, so they never share a handle id.
+ */
+function endPortHandleId(port: GroupPort): string {
+  return `end:${groupPortKey(port)}`;
+}
+
+/**
+ * The source handles the collapsed card of the Group `groupId` draws. A Group
+ * that continues outside draws one handle per distinct source handle its
+ * continuation edges name, with that handle as its id, so every painted edge
+ * leaving the card has a handle to attach to. A Group that does not continue
+ * draws one handle per end port, labelled with the Condition branch, or with
+ * the member's name when the card draws more than one. A Group with neither
+ * draws one unlabelled handle standing for no port. `titleOf` names a member.
+ * It defaults to the stored label, and the editor passes the title a step's
+ * card shows, which falls back to the action's name.
+ */
+export function groupOutlets<N extends GroupGraphNode>(
+  nodes: readonly N[],
   edges: readonly WorkflowEdge[],
-  groupId: string
-): string | undefined {
-  return groupOutletHandles(nodes, edges, groupId)[0] ?? undefined;
+  groupId: string,
+  titleOf: (node: N) => string = nodeLabel
+): GroupOutlet[] {
+  const boundary = analyzeGroupBoundaryById({ nodes, edges, groupId });
+  if (boundary.internalContinuation.length > 0) {
+    // A Map, because an Event Split handle carries a builder-chosen name.
+    const byHandle = Map.groupBy(
+      boundary.internalContinuation,
+      (port) => port.handle
+    );
+    return [...byHandle].map(([handle, ports]) => ({
+      handleId: handle,
+      label: getConditionBranchDisplayLabel(handle),
+      ports,
+    }));
+  }
+  const endPorts = groupEndPorts({ nodes, boundary });
+  if (endPorts.length === 0) {
+    return [{ handleId: null, label: null, ports: [] }];
+  }
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  return endPorts.map((port) => {
+    const member = byId.get(port.nodeId);
+    const memberName = endPorts.length > 1 && member ? titleOf(member) : null;
+    return {
+      handleId: endPortHandleId(port),
+      label: getConditionBranchDisplayLabel(port.handle) ?? memberName,
+      ports: [port],
+    };
+  });
+}
+
+/**
+ * The member ports a connection from the card of the Group `groupId` stores
+ * edges from, given the handle `handle` it was dragged from: the ports of the
+ * outlet with that handle id, else of the first outlet whose port uses that
+ * handle, else of the first outlet. Empty for an id that is not a Group.
+ */
+function groupOutletSources(input: {
+  nodes: readonly GroupGraphNode[];
+  edges: readonly WorkflowEdge[];
+  groupId: string;
+  handle: string | null | undefined;
+}): GroupPort[] {
+  const handle = input.handle ?? null;
+  const outlets = groupOutlets(input.nodes, input.edges, input.groupId);
+  const chosen =
+    outlets.find((outlet) => outlet.handleId === handle) ??
+    outlets.find((outlet) =>
+      outlet.ports.some((port) => port.handle === handle)
+    ) ??
+    outlets[0];
+  return chosen?.ports ?? [];
 }
 
 export function predecessorKey(edge: {
@@ -206,31 +275,50 @@ export function analyzeGroupableSelection(input: {
   };
 }
 
+/** The stored source of one edge a connection adds. */
+type StoredSource = {
+  source: string;
+  sourceHandle: string | null | undefined;
+};
+
 /**
- * The stored sources a connection from `nodeId` leaves: the node itself, or a
- * Group's exit members. A Group with no members answers its own id.
+ * The stored sources a connection from `sourceId` leaves by. A step answers
+ * itself with the handle as given. A Group answers the member ports of the one
+ * card outlet `groupOutletSources` picks for `sourceHandle`, each with its own
+ * handle, and a Group whose outlet stands for no port answers its own id.
  */
-export function resolveStoredSources(
-  nodes: readonly GroupGraphNode[],
-  edges: readonly WorkflowEdge[],
-  nodeId: string
-): string[] {
-  const node = nodes.find((item) => item.id === nodeId);
+export function resolveStoredSources(input: {
+  nodes: readonly GroupGraphNode[];
+  edges: readonly WorkflowEdge[];
+  sourceId: string;
+  sourceHandle: string | null | undefined;
+}): StoredSource[] {
+  const node = input.nodes.find((item) => item.id === input.sourceId);
   if (!isGroupNode(node)) {
-    return [nodeId];
+    return [{ source: input.sourceId, sourceHandle: input.sourceHandle }];
   }
-  const exits = groupExitIds(
-    analyzeGroupBoundaryById({ nodes, edges, groupId: nodeId })
-  );
-  return exits.length > 0 ? exits : [nodeId];
+  const ports = groupOutletSources({
+    nodes: input.nodes,
+    edges: input.edges,
+    groupId: input.sourceId,
+    handle: input.sourceHandle,
+  });
+  if (ports.length === 0) {
+    return [{ source: input.sourceId, sourceHandle: input.sourceHandle }];
+  }
+  return ports.map((port) => ({
+    source: port.nodeId,
+    sourceHandle: port.handle ?? undefined,
+  }));
 }
 
 /**
  * Store edges a connection onto `targetId` would add: a Group inlet fans out
- * onto every entry, and a Group outlet fans out from every exit. A Condition
- * branch handle is stored only on an exit that is a Condition. Empty means the
- * painted connection already exists. A connection that would enter a Group from
- * a second outside outlet is `addedIngressSourceRefusal`'s to refuse.
+ * onto every entry, and a Group outlet stores from the member ports of the card
+ * handle the connection names, which is one port while nothing leaves the
+ * Group. Empty means the painted connection already exists. A connection that
+ * would enter a Group from a second outside outlet is
+ * `addedIngressSourceRefusal`'s to refuse.
  */
 export function fanOutStoreEdges(input: {
   nodes: readonly GroupGraphNode[];
@@ -239,43 +327,23 @@ export function fanOutStoreEdges(input: {
   targetId: string;
   sourceHandle: string | null | undefined;
   excludeEdgeId?: string | null;
-}): Array<{
-  source: string;
-  target: string;
-  sourceHandle: string | null | undefined;
-}> {
+}): Array<StoredSource & { target: string }> {
   const existing = new Set(
     input.edges
       .filter((edge) => edge.id !== input.excludeEdgeId)
       .map((edge) => `${predecessorKey(edge)}\0${edge.target}`)
   );
-  const byId = new Map(input.nodes.map((node) => [node.id, node]));
-  const throughFrame = isGroupNode(byId.get(input.sourceId));
-  const branchHandle = normalizeConditionBranch(input.sourceHandle) !== null;
   const targets = storedTargetsFor(input.nodes, input.edges, input.targetId);
-  const additions: Array<{
-    source: string;
-    target: string;
-    sourceHandle: string | null | undefined;
-  }> = [];
-  for (const source of resolveStoredSources(
-    input.nodes,
-    input.edges,
-    input.sourceId
-  )) {
-    const sourceHandle =
-      throughFrame && branchHandle && !isConditionNode(byId.get(source))
-        ? undefined
-        : input.sourceHandle;
-    for (const target of targets) {
-      const key = `${predecessorKey({ source, sourceHandle })}\0${target}`;
-      if (existing.has(key)) {
-        continue;
-      }
-      additions.push({ source, target, sourceHandle });
-    }
-  }
-  return additions;
+  return resolveStoredSources(input).flatMap(({ source, sourceHandle }) =>
+    targets
+      .filter(
+        (target) =>
+          !existing.has(
+            `${predecessorKey({ source, sourceHandle })}\0${target}`
+          )
+      )
+      .map((target) => ({ source, target, sourceHandle }))
+  );
 }
 
 /**

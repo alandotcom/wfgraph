@@ -9,7 +9,9 @@ import { countBy } from "es-toolkit/array";
 import {
   analyzeGroupBoundaryById,
   type GroupBoundaryEdge,
+  type GroupGraphNode,
 } from "#src/graph/group-boundary";
+import { groupEndPorts } from "#src/graph/node-group";
 import type { WorkflowExecutionStatus } from "#src/lifecycle/execution-contracts";
 
 /**
@@ -53,12 +55,12 @@ export type GroupRunSummary = {
  * Canceled, Waiting and Running in that order. With no member reached it is
  * Idle. A Group is Successful once a step it continues to has evidence, or once
  * the run completed with evidence at a member where a path ends inside the
- * Group. A Group with no continuation edge is also Successful once the run
- * completed. Every other reached Group is Reached.
+ * Group, including a Condition's True or False outlet that nothing leaves by.
+ * A Group with no continuation edge is also Successful once the run completed. Every other reached Group is Reached.
  */
 export function summarizeGroupRun(input: {
   groupId: string;
-  nodes: readonly { id: string; parentId?: string | undefined }[];
+  nodes: readonly GroupGraphNode[];
   edges: readonly GroupBoundaryEdge[];
   /** Evidence by real node id; a node that is not listed has none. */
   evidence: ReadonlyMap<string, RunNodeEvidenceStatus>;
@@ -87,7 +89,9 @@ export function summarizeGroupRun(input: {
     boundary.externalTargets.some((port) => hasEvidence(port.nodeId)) ||
     (completed &&
       (boundary.continuationEdges.length === 0 ||
-        boundary.terminalMemberIds.some(hasEvidence)));
+        groupEndPorts({ nodes: input.nodes, boundary }).some((port) =>
+          hasEvidence(port.nodeId)
+        )));
   return { ...summary, status: groupStatus(summary, completionProven) };
 }
 

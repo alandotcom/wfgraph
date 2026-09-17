@@ -18,7 +18,6 @@ import {
   LIFECYCLE_STARTED_HANDLE,
 } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import { eventsReachingTarget } from "#src/lib/upstream-node-fields";
-import { groupOutletHandle } from "@wfgraph/shared/graph/node-group";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
@@ -105,10 +104,10 @@ export function normalizeSourceHandleForConnection(input: {
 
   const sourceNode = nodes.find((node) => node.id === sourceNodeId);
 
+  // A Group card's handle id names the outlet the drag started on, and
+  // `fanOutStoreEdges` reads the member port it stands for from that id.
   if (isGroupNode(sourceNode)) {
-    return (
-      groupOutletHandle(nodes, edges, sourceNodeId) ?? sourceHandle ?? null
-    );
+    return sourceHandle ?? null;
   }
 
   if (sourceNode?.data.type === "lifecycle") {

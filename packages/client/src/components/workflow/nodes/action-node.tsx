@@ -6,7 +6,7 @@ import {
 import { useAtomValue } from "jotai";
 import { EyeOff, GitBranch, Hourglass, Split, Zap } from "lucide-react";
 import { Schema } from "effect";
-import { type CSSProperties, memo, useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import {
   Node,
   NodeBody,
@@ -53,6 +53,10 @@ import {
 } from "#src/lib/workflow-node-dimensions";
 import { useAfterPaint, useNowMs } from "#src/hooks/effects";
 import { useExecutionLogsByNode } from "#src/hooks/use-execution-logs";
+import {
+  alongOutletSide,
+  OutletLabel,
+} from "#src/components/workflow/nodes/outlet-label";
 import {
   readConfigString,
   readConfigStringOr,
@@ -433,43 +437,6 @@ const CONDITION_FALSE_OUTLET_OFFSET = "62%";
  */
 function eventSplitOutletOffset(index: number, count: number): string {
   return `${((index + 0.5) / count) * 100}%`;
-}
-
-/**
- * The style placing an outlet handle or its label `offset` along the card side
- * `outlet`: measured from the card's top on the right side, and from its left
- * on the bottom.
- */
-function alongOutletSide(outlet: Position, offset: string): CSSProperties {
-  return outlet === Position.Right ? { top: offset } : { left: offset };
-}
-
-/**
- * The caption naming one outlet, drawn outside the card at `offset` along the
- * outlet side: beside the handle on the right side, or under it on the bottom.
- */
-function OutletLabel(input: {
-  outlet: Position;
-  offset: string;
-  className?: string | undefined;
-  title?: string | undefined;
-  children: string;
-}) {
-  return (
-    <div
-      className={cn(
-        "pointer-events-none absolute rounded-sm border bg-card px-1.5 py-0.5 text-xs text-muted-foreground leading-none",
-        input.outlet === Position.Right
-          ? "left-full ml-3 -translate-y-1/2"
-          : "-bottom-8 -translate-x-1/2",
-        input.className
-      )}
-      style={alongOutletSide(input.outlet, input.offset)}
-      title={input.title}
-    >
-      {input.children}
-    </div>
-  );
 }
 
 /** Comparison cards share the accessible graph name's safe action fallback. */

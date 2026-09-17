@@ -276,8 +276,8 @@ export function GroupFocusSections({ groupId }: { groupId: string }) {
 
 /**
  * Browse for a collapsed Group: how many steps it holds, its layout direction,
- * each step, the outside ports that enter it and the ones it continues to, which
- * are the ports the focused canvas draws a stub for, its Group issues, and Enter
+ * each step, the outside ports that enter it, the member outlet it continues
+ * from, and the outside ports it continues to, its Group issues, and Enter
  * group, which opens the focused Group canvas. Nothing expands in place.
  */
 export function GroupBrowse({ subject, openFocus }: RevealBodyProps) {
@@ -330,6 +330,13 @@ export function GroupBrowse({ subject, openFocus }: RevealBodyProps) {
           empty="No step enters this Group."
           label="Incoming from"
           ports={boundary.externalIngress}
+          titleOf={titleOf}
+        />
+        <h4 className="pt-1 text-muted-foreground text-xs">Continues from</h4>
+        <StepList
+          empty="No step inside this Group continues outside it."
+          label="Continues from"
+          ports={boundary.internalContinuation}
           titleOf={titleOf}
         />
         <h4 className="pt-1 text-muted-foreground text-xs">Continues to</h4>
