@@ -6,6 +6,7 @@ import {
   runNodeEvidenceStatusesAtom,
 } from "#src/lib/workflow-graph-store";
 import {
+  callCount,
   execution,
   installRunsRevealRpc,
   labelledGraph,
@@ -17,15 +18,23 @@ import {
   waitingRun,
 } from "./canvas-reveal/runs-reveal.test-support";
 
-beforeEach(() => {
+/** Happy-dom's viewport, which the `md` media query answers from. */
+function setViewportWidth(width: number): void {
   (
     window as unknown as {
       happyDOM: { setViewport: (viewport: { width: number }) => void };
     }
-  ).happyDOM.setViewport({ width: 1440 });
+  ).happyDOM.setViewport({ width });
+}
+
+beforeEach(() => {
+  setViewportWidth(1440);
   installRunsRevealRpc();
 });
-afterEach(removeRunsRevealRpc);
+afterEach(() => {
+  setViewportWidth(1440);
+  removeRunsRevealRpc();
+});
 
 const STEPS = [
   { id: "send", label: "Send reminder" },
@@ -71,6 +80,44 @@ describe("RunStatusProjection", () => {
     await waitFor(() => expect(statuses().get("w")).toBe("success"), {
       timeout: 2000,
     });
+  });
+
+  it("marks a newly parked Wait on a phone with no run logs read", async () => {
+    // Below `md` with no sheet open, no Runs body is mounted, so the status
+    // read is the only request the run's progress makes.
+    setViewportWidth(390);
+    served.items = [execution("exec_m", "running")];
+    served.graphs = { ver_exec_m: labelledGraph(STEPS) };
+    served.logsByExecutionId = {
+      exec_m: [
+        log({ id: "m1", nodeId: "send", nodeName: "Send", status: "running" }),
+      ],
+    };
+    const { store, sheet } = await renderRunsReveal({
+      view: "runs",
+      executionId: "exec_m",
+    });
+    const statuses = () => store.get(runNodeEvidenceStatusesAtom);
+    await waitFor(() => expect(statuses().get("send")).toBe("running"));
+    expect(sheet()).toBeNull();
+    const logReads = callCount("workflow/getExecutionLogs");
+
+    // The status read names `w` as running before its wait is recorded, and
+    // the read after the wait is recorded names it as Waiting.
+    served.logsByExecutionId = {
+      exec_m: [
+        log({ id: "m1", nodeId: "send", nodeName: "Send", status: "success" }),
+        log({ id: "m2", nodeId: "w", nodeName: "Wait", status: "running" }),
+      ],
+    };
+    await waitFor(() => expect(statuses().get("w")).toBe("running"), {
+      timeout: 2000,
+    });
+    served.waitsByExecutionId = { exec_m: waitingRun("exec_m", "tok_m") };
+    await waitFor(() => expect(statuses().get("w")).toBe("waiting"), {
+      timeout: 2000,
+    });
+    expect(callCount("workflow/getExecutionLogs")).toBe(logReads);
   });
 
   it("replaces the previous run's statuses with each run's own on a run switch", async () => {

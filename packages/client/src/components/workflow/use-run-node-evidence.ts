@@ -1,7 +1,8 @@
 /**
  * Which run node's evidence the open run shows, and the writes that choose it.
- * The node and its chosen execution live in the run address's navigation; the
- * element that opened the evidence and the focus Browse owes it are UI atoms.
+ * The node and its chosen execution live in the run address's navigation. The
+ * focus Browse owes the evidence is a UI atom, and `run-evidence-origin.ts`
+ * holds what opened it.
  */
 
 import { useNavigate } from "@tanstack/react-router";
@@ -22,8 +23,6 @@ import {
   buildRunNodeEvidence,
   type PinnedGraphState,
   type RunNodeEvidence,
-  type RunTarget,
-  runTarget,
 } from "#src/lib/run-node-evidence";
 import {
   executionOverlayGraphAtom,
@@ -31,7 +30,6 @@ import {
   runNodeEvidenceStatusesAtom,
 } from "#src/lib/workflow-graph-store";
 import {
-  type OpenRevealLevel,
   scopeId,
   scopeOfNode,
   type WorkspaceAddress,
@@ -40,28 +38,12 @@ import {
 } from "#src/lib/workflow-navigation-state";
 import {
   activeChosenExecutionAtom,
-  activeSelectionAtom,
   activeWorkspaceAddressAtom,
   chooseRunExecutionAtom,
-  inspectRunNodeAtom,
 } from "#src/lib/workflow-workspace-navigation";
 import { requestRevealPlacementAtom } from "./canvas-reveal/reveal-requests";
-
-/**
- * What opened a run node's evidence in one address: a journey entry, named by
- * its log id, or the canvas node itself, with a null `logId`.
- * `closedReopenLevel` is set when a canvas click opened Focus straight from a
- * closed Canvas Reveal, and holds the level Reveal reopened at before it.
- */
-type RunEvidenceOrigin = {
-  addressId: string;
-  nodeId: string;
-  logId: string | null;
-  closedReopenLevel: OpenRevealLevel | null;
-};
-
-/** The element that last opened run node evidence, or null. */
-export const runEvidenceOriginAtom = atom<RunEvidenceOrigin | null>(null);
+import { useRevealNavigation } from "./canvas-reveal/use-reveal-navigation";
+import { runEvidenceOriginAtom } from "./run-evidence-origin";
 
 /**
  * Where DOM focus goes the next time Runs Browse shows the open run: a journey
@@ -81,17 +63,6 @@ export type RunEvidenceReads = {
   events: readonly ExecutionEvent[];
   pinnedGraph: PinnedGraphState;
 };
-
-/**
- * What the active run address inspects, from its selection and chosen
- * execution, for a surface that has no Canvas Reveal subject to read it from.
- */
-export function useActiveRunTarget(): RunTarget | null {
-  const selection = useAtomValue(activeSelectionAtom);
-  const chosenExecution = useAtomValue(activeChosenExecutionAtom);
-  const nodes = useAtomValue(executionOverlayGraphAtom)?.nodes ?? [];
-  return runTarget({ selection, chosenExecution, nodes });
-}
 
 /**
  * The evidence of `nodeId` in the open run, or null for a null `nodeId` or when
@@ -151,22 +122,23 @@ export function useRunGroupSummary(
 }
 
 /**
- * Show a run node's evidence from outside the canvas. A node in the pinned
- * graph is selected in the scope that shows it: a Group member on its Group's
- * focused canvas, reached by pushing that scope's route. A node the pinned graph
- * lacks, or any node while that graph loads, is carried by the chosen execution
- * with nothing selected. A null `logId` chooses no execution, so the latest
- * shows, and marks the canvas node as what opened the evidence.
+ * Show a run node's evidence from outside the canvas, in Canvas Reveal Focus or
+ * the mobile evidence inspector. A node in the pinned graph is selected in the
+ * scope that shows it: a Group member on its Group's focused canvas, reached by
+ * pushing that scope's route. A node the pinned graph lacks, or any node while
+ * that graph loads, is carried by the chosen execution with nothing selected. A
+ * null `logId` chooses no execution, so the latest shows, and marks the canvas
+ * node as what opened the evidence.
  */
 export function useInspectRunNode(): (input: {
   nodeId: string;
   logId: string | null;
-  opensFocus: boolean;
 }) => void {
   const store = useStore();
   const navigate = useNavigate({ from: "/workflows/$workflowId" });
+  const navigation = useRevealNavigation();
   const requestPlacement = useSetAtom(requestRevealPlacementAtom);
-  return ({ nodeId, logId, opensFocus }) => {
+  return ({ nodeId, logId }) => {
     const active = store.get(activeWorkspaceAddressAtom);
     const nodes = store.get(executionOverlayGraphAtom)?.nodes ?? [];
     const inGraph = nodes.some((node) => node.id === nodeId);
@@ -181,12 +153,12 @@ export function useInspectRunNode(): (input: {
       logId,
       closedReopenLevel: null,
     });
-    store.set(inspectRunNodeAtom, {
+    navigation.inspectRunNode({
       address,
       nodeId,
       executionLogId: logId,
       selectsNode: inGraph,
-      opensFocus,
+      opensEvidence: true,
     });
     if (address !== active) {
       requestPlacement({
@@ -202,17 +174,9 @@ export function useInspectRunNode(): (input: {
  * Show a node's evidence from its journey entry, with that entry's execution
  * chosen, as `useInspectRunNode` shows any run node.
  */
-export function useInspectRunLog(): (
-  log: ExecutionLog,
-  options: { opensFocus: boolean }
-) => void {
+export function useInspectRunLog(): (log: ExecutionLog) => void {
   const inspectNode = useInspectRunNode();
-  return (log, options) =>
-    inspectNode({
-      nodeId: log.nodeId,
-      logId: log.id,
-      opensFocus: options.opensFocus,
-    });
+  return (log) => inspectNode({ nodeId: log.nodeId, logId: log.id });
 }
 
 /** Choose which recorded execution of `nodeId` the evidence shows. */

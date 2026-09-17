@@ -198,7 +198,6 @@ describe("WorkflowRunSummaryRow", () => {
   });
 
   it("shows a compact header with a visible cancel action", () => {
-    const onBack = vi.fn(() => undefined);
     const onCancel = vi.fn(() => undefined);
     const view = render(
       <WorkflowRunSummaryRow
@@ -207,7 +206,6 @@ describe("WorkflowRunSummaryRow", () => {
           status: "waiting",
           startEventName: "app/appointment.created.with.a.very.long.path",
         }}
-        onBack={onBack}
         onCancel={onCancel}
         outcome="Waiting at Hold until appointment"
         runNumber={2}
@@ -215,9 +213,6 @@ describe("WorkflowRunSummaryRow", () => {
       />
     );
 
-    const backButton = view.getByRole("button", { name: "Back to runs list" });
-    fireEvent.click(backButton);
-    expect(onBack).toHaveBeenCalledTimes(1);
     expect(
       view.getByText("app/appointment.created.with.a.very.long.path")
     ).toBeTruthy();

@@ -5,7 +5,10 @@ import {
   useBeforePaint,
   useUnmountCleanup,
 } from "#src/hooks/effects";
-import { type MobileRevealLevel } from "#src/lib/mobile-sheet-navigation";
+import {
+  sheetObjectKey,
+  type MobileRevealLevel,
+} from "#src/lib/mobile-sheet-navigation";
 import {
   type InspectedObject,
   type WorkspaceAddress,
@@ -20,7 +23,7 @@ type ShownSheet = {
   address: WorkspaceAddress;
   depth: number;
   level: MobileRevealLevel;
-  inspected: InspectedObject;
+  inspected: InspectedObject | null;
   top: number;
 };
 
@@ -38,7 +41,7 @@ export function useMobileSheetScroll(
     addressId: string;
     depth: number;
     level: MobileRevealLevel;
-    inspected: InspectedObject;
+    inspected: InspectedObject | null;
   } | null
 ): {
   ref: RefObject<HTMLDivElement | null>;
@@ -53,7 +56,7 @@ export function useMobileSheetScroll(
   const ref = useRef<HTMLDivElement>(null);
   const shownRef = useRef<ShownSheet | null>(null);
   const key = input
-    ? `${input.addressId}|${input.depth}|${input.level}|${input.inspected.kind}:${input.inspected.id}`
+    ? `${input.addressId}|${input.depth}|${input.level}|${sheetObjectKey(input.inspected)}`
     : null;
 
   const record = () => {

@@ -1,8 +1,8 @@
 /**
  * The subject kinds Canvas Reveal can show, one record each: `header` builds the
- * header, `unwind` answers Back and Escape, and `shellOwnsScroll` names the body's
- * scroller. The shell keys the body by kind, so one component registered as both
- * `Browse` and `Focus` stays mounted when the level changes.
+ * header, `unwind` answers Back and Escape, `mobile` adapts the sheets below `md`,
+ * and `shellOwnsScroll` names the body's scroller. The shell keys the body by kind,
+ * so one component registered as both `Browse` and `Focus` stays mounted.
  */
 
 import type { ComponentType } from "react";
@@ -43,6 +43,8 @@ import { EventSplitBrowse } from "./event-split-reveal";
 import { GroupBrowse, GroupFocusSections } from "./group-browse";
 import { LifecycleBrowse } from "./lifecycle-browse";
 import { LifecycleFocus } from "./lifecycle-focus";
+import type { MobileRevealState } from "./canvas-reveal-state";
+import type { MobileSheetControls } from "./mobile-sheet-header";
 import type { RevealFocusWidth } from "./reveal-geometry";
 import {
   RevealHeader,
@@ -63,7 +65,12 @@ import {
   type RevealSubject,
 } from "./reveal-subject";
 import { unwindToInspectedOrigin } from "./reveal-origin";
-import { RunsBody, RunsHeader, unwindRuns } from "./runs-browse";
+import {
+  RunsBody,
+  RunsHeader,
+  RunsMobileHeader,
+  unwindRuns,
+} from "./runs-browse";
 import { StepBrowse } from "./step-browse";
 
 export type RevealBodyProps = {
@@ -84,6 +91,12 @@ export type RevealBodyProps = {
    * replaces what it shows after a navigation write already reset its scroll.
    */
   scrollToTop: () => void;
+  /**
+   * The mobile Reveal sheet the body shows on below `md`, or null when desktop
+   * Canvas Reveal shows it. The shell passes it so a body reads the sheet
+   * without importing the state module, which imports every kind.
+   */
+  mobile: MobileRevealState | null;
 };
 
 /** The graph state the shell reads for a header it builds from a model. */
@@ -116,6 +129,24 @@ export type RevealKindHeader =
     }
   | { owner: "kind"; Header: ComponentType<RevealKindHeaderProps> };
 
+/**
+ * What one Back or Escape does for `subject` at `level`. `unwindLevel` is the
+ * shell's own step back.
+ */
+export type RevealUnwind = (input: {
+  subject: RevealSubject;
+  level: OpenRevealLevel;
+  store: ReturnType<typeof createStore>;
+  unwindLevel: () => void;
+  /**
+   * Hand DOM focus back to what opened Reveal at the next close, for a kind
+   * that closes Reveal through its own write.
+   */
+  returnFocusOnClose: () => void;
+  /** Replace the editor route search, adding no history entry. */
+  replaceRouteSearch: (search: WorkflowRouteSearch) => void;
+}) => void;
+
 export type RevealKind = {
   id: RevealKindId;
   /**
@@ -131,22 +162,31 @@ export type RevealKind = {
   /** The Focus body, for a kind whose subjects can offer Focus. */
   Focus: ComponentType<RevealBodyProps> | null;
   /**
-   * What one Back or Escape does for `subject`. Without it the shell runs
+   * What one Back or Escape does on desktop. Without it the shell runs
    * `unwindLevel`, which goes from Focus to Browse to Closed.
    */
-  unwind?: (input: {
-    subject: RevealSubject;
-    level: OpenRevealLevel;
-    store: ReturnType<typeof createStore>;
-    unwindLevel: () => void;
-    /**
-     * Hand DOM focus back to what opened Reveal at the next close, for a kind
-     * that closes Reveal through its own write.
-     */
-    returnFocusOnClose: () => void;
-    /** Replace the editor route search, adding no history entry. */
-    replaceRouteSearch: (search: WorkflowRouteSearch) => void;
-  }) => void;
+  unwind?: RevealUnwind;
+  /**
+   * How the kind shows in the mobile Reveal sequence below `md`, for a kind
+   * whose sheets need more than the shell builds for Draft. `Header` renders
+   * the sheet header, usually `MobileSheetHeader`, with the shell's controls.
+   * `Body` replaces the default body, which is `Focus` on an inspector sheet
+   * and `Browse` on a summary sheet. `unwind` answers Back and Escape on a
+   * phone, where `unwindLevel` removes the top sheet; the default removes the
+   * top sheet. After Back, `backFocusTarget` names the element in the sheet
+   * that takes focus when the body moved none. `shellOwnsScroll` replaces the
+   * kind's own value for the sheet body.
+   */
+  mobile?: {
+    Header: ComponentType<{
+      state: MobileRevealState;
+      controls: MobileSheetControls;
+    }>;
+    Body?: ComponentType<RevealBodyProps>;
+    unwind?: RevealUnwind;
+    backFocusTarget?: (sheet: HTMLElement) => HTMLElement | null;
+    shellOwnsScroll?: boolean;
+  };
   /** The canvas element focus returns to when Reveal closes, when there is one. */
   focusReturnTarget: (
     subject: RevealSubject,
@@ -317,7 +357,7 @@ function unwindChanges({
   store,
   level,
   unwindLevel,
-}: Parameters<NonNullable<RevealKind["unwind"]>>[0]) {
+}: Parameters<RevealUnwind>[0]) {
   const comparison = store.get(comparisonRevealContextAtom);
   const workflowId = store.get(currentWorkflowIdAtom);
   const showsHistory = "payload" in comparison && comparison.showsHistory;
@@ -422,7 +462,9 @@ const EVENT_SPLIT_KIND: RevealKind = {
  * Browse, and a run node's evidence in Focus. One body renders both levels, so
  * the run overview keeps its state while Focus shows. Its header names the open
  * run and the inspected node; Back leaves Focus for the run, and the run for
- * the list.
+ * the list. On mobile the run list and the run each show as their address's
+ * sheet, and the evidence as the inspector over the run's sheet, with the same
+ * Back.
  */
 const RUNS_KIND: RevealKind = {
   id: "runs",
@@ -436,6 +478,7 @@ const RUNS_KIND: RevealKind = {
   Browse: RunsBody,
   Focus: RunsBody,
   unwind: unwindRuns,
+  mobile: { Header: RunsMobileHeader, unwind: unwindRuns },
   focusReturnTarget: canvasNodeElement,
   shellOwnsScroll: false,
   focusWidth: "standard",

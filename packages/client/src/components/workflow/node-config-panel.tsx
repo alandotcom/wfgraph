@@ -23,7 +23,6 @@ import { useWorkflowComparisonActions } from "./use-workflow-comparison-actions"
 import { useTopologyCapabilities } from "./canvas-interaction";
 import { useNodeConfigWriter } from "./config/use-node-config-writer";
 import { NodePropertiesForm } from "./node-properties-form";
-import { WorkflowRuns } from "./workflow-runs";
 
 /**
  * Configuring the selected node, edge, or the workflow itself.
@@ -31,7 +30,7 @@ import { WorkflowRuns } from "./workflow-runs";
  * The editor mounts this in two places: Canvas Reveal, for Changes and the
  * Draft selections no other Reveal kind shows, on a wide viewport and in the
  * mobile Reveal sequence, and the configuration sheet a narrow viewport opens
- * for Runs, Changes, and a Draft with nothing selected.
+ * for Changes and a Draft with nothing selected.
  * Everything the two placements share is here; what a frame genuinely owns is
  * `NodeConfigFrame`.
  */
@@ -66,9 +65,6 @@ export function useNodeConfigTitle(): string {
   const selectedNodeId = useAtomValue(selectedNodeAtom);
   const selectedEdgeId = useAtomValue(selectedEdgeAtom);
 
-  if (workspaceView === "runs") {
-    return "Runs";
-  }
   if (workspaceView === "changes") {
     return "Changes";
   }
@@ -82,10 +78,9 @@ export function useNodeConfigTitle(): string {
 }
 
 /**
- * Refresh and Clear All for the Runs surface. In Canvas Reveal they sit above
- * the run list; in the sheet they trail the run list's title. The confirm
- * callback is the frame's, so Canvas Reveal and the sheet can each ask in their
- * own way.
+ * Refresh and Clear All for the Runs surface, above the run list in Canvas
+ * Reveal and in the mobile run list sheet. The confirm callback is the frame's,
+ * so each frame asks in its own way.
  */
 export function RunsPanelActions({
   confirm,
@@ -334,13 +329,7 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
           </div>
         ) : workspaceView === "changes" ? (
           <WorkflowChangesPanel actions={comparisonActions} />
-        ) : (
-          <div className="min-h-0 flex-1 overflow-hidden">
-            <WorkflowRuns
-              listActions={<RunsPanelActions confirm={frame.confirm} />}
-            />
-          </div>
-        )}
+        ) : null}
       </div>
     </div>
   );

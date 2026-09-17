@@ -417,16 +417,6 @@ describe("NodeConfigPanel workspace inspector", () => {
 });
 
 describe("NodeConfigPanel authorization", () => {
-  it("does not offer Clear All to a run reader", async () => {
-    installAuthorizationGrantsForTests([
-      WfGraphOperations.workflowGetExecutions.id,
-    ]);
-    const { view } = renderPanel({ workspaceView: "runs" });
-
-    await view.findByText("No runs yet");
-    expect(view.queryByRole("button", { name: "Clear All" })).toBeNull();
-  });
-
   it("does not add a read-only access badge when workflow updates are denied", async () => {
     resetAuthorizationGrantsForTests();
     const { view } = renderPanel({ selected: "lifecycle_1" });

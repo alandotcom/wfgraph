@@ -120,7 +120,7 @@ export function useNodeConfigWriter(nodeId: string | null) {
    * two, one of them toasted and the other finished in silence.
    *
    * Destroying every run includes the one being shown, so the route moves to
-   * the empty run list with `{ view: "runs" }`, the same search `useExitRun`
+   * the empty run list with `{ view: "runs" }`, the same search Back from a run
    * writes. An empty search names Draft, which would leave Runs entirely. The
    * URL is the one writer of which run is open; ExecutionOverlaySync derives
    * the selection atom from it.

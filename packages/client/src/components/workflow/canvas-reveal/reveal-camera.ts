@@ -74,7 +74,7 @@ export type MobileSheetCameraSlot = {
   sheet: {
     depth: number;
     level: MobileRevealLevel;
-    inspected: InspectedObject;
+    inspected: InspectedObject | null;
   } | null;
 };
 

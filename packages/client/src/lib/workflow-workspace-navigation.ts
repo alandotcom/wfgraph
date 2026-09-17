@@ -8,6 +8,9 @@
 import { atom, type Getter } from "jotai";
 import { readCookie, writeCookie } from "#src/lib/preference-cookies";
 import {
+  withMobileAddressSheet,
+  withMobileInspectorOverAddress,
+  withMobileSequenceFrom,
   withMobileSheet,
   withMobileSheetScroll,
   withMobileSheetSection,
@@ -23,6 +26,7 @@ import {
   revealFollowsSelection,
   scopeNavigationAt,
   updateScopeNavigation,
+  usesMobileSheetSequence,
   withCamera,
   withDesktopRevealLevel,
   withInspectedOrigin,
@@ -34,6 +38,7 @@ import {
   withoutDraftSelections,
   withoutGroupCameras,
   workspaceAddressFromSearch,
+  workspaceAddressId,
   type CanvasSelection,
   type DesktopScopePresentation,
   type FormFactor,
@@ -106,23 +111,46 @@ const revealLevelPreferenceAtom = atom<"closed" | "browse">(
  * Any other address starts at the level of the address it was reached from in
  * the same view, as a run opened from the run list, and otherwise at the
  * preference.
+ *
+ * The mobile Reveal sequence carries across addresses of one workspace whose
+ * sheets show the address itself, which is every such workspace but Draft:
+ * when the previous address had a sheet open and the next has none, the next
+ * opens its address sheet. Selecting a run, the newest run opening by itself,
+ * Back to the run list, and a newly started run all keep the sequence this way.
  */
 export const applyWorkspaceRouteAtom = atom(
   null,
   (get, set, route: WorkspaceRoute) => {
     const previous = get(activeWorkspaceAddressAtom);
     const previousLevel = get(activeDesktopRevealLevelAtom);
+    const previousSheets = get(activeMobileSheetsAtom);
     const preference = get(revealLevelPreferenceAtom);
     set(workspaceRouteStateAtom, route);
     const next = workspaceAddressFromSearch(route.workflowId, route.search);
+    const sameView =
+      previous.workflowId === next.workflowId &&
+      previous.key.workspace === next.key.workspace;
+    const carriesSequence =
+      sameView &&
+      next.key.workspace !== "draft" &&
+      usesMobileSheetSequence(next.key.workspace);
     set(writeNavigationAtom, route.workflowId, (navigation) => {
-      const remembered = rememberRouteSearch(navigation, next);
+      const remembered = updateScopeNavigation(
+        rememberRouteSearch(navigation, next),
+        next,
+        (scope) =>
+          carriesSequence
+            ? withMobileSequenceFrom(scope, {
+                sheets: previousSheets,
+                sameKey:
+                  workspaceAddressId({ ...previous, scope: next.scope }) ===
+                  workspaceAddressId(next),
+              })
+            : scope
+      );
       if (scopeNavigationAt(remembered, next).desktop.revealLevel !== null) {
         return remembered;
       }
-      const sameView =
-        previous.workflowId === next.workflowId &&
-        previous.key.workspace === next.key.workspace;
       const firstLevel: RevealLevel = revealFollowsSelection(next.key.workspace)
         ? "closed"
         : sameView
@@ -594,19 +622,62 @@ export const openMobileSheetAtom = atom(
 );
 
 /**
- * Open the summary sheet of the one object a Draft address selects, unless a
- * sheet is already open there. Answers whether that address shows the mobile
- * Reveal sequence, which is a Draft address whose selection holds one object.
+ * Open the address sheet of a named address when no mobile sheet is open
+ * there, keeping its selection.
+ */
+export const openMobileAddressSheetAtom = atom(
+  null,
+  (_get, set, address: WorkspaceAddress) => {
+    set(writeNavigationAtom, address.workflowId, (navigation) =>
+      updateScopeNavigation(navigation, address, withMobileAddressSheet)
+    );
+  }
+);
+
+/**
+ * Show the inspector of `inspected` over the address sheet of a named address,
+ * as run node evidence shows over its run. The selection is left as it is.
+ */
+export const openMobileInspectorOverAddressAtom = atom(
+  null,
+  (
+    _get,
+    set,
+    input: { address: WorkspaceAddress; inspected: InspectedObject }
+  ) => {
+    set(writeNavigationAtom, input.address.workflowId, (navigation) =>
+      updateScopeNavigation(navigation, input.address, (scope) =>
+        withMobileInspectorOverAddress(scope, input.inspected)
+      )
+    );
+  }
+);
+
+/**
+ * Open the mobile Reveal sequence of a named address, unless a sheet is
+ * already open there: in Draft the summary sheet of the one object the address
+ * selects, and in any other workspace that uses the sequence the address sheet,
+ * such as a run list or a run. Answers whether the address shows the mobile
+ * Reveal sequence, which a workspace outside `usesMobileSheetSequence` and a
+ * Draft address whose selection holds no single object do not.
  */
 export const openMobileSelectionAtom = atom(
   null,
   (get, set, address: WorkspaceAddress): boolean => {
+    const { workspace } = address.key;
+    if (!usesMobileSheetSequence(workspace)) {
+      return false;
+    }
+    if (workspace !== "draft") {
+      set(openMobileAddressSheetAtom, address);
+      return true;
+    }
     const scope = scopeNavigationAt(
       navigationFor(get, address.workflowId),
       address
     );
     const selected = selectedObject(scope.selection);
-    if (address.key.workspace !== "draft" || selected === null) {
+    if (selected === null) {
       return false;
     }
     if (scope.mobile.sheets.length === 0) {
@@ -659,7 +730,7 @@ export const recordMobileSheetScrollAtom = atom(
       address: WorkspaceAddress;
       depth: number;
       level: MobileRevealLevel;
-      inspected: InspectedObject;
+      inspected: InspectedObject | null;
       top: number;
     }
   ) => {

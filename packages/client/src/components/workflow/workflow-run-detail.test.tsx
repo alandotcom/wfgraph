@@ -84,7 +84,6 @@ function renderDetail(
               isCanceling={false}
               isResuming={false}
               logs={extras?.logs ?? []}
-              onBack={vi.fn(() => undefined)}
               onCancel={vi.fn(() => undefined)}
               onResume={vi.fn(() => undefined)}
               runNumber={1}

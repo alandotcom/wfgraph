@@ -32,15 +32,18 @@ function openerIn(sheet: HTMLElement, opener: Opener): HTMLElement | null {
 /**
  * Where keyboard focus goes as mobile Reveal sheets show. A sheet that opens
  * moves focus to its title, so a screen reader starts reading at that sheet.
- * Back returns focus to the control that opened the removed sheet, and to the
- * title of the sheet beneath when that control is gone. A sheet whose control
- * moved to another address, as Enter group does, gets focus back on that
- * control when its address shows again. Closing the last sheet in the same
- * address returns focus to its canvas node when focus had been inside the
- * sheet. `sheetKey` names the sheet on screen and is null while none shows;
- * `addressId` names the active address; a pending field request moves focus
- * itself. `onClickCapture` goes on the sheet element, where it records the
- * control each click used.
+ * After Back, focus goes to the first of: the element the body already moved
+ * focus to, inside the sheet or the canvas area, such as the row of the run
+ * just left or the canvas node that opened the evidence; `backFocusTarget`;
+ * the control that opened the removed sheet; the title of the sheet on screen.
+ * A sheet whose control moved to another address, as Enter group does, gets
+ * focus back on that control when its address shows again. Closing the last
+ * sheet in the same address returns focus to its canvas node when focus had
+ * been inside the sheet. `sheetKey` names the sheet on screen and is null while
+ * none shows; `addressId` names the active address; a pending field request
+ * moves focus itself. `onClickCapture` goes on the sheet element, where it
+ * records the control each click used, and the shell calls `markBack` as Back
+ * or Escape runs.
  */
 export function useMobileSheetFocus(input: {
   state: MobileRevealState | null;
@@ -50,7 +53,11 @@ export function useMobileSheetFocus(input: {
   area: RefObject<HTMLElement | null>;
   sheet: RefObject<HTMLElement | null>;
   title: RefObject<HTMLHeadingElement | null>;
-}): { onClickCapture: (event: MouseEvent<HTMLElement>) => void } {
+  backFocusTarget: ((sheet: HTMLElement) => HTMLElement | null) | undefined;
+}): {
+  onClickCapture: (event: MouseEvent<HTMLElement>) => void;
+  markBack: () => void;
+} {
   const { state } = input;
   /** The node the last shown sheet was about. */
   const lastNodeIdRef = useRef<string | null>(null);
@@ -80,6 +87,16 @@ export function useMobileSheetFocus(input: {
   );
   /** The opener Back returns focus to once the sheet beneath has painted. */
   const returnToRef = useRef<Opener | null>(null);
+  /**
+   * The element focused when Back or Escape last ran, or null when the last
+   * action in the sheet was something else.
+   */
+  const backFromRef = useRef<Element | null>(null);
+  /**
+   * Whether the sheet on screen replaced a deeper sheet, a sheet of another
+   * address, or no sheet.
+   */
+  const unwoundRef = useRef(false);
 
   useBeforePaint(`${input.addressId}|${input.sheetKey ?? ""}`, () => {
     const depth = state?.depth ?? 0;
@@ -88,6 +105,8 @@ export function useMobileSheetFocus(input: {
     shownRef.current = { addressId, sheetKey: input.sheetKey, depth };
     const sameAddress = shown?.addressId === addressId;
     const previous = sameAddress ? shown.depth : 0;
+    unwoundRef.current =
+      !sameAddress || shown.sheetKey === null || depth < previous;
     const departures = departuresRef.current;
     if (shown?.sheetKey && !sameAddress && lastUsedRef.current) {
       departures.set(shown.addressId, {
@@ -153,18 +172,38 @@ export function useMobileSheetFocus(input: {
     const sheet = input.sheet.current;
     const returnTo = returnToRef.current;
     returnToRef.current = null;
+    const backFrom = backFromRef.current;
+    backFromRef.current = null;
     if (!state || input.fieldRequestPending) {
       return;
     }
+    const afterBack = backFrom !== null && unwoundRef.current;
+    const active = document.activeElement;
+    if (
+      afterBack &&
+      active instanceof HTMLElement &&
+      active !== backFrom &&
+      active !== title &&
+      active !== document.body &&
+      input.area.current?.contains(active)
+    ) {
+      return;
+    }
+    const kindTarget =
+      afterBack && sheet ? (input.backFocusTarget?.(sheet) ?? null) : null;
     const opener = returnTo && sheet ? openerIn(sheet, returnTo) : null;
-    const target = opener ?? title;
+    const target = kindTarget ?? opener ?? title;
     if (target && document.activeElement !== target) {
       target.focus({ preventScroll: true });
     }
   });
 
   return {
+    markBack: () => {
+      backFromRef.current = document.activeElement ?? document.body;
+    },
     onClickCapture: (event) => {
+      backFromRef.current = null;
       const control =
         event.target instanceof Element
           ? event.target.closest<HTMLElement>(CONTROL_SELECTOR)

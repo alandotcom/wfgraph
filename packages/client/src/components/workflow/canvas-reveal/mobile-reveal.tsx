@@ -1,17 +1,16 @@
-import { useAtomValue, useSetAtom } from "jotai";
-import { ChevronLeft, Maximize2, X } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { type ReactNode, useMemo, useRef, useState } from "react";
 import { DeleteConfirmDialog } from "#src/components/delete-confirm-dialog";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
-import { Button } from "#src/components/ui/button";
 import {
   type ConfirmRequest,
   type NodeConfigFrame,
   useNodeConfigTitle,
 } from "#src/components/workflow/node-config-panel";
-import { statusToneTextClass } from "#src/components/workflow/workflow-run-shared";
 import { useAfterPaint } from "#src/hooks/effects";
+import { sheetObjectKey } from "#src/lib/mobile-sheet-navigation";
 import { nodesAtom } from "#src/lib/workflow-graph-store";
 import {
   comparisonNodeTitle,
@@ -19,11 +18,15 @@ import {
   type WorkflowNode,
 } from "#src/lib/workflow-graph-types";
 import { workflowIssuesAtom } from "#src/lib/workflow-issues-store";
-import type { InspectedObject } from "#src/lib/workflow-navigation-state";
+import type {
+  InspectedObject,
+  OpenRevealLevel,
+} from "#src/lib/workflow-navigation-state";
 import { currentWorkflowNameAtom } from "#src/lib/workflow-save-store";
 import {
   closeAllMobileSheetsAtom,
   closeMobileSheetAtom,
+  openMobileInspectorOverAddressAtom,
   openMobileSheetAtom,
 } from "#src/lib/workflow-workspace-navigation";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
@@ -33,6 +36,10 @@ import {
   useShownMobileReveal,
   type MobileRevealState,
 } from "./canvas-reveal-state";
+import {
+  MobileSheetHeader,
+  type MobileSheetControls,
+} from "./mobile-sheet-header";
 import type { RevealHeaderModel } from "./reveal-header";
 import { revealKind, type RevealKind } from "./reveal-kinds";
 import { revealFieldRequestAtom } from "./reveal-requests";
@@ -43,10 +50,13 @@ import { useRevealKeyboard } from "./use-reveal-keyboard";
 
 /** The name a sheet goes by in the Back control of the sheet above it. */
 function sheetTitle(
-  inspected: InspectedObject,
+  inspected: InspectedObject | null,
   nodes: readonly WorkflowNode[],
   catalog: ExtensionCatalog
 ): string {
+  if (inspected === null) {
+    return "Summary";
+  }
   if (inspected.kind === "edge") {
     return "Connection";
   }
@@ -55,12 +65,12 @@ function sheetTitle(
 }
 
 /**
- * Where the Back control of the shown sheet leads, as its visible label. The
- * first sheet of a focused Group leads back to that Group's canvas and is
- * labeled with the Group's name. The first sheet of the overview has no Back
- * control, which the null answer says.
+ * Where the Back control of a sheet whose kind has no `mobile` record leads, as
+ * its visible label. The first sheet of a focused Group leads back to that
+ * Group's canvas and is labeled with the Group's name. The first sheet of the
+ * overview offers Close, which the null answer says.
  */
-function backLabel(
+function draftBackLabel(
   state: MobileRevealState,
   nodes: readonly WorkflowNode[],
   catalog: ExtensionCatalog
@@ -73,16 +83,18 @@ function backLabel(
     const { groupId } = address.scope;
     return groupLabel(nodes.find((node) => node.id === groupId)?.data.label);
   }
-  return beneath.inspected.kind === sheet.inspected.kind &&
+  return beneath.inspected !== null &&
+    sheet.inspected !== null &&
+    beneath.inspected.kind === sheet.inspected.kind &&
     beneath.inspected.id === sheet.inspected.id
     ? "Summary"
     : sheetTitle(beneath.inspected, nodes, catalog);
 }
 
 /**
- * The title and status of a kind whose header the shell builds from a model,
- * or the node config panel's own title for the one Draft kind that builds its
- * own header.
+ * The title and status of a sheet whose kind has no `mobile` record. A kind
+ * whose header the shell builds names them from its model; the one Draft kind
+ * that builds its own header uses the node config panel's title.
  */
 function useSheetHeading(
   state: MobileRevealState | null,
@@ -106,19 +118,25 @@ function useSheetHeading(
 }
 
 /**
- * The Draft inspector below `md`: a sequence of sheets that the navigation
- * state records per scope. A summary sheet shows a kind's Browse body over the
- * bottom of the canvas, which stays pannable and zoomable above it; the
- * inspector shows the kind's Focus body over the whole canvas. Back and Escape
- * remove one sheet, restoring the sheet beneath with its selection, scroll and
- * camera. Runs and Changes keep the configuration sheet.
+ * The inspector below `md`, in the workspaces `usesMobileSheetSequence` names:
+ * a sequence of sheets that the navigation state records per scope. A summary
+ * sheet shows over the bottom of the canvas, which stays pannable and zoomable
+ * above it, and an inspector sheet covers the canvas. A sheet about an object
+ * shows the kind's Browse or Focus body, and an address sheet shows the address
+ * itself, such as a run list or a run. Back and Escape remove one sheet,
+ * restoring the sheet beneath with its selection, scroll and camera, or answer
+ * through the kind's `mobile.unwind`, as Runs does when Back leaves a run for
+ * its run list.
  */
 export function MobileReveal() {
   const state = useShownMobileReveal();
   const { addressId: activeAddressId } = useAtomValue(canvasRevealAtom);
-  const nodes = useAtomValue(nodesAtom);
-  const catalog = useExtensionCatalog();
+  const store = useStore();
+  const navigate = useNavigate({ from: "/workflows/$workflowId" });
   const openSheet = useSetAtom(openMobileSheetAtom);
+  const openInspectorOverAddress = useSetAtom(
+    openMobileInspectorOverAddressAtom
+  );
   const closeSheet = useSetAtom(closeMobileSheetAtom);
   const closeAllSheets = useSetAtom(closeAllMobileSheetsAtom);
   const fieldRequest = useAtomValue(revealFieldRequestAtom);
@@ -131,15 +149,20 @@ export function MobileReveal() {
   const titleRef = useRef<HTMLHeadingElement>(null);
 
   const kind = state ? revealKind(state.subject) : null;
+  const mobile = kind?.mobile;
+  const shellOwnsScroll = mobile?.shellOwnsScroll ?? kind?.shellOwnsScroll;
   const heading = useSheetHeading(state, kind);
+  const nodes = useAtomValue(nodesAtom);
+  const catalog = useExtensionCatalog();
   const inspected = state?.sheet.inspected ?? null;
   const sheetKey = state
-    ? `${state.addressId}|${state.depth}|${state.level}|${state.sheet.inspected.kind}:${state.sheet.inspected.id}`
+    ? `${state.addressId}|${state.depth}|${state.level}|${sheetObjectKey(inspected)}`
     : null;
 
+  // A kind that scrolls inside its own body keeps that scroll itself.
   const { ref, onScroll, onScrollEnd, adoptScroll, scrollToTop } =
     useMobileSheetScroll(
-      state && inspected
+      state && shellOwnsScroll
         ? {
             address: state.address,
             addressId: state.addressId,
@@ -150,7 +173,7 @@ export function MobileReveal() {
         : null
     );
 
-  const { onClickCapture } = useMobileSheetFocus({
+  const { onClickCapture, markBack } = useMobileSheetFocus({
     state,
     sheetKey,
     addressId: activeAddressId,
@@ -158,6 +181,7 @@ export function MobileReveal() {
     area: areaRef,
     sheet: sheetRef,
     title: titleRef,
+    backFocusTarget: mobile?.backFocusTarget,
   });
   useMobileSheetCamera({ state, sheet: sheetRef });
 
@@ -183,9 +207,27 @@ export function MobileReveal() {
   );
 
   const back = () => {
-    if (state) {
-      closeSheet(state.address);
+    if (state === null) {
+      return;
     }
+    markBack();
+    const unwind = mobile?.unwind;
+    if (!unwind) {
+      closeSheet(state.address);
+      return;
+    }
+    unwind({
+      subject: state.subject,
+      level: state.level === "inspector" ? "focus" : "browse",
+      store,
+      unwindLevel: () => closeSheet(state.address),
+      // The sheet focus hook returns focus as sheets close.
+      returnFocusOnClose: () => {},
+      // Applying the route carries the sequence to the address it names.
+      replaceRouteSearch: (search) => {
+        void navigate({ search, replace: true });
+      },
+    });
   };
 
   useRevealKeyboard({
@@ -201,24 +243,51 @@ export function MobileReveal() {
     onUnwind: back,
   });
 
-  if (state === null || kind === null || inspected === null) {
+  if (state === null || kind === null) {
     return null;
   }
 
+  const isInspector = state.level === "inspector";
   const offersInspector =
     state.subject.levels.includes("focus") && kind.Focus !== null;
   const openInspector = (targetId?: string) => {
+    const { subject, address } = state;
     if (!offersInspector) {
       return;
     }
-    if (targetId !== undefined && state.subject.nodeId !== null) {
-      setFieldRequest({ nodeId: state.subject.nodeId, targetId });
+    if (targetId !== undefined && subject.nodeId !== null) {
+      setFieldRequest({ nodeId: subject.nodeId, targetId });
     }
-    openSheet({ address: state.address, level: "inspector", inspected });
+    if (inspected !== null) {
+      openSheet({ address, level: "inspector", inspected });
+    } else if (subject.nodeId !== null) {
+      // An address sheet opens the inspector of the node its address inspects.
+      openInspectorOverAddress({
+        address,
+        inspected: { kind: "node", id: subject.nodeId },
+      });
+    }
   };
-  const isInspector = state.level === "inspector";
-  const Body = isInspector && kind.Focus ? kind.Focus : kind.Browse;
-  const beneathLabel = backLabel(state, nodes, catalog);
+  const controls: MobileSheetControls = {
+    back,
+    openInspector:
+      offersInspector && !isInspector ? () => openInspector() : null,
+    titleRef,
+  };
+  const level: OpenRevealLevel = isInspector ? "focus" : "browse";
+  const Body =
+    mobile?.Body ?? (isInspector && kind.Focus ? kind.Focus : kind.Browse);
+  const body = (
+    <Body
+      frame={frame}
+      key={state.subject.kind}
+      level={level}
+      mobile={state}
+      openFocus={openInspector}
+      scrollToTop={scrollToTop}
+      subject={state.subject}
+    />
+  );
 
   return (
     <>
@@ -244,78 +313,29 @@ export function MobileReveal() {
           }
         }}
       >
-        <header className="flex shrink-0 items-center gap-1 border-b px-2 py-1">
-          {beneathLabel === null ? null : (
-            <Button
-              aria-label={`Back to ${beneathLabel}`}
-              className="h-11 max-w-[40%] shrink-0 px-2"
-              onClick={back}
-              type="button"
-              variant="ghost"
-            >
-              <ChevronLeft className="size-4" />
-              <span className="truncate">{beneathLabel}</span>
-            </Button>
-          )}
-          <div className="min-w-0 flex-1 px-2">
-            <h2
-              className="truncate font-semibold text-sm outline-none"
-              data-slot="reveal-title"
-              ref={titleRef}
-              tabIndex={-1}
-            >
-              {heading.title}
-            </h2>
-            {heading.status ? (
-              <p
-                className={cn(
-                  "truncate text-xs",
-                  statusToneTextClass(heading.status.tone)
-                )}
-              >
-                {heading.status.text}
-              </p>
-            ) : null}
-          </div>
-          {!isInspector && offersInspector ? (
-            <Button
-              className="h-11 shrink-0 px-3"
-              onClick={() => openInspector()}
-              type="button"
-              variant="outline"
-            >
-              <Maximize2 className="size-4" />
-              Open editor
-            </Button>
-          ) : null}
-          {beneathLabel === null ? (
-            <Button
-              aria-label="Close"
-              className="size-11 shrink-0"
-              onClick={back}
-              size="icon"
-              type="button"
-              variant="ghost"
-            >
-              <X className="size-4" />
-            </Button>
-          ) : null}
-        </header>
-        <div
-          className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-card"
-          onScroll={onScroll}
-          onScrollEnd={onScrollEnd}
-          ref={ref}
-        >
-          <Body
-            frame={frame}
-            key={state.subject.kind}
-            level={isInspector ? "focus" : "browse"}
-            openFocus={openInspector}
-            scrollToTop={scrollToTop}
-            subject={state.subject}
+        {mobile ? (
+          <mobile.Header controls={controls} key={kind.id} state={state} />
+        ) : (
+          <MobileSheetHeader
+            backLabel={draftBackLabel(state, nodes, catalog)}
+            controls={controls}
+            inspectorLabel="Open editor"
+            status={heading.status}
+            title={heading.title}
           />
-        </div>
+        )}
+        {shellOwnsScroll ? (
+          <div
+            className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-card"
+            onScroll={onScroll}
+            onScrollEnd={onScrollEnd}
+            ref={ref}
+          >
+            {body}
+          </div>
+        ) : (
+          <div className="flex min-h-0 flex-1 flex-col bg-card">{body}</div>
+        )}
       </section>
       <DeleteConfirmDialog
         confirmLabel={request?.confirmLabel}
