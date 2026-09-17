@@ -36,6 +36,8 @@ export type ReliabilityHost = ReturnType<typeof fixtureExtensions> & {
   repo: ExecutionRepo["Service"];
   runtime: Awaited<ReturnType<typeof startInngest>>;
   logs: unknown[][];
+  /** The application's own `dispose`, which `close` also runs. */
+  dispose: () => Promise<void>;
   close: () => Promise<void>;
   directory: string;
   rpc: (method: string, input: JsonObject) => Promise<unknown>;
@@ -130,6 +132,7 @@ export async function createHost(backend: Backend): Promise<ReliabilityHost> {
     };
     const workflowIds: string[] = [];
     return {
+      dispose: app.dispose,
       ...fixture,
       faults,
       repo,
