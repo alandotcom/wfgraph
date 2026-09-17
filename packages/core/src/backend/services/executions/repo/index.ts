@@ -1,5 +1,5 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
-import { Context, Duration, Effect, Layer, Schedule } from "effect";
+import { Context, Effect, Layer } from "effect";
 import { partition } from "es-toolkit/array";
 import {
   workflowExecutionEvents,
@@ -13,7 +13,7 @@ import type {
 import {
   Database,
   type DatabaseError,
-  hasDatabaseErrorCode,
+  serializableTransaction,
 } from "#src/backend/lib/effect/database";
 import {
   IN_FLIGHT_EXECUTION_STATUSES,
@@ -61,35 +61,6 @@ export const UNSENT_RUN_GRACE_MS = 5 * 60 * 1000;
 /** The sentence run history carries for a run that never reached the bus. */
 export const UNSENT_RUN_RECLAIM_REASON =
   "The run was opened but never reached the bus, so a later start for this entity closed it";
-
-const SERIALIZATION_RETRIES = 5;
-const SERIALIZATION_RETRY_BASE_DELAY = Duration.millis(5);
-
-/**
- * Backs off, because the racers abort together and would otherwise retry
- * together.
- *
- * A plain attempt count reschedules every aborted decision at once. A burst of
- * starts for one entity then keeps colliding and spends its attempts on the
- * same conflict. The delays are small because a start is on a run's critical
- * path.
- */
-const serializationRetrySchedule = Schedule.exponential(
-  SERIALIZATION_RETRY_BASE_DELAY,
-  2
-).pipe(Schedule.jittered, Schedule.upTo({ times: SERIALIZATION_RETRIES }));
-
-/**
- * This is what PostgreSQL raises when `SERIALIZABLE` aborts one of two
- * decisions that read and wrote the same predicate. That is the whole reason
- * the start below is retried rather than failed. SQLite serializes writes with
- * `BEGIN IMMEDIATE` and raises nothing of the kind.
- */
-const SERIALIZATION_FAILURE_CODE = "40001";
-
-function isSerializationFailure(error: DatabaseError): boolean {
-  return hasDatabaseErrorCode(error, SERIALIZATION_FAILURE_CODE);
-}
 
 async function findAdmissionRefusal(
   database: WfGraphDatabase | WfGraphTransaction,
@@ -253,272 +224,254 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
           concurrency,
           supersededReason,
           admissionDecisionId,
-        }) =>
-          database
-            .query(async (db) => {
-              const entityPredicate =
-                execution.entityType !== undefined &&
-                execution.entityId !== undefined
-                  ? and(
-                      eq(workflowExecutions.entityType, execution.entityType),
-                      eq(workflowExecutions.entityId, execution.entityId)
-                    )
-                  : execution.entityValue === undefined
-                    ? undefined
-                    : eq(workflowExecutions.entityValue, execution.entityValue);
+        }) => {
+          const entityPredicate =
+            execution.entityType !== undefined &&
+            execution.entityId !== undefined
+              ? and(
+                  eq(workflowExecutions.entityType, execution.entityType),
+                  eq(workflowExecutions.entityId, execution.entityId)
+                )
+              : execution.entityValue === undefined
+                ? undefined
+                : eq(workflowExecutions.entityValue, execution.entityValue);
 
-              const findByDelivery = async (
-                tx: WfGraphDatabase | WfGraphTransaction
-              ) => {
-                if (!execution.deliveryId) {
-                  return undefined;
-                }
+          const findByDelivery = async (
+            tx: WfGraphDatabase | WfGraphTransaction
+          ) => {
+            if (!execution.deliveryId) {
+              return undefined;
+            }
 
-                return await tx.query.workflowExecutions.findFirst({
-                  where: {
-                    workflowId: execution.workflowId,
-                    deliveryId: execution.deliveryId,
-                  },
+            return await tx.query.workflowExecutions.findFirst({
+              where: {
+                workflowId: execution.workflowId,
+                deliveryId: execution.deliveryId,
+              },
+            });
+          };
+
+          // Whatever status the arrival's own row is in, it is the answer:
+          // the run may have finished while the step was being retried, and
+          // opening a second one would run the graph twice for one Event.
+          const insertRunning = async (
+            tx: WfGraphDatabase | WfGraphTransaction
+          ) => {
+            const [row] = await tx
+              .insert(workflowExecutions)
+              .values({
+                workflowId: execution.workflowId,
+                workflowVersionId: execution.workflowVersionId,
+                status: "running",
+                startSource: execution.startSource,
+                runMode: execution.runMode,
+                startEventName: execution.startEventName,
+                entityValue: execution.entityValue,
+                entityType: execution.entityType,
+                entityId: execution.entityId,
+                deliveryId: execution.deliveryId,
+                input: execution.input,
+              })
+              .onConflictDoNothing({
+                target: [
+                  workflowExecutions.workflowId,
+                  workflowExecutions.deliveryId,
+                ],
+              })
+              .returning();
+
+            // The conflict fires when two attempts at one arrival reach here
+            // together. `unlimited` has no entity decision to serialize, so
+            // the delivery constraint is its idempotency boundary.
+            return row ?? (await findByDelivery(tx));
+          };
+
+          if (
+            (concurrency === "unlimited" || !entityPredicate) &&
+            !admissionDecisionId
+          ) {
+            return database.query(async (db) => ({
+              status: "started" as const,
+              execution: await insertRunning(db),
+              supersededExecutionIds: [],
+              reclaimedExecutionIds: [],
+            }));
+          }
+
+          return serializableTransaction(
+            database,
+            async (tx): Promise<EntityStartOutcome> => {
+              if (admissionDecisionId) {
+                const refusal = await findAdmissionRefusal(tx, {
+                  workflowId: execution.workflowId,
+                  decisionId: admissionDecisionId,
                 });
-              };
+                if (refusal) {
+                  return {
+                    status: "admission_refused" as const,
+                    reason: refusal,
+                  };
+                }
+              }
 
-              // Whatever status the arrival's own row is in, it is the answer:
-              // the run may have finished while the step was being retried, and
-              // opening a second one would run the graph twice for one Event.
-              const insertRunning = async (
-                tx: WfGraphDatabase | WfGraphTransaction
-              ) => {
-                const [row] = await tx
-                  .insert(workflowExecutions)
-                  .values({
-                    workflowId: execution.workflowId,
-                    workflowVersionId: execution.workflowVersionId,
-                    status: "running",
-                    startSource: execution.startSource,
-                    runMode: execution.runMode,
-                    startEventName: execution.startEventName,
-                    entityValue: execution.entityValue,
-                    entityType: execution.entityType,
-                    entityId: execution.entityId,
-                    deliveryId: execution.deliveryId,
-                    input: execution.input,
-                  })
-                  .onConflictDoNothing({
-                    target: [
-                      workflowExecutions.workflowId,
-                      workflowExecutions.deliveryId,
-                    ],
-                  })
-                  .returning();
-
-                // The conflict fires when two attempts at one arrival reach here
-                // together. `unlimited` has no entity decision to serialize, so
-                // the delivery constraint is its idempotency boundary.
-                return row ?? (await findByDelivery(tx));
-              };
-
-              if (
-                (concurrency === "unlimited" || !entityPredicate) &&
-                !admissionDecisionId
-              ) {
-                const opened = await insertRunning(db);
+              // Asked before Concurrency is, because this arrival's own row is
+              // not a run to defer to or displace. It is this call's answer.
+              const own = await findByDelivery(tx);
+              if (own) {
                 return {
                   status: "started" as const,
-                  execution: opened,
+                  execution: own,
                   supersededExecutionIds: [],
                   reclaimedExecutionIds: [],
                 };
               }
 
-              return await db.transaction(
-                async (tx) => {
-                  if (admissionDecisionId) {
-                    const refusal = await findAdmissionRefusal(tx, {
-                      workflowId: execution.workflowId,
-                      decisionId: admissionDecisionId,
-                    });
-                    if (refusal) {
-                      return {
-                        status: "admission_refused" as const,
-                        reason: refusal,
-                      };
-                    }
-                  }
+              if (concurrency === "unlimited" || !entityPredicate) {
+                return {
+                  status: "started" as const,
+                  execution: await insertRunning(tx),
+                  supersededExecutionIds: [],
+                  reclaimedExecutionIds: [],
+                };
+              }
 
-                  // Asked before Concurrency is, because this arrival's own row is
-                  // not a run to defer to or displace. It is this call's answer.
-                  const own = await findByDelivery(tx);
-                  if (own) {
-                    return {
-                      status: "started" as const,
-                      execution: own,
-                      supersededExecutionIds: [],
-                      reclaimedExecutionIds: [],
-                    };
-                  }
+              const inFlight = await tx
+                .select({
+                  id: workflowExecutions.id,
+                  enqueuedAt: workflowExecutions.enqueuedAt,
+                  startedAt: workflowExecutions.startedAt,
+                })
+                .from(workflowExecutions)
+                .where(
+                  and(
+                    eq(workflowExecutions.workflowId, execution.workflowId),
+                    entityPredicate,
+                    eq(workflowExecutions.runMode, execution.runMode),
+                    inArray(workflowExecutions.status, [
+                      ...IN_FLIGHT_EXECUTION_STATUSES,
+                    ]),
+                    isNull(workflowExecutions.terminationKind)
+                  )
+                );
 
-                  if (concurrency === "unlimited" || !entityPredicate) {
-                    return {
-                      status: "started" as const,
-                      execution: await insertRunning(tx),
-                      supersededExecutionIds: [],
-                      reclaimedExecutionIds: [],
-                    };
-                  }
+              let reclaimedExecutionIds: string[] = [];
 
-                  const inFlight = await tx
-                    .select({
-                      id: workflowExecutions.id,
-                      enqueuedAt: workflowExecutions.enqueuedAt,
-                      startedAt: workflowExecutions.startedAt,
-                    })
-                    .from(workflowExecutions)
+              if (inFlight.length > 0 && concurrency === "first-wins") {
+                const [unsent, live] = partition(inFlight, (row) =>
+                  isStuckBeforeTheBus(row)
+                );
+
+                if (live.length > 0) {
+                  return {
+                    status: "refused" as const,
+                    inFlightExecutionIds: live.map((row) => row.id),
+                  };
+                }
+
+                reclaimedExecutionIds = await reclaimStuckRuns(
+                  tx,
+                  unsent.map((row) => row.id)
+                );
+              }
+
+              let supersededExecutionIds: string[] = [];
+
+              // Newest-wins only. First-wins either deferred to the runs it
+              // found or reclaimed them above, and displaces nothing.
+              if (inFlight.length > 0 && concurrency !== "first-wins") {
+                const ids = inFlight.map((row) => row.id);
+                const now = new Date();
+
+                const superseded = await tx
+                  .update(workflowExecutions)
+                  .set({
+                    status: "superseded",
+                    waitingAt: null,
+                    completedAt: now,
+                    error: supersededReason,
+                  })
+                  .where(
+                    and(
+                      inArray(workflowExecutions.id, ids),
+                      inArray(workflowExecutions.status, [
+                        ...IN_FLIGHT_EXECUTION_STATUSES,
+                      ]),
+                      isNull(workflowExecutions.terminationKind)
+                    )
+                  )
+                  .returning({ id: workflowExecutions.id });
+
+                supersededExecutionIds = superseded.map((row) => row.id);
+
+                if (supersededExecutionIds.length > 0) {
+                  await tx
+                    .update(workflowWaitStates)
+                    .set({ status: "cancelled", cancelledAt: now })
                     .where(
                       and(
-                        eq(workflowExecutions.workflowId, execution.workflowId),
-                        entityPredicate,
-                        eq(workflowExecutions.runMode, execution.runMode),
-                        inArray(workflowExecutions.status, [
-                          ...IN_FLIGHT_EXECUTION_STATUSES,
-                        ]),
-                        isNull(workflowExecutions.terminationKind)
+                        inArray(
+                          workflowWaitStates.executionId,
+                          supersededExecutionIds
+                        ),
+                        eq(workflowWaitStates.status, "waiting")
                       )
                     );
+                }
+              }
 
-                  let reclaimedExecutionIds: string[] = [];
-
-                  if (inFlight.length > 0 && concurrency === "first-wins") {
-                    const [unsent, live] = partition(inFlight, (row) =>
-                      isStuckBeforeTheBus(row)
-                    );
-
-                    if (live.length > 0) {
-                      return {
-                        status: "refused" as const,
-                        inFlightExecutionIds: live.map((row) => row.id),
-                      };
-                    }
-
-                    reclaimedExecutionIds = await reclaimStuckRuns(
-                      tx,
-                      unsent.map((row) => row.id)
-                    );
-                  }
-
-                  let supersededExecutionIds: string[] = [];
-
-                  // Newest-wins only. First-wins either deferred to the runs it
-                  // found or reclaimed them above, and displaces nothing.
-                  if (inFlight.length > 0 && concurrency !== "first-wins") {
-                    const ids = inFlight.map((row) => row.id);
-                    const now = new Date();
-
-                    const superseded = await tx
-                      .update(workflowExecutions)
-                      .set({
-                        status: "superseded",
-                        waitingAt: null,
-                        completedAt: now,
-                        error: supersededReason,
-                      })
-                      .where(
-                        and(
-                          inArray(workflowExecutions.id, ids),
-                          inArray(workflowExecutions.status, [
-                            ...IN_FLIGHT_EXECUTION_STATUSES,
-                          ]),
-                          isNull(workflowExecutions.terminationKind)
-                        )
-                      )
-                      .returning({ id: workflowExecutions.id });
-
-                    supersededExecutionIds = superseded.map((row) => row.id);
-
-                    if (supersededExecutionIds.length > 0) {
-                      await tx
-                        .update(workflowWaitStates)
-                        .set({ status: "cancelled", cancelledAt: now })
-                        .where(
-                          and(
-                            inArray(
-                              workflowWaitStates.executionId,
-                              supersededExecutionIds
-                            ),
-                            eq(workflowWaitStates.status, "waiting")
-                          )
-                        );
-                    }
-                  }
-
-                  return {
-                    status: "started" as const,
-                    execution: await insertRunning(tx),
-                    supersededExecutionIds,
-                    reclaimedExecutionIds,
-                  };
-                },
-                { isolationLevel: "serializable" }
-              );
-            })
-            .pipe(
-              Effect.retry({
-                schedule: serializationRetrySchedule,
-                while: isSerializationFailure,
-              })
-            ),
+              return {
+                status: "started" as const,
+                execution: await insertRunning(tx),
+                supersededExecutionIds,
+                reclaimedExecutionIds,
+              };
+            }
+          );
+        },
 
         findAdmissionRefusal: (input) =>
           database.query((db) => findAdmissionRefusal(db, input)),
 
         recordAdmissionRefusal: (input) =>
-          database
-            .query((db) =>
-              db.transaction(
-                async (tx) => {
-                  const existingExecution =
-                    await tx.query.workflowExecutions.findFirst({
-                      where: {
-                        workflowId: input.workflowId,
-                        deliveryId: input.deliveryId,
-                      },
-                      columns: { id: true },
-                    });
-                  if (existingExecution) {
-                    return {
-                      kind: "started" as const,
-                      executionId: existingExecution.id,
-                    };
-                  }
-
-                  const existingRefusal = await findAdmissionRefusal(tx, {
+          serializableTransaction(
+            database,
+            async (tx): Promise<StartAdmissionDecision> => {
+              const existingExecution =
+                await tx.query.workflowExecutions.findFirst({
+                  where: {
                     workflowId: input.workflowId,
-                    decisionId: input.decisionId,
-                  });
-                  if (existingRefusal) {
-                    return {
-                      kind: "refused" as const,
-                      reason: existingRefusal,
-                    };
-                  }
+                    deliveryId: input.deliveryId,
+                  },
+                  columns: { id: true },
+                });
+              if (existingExecution) {
+                return {
+                  kind: "started" as const,
+                  executionId: existingExecution.id,
+                };
+              }
 
-                  await tx.insert(workflowExecutionEvents).values({
-                    id: input.decisionId,
-                    workflowId: input.workflowId,
-                    eventType: "run_refused",
-                    message: input.message,
-                    metadata: input.metadata,
-                  });
-                  return { kind: "refused" as const, reason: input.reason };
-                },
-                { isolationLevel: "serializable" }
-              )
-            )
-            .pipe(
-              Effect.retry({
-                schedule: serializationRetrySchedule,
-                while: isSerializationFailure,
-              })
-            ),
+              const existingRefusal = await findAdmissionRefusal(tx, {
+                workflowId: input.workflowId,
+                decisionId: input.decisionId,
+              });
+              if (existingRefusal) {
+                return {
+                  kind: "refused" as const,
+                  reason: existingRefusal,
+                };
+              }
+
+              await tx.insert(workflowExecutionEvents).values({
+                id: input.decisionId,
+                workflowId: input.workflowId,
+                eventType: "run_refused",
+                message: input.message,
+                metadata: input.metadata,
+              });
+              return { kind: "refused" as const, reason: input.reason };
+            }
+          ),
 
         deleteAllForWorkflow: (workflowId) =>
           database.query(
