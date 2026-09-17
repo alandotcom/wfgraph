@@ -14,6 +14,7 @@ import {
 } from "#src/lib/command-palette";
 import { canvasEditingLockedAtom } from "#src/lib/workflow-graph-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
+import { groupScopeActiveAtom } from "#src/lib/workflow-workspace-navigation";
 
 const paletteCellAtom = atom<CommandPaletteState | null>(null);
 
@@ -66,7 +67,10 @@ export const openCommandPaletteAtom = atom(
     if (!workflowId) {
       return false;
     }
-    if (page.id === "add-step" && get(canvasEditingLockedAtom)) {
+    if (
+      page.id === "add-step" &&
+      (get(canvasEditingLockedAtom) || get(groupScopeActiveAtom))
+    ) {
       return false;
     }
     set(paletteCellAtom, openPalette(workflowId, page));

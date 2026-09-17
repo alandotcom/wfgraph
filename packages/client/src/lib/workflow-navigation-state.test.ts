@@ -4,6 +4,8 @@ import {
   EMPTY_WORKFLOW_NAVIGATION,
   RETAINED_KEYS_PER_VIEW,
   cameraStep,
+  graphInScope,
+  scopeOfNode,
   graphStructureKey,
   groupScopeExists,
   inspectionInGraph,
@@ -318,6 +320,28 @@ describe("recovery", () => {
     });
     const kept = { nodeIds: ["child"], edgeIds: [] };
     expect(selectionInGraph(kept, graph)).toBe(kept);
+  });
+
+  it("limits a scope to what it shows: members on a Group, the rest on the overview", () => {
+    expect(
+      graphInScope(graph, { kind: "overview" }).nodes.map((node) => node.id)
+    ).toEqual(["trigger", "group_1"]);
+    expect(graphInScope(graph, { kind: "overview" }).edges).toBe(graph.edges);
+    expect(graphInScope(graph, { kind: "group", groupId: "group_1" })).toEqual({
+      nodes: [graph.nodes[2]],
+      edges: [],
+    });
+    const flat = { nodes: [graph.nodes[0]], edges: [] };
+    expect(graphInScope(flat, { kind: "overview" })).toBe(flat);
+  });
+
+  it("names the scope that shows a node", () => {
+    expect(scopeOfNode(graph.nodes, "child")).toEqual({
+      kind: "group",
+      groupId: "group_1",
+    });
+    expect(scopeOfNode(graph.nodes, "trigger")).toEqual({ kind: "overview" });
+    expect(scopeOfNode(graph.nodes, "gone")).toEqual({ kind: "overview" });
   });
 
   it("accepts a focused scope only for a Group node", () => {

@@ -78,8 +78,10 @@ export {
 } from "#src/lib/workflow-group-store";
 export {
   canvasEditingLockedAtom,
+  canvasEdgesAtom,
+  canvasGraphAtom,
+  canvasNodesAtom,
   clearNodeStatusesAtom,
-  displayEdgesAtom,
   displayNodesAtom,
   isExecutionOverlayActiveAtom,
   presentedGraphAtom,

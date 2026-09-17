@@ -8,7 +8,7 @@ import {
 } from "#src/lib/workflow-save-store";
 import {
   canUndoAtom,
-  displayEdgesAtom,
+  canvasEdgesAtom,
   displayNodesAtom,
   edgesAtom,
   nodesAtom,
@@ -101,6 +101,22 @@ function persistedDraft(input: ReturnType<typeof renderChrome>["store"]) {
   });
 }
 
+/**
+ * Apply the route search the router now holds to the store, as
+ * `WorkspaceRouteSync` does in the editor. Finding a Group member pushes that
+ * Group's route.
+ */
+async function followRoute(rendered: ReturnType<typeof renderChrome>) {
+  await waitFor(() =>
+    expect(rendered.router.state.location.search).toMatchObject({
+      group: "group_1",
+    })
+  );
+  act(() =>
+    showWorkspaceRoute(rendered.store, rendered.router.state.location.search)
+  );
+}
+
 /** Draft still selects, and paints, the node and edge the fixture selected. */
 function expectDraftSelectionKept(
   store: ReturnType<typeof renderChrome>["store"]
@@ -114,7 +130,7 @@ function expectDraftSelectionKept(
       .filter((node) => node.selected)
       .map((node) => node.id),
     edgeIds: store
-      .get(displayEdgesAtom)
+      .get(canvasEdgesAtom)
       .filter((edge) => edge.selected)
       .map((edge) => edge.id),
   }).toEqual(kept);
@@ -359,7 +375,7 @@ describe("the command palette", () => {
     ).not.toBeNull();
   });
 
-  it("finds and selects displayed Group children in a read-only Draft", async () => {
+  it("opens the Group of a found child and selects it there in a read-only Draft", async () => {
     const rendered = renderChrome(ToolbarActions, {
       graph: SEARCH_GRAPH,
       state: { canUpdate: false },
@@ -373,6 +389,7 @@ describe("the command palette", () => {
     });
 
     fireEvent.click(result);
+    await followRoute(rendered);
 
     expect(rendered.store.get(selectedNodeAtom)).toBe("notify_customer");
     expect(
@@ -402,6 +419,7 @@ describe("the command palette", () => {
     const input = await openedPalette(rendered);
     fireEvent.change(input, { target: { value: "notify" } });
     fireEvent.click(rendered.getByRole("option", { name: /Notify customer/ }));
+    await followRoute(rendered);
 
     expect(rendered.store.get(selectedNodeAtom)).toBe("notify_customer");
     expect(rendered.store.get(selectedEdgeAtom)).toBeNull();
@@ -412,7 +430,7 @@ describe("the command palette", () => {
         .map((node) => node.id)
     ).toEqual(["notify_customer"]);
     expect(
-      rendered.store.get(displayEdgesAtom).some((edge) => edge.selected)
+      rendered.store.get(canvasEdgesAtom).some((edge) => edge.selected)
     ).toBe(false);
     expect(persistedDraft(rendered.store)).toEqual(serializedBefore);
     expect(rendered.store.get(canUndoAtom)).toBe(false);
@@ -478,6 +496,7 @@ describe("the command palette", () => {
 
     fireEvent.change(input, { target: { value: "notify" } });
     fireEvent.click(rendered.getByRole("option", { name: /Notify customer/ }));
+    await followRoute(rendered);
 
     expect(rendered.store.get(selectedNodeAtom)).toBe("notify_customer");
     expect(

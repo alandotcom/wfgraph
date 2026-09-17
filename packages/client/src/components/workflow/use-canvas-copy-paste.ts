@@ -13,8 +13,13 @@ import {
 /**
  * Cmd/Ctrl+C, V, D, and G for the canvas selection. Disabled while a run overlay
  * or generation owns the canvas, and skipped while a field is being typed in.
+ * Paste and duplicate insert steps, so they wait for `insertsNodes`.
  */
-export function useCanvasCopyPaste(enabled: boolean) {
+export function useCanvasCopyPaste(input: {
+  enabled: boolean;
+  insertsNodes: boolean;
+}) {
+  const { enabled, insertsNodes } = input;
   const copySelection = useSetAtom(copySelectionAtom);
   const pasteSelection = useSetAtom(pasteCopiedSelectionAtom);
   const duplicateSelection = useSetAtom(duplicateSelectionAtom);
@@ -38,13 +43,13 @@ export function useCanvasCopyPaste(enabled: boolean) {
         return;
       }
       if (key === "v") {
-        if (pasteSelection()) {
+        if (insertsNodes && pasteSelection()) {
           event.preventDefault();
         }
         return;
       }
       if (key === "d") {
-        if (duplicateSelection()) {
+        if (insertsNodes && duplicateSelection()) {
           event.preventDefault();
         }
         return;
@@ -53,7 +58,14 @@ export function useCanvasCopyPaste(enabled: boolean) {
         event.preventDefault();
       }
     },
-    [copySelection, pasteSelection, duplicateSelection, groupSelection, catalog]
+    [
+      copySelection,
+      pasteSelection,
+      duplicateSelection,
+      groupSelection,
+      catalog,
+      insertsNodes,
+    ]
   );
 
   useDomEvent(window, "keydown", onKeyDown, { enabled });

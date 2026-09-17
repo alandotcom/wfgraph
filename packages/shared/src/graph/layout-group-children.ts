@@ -12,10 +12,15 @@ import {
   GROUP_HEADER_HEIGHT,
   GROUP_PAD,
   GROUP_ROW_GAP,
-  groupFrameSize,
+  workflowNodeSize,
 } from "#src/graph/workflow-layout-geometry";
 
-/** Returns each Group member's persisted position and compact dimensions. */
+/**
+ * Returns each Group member's position inside its frame and compact dimensions,
+ * and each frame at the one card size it draws at on the overview. The editor
+ * reads neither member value: the focused Group canvas and Ungroup place members
+ * with `groupCanvasPositions`.
+ */
 export function layoutGroupChildren(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[]
@@ -32,14 +37,14 @@ export function layoutGroupChildren(
   }
 
   const childById = new Map<string, WorkflowNode>();
-  const sizeByGroup = new Map<string, { width: number; height: number }>();
+  const groupIds = new Set<string>();
   for (const [groupId, children] of byParent) {
     const { memberIds, interiorEdges } = analyzeGroupBoundary({
       memberIds: children.map((child) => child.id),
       edges,
     });
     const { slots, bounds } = groupInteriorLayout(memberIds, interiorEdges);
-    sizeByGroup.set(groupId, groupFrameSize(bounds.columns, bounds.rows));
+    groupIds.add(groupId);
     const positionById = childPositions(slots, bounds.columns);
     for (const child of children) {
       childById.set(child.id, {
@@ -54,8 +59,7 @@ export function layoutGroupChildren(
 
   return nodes.map((node) => {
     if (isGroupNode(node)) {
-      const size = sizeByGroup.get(node.id);
-      return size ? { ...node, ...size } : node;
+      return groupIds.has(node.id) ? { ...node, ...workflowNodeSize() } : node;
     }
     return childById.get(node.id) ?? node;
   });

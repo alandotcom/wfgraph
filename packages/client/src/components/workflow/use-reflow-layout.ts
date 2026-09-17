@@ -1,9 +1,8 @@
 /**
  * The graph's tidy-up pass, shared by the canvas control at bottom left and the
  * Actions menu's "Tidy layout" so the two cannot drift into different rules.
- *
- * `canReflow` is the whole gate: both call sites disable their control with it,
- * and `reflow` re-reads it because a graph can change between render and click.
+ * `canReflow` is the whole gate, and it is off on a focused Group canvas, which
+ * never writes a coordinate. `reflow` re-reads it at click time.
  */
 
 import { useReactFlow } from "@xyflow/react";
@@ -17,6 +16,7 @@ import {
   edgesAtom,
   nodesAtom,
 } from "#src/lib/workflow-graph-store";
+import { groupScopeActiveAtom } from "#src/lib/workflow-workspace-navigation";
 import { viewportAnimationDuration } from "#src/lib/motion";
 import { workflowFitViewOptions } from "./workflow-viewport";
 
@@ -47,6 +47,7 @@ export function useReflowLayout(): {
   const nodes = useAtomValue(nodesAtom);
   const edges = useAtomValue(edgesAtom);
   const editingLocked = useAtomValue(canvasEditingLockedAtom);
+  const groupScopeActive = useAtomValue(groupScopeActiveAtom);
   const applyNodeLayout = useSetAtom(applyNodeLayoutAtom);
   const catalog = useExtensionCatalog();
   const { fitView } = useReactFlow();
@@ -54,7 +55,9 @@ export function useReflowLayout(): {
   // One node has nothing to be arranged against, and the placeholder `add` node
   // is not one of them.
   const canReflow =
-    !editingLocked && nodes.filter((node) => node.type !== "add").length > 1;
+    !editingLocked &&
+    !groupScopeActive &&
+    nodes.filter((node) => node.type !== "add").length > 1;
 
   const reflow = useCallback(() => {
     if (!canReflow) {

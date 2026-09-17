@@ -392,7 +392,7 @@ describe("WorkspaceRouteSync", () => {
     expect(selectionState(store)).toEqual(selectedNodes(["child_step"]));
   });
 
-  it("keeps a selection outside a focused Group while its nodes move", async () => {
+  it("restricts a focused Group's selection to its members while nodes move", async () => {
     stubServer();
     const { store, search } = await renderEditorRoute(
       "/workflows/workflow_1?group=group_1"
@@ -400,6 +400,9 @@ describe("WorkspaceRouteSync", () => {
     await waitFor(() => expect(search()).toEqual({ group: "group_1" }));
 
     act(() => store.set(selectOnlyNodeAtom, "draft_step"));
+    await waitFor(() => expect(store.get(selectedNodeAtom)).toBeNull());
+
+    act(() => store.set(selectOnlyNodeAtom, "child_step"));
     act(() =>
       store.set(onNodesChangeAtom, [
         {
@@ -411,8 +414,19 @@ describe("WorkspaceRouteSync", () => {
       ])
     );
 
-    expect(store.get(selectedNodeAtom)).toBe("draft_step");
+    expect(store.get(selectedNodeAtom)).toBe("child_step");
     expect(search()).toEqual({ group: "group_1" });
+  });
+
+  it("drops a Group member from the overview selection", async () => {
+    stubServer();
+    const { store } = await renderEditorRoute("/workflows/workflow_1");
+
+    act(() => store.set(selectOnlyNodeAtom, "child_step"));
+    await waitFor(() => expect(store.get(selectedNodeAtom)).toBeNull());
+
+    act(() => store.set(selectOnlyNodeAtom, "group_1"));
+    expect(store.get(selectedNodeAtom)).toBe("group_1");
   });
 
   it("subscribes to a graph structure a position-only change leaves alone", () => {

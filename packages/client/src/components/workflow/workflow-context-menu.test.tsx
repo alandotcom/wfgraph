@@ -88,6 +88,7 @@ function renderNodeMenu(
         <OverlayProvider>
           <WorkflowContextMenu
             canEdit
+            canInsert
             menuState={menuState}
             onClose={() => {}}
           />

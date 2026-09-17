@@ -18,7 +18,7 @@ import { useExtensionCatalog } from "#src/components/extension-catalog-provider"
 import type { CanvasPosition } from "#src/lib/command-palette";
 import { repairNodeIntegration } from "#src/lib/node-integration";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
-import { addNodeAtom, nodesAtom } from "#src/lib/workflow-graph-store";
+import { addNodeAtom, canvasNodesAtom } from "#src/lib/workflow-graph-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import {
   WORKFLOW_NODE_HEIGHT,
@@ -28,6 +28,7 @@ import {
   positionClearOfNodes,
   workflowNodeRectangles,
 } from "#src/lib/workflow-node-placement";
+import { groupScopeActiveAtom } from "#src/lib/workflow-workspace-navigation";
 
 export type AddStepRequest = {
   /** The action the step runs. Absent leaves the node asking for one. */
@@ -38,7 +39,8 @@ export type AddStepRequest = {
 
 /**
  * Returns a function that creates a step, selects it, and opens its
- * configuration. Does nothing when React Flow is not on screen to measure.
+ * configuration. Does nothing when React Flow is not on screen to measure, or
+ * while a focused Group canvas is shown, which inserts no step.
  */
 export function useAddStep(): (request: AddStepRequest) => void {
   const catalog = useExtensionCatalog();
@@ -53,10 +55,15 @@ export function useAddStep(): (request: AddStepRequest) => void {
 
   return useCallback(
     ({ actionType, at }: AddStepRequest) => {
+      if (store.get(groupScopeActiveAtom)) {
+        return;
+      }
+      // The painted overview, where a Group is its collapsed card and its
+      // members take no room.
       const position =
         at ??
         canvasCentre(
-          store.get(nodesAtom),
+          store.get(canvasNodesAtom),
           screenToFlowPosition,
           (nodeId) => getInternalNode(nodeId)?.internals.positionAbsolute
         );

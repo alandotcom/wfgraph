@@ -104,12 +104,36 @@ export const workflowIssuesByNodeIdAtom = atom((get) => {
 /** The summaries handed out last time, so unchanged nodes keep their identity. */
 let lastSummaries: ReadonlyMap<string, NodeIssueSummary> = new Map();
 
-function sameSummary(left: NodeIssueSummary, right: NodeIssueSummary): boolean {
+export function sameSummary(
+  left: NodeIssueSummary,
+  right: NodeIssueSummary
+): boolean {
   return (
     left.severity === right.severity &&
     left.messages.length === right.messages.length &&
     left.messages.every((message, index) => message === right.messages[index])
   );
+}
+
+/**
+ * The issues the Group `groupId` answers for: its own, then each member's, in
+ * collection order. The overview draws a Group as one collapsed card that hides
+ * its members, so the card's badge and the Group summary's status count both.
+ */
+export function groupIssues(input: {
+  issues: readonly WorkflowIssue[];
+  nodes: readonly { id: string; parentId?: string | undefined }[];
+  groupId: string;
+}): WorkflowIssue[] {
+  const memberIds = new Set(
+    input.nodes
+      .filter((node) => node.parentId === input.groupId)
+      .map((node) => node.id)
+  );
+  return [
+    ...input.issues.filter((issue) => issue.nodeId === input.groupId),
+    ...input.issues.filter((issue) => memberIds.has(issue.nodeId)),
+  ];
 }
 
 /** Whether anything in the graph stops it being published. */

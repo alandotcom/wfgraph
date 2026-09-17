@@ -15,6 +15,7 @@ import {
   presentedGraphStructureAtom,
 } from "#src/lib/workflow-graph-store";
 import {
+  graphInScope,
   groupScopeExists,
   recoveredRouteSearch,
   selectionInGraph,
@@ -172,9 +173,10 @@ function useWorkspaceRouteSync(): void {
     };
   };
 
-  // Selected ids, and the object Canvas Reveal inspects, that the presented
-  // graph no longer holds are dropped. The key names only the graph structure,
-  // so moving a node does not run it again.
+  // Selected ids, and the object Canvas Reveal inspects, that the active scope
+  // does not show are dropped: ids the presented graph no longer holds, Group
+  // members on the overview, and anything outside a focused Group. The key
+  // names only the graph structure, so moving a node does not run it again.
   const renderedGraph = recoveryGraph(renderedInputs);
   const hasSelection =
     selection.nodeIds.length > 0 || selection.edgeIds.length > 0;
@@ -183,13 +185,15 @@ function useWorkspaceRouteSync(): void {
       ? `${workspaceAddressId(address)}|${selection.nodeIds.join(",")}|${selection.edgeIds.join(",")}|${inspected?.id ?? ""}|${presentedStructure.key}`
       : null,
     () => {
-      const graph = recoveryGraph(storedInputs());
+      const inputs = storedInputs();
+      const graph = recoveryGraph(inputs);
       if (graph) {
+        const shown = graphInScope(graph, inputs.address.scope);
         store.set(
           activeSelectionAtom,
-          selectionInGraph(store.get(activeSelectionAtom), graph)
+          selectionInGraph(store.get(activeSelectionAtom), shown)
         );
-        store.set(keepActiveInspectionInGraphAtom, graph);
+        store.set(keepActiveInspectionInGraphAtom, shown);
       }
     }
   );

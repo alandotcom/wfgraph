@@ -9,7 +9,6 @@ import {
 import {
   canUngroup,
   groupSelection,
-  lockGroupInteriorEdges,
   removeGroupWithMembers,
   removeNodes,
   repairCanvasGroups,
@@ -169,7 +168,11 @@ describe("groupSelection", () => {
       throw new Error("expected two frames");
     }
 
-    const freed = ungroupNode(second.nodes, "g1");
+    const freed = ungroupNode({
+      nodes: second.nodes,
+      edges: second.edges,
+      groupId: "g1",
+    });
     expect(orderGroupParentsFirst(freed)).toBe(freed);
   });
 
@@ -200,7 +203,11 @@ describe("groupSelection", () => {
       children?.[1]?.position.y ?? 0
     );
 
-    const restored = ungroupNode(grouped?.nodes ?? [], "g1");
+    const restored = ungroupNode({
+      nodes: grouped?.nodes ?? [],
+      edges,
+      groupId: "g1",
+    });
     expect(restored.some((node) => node.id === "g1")).toBe(false);
     expect(restored.every((node) => !node.parentId)).toBe(true);
   });
@@ -254,16 +261,17 @@ describe("groupSelection", () => {
   });
 
   it("frees the members at auto-layout's pitch, keeping the fan-in", () => {
-    const freed = ungroupNode(framedNodes(), "g1");
+    const freed = ungroupNode({
+      nodes: framedNodes(),
+      edges: parallelEdges(),
+      groupId: "g1",
+    });
     const freeA = freed.find((node) => node.id === "a");
     const freeB = freed.find((node) => node.id === "b");
     const freeC = freed.find((node) => node.id === "c");
 
     expect(freed.some((node) => node.id === "g1")).toBe(false);
     expect(freed.every((node) => !node.parentId)).toBe(true);
-    // Two siblings sit one auto-layout column apart, and the rank below sits
-    // one auto-layout rank down, so nothing overlaps at the compact spacing
-    // the frame used.
     expect((freeB?.position.x ?? 0) - (freeA?.position.x ?? 0)).toBe(
       WORKFLOW_NODE_WIDTH + NODE_SPACING
     );
@@ -277,6 +285,41 @@ describe("groupSelection", () => {
     );
     expect(freeA?.width).toBe(WORKFLOW_NODE_WIDTH);
     expect(freeA?.height).toBe(WORKFLOW_NODE_HEIGHT);
+  });
+
+  it("centres two and three columns of freed members under the collapsed card", () => {
+    const frame: WorkflowNode = {
+      id: "g1",
+      type: "group",
+      position: { x: 500, y: 300 },
+      width: WORKFLOW_NODE_WIDTH,
+      height: WORKFLOW_NODE_HEIGHT,
+      data: { label: "Group", type: "group" },
+    };
+    const cardCentre = frame.position.x + WORKFLOW_NODE_WIDTH / 2;
+    const member = (id: string): WorkflowNode => ({
+      ...action(id, "fountain/get-user", { x: 12, y: 48 }),
+      parentId: "g1",
+    });
+
+    for (const ids of [
+      ["a", "b"],
+      ["a", "b", "c"],
+    ]) {
+      const freed = ungroupNode({
+        nodes: [frame, ...ids.map(member)],
+        edges: [],
+        groupId: "g1",
+      });
+      const left = Math.min(...freed.map((node) => node.position.x));
+      const right = Math.max(
+        ...freed.map((node) => node.position.x + WORKFLOW_NODE_WIDTH)
+      );
+      expect((left + right) / 2).toBe(cardCentre);
+      expect(freed.every((node) => node.position.y === frame.position.y)).toBe(
+        true
+      );
+    }
   });
 });
 
@@ -311,7 +354,11 @@ describe("grouping and the engine traversal graph", () => {
     }
     expect(traversalGraph(grouped.nodes, grouped.edges)).toEqual(before);
 
-    const freed = ungroupNode(grouped.nodes, "g1");
+    const freed = ungroupNode({
+      nodes: grouped.nodes,
+      edges: grouped.edges,
+      groupId: "g1",
+    });
     expect(traversalGraph(freed, grouped.edges)).toEqual(before);
   });
 });
@@ -492,7 +539,7 @@ describe("repairCanvasGroups", () => {
     expect(repair.nodes[1]).not.toHaveProperty("extent");
   });
 
-  it("frees a member of a frame no editor has sized where it drew", () => {
+  it("frees a lone member onto the collapsed card, whatever it stored", () => {
     const nodes: WorkflowNode[] = [
       {
         id: "g1",
@@ -511,7 +558,7 @@ describe("repairCanvasGroups", () => {
 
     expect(
       repair.ok && repair.nodes.map((node) => [node.id, node.position])
-    ).toEqual([["a", { x: 112, y: 90 }]]);
+    ).toEqual([["a", { x: 100, y: 50 }]]);
   });
 
   it("refuses a graph whose stored edge names a frame", () => {
@@ -543,42 +590,5 @@ describe("canUngroup", () => {
       canUngroup(action("free", "fountain/get-user", { x: 0, y: 0 }))
     ).toBe(false);
     expect(canUngroup(undefined)).toBe(false);
-  });
-});
-
-describe("lockGroupInteriorEdges", () => {
-  it("locks an edge between two members and leaves the rest alone", () => {
-    const nodes = [
-      ...framedNodes(),
-      action("outside", "fountain/get-user", { x: 0, y: 0 }),
-    ];
-    const edges = [edge("a-c", "a", "c"), edge("c-out", "c", "outside")];
-
-    const locked = lockGroupInteriorEdges(nodes, edges);
-
-    expect(locked[0]?.selectable).toBe(false);
-    expect(locked[0]?.deletable).toBe(false);
-    expect(locked[0]?.focusable).toBe(false);
-    expect(locked[1]).toBe(edges[1]);
-  });
-
-  it("hands back the same locked object on a later recompute", () => {
-    const nodes = framedNodes();
-    const edges = [edge("a-c", "a", "c")];
-
-    // A node drag rebuilds the node array without touching parentage or the
-    // edges. React Flow re-renders an edge whose object changed, so a fresh
-    // copy per recompute would repaint every interior edge on every frame.
-    const first = lockGroupInteriorEdges(nodes, edges);
-    const second = lockGroupInteriorEdges([...nodes], edges);
-
-    expect(second[0]).toBe(first[0]);
-  });
-
-  it("returns the same array when nothing is nested", () => {
-    const nodes = [action("a", "fountain/get-user", { x: 0, y: 0 })];
-    const edges = [edge("e", "a", "a")];
-
-    expect(lockGroupInteriorEdges(nodes, edges)).toBe(edges);
   });
 });

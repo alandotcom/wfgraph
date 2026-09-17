@@ -27,8 +27,10 @@ import { integrationsQueryOptions } from "#src/lib/rpc-query";
 import { can } from "#src/lib/authorization";
 import { edgesAtom, nodesAtom } from "#src/lib/workflow-graph-store";
 import {
+  scopeOfNode,
   workspaceAddressFromSearch,
   workspaceAddressId,
+  workspaceRouteSearch,
 } from "#src/lib/workflow-navigation-state";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
@@ -177,12 +179,19 @@ export function useGoToStep(): (nodeId: string, fieldKey?: string) => void {
   return useCallback(
     (nodeId: string, fieldKey?: string) => {
       // The step is selected in the Draft address the route is about to show,
-      // so the selection is Draft's own whichever workspace asked.
-      const search = store.get(rememberedRouteSearchesAtom).draft ?? {};
-      const address = workspaceAddressFromSearch(
-        store.get(currentWorkflowIdAtom) ?? "",
-        search
-      );
+      // so the selection is Draft's own whichever workspace asked. A Group
+      // member shows on its focused Group canvas and any other step on the
+      // overview.
+      const nodes = store.get(nodesAtom);
+      const node = nodes.find((item) => item.id === nodeId);
+      const address = {
+        ...workspaceAddressFromSearch(
+          store.get(currentWorkflowIdAtom) ?? "",
+          store.get(rememberedRouteSearchesAtom).draft ?? {}
+        ),
+        scope: scopeOfNode(nodes, nodeId),
+      };
+      const search = workspaceRouteSearch(address);
       setWorkspaceSelection({
         address,
         selection: { nodeIds: [nodeId], edgeIds: [] },
@@ -192,7 +201,6 @@ export function useGoToStep(): (nodeId: string, fieldKey?: string) => void {
         setPendingFieldFocus(fieldKey ?? null);
         return;
       }
-      const node = store.get(nodesAtom).find((item) => item.id === nodeId);
       const focusTarget = issueFocusTarget(node, fieldKey);
       openWorkspaceReveal({
         address,

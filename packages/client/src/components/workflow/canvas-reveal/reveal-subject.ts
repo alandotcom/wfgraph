@@ -6,6 +6,7 @@
 
 import { uniq } from "es-toolkit/array";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { isConditionNode } from "@wfgraph/shared/graph/node-config";
 import type {
   CanvasSelection,
@@ -18,6 +19,7 @@ import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 export type RevealKindId =
   | "step"
   | "condition"
+  | "group"
   | "lifecycle"
   | "runs"
   | "changes"
@@ -139,6 +141,32 @@ export function matchConditionSubject(
 }
 
 /**
+ * A Draft Group frame selected alone, which the overview shows as a collapsed
+ * card. Browse summarizes the Group and enters it; Focus holds the frame's
+ * complete form.
+ */
+export function matchGroupSubject(
+  input: RevealMatchInput
+): RevealSubject | null {
+  if (input.workspace !== "draft") {
+    return null;
+  }
+  const { nodes, edges } = selectedGraph(input);
+  const [onlyNode] = nodes;
+  if (nodes.length !== 1 || edges.length > 0 || !isGroupNode(onlyNode)) {
+    return null;
+  }
+  return {
+    kind: "group",
+    workspace: input.workspace,
+    key: `node:${onlyNode.id}`,
+    nodeId: onlyNode.id,
+    placement: { kind: "nodes", nodeIds: [onlyNode.id] },
+    levels: ["browse", "focus"],
+  };
+}
+
+/**
  * The Draft Lifecycle Node selected alone: its policy summary in Browse and the
  * sectioned policy editor in Focus.
  */
@@ -233,7 +261,7 @@ export function matchChangesSubject(
 
 /**
  * The node config panel at Browse, in Draft alone: any selection no other kind
- * matches, such as an Event Split, Group, connection, or several objects.
+ * matches, such as an Event Split, a connection, or several objects.
  */
 export function matchPanelSubject(
   input: RevealMatchInput

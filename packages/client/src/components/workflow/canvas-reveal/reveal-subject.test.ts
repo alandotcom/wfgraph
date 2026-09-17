@@ -7,6 +7,7 @@ import {
   isOrdinaryStep,
   matchChangesSubject,
   matchConditionSubject,
+  matchGroupSubject,
   matchLifecycleSubject,
   matchPanelSubject,
   matchRunsSubject,
@@ -35,6 +36,12 @@ const nodes: WorkflowNode[] = [
     position: { x: 0, y: 0 },
     data: { label: "Lifecycle", type: "lifecycle", config: {} },
   },
+  {
+    id: "group",
+    type: "group",
+    position: { x: 0, y: 0 },
+    data: { label: "Group", type: "group" },
+  },
   action("send", "resend/send-email"),
   action("wait", BUILT_IN_ACTION_IDS.wait),
   action("blank"),
@@ -58,6 +65,7 @@ describe("isOrdinaryStep", () => {
   it("accepts Actions and Waits and refuses the Lifecycle Node, Conditions, and Event Splits", () => {
     expect(nodes.map((node) => [node.id, isOrdinaryStep(node)])).toEqual([
       ["lifecycle", false],
+      ["group", false],
       ["send", true],
       ["wait", true],
       ["blank", true],
@@ -107,6 +115,25 @@ describe("matchConditionSubject", () => {
     ).toBeNull();
     expect(matchConditionSubject(input("runs", ["condition"]))).toBeNull();
     expect(matchConditionSubject(input("changes", ["condition"]))).toBeNull();
+  });
+});
+
+describe("matchGroupSubject", () => {
+  it("matches a Draft Group frame selected alone, with Focus", () => {
+    expect(matchGroupSubject(input("draft", ["group"]))).toEqual({
+      kind: "group",
+      workspace: "draft",
+      key: "node:group",
+      nodeId: "group",
+      placement: { kind: "nodes", nodeIds: ["group"] },
+      levels: ["browse", "focus"],
+    });
+  });
+
+  it("refuses a step, several objects, and Runs", () => {
+    expect(matchGroupSubject(input("draft", ["send"]))).toBeNull();
+    expect(matchGroupSubject(input("draft", ["group", "send"]))).toBeNull();
+    expect(matchGroupSubject(input("runs", ["group"]))).toBeNull();
   });
 });
 

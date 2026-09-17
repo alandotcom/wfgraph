@@ -220,7 +220,7 @@ describe("useSynchronizedCanvas", () => {
     const runGraph = {};
     type Props = {
       draftEdges: WorkflowEdge[];
-      executionOverlay: unknown;
+      executionOverlay: object | null;
       lifecycle: WorkflowNode;
       workspaceView: "draft" | "runs";
     };
@@ -241,6 +241,7 @@ describe("useSynchronizedCanvas", () => {
             executionOverlay,
             comparison: null,
             draftEdges,
+            scope: "overview",
           }),
           synchronizePresentation,
           viewportCorrection,
@@ -324,7 +325,7 @@ describe("canvasSynchronizationKey", () => {
     const hydratedDraftEdges = initialDraftEdges.map((edge) => ({ ...edge }));
     type Props = {
       workspaceView: "draft" | "runs";
-      executionOverlay: unknown;
+      executionOverlay: object | null;
       draftEdges: WorkflowEdge[];
     };
     const { rerender } = renderHook(
@@ -335,6 +336,7 @@ describe("canvasSynchronizationKey", () => {
             executionOverlay,
             comparison: null,
             draftEdges,
+            scope: "overview",
           }),
           synchronizePresentation,
           viewportCorrection: null,
@@ -394,9 +396,11 @@ describe("canvasInteractionState", () => {
         editingLocked: true,
         comparisonActive: true,
         overlayActive: false,
+        groupScopeActive: false,
       })
     ).toEqual({
       comparisonVisible: true,
+      insertsNodes: false,
       elementsSelectable: true,
       nodesDraggable: true,
       edgesFocusable: false,
@@ -410,14 +414,29 @@ describe("canvasInteractionState", () => {
         editingLocked: true,
         comparisonActive: true,
         overlayActive: true,
+        groupScopeActive: false,
       })
     ).toEqual({
       comparisonVisible: false,
+      insertsNodes: false,
       elementsSelectable: false,
       nodesDraggable: false,
       edgesFocusable: true,
       deleteKeyCode: ["Backspace", "Delete"],
     });
+  });
+
+  it("inserts nodes only on an editable canvas outside a focused Group", () => {
+    const state = (groupScopeActive: boolean) =>
+      canvasInteractionState({
+        editingLocked: false,
+        comparisonActive: false,
+        overlayActive: false,
+        groupScopeActive,
+      });
+    expect(state(false).insertsNodes).toBe(true);
+    expect(state(true).insertsNodes).toBe(false);
+    expect(state(true).nodesDraggable).toBe(true);
   });
 });
 

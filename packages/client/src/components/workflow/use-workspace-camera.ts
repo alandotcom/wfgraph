@@ -1,4 +1,5 @@
 import {
+  getNodesBounds,
   getViewportForBounds,
   useReactFlow,
   useStore as useFlowStore,
@@ -14,7 +15,9 @@ import {
 import { useIsMobile } from "#src/hooks/use-mobile";
 import {
   cameraStep,
+  scopeId,
   workspaceAddressId,
+  workspaceKeyId,
   type FormFactor,
   type WorkspaceAddress,
   type WorldCamera,
@@ -24,6 +27,8 @@ import {
   activeWorkspaceCamerasAtom,
   recordWorkspaceCameraAtom,
 } from "#src/lib/workflow-workspace-navigation";
+import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import { MIN_USABLE_SIZE } from "./canvas-reveal/reveal-geometry";
 import {
   viewportFromWorldCamera,
   workflowFitViewOptions,
@@ -54,17 +59,24 @@ type PendingPlacement = {
  *
  * `isCanvasPlaced` answers whether the canvas has made its first placement for
  * a workflow. Before that, the viewport is not a camera anyone chose.
+ * `paintedNodes` are the nodes this render paints for the active scope. Moving
+ * between the overview and a focused Group of one workspace, or to the other
+ * form factor, where no camera is saved fits the camera to them before paint.
+ * The fit uses the canvas `revealOccupiedWidth` leaves beside Canvas Reveal, so
+ * a step opened in a Group from Reveal is already placed when Reveal looks.
  *
  * The media query can report a form factor change before React Flow measures
  * the resized canvas. The camera the change asks for is placed at once and held
  * until the canvas reports a new size, then placed again against that size in
  * place of recording the viewport. The canvas size can also arrive in the same
  * commit as the form factor change, so the camera being left is recorded
- * against the size it was shown at. A form factor visited for the first time
- * with no saved camera fits the graph.
+ * against the size it was shown at.
  */
 export function useWorkspaceCamera(input: {
   isCanvasPlaced: (workflowId: string) => boolean;
+  paintedNodes: readonly WorkflowNode[];
+  /** The width Canvas Reveal takes from the right of the canvas for the active scope. */
+  revealOccupiedWidth: number;
 }): {
   /** The viewport saved for the presented scope, when one exists. */
   savedViewport: () => Viewport | null;
@@ -81,7 +93,7 @@ export function useWorkspaceCamera(input: {
 } {
   const store = useStore();
   const flowStore = useStoreApi();
-  const { getNodes, getNodesBounds, getViewport, setViewport } = useReactFlow();
+  const { getViewport, setViewport } = useReactFlow();
   const address = useAtomValue(activeWorkspaceAddressAtom);
   const formFactor: FormFactor = useIsMobile() ? "mobile" : "desktop";
   const slotKey = `${workspaceAddressId(address)}|${formFactor}`;
@@ -112,15 +124,17 @@ export function useWorkspaceCamera(input: {
       });
       return;
     }
-    const nodes = getNodes();
-    if (nodes.length === 0) {
+    if (input.paintedNodes.length === 0) {
       return;
     }
+    // React Flow has not installed the nodes of a scope just reached, so the
+    // bounds come from the painted nodes themselves.
     const options = workflowFitViewOptions(0);
+    const besideReveal = size.width - input.revealOccupiedWidth;
     void setViewport(
       getViewportForBounds(
-        getNodesBounds(nodes),
-        size.width,
+        getNodesBounds([...input.paintedNodes]),
+        besideReveal >= MIN_USABLE_SIZE.width ? besideReveal : size.width,
         size.height,
         options.minZoom,
         options.maxZoom,
@@ -172,14 +186,21 @@ export function useWorkspaceCamera(input: {
     placedSlotRef.current = null;
     pendingRef.current = null;
     const size = canvasSize();
+    const scopeChanged =
+      shown !== null &&
+      shown.formFactor === formFactor &&
+      shown.address.workflowId === address.workflowId &&
+      workspaceKeyId(shown.address.key) === workspaceKeyId(address.key) &&
+      scopeId(shown.address.scope) !== scopeId(address.scope);
     const formFactorChanged =
       shown !== null &&
       shown.formFactor !== formFactor &&
-      workspaceAddressId(shown.address) === workspaceAddressId(address) &&
-      input.isCanvasPlaced(address.workflowId);
+      workspaceAddressId(shown.address) === workspaceAddressId(address);
     const placement: PendingPlacement["placement"] | null = step.restore
       ? { kind: "restore", camera: step.restore }
-      : formFactorChanged
+      : (scopeChanged || formFactorChanged) &&
+          input.isCanvasPlaced(address.workflowId) &&
+          store.get(activeWorkspaceCamerasAtom)[formFactor] === null
         ? { kind: "fit" }
         : null;
     if (placement && size) {

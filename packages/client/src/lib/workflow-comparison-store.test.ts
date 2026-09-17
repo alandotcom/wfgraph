@@ -23,7 +23,7 @@ import {
 import {
   canUndoAtom,
   canvasEditingLockedAtom,
-  displayEdgesAtom,
+  canvasEdgesAtom,
   displayNodesAtom,
   executionOverlayGraphAtom,
   hydrateWorkflowAtom,
@@ -215,7 +215,7 @@ describe("comparison session store", () => {
         .get(comparisonDisplayGraphAtom)
         ?.nodes.find((item) => item.id === "shared")?.position
     ).toEqual({ x: 20, y: 0 });
-    expect(store.get(displayEdgesAtom)[0]).toMatchObject({
+    expect(store.get(canvasEdgesAtom)[0]).toMatchObject({
       source: "shared",
       target: "deleted",
     });

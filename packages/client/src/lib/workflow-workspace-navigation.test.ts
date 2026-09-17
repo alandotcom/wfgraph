@@ -5,7 +5,7 @@ import { toSerializedGraph } from "#src/lib/rpc-client";
 import { historyAtom } from "#src/lib/workflow-graph-cells";
 import {
   clearSelectionAtom,
-  displayEdgesAtom,
+  canvasEdgesAtom,
   displayNodesAtom,
   edgesAtom,
   executionOverlayGraphAtom,
@@ -133,7 +133,7 @@ function paintedSelection(store: ReturnType<typeof createStore>) {
       .filter((node) => node.selected)
       .map((node) => node.id),
     edgeIds: store
-      .get(displayEdgesAtom)
+      .get(canvasEdgesAtom)
       .filter((edge) => edge.selected)
       .map((edge) => edge.id),
   };
