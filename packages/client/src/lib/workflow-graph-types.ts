@@ -17,6 +17,7 @@ import {
   findAction,
   type ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
+import type { GroupPort } from "@wfgraph/shared/graph/group-boundary";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 export type { NodeRunStatus, PersistedNodeData };
@@ -56,12 +57,24 @@ export const COMPARISON_EDGE_ANNOTATION: unique symbol = Symbol(
   "wfgraph.comparison.edge"
 );
 
+/** The outside port a boundary stub on a focused Group canvas stands for. */
+export type GroupBoundaryStubPort = {
+  direction: "ingress" | "continuation";
+  port: GroupPort;
+};
+
+/** Collision-proof key for the port a boundary stub's data carries. */
+export const GROUP_BOUNDARY_STUB_PORT: unique symbol = Symbol(
+  "wfgraph.group.boundaryStubPort"
+);
+
 export type EditorNodeData = PersistedNodeData & {
   /** Open persisted node data can legitimately use this string key. */
   comparison?: unknown;
   status?: NodeRunStatus | undefined;
   issues?: NodeIssueSummary | undefined;
   [COMPARISON_NODE_ANNOTATION]?: ComparisonNodeAnnotation | undefined;
+  [GROUP_BOUNDARY_STUB_PORT]?: GroupBoundaryStubPort | undefined;
 };
 
 /** Display-only fields painted onto edges; never part of the draft save path. */

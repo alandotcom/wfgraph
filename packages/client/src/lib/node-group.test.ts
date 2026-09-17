@@ -20,6 +20,7 @@ import {
   undersizedGroupIds,
 } from "@wfgraph/shared/graph/node-group";
 import { groupStructureRefusalReason } from "@wfgraph/shared/graph/group-structure";
+import { addedIngressSourceRefusal } from "@wfgraph/shared/graph/group-contract";
 import {
   toPersistedEdge,
   toPersistedNodes,
@@ -355,26 +356,56 @@ describe("grouping and the engine traversal graph", () => {
 });
 
 describe("connecting onto a grouped frame", () => {
-  // Grouping adds no edge, so `b` keeps no incoming edge while `a` is entered
-  // from the Lifecycle Node. The frame's inlet stands for both.
-  it("wires every member an edge enters and every member no edge enters", () => {
+  it("wires exactly the members the Group is entered at", () => {
+    // `b` is a member no stored edge enters while the Lifecycle Node enters
+    // `a`. The inlet stands for `a` alone, so a connection from the Lifecycle
+    // Node's outlet adds nothing and one from anywhere else adds only `x` to `a`.
     const nodes = [
       ...framedNodes(),
       action("x", "fountain/get-user", { x: 0, y: 0 }),
     ];
+    const edges = parallelEdges().filter((item) => item.id !== "in-b");
 
     expect(
       fanOutStoreEdges({
         nodes,
-        edges: parallelEdges().filter((item) => item.id !== "in-b"),
-        sourceId: "x",
+        edges,
+        sourceId: "life",
         targetId: "g1",
-        sourceHandle: undefined,
+        sourceHandle: "started",
       })
-    ).toEqual([
+    ).toEqual([]);
+    const additions = fanOutStoreEdges({
+      nodes,
+      edges,
+      sourceId: "x",
+      targetId: "g1",
+      sourceHandle: undefined,
+    });
+    expect(additions).toEqual([
       { source: "x", target: "a", sourceHandle: undefined },
-      { source: "x", target: "b", sourceHandle: undefined },
     ]);
+    expect(addedIngressSourceRefusal({ nodes, edges, additions })).toBe(
+      'The Group "Group" is already entered from "Start". A Group is entered from one outlet, so remove that connection first.'
+    );
+  });
+
+  it("enters a Group nothing enters yet at every member no interior edge reaches", () => {
+    const nodes = framedNodes();
+    const edges = parallelEdges().filter((item) => !item.id.startsWith("in-"));
+
+    const additions = fanOutStoreEdges({
+      nodes,
+      edges,
+      sourceId: "life",
+      targetId: "g1",
+      sourceHandle: "started",
+    });
+    expect(additions).toEqual([
+      { source: "life", target: "a", sourceHandle: "started" },
+      { source: "life", target: "b", sourceHandle: "started" },
+    ]);
+    expect(addedIngressSourceRefusal({ nodes, edges, additions })).toBeNull();
   });
 });
 
@@ -407,7 +438,7 @@ describe("removeNodes", () => {
     expect(freed).not.toHaveProperty("parentId");
     expect(freed).not.toHaveProperty("extent");
     expect(freed?.draggable).toBe(true);
-    expect(freed?.connectable).toBe(true);
+    expect(freed).not.toHaveProperty("connectable");
     expectWholeGroups(removed.nodes, removed.edges);
   });
 

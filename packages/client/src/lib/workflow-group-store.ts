@@ -1,7 +1,7 @@
 /**
  * Group mutations on the canvas graph: wrap a selection, lift it back out,
  * delete a Group with its steps, connect through a frame (fan-out onto its
- * derived entries), and delete a painted inlet.
+ * derived entries), and delete a painted edge and the stored edges it stands for.
  *
  * Graph cells stay in workflow-graph-cells; this file is the operations.
  */
@@ -10,19 +10,20 @@ import { atom, type Getter, type Setter } from "jotai";
 import {
   groupSelection,
   removeGroupWithMembers,
+  storedEdgeIdsForPaintedEdge,
   ungroupNode,
 } from "#src/lib/node-group";
 import { generateId } from "@wfgraph/shared/utils/id";
-import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
-import {
-  fanOutStoreEdges,
-  fanOutStoreEdgeIds,
-  groupLayoutDirection,
-  groupOutletHandle,
-} from "@wfgraph/shared/graph/node-group";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import { groupLayoutDirection } from "@wfgraph/shared/graph/node-group";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
+import {
+  planConnection,
+  type ConnectionPlan,
+  type RequestedConnection,
+} from "#src/components/workflow/connection-validation";
 import type { GroupLayoutDirection } from "@wfgraph/shared/graph/schemas";
-import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
+import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import {
   draftEditable,
   edgesStateAtom,
@@ -36,6 +37,7 @@ import {
 } from "#src/lib/workflow-navigation-state";
 import {
   activeSelectionAtom,
+  activeWorkspaceAddressAtom,
   forgetGroupCamerasAtom,
 } from "#src/lib/workflow-workspace-navigation";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
@@ -217,41 +219,54 @@ export const deleteGroupWithMembersAtom = atom(
   }
 );
 
-/** Connect two nodes, recorded as an undo step like every graph mutation. */
-export const connectNodesAtom = atom(null, (get, set, edge: WorkflowEdge) => {
-  if (!draftEditable(get)) {
-    return;
-  }
+/**
+ * Connect two nodes, recorded as an undo step like every graph mutation.
+ * `planConnection` decides against the stored graph what the connection adds:
+ * a connection onto a Group card fans out onto the Group's entries. Answers the
+ * plan, so a caller can show a refusal, or null when the draft is not editable.
+ * A refused connection stores nothing. The first added edge takes
+ * `connection.id`, which names a new edge, so the plan replaces no stored edge.
+ */
+export const connectNodesAtom = atom(
+  null,
+  (
+    get,
+    set,
+    input: {
+      connection: RequestedConnection & { id: string };
+      fromIngressStub?: boolean | undefined;
+      catalog: ExtensionCatalog;
+    }
+  ): ConnectionPlan | null => {
+    if (!draftEditable(get)) {
+      return null;
+    }
 
-  const nodes = get(nodesStateAtom);
-  const currentEdges = get(edgesStateAtom);
-  const sourceHandle =
-    groupOutletHandle(nodes, currentEdges, edge.source) ?? edge.sourceHandle;
-  const additions = fanOutStoreEdges({
-    nodes,
-    edges: currentEdges,
-    sourceId: edge.source,
-    targetId: edge.target,
-    sourceHandle,
-  }).map((item, index) =>
-    // React Flow declares `sourceHandle` as optional, so a fan-out edge
-    // leaving an unnamed handle omits it.
-    omitUndefined({
-      ...edge,
-      id: index === 0 ? edge.id : generateId(),
-      source: item.source,
-      target: item.target,
-      sourceHandle: item.sourceHandle,
-    })
-  );
-  if (additions.length === 0) {
-    return;
-  }
+    const { id, ...requested } = input.connection;
+    const currentEdges = get(edgesStateAtom);
+    const plan = planConnection({
+      connection: requested,
+      fromIngressStub: input.fromIngressStub,
+      nodes: get(nodesStateAtom),
+      storeEdges: currentEdges,
+      catalog: input.catalog,
+    });
+    if ("refusal" in plan) {
+      return plan;
+    }
 
-  pushHistory(get, set);
-  set(edgesStateAtom, [...currentEdges, ...additions]);
-  requestGraphSave(get, set, { immediate: true });
-});
+    pushHistory(get, set);
+    set(edgesStateAtom, [
+      ...currentEdges,
+      ...plan.additions.map((addition, index) => ({
+        id: index === 0 ? id : generateId(),
+        ...addition,
+      })),
+    ]);
+    requestGraphSave(get, set, { immediate: true });
+    return plan;
+  }
+);
 
 export const deleteEdgeAtom = atom(null, (get, set, edgeId: string) => {
   if (!draftEditable(get)) {
@@ -260,7 +275,12 @@ export const deleteEdgeAtom = atom(null, (get, set, edgeId: string) => {
 
   const currentEdges = get(edgesStateAtom);
   const removedIds = new Set(
-    fanOutStoreEdgeIds(get(nodesStateAtom), currentEdges, edgeId)
+    storedEdgeIdsForPaintedEdge({
+      nodes: get(nodesStateAtom),
+      edges: currentEdges,
+      edgeId,
+      scope: get(activeWorkspaceAddressAtom).scope,
+    })
   );
   if (removedIds.size === 0) {
     return;

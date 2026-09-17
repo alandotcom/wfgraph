@@ -802,7 +802,7 @@ describe("the focused Group canvas", () => {
     );
   });
 
-  it("offers interior edges for selection and deletion, and member handles for connection", async () => {
+  it("offers interior and ingress edges for selection and deletion, and member and ingress stub handles for connection", async () => {
     const { store, renderedNodeIds } = await renderEditor("?group=outreach");
     await waitFor(() => expect(renderedNodeIds()).toContain("welcome"));
 
@@ -812,13 +812,25 @@ describe("the focused Group canvas", () => {
     expect(interior).toBeDefined();
     expect(interior?.selectable).not.toBe(false);
     expect(interior?.deletable).not.toBe(false);
-    const boundary = store
+    const ingress = store
       .get(canvasEdgesAtom)
       .find((edge) => edge.id === "qualify-welcome");
-    expect(boundary?.selectable).toBe(false);
+    expect(ingress?.selectable).not.toBe(false);
+    expect(ingress?.deletable).not.toBe(false);
+    const continuation = store
+      .get(canvasEdgesAtom)
+      .find((edge) => edge.id === "case-route");
+    expect(continuation?.selectable).toBe(false);
+    const stubs = store
+      .get(canvasNodesAtom)
+      .filter((node) => node.type?.startsWith("group"));
+    expect(stubs.map((node) => [node.type, node.connectable])).toEqual([
+      ["groupIngress", undefined],
+      ["groupContinuation", false],
+    ]);
     expect(
       store.get(canvasNodesAtom).find((node) => node.id === "welcome")
         ?.connectable
-    ).toBe(true);
+    ).toBeUndefined();
   });
 });

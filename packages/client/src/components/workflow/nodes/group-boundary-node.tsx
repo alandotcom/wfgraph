@@ -15,12 +15,15 @@ type GroupBoundaryNodeProps = NodeProps & { data: WorkflowNodeData };
  * sits before the members and names a step that enters the Group; a
  * continuation stub sits after them and names the step the Group continues to.
  * "Before" is above in a vertical Group and to the left in a horizontal one,
- * which the stub reads from the handle sides it is given. Stubs are display
- * only and cannot be selected.
+ * which the stub reads from the handle sides it is given. Stubs cannot be
+ * selected. The handle follows `isConnectable`, which React Flow derives from
+ * the node's `connectable`: an ingress stub inherits the canvas's
+ * `nodesConnectable`, and a continuation stub is never connectable.
  */
 function GroupBoundaryNode({
   data,
   direction,
+  isConnectable,
   sourcePosition = Position.Bottom,
   targetPosition = Position.Top,
 }: GroupBoundaryNodeProps & { direction: "ingress" | "continuation" }) {
@@ -38,7 +41,7 @@ function GroupBoundaryNode({
         <span className="font-medium text-foreground">{title}</span>
       </span>
       <Handle
-        isConnectable={false}
+        isConnectable={isConnectable}
         position={direction === "ingress" ? sourcePosition : targetPosition}
         type={direction === "ingress" ? "source" : "target"}
       />

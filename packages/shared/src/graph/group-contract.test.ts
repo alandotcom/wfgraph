@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  addedIngressSourceRefusal,
   groupContractViolations,
   groupStepCount,
 } from "#src/graph/group-contract";
+import { fanOutStoreEdges } from "#src/graph/node-group";
+import { omitUndefined } from "#src/utils/omit-undefined";
 import { groupContractMatrix } from "#src/graph/group-contract-test-support";
 import { groupStructureRefusalReason } from "#src/graph/group-structure";
 import type { WorkflowNode } from "#src/graph/types";
@@ -110,5 +113,81 @@ describe("groupStepCount", () => {
     expect(
       groupStepCount({ groupId: "g", nodes: eventSplitMember.nodes })
     ).toBe(1);
+  });
+});
+
+describe("addedIngressSourceRefusal", () => {
+  const step = (id: string, parentId?: string): WorkflowNode =>
+    omitUndefined({
+      id,
+      type: "action",
+      position: { x: 0, y: 0 },
+      data: {
+        label: id,
+        type: "action",
+        config: { actionType: "test/read" },
+      },
+      parentId,
+    });
+  const frame = (id: string): WorkflowNode => ({
+    id,
+    type: "group",
+    position: { x: 0, y: 0 },
+    data: { label: id.toUpperCase(), type: "group", config: {} },
+  });
+  // Group A ends at two members and Group B starts at two, with nothing
+  // connecting them yet.
+  const nodes = [
+    step("x"),
+    frame("a"),
+    step("a1", "a"),
+    step("a2", "a"),
+    frame("b"),
+    step("b1", "b"),
+    step("b2", "b"),
+  ];
+
+  it("allows fan-out from the one source port a Group is entered from", () => {
+    const edges = [{ id: "x-b1", source: "x", target: "b1" }];
+    const additions = fanOutStoreEdges({
+      nodes,
+      edges,
+      sourceId: "x",
+      targetId: "b2",
+      sourceHandle: undefined,
+    });
+
+    expect(additions).toEqual([
+      { source: "x", target: "b2", sourceHandle: undefined },
+    ]);
+    expect(addedIngressSourceRefusal({ nodes, edges, additions })).toBeNull();
+  });
+
+  it("refuses a Cartesian product of Group exits and Group entries", () => {
+    const additions = fanOutStoreEdges({
+      nodes,
+      edges: [],
+      sourceId: "a",
+      targetId: "b",
+      sourceHandle: undefined,
+    });
+
+    expect(additions).toHaveLength(4);
+    expect(addedIngressSourceRefusal({ nodes, edges: [], additions })).toBe(
+      'This connection would enter the Group "B" from 2 outlets. A Group is entered from one outlet.'
+    );
+  });
+
+  it("leaves a Group already entered from two ports to Publish", () => {
+    const edges = [
+      { id: "x-b1", source: "x", target: "b1" },
+      { id: "a1-b1", source: "a1", target: "b1" },
+    ];
+    const additions = [{ source: "x", target: "b2" }];
+
+    expect(addedIngressSourceRefusal({ nodes, edges, additions })).toBeNull();
+    expect(
+      groupContractViolations({ nodes, edges }).map((item) => item.rule)
+    ).toContain("multiple_ingress_sources");
   });
 });

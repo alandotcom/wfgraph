@@ -5,16 +5,24 @@
  * A draft that breaks these rules still saves. No message quotes a config value.
  */
 
-import { compact } from "es-toolkit/array";
-import { isConditionActionNode } from "#src/conditions/condition-branch";
+import { compact, uniq } from "es-toolkit/array";
+import {
+  getConditionBranchDisplayLabel,
+  isConditionActionNode,
+} from "#src/conditions/condition-branch";
 import { type AndJoin, andJoinArms } from "#src/graph/and-join";
 import {
   analyzeGroupBoundary,
+  analyzeGroupBoundaryById,
+  type GroupBoundary,
+  type GroupBoundaryEdge,
   type GroupGraphNode,
+  type GroupPort,
   isGroupNode,
 } from "#src/graph/group-boundary";
 import { nodeLabel } from "#src/graph/group-structure";
 import { isEventSplitActionNode } from "#src/graph/node-config";
+import { eventSplitOutletEvent } from "#src/lifecycle/event-split";
 import type { WorkflowEdge } from "#src/graph/types";
 
 export type GroupContractRule =
@@ -66,6 +74,28 @@ function labelOf(
 ): string {
   const node = nodeById.get(nodeId);
   return node ? nodeLabel(node) : nodeId;
+}
+
+/**
+ * A source port as a message names it: the quoted step label, and the Condition
+ * branch or Event Split outlet when the port's handle names one.
+ */
+function portLabel(
+  port: GroupPort,
+  nodeById: ReadonlyMap<string, GroupGraphNode>
+): string {
+  const step = `"${labelOf(port.nodeId, nodeById)}"`;
+  const outlet =
+    getConditionBranchDisplayLabel(port.handle) ??
+    eventSplitOutletEvent(port.handle);
+  return outlet === null ? step : `the "${outlet}" outlet of ${step}`;
+}
+
+/** Whether stored edges enter a Group from more than one outside source port. */
+function entersFromSeveralPorts(
+  boundary: Pick<GroupBoundary<GroupBoundaryEdge>, "externalIngress">
+): boolean {
+  return boundary.externalIngress.length > 1;
 }
 
 /**
@@ -137,7 +167,7 @@ function ruleBreaksForMembers(input: {
         rule: "disallowed_member",
         message: `${groupName} cannot contain an Event Split ("${nodeLabel(member)}")`,
       })),
-    externalIngress.length > 1
+    entersFromSeveralPorts(boundary)
       ? {
           rule: "multiple_ingress_sources",
           message: `${groupName} is entered from ${externalIngress.length} outlets outside it. Connect the Group from one outlet`,
@@ -153,6 +183,54 @@ function ruleBreaksForMembers(input: {
       joinRuleBreaks({ groupName, join, memberIds, nodeById })
     ),
   ] satisfies Array<GroupRuleBreak | undefined>);
+}
+
+/**
+ * Why the editor refuses to add the stored edges `additions` to `edges`: they
+ * would enter a Group from more outside source ports than it is entered from
+ * now, and from more than one. Null when every Group they touch keeps one
+ * source port, or keeps the ports it already had. Adding an edge from a Group's
+ * existing source port onto another member is a fan-out and is never refused.
+ */
+export function addedIngressSourceRefusal(input: {
+  nodes: readonly GroupGraphNode[];
+  edges: readonly GroupBoundaryEdge[];
+  additions: readonly GroupBoundaryEdge[];
+}): string | null {
+  const nodeById = new Map(input.nodes.map((node) => [node.id, node]));
+  const enteredGroups = uniq(
+    input.additions.flatMap((edge) => {
+      const parentId = nodeById.get(edge.target)?.parentId;
+      return parentId !== undefined && isGroupNode(nodeById.get(parentId))
+        ? [parentId]
+        : [];
+    })
+  );
+  const after = [...input.edges, ...input.additions];
+  for (const groupId of enteredGroups) {
+    const before = analyzeGroupBoundaryById({
+      nodes: input.nodes,
+      edges: input.edges,
+      groupId,
+    });
+    const withAdditions = analyzeGroupBoundaryById({
+      nodes: input.nodes,
+      edges: after,
+      groupId,
+    });
+    if (
+      !entersFromSeveralPorts(withAdditions) ||
+      withAdditions.externalIngress.length <= before.externalIngress.length
+    ) {
+      continue;
+    }
+    const groupName = `"${labelOf(groupId, nodeById)}"`;
+    const [current] = before.externalIngress;
+    return current === undefined
+      ? `This connection would enter the Group ${groupName} from ${withAdditions.externalIngress.length} outlets. A Group is entered from one outlet.`
+      : `The Group ${groupName} is already entered from ${portLabel(current, nodeById)}. A Group is entered from one outlet, so remove that connection first.`;
+  }
+  return null;
 }
 
 /**

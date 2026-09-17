@@ -33,20 +33,20 @@ import {
 } from "#src/graph/workflow-layout-geometry";
 
 /**
- * The members a connection onto the frame's inlet reaches: every member an
- * ingress edge enters, and every member no stored edge enters at all, in member
- * order. Empty when the boundary has no members.
+ * The members a connection onto the frame's inlet reaches, in member order.
+ * Once stored edges enter the Group, those are exactly the members they enter.
+ * A Group nothing enters yet is entered at every member no interior edge
+ * reaches. Empty when the boundary has no members.
  */
 function groupEntryIds(boundary: GroupBoundary<WorkflowEdge>): string[] {
   const entered = new Set(
     boundary.internalEntryPorts.map((port) => port.nodeId)
   );
-  const reached = new Set(
-    [...boundary.interiorEdges, ...boundary.ingressEdges].map(
-      (edge) => edge.target
-    )
-  );
-  return boundary.memberIds.filter((id) => entered.has(id) || !reached.has(id));
+  if (entered.size > 0) {
+    return boundary.memberIds.filter((id) => entered.has(id));
+  }
+  const reached = new Set(boundary.interiorEdges.map((edge) => edge.target));
+  return boundary.memberIds.filter((id) => !reached.has(id));
 }
 
 /**
@@ -229,7 +229,8 @@ export function resolveStoredSources(
  * Store edges a connection onto `targetId` would add: a Group inlet fans out
  * onto every entry, and a Group outlet fans out from every exit. A Condition
  * branch handle is stored only on an exit that is a Condition. Empty means the
- * painted connection already exists.
+ * painted connection already exists. A connection that would enter a Group from
+ * a second outside outlet is `addedIngressSourceRefusal`'s to refuse.
  */
 export function fanOutStoreEdges(input: {
   nodes: readonly GroupGraphNode[];

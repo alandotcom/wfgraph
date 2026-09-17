@@ -39,7 +39,7 @@ const graph = {
     { id: "group_1", data: { type: "group" } },
     { id: "child", parentId: "group_1", data: { type: "action" } },
   ],
-  edges: [{ id: "trigger-group_1" }],
+  edges: [{ id: "trigger-group_1", target: "child" }],
 };
 
 function runAddress(executionId: string) {
@@ -359,14 +359,14 @@ describe("recovery", () => {
     expect(selectionInGraph(kept, graph)).toBe(kept);
   });
 
-  it("limits a scope to what it shows: members on a Group, the rest on the overview", () => {
+  it("limits a scope to what it shows: members and the edges entering them on a Group, the rest on the overview", () => {
     expect(
       graphInScope(graph, { kind: "overview" }).nodes.map((node) => node.id)
     ).toEqual(["trigger", "group_1"]);
     expect(graphInScope(graph, { kind: "overview" }).edges).toBe(graph.edges);
     expect(graphInScope(graph, { kind: "group", groupId: "group_1" })).toEqual({
       nodes: [graph.nodes[2]],
-      edges: [],
+      edges: graph.edges,
     });
     const flat = { nodes: [graph.nodes[0]], edges: [] };
     expect(graphInScope(flat, { kind: "overview" })).toBe(flat);
