@@ -39,6 +39,7 @@ import {
   comparisonRevealContextAtom,
 } from "./changes-summary";
 import { ConditionBrowse, ConditionFocus } from "./condition-reveal";
+import { EventSplitBrowse } from "./event-split-reveal";
 import { GroupBrowse, GroupFocusSections } from "./group-browse";
 import { LifecycleBrowse } from "./lifecycle-browse";
 import { LifecycleFocus } from "./lifecycle-focus";
@@ -51,6 +52,7 @@ import {
 import {
   matchChangesSubject,
   matchConditionSubject,
+  matchEventSplitSubject,
   matchGroupSubject,
   matchLifecycleSubject,
   matchPanelSubject,
@@ -60,6 +62,7 @@ import {
   type RevealMatchInput,
   type RevealSubject,
 } from "./reveal-subject";
+import { unwindToInspectedOrigin } from "./reveal-origin";
 import { RunsBody, RunsHeader, unwindRuns } from "./runs-browse";
 import { StepBrowse } from "./step-browse";
 
@@ -341,6 +344,7 @@ const STEP_KIND: RevealKind = {
   header: { owner: "shell", model: stepHeaderModel },
   Browse: StepBrowse,
   Focus: StepFocus,
+  unwind: unwindToInspectedOrigin,
   focusReturnTarget: canvasNodeElement,
   shellOwnsScroll: true,
   focusWidth: "standard",
@@ -389,9 +393,28 @@ const LIFECYCLE_KIND: RevealKind = {
   header: { owner: "shell", model: lifecycleHeaderModel },
   Browse: LifecycleBrowse,
   Focus: LifecycleFocus,
+  unwind: unwindToInspectedOrigin,
   focusReturnTarget: canvasNodeElement,
   shellOwnsScroll: true,
   focusWidth: "wide",
+};
+
+/**
+ * A Draft Event Split: which Event source its outlets come from, with the
+ * action that opens that source, and every outlet with its Event identity and
+ * stored connection. Browse is its only level, because its outlets follow the
+ * graph above it.
+ */
+const EVENT_SPLIT_KIND: RevealKind = {
+  id: "eventSplit",
+  match: matchEventSplitSubject,
+  regionLabel: "Event Split inspector",
+  header: { owner: "shell", model: stepHeaderModel },
+  Browse: EventSplitBrowse,
+  Focus: null,
+  focusReturnTarget: canvasNodeElement,
+  shellOwnsScroll: true,
+  focusWidth: "standard",
 };
 
 /**
@@ -458,6 +481,7 @@ const REVEAL_KINDS: readonly RevealKind[] = [
   STEP_KIND,
   CONDITION_KIND,
   GROUP_KIND,
+  EVENT_SPLIT_KIND,
   LIFECYCLE_KIND,
   RUNS_KIND,
   CHANGES_KIND,
@@ -468,6 +492,7 @@ const REVEAL_KINDS_BY_ID: Readonly<Record<RevealKindId, RevealKind>> = {
   step: STEP_KIND,
   condition: CONDITION_KIND,
   group: GROUP_KIND,
+  eventSplit: EVENT_SPLIT_KIND,
   lifecycle: LIFECYCLE_KIND,
   runs: RUNS_KIND,
   changes: CHANGES_KIND,

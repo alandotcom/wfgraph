@@ -8,6 +8,7 @@ import { uniq } from "es-toolkit/array";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { isConditionNode } from "@wfgraph/shared/graph/node-config";
+import { isEventSplitNode } from "@wfgraph/shared/lifecycle/event-split";
 import { runEvidenceNodeId } from "#src/lib/run-node-evidence";
 import type {
   CanvasSelection,
@@ -22,6 +23,7 @@ export type RevealKindId =
   | "step"
   | "condition"
   | "group"
+  | "eventSplit"
   | "lifecycle"
   | "runs"
   | "changes"
@@ -169,6 +171,32 @@ export function matchGroupSubject(
 }
 
 /**
+ * A Draft Event Split selected alone. It offers Browse only, because its
+ * outlets follow the Events that reach it, and the camera keeps its outlet
+ * handles and the labels that fit in view the same way a Condition does.
+ */
+export function matchEventSplitSubject(
+  input: RevealMatchInput
+): RevealSubject | null {
+  if (input.workspace !== "draft") {
+    return null;
+  }
+  const { nodes, edges } = selectedGraph(input);
+  const [onlyNode] = nodes;
+  if (nodes.length !== 1 || edges.length > 0 || !isEventSplitNode(onlyNode)) {
+    return null;
+  }
+  return {
+    kind: "eventSplit",
+    workspace: input.workspace,
+    key: `node:${onlyNode.id}`,
+    nodeId: onlyNode.id,
+    placement: { kind: "node-outlets", nodeId: onlyNode.id },
+    levels: ["browse"],
+  };
+}
+
+/**
  * The Draft Lifecycle Node selected alone: its policy summary in Browse and the
  * sectioned policy editor in Focus.
  */
@@ -289,7 +317,7 @@ export function matchChangesSubject(
 
 /**
  * The node config panel at Browse, in Draft alone: any selection no other kind
- * matches, such as an Event Split, a connection, or several objects.
+ * matches, such as a connection or several objects.
  */
 export function matchPanelSubject(
   input: RevealMatchInput

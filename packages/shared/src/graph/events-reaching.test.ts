@@ -14,6 +14,7 @@ import type {
 } from "#src/extensions/catalog";
 import {
   arrivingEventCanBeAbsent,
+  arrivingEventSources,
   eventsReaching,
 } from "#src/graph/events-reaching";
 import type { WorkflowEdge, WorkflowNode } from "#src/graph/types";
@@ -616,6 +617,83 @@ describe("eventsReaching", () => {
         edge("e2", "action-2", "action-1"),
       ])
     ).toEqual([]);
+  });
+});
+
+describe("arrivingEventSources", () => {
+  const sourcesAt = (
+    targetNodeId: string,
+    nodes: WorkflowNode[],
+    edges: WorkflowEdge[]
+  ) => arrivingEventSources({ targetNodeId, nodes, edges, catalog });
+
+  it("names the Lifecycle Node's Started side through a step that decides nothing", () => {
+    const nodes = [
+      entryNode({ startEvents: [CREATED] }),
+      actionNode("action-1"),
+      actionNode("split-1", BUILT_IN_ACTION_IDS.eventSplit),
+    ];
+    const edges = [
+      edge("e1", "lifecycle-1", "action-1", LIFECYCLE_STARTED_HANDLE),
+      edge("e2", "action-1", "split-1"),
+    ];
+
+    expect(sourcesAt("split-1", nodes, edges)).toEqual([
+      { kind: "lifecycle", nodeId: "lifecycle-1", side: "started" },
+    ]);
+  });
+
+  it("names the Lifecycle Node's Canceled side", () => {
+    const nodes = [
+      entryNode({ cancelEvents: [CANCELED] }),
+      actionNode("split-1", BUILT_IN_ACTION_IDS.eventSplit),
+    ];
+    const edges = [
+      edge("e1", "lifecycle-1", "split-1", LIFECYCLE_CANCELED_HANDLE),
+    ];
+
+    expect(sourcesAt("split-1", nodes, edges)).toEqual([
+      { kind: "lifecycle", nodeId: "lifecycle-1", side: "canceled" },
+    ]);
+  });
+
+  it("names the nearest event-mode Wait in place of the Lifecycle Node above it", () => {
+    const nodes = [
+      entryNode({ startEvents: [CREATED] }),
+      waitNode("wait-1", [CANCELED]),
+      actionNode("split-1", BUILT_IN_ACTION_IDS.eventSplit),
+    ];
+    const edges = [
+      edge("e1", "lifecycle-1", "wait-1", LIFECYCLE_STARTED_HANDLE),
+      edge("e2", "wait-1", "split-1"),
+    ];
+
+    expect(sourcesAt("split-1", nodes, edges)).toEqual([
+      { kind: "wait", nodeId: "wait-1" },
+    ]);
+  });
+
+  it("names each source once across the arms of a join", () => {
+    const nodes = [
+      entryNode({ startEvents: [CREATED] }),
+      actionNode("left"),
+      actionNode("right"),
+      actionNode("join"),
+    ];
+    const edges = [
+      edge("e1", "lifecycle-1", "left", LIFECYCLE_STARTED_HANDLE),
+      edge("e2", "lifecycle-1", "right", LIFECYCLE_STARTED_HANDLE),
+      edge("e3", "left", "join"),
+      edge("e4", "right", "join"),
+    ];
+
+    expect(sourcesAt("join", nodes, edges)).toEqual([
+      { kind: "lifecycle", nodeId: "lifecycle-1", side: "started" },
+    ]);
+  });
+
+  it("names nothing for a node no source reaches", () => {
+    expect(sourcesAt("action-1", [actionNode("action-1")], [])).toEqual([]);
   });
 });
 

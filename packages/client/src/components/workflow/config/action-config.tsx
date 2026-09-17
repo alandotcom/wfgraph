@@ -26,7 +26,11 @@ import {
   TooltipTrigger,
 } from "#src/components/ui/tooltip";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
-import { useEventSplitOutlets } from "#src/lib/event-split-outlets";
+import {
+  EVENT_SPLIT_HEADING,
+  EVENT_SPLIT_NO_SOURCE_TEXT,
+  useEventSplitOutlets,
+} from "#src/lib/event-split-outlets";
 import {
   type ConditionSelectableField,
   getUpstreamConditionFields,
@@ -219,12 +223,11 @@ function EventSplitFields() {
 
   return (
     <div className="space-y-3 rounded-md border bg-muted/30 p-3">
-      <p className="font-medium text-sm">Splits On Event</p>
+      <p className="font-medium text-sm">{EVENT_SPLIT_HEADING}</p>
 
       {outlets.length === 0 ? (
         <p className="text-muted-foreground text-xs">
-          No Event reaches this node yet. Connect it below the Lifecycle Node,
-          and it draws one outlet per Start Event.
+          {EVENT_SPLIT_NO_SOURCE_TEXT}
         </p>
       ) : (
         <>

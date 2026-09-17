@@ -7,6 +7,7 @@ import {
   isOrdinaryStep,
   matchChangesSubject,
   matchConditionSubject,
+  matchEventSplitSubject,
   matchGroupSubject,
   matchLifecycleSubject,
   matchPanelSubject,
@@ -165,11 +166,34 @@ describe("matchLifecycleSubject", () => {
   });
 });
 
+describe("matchEventSplitSubject", () => {
+  it("matches a Draft Event Split alone, at Browse only with its outlets placed", () => {
+    expect(matchEventSplitSubject(input("draft", ["split"]))).toEqual({
+      kind: "eventSplit",
+      workspace: "draft",
+      key: "node:split",
+      nodeId: "split",
+      placement: { kind: "node-outlets", nodeId: "split" },
+      levels: ["browse"],
+    });
+  });
+
+  it("refuses other steps, several objects, and other workspaces", () => {
+    expect(matchEventSplitSubject(input("draft", ["send"]))).toBeNull();
+    expect(matchEventSplitSubject(input("draft", ["condition"]))).toBeNull();
+    expect(
+      matchEventSplitSubject(input("draft", ["split", "send"]))
+    ).toBeNull();
+    expect(matchEventSplitSubject(input("runs", ["split"]))).toBeNull();
+    expect(matchEventSplitSubject(input("changes", ["split"]))).toBeNull();
+  });
+});
+
 describe("matchPanelSubject", () => {
   it("shows every other Draft selection the graph holds, at Browse only", () => {
-    expect(matchPanelSubject(input("draft", ["split"]))).toMatchObject({
+    expect(matchPanelSubject(input("draft", ["send", "wait"]))).toMatchObject({
       kind: "panel",
-      nodeId: "split",
+      nodeId: null,
       levels: ["browse"],
     });
     expect(matchPanelSubject(input("draft", [], ["e1"]))).toMatchObject({

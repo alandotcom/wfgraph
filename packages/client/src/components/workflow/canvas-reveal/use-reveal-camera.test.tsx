@@ -20,9 +20,17 @@ import {
   workspaceAddressId,
 } from "#src/lib/workflow-navigation-state";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
+import {
+  activeWorkspaceAddressAtom,
+  openInspectorSectionAtom,
+} from "#src/lib/workflow-workspace-navigation";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
-import { showCanvasRevealLevelAtom } from "./canvas-reveal-state";
+import {
+  canvasRevealAtom,
+  showCanvasRevealLevelAtom,
+} from "./canvas-reveal-state";
+import { unwindToInspectedOrigin } from "./reveal-origin";
 import { requestRevealPlacementAtom } from "./reveal-requests";
 import { useRevealCamera } from "./use-reveal-camera";
 import {
@@ -491,5 +499,48 @@ describe("useRevealCamera", () => {
       camera.store.set(showCanvasRevealLevelAtom, "closed")
     );
     expect(camera.moves).toHaveLength(1);
+  });
+
+  it("selects the node a jump started from on Back and places it like any other subject", async () => {
+    const camera = renderCamera();
+    await camera.settle();
+    await camera.run(() => camera.store.set(selectOnlyNodeAtom, "near"));
+
+    await camera.run(() =>
+      camera.store.set(openInspectorSectionAtom, {
+        address: camera.store.get(activeWorkspaceAddressAtom),
+        nodeId: "far",
+        section: "connections",
+        origin: { nodeId: "near" },
+      })
+    );
+    await camera.finishAnimation();
+    expect(camera.moves).toHaveLength(1);
+
+    const subject = camera.store.get(canvasRevealAtom).subject;
+    if (!subject) {
+      throw new Error("Reveal shows no subject");
+    }
+    const start = camera.viewport();
+    camera.motion.moves.length = 0;
+    await camera.run(() =>
+      unwindToInspectedOrigin({
+        subject,
+        level: "focus",
+        store: camera.store,
+        unwindLevel: () => {
+          throw new Error("Back unwound a level");
+        },
+        returnFocusOnClose: () => undefined,
+        replaceRouteSearch: () => undefined,
+      })
+    );
+    await camera.finishAnimation();
+
+    expect(camera.store.get(canvasRevealAtom).subject?.nodeId).toBe("near");
+    // Placing "far" left "near" past the canvas's left edge, so Back moves the
+    // camera once to show it.
+    expect(camera.motion.moves).toHaveLength(1);
+    expectSteadyCamera(camera.motion.moves, start);
   });
 });

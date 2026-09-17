@@ -419,6 +419,40 @@ describe("desktop Reveal level", () => {
     });
   });
 
+  it("records an origin for Back to return to, and keeps it across that object's own section changes", () => {
+    const store = draftStore();
+    const draft = store.get(activeWorkspaceAddressAtom);
+
+    store.set(openInspectorSectionAtom, {
+      address: draft,
+      nodeId: "child_step",
+      section: "connections",
+      origin: { nodeId: "draft_step" },
+    });
+    expect(store.get(activeRevealPresentationAtom).inspectedOrigin).toEqual({
+      nodeId: "draft_step",
+    });
+
+    // A later call for the same inspected node, with no origin named, leaves
+    // the recorded origin alone.
+    store.set(openInspectorSectionAtom, {
+      address: draft,
+      nodeId: "child_step",
+      section: "validation",
+    });
+    expect(store.get(activeRevealPresentationAtom).inspectedOrigin).toEqual({
+      nodeId: "draft_step",
+    });
+
+    // Moving to a different object clears it, origin or not.
+    store.set(openInspectorSectionAtom, {
+      address: draft,
+      nodeId: "other_child_step",
+      section: "connections",
+    });
+    expect(store.get(activeRevealPresentationAtom).inspectedOrigin).toBeNull();
+  });
+
   it("drops a scroll read for a step the scope no longer inspects", () => {
     const store = draftStore();
     store.set(selectOnlyNodeAtom, "draft_step");

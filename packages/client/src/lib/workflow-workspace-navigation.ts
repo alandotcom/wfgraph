@@ -16,6 +16,7 @@ import {
   updateScopeNavigation,
   withCamera,
   withDesktopRevealLevel,
+  withInspectedOrigin,
   withInspectorScroll,
   withInspectorSection,
   withChosenExecution,
@@ -28,6 +29,7 @@ import {
   type CanvasSelection,
   type DesktopScopePresentation,
   type FormFactor,
+  type InspectedOrigin,
   type NavigationGraph,
   type OpenRevealLevel,
   type RevealLevel,
@@ -334,30 +336,74 @@ export const recordInspectorSectionAtom = atom(
  * Focus section its inspector shows, and open Canvas Reveal at Focus. One
  * navigation write holds all three, so the selection cannot start the new
  * object's section over after the section is recorded.
+ *
+ * `origin` records where this jump started, for Back to return to. A call that
+ * names no origin keeps the origin of a node that was already inspected, so
+ * moving between that node's own sections keeps the way back.
  */
 export const openInspectorSectionAtom = atom(
   null,
   (
     _get,
     set,
-    input: { address: WorkspaceAddress; nodeId: string; section: string }
+    input: {
+      address: WorkspaceAddress;
+      nodeId: string;
+      section: string;
+      origin?: InspectedOrigin | undefined;
+    }
   ) => {
-    const select = revealFollowsSelection(input.address.key.workspace)
-      ? withSelectionOpeningReveal
-      : withSelection;
     set(writeNavigationAtom, input.address.workflowId, (navigation) =>
       updateScopeNavigation(navigation, input.address, (scope) =>
         withDesktopRevealLevel(
-          withInspectorSection(
-            select(scope, { nodeIds: [input.nodeId], edgeIds: [] }),
-            input.section
-          ),
+          withInspectorSection(selectFromOrigin(scope, input), input.section),
           "focus"
         )
       )
     );
   }
 );
+
+/**
+ * Select the node `nodeId` alone in a named address, record `origin` as where
+ * the jump started, and open Canvas Reveal at Browse, in one navigation write.
+ */
+export const openNodeRevealFromOriginAtom = atom(
+  null,
+  (
+    _get,
+    set,
+    input: {
+      address: WorkspaceAddress;
+      nodeId: string;
+      origin: InspectedOrigin;
+    }
+  ) => {
+    set(writeNavigationAtom, input.address.workflowId, (navigation) =>
+      updateScopeNavigation(navigation, input.address, (scope) =>
+        withDesktopRevealLevel(selectFromOrigin(scope, input), "browse")
+      )
+    );
+  }
+);
+
+/** Select `nodeId` alone, then record `origin` when one is named. */
+function selectFromOrigin(
+  scope: ScopeNavigation,
+  input: {
+    address: WorkspaceAddress;
+    nodeId: string;
+    origin?: InspectedOrigin | undefined;
+  }
+): ScopeNavigation {
+  const select = revealFollowsSelection(input.address.key.workspace)
+    ? withSelectionOpeningReveal
+    : withSelection;
+  const selected = select(scope, { nodeIds: [input.nodeId], edgeIds: [] });
+  return input.origin === undefined
+    ? selected
+    : withInspectedOrigin(selected, input.origin);
+}
 
 /**
  * Open Canvas Reveal for a named address at `level`, or at the level the
