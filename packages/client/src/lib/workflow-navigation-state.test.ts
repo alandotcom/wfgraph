@@ -21,6 +21,7 @@ import {
   withDesktopRevealLevel,
   withInspectorScroll,
   withInspectorSection,
+  withChosenExecution,
   withoutDraftSelections,
   withSelection,
   withSelectionOpeningReveal,
@@ -261,6 +262,41 @@ describe("selection", () => {
       "closed"
     );
     expect(withoutDraftSelections(cleared)).toBe(cleared);
+  });
+});
+
+describe("chosen run node executions", () => {
+  const scope = scopeNavigationAt(EMPTY_WORKFLOW_NAVIGATION, runAddress("e"));
+  const execution = { nodeId: "step", logId: "log_1" };
+
+  it("keeps a chosen execution while the selection holds its node alone", () => {
+    const chosen = withChosenExecution(
+      withSelection(scope, { nodeIds: ["step"], edgeIds: [] }),
+      execution
+    );
+
+    expect(chosen.chosenExecution).toEqual(execution);
+    expect(withChosenExecution(chosen, { ...execution })).toBe(chosen);
+    expect(
+      withSelection(chosen, { nodeIds: ["step"], edgeIds: [] }).chosenExecution
+    ).toEqual(execution);
+    expect(
+      withSelection(chosen, { nodeIds: ["other"], edgeIds: [] }).chosenExecution
+    ).toBeNull();
+    expect(
+      withSelection(chosen, { nodeIds: ["step", "other"], edgeIds: [] })
+        .chosenExecution
+    ).toBeNull();
+    expect(withSelection(chosen, EMPTY_SELECTION).chosenExecution).toBeNull();
+  });
+
+  it("keeps an execution chosen with nothing selected until something is selected", () => {
+    const chosen = withChosenExecution(scope, execution);
+
+    expect(withSelection(chosen, EMPTY_SELECTION)).toBe(chosen);
+    expect(
+      withSelection(chosen, { nodeIds: ["other"], edgeIds: [] }).chosenExecution
+    ).toBeNull();
   });
 });
 

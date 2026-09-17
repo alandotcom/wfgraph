@@ -371,29 +371,55 @@ keeps each True and False label on its outgoing edges inside the usable canvas
 too when the label fits at that zoom. A label on an edge to a distant step stays
 off screen.
 
-**Runs** has Browse and no Focus. On the run list the header path names the
-workflow and Runs, and **Refresh** and **Clear All** sit above the superseded
-count, the Refused Starts, the Cancellation Failures, and the run rows. Selecting
-a run adds a browser history entry and puts the graph version the run pinned on
-the canvas. The header then titles the run by its list number, shows its status,
-and offers **Back**. Browse holds the run's start identity, outcome, timing, and
-entity, then its active waits with **Resume now**, **Cancel**, exit details, the
-failure summary, the node journey, and activity. **Back** and Escape on a run
-replace the history entry with the run list and put focus on that run's row, or
-on the header title when the list shows no row for it. A run past the newest 50,
-or one that leaves the list, keeps its view and says why it is not listed. A
-node selected on a run's canvas shows its evidence in place of the overview.
-Each run list remembers whether it shows superseded runs.
+**Runs** has a Browse of its own and shows a run node's evidence in Focus. On
+the run list the header path names the workflow and Runs, and **Refresh** and
+**Clear All** sit above the superseded count, the Refused Starts, the
+Cancellation Failures, and the run rows. Selecting a run adds a browser history
+entry and puts the graph version the run pinned on the canvas. The header then
+titles the run by its list number, shows its status, and offers **Back**.
+Browse holds the run's start identity, outcome, timing, and entity, then its
+active waits with **Resume now**, **Cancel**, exit details, the failure summary,
+the node journey, and activity. **Back** and Escape on a run replace the history
+entry with the run list and put focus on that run's row, or on the header title
+when the list shows no row for it. A run past the newest 50, or one that leaves
+the list, keeps its view and says why it is not listed. Each run list remembers
+whether it shows superseded runs.
+
+Selecting a node on a run's canvas, or its entry in the node journey, opens
+Focus on that node's evidence. A journey entry for a Group member opens that
+Group's view with the member selected. The header adds the node to the path and
+shows the status of the execution on screen; **Show evidence** and **Return to
+run** switch levels. An execution is one time the run reached the node, such as
+a second pass through a branch run. Retries inside one execution leave no
+separate record, so an execution shows their final outcome, and Focus says so.
+Focus lists every execution of a node the run reached more than once, as
+"Execution N of M", and choosing one changes neither the canvas selection, the
+journey, nor the control that has focus. Each execution shows its status, start,
+finish and duration, its error or cancellation, the wait it holds with **Resume
+now**, the node's activity such as parking and resuming, its result, input and
+output, and the node's configuration in the graph the run pinned. Notices say
+when the node is no longer in that graph, when the graph is loading or could not
+be loaded, when an execution never finished, and when the run is still in
+progress and refreshing. A Group card has no evidence and keeps Browse. **Back**
+and Escape return to the run's Browse at the journey position it was left at,
+with focus on the journey entry or canvas node that opened Focus. A canvas click
+that opened Focus from a closed Reveal returns straight to Closed, and that
+opening and closing leave the saved open or closed preference as it was. A click
+on the empty canvas clears the evidence. Selecting another node replaces the
+evidence and shows its latest execution. The chosen execution is remembered for
+each run. On a phone the evidence replaces the run overview in the sheet, and
+its heading takes focus.
 
 Escape and **Back** take one step back as the shown object's kind defines it.
 For a step or Condition that step is one level: Focus to Browse to Closed. For a
-run it is the run list, and on the run list Escape closes Reveal. **Close**
-closes Reveal from any level. Escape belongs to an open select, combobox, menu, autocomplete, or
-dialog first. Opening Focus moves focus to the step title, returning to Browse
-puts focus on **Focus editor**, and closing returns focus to the canvas object or
-control that opened Browse. Closing keeps the canvas selection. Selecting a step
-again, or the chevron on the canvas's right edge, reopens the level Reveal was
-closed from. Cmd+B opens and closes Canvas Reveal. The level, the inspected step, the
+run node's evidence it is the run, for a run it is the run list, and on the run
+list Escape closes Reveal. **Close** closes Reveal from any level. Escape
+belongs to an open select, combobox, menu, autocomplete, or dialog first.
+Opening Focus moves focus to the step title, returning to Browse puts focus on
+**Focus editor**, and closing returns focus to the canvas object or control that
+opened Browse. Closing keeps the canvas selection. Selecting a step again, or
+the chevron on the canvas's right edge, reopens the level Reveal was closed
+from. Cmd+B opens and closes Canvas Reveal. The level, the inspected step, the
 inspector's scroll position, and the Lifecycle Focus section are remembered
 separately for Draft, each Group view, the run list, each run, and each
 comparison. Levels add no browser history.

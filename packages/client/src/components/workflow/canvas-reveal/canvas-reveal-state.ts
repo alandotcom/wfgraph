@@ -40,12 +40,15 @@ export type CanvasRevealState = {
 export const canvasRevealAtom = atom((get): CanvasRevealState => {
   const address = get(activeWorkspaceAddressAtom);
   const graph = get(presentedGraphAtom);
-  const subject = revealSubject({
-    workspace: address.key.workspace,
-    selection: get(activeSelectionAtom),
-    nodes: graph?.nodes ?? [],
-    edges: graph?.edges ?? [],
-  });
+  const subject = revealSubject(
+    {
+      workspace: address.key.workspace,
+      selection: get(activeSelectionAtom),
+      nodes: graph?.nodes ?? [],
+      edges: graph?.edges ?? [],
+    },
+    get
+  );
   return {
     address,
     addressId: workspaceAddressId(address),

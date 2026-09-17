@@ -204,7 +204,7 @@ describe("changesHeaderModel", () => {
       title: "Version 3 → proposed version 4",
       path: ["Reminders", "Version 3 → proposed version 4", "New"],
       showsBack: true,
-      focusLabel: "Compare fields",
+      focusToggleText: { browse: "Compare fields", focus: "Return to summary" },
     });
   });
 

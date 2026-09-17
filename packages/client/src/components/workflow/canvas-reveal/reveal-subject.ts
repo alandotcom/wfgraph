@@ -8,10 +8,12 @@ import { uniq } from "es-toolkit/array";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { isConditionNode } from "@wfgraph/shared/graph/node-config";
+import { runEvidenceNodeId } from "#src/lib/run-node-evidence";
 import type {
   CanvasSelection,
   OpenRevealLevel,
   RevealLevel,
+  ChosenRunExecution,
   WorkspaceView,
 } from "#src/lib/workflow-navigation-state";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
@@ -196,28 +198,47 @@ export function matchLifecycleSubject(
 }
 
 /**
- * Runs, at Browse only: the run list, or the run the route opens. It always
- * shows, placing the one selected node or else the whole graph.
+ * What the Runs kind matches against: the shared input, and the run node
+ * execution the address chose, which a run can inspect with nothing selected.
  */
-export function matchRunsSubject(
-  input: RevealMatchInput
-): RevealSubject | null {
+export type RunsMatchInput = RevealMatchInput & {
+  chosenExecution: ChosenRunExecution | null;
+};
+
+/**
+ * Runs: the run list, or the run the route opens. It always shows, placing the
+ * one selected node or else the whole graph. It offers Focus while it has a
+ * node's evidence to show, which a Group frame never has; a chosen execution of
+ * a node the canvas cannot select is placed as the whole graph.
+ */
+export function matchRunsSubject(input: RunsMatchInput): RevealSubject | null {
   if (input.workspace !== "runs") {
     return null;
   }
   const { nodes, edges } = selectedGraph(input);
   const onlyNodeId =
     nodes.length === 1 && edges.length === 0 ? nodes[0].id : null;
-  return {
-    kind: "runs",
-    workspace: input.workspace,
-    key: onlyNodeId ? `node:${onlyNodeId}` : "graph",
-    nodeId: onlyNodeId,
-    placement: onlyNodeId
-      ? { kind: "nodes", nodeIds: [onlyNodeId] }
-      : { kind: "graph" },
-    levels: ["browse"],
-  };
+  const evidenceNodeId = runEvidenceNodeId(input);
+  const levels: readonly OpenRevealLevel[] =
+    evidenceNodeId === null ? ["browse"] : ["browse", "focus"];
+  const base = { kind: "runs" as const, workspace: input.workspace, levels };
+  if (onlyNodeId !== null) {
+    return {
+      ...base,
+      key: `node:${onlyNodeId}`,
+      nodeId: onlyNodeId,
+      placement: { kind: "nodes", nodeIds: [onlyNodeId] },
+    };
+  }
+  if (evidenceNodeId !== null) {
+    return {
+      ...base,
+      key: `execution-node:${evidenceNodeId}`,
+      nodeId: evidenceNodeId,
+      placement: { kind: "graph" },
+    };
+  }
+  return { ...base, key: "graph", nodeId: null, placement: { kind: "graph" } };
 }
 
 /**

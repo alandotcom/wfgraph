@@ -1,10 +1,30 @@
-import type { ReactNode } from "react";
+import { useSetAtom } from "jotai";
+import { ArrowLeft } from "lucide-react";
+import { type ReactNode, useRef, useState } from "react";
+import { useAfterCommit } from "#src/hooks/effects";
 import { Button } from "#src/components/ui/button";
+import type { PinnedGraphState } from "#src/lib/run-node-evidence";
+import { clearRunNodeInspectionAtom } from "#src/lib/workflow-workspace-navigation";
+import {
+  useChooseRunExecution,
+  useInspectRunLog,
+  useRunNodeEvidence,
+} from "./use-run-node-evidence";
 import { WorkflowCancellationFailures } from "./workflow-cancellation-failures";
 import { WorkflowRefusedStarts } from "./workflow-refused-starts";
 import { WorkflowRunDetail } from "./workflow-run-detail";
+import { WorkflowRunNodeEvidence } from "./workflow-run-node-evidence";
+import {
+  getStatusLabel,
+  getStatusTextClass,
+  nodeKindLabel,
+} from "./workflow-run-shared";
 import { WorkflowRunsList } from "./workflow-runs-list";
-import { useWorkflowRuns, type WorkflowRunsState } from "./use-workflow-runs";
+import {
+  type OpenRun,
+  useWorkflowRuns,
+  type WorkflowRunsState,
+} from "./use-workflow-runs";
 
 /**
  * The row cap the server reads under, mirrored here for one sentence only: past
@@ -147,8 +167,117 @@ function RunsListHeader({ actions }: { actions?: ReactNode }) {
 }
 
 /**
+ * One open run in the configuration sheet: its overview, or, in its place, the
+ * evidence of the node the run inspects. The evidence heading takes focus when
+ * the node or execution it shows changes. Back from the evidence clears the
+ * canvas selection and returns focus to the journey entry that opened it.
+ */
+function SheetRun({
+  run,
+  pinnedGraph,
+  onBack,
+}: {
+  run: OpenRun;
+  pinnedGraph: PinnedGraphState;
+  onBack: () => void;
+}) {
+  const evidence = useRunNodeEvidence({ ...run, pinnedGraph });
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const inspectLog = useInspectRunLog();
+  const chooseExecution = useChooseRunExecution();
+  const clearInspection = useSetAtom(clearRunNodeInspectionAtom);
+  // The journey entry that opened the evidence, which takes focus on the way
+  // back while the evidence still shows that entry's node.
+  const [journeyOrigin, setJourneyOrigin] = useState<{
+    nodeId: string;
+    logId: string;
+  } | null>(null);
+  const [returnFocusLogId, setReturnFocusLogId] = useState<string | null>(null);
+
+  const shownKey =
+    evidence === null
+      ? null
+      : `${evidence.nodeId}|${evidence.shownExecution?.id ?? ""}`;
+  useAfterCommit(shownKey, () => {
+    if (shownKey !== null) {
+      headingRef.current?.focus();
+    }
+  });
+
+  if (evidence === null) {
+    return (
+      <WorkflowRunDetail
+        {...run}
+        focusLogId={returnFocusLogId}
+        focusSummaryOnMount={returnFocusLogId === null}
+        onBack={onBack}
+        onFocusRestored={() => setReturnFocusLogId(null)}
+        onSelectLog={(log) => {
+          setJourneyOrigin({ nodeId: log.nodeId, logId: log.id });
+          inspectLog(log, { opensFocus: false });
+        }}
+      />
+    );
+  }
+
+  const { shownExecution } = evidence;
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <header className="shrink-0 border-b bg-background px-3 py-3">
+        <div className="flex min-w-0 items-center gap-1">
+          <Button
+            aria-label="Back to run overview"
+            className="-ml-1 max-md:size-11"
+            onClick={() => {
+              setReturnFocusLogId(
+                journeyOrigin?.nodeId === evidence.nodeId
+                  ? journeyOrigin.logId
+                  : null
+              );
+              setJourneyOrigin(null);
+              clearInspection();
+            }}
+            size="icon-sm"
+            type="button"
+            variant="ghost"
+          >
+            <ArrowLeft />
+          </Button>
+          <h2
+            className="min-w-0 break-words font-semibold text-sm outline-none"
+            ref={headingRef}
+            tabIndex={-1}
+          >
+            {evidence.title}
+          </h2>
+        </div>
+        <p className="mt-1 flex flex-wrap items-baseline gap-x-1.5 pl-6 text-muted-foreground text-xs">
+          <span>{nodeKindLabel(evidence.nodeType)}</span>
+          <span aria-hidden="true">·</span>
+          {shownExecution ? (
+            <span className={getStatusTextClass(shownExecution.status)}>
+              {getStatusLabel(shownExecution.status)}
+            </span>
+          ) : (
+            <span>Not run</span>
+          )}
+        </p>
+      </header>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-4">
+        <WorkflowRunNodeEvidence
+          evidence={evidence}
+          isResuming={run.isResuming}
+          onChooseExecution={(logId) => chooseExecution(evidence.nodeId, logId)}
+          onResume={run.onResume}
+        />
+      </div>
+    </div>
+  );
+}
+
+/**
  * The Runs surface in the configuration sheet, under the sheet's own header.
- * Canvas Reveal shows the same reads through `RunsBrowse`.
+ * Canvas Reveal shows the same reads through `RunsBody`.
  */
 export function WorkflowRuns({ listActions }: { listActions?: ReactNode }) {
   const runs = useWorkflowRuns();
@@ -186,7 +315,13 @@ export function WorkflowRuns({ listActions }: { listActions?: ReactNode }) {
         </div>
       );
     case "run":
-      return <WorkflowRunDetail {...screen.run} onBack={runs.exitRun} />;
+      return (
+        <SheetRun
+          onBack={runs.exitRun}
+          pinnedGraph={screen.pinnedGraph}
+          run={screen.run}
+        />
+      );
   }
 
   if (screen.executions.length === 0) {
