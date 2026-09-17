@@ -6,8 +6,6 @@ import {
   edgesAtom,
   installRestoredWorkflowAtom,
   nodesAtom,
-  clearSelectionAtom,
-  selectedNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import {
   beginWorkflowComparisonRequestAtom,
@@ -30,7 +28,6 @@ import {
 } from "#src/lib/workflow-save-store";
 import { rememberedRouteSearchesAtom } from "#src/lib/workflow-workspace-navigation";
 import { can } from "#src/lib/authorization";
-import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
@@ -44,8 +41,6 @@ export function useWorkflowComparisonActions() {
   const navigate = useNavigate({ from: "/workflows/$workflowId" });
   const rememberedSearches = useAtomValue(rememberedRouteSearchesAtom);
   const saveWorkflow = useSetAtom(saveWorkflowAtom);
-  const selectedNodeId = useAtomValue(selectedNodeAtom);
-  const clearSelection = useSetAtom(clearSelectionAtom);
   const beginRequest = useSetAtom(beginWorkflowComparisonRequestAtom);
   const settleRequest = useSetAtom(settleWorkflowComparisonRequestAtom);
   const isPending = useAtomValue(isComparisonPendingAtom);
@@ -68,6 +63,9 @@ export function useWorkflowComparisonActions() {
    * that version, `current` against the current publication, and `force`
    * refreshes the installed comparison against its own base. A base version
    * the server does not have settles with its id, which route recovery answers.
+   * A response for a base other than the one the Changes route names by then
+   * is dropped, and `WorkspaceRouteSync` drops selected ids the installed
+   * comparison graph does not hold.
    */
   const openComparison = async (options?: {
     baseVersionId?: string;
@@ -89,7 +87,7 @@ export function useWorkflowComparisonActions() {
       (options?.force && !options.current
         ? session?.payload.baseVersion?.id
         : undefined);
-    const epoch = beginRequest(workflowId);
+    const epoch = beginRequest(workflowId, baseVersionId ?? null);
     let outcome: "success" | "error" = "success";
     let missingBaseVersionId: string | undefined;
     try {
@@ -104,25 +102,13 @@ export function useWorkflowComparisonActions() {
           draftGraph: toSerializedGraph(graph),
         })
       );
-      const installed = install({
+      install({
         workflowId,
         epoch,
         payload,
         preserveSession: Boolean(session),
         selectedHistoryVersionId: baseVersionId,
       });
-      if (
-        installed &&
-        selectedNodeId &&
-        !toWorkflowGraphData(payload.baseGraph).nodes.some(
-          (node) => node.id === selectedNodeId
-        ) &&
-        !toWorkflowGraphData(payload.draftGraph).nodes.some(
-          (node) => node.id === selectedNodeId
-        )
-      ) {
-        clearSelection();
-      }
     } catch (error) {
       outcome = "error";
       if (isNotFoundError(error)) {

@@ -5,6 +5,7 @@ import {
   CONDITION_RULES_TARGET_ID,
   effectiveRevealLevel,
   isOrdinaryStep,
+  matchChangesSubject,
   matchConditionSubject,
   matchPanelSubject,
   matchStepSubject,
@@ -116,18 +117,46 @@ describe("matchPanelSubject", () => {
     expect(matchPanelSubject(input("draft", ["deleted"]))).toBeNull();
   });
 
-  it("always shows Runs and Changes, placing the selected node or the whole graph", () => {
-    for (const workspace of ["runs", "changes"] as const) {
-      expect(matchPanelSubject(input(workspace, []))).toMatchObject({
-        kind: "panel",
-        key: "graph",
-        placement: { kind: "graph" },
-      });
-      expect(matchPanelSubject(input(workspace, ["send"]))).toMatchObject({
-        nodeId: "send",
-        placement: { kind: "nodes", nodeIds: ["send"] },
-      });
-    }
+  it("always shows Runs, placing the selected node or the whole graph", () => {
+    expect(matchPanelSubject(input("runs", []))).toMatchObject({
+      kind: "panel",
+      key: "graph",
+      placement: { kind: "graph" },
+    });
+    expect(matchPanelSubject(input("runs", ["send"]))).toMatchObject({
+      nodeId: "send",
+      placement: { kind: "nodes", nodeIds: ["send"] },
+    });
+  });
+});
+
+describe("matchChangesSubject", () => {
+  it("places the selected node, the selected connection's steps, or the whole graph", () => {
+    expect(matchChangesSubject(input("changes", []))).toMatchObject({
+      kind: "changes",
+      key: "graph",
+      nodeId: null,
+      placement: { kind: "graph" },
+      levels: ["browse"],
+    });
+    expect(matchChangesSubject(input("changes", ["send"]))).toMatchObject({
+      key: "node:send",
+      nodeId: "send",
+      placement: { kind: "nodes", nodeIds: ["send"] },
+    });
+    expect(matchChangesSubject(input("changes", [], ["e1"]))).toMatchObject({
+      key: "edge:e1",
+      nodeId: null,
+      placement: { kind: "nodes", nodeIds: ["send", "wait"] },
+    });
+    expect(
+      matchChangesSubject(input("changes", ["send", "wait"]))
+    ).toMatchObject({ key: "graph", placement: { kind: "graph" } });
+  });
+
+  it("belongs to Changes alone", () => {
+    expect(matchChangesSubject(input("draft", ["send"]))).toBeNull();
+    expect(matchChangesSubject(input("runs", []))).toBeNull();
   });
 });
 

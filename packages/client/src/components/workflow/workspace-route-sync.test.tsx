@@ -17,6 +17,7 @@ import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import { ExecutionOverlaySync } from "#src/components/workflow/execution-overlay-sync";
 import { useWorkflowComparisonActions } from "#src/components/workflow/use-workflow-comparison-actions";
 import { WorkspaceRouteSync } from "#src/components/workflow/workspace-route-sync";
+import { comparisonRevealContextAtom } from "#src/components/workflow/canvas-reveal/changes-summary";
 import { useGoToStep } from "#src/hooks/use-workflow-issues";
 import { useWorkflowWorkspaceNavigation } from "#src/hooks/use-workflow-workspace-navigation";
 import {
@@ -30,6 +31,12 @@ import {
   rpcJsonResponse,
   rpcUrl,
 } from "#src/lib/rpc-fetch-test-support";
+import {
+  comparisonDisplayGraphAtom,
+  comparisonSessionAtom,
+  isComparisonErrorAtom,
+  isComparisonPendingAtom,
+} from "#src/lib/workflow-comparison-store";
 import {
   displayNodesAtom,
   loadWorkflowGraphAtom,
@@ -84,7 +91,10 @@ const draftNodes: WorkflowNode[] = [
 function comparisonFor(base: {
   id: string;
   isCurrent: boolean;
+  /** Steps the published version holds and the draft removed. */
+  removedStepIds?: readonly string[] | undefined;
 }): WorkflowComparisonPayload {
+  const removed = base.removedStepIds ?? [];
   return {
     baseVersion: {
       id: base.id,
@@ -93,22 +103,50 @@ function comparisonFor(base: {
       isCurrent: base.isCurrent,
     },
     proposedVersion: 2,
-    baseGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+    baseGraph: createSerializedWorkflowGraph({
+      nodes: removed.map((id) => ({
+        id,
+        type: "action",
+        position: { x: 0, y: 0 },
+        data: { label: id, type: "action" },
+      })),
+      edges: [],
+    }),
     draftGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
-    hasChanges: false,
-    nodeChanges: [],
+    hasChanges: removed.length > 0,
+    nodeChanges: removed.map((nodeId) => ({
+      nodeId,
+      kind: "removed",
+      fields: [],
+    })),
     edgeChanges: [],
   };
 }
 
+type HeldAnswer = "answer" | "fail";
+
 /**
  * The server this harness answers for: the current publication, the base
- * version each comparison request named, and which ids do not exist.
+ * version each comparison request named, and which ids do not exist. A base in
+ * `removedStepIds` compares with those steps removed, and `hold(base)` keeps
+ * that base's next answer back until the returned function releases it.
  */
 function stubServer() {
+  const holds = new Map<string, Promise<HeldAnswer>>();
   const server = {
     currentVersionId: "version_1",
     comparisonRequests: [] as Array<string | undefined>,
+    removedStepIds: {} as Record<string, readonly string[]>,
+    hold: (baseVersionId: string): ((answer: HeldAnswer) => void) => {
+      let release: (answer: HeldAnswer) => void = () => undefined;
+      holds.set(
+        baseVersionId,
+        new Promise<HeldAnswer>((resolve) => {
+          release = resolve;
+        })
+      );
+      return (answer) => release(answer);
+    },
   };
   vi.stubGlobal(
     "fetch",
@@ -130,8 +168,21 @@ function stubServer() {
           return missing;
         }
         const id = baseVersionId ?? server.currentVersionId;
+        const hold = holds.get(id);
+        holds.delete(id);
+        if (hold && (await hold) === "fail") {
+          return rpcErrorResponse({
+            code: "INTERNAL_SERVER_ERROR",
+            status: 500,
+            message: "Down",
+          });
+        }
         return rpcJsonResponse(
-          comparisonFor({ id, isCurrent: id === server.currentVersionId })
+          comparisonFor({
+            id,
+            isCurrent: id === server.currentVersionId,
+            removedStepIds: server.removedStepIds[id],
+          })
         );
       }
       if (path === "workflow/getExecutionLogs") {
@@ -498,6 +549,126 @@ describe("WorkspaceRouteSync", () => {
       expect(server.comparisonRequests).toEqual(["version_0", "version_0"])
     );
     expect(search()).toEqual({ view: "changes", compare: "version_0" });
+  });
+
+  it("keeps the Draft selection when a comparison answers after leaving Changes", async () => {
+    const server = stubServer();
+    server.removedStepIds = { version_3: ["removed_step"] };
+    const { router, store, search, click } = await renderEditorRoute(
+      "/workflows/workflow_1"
+    );
+    const showChanges = (compare: string) =>
+      act(() =>
+        router.navigate({
+          to: "/workflows/$workflowId",
+          params: { workflowId: "workflow_1" },
+          search: { view: "changes", compare },
+        })
+      );
+    act(() => store.set(selectOnlyNodeAtom, "draft_step"));
+
+    await showChanges("version_3");
+    await waitFor(() =>
+      expect(store.get(comparisonSessionAtom)?.payload.baseVersion?.id).toBe(
+        "version_3"
+      )
+    );
+    act(() => store.set(selectOnlyNodeAtom, "removed_step"));
+    const answerVersion1 = server.hold("version_1");
+    await showChanges("version_1");
+    await waitFor(() =>
+      expect(server.comparisonRequests).toEqual(["version_3", "version_1"])
+    );
+    click("Draft");
+    await waitFor(() => expect(search()).toEqual({}));
+
+    await act(async () => answerVersion1("answer"));
+    await waitFor(() =>
+      expect(store.get(comparisonSessionAtom)?.payload.baseVersion?.id).toBe(
+        "version_1"
+      )
+    );
+    expect(store.get(isComparisonPendingAtom)).toBe(false);
+    expect(selectionState(store)).toEqual(selectedNodes(["draft_step"]));
+  });
+
+  it("drops a pending comparison for a base the route has left", async () => {
+    const server = stubServer();
+    const { router, store, search } = await renderEditorRoute(
+      "/workflows/workflow_1?view=changes&compare=version_3"
+    );
+    await waitFor(() =>
+      expect(store.get(comparisonRevealContextAtom).status).toBe("ready")
+    );
+    const answerVersion1 = server.hold("version_1");
+    await act(() =>
+      router.navigate({
+        to: "/workflows/$workflowId",
+        params: { workflowId: "workflow_1" },
+        search: { view: "changes", compare: "version_1" },
+      })
+    );
+    await waitFor(() =>
+      expect(store.get(comparisonRevealContextAtom).status).toBe("loading")
+    );
+    expect(store.get(comparisonDisplayGraphAtom)).toBeNull();
+
+    await act(async () => router.history.back());
+    await waitFor(() =>
+      expect(search()).toEqual({ view: "changes", compare: "version_3" })
+    );
+    expect(store.get(comparisonRevealContextAtom).status).toBe("ready");
+    await act(async () => answerVersion1("answer"));
+    await waitFor(() => expect(store.get(isComparisonPendingAtom)).toBe(false));
+
+    expect(store.get(comparisonSessionAtom)?.payload.baseVersion?.id).toBe(
+      "version_3"
+    );
+    expect(store.get(comparisonRevealContextAtom).status).toBe("ready");
+    expect(store.get(comparisonDisplayGraphAtom)).not.toBeNull();
+    expect(search()).toEqual({ view: "changes", compare: "version_3" });
+    expect(server.comparisonRequests).toEqual(["version_3", "version_1"]);
+  });
+
+  it("reports no failure for a base the route has left", async () => {
+    const server = stubServer();
+    const { router, store, search } = await renderEditorRoute(
+      "/workflows/workflow_1?view=changes&compare=version_3"
+    );
+    await waitFor(() =>
+      expect(store.get(comparisonRevealContextAtom).status).toBe("ready")
+    );
+    const answerVersion1 = server.hold("version_1");
+    await act(() =>
+      router.navigate({
+        to: "/workflows/$workflowId",
+        params: { workflowId: "workflow_1" },
+        search: { view: "changes", compare: "version_1" },
+      })
+    );
+    await waitFor(() =>
+      expect(server.comparisonRequests).toEqual(["version_3", "version_1"])
+    );
+
+    await act(async () => router.history.back());
+    await waitFor(() =>
+      expect(search()).toEqual({ view: "changes", compare: "version_3" })
+    );
+    await act(async () => answerVersion1("fail"));
+    await waitFor(() => expect(store.get(isComparisonPendingAtom)).toBe(false));
+
+    expect(store.get(isComparisonErrorAtom)).toBe(false);
+    expect(store.get(comparisonRevealContextAtom).status).toBe("ready");
+
+    // Returning to the failed base asks for it again.
+    await act(async () => router.history.forward());
+    await waitFor(() =>
+      expect(server.comparisonRequests).toEqual([
+        "version_3",
+        "version_1",
+        "version_1",
+      ])
+    );
   });
 
   it("goes to a Draft step from Runs with one selection", async () => {

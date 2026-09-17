@@ -12,7 +12,9 @@ import {
   useNodeConfigTitle,
 } from "#src/components/workflow/node-config-panel";
 import { NodePropertiesForm } from "#src/components/workflow/node-properties-form";
+import { setComparisonSubviewAtom } from "#src/lib/workflow-comparison-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import type { OpenRevealLevel } from "#src/lib/workflow-navigation-state";
 import {
   findAction,
@@ -23,13 +25,16 @@ import type { WorkflowIssue } from "@wfgraph/shared/graph/workflow-issues";
 import { isBlank } from "@wfgraph/shared/types/string";
 import { compact } from "es-toolkit/array";
 import type { createStore } from "jotai";
+import { ChangesBrowse, ChangesHeader } from "./changes-browse";
+import { comparisonRevealContextAtom } from "./changes-summary";
+import { ConditionBrowse, ConditionFocus } from "./condition-reveal";
 import {
   RevealHeader,
   type RevealHeaderControls,
   type RevealHeaderModel,
 } from "./reveal-header";
-import { ConditionBrowse, ConditionFocus } from "./condition-reveal";
 import {
+  matchChangesSubject,
   matchConditionSubject,
   matchPanelSubject,
   matchStepSubject,
@@ -175,7 +180,7 @@ function PanelBrowse({ frame }: RevealBodyProps) {
 }
 
 /**
- * The node config panel's header: its own title, which names Runs, Changes,
+ * The node config panel's header: its own title, which names Runs,
  * Properties, or Connection, with no path and no status.
  */
 function PanelHeader({ subject, level, controls }: RevealKindHeaderProps) {
@@ -193,6 +198,23 @@ function PanelHeader({ subject, level, controls }: RevealKindHeaderProps) {
       }}
     />
   );
+}
+
+/**
+ * One step back in Changes: from version history to the change list, and
+ * otherwise one level.
+ */
+function unwindChanges({
+  store,
+  unwindLevel,
+}: Parameters<NonNullable<RevealKind["unwind"]>>[0]) {
+  const comparison = store.get(comparisonRevealContextAtom);
+  const workflowId = store.get(currentWorkflowIdAtom);
+  if ("payload" in comparison && comparison.showsHistory && workflowId) {
+    store.set(setComparisonSubviewAtom, { workflowId, subview: "review" });
+  } else {
+    unwindLevel();
+  }
 }
 
 /** A Draft ordinary step: a summary in Browse and its complete form in Focus. */
@@ -223,8 +245,25 @@ const CONDITION_KIND: RevealKind = {
 };
 
 /**
- * The node config panel at Browse, for every subject no other kind shows: Runs,
- * Changes, and any other Draft selection. It scrolls inside its own body.
+ * The Changes workspace: the comparison summary, the changed-object list, and
+ * version history in Browse, under a header naming the comparison. It has no
+ * Focus, and the list keeps its own scroll.
+ */
+const CHANGES_KIND: RevealKind = {
+  id: "changes",
+  match: matchChangesSubject,
+  regionLabel: "Changes inspector",
+  header: { owner: "kind", Header: ChangesHeader },
+  Browse: ChangesBrowse,
+  Focus: null,
+  unwind: unwindChanges,
+  focusReturnTarget: canvasNodeElement,
+  shellOwnsScroll: false,
+};
+
+/**
+ * The node config panel at Browse, for every subject no other kind shows: Runs
+ * and any other Draft selection. It scrolls inside its own body.
  */
 const PANEL_KIND: RevealKind = {
   id: "panel",
@@ -241,12 +280,14 @@ const PANEL_KIND: RevealKind = {
 const REVEAL_KINDS: readonly RevealKind[] = [
   STEP_KIND,
   CONDITION_KIND,
+  CHANGES_KIND,
   PANEL_KIND,
 ];
 
 const REVEAL_KINDS_BY_ID: Readonly<Record<RevealKindId, RevealKind>> = {
   step: STEP_KIND,
   condition: CONDITION_KIND,
+  changes: CHANGES_KIND,
   panel: PANEL_KIND,
 };
 

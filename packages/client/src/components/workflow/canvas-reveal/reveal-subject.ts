@@ -15,7 +15,7 @@ import type {
 } from "#src/lib/workflow-navigation-state";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 
-export type RevealKindId = "step" | "condition" | "panel";
+export type RevealKindId = "step" | "condition" | "changes" | "panel";
 
 /**
  * What the camera keeps in view while Reveal shows a subject: listed nodes, one
@@ -133,10 +133,49 @@ export function matchConditionSubject(
 }
 
 /**
- * The node config panel at Browse. In Runs and Changes it always shows, placing
- * the one selected node or else the whole graph. In Draft it shows any
- * selection no other kind matches: a Lifecycle, Event Split, Group, connection,
- * or several objects.
+ * The Changes workspace, whatever it has selected. A single selected node or
+ * connection is placed on the canvas, and any other selection places the whole
+ * comparison graph. It offers Browse alone.
+ */
+export function matchChangesSubject(
+  input: RevealMatchInput
+): RevealSubject | null {
+  if (input.workspace !== "changes") {
+    return null;
+  }
+  const { nodes, edges } = selectedGraph(input);
+  const base = {
+    kind: "changes" as const,
+    workspace: input.workspace,
+    levels: ["browse"] as const,
+  };
+  if (nodes.length === 1 && edges.length === 0) {
+    return {
+      ...base,
+      key: `node:${nodes[0].id}`,
+      nodeId: nodes[0].id,
+      placement: { kind: "nodes", nodeIds: [nodes[0].id] },
+    };
+  }
+  if (edges.length === 1 && nodes.length === 0) {
+    return {
+      ...base,
+      key: `edge:${edges[0].id}`,
+      nodeId: null,
+      placement: {
+        kind: "nodes",
+        nodeIds: uniq([edges[0].source, edges[0].target]),
+      },
+    };
+  }
+  return { ...base, key: "graph", nodeId: null, placement: { kind: "graph" } };
+}
+
+/**
+ * The node config panel at Browse. In Runs it always shows, placing the one
+ * selected node or else the whole graph. In Draft it shows any selection no
+ * other kind matches: a Lifecycle, Event Split, Group, connection, or several
+ * objects.
  */
 export function matchPanelSubject(
   input: RevealMatchInput

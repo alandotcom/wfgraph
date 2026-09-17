@@ -8,10 +8,12 @@ import {
   comparisonSessionAtom,
   beginWorkflowComparisonRequestAtom,
   clearWorkflowComparisonAtom,
+  comparisonRequestBaseIdAtom,
   installWorkflowComparisonAtom,
   isComparisonErrorAtom,
   isComparisonPendingAtom,
   isComparisonActiveAtom,
+  missingComparisonBaseIdAtom,
   moveComparisonNodesAtom,
   resetComparisonLayoutAtom,
   selectComparisonHistoryVersionAtom,
@@ -369,6 +371,64 @@ describe("comparison session store", () => {
       epoch: currentEpoch,
     });
     expect(store.get(comparisonDisplayGraphAtom)).toBe(displayedBeforeRefresh);
+  });
+
+  it("paints, installs, and reports only the comparison the Changes route names", () => {
+    const store = createStore();
+    store.set(currentWorkflowIdAtom, "workflow_1");
+    const againstV1 = { ...comparison, baseVersion: historicalBase };
+    const againstV3 = {
+      ...comparison,
+      baseVersion: { ...historicalBase, id: "v3", version: 3 },
+    };
+    showWorkspaceRoute(store, { view: "changes", compare: "v3" });
+    const v3Epoch = store.set(
+      beginWorkflowComparisonRequestAtom,
+      "workflow_1",
+      "v3"
+    );
+    store.set(installWorkflowComparisonAtom, {
+      workflowId: "workflow_1",
+      epoch: v3Epoch,
+      payload: againstV3,
+    });
+    store.set(settleWorkflowComparisonRequestAtom, {
+      workflowId: "workflow_1",
+      epoch: v3Epoch,
+    });
+    expect(store.get(comparisonDisplayGraphAtom)).not.toBeNull();
+
+    // The route moves to v1 while v3 is installed: nothing is painted for it.
+    showWorkspaceRoute(store, { view: "changes", compare: "v1" });
+    const v1Epoch = store.set(
+      beginWorkflowComparisonRequestAtom,
+      "workflow_1",
+      "v1"
+    );
+    expect(store.get(comparisonRequestBaseIdAtom)).toBe("v1");
+    expect(store.get(comparisonDisplayGraphAtom)).toBeNull();
+
+    // Back on v3 before v1 answers, the v1 answer is refused and its failure
+    // is not reported.
+    showWorkspaceRoute(store, { view: "changes", compare: "v3" });
+    expect(store.get(comparisonDisplayGraphAtom)).not.toBeNull();
+    expect(
+      store.set(installWorkflowComparisonAtom, {
+        workflowId: "workflow_1",
+        epoch: v1Epoch,
+        payload: againstV1,
+      })
+    ).toBe(false);
+    store.set(settleWorkflowComparisonRequestAtom, {
+      workflowId: "workflow_1",
+      epoch: v1Epoch,
+      outcome: "error",
+      missingBaseVersionId: "v1",
+    });
+    expect(store.get(comparisonSessionAtom)?.payload).toBe(againstV3);
+    expect(store.get(isComparisonPendingAtom)).toBe(false);
+    expect(store.get(isComparisonErrorAtom)).toBe(false);
+    expect(store.get(missingComparisonBaseIdAtom)).toBeNull();
   });
 
   it("retains a selected historical base when its refreshed payload arrives", () => {

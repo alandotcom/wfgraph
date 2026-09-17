@@ -16,7 +16,7 @@ import { useIsMobile } from "#src/hooks/use-mobile";
 import { useWorkflowWorkspaceNavigation } from "#src/hooks/use-workflow-workspace-navigation";
 import {
   WorkflowComparisonPropertiesPanel,
-  comparisonNodeTitle,
+  changedNodeTitle,
 } from "#src/components/workflow/comparison-properties";
 import { WorkflowVersionHistory } from "#src/components/workflow/workflow-version-history";
 import {
@@ -171,7 +171,7 @@ export function WorkflowChangesPanel({
               >
                 <ChangeMarker kind={change.kind} />
                 <span className="min-w-0 flex-1 truncate font-medium text-xs">
-                  {comparisonNodeTitle(catalog, payload, change)}
+                  {changedNodeTitle(catalog, payload, change)}
                 </span>
                 <span className="text-muted-foreground text-xs">
                   {change.kind}

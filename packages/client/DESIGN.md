@@ -317,9 +317,9 @@ which opens Focus on the field it names. Focus holds the complete form, and
 **Return to summary** goes back to Browse. Edits write to the draft as they are
 made, so changing level loses nothing and autosave carries on. A step with no
 action chosen shows the action picker in Browse and has no Focus. A Lifecycle,
-Event Split, Group, connection, multiple selection, **Runs**, and **Changes**
-show their panel at Browse width, under a header holding the panel's title and
-**Close**.
+Event Split, Group, connection, multiple selection, and **Runs** show their
+panel at Browse width, under a header holding the panel's title and **Close**.
+**Changes** has its own Browse, described under Publication review.
 
 A selected Condition opens the same header. Its Browse reads the decision: an
 editable label, one sentence stating when the Condition takes True and which
@@ -392,9 +392,21 @@ where those two otherwise live, is absent at that width.
 
 The toolbar shows **Changes** after the first publication. **Changes** compares
 the selected published version with the exact draft that was visible when the
-view opened. The inspector lists deterministic node and connection facts and
-links to paginated version history. Restore always says "Restore version N as
-draft" and requires confirmation that the published version remains unchanged.
+view opened. Its Canvas Reveal header names the comparison as "Version N →
+proposed version M" and keeps that title while the comparison refreshes. Browse
+holds **Refresh comparison**, **Version history**, and **Exit comparison**, counts
+the added, modified, and removed steps and connections, and lists each changed
+step and then each changed connection with its marker and change. Choosing a
+row, **Previous**, or **Next** selects that object on the canvas and places it.
+While a different comparison is loading or has failed, Browse shows that state
+and never the comparison it replaces, and the canvas shows the draft without
+change markers until the comparison the route names arrives. Version history opens inside Browse with focus
+on its heading. **Back to changes** or Escape returns to the list with its
+selection and scroll, and focus on **Version history**; Escape from the list
+closes Reveal. **Reset comparison layout** also hands focus to **Version
+history**. Restore
+always says "Restore version N as draft" and requires confirmation that the
+published version remains unchanged.
 
 Version history starts with **In use** when the viewer can inspect version
 usage. Its count names versions, not runs: the current publication remains
@@ -413,13 +425,13 @@ nodes use Signal Green, modified nodes use Signal Amber, and deleted nodes use
 Signal Red. Deleted edges use a distinct dotted treatment. Node position,
 dimensions, and measured geometry never create a change marker.
 
-Selecting a changed node opens comparison properties inside **Changes**.
-Modified nodes show published and draft values side by side. Added nodes show
-draft values only. Deleted nodes show published values only. Field labels come
-from the extension catalog; machine paths don't appear as labels. Deleted nodes
-remain movable for comparison clarity, and **Reset comparison layout** restores
-historical positions. Comparison movement never changes the draft or its save
-history.
+Below `md`, selecting a changed node opens comparison properties on the
+configuration sheet. Modified nodes show published and draft values side by
+side. Added nodes show draft values only. Deleted nodes show published values
+only. Field labels come from the extension catalog; machine paths don't appear
+as labels. Deleted nodes remain movable for comparison clarity, and **Reset
+comparison layout**, offered only after one has moved, restores historical
+positions. Comparison movement never changes the draft or its save history.
 
 ## 6. Do's and Don'ts
 

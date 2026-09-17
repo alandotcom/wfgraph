@@ -5,6 +5,7 @@ import { useWorkflowComparisonActions } from "#src/components/workflow/use-workf
 import { useAfterCommit, useBeforePaint } from "#src/hooks/effects";
 import { orpcQuery } from "#src/lib/rpc-query";
 import {
+  comparisonRequestBaseIdAtom,
   comparisonSessionAtom,
   missingComparisonBaseIdAtom,
   isComparisonPendingAtom,
@@ -117,7 +118,9 @@ function useWorkspaceRouteSync(): void {
 
   // A Changes route opens its comparison. A route naming no base opens the
   // current publication only when no comparison is installed, because a
-  // retained comparison is still the one the route shows.
+  // retained comparison is still the one the route shows. A route naming a
+  // base requests it unless it is installed or already requested; a pending
+  // request for another base is then dropped when its response arrives.
   const comparisonTarget =
     routeReady && search.view === "changes"
       ? `${routeWorkflowId}|${search.compare ?? ""}`
@@ -131,7 +134,13 @@ function useWorkspaceRouteSync(): void {
       if (installed === null) {
         void openComparison();
       }
-    } else if (installed?.payload.baseVersion?.id !== search.compare) {
+    } else if (
+      installed?.payload.baseVersion?.id !== search.compare &&
+      !(
+        store.get(isComparisonPendingAtom) &&
+        store.get(comparisonRequestBaseIdAtom) === search.compare
+      )
+    ) {
       void openComparison({ baseVersionId: search.compare });
     }
   });

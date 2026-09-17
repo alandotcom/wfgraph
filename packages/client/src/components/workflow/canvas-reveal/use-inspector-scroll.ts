@@ -16,7 +16,7 @@ import {
 
 type Shown = {
   address: WorkspaceAddress;
-  inspectedId: string;
+  inspectedId: string | null;
   level: OpenRevealLevel;
   top: number;
 };
@@ -27,12 +27,15 @@ type Shown = {
  * address, object, or level changes, and on unmount. A new address, object, or
  * level restores its stored position before paint, and once more after paint
  * for content that mounted late. `input` is null while no such level is open.
+ * A null `inspectedId` keeps the scroll of a scope that inspects no object. A
+ * kind whose subjects never record `inspected`, such as Changes, passes null,
+ * so its body scroll is stored under a null inspected id whatever it selects.
  */
 export function useInspectorScroll(
   input: {
     address: WorkspaceAddress;
     addressId: string;
-    inspectedId: string;
+    inspectedId: string | null;
     level: OpenRevealLevel;
   } | null
 ): {
@@ -49,7 +52,7 @@ export function useInspectorScroll(
   const ref = useRef<HTMLDivElement>(null);
   const shownRef = useRef<Shown | null>(null);
   const key = input
-    ? `${input.addressId}|${input.inspectedId}|${input.level}`
+    ? `${input.addressId}|${input.inspectedId ?? ""}|${input.level}`
     : null;
 
   const record = () => {
@@ -67,7 +70,7 @@ export function useInspectorScroll(
     }
     const presentation = store.get(activeRevealPresentationAtom);
     const top =
-      presentation.inspected?.id === input.inspectedId
+      (presentation.inspected?.id ?? null) === input.inspectedId
         ? presentation.inspectorScroll[input.level]
         : 0;
     shownRef.current = {

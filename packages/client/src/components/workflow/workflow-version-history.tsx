@@ -2,7 +2,7 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useAtomValue, useSetAtom } from "jotai";
 import { ArrowLeft, RotateCcw } from "lucide-react";
-import { useMemo, useState } from "react";
+import { type Ref, useMemo, useState } from "react";
 import { Button } from "#src/components/ui/button";
 import {
   Dialog,
@@ -34,10 +34,16 @@ type WorkflowComparisonActions = ReturnType<
   typeof useWorkflowComparisonActions
 >;
 
+/**
+ * Version history for the open comparison, with Back to changes and Restore.
+ * `headingRef` receives the "Version history" heading, which can take focus.
+ */
 export function WorkflowVersionHistory({
   actions,
+  headingRef,
 }: {
   actions: WorkflowComparisonActions;
+  headingRef?: Ref<HTMLHeadingElement> | undefined;
 }) {
   const workflowId = useAtomValue(currentWorkflowIdAtom);
   const draftRevision = useAtomValue(currentWorkflowDraftRevisionAtom);
@@ -89,7 +95,13 @@ export function WorkflowVersionHistory({
         >
           <ArrowLeft />
         </Button>
-        <h2 className="font-semibold text-sm">Version history</h2>
+        <h2
+          className="font-semibold text-sm outline-none"
+          ref={headingRef}
+          tabIndex={-1}
+        >
+          Version history
+        </h2>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {canReadUsage && workflowId ? (

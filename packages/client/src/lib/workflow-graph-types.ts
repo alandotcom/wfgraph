@@ -83,16 +83,19 @@ export type WorkflowEdge = Edge<EditorEdgeData>;
  */
 export const WORKFLOW_EDGE_TYPE = "animated";
 
+/** The word naming each kind of comparison change, as a list row shows it. */
+export const COMPARISON_CHANGE_KIND_LABEL: Readonly<
+  Record<ComparisonNodeAnnotation["kind"], string>
+> = {
+  added: "Added",
+  modified: "Modified",
+  removed: "Removed",
+};
+
 export function comparisonChangeLabel(
   kind: ComparisonNodeAnnotation["kind"] | ComparisonEdgeAnnotation["kind"]
 ): string {
-  if (kind === "added") {
-    return "Added in comparison";
-  }
-  if (kind === "modified") {
-    return "Modified in comparison";
-  }
-  return "Removed in comparison";
+  return `${COMPARISON_CHANGE_KIND_LABEL[kind]} in comparison`;
 }
 
 /** A comparison names an unavailable action safely rather than exposing its id. */
