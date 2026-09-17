@@ -567,6 +567,35 @@ describe("focusedGroupCanvasGraph", () => {
       }
     );
 
+    it("paints a horizontal Group given the vertical direction exactly as a vertical Group, stubs and turns included", () => {
+      const edges = [
+        edge("before-a", "before", "a"),
+        edge("a-gate", "a", "gate"),
+        edge("gate-b", "gate", "b", "true"),
+        edge("b-after", "b", "after"),
+      ];
+      const overridden = focusedGroupCanvasGraph({
+        nodes: nodesWith("horizontal"),
+        edges,
+        groupId: "g",
+        direction: "vertical",
+      });
+      const vertical = focused(nodesWith("vertical"), edges);
+      const layout = (graph: typeof vertical | null) => ({
+        nodes: graph?.nodes.map((node) => [
+          node.id,
+          node.position,
+          node.sourcePosition,
+        ]),
+        edges: graph?.edges.map((item) => [item.id, item.data?.turnAlong]),
+      });
+
+      expect(vertical.nodes.map((node) => node.id)).toContain(
+        end("gate", "false")
+      );
+      expect(layout(overridden)).toEqual(layout(vertical));
+    });
+
     it("ends a False branch that reaches a member at that member", () => {
       const graph = focused(nodesWith("vertical"), falseToMember);
       expect(
@@ -809,6 +838,47 @@ describe("withoutProjectedDimensions", () => {
 });
 
 describe("scopeCanvasGraph", () => {
+  it("lays a horizontal Group out top to bottom when given the vertical direction, reading the stored graph only", () => {
+    const horizontalNodes = NODES.map((node) =>
+      node.id === "g"
+        ? {
+            ...node,
+            data: { ...node.data, config: { direction: "horizontal" } },
+          }
+        : node
+    );
+    const before = structuredClone(horizontalNodes);
+    const scope = { kind: "group", groupId: "g" } as const;
+    const stored = scopeCanvasGraph({
+      nodes: horizontalNodes,
+      edges: EDGES,
+      scope,
+    });
+    const projected = scopeCanvasGraph({
+      nodes: horizontalNodes,
+      edges: EDGES,
+      scope,
+      focusedGroupDirection: "vertical",
+    });
+    const vertical = focused();
+    const painted = (graph: typeof vertical, id: string) =>
+      graph.nodes.find((node) => node.id === id);
+
+    expect(painted(stored, "a")?.sourcePosition).toBe(Position.Right);
+    for (const id of ["a", "b", ingress("before"), continuation("after")]) {
+      expect(painted(projected, id)?.position).toEqual(
+        painted(vertical, id)?.position
+      );
+      expect(painted(projected, id)?.sourcePosition).toBe(
+        painted(vertical, id)?.sourcePosition
+      );
+    }
+    expect(projected.edges.map((item) => item.id)).toEqual(
+      stored.edges.map((item) => item.id)
+    );
+    expect(horizontalNodes).toEqual(before);
+  });
+
   it("shows the overview for a Group scope whose Group is gone", () => {
     const graph = scopeCanvasGraph({
       nodes: NODES,

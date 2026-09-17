@@ -492,10 +492,11 @@ export function withoutDraftSelections(
 }
 
 /**
- * Clear the desktop and mobile cameras saved for the focused Group `groupId` in
- * every Draft and comparison key, as when that Group's layout direction
- * changed. Entering the Group then fits the camera to the steps it paints. Run
- * keys present the graph their run pinned, so their cameras stay.
+ * Clear the desktop camera saved for the focused Group `groupId` in every Draft
+ * and comparison key, as when that Group's layout direction changed. Entering
+ * the Group on desktop then fits the camera to the steps it paints. A phone
+ * draws every focused Group top to bottom, so the mobile camera stays, and run
+ * keys present the graph their run pinned, so their cameras stay too.
  */
 export function withoutGroupCameras(
   navigation: WorkflowNavigation,
@@ -508,8 +509,7 @@ export function withoutGroupCameras(
     if (
       !keyIdPresentsDraft(keyId) ||
       group?.groupId !== groupId ||
-      (group.navigation.desktop.camera === null &&
-        group.navigation.mobile.camera === null)
+      group.navigation.desktop.camera === null
     ) {
       return item;
     }
@@ -523,7 +523,6 @@ export function withoutGroupCameras(
           navigation: {
             ...scope,
             desktop: { ...scope.desktop, camera: null },
-            mobile: { ...scope.mobile, camera: null },
           },
         },
       },

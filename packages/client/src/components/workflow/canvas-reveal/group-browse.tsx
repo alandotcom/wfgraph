@@ -6,7 +6,10 @@ import { useMemo } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { Button } from "#src/components/ui/button";
 import { ButtonGroup } from "#src/components/ui/button-group";
-import { useTopologyCapabilities } from "#src/components/workflow/canvas-interaction";
+import {
+  useFocusedGroupDirection,
+  useTopologyCapabilities,
+} from "#src/components/workflow/canvas-interaction";
 import { can } from "#src/lib/authorization";
 import {
   edgesAtom,
@@ -105,23 +108,30 @@ const DIRECTION_CHOICES: ReadonlyArray<{
  * The Group's stored layout direction as a two-button choice. Choosing the other
  * direction is one undo step that saves, and the focused Group canvas lays its
  * steps out along it. Where the choice is not offered the direction is only
- * named.
+ * named, with the direction the focused Group canvas lays the steps out along
+ * when the two differ.
  */
 function DirectionChoice({ groupId }: { groupId: string }) {
   const nodes = useAtomValue(nodesAtom);
   const isGenerating = useAtomValue(isGeneratingAtom);
   const setDirection = useSetAtom(setGroupDirectionAtom);
   const { offersGroupDirectionChoice } = useTopologyCapabilities();
+  const shownDirection = useFocusedGroupDirection();
   const current = groupLayoutDirection(
     nodes.find((node) => node.id === groupId)
   );
   const disabled = isGenerating || !can(WfGraphOperations.workflowUpdate.id);
   if (!offersGroupDirectionChoice) {
     return (
-      <p className="text-xs">
-        {DIRECTION_CHOICES.find((choice) => choice.direction === current)
-          ?.label ?? current}
-      </p>
+      <div className="space-y-1 text-xs">
+        <p>{GROUP_DIRECTION_LABEL[current]}</p>
+        {shownDirection !== null && shownDirection !== current ? (
+          <p className="text-muted-foreground">
+            On a phone, a Group&apos;s steps show{" "}
+            {GROUP_DIRECTION_LABEL[shownDirection].toLowerCase()}.
+          </p>
+        ) : null}
+      </div>
     );
   }
   return (

@@ -138,8 +138,9 @@ function forgetGroupCameras(
 }
 
 /**
- * Clear the saved focused cameras of every Group whose layout direction differs
- * between `before` and `after`, as when undo or redo replaced the graph.
+ * Clear the saved focused desktop cameras of every Group whose layout
+ * direction differs between `before` and `after`, as when undo or redo
+ * replaced the graph.
  */
 export function forgetFlippedGroupCameras(
   get: Getter,

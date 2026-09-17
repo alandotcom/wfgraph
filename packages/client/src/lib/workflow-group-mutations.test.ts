@@ -857,7 +857,7 @@ describe("linear Groups", () => {
     expect(updateMock).not.toHaveBeenCalled();
   });
 
-  it("fits a Group's focused canvas again after its direction flips, and after the flip is undone", () => {
+  it("fits a Group's focused desktop canvas again after its direction flips, and after the flip is undone, keeping the phone's top-to-bottom camera", () => {
     const store = createGraphStore(linearGraph());
     store.set(groupSelectionAtom, {
       selectedIds: new Set(["read", "send", "wait"]),
@@ -883,7 +883,7 @@ describe("linear Groups", () => {
     showWorkspaceRoute(store, { group: groupId });
     expect(store.get(activeWorkspaceCamerasAtom)).toEqual({
       desktop: null,
-      mobile: null,
+      mobile: camera,
     });
 
     enterAndLook();
@@ -892,7 +892,7 @@ describe("linear Groups", () => {
     showWorkspaceRoute(store, { group: groupId });
     expect(store.get(activeWorkspaceCamerasAtom)).toEqual({
       desktop: null,
-      mobile: null,
+      mobile: camera,
     });
 
     enterAndLook();
@@ -901,7 +901,7 @@ describe("linear Groups", () => {
     showWorkspaceRoute(store, { group: groupId });
     expect(store.get(activeWorkspaceCamerasAtom)).toEqual({
       desktop: null,
-      mobile: null,
+      mobile: camera,
     });
 
     // Choosing the direction the Group already has keeps the saved cameras.

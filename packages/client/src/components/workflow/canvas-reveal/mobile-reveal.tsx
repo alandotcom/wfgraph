@@ -15,6 +15,7 @@ import { useAfterPaint } from "#src/hooks/effects";
 import { nodesAtom } from "#src/lib/workflow-graph-store";
 import {
   comparisonNodeTitle,
+  groupLabel,
   type WorkflowNode,
 } from "#src/lib/workflow-graph-types";
 import { workflowIssuesAtom } from "#src/lib/workflow-issues-store";
@@ -28,6 +29,7 @@ import {
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { cn } from "@wfgraph/shared/utils";
 import {
+  canvasRevealAtom,
   useShownMobileReveal,
   type MobileRevealState,
 } from "./canvas-reveal-state";
@@ -52,15 +54,24 @@ function sheetTitle(
   return node ? comparisonNodeTitle(node.data, catalog) : "Step";
 }
 
-/** Where the Back control of the shown sheet leads, as its visible label. */
+/**
+ * Where the Back control of the shown sheet leads, as its visible label. The
+ * first sheet of a focused Group leads back to that Group's canvas and is
+ * labeled with the Group's name. The first sheet of the overview has no Back
+ * control, which the null answer says.
+ */
 function backLabel(
   state: MobileRevealState,
   nodes: readonly WorkflowNode[],
   catalog: ExtensionCatalog
 ): string | null {
-  const { beneath, sheet } = state;
+  const { beneath, sheet, address } = state;
   if (beneath === null) {
-    return null;
+    if (address.scope.kind !== "group") {
+      return null;
+    }
+    const { groupId } = address.scope;
+    return groupLabel(nodes.find((node) => node.id === groupId)?.data.label);
   }
   return beneath.inspected.kind === sheet.inspected.kind &&
     beneath.inspected.id === sheet.inspected.id
@@ -104,6 +115,7 @@ function useSheetHeading(
  */
 export function MobileReveal() {
   const state = useShownMobileReveal();
+  const { addressId: activeAddressId } = useAtomValue(canvasRevealAtom);
   const nodes = useAtomValue(nodesAtom);
   const catalog = useExtensionCatalog();
   const openSheet = useSetAtom(openMobileSheetAtom);
@@ -141,6 +153,7 @@ export function MobileReveal() {
   const { onClickCapture } = useMobileSheetFocus({
     state,
     sheetKey,
+    addressId: activeAddressId,
     fieldRequestPending: fieldRequest !== null,
     area: areaRef,
     sheet: sheetRef,

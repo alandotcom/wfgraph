@@ -457,7 +457,7 @@ export function actionNodeDisplayTitle(
 }
 
 export const ActionNode = memo((props: ActionNodeProps) => {
-  const { data, selected, id, targetPosition } = props;
+  const { data, selected, id, targetPosition, isConnectable } = props;
   // The side the outlets sit on: the bottom on the overview, the right in a
   // Left to right Group.
   const outlet = props.sourcePosition ?? Position.Bottom;
@@ -520,6 +520,7 @@ export const ActionNode = memo((props: ActionNodeProps) => {
         className={cn(isDisabled && "opacity-50")}
         data-testid={`action-node-${id}`}
         handles={{ target: true, source: true }}
+        isConnectable={isConnectable}
         selected={selected}
         sourcePosition={outlet}
         status={status}
@@ -573,6 +574,7 @@ export const ActionNode = memo((props: ActionNodeProps) => {
     <Node
       className={cn(isDisabled && "opacity-50")}
       data-testid={`action-node-${id}`}
+      isConnectable={isConnectable}
       handles={{
         target: true,
         source: isConditionAction

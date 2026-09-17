@@ -7,11 +7,13 @@ import {
 import { createStore, Provider as JotaiProvider, useAtomValue } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  canvasGraphAtomFor,
   canvasNodesAtom,
   loadWorkflowGraphAtom,
+  nodesAtom,
   onNodesChangeAtom,
 } from "#src/lib/workflow-graph-store";
-import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import type { WorkflowRouteSearch } from "#src/lib/workflow-navigation-state";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
@@ -19,6 +21,7 @@ import {
   expectSteadyCamera,
   recordCameraMotion,
 } from "#src/components/workflow/camera-motion-test-support";
+import { useFocusedGroupDirection } from "./canvas-interaction";
 import { useWorkspaceCamera } from "./use-workspace-camera";
 
 const CANVAS = { width: 1200, height: 800 };
@@ -63,10 +66,16 @@ function setViewportWidth(width: number): void {
  * `setViewport` and applies it at once, with every workflow already placed. The
  * painted nodes are the ones the canvas paints for the active scope.
  */
-function renderCamera(options: { revealOccupiedWidth?: number } = {}) {
+function renderCamera(
+  graph: { nodes: WorkflowNode[]; edges: WorkflowEdge[] } = {
+    nodes: NODES,
+    edges: [],
+  },
+  options: { revealOccupiedWidth?: number } = {}
+) {
   const store = createStore();
   store.set(currentWorkflowIdAtom, "wf_1");
-  store.set(loadWorkflowGraphAtom, { nodes: NODES, edges: [] });
+  store.set(loadWorkflowGraphAtom, graph);
   showWorkspaceRoute(store, {});
 
   const moves: Viewport[] = [];
@@ -78,9 +87,12 @@ function renderCamera(options: { revealOccupiedWidth?: number } = {}) {
 
   function Harness() {
     flow = useStoreApi();
+    const painted = useAtomValue(
+      canvasGraphAtomFor(useFocusedGroupDirection())
+    );
     camera = useWorkspaceCamera({
       isCanvasPlaced: () => true,
-      paintedNodes: useAtomValue(canvasNodesAtom),
+      paintedNodes: painted.nodes,
       revealOccupiedWidth: options.revealOccupiedWidth ?? 0,
     });
     return null;
@@ -145,7 +157,7 @@ function renderCamera(options: { revealOccupiedWidth?: number } = {}) {
       });
     },
     /** The media query answering for a window `width` pixels wide. */
-    resizeWindow: async (width: number) => {
+    resize: async (width: number) => {
       await act(async () => {
         setViewportWidth(width);
       });
@@ -205,32 +217,39 @@ function onScreen(
 }
 
 describe("useWorkspaceCamera across Group scopes", () => {
-  it("fits a first visit, then restores the overview and the Group separately", async () => {
-    const camera = renderCamera();
-    await camera.pan({ x: -100, y: -50, zoom: 0.8 });
+  it.each([
+    ["desktop", 1440],
+    ["mobile", 390],
+  ])(
+    "fits a first visit, then restores the overview and the Group separately on %s",
+    async (_formFactor, width) => {
+      setViewportWidth(width);
+      const camera = renderCamera();
+      await camera.pan({ x: -100, y: -50, zoom: 0.8 });
 
-    await camera.show({ group: "g" });
-    expect(camera.moves).toHaveLength(1);
-    const members = camera.store.get(canvasNodesAtom);
-    expect(members.every((node) => onScreen(node, camera.viewport()))).toBe(
-      true
-    );
-    await camera.pan({ x: 300, y: 200, zoom: 1.2 });
+      await camera.show({ group: "g" });
+      expect(camera.moves).toHaveLength(1);
+      const members = camera.store.get(canvasNodesAtom);
+      expect(members.every((node) => onScreen(node, camera.viewport()))).toBe(
+        true
+      );
+      await camera.pan({ x: 300, y: 200, zoom: 1.2 });
 
-    await camera.show({});
-    expect(camera.viewport().x).toBeCloseTo(-100);
-    expect(camera.viewport().y).toBeCloseTo(-50);
-    expect(camera.viewport().zoom).toBeCloseTo(0.8);
+      await camera.show({});
+      expect(camera.viewport().x).toBeCloseTo(-100);
+      expect(camera.viewport().y).toBeCloseTo(-50);
+      expect(camera.viewport().zoom).toBeCloseTo(0.8);
 
-    await camera.show({ group: "g" });
-    expect(camera.viewport().x).toBeCloseTo(300);
-    expect(camera.viewport().y).toBeCloseTo(200);
-    expect(camera.viewport().zoom).toBeCloseTo(1.2);
-  });
+      await camera.show({ group: "g" });
+      expect(camera.viewport().x).toBeCloseTo(300);
+      expect(camera.viewport().y).toBeCloseTo(200);
+      expect(camera.viewport().zoom).toBeCloseTo(1.2);
+    }
+  );
 
   it("fits a first visit beside an open Reveal in one placement", async () => {
     // Browse on a 1200px canvas takes 360px and its 8px inset.
-    const camera = renderCamera({ revealOccupiedWidth: 368 });
+    const camera = renderCamera(undefined, { revealOccupiedWidth: 368 });
     const motion = recordCameraMotion(camera.flow());
     const start = camera.viewport();
 
@@ -276,6 +295,51 @@ describe("useWorkspaceCamera across Group scopes", () => {
     ).toBe(true);
   });
 
+  it("keeps a desktop and a mobile camera in a horizontal Group, fitting the top-to-bottom steps on the first mobile visit", async () => {
+    const horizontal = NODES.map((node) =>
+      node.id === "g"
+        ? {
+            ...node,
+            data: { ...node.data, config: { direction: "horizontal" } },
+          }
+        : node
+    );
+    const camera = renderCamera({
+      nodes: horizontal,
+      edges: [{ id: "a-b", source: "a", target: "b" }],
+    });
+    await camera.settleViewportListener();
+    const stored = camera.store.get(nodesAtom);
+    await camera.show({ group: "g" });
+    const desktop = { x: 300, y: 200, zoom: 1.2 };
+    await camera.pan(desktop);
+
+    await camera.resize(390);
+    const mobileNodes = camera.store.get(canvasGraphAtomFor("vertical")).nodes;
+    const [first, second] = mobileNodes.filter(
+      (node) => node.type === "action"
+    );
+    expect(first?.position.x).toBe(second?.position.x);
+    expect(first?.position.y ?? 0).toBeLessThan(second?.position.y ?? 0);
+    expect(camera.viewport()).not.toEqual(desktop);
+    expect(mobileNodes.every((node) => onScreen(node, camera.viewport()))).toBe(
+      true
+    );
+    const mobile = { x: -40, y: 10, zoom: 0.7 };
+    await camera.pan(mobile);
+
+    const expectViewport = (expected: Viewport) => {
+      expect(camera.viewport().x).toBeCloseTo(expected.x);
+      expect(camera.viewport().y).toBeCloseTo(expected.y);
+      expect(camera.viewport().zoom).toBeCloseTo(expected.zoom);
+    };
+    await camera.resize(1440);
+    expectViewport(desktop);
+    await camera.resize(390);
+    expectViewport(mobile);
+    expect(camera.store.get(nodesAtom)).toBe(stored);
+  });
+
   it("leaves a workspace switch with no saved camera to the canvas", async () => {
     const camera = renderCamera();
     await camera.show({ view: "runs" });
@@ -295,7 +359,7 @@ describe("useWorkspaceCamera across a form factor change", () => {
     await camera.settleViewportListener();
     await camera.pan({ x: 5000, y: 3000, zoom: 1 });
 
-    await camera.resizeWindow(393);
+    await camera.resize(393);
     await camera.measureCanvas(PHONE_CANVAS);
 
     expect(
@@ -310,16 +374,16 @@ describe("useWorkspaceCamera across a form factor change", () => {
     await camera.settleViewportListener();
     const desktop = { x: 500, y: 300, zoom: 1 };
     await camera.pan(desktop);
-    await camera.resizeWindow(393);
+    await camera.resize(393);
     await camera.measureCanvas(PHONE_CANVAS);
     const phone = { x: 40, y: 120, zoom: 0.6 };
     await camera.pan(phone);
 
-    await camera.resizeWindow(1440);
+    await camera.resize(1440);
     await camera.measureCanvas(CANVAS);
     expectViewport(camera.viewport(), desktop);
 
-    await camera.resizeWindow(393);
+    await camera.resize(393);
     await camera.measureCanvas(PHONE_CANVAS);
     expectViewport(camera.viewport(), phone);
   });
