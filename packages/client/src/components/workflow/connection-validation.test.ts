@@ -86,4 +86,31 @@ describe("connectionHandleTypesMatch", () => {
     expect(connectionHandleTypesMatch("source", "source")).toBe(false);
     expect(connectionHandleTypesMatch("target", "target")).toBe(false);
   });
+
+  it("accepts two members of one Group and refuses a member with an outside step", () => {
+    const first = { ...actionNode("First"), parentId: "group" };
+    const second = { ...actionNode("Second"), parentId: "group" };
+    const outside = actionNode("Outside");
+    const frame: WorkflowNode = {
+      id: "group",
+      type: "group",
+      position: { x: 0, y: 0 },
+      data: { label: "Group", type: "group" },
+    };
+    const refusal = (source: string, target: string) =>
+      connectionRefusalReason({
+        connection: { source, target, sourceHandle: null, targetHandle: null },
+        nodes: [frame, first, second, outside],
+        storeEdges: [],
+        catalog: emptyExtensionCatalog,
+      });
+
+    expect(refusal(first.id, second.id)).toBeNull();
+    expect(refusal(first.id, outside.id)).toBe(
+      "Connect two steps inside the same Group, or connect the Group card."
+    );
+    expect(refusal(outside.id, second.id)).toBe(
+      "Connect two steps inside the same Group, or connect the Group card."
+    );
+  });
 });

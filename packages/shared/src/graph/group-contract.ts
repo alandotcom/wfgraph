@@ -15,7 +15,7 @@ import {
 } from "#src/graph/group-boundary";
 import { nodeLabel } from "#src/graph/group-structure";
 import { isEventSplitActionNode } from "#src/graph/node-config";
-import type { WorkflowEdge, WorkflowNode } from "#src/graph/types";
+import type { WorkflowEdge } from "#src/graph/types";
 
 export type GroupContractRule =
   /** A Group holds fewer than two steps that a Group may contain. */
@@ -38,7 +38,8 @@ export type GroupContractViolation = {
   message: string;
 };
 
-type RuleBreak = Pick<GroupContractViolation, "rule" | "message">;
+/** One rule a Group breaks, before it is tied to a frame id. */
+export type GroupRuleBreak = Pick<GroupContractViolation, "rule" | "message">;
 
 /** Whether a member is a step a Group may contain: any action but an Event Split. */
 export function isGroupableStep(node: GroupGraphNode): boolean {
@@ -61,7 +62,7 @@ export function groupStepCount(input: {
 
 function labelOf(
   nodeId: string,
-  nodeById: ReadonlyMap<string, WorkflowNode>
+  nodeById: ReadonlyMap<string, GroupGraphNode>
 ): string {
   const node = nodeById.get(nodeId);
   return node ? nodeLabel(node) : nodeId;
@@ -78,8 +79,8 @@ function joinRuleBreaks(input: {
   groupName: string;
   join: AndJoin;
   memberIds: ReadonlySet<string>;
-  nodeById: ReadonlyMap<string, WorkflowNode>;
-}): RuleBreak[] {
+  nodeById: ReadonlyMap<string, GroupGraphNode>;
+}): GroupRuleBreak[] {
   const { groupName, join, memberIds, nodeById } = input;
   const joinName = `"${labelOf(join.joinNodeId, nodeById)}"`;
   const joinInside = memberIds.has(join.joinNodeId);
@@ -106,25 +107,25 @@ function joinRuleBreaks(input: {
           rule: "conditional_join_arm",
           message: `${groupName} has "${labelOf(condition, nodeById)}" on a branch into the join at ${joinName}, and the Condition can end that branch before the join runs`,
         },
-  ] satisfies Array<RuleBreak | undefined>);
+  ] satisfies Array<GroupRuleBreak | undefined>);
 }
 
-function violationsForGroup(input: {
-  group: WorkflowNode;
-  nodes: readonly WorkflowNode[];
+function ruleBreaksForMembers(input: {
+  groupLabel: string;
+  memberIds: ReadonlySet<string>;
+  nodes: readonly GroupGraphNode[];
   edges: readonly WorkflowEdge[];
   joins: readonly AndJoin[];
-  nodeById: ReadonlyMap<string, WorkflowNode>;
-}): GroupContractViolation[] {
-  const { group, nodes, edges, joins, nodeById } = input;
-  const groupName = `Group "${nodeLabel(group)}"`;
-  const members = nodes.filter((node) => node.parentId === group.id);
-  const memberIds = new Set(members.map((node) => node.id));
+  nodeById: ReadonlyMap<string, GroupGraphNode>;
+}): GroupRuleBreak[] {
+  const { memberIds, nodes, edges, joins, nodeById } = input;
+  const groupName = `Group "${input.groupLabel}"`;
+  const members = nodes.filter((node) => memberIds.has(node.id));
   const boundary = analyzeGroupBoundary({ memberIds: [...memberIds], edges });
   const { externalIngress, internalContinuation } = boundary;
 
-  const found: RuleBreak[] = compact([
-    groupStepCount({ groupId: group.id, nodes }) < 2
+  return compact([
+    members.filter((node) => isGroupableStep(node)).length < 2
       ? {
           rule: "too_few_members",
           message: `${groupName} needs at least two steps`,
@@ -132,7 +133,7 @@ function violationsForGroup(input: {
       : undefined,
     ...members
       .filter((member) => isEventSplitActionNode(member))
-      .map((member): RuleBreak => ({
+      .map((member): GroupRuleBreak => ({
         rule: "disallowed_member",
         message: `${groupName} cannot contain an Event Split ("${nodeLabel(member)}")`,
       })),
@@ -151,13 +152,25 @@ function violationsForGroup(input: {
     ...joins.flatMap((join) =>
       joinRuleBreaks({ groupName, join, memberIds, nodeById })
     ),
-  ] satisfies Array<RuleBreak | undefined>);
+  ] satisfies Array<GroupRuleBreak | undefined>);
+}
 
-  return found.map((violation) => ({
-    groupId: group.id,
-    groupLabel: nodeLabel(group),
-    ...violation,
-  }));
+/**
+ * Every v1 Group rule a Group holding exactly the nodes `memberIds` would break
+ * over `nodes` and `edges`, whether or not those nodes are grouped yet. Messages
+ * name the Group `groupLabel`.
+ */
+export function groupRuleBreaks(input: {
+  groupLabel: string;
+  memberIds: ReadonlySet<string>;
+  nodes: readonly GroupGraphNode[];
+  edges: readonly WorkflowEdge[];
+}): GroupRuleBreak[] {
+  return ruleBreaksForMembers({
+    ...input,
+    joins: andJoinArms(input),
+    nodeById: new Map(input.nodes.map((node) => [node.id, node])),
+  });
 }
 
 /**
@@ -166,7 +179,7 @@ function violationsForGroup(input: {
  * a `parentId` naming a missing node, is `groupStructureRefusalReason`'s check.
  */
 export function groupContractViolations(input: {
-  nodes: readonly WorkflowNode[];
+  nodes: readonly GroupGraphNode[];
   edges: readonly WorkflowEdge[];
 }): GroupContractViolation[] {
   const groups = input.nodes.filter((node) => isGroupNode(node));
@@ -178,12 +191,21 @@ export function groupContractViolations(input: {
   const nodeById = new Map(input.nodes.map((node) => [node.id, node]));
   const joins = andJoinArms(input);
   return groups.flatMap((group) =>
-    violationsForGroup({
-      group,
+    ruleBreaksForMembers({
+      groupLabel: nodeLabel(group),
+      memberIds: new Set(
+        input.nodes
+          .filter((node) => node.parentId === group.id)
+          .map((node) => node.id)
+      ),
       nodes: input.nodes,
       edges: input.edges,
       joins,
       nodeById,
-    })
+    }).map((ruleBreak) => ({
+      groupId: group.id,
+      groupLabel: nodeLabel(group),
+      ...ruleBreak,
+    }))
   );
 }

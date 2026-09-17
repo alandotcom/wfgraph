@@ -20,7 +20,6 @@ import {
   undersizedGroupIds,
 } from "@wfgraph/shared/graph/node-group";
 import { groupStructureRefusalReason } from "@wfgraph/shared/graph/group-structure";
-import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import {
   toPersistedEdge,
   toPersistedNodes,
@@ -28,18 +27,6 @@ import {
   type WorkflowNode,
 } from "#src/lib/workflow-graph-types";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
-
-/**
- * These cases are about the geometry a frame lays its members out in, so no
- * action needs a catalog entry. An action the catalog does not list declares no
- * side effect, which is what lets these fixtures group.
- */
-const emptyCatalog: ExtensionCatalog = {
-  entities: [],
-  events: [],
-  actions: [],
-  integrations: [],
-};
 
 function action(
   id: string,
@@ -88,6 +75,7 @@ function parallelNodes(): WorkflowNode[] {
 function parallelEdges(): WorkflowEdge[] {
   return [
     edge("in-a", "life", "a", "started"),
+    edge("in-b", "life", "b", "started"),
     edge("a-c", "a", "c"),
     edge("b-c", "b", "c"),
   ];
@@ -99,7 +87,6 @@ function framedNodes(): WorkflowNode[] {
     nodes: parallelNodes(),
     edges: parallelEdges(),
     selectedIds: new Set(["a", "b", "c"]),
-    catalog: emptyCatalog,
     createId: () => "g1",
   });
   if (!grouped) {
@@ -118,7 +105,6 @@ describe("groupSelection", () => {
       nodes: parallelNodes(),
       edges: parallelEdges(),
       selectedIds: new Set(["a", "b", "c"]),
-      catalog: emptyCatalog,
       createId: () => "g1",
     });
     if (!first) {
@@ -133,7 +119,6 @@ describe("groupSelection", () => {
       ],
       edges: [...first.edges, edge("de", "d", "e")],
       selectedIds: new Set(["d", "e"]),
-      catalog: emptyCatalog,
       createId: () => "g2",
     });
     if (!second) {
@@ -150,7 +135,6 @@ describe("groupSelection", () => {
       nodes: parallelNodes(),
       edges: parallelEdges(),
       selectedIds: new Set(["a", "b", "c"]),
-      catalog: emptyCatalog,
       createId: () => "g1",
     });
     const second = groupSelection({
@@ -161,7 +145,6 @@ describe("groupSelection", () => {
       ],
       edges: [...(first?.edges ?? []), edge("de", "d", "e")],
       selectedIds: new Set(["d", "e"]),
-      catalog: emptyCatalog,
       createId: () => "g2",
     });
     if (!second) {
@@ -188,14 +171,17 @@ describe("groupSelection", () => {
       nodes,
       edges,
       selectedIds: new Set(["a", "b", "c"]),
-      catalog: emptyCatalog,
       createId: () => "g1",
     });
 
     expect(grouped).not.toBeNull();
     const frame = grouped?.nodes.find((node) => node.id === "g1");
     const children = grouped?.nodes.filter((node) => node.parentId === "g1");
-    expect(frame?.data).toEqual({ label: "Group", type: "group" });
+    expect(frame?.data).toEqual({
+      label: "Group",
+      type: "group",
+      config: { direction: "vertical" },
+    });
     expect(frame?.position).toEqual({ x: 100, y: 200 });
     expect(children?.map((node) => node.id)).toEqual(["a", "b", "c"]);
     expect(children?.every((node) => node.extent === "parent")).toBe(true);
@@ -217,7 +203,6 @@ describe("groupSelection", () => {
       nodes: parallelNodes(),
       edges: parallelEdges(),
       selectedIds: new Set(["a", "b", "c"]),
-      catalog: emptyCatalog,
       createId: () => "g1",
     });
 
@@ -226,7 +211,11 @@ describe("groupSelection", () => {
     const childA = grouped?.nodes.find((node) => node.id === "a");
     const childB = grouped?.nodes.find((node) => node.id === "b");
     const childC = grouped?.nodes.find((node) => node.id === "c");
-    expect(frame?.data).toEqual({ label: "Group", type: "group" });
+    expect(frame?.data).toEqual({
+      label: "Group",
+      type: "group",
+      config: { direction: "vertical" },
+    });
     // Row 0 fills the frame: `GROUP_PAD`, then one card and one gap over.
     expect(childA?.position.x).toBe(12);
     expect(childB?.position.x).toBe(224);
@@ -247,7 +236,6 @@ describe("groupSelection", () => {
       ],
       edges: [],
       selectedIds: new Set(["a", "b"]),
-      catalog: emptyCatalog,
       createId: () => "g1",
     });
 
@@ -255,7 +243,11 @@ describe("groupSelection", () => {
     const frame = grouped?.nodes.find((node) => node.id === "g1");
     const childA = grouped?.nodes.find((node) => node.id === "a");
     const childB = grouped?.nodes.find((node) => node.id === "b");
-    expect(frame?.data).toEqual({ label: "Group", type: "group" });
+    expect(frame?.data).toEqual({
+      label: "Group",
+      type: "group",
+      config: { direction: "vertical" },
+    });
     expect(childA?.position.y).toBe(childB?.position.y);
     expect(childA?.position.x).toBeLessThan(childB?.position.x ?? 0);
   });
@@ -346,7 +338,6 @@ describe("grouping and the engine traversal graph", () => {
       nodes,
       edges,
       selectedIds: new Set(["a", "b", "c"]),
-      catalog: emptyCatalog,
       createId: () => "g1",
     });
     if (!grouped) {
@@ -375,7 +366,7 @@ describe("connecting onto a grouped frame", () => {
     expect(
       fanOutStoreEdges({
         nodes,
-        edges: parallelEdges(),
+        edges: parallelEdges().filter((item) => item.id !== "in-b"),
         sourceId: "x",
         targetId: "g1",
         sourceHandle: undefined,
@@ -435,7 +426,7 @@ describe("removeNodes", () => {
       ["c", undefined],
     ]);
     expect(removed.nodes[1]?.draggable).toBe(true);
-    expect(removed.edges.map((item) => item.id)).toEqual(["b-c"]);
+    expect(removed.edges.map((item) => item.id)).toEqual(["in-b", "b-c"]);
     expectWholeGroups(removed.nodes, removed.edges);
   });
 
@@ -463,7 +454,7 @@ describe("removeNodes", () => {
       ["b", "g1"],
       ["c", "g1"],
     ]);
-    expect(removed.edges.map((item) => item.id)).toEqual(["b-c"]);
+    expect(removed.edges.map((item) => item.id)).toEqual(["in-b", "b-c"]);
     expectWholeGroups(removed.nodes, removed.edges);
   });
 

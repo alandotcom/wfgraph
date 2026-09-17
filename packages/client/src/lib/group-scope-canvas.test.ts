@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { NodeChange } from "@xyflow/react";
+import { type NodeChange, Position } from "@xyflow/react";
 import { groupCanvasPositions } from "@wfgraph/shared/graph/node-group";
 import {
   boundaryStubId,
@@ -163,7 +163,9 @@ describe("focusedGroupCanvasGraph", () => {
       ...CARD,
       measured: CARD,
       draggable: false,
-      connectable: false,
+      connectable: true,
+      sourcePosition: Position.Bottom,
+      targetPosition: Position.Top,
       position: positions.get("a"),
     });
     expect(byId.get("b")?.position).toEqual(positions.get("b"));
@@ -199,12 +201,57 @@ describe("focusedGroupCanvasGraph", () => {
         item.deletable,
       ])
     ).toEqual([
-      ["a-b", "a", "b", false, false],
+      ["a-b", "a", "b", undefined, undefined],
       ["before-a", ingress("before"), "a", false, false],
       ["b-after", "b", continuation("after"), false, false],
     ]);
+    // An interior edge is the stored edge, so selecting or deleting it on the
+    // focused canvas names the edge the store holds.
+    expect(graph.edges[0]).toBe(EDGES[2]);
     expect(graph.anchor).toEqual({ nodeId: "a", pinToTop: false });
     expect(graph.projectedNodeIds).toEqual(new Set(byId.keys()));
+  });
+
+  it("lays a horizontal Group out left to right over the same topology", () => {
+    const vertical = focused();
+    const horizontalNodes = NODES.map((node) =>
+      node.id === "g"
+        ? {
+            ...node,
+            data: { ...node.data, config: { direction: "horizontal" } },
+          }
+        : node
+    );
+    const horizontal = focused(horizontalNodes);
+    const byId = new Map(horizontal.nodes.map((node) => [node.id, node]));
+
+    const positions = groupCanvasPositions({
+      memberIds: ["a", "b"],
+      interiorEdges: [EDGES[2]],
+      direction: "horizontal",
+    });
+    expect(byId.get("a")?.position).toEqual(positions.get("a"));
+    expect(byId.get("b")?.position).toEqual(positions.get("b"));
+    expect(byId.get("a")?.position.y).toBe(byId.get("b")?.position.y);
+    expect(byId.get("a")?.position.x ?? 0).toBeLessThan(
+      byId.get("b")?.position.x ?? 0
+    );
+    expect(byId.get("a")).toMatchObject({
+      sourcePosition: Position.Right,
+      targetPosition: Position.Left,
+    });
+    expect(byId.get(ingress("before"))?.position.x ?? 0).toBeLessThan(
+      byId.get("a")?.position.x ?? 0
+    );
+    expect(byId.get(continuation("after"))?.position.x ?? 0).toBeGreaterThan(
+      byId.get("b")?.position.x ?? 0
+    );
+
+    const topology = (graph: typeof vertical) => ({
+      nodeIds: graph.nodes.map((node) => node.id).sort(),
+      edges: graph.edges.map((item) => [item.id, item.source, item.target]),
+    });
+    expect(topology(horizontal)).toEqual(topology(vertical));
   });
 
   it("ignores where the collapsed card and the stored slots are", () => {

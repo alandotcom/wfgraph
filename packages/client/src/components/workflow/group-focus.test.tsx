@@ -324,6 +324,7 @@ describe("the collapsed Group overview", () => {
     expect(steps.textContent).toContain("Send case study");
     expect(view.getByRole("button", { name: "Enter group" })).toBeTruthy();
     expect(view.getByRole("button", { name: "Ungroup" })).toBeTruthy();
+    expect(view.getByRole("group", { name: "Layout direction" })).toBeTruthy();
 
     fireEvent.click(view.getByRole("button", { name: "Send welcome back" }));
     await waitFor(() => expect(search()).toEqual({ group: "outreach" }));
@@ -763,5 +764,61 @@ describe("the focused Group canvas", () => {
     expect(store.get(hasUnsavedChangesAtom)).toBe(false);
     expect(store.get(historyAtom)).toEqual([]);
     expect(store.get(workflowGraphUpdateAtom)).toBe(graphUpdate);
+  });
+
+  it("changes the layout direction from the Group summary as one undo step", async () => {
+    const { view, store, search, select } = await renderEditor();
+    await select("outreach");
+
+    const vertical = view.getByRole("button", { name: "Top to bottom" });
+    const horizontal = view.getByRole("button", { name: "Left to right" });
+    expect(vertical.getAttribute("aria-pressed")).toBe("true");
+    expect(horizontal.getAttribute("aria-pressed")).toBe("false");
+
+    fireEvent.click(horizontal);
+
+    const frame = () =>
+      store.get(nodesAtom).find((node) => node.id === "outreach");
+    expect(frame()?.data.config).toEqual({ direction: "horizontal" });
+    expect(store.get(historyAtom)).toHaveLength(1);
+    expect(store.get(edgesAtom)).toEqual(EDGES);
+    await waitFor(() =>
+      expect(
+        view
+          .getByRole("button", { name: "Left to right" })
+          .getAttribute("aria-pressed")
+      ).toBe("true")
+    );
+
+    fireEvent.click(view.getByRole("button", { name: "Enter group" }));
+    await waitFor(() => expect(search()).toEqual({ group: "outreach" }));
+    const painted = (id: string) =>
+      store.get(canvasNodesAtom).find((node) => node.id === id);
+    expect(painted("welcome")?.position.y).toBe(
+      painted("case_study")?.position.y
+    );
+    expect(painted("welcome")?.position.x ?? 0).toBeLessThan(
+      painted("case_study")?.position.x ?? 0
+    );
+  });
+
+  it("offers interior edges for selection and deletion, and member handles for connection", async () => {
+    const { store, renderedNodeIds } = await renderEditor("?group=outreach");
+    await waitFor(() => expect(renderedNodeIds()).toContain("welcome"));
+
+    const interior = store
+      .get(canvasEdgesAtom)
+      .find((edge) => edge.id === "welcome-case");
+    expect(interior).toBeDefined();
+    expect(interior?.selectable).not.toBe(false);
+    expect(interior?.deletable).not.toBe(false);
+    const boundary = store
+      .get(canvasEdgesAtom)
+      .find((edge) => edge.id === "qualify-welcome");
+    expect(boundary?.selectable).toBe(false);
+    expect(
+      store.get(canvasNodesAtom).find((node) => node.id === "welcome")
+        ?.connectable
+    ).toBe(true);
   });
 });

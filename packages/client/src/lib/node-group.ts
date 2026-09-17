@@ -24,12 +24,12 @@ import {
   fanOutStoreEdgeIds,
   groupCanvasPositions,
   groupInteriorLayout,
+  groupLayoutDirection,
   orderGroupParentsFirst,
   undersizedGroupIds,
   type GroupAnalysis,
   type GroupMemberSlot,
 } from "@wfgraph/shared/graph/node-group";
-import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import {
   GROUP_CHILD_HEIGHT,
@@ -47,8 +47,6 @@ export function groupSelection(input: {
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
   selectedIds: ReadonlySet<string>;
-  /** Read for `sideEffect`, which decides whether a step may join a frame. */
-  catalog: ExtensionCatalog;
   createId?: () => string;
 }): {
   nodes: WorkflowNode[];
@@ -57,12 +55,7 @@ export function groupSelection(input: {
   groupId: string;
   analysis: GroupAnalysis;
 } | null {
-  const analysis = analyzeGroupableSelection(
-    input.nodes,
-    input.edges,
-    input.selectedIds,
-    input.catalog
-  );
+  const analysis = analyzeGroupableSelection(input);
   if (!analysis.ok) {
     return null;
   }
@@ -101,9 +94,11 @@ export function groupSelection(input: {
     width: size.width,
     height: size.height,
     style: { width: size.width, height: size.height },
+    // A new Group is laid out top to bottom until its direction is changed.
     data: {
       label: "Group",
       type: "group",
+      config: { direction: "vertical" },
     },
   };
 
@@ -331,7 +326,8 @@ function ungroupFrames(input: {
  * Frees each member of a dissolved frame as a full-size card, draggable and
  * connectable, with no parent constraint. It lands where the focused Group
  * canvas draws it, moved so the Group's slots are centred on the collapsed
- * card's centre line and its first row starts at the card's top. The layout of
+ * card's centre line and its first row starts at the card's top, along the
+ * frame's stored layout direction. The layout of
  * each frame is computed once, from `nodes` and `edges` as they were given.
  */
 function memberReleaser(graph: {
@@ -350,7 +346,11 @@ function memberReleaser(graph: {
         edges: graph.edges,
         groupId: frame.id,
       });
-      positions = groupCanvasPositions({ memberIds, interiorEdges });
+      positions = groupCanvasPositions({
+        memberIds,
+        interiorEdges,
+        direction: groupLayoutDirection(frame),
+      });
       positionsByFrame.set(frame.id, positions);
     }
     const offset = positions.get(member.id) ?? {

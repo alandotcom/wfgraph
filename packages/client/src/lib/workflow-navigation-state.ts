@@ -489,6 +489,49 @@ export function withoutDraftSelections(
     : { ...navigation, workspaces: new Map(cleared) };
 }
 
+/**
+ * Clear the desktop and mobile cameras saved for the focused Group `groupId` in
+ * every Draft and comparison key, as when that Group's layout direction
+ * changed. Entering the Group then fits the camera to the steps it paints. Run
+ * keys present the graph their run pinned, so their cameras stay.
+ */
+export function withoutGroupCameras(
+  navigation: WorkflowNavigation,
+  groupId: string
+): WorkflowNavigation {
+  const entries = [...navigation.workspaces];
+  const cleared = mapOrSame(entries, (item): [string, WorkspaceNavigation] => {
+    const [keyId, entry] = item;
+    const group = entry.group;
+    if (
+      !keyIdPresentsDraft(keyId) ||
+      group?.groupId !== groupId ||
+      (group.navigation.desktop.camera === null &&
+        group.navigation.mobile.camera === null)
+    ) {
+      return item;
+    }
+    const scope = group.navigation;
+    return [
+      keyId,
+      {
+        ...entry,
+        group: {
+          groupId,
+          navigation: {
+            ...scope,
+            desktop: { ...scope.desktop, camera: null },
+            mobile: { ...scope.mobile, camera: null },
+          },
+        },
+      },
+    ];
+  });
+  return cleared === entries
+    ? navigation
+    : { ...navigation, workspaces: new Map(cleared) };
+}
+
 function workspaceWithoutSelections(
   entry: WorkspaceNavigation
 ): WorkspaceNavigation {

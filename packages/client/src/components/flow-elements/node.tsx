@@ -19,6 +19,10 @@ export type NodeProps = ComponentProps<typeof Card> & {
   };
   status?: "idle" | "running" | "success" | "error" | "cancelled" | undefined;
   selected?: boolean | undefined;
+  /** The card side a `true` source handle sits on. Bottom when unset. */
+  sourcePosition?: Position | undefined;
+  /** The card side a `true` target handle sits on. Top when unset. */
+  targetPosition?: Position | undefined;
 };
 
 // Run status is worn as a border color, which a colorblind user cannot read and
@@ -85,7 +89,8 @@ type NodeHandleConfig = {
 
 function renderHandles(
   handleType: "source" | "target",
-  config: boolean | NodeHandleConfig[]
+  config: boolean | NodeHandleConfig[],
+  position: Position
 ): ReactNode {
   if (config === false) {
     return null;
@@ -95,7 +100,7 @@ function renderHandles(
     return (
       <Handle
         aria-label={handleType === "source" ? "Output handle" : "Input handle"}
-        position={handleType === "source" ? Position.Bottom : Position.Top}
+        position={position}
         role="img"
         type={handleType}
       />
@@ -136,6 +141,8 @@ export const Node = ({
   className,
   selected = false,
   status,
+  sourcePosition = Position.Bottom,
+  targetPosition = Position.Top,
   ...props
 }: NodeProps) => (
   <Card
@@ -155,8 +162,8 @@ export const Node = ({
   >
     {status === "running" && <AnimatedBorder />}
     <NodeStatusChip status={status} />
-    {renderHandles("target", handles.target)}
-    {renderHandles("source", handles.source)}
+    {renderHandles("target", handles.target, targetPosition)}
+    {renderHandles("source", handles.source, sourcePosition)}
     {props.children}
   </Card>
 );

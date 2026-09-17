@@ -7,8 +7,11 @@
 
 import { countBy, groupBy, uniq, uniqBy } from "es-toolkit/array";
 import { normalizeConditionBranch } from "#src/conditions/condition-branch";
-import { type ExtensionCatalog, findAction } from "#src/extensions/catalog";
-import { groupStepCount } from "#src/graph/group-contract";
+import {
+  type GroupContractRule,
+  groupRuleBreaks,
+  groupStepCount,
+} from "#src/graph/group-contract";
 import {
   analyzeGroupBoundary,
   analyzeGroupBoundaryById,
@@ -16,12 +19,11 @@ import {
   type GroupGraphNode,
   isGroupNode,
 } from "#src/graph/group-boundary";
+import { isConditionNode } from "#src/graph/node-config";
 import {
-  actionTypeOf,
-  isConditionNode,
-  isEventSplitActionNode,
-  isWaitNode,
-} from "#src/graph/node-config";
+  type GroupLayoutDirection,
+  isGroupLayoutDirection,
+} from "#src/graph/schemas";
 import type { WorkflowEdge } from "#src/graph/types";
 import {
   NODE_SPACING,
@@ -140,112 +142,67 @@ export type GroupAnalysis =
   | { ok: false; error: string };
 
 /**
- * Whether the selection is a bundle of lookups and an optional Condition.
- * Parallel entries share one predecessor. Parallel lookup exits share one
- * downstream endpoint. A Condition remains a single True-only exit.
+ * The short reason a selection cannot be grouped, per Publish rule the would-be
+ * Group breaks. The editor shows it beside a disabled Group command, where the
+ * full rule message would not fit.
  */
-export function analyzeGroupableSelection(
-  nodes: readonly GroupGraphNode[],
-  edges: readonly WorkflowEdge[],
-  selectedIds: ReadonlySet<string>,
-  catalog: ExtensionCatalog
-): GroupAnalysis {
-  const byId = new Map(nodes.map((node) => [node.id, node]));
-  const members: GroupGraphNode[] = [];
+const GROUPING_REFUSALS: Record<GroupContractRule, string> = {
+  too_few_members: "Select at least two steps",
+  disallowed_member: "Event Split cannot be grouped",
+  multiple_ingress_sources: "The steps must be entered from one outlet",
+  multiple_continuations: "The steps must continue from one outlet",
+  join_crosses_boundary:
+    "Every branch into the join must start inside the Group",
+  conditional_join_arm: "A Condition on a branch into a join cannot be grouped",
+};
 
-  for (const id of selectedIds) {
-    const node = byId.get(id);
-    if (!node) {
-      return { ok: false, error: "Select at least two steps" };
-    }
-    const refused = refuseGroupedMember(node, catalog);
-    if (refused) {
-      return { ok: false, error: refused };
-    }
-    members.push(node);
-  }
-
-  if (members.length < 2) {
+/**
+ * Whether the selected steps may become one Group, and their order row by row.
+ * Every selected node must be a top-level action step. The would-be Group is
+ * then held to `groupRuleBreaks`, the rules Publish applies, so any selection
+ * the editor groups is a Group that may be published. An Event Split is named
+ * first when it is one of the reasons. Grouping
+ * changes membership only, so the stored edges it is checked against are the
+ * edges the Group keeps.
+ */
+export function analyzeGroupableSelection(input: {
+  nodes: readonly GroupGraphNode[];
+  edges: readonly WorkflowEdge[];
+  selectedIds: ReadonlySet<string>;
+}): GroupAnalysis {
+  const selected = input.nodes.filter((node) => input.selectedIds.has(node.id));
+  if (selected.length < 2 || selected.length !== input.selectedIds.size) {
     return { ok: false, error: "Select at least two steps" };
   }
-
-  const memberIds = new Set(members.map((node) => node.id));
-  const boundary = analyzeGroupBoundary({ memberIds: [...memberIds], edges });
-  const interior = boundary.interiorEdges;
-  const entryIds = interiorRootIds(boundary.memberIds, interior);
-  const leaving = new Set(interior.map((edge) => edge.source));
-  const exitIds = boundary.memberIds.filter((id) => !leaving.has(id));
-
-  if (entryIds.length === 0) {
-    return { ok: false, error: "Needs an entry step" };
+  if (selected.some((node) => node.parentId !== undefined)) {
+    return { ok: false, error: "Already in a group" };
   }
-  if (exitIds.length === 0) {
-    return { ok: false, error: "Needs an exit step" };
+  if (selected.some((node) => node.data.type !== "action")) {
+    return { ok: false, error: "Only steps can be grouped" };
   }
 
-  const reachable = reachableFrom(entryIds, interior, memberIds);
-  if (reachable.size !== memberIds.size) {
-    return { ok: false, error: "Needs a connected lookup group" };
-  }
-  for (const entryId of entryIds) {
-    const entryReachable = reachableFrom([entryId], interior, memberIds);
-    if (!exitIds.some((exitId) => entryReachable.has(exitId))) {
-      return { ok: false, error: "Needs a connected lookup group" };
-    }
-  }
-
-  const entryIdSet = new Set(entryIds);
-  if (boundary.ingressEdges.some((edge) => !entryIdSet.has(edge.target))) {
-    return { ok: false, error: "Needs an entry step" };
+  const ruleBreaks = groupRuleBreaks({
+    groupLabel: "Group",
+    memberIds: input.selectedIds,
+    nodes: input.nodes,
+    edges: input.edges,
+  });
+  const refusal =
+    ruleBreaks.find((item) => item.rule === "disallowed_member") ??
+    ruleBreaks[0];
+  if (refusal) {
+    return { ok: false, error: GROUPING_REFUSALS[refusal.rule] };
   }
 
-  const exitIdSet = new Set(exitIds);
-  for (const edge of boundary.continuationEdges) {
-    if (!exitIdSet.has(edge.source)) {
-      return { ok: false, error: "Only exit steps can leave the group" };
-    }
-    if (!isConditionNode(byId.get(edge.source))) {
-      continue;
-    }
-    const branch = normalizeConditionBranch(edge.sourceHandle);
-    if (branch === "false") {
-      return { ok: false, error: "Condition False cannot leave the group" };
-    }
-    if (branch !== "true") {
-      return { ok: false, error: "Only Condition True can leave the group" };
-    }
-  }
-
-  if (boundary.externalIngress.length > 1) {
-    return {
-      ok: false,
-      error: "Parallel lookups must share the same incoming step",
-    };
-  }
-
-  if (exitIds.length > 1) {
-    if (exitIds.some((id) => isConditionNode(byId.get(id)))) {
-      return { ok: false, error: "A Condition must be the only exit step" };
-    }
-    const exitsWithOutgoing = uniq(
-      boundary.continuationEdges.map((edge) => edge.source)
-    );
-    const exitsAreTerminal = exitsWithOutgoing.length === 0;
-    const exitsShareEndpoint =
-      exitsWithOutgoing.length === exitIds.length &&
-      boundary.externalTargets.length === 1;
-    if (!exitsAreTerminal && !exitsShareEndpoint) {
-      return {
-        ok: false,
-        error:
-          "Parallel lookup exits must share the same target and target handle",
-      };
-    }
-  }
-
+  const { memberIds, interiorEdges } = analyzeGroupBoundary({
+    memberIds: selected.map((node) => node.id),
+    edges: input.edges,
+  });
   return {
     ok: true,
-    memberIds: orderMembers(memberIds, interior, entryIds),
+    memberIds: groupMemberSlots(memberIds, interiorEdges).map(
+      (slot) => slot.id
+    ),
   };
 }
 
@@ -598,8 +555,16 @@ export function groupInteriorLayout(
   return { slots, bounds: groupSlotBounds(slots) };
 }
 
-/** The axis a focused Group canvas lays its rows along. */
-export type GroupLayoutDirection = "vertical" | "horizontal";
+/**
+ * The authored layout direction of the Group frame `frame`, stored as
+ * `config.direction`. A frame that stores none is laid out vertically.
+ */
+export function groupLayoutDirection(
+  frame: GroupGraphNode | undefined
+): GroupLayoutDirection {
+  const direction = frame?.data.config?.direction;
+  return isGroupLayoutDirection(direction) ? direction : "vertical";
+}
 
 /**
  * Each member's top-left corner on the focused Group canvas, at the standard
@@ -635,38 +600,6 @@ export function groupCanvasPositions(input: {
   );
 }
 
-function refuseGroupedMember(
-  node: GroupGraphNode,
-  catalog: ExtensionCatalog
-): string | null {
-  if (node.data.type === "lifecycle" || node.data.type === "add") {
-    return "Only lookup and Condition steps can be grouped";
-  }
-  if (isGroupNode(node) || node.parentId) {
-    return "Already in a group";
-  }
-  if (node.data.type !== "action") {
-    return "Only lookup and Condition steps can be grouped";
-  }
-  const actionType = actionTypeOf(node);
-  if (!actionType) {
-    return "Every step needs an action";
-  }
-  if (isWaitNode(node)) {
-    return "Wait cannot be grouped";
-  }
-  if (isEventSplitActionNode(node)) {
-    return "Event Split cannot be grouped";
-  }
-  // The editor groups lookups and Conditions only, so a member that changes
-  // something outside the workflow stays outside the frame. An action the
-  // catalog does not list declares nothing and is taken at its word.
-  if (findAction(catalog, actionType)?.sideEffect) {
-    return "A step that changes something outside the workflow stays outside the frame";
-  }
-  return null;
-}
-
 /** Members no interior edge reaches, in the order `memberIds` lists them. */
 function interiorRootIds(
   memberIds: readonly string[],
@@ -674,33 +607,6 @@ function interiorRootIds(
 ): string[] {
   const reached = new Set(interior.map((edge) => edge.target));
   return memberIds.filter((id) => !reached.has(id));
-}
-
-function reachableFrom(
-  starts: readonly string[],
-  interior: readonly WorkflowEdge[],
-  memberIds: ReadonlySet<string>
-): Set<string> {
-  const outgoing = new Map<string, string[]>();
-  for (const edge of interior) {
-    const next = outgoing.get(edge.source) ?? [];
-    next.push(edge.target);
-    outgoing.set(edge.source, next);
-  }
-
-  const seen = new Set<string>();
-  const stack = [...starts];
-  while (stack.length > 0) {
-    const id = stack.pop();
-    if (!id || seen.has(id) || !memberIds.has(id)) {
-      continue;
-    }
-    seen.add(id);
-    for (const next of outgoing.get(id) ?? []) {
-      stack.push(next);
-    }
-  }
-  return seen;
 }
 
 function orderMembers(

@@ -174,23 +174,43 @@ const workflowAddNodeDataSchema = Schema.StructWithRest(
   unknownRest
 );
 
+/** The axis a focused Group canvas lays its member rows along. */
+export const GROUP_LAYOUT_DIRECTIONS = ["vertical", "horizontal"] as const;
+
+export type GroupLayoutDirection = (typeof GROUP_LAYOUT_DIRECTIONS)[number];
+
+export function isGroupLayoutDirection(
+  value: unknown
+): value is GroupLayoutDirection {
+  return GROUP_LAYOUT_DIRECTIONS.some((direction) => direction === value);
+}
+
 /**
- * A Group frame holds no configuration keys. Membership is each member's
- * `parentId`, and the boundary is derived from the stored edges
- * (`group-boundary.ts`). The schema is a string-keyed record, which admits any
- * object, and its check refuses every key the object holds, `entryNodeIds`,
- * `exitNodeIds`, and `outletHandle` included. The check is needed because Effect
- * skips the excess-property check for a `Schema.Struct` with no fields, so an
- * empty Struct accepts extra keys even under `rejectUnknownKeys`.
+ * A Group frame's config holds one optional key, `direction`, the authored
+ * layout of its focused canvas. The key is organizational, and the engine never
+ * reads a frame. Membership is each member's `parentId`, and the boundary is
+ * derived from the stored edges (`group-boundary.ts`). The schema is a
+ * string-keyed record whose check refuses every other key, `entryNodeIds`,
+ * `exitNodeIds`, and `outletHandle` included, so each refused key is named in
+ * the same message whatever decode options the caller passes.
  */
 const workflowGroupConfigSchema = Schema.Record(Schema.String, Schema.Unknown)
   .annotate({ message: "Group config must be an object" })
   .check(
     Schema.makeFilter((config: Record<string, unknown>) =>
-      Object.keys(config).map((key) => ({
-        path: [key],
-        issue: "Group config holds no keys",
-      }))
+      Object.entries(config).flatMap(([key, value]) => {
+        if (key !== "direction") {
+          return [{ path: [key], issue: "Group config holds only direction" }];
+        }
+        return value === undefined || isGroupLayoutDirection(value)
+          ? []
+          : [
+              {
+                path: [key],
+                issue: 'Group direction must be "vertical" or "horizontal"',
+              },
+            ];
+      })
     )
   );
 

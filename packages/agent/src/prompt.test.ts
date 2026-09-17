@@ -174,9 +174,9 @@ describe("buildSystemPrompt", () => {
 
     expect(prompt).toContain("A Group is an organizational frame");
     expect(prompt).toContain("no effect on how a run executes");
-    expect(prompt).toContain("You cannot create a Group or ungroup one");
+    expect(prompt).toContain("You cannot create a Group, ungroup one, or");
     expect(prompt).toContain(
-      "The person does both in the editor, where removing a Group's frame ungroups its steps"
+      "The person does each of these in the editor, where removing a Group's frame ungroups its steps"
     );
     expect(prompt).toContain(
       "When a tool result says a Group was removed, name that Group in your reply"

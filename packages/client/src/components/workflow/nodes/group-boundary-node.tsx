@@ -1,5 +1,5 @@
 import { Handle, type NodeProps, Position } from "@xyflow/react";
-import { ArrowDown } from "lucide-react";
+import { ArrowDown, ArrowRight } from "lucide-react";
 import { memo } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { GROUP_BOUNDARY_NODE_TYPES } from "#src/lib/group-scope-canvas";
@@ -12,14 +12,19 @@ type GroupBoundaryNodeProps = NodeProps & { data: WorkflowNodeData };
 
 /**
  * A stub on the focused Group canvas naming one outside step. An ingress stub
- * sits above the members and names a step that enters the Group; a
- * continuation stub sits below them and names the step the Group continues to.
- * Stubs are display only and cannot be selected.
+ * sits before the members and names a step that enters the Group; a
+ * continuation stub sits after them and names the step the Group continues to.
+ * "Before" is above in a vertical Group and to the left in a horizontal one,
+ * which the stub reads from the handle sides it is given. Stubs are display
+ * only and cannot be selected.
  */
 function GroupBoundaryNode({
   data,
   direction,
+  sourcePosition = Position.Bottom,
+  targetPosition = Position.Top,
 }: GroupBoundaryNodeProps & { direction: "ingress" | "continuation" }) {
+  const Arrow = sourcePosition === Position.Right ? ArrowRight : ArrowDown;
   const catalog = useExtensionCatalog();
   const title = comparisonNodeTitle(data, catalog);
   return (
@@ -27,14 +32,14 @@ function GroupBoundaryNode({
       className="flex h-full w-full items-center gap-2 rounded-md border border-canvas-line border-dashed bg-background px-3 text-muted-foreground text-xs"
       data-slot="group-boundary-stub"
     >
-      <ArrowDown className="size-3.5 shrink-0" />
+      <Arrow className="size-3.5 shrink-0" />
       <span className="min-w-0 truncate">
         {direction === "ingress" ? "Incoming from " : "Continues to "}
         <span className="font-medium text-foreground">{title}</span>
       </span>
       <Handle
         isConnectable={false}
-        position={direction === "ingress" ? Position.Bottom : Position.Top}
+        position={direction === "ingress" ? sourcePosition : targetPosition}
         type={direction === "ingress" ? "source" : "target"}
       />
     </div>

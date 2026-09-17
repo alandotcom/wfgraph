@@ -15,7 +15,6 @@ import {
 } from "lucide-react";
 import { useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
-import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { ConfirmOverlay } from "#src/components/overlays/confirm-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
 import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
@@ -98,7 +97,6 @@ export function WorkflowContextMenu({
   const selectOnlyNode = useSetAtom(selectOnlyNodeAtom);
   const deleteGroupWithMembers = useSetAtom(deleteGroupWithMembersAtom);
   const updateNodeData = useSetAtom(updateNodeDataAtom);
-  const catalog = useExtensionCatalog();
   const { open: openOverlay } = useOverlay();
   const { openSheet } = useConfigurationSheet();
   const isMobile = useIsMobile();
@@ -221,9 +219,9 @@ export function WorkflowContextMenu({
       onClose();
       return;
     }
-    groupSelected({ catalog, selectedIds: menuState.selectedIds ?? new Set() });
+    groupSelected({ selectedIds: menuState.selectedIds ?? new Set() });
     onClose();
-  }, [canEdit, menuState, groupSelected, catalog, onClose]);
+  }, [canEdit, menuState, groupSelected, onClose]);
 
   const handleUngroup = useCallback(() => {
     if (canEdit && menuState?.nodeId) {
@@ -288,12 +286,11 @@ export function WorkflowContextMenu({
 
   const isLifecycleNode = clicked?.data.type === "lifecycle";
   const groupingIds = menuState.selectedIds ?? new Set<string>();
-  const grouping = analyzeGroupableSelection(
+  const grouping = analyzeGroupableSelection({
     nodes,
     edges,
-    groupingIds,
-    catalog
-  );
+    selectedIds: groupingIds,
+  });
   const canGroup = grouping.ok;
   const showUngroup = canUngroup(clicked);
   // Below the cursor when the menu fits there, above it otherwise.

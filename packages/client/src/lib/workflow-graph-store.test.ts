@@ -213,10 +213,7 @@ function groupableLookup(id: string, x: number): WorkflowNode {
   };
 }
 
-/**
- * No action here needs a catalog entry: an action the catalog does not list
- * declares no side effect, which is what lets these lookups group.
- */
+/** A catalog listing nothing, for the connection checks that read one. */
 const emptyCatalog: ExtensionCatalog = {
   entities: [],
   events: [],
@@ -1731,7 +1728,6 @@ describe("groupSelectionAtom", () => {
 
     expect(
       store.set(groupSelectionAtom, {
-        catalog: emptyCatalog,
         selectedIds: new Set(["a", "b", "c"]),
       })
     ).toBe(true);
@@ -1771,9 +1767,13 @@ describe("groupSelectionAtom", () => {
       ]
     );
 
-    expect(store.set(groupSelectionAtom, { catalog: emptyCatalog })).toBe(true);
+    expect(store.set(groupSelectionAtom)).toBe(true);
     const frame = store.get(nodesAtom).find((node) => isGroupNode(node));
-    expect(frame?.data).toEqual({ label: "Group", type: "group" });
+    expect(frame?.data).toEqual({
+      label: "Group",
+      type: "group",
+      config: { direction: "vertical" },
+    });
     expect(
       store
         .get(nodesAtom)
@@ -1810,7 +1810,6 @@ describe("groupSelectionAtom", () => {
       ]
     );
     store.set(groupSelectionAtom, {
-      catalog: emptyCatalog,
       selectedIds: new Set(["a", "b", "c"]),
     });
     store.set(copySelectionAtom);
@@ -1849,7 +1848,6 @@ describe("groupSelectionAtom", () => {
       ]
     );
     store.set(groupSelectionAtom, {
-      catalog: emptyCatalog,
       selectedIds: new Set(["a", "b", "c"]),
     });
     const frameId = store.get(nodesAtom).find((node) => isGroupNode(node))?.id;
@@ -2025,7 +2023,7 @@ describe("a Group frame has no enabled state", () => {
         { ...edge("e-after", "c", "after"), sourceHandle: "true" },
       ]
     );
-    store.set(groupSelectionAtom, { catalog: emptyCatalog });
+    store.set(groupSelectionAtom);
     return store;
   }
 
