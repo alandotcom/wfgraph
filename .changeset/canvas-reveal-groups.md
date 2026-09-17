@@ -18,9 +18,12 @@ same view.
 
 A Group can now hold any two or more steps that meet the version 1 Group rules,
 including side-effecting actions, Waits, and Conditions. The workflow canvas
-shows a Group as one collapsed card, and entering it opens a canvas of its
-members laid out top to bottom or left to right. Grouping never changes what a
-run executes. Runs shows a Group's run status and step counts, and Changes
+shows a Group as one collapsed card with one outlet, and entering it opens a
+canvas of its members laid out top to bottom or left to right, where steps are
+added, pasted, duplicated, connected, and deleted as members of that Group.
+Connecting the card's outlet to a step outside the Group connects every place a
+path ends inside the Group to that step, which then runs once after every
+branch. Grouping never changes what a run executes. Runs shows a Group's run status and step counts, and Changes
 counts Group edits as Organization changes. Publish refuses a Group that breaks
 the rules listed in `docs/embedding.md` ("Groups"). A draft save refuses Group
 membership errors and edges that touch a Group frame, and a draft that breaks only the Publish rules still saves

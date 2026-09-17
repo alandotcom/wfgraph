@@ -78,3 +78,33 @@ test("sibling Waits on one shared wake Event are released by a single delivery",
     "prefix:go",
   ]);
 });
+
+test("parallel members continuing to one shared step outside the Group run it once with every branch output", () => {
+  const built = buildGroupScenario({
+    shape: { kind: "sharedContinuation", branchCount: 2 },
+    groupPrefix: false,
+    groupSuffix: false,
+    fault: "none",
+  });
+  expect(built.memberIds).toEqual(["parallel_0", "parallel_1"]);
+  expect(
+    built.graph.edges
+      .filter((item) => item.target === "suffix")
+      .map((item) => item.source)
+  ).toEqual(["parallel_0", "parallel_1"]);
+  // Throws with the refusal when Publish would refuse the shared continuation.
+  withGroupLayout(built.graph, built.memberIds, "vertical");
+  expect(built.expectedSideEffects).toEqual([
+    "parallel_0<prefix:go",
+    "parallel_1<prefix:go",
+    "prefix:go",
+    "suffix<parallel_0<prefix:go+parallel_1<prefix:go",
+  ]);
+  expect(built.expectedLoggedNodeIds).toEqual([
+    "entry",
+    "parallel_0",
+    "parallel_1",
+    "prefix",
+    "suffix",
+  ]);
+});

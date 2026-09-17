@@ -35,7 +35,20 @@ import {
   persistedNodeEnabled,
 } from "@wfgraph/shared/graph/node-enabled";
 import { orderGroupParentsFirst } from "@wfgraph/shared/graph/node-group";
+import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
+import { storedCanvasConnection } from "#src/lib/group-scope-canvas";
+import { groupStructureRefusalReason } from "@wfgraph/shared/graph/group-structure";
+import { generateId } from "@wfgraph/shared/utils/id";
+import {
+  planConnection,
+  type RequestedConnection,
+} from "#src/components/workflow/connection-validation";
 import { omit } from "es-toolkit/object";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
+import {
+  canvasEdgesAtom as paintedEdgesAtom,
+  canvasNodesAtom as paintedNodesAtom,
+} from "#src/lib/workflow-graph-presentation-store";
 import {
   draftEditable,
   edgesStateAtom,
@@ -366,26 +379,168 @@ export const onEdgesChangeAtom = atom(
 );
 
 /**
+ * What inserting steps did: stored them, or refused with a sentence a person
+ * reads, in which case the graph, its history and its save are unchanged.
+ * `notice` is a sentence about what the insert left out, such as a rejoin the
+ * connection rules refused, beside a step that was stored.
+ */
+export type InsertOutcome =
+  | { inserted: true; notice?: string | undefined }
+  | { refusal: string };
+
+/**
+ * The id of the Group the active address has entered, when the graph still
+ * holds that frame. Null on the overview.
+ */
+function focusedGroupId(get: Getter): string | null {
+  const { scope } = get(activeWorkspaceAddressAtom);
+  if (scope.kind !== "group") {
+    return null;
+  }
+  return get(nodesStateAtom).some(
+    (node) => node.id === scope.groupId && isGroupNode(node)
+  )
+    ? scope.groupId
+    : null;
+}
+
+/**
+ * `subgraph` as the active address inserts it. On a focused Group each node
+ * whose frame was not inserted with it becomes a member of that Group. Its
+ * position is the origin, because the focused canvas places members from the
+ * Group's layout and never reads a stored member coordinate.
+ */
+function subgraphForActiveScope(
+  get: Getter,
+  subgraph: CopiedSelection
+): CopiedSelection {
+  const nodes = subgraph.nodes.map((node) => omit(node, ["selected"]));
+  const edges = subgraph.edges.map((edge) => omit(edge, ["selected"]));
+  const groupId = focusedGroupId(get);
+  if (groupId === null) {
+    return { nodes, edges };
+  }
+  const insertedIds = new Set(nodes.map((node) => node.id));
+  return {
+    nodes: nodes.map((node) =>
+      node.parentId !== undefined && insertedIds.has(node.parentId)
+        ? node
+        : { ...node, parentId: groupId, position: { x: 0, y: 0 } }
+    ),
+    edges,
+  };
+}
+
+/**
+ * One connection an insert stores, as the canvas asked for it. A connection a
+ * stub stands for arrives translated by `storedCanvasConnection`, which
+ * `throughBoundaryStub` records.
+ */
+type PlannedConnection = {
+  request: RequestedConnection & { id: string };
+  throughBoundaryStub: boolean;
+};
+
+/** `edges` with every connection in `connections` planned onto it, in order. */
+function planEachConnection(input: {
+  edges: WorkflowEdge[];
+  nodes: WorkflowNode[];
+  connections: readonly PlannedConnection[];
+  catalog: ExtensionCatalog;
+}): { edges: WorkflowEdge[] } | { refusal: string } {
+  let edges = input.edges;
+  for (const { request, throughBoundaryStub } of input.connections) {
+    const { id, ...requested } = request;
+    const plan = planConnection({
+      connection: requested,
+      throughBoundaryStub,
+      nodes: input.nodes,
+      storeEdges: edges,
+      catalog: input.catalog,
+    });
+    if ("refusal" in plan) {
+      return plan;
+    }
+    edges = [
+      ...edges,
+      ...plan.additions.map((addition, index) => ({
+        id: index === 0 ? id : generateId(),
+        ...addition,
+      })),
+    ];
+  }
+  return { edges };
+}
+
+/**
  * Append a subgraph as one undo step: deselect what is on the canvas, select
- * the inserted nodes, and save. Paste, duplicate, and addNode all go through
- * here so the history / selection / save bookkeeping cannot drift.
+ * the inserted nodes, and save. Paste, duplicate, addNode, Add step after and
+ * Insert step all go through here so the history / selection / save bookkeeping
+ * cannot drift. On a focused Group the inserted steps join that Group.
+ *
+ * `removeEdgeIds` are stored edges the insert replaces, taken out before the
+ * connections are planned. `connections` are planned in order against the graph
+ * that already holds the subgraph, and stored in the same undo step: a refused
+ * required connection stores nothing and answers the refusal, while a refused
+ * optional connection drops every optional connection and answers the notice
+ * beside the stored step. A result the draft save's Group structure check
+ * refuses stores nothing and answers that refusal.
  */
 function insertClonedSubgraph(
   get: Getter,
   set: Setter,
-  subgraph: CopiedSelection
-) {
-  const nodes = subgraph.nodes.map((node) => omit(node, ["selected"]));
-  const edges = subgraph.edges.map((edge) => omit(edge, ["selected"]));
+  subgraph: CopiedSelection,
+  options?: {
+    removeEdgeIds?: readonly string[] | undefined;
+    connections: readonly PlannedConnection[];
+    optional?: readonly PlannedConnection[] | undefined;
+    catalog: ExtensionCatalog;
+  }
+): InsertOutcome {
+  const { nodes, edges } = subgraphForActiveScope(get, subgraph);
 
-  pushHistory(get, set);
   // Sorted like the other two writers: a cloned frame appended after the
   // members already on the canvas costs `displayNodesAtom` its fast path.
-  set(
-    nodesStateAtom,
-    orderGroupParentsFirst([...get(nodesStateAtom), ...nodes])
-  );
-  set(edgesStateAtom, [...get(edgesStateAtom), ...edges]);
+  const nextNodes = orderGroupParentsFirst([...get(nodesStateAtom), ...nodes]);
+  const removed = new Set(options?.removeEdgeIds ?? []);
+  const insertedEdges = [
+    ...get(edgesStateAtom).filter((edge) => !removed.has(edge.id)),
+    ...edges,
+  ];
+  const structureRefusal = groupStructureRefusalReason({
+    nodes: nextNodes,
+    edges: insertedEdges,
+  });
+  if (structureRefusal !== null) {
+    return { refusal: structureRefusal };
+  }
+  let nextEdges = insertedEdges;
+  let notice: string | undefined;
+  if (options) {
+    const planned = planEachConnection({
+      edges: insertedEdges,
+      nodes: nextNodes,
+      connections: options.connections,
+      catalog: options.catalog,
+    });
+    if ("refusal" in planned) {
+      return planned;
+    }
+    const rejoined = options.optional
+      ? planEachConnection({
+          edges: planned.edges,
+          nodes: nextNodes,
+          connections: options.optional,
+          catalog: options.catalog,
+        })
+      : { edges: planned.edges };
+    nextEdges = "refusal" in rejoined ? planned.edges : rejoined.edges;
+    notice = "refusal" in rejoined ? rejoined.refusal : undefined;
+  }
+
+  pushHistory(get, set);
+  set(nodesStateAtom, nextNodes);
+  set(edgesStateAtom, nextEdges);
   // The inserted top-level nodes and the edges between them become the
   // selection. A pasted Group is selected as its frame, which carries its
   // members, so a single pasted Group opens in the inspector.
@@ -412,30 +567,263 @@ function insertClonedSubgraph(
   }
 
   requestGraphSave(get, set, { immediate: true });
+  return omitUndefined({ inserted: true as const, notice });
 }
 
+/**
+ * The copyable selection, or the context-clicked node. On the overview a
+ * selected member or frame brings its whole Group. On a focused Group the
+ * selected members are copied alone, so a paste there adds those steps.
+ */
 function snapshotCopyable(
   get: Getter,
   clickedNodeId?: string
 ): CopiedSelection | null {
   const nodes = get(nodesStateAtom);
   const selectedIds = new Set(get(activeSelectionAtom).nodeIds);
+  const wholeGroups = focusedGroupId(get) === null;
   return extractCopyableSelection({
     nodes,
     edges: get(edgesStateAtom),
     nodeIds: clickedNodeId
-      ? nodeIdsForContextCopy(nodes, clickedNodeId, selectedIds)
+      ? nodeIdsForContextCopy(nodes, clickedNodeId, selectedIds, {
+          wholeGroups,
+        })
       : selectedIds,
+    wholeGroups,
   });
 }
 
-export const addNodeAtom = atom(null, (get, set, node: WorkflowNode) => {
-  if (!draftEditable(get)) {
-    return;
-  }
+/**
+ * Add one step, selected, as one undo step. On a focused Group it becomes a
+ * member of that Group. Null when the draft is not editable.
+ */
+export const addNodeAtom = atom(
+  null,
+  (get, set, node: WorkflowNode): InsertOutcome | null => {
+    if (!draftEditable(get)) {
+      return null;
+    }
 
-  insertClonedSubgraph(get, set, { nodes: [node], edges: [] });
-});
+    return insertClonedSubgraph(get, set, { nodes: [node], edges: [] });
+  }
+);
+
+/**
+ * Add one step and the connection a drag into empty canvas asked for, as one
+ * undo step. The connection is planned against the graph holding the new step,
+ * with the same rules `connectNodesAtom` applies, so a step added after a
+ * member of a focused Group joins that Group and connects the way it would
+ * between two existing members. A refused connection adds neither. Null when
+ * the draft is not editable.
+ */
+export const addConnectedNodeAtom = atom(
+  null,
+  (
+    get,
+    set,
+    input: {
+      node: WorkflowNode;
+      connection: RequestedConnection & { id: string };
+      throughBoundaryStub: boolean;
+      catalog: ExtensionCatalog;
+    }
+  ): InsertOutcome | null => {
+    if (!draftEditable(get)) {
+      return null;
+    }
+
+    return insertClonedSubgraph(
+      get,
+      set,
+      { nodes: [input.node], edges: [] },
+      {
+        connections: [
+          {
+            request: input.connection,
+            throughBoundaryStub: input.throughBoundaryStub,
+          },
+        ],
+        optional: rejoinConnections(get, {
+          newNodeId: input.node.id,
+          source: {
+            nodeId: input.connection.source ?? "",
+            handle: input.connection.sourceHandle ?? null,
+          },
+          // A drag onto the new step's inlet makes it the source, and a step
+          // added before another rejoins nothing.
+          enabled: input.connection.target === input.node.id,
+        }),
+        catalog: input.catalog,
+      }
+    );
+  }
+);
+
+/**
+ * The connections that carry a new step's branch back to wherever the outlet it
+ * was added on already goes: one to each painted target of that outlet, keeping
+ * that edge's target handle, so the branch rejoins the same next steps and a
+ * Group keeps its exits. Empty when the outlet has no edges or `enabled` is
+ * false. Painted targets, so a "Continues to" stub names the outside step it
+ * stands for and a collapsed Group card names the Group.
+ */
+function rejoinConnections(
+  get: Getter,
+  input: {
+    newNodeId: string;
+    source: { nodeId: string; handle: string | null };
+    enabled?: boolean | undefined;
+  }
+): PlannedConnection[] {
+  if (input.enabled === false) {
+    return [];
+  }
+  const painted = get(paintedEdgesAtom).filter(
+    (edge) =>
+      edge.source === input.source.nodeId &&
+      (edge.sourceHandle ?? null) === input.source.handle
+  );
+  return painted.flatMap((edge) =>
+    plannedConnection(get, {
+      id: generateId(),
+      source: input.newNodeId,
+      target: edge.target,
+      sourceHandle: null,
+      targetHandle: edge.targetHandle ?? null,
+    })
+  );
+}
+
+/**
+ * `request` as the store connects it: a painted end that stands for a boundary
+ * stub becomes the outside port it names. Empty when the painted connection
+ * stores nothing, such as one onto a "Path ends" stub.
+ */
+function plannedConnection(
+  get: Getter,
+  request: RequestedConnection & { id: string }
+): PlannedConnection[] {
+  const { id, ...painted } = request;
+  const stored = storedCanvasConnection(painted, get(paintedNodesAtom));
+  return "refusal" in stored
+    ? []
+    : [
+        {
+          request: { ...stored.connection, id },
+          throughBoundaryStub: stored.throughBoundaryStub,
+        },
+      ];
+}
+
+/**
+ * Add one step on the outlet `source` of a step already on the canvas, as one
+ * undo step: the step is connected to that outlet and rejoins whatever the
+ * outlet already reaches, so it runs beside the steps already there. A rejoin
+ * the connection rules refuse is left out and answered as a notice. Null when
+ * the draft is not editable.
+ */
+export const addStepAfterAtom = atom(
+  null,
+  (
+    get,
+    set,
+    input: {
+      node: WorkflowNode;
+      source: { nodeId: string; handle: string | null };
+      catalog: ExtensionCatalog;
+    }
+  ): InsertOutcome | null => {
+    if (!draftEditable(get)) {
+      return null;
+    }
+
+    const connections = plannedConnection(get, {
+      id: generateId(),
+      source: input.source.nodeId,
+      target: input.node.id,
+      sourceHandle: input.source.handle,
+      targetHandle: null,
+    });
+    if (connections.length === 0) {
+      return { refusal: "Add a step after a step inside the Group." };
+    }
+    return insertClonedSubgraph(
+      get,
+      set,
+      { nodes: [input.node], edges: [] },
+      {
+        connections,
+        optional: rejoinConnections(get, {
+          newNodeId: input.node.id,
+          source: input.source,
+        }),
+        catalog: input.catalog,
+      }
+    );
+  }
+);
+
+/**
+ * Put one step inside the connection `edgeId`, as one undo step: the connection
+ * is replaced by one from its source to the new step and one from the new step
+ * to its target, each keeping the handle the replaced connection used. On a
+ * collapsed Group card, or a Group's "Continues to" stub, the stored edges the
+ * painted connection stands for are the ones replaced. Null when the draft is
+ * not editable.
+ */
+export const insertStepOnEdgeAtom = atom(
+  null,
+  (
+    get,
+    set,
+    input: { node: WorkflowNode; edgeId: string; catalog: ExtensionCatalog }
+  ): InsertOutcome | null => {
+    if (!draftEditable(get)) {
+      return null;
+    }
+
+    const painted = get(paintedEdgesAtom).find(
+      (edge) => edge.id === input.edgeId
+    );
+    const removeEdgeIds = painted
+      ? storedEdgeIdsForPaintedEdge({
+          nodes: get(nodesStateAtom),
+          edges: get(edgesStateAtom),
+          edgeId: input.edgeId,
+          scope: get(activeWorkspaceAddressAtom).scope,
+        })
+      : [];
+    if (!painted || removeEdgeIds.length === 0) {
+      return { refusal: "Insert a step into a connection the draft holds." };
+    }
+    const connections = [
+      ...plannedConnection(get, {
+        id: generateId(),
+        source: painted.source,
+        target: input.node.id,
+        sourceHandle: painted.sourceHandle ?? null,
+        targetHandle: null,
+      }),
+      ...plannedConnection(get, {
+        id: generateId(),
+        source: input.node.id,
+        target: painted.target,
+        sourceHandle: null,
+        targetHandle: painted.targetHandle ?? null,
+      }),
+    ];
+    if (connections.length < 2) {
+      return { refusal: "Insert a step into a connection between two steps." };
+    }
+    return insertClonedSubgraph(
+      get,
+      set,
+      { nodes: [input.node], edges: [] },
+      { removeEdgeIds, connections, catalog: input.catalog }
+    );
+  }
+);
 
 /** Whether Cmd+V / Paste have a copied subgraph to insert. */
 export const hasCopiedSelectionAtom = atom(
@@ -469,14 +857,14 @@ export const copySelectionAtom = atom(
  */
 export const pasteCopiedSelectionAtom = atom(
   null,
-  (get, set, origin?: { x: number; y: number }) => {
+  (get, set, origin?: { x: number; y: number }): InsertOutcome | null => {
     if (!draftEditable(get)) {
-      return false;
+      return null;
     }
 
     const clipboard = get(copiedSelectionAtom);
     if (!clipboard) {
-      return false;
+      return null;
     }
 
     const nextCount = clipboard.pasteCount + 1;
@@ -488,13 +876,15 @@ export const pasteCopiedSelectionAtom = atom(
       canvasNodes: get(nodesStateAtom),
     });
 
-    set(copiedSelectionAtom, { ...clipboard, pasteCount: nextCount });
-    insertClonedSubgraph(
+    const outcome = insertClonedSubgraph(
       get,
       set,
       cloneSelection(clipboard.selection, { offset })
     );
-    return true;
+    if ("inserted" in outcome) {
+      set(copiedSelectionAtom, { ...clipboard, pasteCount: nextCount });
+    }
+    return outcome;
   }
 );
 
@@ -504,17 +894,17 @@ export const pasteCopiedSelectionAtom = atom(
  */
 export const duplicateSelectionAtom = atom(
   null,
-  (get, set, clickedNodeId?: string) => {
+  (get, set, clickedNodeId?: string): InsertOutcome | null => {
     if (!draftEditable(get)) {
-      return false;
+      return null;
     }
 
     const selection = snapshotCopyable(get, clickedNodeId);
     if (!selection) {
-      return false;
+      return null;
     }
 
-    insertClonedSubgraph(
+    return insertClonedSubgraph(
       get,
       set,
       cloneSelection(selection, {
@@ -525,7 +915,6 @@ export const duplicateSelectionAtom = atom(
         }),
       })
     );
-    return true;
   }
 );
 

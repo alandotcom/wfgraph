@@ -61,6 +61,15 @@ const examples: GroupScenario[] = [
     groupSuffix: false,
     fault: "settlement",
   },
+  // Parallel members continue to one shared step outside the Group, which is
+  // one continuation. The step runs once, after both branches, with both
+  // branch outputs.
+  {
+    shape: { kind: "sharedContinuation", branchCount: 2 },
+    groupPrefix: true,
+    groupSuffix: false,
+    fault: "completion",
+  },
   {
     shape: {
       kind: "condition",

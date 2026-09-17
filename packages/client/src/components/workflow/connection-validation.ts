@@ -5,6 +5,7 @@ import {
   isGroupNode,
 } from "@wfgraph/shared/graph/group-boundary";
 import {
+  addedContinuationRefusal,
   addedIngressSourceRefusal,
   addedJoinRuleRefusal,
 } from "@wfgraph/shared/graph/group-contract";
@@ -50,9 +51,11 @@ export type ConnectionPlan =
  * stubs, so the canvas passes it through `storedCanvasConnection` first.
  *
  * Two members of the same Group may connect. A member and a step outside its
- * Group connect only from an "Incoming from" stub, marked by `fromIngressStub`,
- * and a connection that would enter a Group from a second outside outlet is
- * `addedIngressSourceRefusal`'s to refuse. A join the draft save refuses is
+ * Group connect only through an "Incoming from" or "Continues to" stub, marked
+ * by `throughBoundaryStub`, or through the collapsed card. A connection that
+ * would enter a Group from a second outside outlet is
+ * `addedIngressSourceRefusal`'s to refuse, and one that would leave a Group
+ * several ways is `addedContinuationRefusal`'s. A join the draft save refuses is
  * `andJoinRefusalReason`'s, and a join a Group may not hold, such as one with a
  * branch from outside the Group, is `addedJoinRuleRefusal`'s. `storeEdges` are
  * the stored edges, which name Group members; the painted edges name frames and
@@ -60,13 +63,13 @@ export type ConnectionPlan =
  */
 export function planConnection({
   connection,
-  fromIngressStub = false,
+  throughBoundaryStub = false,
   nodes,
   storeEdges,
   catalog,
 }: {
   connection: RequestedConnection;
-  fromIngressStub?: boolean | undefined;
+  throughBoundaryStub?: boolean | undefined;
   nodes: WorkflowNode[];
   storeEdges: WorkflowEdge[];
   catalog: ExtensionCatalog;
@@ -99,7 +102,7 @@ export function planConnection({
   // other connection between a member and a step outside its Group goes through
   // the Group's collapsed card on the overview.
   if (
-    !fromIngressStub &&
+    !throughBoundaryStub &&
     (sourceNode?.parentId || targetNode?.parentId) &&
     sourceNode?.parentId !== targetNode?.parentId
   ) {
@@ -153,6 +156,7 @@ export function planConnection({
     : storeEdges;
   const refusal =
     addedIngressSourceRefusal({ nodes, edges: remaining, additions }) ??
+    addedContinuationRefusal({ nodes, edges: remaining, additions }) ??
     andJoinRefusalReason({ nodes, edges: [...remaining, ...additions] }) ??
     addedJoinRuleRefusal({ nodes, edges: remaining, additions });
   return refusal === null ? { additions } : { refusal };

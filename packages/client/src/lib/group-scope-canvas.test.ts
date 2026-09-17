@@ -189,8 +189,8 @@ describe("focusedGroupCanvasGraph", () => {
     expect(stubIn).not.toHaveProperty("connectable");
     expect(stubOut).toMatchObject({
       type: GROUP_BOUNDARY_NODE_TYPES.continuation,
-      connectable: false,
     });
+    expect(stubOut).not.toHaveProperty("connectable");
     expect(stubIn?.position.y ?? 0).toBeLessThan(a?.position.y ?? 0);
     expect(stubOut?.position.y ?? 0).toBeGreaterThan(
       byId.get("b")?.position.y ?? 0
@@ -207,7 +207,7 @@ describe("focusedGroupCanvasGraph", () => {
     ).toEqual([
       ["a-b", "a", "b", undefined, undefined],
       ["before-a", ingress("before"), "a", undefined, undefined],
-      ["b-after", "b", continuation("after"), false, false],
+      ["b-after", "b", continuation("after"), undefined, undefined],
     ]);
     // An interior edge is the stored edge with its turn painted on, and an
     // ingress edge keeps the stored id, so selecting or deleting either names
@@ -532,10 +532,11 @@ describe("focusedGroupCanvasGraph", () => {
     );
 
     it.each(["vertical", "horizontal"] as const)(
-      "keeps a lane clear from an unconnected False outlet to its end stub in a %s Group",
+      "routes an unconnected False outlet to its end stub around the card below it in a %s Group",
       (direction) => {
-        // True reaches `b` in the row after `gate`, which would otherwise
-        // stand on `gate`'s lane to the "Path ends" stub.
+        // True reaches `b` in the row after `gate`, so `b` stands in `gate`'s
+        // column, and the False edge to the "Path ends" stub takes a lane
+        // around `b`.
         const graph = focused(nodesWith(direction), [
           edge("before-a", "before", "a"),
           edge("a-gate", "a", "gate"),
@@ -544,22 +545,23 @@ describe("focusedGroupCanvasGraph", () => {
         ]);
         const byId = new Map(graph.nodes.map((node) => [node.id, node]));
         const vertical = direction === "vertical";
-        const centreAcross = (id: string) => {
+        const acrossSpan = (id: string) => {
           const position = byId.get(id)?.position ?? { x: 0, y: 0 };
-          return vertical
-            ? position.x + WORKFLOW_NODE_WIDTH / 2
-            : position.y + WORKFLOW_NODE_HEIGHT / 2;
+          const low = vertical ? position.x : position.y;
+          return {
+            low,
+            high: low + (vertical ? WORKFLOW_NODE_WIDTH : WORKFLOW_NODE_HEIGHT),
+          };
         };
-        const cardHalf =
-          (vertical ? WORKFLOW_NODE_WIDTH : WORKFLOW_NODE_HEIGHT) / 2;
 
-        expect(
-          Math.abs(centreAcross("b") - centreAcross("gate"))
-        ).toBeGreaterThanOrEqual(cardHalf);
+        expect(acrossSpan("b")).toEqual(acrossSpan("gate"));
         const endEdge = graph.edges.find(
           (item) => item.target === end("gate", "false")
         );
         expect(endEdge?.data?.turnAlong).toEqual(expect.any(Number));
+        const lane = endEdge?.data?.lane?.across ?? Number.NaN;
+        const card = acrossSpan("b");
+        expect(lane < card.low || lane > card.high).toBe(true);
       }
     );
 
@@ -762,7 +764,7 @@ describe("storedCanvasConnection", () => {
         sourceHandle: "true",
         targetHandle: null,
       },
-      fromIngressStub: true,
+      throughBoundaryStub: true,
     });
     expect(
       storedCanvasConnection(
@@ -771,21 +773,53 @@ describe("storedCanvasConnection", () => {
       )
     ).toEqual({
       connection: { source: "before", target: "b", sourceHandle: null },
-      fromIngressStub: true,
+      throughBoundaryStub: true,
     });
   });
 
-  it("refuses a drag onto a stub or from a continuation stub", () => {
+  it("stores a drag from a member onto a continuation stub as an edge to its outside port", () => {
+    expect(
+      storedCanvasConnection(
+        {
+          source: "a",
+          target: continuation("after"),
+          sourceHandle: null,
+          targetHandle: null,
+        },
+        painted
+      )
+    ).toEqual({
+      connection: {
+        source: "a",
+        target: "after",
+        sourceHandle: null,
+        targetHandle: null,
+      },
+      throughBoundaryStub: true,
+    });
+  });
+
+  it("refuses a drag from a continuation stub, onto an ingress stub, or between stubs", () => {
     const refusal = { refusal: "Connect to a step inside the Group." };
     expect(
       storedCanvasConnection(
-        { source: "a", target: continuation("after"), sourceHandle: null },
+        { source: continuation("after"), target: "a", sourceHandle: null },
         painted
       )
     ).toEqual(refusal);
     expect(
       storedCanvasConnection(
-        { source: continuation("after"), target: "a", sourceHandle: null },
+        { source: "a", target: ingress("before"), sourceHandle: null },
+        painted
+      )
+    ).toEqual(refusal);
+    expect(
+      storedCanvasConnection(
+        {
+          source: ingress("before"),
+          target: continuation("after"),
+          sourceHandle: null,
+        },
         painted
       )
     ).toEqual(refusal);
@@ -795,7 +829,7 @@ describe("storedCanvasConnection", () => {
     const connection = { source: "a", target: "b", sourceHandle: null };
     expect(storedCanvasConnection(connection, painted)).toEqual({
       connection,
-      fromIngressStub: false,
+      throughBoundaryStub: false,
     });
   });
 
@@ -808,7 +842,7 @@ describe("storedCanvasConnection", () => {
     };
     expect(storedCanvasConnection(connection, [lookalike, ...NODES])).toEqual({
       connection,
-      fromIngressStub: false,
+      throughBoundaryStub: false,
     });
   });
 });

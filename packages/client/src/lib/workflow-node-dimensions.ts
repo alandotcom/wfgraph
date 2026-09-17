@@ -20,3 +20,10 @@ export {
  */
 export const NODE_ICON_CLASS = "size-4";
 export const NODE_ICON_PX = 16;
+
+/**
+ * Where a Condition card's True and False outlets sit along its outlet side, as
+ * a fraction of that side's length. The card draws its handles there, and the
+ * focused Group canvas routes each branch's edge from there.
+ */
+export const CONDITION_OUTLET_FRACTION = { true: 0.38, false: 0.62 } as const;

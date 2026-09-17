@@ -3,11 +3,7 @@ import type { createStore as createJotaiStore } from "jotai";
 import { createStore } from "jotai";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { orderGroupParentsFirst } from "@wfgraph/shared/graph/node-group";
-import {
-  connectionRefusalReason,
-  planConnection,
-} from "#src/components/workflow/connection-validation";
-import { groupOutletsAtom } from "#src/lib/workflow-graph-presentation-store";
+import { connectionRefusalReason } from "#src/components/workflow/connection-validation";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { WORKFLOW_NODE_HEIGHT } from "#src/lib/workflow-node-dimensions";
@@ -526,74 +522,31 @@ describe("graph history", () => {
   });
 });
 
-describe("multi-exit Group outlet", () => {
+describe("the collapsed Group card's one outlet", () => {
   function groupedLookup(id: string): WorkflowNode {
     return groupedChild(id, "g");
   }
 
-  it("connects the card from the one path end its handle stands for", () => {
-    const store = createGraphStore([
-      multiExitGroupNode("g"),
-      groupedLookup("a"),
-      groupedLookup("b"),
-      actionNode("next"),
-    ]);
-    const outlets = store.get(groupOutletsAtom("g", emptyCatalog));
-    expect(outlets.map((outlet) => outlet.label)).toEqual(["a", "b"]);
-
-    store.set(connectNodesAtom, {
-      connection: {
-        ...edge("new-b", "g", "next"),
-        sourceHandle: outlets[1]?.handleId,
+  function conditionMember(id: string): WorkflowNode {
+    return {
+      ...groupedLookup(id),
+      data: {
+        label: id,
+        type: "action",
+        config: { actionType: BUILT_IN_ACTION_IDS.condition },
       },
-      catalog: emptyCatalog,
-    });
-
-    expect(
-      store.get(edgesAtom).map((item) => `${item.source}->${item.target}`)
-    ).toEqual(["b->next"]);
-  });
-
-  /**
-   * A Condition `gate` inside `g` whose False outlet reaches the member `b`,
-   * which ends its path. True leaves the Group for `x` unless `withTrue` is
-   * false.
-   */
-  function falseEndsInsideStore(withTrue: boolean) {
-    const edges = [{ ...edge("gate-b", "gate", "b"), sourceHandle: "false" }];
-    return createGraphStore(
-      [
-        multiExitGroupNode("g"),
-        {
-          ...groupedLookup("gate"),
-          data: {
-            label: "gate",
-            type: "action",
-            config: { actionType: BUILT_IN_ACTION_IDS.condition },
-          },
-        },
-        groupedLookup("b"),
-        actionNode("x"),
-      ],
-      withTrue
-        ? [...edges, { ...edge("gate-x", "gate", "x"), sourceHandle: "true" }]
-        : edges
-    );
+    };
   }
 
-  /** Connects the card handle labelled `label` to `target` as a canvas drag does. */
+  /** Connects the card's outlet to `target` as a canvas drag does. */
   function dragFromCard(
     store: ReturnType<typeof createGraphStore>,
-    label: string,
     target: string
   ) {
-    const handleId = store
-      .get(groupOutletsAtom("g", emptyCatalog))
-      .find((outlet) => outlet.label === label)?.handleId;
     const connection = {
       source: "g",
       target,
-      sourceHandle: handleId,
+      sourceHandle: null,
       targetHandle: null,
     };
     expect(
@@ -604,180 +557,161 @@ describe("multi-exit Group outlet", () => {
         catalog: emptyCatalog,
       })
     ).toBeNull();
-    store.set(connectNodesAtom, {
-      connection: { id: `drag-${label}`, ...connection },
+    return store.set(connectNodesAtom, {
+      connection: { id: `drag-${target}`, ...connection },
       catalog: emptyCatalog,
     });
   }
 
-  const leavingGroup = (store: ReturnType<typeof createGraphStore>) =>
+  const leavingTo = (
+    store: ReturnType<typeof createGraphStore>,
+    target: string
+  ) =>
     store
       .get(edgesAtom)
-      .filter((item) => item.target === "x")
-      .map((item) => [item.source, item.sourceHandle, item.target]);
+      .filter((item) => item.target === target)
+      .map((item) => [item.source, item.sourceHandle ?? null]);
 
-  it("continues from True while False ends at a member, with no ungrouping", () => {
-    const store = falseEndsInsideStore(false);
-    expect(
-      store
-        .get(groupOutletsAtom("g", emptyCatalog))
-        .map((outlet) => outlet.label)
-    ).toEqual(["True", "b"]);
-
-    dragFromCard(store, "True", "x");
-
-    expect(leavingGroup(store)).toEqual([["gate", "true", "x"]]);
-    expect(store.get(groupOutletsAtom("g", emptyCatalog))).toEqual([
-      {
-        handleId: "true",
-        label: "True",
-        ports: [{ nodeId: "gate", handle: "true" }],
-        continues: true,
-      },
-    ]);
-  });
-
-  it("stores one continuation when both Condition branches end inside", () => {
-    const store = createGraphStore(
-      [
-        multiExitGroupNode("g"),
-        {
-          ...groupedLookup("gate"),
-          data: {
-            label: "gate",
-            type: "action",
-            config: { actionType: BUILT_IN_ACTION_IDS.condition },
-          },
-        },
-        groupedLookup("a"),
-        actionNode("x"),
-      ],
-      [edge("a-gate", "a", "gate")]
-    );
-    expect(
-      store
-        .get(groupOutletsAtom("g", emptyCatalog))
-        .map((outlet) => outlet.label)
-    ).toEqual(["True", "False"]);
-
-    dragFromCard(store, "False", "x");
-
-    expect(leavingGroup(store)).toEqual([["gate", "false", "x"]]);
-  });
-
-  it("rebuilds the continuation from True after it was deleted", () => {
-    const store = falseEndsInsideStore(true);
-    store.set(deleteEdgeAtom, "gate-x");
-    expect(leavingGroup(store)).toEqual([]);
-
-    dragFromCard(store, "True", "x");
-
-    expect(leavingGroup(store)).toEqual([["gate", "true", "x"]]);
-  });
-
-  /**
-   * A Condition `c` wired True to `x` and a lookup `b` wired to `y`, with the
-   * lookup's edge stored first. The frame's continuation names two handles.
-   */
-  function mixedContinuationStore() {
+  /** Two parallel members entered from the Lifecycle Node, as a person groups them. */
+  function parallelStore() {
     return createGraphStore(
       [
         lifecycleNode("t"),
         multiExitGroupNode("g"),
-        groupedLookup("b"),
-        {
-          ...groupedLookup("c"),
-          data: {
-            label: "c",
-            type: "action",
-            config: { actionType: BUILT_IN_ACTION_IDS.condition },
-          },
-        },
-        actionNode("x"),
-        actionNode("y"),
-        actionNode("z"),
+        groupedLookup("user"),
+        groupedLookup("issues"),
+        actionNode("notify"),
+        actionNode("archive"),
       ],
       [
-        { ...edge("t-b", "t", "b"), sourceHandle: "started" },
-        { ...edge("t-c", "t", "c"), sourceHandle: "started" },
-        edge("b-y", "b", "y"),
-        { ...edge("c-x", "c", "x"), sourceHandle: "true" },
+        { ...edge("t-user", "t", "user"), sourceHandle: "started" },
+        { ...edge("t-issues", "t", "issues"), sourceHandle: "started" },
       ]
     );
   }
 
-  it.each([null, "true"])(
-    "validates and saves a connection from handle %s with the same stored edges",
-    (draggedHandle) => {
-      const store = mixedContinuationStore();
-      const nodes = store.get(nodesAtom);
-      const storeEdges = store.get(edgesAtom);
-      const connection = {
-        source: "g",
-        target: "z",
-        sourceHandle: draggedHandle,
-        targetHandle: null,
-      };
+  it("connects every path end to the outside step, which paints as one edge from the card", () => {
+    const store = parallelStore();
 
-      const plan = planConnection({
-        connection,
-        nodes,
-        storeEdges,
-        catalog: emptyCatalog,
-      });
-      if ("refusal" in plan) {
-        throw new Error(plan.refusal);
-      }
+    dragFromCard(store, "notify");
 
-      store.set(connectNodesAtom, {
-        connection: { id: "new", ...connection },
-        catalog: emptyCatalog,
-      });
-
-      const saved = store
-        .get(edgesAtom)
-        .filter((item) => item.target === "z")
-        .map(({ id: _id, ...addition }) => addition);
-      expect(saved).toEqual(plan.additions);
-      // Each handle stands for the continuing port that uses it.
-      expect(saved.map((item) => item.source)).toEqual(
-        draggedHandle === null ? ["b"] : ["c"]
-      );
-    }
-  );
-
-  it("draws a frame handle for every painted edge leaving the frame", () => {
-    const store = mixedContinuationStore();
-
-    const handles = store
-      .get(groupOutletsAtom("g", emptyCatalog))
-      .map((outlet) => outlet.handleId);
-    const leaving = store
+    expect(leavingTo(store, "notify")).toEqual([
+      ["user", null],
+      ["issues", null],
+    ]);
+    const painted = store
       .get(canvasEdgesAtom)
       .filter((item) => item.source === "g");
+    expect(painted).toHaveLength(1);
+    expect(painted[0]).toMatchObject({ target: "notify", sourceHandle: null });
 
-    expect(handles).toEqual([null, "true"]);
-    expect(leaving).toHaveLength(2);
-    for (const painted of leaving) {
-      expect(handles).toContain(painted.sourceHandle ?? null);
-    }
+    store.set(undoAtom);
+    expect(leavingTo(store, "notify")).toEqual([]);
+    store.set(redoAtom);
+    expect(leavingTo(store, "notify")).toHaveLength(2);
   });
 
-  it("deletes every stored edge represented by the collapsed outlet", () => {
+  it("deletes every continuation edge the card's painted edge stands for", () => {
+    const store = parallelStore();
+    dragFromCard(store, "notify");
+    const painted = store
+      .get(canvasEdgesAtom)
+      .find((item) => item.source === "g");
+    if (!painted) {
+      throw new Error("expected a painted edge from the card");
+    }
+
+    store.set(deleteEdgeAtom, painted.id);
+
+    expect(leavingTo(store, "notify")).toEqual([]);
+    expect(store.get(edgesAtom)).toHaveLength(2);
+  });
+
+  it("refuses a second outside step for members that continue together", () => {
+    const store = parallelStore();
+    dragFromCard(store, "notify");
+    const before = store.get(edgesAtom);
+
+    const plan = store.set(connectNodesAtom, {
+      connection: {
+        id: "drag-archive",
+        source: "g",
+        target: "archive",
+        sourceHandle: null,
+        targetHandle: null,
+      },
+      catalog: emptyCatalog,
+    });
+
+    expect(plan).toEqual({
+      refusal:
+        'The Group "Group" would continue to 2 steps from 2 outlets inside it. Connect every outlet that leaves a Group to the same step, or continue from one outlet on the Group\'s own canvas.',
+    });
+    expect(store.get(edgesAtom)).toBe(before);
+  });
+
+  it("refuses to join a Condition's unconnected branches after the Group, with the join rule's notice", () => {
+    const store = createGraphStore(
+      [
+        lifecycleNode("t"),
+        multiExitGroupNode("g"),
+        conditionMember("gate"),
+        groupedLookup("a"),
+        actionNode("x"),
+      ],
+      [
+        { ...edge("t-a", "t", "a"), sourceHandle: "started" },
+        edge("a-gate", "a", "gate"),
+      ]
+    );
+    const before = store.get(edgesAtom);
+
+    // Both unconnected branches are path ends, and one of them never runs, so
+    // a step after both would wait forever.
+    expect(
+      store.set(connectNodesAtom, {
+        connection: {
+          id: "drag-x",
+          source: "g",
+          target: "x",
+          sourceHandle: null,
+          targetHandle: null,
+        },
+        catalog: emptyCatalog,
+      })
+    ).toEqual({
+      refusal: 'Node "x" cannot join mutually exclusive branches from "gate"',
+    });
+    expect(store.get(edgesAtom)).toBe(before);
+  });
+
+  it("adds a step after the Group's continuing branch alone once one branch continues", () => {
     const store = createGraphStore(
       [
         multiExitGroupNode("g"),
-        groupedLookup("a"),
+        conditionMember("gate"),
         groupedLookup("b"),
-        actionNode("next"),
+        actionNode("x"),
+        actionNode("y"),
       ],
-      [edge("out-a", "a", "next"), edge("out-b", "b", "next")]
+      [
+        { ...edge("gate-b", "gate", "b"), sourceHandle: "false" },
+        { ...edge("gate-x", "gate", "x"), sourceHandle: "true" },
+      ]
     );
 
-    expect(store.get(canvasEdgesAtom)).toHaveLength(1);
-    store.set(deleteEdgeAtom, "out-a");
+    dragFromCard(store, "y");
 
-    expect(store.get(edgesAtom)).toEqual([]);
+    expect(leavingTo(store, "y")).toEqual([["gate", "true"]]);
+    expect(
+      store
+        .get(canvasEdgesAtom)
+        .filter((item) => item.source === "g")
+        .map((item) => [item.target, item.data?.displayLabel])
+    ).toEqual([
+      ["x", "True"],
+      ["y", "True"],
+    ]);
   });
 });
 
@@ -1654,7 +1588,7 @@ describe("copy and paste", () => {
 
     expect(store.set(copySelectionAtom)).toBe(false);
     expect(store.get(hasCopiedSelectionAtom)).toBe(false);
-    expect(store.set(pasteCopiedSelectionAtom)).toBe(false);
+    expect(store.set(pasteCopiedSelectionAtom)).toBeNull();
     expect(store.get(nodesAtom)).toHaveLength(1);
   });
 
@@ -1690,7 +1624,7 @@ describe("copy and paste", () => {
       edges: [],
     });
 
-    expect(store.set(pasteCopiedSelectionAtom)).toBe(false);
+    expect(store.set(pasteCopiedSelectionAtom)).toBeNull();
     expect(store.get(nodesAtom)).toHaveLength(2);
   });
 

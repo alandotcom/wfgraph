@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, within } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { describe, expect, it } from "vitest";
@@ -84,17 +85,19 @@ function renderNodeMenu(
   };
   const view = render(
     <JotaiProvider store={store}>
-      <ExtensionCatalogProvider value={catalog}>
-        <OverlayProvider>
-          <WorkflowContextMenu
-            canEdit
-            canInsert
-            menuState={menuState}
-            onClose={() => {}}
-          />
-          <OverlayContainer />
-        </OverlayProvider>
-      </ExtensionCatalogProvider>
+      <QueryClientProvider client={new QueryClient()}>
+        <ExtensionCatalogProvider value={catalog}>
+          <OverlayProvider>
+            <WorkflowContextMenu
+              canEdit
+              canInsert
+              menuState={menuState}
+              onClose={() => {}}
+            />
+            <OverlayContainer />
+          </OverlayProvider>
+        </ExtensionCatalogProvider>
+      </QueryClientProvider>
     </JotaiProvider>
   );
 

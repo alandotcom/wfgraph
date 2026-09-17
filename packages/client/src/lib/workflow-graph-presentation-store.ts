@@ -6,7 +6,6 @@
 
 import { atom, type Atom } from "jotai";
 import { selectAtom } from "jotai/utils";
-import { isEqual } from "es-toolkit/predicate";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { mapOrSame } from "@wfgraph/shared/utils/map-or-same";
 import { inactiveBranch } from "#src/lib/inactive-branch";
@@ -20,7 +19,6 @@ import {
 } from "#src/lib/workflow-issues-store";
 import {
   childIdsOfGroup,
-  groupOutlets,
   orderGroupParentsFirst,
 } from "@wfgraph/shared/graph/node-group";
 import {
@@ -48,13 +46,11 @@ import {
 import type { RunNodeEvidenceStatus } from "@wfgraph/shared/graph/group-run-status";
 import type { WorkflowExecutionStatus } from "@wfgraph/shared/lifecycle/execution-contracts";
 import {
-  comparisonNodeTitle,
   type NodeIssueSummary,
   type NodeRunStatus,
   type WorkflowEdge,
   type WorkflowNode,
 } from "#src/lib/workflow-graph-types";
-import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 
 /**
  * Run evidence status by node id, separate from every persisted graph. Step
@@ -411,24 +407,6 @@ const frameSourceGraphAtom = atom(
       edges: get(edgesStateAtom),
     }
 );
-
-/**
- * An atom holding the source handles the Group frame `groupId` draws, read
- * from the presented graph's member edges, with each member named by the title
- * its card shows under `catalog`. It keeps the same array while the handles are
- * unchanged, so dragging a node re-renders no frame. Create it once per frame
- * id and catalog, because each call makes a new atom.
- */
-export function groupOutletsAtom(groupId: string, catalog: ExtensionCatalog) {
-  return selectAtom(
-    frameSourceGraphAtom,
-    (graph) =>
-      groupOutlets(graph.nodes, graph.edges, groupId, (node) =>
-        comparisonNodeTitle(node.data, catalog)
-      ),
-    isEqual
-  );
-}
 
 /**
  * An atom holding how many members the Group frame `groupId` holds in the

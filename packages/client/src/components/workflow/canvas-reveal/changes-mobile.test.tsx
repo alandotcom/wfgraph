@@ -876,7 +876,6 @@ describe("mobile Changes accessibility and authoring", () => {
       editingLocked: true,
       comparisonActive: true,
       overlayActive: false,
-      groupScopeActive: false,
       topologyAuthoring: false,
     });
     expect(interaction).toMatchObject({

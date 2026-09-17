@@ -1484,20 +1484,22 @@ describe("Group membership", () => {
     })
   );
 
-  it.effect("saves a write that breaks a v1 Group rule as a draft", () =>
-    Effect.gen(function* () {
-      const { tools, draft } = yield* agentToolsFor({
-        nodes: [entry, frame, member("a"), member("b"), outside],
-        edges: [entryToA, aToB, { ...cToOutside, source: "b", id: "b-out" }],
-        catalog,
-      });
+  it.effect(
+    "saves a write that continues two members to one step outside the Group",
+    () =>
+      Effect.gen(function* () {
+        const { tools, draft } = yield* agentToolsFor({
+          nodes: [entry, frame, member("a"), member("b"), outside],
+          edges: [entryToA, aToB, { ...cToOutside, source: "b", id: "b-out" }],
+          catalog,
+        });
 
-      // A second member continuing out of the Group breaks the
-      // multiple_continuations rule, which Publish refuses and a draft keeps.
-      yield* tools.connect_nodes({ source: "a", target: "outside" });
+        // A second member continuing to the step the first continues to is one
+        // continuation. It is a join outside the Group, which a draft keeps.
+        yield* tools.connect_nodes({ source: "a", target: "outside" });
 
-      expect((yield* draft.current).edges).toHaveLength(4);
-    })
+        expect((yield* draft.current).edges).toHaveLength(4);
+      })
   );
 
   it.effect(

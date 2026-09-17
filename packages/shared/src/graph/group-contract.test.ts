@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  addedContinuationRefusal,
   addedIngressSourceRefusal,
   addedJoinRuleRefusal,
   groupContractViolations,
@@ -374,5 +375,69 @@ describe("addedJoinRuleRefusal", () => {
     expect(joinRuleBreakKeys({ nodes, edges })).toBe(current);
     expect(current.size).toBe(1);
     expect(joinRuleBreakKeys({ nodes, edges: [...edges] })).not.toBe(current);
+  });
+});
+
+describe("addedContinuationRefusal", () => {
+  const step = (id: string, parentId?: string): WorkflowNode =>
+    omitUndefined({
+      id,
+      type: "action",
+      position: { x: 0, y: 0 },
+      data: {
+        label: id,
+        type: "action",
+        config: { actionType: "test/read" },
+      },
+      parentId,
+    });
+  const nodes: WorkflowNode[] = [
+    {
+      id: "g",
+      type: "group",
+      position: { x: 0, y: 0 },
+      data: { label: "Lookups", type: "group", config: {} },
+    },
+    step("user", "g"),
+    step("issues", "g"),
+    step("notify"),
+    step("archive"),
+  ];
+  const link = (source: string, target: string) => ({
+    id: `${source}-${target}`,
+    source,
+    target,
+  });
+
+  it("allows several members to continue to one shared outside step", () => {
+    expect(
+      addedContinuationRefusal({
+        nodes,
+        edges: [],
+        additions: [link("user", "notify"), link("issues", "notify")],
+      })
+    ).toBeNull();
+  });
+
+  it("allows one member to continue to several outside steps", () => {
+    expect(
+      addedContinuationRefusal({
+        nodes,
+        edges: [link("user", "notify")],
+        additions: [link("user", "archive")],
+      })
+    ).toBeNull();
+  });
+
+  it("refuses a second outside step for members that continue together", () => {
+    expect(
+      addedContinuationRefusal({
+        nodes,
+        edges: [link("user", "notify"), link("issues", "notify")],
+        additions: [link("user", "archive"), link("issues", "archive")],
+      })
+    ).toBe(
+      'The Group "Lookups" would continue to 2 steps from 2 outlets inside it. Connect every outlet that leaves a Group to the same step, or continue from one outlet on the Group\'s own canvas.'
+    );
   });
 });

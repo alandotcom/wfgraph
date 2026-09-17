@@ -181,6 +181,15 @@ A Workflow Builder groups two or more steps with **Group** in the canvas context
 run unchanged: the engine walks the same stored edges whether or not a step sits in a
 Group, and a Group writes no run log, result, or retry of its own. The workflow canvas
 shows a Group as one collapsed card, and entering the Group opens a canvas of its members.
+A connection dragged from the card's one outlet to a step outside the Group connects every
+place a path ends inside the Group to that step, so the step runs once after every branch
+finishes, and deleting that connection deletes each of those edges. On an entered Group's
+canvas a Workflow Builder adds, pastes, duplicates, connects, disables, and deletes steps,
+and a step added, pasted, or duplicated there becomes a member of that Group. The entered
+canvas lays out its steps from the Group's connections, so **Tidy layout** is unavailable
+there. Continuing one branch alone is done on the entered canvas: each edge to a
+"Continues to" stub can be deleted on its own, and dragging from a step onto a "Continues
+to" stub connects that step alone to the outside step the stub names.
 In **Runs** the card shows the Group's run status and step counts. In **Changes** Group
 edits count as Organization changes, and the comparison says when a version changes
 nothing a run executes.
@@ -192,7 +201,9 @@ Version 1 Groups follow these rules:
 - Publish refuses a Group with fewer than two steps or with an Event Split inside it.
 - Publish refuses a Group entered from more than one outside outlet. One outlet may
   connect to several steps inside the Group.
-- Publish refuses a Group that continues outside from more than one inside outlet. That
+- Publish refuses a Group that continues outside from more than one inside outlet when
+  those outlets reach more than one outside step. Several inside outlets that all connect
+  to the same outside step and target handle are one continuation. A single continuing
   outlet may be one branch of a Condition whose other branch ends inside the Group.
 - Publish refuses a join inside a Group with a branch from outside it, and a Condition in
   a Group on a branch into any join.
@@ -200,7 +211,9 @@ Version 1 Groups follow these rules:
 A draft that breaks a Publish rule still saves, and a draft run still starts, because the
 rules do not change what a run executes. The editor forms a Group only from a selection
 that meets the rules, and refuses a connection that would enter a Group from a second
-outside outlet or break a join rule.
+outside outlet, continue a Group to a second outside step from several outlets, or break a
+join rule. A refused connection, step, paste, or duplicate changes nothing and shows the
+reason.
 
 A Group frame's config holds only `direction`, `vertical` or `horizontal`, which sets how
 the editor lays out the members of an entered Group. Graph decoding refuses every other

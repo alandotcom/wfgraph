@@ -187,7 +187,7 @@ describe("connectionRefusalReason for a drag from an ingress stub", () => {
     expect(
       connectionRefusalReason({
         connection: { source: "Outside", target: "second" },
-        fromIngressStub: true,
+        throughBoundaryStub: true,
         nodes: [...nodes, actionNode("Outside")],
         storeEdges,
         catalog: emptyExtensionCatalog,
@@ -218,7 +218,7 @@ describe("connectionRefusalReason for a drag from an ingress stub", () => {
     expect(
       connectionRefusalReason({
         connection: { source: "Outside", target: "second" },
-        fromIngressStub: true,
+        throughBoundaryStub: true,
         nodes: [...nodes, actionNode("Outside")],
         storeEdges,
         catalog: emptyExtensionCatalog,

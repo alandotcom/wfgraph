@@ -25,7 +25,7 @@ export type OutletEdge = {
   target: string;
   sourceHandle?: string | null | undefined;
   targetHandle?: string | null | undefined;
-  data?: Pick<EditorEdgeData, "turnAlong"> | undefined;
+  data?: Pick<EditorEdgeData, "turnAlong" | "lane"> | undefined;
 };
 
 function union(rects: readonly Rect[]): Rect {
@@ -83,7 +83,7 @@ export function outletPlacement(input: {
         targetY: ty,
         targetPosition: targetPos,
       },
-      { turnAlong: edge.data?.turnAlong }
+      { turnAlong: edge.data?.turnAlong, lane: edge.data?.lane }
     );
     return [
       {

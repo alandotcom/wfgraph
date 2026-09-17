@@ -7,7 +7,6 @@ import {
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { eventSplitOutlet } from "@wfgraph/shared/lifecycle/event-split";
-import { groupOutlets } from "@wfgraph/shared/graph/node-group";
 import {
   emptyExtensionCatalog,
   type ExtensionCatalog,
@@ -275,22 +274,19 @@ describe("group outlet handle", () => {
     },
   };
 
-  it("keeps the card handle a drag starts on, which names the path end it stands for", () => {
+  it("names no handle for a drag from a Group card, which has one outlet", () => {
     const nodes = [group, lookup, condition];
     const edges = [{ id: "ac", source: "a", target: "c" }];
-    const falseHandle = groupOutlets(nodes, edges, "g").find(
-      (outlet) => outlet.label === "False"
-    )?.handleId;
 
     expect(
       normalizeSourceHandleForConnection({
         nodes,
         edges,
         sourceNodeId: "g",
-        sourceHandle: falseHandle,
+        sourceHandle: "false",
         catalog: emptyCatalog,
       })
-    ).toBe(falseHandle);
+    ).toBeNull();
   });
 
   it("names no handle for a connection from a Group that names none", () => {

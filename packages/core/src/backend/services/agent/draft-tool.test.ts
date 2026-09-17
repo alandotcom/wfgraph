@@ -275,6 +275,16 @@ describe("executeDraftTool", () => {
               config: { actionType: "score-applicant" },
             },
           },
+          {
+            id: "later",
+            type: "action",
+            position: { x: 0, y: 800 },
+            data: {
+              type: "action",
+              label: "Score later",
+              config: { actionType: "score-applicant" },
+            },
+          },
         ],
         edges: [
           {
@@ -285,6 +295,7 @@ describe("executeDraftTool", () => {
           },
           { id: "a-b", source: "a", target: "b" },
           { id: "b-outside", source: "b", target: "outside" },
+          { id: "outside-later", source: "outside", target: "later" },
         ],
       }),
     };
@@ -318,7 +329,7 @@ describe("executeDraftTool", () => {
         executeDraftTool({
           workflowId: workflow.id,
           name: "connect_nodes",
-          arguments: { source: "a", target: "outside" },
+          arguments: { source: "a", target: "later" },
           toolCallId: "call_connect",
           expectedDraftRevision: 1,
         })
@@ -334,7 +345,7 @@ describe("executeDraftTool", () => {
 
       assert.isFalse(write.isFailure);
       assert.strictEqual(stored().draftRevision, 2);
-      assert.strictEqual(stored().graph.edges.length, 4);
+      assert.strictEqual(stored().graph.edges.length, 5);
       assert.isTrue(validation.result.draftValid);
       assert.deepInclude(
         Array.isArray(validation.result.publishBlockers)
@@ -345,7 +356,7 @@ describe("executeDraftTool", () => {
           nodeId: "lookups",
           nodeLabel: "Lookups",
           message:
-            'Group "Lookups" continues from 2 outlets inside it. Only one outlet inside a Group can connect to steps outside it',
+            'Group "Lookups" continues from 2 outlets inside it to 2 steps outside it. Connect every outlet that leaves a Group to the same step, or leave the Group from one outlet',
         }
       );
     });
@@ -369,7 +380,7 @@ describe("executeDraftTool", () => {
       assert.strictEqual(write.draftRevision, 2);
       assert.deepEqual(
         nodes.map((node) => node.key),
-        ["entry", "a", "outside"]
+        ["entry", "a", "outside", "later"]
       );
       assert.isUndefined(
         nodes.find((node) => node.key === "a")?.attributes.parentId

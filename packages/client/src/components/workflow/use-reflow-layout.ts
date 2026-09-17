@@ -2,8 +2,9 @@
  * The graph's tidy-up pass, shared by the canvas control at bottom left and the
  * Actions menu's "Tidy layout" so the two cannot drift into different rules.
  * `canReflow` is the whole gate, and it is off on a focused Group canvas, which
- * never writes a coordinate, and on a phone, which offers no topology
- * authoring. `reflow` re-reads it at click time.
+ * lays its steps out from the Group's topology and never writes a coordinate,
+ * and on a phone, which offers no topology authoring. `reflow` re-reads it at
+ * click time.
  */
 
 import { useReactFlow } from "@xyflow/react";

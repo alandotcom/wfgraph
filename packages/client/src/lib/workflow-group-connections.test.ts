@@ -238,7 +238,7 @@ describe("parallel ingress fan-out", () => {
     ).toBeNull();
     store.set(connectNodesAtom, {
       connection: { id: "again", ...translated.connection },
-      fromIngressStub: translated.fromIngressStub,
+      throughBoundaryStub: translated.throughBoundaryStub,
       catalog: emptyExtensionCatalog,
     });
     await tick();
@@ -487,7 +487,7 @@ describe("joins inside a Group", () => {
     expect(
       store.set(connectNodesAtom, {
         connection: { id: "qualify-j", source: "qualify", target: "j" },
-        fromIngressStub: true,
+        throughBoundaryStub: true,
         catalog: emptyExtensionCatalog,
       })
     ).toEqual({ refusal });

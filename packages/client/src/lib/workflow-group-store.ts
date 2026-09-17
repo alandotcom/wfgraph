@@ -235,7 +235,7 @@ export const connectNodesAtom = atom(
     set,
     input: {
       connection: RequestedConnection & { id: string };
-      fromIngressStub?: boolean | undefined;
+      throughBoundaryStub?: boolean | undefined;
       catalog: ExtensionCatalog;
     }
   ): ConnectionPlan | null => {
@@ -247,7 +247,7 @@ export const connectNodesAtom = atom(
     const currentEdges = get(edgesStateAtom);
     const plan = planConnection({
       connection: requested,
-      fromIngressStub: input.fromIngressStub,
+      throughBoundaryStub: input.throughBoundaryStub,
       nodes: get(nodesStateAtom),
       storeEdges: currentEdges,
       catalog: input.catalog,

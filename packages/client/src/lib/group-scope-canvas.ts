@@ -6,7 +6,8 @@
  * member port where a path ends. Nothing here writes the graph.
  */
 
-import { sortBy, uniqBy } from "es-toolkit/array";
+import { partition, sortBy } from "es-toolkit/array";
+import { isNotNil } from "es-toolkit/predicate";
 import {
   analyzeGroupBoundary,
   type GroupPort,
@@ -22,10 +23,25 @@ import {
 import type { GroupLayoutDirection } from "@wfgraph/shared/graph/schemas";
 import {
   getConditionBranchDisplayLabel,
+  isConditionActionType,
   normalizeConditionBranch,
 } from "@wfgraph/shared/conditions/condition-branch";
+import { spreadInOrder } from "@wfgraph/shared/graph/group-across-offsets";
+import { readConfigString } from "@wfgraph/shared/graph/node-config";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { type NodeChange, Position } from "@xyflow/react";
+import { drawnStretches } from "#src/lib/group-edge-tracks";
+import {
+  outletAcross,
+  routeFocusedGroup,
+  TRACK_SPACING,
+  type PaintedBox,
+  type PaintedRoute,
+} from "#src/lib/group-scope-routing";
+import {
+  cornerRadii,
+  routedEdgeCorners,
+} from "#src/components/flow-elements/edge-path";
 import type { WorkspaceScope } from "#src/lib/workflow-navigation-state";
 import {
   GROUP_BOUNDARY_STUB_PORT,
@@ -133,49 +149,67 @@ function stubPortOf(
 }
 
 /**
- * A painted connection as the store reads it. `fromIngressStub` is true when
- * the painted source was an "Incoming from" stub, whose outside port became the
- * source. `refusal` explains a connection involving a stub that stores nothing.
+ * A painted connection as the store reads it. `throughBoundaryStub` is true
+ * when the painted source was an "Incoming from" stub, whose outside port
+ * became the source, or the painted target was a "Continues to" stub, whose
+ * outside port became the target. `refusal` explains a connection involving a
+ * stub that stores nothing.
  */
 export type StoredCanvasConnection<C> =
-  | { connection: C; fromIngressStub: boolean }
+  | { connection: C; throughBoundaryStub: boolean }
   | { refusal: string };
 
 /**
  * The connection a drag on the painted nodes `paintedNodes` stores. A drag from
  * an ingress stub onto a member names the stub's outside port as its source, so
  * it stores one more edge from the port that already enters the Group. A drag
- * onto a stub, or from a continuation or end stub, is refused. Every other
- * connection comes back as it was given.
+ * from a member onto a continuation stub names the stub's outside port as its
+ * target, so one member's outlet continues to a step the Group already
+ * continues to. A drag between two stubs, onto an ingress or end stub, or from
+ * a continuation or end stub, is refused. Every other connection comes back as
+ * it was given.
  */
 export function storedCanvasConnection<
   C extends {
     source: string | null;
     target: string | null;
     sourceHandle?: string | null | undefined;
+    targetHandle?: string | null | undefined;
   },
 >(
   connection: C,
   paintedNodes: readonly WorkflowNode[]
 ): StoredCanvasConnection<C> {
   const source = stubPortOf(connection.source, paintedNodes);
+  const target = stubPortOf(connection.target, paintedNodes);
   if (
-    stubPortOf(connection.target, paintedNodes) !== null ||
-    (source !== null && source.direction !== "ingress")
+    (source !== null && target !== null) ||
+    (source !== null && source.direction !== "ingress") ||
+    (target !== null && target.direction !== "continuation")
   ) {
     return { refusal: "Connect to a step inside the Group." };
   }
-  if (source === null) {
-    return { connection, fromIngressStub: false };
+  if (source !== null) {
+    return {
+      connection: {
+        ...connection,
+        source: source.port.nodeId,
+        sourceHandle: source.port.handle,
+      },
+      throughBoundaryStub: true,
+    };
   }
-  return {
-    connection: {
-      ...connection,
-      source: source.port.nodeId,
-      sourceHandle: source.port.handle,
-    },
-    fromIngressStub: true,
-  };
+  if (target !== null) {
+    return {
+      connection: {
+        ...connection,
+        target: target.port.nodeId,
+        targetHandle: target.port.handle,
+      },
+      throughBoundaryStub: true,
+    };
+  }
+  return { connection, throughBoundaryStub: false };
 }
 
 /**
@@ -192,11 +226,12 @@ const paintedBoundaryEdges: Record<
 
 /**
  * The edge a focused Group paints for a stored edge, before `withTurn` places
- * its turn. An interior edge is the stored edge itself. An ingress edge keeps the stored id, so selecting or
- * deleting it names that one stored edge; its outside end moves onto the stub
- * for its outside port, and it keeps the branch label that port's handle gives
- * it. A continuation edge moves onto its stub and is display only. A stub draws
- * one handle with no id.
+ * its turn. An interior edge is the stored edge itself. An ingress or
+ * continuation edge keeps the stored id, so selecting or deleting it names that
+ * one stored edge. An ingress edge's outside end moves onto the stub for its
+ * outside port, and it keeps the branch label that port's handle gives it. A
+ * continuation edge's outside end moves onto its stub. A stub draws one handle
+ * with no id.
  */
 function focusedEdge(edge: WorkflowEdge, role: EdgeRole): WorkflowEdge {
   if (role === "interior") {
@@ -223,9 +258,6 @@ function focusedEdge(edge: WorkflowEdge, role: EdgeRole): WorkflowEdge {
     const { targetHandle, ...rest } = edge;
     painted = {
       ...rest,
-      selectable: false,
-      deletable: false,
-      focusable: false,
       target: boundaryStubId("continuation", {
         nodeId: edge.target,
         handle: targetHandle ?? null,
@@ -380,11 +412,12 @@ function boundaryStub(input: {
       },
     },
   };
-  // An ingress stub leaves `connectable` unset, so it follows the canvas's
-  // `nodesConnectable`, and a drag from it onto a member adds one more edge from
-  // the outside port it stands for (see `storedCanvasConnection`). Continuation
-  // and end stubs are never connectable.
-  if (input.direction !== "ingress") {
+  // An ingress or continuation stub leaves `connectable` unset, so it follows
+  // the canvas's `nodesConnectable`. A drag from an ingress stub onto a member
+  // adds one more edge from the outside port it stands for, and a drag from a
+  // member onto a continuation stub adds an edge to the outside port that stub
+  // stands for (see `storedCanvasConnection`). End stubs are never connectable.
+  if (input.direction === "end") {
     stub.connectable = false;
   }
   stepCache?.set(id, stub);
@@ -433,59 +466,67 @@ function projectedMember(
   return projected;
 }
 
-const turningEdges = new WeakMap<WorkflowEdge, WorkflowEdge>();
+const routedEdges = new WeakMap<WorkflowEdge, WorkflowEdge>();
 
 /**
- * `edge` with `turnAlong` on its data, or `edge` itself when `turnAlong` is
- * undefined. The copy is kept per edge while its turn holds, so a recompute that
- * moved nothing hands React Flow the edge objects it already holds.
+ * `edge` with its route on its data, or `edge` itself when it has no route. The
+ * copy is kept per edge while its route holds, so a recompute that moved
+ * nothing hands React Flow the edge objects it already holds.
  */
-function withTurn(
+function withRoute(
   edge: WorkflowEdge,
-  turnAlong: number | undefined
+  route: PaintedRoute | undefined
 ): WorkflowEdge {
-  if (turnAlong === undefined) {
+  if (route === undefined) {
     return edge;
   }
-  const cached = turningEdges.get(edge);
-  if (cached?.data?.turnAlong === turnAlong) {
+  const cached = routedEdges.get(edge);
+  if (
+    cached?.data?.turnAlong === route.turnAlong &&
+    cached.data.lane?.across === route.lane?.across &&
+    cached.data.lane?.turnAlong === route.lane?.turnAlong &&
+    cached.data.drawn?.from === route.drawn?.from &&
+    cached.data.drawn?.to === route.drawn?.to
+  ) {
     return cached;
   }
-  const turning = { ...edge, data: { ...edge.data, turnAlong } };
-  turningEdges.set(edge, turning);
-  return turning;
+  const routed = {
+    ...edge,
+    data: omitUndefined({
+      ...edge.data,
+      turnAlong: route.turnAlong,
+      lane: route.lane,
+      drawn: route.drawn,
+    }),
+  };
+  routedEdges.set(edge, routed);
+  return routed;
 }
 
+/** The least room between two stubs on the line after the members. */
+const STUB_SPACING = 2 * TRACK_SPACING;
+
 /**
- * Where each edge between the painted `nodes` turns across the flow, as
- * `EditorEdgeData.turnAlong` reads it: the middle of the gap that ends where
- * the target starts, measured back to the nearest painted card or stub end.
- * Undefined unless the target starts at or past the source's end, so a backward
- * or same-row edge keeps React Flow's routing.
+ * The position nearest `desired` between the values of `placed` on either side
+ * of it that stands at least `pitch` from both, or null when there is no such
+ * room.
  */
-function turnLocator(
-  nodes: readonly WorkflowNode[],
-  direction: GroupLayoutDirection
-): (edge: WorkflowEdge) => number | undefined {
-  const vertical = direction === "vertical";
-  // A Map, because member ids are chosen by the builder.
-  const spans = new Map(
-    nodes.map((node) => {
-      const start = vertical ? node.position.y : node.position.x;
-      const depth = (vertical ? node.height : node.width) ?? 0;
-      return [node.id, { start, end: start + depth }];
-    })
+function acrossInOrder(
+  desired: number,
+  placed: readonly number[],
+  pitch: number
+): number | null {
+  const below = Math.max(
+    Number.NEGATIVE_INFINITY,
+    ...placed.filter((value) => value <= desired)
   );
-  const ends = [...spans.values()].map((span) => span.end);
-  return (edge) => {
-    const source = spans.get(edge.source);
-    const target = spans.get(edge.target);
-    if (!(source && target) || source.end > target.start) {
-      return undefined;
-    }
-    const gapStart = Math.max(...ends.filter((end) => end <= target.start));
-    return (gapStart + target.start) / 2;
-  };
+  const above = Math.min(
+    Number.POSITIVE_INFINITY,
+    ...placed.filter((value) => value > desired)
+  );
+  const low = below + pitch;
+  const high = above - pitch;
+  return low <= high ? Math.min(Math.max(desired, low), high) : null;
 }
 
 /**
@@ -546,6 +587,7 @@ function endEdge(
       selectable: false,
       deletable: false,
       focusable: false,
+      data: { insertable: false },
     }
   );
 }
@@ -577,25 +619,7 @@ export function focusedGroupCanvasGraph(
   const storedMembers = input.nodes.filter(
     (node) => node.parentId === input.groupId
   );
-  const boundary = analyzeGroupBoundary({
-    memberIds: storedMembers.map((member) => member.id),
-    edges: input.edges,
-  });
-  const endPorts = groupEndPorts({ nodes: input.nodes, boundary });
-  const positions = groupCanvasPositions({
-    memberIds: boundary.memberIds,
-    interiorEdges: boundary.interiorEdges,
-    trailingStubPorts: [...boundary.internalContinuation, ...endPorts],
-    direction,
-  });
-  const members = storedMembers.map((member) =>
-    projectedMember(
-      member,
-      positions.get(member.id) ?? { x: -WORKFLOW_NODE_WIDTH / 2, y: 0 },
-      direction
-    )
-  );
-  const firstMember = members[0];
+  const firstMember = storedMembers[0];
   if (!firstMember) {
     return {
       nodes: [],
@@ -604,114 +628,285 @@ export function focusedGroupCanvasGraph(
       projectedNodeIds: new Set(),
     };
   }
+  const boundary = analyzeGroupBoundary({
+    memberIds: storedMembers.map((member) => member.id),
+    edges: input.edges,
+  });
+  const endPorts = groupEndPorts({ nodes: input.nodes, boundary });
+  const positions = groupCanvasPositions({
+    memberIds: boundary.memberIds,
+    interiorEdges: boundary.interiorEdges,
+    direction,
+  });
 
   const vertical = direction === "vertical";
-  const starts = members.map((member) =>
-    vertical ? member.position.y : member.position.x
+  // A Map, because member ids are chosen by the builder.
+  const boxes = new Map<string, PaintedBox>(
+    storedMembers.map((member) => [
+      member.id,
+      {
+        ...CARD_SIZE,
+        position: positions.get(member.id) ?? {
+          x: -WORKFLOW_NODE_WIDTH / 2,
+          y: 0,
+        },
+        condition: isConditionActionType(
+          readConfigString(member.data.config, "actionType")
+        ),
+      },
+    ])
   );
-  const ends = members.map((member) =>
+  const memberBoxes = [...boxes.values()];
+  const starts = memberBoxes.map((box) =>
+    vertical ? box.position.y : box.position.x
+  );
+  const ends = memberBoxes.map((box) =>
+    vertical ? box.position.y + box.height : box.position.x + box.width
+  );
+  const stubSize = {
+    width: WORKFLOW_NODE_WIDTH,
+    height: GROUP_BOUNDARY_STUB_HEIGHT,
+  };
+  const stubDepth = vertical ? stubSize.height : stubSize.width;
+  const stubAt = (along: number, across: number) =>
     vertical
-      ? member.position.y + WORKFLOW_NODE_HEIGHT
-      : member.position.x + WORKFLOW_NODE_WIDTH
-  );
-  const acrossCentre = vertical ? 0 : WORKFLOW_NODE_HEIGHT / 2;
-  const stubDepth = vertical ? GROUP_BOUNDARY_STUB_HEIGHT : WORKFLOW_NODE_WIDTH;
-  const stubs = (
-    along: number,
-    entries: readonly { direction: StubDirection; port: GroupPort }[]
-  ) => {
-    const found = entries.flatMap((entry) => {
-      const step = byId.get(entry.port.nodeId);
-      return step ? [{ ...entry, step }] : [];
-    });
-    const line = stubLine(found.length, acrossCentre, along, direction);
-    return found.map((entry, index) =>
-      boundaryStub({
-        direction: entry.direction,
-        layout: direction,
-        step: entry.step,
-        port: entry.port,
-        position: line[index] ?? { x: 0, y: along },
-        endStubCache: endStubs,
-      })
-    );
-  };
+      ? { x: across - stubSize.width / 2, y: along }
+      : { x: along, y: across - stubSize.height / 2 };
 
-  // "Continues to" and "Path ends" stubs share the line after the members,
-  // ordered by where the member port each one leaves sits: across the flow
-  // first, so their edges cross as little as the line allows, then along the
-  // flow, then True before False.
-  const projectedById = new Map(members.map((member) => [member.id, member]));
-  const centreOf = (port: GroupPort) => {
-    const member = projectedById.get(port.nodeId);
-    return member
-      ? {
-          x: member.position.x + WORKFLOW_NODE_WIDTH / 2,
-          y: member.position.y + WORKFLOW_NODE_HEIGHT / 2,
-        }
-      : { x: 0, y: 0 };
-  };
-  const byFlow = [
-    (entry: { from: GroupPort }) =>
-      vertical ? centreOf(entry.from).x : centreOf(entry.from).y,
-    (entry: { from: GroupPort }) =>
-      vertical ? centreOf(entry.from).y : centreOf(entry.from).x,
-    (entry: { from: GroupPort }) => outletRank(entry.from.handle),
-  ];
-  // One "Continues to" stub per outside port, drawn from the member port that
-  // comes first in flow order among the edges reaching it.
-  const continuations = uniqBy(
-    sortBy(
-      boundary.continuationEdges.map((edge) => ({
-        direction: "continuation" as const,
-        port: { nodeId: edge.target, handle: edge.targetHandle ?? null },
-        from: { nodeId: edge.source, handle: edge.sourceHandle ?? null },
-      })),
-      byFlow
-    ),
-    (entry) => boundaryStubId(entry.direction, entry.port)
+  // "Incoming from" stubs share one line before the members, centred on the
+  // collapsed card.
+  const ingressAlong = Math.min(...starts) - RANK_SPACING - stubDepth;
+  const ingressFound = boundary.externalIngress.flatMap((port) => {
+    const step = byId.get(port.nodeId);
+    return step ? [{ direction: "ingress" as const, port, step }] : [];
+  });
+  const ingressLine = stubLine(
+    ingressFound.length,
+    vertical ? 0 : WORKFLOW_NODE_HEIGHT / 2,
+    ingressAlong,
+    direction
   );
+  const ingressEntries = ingressFound.map((entry, index) => ({
+    ...entry,
+    position: ingressLine[index] ?? stubAt(ingressAlong, 0),
+  }));
+
+  // "Continues to" and "Path ends" stubs share the line after the members. A
+  // stub one outlet reaches stands level with that outlet, and stubs of that
+  // kind that would crowd each other spread apart in order across the flow,
+  // along the flow next, and True before False. A "Continues to" stub several
+  // outlets reach then stands centred across them, or as near that centre as
+  // the stubs already placed leave room for.
+  const outletOf = (from: GroupPort) => {
+    const box = boxes.get(from.nodeId);
+    return {
+      across: box ? outletAcross(box, from.handle, direction) : 0,
+      along: box ? (vertical ? box.position.y : box.position.x) : 0,
+    };
+  };
+  const continuations = [
+    ...Map.groupBy(boundary.continuationEdges, (edge) =>
+      boundaryStubId("continuation", {
+        nodeId: edge.target,
+        handle: edge.targetHandle ?? null,
+      })
+    ).values(),
+  ].flatMap((reaching) => {
+    const [first] = reaching;
+    if (!first) {
+      return [];
+    }
+    const outlets = reaching.map((edge) =>
+      outletOf({ nodeId: edge.source, handle: edge.sourceHandle ?? null })
+    );
+    const acrosses = outlets.map((outlet) => outlet.across);
+    return [
+      {
+        direction: "continuation" as const,
+        port: { nodeId: first.target, handle: first.targetHandle ?? null },
+        shared: reaching.length > 1,
+        across: (Math.min(...acrosses) + Math.max(...acrosses)) / 2,
+        along: Math.min(...outlets.map((outlet) => outlet.along)),
+        rank: outletRank(first.sourceHandle ?? null),
+      },
+    ];
+  });
   const afterMembers = sortBy(
     [
       ...continuations,
       ...endPorts.map((port) => ({
         direction: "end" as const,
         port,
-        from: port,
+        shared: false,
+        ...outletOf(port),
+        rank: outletRank(port.handle),
       })),
     ],
-    byFlow
+    ["across", "along", "rank"]
+  ).flatMap((entry) => {
+    const step = byId.get(entry.port.nodeId);
+    return step ? [{ ...entry, step }] : [];
+  });
+  const afterAlong = Math.max(...ends) + RANK_SPACING;
+  const stubPitch =
+    (vertical ? stubSize.width : stubSize.height) + STUB_SPACING;
+  const [sharedStubs, levelStubs] = partition(
+    afterMembers,
+    (entry) => entry.shared
   );
-
-  const nodes = [
-    ...stubs(
-      Math.min(...starts) - RANK_SPACING - stubDepth,
-      boundary.externalIngress.map((port) => ({
-        direction: "ingress" as const,
-        port,
-      }))
-    ),
-    ...members,
-    ...stubs(Math.max(...ends) + RANK_SPACING, afterMembers),
+  const levelAcross = spreadInOrder(
+    levelStubs.map((entry) => entry.across),
+    stubPitch
+  );
+  const sharedAcross = sharedStubs.reduce<(number | null)[]>(
+    (placed, entry) => [
+      ...placed,
+      acrossInOrder(
+        entry.across,
+        [...levelAcross, ...placed.filter(isNotNil)],
+        stubPitch
+      ),
+    ],
+    []
+  );
+  // When a shared stub finds no room between the stubs beside it, every stub
+  // on the line spreads apart in order, so no edge to a stub crosses another.
+  const placedStubs = sharedAcross.every(isNotNil)
+    ? [
+        ...levelStubs.map((entry, index) => ({
+          entry,
+          across: levelAcross[index] ?? 0,
+        })),
+        ...sharedStubs.map((entry, index) => ({
+          entry,
+          across: sharedAcross[index] ?? 0,
+        })),
+      ]
+    : afterMembers.map((entry, index) => ({
+        entry,
+        across:
+          spreadInOrder(
+            afterMembers.map((item) => item.across),
+            stubPitch
+          )[index] ?? 0,
+      }));
+  const stubEntries = [
+    ...ingressEntries,
+    ...placedStubs.map(({ entry, across }) => ({
+      ...entry,
+      position: stubAt(afterAlong, across),
+    })),
   ];
+  for (const entry of stubEntries) {
+    boxes.set(boundaryStubId(entry.direction, entry.port), {
+      ...stubSize,
+      position: entry.position,
+      condition: false,
+    });
+  }
+
   const paintedEndEdges = endPorts.map((port) => endEdge(port, endEdges));
+  const paintedEdges = [
+    ...boundary.interiorEdges.map((edge) => focusedEdge(edge, "interior")),
+    ...boundary.ingressEdges.map((edge) => focusedEdge(edge, "ingress")),
+    ...boundary.continuationEdges.map((edge) =>
+      focusedEdge(edge, "continuation")
+    ),
+    ...paintedEndEdges,
+  ];
+  const routes = routeFocusedGroup({
+    boxes,
+    edges: paintedEdges,
+    firstMemberId: firstMember.id,
+    direction,
+  });
+  const moved = (id: string, position: { x: number; y: number }) => {
+    const shift = routes.shift(id);
+    return vertical
+      ? { x: position.x, y: position.y + shift }
+      : { x: position.x + shift, y: position.y };
+  };
+
+  const stubNodes = stubEntries.map((entry) =>
+    boundaryStub({
+      direction: entry.direction,
+      layout: direction,
+      step: entry.step,
+      port: entry.port,
+      position: moved(
+        boundaryStubId(entry.direction, entry.port),
+        entry.position
+      ),
+      endStubCache: endStubs,
+    })
+  );
+  const members = storedMembers.map((member) =>
+    projectedMember(
+      member,
+      moved(
+        member.id,
+        boxes.get(member.id)?.position ?? { x: -WORKFLOW_NODE_WIDTH / 2, y: 0 }
+      ),
+      direction
+    )
+  );
+  const nodes = [
+    ...stubNodes.slice(0, ingressEntries.length),
+    ...members,
+    ...stubNodes.slice(ingressEntries.length),
+  ];
   endStubs = new Map(
     nodes
       .filter((node) => node.type === GROUP_BOUNDARY_NODE_TYPES.end)
       .map((node) => [node.id, node])
   );
   endEdges = new Map(paintedEndEdges.map((item) => [item.id, item]));
-  const turnAlong = turnLocator(nodes, direction);
+  const drawn = drawnStretches(
+    paintedEdges.flatMap((edge) => {
+      const route = routes.routeOf(edge.id);
+      const source = boxes.get(edge.source);
+      const target = boxes.get(edge.target);
+      if (!(route && source && target)) {
+        return [];
+      }
+      const sourceAt = moved(edge.source, source.position);
+      const targetAt = moved(edge.target, target.position);
+      const from = outletAcross(source, edge.sourceHandle, direction);
+      const to = outletAcross(target, null, direction);
+      const handles = HANDLE_POSITIONS[direction];
+      const routed = routedEdgeCorners(
+        {
+          sourceX: vertical ? from : sourceAt.x + source.width,
+          sourceY: vertical ? sourceAt.y + source.height : from,
+          sourcePosition: handles.sourcePosition,
+          targetX: vertical ? to : targetAt.x,
+          targetY: vertical ? targetAt.y : to,
+          targetPosition: handles.targetPosition,
+        },
+        route
+      );
+      return routed
+        ? [
+            {
+              id: edge.id,
+              sourcePort: groupPortKey({
+                nodeId: edge.source,
+                handle: edge.sourceHandle ?? null,
+              }),
+              targetPort: edge.target,
+              ...routed,
+            },
+          ]
+        : [];
+    }),
+    cornerRadii
+  );
   return {
     nodes,
-    edges: [
-      ...boundary.interiorEdges.map((edge) => focusedEdge(edge, "interior")),
-      ...boundary.ingressEdges.map((edge) => focusedEdge(edge, "ingress")),
-      ...boundary.continuationEdges.map((edge) =>
-        focusedEdge(edge, "continuation")
-      ),
-      ...paintedEndEdges,
-    ].map((edge) => withTurn(edge, turnAlong(edge))),
+    edges: paintedEdges.map((edge) => {
+      const route = routes.routeOf(edge.id);
+      return withRoute(edge, route && { ...route, drawn: drawn.get(edge.id) });
+    }),
     anchor: { nodeId: firstMember.id, pinToTop: false },
     projectedNodeIds: new Set(nodes.map((node) => node.id)),
   };

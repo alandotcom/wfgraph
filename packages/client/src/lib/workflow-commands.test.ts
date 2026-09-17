@@ -138,18 +138,20 @@ describe("workflowCommands", () => {
     );
   });
 
-  it("offers no insert on a focused Group canvas", () => {
+  it("offers inserts on a focused Group canvas and says why Tidy layout is off", () => {
     const commands = workflowCommands(
       commandInput({ groupScopeActive: true, canReflow: false })
     );
-    const disabled = (id: string) =>
-      commands.find((command) => command.id === id)?.disabled;
+    const command = (id: string) => commands.find((item) => item.id === id);
 
-    expect(disabled("add-step")).toBe(true);
-    expect(disabled("paste")).toBe(true);
-    expect(disabled("duplicate-selection")).toBe(true);
-    expect(disabled("reflow")).toBe(true);
-    expect(disabled("copy-selection")).toBe(false);
+    expect(command("add-step")?.disabled).toBe(false);
+    expect(command("paste")?.disabled).toBe(false);
+    expect(command("duplicate-selection")?.disabled).toBe(false);
+    expect(command("copy-selection")?.disabled).toBe(false);
+    expect(command("reflow")).toMatchObject({
+      disabled: true,
+      detail: "Layout is automatic inside a Group",
+    });
   });
 
   it("offers no topology authoring command without its capabilities", () => {

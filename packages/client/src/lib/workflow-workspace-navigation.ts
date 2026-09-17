@@ -197,8 +197,7 @@ export const activeWorkspaceAddressAtom = atom<WorkspaceAddress>((get) => {
 
 /**
  * Whether the active address shows a focused Group canvas. The focused canvas
- * inserts no node and runs no layout, so every insert, paste, duplicate and
- * Tidy layout path reads this.
+ * lays its steps out from the Group's topology, so Tidy layout reads this.
  */
 export const groupScopeActiveAtom = atom(
   (get) => get(activeWorkspaceAddressAtom).scope.kind === "group"

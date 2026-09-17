@@ -50,7 +50,9 @@ How a workflow is shaped:
   connect_nodes names the steps inside it. A Group is entered from one outlet
   outside it, which may connect to several steps inside the Group. A Group
   continues outside from one outlet inside it, which may be one branch of a
-  Condition whose other branch ends inside the Group. add_node creates a step in
+  Condition whose other branch ends inside the Group, or from several outlets
+  inside it that all connect to the same step outside it, which runs once after
+  all of them. add_node creates a step in
   no Group. insert_node_on_edge puts the new step in a Group when both ends of
   the edge are in that Group. When delete_node leaves a Group with fewer than two
   steps, the Group is removed and its remaining step stays in the graph. An Event

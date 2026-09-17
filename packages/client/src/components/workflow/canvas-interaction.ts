@@ -69,14 +69,11 @@ export function canvasInteractionState({
   editingLocked,
   comparisonActive,
   overlayActive,
-  groupScopeActive,
   topologyAuthoring,
 }: {
   editingLocked: boolean;
   comparisonActive: boolean;
   overlayActive: boolean;
-  /** A focused Group canvas, which inserts no node until it can edit topology. */
-  groupScopeActive: boolean;
   /** `useTopologyAuthoring`: false on a phone. */
   topologyAuthoring: boolean;
 }) {
@@ -84,8 +81,11 @@ export function canvasInteractionState({
   const editsTopology = !editingLocked && topologyAuthoring;
   return {
     comparisonVisible,
-    /** Whether adding, pasting, and duplicating steps is offered. */
-    insertsNodes: editsTopology && !comparisonVisible && !groupScopeActive,
+    /**
+     * Whether adding, pasting, and duplicating steps is offered. On a focused
+     * Group canvas an inserted step joins that Group.
+     */
+    insertsNodes: editsTopology && !comparisonVisible,
     /** Whether the context menus, delete keys, and connections are offered. */
     editsTopology: editsTopology && !comparisonVisible,
     elementsSelectable: !editingLocked || comparisonVisible,

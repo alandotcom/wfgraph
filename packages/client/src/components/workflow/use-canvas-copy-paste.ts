@@ -2,6 +2,7 @@ import { useSetAtom } from "jotai";
 import { useCallback } from "react";
 import { useDomEvent } from "#src/hooks/effects";
 import { isTextEntry } from "#src/lib/is-text-entry";
+import { showGraphEditRefusal } from "#src/components/workflow/graph-edit-refusal";
 import {
   copySelectionAtom,
   duplicateSelectionAtom,
@@ -12,7 +13,8 @@ import {
 /**
  * Cmd/Ctrl+C, V, D, and G for the canvas selection. Disabled while a run overlay
  * or generation owns the canvas, and skipped while a field is being typed in.
- * Paste and duplicate insert steps, so they wait for `insertsNodes`.
+ * Paste and duplicate insert steps, so they wait for `insertsNodes`, and a
+ * refused paste or duplicate shows its refusal.
  */
 export function useCanvasCopyPaste(input: {
   enabled: boolean;
@@ -40,15 +42,15 @@ export function useCanvasCopyPaste(input: {
         }
         return;
       }
-      if (key === "v") {
-        if (insertsNodes && pasteSelection()) {
+      if (key === "v" || key === "d") {
+        const outcome = insertsNodes
+          ? key === "v"
+            ? pasteSelection()
+            : duplicateSelection()
+          : null;
+        if (outcome !== null) {
           event.preventDefault();
-        }
-        return;
-      }
-      if (key === "d") {
-        if (insertsNodes && duplicateSelection()) {
-          event.preventDefault();
+          showGraphEditRefusal(outcome);
         }
         return;
       }

@@ -16,7 +16,6 @@ import {
 } from "#src/graph/group-structure";
 import {
   groupCanvasPositions,
-  groupEndPorts,
   groupLayoutDirection,
   undersizedGroupIds,
 } from "#src/graph/node-group";
@@ -72,10 +71,6 @@ export function groupCanvasReleasePosition(graph: {
     const slots = groupCanvasPositions({
       memberIds: boundary.memberIds,
       interiorEdges: boundary.interiorEdges,
-      trailingStubPorts: [
-        ...boundary.internalContinuation,
-        ...groupEndPorts({ nodes: graph.nodes, boundary }),
-      ],
       direction: groupLayoutDirection(frame),
     });
     const unmoved = boundary.memberIds.map((memberId) => {

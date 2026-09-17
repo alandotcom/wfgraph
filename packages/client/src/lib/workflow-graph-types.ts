@@ -105,11 +105,29 @@ export type EditorEdgeData = Record<string, unknown> & {
   /** Set on an edge landing on a node the run can never reach. */
   inactive?: boolean | undefined;
   /**
-   * Where a forward edge on a focused Group canvas turns across the flow: a y
-   * coordinate in a top to bottom Group, an x coordinate in a left to right one.
-   * `focusedGroupCanvasGraph` sets it, and every other edge turns halfway.
+   * False on a painted connection that stands for no stored edge, such as the
+   * one to a "Path ends" stub, which offers no Insert step control.
+   */
+  insertable?: boolean | undefined;
+  /**
+   * Where a forward edge on a focused Group canvas turns across the flow into
+   * its target's column: a y coordinate in a top to bottom Group, an x
+   * coordinate in a left to right one. `focusedGroupCanvasGraph` sets it, and
+   * every other edge turns halfway.
    */
   turnAlong?: number | undefined;
+  /**
+   * The column a focused Group edge runs along to pass the cards in the rows it
+   * skips, and where it turns into that column. Absent when the edge runs
+   * straight down its source's column.
+   */
+  lane?: { across: number; turnAlong: number } | undefined;
+  /**
+   * The stretch of a focused Group edge's path it draws itself, as distances
+   * along its corners from where it first turns. Another edge sharing the same
+   * outlet or target draws the rest, so no stretch is drawn twice.
+   */
+  drawn?: { from?: number | undefined; to?: number | undefined } | undefined;
   [COMPARISON_EDGE_ANNOTATION]?: ComparisonEdgeAnnotation | undefined;
 };
 
