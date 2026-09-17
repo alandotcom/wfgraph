@@ -25,6 +25,11 @@
     "no-console": "off",
     "no-var": "error",
     "prefer-const": "error",
+    // Reports modules that import values from each other, directly or through a
+    // chain. In such a runtime cycle one module can read the other's exports
+    // before they are initialized and get `undefined`. Type-only imports are
+    // erased at build time, so the default `ignoreTypes: true` allows them.
+    "import/no-cycle": "error",
     // A leading underscore marks a name this codebase keeps out of ordinary use.
     // Every such name is spelled out here, so introducing another one is a visible
     // decision and an accidental `_foo` is an error.

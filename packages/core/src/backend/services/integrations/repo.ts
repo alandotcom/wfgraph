@@ -8,10 +8,13 @@ import type {
 } from "#src/backend/services/integrations/cipher";
 import { makeOAuthAttemptQueries } from "#src/backend/services/integrations/oauth-attempt-queries";
 import type {
+  OAuthCreateAuthorizationAttemptPayload,
+  OAuthReconnectAuthorizationAttemptPayload,
+} from "#src/backend/services/integrations/oauth-attempt-payload";
+import type {
   IntegrationConfig,
   IntegrationRefreshState,
 } from "@wfgraph/shared/types/integration";
-import { readJsonObject } from "@wfgraph/shared/types/json";
 
 /** One `integrations` row, with its config opened out of the AES envelope. */
 export type DecryptedIntegration = {
@@ -53,31 +56,6 @@ export type IntegrationWriteOutcome =
   | { status: "conflict" }
   | { status: "not_found" };
 
-type OAuthAuthorizationAttemptBase = {
-  redirectUri: string;
-  codeVerifier?: string | undefined;
-};
-
-export type OAuthReconnectAuthorizationAttemptPayload =
-  OAuthAuthorizationAttemptBase & {
-    kind: "reconnect";
-    configRevision: number;
-  };
-
-export type OAuthCreateAuthorizationAttemptPayload =
-  OAuthAuthorizationAttemptBase & {
-    kind: "create";
-    integrationId: string;
-    configRevision: 0;
-    name: string;
-    type: string;
-    config: IntegrationConfig;
-  };
-
-export type OAuthAuthorizationAttemptPayload =
-  | OAuthReconnectAuthorizationAttemptPayload
-  | OAuthCreateAuthorizationAttemptPayload;
-
 export type ClaimedOAuthAuthorizationAttempt =
   | {
       integrationId: string;
@@ -118,77 +96,6 @@ type OAuthAttemptTransition = {
   stateHash: string;
   expiresAt: Date;
 };
-
-export function readOAuthAuthorizationAttemptPayload(
-  encryptedConfig: IntegrationConfig
-): OAuthAuthorizationAttemptPayload | null {
-  const serialized = encryptedConfig.payload;
-  if (!serialized) {
-    return null;
-  }
-
-  let value: unknown;
-  try {
-    value = JSON.parse(serialized);
-  } catch {
-    return null;
-  }
-  const payload = readJsonObject(value);
-  if (!payload) return null;
-  const redirectUri = payload.redirectUri;
-  const codeVerifier = payload.codeVerifier;
-  if (
-    typeof redirectUri !== "string" ||
-    (codeVerifier !== undefined && typeof codeVerifier !== "string")
-  ) {
-    return null;
-  }
-  if (payload.kind === "reconnect") {
-    const configRevision = payload.configRevision;
-    if (
-      typeof configRevision !== "number" ||
-      !Number.isSafeInteger(configRevision) ||
-      configRevision < 0
-    )
-      return null;
-    return {
-      kind: "reconnect",
-      redirectUri,
-      configRevision,
-      codeVerifier,
-    };
-  }
-  if (payload.kind !== "create") return null;
-  const integrationId = payload.integrationId;
-  const configRevision = payload.configRevision;
-  const name = payload.name;
-  const type = payload.type;
-  const rawConfig = readJsonObject(payload.config);
-  if (
-    typeof integrationId !== "string" ||
-    configRevision !== 0 ||
-    typeof name !== "string" ||
-    typeof type !== "string" ||
-    !rawConfig
-  ) {
-    return null;
-  }
-  const config: IntegrationConfig = {};
-  for (const [key, entry] of Object.entries(rawConfig)) {
-    if (typeof entry !== "string") return null;
-    config[key] = entry;
-  }
-  return {
-    kind: "create",
-    integrationId,
-    configRevision,
-    name,
-    type,
-    config,
-    redirectUri,
-    codeVerifier,
-  };
-}
 
 type RefreshClaimInput = {
   integrationId: string;
