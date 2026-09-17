@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
+import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { boundaryStubId } from "#src/lib/group-scope-canvas";
 import { overlappingCardIds } from "@wfgraph/shared/graph/node-placement-test-support";
 import {
@@ -329,7 +330,7 @@ describe("Group mutations on the canvas", () => {
     expect(pastedFrame.data).toEqual({
       label: "Group",
       type: "group",
-      config: { direction: "vertical" },
+      config: undefined,
     });
 
     const pastedMembers = nodes.filter(
@@ -423,7 +424,7 @@ describe("Authoring inside a focused Group", () => {
 
     const added = store.get(nodesAtom).find((node) => node.id === "added");
     expect(added?.parentId).toBe(frameId);
-    expect(added?.position).toEqual({ x: 0, y: 0 });
+    expect(added?.position).toEqual({ x: 900, y: 900 });
     expect(membersOf(store, frameId)).toEqual(["a", "b", "c", "added"]);
     expect(store.get(selectedNodeAtom)).toBe("added");
     expect(store.get(canvasNodesAtom).some((node) => node.id === "added")).toBe(
@@ -489,6 +490,163 @@ describe("Authoring inside a focused Group", () => {
     expectEverySaveWhole();
   });
 
+  it.each(["paste", "duplicate"] as const)(
+    "places a focused %s clear of local members, regardless of the frame position",
+    (mode) => {
+      const { store, frameId } = enteredStore();
+      store.set(
+        nodesStateAtom,
+        store.get(nodesStateAtom).map((node) => ({
+          ...node,
+          position:
+            node.id === frameId
+              ? { x: 5000, y: 5000 }
+              : node.id === "a"
+                ? { x: 0, y: 0 }
+                : node.id === "b"
+                  ? { x: 48, y: 48 }
+                  : node.position,
+        }))
+      );
+      store.set(selectOnlyNodeAtom, "a");
+      store.set(copySelectionAtom);
+      expect(
+        mode === "paste"
+          ? store.set(pasteCopiedSelectionAtom)
+          : store.set(duplicateSelectionAtom)
+      ).toEqual({ inserted: true });
+      const insertedId = store.get(selectedNodeAtom);
+      expect(
+        overlappingCardIds(store.get(canvasNodesAtom)).filter((pair) =>
+          pair.includes(insertedId!)
+        )
+      ).toEqual([]);
+    }
+  );
+
+  it.each([false, true])(
+    "inserts before a diamond join atomically (focused Group: %s)",
+    (focused) => {
+      const store = createGraphStore({
+        nodes: [
+          lifecycle(),
+          {
+            id: "g",
+            type: "group",
+            position: { x: 0, y: 200 },
+            data: { label: "Group", type: "group" },
+          },
+          ...["a", "b", "c", "join"].map((id) =>
+            focused ? { ...lookup(id), parentId: "g" } : lookup(id)
+          ),
+        ],
+        edges: [
+          edge("la", "life", "a", "started"),
+          edge("ab", "a", "b"),
+          edge("ac", "a", "c"),
+          edge("bj", "b", "join"),
+          edge("cj", "c", "join"),
+        ],
+      });
+      if (focused) showWorkspaceRoute(store, { group: "g" });
+      const before = graphOf(store);
+      expect(
+        store.set(addStepAfterAtom, {
+          node: newStep("inserted"),
+          source: { nodeId: "a", handle: null },
+          catalog,
+        })
+      ).toEqual({ inserted: true });
+      expect(
+        store
+          .get(edgesAtom)
+          .map((item) => `${item.source}>${item.target}`)
+          .toSorted()
+      ).toEqual([
+        "a>inserted",
+        "b>join",
+        "c>join",
+        "inserted>b",
+        "inserted>c",
+        "life>a",
+      ]);
+      store.set(undoAtom);
+      expect(graphOf(store)).toEqual(before);
+      expect(
+        store.set(insertStepOnEdgeAtom, {
+          node: newStep("inserted"),
+          edgeId: "ab",
+          catalog,
+        })
+      ).toEqual({ inserted: true });
+      expect(
+        store
+          .get(edgesAtom)
+          .map((item) => `${item.source}>${item.target}`)
+          .toSorted()
+      ).toEqual([
+        "a>c",
+        "a>inserted",
+        "b>join",
+        "c>join",
+        "inserted>b",
+        "life>a",
+      ]);
+    }
+  );
+
+  it("preserves existing ports and chooses one default outlet for the inserted node", () => {
+    const store = createGraphStore({
+      nodes: [lifecycle(), lookup("a"), lookup("b"), lookup("c")],
+      edges: [
+        edge("la", "life", "a", "started"),
+        { ...edge("ab", "a", "b"), targetHandle: "input-b" },
+        { ...edge("ac", "a", "c"), targetHandle: "input-c" },
+      ],
+    });
+    const node = newStep("inserted");
+    node.data.config = { actionType: BUILT_IN_ACTION_IDS.condition };
+    expect(
+      store.set(addStepAfterAtom, {
+        node,
+        source: { nodeId: "a", handle: null },
+        catalog,
+      })
+    ).toEqual({ inserted: true });
+    expect(
+      store
+        .get(edgesAtom)
+        .filter((item) => item.source === "inserted")
+        .map((item) => [item.sourceHandle, item.target, item.targetHandle])
+    ).toEqual([
+      ["true", "b", "input-b"],
+      ["true", "c", "input-c"],
+    ]);
+    expect(
+      store.get(edgesAtom).find((item) => item.source === "a")
+    ).toMatchObject({ sourceHandle: null, target: "inserted" });
+  });
+
+  it("refuses a replacement into Lifecycle without writing history or saving", async () => {
+    const store = createGraphStore({
+      nodes: [lifecycle(), lookup("a")],
+      edges: [edge("la", "life", "a", "started")],
+    });
+    const before = graphOf(store);
+    const history = store.get(historyAtom);
+    const node = { ...lifecycle(), id: "invalid" };
+    expect(
+      store.set(insertStepOnEdgeAtom, { node, edgeId: "la", catalog })
+    ).toEqual({
+      refusal:
+        "Lifecycle is the workflow entry and cannot accept a connection.",
+    });
+    await tick();
+    expect(graphOf(store)).toEqual(before);
+    expect(store.get(historyAtom)).toBe(history);
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
   it("refuses to paste a copied Group inside a Group and changes nothing", () => {
     const { store, frameId } = groupedStore();
     store.set(selectOnlyNodeAtom, frameId);
@@ -530,12 +688,112 @@ describe("Authoring inside a focused Group", () => {
     expect(graphOf(store)).toEqual(before);
   });
 
-  describe.each(["vertical", "horizontal"] as const)(
-    "adding steps after two members that continue to one outside step, in a %s Group",
-    (direction) => {
-      // The reported Group: Get User and Find Issues, both entered from the
-      // Lifecycle, both continuing to one outside Action.
-      function continuingStore(): Store {
+  describe("adding steps after two members that continue to one outside step", () => {
+    // The reported Group: Get User and Find Issues, both entered from the
+    // Lifecycle, both continuing to one outside Action.
+    function continuingStore(): Store {
+      const store = createGraphStore({
+        nodes: [
+          lifecycle(),
+          {
+            id: "g",
+            type: "group",
+            position: { x: 0, y: 200 },
+            data: { label: "Lookups", type: "group" },
+          },
+          { ...lookup("getUser"), parentId: "g" },
+          { ...lookup("findIssues"), parentId: "g" },
+          { ...lookup("next"), position: { x: 0, y: 600 } },
+        ],
+        edges: [
+          edge("start-get", "life", "getUser", "started"),
+          edge("start-find", "life", "findIssues", "started"),
+          edge("get-next", "getUser", "next"),
+          edge("find-next", "findIssues", "next"),
+        ],
+      });
+      showWorkspaceRoute(store, { group: "g" });
+      vi.clearAllMocks();
+      return store;
+    }
+
+    const addAfter = (store: Store, source: string, id: string) =>
+      store.set(addStepAfterAtom, {
+        node: newStep(id),
+        source: { nodeId: source, handle: null },
+        catalog,
+      });
+
+    const links = (store: Store) =>
+      store
+        .get(edgesAtom)
+        .map((item) => `${item.source}>${item.target}`)
+        .toSorted();
+
+    it("inserts the step before the outlet's next step in one undo step", async () => {
+      const store = continuingStore();
+      const before = graphOf(store);
+
+      expect(addAfter(store, "getUser", "first")).toEqual({ inserted: true });
+      expect(links(store)).toEqual([
+        "findIssues>next",
+        "first>next",
+        "getUser>first",
+        "life>findIssues",
+        "life>getUser",
+      ]);
+      expect(membersOf(store, "g")).toContain("first");
+      await tick();
+      expectEverySaveWhole();
+
+      store.set(undoAtom);
+      expect(graphOf(store)).toEqual(before);
+    });
+
+    it("keeps one exit and no path ends when a step is added after each member", () => {
+      const store = continuingStore();
+      addAfter(store, "getUser", "first");
+      addAfter(store, "findIssues", "second");
+
+      const painted = store.get(canvasNodesAtom);
+      expect(
+        painted
+          .filter((node) => node.type === "groupEnd")
+          .map((node) => node.id)
+      ).toEqual([]);
+      expect(
+        painted.filter((node) => node.type === "groupContinuation")
+      ).toHaveLength(1);
+    });
+
+    it("puts a step inside a member's connection to the outside step", () => {
+      const store = continuingStore();
+      const continuation = store
+        .get(canvasEdgesAtom)
+        .find((item) => item.id === "get-next");
+
+      expect(
+        store.set(insertStepOnEdgeAtom, {
+          node: newStep("between"),
+          edgeId: continuation?.id ?? "",
+          catalog,
+        })
+      ).toEqual({ inserted: true });
+      expect(links(store)).toEqual([
+        "between>next",
+        "findIssues>next",
+        "getUser>between",
+        "life>findIssues",
+        "life>getUser",
+      ]);
+      expect(membersOf(store, "g")).toContain("between");
+    });
+  });
+
+  describe("on the overview", () => {
+    it.each(["after", "edge"] as const)(
+      "preserves exactly the continuing outlet when inserting %s on a collapsed Group",
+      (mode) => {
         const store = createGraphStore({
           nodes: [
             lifecycle(),
@@ -543,100 +801,39 @@ describe("Authoring inside a focused Group", () => {
               id: "g",
               type: "group",
               position: { x: 0, y: 200 },
-              data: { label: "Lookups", type: "group", config: { direction } },
+              data: { label: "Group", type: "group" },
             },
-            { ...lookup("getUser"), parentId: "g" },
-            { ...lookup("findIssues"), parentId: "g" },
-            { ...lookup("next"), position: { x: 0, y: 600 } },
+            { ...lookup("a"), parentId: "g" },
+            { ...lookup("b"), parentId: "g" },
+            lookup("next"),
           ],
           edges: [
-            edge("start-get", "life", "getUser", "started"),
-            edge("start-find", "life", "findIssues", "started"),
-            edge("get-next", "getUser", "next"),
-            edge("find-next", "findIssues", "next"),
+            edge("la", "life", "a", "started"),
+            edge("lb", "life", "b", "started"),
+            edge("an", "a", "next"),
           ],
         });
-        showWorkspaceRoute(store, { group: "g" });
-        vi.clearAllMocks();
-        return store;
+        const outcome =
+          mode === "after"
+            ? store.set(addStepAfterAtom, {
+                node: newStep("inserted"),
+                source: { nodeId: "g", handle: null },
+                catalog,
+              })
+            : store.set(insertStepOnEdgeAtom, {
+                node: newStep("inserted"),
+                edgeId: "an",
+                catalog,
+              });
+        expect(outcome).toEqual({ inserted: true });
+        expect(
+          store
+            .get(edgesAtom)
+            .map((item) => `${item.source}>${item.target}`)
+            .toSorted()
+        ).toEqual(["a>inserted", "inserted>next", "life>a", "life>b"]);
       }
-
-      const addAfter = (store: Store, source: string, id: string) =>
-        store.set(addStepAfterAtom, {
-          node: newStep(id),
-          source: { nodeId: source, handle: null },
-          catalog,
-        });
-
-      const links = (store: Store) =>
-        store
-          .get(edgesAtom)
-          .map((item) => `${item.source}>${item.target}`)
-          .toSorted();
-
-      it("adds the step beside the outlet's next step, rejoining it, in one undo step", async () => {
-        const store = continuingStore();
-        const before = graphOf(store);
-
-        expect(addAfter(store, "getUser", "first")).toEqual({ inserted: true });
-        expect(links(store)).toEqual([
-          "findIssues>next",
-          "first>next",
-          "getUser>first",
-          "getUser>next",
-          "life>findIssues",
-          "life>getUser",
-        ]);
-        expect(membersOf(store, "g")).toContain("first");
-        await tick();
-        expectEverySaveWhole();
-
-        store.set(undoAtom);
-        expect(graphOf(store)).toEqual(before);
-      });
-
-      it("keeps one exit and no path ends when a step is added after each member", () => {
-        const store = continuingStore();
-        addAfter(store, "getUser", "first");
-        addAfter(store, "findIssues", "second");
-
-        const painted = store.get(canvasNodesAtom);
-        expect(
-          painted
-            .filter((node) => node.type === "groupEnd")
-            .map((node) => node.id)
-        ).toEqual([]);
-        expect(
-          painted.filter((node) => node.type === "groupContinuation")
-        ).toHaveLength(1);
-      });
-
-      it("puts a step inside a member's connection to the outside step", () => {
-        const store = continuingStore();
-        const continuation = store
-          .get(canvasEdgesAtom)
-          .find((item) => item.id === "get-next");
-
-        expect(
-          store.set(insertStepOnEdgeAtom, {
-            node: newStep("between"),
-            edgeId: continuation?.id ?? "",
-            catalog,
-          })
-        ).toEqual({ inserted: true });
-        expect(links(store)).toEqual([
-          "between>next",
-          "findIssues>next",
-          "getUser>between",
-          "life>findIssues",
-          "life>getUser",
-        ]);
-        expect(membersOf(store, "g")).toContain("between");
-      });
-    }
-  );
-
-  describe("on the overview", () => {
+    );
     function overviewStore(): Store {
       const store = createGraphStore({
         nodes: [
@@ -656,7 +853,7 @@ describe("Authoring inside a focused Group", () => {
         .map((item) => `${item.source}>${item.target}`)
         .toSorted();
 
-    it("adds a step beside what the outlet already reaches", () => {
+    it("inserts a step before what the outlet already reaches", () => {
       const store = overviewStore();
 
       expect(
@@ -666,8 +863,21 @@ describe("Authoring inside a focused Group", () => {
           catalog,
         })
       ).toEqual({ inserted: true });
-      expect(links(store)).toEqual(["a>b", "a>beside", "beside>b", "life>a"]);
+      expect(links(store)).toEqual(["a>beside", "beside>b", "life>a"]);
       expect(store.get(selectedNodeAtom)).toBe("beside");
+    });
+
+    it("adds only one edge when dragging an occupied outlet into empty canvas", () => {
+      const store = overviewStore();
+      expect(
+        store.set(addConnectedNodeAtom, {
+          node: newStep("branch"),
+          connection: { id: "a-branch", source: "a", target: "branch" },
+          throughBoundaryStub: false,
+          catalog,
+        })
+      ).toEqual({ inserted: true });
+      expect(links(store)).toEqual(["a>b", "a>branch", "life>a"]);
     });
 
     it("puts a step inside a connection", () => {
@@ -686,11 +896,7 @@ describe("Authoring inside a focused Group", () => {
       expect(links(store)).toEqual(["a>b", "life>a"]);
     });
 
-    it("adds the step without its rejoin, and says so, when a rule refuses the rejoin", () => {
-      // A step added on a Group's "Incoming from" stub enters the Group beside
-      // the member that outlet already enters. Carrying the branch back into
-      // that member would give it a branch from outside the Group, which the
-      // join rules refuse, so the step is stored without it.
+    it("inserts after an Incoming from stub without leaving a parallel ingress", () => {
       const store = createGraphStore({
         nodes: [
           lifecycle(),
@@ -720,16 +926,13 @@ describe("Authoring inside a focused Group", () => {
         catalog,
       });
 
-      expect(outcome).toMatchObject({ inserted: true });
-      expect(outcome && "notice" in outcome ? outcome.notice : null).toEqual(
-        expect.any(String)
-      );
+      expect(outcome).toEqual({ inserted: true });
       expect(
         store
           .get(edgesAtom)
           .map((item) => `${item.source}>${item.target}`)
           .toSorted()
-      ).toEqual(["a>b", "life>a", "life>beside"]);
+      ).toEqual(["a>b", "beside>a", "life>beside"]);
     });
   });
 });

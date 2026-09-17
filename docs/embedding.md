@@ -185,9 +185,12 @@ A connection dragged from the card's one outlet to a step outside the Group conn
 place a path ends inside the Group to that step, so the step runs once after every branch
 finishes, and deleting that connection deletes each of those edges. On an entered Group's
 canvas a Workflow Builder adds, pastes, duplicates, connects, disables, and deletes steps,
-and a step added, pasted, or duplicated there becomes a member of that Group. The entered
-canvas lays out its steps from the Group's connections, so **Tidy layout** is unavailable
-there. Continuing one branch alone is done on the entered canvas: each edge to a
+and a step added, pasted, or duplicated there becomes a member of that Group. Members
+keep their stored positions and can be dragged. **Tidy layout** arranges the entered
+Group's members in one undoable edit without moving its frame or outside steps.
+**Add step after** inserts a step between the chosen outlet and its existing targets;
+dragging an outlet into empty canvas creates a branch with no automatic rejoin.
+Continuing one branch alone is done on the entered canvas: each edge to a
 "Continues to" stub can be deleted on its own, and dragging from a step onto a "Continues
 to" stub connects that step alone to the outside step the stub names.
 In **Runs** the card shows the Group's run status and step counts. In **Changes** Group
@@ -212,14 +215,13 @@ A draft that breaks a Publish rule still saves, and a draft run still starts, be
 rules do not change what a run executes. The editor forms a Group only from a selection
 that meets the rules, and refuses a connection that would enter a Group from a second
 outside outlet, continue a Group to a second outside step from several outlets, or break a
-join rule. A refused connection, step, paste, or duplicate changes nothing and shows the
+join rule. A connection that would create a cycle is refused before saving.
+A refused connection, step, paste, or duplicate changes nothing and shows the
 reason.
 
-A Group frame's config holds only `direction`, `vertical` or `horizontal`, which sets how
-the editor lays out the members of an entered Group. Graph decoding refuses every other
-Group config key. A draft or published version saved by an earlier release with
-`entryNodeIds`, `exitNodeIds`, or `outletHandle` in a Group's config fails to load, and
-this release ships no migration for those keys.
+A Group frame's config is empty. Graph decoding refuses every Group config key, including
+`direction`, `entryNodeIds`, `exitNodeIds`, and `outletHandle`. A draft or published version
+that stores any of those keys fails to load; this release ships no migration for them.
 
 ### On a phone
 
@@ -227,9 +229,8 @@ Below 768px wide, Draft, Runs, and Changes show a sequence of sheets over a full
 canvas in place of Canvas Reveal. A Workflow Builder there can inspect every object, edit
 the configuration of an existing step, run, publish, undo, and redo, as their grants
 allow. The graph's shape cannot be edited on a phone: steps cannot be added, moved,
-deleted, pasted, duplicated, grouped, or ungrouped, connections cannot be drawn, and a
-Group's direction cannot be changed. An entered Group draws its members top to bottom on
-a phone and keeps the direction it stores.
+deleted, pasted, duplicated, grouped, or ungrouped, and connections cannot be drawn.
+An entered Group uses the same stored member positions on a phone as on desktop.
 
 ## Authentication and authorization
 
@@ -435,7 +436,7 @@ unchanged.
 
 MCP tools read Group membership and keep existing Groups valid. `read_workflow`
 reports each step's `groupId` and each Group's `memberIds`. The tools cannot
-create a Group, ungroup one, or change its direction, and `delete_node` refuses
+create a Group or ungroup one, and `delete_node` refuses
 a Group frame. When a write leaves a Group with fewer than two steps, the server
 ungroups it and the tool result names the Group. The build agent in the editor
 uses the same tools and follows the same rules.

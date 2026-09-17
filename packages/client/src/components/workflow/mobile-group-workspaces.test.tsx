@@ -124,7 +124,7 @@ function outreach(label = "Initial outreach"): PersistedWorkflowNode {
     position: { x: 0, y: 200 },
     width: 400,
     height: 112,
-    data: { label, type: "group", config: { direction: "horizontal" } },
+    data: { label, type: "group", config: {} },
   };
 }
 

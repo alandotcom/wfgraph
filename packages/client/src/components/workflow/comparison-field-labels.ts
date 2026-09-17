@@ -16,8 +16,6 @@ import {
 } from "@wfgraph/shared/extensions/catalog";
 import { isGroupMembershipPath } from "@wfgraph/shared/graph/change-classification";
 import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
-import { GROUP_DIRECTION_LABEL } from "@wfgraph/shared/graph/node-group";
-import { isGroupLayoutDirection } from "@wfgraph/shared/graph/schemas";
 import type { WorkflowFieldChange } from "@wfgraph/shared/graph/publication-contracts";
 import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { flattenConfigFields } from "@wfgraph/shared/plugins/action-fields";
@@ -220,10 +218,8 @@ function lifecycleConfigFieldLabel(
 }
 
 /** The label of a Group frame's config value at `configPath`, below `config`. */
-export function groupConfigFieldLabel(configPath: readonly string[]): string {
-  return configPath.length === 1 && configPath[0] === "direction"
-    ? "Layout direction"
-    : GENERIC_CONFIG_LABEL;
+export function groupConfigFieldLabel(_configPath: readonly string[]): string {
+  return GENERIC_CONFIG_LABEL;
 }
 
 export function comparisonFieldLabel(
@@ -369,7 +365,7 @@ export function groupMembershipTitle(input: {
 /**
  * The value a person reads for a property whose stored value is an identifier
  * or a serialized rule: a node type, an action id, a Group's node id, a
- * Group's layout direction, or a Lifecycle Rules value. A value the server hid, and any other value, is
+ * or a Lifecycle Rules value. A value the server hid, and any other value, is
  * returned as it is. `node` and `nodes` are the node and the graph of the side
  * the value comes from.
  */
@@ -388,14 +384,6 @@ export function readableValue(input: {
       groupMembershipTitle({ catalog, groupId: value, nodes: input.nodes }) ??
       "Not in a Group"
     );
-  }
-  if (
-    joined === "data.config.direction" &&
-    input.node?.data.type === "group" &&
-    (value === undefined || isGroupLayoutDirection(value))
-  ) {
-    // A frame that stores no direction is laid out top to bottom.
-    return GROUP_DIRECTION_LABEL[value ?? "vertical"];
   }
   if (typeof value !== "string" || isHiddenComparisonValue(value)) {
     return value;

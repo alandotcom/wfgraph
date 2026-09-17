@@ -240,6 +240,8 @@ describe("persisted node data", () => {
     ["entryNodeIds", ["a1"]],
     ["exitNodeIds", ["a1"]],
     ["outletHandle", "true"],
+    ["direction", "vertical"],
+    ["direction", "horizontal"],
   ])("refuses the Group config key %s", (key, value) => {
     const graph = graphWithNode({
       id: "g1",
@@ -249,38 +251,9 @@ describe("persisted node data", () => {
     });
 
     expect(getSerializedWorkflowGraphError(graph)).toBe(
-      `nodes[0].attributes.data.config.${key}: Group config holds only direction`
+      `nodes[0].attributes.data.config.${key}: Group config must be empty`
     );
     expect(() => parseSerializedWorkflowGraph(graph)).toThrow();
-  });
-
-  it.each(["vertical", "horizontal"])(
-    "keeps a Group's %s layout direction",
-    (direction) => {
-      const graph = parseSerializedWorkflowGraph(
-        graphWithNode({
-          id: "g1",
-          type: "group",
-          position: { x: 10, y: 20 },
-          data: { label: "Lookups", type: "group", config: { direction } },
-        })
-      );
-
-      expect(graph.nodes[0]?.attributes.data.config).toEqual({ direction });
-    }
-  );
-
-  it("refuses a Group direction that names no layout", () => {
-    const graph = graphWithNode({
-      id: "g1",
-      type: "group",
-      position: { x: 10, y: 20 },
-      data: { label: "Lookups", type: "group", config: { direction: "up" } },
-    });
-
-    expect(getSerializedWorkflowGraphError(graph)).toBe(
-      'nodes[0].attributes.data.config.direction: Group direction must be "vertical" or "horizontal"'
-    );
   });
 
   it("accepts a closed Condition config and rejects a stray key", () => {

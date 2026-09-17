@@ -44,9 +44,10 @@ How a workflow is shaped:
   from their common predecessor. End the conditional path at its last conditional action.
 - A Group is an organizational frame around steps the user drew on the canvas.
   It has no effect on how a run executes. read_workflow reports a step's
-  groupId and a Group's memberIds. You cannot create a Group, ungroup one, or
-  change its layout direction. The person does each of these in the editor,
-  where removing a Group's frame ungroups its steps. A Group takes no edges, so
+  groupId and a Group's memberIds. You cannot create a Group or ungroup one.
+  The person does these in the editor, where removing a Group's frame ungroups
+  its steps. A Group has no configurable layout direction; members keep their
+  positions, and the person can drag them or use Tidy layout in the editor. A Group takes no edges, so
   connect_nodes names the steps inside it. A Group is entered from one outlet
   outside it, which may connect to several steps inside the Group. A Group
   continues outside from one outlet inside it, which may be one branch of a

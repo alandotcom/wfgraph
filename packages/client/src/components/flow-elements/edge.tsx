@@ -8,7 +8,6 @@ import { createContext, memo, useContext } from "react";
 import { resolveEdgeLabel } from "#src/components/flow-elements/edge-label";
 import {
   getEdgeParams,
-  getWorkflowEdgeDrawnPath,
   getWorkflowEdgePath,
 } from "#src/components/flow-elements/edge-path";
 import {
@@ -85,15 +84,9 @@ const Animated = memo(function Animated({
     targetX: tx,
     targetY: ty,
     targetPosition: targetPos,
+    centerY: data?.centerY,
   };
-  const route = { turnAlong: data?.turnAlong, lane: data?.lane };
-  const [edgePath, labelX, labelY] = getWorkflowEdgePath(pathInput, route);
-  // A focused Group edge sharing an outlet or a target with another edge draws
-  // only its own stretch, so a shared run is drawn once and its dashes stay
-  // even. Selected, it draws its whole path over the others.
-  const drawnPath = selected
-    ? null
-    : getWorkflowEdgeDrawnPath(pathInput, { ...route, drawn: data?.drawn });
+  const [edgePath, labelX, labelY] = getWorkflowEdgePath(pathInput);
   const edgeLabel = resolveEdgeLabel(sourceHandleId, data);
   // `canvasEdgesAtom` sets this on every edge landing where the run cannot go.
   const inactive = data?.inactive === true;
@@ -102,19 +95,10 @@ const Animated = memo(function Animated({
 
   return (
     <>
-      {drawnPath !== null && (
-        <path
-          className="react-flow__edge-interaction"
-          d={edgePath}
-          fill="none"
-          strokeOpacity={0}
-          strokeWidth={20}
-        />
-      )}
       <BaseEdge
         id={id}
-        interactionWidth={drawnPath === null ? 20 : 0}
-        path={drawnPath ?? edgePath}
+        interactionWidth={20}
+        path={edgePath}
         style={{
           ...style,
           // Selection outranks inactivity, because an inactive edge is still

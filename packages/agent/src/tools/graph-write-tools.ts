@@ -614,7 +614,7 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
             (input.clearConfigKeys?.length ?? 0) > 0)
         ) {
           return Effect.fail({
-            reason: `Group "${nodeLabel(node)}" takes only a label or a description from update_node. Its layout direction is set in the editor, a Group has no enabled state, and the steps inside it are switched on or off one at a time.`,
+            reason: `Group "${nodeLabel(node)}" takes only a label or a description from update_node. A Group has no enabled state or configurable layout direction, and the steps inside it are switched on or off one at a time.`,
           });
         }
         if (

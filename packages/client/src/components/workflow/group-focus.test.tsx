@@ -451,7 +451,7 @@ describe("the collapsed Group overview", () => {
     expect(steps.textContent).toContain("Send case study");
     expect(view.getByRole("button", { name: "Enter group" })).toBeTruthy();
     expect(view.getByRole("button", { name: "Ungroup" })).toBeTruthy();
-    expect(view.getByRole("group", { name: "Layout direction" })).toBeTruthy();
+    expect(view.queryByRole("group", { name: "Layout direction" })).toBeNull();
     expect(reveal()?.textContent).toContain(
       "A Group is entered from one outlet outside it, and that outlet can lead to several steps. Inside, steps can branch, join, and end. The Group continues outside from at most one outlet."
     );
@@ -1000,7 +1000,7 @@ describe("the focused Group canvas", () => {
     await waitFor(() => expect(search()).toEqual({ group: "outreach" }));
   });
 
-  it("adds, pastes and duplicates steps as members of the focused Group, and keeps Tidy layout off", async () => {
+  it("adds, pastes and duplicates steps as members of the focused Group, and offers Tidy layout", async () => {
     const { view, store, select, renderedNodeIds } = await renderEditor();
     const pane = () =>
       view.container.querySelector<HTMLElement>(".react-flow__pane");
@@ -1046,8 +1046,7 @@ describe("the focused Group canvas", () => {
     expect(store.get(historyAtom)).toHaveLength(3);
 
     const reflow = view.getByRole("button", { name: "Reflow nodes" });
-    expect(reflow.hasAttribute("disabled")).toBe(true);
-    expect(reflow.title).toBe("Layout is automatic inside a Group");
+    expect(reflow.hasAttribute("disabled")).toBe(false);
   });
 
   it("writes no coordinates and records no history on entry, exit, and Reveal", async () => {
@@ -1075,40 +1074,22 @@ describe("the focused Group canvas", () => {
     expect(store.get(workflowGraphUpdateAtom)).toBe(graphUpdate);
   });
 
-  it("changes the layout direction from the Group summary as one undo step", async () => {
-    const { view, store, search, select } = await renderEditor();
-    await select("outreach");
-
-    const vertical = view.getByRole("button", { name: "Top to bottom" });
-    const horizontal = view.getByRole("button", { name: "Left to right" });
-    expect(vertical.getAttribute("aria-pressed")).toBe("true");
-    expect(horizontal.getAttribute("aria-pressed")).toBe("false");
-
-    fireEvent.click(horizontal);
-
-    const frame = () =>
-      store.get(nodesAtom).find((node) => node.id === "outreach");
-    expect(frame()?.data.config).toEqual({ direction: "horizontal" });
+  it("Tidies a focused Group in one undo step without changing the overview", async () => {
+    const { view, store, renderedNodeIds } =
+      await renderEditor("?group=outreach");
+    await waitFor(() => expect(renderedNodeIds()).toContain("welcome"));
+    const before = store.get(nodesAtom);
+    fireEvent.click(view.getByRole("button", { name: "Reflow nodes" }));
     expect(store.get(historyAtom)).toHaveLength(1);
+    for (const node of before.filter((item) => !item.parentId)) {
+      expect(store.get(nodesAtom).find((item) => item.id === node.id)).toBe(
+        node
+      );
+    }
     expect(store.get(edgesAtom)).toEqual(EDGES);
-    await waitFor(() =>
-      expect(
-        view
-          .getByRole("button", { name: "Left to right" })
-          .getAttribute("aria-pressed")
-      ).toBe("true")
-    );
-
-    fireEvent.click(view.getByRole("button", { name: "Enter group" }));
-    await waitFor(() => expect(search()).toEqual({ group: "outreach" }));
-    const painted = (id: string) =>
-      store.get(canvasNodesAtom).find((node) => node.id === id);
-    expect(painted("welcome")?.position.y).toBe(
-      painted("case_study")?.position.y
-    );
-    expect(painted("welcome")?.position.x ?? 0).toBeLessThan(
-      painted("case_study")?.position.x ?? 0
-    );
+    expect(
+      store.get(nodesAtom).find((node) => node.id === "welcome")?.position
+    ).not.toEqual(before.find((node) => node.id === "welcome")?.position);
   });
 
   it("offers interior, ingress and continuation edges for selection and deletion, and member and stub handles for connection", async () => {
@@ -1164,8 +1145,8 @@ describe("a Group holding a Condition whose False path ends inside it", () => {
   const graphWith = (direction: "vertical" | "horizontal") => ({
     nodes: [
       ...NODES.map((node) =>
-        node.id === "outreach"
-          ? { ...node, data: { ...node.data, config: { direction } } }
+        node.parentId === "outreach" && direction === "horizontal"
+          ? { ...node, position: { x: node.position.y, y: node.position.x } }
           : node
       ),
       gate,
@@ -1310,7 +1291,7 @@ describe("adding a step after a step and inserting one into a connection", () =>
       </JotaiProvider>
     );
 
-  it("adds a step beside what the outlet reaches, from the overview context menu", async () => {
+  it("inserts a step before what the outlet reaches, from the overview context menu", async () => {
     const { store } = await renderEditor("", {
       nodes: NODES.filter(
         (node) => !["outreach", "welcome", "case_study"].includes(node.id)
@@ -1331,15 +1312,13 @@ describe("adding a step after a step and inserting one into a connection", () =>
       fireEvent.click(menu.getByRole("button", { name: "Add step after" }));
     });
 
-    // The step runs beside "Route outcome" and rejoins it, so the path that
-    // followed the outlet still reaches the same next step.
+    // The source now reaches the new step, which reaches the previous target.
     const added = store.get(selectedNodeAtom);
     expect(added).toEqual(expect.any(String));
     expect(links(store)).toEqual([
       `${added}>route`,
       "life>qualify",
       `qualify>${added}`,
-      "qualify>route",
     ]);
   });
 

@@ -25,7 +25,7 @@ export type OutletEdge = {
   target: string;
   sourceHandle?: string | null | undefined;
   targetHandle?: string | null | undefined;
-  data?: Pick<EditorEdgeData, "turnAlong" | "lane"> | undefined;
+  data?: Pick<EditorEdgeData, "centerY"> | undefined;
 };
 
 function union(rects: readonly Rect[]): Rect {
@@ -74,17 +74,15 @@ export function outletPlacement(input: {
       edge.sourceHandle,
       edge.targetHandle
     );
-    const [, labelX, labelY] = getWorkflowEdgePath(
-      {
-        sourceX: sx,
-        sourceY: sy,
-        sourcePosition: sourcePos,
-        targetX: tx,
-        targetY: ty,
-        targetPosition: targetPos,
-      },
-      { turnAlong: edge.data?.turnAlong, lane: edge.data?.lane }
-    );
+    const [, labelX, labelY] = getWorkflowEdgePath({
+      sourceX: sx,
+      sourceY: sy,
+      sourcePosition: sourcePos,
+      targetX: tx,
+      targetY: ty,
+      targetPosition: targetPos,
+      centerY: edge.data?.centerY,
+    });
     return [
       {
         x: labelX - OUTLET_LABEL_SIZE.width / 2,

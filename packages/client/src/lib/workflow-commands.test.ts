@@ -138,9 +138,9 @@ describe("workflowCommands", () => {
     );
   });
 
-  it("offers inserts on a focused Group canvas and says why Tidy layout is off", () => {
+  it("offers inserts and Tidy layout on a focused Group canvas", () => {
     const commands = workflowCommands(
-      commandInput({ groupScopeActive: true, canReflow: false })
+      commandInput({ groupScopeActive: true, canReflow: true })
     );
     const command = (id: string) => commands.find((item) => item.id === id);
 
@@ -149,8 +149,7 @@ describe("workflowCommands", () => {
     expect(command("duplicate-selection")?.disabled).toBe(false);
     expect(command("copy-selection")?.disabled).toBe(false);
     expect(command("reflow")).toMatchObject({
-      disabled: true,
-      detail: "Layout is automatic inside a Group",
+      disabled: false,
     });
   });
 

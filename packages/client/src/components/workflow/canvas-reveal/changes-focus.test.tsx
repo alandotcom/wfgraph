@@ -1054,11 +1054,14 @@ describe("Changes Focus navigation", () => {
 });
 
 describe("Changes Group organization", () => {
-  const frame = (label: string, direction: string): PersistedWorkflowNode => ({
+  const frame = (
+    label: string,
+    description: string
+  ): PersistedWorkflowNode => ({
     id: "group",
     type: "group",
     position: { x: 0, y: 0 },
-    data: { label, type: "group", config: { direction } },
+    data: { label, type: "group", description },
   });
   const inGroup = (node: PersistedWorkflowNode): PersistedWorkflowNode => ({
     ...node,
@@ -1090,7 +1093,7 @@ describe("Changes Group organization", () => {
         kind: "modified",
         fields: [
           {
-            path: ["data", "config", "direction"],
+            path: ["data", "description"],
             kind: "modified",
             before: "vertical",
             after: "horizontal",
@@ -1151,7 +1154,7 @@ describe("Changes Group organization", () => {
     compare(view, "Follow-ups Modified");
 
     expect(tableRows(view, "Settings of this Group")).toEqual([
-      ["Layout direction", "Top to bottom", "Left to right"],
+      ["Description", "vertical", "horizontal"],
       ["Label", "Reminders", "Follow-ups"],
     ]);
     expect(

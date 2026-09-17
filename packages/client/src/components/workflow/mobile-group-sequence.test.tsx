@@ -103,7 +103,7 @@ function step(
     : node;
 }
 
-/** A workflow whose one Group stores the left-to-right direction. */
+/** A workflow with one Group, shown at the same stored positions on every device. */
 const NODES: WorkflowNode[] = [
   {
     id: "life",
@@ -121,7 +121,7 @@ const NODES: WorkflowNode[] = [
     data: {
       label: "Initial outreach",
       type: "group",
-      config: { direction: "horizontal" },
+      config: {},
     },
   },
   step("welcome", "Send welcome back", { x: 12, y: 48 }, "outreach"),
@@ -297,12 +297,6 @@ describe("the mobile Draft Group sequence", () => {
     expect(summary.dataset.level).toBe("summary");
     expect(
       within(summary).getByRole("heading", { name: "Initial outreach" })
-    ).toBeTruthy();
-    expect(within(summary).getByText("Left to right")).toBeTruthy();
-    expect(
-      within(summary).getByText(
-        "On a phone, a Group's steps show top to bottom."
-      )
     ).toBeTruthy();
     expect(
       within(summary).queryByRole("group", { name: "Layout direction" })
@@ -501,14 +495,14 @@ describe("the mobile Draft Group sequence", () => {
     expect(store.get(historyAtom)).toEqual([]);
   });
 
-  it("shows a horizontal Group left to right on desktop and top to bottom on mobile, changing nothing stored", async () => {
+  it("keeps the same Group geometry across desktop and mobile, changing nothing stored", async () => {
     setViewportWidth(1440);
     const editor = await renderEditor("?group=outreach");
     const { store } = editor;
     await waitFor(() => expect(editor.canvasNode("welcome")).not.toBeNull());
     const storedNodes = store.get(nodesAtom);
     const storedEdges = store.get(edgesAtom);
-    expect(editor.handleSides("welcome")).toEqual(["left", "right"]);
+    expect(editor.handleSides("welcome")).toEqual(["top", "bottom"]);
     // Happy-dom's media query listener starts out believing the query does not
     // match, so the first move below `md` from a wide viewport reports no
     // change. One narrow and wide round trip puts the listener in step.
@@ -522,7 +516,7 @@ describe("the mobile Draft Group sequence", () => {
 
     await editor.resize(1440);
     await waitFor(() =>
-      expect(editor.handleSides("welcome")).toEqual(["left", "right"])
+      expect(editor.handleSides("welcome")).toEqual(["top", "bottom"])
     );
 
     await new Promise((resolve) => setTimeout(resolve, 60));
@@ -530,7 +524,7 @@ describe("the mobile Draft Group sequence", () => {
     expect(store.get(edgesAtom)).toBe(storedEdges);
     expect(
       store.get(nodesAtom).find((node) => node.id === "outreach")?.data.config
-    ).toEqual({ direction: "horizontal" });
+    ).toEqual({});
     expect(store.get(historyAtom)).toEqual([]);
     expect(store.get(hasUnsavedChangesAtom)).toBe(false);
     expect(editor.update).not.toHaveBeenCalled();

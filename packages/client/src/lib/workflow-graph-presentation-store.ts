@@ -4,7 +4,7 @@
  * Draft mutation and history remain in `workflow-graph-store`.
  */
 
-import { atom, type Atom } from "jotai";
+import { atom } from "jotai";
 import { selectAtom } from "jotai/utils";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { mapOrSame } from "@wfgraph/shared/utils/map-or-same";
@@ -25,7 +25,6 @@ import {
   scopeCanvasGraph,
   type ScopeCanvasGraph,
 } from "#src/lib/group-scope-canvas";
-import type { GroupLayoutDirection } from "@wfgraph/shared/graph/schemas";
 import {
   edgesStateAtom,
   executionOverlayGraphAtom,
@@ -354,40 +353,14 @@ const paintedEdgesAtom = atom((get) => {
   return paintSelection(withInactiveBranch);
 });
 
-function scopeCanvasGraphAtom(
-  focusedGroupDirection: GroupLayoutDirection | null
-): Atom<ScopeCanvasGraph> {
-  return atom((get) =>
-    scopeCanvasGraph({
-      nodes: get(displayNodesAtom),
-      edges: get(paintedEdgesAtom),
-      scope: get(activeWorkspaceAddressAtom).scope,
-      focusedGroupDirection,
-    })
-  );
-}
-
-/**
- * What the canvas paints for the active scope: the overview with each Group
- * collapsed, or one focused Group's members and boundary stubs laid out along
- * the Group's stored direction. Painting reads the stored graph and never
- * writes to it.
- */
-const canvasGraphAtom = scopeCanvasGraphAtom(null);
-
-/** `canvasGraphAtom` with every focused Group laid out top to bottom. */
-const verticalCanvasGraphAtom = scopeCanvasGraphAtom("vertical");
-
-/**
- * `canvasGraphAtom` with every focused Group laid out top to bottom for
- * "vertical", or `canvasGraphAtom` itself for null. A phone paints with
- * "vertical" (see `useFocusedGroupDirection`), which changes nothing stored.
- */
-export function canvasGraphAtomFor(
-  direction: "vertical" | null
-): Atom<ScopeCanvasGraph> {
-  return direction === null ? canvasGraphAtom : verticalCanvasGraphAtom;
-}
+/** Every form factor paints the same stored positions for the active scope. */
+export const canvasGraphAtom = atom((get): ScopeCanvasGraph =>
+  scopeCanvasGraph({
+    nodes: get(displayNodesAtom),
+    edges: get(paintedEdgesAtom),
+    scope: get(activeWorkspaceAddressAtom).scope,
+  })
+);
 
 /** The nodes `canvasGraphAtom` paints for the active scope. */
 export const canvasNodesAtom = atom((get) => get(canvasGraphAtom).nodes);

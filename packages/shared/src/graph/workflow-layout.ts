@@ -233,7 +233,11 @@ function readNodeShape(input: {
   }
 
   if (!isEventSplitNode(input.node)) {
-    return standardCard({ outletHandles: [], holdsOutletsOpen: false });
+    return {
+      ...standardCard({ outletHandles: [], holdsOutletsOpen: false }),
+      width: input.node.width ?? WORKFLOW_NODE_WIDTH,
+      height: input.node.height ?? WORKFLOW_NODE_HEIGHT,
+    };
   }
 
   const outlets = eventsReaching({
@@ -410,17 +414,19 @@ function layoutWorkflowNodesWithDagre(input: {
   });
   graph.setDefaultEdgeLabel(() => ({}));
 
-  for (const node of input.model.nodes) {
+  // Dagre can reverse equal-rank siblings relative to its insertion order.
+  // Seed it from stable ids, so each Tidy produces the same arrangement.
+  const nodes = sortBy(input.model.nodes, [(node) => node.id]);
+  for (const node of nodes) {
     graph.setNode(node.id, sizeOf(input.model, node.id));
   }
 
-  // dagre seeds its ordering pass from insertion order, so nodes and edges go in
-  // the left-to-right order the canvas already draws them in. Held columns stay
-  // out of this graph: dagre's median heuristic reorders a rank freely, so a
-  // spare node standing in one dragged the wired branch to whichever side it
-  // happened to land on.
-  for (const node of input.model.nodes) {
-    for (const edge of input.model.outEdgesBySource.get(node.id) ?? []) {
+  for (const node of nodes) {
+    for (const edge of orderBy(
+      input.model.outEdgesBySource.get(node.id) ?? [],
+      [(item) => getEdgeWeight(item), (item) => item.target],
+      ["desc", "asc"]
+    )) {
       graph.setEdge(edge.source, edge.target, {
         weight: getEdgeWeight(edge),
       });

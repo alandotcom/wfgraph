@@ -19,14 +19,11 @@ import { workflowZoomPresentation } from "#src/components/workflow/workflow-view
 type ControlsProps = {
   onReflow?: (() => void) | undefined;
   canReflow?: boolean | undefined;
-  /** Why the reflow control is disabled, shown as its tooltip when it is. */
-  reflowUnavailableReason?: string | undefined;
 };
 
 export const Controls = ({
   onReflow,
   canReflow = true,
-  reflowUnavailableReason,
 }: ControlsProps) => {
   const { zoomIn, zoomOut, fitView } = useReactFlow();
   const [showMinimap, setShowMinimap] = useAtom(showMinimapAtom);
@@ -120,11 +117,7 @@ export const Controls = ({
           disabled={!canReflow}
           onClick={onReflow}
           size="icon"
-          title={
-            !canReflow && reflowUnavailableReason
-              ? reflowUnavailableReason
-              : "Reflow nodes"
-          }
+          title="Reflow nodes"
           variant="outline"
         >
           <RefreshCcw className="size-4" />

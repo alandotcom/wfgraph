@@ -10,6 +10,7 @@ import {
   addedJoinRuleRefusal,
 } from "@wfgraph/shared/graph/group-contract";
 import { fanOutStoreEdges } from "@wfgraph/shared/graph/node-group";
+import { upstreamNodeIdsOver } from "@wfgraph/shared/graph/upstream-nodes";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { normalizeSourceHandleForConnection } from "#src/components/workflow/connection-handle";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
@@ -43,25 +44,23 @@ export type ConnectionPlan =
   | { refusal: string }
   | { additions: ConnectionAddition[] };
 
+function endpointRefusal(
+  source: WorkflowNode | undefined,
+  target: WorkflowNode | undefined
+): string | null {
+  if (source?.type === "add" || target?.type === "add")
+    return "Connect to a workflow step rather than the Add step control.";
+  if (target?.data.type === "lifecycle")
+    return "Lifecycle is the workflow entry and cannot accept a connection.";
+  return null;
+}
+
 /**
- * Plan a connection between stored nodes against one graph. The canvas plans
- * against the graph it paints to preview a drag, and `connectNodesAtom` plans
- * again against the store when the drag ends and stores the additions, so the
- * two apply the same rules. A painted connection on a focused Group names
- * stubs, so the canvas passes it through `storedCanvasConnection` first.
- *
- * Two members of the same Group may connect. A member and a step outside its
- * Group connect only through an "Incoming from" or "Continues to" stub, marked
- * by `throughBoundaryStub`, or through the collapsed card. A connection that
- * would enter a Group from a second outside outlet is
- * `addedIngressSourceRefusal`'s to refuse, and one that would leave a Group
- * several ways is `addedContinuationRefusal`'s. A join the draft save refuses is
- * `andJoinRefusalReason`'s, and a join a Group may not hold, such as one with a
- * branch from outside the Group, is `addedJoinRuleRefusal`'s. `storeEdges` are
- * the stored edges, which name Group members; the painted edges name frames and
- * would give a Group outlet a different handle.
+ * Resolve handles and collapsed Group ports without validating a partial graph.
+ * Focused stubs must first pass through `storedCanvasConnection` and set
+ * `throughBoundaryStub`. Callers validate the complete additions before storing.
  */
-export function planConnection({
+export function expandConnection({
   connection,
   throughBoundaryStub = false,
   nodes,
@@ -86,17 +85,8 @@ export function planConnection({
 
   const sourceNode = nodes.find((node) => node.id === sourceNodeId);
   const targetNode = nodes.find((node) => node.id === targetNodeId);
-  if (sourceNode?.type === "add" || targetNode?.type === "add") {
-    return {
-      refusal: "Connect to a workflow step rather than the Add step control.",
-    };
-  }
-  if (targetNode?.data.type === "lifecycle") {
-    return {
-      refusal:
-        "Lifecycle is the workflow entry and cannot accept a connection.",
-    };
-  }
+  const refusal = endpointRefusal(sourceNode, targetNode);
+  if (refusal !== null) return { refusal };
   // A focused Group canvas paints members under their stored ids, so a
   // connection there between two members is stored as an interior edge. Any
   // other connection between a member and a step outside its Group goes through
@@ -149,17 +139,54 @@ export function planConnection({
     };
   }
 
-  // The stored array itself when no edge is replaced, so the Group join rules
-  // read the breaks `joinRuleBreakKeys` already holds for it.
-  const remaining = storeEdges.some((edge) => edge.id === connectionId)
-    ? storeEdges.filter((edge) => edge.id !== connectionId)
-    : storeEdges;
-  const refusal =
+  return { additions };
+}
+
+/** Validate all additions together, so replacements never expose partial joins. */
+export function connectionAdditionsRefusal(input: {
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+  additions: ConnectionAddition[];
+}): string | null {
+  const { nodes, edges: remaining, additions } = input;
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  for (const edge of additions) {
+    const refusal = endpointRefusal(
+      byId.get(edge.source),
+      byId.get(edge.target)
+    );
+    if (refusal !== null) return refusal;
+  }
+  const proposedEdges = [...remaining, ...additions];
+  const upstreamOf = upstreamNodeIdsOver(proposedEdges);
+  if (additions.some((edge) => upstreamOf(edge.source).has(edge.target))) {
+    return "This connection would create a cycle. Connect to a step that does not lead back here.";
+  }
+  return (
     addedIngressSourceRefusal({ nodes, edges: remaining, additions }) ??
     addedContinuationRefusal({ nodes, edges: remaining, additions }) ??
-    andJoinRefusalReason({ nodes, edges: [...remaining, ...additions] }) ??
-    addedJoinRuleRefusal({ nodes, edges: remaining, additions });
-  return refusal === null ? { additions } : { refusal };
+    andJoinRefusalReason({ nodes, edges: proposedEdges }) ??
+    addedJoinRuleRefusal({ nodes, edges: remaining, additions })
+  );
+}
+
+/** Expand and validate a single gesture against the stored graph. */
+export function planConnection(
+  input: Parameters<typeof expandConnection>[0]
+): ConnectionPlan {
+  const plan = expandConnection(input);
+  if ("refusal" in plan) return plan;
+  const remaining = input.storeEdges.some(
+    (edge) => edge.id === input.connection.id
+  )
+    ? input.storeEdges.filter((edge) => edge.id !== input.connection.id)
+    : input.storeEdges;
+  const refusal = connectionAdditionsRefusal({
+    nodes: input.nodes,
+    edges: remaining,
+    additions: plan.additions,
+  });
+  return refusal === null ? plan : { refusal };
 }
 
 /**

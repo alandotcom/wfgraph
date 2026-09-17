@@ -419,11 +419,11 @@ describe("nodeValidationSides", () => {
 });
 
 describe("Group organization in a comparison", () => {
-  const frame = (label: string, direction: string): WorkflowNode => ({
+  const frame = (label: string, description: string): WorkflowNode => ({
     id: "group",
     type: "group",
     position: { x: 0, y: 0 },
-    data: { label, type: "group", config: { direction } },
+    data: { label, type: "group", description },
   });
   const inGroup = (node: WorkflowNode): WorkflowNode => ({
     ...node,
@@ -434,7 +434,7 @@ describe("Group organization in a comparison", () => {
     kind: "modified",
     fields: [
       {
-        path: ["data", "config", "direction"],
+        path: ["data", "description"],
         kind: "modified",
         before: "vertical",
         after: "horizontal",

@@ -1,7 +1,7 @@
 /**
  * Group scenarios: what the build agent does with a graph that already holds a
  * Group. The agent keeps an existing Group valid through its edits, and it
- * cannot create a Group, ungroup one, or change a Group's layout direction.
+ * cannot create or ungroup a Group. Layout is edited on the canvas.
  *
  * Every scenario starts from `screeningDocument` and carries a `reference`: a
  * graph, built by hand, that satisfies its own expectations.
@@ -36,7 +36,7 @@ const lifecycleNode: WorkflowNode = {
   },
 };
 
-/** A frame that stores no direction, which the editor lays out vertically. */
+/** Group frames carry no layout configuration. */
 const screeningFrame: WorkflowNode = {
   id: SCREENING_GROUP_ID,
   type: "group",
@@ -328,8 +328,8 @@ export const groupScenarios: Array<{
         answerMustMentionOneOf: ["editor", "canvas"],
       },
       intentCriteria: [
-        "The Screening Group keeps its vertical direction.",
-        "The answer says the direction is changed in the editor.",
+        "The Screening Group and its member positions are unchanged.",
+        "The answer explains that the Group has no layout-direction setting and suggests dragging members or using Tidy layout in the editor.",
       ],
     }),
   },

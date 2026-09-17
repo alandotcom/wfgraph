@@ -29,7 +29,7 @@ import { useAfterDelay, useAfterPaint, useDomEvent } from "#src/hooks/effects";
 import { isTextEntry } from "#src/lib/is-text-entry";
 import { viewportAnimationDuration } from "#src/lib/motion";
 import {
-  canvasGraphAtomFor,
+  canvasGraphAtom,
   displayNodesAtom,
   edgesAtom,
   canvasEditingLockedAtom,
@@ -70,17 +70,13 @@ import { GroupScopeBar } from "./group-scope-bar";
 import { useGroupScopeNavigation } from "./use-group-scope-navigation";
 import { withoutProjectedDimensions } from "#src/lib/group-scope-canvas";
 import { scopeId } from "#src/lib/workflow-navigation-state";
-import {
-  activeWorkspaceAddressAtom,
-  groupScopeActiveAtom,
-} from "#src/lib/workflow-workspace-navigation";
+import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
 import { LifecycleNode } from "./nodes/lifecycle-node";
 import { useCanvasConnections } from "./use-canvas-connections";
 import { useCanvasCopyPaste } from "./use-canvas-copy-paste";
 import { useReflowLayout } from "./use-reflow-layout";
 import {
   canvasInteractionState,
-  useFocusedGroupDirection,
   useTopologyAuthoring,
 } from "./canvas-interaction";
 import { useWorkspaceCamera } from "./use-workspace-camera";
@@ -113,7 +109,6 @@ import {
   presentationViewport,
   workflowFitViewOptions,
 } from "./workflow-viewport";
-import { GROUP_LAYOUT_IS_AUTOMATIC } from "#src/lib/workflow-commands";
 
 const edgeTypes = {
   [WORKFLOW_EDGE_TYPE]: Edge.Animated,
@@ -147,12 +142,10 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   // connection rules read because a Group frame stands for its members.
   // A phone lays a focused Group out top to bottom whatever its stored
   // direction, which changes only what the canvas paints.
-  const focusedGroupDirection = useFocusedGroupDirection();
-  const canvasGraph = useAtomValue(canvasGraphAtomFor(focusedGroupDirection));
+  const canvasGraph = useAtomValue(canvasGraphAtom);
   const { nodes, edges } = canvasGraph;
   const graphNodes = useAtomValue(displayNodesAtom);
   const { scope } = useAtomValue(activeWorkspaceAddressAtom);
-  const groupScopeActive = useAtomValue(groupScopeActiveAtom);
   const topologyAuthoring = useTopologyAuthoring();
   const { onNodeDoubleClick } = useGroupScopeNavigation();
   const storeEdges = useAtomValue(edgesAtom);
@@ -670,10 +663,6 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
             >
               <Controls
                 canReflow={!graphEditingLocked && canReflow}
-                // A focused Group lays its steps out on its own.
-                reflowUnavailableReason={
-                  groupScopeActive ? GROUP_LAYOUT_IS_AUTOMATIC : undefined
-                }
                 // A phone offers no topology authoring, so it shows no Tidy layout.
                 onReflow={
                   graphEditingLocked || !topologyAuthoring ? undefined : reflow

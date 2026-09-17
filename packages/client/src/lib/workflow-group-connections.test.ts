@@ -286,6 +286,48 @@ describe("parallel ingress fan-out", () => {
 });
 
 describe("connection planning", () => {
+  it("refuses a cycle inside a focused Group before saving or recording history", async () => {
+    const store = createGraphStore({
+      nodes: [lifecycle(), lookup("read"), lookup("send")],
+      edges: [edge("read-send", "read", "send")],
+    });
+    store.set(groupSelectionAtom, { selectedIds: new Set(["read", "send"]) });
+    const frameId = store.get(nodesAtom).find(isGroupNode)!.id;
+    showWorkspaceRoute(store, { group: frameId });
+    await tick();
+    vi.clearAllMocks();
+    const grouped = graphOf(store);
+    const history = store.get(historyAtom);
+    const connection = { source: "send", target: "read" };
+    const refusal =
+      "This connection would create a cycle. Connect to a step that does not lead back here.";
+
+    expect(
+      connectionRefusalReason({
+        connection,
+        nodes: store.get(nodesAtom),
+        storeEdges: store.get(edgesAtom),
+        catalog: emptyExtensionCatalog,
+      })
+    ).toBe(refusal);
+    expect(
+      store.set(connectNodesAtom, {
+        connection: { id: "cycle", ...connection },
+        catalog: emptyExtensionCatalog,
+      })
+    ).toEqual({ refusal });
+    await tick();
+    expect(graphOf(store)).toEqual(grouped);
+    expect(store.get(historyAtom)).toBe(history);
+    expect(updateMock).not.toHaveBeenCalled();
+    expect(
+      workflowTopologyRefusalReason({
+        nodes: toPersistedNodes(store.get(nodesAtom)),
+        edges: store.get(edgesAtom).map(toPersistedEdge),
+      })
+    ).toBeNull();
+  });
+
   it("stores exactly the additions the preview planned against the same graph", async () => {
     const { store, frameId } = groupedFanOut();
     store.set(onEdgesChangeAtom, [{ type: "remove", id: "qualify-read" }]);
@@ -463,10 +505,12 @@ describe("joins inside a Group", () => {
     expect(edgeIds(store)).toContain("e-j");
     expect(groupContractViolations(graphOf(store))).toEqual([]);
     expectEverySaveWhole();
-    const y = (id: string) =>
-      store.get(canvasNodesAtom).find((node) => node.id === id)?.position.y ??
-      Number.NaN;
-    expect(y("j")).toBeGreaterThan(Math.max(y("b"), y("e")));
+    for (const member of store.get(nodesAtom).filter((node) => node.parentId)) {
+      expect(
+        store.get(canvasNodesAtom).find((node) => node.id === member.id)
+          ?.position
+      ).toEqual(member.position);
+    }
   });
 
   it("refuses a branch into an inside join from the Group's outside port, as Publish does", async () => {

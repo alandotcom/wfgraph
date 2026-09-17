@@ -6,7 +6,7 @@
  * Graph cells stay in workflow-graph-cells; this file is the operations.
  */
 
-import { atom, type Getter, type Setter } from "jotai";
+import { atom } from "jotai";
 import {
   groupSelection,
   removeGroupWithMembers,
@@ -15,15 +15,12 @@ import {
 } from "#src/lib/node-group";
 import { generateId } from "@wfgraph/shared/utils/id";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
-import { groupLayoutDirection } from "@wfgraph/shared/graph/node-group";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import {
   planConnection,
   type ConnectionPlan,
   type RequestedConnection,
 } from "#src/components/workflow/connection-validation";
-import type { GroupLayoutDirection } from "@wfgraph/shared/graph/schemas";
-import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import {
   draftEditable,
   edgesStateAtom,
@@ -38,9 +35,7 @@ import {
 import {
   activeSelectionAtom,
   activeWorkspaceAddressAtom,
-  forgetGroupCamerasAtom,
 } from "#src/lib/workflow-workspace-navigation";
-import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 
 /**
  * Wrap a selection `analyzeGroupableSelection` accepts in a Group frame, as one
@@ -78,91 +73,6 @@ export const groupSelectionAtom = atom(
   }
 );
 
-/**
- * Store `direction` as the Group frame's authored layout direction, as one undo
- * step that saves. The direction is organizational, so members, their data and
- * the stored edges stay as they are. The Group's saved focused cameras are
- * cleared, since they framed the other layout. Answers false when `groupId`
- * names no frame or the frame is already laid out along `direction`.
- */
-export const setGroupDirectionAtom = atom(
-  null,
-  (get, set, input: { groupId: string; direction: GroupLayoutDirection }) => {
-    if (!draftEditable(get)) {
-      return false;
-    }
-
-    const nodes = get(nodesStateAtom);
-    const frame = nodes.find((node) => node.id === input.groupId);
-    if (
-      frame === undefined ||
-      !isGroupNode(frame) ||
-      groupLayoutDirection(frame) === input.direction
-    ) {
-      return false;
-    }
-
-    pushHistory(get, set);
-    set(
-      nodesStateAtom,
-      nodes.map((node) =>
-        node === frame
-          ? {
-              ...node,
-              data: {
-                ...node.data,
-                config: { ...node.data.config, direction: input.direction },
-              },
-            }
-          : node
-      )
-    );
-    forgetGroupCameras(get, set, [input.groupId]);
-    requestGraphSave(get, set, { immediate: true });
-    return true;
-  }
-);
-
-function forgetGroupCameras(
-  get: Getter,
-  set: Setter,
-  groupIds: readonly string[]
-): void {
-  const workflowId = get(currentWorkflowIdAtom);
-  if (workflowId === null) {
-    return;
-  }
-  for (const groupId of groupIds) {
-    set(forgetGroupCamerasAtom, { workflowId, groupId });
-  }
-}
-
-/**
- * Clear the saved focused desktop cameras of every Group whose layout
- * direction differs between `before` and `after`, as when undo or redo
- * replaced the graph.
- */
-export function forgetFlippedGroupCameras(
-  get: Getter,
-  set: Setter,
-  graphs: { before: readonly WorkflowNode[]; after: readonly WorkflowNode[] }
-): void {
-  const directionBefore = new Map(
-    graphs.before
-      .filter((node) => isGroupNode(node))
-      .map((frame) => [frame.id, groupLayoutDirection(frame)])
-  );
-  const flipped = graphs.after
-    .filter(
-      (node) =>
-        isGroupNode(node) &&
-        directionBefore.has(node.id) &&
-        directionBefore.get(node.id) !== groupLayoutDirection(node)
-    )
-    .map((frame) => frame.id);
-  forgetGroupCameras(get, set, flipped);
-}
-
 /** Lift children out of a Group and remove the frame. */
 export const ungroupNodeAtom = atom(null, (get, set, nodeId: string) => {
   if (!draftEditable(get)) {
@@ -176,7 +86,7 @@ export const ungroupNodeAtom = atom(null, (get, set, nodeId: string) => {
     return false;
   }
 
-  const next = ungroupNode({ nodes, edges: get(edgesStateAtom), groupId });
+  const next = ungroupNode({ nodes, groupId });
   if (next === nodes) {
     return false;
   }

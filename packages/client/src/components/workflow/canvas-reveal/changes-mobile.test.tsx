@@ -718,12 +718,12 @@ describe("mobile Changes states at phone width", () => {
   it("says an Organization-only comparison leaves execution behavior unchanged", async () => {
     const frame = (
       label: string,
-      direction: string
+      description: string
     ): PersistedWorkflowNode => ({
       id: "group",
       type: "group",
       position: { x: 0, y: 0 },
-      data: { label, type: "group", config: { direction } },
+      data: { label, type: "group", description },
     });
     const inGroup = (node: PersistedWorkflowNode): PersistedWorkflowNode => ({
       ...node,

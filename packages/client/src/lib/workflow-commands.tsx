@@ -61,12 +61,6 @@ export type WorkflowCommand = {
   readonly execute: () => void;
 };
 
-/**
- * Why Tidy layout is off on a focused Group canvas, shown beside the disabled
- * command and on the canvas's layout control.
- */
-export const GROUP_LAYOUT_IS_AUTOMATIC = "Layout is automatic inside a Group";
-
 type WorkflowCommandState = {
   readonly currentWorkflowId: string | null;
   readonly workflowMode: WorkflowMode;
@@ -94,10 +88,7 @@ type WorkflowCommandState = {
   readonly canPaste: boolean;
   readonly canGroupSelection: boolean;
   readonly editingLocked: boolean;
-  /**
-   * Whether the canvas shows a focused Group, which lays its steps out on its
-   * own, so Tidy layout is off there and says why.
-   */
+  /** Whether the canvas shows a focused Group. */
   readonly groupScopeActive: boolean;
 };
 
@@ -324,7 +315,6 @@ export function workflowCommands({
       id: "reflow",
       group: "workflow",
       label: "Tidy layout",
-      detail: state.groupScopeActive ? GROUP_LAYOUT_IS_AUTOMATIC : undefined,
       keywords: "Tidy layout arrange align auto layout clean up",
       disabled: !state.canEdit || !state.canReflow,
       execute: callbacks.reflow,

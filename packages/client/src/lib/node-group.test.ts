@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import {
-  NODE_SPACING,
-  RANK_SPACING,
   WORKFLOW_NODE_HEIGHT,
   WORKFLOW_NODE_WIDTH,
 } from "#src/lib/workflow-node-dimensions";
@@ -154,7 +152,6 @@ describe("groupSelection", () => {
 
     const freed = ungroupNode({
       nodes: second.nodes,
-      edges: second.edges,
       groupId: "g1",
     });
     expect(orderGroupParentsFirst(freed)).toBe(freed);
@@ -181,7 +178,6 @@ describe("groupSelection", () => {
     expect(frame?.data).toEqual({
       label: "Group",
       type: "group",
-      config: { direction: "vertical" },
     });
     expect(frame?.position).toEqual({ x: 100, y: 200 });
     expect(children?.map((node) => node.id)).toEqual(["a", "b", "c"]);
@@ -193,7 +189,6 @@ describe("groupSelection", () => {
 
     const restored = ungroupNode({
       nodes: grouped?.nodes ?? [],
-      edges,
       groupId: "g1",
     });
     expect(restored.some((node) => node.id === "g1")).toBe(false);
@@ -216,7 +211,6 @@ describe("groupSelection", () => {
     expect(frame?.data).toEqual({
       label: "Group",
       type: "group",
-      config: { direction: "vertical" },
     });
     expect(frame?.position).toEqual({ x: 40, y: 200 });
     expect(childA?.position).toEqual({ x: 0, y: 0 });
@@ -243,16 +237,14 @@ describe("groupSelection", () => {
     expect(frame?.data).toEqual({
       label: "Group",
       type: "group",
-      config: { direction: "vertical" },
     });
     expect(childA?.position.y).toBe(childB?.position.y);
     expect(childA?.position.x).toBeLessThan(childB?.position.x ?? 0);
   });
 
-  it("frees the members at auto-layout's pitch, keeping the fan-in", () => {
+  it("frees the members at their stored spacing, keeping the fan-in", () => {
     const freed = ungroupNode({
       nodes: framedNodes(),
-      edges: parallelEdges(),
       groupId: "g1",
     });
     const freeA = freed.find((node) => node.id === "a");
@@ -261,12 +253,8 @@ describe("groupSelection", () => {
 
     expect(freed.some((node) => node.id === "g1")).toBe(false);
     expect(freed.every((node) => !node.parentId)).toBe(true);
-    expect((freeB?.position.x ?? 0) - (freeA?.position.x ?? 0)).toBe(
-      WORKFLOW_NODE_WIDTH + NODE_SPACING
-    );
-    expect((freeC?.position.y ?? 0) - (freeA?.position.y ?? 0)).toBe(
-      WORKFLOW_NODE_HEIGHT + RANK_SPACING
-    );
+    expect((freeB?.position.x ?? 0) - (freeA?.position.x ?? 0)).toBe(200);
+    expect((freeC?.position.y ?? 0) - (freeA?.position.y ?? 0)).toBe(200);
     expect(freeA?.position.y).toBe(freeB?.position.y);
     // The join stays centred under the two lookups it joins.
     expect(freeC?.position.x).toBe(
@@ -276,7 +264,7 @@ describe("groupSelection", () => {
     expect(freeA?.height).toBe(WORKFLOW_NODE_HEIGHT);
   });
 
-  it("centres two and three columns of freed members under the collapsed card", () => {
+  it("preserves intentionally overlapping member positions when ungrouping", () => {
     const frame: WorkflowNode = {
       id: "g1",
       type: "group",
@@ -285,7 +273,7 @@ describe("groupSelection", () => {
       height: WORKFLOW_NODE_HEIGHT,
       data: { label: "Group", type: "group" },
     };
-    const cardCentre = frame.position.x + WORKFLOW_NODE_WIDTH / 2;
+    const cardCentre = frame.position.x + 12 + WORKFLOW_NODE_WIDTH / 2;
     const member = (id: string): WorkflowNode => ({
       ...action(id, "fountain/get-user", { x: 12, y: 48 }),
       parentId: "g1",
@@ -297,7 +285,6 @@ describe("groupSelection", () => {
     ]) {
       const freed = ungroupNode({
         nodes: [frame, ...ids.map(member)],
-        edges: [],
         groupId: "g1",
       });
       const left = Math.min(...freed.map((node) => node.position.x));
@@ -305,9 +292,9 @@ describe("groupSelection", () => {
         ...freed.map((node) => node.position.x + WORKFLOW_NODE_WIDTH)
       );
       expect((left + right) / 2).toBe(cardCentre);
-      expect(freed.every((node) => node.position.y === frame.position.y)).toBe(
-        true
-      );
+      expect(
+        freed.every((node) => node.position.y === frame.position.y + 48)
+      ).toBe(true);
     }
   });
 });
@@ -344,7 +331,6 @@ describe("grouping and the engine traversal graph", () => {
 
     const freed = ungroupNode({
       nodes: grouped.nodes,
-      edges: grouped.edges,
       groupId: "g1",
     });
     expect(traversalGraph(freed, grouped.edges)).toEqual(before);
@@ -557,7 +543,7 @@ describe("repairCanvasGroups", () => {
     expect(repair.nodes[1]).not.toHaveProperty("extent");
   });
 
-  it("frees a lone member onto the collapsed card, whatever it stored", () => {
+  it("translates a lone member by the collapsed card position", () => {
     const nodes: WorkflowNode[] = [
       {
         id: "g1",
@@ -576,7 +562,7 @@ describe("repairCanvasGroups", () => {
 
     expect(
       repair.ok && repair.nodes.map((node) => [node.id, node.position])
-    ).toEqual([["a", { x: 100, y: 50 }]]);
+    ).toEqual([["a", { x: 112, y: 90 }]]);
   });
 
   it("refuses a graph whose stored edge names a frame", () => {

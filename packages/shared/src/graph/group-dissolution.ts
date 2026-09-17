@@ -5,20 +5,12 @@
  * the node list alone, and it answers the given array when it removes no frame.
  */
 
-import {
-  analyzeGroupBoundaryById,
-  isGroupNode,
-  type GroupGraphNode,
-} from "#src/graph/group-boundary";
+import { isGroupNode, type GroupGraphNode } from "#src/graph/group-boundary";
 import {
   groupStructureRefusalReason,
   type GroupStructureEdge,
 } from "#src/graph/group-structure";
-import {
-  groupCanvasPositions,
-  groupLayoutDirection,
-  undersizedGroupIds,
-} from "#src/graph/node-group";
+import { undersizedGroupIds } from "#src/graph/node-group";
 import {
   offsetClearOfRectangles,
   overviewCardRectangle,
@@ -26,11 +18,7 @@ import {
   type NodeRectangle,
   type PlacedNode,
 } from "#src/graph/node-placement";
-import type { WorkflowEdge, WorkflowNode } from "#src/graph/types";
-import {
-  WORKFLOW_NODE_HEIGHT,
-  WORKFLOW_NODE_WIDTH,
-} from "#src/graph/workflow-layout-geometry";
+import type { WorkflowNode } from "#src/graph/types";
 
 type Position = { x: number; y: number };
 
@@ -45,9 +33,8 @@ export type ReleaseMember<N extends DissolvableNode> = (input: {
 
 /**
  * Where a member of a dissolved frame lands: where the focused Group canvas
- * draws it, moved so the Group's slots are centred on the collapsed card's
- * centre line and its first row starts at the card's top, along the frame's
- * stored layout direction. The members of one frame then move together by
+ * draws it, translated by the frame's position. Members retain their relative
+ * arrangement, then move together by
  * `offsetClearOfRectangles`, down and right until no card the overview draws
  * overlaps them. Those cards are every top-level node in `graph` except a
  * frame already dissolved, plus the members already released from such a
@@ -55,79 +42,51 @@ export type ReleaseMember<N extends DissolvableNode> = (input: {
  */
 export function groupCanvasReleasePosition(graph: {
   nodes: readonly PlacedNode[];
-  edges: readonly WorkflowEdge[];
 }): (input: { frame: DissolvableNode; member: DissolvableNode }) => Position {
-  // Maps, because node and Group ids are chosen by the builder.
-  const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
-  const positionsByFrame = new Map<string, Map<string, Position>>();
+  const offsetsByFrame = new Map<string, Position>();
   const released: NodeRectangle[] = [];
 
-  const placeFrame = (frame: DissolvableNode): Map<string, Position> => {
-    const boundary = analyzeGroupBoundaryById({
-      nodes: graph.nodes,
-      edges: graph.edges,
-      groupId: frame.id,
-    });
-    const slots = groupCanvasPositions({
-      memberIds: boundary.memberIds,
-      interiorEdges: boundary.interiorEdges,
-      direction: groupLayoutDirection(frame),
-    });
-    const unmoved = boundary.memberIds.map((memberId) => {
-      const slot = slots.get(memberId) ?? { x: -WORKFLOW_NODE_WIDTH / 2, y: 0 };
-      const member = nodeById.get(memberId);
-      const position = {
-        x: frame.position.x + WORKFLOW_NODE_WIDTH / 2 + slot.x,
-        y: frame.position.y + slot.y,
-      };
-      return {
-        memberId,
-        rectangle: member
-          ? overviewCardRectangle({ ...member, position })
-          : {
-              ...position,
-              width: WORKFLOW_NODE_WIDTH,
-              height: WORKFLOW_NODE_HEIGHT,
-            },
-      };
-    });
+  const placeFrame = (frame: DissolvableNode): Position => {
+    const unmoved = graph.nodes
+      .filter((node) => node.parentId === frame.id)
+      .map((member) =>
+        overviewCardRectangle({
+          ...member,
+          position: {
+            x: frame.position.x + member.position.x,
+            y: frame.position.y + member.position.y,
+          },
+        })
+      );
     const obstacles = [
       ...overviewCardRectangles(
         graph.nodes.filter(
-          (node) => node.id !== frame.id && !positionsByFrame.has(node.id)
+          (node) => node.id !== frame.id && !offsetsByFrame.has(node.id)
         )
       ),
       ...released,
     ];
-    const offset = offsetClearOfRectangles(
-      unmoved.map((entry) => entry.rectangle),
-      obstacles
-    );
-    const positions = new Map<string, Position>();
-    for (const { memberId, rectangle } of unmoved) {
-      const moved = {
+    const offset = offsetClearOfRectangles(unmoved, obstacles);
+    released.push(
+      ...unmoved.map((rectangle) => ({
         ...rectangle,
         x: rectangle.x + offset.x,
         y: rectangle.y + offset.y,
-      };
-      released.push(moved);
-      positions.set(memberId, { x: moved.x, y: moved.y });
-    }
-    return positions;
+      }))
+    );
+    return offset;
   };
 
   return ({ frame, member }) => {
-    let positions = positionsByFrame.get(frame.id);
-    if (!positions) {
-      positions = placeFrame(frame);
-      positionsByFrame.set(frame.id, positions);
+    let offset = offsetsByFrame.get(frame.id);
+    if (!offset) {
+      offset = placeFrame(frame);
+      offsetsByFrame.set(frame.id, offset);
     }
-    return (
-      positions.get(member.id) ?? {
-        x: frame.position.x,
-        y: frame.position.y,
-      }
-    );
+    return {
+      x: frame.position.x + member.position.x + offset.x,
+      y: frame.position.y + member.position.y + offset.y,
+    };
   };
 }
 
@@ -139,7 +98,6 @@ export function groupCanvasReleasePosition(graph: {
  */
 export function releaseAtGroupCanvasPosition(graph: {
   nodes: readonly WorkflowNode[];
-  edges: readonly WorkflowEdge[];
 }): ReleaseMember<WorkflowNode> {
   const place = groupCanvasReleasePosition(graph);
   return (input) => {

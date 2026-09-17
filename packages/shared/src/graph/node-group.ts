@@ -16,7 +16,6 @@ import {
   groupStepCount,
 } from "#src/graph/group-contract";
 import {
-  analyzeGroupBoundary,
   analyzeGroupBoundaryById,
   type GroupBoundary,
   type GroupBoundaryEdge,
@@ -24,19 +23,8 @@ import {
   type GroupPort,
   isGroupNode,
 } from "#src/graph/group-boundary";
-import { groupAcrossOffsets } from "#src/graph/group-across-offsets";
 import { isConditionNode } from "#src/graph/node-config";
-import {
-  type GroupLayoutDirection,
-  isGroupLayoutDirection,
-} from "#src/graph/schemas";
 import type { WorkflowEdge } from "#src/graph/types";
-import {
-  NODE_SPACING,
-  RANK_SPACING,
-  WORKFLOW_NODE_HEIGHT,
-  WORKFLOW_NODE_WIDTH,
-} from "#src/graph/workflow-layout-geometry";
 
 /**
  * The members a connection onto the frame's inlet reaches, in member order.
@@ -142,12 +130,6 @@ export function isInteriorEdge(
   return parent !== undefined && parent === parentOf(edge.target);
 }
 
-export type GroupMemberSlot = {
-  id: string;
-  row: number;
-  column: number;
-};
-
 export type GroupAnalysis =
   | { ok: true; memberIds: string[] }
   | { ok: false; error: string };
@@ -205,16 +187,7 @@ export function analyzeGroupableSelection(input: {
     return { ok: false, error: GROUPING_REFUSALS[refusal.rule] };
   }
 
-  const { memberIds, interiorEdges } = analyzeGroupBoundary({
-    memberIds: selected.map((node) => node.id),
-    edges: input.edges,
-  });
-  return {
-    ok: true,
-    memberIds: groupMemberSlots(memberIds, interiorEdges).map(
-      (slot) => slot.id
-    ),
-  };
+  return { ok: true, memberIds: selected.map((node) => node.id) };
 }
 
 /** The stored source of one edge a connection adds. */
@@ -509,155 +482,6 @@ export function undersizedGroupIds(nodes: readonly GroupGraphNode[]): string[] {
         isGroupNode(node) && groupStepCount({ groupId: node.id, nodes }) < 2
     )
     .map((node) => node.id);
-}
-
-/** Each member's row and column inside its frame, rows following interior edges. */
-export function groupMemberSlots(
-  memberIds: readonly string[],
-  interior: readonly WorkflowEdge[]
-): GroupMemberSlot[] {
-  const ordered = orderMembers(
-    new Set(memberIds),
-    interior,
-    interiorRootIds(memberIds, interior)
-  );
-  const preds = new Map<string, string[]>();
-  for (const id of memberIds) {
-    preds.set(id, []);
-  }
-  for (const edge of interior) {
-    preds.get(edge.target)?.push(edge.source);
-  }
-
-  const rank = new Map<string, number>();
-  for (const id of ordered) {
-    const parentRanks = (preds.get(id) ?? [])
-      .filter((predecessor) => rank.has(predecessor))
-      .map((predecessor) => rank.get(predecessor) ?? 0);
-    rank.set(id, parentRanks.length === 0 ? 0 : Math.max(...parentRanks) + 1);
-  }
-
-  const columnsByRow = new Map<number, number>();
-  return ordered.map((id) => {
-    const row = rank.get(id) ?? 0;
-    const column = columnsByRow.get(row) ?? 0;
-    columnsByRow.set(row, column + 1);
-    return { id, row, column };
-  });
-}
-
-/**
- * The authored layout direction of the Group frame `frame`, stored as
- * `config.direction`. A frame that stores none is laid out vertically.
- */
-export function groupLayoutDirection(
-  frame: GroupGraphNode | undefined
-): GroupLayoutDirection {
-  const direction = frame?.data.config?.direction;
-  return isGroupLayoutDirection(direction) ? direction : "vertical";
-}
-
-/** The words each Group layout direction reads as, wherever the editor names one. */
-export const GROUP_DIRECTION_LABEL: Readonly<
-  Record<GroupLayoutDirection, string>
-> = {
-  vertical: "Top to bottom",
-  horizontal: "Left to right",
-};
-
-/**
- * Each member's top-left corner on the focused Group canvas, at the standard
- * card size, keyed by member id. The coordinates belong to the Group alone: a
- * collapsed card at the origin spans x -W/2 to W/2 and y 0 to H, and the first
- * row starts where that card starts. Rows follow interior edges, so a join sits
- * after every predecessor, and `groupAcrossOffsets` stands each member in the
- * column of the members that feed it. Only the members, their interior edges,
- * and `direction` decide it.
- */
-export function groupCanvasPositions(input: {
-  memberIds: readonly string[];
-  interiorEdges: readonly WorkflowEdge[];
-  direction?: GroupLayoutDirection | undefined;
-}): Map<string, { x: number; y: number }> {
-  const slots = groupMemberSlots(input.memberIds, input.interiorEdges);
-  const vertical = (input.direction ?? "vertical") === "vertical";
-  const rowPitch = vertical
-    ? WORKFLOW_NODE_HEIGHT + RANK_SPACING
-    : WORKFLOW_NODE_WIDTH + RANK_SPACING;
-  const columnPitch = vertical
-    ? WORKFLOW_NODE_WIDTH + NODE_SPACING
-    : WORKFLOW_NODE_HEIGHT + NODE_SPACING;
-  const acrossById = groupAcrossOffsets({
-    slots,
-    edges: input.interiorEdges,
-    pitch: columnPitch,
-  });
-  return new Map(
-    slots.map((slot) => {
-      const along = slot.row * rowPitch;
-      const across = acrossById.get(slot.id) ?? 0;
-      const position = vertical
-        ? { x: across - WORKFLOW_NODE_WIDTH / 2, y: along }
-        : { x: along - WORKFLOW_NODE_WIDTH / 2, y: across };
-      return [slot.id, position];
-    })
-  );
-}
-
-/** Members no interior edge reaches, in the order `memberIds` lists them. */
-function interiorRootIds(
-  memberIds: readonly string[],
-  interior: readonly WorkflowEdge[]
-): string[] {
-  const reached = new Set(interior.map((edge) => edge.target));
-  return memberIds.filter((id) => !reached.has(id));
-}
-
-function orderMembers(
-  memberIds: ReadonlySet<string>,
-  interior: readonly WorkflowEdge[],
-  entryIds: readonly string[]
-): string[] {
-  const indegree = new Map<string, number>();
-  const outgoing = new Map<string, string[]>();
-  for (const id of memberIds) {
-    indegree.set(id, 0);
-    outgoing.set(id, []);
-  }
-  for (const edge of interior) {
-    if (!memberIds.has(edge.source) || !memberIds.has(edge.target)) {
-      continue;
-    }
-    indegree.set(edge.target, (indegree.get(edge.target) ?? 0) + 1);
-    outgoing.get(edge.source)?.push(edge.target);
-  }
-
-  const queue = entryIds.filter((id) => memberIds.has(id));
-  const ordered: string[] = [];
-  const seen = new Set<string>();
-  while (queue.length > 0) {
-    const current = queue.shift();
-    if (!current || seen.has(current)) {
-      continue;
-    }
-    seen.add(current);
-    ordered.push(current);
-    for (const next of outgoing.get(current) ?? []) {
-      const nextDegree = (indegree.get(next) ?? 1) - 1;
-      indegree.set(next, nextDegree);
-      if (nextDegree === 0) {
-        queue.push(next);
-      }
-    }
-  }
-
-  for (const id of memberIds) {
-    if (!seen.has(id)) {
-      ordered.push(id);
-    }
-  }
-
-  return ordered;
 }
 
 function collapseDuplicateDisplayEdges<E extends WorkflowEdge>(

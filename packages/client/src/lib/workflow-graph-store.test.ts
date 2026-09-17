@@ -1835,7 +1835,6 @@ describe("groupSelectionAtom", () => {
     expect(frame?.data).toEqual({
       label: "Group",
       type: "group",
-      config: { direction: "vertical" },
     });
     expect(
       store

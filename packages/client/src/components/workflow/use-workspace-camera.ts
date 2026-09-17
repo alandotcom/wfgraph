@@ -192,9 +192,8 @@ export function useWorkspaceCamera(input: {
       shown.address.workflowId === address.workflowId &&
       workspaceKeyId(shown.address.key) === workspaceKeyId(address.key) &&
       scopeId(shown.address.scope) !== scopeId(address.scope);
-    // The other form factor lays the graph out on a canvas of another shape,
-    // and a focused Group can lay its steps out along another direction, so
-    // the camera the other form factor left may show none of them.
+    // A form factor's first visit fits its own canvas dimensions; later visits
+    // restore the camera saved for that form factor.
     const formFactorChanged =
       shown !== null &&
       shown.formFactor !== formFactor &&

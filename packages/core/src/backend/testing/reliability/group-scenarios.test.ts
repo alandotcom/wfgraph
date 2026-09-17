@@ -1,4 +1,5 @@
 import * as fc from "fast-check";
+import { parseSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import { expect, test } from "vitest";
 import {
   buildGroupScenario,
@@ -23,6 +24,7 @@ test("every generated Group is one the editor forms and Publish accepts", () => 
       for (const layout of GROUP_LAYOUTS) {
         // Throws with the refusal when the generated Group breaks a rule.
         const graph = withGroupLayout(built.graph, built.memberIds, layout);
+        expect(() => parseSerializedWorkflowGraph(graph)).not.toThrow();
         expect(graph.edges).toEqual(built.graph.edges);
         expect(
           graph.nodes

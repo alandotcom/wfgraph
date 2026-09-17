@@ -1291,9 +1291,8 @@ describe("Group membership", () => {
       const document = yield* draft.current;
       expect(document.nodes).toEqual([
         entry,
-        // The lone member lands where the collapsed card drew, as the editor's
-        // Ungroup places it.
-        { ...actionNode("a", "score-applicant"), position: frame.position },
+        // Dissolution preserves the member's offset from the frame.
+        { ...actionNode("a", "score-applicant"), position: { x: 110, y: 220 } },
         outside,
       ]);
       expect(document.nodes.some((node) => "parentId" in node)).toBe(false);
@@ -1508,7 +1507,7 @@ describe("Group membership", () => {
       Effect.gen(function* () {
         const verticalFrame = {
           ...frame,
-          data: { ...frame.data, config: { direction: "vertical" } },
+          data: { ...frame.data, config: {} },
         };
         const { tools, draft } = yield* agentToolsFor({
           nodes: [entry, verticalFrame, member("a"), member("b")],
@@ -1534,9 +1533,7 @@ describe("Group membership", () => {
         yield* tools.update_node({ nodeId: frame.id, label: "Enrichment" });
 
         for (const failure of [enabled, direction, cleared]) {
-          expect(failure.reason).toContain(
-            "layout direction is set in the editor"
-          );
+          expect(failure.reason).toContain("Group has no enabled state");
         }
         expect(
           (yield* draft.current).nodes.find((node) => node.id === frame.id)
