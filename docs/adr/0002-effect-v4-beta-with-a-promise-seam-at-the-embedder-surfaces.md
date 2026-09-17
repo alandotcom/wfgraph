@@ -354,6 +354,17 @@ durability-runtime call would turn Inngest's deliberately unsettled suspension P
 into a failure. End-of-run work therefore remains an explicit durable call, and each
 durable `runtime.run` callback runs its Effect with the invocation's current context.
 
+**Amendment, 2026-09-16.** `Effect.uninterruptible` no longer covers the assembled step.
+The region held a handler's wait on its own `step.run` promise. In async step mode,
+Inngest never settles that promise in an invocation that plans parallel steps or reports a
+step it ran; in checkpointing mode the SDK settles it within the same invocation. The
+abandoned invocation fiber stayed in the app runtime's scope, and `app.dispose` waited on
+it forever. `runInvocation` in `lib/inngest/workflow-function.ts` now owns the rule: an
+interrupted invocation ends at once, and its interruption waits only for the step bodies
+Inngest started. The runtime's scope closes its Layers concurrently with that wait, so
+what the wait protects is `persistence.close`, which `app.ts` and `worker.ts` run after
+the runtime is disposed.
+
 ## Consequences
 
 - Pinning a beta means upgrades are deliberate work: a bump can break compilation, so read
