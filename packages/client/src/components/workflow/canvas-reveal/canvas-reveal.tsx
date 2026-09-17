@@ -28,6 +28,8 @@ import { RevealHeader, type RevealHeaderControls } from "./reveal-header";
 import { REVEAL_INSET, revealWidth } from "./reveal-geometry";
 import { revealKind } from "./reveal-kinds";
 import { revealFieldRequestAtom } from "./reveal-requests";
+import { RevealResizeHandle } from "./reveal-resize-handle";
+import { rememberedRevealWidthsAtom } from "./reveal-width-preference";
 import { useInspectorScroll } from "./use-inspector-scroll";
 import { useRevealFocusReturn } from "./use-reveal-focus-return";
 import { useRevealKeyboard } from "./use-reveal-keyboard";
@@ -36,7 +38,8 @@ import { useRevealCanvasWidth } from "./use-reveal-width";
 
 /**
  * Canvas Reveal: the desktop inspector floating over the right of the canvas
- * box, at the fixed width of its Closed, Browse, or Focus level. The subject's
+ * box, at the width of its Closed, Browse, or Focus level. From a 1024px canvas
+ * a handle on its left edge resizes Browse and Focus. The subject's
  * kind supplies the header and bodies. Escape, Back, and Close unwind one level
  * at a time and hand focus back to what opened it. Below `md` the mobile Reveal
  * sequence replaces it.
@@ -58,6 +61,7 @@ export function CanvasReveal() {
   const { hasOverlays } = useOverlay();
   const navigation = useRevealNavigation();
   const canvasWidth = useRevealCanvasWidth();
+  const rememberedWidths = useAtomValue(rememberedRevealWidthsAtom);
   const [request, setRequest] = useState<ConfirmRequest | null>(null);
   const frame = useMemo<NodeConfigFrame>(() => ({ confirm: setRequest }), []);
   const asideRef = useRef<HTMLElement>(null);
@@ -271,13 +275,25 @@ export function CanvasReveal() {
           top: REVEAL_INSET,
           right: REVEAL_INSET,
           bottom: REVEAL_INSET,
-          width: revealWidth(displayedLevel, canvasWidth, reveal.focusWidth),
+          width: revealWidth(
+            displayedLevel,
+            canvasWidth,
+            reveal.focusWidth,
+            rememberedWidths
+          ),
           transform:
             level === "closed"
               ? `translateX(calc(100% + ${REVEAL_INSET}px))`
               : "translateX(0)",
         }}
       >
+        {level === "closed" ? null : (
+          <RevealResizeHandle
+            canvasWidth={canvasWidth}
+            focusWidth={reveal.focusWidth}
+            level={level}
+          />
+        )}
         {header}
         {/* The body paints `bg-card`, the tone the config form's sticky
             headings paint, so a heading pinned over scrolled fields matches. */}

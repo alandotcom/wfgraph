@@ -160,9 +160,11 @@ two open levels. In Draft, selecting an object on the canvas opens Canvas Reveal
 and Changes, the first visit opens Browse, pressing a step on a run's canvas opens Focus,
 and otherwise Canvas Reveal keeps the level the person last chose. Browse summarizes the
 object, and Focus holds its complete editor, a run node's evidence, or its field-level
-differences. Each level has a fixed width for the canvas width, and no control resizes the
-panel. Cmd+B or Ctrl+B opens and closes Canvas Reveal when it has an object to show, which
-in Draft means a selected object. On a screen narrower than 768px, the shortcut closes the open sheets.
+differences. On a canvas 1024px or wider, a person can drag the panel's left edge, or focus
+that edge and use the arrow keys, to resize Browse and Focus. The browser remembers each
+width in a cookie, and double-clicking the edge restores the default width. Cmd+B or
+Ctrl+B opens and closes Canvas Reveal when it has an object to show, which in Draft means a
+selected object. On a screen narrower than 768px, the shortcut closes the open sheets.
 Opening, changing, or closing it moves the camera and leaves the saved draft unchanged.
 
 The editor keeps the workspace address in the page's query string: `view` (`runs` or

@@ -4,10 +4,14 @@ import {
   REVEAL_INSET,
   revealOccupiedWidth,
   revealWidth,
+  revealWidthRange,
   usableAboveSheet,
   usableCanvasRect,
 } from "./reveal-geometry";
 import { revealViewport } from "#src/components/workflow/workflow-viewport";
+
+/** No width a person chose, so every level uses its default. */
+const NONE = {};
 
 describe("revealWidth", () => {
   it.each([
@@ -18,18 +22,18 @@ describe("revealWidth", () => {
   ])(
     "gives a $canvas px canvas fixed Browse and Focus widths",
     ({ canvas, browse, focus }) => {
-      expect(revealWidth("closed", canvas, "standard")).toBe(0);
-      expect(revealWidth("browse", canvas, "standard")).toBe(browse);
-      expect(revealWidth("focus", canvas, "standard")).toBe(focus);
+      expect(revealWidth("closed", canvas, "standard", NONE)).toBe(0);
+      expect(revealWidth("browse", canvas, "standard", NONE)).toBe(browse);
+      expect(revealWidth("focus", canvas, "standard", NONE)).toBe(focus);
     }
   );
 
   it("keeps a standard Focus beside at least 256 px of canvas from 1024 px", () => {
-    expect(revealWidth("focus", 1024, "standard")).toBe(640);
-    expect(revealWidth("focus", 1290, "standard")).toBe(720);
-    expect(revealWidth("focus", 1536, "standard")).toBe(800);
-    expect(revealWidth("focus", 1030, "standard")).toBe(640);
-    expect(revealWidth("focus", 1000, "standard")).toBe(640);
+    expect(revealWidth("focus", 1024, "standard", NONE)).toBe(640);
+    expect(revealWidth("focus", 1290, "standard", NONE)).toBe(720);
+    expect(revealWidth("focus", 1536, "standard", NONE)).toBe(800);
+    expect(revealWidth("focus", 1030, "standard", NONE)).toBe(640);
+    expect(revealWidth("focus", 1000, "standard", NONE)).toBe(640);
   });
 
   it.each([
@@ -42,11 +46,11 @@ describe("revealWidth", () => {
   ])(
     "gives a $canvas px canvas a wide Focus of up to its step width",
     ({ canvas, wide }) => {
-      expect(revealWidth("focus", canvas, "wide")).toBe(wide);
-      expect(revealWidth("browse", canvas, "wide")).toBe(
-        revealWidth("browse", canvas, "standard")
+      expect(revealWidth("focus", canvas, "wide", NONE)).toBe(wide);
+      expect(revealWidth("browse", canvas, "wide", NONE)).toBe(
+        revealWidth("browse", canvas, "standard", NONE)
       );
-      expect(revealOccupiedWidth("focus", canvas, "wide")).toBe(
+      expect(revealOccupiedWidth("focus", canvas, "wide", NONE)).toBe(
         wide + REVEAL_INSET
       );
     }
@@ -55,14 +59,71 @@ describe("revealWidth", () => {
   it("leaves 256 px of canvas beside a wide Focus and its inset", () => {
     for (const canvas of [1024, 1100, 1280, 1536, 1800]) {
       expect(
-        canvas - revealOccupiedWidth("focus", canvas, "wide")
+        canvas - revealOccupiedWidth("focus", canvas, "wide", NONE)
       ).toBeGreaterThanOrEqual(256);
     }
   });
 
   it("stays within a canvas narrower than Browse or Focus", () => {
-    expect(revealWidth("browse", 300, "standard")).toBe(300 - 2 * REVEAL_INSET);
-    expect(revealWidth("focus", 600, "standard")).toBe(600 - 2 * REVEAL_INSET);
+    expect(revealWidth("browse", 300, "standard", NONE)).toBe(
+      300 - 2 * REVEAL_INSET
+    );
+    expect(revealWidth("focus", 600, "standard", NONE)).toBe(
+      600 - 2 * REVEAL_INSET
+    );
+  });
+});
+
+describe("revealWidth with remembered widths", () => {
+  it("gives each key a range from its minimum to 256 px of canvas short of the canvas", () => {
+    expect(revealWidthRange("browse", 1024)).toEqual({
+      min: 320,
+      max: 1024 - 256 - REVEAL_INSET,
+      defaultWidth: 360,
+    });
+    expect(revealWidthRange("standard", 1440)).toEqual({
+      min: 480,
+      max: 1440 - 256 - REVEAL_INSET,
+      defaultWidth: 720,
+    });
+    expect(revealWidthRange("wide", 1100)).toEqual({
+      min: 480,
+      max: 1100 - 256 - REVEAL_INSET,
+      defaultWidth: 1100 - 256 - REVEAL_INSET,
+    });
+    expect(revealWidthRange("browse", 1023)).toBeNull();
+  });
+
+  it("uses the width remembered for the level and its Focus width", () => {
+    const remembered = { browse: 500, standard: 600, wide: 900 };
+    expect(revealWidth("browse", 1440, "standard", remembered)).toBe(500);
+    expect(revealWidth("focus", 1440, "standard", remembered)).toBe(600);
+    expect(revealWidth("focus", 1440, "wide", remembered)).toBe(900);
+    expect(revealWidth("browse", 1440, "wide", { standard: 600 })).toBe(380);
+    expect(revealOccupiedWidth("focus", 1440, "standard", remembered)).toBe(
+      600 + REVEAL_INSET
+    );
+  });
+
+  it("clamps a remembered width to the current canvas each time it is read", () => {
+    const remembered = { browse: 1400, standard: 200 };
+    expect(revealWidth("browse", 1440, "standard", remembered)).toBe(
+      1440 - 256 - REVEAL_INSET
+    );
+    expect(revealWidth("browse", 1100, "standard", remembered)).toBe(
+      1100 - 256 - REVEAL_INSET
+    );
+    expect(revealWidth("focus", 1440, "standard", remembered)).toBe(480);
+    expect(revealWidth("closed", 1440, "standard", remembered)).toBe(0);
+  });
+
+  it("ignores remembered widths on a canvas narrower than 1024 px", () => {
+    const remembered = { browse: 500, standard: 520, wide: 600 };
+    expect(revealWidth("browse", 900, "standard", remembered)).toBe(320);
+    expect(revealWidth("focus", 900, "standard", remembered)).toBe(640);
+    expect(revealWidth("focus", 900, "wide", remembered)).toBe(
+      900 - 2 * REVEAL_INSET
+    );
   });
 });
 
@@ -109,7 +170,12 @@ describe("usableCanvasRect", () => {
     expect(
       usableCanvasRect({
         canvas: { width: 900, height: 700 },
-        revealOccupiedWidth: revealOccupiedWidth("focus", 900, "standard"),
+        revealOccupiedWidth: revealOccupiedWidth(
+          "focus",
+          900,
+          "standard",
+          NONE
+        ),
         obstacles: [],
       })
     ).toEqual({ x: 0, y: 0, width: 900 - 640 - REVEAL_INSET, height: 700 });

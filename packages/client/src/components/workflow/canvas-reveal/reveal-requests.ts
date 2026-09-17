@@ -1,8 +1,8 @@
 /**
  * Requests other surfaces make of Canvas Reveal: place nodes in the usable
- * rectangle, and focus an element of a node's Focus body. The canvas camera
- * answers each placement once; the Reveal shell clears a field request once it
- * has focused the field.
+ * rectangle, place the subject again after a resize, and focus an element of a
+ * node's Focus body. The canvas camera answers each placement once; the Reveal
+ * shell clears a field request once it has focused the field.
  */
 
 import { atom } from "jotai";
@@ -22,6 +22,20 @@ export const requestRevealPlacementAtom = atom(
     });
   }
 );
+
+/**
+ * How many times a person has finished resizing Canvas Reveal. The desktop
+ * camera places the subject once each time the count changes, and a width that
+ * changes during a drag moves no camera.
+ */
+export const revealResizeSequenceAtom = atom(0);
+
+/**
+ * True from the first key press of a keyboard resize until that resize
+ * finishes. The desktop camera records the camera it holds when this turns
+ * true, and places the subject from that camera when the resize finishes.
+ */
+export const revealKeyResizeInProgressAtom = atom(false);
 
 /**
  * An element Canvas Reveal focuses once the node `nodeId` names is shown at

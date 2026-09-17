@@ -299,8 +299,8 @@ Closing the inspector doesn't change the active view.
 
 Canvas Reveal has three levels: Closed, Browse, and Focus. It floats 8px inside
 the canvas box's top, right, and bottom edges with a hairline border and
-shadow-sm, and it never resizes the canvas. Its width is fixed per level and
-canvas width, and no control resizes it:
+shadow-sm, and it never resizes the canvas. Each level has a default width for
+the canvas width:
 
 | Canvas width     | Browse | Focus       | Lifecycle Focus      |
 | ---------------- | ------ | ----------- | -------------------- |
@@ -309,10 +309,27 @@ canvas width, and no control resizes it:
 | 1280px to 1535px | 380px  | 720px       | 920px                |
 | 1536px and wider | 400px  | 800px       | 1000px               |
 
-Under 1024px, Focus is 640px or the canvas less 16px, whichever is narrower,
-so a window between 768px and 1023px keeps part of the canvas visible beside
-it. From 1024px up, Focus and its 8px inset always leave at least 256px of canvas, so a
-Lifecycle Focus on a canvas narrower than 1104px is narrower than 840px.
+Under 1024px the widths in the table are fixed. Focus is 640px or the canvas
+less 16px, whichever is narrower, so a window between 768px and 1023px keeps
+part of the canvas visible beside it. From 1024px up, Focus and its 8px inset
+always leave at least 256px of canvas, so a Lifecycle Focus on a canvas
+narrower than 1104px is narrower than 840px.
+
+From a 1024px canvas, a resize handle runs down Reveal's left edge at Browse and
+Focus. Dragging it resizes the open level. Browse is at least 320px wide, a
+standard or Lifecycle Focus at least 480px, and each is at most the width that
+leaves 256px of canvas beside Reveal and its 8px inset. The handle is a
+focusable separator named "Resize inspector": Left Arrow widens Reveal by 16px,
+Right Arrow narrows it by 16px, Home goes to the minimum, and End goes to the
+maximum. Double-clicking the handle returns the level to its default width. The
+handle draws nothing at rest, a 2px Ring line on hover, and the line with the
+2px `ring-ring/30` halo on keyboard focus. A viewer's Browse, standard Focus,
+and Lifecycle Focus widths are remembered separately across reloads, and a
+remembered width is narrowed to fit a smaller canvas when it is shown. The
+camera holds still while the handle is dragged. When a drag or a key press
+ends, the camera places the subject beside the new width once, the way opening
+Reveal places it. Resizing never moves a step, changes the draft, or adds an
+undo step.
 
 The Draft canvas rests with Reveal closed. Selecting an ordinary step, which is
 any Action or Wait, opens Browse. A context header names the workspace, the step,

@@ -10,9 +10,11 @@ The editor's resizable sidebar is replaced by Canvas Reveal, a panel that floats
 over the right side of the canvas in Draft, Runs, and Changes. Browse summarizes
 the selected step, Condition, Lifecycle Node, Event Split, Group, run, or change,
 and Focus holds its complete editor, a run node's evidence, or its field-level
-differences. The query string names the open workspace, run, comparison, and
-Group, so browser Back and Forward move between them and a copied link reopens
-the same view.
+differences. On a canvas 1024px or wider, a handle on the panel's left edge
+resizes Browse and Focus by pointer or keyboard, and the browser remembers each
+width. The query string names the open workspace, run, comparison, and Group,
+so browser Back and Forward move between them and a copied link reopens the
+same view.
 
 A Group can now hold any two or more steps that meet the version 1 Group rules,
 including side-effecting actions, Waits, and Conditions. The workflow canvas
