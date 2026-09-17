@@ -13,18 +13,23 @@ import { eventually } from "#src/backend/testing/reliability/control";
 import {
   waitForRegisteredWaits,
   expectSettledExecution,
+  observeExecution,
 } from "#src/backend/testing/reliability/assertions";
-import { reliabilityProperty } from "#src/backend/testing/reliability/property";
+import { withGroupLayout } from "#src/backend/testing/reliability/groups";
+import { groupLayoutProperty } from "#src/backend/testing/reliability/property";
 
 // Started: work -> finish. Canceled: [optional Wait] -> cleanup.
-// Deliver Cancel after work finishes but before completion is persisted.
+// Deliver Cancel after finish runs but before completion is persisted.
 // Cleanup must run once, including when its own durable writes need a retry.
+// Each case also runs with one side's steps in a vertical and a horizontal Group,
+// and must route, clean up and retry the same way.
 type CleanupMode = "direct" | "event" | "delay";
 type CancellationScenario = {
   cleanupMode: CleanupMode;
   failurePoint: "none" | "terminal-write" | "wait-settlement";
   cancelDeliveries: number;
   cancelMarker: string;
+  groupedSide: "started" | "canceled";
 };
 
 const cancellationScenarios = fc
@@ -37,16 +42,22 @@ const cancellationScenarios = fc
     ),
     cancelDeliveries: fc.integer({ min: 1, max: 3 }),
     cancelMarker: fc.string({ minLength: 1, maxLength: 12 }),
+    groupedSide: fc.constantFrom<CancellationScenario["groupedSide"]>(
+      "started",
+      "canceled"
+    ),
   })
-  // Only event Waits settle a claimed wake signal; other modes exercise the terminal write.
   .map((value) => ({
     ...value,
+    // Only event Waits settle a claimed wake signal; other modes exercise the terminal write.
     failurePoint:
       value.failurePoint === "wait-settlement" && value.cleanupMode !== "event"
         ? "terminal-write"
         : value.failurePoint,
+    // A direct cleanup is one step, and a Group holds at least two.
+    groupedSide: value.cleanupMode === "direct" ? "started" : value.groupedSide,
   }));
-reliabilityProperty(
+groupLayoutProperty(
   "late Cancel completes cleanup",
   cancellationScenarios,
   [
@@ -55,23 +66,32 @@ reliabilityProperty(
       failurePoint: "terminal-write",
       cancelDeliveries: 2,
       cancelMarker: "cancel",
+      groupedSide: "started",
     },
     {
       cleanupMode: "event",
       failurePoint: "wait-settlement",
       cancelDeliveries: 2,
       cancelMarker: "cancel",
+      groupedSide: "canceled",
     },
     {
       cleanupMode: "delay",
       failurePoint: "none",
       cancelDeliveries: 1,
       cancelMarker: "cancel",
+      groupedSide: "canceled",
     },
   ] satisfies CancellationScenario[],
-  async (host, scenario) => {
+  async (host, scenario, layout) => {
     const workflowId = await host.publish(
-      cancellationWorkflow(scenario.cleanupMode)
+      withGroupLayout(
+        cancellationWorkflow(scenario.cleanupMode),
+        scenario.groupedSide === "started"
+          ? ["work", "finish"]
+          : ["cleanup_wait", "cleanup"],
+        layout
+      )
     );
 
     // Hold the final completion write so Cancel can claim the Execution first.
@@ -120,13 +140,18 @@ reliabilityProperty(
       });
     }
 
-    // The Execution must finish canceled, with one Started action and one cleanup.
+    // The Execution must finish canceled, with each Started action and one cleanup.
     await expectSettledExecution(host, workflowId, "canceled");
-    expect(host.ledger).toEqual([{ marker: "work" }, { marker: "cleanup" }]);
+    expect(host.ledger).toEqual([
+      { marker: "work" },
+      { marker: "finish" },
+      { marker: "cleanup" },
+    ]);
     if (scenario.failurePoint === "terminal-write")
       expect(host.faults.terminal.hits).toBe(1);
     if (scenario.failurePoint === "wait-settlement")
       expect(host.faults.settlement.hits).toBe(1);
+    return observeExecution(host, executionId);
   }
 );
 
@@ -136,6 +161,7 @@ function cancellationWorkflow(cleanupMode: CleanupMode) {
     nodes: [
       lifecycle(["before-execution"]),
       record("work"),
+      record("finish"),
       ...(withWait
         ? [
             wait(
@@ -150,6 +176,7 @@ function cancellationWorkflow(cleanupMode: CleanupMode) {
     ],
     edges: [
       edge("entry", "work", "started"),
+      edge("work", "finish"),
       edge("entry", withWait ? "cleanup_wait" : "cleanup", "canceled"),
       ...(withWait ? [edge("cleanup_wait", "cleanup")] : []),
     ],
