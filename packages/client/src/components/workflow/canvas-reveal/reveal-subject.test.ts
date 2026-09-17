@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import {
+  CONDITION_RULES_TARGET_ID,
   effectiveRevealLevel,
   isOrdinaryStep,
+  matchConditionSubject,
   matchPanelSubject,
   matchStepSubject,
+  revealFocusTarget,
   type RevealMatchInput,
 } from "./reveal-subject";
 
@@ -74,11 +77,34 @@ describe("matchStepSubject", () => {
   });
 });
 
+describe("matchConditionSubject", () => {
+  it("matches a Draft Condition alone, with Focus and its outlets placed", () => {
+    expect(matchConditionSubject(input("draft", ["condition"]))).toEqual({
+      kind: "condition",
+      workspace: "draft",
+      key: "node:condition",
+      nodeId: "condition",
+      placement: { kind: "node-outlets", nodeId: "condition" },
+      levels: ["browse", "focus"],
+    });
+  });
+
+  it("refuses other steps, several objects, and other workspaces", () => {
+    expect(matchConditionSubject(input("draft", ["send"]))).toBeNull();
+    expect(matchConditionSubject(input("draft", ["split"]))).toBeNull();
+    expect(
+      matchConditionSubject(input("draft", ["condition", "send"]))
+    ).toBeNull();
+    expect(matchConditionSubject(input("runs", ["condition"]))).toBeNull();
+    expect(matchConditionSubject(input("changes", ["condition"]))).toBeNull();
+  });
+});
+
 describe("matchPanelSubject", () => {
   it("shows every other Draft selection the graph holds, at Browse only", () => {
-    expect(matchPanelSubject(input("draft", ["condition"]))).toMatchObject({
+    expect(matchPanelSubject(input("draft", ["split"]))).toMatchObject({
       kind: "panel",
-      nodeId: "condition",
+      nodeId: "split",
       levels: ["browse"],
     });
     expect(matchPanelSubject(input("draft", [], ["e1"]))).toMatchObject({
@@ -105,10 +131,27 @@ describe("matchPanelSubject", () => {
   });
 });
 
+describe("revealFocusTarget", () => {
+  it("maps both Condition rule config keys to the rule builder", () => {
+    expect(revealFocusTarget("condition", "condition")).toBe(
+      CONDITION_RULES_TARGET_ID
+    );
+    expect(revealFocusTarget("condition", "conditionModel")).toBe(
+      CONDITION_RULES_TARGET_ID
+    );
+  });
+
+  it("leaves every other field and kind alone", () => {
+    expect(revealFocusTarget("condition", "label")).toBe("label");
+    expect(revealFocusTarget("step", "conditionModel")).toBe("conditionModel");
+    expect(revealFocusTarget("panel", "to")).toBe("to");
+  });
+});
+
 describe("effectiveRevealLevel", () => {
   it("closes without a subject and limits the level to the subject's levels", () => {
     const step = matchStepSubject(input("draft", ["send"]));
-    const panel = matchPanelSubject(input("draft", ["condition"]));
+    const panel = matchPanelSubject(input("draft", ["split"]));
     expect(effectiveRevealLevel("focus", null)).toBe("closed");
     expect(effectiveRevealLevel("focus", step)).toBe("focus");
     expect(effectiveRevealLevel("focus", panel)).toBe("browse");

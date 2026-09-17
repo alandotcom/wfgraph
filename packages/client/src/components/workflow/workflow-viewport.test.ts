@@ -268,4 +268,31 @@ describe("revealViewport", () => {
     const next = revealViewport({ viewport, usable, bounds: tall });
     expect(next).toEqual({ x: 788 - 192, y: 50, zoom: 1 });
   });
+
+  it("places an optional box with the step when the two fit together", () => {
+    // The label below the step ends 524 px down, 724 px on screen. With 64 px
+    // of context that passes the padded bottom edge at 776 by 12 px.
+    const label = { x: 0, y: 500, width: 56, height: 24 };
+    const viewport = { x: 200, y: 200, zoom: 1 };
+    const next = revealViewport({
+      viewport,
+      usable,
+      bounds: step,
+      optionalBounds: [label],
+    });
+    expect(next).toEqual({ x: 200, y: 188, zoom: 1 });
+  });
+
+  it("leaves out an optional box that would not fit at the step's zoom", () => {
+    const farLabel = { x: 0, y: 5000, width: 56, height: 24 };
+    const viewport = { x: 200, y: 200, zoom: 1 };
+    expect(
+      revealViewport({
+        viewport,
+        usable,
+        bounds: step,
+        optionalBounds: [farLabel],
+      })
+    ).toBe(viewport);
+  });
 });

@@ -1,27 +1,66 @@
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { Trash2, Ungroup } from "lucide-react";
-import { Button } from "#src/components/ui/button";
 import { Input } from "#src/components/ui/input";
 import { Label } from "#src/components/ui/label";
 import { can } from "#src/lib/authorization";
-import { canUngroup } from "#src/lib/node-group";
 import {
-  deleteGroupWithMembersAtom,
   newlyCreatedNodeIdAtom,
   nodesAtom,
-  ungroupNodeAtom,
   updateNodeDataAtom,
 } from "#src/lib/workflow-graph-store";
+import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import { isGeneratingAtom } from "#src/lib/workflow-ui-store";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
-import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { ActionConfig } from "./config/action-config";
 import { ActionGrid } from "./config/action-grid";
 import { LifecyclePanel } from "./config/lifecycle-panel";
 import { useNodeConfigWriter } from "./config/use-node-config-writer";
-import { deleteGroupWithStepsConfirmation } from "./group-delete-confirmation";
 import type { NodeConfigFrame } from "./node-config-panel";
-import { DeleteStepButton, StepEnableToggle } from "./step-controls";
+import { NodeControls } from "./step-controls";
+
+/**
+ * The Label and Description inputs of one node, with the element ids `label`
+ * and `description`. Each keystroke writes to the graph store.
+ */
+export function NodeDetailsFields({
+  node,
+  disabled,
+}: {
+  node: WorkflowNode;
+  disabled: boolean;
+}) {
+  const updateNodeData = useSetAtom(updateNodeDataAtom);
+  return (
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <Label htmlFor="label">Label</Label>
+        <Input
+          disabled={disabled}
+          id="label"
+          onChange={(event) =>
+            updateNodeData({ id: node.id, data: { label: event.target.value } })
+          }
+          value={node.data.label}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="description">Description</Label>
+        <Input
+          disabled={disabled}
+          id="description"
+          onChange={(event) =>
+            updateNodeData({
+              id: node.id,
+              data: { description: event.target.value },
+            })
+          }
+          placeholder="Optional description"
+          value={node.data.description || ""}
+        />
+      </div>
+    </div>
+  );
+}
 
 /**
  * The complete configuration form of one node, whether a step, a Group, or the
@@ -41,9 +80,6 @@ export function NodePropertiesForm({
   const nodes = useAtomValue(nodesAtom);
   const isGenerating = useAtomValue(isGeneratingAtom);
   const canUpdate = can(WfGraphOperations.workflowUpdate.id);
-  const updateNodeData = useSetAtom(updateNodeDataAtom);
-  const ungroupSelected = useSetAtom(ungroupNodeAtom);
-  const deleteGroupWithMembers = useSetAtom(deleteGroupWithMembersAtom);
   const [newlyCreatedNodeId, setNewlyCreatedNodeId] = useAtom(
     newlyCreatedNodeIdAtom
   );
@@ -52,23 +88,6 @@ export function NodePropertiesForm({
   if (!selectedNode) {
     return null;
   }
-
-  const handleUpdateLabel = (label: string) => {
-    updateNodeData({ id: selectedNode.id, data: { label } });
-  };
-
-  const handleUpdateDescription = (description: string) => {
-    updateNodeData({ id: selectedNode.id, data: { description } });
-  };
-
-  const confirmDeleteGroupWithSteps = () => {
-    frame.confirm(
-      deleteGroupWithStepsConfirmation(() => {
-        deleteGroupWithMembers(selectedNode.id);
-        frame.dismiss?.();
-      })
-    );
-  };
 
   // An action node with no action chosen yet gets the picker instead of a
   // config form, and the picker is the whole screen while it is up.
@@ -101,28 +120,10 @@ export function NodePropertiesForm({
     <div className="space-y-4 p-4">
       {selectedNode.data.type !== "action" ||
       selectedNode.data.config?.actionType ? (
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="label">Label</Label>
-            <Input
-              disabled={isGenerating || !canUpdate}
-              id="label"
-              onChange={(e) => handleUpdateLabel(e.target.value)}
-              value={selectedNode.data.label}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="description">Description</Label>
-            <Input
-              disabled={isGenerating || !canUpdate}
-              id="description"
-              onChange={(e) => handleUpdateDescription(e.target.value)}
-              placeholder="Optional description"
-              value={selectedNode.data.description || ""}
-            />
-          </div>
-        </div>
+        <NodeDetailsFields
+          disabled={isGenerating || !canUpdate}
+          node={selectedNode}
+        />
       ) : null}
 
       {selectedNode.data.type === "group" ? (
@@ -170,39 +171,7 @@ export function NodePropertiesForm({
         />
       ) : null}
 
-      {canUpdate ? (
-        <div className="flex items-center gap-2 pt-4">
-          {/* A step switches on and off by itself, inside a Group or outside
-              one. A frame is organization only and has no enabled state. */}
-          {selectedNode.data.type === "action" ? (
-            <StepEnableToggle node={selectedNode} />
-          ) : null}
-          {canUngroup(selectedNode) ? (
-            <Button
-              onClick={() => ungroupSelected(selectedNode.id)}
-              size="sm"
-              variant="outline"
-            >
-              <Ungroup className="mr-2 size-4" />
-              Ungroup
-            </Button>
-          ) : null}
-          {/* Ungroup is how a frame alone is removed, so a frame's delete
-              button is the explicit, confirmed delete of the Group's steps. */}
-          {isGroupNode(selectedNode) ? (
-            <Button
-              onClick={confirmDeleteGroupWithSteps}
-              size="sm"
-              variant="outline"
-            >
-              <Trash2 className="mr-2 size-4 text-destructive" />
-              <span className="text-destructive">Delete Group and Steps</span>
-            </Button>
-          ) : (
-            <DeleteStepButton frame={frame} nodeId={selectedNode.id} />
-          )}
-        </div>
-      ) : null}
+      <NodeControls className="pt-4" frame={frame} node={selectedNode} />
     </div>
   );
 }

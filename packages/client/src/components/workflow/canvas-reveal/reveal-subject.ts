@@ -6,6 +6,7 @@
 
 import { uniq } from "es-toolkit/array";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import { isConditionNode } from "@wfgraph/shared/graph/node-config";
 import type {
   CanvasSelection,
   OpenRevealLevel,
@@ -14,14 +15,16 @@ import type {
 } from "#src/lib/workflow-navigation-state";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 
-export type RevealKindId = "step" | "panel";
+export type RevealKindId = "step" | "condition" | "panel";
 
 /**
- * What the camera keeps in view while Reveal shows a subject: listed nodes,
- * the whole presented graph, or nothing.
+ * What the camera keeps in view while Reveal shows a subject: listed nodes, one
+ * node with its outlet handles and each label on an edge leaving them that fits
+ * at the zoom the node sets, or the whole presented graph.
  */
 export type RevealPlacement =
   | { kind: "nodes"; nodeIds: readonly string[] }
+  | { kind: "node-outlets"; nodeId: string }
   | { kind: "graph" };
 
 export type RevealSubject = {
@@ -105,10 +108,35 @@ export function matchStepSubject(
 }
 
 /**
+ * A Draft Condition selected alone. It offers Browse and Focus, and the camera
+ * keeps its True and False outlets, and the labels that fit, in view with it.
+ */
+export function matchConditionSubject(
+  input: RevealMatchInput
+): RevealSubject | null {
+  if (input.workspace !== "draft") {
+    return null;
+  }
+  const { nodes, edges } = selectedGraph(input);
+  const [onlyNode] = nodes;
+  if (nodes.length !== 1 || edges.length > 0 || !isConditionNode(onlyNode)) {
+    return null;
+  }
+  return {
+    kind: "condition",
+    workspace: input.workspace,
+    key: `node:${onlyNode.id}`,
+    nodeId: onlyNode.id,
+    placement: { kind: "node-outlets", nodeId: onlyNode.id },
+    levels: ["browse", "focus"],
+  };
+}
+
+/**
  * The node config panel at Browse. In Runs and Changes it always shows, placing
- * the one selected node or else the whole graph. In Draft it shows any other
- * selection the graph holds: a Condition, Lifecycle, Event Split, Group,
- * connection, or several objects.
+ * the one selected node or else the whole graph. In Draft it shows any
+ * selection no other kind matches: a Lifecycle, Event Split, Group, connection,
+ * or several objects.
  */
 export function matchPanelSubject(
   input: RevealMatchInput
@@ -145,6 +173,37 @@ export function matchPanelSubject(
     },
     levels: ["browse"],
   };
+}
+
+/** The element id of the rule builder in a Condition's Focus body. */
+export const CONDITION_RULES_TARGET_ID = "condition";
+
+/**
+ * The Condition config keys an issue can name. The rules a Condition stores
+ * live under `condition` (the compiled CEL) or `conditionModel` (the rule
+ * builder's own shape), and both are edited through the one rule builder
+ * control.
+ */
+const CONDITION_RULE_FIELD_KEYS: ReadonlySet<string> = new Set([
+  "condition",
+  "conditionModel",
+]);
+
+/**
+ * The element Canvas Reveal focuses in a Focus body for an issue naming
+ * `fieldKey`, on a subject of kind `kind`. A Condition's two rule config keys
+ * both resolve to its rule builder; every other kind focuses the field the
+ * issue named. Both the issue list inside Reveal and the workflow issues
+ * overlay route an issue click through this function, so a field opens the
+ * same target from either place.
+ */
+export function revealFocusTarget(
+  kind: RevealKindId,
+  fieldKey: string
+): string {
+  return kind === "condition" && CONDITION_RULE_FIELD_KEYS.has(fieldKey)
+    ? CONDITION_RULES_TARGET_ID
+    : fieldKey;
 }
 
 /**

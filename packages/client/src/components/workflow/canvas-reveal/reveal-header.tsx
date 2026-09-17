@@ -1,12 +1,10 @@
 import { ArrowLeft, Maximize2, Minimize2, X } from "lucide-react";
 import type { Ref } from "react";
 import { Button } from "#src/components/ui/button";
-import type { RevealLevel } from "#src/lib/workflow-navigation-state";
+import type { OpenRevealLevel } from "#src/lib/workflow-navigation-state";
 
 /** What a subject kind puts in Canvas Reveal's context header. */
 export type RevealHeaderModel = {
-  /** The accessible name of the Reveal region. */
-  regionLabel: string;
   /** The workspace chip, or null where the title already names the workspace. */
   workspaceLabel: string | null;
   title: string;
@@ -15,6 +13,18 @@ export type RevealHeaderModel = {
   status: { text: string; tone: "muted" | "warning" | "destructive" } | null;
   /** Whether Back is offered. Close is always offered. */
   showsBack: boolean;
+};
+
+/** The shell's level commands and refs, which every header wires to its buttons. */
+export type RevealHeaderControls = {
+  /** Whether the subject offers Focus, and so whether the Focus toggle shows. */
+  canFocus: boolean;
+  /** One step back, as the subject's kind defines it. Escape runs the same. */
+  onBack: () => void;
+  onToggleFocus: () => void;
+  onClose: () => void;
+  titleRef: Ref<HTMLHeadingElement>;
+  focusToggleRef: Ref<HTMLButtonElement>;
 };
 
 const STATUS_TONE_CLASS = {
@@ -31,22 +41,14 @@ const STATUS_TONE_CLASS = {
 export function RevealHeader({
   model,
   level,
-  canFocus,
-  onBack,
-  onToggleFocus,
-  onClose,
-  titleRef,
-  focusToggleRef,
+  controls,
 }: {
   model: RevealHeaderModel;
-  level: RevealLevel;
-  canFocus: boolean;
-  onBack: () => void;
-  onToggleFocus: () => void;
-  onClose: () => void;
-  titleRef: Ref<HTMLHeadingElement>;
-  focusToggleRef: Ref<HTMLButtonElement>;
+  level: OpenRevealLevel;
+  controls: RevealHeaderControls;
 }) {
+  const { canFocus, onBack, onToggleFocus, onClose, titleRef, focusToggleRef } =
+    controls;
   const { status } = model;
   return (
     <header className="shrink-0 border-b px-3 py-2">

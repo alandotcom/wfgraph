@@ -25,6 +25,11 @@ import {
   useOverlay,
 } from "#src/components/overlays/overlay-provider";
 import { CanvasReveal } from "#src/components/workflow/canvas-reveal/canvas-reveal";
+import { canvasRevealAtom } from "#src/components/workflow/canvas-reveal/canvas-reveal-state";
+import {
+  type RevealKind,
+  revealKind,
+} from "#src/components/workflow/canvas-reveal/reveal-kinds";
 import { WorkflowContextMenu } from "#src/components/workflow/workflow-context-menu";
 import {
   installAuthorizationGrantsForTests,
@@ -356,13 +361,16 @@ describe("Canvas Reveal presentation states", () => {
     expect(view.getByRole("button", { name: "Focus editor" })).toBeTruthy();
   });
 
-  it("shows the node config panel at Browse for a Condition, with no Focus", async () => {
+  it("opens the Condition inspector at Browse for a Condition, with Focus", async () => {
     const { view, level, select } = await renderReveal();
     await select("condition");
 
     expect(level()).toBe("browse");
-    expect(view.queryByRole("button", { name: "Focus editor" })).toBeNull();
-    expect(view.getByTestId("properties-panel")).toBeTruthy();
+    expect(
+      view.getByRole("complementary", { name: "Condition inspector" })
+    ).toBeTruthy();
+    expect(view.getByRole("button", { name: "Focus editor" })).toBeTruthy();
+    expect(view.queryByTestId("properties-panel")).toBeNull();
   });
 });
 
@@ -517,6 +525,38 @@ describe("Canvas Reveal keyboard and focus", () => {
     expect(level()).toBe("browse");
     fireEvent.click(view.getByRole("button", { name: "Back" }));
     expect(level()).toBe("closed");
+  });
+
+  it("runs the kind's own unwind for both Back and Escape", async () => {
+    const { view, store, select, escape, level } = await renderReveal();
+    await select("send");
+    fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
+    const { subject } = store.get(canvasRevealAtom);
+    if (!subject) {
+      throw new Error("no Reveal subject for the selected step");
+    }
+    // A stub unwind on the step kind that records each call and moves nothing.
+    const kind = revealKind(subject);
+    const unwind = vi.fn<NonNullable<RevealKind["unwind"]>>();
+    kind.unwind = unwind;
+    try {
+      fireEvent.click(view.getByRole("button", { name: "Back" }));
+      await escape();
+      expect(level()).toBe("focus");
+      expect(unwind).toHaveBeenCalledTimes(2);
+      expect(unwind.mock.calls.map(([input]) => input.level)).toEqual([
+        "focus",
+        "focus",
+      ]);
+      expect(unwind.mock.calls[1]?.[0].subject).toBe(subject);
+
+      await act(async () => {
+        unwind.mock.calls[1]?.[0].unwindLevel();
+      });
+      expect(level()).toBe("browse");
+    } finally {
+      delete kind.unwind;
+    }
   });
 
   it("reopens a closed Reveal at the level it was closed from", async () => {

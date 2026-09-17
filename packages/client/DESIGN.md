@@ -316,13 +316,27 @@ label and value with "Not set" for a missing one, and the step's issues, each of
 which opens Focus on the field it names. Focus holds the complete form, and
 **Return to summary** goes back to Browse. Edits write to the draft as they are
 made, so changing level loses nothing and autosave carries on. A step with no
-action chosen shows the action picker in Browse and has no Focus. A Condition,
-Lifecycle, Event Split, Group, connection, multiple selection, **Runs**, and
-**Changes** show their panel at Browse width, under a header holding the panel's
-title and **Close**.
+action chosen shows the action picker in Browse and has no Focus. A Lifecycle,
+Event Split, Group, connection, multiple selection, **Runs**, and **Changes**
+show their panel at Browse width, under a header holding the panel's title and
+**Close**.
 
-Escape, **Back**, and **Close** unwind one level at a time: Focus to Browse to
-Closed. Escape belongs to an open select, combobox, menu, autocomplete, or
+A selected Condition opens the same header. Its Browse reads the decision: an
+editable label, one sentence stating when the Condition takes True and which
+AND or OR joins its rules or groups, each rule as a line of text, the steps its
+True and False outlets continue to or a line saying a disconnected branch ends
+the run, the first five values its rules can compare, and its issues. **Edit
+rules** and each issue open Focus on the rule builder. Focus holds the label and
+description, the rule builder open for editing, both branch destinations, every
+available input, the issues, and the enable, Ungroup, and delete controls.
+Placing a Condition sets the zoom from its card and both outlet handles, and
+keeps each True and False label on its outgoing edges inside the usable canvas
+too when the label fits at that zoom. A label on an edge to a distant step stays
+off screen.
+
+Escape and **Back** take one step back as the shown object's kind defines it,
+which for a step or Condition is one level: Focus to Browse to Closed. **Close**
+closes Reveal from any level. Escape belongs to an open select, combobox, menu, autocomplete, or
 dialog first. Opening Focus moves focus to the step title, returning to Browse
 puts focus on **Focus editor**, and closing returns focus to the canvas object or
 control that opened Browse. Closing keeps the canvas selection. Selecting a step

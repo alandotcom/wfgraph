@@ -47,14 +47,19 @@ import {
   rememberedRouteSearchesAtom,
   setWorkspaceSelectionAtom,
 } from "#src/lib/workflow-workspace-navigation";
-import { isOrdinaryStep } from "#src/components/workflow/canvas-reveal/reveal-subject";
+import {
+  isOrdinaryStep,
+  revealFocusTarget,
+} from "#src/components/workflow/canvas-reveal/reveal-subject";
 import {
   requestRevealPlacementAtom,
   revealFieldRequestAtom,
 } from "#src/components/workflow/canvas-reveal/reveal-requests";
 import { isMobileViewport } from "#src/hooks/use-mobile";
 import { groupWorkflowIssuesForOverlay } from "@wfgraph/shared/graph/workflow-issues";
+import { isConditionNode } from "@wfgraph/shared/graph/node-config";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
+import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 
 /** How long the canvas must sit still before it is validated again. */
 const SETTLE_MS = 300;
@@ -115,11 +120,35 @@ export function useCollectWorkflowIssues(): void {
 }
 
 /**
+ * The element Canvas Reveal's Focus body should hold the cursor in for an
+ * issue naming `fieldKey` on `node`, or undefined when the node's kind offers
+ * no Focus body to put it in. An ordinary step focuses the field itself; a
+ * Condition's two rule config keys both resolve to its rule builder through
+ * `revealFocusTarget`, the same mapping the issue list inside Reveal uses.
+ */
+function issueFocusTarget(
+  node: WorkflowNode | undefined,
+  fieldKey: string | undefined
+): string | undefined {
+  if (fieldKey === undefined || !node) {
+    return undefined;
+  }
+  if (isOrdinaryStep(node)) {
+    return revealFocusTarget("step", fieldKey);
+  }
+  if (isConditionNode(node)) {
+    return revealFocusTarget("condition", fieldKey);
+  }
+  return undefined;
+}
+
+/**
  * Open a step, and optionally put the cursor in the field an issue named. On a
- * wide viewport the step opens in Canvas Reveal, in Focus when a field of an
- * ordinary step is named, and Reveal places the step and focuses the field once
- * its form has painted. On a narrow viewport the sheet shows the step, and the
- * field is focused after the next paint, once the sheet's panel has mounted.
+ * wide viewport the step opens in Canvas Reveal, in Focus when the node's kind
+ * offers Focus for the named field, and Reveal places the step and focuses the
+ * field once its form has painted. On a narrow viewport the sheet shows the
+ * step, and the field is focused after the next paint, once the sheet's panel
+ * has mounted.
  */
 export function useGoToStep(): (nodeId: string, fieldKey?: string) => void {
   const store = useStore();
@@ -164,19 +193,17 @@ export function useGoToStep(): (nodeId: string, fieldKey?: string) => void {
         return;
       }
       const node = store.get(nodesAtom).find((item) => item.id === nodeId);
+      const focusTarget = issueFocusTarget(node, fieldKey);
       openWorkspaceReveal({
         address,
-        level:
-          fieldKey !== undefined && node && isOrdinaryStep(node)
-            ? "focus"
-            : undefined,
+        level: focusTarget !== undefined ? "focus" : undefined,
       });
       requestPlacement({
         addressId: workspaceAddressId(address),
         nodeIds: [nodeId],
       });
       setRevealFieldRequest(
-        fieldKey === undefined ? null : { nodeId, fieldKey }
+        focusTarget === undefined ? null : { nodeId, targetId: focusTarget }
       );
     },
     [

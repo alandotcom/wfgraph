@@ -1,5 +1,6 @@
 import { act, render } from "@testing-library/react";
 import {
+  Position,
   ReactFlowProvider,
   type ReactFlowState,
   useStoreApi,
@@ -13,13 +14,14 @@ import {
   loadWorkflowGraphAtom,
   selectOnlyNodeAtom,
 } from "#src/lib/workflow-graph-store";
-import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import {
   workspaceAddressFromSearch,
   workspaceAddressId,
 } from "#src/lib/workflow-navigation-state";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
+import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { showCanvasRevealLevelAtom } from "./canvas-reveal-state";
 import { requestRevealPlacementAtom } from "./reveal-requests";
 import { useRevealCamera } from "./use-reveal-camera";
@@ -43,6 +45,67 @@ function step(id: string, x: number, y: number): WorkflowNode {
 
 const NODES = [step("near", 100, 300), step("far", 1100, 300)];
 
+/**
+ * A Condition at 100, 500 with its True and False handles measured, and a step
+ * at `targetY` its False outlet leads to. At the default 900 the False label
+ * sits past the bottom of the usable canvas while the Condition card fits.
+ */
+function conditionGraph(targetY = 900): {
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+} {
+  const targetHandle = {
+    type: "target" as const,
+    position: Position.Top,
+    x: 94,
+    y: -6,
+    width: 12,
+    height: 12,
+  };
+  const condition: WorkflowNode = {
+    ...step("condition", 100, 500),
+    data: {
+      label: "Eligible?",
+      type: "action",
+      config: { actionType: BUILT_IN_ACTION_IDS.condition },
+    },
+    handles: [
+      targetHandle,
+      {
+        ...targetHandle,
+        id: "true",
+        type: "source",
+        position: Position.Bottom,
+        x: 70,
+        y: 74,
+      },
+      {
+        ...targetHandle,
+        id: "false",
+        type: "source",
+        position: Position.Bottom,
+        x: 118,
+        y: 74,
+      },
+    ],
+  };
+  const skip: WorkflowNode = {
+    ...step("skip", 100, targetY),
+    handles: [targetHandle],
+  };
+  return {
+    nodes: [condition, skip],
+    edges: [
+      {
+        id: "e-false",
+        source: "condition",
+        sourceHandle: "false",
+        target: "skip",
+      },
+    ],
+  };
+}
+
 type Viewport = { x: number; y: number; zoom: number };
 
 /** Happy-dom's viewport, which the `md` media query answers from. */
@@ -59,10 +122,15 @@ function setViewportWidth(width: number): void {
  * `setViewport` and, unless `animating` holds it, applies the viewport at once
  * the way a finished animation does.
  */
-function renderCamera() {
+function renderCamera(
+  graph: { nodes: WorkflowNode[]; edges: WorkflowEdge[] } = {
+    nodes: NODES,
+    edges: [],
+  }
+) {
   const store = createStore();
   store.set(currentWorkflowIdAtom, "wf_1");
-  store.set(loadWorkflowGraphAtom, { nodes: NODES, edges: [] });
+  store.set(loadWorkflowGraphAtom, graph);
   showWorkspaceRoute(store, {});
 
   const moves: Viewport[] = [];
@@ -89,8 +157,9 @@ function renderCamera() {
   render(
     <JotaiProvider store={store}>
       <ReactFlowProvider
+        initialEdges={graph.edges}
         initialHeight={CANVAS.height}
-        initialNodes={NODES}
+        initialNodes={graph.nodes}
         initialWidth={CANVAS.width}
       >
         <Harness />
@@ -180,6 +249,30 @@ describe("useRevealCamera", () => {
     const camera = renderCamera();
     await camera.settle();
     await camera.run(() => camera.store.set(selectOnlyNodeAtom, "near"));
+    expect(camera.moves).toEqual([]);
+  });
+
+  it("keeps a Condition's outlet labels inside the usable canvas", async () => {
+    const camera = renderCamera(conditionGraph());
+    await camera.settle();
+    await camera.run(() => camera.store.set(selectOnlyNodeAtom, "condition"));
+
+    // The card ends at 580px, which fits. The False edge runs from 586px to
+    // 894px, so its 24px label ends at 752px, and 64px of context below it
+    // passes the 776px padded bottom edge by 40px.
+    expect(camera.moves).toHaveLength(1);
+    expect(camera.moves[0]?.x).toBeCloseTo(0);
+    expect(camera.moves[0]?.y).toBeCloseTo(-40);
+    expect(camera.moves[0]?.zoom).toBe(1);
+  });
+
+  it("keeps the zoom for a Condition whose branch target is far away", async () => {
+    const camera = renderCamera(conditionGraph(6000));
+    await camera.settle();
+    await camera.run(() => camera.store.set(selectOnlyNodeAtom, "condition"));
+
+    // The False label centers near 3300px, so holding it would need a zoom far
+    // below the overview zoom. The card and its handles fit where they are.
     expect(camera.moves).toEqual([]);
   });
 

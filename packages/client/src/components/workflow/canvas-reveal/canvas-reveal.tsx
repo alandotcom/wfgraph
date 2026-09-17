@@ -1,13 +1,12 @@
-import { useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { ChevronLeft } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { type ReactNode, useMemo, useRef, useState } from "react";
 import { DeleteConfirmDialog } from "#src/components/delete-confirm-dialog";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
-import {
-  type ConfirmRequest,
-  type NodeConfigFrame,
-  useNodeConfigTitle,
+import type {
+  ConfirmRequest,
+  NodeConfigFrame,
 } from "#src/components/workflow/node-config-panel";
 import { useAfterCommit, useAfterPaint } from "#src/hooks/effects";
 import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
@@ -25,7 +24,7 @@ import {
   toggleCanvasRevealAtom,
   unwoundLevel,
 } from "./canvas-reveal-state";
-import { RevealHeader } from "./reveal-header";
+import { RevealHeader, type RevealHeaderControls } from "./reveal-header";
 import { REVEAL_INSET, revealWidth } from "./reveal-geometry";
 import { revealKind } from "./reveal-kinds";
 import { revealFieldRequestAtom } from "./reveal-requests";
@@ -51,7 +50,7 @@ export function CanvasReveal() {
   const issues = useAtomValue(workflowIssuesAtom);
   const workflowName = useAtomValue(currentWorkflowNameAtom);
   const catalog = useExtensionCatalog();
-  const panelTitle = useNodeConfigTitle();
+  const store = useStore();
   const fieldRequest = useAtomValue(revealFieldRequestAtom);
   const setFieldRequest = useSetAtom(revealFieldRequestAtom);
   const { hasOverlays } = useOverlay();
@@ -100,15 +99,6 @@ export function CanvasReveal() {
     showLevel(next);
   };
 
-  useRevealKeyboard({
-    enabled: !isMobile,
-    level,
-    hasOverlays,
-    area: areaRef,
-    onToggle: toggle,
-    onUnwind: () => close(unwoundLevel(level)),
-  });
-
   // While closed the surface keeps the width of the level it reopens at, so
   // sliding out does not reflow its content.
   const displayedLevel: OpenRevealLevel =
@@ -117,13 +107,32 @@ export function CanvasReveal() {
       : subject?.levels.includes(presentation.reopenLevel)
         ? presentation.reopenLevel
         : "browse";
+
+  // Back and Escape both run this, so a kind's own unwind answers both.
+  const unwind = () => {
+    const unwindLevel = () => close(unwoundLevel(level));
+    if (subject && kind?.unwind) {
+      kind.unwind({ subject, level: displayedLevel, store, unwindLevel });
+    } else {
+      unwindLevel();
+    }
+  };
+
+  useRevealKeyboard({
+    enabled: !isMobile,
+    level,
+    hasOverlays,
+    area: areaRef,
+    onToggle: toggle,
+    onUnwind: unwind,
+  });
   const {
     ref: scrollRef,
     onScroll,
     onScrollEnd,
     adoptScroll,
   } = useInspectorScroll(
-    kind?.keepsInspectorScroll && subject?.nodeId && level !== "closed"
+    kind?.shellOwnsScroll && subject?.nodeId && level !== "closed"
       ? {
           address,
           addressId: reveal.addressId,
@@ -137,7 +146,7 @@ export function CanvasReveal() {
   // field. This runs after the scroll restore above, and the field's scroll
   // becomes the position the scope keeps.
   useAfterPaint(
-    `${fieldRequest?.nodeId ?? ""}|${fieldRequest?.fieldKey ?? ""}|${subject?.key ?? ""}|${level}`,
+    `${fieldRequest?.nodeId ?? ""}|${fieldRequest?.targetId ?? ""}|${subject?.key ?? ""}|${level}`,
     () => {
       if (
         fieldRequest === null ||
@@ -149,7 +158,7 @@ export function CanvasReveal() {
         return;
       }
       setFieldRequest(null);
-      const element = document.getElementById(fieldRequest.fieldKey);
+      const element = document.getElementById(fieldRequest.targetId);
       element?.focus({ preventScroll: true });
       element?.scrollIntoView?.({ block: "center" });
       adoptScroll();
@@ -160,24 +169,47 @@ export function CanvasReveal() {
     return null;
   }
 
-  const header =
-    subject && kind
-      ? kind.headerModel(subject, {
+  const headerControls: RevealHeaderControls = {
+    canFocus: subject?.levels.includes("focus") ?? false,
+    onBack: unwind,
+    onClose: () => close("closed"),
+    onToggleFocus: () =>
+      showLevel(displayedLevel === "focus" ? "browse" : "focus"),
+    titleRef,
+    focusToggleRef,
+  };
+  let header: ReactNode = null;
+  if (subject && kind?.header.owner === "kind") {
+    const { Header } = kind.header;
+    header = (
+      <Header
+        controls={headerControls}
+        level={displayedLevel}
+        subject={subject}
+      />
+    );
+  } else if (subject && kind?.header.owner === "shell") {
+    header = (
+      <RevealHeader
+        controls={headerControls}
+        level={displayedLevel}
+        model={kind.header.model(subject, {
           nodes,
           issues,
           workflowName,
           catalog,
-          panelTitle,
-        })
-      : null;
+        })}
+      />
+    );
+  }
   const Body =
     kind && displayedLevel === "focus" && kind.Focus
       ? kind.Focus
       : kind?.Browse;
-  const openFocus = (fieldKey?: string) => {
+  const openFocus = (targetId?: string) => {
     showLevel("focus");
-    if (fieldKey !== undefined && subject?.nodeId) {
-      setFieldRequest({ nodeId: subject.nodeId, fieldKey });
+    if (targetId !== undefined && subject?.nodeId) {
+      setFieldRequest({ nodeId: subject.nodeId, targetId });
     }
   };
   const body =
@@ -204,7 +236,7 @@ export function CanvasReveal() {
         </button>
       ) : null}
       <aside
-        aria-label={header?.regionLabel ?? "Inspector"}
+        aria-label={kind?.regionLabel ?? "Inspector"}
         // `nokey` keeps React Flow's Backspace and Delete handling away from
         // the selected step while focus is on a control inside Reveal.
         // `overflow-clip` clips the contents and leaves the panel a box that is
@@ -230,23 +262,10 @@ export function CanvasReveal() {
               : "translateX(0)",
         }}
       >
-        {subject && header ? (
-          <RevealHeader
-            canFocus={subject.levels.includes("focus")}
-            focusToggleRef={focusToggleRef}
-            level={displayedLevel}
-            model={header}
-            onBack={() => close(unwoundLevel(level))}
-            onClose={() => close("closed")}
-            onToggleFocus={() =>
-              showLevel(displayedLevel === "focus" ? "browse" : "focus")
-            }
-            titleRef={titleRef}
-          />
-        ) : null}
+        {header}
         {/* The body paints `bg-card`, the tone the config form's sticky
             headings paint, so a heading pinned over scrolled fields matches. */}
-        {kind?.keepsInspectorScroll ? (
+        {kind?.shellOwnsScroll ? (
           <div
             className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-card [scrollbar-gutter:stable]"
             onScroll={onScroll}

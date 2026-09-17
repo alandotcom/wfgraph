@@ -211,8 +211,10 @@ function axisShift(input: {
 /**
  * The viewport that places `bounds` (flow coordinates) inside `usable` (canvas
  * pixels) for Canvas Reveal. The zoom is kept when the bounds fit and otherwise
- * decreases just enough to fit them, scaled around their center. Each axis then
- * moves the least distance that brings the bounds, with `context` screen pixels
+ * decreases just enough to fit them, scaled around their center. Each box in
+ * `optionalBounds` then grows the placed box, in order, while the grown box
+ * still fits at that zoom; one that does not fit is left out. Each axis moves
+ * the least distance that brings the placed box, with `context` screen pixels
  * of neighboring canvas on every side when that still fits, inside `usable`
  * less `padding`. The answer is `viewport` itself when nothing needs to move.
  */
@@ -220,6 +222,7 @@ export function revealViewport(input: {
   viewport: Viewport;
   usable: Bounds;
   bounds: Bounds;
+  optionalBounds?: readonly Bounds[] | undefined;
   padding?: number | undefined;
   context?: number | undefined;
 }): Viewport {
@@ -244,22 +247,29 @@ export function revealViewport(input: {
     x: viewport.x + centerX * (viewport.zoom - zoom),
     y: viewport.y + centerY * (viewport.zoom - zoom),
   };
+  const placed = (input.optionalBounds ?? []).reduce((box, optional) => {
+    const grown = unionBounds(box, optional);
+    return grown.width * zoom <= room.width &&
+      grown.height * zoom <= room.height
+      ? grown
+      : box;
+  }, bounds);
   const withContext =
     zoom === viewport.zoom &&
-    bounds.width * zoom + 2 * context <= room.width &&
-    bounds.height * zoom + 2 * context <= room.height
+    placed.width * zoom + 2 * context <= room.width &&
+    placed.height * zoom + 2 * context <= room.height
       ? context
       : 0;
   const min = { x: usable.x + padding, y: usable.y + padding };
   const shiftX = axisShift({
-    start: scaled.x + bounds.x * zoom - withContext,
-    end: scaled.x + (bounds.x + bounds.width) * zoom + withContext,
+    start: scaled.x + placed.x * zoom - withContext,
+    end: scaled.x + (placed.x + placed.width) * zoom + withContext,
     min: min.x,
     max: min.x + room.width,
   });
   const shiftY = axisShift({
-    start: scaled.y + bounds.y * zoom - withContext,
-    end: scaled.y + (bounds.y + bounds.height) * zoom + withContext,
+    start: scaled.y + placed.y * zoom - withContext,
+    end: scaled.y + (placed.y + placed.height) * zoom + withContext,
     min: min.y,
     max: min.y + room.height,
   });
@@ -267,6 +277,17 @@ export function revealViewport(input: {
     return viewport;
   }
   return { x: scaled.x + shiftX, y: scaled.y + shiftY, zoom };
+}
+
+function unionBounds(left: Bounds, right: Bounds): Bounds {
+  const x = Math.min(left.x, right.x);
+  const y = Math.min(left.y, right.y);
+  return {
+    x,
+    y,
+    width: Math.max(left.x + left.width, right.x + right.width) - x,
+    height: Math.max(left.y + left.height, right.y + right.height) - y,
+  };
 }
 
 /**

@@ -27,7 +27,10 @@ import {
 } from "#src/components/ui/tooltip";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { useEventSplitOutlets } from "#src/lib/event-split-outlets";
-import { getUpstreamConditionFields } from "#src/lib/upstream-node-fields";
+import {
+  type ConditionSelectableField,
+  getUpstreamConditionFields,
+} from "#src/lib/upstream-node-fields";
 import {
   edgesAtom,
   nodesAtom,
@@ -109,36 +112,52 @@ function OptionLogo({
 }
 
 /**
- * The Condition node's rule builder, over what the nodes above it produce.
+ * The values the rules of the Condition `nodeId` can compare: what the nodes
+ * above it produce. A null id has none.
+ */
+export function useUpstreamConditionFields(
+  nodeId: string | null
+): ConditionSelectableField[] {
+  const nodes = useAtomValue(nodesAtom);
+  const edges = useAtomValue(edgesAtom);
+  const catalog = useExtensionCatalog();
+  return useMemo(
+    () =>
+      nodeId === null
+        ? []
+        : getUpstreamConditionFields({
+            currentNodeId: nodeId,
+            nodes,
+            edges,
+            catalog,
+          }),
+    [nodeId, nodes, edges, catalog]
+  );
+}
+
+/**
+ * The rule builder of the Condition `nodeId`, over `fields`, the values
+ * `useUpstreamConditionFields` answers for it. `defaultEditing` opens the
+ * builder's controls on mount.
  *
  * The model and the CEL it compiles to are both stored, because the save path
  * checks one against the other before a run is allowed to read either.
  */
-function ConditionFields({
+export function ConditionFields({
+  nodeId,
+  fields,
   config,
   onUpdateConfig,
   disabled,
+  defaultEditing,
 }: {
+  nodeId: string;
+  fields: ConditionSelectableField[];
   config: Record<string, unknown>;
   onUpdateConfig: UpdateNodeConfig;
   disabled: boolean;
+  defaultEditing?: boolean | undefined;
 }) {
-  const selectedNodeId = useAtomValue(selectedNodeAtom);
-  const nodes = useAtomValue(nodesAtom);
-  const edges = useAtomValue(edgesAtom);
-
-  const catalog = useExtensionCatalog();
-  const fields = useMemo(
-    () =>
-      getUpstreamConditionFields({
-        currentNodeId: selectedNodeId ?? undefined,
-        nodes,
-        edges,
-        catalog,
-      }),
-    [selectedNodeId, nodes, edges, catalog]
-  );
-
   const handleChange = useCallback(
     (next: { model: string; expression: string }) => {
       onUpdateConfig({
@@ -151,7 +170,8 @@ function ConditionFields({
 
   return (
     <ConditionBuilderRow
-      currentNodeId={selectedNodeId ?? undefined}
+      currentNodeId={nodeId}
+      defaultEditing={defaultEditing}
       description="Build a condition from the Lifecycle Node and upstream action output fields. Timestamp fields support relative and absolute time filters."
       disabled={disabled}
       emptyFieldsMessage="No upstream fields available. Connect this node to the Lifecycle Node or an action with typed outputs first."
@@ -168,6 +188,19 @@ function ConditionFields({
       stickyHeader
       value={readConfigString(config, "conditionModel") ?? ""}
     />
+  );
+}
+
+/** The rule builder of the selected node, which the panel shows for a Condition. */
+function SelectedConditionFields(input: {
+  config: Record<string, unknown>;
+  onUpdateConfig: UpdateNodeConfig;
+  disabled: boolean;
+}) {
+  const selectedNodeId = useAtomValue(selectedNodeAtom);
+  const fields = useUpstreamConditionFields(selectedNodeId);
+  return selectedNodeId === null ? null : (
+    <ConditionFields {...input} fields={fields} nodeId={selectedNodeId} />
   );
 }
 
@@ -587,7 +620,7 @@ function SystemActionFields({
   switch (actionType) {
     case BUILT_IN_ACTION_IDS.condition:
       return (
-        <ConditionFields
+        <SelectedConditionFields
           config={config}
           disabled={disabled}
           onUpdateConfig={onUpdateConfig}
