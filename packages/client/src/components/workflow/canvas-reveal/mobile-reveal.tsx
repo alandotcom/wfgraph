@@ -11,10 +11,10 @@ import {
 } from "#src/components/workflow/node-config-panel";
 import { useAfterPaint } from "#src/hooks/effects";
 import { sheetObjectKey } from "#src/lib/mobile-sheet-navigation";
-import { nodesAtom } from "#src/lib/workflow-graph-store";
+import { nodesAtom, presentedGraphAtom } from "#src/lib/workflow-graph-store";
 import {
   comparisonNodeTitle,
-  groupLabel,
+  scopeGroupLabel,
   type WorkflowNode,
 } from "#src/lib/workflow-graph-types";
 import { workflowIssuesAtom } from "#src/lib/workflow-issues-store";
@@ -66,22 +66,19 @@ function sheetTitle(
 
 /**
  * Where the Back control of a sheet whose kind has no `mobile` record leads, as
- * its visible label. The first sheet of a focused Group leads back to that
- * Group's canvas and is labeled with the Group's name. The first sheet of the
- * overview offers Close, which the null answer says.
+ * its visible label. The first sheet takes `scopeBackLabel`, which names the
+ * focused Group and is null on the overview, where the first sheet offers
+ * Close.
  */
 function draftBackLabel(
   state: MobileRevealState,
+  scopeBackLabel: string | null,
   nodes: readonly WorkflowNode[],
   catalog: ExtensionCatalog
 ): string | null {
-  const { beneath, sheet, address } = state;
+  const { beneath, sheet } = state;
   if (beneath === null) {
-    if (address.scope.kind !== "group") {
-      return null;
-    }
-    const { groupId } = address.scope;
-    return groupLabel(nodes.find((node) => node.id === groupId)?.data.label);
+    return scopeBackLabel;
   }
   return beneath.inspected !== null &&
     sheet.inspected !== null &&
@@ -118,15 +115,14 @@ function useSheetHeading(
 }
 
 /**
- * The inspector below `md`, in the workspaces `usesMobileSheetSequence` names:
- * a sequence of sheets that the navigation state records per scope. A summary
- * sheet shows over the bottom of the canvas, which stays pannable and zoomable
- * above it, and an inspector sheet covers the canvas. A sheet about an object
- * shows the kind's Browse or Focus body, and an address sheet shows the address
- * itself, such as a run list or a run. Back and Escape remove one sheet,
- * restoring the sheet beneath with its selection, scroll and camera, or answer
- * through the kind's `mobile.unwind`, as Runs does when Back leaves a run for
- * its run list.
+ * The inspector below `md`, in every workspace: a sequence of sheets that the
+ * navigation state records per scope. A summary sheet shows over the bottom of
+ * the canvas, which stays pannable and zoomable above it, and an inspector
+ * sheet covers the canvas. A sheet about an object shows the kind's Browse or
+ * Focus body, and an address sheet shows the address itself, such as a run list
+ * or a run. Back and Escape remove one sheet, restoring the sheet beneath with
+ * its selection, scroll and camera, or answer through the kind's
+ * `mobile.unwind`, as Runs does when Back leaves a run for its run list.
  */
 export function MobileReveal() {
   const state = useShownMobileReveal();
@@ -153,7 +149,13 @@ export function MobileReveal() {
   const shellOwnsScroll = mobile?.shellOwnsScroll ?? kind?.shellOwnsScroll;
   const heading = useSheetHeading(state, kind);
   const nodes = useAtomValue(nodesAtom);
+  const presentedNodes = useAtomValue(presentedGraphAtom)?.nodes;
   const catalog = useExtensionCatalog();
+  // The first sheet inside a focused Group leads back to that Group's canvas,
+  // and its Back control is named for the Group in every workspace.
+  const scopeBackLabel = state
+    ? scopeGroupLabel(presentedNodes ?? [], state.address.scope)
+    : null;
   const inspected = state?.sheet.inspected ?? null;
   const sheetKey = state
     ? `${state.addressId}|${state.depth}|${state.level}|${sheetObjectKey(inspected)}`
@@ -314,10 +316,15 @@ export function MobileReveal() {
         }}
       >
         {mobile ? (
-          <mobile.Header controls={controls} key={kind.id} state={state} />
+          <mobile.Header
+            controls={controls}
+            key={kind.id}
+            scopeBackLabel={scopeBackLabel}
+            state={state}
+          />
         ) : (
           <MobileSheetHeader
-            backLabel={draftBackLabel(state, nodes, catalog)}
+            backLabel={draftBackLabel(state, scopeBackLabel, nodes, catalog)}
             controls={controls}
             inspectorLabel="Open editor"
             status={heading.status}

@@ -62,6 +62,7 @@ import {
 } from "#src/lib/workflow-workspace-navigation";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import { setViewportWidth } from "#src/lib/viewport-test-support";
 
 /** The id of the focused canvas stub standing for the outside step `qualify`. */
 const INGRESS_STUB = boundaryStubId("ingress", {
@@ -139,15 +140,6 @@ const EDGES: WorkflowEdge[] = [
   { id: "welcome-case", source: "welcome", target: "case_study" },
   { id: "case-route", source: "case_study", target: "route" },
 ];
-
-/** Happy-dom's viewport, which the `md` media query answers from. */
-function setViewportWidth(width: number): void {
-  (
-    window as unknown as {
-      happyDOM: { setViewport: (viewport: { width: number }) => void };
-    }
-  ).happyDOM.setViewport({ width });
-}
 
 async function renderEditor(initialSearch = "") {
   const update = vi.fn(async (..._args: unknown[]) => savedWorkflow("wf_1"));

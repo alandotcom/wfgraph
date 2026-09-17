@@ -1,12 +1,9 @@
-import { ArrowRight } from "lucide-react";
 import { cn } from "@wfgraph/shared/utils";
 import {
   type GroupRunSummary,
   groupRunCountsText,
   groupRunStatusLabel,
 } from "@wfgraph/shared/graph/group-run-status";
-import { Button } from "#src/components/ui/button";
-import { useGroupScopeNavigation } from "#src/components/workflow/use-group-scope-navigation";
 import { useInspectRunNode } from "#src/components/workflow/use-run-node-evidence";
 import {
   groupRunStatusTone,
@@ -16,7 +13,7 @@ import {
 import type { ExecutionLog } from "#src/lib/execution-logs";
 import { runNodeTitle } from "#src/lib/run-node-evidence";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
-import { Section } from "./reveal-sections";
+import { EnterGroupButton, Section } from "./reveal-sections";
 
 /**
  * A Group card's summary in Runs Browse: the Group's run status, its member
@@ -36,7 +33,6 @@ export function RunsGroupSummary({
   logs: readonly ExecutionLog[];
 }) {
   const inspectNode = useInspectRunNode();
-  const { enterGroup } = useGroupScopeNavigation();
 
   return (
     <div
@@ -89,16 +85,7 @@ export function RunsGroupSummary({
         </ul>
       </Section>
 
-      <div className="border-t px-4 pt-3">
-        <Button
-          className="w-full"
-          onClick={() => enterGroup(groupId)}
-          type="button"
-        >
-          Enter group
-          <ArrowRight data-icon="inline-end" />
-        </Button>
-      </div>
+      <EnterGroupButton groupId={groupId} />
     </div>
   );
 }

@@ -54,15 +54,12 @@ import {
 import { RevealHeader, type RevealHeaderModel } from "./reveal-header";
 import { RunsGroupSummary } from "./runs-group-summary";
 import type {
+  MobileKindHeaderProps,
   RevealBodyProps,
   RevealKind,
   RevealKindHeaderProps,
 } from "./reveal-kinds";
-import type { MobileRevealState } from "./canvas-reveal-state";
-import {
-  MobileSheetHeader,
-  type MobileSheetControls,
-} from "./mobile-sheet-header";
+import { MobileSheetHeader } from "./mobile-sheet-header";
 import type { RevealSubject } from "./reveal-subject";
 import { useAddressBodyScroll } from "./use-address-body-scroll";
 
@@ -196,22 +193,27 @@ function useRunsHeaderModel(
 /**
  * The Runs header on a mobile sheet, from the same model as `RunsHeader`. Back
  * is named for the level before the sheet's own in the model's path, and a
- * model with no Back offers Close.
+ * model with no Back offers Close. The first sheet inside a focused Group names
+ * the Group, whose canvas Back leaves showing.
  */
 export function RunsMobileHeader({
   state,
   controls,
-}: {
-  state: MobileRevealState;
-  controls: MobileSheetControls;
-}) {
+  scopeBackLabel,
+}: MobileKindHeaderProps) {
   const model = useRunsHeaderModel(
     state.subject,
     state.level === "inspector" ? "focus" : "browse"
   );
+  const backLabel =
+    state.beneath === null && scopeBackLabel !== null
+      ? scopeBackLabel
+      : model.showsBack
+        ? (model.path.at(-2) ?? "Back")
+        : null;
   return (
     <MobileSheetHeader
-      backLabel={model.showsBack ? (model.path.at(-2) ?? "Back") : null}
+      backLabel={backLabel}
       controls={controls}
       inspectorLabel={RUNS_FOCUS_TOGGLE_TEXT.browse}
       status={model.status}
@@ -324,6 +326,21 @@ export const unwindRuns: NonNullable<RevealKind["unwind"]> = ({
   }
   store.set(runRowFocusRequestAtom, key.executionId);
   replaceRouteSearch({ view: "runs" });
+};
+
+/**
+ * Back and Escape on a Runs sheet below `md`. Inside a focused Group, Back on
+ * the run's sheet removes that sheet and leaves the Group's canvas showing, as
+ * the first sheet of every workspace does there; **Workflow** and browser Back
+ * leave the Group. Every other sheet answers as `unwindRuns` does.
+ */
+export const unwindMobileRuns: NonNullable<RevealKind["unwind"]> = (input) => {
+  const { scope } = input.store.get(activeWorkspaceAddressAtom);
+  if (scope.kind === "group" && input.level === "browse") {
+    input.unwindLevel();
+    return;
+  }
+  unwindRuns(input);
 };
 
 /** Canvas Reveal or the mobile Reveal sheet around a Runs body. */

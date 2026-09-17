@@ -14,7 +14,6 @@ import {
 } from "#src/lib/mobile-sheet-navigation";
 import {
   revealFollowsSelection,
-  usesMobileSheetSequence,
   workspaceAddressId,
   type CanvasSelection,
   type DesktopScopePresentation,
@@ -71,10 +70,9 @@ export const canvasRevealAtom = atom((get): CanvasRevealState => {
 /**
  * What the mobile Reveal sequence shows for the active address: its last sheet
  * and the sheet beneath it, and the level on screen, which is the summary for
- * an object's inspector when the subject offers no Focus. Null in a workspace outside
- * `usesMobileSheetSequence`, with no sheet open, and while the last sheet's
- * object is no longer what the subject inspects. Form factor is the reader's to
- * check.
+ * an object's inspector when the subject offers no Focus. Null with no sheet
+ * open, and while the last sheet's object is no longer what the subject
+ * inspects. Form factor is the reader's to check.
  */
 export type MobileRevealState = {
   address: WorkspaceAddress;
@@ -92,7 +90,6 @@ export const mobileRevealAtom = atom((get): MobileRevealState | null => {
   const sheets = get(activeMobileSheetsAtom);
   const sheet = sheets.at(-1);
   if (
-    !usesMobileSheetSequence(address.key.workspace) ||
     !sheet ||
     subject === null ||
     !showsSheet({ subject, sheet, selection: get(activeSelectionAtom) })

@@ -10,7 +10,6 @@ import {
 } from "#src/components/workflow/node-config-panel";
 import { useAfterCommit } from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
-import { usesMobileSheetSequence } from "#src/lib/workflow-navigation-state";
 import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import type { OverlayComponentProps } from "./types";
 
@@ -25,9 +24,9 @@ type ConfigurationOverlayProps = OverlayComponentProps;
  *
  * The sheet exists only while Canvas Reveal does not, so one surface edits a
  * node at any width. Widening the window past the `md` breakpoint, where
- * Canvas Reveal mounts, dismisses the sheet. Moving to a workspace that uses
- * the mobile Reveal sequence, which Draft, Runs and Changes all do, also
- * dismisses it, because that sequence is the inspector there.
+ * Canvas Reveal mounts, dismisses the sheet. Moving to another workspace also
+ * dismisses it, because every workspace shows the mobile Reveal sequence as its
+ * inspector there.
  */
 export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
   const { push, closeAll } = useOverlay();
@@ -46,7 +45,7 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
   useAfterCommit(workspaceView, () => {
     const left = shownViewRef.current;
     shownViewRef.current = workspaceView;
-    if (workspaceView !== left && usesMobileSheetSequence(workspaceView)) {
+    if (workspaceView !== left) {
       closeAll();
     }
   });

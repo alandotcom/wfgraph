@@ -102,7 +102,12 @@ export function useWorkflowWorkspaceNavigation(
     const base = session.payload.baseVersion;
     if (base === null || base.isCurrent) {
       void openComparison?.({ current: true });
-      switchTo("changes", { view: "changes" });
+      // The rest of the search Changes last showed, such as its focused Group,
+      // stays in the route, and route recovery removes a Group the new
+      // comparison does not hold.
+      const { compare: _compare, ...remembered } =
+        store.get(rememberedRouteSearchesAtom).changes ?? {};
+      switchTo("changes", { ...remembered, view: "changes" });
     } else {
       void openComparison?.({ force: true });
       switchTo("changes");

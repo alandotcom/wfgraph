@@ -58,7 +58,7 @@ import {
   type ChangeInspection,
 } from "./changes-summary";
 import type { RevealBodyProps } from "./reveal-kinds";
-import { Section } from "./reveal-sections";
+import { EnterGroupButton, Section } from "./reveal-sections";
 import { useInspectorScroll } from "./use-inspector-scroll";
 
 /**
@@ -305,6 +305,9 @@ function InspectionView({
               onSelect={onSelect}
               title="Changed connections"
             />
+          ) : null}
+          {inspection.groupFrame ? (
+            <EnterGroupButton groupId={inspection.nodeId} />
           ) : null}
         </>
       )}

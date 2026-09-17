@@ -70,6 +70,7 @@ import {
   RunsBody,
   RunsHeader,
   RunsMobileHeader,
+  unwindMobileRuns,
   unwindRuns,
 } from "./runs-browse";
 import { StepBrowse } from "./step-browse";
@@ -106,6 +107,13 @@ export type RevealHeaderContext = {
   issues: readonly WorkflowIssue[];
   workflowName: string;
   catalog: ExtensionCatalog;
+};
+
+/** What a kind's mobile sheet `Header` component receives from the shell. */
+export type MobileKindHeaderProps = {
+  state: MobileRevealState;
+  controls: MobileSheetControls;
+  scopeBackLabel: string | null;
 };
 
 /** What a kind's own `Header` component receives from the shell. */
@@ -170,7 +178,9 @@ export type RevealKind = {
   /**
    * How the kind shows in the mobile Reveal sequence below `md`, for a kind
    * whose sheets need more than the shell builds for Draft. `Header` renders
-   * the sheet header, usually `MobileSheetHeader`, with the shell's controls.
+   * the sheet header, usually `MobileSheetHeader`, with the shell's controls
+   * and `scopeBackLabel`, the name of the focused Group, or null on the
+   * overview, which labels Back on a sheet with no sheet beneath.
    * `Body` replaces the default body, which is `Focus` on an inspector sheet
    * and `Browse` on a summary sheet. `unwind` answers Back and Escape on a
    * phone, where `unwindLevel` removes the top sheet; the default removes the
@@ -179,10 +189,7 @@ export type RevealKind = {
    * kind's own value for the sheet body.
    */
   mobile?: {
-    Header: ComponentType<{
-      state: MobileRevealState;
-      controls: MobileSheetControls;
-    }>;
+    Header: ComponentType<MobileKindHeaderProps>;
     Body?: ComponentType<RevealBodyProps>;
     unwind?: RevealUnwind;
     backFocusTarget?: (sheet: HTMLElement) => HTMLElement | null;
@@ -479,7 +486,7 @@ const RUNS_KIND: RevealKind = {
   Browse: RunsBody,
   Focus: RunsBody,
   unwind: unwindRuns,
-  mobile: { Header: RunsMobileHeader, unwind: unwindRuns },
+  mobile: { Header: RunsMobileHeader, unwind: unwindMobileRuns },
   focusReturnTarget: canvasNodeElement,
   shellOwnsScroll: false,
   focusWidth: "standard",

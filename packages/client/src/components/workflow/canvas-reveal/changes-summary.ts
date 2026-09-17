@@ -424,13 +424,6 @@ export function selectedChangeIndex(
       );
 }
 
-/** The selection holding only one changed object. */
-export function changeSelection(object: InspectedObject): CanvasSelection {
-  return object.kind === "node"
-    ? { nodeIds: [object.id], edgeIds: [] }
-    : { nodeIds: [], edgeIds: [object.id] };
-}
-
 /**
  * A name for the comparison a payload holds. It changes exactly when Focus
  * must drop what it shows: another base, or another proposed version.
