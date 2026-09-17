@@ -80,7 +80,11 @@ type WorkflowCommandState = {
   readonly canViewRuns: boolean;
   readonly canViewChanges: boolean;
   readonly canPublish: boolean;
+  /** Whether the grants and form factor offer adding a step. */
+  readonly canAddStep: boolean;
   readonly canCopySelection: boolean;
+  /** Whether a copyable selection may be duplicated, which adds steps. */
+  readonly canDuplicateSelection: boolean;
   readonly canPaste: boolean;
   readonly canGroupSelection: boolean;
   readonly editingLocked: boolean;
@@ -214,7 +218,8 @@ export function workflowCommands({
       group: "steps",
       label: "Add step",
       keywords: "Add step node action new create insert",
-      disabled: !state.canEdit || state.editingLocked || state.groupScopeActive,
+      disabled:
+        !state.canAddStep || state.editingLocked || state.groupScopeActive,
       execute: callbacks.addStep,
     },
     {
@@ -351,7 +356,7 @@ export function workflowCommands({
       label: "Duplicate selection",
       keywords: "Duplicate selection copy nodes steps",
       hint: shortcuts.duplicate,
-      disabled: !state.canCopySelection || state.groupScopeActive,
+      disabled: !state.canDuplicateSelection || state.groupScopeActive,
       execute: callbacks.duplicateSelection,
     },
     {

@@ -4,8 +4,10 @@ import {
   REVEAL_INSET,
   revealOccupiedWidth,
   revealWidth,
+  usableAboveSheet,
   usableCanvasRect,
 } from "./reveal-geometry";
+import { revealViewport } from "#src/components/workflow/workflow-viewport";
 
 describe("revealWidth", () => {
   it.each([
@@ -122,5 +124,33 @@ describe("usableCanvasRect", () => {
       })
     ).toBeNull();
     expect(MIN_USABLE_SIZE.width).toBeGreaterThan(0);
+  });
+});
+
+describe("usableAboveSheet", () => {
+  const canvas = { width: 390, height: 700 };
+
+  it("places a node near the bottom above the summary sheet's top edge", () => {
+    const sheetTop = 420;
+    const usable = usableAboveSheet({ canvas, sheetTop, obstacles: [] });
+    expect(usable).toEqual({ x: 0, y: 0, width: 390, height: sheetTop });
+
+    const bounds = { x: 100, y: 600, width: 200, height: 80 };
+    const viewport = revealViewport({
+      viewport: { x: 0, y: 0, zoom: 1 },
+      usable: usable ?? { x: 0, y: 0, ...canvas },
+      bounds,
+    });
+    const top = viewport.y + bounds.y * viewport.zoom;
+    const bottom = viewport.y + (bounds.y + bounds.height) * viewport.zoom;
+    expect(viewport.zoom).toBe(1);
+    expect(top).toBeGreaterThanOrEqual(0);
+    expect(bottom).toBeLessThanOrEqual(sheetTop);
+  });
+
+  it("answers null when the sheet leaves too little canvas above it", () => {
+    expect(
+      usableAboveSheet({ canvas, sheetTop: 60, obstacles: [] })
+    ).toBeNull();
   });
 });

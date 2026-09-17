@@ -355,8 +355,8 @@ function ungroupFrames(input: {
 }
 
 /**
- * Frees each member of a dissolved frame as a full-size draggable card with no
- * parent constraint, connectable whenever the canvas allows connecting. It
+ * Frees each member of a dissolved frame as a full-size card with no parent
+ * constraint, draggable and connectable whenever the canvas allows it. It
  * lands where the focused Group canvas draws it, moved so the Group's slots are
  * centred on the collapsed card's centre line and its first row starts at the
  * card's top, along the frame's stored layout direction. The layout of each
@@ -393,11 +393,11 @@ function memberReleaser(graph: {
       extent: _extent,
       parentId: _parentId,
       connectable: _connectable,
+      draggable: _draggable,
       ...rest
     } = member;
     return {
       ...rest,
-      draggable: true,
       width: WORKFLOW_NODE_WIDTH,
       height: WORKFLOW_NODE_HEIGHT,
       position: {

@@ -71,6 +71,10 @@ import { LifecycleNode } from "./nodes/lifecycle-node";
 import { useCanvasConnections } from "./use-canvas-connections";
 import { useCanvasCopyPaste } from "./use-canvas-copy-paste";
 import { useReflowLayout } from "./use-reflow-layout";
+import {
+  canvasInteractionState,
+  useTopologyAuthoring,
+} from "./canvas-interaction";
 import { useWorkspaceCamera } from "./use-workspace-camera";
 import { useRevealCamera } from "./canvas-reveal/use-reveal-camera";
 import { useRevealOccupiedWidth } from "./canvas-reveal/use-reveal-width";
@@ -128,30 +132,6 @@ const nodeTypes = {
   ...groupBoundaryNodeTypes,
 };
 
-export function canvasInteractionState({
-  editingLocked,
-  comparisonActive,
-  overlayActive,
-  groupScopeActive,
-}: {
-  editingLocked: boolean;
-  comparisonActive: boolean;
-  overlayActive: boolean;
-  /** A focused Group canvas, which inserts no node until it can edit topology. */
-  groupScopeActive: boolean;
-}) {
-  const comparisonVisible = comparisonActive && !overlayActive;
-  return {
-    comparisonVisible,
-    /** Whether adding, pasting, and duplicating steps is offered. */
-    insertsNodes: !editingLocked && !comparisonVisible && !groupScopeActive,
-    elementsSelectable: !editingLocked || comparisonVisible,
-    nodesDraggable: !editingLocked || comparisonVisible,
-    edgesFocusable: !comparisonVisible,
-    deleteKeyCode: comparisonVisible ? null : ["Backspace", "Delete"],
-  };
-}
-
 export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const catalog = useExtensionCatalog();
   // What the active scope paints, and every node of the graph, which the
@@ -161,6 +141,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const graphNodes = useAtomValue(displayNodesAtom);
   const { scope } = useAtomValue(activeWorkspaceAddressAtom);
   const groupScopeActive = useAtomValue(groupScopeActiveAtom);
+  const topologyAuthoring = useTopologyAuthoring();
   const { onNodeDoubleClick } = useGroupScopeNavigation();
   const storeEdges = useAtomValue(edgesAtom);
   // Draft edits and run-overlay viewing are mutually exclusive: mutating while
@@ -291,7 +272,11 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
     comparisonActive,
     overlayActive,
     groupScopeActive,
+    topologyAuthoring,
   });
+  // Without topology authoring nothing a gesture or key below would add,
+  // connect, or remove is offered, and the canvas only selects, pans and zooms.
+  const topologyLocked = !interaction.editsTopology;
   const internalAnchorNode = useInternalNode<WorkflowNode>(
     anchorNode?.id ?? ""
   );
@@ -355,7 +340,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
       }
       rightClickSelectionRef.current = new Set(selection.nodeIds);
     },
-    { capture: true, enabled: !graphEditingLocked }
+    { capture: true, enabled: !topologyLocked }
   );
   const selectedIdsAtRightClick = useCallback(
     () => rightClickSelectionRef.current,
@@ -466,7 +451,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
 
   useDomEvent(window, "keydown", handleUndoRedoShortcut);
   useCanvasCopyPaste({
-    enabled: !graphEditingLocked,
+    enabled: !graphEditingLocked && topologyAuthoring,
     insertsNodes: interaction.insertsNodes,
   });
   // Mounted once, here, because the node badges and the toolbar count both read
@@ -584,7 +569,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
     graphNodes,
     storeEdges,
     catalog,
-    graphEditingLocked,
+    connectionsLocked: topologyLocked,
     insertsNodes: interaction.insertsNodes,
     screenToFlowPosition,
   });
@@ -626,9 +611,8 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
           isValidConnection={isValidConnection}
           minZoom={WORKFLOW_CANVAS_MIN_ZOOM}
           nodes={accessibleGraph.nodes}
-          nodesConnectable={
-            !graphEditingLocked && !interaction.comparisonVisible
-          }
+          multiSelectionKeyCode={interaction.multiSelectionKeyCode}
+          nodesConnectable={interaction.editsTopology}
           nodesDraggable={interaction.nodesDraggable}
           nodeTypes={nodeTypes}
           onBeforeDelete={
@@ -636,14 +620,14 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
               ? () => Promise.resolve(false)
               : onBeforeDelete
           }
-          onConnect={graphEditingLocked ? undefined : onConnect}
-          onConnectEnd={graphEditingLocked ? undefined : onConnectEnd}
-          onConnectStart={graphEditingLocked ? undefined : onConnectStart}
-          onEdgeContextMenu={graphEditingLocked ? undefined : onEdgeContextMenu}
+          onConnect={topologyLocked ? undefined : onConnect}
+          onConnectEnd={topologyLocked ? undefined : onConnectEnd}
+          onConnectStart={topologyLocked ? undefined : onConnectStart}
+          onEdgeContextMenu={topologyLocked ? undefined : onEdgeContextMenu}
           onEdgesChange={graphEditingLocked ? undefined : handleEdgesChange}
           onNodeClick={isGenerating ? undefined : onNodeClick}
           onNodeDoubleClick={onNodeDoubleClick}
-          onNodeContextMenu={graphEditingLocked ? undefined : onNodeContextMenu}
+          onNodeContextMenu={topologyLocked ? undefined : onNodeContextMenu}
           onNodesChange={
             interaction.comparisonVisible
               ? onComparisonNodesChange
@@ -657,7 +641,8 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
           }}
           onMoveStart={workspaceCamera.onMoveStart}
           onPaneClick={onPaneClick}
-          onPaneContextMenu={graphEditingLocked ? undefined : onPaneContextMenu}
+          onPaneContextMenu={topologyLocked ? undefined : onPaneContextMenu}
+          selectionKeyCode={interaction.selectionKeyCode}
         >
           <Panel
             className="[--workflow-controls-bottom:3.5rem] border-none bg-transparent p-0 md:[--workflow-controls-bottom:0px]"
@@ -667,7 +652,10 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
           >
             <Controls
               canReflow={!graphEditingLocked && canReflow}
-              onReflow={graphEditingLocked ? undefined : reflow}
+              // A phone offers no topology authoring, so it shows no Tidy layout.
+              onReflow={
+                graphEditingLocked || !topologyAuthoring ? undefined : reflow
+              }
             />
           </Panel>
           {showMinimap && (

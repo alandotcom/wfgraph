@@ -57,7 +57,9 @@ export function useCanvasConnections(input: {
   graphNodes: WorkflowNode[];
   storeEdges: WorkflowEdge[];
   catalog: ExtensionCatalog;
-  graphEditingLocked: boolean;
+  /** Whether the canvas refuses every connection gesture: a locked draft, a
+   * visible comparison, or a phone, where topology authoring is off. */
+  connectionsLocked: boolean;
   insertsNodes: boolean;
   screenToFlowPosition: (position: { x: number; y: number }) => {
     x: number;
@@ -69,7 +71,7 @@ export function useCanvasConnections(input: {
     graphNodes,
     storeEdges,
     catalog,
-    graphEditingLocked,
+    connectionsLocked,
     insertsNodes,
     screenToFlowPosition,
   } = input;
@@ -111,8 +113,8 @@ export function useCanvasConnections(input: {
 
   const isValidConnection = useCallback(
     (connection: XYFlowConnection | XYFlowEdge) =>
-      !graphEditingLocked && !("refusal" in connectionOutcome(connection)),
-    [connectionOutcome, graphEditingLocked]
+      !connectionsLocked && !("refusal" in connectionOutcome(connection)),
+    [connectionOutcome, connectionsLocked]
   );
 
   // Stored edges, which name Group members, so the handle chosen here is the
@@ -131,7 +133,7 @@ export function useCanvasConnections(input: {
 
   const onConnect: OnConnect = useCallback(
     (connection: XYFlowConnection) => {
-      if (graphEditingLocked || !(connection.source && connection.target)) {
+      if (connectionsLocked || !(connection.source && connection.target)) {
         return;
       }
       const outcome = connectionOutcome(connection);
@@ -150,19 +152,19 @@ export function useCanvasConnections(input: {
         toast.info(committed.refusal, { id: "connection-refused" });
       }
     },
-    [catalog, connectNodes, connectionOutcome, graphEditingLocked]
+    [catalog, connectNodes, connectionOutcome, connectionsLocked]
   );
 
   const onConnectStart: OnConnectStart = useCallback(
     (_event, connectionStart: OnConnectStartParams) => {
-      if (graphEditingLocked) {
+      if (connectionsLocked) {
         return;
       }
       connectingNodeId.current = connectionStart.nodeId;
       connectingHandleType.current = connectionStart.handleType;
       connectingHandleId.current = connectionStart.handleId ?? null;
     },
-    [graphEditingLocked]
+    [connectionsLocked]
   );
 
   const getClientPosition = useCallback((event: MouseEvent | TouchEvent) => {
@@ -301,7 +303,7 @@ export function useCanvasConnections(input: {
 
   const onConnectEnd: OnConnectEnd = useCallback(
     (event, connectionState) => {
-      if (graphEditingLocked) {
+      if (connectionsLocked) {
         return;
       }
       if (!connectingNodeId.current) {
@@ -377,7 +379,7 @@ export function useCanvasConnections(input: {
       getClientPosition,
       handleConnectionToExistingNode,
       handleConnectionToNewNode,
-      graphEditingLocked,
+      connectionsLocked,
     ]
   );
 

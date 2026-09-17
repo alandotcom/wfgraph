@@ -354,9 +354,7 @@ Lifecycle Focus is wider: a section list beside one section at a time, for
 Start Events, Overlapping runs, Cancel Events, Entity eligibility, Evaluation
 checkpoints, Connections, and Validation. The list counts Start Events, Cancel
 Events, and issues. A control that shows another section moves focus to that
-section's entry in the list. The mobile sheet shows the same policy summary,
-without edit buttons, above the Lifecycle form, and offers no Delete for the
-Lifecycle node.
+section's entry in the list. The Lifecycle node shows no Delete.
 
 A selected Condition opens the same header. Its Browse reads the decision: an
 editable label, one sentence stating when the Condition takes True and which
@@ -474,8 +472,40 @@ the step or its 64px of neighbors: a step already in the usable canvas stays
 where it is. Opening Reveal, selecting another step, and widening Browse to
 Focus can each move it. Closing Reveal by any path (Close, Escape, Back,
 clicking empty canvas, or clearing the selection) and returning from Focus to
-Browse never move the camera. Below `md` the configuration sheet replaces
-Canvas Reveal.
+Browse never move the camera.
+
+Below `md`, Draft replaces Canvas Reveal with a sequence of sheets over the
+full-screen canvas. Selecting a step, Condition, Lifecycle node, Event Split,
+collapsed Group, or connection opens its summary sheet: the same Browse body,
+over the bottom of the canvas, which stays pannable and zoomable above it. A
+summary sheet that opens moves the camera once, the least it must, to keep its
+subject above the sheet's top edge, and only when the sheet would cover it. The sheet's header names the object and its
+validation status beside **Open editor**, for an object with a Focus body, and
+**Close**. **Open editor**, an issue, and a Lifecycle section's edit button open
+the full-screen inspector with the Focus body; the Lifecycle section list sits
+above its section there. An Event Split's action opens the Lifecycle inspector
+at its section, or the Wait's summary, over the Event Split's summary. Every
+sheet above the first leads with a Back control named for the sheet beneath,
+**Summary** when that sheet shows the same object. Back and Escape remove one
+sheet and restore the sheet beneath with its selection and its scroll position.
+The Canvas Reveal shortcut closes every sheet. Removing or closing sheets never
+moves the camera. Each sheet moves focus to its title. Back returns focus to
+the control that opened the removed sheet, or to the title of the sheet beneath
+when that control is gone, and closing the last sheet returns focus to the
+canvas node. The canvas and the agent panel under the inspector leave the tab
+order. Every control inside the sequence, and every option of a select, combobox
+or menu popup while the sequence shows, is at least 44px tall, text fields read
+at 1rem, and the sheets clear the left and right safe-area insets. The sheets,
+their scroll positions, and the Lifecycle section are remembered for each Draft
+scope apart from desktop Reveal, and each form factor keeps its own camera.
+While a sheet shows, the toolbar's **Configuration** button is absent. A phone
+offers no topology authoring: nodes cannot be dragged, added, deleted, pasted,
+duplicated, grouped, or ungrouped, connections cannot be drawn, the canvas has
+no context menu, multi-select, delete keys, or Tidy layout control, and a
+Group's layout direction is shown as text. Undo and redo stay available on a
+phone, because restoring an earlier state of the workflow is not topology
+authoring. **Runs** and **Changes** keep the configuration sheet below `md`,
+and returning to Draft closes that sheet.
 
 A Panel-toned status strip closes the canvas column: 32px tall, Caption type, a
 hairline top border, and one line that never wraps. While the draft is on
@@ -501,8 +531,8 @@ menu holds the run of the published version, labelled with that version number
 and the Published mode. Below `md` the workspace control, both run commands and
 **Publish** collapse into one overflow menu, each disabled for the reason its
 desktop control is disabled. **Configuration** stays beside that menu as an icon
-button, joined by **Delete** while something is selected, because Canvas Reveal,
-where those two otherwise live, is absent at that width.
+button, because Canvas Reveal is absent at that width. In Draft it opens the
+selected object's summary sheet.
 
 ### Publication review
 

@@ -5,7 +5,7 @@ import {
   useStoreApi,
 } from "@xyflow/react";
 import { createStore, Provider as JotaiProvider, useAtomValue } from "jotai";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   canvasNodesAtom,
   loadWorkflowGraphAtom,
@@ -177,6 +177,12 @@ function renderCamera(options: { revealOccupiedWidth?: number } = {}) {
 }
 
 beforeEach(() => {
+  setViewportWidth(1440);
+});
+
+// The viewport is shared by every test file in this worker, and a later file
+// that renders the Reveal navigation reads a phone width as the mobile layout.
+afterEach(() => {
   setViewportWidth(1440);
 });
 

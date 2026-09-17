@@ -7,6 +7,18 @@
 
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { mapOrSame } from "@wfgraph/shared/utils/map-or-same";
+import {
+  sameObject,
+  selectedObject,
+  withSelection,
+} from "#src/lib/canvas-selection";
+import {
+  mobileSheetsInGraph,
+  objectInGraph,
+  withMobileSummaryOf,
+  withoutMobileSheets,
+  type MobileScopePresentation,
+} from "#src/lib/mobile-sheet-navigation";
 
 export type WorkspaceView = "draft" | "runs" | "changes";
 
@@ -127,7 +139,7 @@ export type ChosenRunExecution = { nodeId: string; logId: string };
 export type ScopeNavigation = {
   selection: CanvasSelection;
   desktop: DesktopScopePresentation;
-  mobile: ScopePresentation;
+  mobile: MobileScopePresentation;
   showSuperseded: boolean;
   chosenExecution: ChosenRunExecution | null;
 };
@@ -185,7 +197,7 @@ export const EMPTY_SCOPE_NAVIGATION: ScopeNavigation = {
     inspectorSection: null,
     inspectedOrigin: null,
   },
-  mobile: { camera: null },
+  mobile: { camera: null, sheets: [] },
   showSuperseded: false,
   chosenExecution: null,
 };
@@ -393,54 +405,6 @@ export function rememberRouteSearch(
   };
 }
 
-function sameIds(left: readonly string[], right: readonly string[]): boolean {
-  if (left.length !== right.length) {
-    return false;
-  }
-  const rightIds = new Set(right);
-  return left.every((id) => rightIds.has(id));
-}
-
-export function sameSelection(
-  left: CanvasSelection,
-  right: CanvasSelection
-): boolean {
-  return (
-    sameIds(left.nodeIds, right.nodeIds) && sameIds(left.edgeIds, right.edgeIds)
-  );
-}
-
-/**
- * Write a selection. A chosen run node execution is kept only while the
- * selection holds its node alone, so selecting anything else never shows a
- * stale execution. A selection that no longer holds the inspected object alone
- * ends the jump `inspectedOrigin` recorded, so the origin is cleared.
- */
-export function withSelection(
-  scope: ScopeNavigation,
-  selection: CanvasSelection
-): ScopeNavigation {
-  if (sameSelection(scope.selection, selection)) {
-    return scope;
-  }
-  const { chosenExecution } = scope;
-  const keepsOrigin =
-    scope.desktop.inspectedOrigin === null ||
-    sameObject(selectedObject(selection), scope.desktop.inspected);
-  return {
-    ...scope,
-    selection,
-    desktop: keepsOrigin
-      ? scope.desktop
-      : { ...scope.desktop, inspectedOrigin: null },
-    chosenExecution:
-      chosenExecution !== null &&
-      singleSelectedNodeId(selection) === chosenExecution.nodeId
-        ? chosenExecution
-        : null,
-  };
-}
-
 export function withChosenExecution(
   scope: ScopeNavigation,
   chosenExecution: ChosenRunExecution | null
@@ -449,24 +413,6 @@ export function withChosenExecution(
     scope.chosenExecution?.logId === chosenExecution?.logId
     ? scope
     : { ...scope, chosenExecution };
-}
-
-/** The node id when the selection is exactly one node, otherwise null. */
-export function singleSelectedNodeId(
-  selection: CanvasSelection
-): string | null {
-  return selection.nodeIds.length === 1 && selection.edgeIds.length === 0
-    ? selection.nodeIds[0]
-    : null;
-}
-
-/** The edge id when the selection is exactly one edge, otherwise null. */
-export function singleSelectedEdgeId(
-  selection: CanvasSelection
-): string | null {
-  return selection.edgeIds.length === 1 && selection.nodeIds.length === 0
-    ? selection.edgeIds[0]
-    : null;
 }
 
 function idsWithChanges(
@@ -588,12 +534,17 @@ export function withoutGroupCameras(
     : { ...navigation, workspaces: new Map(cleared) };
 }
 
+/** The scope with nothing selected and no mobile sheet open. */
+function withoutSelection(scope: ScopeNavigation): ScopeNavigation {
+  return withoutMobileSheets(withSelection(scope, EMPTY_SELECTION));
+}
+
 function workspaceWithoutSelections(
   entry: WorkspaceNavigation
 ): WorkspaceNavigation {
-  const overview = withSelection(entry.overview, EMPTY_SELECTION);
+  const overview = withoutSelection(entry.overview);
   const groupNavigation = entry.group
-    ? withSelection(entry.group.navigation, EMPTY_SELECTION)
+    ? withoutSelection(entry.group.navigation)
     : null;
   if (
     overview === entry.overview &&
@@ -638,43 +589,29 @@ export function withDesktopRevealLevel(
       };
 }
 
-/** The one node or edge a selection holds, or null for none or several. */
-export function selectedObject(
-  selection: CanvasSelection
-): InspectedObject | null {
-  const nodeId = singleSelectedNodeId(selection);
-  if (nodeId !== null) {
-    return { kind: "node", id: nodeId };
-  }
-  const edgeId = singleSelectedEdgeId(selection);
-  return edgeId === null ? null : { kind: "edge", id: edgeId };
-}
-
-function sameObject(
-  left: InspectedObject | null,
-  right: InspectedObject | null
-): boolean {
-  return left?.kind === right?.kind && left?.id === right?.id;
-}
-
 /**
- * Write a Draft selection and open Canvas Reveal for it. When the selection
- * comes to hold one object it did not hold alone before, Reveal opens at the
- * scope's `reopenLevel`. A different object than the one inspected becomes the
- * inspected object, and its inspector scroll and section start over.
+ * Write a Draft selection and open Canvas Reveal for it on both form factors.
+ * When the selection comes to hold one object it did not hold alone before,
+ * desktop Reveal opens at the scope's `reopenLevel`, and the mobile sequence
+ * starts over at that object's summary sheet. A different object than the one
+ * inspected becomes the inspected object, and its inspector scroll and section
+ * start over. A selection holding no single object closes the mobile sheets.
  */
 export function withSelectionOpeningReveal(
   scope: ScopeNavigation,
   selection: CanvasSelection
 ): ScopeNavigation {
   const selected = selectedObject(selection);
-  const withNext = withSelection(scope, selection);
-  if (
-    selected === null ||
-    sameObject(selectedObject(scope.selection), selected)
-  ) {
-    return withNext;
+  if (selected === null) {
+    return withoutMobileSheets(withSelection(scope, selection));
   }
+  if (sameObject(selectedObject(scope.selection), selected)) {
+    return withSelection(scope, selection);
+  }
+  const withNext = withMobileSummaryOf(
+    withSelection(scope, selection),
+    selected
+  );
   const opened = withDesktopRevealLevel(withNext, scope.desktop.reopenLevel);
   if (sameObject(scope.desktop.inspected, selected)) {
     return opened;
@@ -750,32 +687,27 @@ export function withInspectedOrigin(
 
 /**
  * The scope without an inspected object the graph no longer holds, and without
- * the scroll and section recorded for it.
+ * the scroll and section recorded for it, on either form factor.
  */
 export function inspectionInGraph(
   scope: ScopeNavigation,
   graph: NavigationGraph
 ): ScopeNavigation {
-  const { inspected } = scope.desktop;
-  if (inspected === null) {
-    return scope;
+  const withSheets = mobileSheetsInGraph(scope, graph);
+  const { inspected } = withSheets.desktop;
+  if (inspected === null || objectInGraph(inspected, graph)) {
+    return withSheets;
   }
-  const present =
-    inspected.kind === "node"
-      ? graph.nodes.some((node) => node.id === inspected.id)
-      : graph.edges.some((edge) => edge.id === inspected.id);
-  return present
-    ? scope
-    : {
-        ...scope,
-        desktop: {
-          ...scope.desktop,
-          inspected: null,
-          inspectorScroll: EMPTY_SCOPE_NAVIGATION.desktop.inspectorScroll,
-          inspectorSection: null,
-          inspectedOrigin: null,
-        },
-      };
+  return {
+    ...withSheets,
+    desktop: {
+      ...withSheets.desktop,
+      inspected: null,
+      inspectorScroll: EMPTY_SCOPE_NAVIGATION.desktop.inspectorScroll,
+      inspectorSection: null,
+      inspectedOrigin: null,
+    },
+  };
 }
 
 export function withCamera(

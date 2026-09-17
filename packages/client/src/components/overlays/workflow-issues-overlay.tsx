@@ -1,10 +1,8 @@
 import { AlertTriangle } from "lucide-react";
 import { Button } from "#src/components/ui/button";
 import { IntegrationIcon } from "#src/components/ui/integration-icon";
-import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
 import { useConnectionRepair } from "#src/hooks/use-connection-repair";
 import { workflowIssuesLabel } from "#src/components/workflow/workflow-issues-chip";
-import { useIsMobile } from "#src/hooks/use-mobile";
 import { ConfigureConnectionOverlay } from "./add-connection-overlay";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";
@@ -38,8 +36,6 @@ export function WorkflowIssuesOverlay({
   allowRunDraftAnyway = false,
 }: WorkflowIssuesOverlayProps) {
   const { push, closeAll } = useOverlay();
-  const { pushSheet } = useConfigurationSheet();
-  const isMobile = useIsMobile();
   const repairAgainstConnectionList = useConnectionRepair();
 
   const {
@@ -56,16 +52,10 @@ export function WorkflowIssuesOverlay({
   const totalIssues = workflowIssueCount(issues);
 
   const handleGoToStep = (nodeId: string, fieldKey?: string) => {
-    // Select the node and set tab (this is handled by onGoToStep)
+    // `onGoToStep` opens the step in Canvas Reveal, or in the mobile Reveal
+    // sequence on a phone, so the list closes to show it.
     onGoToStep(nodeId, fieldKey);
-
-    // On mobile, push ConfigurationOverlay on top so back button returns here
-    // On desktop, close all overlays because Canvas Reveal shows the config
-    if (isMobile) {
-      pushSheet();
-    } else {
-      closeAll();
-    }
+    closeAll();
   };
 
   const handleAddIntegration = (integrationType: string) => {

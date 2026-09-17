@@ -3,6 +3,10 @@ import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { toast } from "sonner";
 import { AgentPanel } from "#src/components/agent/agent-panel";
 import { CanvasReveal } from "#src/components/workflow/canvas-reveal/canvas-reveal";
+import {
+  MobileReveal,
+  MobileRevealCovered,
+} from "#src/components/workflow/canvas-reveal/mobile-reveal";
 import { Button } from "#src/components/ui/button";
 import { ExecutionOverlaySync } from "#src/components/workflow/execution-overlay-sync";
 import { RunStatusProjection } from "#src/components/workflow/run-status-projection";
@@ -150,16 +154,21 @@ const WorkflowEditor = () => {
               clips, which is a far better failure than handing React Flow a
               parent of zero height. */}
             <div className="relative min-h-[min(20rem,40dvh)] flex-1">
-              <WorkflowCanvas canEdit={canUpdate} />
-              {/* The agent belongs to the canvas rather than the editor shell.
-                This keeps its card above the status strip while the graph
-                remains visible behind it. */}
-              {currentWorkflowId && isAgentEnabled() && (
-                <AgentPanel workflowId={currentWorkflowId} />
-              )}
+              <MobileRevealCovered>
+                <WorkflowCanvas canEdit={canUpdate} />
+                {/* The agent belongs to the canvas rather than the editor shell.
+                  This keeps its card above the status strip while the graph
+                  remains visible behind it. */}
+                {currentWorkflowId && isAgentEnabled() && (
+                  <AgentPanel workflowId={currentWorkflowId} />
+                )}
+              </MobileRevealCovered>
               {/* Canvas Reveal floats over the canvas, so opening it changes
                 the camera's usable rectangle and never the canvas size. */}
               <CanvasReveal />
+              {/* Below `md` the Draft inspector is a sequence of sheets over
+                the same canvas box. */}
+              <MobileReveal />
             </div>
             <WorkflowStatusStrip workflowId={currentWorkflowId ?? undefined} />
           </div>

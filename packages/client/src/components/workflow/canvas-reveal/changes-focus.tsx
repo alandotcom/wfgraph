@@ -24,10 +24,8 @@ import { useWorkflowComparisonActions } from "#src/components/workflow/use-workf
 import { PanelState } from "#src/components/workflow/workflow-changes-panel-state";
 import { comparisonDisplayGraphAtom } from "#src/lib/workflow-comparison-store";
 import { COMPARISON_CHANGE_KIND_LABEL } from "#src/lib/workflow-graph-types";
-import {
-  selectedObject,
-  workspaceAddressId,
-} from "#src/lib/workflow-navigation-state";
+import { workspaceAddressId } from "#src/lib/workflow-navigation-state";
+import { selectedObject } from "#src/lib/canvas-selection";
 import {
   activeSelectionAtom,
   activeWorkspaceAddressAtom,

@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { useAtomValue } from "jotai";
+import { useMemo, useRef } from "react";
 import { ConfirmOverlay } from "#src/components/overlays/confirm-overlay";
 import { SmartOverlayHeader } from "#src/components/overlays/overlay-header";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
@@ -9,6 +10,7 @@ import {
 } from "#src/components/workflow/node-config-panel";
 import { useAfterCommit } from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
+import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import type { OverlayComponentProps } from "./types";
 
 type ConfigurationOverlayProps = OverlayComponentProps;
@@ -22,7 +24,9 @@ type ConfigurationOverlayProps = OverlayComponentProps;
  *
  * The sheet exists only while Canvas Reveal does not, so one surface edits a
  * node at any width. Widening the window past the `md` breakpoint, where
- * Canvas Reveal mounts, dismisses the sheet.
+ * Canvas Reveal mounts, dismisses the sheet. Returning to Draft from Runs or
+ * Changes also dismisses it, because Draft's mobile Reveal sequence shows the
+ * Draft selection.
  */
 export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
   const { push, closeAll } = useOverlay();
@@ -31,6 +35,17 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
 
   useAfterCommit(isMobile, () => {
     if (!isMobile) {
+      closeAll();
+    }
+  });
+
+  const workspaceView = useAtomValue(workflowWorkspaceViewAtom);
+  /** The workspace view the sheet last showed over. */
+  const shownViewRef = useRef(workspaceView);
+  useAfterCommit(workspaceView, () => {
+    const left = shownViewRef.current;
+    shownViewRef.current = workspaceView;
+    if (workspaceView === "draft" && left !== "draft") {
       closeAll();
     }
   });

@@ -8,6 +8,15 @@
 import { atom, type Getter } from "jotai";
 import { readCookie, writeCookie } from "#src/lib/preference-cookies";
 import {
+  withMobileSheet,
+  withMobileSheetScroll,
+  withMobileSheetSection,
+  withoutMobileSheets,
+  withoutTopMobileSheet,
+  type MobileRevealLevel,
+  type MobileSheet,
+} from "#src/lib/mobile-sheet-navigation";
+import {
   EMPTY_WORKFLOW_NAVIGATION,
   inspectionInGraph,
   rememberRouteSearch,
@@ -20,7 +29,6 @@ import {
   withInspectorScroll,
   withInspectorSection,
   withChosenExecution,
-  withSelection,
   withSelectionOpeningReveal,
   withShowSuperseded,
   withoutDraftSelections,
@@ -29,6 +37,7 @@ import {
   type CanvasSelection,
   type DesktopScopePresentation,
   type FormFactor,
+  type InspectedObject,
   type InspectedOrigin,
   type NavigationGraph,
   type OpenRevealLevel,
@@ -41,6 +50,7 @@ import {
   type WorldCamera,
   EMPTY_SELECTION,
 } from "#src/lib/workflow-navigation-state";
+import { selectedObject, withSelection } from "#src/lib/canvas-selection";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 
 type WorkspaceRoute = { workflowId: string; search: WorkflowRouteSearch };
@@ -549,6 +559,136 @@ export const closeWorkspaceRevealAtom = atom(
           withDesktopRevealLevel(scope, input.reopenLevel),
           "closed"
         )
+      )
+    );
+  }
+);
+
+/** The mobile Reveal sheets open in the active address, the first opened first. */
+export const activeMobileSheetsAtom = atom(
+  (get): readonly MobileSheet[] => get(activeScopeNavigationAtom).mobile.sheets
+);
+
+/**
+ * Open a mobile Reveal sheet for `inspected` in a named address, selecting that
+ * object alone. `section` records the section a sectioned inspector shows.
+ */
+export const openMobileSheetAtom = atom(
+  null,
+  (
+    _get,
+    set,
+    input: {
+      address: WorkspaceAddress;
+      level: MobileRevealLevel;
+      inspected: InspectedObject;
+      section?: string | null | undefined;
+    }
+  ) => {
+    set(writeNavigationAtom, input.address.workflowId, (navigation) =>
+      updateScopeNavigation(navigation, input.address, (scope) =>
+        withMobileSheet(scope, input)
+      )
+    );
+  }
+);
+
+/**
+ * Open the summary sheet of the one object a Draft address selects, unless a
+ * sheet is already open there. Answers whether that address shows the mobile
+ * Reveal sequence, which is a Draft address whose selection holds one object.
+ */
+export const openMobileSelectionAtom = atom(
+  null,
+  (get, set, address: WorkspaceAddress): boolean => {
+    const scope = scopeNavigationAt(
+      navigationFor(get, address.workflowId),
+      address
+    );
+    const selected = selectedObject(scope.selection);
+    if (address.key.workspace !== "draft" || selected === null) {
+      return false;
+    }
+    if (scope.mobile.sheets.length === 0) {
+      set(openMobileSheetAtom, {
+        address,
+        level: "summary",
+        inspected: selected,
+      });
+    }
+    return true;
+  }
+);
+
+/**
+ * Back on mobile: remove the last sheet of a named address and select what the
+ * sheet beneath it shows. The camera stays where it is.
+ */
+export const closeMobileSheetAtom = atom(
+  null,
+  (_get, set, address: WorkspaceAddress) => {
+    set(writeNavigationAtom, address.workflowId, (navigation) =>
+      updateScopeNavigation(navigation, address, withoutTopMobileSheet)
+    );
+  }
+);
+
+/**
+ * Close every mobile sheet of a named address, keeping its selection. The
+ * camera stays where it is.
+ */
+export const closeAllMobileSheetsAtom = atom(
+  null,
+  (_get, set, address: WorkspaceAddress) => {
+    set(writeNavigationAtom, address.workflowId, (navigation) =>
+      updateScopeNavigation(navigation, address, withoutMobileSheets)
+    );
+  }
+);
+
+/**
+ * Record the scroll of the mobile sheet at `depth` in a named address. The
+ * write is dropped unless that sheet still shows `inspected` at `level`.
+ */
+export const recordMobileSheetScrollAtom = atom(
+  null,
+  (
+    _get,
+    set,
+    input: {
+      address: WorkspaceAddress;
+      depth: number;
+      level: MobileRevealLevel;
+      inspected: InspectedObject;
+      top: number;
+    }
+  ) => {
+    set(writeNavigationAtom, input.address.workflowId, (navigation) =>
+      updateScopeNavigation(navigation, input.address, (scope) =>
+        withMobileSheetScroll(scope, input)
+      )
+    );
+  }
+);
+
+/**
+ * Record the section the last mobile sheet of a named address shows. The write
+ * is dropped when that sheet no longer shows `inspected`.
+ */
+export const recordMobileSheetSectionAtom = atom(
+  null,
+  (
+    _get,
+    set,
+    input: {
+      address: WorkspaceAddress;
+      inspected: InspectedObject;
+      section: string;
+    }
+  ) => {
+    set(writeNavigationAtom, input.address.workflowId, (navigation) =>
+      updateScopeNavigation(navigation, input.address, (scope) =>
+        withMobileSheetSection(scope, input.inspected, input.section)
       )
     );
   }

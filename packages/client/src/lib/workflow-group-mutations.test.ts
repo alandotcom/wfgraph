@@ -242,7 +242,9 @@ describe("Group mutations on the canvas", () => {
     // frames-first order `orderGroupParentsFirst` keeps.
     expect(nodes.map((node) => node.id)).toEqual(["life", "after", "c"]);
     expect(nodes.some((node) => node.parentId !== undefined)).toBe(false);
-    expect(nodes.find((node) => node.id === "c")?.draggable).toBe(true);
+    expect(nodes.find((node) => node.id === "c")).not.toHaveProperty(
+      "draggable"
+    );
     expect(edgeIds(store)).toEqual(["c-after"]);
     expectEverySaveWhole();
 

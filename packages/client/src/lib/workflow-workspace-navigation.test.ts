@@ -32,6 +32,9 @@ import {
 } from "#src/lib/workflow-ui-store";
 import {
   activeDesktopRevealLevelAtom,
+  activeMobileSheetsAtom,
+  closeMobileSheetAtom,
+  openMobileSheetAtom,
   activeRevealPresentationAtom,
   activeSelectionAtom,
   activeWorkspaceAddressAtom,
@@ -526,6 +529,49 @@ describe("cameras", () => {
     expect(store.get(activeWorkspaceCamerasAtom)).toEqual({
       desktop: null,
       mobile: null,
+    });
+  });
+});
+
+describe("mobile Reveal sheets", () => {
+  it("keeps each scope's sheets and restores the covered camera on Back", () => {
+    const store = draftStore();
+    const overview = store.get(activeWorkspaceAddressAtom);
+    store.set(selectOnlyNodeAtom, "draft_step");
+    const camera = { centerX: 12, centerY: 400, zoom: 1.4 };
+    store.set(recordWorkspaceCameraAtom, {
+      address: overview,
+      formFactor: "mobile",
+      camera,
+    });
+    store.set(openMobileSheetAtom, {
+      address: overview,
+      level: "inspector",
+      inspected: { kind: "node", id: "draft_step" },
+    });
+    expect(
+      store.get(activeMobileSheetsAtom).map((sheet) => sheet.level)
+    ).toEqual(["summary", "inspector"]);
+
+    showWorkspaceRoute(store, { group: "group_1" });
+    expect(store.get(activeMobileSheetsAtom)).toEqual([]);
+    store.set(selectOnlyNodeAtom, "child_step");
+    expect(
+      store.get(activeMobileSheetsAtom).map((sheet) => sheet.inspected.id)
+    ).toEqual(["child_step"]);
+
+    showWorkspaceRoute(store, {});
+    expect(
+      store.get(activeMobileSheetsAtom).map((sheet) => sheet.level)
+    ).toEqual(["summary", "inspector"]);
+
+    store.set(closeMobileSheetAtom, overview);
+    expect(
+      store.get(activeMobileSheetsAtom).map((sheet) => sheet.level)
+    ).toEqual(["summary"]);
+    expect(store.get(activeRevealPresentationAtom).inspectorScroll).toEqual({
+      browse: 0,
+      focus: 0,
     });
   });
 });

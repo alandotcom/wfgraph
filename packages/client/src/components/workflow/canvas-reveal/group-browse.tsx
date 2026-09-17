@@ -6,6 +6,7 @@ import { useMemo } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { Button } from "#src/components/ui/button";
 import { ButtonGroup } from "#src/components/ui/button-group";
+import { useTopologyCapabilities } from "#src/components/workflow/canvas-interaction";
 import { can } from "#src/lib/authorization";
 import {
   edgesAtom,
@@ -28,8 +29,6 @@ import {
   activeWorkspaceAddressAtom,
   setWorkspaceSelectionAtom,
 } from "#src/lib/workflow-workspace-navigation";
-import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
-import { useIsMobile } from "#src/hooks/use-mobile";
 import { isGeneratingAtom } from "#src/lib/workflow-ui-store";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { cn } from "@wfgraph/shared/utils";
@@ -46,6 +45,7 @@ import {
 import type { GroupLayoutDirection } from "@wfgraph/shared/graph/schemas";
 import type { RevealBodyProps } from "./reveal-kinds";
 import { requestRevealPlacementAtom } from "./reveal-requests";
+import { useRevealNavigation } from "./use-reveal-navigation";
 import { EnterGroupButton, NodeIssueList, Section } from "./reveal-sections";
 
 /**
@@ -104,16 +104,26 @@ const DIRECTION_CHOICES: ReadonlyArray<{
 /**
  * The Group's stored layout direction as a two-button choice. Choosing the other
  * direction is one undo step that saves, and the focused Group canvas lays its
- * steps out along it.
+ * steps out along it. Where the choice is not offered the direction is only
+ * named.
  */
 function DirectionChoice({ groupId }: { groupId: string }) {
   const nodes = useAtomValue(nodesAtom);
   const isGenerating = useAtomValue(isGeneratingAtom);
   const setDirection = useSetAtom(setGroupDirectionAtom);
+  const { offersGroupDirectionChoice } = useTopologyCapabilities();
   const current = groupLayoutDirection(
     nodes.find((node) => node.id === groupId)
   );
   const disabled = isGenerating || !can(WfGraphOperations.workflowUpdate.id);
+  if (!offersGroupDirectionChoice) {
+    return (
+      <p className="text-xs">
+        {DIRECTION_CHOICES.find((choice) => choice.direction === current)
+          ?.label ?? current}
+      </p>
+    );
+  }
   return (
     <ButtonGroup aria-label="Layout direction">
       {DIRECTION_CHOICES.map(({ direction, label, Icon }) => (
@@ -168,8 +178,7 @@ function useOpenGroupMember(): (nodeId: string) => void {
   const navigate = useNavigate({ from: "/workflows/$workflowId" });
   const setWorkspaceSelection = useSetAtom(setWorkspaceSelectionAtom);
   const requestPlacement = useSetAtom(requestRevealPlacementAtom);
-  const isMobile = useIsMobile();
-  const { openSheet } = useConfigurationSheet();
+  const navigation = useRevealNavigation();
   return (nodeId) => {
     const active = store.get(activeWorkspaceAddressAtom);
     const target = {
@@ -185,9 +194,7 @@ function useOpenGroupMember(): (nodeId: string) => void {
       nodeIds: [nodeId],
     });
     void navigate({ search: workspaceRouteSearch(target) });
-    if (isMobile) {
-      openSheet();
-    }
+    navigation.followSelection(target);
   };
 }
 

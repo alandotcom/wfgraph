@@ -8,6 +8,7 @@ import type { WorkflowToolbarState } from "#src/components/workflow/workflow-too
 import { useWorkflowWorkspaceNavigation } from "#src/hooks/use-workflow-workspace-navigation";
 import { viewportAnimationDuration } from "#src/lib/motion";
 import { workflowFitViewOptions } from "./workflow-viewport";
+import { useTopologyAuthoring } from "./canvas-interaction";
 import {
   currentPlatform,
   editorShortcutLabels,
@@ -41,6 +42,7 @@ export function useWorkflowCommands({
 }) {
   const editingLocked = useAtomValue(canvasEditingLockedAtom);
   const groupScopeActive = useAtomValue(groupScopeActiveAtom);
+  const topologyAuthoring = useTopologyAuthoring();
   const hasCopiedSelection = useAtomValue(hasCopiedSelectionAtom);
   const copySelection = useSetAtom(copySelectionAtom);
   const pasteSelection = useSetAtom(pasteCopiedSelectionAtom);
@@ -109,10 +111,23 @@ export function useWorkflowCommands({
           hasUnsavedChanges: state.hasUnsavedChanges,
           publication: state.publication,
         }),
+      // A phone offers no topology authoring, so every command that adds,
+      // groups, or lays out steps is off there.
+      canAddStep: state.canUpdate && topologyAuthoring,
       canCopySelection:
         state.canUpdate && hasCopyableSelection && !editingLocked,
-      canPaste: state.canUpdate && hasCopiedSelection && !editingLocked,
-      canGroupSelection: state.canUpdate && grouping.ok && !editingLocked,
+      canDuplicateSelection:
+        state.canUpdate &&
+        hasCopyableSelection &&
+        !editingLocked &&
+        topologyAuthoring,
+      canPaste:
+        state.canUpdate &&
+        hasCopiedSelection &&
+        !editingLocked &&
+        topologyAuthoring,
+      canGroupSelection:
+        state.canUpdate && grouping.ok && !editingLocked && topologyAuthoring,
       editingLocked,
       groupScopeActive,
     },

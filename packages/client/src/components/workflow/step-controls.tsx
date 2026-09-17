@@ -2,7 +2,6 @@ import { useAtomValue, useSetAtom } from "jotai";
 import { Eye, EyeOff, Trash2, Ungroup } from "lucide-react";
 import { Button } from "#src/components/ui/button";
 import { can } from "#src/lib/authorization";
-import { canUngroup } from "#src/lib/node-group";
 import {
   deleteGroupWithMembersAtom,
   deleteNodeAtom,
@@ -13,6 +12,7 @@ import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import { isGeneratingAtom } from "#src/lib/workflow-ui-store";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
+import { useTopologyCapabilities } from "./canvas-interaction";
 import { deleteGroupWithStepsConfirmation } from "./group-delete-confirmation";
 import type { NodeConfigFrame } from "./node-config-panel";
 
@@ -84,6 +84,8 @@ function DeleteStepButton({
  * member, and a confirmed delete. A Group's delete removes the frame with every
  * step inside it, since Ungroup is how the frame alone is removed. The
  * Lifecycle Node is the workflow's entry and cannot be deleted, so it has none.
+ * Ungroup and delete follow the topology capabilities, so a phone shows the
+ * toggle alone.
  */
 export function NodeControls({
   node,
@@ -97,9 +99,13 @@ export function NodeControls({
 }) {
   const ungroupNode = useSetAtom(ungroupNodeAtom);
   const deleteGroupWithMembers = useSetAtom(deleteGroupWithMembersAtom);
+  const topology = useTopologyCapabilities();
   if (
     !can(WfGraphOperations.workflowUpdate.id) ||
-    node.data.type === "lifecycle"
+    node.data.type === "lifecycle" ||
+    (node.data.type !== "action" &&
+      !topology.canDelete &&
+      !topology.canUngroup(node))
   ) {
     return null;
   }
@@ -107,7 +113,7 @@ export function NodeControls({
     <div className={`flex items-center gap-2 ${className}`}>
       {/* A Group frame is organization only and has no enabled state. */}
       {node.data.type === "action" ? <StepEnableToggle node={node} /> : null}
-      {canUngroup(node) ? (
+      {topology.canUngroup(node) ? (
         <Button
           onClick={() => ungroupNode(node.id)}
           size="sm"
@@ -117,7 +123,7 @@ export function NodeControls({
           Ungroup
         </Button>
       ) : null}
-      {isGroupNode(node) ? (
+      {!topology.canDelete ? null : isGroupNode(node) ? (
         <Button
           onClick={() =>
             frame.confirm(

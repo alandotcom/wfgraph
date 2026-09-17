@@ -19,7 +19,9 @@ function commandInput(
       canViewChanges: true,
       canViewRuns: true,
       canPublish: true,
+      canAddStep: true,
       canCopySelection: true,
+      canDuplicateSelection: true,
       canPaste: true,
       canGroupSelection: true,
       currentWorkflowId: "workflow_1",
@@ -148,6 +150,32 @@ describe("workflowCommands", () => {
     expect(disabled("duplicate-selection")).toBe(true);
     expect(disabled("reflow")).toBe(true);
     expect(disabled("copy-selection")).toBe(false);
+  });
+
+  it("offers no topology authoring command without its capabilities", () => {
+    // The capabilities a phone answers false, since it offers no topology
+    // authoring; copying stays, since it changes nothing.
+    const commands = workflowCommands(
+      commandInput({
+        canAddStep: false,
+        canDuplicateSelection: false,
+        canPaste: false,
+        canGroupSelection: false,
+        canReflow: false,
+      })
+    );
+    const disabled = (id: string) =>
+      commands.find((command) => command.id === id)?.disabled;
+
+    expect(disabled("add-step")).toBe(true);
+    expect(disabled("paste")).toBe(true);
+    expect(disabled("duplicate-selection")).toBe(true);
+    expect(disabled("group-selection")).toBe(true);
+    expect(disabled("reflow")).toBe(true);
+    expect(disabled("copy-selection")).toBe(false);
+    expect(disabled("run-draft")).toBe(false);
+    expect(disabled("publish")).toBe(false);
+    expect(disabled("save")).toBe(false);
   });
 
   /**

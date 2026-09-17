@@ -14,8 +14,6 @@ import {
   scopeNavigationAt,
   selectionInGraph,
   selectionWithChanges,
-  singleSelectedEdgeId,
-  singleSelectedNodeId,
   updateScopeNavigation,
   withCamera,
   withDesktopRevealLevel,
@@ -24,7 +22,6 @@ import {
   withInspectorSection,
   withChosenExecution,
   withoutDraftSelections,
-  withSelection,
   withSelectionOpeningReveal,
   workspaceAddressFromSearch,
   workspaceKeyId,
@@ -32,6 +29,11 @@ import {
   type WorkflowNavigation,
   type WorkflowRouteSearch,
 } from "#src/lib/workflow-navigation-state";
+import {
+  singleSelectedEdgeId,
+  singleSelectedNodeId,
+  withSelection,
+} from "#src/lib/canvas-selection";
 
 const graph = {
   nodes: [

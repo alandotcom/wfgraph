@@ -20,6 +20,7 @@ import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import { WorkflowChangesPanel } from "./workflow-changes-panel";
 import { useWorkflowComparisonActions } from "./use-workflow-comparison-actions";
+import { useTopologyCapabilities } from "./canvas-interaction";
 import { useNodeConfigWriter } from "./config/use-node-config-writer";
 import { NodePropertiesForm } from "./node-properties-form";
 import { WorkflowRuns } from "./workflow-runs";
@@ -27,9 +28,10 @@ import { WorkflowRuns } from "./workflow-runs";
 /**
  * Configuring the selected node, edge, or the workflow itself.
  *
- * The editor mounts this in two places: Canvas Reveal on a wide viewport, for
- * Changes and the Draft selections no other Reveal kind shows, and a sheet from
- * the toolbar's Configuration button or from the issues overlay.
+ * The editor mounts this in two places: Canvas Reveal, for Changes and the
+ * Draft selections no other Reveal kind shows, on a wide viewport and in the
+ * mobile Reveal sequence, and the configuration sheet a narrow viewport opens
+ * for Runs, Changes, and a Draft with nothing selected.
  * Everything the two placements share is here; what a frame genuinely owns is
  * `NodeConfigFrame`.
  */
@@ -170,7 +172,7 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
   const selectedEdgeId = useAtomValue(selectedEdgeAtom);
   const nodes = useAtomValue(nodesAtom);
   const edges = useAtomValue(edgesAtom);
-  const canUpdate = can(WfGraphOperations.workflowUpdate.id);
+  const { canDelete } = useTopologyCapabilities();
   const comparisonActions = useWorkflowComparisonActions();
   const deleteEdge = useSetAtom(deleteEdgeAtom);
   const deleteSelectedItems = useSetAtom(deleteSelectedItemsAtom);
@@ -253,7 +255,7 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
               {selectionText} selected
             </p>
           </div>
-          {canUpdate ? (
+          {canDelete ? (
             <div className="flex items-center gap-2 pt-4">
               <Button
                 onClick={confirmDeleteSelection}
@@ -285,7 +287,7 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
             <Input disabled id="edge-target" value={selectedEdge.target} />
           </div>
 
-          {canUpdate ? (
+          {canDelete ? (
             <div className="flex items-center gap-2 pt-4">
               <Button onClick={confirmDeleteEdge} size="sm" variant="outline">
                 <Trash2 className="mr-2 size-4 text-destructive" />

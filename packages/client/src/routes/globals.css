@@ -564,3 +564,33 @@
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 }
+
+/* Every control in the mobile Reveal sequence answers a finger. Its bodies are
+   the ones Canvas Reveal shows on desktop at compact heights, so this raises
+   each button, checkbox, switch, select trigger and text field inside the
+   sequence to the 44px touch target instead of giving each body a second set
+   of sizes. Text fields also read at 1rem, below which iOS zooms the page when
+   a field takes focus. */
+@media (width < theme(--breakpoint-md)) {
+  .mobile-reveal
+    :is(button, [role="checkbox"], [role="switch"], [role="combobox"]) {
+    min-height: 2.75rem;
+    min-width: 2.75rem;
+  }
+
+  .mobile-reveal :is(input:not([type="checkbox"], [type="radio"]), textarea) {
+    min-height: 2.75rem;
+    font-size: 1rem;
+  }
+
+  /* A select, combobox or menu popup is portalled to the body, outside the
+     sequence, so its options take the same 44px while the sequence shows. */
+  body:has(.mobile-reveal)
+    :is(
+      [data-slot="select-item"],
+      [data-slot="combobox-item"],
+      [data-slot="dropdown-menu-item"]
+    ) {
+    min-height: 2.75rem;
+  }
+}

@@ -9,7 +9,7 @@
  */
 
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import {
   Check,
   ChevronDown,
@@ -28,8 +28,7 @@ import {
 } from "lucide-react";
 import { Fragment, useState } from "react";
 import { toast } from "sonner";
-import { ConfirmOverlay } from "#src/components/overlays/confirm-overlay";
-import { useOverlay } from "#src/components/overlays/overlay-provider";
+import { useShownMobileReveal } from "#src/components/workflow/canvas-reveal/canvas-reveal-state";
 import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import { Button, buttonVariants } from "#src/components/ui/button";
@@ -80,17 +79,7 @@ import {
   commandPaletteRefusalAtom,
   openCommandPaletteAtom,
 } from "#src/lib/command-palette-store";
-import {
-  deleteEdgeAtom,
-  deleteNodeAtom,
-  edgesAtom,
-  canvasEditingLockedAtom,
-  nodesAtom,
-  selectedEdgeAtom,
-  selectedNodeAtom,
-} from "#src/lib/workflow-graph-store";
-import { cn } from "@wfgraph/shared/utils";
-import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
+import { canvasEditingLockedAtom } from "#src/lib/workflow-graph-store";
 
 /**
  * Put the workflow's id on the clipboard.
@@ -577,52 +566,10 @@ export function ToolbarPublishControls({
   actions: WorkflowToolbarActions;
   state: WorkflowToolbarState;
 }) {
-  const { push } = useOverlay();
   const { openSheet } = useConfigurationSheet();
-  const [selectedNodeId] = useAtom(selectedNodeAtom);
-  const [selectedEdgeId] = useAtom(selectedEdgeAtom);
-  const nodes = useAtomValue(nodesAtom);
-  const edges = useAtomValue(edgesAtom);
-  const deleteNode = useSetAtom(deleteNodeAtom);
-  const deleteEdge = useSetAtom(deleteEdgeAtom);
   const isMobile = useIsMobile();
-  const editingLocked = useAtomValue(canvasEditingLockedAtom);
-  const selectedNode = nodes.find((node) => node.id === selectedNodeId);
-  const selectedEdge = edges.find((edge) => edge.id === selectedEdgeId);
-  const hasSelection = selectedNode || selectedEdge;
+  const mobileReveal = useShownMobileReveal();
   const publish = usePublishGate(state, actions);
-
-  const handleDeleteConfirm = () => {
-    const isNode = Boolean(selectedNodeId);
-    const itemType = isNode ? "Node" : "Connection";
-    // Deleting a frame ungroups it and keeps its steps and connections, so the
-    // confirmation says that and uses the ordinary button style.
-    const wording = isGroupNode(selectedNode)
-      ? {
-          title: "Ungroup",
-          message:
-            "Are you sure you want to ungroup this Group? Its steps and their connections stay in the workflow.",
-          confirmLabel: "Ungroup",
-          confirmVariant: "default" as const,
-        }
-      : {
-          title: `Delete ${itemType}`,
-          message: `Are you sure you want to delete this ${itemType.toLowerCase()}? This action cannot be undone.`,
-          confirmLabel: "Delete",
-          confirmVariant: "destructive" as const,
-        };
-
-    push(ConfirmOverlay, {
-      ...wording,
-      onConfirm: () => {
-        if (selectedNodeId) {
-          deleteNode(selectedNodeId);
-        } else if (selectedEdgeId) {
-          deleteEdge(selectedEdgeId);
-        }
-      },
-    });
-  };
 
   return (
     <>
@@ -645,38 +592,21 @@ export function ToolbarPublishControls({
           ) : null}
         </div>
       ) : null}
-      {state.canUpdate ? (
-        <>
-          {/* Config and Delete, shown only while Canvas Reveal is absent.
-          Gated on `useIsMobile`, the same test that unmounts Canvas Reveal, so
-          the sheet button and Canvas Reveal are never on screen together. */}
-          <ButtonGroup
-            className={cn("flex", isMobile ? "" : "hidden")}
-            orientation="horizontal"
-          >
-            <Button
-              aria-label="Configuration"
-              onClick={openSheet}
-              size="icon"
-              title="Configuration"
-              variant="outline"
-            >
-              <Settings2 className="size-4" />
-            </Button>
-            {hasSelection && (
-              <Button
-                aria-label="Delete selection"
-                disabled={editingLocked}
-                onClick={handleDeleteConfirm}
-                size="icon"
-                title="Delete"
-                variant="outline"
-              >
-                <Trash2 className="size-4" />
-              </Button>
-            )}
-          </ButtonGroup>
-        </>
+      {state.canUpdate && mobileReveal === null ? (
+        // Shown only while Canvas Reveal is absent. Gated on `useIsMobile`, the
+        // same test that unmounts Canvas Reveal, so this button and Canvas
+        // Reveal are never on screen together. An open mobile Reveal sheet
+        // already shows the selection, so the button is absent while one shows.
+        <Button
+          aria-label="Configuration"
+          className={isMobile ? "" : "hidden"}
+          onClick={() => openSheet()}
+          size="icon"
+          title="Configuration"
+          variant="outline"
+        >
+          <Settings2 className="size-4" />
+        </Button>
       ) : null}
       {actions.publishReview ? (
         <PublishReviewDialog

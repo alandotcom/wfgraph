@@ -2,7 +2,8 @@
  * The graph's tidy-up pass, shared by the canvas control at bottom left and the
  * Actions menu's "Tidy layout" so the two cannot drift into different rules.
  * `canReflow` is the whole gate, and it is off on a focused Group canvas, which
- * never writes a coordinate. `reflow` re-reads it at click time.
+ * never writes a coordinate, and on a phone, which offers no topology
+ * authoring. `reflow` re-reads it at click time.
  */
 
 import { useReactFlow } from "@xyflow/react";
@@ -19,6 +20,7 @@ import {
 import { groupScopeActiveAtom } from "#src/lib/workflow-workspace-navigation";
 import { viewportAnimationDuration } from "#src/lib/motion";
 import { workflowFitViewOptions } from "./workflow-viewport";
+import { useTopologyAuthoring } from "./canvas-interaction";
 
 /**
  * The width the layout spaces nodes inside: the graph's own box rather than the
@@ -48,6 +50,7 @@ export function useReflowLayout(): {
   const edges = useAtomValue(edgesAtom);
   const editingLocked = useAtomValue(canvasEditingLockedAtom);
   const groupScopeActive = useAtomValue(groupScopeActiveAtom);
+  const topologyAuthoring = useTopologyAuthoring();
   const applyNodeLayout = useSetAtom(applyNodeLayoutAtom);
   const catalog = useExtensionCatalog();
   const { fitView } = useReactFlow();
@@ -57,6 +60,7 @@ export function useReflowLayout(): {
   const canReflow =
     !editingLocked &&
     !groupScopeActive &&
+    topologyAuthoring &&
     nodes.filter((node) => node.type !== "add").length > 1;
 
   const reflow = useCallback(() => {

@@ -705,12 +705,12 @@ describe("Canvas Reveal in Runs", () => {
 describe("Canvas Reveal on a narrow viewport", () => {
   afterEach(() => setViewportWidth(1440));
 
-  it("hands a selected step to the configuration sheet", async () => {
+  it("leaves a selected Draft step to the mobile Reveal sequence", async () => {
     setViewportWidth(500);
     const { view, aside } = await renderReveal({}, { selected: "send" });
 
     expect(aside()).toBeNull();
-    expect(await view.findByTestId("overlay-open")).toBeTruthy();
+    expect(view.queryByTestId("overlay-open")).toBeNull();
   });
 });
 

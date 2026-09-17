@@ -1,4 +1,5 @@
 import {
+  type ReactFlowInstance,
   useReactFlow,
   useStore as useFlowStore,
   useStoreApi,
@@ -25,6 +26,7 @@ import {
   usableCanvasRect,
 } from "./reveal-geometry";
 import { outletPlacement } from "./reveal-outlets";
+import type { RevealPlacement } from "./reveal-subject";
 import { revealPlacementRequestAtom } from "./reveal-requests";
 
 /** Elements floating over the canvas that a placed step must not sit under. */
@@ -36,7 +38,7 @@ const OBSTACLE_SELECTORS = [
 ];
 
 /** Where each obstacle sits, relative to the canvas element's top left. */
-function measureObstacles(canvas: HTMLElement): Rect[] {
+export function measureObstacles(canvas: HTMLElement): Rect[] {
   const origin = canvas.getBoundingClientRect();
   const area = canvas.parentElement ?? canvas;
   return OBSTACLE_SELECTORS.flatMap((selector) =>
@@ -50,6 +52,38 @@ function measureObstacles(canvas: HTMLElement): Rect[] {
       };
     })
   );
+}
+
+/** The box a placement must show, and the boxes it shows when they also fit. */
+export type SubjectBounds = { bounds: Rect; optionalBounds: readonly Rect[] };
+
+/**
+ * The flow-space boxes a Reveal subject's placement names: its nodes, a node
+ * with its outlet labels as optional boxes, or the whole graph.
+ */
+export function subjectBounds(
+  placement: RevealPlacement,
+  flow: Pick<
+    ReactFlowInstance,
+    "getEdges" | "getInternalNode" | "getNodes" | "getNodesBounds"
+  >
+): SubjectBounds {
+  if (placement.kind === "nodes") {
+    return {
+      bounds: flow.getNodesBounds([...placement.nodeIds]),
+      optionalBounds: [],
+    };
+  }
+  if (placement.kind === "node-outlets") {
+    const { bounds, labels } = outletPlacement({
+      nodeId: placement.nodeId,
+      nodeBounds: flow.getNodesBounds([placement.nodeId]),
+      edges: flow.getEdges(),
+      getInternalNode: flow.getInternalNode,
+    });
+    return { bounds, optionalBounds: labels };
+  }
+  return { bounds: flow.getNodesBounds(flow.getNodes()), optionalBounds: [] };
 }
 
 /**
@@ -73,14 +107,8 @@ export function useRevealCamera(input: {
 } {
   const store = useStore();
   const flowStore = useStoreApi();
-  const {
-    getEdges,
-    getInternalNode,
-    getNodes,
-    getNodesBounds,
-    getViewport,
-    setViewport,
-  } = useReactFlow();
+  const flow = useReactFlow();
+  const { getNodesBounds, getViewport, setViewport } = flow;
   const isMobile = useIsMobile();
   const isSized = useFlowStore((state) => state.width > 0 && state.height > 0);
   const reveal = useAtomValue(canvasRevealAtom);
@@ -133,29 +161,20 @@ export function useRevealCamera(input: {
     const current =
       inFlightRef.current ?? worldCameraFromViewport(getViewport(), size);
 
-    let bounds: Rect | null = null;
-    let optionalBounds: readonly Rect[] = [];
+    let placed: SubjectBounds | null = null;
     if (step === "place-request" && placementRequest) {
       answeredSequenceRef.current = placementRequest.sequence;
-      bounds = getNodesBounds([...placementRequest.nodeIds]);
-    } else if (state.subject?.placement.kind === "nodes") {
-      bounds = getNodesBounds([...state.subject.placement.nodeIds]);
-    } else if (state.subject?.placement.kind === "node-outlets") {
-      const { nodeId } = state.subject.placement;
-      const placement = outletPlacement({
-        nodeId,
-        nodeBounds: getNodesBounds([nodeId]),
-        edges: getEdges(),
-        getInternalNode,
-      });
-      bounds = placement.bounds;
-      optionalBounds = placement.labels;
-    } else if (state.subject?.placement.kind === "graph") {
-      bounds = getNodesBounds(getNodes());
+      placed = {
+        bounds: getNodesBounds([...placementRequest.nodeIds]),
+        optionalBounds: [],
+      };
+    } else if (state.subject) {
+      placed = subjectBounds(state.subject.placement, flow);
     }
-    if (!bounds || bounds.width <= 0 || bounds.height <= 0) {
+    if (!placed || placed.bounds.width <= 0 || placed.bounds.height <= 0) {
       return;
     }
+    const { bounds, optionalBounds } = placed;
     const usable = store.get(isAgentPanelExpandedAtom)
       ? null
       : usableCanvasRect({

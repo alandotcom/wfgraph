@@ -1,4 +1,4 @@
-import { act, fireEvent, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ToolbarActions,
@@ -11,8 +11,10 @@ import {
   REAL_NODES,
   renderChrome,
 } from "#src/components/workflow/workflow-toolbar-chrome.test-support";
-import { nodesAtom, selectOnlyNodeAtom } from "#src/lib/workflow-graph-store";
-import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import {
+  clearSelectionAtom,
+  selectOnlyNodeAtom,
+} from "#src/lib/workflow-graph-store";
 import { can } from "#src/lib/authorization";
 import {
   installAuthorizationGrantsForTests,
@@ -119,7 +121,7 @@ describe("ToolbarActions publish gating", () => {
 });
 
 describe("mobile editing actions", () => {
-  it("keeps Configuration available and disables Delete while editing is locked", async () => {
+  it("keeps Configuration available and offers no Delete for a selection", async () => {
     const selectedNode = REAL_NODES[0];
     const view = renderChrome(ToolbarActions, {
       generating: true,
@@ -131,54 +133,37 @@ describe("mobile editing actions", () => {
     expect(
       (await view.findByTitle("Configuration")).hasAttribute("disabled")
     ).toBe(false);
-    expect(view.getByTitle("Delete").hasAttribute("disabled")).toBe(true);
+    expect(view.queryByTitle("Delete")).toBeNull();
   });
 
-  it("confirms Delete on a Group frame as an ungroup that keeps its steps", async () => {
-    const member = (id: string): WorkflowNode => ({
-      id,
-      type: "action",
-      parentId: "group_1",
-      extent: "parent",
-      position: { x: 0, y: 0 },
-      data: {
-        label: id,
-        type: "action",
-        config: { actionType: "fountain/get-user" },
-      },
-    });
-    const graph: WorkflowNode[] = [
-      {
-        id: "group_1",
-        type: "group",
-        position: { x: 0, y: 0 },
-        width: 400,
-        height: 300,
-        data: { label: "Lookups", type: "group" },
-      },
-      member("a"),
-      member("b"),
-    ];
-    const view = renderChrome(ToolbarActions, {
-      graph,
-      state: { nodes: graph },
-    });
-    act(() => view.store.set(selectOnlyNodeAtom, "group_1"));
+  it("hides Configuration while a mobile Reveal sheet shows the selection", async () => {
+    (
+      window as unknown as {
+        happyDOM: { setViewport: (viewport: { width: number }) => void };
+      }
+    ).happyDOM.setViewport({ width: 390 });
+    try {
+      const selectedNode = REAL_NODES[0];
+      const view = renderChrome(ToolbarActions, {
+        graph: [selectedNode],
+        state: { nodes: [selectedNode] },
+      });
+      expect(await view.findByTitle("Configuration")).toBeTruthy();
 
-    fireEvent.click(await view.findByTitle("Delete"));
+      act(() => view.store.set(selectOnlyNodeAtom, selectedNode.id));
+      await waitFor(() =>
+        expect(view.queryByTitle("Configuration")).toBeNull()
+      );
 
-    const dialog = await view.findByRole("dialog");
-    expect(dialog.textContent).toContain(
-      "Are you sure you want to ungroup this Group?"
-    );
-    expect(dialog.textContent).not.toContain("cannot be undone");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Ungroup" }));
-
-    const nodes = view.store.get(nodesAtom);
-    expect(nodes.map((node) => [node.id, node.parentId])).toEqual([
-      ["a", undefined],
-      ["b", undefined],
-    ]);
+      act(() => view.store.set(clearSelectionAtom));
+      expect(await view.findByTitle("Configuration")).toBeTruthy();
+    } finally {
+      (
+        window as unknown as {
+          happyDOM: { setViewport: (viewport: { width: number }) => void };
+        }
+      ).happyDOM.setViewport({ width: 1440 });
+    }
   });
 });
 
