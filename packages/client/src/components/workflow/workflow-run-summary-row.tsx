@@ -1,4 +1,4 @@
-import { ArrowLeft, Ban, Loader2 } from "lucide-react";
+import { Ban, Loader2 } from "lucide-react";
 import { useRef } from "react";
 import { Button } from "#src/components/ui/button";
 import { useAfterCommit } from "#src/hooks/effects";
@@ -26,7 +26,6 @@ type WorkflowRunSummaryRowProps = {
   variant?: "list" | "header" | undefined;
   outcome?: string | undefined;
   onClick?: (() => void) | undefined;
-  onBack?: (() => void) | undefined;
   onCancel?: ((executionId: string) => void) | undefined;
   isCanceling?: boolean | undefined;
   focusOnMount?: boolean | undefined;
@@ -175,7 +174,6 @@ function HeaderSummary({
   execution,
   runNumber,
   outcome,
-  onBack,
   onCancel,
   isCanceling = false,
   focusOnMount = false,
@@ -183,7 +181,6 @@ function HeaderSummary({
   execution: WorkflowExecution;
   runNumber: number;
   outcome?: string | undefined;
-  onBack?: (() => void) | undefined;
   onCancel?: ((executionId: string) => void) | undefined;
   isCanceling?: boolean | undefined;
   focusOnMount?: boolean | undefined;
@@ -200,18 +197,6 @@ function HeaderSummary({
   return (
     <div className="min-w-0 border-b bg-background px-3 py-3">
       <div className="flex min-w-0 items-start gap-1">
-        {onBack ? (
-          <Button
-            aria-label="Back to runs list"
-            className="-ml-1 max-md:size-11"
-            onClick={onBack}
-            size="icon-sm"
-            type="button"
-            variant="ghost"
-          >
-            <ArrowLeft />
-          </Button>
-        ) : null}
         <div className="min-w-0 flex-1 pt-0.5">
           <h2
             className="break-words font-semibold text-base outline-none"
@@ -291,7 +276,6 @@ export function WorkflowRunSummaryRow({
   variant = "list",
   outcome,
   onClick,
-  onBack,
   onCancel,
   isCanceling = false,
   focusOnMount = false,
@@ -303,7 +287,6 @@ export function WorkflowRunSummaryRow({
           execution={execution}
           isCanceling={isCanceling}
           focusOnMount={focusOnMount}
-          onBack={onBack}
           onCancel={onCancel}
           outcome={outcome}
           runNumber={runNumber}

@@ -490,10 +490,12 @@ sheet above the first leads with a Back control named for the sheet beneath,
 **Summary** when that sheet shows the same object. Back and Escape remove one
 sheet and restore the sheet beneath with its selection and its scroll position.
 The Canvas Reveal shortcut closes every sheet. Removing or closing sheets never
-moves the camera. Each sheet moves focus to its title. Back returns focus to
-the control that opened the removed sheet, or to the title of the sheet beneath
-when that control is gone, and closing the last sheet returns focus to the
-canvas node. The canvas and the agent panel under the inspector leave the tab
+moves the camera. Each sheet moves focus to its title. After Back, focus
+stays where the sheet body put it, such as a run row or the canvas node that
+opened the evidence; otherwise it goes to the element the workspace names for
+that sheet, then to the control that opened the removed sheet, and then to the
+title of the sheet on screen. Closing the last sheet returns focus to the canvas
+node. The canvas and the agent panel under the inspector leave the tab
 order. Every control inside the sequence, and every option of a select, combobox
 or menu popup while the sequence shows, is at least 44px tall, text fields read
 at 1rem, and the sheets clear the left and right safe-area insets. The sheets,
@@ -505,8 +507,29 @@ duplicated, grouped, or ungrouped, connections cannot be drawn, the canvas has
 no context menu, multi-select, delete keys, or Tidy layout control, and a
 Group's layout direction is shown as text. Undo and redo stay available on a
 phone, because restoring an earlier state of the workflow is not topology
-authoring. **Runs** and **Changes** keep the configuration sheet below `md`,
-and returning to Draft closes that sheet.
+authoring. **Changes** keeps the configuration sheet below `md`, and moving to
+Draft or Runs closes that sheet.
+
+Below `md`, **Runs** uses the same sequence of sheets. A sheet has one of two
+shapes: a summary sheet over the bottom of the canvas, or an inspector that
+covers it. A Draft sheet is about one object, and a Runs sheet is about the
+address itself or about one node. Entering Runs, or **Configuration** in Runs,
+opens the run list or the open run as a summary sheet, and the first visit opens
+the newest run. A run row opens that run's summary sheet, which holds its
+status, **Cancel**, active waits with **Resume now**, exit details, the failure
+summary, the node journey, and activity, and adds a history entry. A journey
+entry, a step pressed on the run's canvas, or **Show evidence** opens that
+step's evidence as the inspector over the run's sheet, and another step swaps
+the evidence in place. A Group card shows its run summary in the run's sheet.
+Back is named for the level it returns to: the run from the evidence or a Group
+summary, and **Runs** from a run, which replaces the history entry with the run
+list and returns focus to that run's row. The run list offers **Close**. Moving
+from one Runs address to another with a sheet open keeps the sequence open, so
+selecting a run, the newest run opening by itself, Back to the run list, and a
+run started from the toolbar all show a sheet. Each run list and each run keeps
+its sheets and scroll positions, so leaving Runs and returning shows the same
+run at the same depth, and a poll or a late response never changes which sheet
+shows.
 
 On a phone, a collapsed Group's summary sheet names the Group's stored layout
 direction, and for a Left to right Group it also says "On a phone, a Group's
@@ -549,7 +572,7 @@ and the Published mode. Below `md` the workspace control, both run commands and
 **Publish** collapse into one overflow menu, each disabled for the reason its
 desktop control is disabled. **Configuration** stays beside that menu as an icon
 button, because Canvas Reveal is absent at that width. In Draft it opens the
-selected object's summary sheet.
+selected object's summary sheet, and in Runs the sheet of the run list or the run.
 
 ### Publication review
 

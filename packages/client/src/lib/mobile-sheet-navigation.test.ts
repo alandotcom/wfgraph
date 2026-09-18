@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  withMobileAddressSheet,
+  withMobileInspectorOverAddress,
+  withMobileSequenceFrom,
   withMobileSheet,
   withMobileSheetScroll,
   withMobileSheetSection,
@@ -45,7 +48,7 @@ describe("mobile Reveal sheets", () => {
     ]);
 
     const other = withSelectionOpeningReveal(selected, nodeSelection("wait"));
-    expect(other.mobile.sheets.map((sheet) => sheet.inspected.id)).toEqual([
+    expect(other.mobile.sheets.map((sheet) => sheet.inspected?.id)).toEqual([
       "wait",
     ]);
     expect(
@@ -173,14 +176,14 @@ describe("mobile Reveal sheets", () => {
       inspected: node("child"),
     });
     const kept = inspectionInGraph(child, graph);
-    expect(kept.mobile.sheets.map((sheet) => sheet.inspected.id)).toEqual([
+    expect(kept.mobile.sheets.map((sheet) => sheet.inspected?.id)).toEqual([
       "trigger",
       "child",
     ]);
     expect(kept.selection).toEqual(nodeSelection("child"));
 
     const lost = inspectionInGraph(gone, graph);
-    expect(lost.mobile.sheets.map((sheet) => sheet.inspected.id)).toEqual([
+    expect(lost.mobile.sheets.map((sheet) => sheet.inspected?.id)).toEqual([
       "trigger",
     ]);
     expect(lost.selection).toEqual(nodeSelection("trigger"));
@@ -198,5 +201,143 @@ describe("mobile Reveal sheets", () => {
       scopeNavigationAt(withoutDraftSelections(navigation), address).mobile
         .sheets
     ).toEqual([]);
+  });
+
+  it("opens an address sheet once, and shows evidence over it without changing the selection", () => {
+    const address = withMobileAddressSheet(EMPTY);
+    expect(address.mobile.sheets).toEqual([
+      {
+        level: "summary",
+        inspected: null,
+        scroll: 0,
+        section: null,
+      },
+    ]);
+    expect(withMobileAddressSheet(address)).toBe(address);
+
+    const scrolled = withMobileSheetScroll(address, {
+      depth: 1,
+      level: "summary",
+      inspected: null,
+      top: 70,
+    });
+    const evidence = withMobileInspectorOverAddress(scrolled, node("send"));
+    expect(evidence.selection).toBe(scrolled.selection);
+    expect(
+      evidence.mobile.sheets.map((sheet) => [
+        sheet.level,
+        sheet.inspected?.id ?? null,
+        sheet.scroll,
+      ])
+    ).toEqual([
+      ["summary", null, 70],
+      ["inspector", "send", 0],
+    ]);
+    expect(withMobileInspectorOverAddress(evidence, node("send"))).toBe(
+      evidence
+    );
+
+    const other = withMobileInspectorOverAddress(evidence, node("wait"));
+    expect(other.mobile.sheets.map((sheet) => sheet.inspected?.id)).toEqual([
+      undefined,
+      "wait",
+    ]);
+
+    const fromNothing = withMobileInspectorOverAddress(EMPTY, node("send"));
+    expect(
+      fromNothing.mobile.sheets.map((sheet) => sheet.inspected?.id ?? null)
+    ).toEqual([null, "send"]);
+  });
+
+  it("keeps the selection on Back to an address sheet and keeps address sheets in any graph", () => {
+    const selected = {
+      ...withMobileInspectorOverAddress(
+        withMobileAddressSheet(EMPTY),
+        node("gone")
+      ),
+      selection: nodeSelection("gone"),
+    };
+    const back = withoutTopMobileSheet(selected);
+    expect(back.selection).toEqual(nodeSelection("gone"));
+    expect(back.mobile.sheets.map((sheet) => sheet.inspected)).toEqual([null]);
+
+    const recovered = inspectionInGraph(selected, graph);
+    expect(recovered.mobile.sheets.map((sheet) => sheet.inspected)).toEqual([
+      null,
+    ]);
+    expect(recovered.selection).toBe(selected.selection);
+  });
+
+  it("carries the address sheets a source sequence starts with into another scope of its key, and one address sheet elsewhere", () => {
+    const address = {
+      level: "summary" as const,
+      inspected: null,
+      scroll: 30,
+      section: null,
+    };
+    const source = [
+      address,
+      { ...address, section: "changes" },
+      {
+        level: "inspector" as const,
+        inspected: node("send"),
+        scroll: 0,
+        section: null,
+      },
+    ];
+    expect(
+      withMobileSequenceFrom(EMPTY, { sheets: source, sameKey: true }).mobile
+        .sheets
+    ).toEqual([
+      { ...address, scroll: 0 },
+      { ...address, scroll: 0, section: "changes" },
+    ]);
+    expect(
+      withMobileSequenceFrom(EMPTY, { sheets: source, sameKey: false }).mobile
+        .sheets
+    ).toEqual([{ ...address, scroll: 0 }]);
+
+    const open = withMobileAddressSheet(EMPTY);
+    expect(
+      withMobileSequenceFrom(open, { sheets: source, sameKey: true })
+    ).toBe(open);
+    expect(withMobileSequenceFrom(EMPTY, { sheets: [], sameKey: true })).toBe(
+      EMPTY
+    );
+  });
+
+  it("pushes an inspector over an address sheet that is not an inspector", () => {
+    const listed = {
+      ...EMPTY,
+      mobile: {
+        ...EMPTY.mobile,
+        sheets: [
+          {
+            level: "summary" as const,
+            inspected: null,
+            scroll: 0,
+            section: null,
+          },
+          {
+            level: "summary" as const,
+            inspected: null,
+            scroll: 12,
+            section: "changes",
+          },
+        ],
+      },
+    };
+    const pushed = withMobileInspectorOverAddress(listed, node("send"));
+    expect(
+      pushed.mobile.sheets.map((sheet) => [
+        sheet.level,
+        sheet.section,
+        sheet.inspected?.id ?? null,
+      ])
+    ).toEqual([
+      ["summary", null, null],
+      ["summary", "changes", null],
+      ["inspector", null, "send"],
+    ]);
   });
 });

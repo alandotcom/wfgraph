@@ -36,8 +36,6 @@ export type WorkflowRunDetailProps = {
   waits: ExecutionWait[];
   isCanceling: boolean;
   isResuming: boolean;
-  /** Back to the run list, shown in the run summary when given. */
-  onBack?: (() => void) | undefined;
   onCancel?: ((executionId: string) => void) | undefined;
   onResume?: ((token: string) => void) | undefined;
   /** A journey entry was chosen, which shows that execution's evidence. */
@@ -99,7 +97,6 @@ export function WorkflowRunDetail({
   waits,
   isCanceling,
   isResuming,
-  onBack,
   onCancel,
   onResume,
   onSelectLog,
@@ -156,7 +153,6 @@ export function WorkflowRunDetail({
         execution={execution}
         focusOnMount={focusesSummary}
         isCanceling={isCanceling}
-        onBack={onBack}
         onCancel={isRunInProgress(execution.status) ? onCancel : undefined}
         outcome={outcome}
         runNumber={runNumber}

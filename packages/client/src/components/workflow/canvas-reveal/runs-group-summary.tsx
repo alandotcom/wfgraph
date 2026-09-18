@@ -72,7 +72,6 @@ export function RunsGroupSummary({
                     inspectNode({
                       nodeId: member.nodeId,
                       logId: null,
-                      opensFocus: true,
                     })
                   }
                   type="button"

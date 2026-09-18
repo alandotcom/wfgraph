@@ -1,8 +1,8 @@
 /**
- * The Runs Canvas Reveal harness shared by the Browse and Focus suites. Each
- * suite calls `installRunsRevealRpc` in `beforeEach` after setting a desktop
- * viewport, and `removeRunsRevealRpc` in `afterEach`, because this module is
- * evaluated once per worker and registers no hooks of its own.
+ * The Runs Reveal harness shared by the Browse, Focus, and mobile suites. Each
+ * suite calls `installRunsRevealRpc` in `beforeEach` after setting a viewport,
+ * and `removeRunsRevealRpc` in `afterEach`, because this module is evaluated
+ * once per worker and registers no hooks of its own.
  */
 
 import {
@@ -27,6 +27,12 @@ import { ExtensionCatalogProvider } from "#src/components/extension-catalog-prov
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import { CanvasReveal } from "#src/components/workflow/canvas-reveal/canvas-reveal";
+import {
+  MobileReveal,
+  MobileRevealCovered,
+} from "#src/components/workflow/canvas-reveal/mobile-reveal";
+import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
+import { useWorkflowWorkspaceNavigation } from "#src/hooks/use-workflow-workspace-navigation";
 import { ExecutionOverlaySync } from "#src/components/workflow/execution-overlay-sync";
 import { RunStatusProjection } from "#src/components/workflow/run-status-projection";
 import {
@@ -185,6 +191,28 @@ function CanvasStubs() {
   );
 }
 
+/**
+ * The toolbar controls a phone reaches Runs through: the workspace switcher's
+ * Draft and Runs, and the Configuration button.
+ */
+function ToolbarStubs() {
+  const workspace = useWorkflowWorkspaceNavigation();
+  const { openSheet } = useConfigurationSheet();
+  return (
+    <>
+      <button onClick={workspace.showDraft} type="button">
+        Show Draft
+      </button>
+      <button onClick={workspace.showRuns} type="button">
+        Show Runs
+      </button>
+      <button onClick={() => openSheet()} type="button">
+        Configuration
+      </button>
+    </>
+  );
+}
+
 /** A pinned graph holding one step, so each run projects a graph of its own. */
 export function pinnedGraph(nodeId: string): SerializedWorkflowGraph {
   return createSerializedWorkflowGraph({
@@ -279,15 +307,21 @@ export async function renderRunsReveal(search: WorkflowRouteSearch) {
         canOpenComparison: true,
       }),
     component: () => (
-      <div className="relative" data-testid="canvas-area">
-        <div data-testid="workflow-canvas">
-          <CanvasStubs />
+      <>
+        <ToolbarStubs />
+        <div className="relative" data-testid="canvas-area">
+          <MobileRevealCovered>
+            <div data-testid="workflow-canvas">
+              <CanvasStubs />
+            </div>
+          </MobileRevealCovered>
+          <ExecutionOverlaySync />
+          <WorkspaceRouteSync />
+          <RunStatusProjection />
+          <CanvasReveal />
+          <MobileReveal />
         </div>
-        <ExecutionOverlaySync />
-        <WorkspaceRouteSync />
-        <RunStatusProjection />
-        <CanvasReveal />
-      </div>
+      </>
     ),
   });
   const query = new URLSearchParams(
@@ -350,6 +384,8 @@ export async function renderRunsReveal(search: WorkflowRouteSearch) {
   const listScroller = () =>
     aside()?.querySelector<HTMLElement>('[data-slot="runs-list-scroller"]') ??
     null;
+  const sheet = () =>
+    view.container.querySelector<HTMLElement>('[data-slot="mobile-reveal"]');
   return {
     view,
     store,
@@ -367,6 +403,7 @@ export async function renderRunsReveal(search: WorkflowRouteSearch) {
     clickPane,
     overviewScroller,
     listScroller,
+    sheet,
   };
 }
 

@@ -179,21 +179,6 @@ export function runNodeEvidenceLabel(status: RunNodeEvidenceStatus): {
   return { text: getStatusLabel(status), tone: statusTone(status) };
 }
 
-export function nodeKindLabel(nodeType: string): string {
-  switch (nodeType) {
-    case "lifecycle":
-      return "Lifecycle";
-    case "wait":
-      return "Wait";
-    case "condition":
-      return "Condition";
-    case "group":
-      return "Group";
-    default:
-      return "Action";
-  }
-}
-
 export function formatDuration(duration: string): string {
   if (!/^\d+$/.test(duration)) {
     return duration;

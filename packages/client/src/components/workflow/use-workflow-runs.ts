@@ -20,7 +20,6 @@ import {
   toWorkflowExecutions,
   type WorkflowExecution,
 } from "#src/lib/execution-logs";
-import { useExitRun } from "#src/hooks/use-exit-run";
 import { useAfterCommit } from "#src/hooks/effects";
 import { orpcQuery, refreshRunHistory } from "#src/lib/rpc-query";
 import { can } from "#src/lib/authorization";
@@ -53,7 +52,6 @@ export const runRowFocusRequestAtom = atom<string | null>(null);
  */
 export type OpenRun = Omit<
   WorkflowRunDetailProps,
-  | "onBack"
   | "scroll"
   | "onSelectLog"
   | "focusLogId"
@@ -111,13 +109,12 @@ export type WorkflowRunsState = {
    */
   focusRunId: string | null;
   clearRowFocus: () => void;
-  /** Open one run from the list. The navigation pushes a history entry. */
-  selectRun: (executionId: string) => void;
   /**
-   * Close the open run and show the run list, with focus on that run's row.
-   * The navigation replaces the history entry.
+   * Open one run from the list. The navigation pushes a history entry, and
+   * applying the route carries a mobile Reveal sequence from the list to the
+   * run.
    */
-  exitRun: () => void;
+  selectRun: (executionId: string) => void;
 };
 
 /** What `useRunReads` hands the Runs header and the Runs body. */
@@ -286,7 +283,6 @@ export function useWorkflowRuns(): WorkflowRunsState {
   const { currentWorkflowId, executionId, executionsQuery, executions } = reads;
   const queryClient = useQueryClient();
   const navigate = useNavigate({ from: "/workflows/$workflowId" });
-  const navigateToRunList = useExitRun();
   const canCancel = can(WfGraphOperations.workflowCancelExecution.id);
   const canResume = can(WfGraphOperations.workflowResumeWait.id);
   // Workspace navigation records whether a route has named a run of this
@@ -405,10 +401,6 @@ export function useWorkflowRuns(): WorkflowRunsState {
     clearRowFocus: () => setFocusRequest(null),
     selectRun: (id) => {
       void navigate({ search: { view: "runs", executionId: id } });
-    },
-    exitRun: () => {
-      setFocusRequest(executionId ?? null);
-      navigateToRunList();
     },
   };
 }

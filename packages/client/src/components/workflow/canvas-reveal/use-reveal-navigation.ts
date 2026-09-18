@@ -2,17 +2,25 @@ import { atom, useStore, type Atom } from "jotai";
 import { useMemo } from "react";
 import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
 import { useIsMobile } from "#src/hooks/use-mobile";
+import { runEvidenceOriginAtom } from "#src/components/workflow/run-evidence-origin";
 import {
+  revealFollowsSelection,
   workspaceAddressId,
   type InspectedObject,
   type InspectedOrigin,
   type OpenRevealLevel,
   type WorkspaceAddress,
 } from "#src/lib/workflow-navigation-state";
+import { selectedObject } from "#src/lib/canvas-selection";
 import {
+  activeDesktopRevealLevelAtom,
   activeMobileSheetsAtom,
   activeRevealPresentationAtom,
+  activeSelectionAtom,
+  inspectRunNodeAtom,
   openInspectorSectionAtom,
+  openMobileAddressSheetAtom,
+  openMobileInspectorOverAddressAtom,
   openMobileSheetAtom,
   openNodeRevealFromOriginAtom,
   openWorkspaceRevealAtom,
@@ -28,6 +36,14 @@ export type ShownInspectorSection = {
   inspected: InspectedObject;
   section: string | null;
 } | null;
+
+/** Which run node a run address shows, as `inspectRunNodeAtom` records it. */
+type RunNodeInspection = {
+  address: WorkspaceAddress;
+  nodeId: string;
+  executionLogId: string | null;
+  selectsNode: boolean;
+};
 
 /**
  * The inspector actions of the viewport's form factor. At `md` and wider they
@@ -71,6 +87,36 @@ export type RevealNavigation = {
    * selection, so on desktop this does nothing.
    */
   followSelection: (address: WorkspaceAddress) => void;
+  /**
+   * Show a node pressed on a canvas outside a run once the press has written
+   * the selection. Desktop reopens a closed Canvas Reveal when the address
+   * follows its selection and holds `nodeId` alone; below `md` the inspector
+   * of the address opens.
+   */
+  showPressedNode: (input: {
+    address: WorkspaceAddress;
+    nodeId: string;
+  }) => void;
+  /**
+   * Record which run node a run address shows. With `opensEvidence` the node's
+   * evidence shows: Canvas Reveal at Focus, or the evidence inspector over the
+   * run's address sheet. Without it the run's Browse shows, which below `md`
+   * opens the run's address sheet.
+   */
+  inspectRunNode: (
+    input: RunNodeInspection & { opensEvidence: boolean }
+  ) => void;
+  /**
+   * Show a node pressed on a run's canvas: a step's evidence, or a Group card's
+   * run summary, which has no evidence. On desktop a press that opens a closed
+   * Reveal is recorded so Back closes it again, and opens it without writing
+   * the Reveal preference.
+   */
+  pressRunCanvasNode: (input: {
+    address: WorkspaceAddress;
+    nodeId: string;
+    isGroup: boolean;
+  }) => void;
 };
 
 const desktopShownSectionAtom = atom((get): ShownInspectorSection => {
@@ -80,7 +126,9 @@ const desktopShownSectionAtom = atom((get): ShownInspectorSection => {
 
 const mobileShownSectionAtom = atom((get): ShownInspectorSection => {
   const top = get(activeMobileSheetsAtom).at(-1);
-  return top ? { inspected: top.inspected, section: top.section } : null;
+  return top?.inspected
+    ? { inspected: top.inspected, section: top.section }
+    : null;
 });
 
 /**
@@ -94,7 +142,28 @@ export function useRevealNavigation(): RevealNavigation {
 
   return useMemo((): RevealNavigation => {
     const node = (id: string): InspectedObject => ({ kind: "node", id });
+    const recordRunCanvasPress = (
+      input: { address: WorkspaceAddress; nodeId: string },
+      closedReopenLevel: OpenRevealLevel | null
+    ) =>
+      store.set(runEvidenceOriginAtom, {
+        addressId: workspaceAddressId(input.address),
+        nodeId: input.nodeId,
+        logId: null,
+        closedReopenLevel,
+      });
     if (isMobile) {
+      const inspectRunNode: RevealNavigation["inspectRunNode"] = (input) => {
+        store.set(inspectRunNodeAtom, { ...input, opensFocus: false });
+        if (input.opensEvidence) {
+          store.set(openMobileInspectorOverAddressAtom, {
+            address: input.address,
+            inspected: node(input.nodeId),
+          });
+        } else {
+          store.set(openMobileAddressSheetAtom, input.address);
+        }
+      };
       return {
         openNode: ({ address, nodeId, level }) =>
           store.set(openMobileSheetAtom, {
@@ -118,8 +187,25 @@ export function useRevealNavigation(): RevealNavigation {
         shownSectionAtom: mobileShownSectionAtom,
         openInspector: openSheet,
         followSelection: openSheet,
+        showPressedNode: ({ address }) => openSheet(address),
+        inspectRunNode,
+        pressRunCanvasNode: (input) => {
+          recordRunCanvasPress(input, null);
+          inspectRunNode({
+            address: input.address,
+            nodeId: input.nodeId,
+            executionLogId: null,
+            selectsNode: true,
+            opensEvidence: !input.isGroup,
+          });
+        },
       };
     }
+    const inspectRunNode: RevealNavigation["inspectRunNode"] = ({
+      opensEvidence,
+      ...input
+    }) =>
+      store.set(inspectRunNodeAtom, { ...input, opensFocus: opensEvidence });
     return {
       openNode: ({ address, nodeId, level, origin }) => {
         if (origin !== undefined) {
@@ -147,6 +233,41 @@ export function useRevealNavigation(): RevealNavigation {
       openInspector: (address) =>
         store.set(setWorkspaceRevealLevelAtom, { address, level: "browse" }),
       followSelection: () => {},
+      showPressedNode: ({ address, nodeId }) => {
+        if (
+          revealFollowsSelection(address.key.workspace) &&
+          selectedObject(store.get(activeSelectionAtom))?.id === nodeId &&
+          store.get(activeDesktopRevealLevelAtom) === "closed"
+        ) {
+          store.set(setWorkspaceRevealLevelAtom, {
+            address,
+            level: store.get(activeRevealPresentationAtom).reopenLevel,
+          });
+        }
+      },
+      inspectRunNode,
+      pressRunCanvasNode: (input) => {
+        const opensFromClosed =
+          store.get(activeDesktopRevealLevelAtom) === "closed";
+        const { reopenLevel } = store.get(activeRevealPresentationAtom);
+        recordRunCanvasPress(input, opensFromClosed ? reopenLevel : null);
+        inspectRunNode({
+          address: input.address,
+          nodeId: input.nodeId,
+          executionLogId: null,
+          selectsNode: true,
+          opensEvidence: !input.isGroup,
+        });
+        if (opensFromClosed && input.isGroup) {
+          // A Group frame's summary shows in Browse, which Runs limits the
+          // reopen level to. The address level is written without the
+          // preference, as a step's Focus is.
+          store.set(setWorkspaceRevealLevelAtom, {
+            address: input.address,
+            level: reopenLevel,
+          });
+        }
+      },
     };
   }, [isMobile, openSheet, store]);
 }

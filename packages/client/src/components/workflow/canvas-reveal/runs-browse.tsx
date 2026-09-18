@@ -2,9 +2,9 @@ import { useAtomValue, useSetAtom } from "jotai";
 import { useRef } from "react";
 import { cn } from "@wfgraph/shared/utils";
 import { RunsPanelActions } from "#src/components/workflow/node-config-panel";
+import { runEvidenceOriginAtom } from "#src/components/workflow/run-evidence-origin";
 import {
   runBrowseFocusRequestAtom,
-  runEvidenceOriginAtom,
   useChooseRunExecution,
   useInspectRunLog,
   useRunGroupSummary,
@@ -35,6 +35,7 @@ import { useAfterCommit } from "#src/hooks/effects";
 import { executionOverlayGraphAtom } from "#src/lib/workflow-graph-store";
 import { groupLabel } from "#src/lib/workflow-graph-types";
 import {
+  type OpenRevealLevel,
   type WorkspaceAddress,
   workspaceAddressId,
   workspaceRouteSearch,
@@ -57,7 +58,13 @@ import type {
   RevealKind,
   RevealKindHeaderProps,
 } from "./reveal-kinds";
-import { useInspectorScroll } from "./use-inspector-scroll";
+import type { MobileRevealState } from "./canvas-reveal-state";
+import {
+  MobileSheetHeader,
+  type MobileSheetControls,
+} from "./mobile-sheet-header";
+import type { RevealSubject } from "./reveal-subject";
+import { useAddressBodyScroll } from "./use-address-body-scroll";
 
 /** The Focus toggle's text on Runs, whose Focus shows a node's evidence. */
 const RUNS_FOCUS_TOGGLE_TEXT = {
@@ -144,16 +151,15 @@ function runsHeaderModel(input: {
 }
 
 /**
- * The Runs header. It reads the run the route opens through the same cached
- * queries the Runs body observes, and a Group's status from the run status
- * projection, so it adds no request of its own. At Focus it names the node
- * from the same evidence the body shows.
+ * The Runs header model for `subject` at `level`. It reads the run the route
+ * opens through the same cached queries the Runs body observes, and a Group's
+ * status from the run status projection, so it adds no request of its own. At
+ * Focus it names the node from the same evidence the body shows.
  */
-export function RunsHeader({
-  subject,
-  level,
-  controls,
-}: RevealKindHeaderProps) {
+function useRunsHeaderModel(
+  subject: RevealSubject,
+  level: OpenRevealLevel
+): RevealHeaderModel {
   const workflowName = useAtomValue(currentWorkflowNameAtom);
   const openRun = useOpenRunIdentity();
   const shownRun = openRun?.kind === "run" ? openRun : null;
@@ -184,11 +190,47 @@ export function RunsHeader({
             status: groupSummary.status,
           }
         : { kind: "run" };
+  return runsHeaderModel({ workflowName, openRun, target });
+}
+
+/**
+ * The Runs header on a mobile sheet, from the same model as `RunsHeader`. Back
+ * is named for the level before the sheet's own in the model's path, and a
+ * model with no Back offers Close.
+ */
+export function RunsMobileHeader({
+  state,
+  controls,
+}: {
+  state: MobileRevealState;
+  controls: MobileSheetControls;
+}) {
+  const model = useRunsHeaderModel(
+    state.subject,
+    state.level === "inspector" ? "focus" : "browse"
+  );
+  return (
+    <MobileSheetHeader
+      backLabel={model.showsBack ? (model.path.at(-2) ?? "Back") : null}
+      controls={controls}
+      inspectorLabel={RUNS_FOCUS_TOGGLE_TEXT.browse}
+      status={model.status}
+      title={model.title}
+    />
+  );
+}
+
+/** The Runs header in Canvas Reveal, built from `useRunsHeaderModel`. */
+export function RunsHeader({
+  subject,
+  level,
+  controls,
+}: RevealKindHeaderProps) {
   return (
     <RevealHeader
       controls={controls}
       level={level}
-      model={runsHeaderModel({ workflowName, openRun, target })}
+      model={useRunsHeaderModel(subject, level)}
     />
   );
 }
@@ -284,6 +326,10 @@ export const unwindRuns: NonNullable<RevealKind["unwind"]> = ({
   replaceRouteSearch({ view: "runs" });
 };
 
+/** Canvas Reveal or the mobile Reveal sheet around a Runs body. */
+const REVEAL_SURFACE_SELECTOR =
+  '[data-slot="canvas-reveal"], [data-slot="mobile-reveal"]';
+
 /**
  * Runs in Canvas Reveal, at both levels. Browse shows the run list, or the run
  * the route opens with its summary, waits, exit and failure details, journey,
@@ -291,7 +337,7 @@ export const unwindRuns: NonNullable<RevealKind["unwind"]> = ({
  * overview stays mounted, hidden, while Focus shows, so returning keeps its
  * state; the run list's scroll and each overview's scroll are kept per address.
  */
-export function RunsBody({ subject, frame, level }: RevealBodyProps) {
+export function RunsBody({ subject, frame, level, mobile }: RevealBodyProps) {
   const runs = useWorkflowRuns();
   const address = useAtomValue(activeWorkspaceAddressAtom);
   const focusRequest = useAtomValue(runBrowseFocusRequestAtom);
@@ -331,16 +377,7 @@ export function RunsBody({ subject, frame, level }: RevealBodyProps) {
     onScroll,
     onScrollEnd,
     adoptScroll,
-  } = useInspectorScroll(
-    showsScroller
-      ? {
-          address,
-          addressId: workspaceAddressId(address),
-          inspectedId: null,
-          level: "browse",
-        }
-      : null
-  );
+  } = useAddressBodyScroll(showsScroller ? address : null, mobile);
 
   // A focused row has scrolled the list to itself, and that position replaces
   // the stored one. With the row gone, the Reveal title takes focus.
@@ -351,7 +388,7 @@ export function RunsBody({ subject, frame, level }: RevealBodyProps) {
       return;
     }
     rootRef.current
-      ?.closest('[data-slot="canvas-reveal"]')
+      ?.closest(REVEAL_SURFACE_SELECTOR)
       ?.querySelector<HTMLElement>('[data-slot="reveal-title"]')
       ?.focus();
   };
@@ -366,7 +403,7 @@ export function RunsBody({ subject, frame, level }: RevealBodyProps) {
     }
     setFocusRequest(null);
     rootRef.current
-      ?.closest('[data-slot="canvas-reveal"]')
+      ?.closest(REVEAL_SURFACE_SELECTOR)
       ?.parentElement?.querySelector<HTMLElement>(
         `.react-flow__node[data-id="${CSS.escape(canvasFocusNodeId)}"]`
       )
@@ -422,7 +459,7 @@ export function RunsBody({ subject, frame, level }: RevealBodyProps) {
             // A new run starts from its own journey selection and focus.
             key={openRun.run.execution.id}
             onFocusRestored={() => setFocusRequest(null)}
-            onSelectLog={(log) => inspectLog(log, { opensFocus: true })}
+            onSelectLog={inspectLog}
             scroll={{ ref: scrollRef, onScroll, onScrollEnd }}
           />
         </div>

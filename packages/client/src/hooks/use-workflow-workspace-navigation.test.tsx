@@ -216,7 +216,7 @@ describe("useWorkflowWorkspaceNavigation", () => {
   describe("below md", () => {
     afterEach(() => setViewportWidth(1440));
 
-    it("opens the configuration sheet for Runs and Changes over a Draft sheet, and closes it on return to Draft", async () => {
+    it("opens the Runs address sheet and the Changes configuration sheet over a Draft sheet, and closes the configuration sheet on return to Draft", async () => {
       setViewportWidth(390);
       const { store, router, click, view } = await renderSwitcher(
         "/workflows/workflow_1"
@@ -232,7 +232,15 @@ describe("useWorkflowWorkspaceNavigation", () => {
       await waitFor(() =>
         expect(router.state.location.search).toEqual({ view: "runs" })
       );
-      await waitFor(() => expect(configurationSheet()).not.toBeNull());
+      expect(configurationSheet()).toBeNull();
+      expect(store.get(activeMobileSheetsAtom)).toEqual([
+        {
+          level: "summary",
+          inspected: null,
+          scroll: 0,
+          section: null,
+        },
+      ]);
 
       click("Changes");
       await waitFor(() =>
@@ -247,6 +255,27 @@ describe("useWorkflowWorkspaceNavigation", () => {
       expect(
         store.get(activeMobileSheetsAtom).map((sheet) => sheet.level)
       ).toEqual(["summary"]);
+    });
+
+    it("closes the Changes configuration sheet when the view becomes Runs, where the Runs address sheet shows", async () => {
+      setViewportWidth(390);
+      const { store, router, click, view } = await renderSwitcher(
+        "/workflows/workflow_1"
+      );
+      const configurationSheet = () =>
+        view.queryByTestId(`overlay:${ConfigurationOverlay.name}`);
+
+      click("Changes");
+      await waitFor(() => expect(configurationSheet()).not.toBeNull());
+
+      click("Runs");
+      await waitFor(() =>
+        expect(router.state.location.search).toEqual({ view: "runs" })
+      );
+      await waitFor(() => expect(configurationSheet()).toBeNull());
+      expect(
+        store.get(activeMobileSheetsAtom).map((sheet) => sheet.inspected)
+      ).toEqual([null]);
     });
   });
 });

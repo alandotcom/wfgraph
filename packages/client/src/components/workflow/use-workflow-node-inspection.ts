@@ -1,7 +1,5 @@
 import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { useCallback } from "react";
-import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
-import { useIsMobile } from "#src/hooks/use-mobile";
 import {
   activeComparisonAtom,
   setComparisonSubviewAtom,
@@ -14,39 +12,22 @@ import {
   selectOnlyNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
-import {
-  revealFollowsSelection,
-  workspaceAddressId,
-} from "#src/lib/workflow-navigation-state";
-import { selectedObject } from "#src/lib/canvas-selection";
 import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import {
-  activeSelectionAtom,
   activeWorkspaceAddressAtom,
   clearRunNodeInspectionAtom,
-  inspectRunNodeAtom,
-  setWorkspaceRevealLevelAtom,
 } from "#src/lib/workflow-workspace-navigation";
-import {
-  canvasRevealAtom,
-  reopenCanvasRevealAtom,
-} from "./canvas-reveal/canvas-reveal-state";
-import { runEvidenceOriginAtom } from "./use-run-node-evidence";
+import { useRevealNavigation } from "./canvas-reveal/use-reveal-navigation";
 
 /**
- * Select a displayed node and reveal the inspector appropriate to its
- * workspace. In a workspace whose Canvas Reveal follows the selection,
- * selecting the node that is already the sole selection reopens a closed
- * Canvas Reveal at its saved level. On a run's canvas on desktop, selecting a
- * node opens Canvas Reveal at Focus on its evidence, and selecting a Group
- * frame, which has no evidence, opens a closed Reveal at its reopen level,
- * where the Group's run summary shows. Neither opening writes a Reveal
- * preference, and an opening from a closed Reveal is recorded so Back closes
- * Reveal again. The
- * `selectionApplied` option skips the selection write when React Flow's own
- * `select` handling already applied it, such as a click on the editable Draft
- * canvas where a modifier click adds to a multi-selection instead of replacing
- * it.
+ * Select a displayed node and reveal the inspector for its workspace and form
+ * factor. On a run's canvas a step shows its evidence and a Group frame, which
+ * has no evidence, shows its run summary, through
+ * `RevealNavigation.pressRunCanvasNode`. Anywhere else the node is selected and
+ * `RevealNavigation.showPressedNode` shows it. The `selectionApplied` option
+ * skips the selection write when React Flow's own `select` handling already
+ * applied it, such as a click on the editable Draft canvas where a modifier
+ * click adds to a multi-selection instead of replacing it.
  */
 export function useWorkflowNodeInspection(): (
   nodeId: string,
@@ -58,46 +39,21 @@ export function useWorkflowNodeInspection(): (
   const workspaceView = useAtomValue(workflowWorkspaceViewAtom);
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
   const setComparisonSubview = useSetAtom(setComparisonSubviewAtom);
-  const isMobile = useIsMobile();
-  const { openSheet } = useConfigurationSheet();
+  const navigation = useRevealNavigation();
   const store = useStore();
-  const reopenCanvasReveal = useSetAtom(reopenCanvasRevealAtom);
 
   return useCallback(
     (nodeId, options) => {
-      const isRunsOverlay = workspaceView === "runs" && overlayActive;
-      if (isRunsOverlay) {
-        const address = store.get(activeWorkspaceAddressAtom);
+      const address = store.get(activeWorkspaceAddressAtom);
+      if (workspaceView === "runs" && overlayActive) {
         const node = store
           .get(executionOverlayGraphAtom)
           ?.nodes.find((item) => item.id === nodeId);
-        const isGroup = isGroupNode(node);
-        const reveal = store.get(canvasRevealAtom);
-        const opensFromClosed = !isMobile && reveal.level === "closed";
-        store.set(runEvidenceOriginAtom, {
-          addressId: workspaceAddressId(address),
-          nodeId,
-          logId: null,
-          closedReopenLevel: opensFromClosed
-            ? reveal.presentation.reopenLevel
-            : null,
-        });
-        store.set(inspectRunNodeAtom, {
+        navigation.pressRunCanvasNode({
           address,
           nodeId,
-          executionLogId: null,
-          selectsNode: true,
-          opensFocus: !isMobile && !isGroup,
+          isGroup: isGroupNode(node),
         });
-        if (opensFromClosed && isGroup) {
-          // A Group frame's summary shows in Browse, which Runs limits the
-          // reopen level to. The address level is written without the
-          // preference, as a step's Focus is.
-          store.set(setWorkspaceRevealLevelAtom, {
-            address,
-            level: reveal.presentation.reopenLevel,
-          });
-        }
         return;
       }
       if (!options?.selectionApplied) {
@@ -109,22 +65,13 @@ export function useWorkflowNodeInspection(): (
           subview: "properties",
         });
       }
-      if (isMobile) {
-        openSheet();
-      } else if (
-        revealFollowsSelection(workspaceView) &&
-        selectedObject(store.get(activeSelectionAtom))?.id === nodeId
-      ) {
-        reopenCanvasReveal();
-      }
+      navigation.showPressedNode({ address, nodeId });
     },
     [
       comparisonActive,
       currentWorkflowId,
-      isMobile,
-      openSheet,
+      navigation,
       overlayActive,
-      reopenCanvasReveal,
       selectOnlyNode,
       setComparisonSubview,
       store,

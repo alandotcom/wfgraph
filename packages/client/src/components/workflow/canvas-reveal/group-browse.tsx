@@ -1,5 +1,4 @@
-import { useNavigate } from "@tanstack/react-router";
-import { useAtomValue, useSetAtom, useStore } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import { sortBy } from "es-toolkit/array";
 import { ArrowDown, ArrowRight } from "lucide-react";
 import { useMemo } from "react";
@@ -10,6 +9,7 @@ import {
   useFocusedGroupDirection,
   useTopologyCapabilities,
 } from "#src/components/workflow/canvas-interaction";
+import { useFocusWorkflowNode } from "#src/components/workflow/use-focus-workflow-node";
 import { can } from "#src/lib/authorization";
 import {
   edgesAtom,
@@ -23,15 +23,7 @@ import {
   type WorkflowNode,
 } from "#src/lib/workflow-graph-types";
 import { workflowIssuesAtom } from "#src/lib/workflow-issues-store";
-import {
-  scopeOfNode,
-  workspaceAddressId,
-  workspaceRouteSearch,
-} from "#src/lib/workflow-navigation-state";
-import {
-  activeWorkspaceAddressAtom,
-  setWorkspaceSelectionAtom,
-} from "#src/lib/workflow-workspace-navigation";
+import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { isGeneratingAtom } from "#src/lib/workflow-ui-store";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { cn } from "@wfgraph/shared/utils";
@@ -47,8 +39,6 @@ import {
 } from "@wfgraph/shared/graph/node-group";
 import type { GroupLayoutDirection } from "@wfgraph/shared/graph/schemas";
 import type { RevealBodyProps } from "./reveal-kinds";
-import { requestRevealPlacementAtom } from "./reveal-requests";
-import { useRevealNavigation } from "./use-reveal-navigation";
 import { EnterGroupButton, NodeIssueList, Section } from "./reveal-sections";
 
 /**
@@ -178,37 +168,6 @@ function orderedMemberIds(input: {
 }
 
 /**
- * Opens a Group member from the overview: selects it on its Group's focused
- * canvas, asks the camera to place it, and pushes that Group's route, so the
- * member's own inspector opens. `useFocusWorkflowNode` also reaches the Reveal
- * state through the step inspection hook, which imports this module back.
- */
-function useOpenGroupMember(): (nodeId: string) => void {
-  const store = useStore();
-  const navigate = useNavigate({ from: "/workflows/$workflowId" });
-  const setWorkspaceSelection = useSetAtom(setWorkspaceSelectionAtom);
-  const requestPlacement = useSetAtom(requestRevealPlacementAtom);
-  const navigation = useRevealNavigation();
-  return (nodeId) => {
-    const active = store.get(activeWorkspaceAddressAtom);
-    const target = {
-      ...active,
-      scope: scopeOfNode(store.get(nodesAtom), nodeId),
-    };
-    setWorkspaceSelection({
-      address: target,
-      selection: { nodeIds: [nodeId], edgeIds: [] },
-    });
-    requestPlacement({
-      addressId: workspaceAddressId(target),
-      nodeIds: [nodeId],
-    });
-    void navigate({ search: workspaceRouteSearch(target) });
-    navigation.followSelection(target);
-  };
-}
-
-/**
  * Each step of the Group `groupId` as a button, with its issue count when it
  * has issues. Choosing a step enters the Group and selects that step, which
  * opens its own inspector.
@@ -218,7 +177,8 @@ function GroupStepLinks({ groupId }: { groupId: string }) {
   const nodes = useAtomValue(nodesAtom);
   const edges = useAtomValue(edgesAtom);
   const issues = useAtomValue(workflowIssuesAtom);
-  const openMember = useOpenGroupMember();
+  const workflowId = useAtomValue(currentWorkflowIdAtom);
+  const focusNode = useFocusWorkflowNode();
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const memberIds = orderedMemberIds({ nodes, edges, groupId });
   if (memberIds.length === 0) {
@@ -240,7 +200,11 @@ function GroupStepLinks({ groupId }: { groupId: string }) {
             <button
               aria-label={issueText ? `${title}, ${issueText}` : title}
               className="grid min-h-9 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 rounded-sm px-2 py-1.5 text-left transition-colors duration-100 hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
-              onClick={() => openMember(nodeId)}
+              onClick={() => {
+                if (workflowId) {
+                  focusNode({ nodeId, workflowId });
+                }
+              }}
               type="button"
             >
               <span className="truncate text-sm">{title}</span>

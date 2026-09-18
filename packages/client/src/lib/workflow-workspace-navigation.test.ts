@@ -34,6 +34,8 @@ import {
   activeDesktopRevealLevelAtom,
   activeMobileSheetsAtom,
   closeMobileSheetAtom,
+  openMobileAddressSheetAtom,
+  openMobileInspectorOverAddressAtom,
   openMobileSheetAtom,
   activeRevealPresentationAtom,
   activeSelectionAtom,
@@ -534,6 +536,43 @@ describe("cameras", () => {
 });
 
 describe("mobile Reveal sheets", () => {
+  it("carries a Runs sequence to the address the route names next, and never across workspaces", () => {
+    const store = draftStore();
+    const inspectedIds = () =>
+      store.get(activeMobileSheetsAtom).map((sheet) => sheet.inspected?.id);
+    showWorkspaceRoute(store, { view: "runs" });
+    expect(inspectedIds()).toEqual([]);
+    store.set(
+      openMobileAddressSheetAtom,
+      store.get(activeWorkspaceAddressAtom)
+    );
+
+    showWorkspaceRoute(store, { view: "runs", executionId: "exec_1" });
+    expect(inspectedIds()).toEqual([undefined]);
+    store.set(openMobileInspectorOverAddressAtom, {
+      address: store.get(activeWorkspaceAddressAtom),
+      inspected: { kind: "node", id: "send" },
+    });
+
+    // A Group scope of the same run opens the address sheets beneath the
+    // evidence, so Back from it walks to the run list.
+    showWorkspaceRoute(store, {
+      view: "runs",
+      executionId: "exec_1",
+      group: "group_1",
+    });
+    expect(inspectedIds()).toEqual([undefined]);
+
+    // An address that keeps sheets of its own keeps its depth.
+    showWorkspaceRoute(store, { view: "runs", executionId: "exec_1" });
+    expect(inspectedIds()).toEqual([undefined, "send"]);
+
+    showWorkspaceRoute(store, {});
+    expect(inspectedIds()).toEqual([]);
+    showWorkspaceRoute(store, { view: "runs", executionId: "exec_2" });
+    expect(inspectedIds()).toEqual([]);
+  });
+
   it("keeps each scope's sheets and restores the covered camera on Back", () => {
     const store = draftStore();
     const overview = store.get(activeWorkspaceAddressAtom);
@@ -557,7 +596,7 @@ describe("mobile Reveal sheets", () => {
     expect(store.get(activeMobileSheetsAtom)).toEqual([]);
     store.set(selectOnlyNodeAtom, "child_step");
     expect(
-      store.get(activeMobileSheetsAtom).map((sheet) => sheet.inspected.id)
+      store.get(activeMobileSheetsAtom).map((sheet) => sheet.inspected?.id)
     ).toEqual(["child_step"]);
 
     showWorkspaceRoute(store, {});

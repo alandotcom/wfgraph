@@ -10,8 +10,10 @@ import {
 import { act, fireEvent, render } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { afterEach, describe, expect, it } from "vitest";
-import { useOverlay } from "#src/components/overlays/overlay-provider";
-import { OverlayProvider } from "#src/components/overlays/overlay-provider";
+import {
+  OverlayProvider,
+  useOverlay,
+} from "#src/components/overlays/overlay-provider";
 import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
 import {
   canvasEditingLockedAtom,
@@ -21,18 +23,13 @@ import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import type { WorkflowRouteSearch } from "#src/lib/workflow-navigation-state";
 import { authorizedWorkflowSearch } from "#src/lib/workflow-route-state";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
+import { activeMobileSheetsAtom } from "#src/lib/workflow-workspace-navigation";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
 
 /**
- * The sheet's dismissal contract, driven through the real `OverlayProvider`
- * rather than a rendered sheet.
- *
- * What is under test is which close paths reach the `onClose` this hook
- * registers, and the provider is what decides that: the header button and the
- * drawer's own dismiss call `closeAll`, Escape calls `pop`, and every one of
- * them fires the same callback. Mounting `NodeConfigPanel` to press its X would
- * add an extension catalog and a node selection to each case and measure the
- * same one callback.
+ * Which inspector a narrow viewport opens for the active address. A run opens
+ * its address sheet in the mobile Reveal sequence, which the navigation state
+ * records, and no overlay goes on the stack.
  */
 
 /** A run pinned to the canvas, which is what holds editing locked. */
@@ -64,11 +61,6 @@ function setViewportWidth(width: number): void {
   ).happyDOM.setViewport({ width });
 }
 
-/** Any other overlay, standing in for Test Run or a delete confirmation. */
-function OtherOverlay() {
-  return null;
-}
-
 /**
  * Buttons rather than callbacks captured out of render: assigning to an object
  * declared outside the component is what `react-hooks-js(immutability)` refuses,
@@ -76,7 +68,7 @@ function OtherOverlay() {
  */
 function Host() {
   const { openSheet } = useConfigurationSheet();
-  const { open, closeAll, pop } = useOverlay();
+  const { hasOverlays } = useOverlay();
 
   return (
     <>
@@ -85,13 +77,7 @@ function Host() {
         onClick={() => openSheet()}
         type="button"
       />
-      <button
-        data-testid="open-other"
-        onClick={() => open(OtherOverlay, {})}
-        type="button"
-      />
-      <button data-testid="close-all" onClick={closeAll} type="button" />
-      <button data-testid="pop" onClick={pop} type="button" />
+      <output data-testid="overlays">{String(hasOverlays)}</output>
     </>
   );
 }
@@ -138,7 +124,7 @@ async function renderSheetHost() {
     });
   };
 
-  return { store, router, click };
+  return { store, router, click, view };
 }
 
 describe("useConfigurationSheet", () => {
@@ -146,72 +132,16 @@ describe("useConfigurationSheet", () => {
     setViewportWidth(1024);
   });
 
-  // The workspace switcher is how a narrow viewport reaches the open run,
-  // so closing it has to take the run off the canvas as well. Left pinned, the
-  // canvas refused every edit with no panel on screen to say why (#96).
-  it("preserves the open run when the sheet is dismissed", async () => {
+  it("opens a run's address sheet in place of the configuration sheet and keeps the run", async () => {
     setViewportWidth(500);
-    const { store, router, click } = await renderSheetHost();
-
-    await click("open-sheet");
-    expect(store.get(canvasEditingLockedAtom)).toBe(true);
-
-    await click("close-all");
-
-    expect(store.get(workflowWorkspaceViewAtom)).toBe("runs");
-    expect(router.state.location.search).toEqual({
-      view: "runs",
-      executionId: "exec_1",
-    });
-    expect(store.get(canvasEditingLockedAtom)).toBe(true);
-  });
-
-  // Escape leaves through `pop` rather than `closeAll`; both have to arrive at
-  // the same place, or the bug survives on whichever path was missed.
-  it("preserves the open run when the sheet is popped", async () => {
-    setViewportWidth(500);
-    const { store, router, click } = await renderSheetHost();
-
-    await click("open-sheet");
-    await click("pop");
-
-    expect(store.get(workflowWorkspaceViewAtom)).toBe("runs");
-    expect(router.state.location.search).toEqual({
-      view: "runs",
-      executionId: "exec_1",
-    });
-  });
-
-  // Opening another overlay replaces the stack rather than stacking on it, so
-  // the sheet is gone from screen without anything having dismissed it. Tapping
-  // Test Run from the sheet is the reachable case.
-  it("preserves the open run when another overlay takes the stack", async () => {
-    setViewportWidth(500);
-    const { store, router, click } = await renderSheetHost();
-
-    await click("open-sheet");
-    await click("open-other");
-
-    expect(store.get(workflowWorkspaceViewAtom)).toBe("runs");
-    expect(router.state.location.search).toEqual({
-      view: "runs",
-      executionId: "exec_1",
-    });
-    expect(store.get(canvasEditingLockedAtom)).toBe(true);
-  });
-
-  // Widening past the rail's breakpoint also closes the sheet, and there the
-  // rail has taken the same run over. Exiting then would drop a run the user is
-  // still looking at.
-  it("keeps the run when the sheet gives way to a rail", async () => {
-    setViewportWidth(500);
-    const { store, router, click } = await renderSheetHost();
+    const { store, router, click, view } = await renderSheetHost();
 
     await click("open-sheet");
 
-    setViewportWidth(1200);
-    await click("close-all");
-
+    expect(view.getByTestId("overlays").textContent).toBe("false");
+    expect(
+      store.get(activeMobileSheetsAtom).map((sheet) => sheet.inspected)
+    ).toEqual([null]);
     expect(store.get(workflowWorkspaceViewAtom)).toBe("runs");
     expect(router.state.location.search).toEqual({
       view: "runs",

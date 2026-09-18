@@ -14,7 +14,9 @@ import {
 } from "#src/lib/mobile-sheet-navigation";
 import {
   revealFollowsSelection,
+  usesMobileSheetSequence,
   workspaceAddressId,
+  type CanvasSelection,
   type DesktopScopePresentation,
   type RevealLevel,
   type WorkspaceAddress,
@@ -69,9 +71,10 @@ export const canvasRevealAtom = atom((get): CanvasRevealState => {
 /**
  * What the mobile Reveal sequence shows for the active address: its last sheet
  * and the sheet beneath it, and the level on screen, which is the summary when
- * the subject offers no Focus. Null outside Draft, with no sheet open, or while
- * the selection no longer holds the last sheet's object alone. Form factor is
- * the reader's to check.
+ * the subject offers no Focus. Null in a workspace outside
+ * `usesMobileSheetSequence`, with no sheet open, and while the last sheet's
+ * object is no longer what the subject inspects. Form factor is the reader's to
+ * check.
  */
 export type MobileRevealState = {
   address: WorkspaceAddress;
@@ -89,10 +92,10 @@ export const mobileRevealAtom = atom((get): MobileRevealState | null => {
   const sheets = get(activeMobileSheetsAtom);
   const sheet = sheets.at(-1);
   if (
-    address.key.workspace !== "draft" ||
+    !usesMobileSheetSequence(address.key.workspace) ||
     !sheet ||
     subject === null ||
-    !sameObject(selectedObject(get(activeSelectionAtom)), sheet.inspected)
+    !showsSheet({ subject, sheet, selection: get(activeSelectionAtom) })
   ) {
     return null;
   }
@@ -109,6 +112,28 @@ export const mobileRevealAtom = atom((get): MobileRevealState | null => {
         : "summary",
   };
 });
+
+/**
+ * Whether `sheet` still shows. An address sheet always does. A sheet about an
+ * object shows while the subject still inspects that object: in Runs the node
+ * the run target names, which can be a node no canvas selection holds, and
+ * elsewhere the object the selection holds alone.
+ */
+function showsSheet(input: {
+  subject: RevealSubject;
+  sheet: MobileSheet;
+  selection: CanvasSelection;
+}): boolean {
+  const { inspected } = input.sheet;
+  if (inspected === null) {
+    return true;
+  }
+  if (input.subject.workspace === "runs") {
+    const target = input.subject.runsTarget;
+    return target?.kind === "node" && target.nodeId === inspected.id;
+  }
+  return sameObject(selectedObject(input.selection), inspected);
+}
 
 /**
  * The mobile Reveal state while the viewport is below `md`, and null at wider
@@ -155,12 +180,4 @@ export const toggleCanvasRevealAtom = atom(null, (get, set) => {
     showCanvasRevealLevelAtom,
     level === "closed" ? presentation.reopenLevel : "closed"
   );
-});
-
-/** Open a closed Canvas Reveal at the level its scope reopens at. */
-export const reopenCanvasRevealAtom = atom(null, (get, set) => {
-  const { level, subject, presentation } = get(canvasRevealAtom);
-  if (subject !== null && level === "closed") {
-    set(showCanvasRevealLevelAtom, presentation.reopenLevel);
-  }
 });

@@ -39,7 +39,7 @@ import { useRevealCanvasWidth } from "./use-reveal-width";
  * box, at the fixed width of its Closed, Browse, or Focus level. The subject's
  * kind supplies the header and bodies. Escape, Back, and Close unwind one level
  * at a time and hand focus back to what opened it. Below `md` the mobile Reveal
- * sequence replaces it in Draft, and the configuration sheet elsewhere.
+ * sequence replaces it in Draft and Runs, and the configuration sheet in Changes.
  */
 export function CanvasReveal() {
   const isMobile = useIsMobile();
@@ -70,8 +70,9 @@ export function CanvasReveal() {
   const kind = subject ? revealKind(subject) : null;
 
   // Narrowing past the breakpoint unmounts Reveal. Draft's mobile sequence
-  // follows the same selection by itself. In Runs and Changes the sheet picks
-  // the node up, so one editor is on screen at any width.
+  // follows the same selection by itself. In Runs the run's sheet, and in
+  // Changes the configuration sheet, picks the node up, so one inspector is on
+  // screen at any width.
   useAfterCommit(isMobile, () => {
     if (address.key.workspace !== "draft" && selectedNodeId && !hasOverlays) {
       navigation.followSelection(address);
@@ -230,6 +231,7 @@ export function CanvasReveal() {
         frame={frame}
         key={subject.kind}
         level={displayedLevel}
+        mobile={null}
         openFocus={openFocus}
         scrollToTop={scrollToTop}
         subject={subject}

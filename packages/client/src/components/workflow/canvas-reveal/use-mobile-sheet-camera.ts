@@ -3,6 +3,7 @@ import { useAtomValue } from "jotai";
 import { type RefObject, useRef } from "react";
 import { useAfterPaint } from "#src/hooks/effects";
 import { viewportAnimationDuration } from "#src/lib/motion";
+import { sheetObjectKey } from "#src/lib/mobile-sheet-navigation";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import {
   revealViewport,
@@ -48,7 +49,7 @@ export function useMobileSheetCamera(input: {
       }
     : { addressId, sheet: null };
   const slotKey = next.sheet
-    ? `${next.addressId}|${next.sheet.depth}|${next.sheet.level}|${next.sheet.inspected.kind}:${next.sheet.inspected.id}`
+    ? `${next.addressId}|${next.sheet.depth}|${next.sheet.level}|${sheetObjectKey(next.sheet.inspected)}`
     : next.addressId;
 
   useAfterPaint(slotKey, () => {
