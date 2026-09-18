@@ -100,14 +100,27 @@ export type DesktopScopePresentation = ScopePresentation & {
 };
 
 /**
+ * The execution a person chose among the recorded executions of one run node:
+ * the node's id and the id of that execution's run-log row. The engine writes
+ * one row each time a run reaches the node, and a retry inside one execution
+ * closes that same row again.
+ */
+export type ChosenRunExecution = { nodeId: string; logId: string };
+
+/**
  * `showSuperseded` is whether a run list shows the runs a newer start
  * superseded, on either form factor. Only a run list address reads it.
+ * `chosenExecution` is the execution chosen for the run node whose evidence a run
+ * address shows. It belongs to the node the selection holds alone, or, with
+ * nothing selected, to a node no canvas selection can hold, such as one the
+ * run's graph lacks. Only a run address writes it.
  */
 export type ScopeNavigation = {
   selection: CanvasSelection;
   desktop: DesktopScopePresentation;
   mobile: ScopePresentation;
   showSuperseded: boolean;
+  chosenExecution: ChosenRunExecution | null;
 };
 
 /** A key's overview scope and the one focused Group scope it last held. */
@@ -164,6 +177,7 @@ export const EMPTY_SCOPE_NAVIGATION: ScopeNavigation = {
   },
   mobile: { camera: null },
   showSuperseded: false,
+  chosenExecution: null,
 };
 
 export const EMPTY_WORKFLOW_NAVIGATION: WorkflowNavigation = {
@@ -386,13 +400,38 @@ export function sameSelection(
   );
 }
 
+/**
+ * Write a selection. A chosen run node execution is kept only while the
+ * selection holds its node alone, so selecting anything else never shows a
+ * stale execution.
+ */
 export function withSelection(
   scope: ScopeNavigation,
   selection: CanvasSelection
 ): ScopeNavigation {
-  return sameSelection(scope.selection, selection)
+  if (sameSelection(scope.selection, selection)) {
+    return scope;
+  }
+  const { chosenExecution } = scope;
+  return {
+    ...scope,
+    selection,
+    chosenExecution:
+      chosenExecution !== null &&
+      singleSelectedNodeId(selection) === chosenExecution.nodeId
+        ? chosenExecution
+        : null,
+  };
+}
+
+export function withChosenExecution(
+  scope: ScopeNavigation,
+  chosenExecution: ChosenRunExecution | null
+): ScopeNavigation {
+  return scope.chosenExecution?.nodeId === chosenExecution?.nodeId &&
+    scope.chosenExecution?.logId === chosenExecution?.logId
     ? scope
-    : { ...scope, selection };
+    : { ...scope, chosenExecution };
 }
 
 /** The node id when the selection is exactly one node, otherwise null. */

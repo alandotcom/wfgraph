@@ -18,6 +18,7 @@ import {
   withDesktopRevealLevel,
   withInspectorScroll,
   withInspectorSection,
+  withChosenExecution,
   withSelection,
   withSelectionOpeningReveal,
   withShowSuperseded,
@@ -30,11 +31,13 @@ import {
   type NavigationGraph,
   type OpenRevealLevel,
   type RevealLevel,
+  type ChosenRunExecution,
   type ScopeNavigation,
   type WorkflowNavigation,
   type WorkflowRouteSearch,
   type WorkspaceAddress,
   type WorldCamera,
+  EMPTY_SELECTION,
 } from "#src/lib/workflow-navigation-state";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 
@@ -399,6 +402,107 @@ export const activeShowSupersededAtom = atom(
     set(writeNavigationAtom, address.workflowId, (navigation) =>
       updateScopeNavigation(navigation, address, (scope) =>
         withShowSuperseded(scope, showSuperseded)
+      )
+    );
+  }
+);
+
+/** The run node execution chosen in the active address, or null. */
+export const activeChosenExecutionAtom = atom(
+  (get): ChosenRunExecution | null =>
+    get(activeScopeNavigationAtom).chosenExecution
+);
+
+/**
+ * Show the evidence of one run node in a named run address, in one navigation
+ * write. `selectsNode` selects the node alone, and otherwise the selection is
+ * emptied, for a node the address's canvas cannot select. A non-null
+ * `executionLogId` records that execution as the chosen one. `opensFocus` opens
+ * Canvas Reveal at Focus.
+ */
+export const inspectRunNodeAtom = atom(
+  null,
+  (
+    _get,
+    set,
+    input: {
+      address: WorkspaceAddress;
+      nodeId: string;
+      executionLogId: string | null;
+      selectsNode: boolean;
+      opensFocus: boolean;
+    }
+  ) => {
+    set(writeNavigationAtom, input.address.workflowId, (navigation) =>
+      updateScopeNavigation(navigation, input.address, (scope) => {
+        const selected = withSelection(
+          scope,
+          input.selectsNode
+            ? { nodeIds: [input.nodeId], edgeIds: [] }
+            : EMPTY_SELECTION
+        );
+        const chosen =
+          input.executionLogId === null
+            ? selected
+            : withChosenExecution(selected, {
+                nodeId: input.nodeId,
+                logId: input.executionLogId,
+              });
+        return input.opensFocus
+          ? withDesktopRevealLevel(chosen, "focus")
+          : chosen;
+      })
+    );
+  }
+);
+
+/**
+ * Stop showing run node evidence in the active address: nothing is selected and
+ * no execution is chosen.
+ */
+export const clearRunNodeInspectionAtom = atom(null, (get, set) => {
+  const address = get(activeWorkspaceAddressAtom);
+  set(writeNavigationAtom, address.workflowId, (navigation) =>
+    updateScopeNavigation(navigation, address, (scope) =>
+      withChosenExecution(withSelection(scope, EMPTY_SELECTION), null)
+    )
+  );
+});
+
+/**
+ * Choose which recorded execution of a run node the active address shows. The
+ * canvas selection is left as it is.
+ */
+export const chooseRunExecutionAtom = atom(
+  null,
+  (get, set, chosen: ChosenRunExecution) => {
+    const address = get(activeWorkspaceAddressAtom);
+    set(writeNavigationAtom, address.workflowId, (navigation) =>
+      updateScopeNavigation(navigation, address, (scope) =>
+        withChosenExecution(scope, chosen)
+      )
+    );
+  }
+);
+
+/**
+ * Close Canvas Reveal for a named address and set the level it reopens at. It
+ * writes no preference cookie, for a close that undoes an opening the person
+ * did not choose as a Reveal level.
+ */
+export const closeWorkspaceRevealAtom = atom(
+  null,
+  (
+    _get,
+    set,
+    input: { address: WorkspaceAddress; reopenLevel: OpenRevealLevel }
+  ) => {
+    set(writeNavigationAtom, input.address.workflowId, (navigation) =>
+      updateScopeNavigation(navigation, input.address, (scope) =>
+        withDesktopRevealLevel(
+          withDesktopRevealLevel(scope, input.reopenLevel),
+          "closed"
+        )
       )
     );
   }

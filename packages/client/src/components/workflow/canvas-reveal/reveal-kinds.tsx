@@ -1,8 +1,8 @@
 /**
- * The subject kinds Canvas Reveal can show, one record each. `header` says who
- * builds the header, `unwind` what Back and Escape do, and `shellOwnsScroll`
- * who scrolls the body. `openFocus(targetId)` shows Focus and focuses the
- * element with that id: a field's config key, or a section heading's id.
+ * The subject kinds Canvas Reveal can show, one record each: `header` builds the
+ * header, `unwind` answers Back and Escape, and `shellOwnsScroll` names the body's
+ * scroller. The shell keys the body by kind, so one component registered as both
+ * `Browse` and `Focus` stays mounted when the level changes.
  */
 
 import type { ComponentType } from "react";
@@ -30,7 +30,8 @@ import { readConfigString } from "@wfgraph/shared/graph/node-config";
 import type { WorkflowIssue } from "@wfgraph/shared/graph/workflow-issues";
 import { isBlank } from "@wfgraph/shared/types/string";
 import { compact } from "es-toolkit/array";
-import type { createStore } from "jotai";
+import type { createStore, Getter } from "jotai";
+import { activeChosenExecutionAtom } from "#src/lib/workflow-workspace-navigation";
 import { ChangesBrowse, ChangesHeader } from "./changes-browse";
 import { ChangesFocus } from "./changes-focus";
 import {
@@ -59,11 +60,16 @@ import {
   type RevealMatchInput,
   type RevealSubject,
 } from "./reveal-subject";
-import { RunsBrowse, RunsHeader, unwindRuns } from "./runs-browse";
+import { RunsBody, RunsHeader, unwindRuns } from "./runs-browse";
 import { StepBrowse } from "./step-browse";
 
 export type RevealBodyProps = {
   subject: RevealSubject;
+  /**
+   * The level the body is shown at. A kind that names one component for both
+   * Browse and Focus reads it, and that component stays mounted between them.
+   */
+  level: OpenRevealLevel;
   frame: NodeConfigFrame;
   /**
    * Show Focus, then focus the element whose id is `targetId`: a field's
@@ -111,9 +117,10 @@ export type RevealKind = {
   id: RevealKindId;
   /**
    * The subject this kind shows for a selection, or null. The subject lists the
-   * open levels it offers, so the kind decides whether Focus exists.
+   * open levels it offers, so the kind decides whether Focus exists. `get`
+   * reads any further state only this kind matches on.
    */
-  match: (input: RevealMatchInput) => RevealSubject | null;
+  match: (input: RevealMatchInput, get: Getter) => RevealSubject | null;
   /** The accessible name of the Reveal region while it shows this kind. */
   regionLabel: string;
   header: RevealKindHeader;
@@ -129,6 +136,11 @@ export type RevealKind = {
     level: OpenRevealLevel;
     store: ReturnType<typeof createStore>;
     unwindLevel: () => void;
+    /**
+     * Hand DOM focus back to what opened Reveal at the next close, for a kind
+     * that closes Reveal through its own write.
+     */
+    returnFocusOnClose: () => void;
     /** Replace the editor route search, adding no history entry. */
     replaceRouteSearch: (search: WorkflowRouteSearch) => void;
   }) => void;
@@ -383,16 +395,23 @@ const LIFECYCLE_KIND: RevealKind = {
 };
 
 /**
- * Runs at Browse: the run list, or the open run's summary, journey, and
- * actions. Its header names the open run, and Back leaves the run for the list.
+ * Runs: the run list, or the open run's summary, journey, and actions in
+ * Browse, and a run node's evidence in Focus. One body renders both levels, so
+ * the run overview keeps its state while Focus shows. Its header names the open
+ * run and the inspected node; Back leaves Focus for the run, and the run for
+ * the list.
  */
 const RUNS_KIND: RevealKind = {
   id: "runs",
-  match: matchRunsSubject,
+  match: (input, get) =>
+    matchRunsSubject({
+      ...input,
+      chosenExecution: get(activeChosenExecutionAtom),
+    }),
   regionLabel: "Runs inspector",
   header: { owner: "kind", Header: RunsHeader },
-  Browse: RunsBrowse,
-  Focus: null,
+  Browse: RunsBody,
+  Focus: RunsBody,
   unwind: unwindRuns,
   focusReturnTarget: canvasNodeElement,
   shellOwnsScroll: false,
@@ -456,9 +475,12 @@ const REVEAL_KINDS_BY_ID: Readonly<Record<RevealKindId, RevealKind>> = {
 };
 
 /** The subject of the first kind that matches the selection, or null. */
-export function revealSubject(input: RevealMatchInput): RevealSubject | null {
+export function revealSubject(
+  input: RevealMatchInput,
+  get: Getter
+): RevealSubject | null {
   for (const kind of REVEAL_KINDS) {
-    const subject = kind.match(input);
+    const subject = kind.match(input, get);
     if (subject) {
       return subject;
     }

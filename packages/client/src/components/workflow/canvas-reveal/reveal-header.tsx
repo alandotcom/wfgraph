@@ -18,8 +18,11 @@ export type RevealHeaderModel = {
   status: { text: string; tone: StatusTone } | null;
   /** Whether Back is offered. Close is always offered. */
   showsBack: boolean;
-  /** The Focus toggle's label while Browse shows, "Focus editor" when absent. */
-  focusLabel?: string | undefined;
+  /**
+   * The Focus toggle's text at Browse and at Focus, for a kind whose Focus is
+   * no editor. Absent, it reads "Focus editor" and "Return to summary".
+   */
+  focusToggleText?: { browse: string; focus: string } | undefined;
 };
 
 /** The shell's level commands and refs, which every header wires to its buttons. */
@@ -88,8 +91,8 @@ export function RevealHeader({
           >
             {level === "focus" ? <Minimize2 /> : <Maximize2 />}
             {level === "focus"
-              ? "Return to summary"
-              : (model.focusLabel ?? "Focus editor")}
+              ? (model.focusToggleText?.focus ?? "Return to summary")
+              : (model.focusToggleText?.browse ?? "Focus editor")}
           </Button>
         ) : null}
         <Button

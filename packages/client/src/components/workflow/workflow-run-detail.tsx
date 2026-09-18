@@ -4,9 +4,7 @@ import { getRelativeTime } from "@wfgraph/shared/utils/time";
 import { parseConditionModel } from "@wfgraph/shared/conditions/conditions";
 import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { Button } from "#src/components/ui/button";
-import { useAfterCommit } from "#src/hooks/effects";
 import {
-  applyExecutionStatusToLogs,
   type ExecutionEvent,
   type ExecutionExit,
   type ExecutionLog,
@@ -14,16 +12,13 @@ import {
   isRunInProgress,
   type WorkflowExecution,
 } from "#src/lib/execution-logs";
-import {
-  executionOverlayGraphAtom,
-  selectedNodeAtom,
-} from "#src/lib/workflow-graph-store";
+import { orderedRunLogs } from "#src/lib/run-node-evidence";
+import { executionOverlayGraphAtom } from "#src/lib/workflow-graph-store";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { findEntity } from "@wfgraph/shared/extensions/catalog";
 import { getEntityConditionFields } from "#src/lib/upstream-node-fields";
 import { ConditionSummary } from "./config/condition-summary";
 import { CollapsibleSection } from "./workflow-run-shared";
-import { WorkflowRunNodeInspector } from "./workflow-run-node-inspector";
 import {
   getRunOutcome,
   WorkflowRunSummaryRow,
@@ -45,10 +40,16 @@ export type WorkflowRunDetailProps = {
   onBack?: (() => void) | undefined;
   onCancel?: ((executionId: string) => void) | undefined;
   onResume?: ((token: string) => void) | undefined;
+  /** A journey entry was chosen, which shows that execution's evidence. */
+  onSelectLog: (log: ExecutionLog) => void;
+  /** The journey entry, by log id, to focus once it renders. */
+  focusLogId?: string | null | undefined;
+  onFocusRestored?: (() => void) | undefined;
+  /** Whether the run summary's heading takes focus when the detail mounts. */
+  focusSummaryOnMount?: boolean | undefined;
   /**
    * The run overview's scroll container binding, for a frame that keeps the
-   * overview's scroll position. The node inspector has scroll containers of its
-   * own and takes no binding.
+   * overview's scroll position.
    */
   scroll?:
     | {
@@ -69,7 +70,8 @@ function exitSummary(input: {
     : `Exited before “${input.nodeLabel}” because the ${input.entityLabel} was no longer eligible.`;
 }
 
-function waitingSummary(wait: ExecutionWait): string {
+/** One sentence naming what a parked wait is waiting for. */
+export function waitingSummary(wait: ExecutionWait): string {
   if (wait.subscribedEvents.length > 0) {
     return `Waiting for ${wait.subscribedEvents.join(", ")}`;
   }
@@ -82,6 +84,11 @@ function waitingSummary(wait: ExecutionWait): string {
   return "Waiting on a timer";
 }
 
+/**
+ * The overview of one run: its summary, active waits, exit details, failure
+ * summary, node journey, and activity. A node's own evidence is shown by the
+ * frame around it, which `onSelectLog` asks for.
+ */
 export function WorkflowRunDetail({
   execution,
   runNumber,
@@ -95,57 +102,21 @@ export function WorkflowRunDetail({
   onBack,
   onCancel,
   onResume,
+  onSelectLog,
+  focusLogId,
+  onFocusRestored,
+  focusSummaryOnMount = false,
   scroll,
 }: WorkflowRunDetailProps) {
-  const selectedNodeId = useAtomValue(selectedNodeAtom);
   const executionGraph = useAtomValue(executionOverlayGraphAtom);
   const catalog = useExtensionCatalog();
-  const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
-  const [returnFocusLogId, setReturnFocusLogId] = useState<string | null>(null);
+  // Whether the summary takes focus is decided once, when the overview mounts.
+  const [focusesSummary] = useState(focusSummaryOnMount);
   // The list row is what cancel paints first. Logs and waits can still be the
   // last in-flight snapshot until their query refetches, so the journey follows
   // the run status the header already shows.
-  const sortedLogs = applyExecutionStatusToLogs(
-    logs,
-    execution.status
-  ).toSorted(
-    (a, b) => new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime()
-  );
+  const sortedLogs = orderedRunLogs(logs, execution.status);
   const activeWaits = isRunInProgress(execution.status) ? waits : [];
-  useAfterCommit(selectedNodeId, () => {
-    const selectedLog = selectedLogId
-      ? sortedLogs.find((log) => log.id === selectedLogId)
-      : undefined;
-    // The canvas owns node selection, so an override from another node is stale
-    // as soon as a direct canvas selection commits.
-    if (selectedLogId !== null && selectedLog?.nodeId !== selectedNodeId) {
-      setSelectedLogId(null);
-    }
-  });
-
-  if (selectedNodeId) {
-    return (
-      <div className="h-full">
-        <WorkflowRunNodeInspector
-          key={`${selectedNodeId}:${selectedLogId ?? ""}`}
-          logs={sortedLogs}
-          selectedLogId={selectedLogId}
-          onBack={() => {
-            setSelectedLogId(null);
-            const selectedLog = sortedLogs.find(
-              (log) => log.id === selectedLogId
-            );
-            if (
-              returnFocusLogId !== selectedLogId ||
-              selectedLog?.nodeId !== selectedNodeId
-            ) {
-              setReturnFocusLogId(null);
-            }
-          }}
-        />
-      </div>
-    );
-  }
 
   const failedLog = sortedLogs.findLast((log) => log.status === "error");
   const exitNodeLabel = exit
@@ -183,7 +154,7 @@ export function WorkflowRunDetail({
     <div className="flex h-full min-h-0 flex-col">
       <WorkflowRunSummaryRow
         execution={execution}
-        focusOnMount={returnFocusLogId === null}
+        focusOnMount={focusesSummary}
         isCanceling={isCanceling}
         onBack={onBack}
         onCancel={isRunInProgress(execution.status) ? onCancel : undefined}
@@ -306,12 +277,10 @@ export function WorkflowRunDetail({
             exit={
               exit && exitNodeLabel ? { nodeLabel: exitNodeLabel } : undefined
             }
-            focusLogId={returnFocusLogId}
+            focusLogId={focusLogId}
             logs={sortedLogs}
-            onSelect={(log) => {
-              setSelectedLogId(log.id);
-              setReturnFocusLogId(log.id);
-            }}
+            onFocusRestored={onFocusRestored}
+            onSelect={onSelectLog}
           />
 
           {events.length > 0 ? (

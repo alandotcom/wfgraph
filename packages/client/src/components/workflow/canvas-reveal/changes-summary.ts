@@ -146,8 +146,11 @@ const SHOWN_STATUS: Record<ComparisonShownStatus, RevealHeaderModel["status"]> =
     "refresh-failed": { text: "Refresh failed", tone: "warning" },
   };
 
-/** The label of the Changes header's Focus toggle while Browse shows. */
-const COMPARE_FIELDS_LABEL = "Compare fields";
+/** The Changes header's Focus toggle text at Browse and at Focus. */
+const COMPARE_FIELDS_TOGGLE_TEXT = {
+  browse: "Compare fields",
+  focus: "Return to summary",
+};
 
 /**
  * The Changes header. Its title names the comparison while one is shown and
@@ -169,7 +172,7 @@ export function changesHeaderModel(input: {
       path: [],
       status: null,
       showsBack: level === "focus",
-      focusLabel: COMPARE_FIELDS_LABEL,
+      focusToggleText: COMPARE_FIELDS_TOGGLE_TEXT,
     };
   }
   const title = comparisonTitle(comparison.payload);
@@ -185,7 +188,7 @@ export function changesHeaderModel(input: {
     path: [input.workflowName || "Untitled workflow", title, ...trail],
     status: SHOWN_STATUS[comparison.status],
     showsBack: level === "focus",
-    focusLabel: COMPARE_FIELDS_LABEL,
+    focusToggleText: COMPARE_FIELDS_TOGGLE_TEXT,
   };
 }
 

@@ -41,7 +41,6 @@ import {
   onNodesChangeAtom,
   redoAtom,
   canvasSelectionAtom,
-  clearSelectionAtom,
   selectOnlyNodeAtom,
   snapshotHistoryAtom,
   undoAtom,
@@ -84,7 +83,10 @@ import { useRevealCamera } from "./canvas-reveal/use-reveal-camera";
 import { useRevealOccupiedWidth } from "./canvas-reveal/use-reveal-width";
 import { CANVAS_OBSTACLE_SLOTS } from "./canvas-reveal/reveal-geometry";
 import { useCollectWorkflowIssues } from "#src/hooks/use-workflow-issues";
-import { useWorkflowNodeInspection } from "./use-workflow-node-inspection";
+import {
+  useClearWorkflowNodeInspection,
+  useWorkflowNodeInspection,
+} from "./use-workflow-node-inspection";
 import {
   type ContextMenuState,
   useContextMenuHandlers,
@@ -188,7 +190,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const moveComparisonNodes = useSetAtom(moveComparisonNodesAtom);
   const onEdgesChange = useSetAtom(onEdgesChangeAtom);
   const selection = useAtomValue(canvasSelectionAtom);
-  const clearSelection = useSetAtom(clearSelectionAtom);
+  const clearSelection = useClearWorkflowNodeInspection();
   const addNode = useSetAtom(addNodeAtom);
   const connectNodes = useSetAtom(connectNodesAtom);
   const selectOnlyNode = useSetAtom(selectOnlyNodeAtom);

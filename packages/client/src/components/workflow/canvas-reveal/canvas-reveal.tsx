@@ -119,6 +119,7 @@ export function CanvasReveal() {
         level: displayedLevel,
         store,
         unwindLevel,
+        returnFocusOnClose,
         replaceRouteSearch: (search) =>
           void navigate({ search, replace: true }),
       });
@@ -227,6 +228,7 @@ export function CanvasReveal() {
       <Body
         frame={frame}
         key={subject.kind}
+        level={displayedLevel}
         openFocus={openFocus}
         scrollToTop={scrollToTop}
         subject={subject}

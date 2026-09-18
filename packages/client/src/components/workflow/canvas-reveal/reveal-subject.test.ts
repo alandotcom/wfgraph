@@ -14,6 +14,7 @@ import {
   matchStepSubject,
   revealFocusTarget,
   type RevealMatchInput,
+  type RunsMatchInput,
 } from "./reveal-subject";
 
 function action(id: string, actionType?: string): WorkflowNode {
@@ -60,6 +61,12 @@ const input = (
   nodes,
   edges,
 });
+
+/** The Runs kind's input: the shared input with no execution chosen. */
+const runsInput = (
+  workspace: RevealMatchInput["workspace"],
+  nodeIds: string[]
+): RunsMatchInput => ({ ...input(workspace, nodeIds), chosenExecution: null });
 
 describe("isOrdinaryStep", () => {
   it("accepts Actions and Waits and refuses the Lifecycle Node, Conditions, and Event Splits", () => {
@@ -181,15 +188,15 @@ describe("matchPanelSubject", () => {
 });
 
 describe("matchRunsSubject", () => {
-  it("always shows Runs at Browse, placing the selected node or the whole graph", () => {
-    expect(matchRunsSubject(input("runs", []))).toMatchObject({
+  it("always shows Runs, placing the selected node or the whole graph", () => {
+    expect(matchRunsSubject(runsInput("runs", []))).toMatchObject({
       kind: "runs",
       key: "graph",
       nodeId: null,
       placement: { kind: "graph" },
       levels: ["browse"],
     });
-    expect(matchRunsSubject(input("runs", ["send"]))).toMatchObject({
+    expect(matchRunsSubject(runsInput("runs", ["send"]))).toMatchObject({
       kind: "runs",
       key: "node:send",
       nodeId: "send",
@@ -197,9 +204,38 @@ describe("matchRunsSubject", () => {
     });
   });
 
+  it("offers Focus for a selected node's evidence and never for a Group frame", () => {
+    expect(matchRunsSubject(runsInput("runs", ["send"]))?.levels).toEqual([
+      "browse",
+      "focus",
+    ]);
+    expect(matchRunsSubject(runsInput("runs", ["group"]))).toMatchObject({
+      key: "node:group",
+      nodeId: "group",
+      levels: ["browse"],
+    });
+    expect(
+      matchRunsSubject(runsInput("runs", ["send", "wait"]))?.levels
+    ).toEqual(["browse"]);
+  });
+
+  it("offers Focus for a chosen execution of a node nothing selects", () => {
+    expect(
+      matchRunsSubject({
+        ...runsInput("runs", []),
+        chosenExecution: { nodeId: "removed", logId: "log_1" },
+      })
+    ).toMatchObject({
+      key: "execution-node:removed",
+      nodeId: "removed",
+      placement: { kind: "graph" },
+      levels: ["browse", "focus"],
+    });
+  });
+
   it("refuses Draft and Changes", () => {
-    expect(matchRunsSubject(input("draft", ["send"]))).toBeNull();
-    expect(matchRunsSubject(input("changes", []))).toBeNull();
+    expect(matchRunsSubject(runsInput("draft", ["send"]))).toBeNull();
+    expect(matchRunsSubject(runsInput("changes", []))).toBeNull();
   });
 });
 

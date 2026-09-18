@@ -662,8 +662,7 @@ describe("WorkflowRuns", () => {
     });
 
     expect(await view.findByRole("heading", { name: "Wait" })).toBeTruthy();
-    fireEvent.click(view.getByRole("button", { name: "Technical details" }));
-    fireEvent.click(view.getByRole("tab", { name: "Input" }));
+    expect(view.getByRole("heading", { name: "Input" })).toBeTruthy();
     expect(view.getByText(/invoiceId/)).toBeTruthy();
     expect(store.get(workflowWorkspaceViewAtom)).toBe("runs");
 
@@ -710,6 +709,9 @@ describe("WorkflowRuns", () => {
       ],
     };
     const { view, store } = renderRuns({ executionId: "exec_1" });
+    await waitFor(() =>
+      expect(store.get(executionOverlayGraphAtom)).not.toBeNull()
+    );
 
     fireEvent.click(await view.findByRole("button", { name: /Lifecycle/ }));
 
@@ -719,6 +721,68 @@ describe("WorkflowRuns", () => {
     expect(
       await view.findByRole("heading", { name: "Lifecycle" })
     ).toBeTruthy();
+  });
+
+  it("chooses an execution in place, focuses the evidence heading, and returns focus to the journey entry", async () => {
+    served.items = [execution("exec_1", "completed")];
+    served.graphs = { [versionIdFor("exec_1")]: pinnedGraph("loop_1") };
+    // One run-log row each time the run reached the node: the second row is
+    // the node reached again by a branch run.
+    const nodeExecution = (id: string, status: string, startedAt: string) => ({
+      id,
+      nodeId: "loop_1",
+      nodeName: "Loop step",
+      nodeType: "action",
+      status,
+      startedAt,
+      completedAt: null,
+      duration: null,
+      input: {},
+      output: {},
+      error: status === "error" ? "The branch run's pass was refused" : null,
+    });
+    served.logsByExecutionId = {
+      exec_1: [
+        nodeExecution("log_first", "success", "2026-03-01T10:00:00.000Z"),
+        nodeExecution("log_branch", "error", "2026-03-01T10:00:02.000Z"),
+      ],
+    };
+    const { view, store } = renderRuns({ executionId: "exec_1" });
+    await waitFor(() =>
+      expect(store.get(executionOverlayGraphAtom)).not.toBeNull()
+    );
+
+    fireEvent.click(
+      await view.findByRole("button", { name: "Loop step, Success" })
+    );
+    expect(
+      await view.findByRole("heading", { name: "Execution 1 of 2" })
+    ).toBeTruthy();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        view.getByRole("heading", { name: "loop_1" })
+      )
+    );
+
+    view.getByRole("button", { name: /Execution 2/ }).focus();
+    fireEvent.click(view.getByRole("button", { name: /Execution 2/ }));
+    expect(
+      await view.findByRole("heading", { name: "Execution 2 of 2" })
+    ).toBeTruthy();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        view.getByRole("heading", { name: "loop_1" })
+      )
+    );
+    expect(store.get(selectedNodeAtom)).toBe("loop_1");
+
+    fireEvent.click(view.getByRole("button", { name: "Back to run overview" }));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        view.getByRole("button", { name: "Loop step, Success" })
+      )
+    );
+    expect(store.get(selectedNodeAtom)).toBeNull();
   });
 
   it("shows stored Wait input in the inspector", async () => {
@@ -750,10 +814,7 @@ describe("WorkflowRuns", () => {
       store.set(selectOnlyNodeAtom, "wait_1");
     });
 
-    fireEvent.click(
-      await view.findByRole("button", { name: "Technical details" })
-    );
-    fireEvent.click(view.getByRole("tab", { name: "Input" }));
+    expect(await view.findByRole("heading", { name: "Input" })).toBeTruthy();
     expect(await view.findByText(/inv_9/)).toBeTruthy();
   });
 });

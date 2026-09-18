@@ -9,6 +9,9 @@ import { useNavigate } from "@tanstack/react-router";
 import { atom, useAtom, useAtomValue } from "jotai";
 import {
   type CancelNotDelivered,
+  type ExecutionEvent,
+  type ExecutionLog,
+  type ExecutionWait,
   isRunInProgress,
   type RefusedStart,
   shouldPollExecutionDetail,
@@ -22,6 +25,8 @@ import { useAfterCommit } from "#src/hooks/effects";
 import { orpcQuery, refreshRunHistory } from "#src/lib/rpc-query";
 import { can } from "#src/lib/authorization";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
+import type { PinnedGraphState } from "#src/lib/run-node-evidence";
+import { executionOverlayGraphAtom } from "#src/lib/workflow-graph-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { selectedExecutionIdAtom } from "#src/lib/workflow-ui-store";
 import {
@@ -31,7 +36,7 @@ import {
 import type { WorkflowRunDetailProps } from "./workflow-run-detail";
 
 /** How often a run that is still going gets re-read. */
-const RUN_POLL_MS = 2000;
+export const RUN_POLL_MS = 2000;
 
 const LEFT_THE_LIST_NOTICE =
   "This run is no longer in the runs list. The list shows the newest 50 runs, and a newer start replaces runs in progress for the same entity.";
@@ -42,13 +47,25 @@ const LEFT_THE_LIST_NOTICE =
  */
 export const runRowFocusRequestAtom = atom<string | null>(null);
 
-/** What an open run's detail view shows, before a frame adds its Back. */
-export type OpenRun = Omit<WorkflowRunDetailProps, "onBack" | "scroll">;
+/**
+ * What an open run's detail view shows, before a frame adds its Back, its
+ * journey handling, its focus requests, and its scroll.
+ */
+export type OpenRun = Omit<
+  WorkflowRunDetailProps,
+  | "onBack"
+  | "scroll"
+  | "onSelectLog"
+  | "focusLogId"
+  | "onFocusRestored"
+  | "focusSummaryOnMount"
+>;
 
 /**
  * Which run the route opens, as far as the reads know it. `run` carries the
- * execution from the run list, or from its logs once it has left the list, and
- * its number in the list, which is 0 for a run the list does not hold.
+ * execution from the run list, or from its logs once it has left the list, its
+ * number in the list, which is 0 for a run the list does not hold, the logs,
+ * waits, and events read so far, and whether its pinned graph is on the canvas.
  */
 export type OpenRunIdentity =
   | { kind: "run-loading" }
@@ -58,6 +75,10 @@ export type OpenRunIdentity =
       execution: WorkflowExecution;
       runNumber: number;
       listed: boolean;
+      logs: ExecutionLog[];
+      waits: ExecutionWait[];
+      events: ExecutionEvent[];
+      pinnedGraph: PinnedGraphState;
     };
 
 /**
@@ -74,7 +95,7 @@ export type WorkflowRunsScreen =
   | { kind: "list"; executions: WorkflowExecution[]; settled: boolean }
   | { kind: "run-loading" }
   | { kind: "run-unavailable"; retry: () => void }
-  | { kind: "run"; run: OpenRun };
+  | { kind: "run"; run: OpenRun; pinnedGraph: PinnedGraphState };
 
 export type WorkflowRunsState = {
   screen: WorkflowRunsScreen;
@@ -115,8 +136,9 @@ export interface RunReads {
 
 /**
  * The run list and open-run reads that the Runs header and the Runs body both
- * observe. Each caller builds the same query keys and options here, so the
- * cache answers both from one request and one polling interval.
+ * observe: the list, the open run's logs and events, and whether its pinned
+ * graph read failed. Each caller builds the same query keys and options here,
+ * so the cache answers both from one request and one polling interval.
  */
 function useRunReads(): RunReads {
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
@@ -127,6 +149,9 @@ function useRunReads(): RunReads {
   const showSuperseded = useAtomValue(activeShowSupersededAtom);
   const canReadList = can(WfGraphOperations.workflowGetExecutions.id);
   const canReadLogs = can(WfGraphOperations.workflowGetExecutionLogs.id);
+  const canReadEvents = can(WfGraphOperations.workflowGetExecutionEvents.id);
+  const canReadVersionGraph = can(WfGraphOperations.workflowGetVersionGraph.id);
+  const overlayGraph = useAtomValue(executionOverlayGraphAtom);
 
   // Superseded runs are the ones a newer start displaced. They are hidden by
   // default because a newest-wins workflow makes one on every reschedule, and a
@@ -182,6 +207,34 @@ function useRunReads(): RunReads {
         : false,
   });
 
+  const detailStatus = detailQuery.data?.execution.status ?? listedRun?.status;
+  const eventsQuery = useQuery({
+    ...orpcQuery.workflow.getExecutionEvents.queryOptions({
+      input: { executionId: executionId ?? "" },
+      select: toExecutionEvents,
+    }),
+    enabled: executionId !== undefined && canReadEvents,
+    staleTime: 0,
+    refetchInterval: isRunInProgress(detailStatus) ? RUN_POLL_MS : false,
+  });
+
+  // `ExecutionOverlaySync` reads the pinned graph and puts it on the canvas.
+  // This observer never fetches; it reports whether that read failed.
+  const versionGraphQuery = useQuery({
+    ...orpcQuery.workflow.getVersionGraph.queryOptions({
+      input: {
+        versionId: detailQuery.data?.execution.workflowVersionId ?? "",
+      },
+    }),
+    enabled: false,
+  });
+  const pinnedGraph: PinnedGraphState =
+    overlayGraph !== null
+      ? "ready"
+      : !canReadVersionGraph || versionGraphQuery.isError
+        ? "unavailable"
+        : "loading";
+
   const identity = (): OpenRunIdentity => {
     // A run being read keeps its view whether or not the list behind it still
     // holds a row for it.
@@ -197,6 +250,10 @@ function useRunReads(): RunReads {
       execution,
       runNumber: listedIndex >= 0 ? executions.length - listedIndex : 0,
       listed: listedRun !== undefined,
+      logs: detailQuery.data?.logs ?? [],
+      waits: detailQuery.data?.waits ?? [],
+      events: eventsQuery.data ?? [],
+      pinnedGraph,
     };
   };
 
@@ -230,7 +287,6 @@ export function useWorkflowRuns(): WorkflowRunsState {
   const queryClient = useQueryClient();
   const navigate = useNavigate({ from: "/workflows/$workflowId" });
   const navigateToRunList = useExitRun();
-  const canReadEvents = can(WfGraphOperations.workflowGetExecutionEvents.id);
   const canCancel = can(WfGraphOperations.workflowCancelExecution.id);
   const canResume = can(WfGraphOperations.workflowResumeWait.id);
   // Workspace navigation records whether a route has named a run of this
@@ -260,18 +316,6 @@ export function useWorkflowRuns(): WorkflowRunsState {
         replace: true,
       });
     }
-  });
-
-  const detailStatus =
-    reads.detailQuery.data?.execution.status ?? reads.listedRun?.status;
-  const eventsQuery = useQuery({
-    ...orpcQuery.workflow.getExecutionEvents.queryOptions({
-      input: { executionId: executionId ?? "" },
-      select: toExecutionEvents,
-    }),
-    enabled: executionId !== undefined && canReadEvents,
-    staleTime: 0,
-    refetchInterval: isRunInProgress(detailStatus) ? RUN_POLL_MS : false,
   });
 
   // No `errorMessage`, so the cache toasts what the server said. Cancel refuses
@@ -318,18 +362,17 @@ export function useWorkflowRuns(): WorkflowRunsState {
     if (identity.kind !== "run") {
       return identity;
     }
-    const { execution } = identity;
-    const detail = reads.detailQuery.data;
-    const waits = detail?.waits ?? [];
+    const { execution, waits } = identity;
     return {
       kind: "run",
+      pinnedGraph: identity.pinnedGraph,
       run: {
         execution,
         runNumber: identity.runNumber,
         notice: identity.listed ? undefined : LEFT_THE_LIST_NOTICE,
-        logs: detail?.logs ?? [],
-        events: eventsQuery.data ?? [],
-        exit: detail?.exit ?? null,
+        logs: identity.logs,
+        events: identity.events,
+        exit: reads.detailQuery.data?.exit ?? null,
         waits,
         isCanceling:
           cancelExecution.isPending &&
