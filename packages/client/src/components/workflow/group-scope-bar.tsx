@@ -1,4 +1,4 @@
-import { useAtomValue } from "jotai";
+import { useAtomValue, useAtomValueRawSync } from "jotai";
 import { ArrowLeft } from "lucide-react";
 import { useMemo, useRef } from "react";
 import { Button } from "#src/components/ui/button";
@@ -18,7 +18,8 @@ import { useGroupScopeNavigation } from "./use-group-scope-navigation";
  * Workflow button when the control that entered it is gone.
  */
 export function GroupScopeBar() {
-  const { scope } = useAtomValue(activeWorkspaceAddressAtom);
+  // Workspace synchronization can write the scope before subscriptions mount.
+  const { scope } = useAtomValueRawSync(activeWorkspaceAddressAtom);
   const graph = useAtomValue(presentedGraphAtom);
   const workflowName = useAtomValue(currentWorkflowNameAtom);
   const { leaveGroup } = useGroupScopeNavigation();

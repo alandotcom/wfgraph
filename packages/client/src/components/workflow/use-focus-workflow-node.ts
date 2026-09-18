@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { useAtomValue, useSetAtom, useStore } from "jotai";
+import { useAtomValueRawSync, useSetAtom, useStore } from "jotai";
 import { useCallback } from "react";
 import {
   displayNodesAtom,
@@ -31,8 +31,9 @@ export function useFocusWorkflowNode(): (input: {
   nodeId: string;
   workflowId: string;
 }) => boolean {
-  const nodes = useAtomValue(displayNodesAtom);
-  const workflowId = useAtomValue(currentWorkflowIdAtom);
+  // Draft and route synchronizers can write these before subscriptions mount.
+  const nodes = useAtomValueRawSync(displayNodesAtom);
+  const workflowId = useAtomValueRawSync(currentWorkflowIdAtom);
   const inspectNode = useWorkflowNodeInspection();
   const selectOnlyNode = useSetAtom(selectOnlyNodeAtom);
   const setWorkspaceSelection = useSetAtom(setWorkspaceSelectionAtom);

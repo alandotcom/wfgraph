@@ -19,7 +19,7 @@
     "effect": "catalog:",
     "es-toolkit": "catalog:",
     "graphology": "catalog:",
-    "tailwind-merge": "^3.6.0",
+    "tailwind-merge": "^3.7.0",
     "uuid": "catalog:"
   },
   "devDependencies": {

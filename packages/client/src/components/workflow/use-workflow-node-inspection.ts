@@ -1,4 +1,4 @@
-import { useAtomValue, useSetAtom, useStore } from "jotai";
+import { useAtomValueRawSync, useSetAtom, useStore } from "jotai";
 import { useCallback } from "react";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import {
@@ -29,8 +29,9 @@ export function useWorkflowNodeInspection(): (
   options?: { selectionApplied?: boolean }
 ) => void {
   const selectOnlyNode = useSetAtom(selectOnlyNodeAtom);
-  const overlayActive = useAtomValue(isExecutionOverlayActiveAtom);
-  const workspaceView = useAtomValue(workflowWorkspaceViewAtom);
+  // Route and overlay synchronizers can write these before subscriptions mount.
+  const overlayActive = useAtomValueRawSync(isExecutionOverlayActiveAtom);
+  const workspaceView = useAtomValueRawSync(workflowWorkspaceViewAtom);
   const navigation = useRevealNavigation();
   const store = useStore();
 
@@ -63,8 +64,9 @@ export function useWorkflowNodeInspection(): (
  * selects; elsewhere it is the selection.
  */
 export function useClearWorkflowNodeInspection(): () => void {
-  const overlayActive = useAtomValue(isExecutionOverlayActiveAtom);
-  const workspaceView = useAtomValue(workflowWorkspaceViewAtom);
+  // Route and overlay synchronizers can write these before subscriptions mount.
+  const overlayActive = useAtomValueRawSync(isExecutionOverlayActiveAtom);
+  const workspaceView = useAtomValueRawSync(workflowWorkspaceViewAtom);
   const clearSelection = useSetAtom(clearSelectionAtom);
   const clearRunNodeInspection = useSetAtom(clearRunNodeInspectionAtom);
   return workspaceView === "runs" && overlayActive

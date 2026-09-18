@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { useAtomValue, useSetAtom, useStore } from "jotai";
+import { useAtomValue, useAtomValueRawSync, useSetAtom, useStore } from "jotai";
 import { ChevronLeft } from "lucide-react";
 import { type ReactNode, useMemo, useRef, useState } from "react";
 import { DeleteConfirmDialog } from "#src/components/delete-confirm-dialog";
@@ -46,10 +46,11 @@ import { useRevealCanvasWidth } from "./use-reveal-width";
  */
 export function CanvasReveal() {
   const isMobile = useIsMobile();
-  const reveal = useAtomValue(canvasRevealAtom);
+  // Workspace synchronization can write these before normal subscriptions mount.
+  const reveal = useAtomValueRawSync(canvasRevealAtom);
   const showLevel = useSetAtom(showCanvasRevealLevelAtom);
   const toggle = useSetAtom(toggleCanvasRevealAtom);
-  const selectedNodeId = useAtomValue(selectedNodeAtom);
+  const selectedNodeId = useAtomValueRawSync(selectedNodeAtom);
   const nodes = useAtomValue(nodesAtom);
   const issues = useAtomValue(workflowIssuesAtom);
   const workflowName = useAtomValue(currentWorkflowNameAtom);

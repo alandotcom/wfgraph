@@ -27,7 +27,7 @@ catalog:
   "@effect/sql-sqlite-node": 4.0.0-rc.115
   "@effect/vitest": 4.0.0-rc.115
   # The backend and the editor both log through logtape.
-  "@logtape/logtape": ^2.3.4
+  "@logtape/logtape": ^2.3.5
   "@marcbachmann/cel-js": ^8.0.0
   "@orpc/client": 2.0.0-beta.32
   "@orpc/contract": 2.0.0-beta.32
@@ -37,7 +37,7 @@ catalog:
   "@orpc/tanstack-query": 2.0.0-beta.32
   "@standard-schema/spec": ^1.1.0
   "@testing-library/react": ^16.3.3
-  "@types/react": ^19.2.18
+  "@types/react": ^19.3.0
   "@xyflow/react": ^12.11.6
   # The second foreign Standard Schema library the schema tests are written
   # against, beside zod below.
@@ -50,7 +50,7 @@ catalog:
   # reason: the peer range and the version the workspace resolves have to agree.
   # @hono/node-server names `hono: ^4` as its own peer, so it binds to whichever
   # copy this range resolves.
-  hono: ^4.13.7
+  hono: ^4.13.8
   # @wfgraph/core declares this as a peer dependency, so the host installs the
   # SDK and picks the version inside this range. The example app installs it the
   # way an adopter does, which means the peer range and the version the workspace
@@ -59,18 +59,18 @@ catalog:
   # the same as it does in the other three dependency blocks.
   inngest: ^4.20.0
   postgres: ^3.4.9
-  react: 19.2.8
-  react-dom: 19.2.8
+  react: 19.3.0
+  react-dom: 19.3.0
   tsx: ^4.23.13
   # The RFC 9562 generator behind `generateId` in @wfgraph/shared. Its `v7()` is
   # the only export the repository calls.
   uuid: ^14.0.2
-  vite: ^8.2.2
-  vitest-evals: ^0.16.1
+  vite: ^8.3.0
+  vitest-evals: ^0.17.0
   # The example app writes its Events and its custom action in it, and the schema
   # tests in packages/core and packages/shared use it as the foreign Standard
   # Schema library, beside arktype.
-  zod: ^4.5.4
+  zod: ^4.6.5
 
 # Pins one React copy through the whole graph, including transitive peers. The
 # catalog protocol is how pnpm keeps an override and the catalog entry from
@@ -79,10 +79,9 @@ overrides:
   react: "catalog:"
   react-dom: "catalog:"
   # inngest-cli pins adm-zip to ^0.5.10, which never reaches the patched line;
-  # GHSA-xcpc-8h2w-3j85 (crafted ZIP triggers a 4GB allocation) is fixed in 0.6.0.
-  # That release is also affected by GHSA-vwc7-r8mq-g2x9 (a destination symlink
-  # can redirect extraction), for which adm-zip has no fixed npm release yet.
-  adm-zip: "0.6.0"
+  # GHSA-xcpc-8h2w-3j85 (crafted ZIP triggers a 4GB allocation) and
+  # GHSA-vwc7-r8mq-g2x9 (destination symlink overwrite) are fixed in 0.6.1.
+  adm-zip: "0.6.1"
   # cosmiconfig accepts the vulnerable js-yaml 4.3.1. GHSA-2883-xcg3-v3hh
   # (empty merge sources bypass the merge-key CPU limit) is fixed in 4.3.2.
   "js-yaml@^4": "4.3.2"
@@ -150,10 +149,14 @@ minimumReleaseAgeExclude:
   - "@effect/sql-sqlite-node@4.0.0-rc.115"
   - "@effect/vitest@4.0.0-rc.115"
   - effect@4.0.0-rc.115
-  - fast-check@4.10.0
+  - fast-check@4.10.1
+  - inngest-cli@1.45.1
 
 patchedDependencies:
   # RC4 calls Effect's removed Schema.TaggedErrorClass API. Upstream replaced it
   # with Schema.TaggedError in drizzle-team/drizzle-orm@b1b6cf1 on the unreleased
   # rc5 branch; remove this patch after upgrading to a release containing it.
   drizzle-orm@1.0.0-rc.4: patches/drizzle-orm@1.0.0-rc.4.patch
+  # The timeout plugin captures performance.now without its required receiver,
+  # which Node 26 rejects. Remove this patch after fast-check binds that call.
+  fast-check@4.10.1: patches/fast-check@4.10.1.patch

@@ -8,7 +8,7 @@ import {
   useUpdateNodeInternals,
   type Edge as XYFlowEdge,
 } from "@xyflow/react";
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { useAtom, useAtomValue, useAtomValueRawSync, useSetAtom } from "jotai";
 import {
   type CSSProperties,
   useCallback,
@@ -142,10 +142,12 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   // connection rules read because a Group frame stands for its members.
   // A phone lays a focused Group out top to bottom whatever its stored
   // direction, which changes only what the canvas paints.
-  const canvasGraph = useAtomValue(canvasGraphAtom);
+  // Every raw-sync read below is fed by a synchronizer that can write before
+  // normal subscriptions mount.
+  const canvasGraph = useAtomValueRawSync(canvasGraphAtom);
   const { nodes, edges } = canvasGraph;
-  const graphNodes = useAtomValue(displayNodesAtom);
-  const { scope } = useAtomValue(activeWorkspaceAddressAtom);
+  const graphNodes = useAtomValueRawSync(displayNodesAtom);
+  const { scope } = useAtomValueRawSync(activeWorkspaceAddressAtom);
   const topologyAuthoring = useTopologyAuthoring();
   const { onNodeDoubleClick } = useGroupScopeNavigation();
   const storeEdges = useAtomValue(edgesAtom);
@@ -153,14 +155,14 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   // the overlay is up would write the draft under a canvas that is not showing
   // it. The toolbar's Publish button reads this same atom.
   const editingLocked = useAtomValue(canvasEditingLockedAtom);
-  const overlayActive = useAtomValue(isExecutionOverlayActiveAtom);
-  const executionOverlay = useAtomValue(executionOverlayGraphAtom);
+  const overlayActive = useAtomValueRawSync(isExecutionOverlayActiveAtom);
+  const executionOverlay = useAtomValueRawSync(executionOverlayGraphAtom);
   const comparison = useAtomValue(activeComparisonAtom);
   const comparisonActive = comparison !== null;
-  const workspaceView = useAtomValue(workflowWorkspaceViewAtom);
+  const workspaceView = useAtomValueRawSync(workflowWorkspaceViewAtom);
   const isGenerating = useAtomValue(isGeneratingAtom);
   const workflowGraphUpdate = useAtomValue(workflowGraphUpdateAtom);
-  const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
+  const currentWorkflowId = useAtomValueRawSync(currentWorkflowIdAtom);
   const [showMinimap] = useAtom(showMinimapAtom);
   const revealOccupiedWidth = useRevealOccupiedWidth();
   const onNodesChange = useSetAtom(onNodesChangeAtom);

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useAtomValue, useSetAtom } from "jotai";
+import { useAtomValueRawSync, useSetAtom } from "jotai";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { useAfterCommit } from "#src/hooks/effects";
 import { can } from "#src/lib/authorization";
@@ -29,8 +29,11 @@ const RUN_STATUS_POLL_MS = 500;
  * Private to `RunStatusProjection`, the headless component the editor mounts.
  */
 function useRunStatusProjection(): void {
-  const selectedExecutionId = useAtomValue(selectedExecutionIdAtom);
-  const isExecutionOverlayActive = useAtomValue(isExecutionOverlayActiveAtom);
+  // Route and overlay synchronizers can write these before subscriptions mount.
+  const selectedExecutionId = useAtomValueRawSync(selectedExecutionIdAtom);
+  const isExecutionOverlayActive = useAtomValueRawSync(
+    isExecutionOverlayActiveAtom
+  );
   const setIsExecuting = useSetAtom(isExecutingAtom);
   const projectRunProgress = useSetAtom(projectRunProgressAtom);
 
