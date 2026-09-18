@@ -163,17 +163,21 @@ describe("addedIngressSourceRefusal", () => {
     expect(addedIngressSourceRefusal({ nodes, edges, additions })).toBeNull();
   });
 
-  it("refuses a Cartesian product of Group exits and Group entries", () => {
+  it("refuses a Cartesian product of a Group's continuing ports and Group entries", () => {
+    const edges = [
+      { id: "a1-x", source: "a1", target: "x" },
+      { id: "a2-x", source: "a2", target: "x" },
+    ];
     const additions = fanOutStoreEdges({
       nodes,
-      edges: [],
+      edges,
       sourceId: "a",
       targetId: "b",
       sourceHandle: undefined,
     });
 
     expect(additions).toHaveLength(4);
-    expect(addedIngressSourceRefusal({ nodes, edges: [], additions })).toBe(
+    expect(addedIngressSourceRefusal({ nodes, edges, additions })).toBe(
       'This connection would enter the Group "B" from 2 outlets. A Group is entered from one outlet.'
     );
   });

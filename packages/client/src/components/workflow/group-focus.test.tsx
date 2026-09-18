@@ -67,6 +67,7 @@ import {
   rpcUrl,
   type WorkflowRunRpcFixture,
 } from "#src/lib/rpc-fetch-test-support";
+import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import {
   WfGraphOperationIds,
   WfGraphOperations,
@@ -921,8 +922,8 @@ describe("the focused Group canvas", () => {
         expect.arrayContaining([
           "welcome",
           "case_study",
-          "group-ingress:qualify",
-          "group-continuation:route",
+          " group-ingress:qualify",
+          " group-continuation:route",
         ])
       )
     );
@@ -1132,4 +1133,155 @@ describe("the focused Group canvas", () => {
         ?.connectable
     ).toBeUndefined();
   });
+});
+
+describe("a Group holding a Condition whose False path ends inside it", () => {
+  // `welcome` feeds the Condition `gate`. True leaves the Group for `route`,
+  // and False reaches `case_study`, which ends its path inside the Group.
+  const gate: WorkflowNode = {
+    id: "gate",
+    type: "action",
+    position: { x: 12, y: 96 },
+    parentId: "outreach",
+    extent: "parent",
+    draggable: false,
+    data: {
+      label: "Is reachable",
+      type: "action",
+      config: { actionType: BUILT_IN_ACTION_IDS.condition },
+    },
+  };
+  const graphWith = (direction: "vertical" | "horizontal") => ({
+    nodes: [
+      ...NODES.map((node) =>
+        node.id === "outreach"
+          ? { ...node, data: { ...node.data, config: { direction } } }
+          : node
+      ),
+      gate,
+    ],
+    edges: [
+      EDGES[0],
+      EDGES[1],
+      { id: "welcome-gate", source: "welcome", target: "gate" },
+      {
+        id: "gate-route",
+        source: "gate",
+        target: "route",
+        sourceHandle: "true",
+      },
+      {
+        id: "gate-case",
+        source: "gate",
+        target: "case_study",
+        sourceHandle: "false",
+      },
+    ],
+  });
+
+  it("labels each path end on the collapsed card with its step's title, within its slot", async () => {
+    const graph = {
+      nodes: NODES.filter((node) => node.id !== "route").map((node) =>
+        node.id === "case_study"
+          ? { ...node, data: { ...node.data, label: "" } }
+          : node
+      ),
+      edges: [
+        EDGES[0],
+        { id: "qualify-welcome", source: "qualify", target: "welcome" },
+        { id: "qualify-case", source: "qualify", target: "case_study" },
+      ],
+    };
+    const { view, renderedNodeIds } = await renderEditor("", graph);
+    await waitFor(() => expect(renderedNodeIds()).toContain("outreach"));
+
+    const card = view.getByTestId("group-node-outreach");
+    const labels = [
+      ...card.querySelectorAll<HTMLElement>("[data-slot=outlet-label]"),
+    ];
+    expect(labels.map((label) => label.textContent)).toEqual([
+      "Send welcome back",
+      "Send email",
+    ]);
+    expect(labels.map((label) => label.title)).toEqual([
+      "Send welcome back",
+      "Send email",
+    ]);
+    expect(
+      labels.map((label) => [label.style.left, label.style.maxWidth])
+    ).toEqual([
+      ["25%", "calc(50% - 4px)"],
+      ["75%", "calc(50% - 4px)"],
+    ]);
+    expect(
+      card.querySelector('[aria-label="Group output, Send email"]')
+    ).toBeTruthy();
+  });
+
+  it("names the continuing True outlet on the collapsed card and in its summary", async () => {
+    const { view, store, select, renderedNodeIds } = await renderEditor(
+      "",
+      graphWith("vertical")
+    );
+    await waitFor(() => expect(renderedNodeIds()).toContain("outreach"));
+
+    const card = view.getByTestId("group-node-outreach");
+    const outlet = card.querySelector<HTMLElement>(
+      '[aria-label="Group output, True"]'
+    );
+    expect(outlet?.dataset.handleid).toBe("true");
+    expect(card.querySelector("[data-slot=outlet-label]")?.textContent).toBe(
+      "True"
+    );
+    expect(
+      store
+        .get(canvasEdgesAtom)
+        .filter((edge) => edge.source === "outreach")
+        .map((edge) => [edge.target, edge.sourceHandle])
+    ).toEqual([["route", "true"]]);
+
+    await select("outreach");
+    expect(view.getByRole("list", { name: "Continues from" }).textContent).toBe(
+      "Is reachable (True)"
+    );
+  });
+
+  it.each(["vertical", "horizontal"] as const)(
+    "shows where the False path ends on a %s focused canvas",
+    async (direction) => {
+      const { view, store, renderedNodeIds } = await renderEditor(
+        "?group=outreach",
+        graphWith(direction)
+      );
+      await waitFor(() =>
+        expect(renderedNodeIds()).toEqual(
+          expect.arrayContaining([
+            "welcome",
+            "gate",
+            "case_study",
+            " group-continuation:route",
+            " group-end:case_study",
+          ])
+        )
+      );
+      expect(
+        view.container.querySelector("[data-slot=group-end-stub]")?.textContent
+      ).toBe("Path ends");
+      const gateCard = view.getByTestId("action-node-gate");
+      expect(
+        [...gateCard.querySelectorAll("[data-slot=outlet-label]")].map(
+          (label) => label.textContent
+        )
+      ).toEqual(["True", "False"]);
+      expect(
+        store
+          .get(canvasEdgesAtom)
+          .filter((edge) => edge.source === "gate")
+          .map((edge) => [edge.target, edge.sourceHandle])
+      ).toEqual([
+        ["case_study", "false"],
+        [" group-continuation:route", "true"],
+      ]);
+    }
+  );
 });

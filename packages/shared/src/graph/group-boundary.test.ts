@@ -46,7 +46,6 @@ describe("analyzeGroupBoundaryById", () => {
       internalEntryPorts: [{ nodeId: "a", handle: null }],
       internalContinuation: [{ nodeId: "c", handle: "true" }],
       externalTargets: [{ nodeId: "send", handle: null }],
-      terminalMemberIds: [],
     });
   });
 
@@ -66,7 +65,6 @@ describe("analyzeGroupBoundaryById", () => {
       { nodeId: "a", handle: null },
       { nodeId: "b", handle: null },
     ]);
-    expect(boundary.terminalMemberIds).toEqual(["a", "b"]);
   });
 
   it("names one continuation port that reaches two external targets", () => {
@@ -86,10 +84,9 @@ describe("analyzeGroupBoundaryById", () => {
       { nodeId: "x", handle: "input" },
       { nodeId: "y", handle: null },
     ]);
-    expect(boundary.terminalMemberIds).toEqual([]);
   });
 
-  it("lists a member with no outgoing edge as a terminal path beside a continuing one", () => {
+  it("names the continuing member port beside a member whose path ends inside", () => {
     const nodes: Node[] = [
       member("cond"),
       member("lookup"),
@@ -104,7 +101,6 @@ describe("analyzeGroupBoundaryById", () => {
 
     const boundary = analyzeGroupBoundaryById({ nodes, edges, groupId: "g" });
 
-    expect(boundary.terminalMemberIds).toEqual(["dead-end"]);
     expect(boundary.internalContinuation).toEqual([
       { nodeId: "lookup", handle: null },
     ]);
@@ -143,7 +139,6 @@ describe("analyzeGroupBoundaryById", () => {
     expect(boundary.interiorEdges).toEqual([]);
     expect(boundary.ingressEdges).toEqual([]);
     expect(boundary.continuationEdges).toEqual([]);
-    expect(boundary.terminalMemberIds).toEqual([]);
   });
 
   it("reads a member id that names a prototype member as an ordinary id", () => {
@@ -153,7 +148,6 @@ describe("analyzeGroupBoundaryById", () => {
     const boundary = analyzeGroupBoundaryById({ nodes, edges, groupId: "g" });
 
     expect(boundary.interiorEdges).toEqual(edges);
-    expect(boundary.terminalMemberIds).toEqual(["__proto__"]);
   });
 });
 

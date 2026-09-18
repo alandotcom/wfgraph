@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { BUILT_IN_ACTION_IDS } from "#src/actions/built-in-actions";
+import type { GroupGraphNode } from "#src/graph/group-boundary";
 import {
   groupRunCountsText,
   groupRunStatusLabel,
@@ -9,18 +11,33 @@ import type { WorkflowExecutionStatus } from "#src/lifecycle/execution-contracts
 
 type Edge = { source: string; target: string; sourceHandle?: string };
 
+/** An action node running `actionType`, inside the Group `parentId` when given. */
+function step(
+  id: string,
+  options: { parentId?: string; actionType?: string } = {}
+): GroupGraphNode {
+  return {
+    id,
+    parentId: options.parentId,
+    data: {
+      type: "action",
+      config: { actionType: options.actionType ?? "fountain/get-user" },
+    },
+  };
+}
+
 /**
  * life -> a -> b -> c -> after, with a, b and c in Group g. `terminal` drops the
  * edge from c to after, so the path ends inside the Group.
  */
 function chain(options: { terminal?: boolean } = {}) {
-  const nodes = [
-    { id: "life" },
-    { id: "g" },
-    { id: "a", parentId: "g" },
-    { id: "b", parentId: "g" },
-    { id: "c", parentId: "g" },
-    { id: "after" },
+  const nodes: GroupGraphNode[] = [
+    { id: "life", data: { type: "lifecycle" } },
+    { id: "g", data: { type: "group" } },
+    step("a", { parentId: "g" }),
+    step("b", { parentId: "g" }),
+    step("c", { parentId: "g" }),
+    step("after"),
   ];
   const edges: Edge[] = [
     { source: "life", target: "a", sourceHandle: "started" },
@@ -29,6 +46,18 @@ function chain(options: { terminal?: boolean } = {}) {
     ...(options.terminal ? [] : [{ source: "c", target: "after" }]),
   ];
   return { nodes, edges };
+}
+
+/** The `chain` nodes with the member `id` made a Condition. */
+function conditionAt(id: string): GroupGraphNode[] {
+  return chain().nodes.map((node) =>
+    node.id === id
+      ? step(id, {
+          parentId: "g",
+          actionType: BUILT_IN_ACTION_IDS.condition,
+        })
+      : node
+  );
 }
 
 function summarize(input: {
@@ -105,7 +134,7 @@ describe("summarizeGroupRun", () => {
     // Condition a sends True to b, which continues to after, and False to c,
     // which ends inside the Group.
     const graph = {
-      nodes: chain().nodes,
+      nodes: conditionAt("a"),
       edges: [
         { source: "life", target: "a", sourceHandle: "started" },
         { source: "a", target: "b", sourceHandle: "true" },
@@ -129,9 +158,28 @@ describe("summarizeGroupRun", () => {
     expect(trueBranch.status).toBe("successful");
   });
 
+  it("is Successful when a Condition's unconnected outlet ends the path and the run completed", () => {
+    // Condition c sends True to after and leaves False unconnected, so the
+    // False branch ends at c inside the Group.
+    const graph = {
+      nodes: conditionAt("c"),
+      edges: [
+        ...chain({ terminal: true }).edges,
+        { source: "c", target: "after", sourceHandle: "true" },
+      ],
+    };
+    const evidence = { a: "success", b: "success", c: "success" } as const;
+    expect(
+      summarize({ graph, evidence, executionStatus: "running" }).status
+    ).toBe("reached");
+    expect(
+      summarize({ graph, evidence, executionStatus: "completed" }).status
+    ).toBe("successful");
+  });
+
   it("is Successful once either of two steps the Group's exit leads to has evidence", () => {
     const graph = {
-      nodes: [...chain().nodes, { id: "other" }],
+      nodes: [...chain().nodes, step("other")],
       edges: [...chain().edges, { source: "c", target: "other" }],
     };
     const inside = { a: "success", b: "success", c: "success" } as const;

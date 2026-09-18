@@ -8,6 +8,7 @@ import { useAtomValue } from "jotai";
 import { ArrowRight, Group } from "lucide-react";
 import {
   createContext,
+  Fragment,
   memo,
   type ReactNode,
   useContext,
@@ -18,7 +19,7 @@ import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { useAfterPaint } from "#src/hooks/effects";
 import {
   groupMemberCountAtom,
-  groupOutletHandlesAtom,
+  groupOutletsAtom,
 } from "#src/lib/workflow-graph-presentation-store";
 import {
   COMPARISON_GROUP_ANNOTATION,
@@ -29,7 +30,13 @@ import {
 import { NODE_ICON_CLASS } from "#src/lib/workflow-node-dimensions";
 import { ComparisonMarker } from "#src/components/flow-elements/comparison-marker";
 import { NodeIssueBadge } from "#src/components/flow-elements/node-issue-badge";
+import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { Button } from "#src/components/ui/button";
+import {
+  alongOutletSide,
+  OutletLabel,
+} from "#src/components/workflow/nodes/outlet-label";
+import { groupOutletSlots } from "#src/components/workflow/nodes/group-outlet-slots";
 import { useGroupScopeNavigation } from "#src/components/workflow/use-group-scope-navigation";
 import { useRunGroupSummary } from "#src/components/workflow/use-run-node-evidence";
 import {
@@ -73,11 +80,12 @@ export const GroupNode = memo(({ data, selected, id }: GroupNodeProps) => {
   const { enterGroup } = useGroupScopeNavigation();
   const renderChangedSteps = useContext(GroupChangedStepsSlot);
   // The canvas paints each edge leaving a Group as leaving its frame, keeping
-  // the member's source handle. React Flow draws such an edge only from a
-  // handle with that id, so the frame draws one handle per distinct handle its
-  // continuation edges name.
-  const outletHandles = useAtomValue(
-    useMemo(() => groupOutletHandlesAtom(id), [id])
+  // the member's source handle, and React Flow draws such an edge only from a
+  // handle with that id. A Group nothing leaves draws a handle per place a
+  // path ends inside it, so a drag starts from the one it continues by.
+  const catalog = useExtensionCatalog();
+  const outlets = useAtomValue(
+    useMemo(() => groupOutletsAtom(id, catalog), [id, catalog])
   );
   const memberCount = useAtomValue(
     useMemo(() => groupMemberCountAtom(id), [id])
@@ -87,7 +95,7 @@ export const GroupNode = memo(({ data, selected, id }: GroupNodeProps) => {
   const runSummary = useRunGroupSummary(id);
   // React Flow records handle ids when it measures a node, so a changed set of
   // ids has to be measured again before an edge can attach to a new one.
-  useAfterPaint(outletHandles, () => {
+  useAfterPaint(outlets, () => {
     updateNodeInternals(id);
   });
 
@@ -95,6 +103,7 @@ export const GroupNode = memo(({ data, selected, id }: GroupNodeProps) => {
     return null;
   }
   const label = groupLabel(data.label);
+  const slots = groupOutletSlots(outlets.length);
   const changedMemberIds = data[COMPARISON_GROUP_ANNOTATION]?.changedMemberIds;
 
   return (
@@ -177,21 +186,42 @@ export const GroupNode = memo(({ data, selected, id }: GroupNodeProps) => {
             : null}
         </div>
       )}
-      {outletHandles.map((handle, index) => (
-        <Handle
-          aria-label="Group output"
-          // React Flow's `id` prop takes a string or `null`, not `undefined`.
-          id={handle}
-          key={handle ?? ""}
-          position={Position.Bottom}
-          role="img"
-          // Several handles spread evenly across the bottom edge.
-          style={{
-            left: `${((index + 1) / (outletHandles.length + 1)) * 100}%`,
-          }}
-          type="source"
-        />
-      ))}
+      {outlets.map((outlet, index) => {
+        // Several handles spread evenly across the bottom edge, each label
+        // within its own handle's slot.
+        const { offset, labelMaxWidth } = slots[index];
+        return (
+          <Fragment key={outlet.handleId ?? ""}>
+            <Handle
+              aria-label={
+                outlet.label === null
+                  ? "Group output"
+                  : `Group output, ${outlet.label}`
+              }
+              // React Flow's `id` prop takes a string or `null`, not `undefined`.
+              id={outlet.handleId}
+              position={Position.Bottom}
+              role="img"
+              style={alongOutletSide(Position.Bottom, offset)}
+              type="source"
+            />
+            {outlet.label === null ? null : (
+              <OutletLabel
+                // A member's name can be long, and several labels share the
+                // card's bottom edge, so a long name truncates within its
+                // slot. The handle's accessible name carries it whole.
+                className="truncate"
+                maxWidth={labelMaxWidth}
+                offset={offset}
+                outlet={Position.Bottom}
+                title={outlet.label}
+              >
+                {outlet.label}
+              </OutletLabel>
+            )}
+          </Fragment>
+        );
+      })}
     </div>
   );
 });

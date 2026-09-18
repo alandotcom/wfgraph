@@ -2,22 +2,28 @@
  * The graph the canvas paints for one workspace scope. The overview shows each
  * Group as one collapsed card with its boundary edges on the frame. A focused
  * Group lays its members out from the Group's topology and stored direction,
- * with a stub for each outside port an edge enters or leaves by. Nothing here
- * writes the graph.
+ * with a stub for each outside port an edge enters or leaves by and for each
+ * member port where a path ends. Nothing here writes the graph.
  */
 
+import { sortBy, uniqBy } from "es-toolkit/array";
 import {
   analyzeGroupBoundary,
   type GroupPort,
   isGroupNode,
 } from "@wfgraph/shared/graph/group-boundary";
+import { groupPortKey } from "@wfgraph/shared/graph/group-port-key";
 import {
   displayEdgesForGroups,
   groupCanvasPositions,
+  groupEndPorts,
   groupLayoutDirection,
 } from "@wfgraph/shared/graph/node-group";
 import type { GroupLayoutDirection } from "@wfgraph/shared/graph/schemas";
-import { getConditionBranchDisplayLabel } from "@wfgraph/shared/conditions/condition-branch";
+import {
+  getConditionBranchDisplayLabel,
+  normalizeConditionBranch,
+} from "@wfgraph/shared/conditions/condition-branch";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { type NodeChange, Position } from "@xyflow/react";
 import type { WorkspaceScope } from "#src/lib/workflow-navigation-state";
@@ -50,18 +56,26 @@ export type ScopeCanvasGraph = CanvasGraph & {
   projectedNodeIds: ReadonlySet<string>;
 };
 
-/** The React Flow node types of the two boundary stubs. */
+/**
+ * The React Flow node types of the boundary stubs: "Incoming from" before the
+ * members, and "Continues to" and "Path ends" after them.
+ */
 export const GROUP_BOUNDARY_NODE_TYPES = {
   ingress: "groupIngress",
   continuation: "groupContinuation",
+  end: "groupEnd",
 } as const;
 
 /** The height of a boundary stub. Its width is the standard card width. */
 export const GROUP_BOUNDARY_STUB_HEIGHT = 40;
 
+/** The words an end stub reads, and the name assistive technology reads for it. */
+export const GROUP_END_STUB_LABEL = "Path ends";
+
 type StubDirection = keyof typeof GROUP_BOUNDARY_NODE_TYPES;
 
-type EdgeRole = "interior" | StubDirection;
+/** The stored edges a focused Group paints, by where they sit. */
+type EdgeRole = "interior" | "ingress" | "continuation";
 
 const CARD_SIZE = { width: WORKFLOW_NODE_WIDTH, height: WORKFLOW_NODE_HEIGHT };
 
@@ -78,19 +92,23 @@ const HANDLE_POSITIONS: Record<
 };
 
 /**
- * The id of the stub standing for one outside port: the encoded node id, then a
- * slash and the encoded handle when the port has one. An encoded id holds no
- * slash, so no two ports share a stub id. The id is only a React Flow key; the
- * port itself is read from the stub's data.
+ * The text every painted id this module makes starts with. The graph schema
+ * trims a stored node or edge id when it decodes a graph, so a stored id can
+ * never start with a space, and no stub or display-only edge shares an id with
+ * a stored node or edge.
+ */
+const PAINTED_ID_PREFIX = " group-";
+
+/**
+ * The id of the stub standing for one port. Two ports never share a port key,
+ * so no two ports share a stub id. The id is only a React Flow key; the port
+ * itself is read from the stub's data.
  */
 export function boundaryStubId(
   direction: StubDirection,
   port: GroupPort
 ): string {
-  const nodeId = encodeURIComponent(port.nodeId);
-  return port.handle === null
-    ? `group-${direction}:${nodeId}`
-    : `group-${direction}:${nodeId}/${encodeURIComponent(port.handle)}`;
+  return `${PAINTED_ID_PREFIX}${direction}:${groupPortKey(port)}`;
 }
 
 /**
@@ -127,8 +145,8 @@ export type StoredCanvasConnection<C> =
  * The connection a drag on the painted nodes `paintedNodes` stores. A drag from
  * an ingress stub onto a member names the stub's outside port as its source, so
  * it stores one more edge from the port that already enters the Group. A drag
- * onto a stub, or from a continuation stub, is refused. Every other connection
- * comes back as it was given.
+ * onto a stub, or from a continuation or end stub, is refused. Every other
+ * connection comes back as it was given.
  */
 export function storedCanvasConnection<
   C extends {
@@ -143,7 +161,7 @@ export function storedCanvasConnection<
   const source = stubPortOf(connection.source, paintedNodes);
   if (
     stubPortOf(connection.target, paintedNodes) !== null ||
-    source?.direction === "continuation"
+    (source !== null && source.direction !== "ingress")
   ) {
     return { refusal: "Connect to a step inside the Group." };
   }
@@ -165,7 +183,7 @@ export function storedCanvasConnection<
  * changed nothing hands React Flow the edge objects it already holds.
  */
 const paintedBoundaryEdges: Record<
-  StubDirection,
+  Exclude<EdgeRole, "interior">,
   WeakMap<WorkflowEdge, WorkflowEdge>
 > = {
   ingress: new WeakMap(),
@@ -289,28 +307,45 @@ export function overviewCanvasGraph(input: CanvasGraph): ScopeCanvasGraph {
 const boundaryStubs = new WeakMap<WorkflowNode, Map<string, WorkflowNode>>();
 
 /**
- * The stub standing for the outside port `port` of the step `outside`. It carries
- * that step's label, type and config so the stub can name it, and it never
- * enters the store. A stub is cached per outside node, direction and handle, and
- * kept while its position holds, so React Flow keeps its measured handle.
+ * End stubs by stub id. An end stub reads nothing from its member but the id,
+ * so a member repainted for selection or run status keeps its stub. Each
+ * focused compute keeps only the entries it painted.
+ */
+let endStubs = new Map<string, WorkflowNode>();
+
+/**
+ * The stub standing for the port `port` of the step `step`: an outside step for
+ * an ingress or continuation stub, which carries that step's label, type and
+ * config so the stub can name it, or a member for an end stub, which is
+ * labelled "Path ends". A stub never enters the store. An ingress or
+ * continuation stub is cached per step, direction and handle, an end stub per
+ * stub id in `endStubCache`, and each is kept while its position holds, so React Flow
+ * keeps its measured handle.
  */
 function boundaryStub(input: {
   direction: StubDirection;
   layout: GroupLayoutDirection;
-  outside: WorkflowNode;
+  step: WorkflowNode;
   port: GroupPort;
   position: { x: number; y: number };
+  endStubCache: ReadonlyMap<string, WorkflowNode>;
 }): WorkflowNode {
-  const { outside, position } = input;
+  const { step, position } = input;
   const id = boundaryStubId(input.direction, input.port);
-  const cache = boundaryStubs.get(outside) ?? new Map<string, WorkflowNode>();
-  boundaryStubs.set(outside, cache);
+  const stepCache =
+    input.direction === "end"
+      ? null
+      : (boundaryStubs.get(step) ?? new Map<string, WorkflowNode>());
+  if (stepCache) {
+    boundaryStubs.set(step, stepCache);
+  }
   const handles = HANDLE_POSITIONS[input.layout];
-  const cached = cache.get(id);
+  const cached = (stepCache ?? input.endStubCache).get(id);
   if (
     cached?.position.x === position.x &&
     cached.position.y === position.y &&
-    cached.sourcePosition === handles.sourcePosition
+    cached.sourcePosition === handles.sourcePosition &&
+    cached.data.type === step.data.type
   ) {
     return cached;
   }
@@ -318,6 +353,14 @@ function boundaryStub(input: {
     width: WORKFLOW_NODE_WIDTH,
     height: GROUP_BOUNDARY_STUB_HEIGHT,
   };
+  const stubNames =
+    input.direction === "end"
+      ? { label: GROUP_END_STUB_LABEL, type: step.data.type }
+      : omitUndefined({
+          label: step.data.label,
+          type: step.data.type,
+          config: step.data.config,
+        });
   const stub: WorkflowNode = {
     id,
     type: GROUP_BOUNDARY_NODE_TYPES[input.direction],
@@ -330,11 +373,7 @@ function boundaryStub(input: {
     deletable: false,
     focusable: false,
     data: {
-      ...omitUndefined({
-        label: outside.data.label,
-        type: outside.data.type,
-        config: outside.data.config,
-      }),
+      ...stubNames,
       [GROUP_BOUNDARY_STUB_PORT]: {
         direction: input.direction,
         port: input.port,
@@ -343,12 +382,12 @@ function boundaryStub(input: {
   };
   // An ingress stub leaves `connectable` unset, so it follows the canvas's
   // `nodesConnectable`, and a drag from it onto a member adds one more edge from
-  // the outside port it stands for (see `storedCanvasConnection`). A
-  // continuation stub is never connectable.
-  if (input.direction === "continuation") {
+  // the outside port it stands for (see `storedCanvasConnection`). Continuation
+  // and end stubs are never connectable.
+  if (input.direction !== "ingress") {
     stub.connectable = false;
   }
-  cache.set(id, stub);
+  stepCache?.set(id, stub);
   return stub;
 }
 
@@ -417,11 +456,52 @@ function stubLine(
 }
 
 /**
- * A focused Group: its members, the interior edges between them, and one stub
- * per outside port an edge enters the Group from or continues to. The frame is
- * not painted, and its stored position and every stored member position are
- * never read. The member rows follow the frame's stored direction. Null when
- * the graph holds no Group `groupId`.
+ * Where a port sits among the outlets of one card: True first, then an unnamed
+ * outlet, then False, matching the order a Condition card draws its outlets in.
+ */
+function outletRank(handle: string | null): number {
+  const branch = normalizeConditionBranch(handle);
+  return branch === "true" ? 0 : branch === "false" ? 2 : 1;
+}
+
+/**
+ * End edges by edge id. An end edge reads only its member port, so it is kept
+ * across every repaint of that member. Each focused compute keeps only the
+ * entries it painted.
+ */
+let endEdges = new Map<string, WorkflowEdge>();
+
+/**
+ * The display-only edge from the member port `port` to its "Path ends" stub,
+ * taken from `cache` when it holds one. It keeps the port's handle, so a
+ * Condition branch reads True or False on it, and it cannot be selected,
+ * deleted or focused.
+ */
+function endEdge(
+  port: GroupPort,
+  cache: ReadonlyMap<string, WorkflowEdge>
+): WorkflowEdge {
+  const id = `${PAINTED_ID_PREFIX}end-edge:${groupPortKey(port)}`;
+  return (
+    cache.get(id) ?? {
+      id,
+      source: port.nodeId,
+      sourceHandle: port.handle,
+      target: boundaryStubId("end", port),
+      selectable: false,
+      deletable: false,
+      focusable: false,
+    }
+  );
+}
+
+/**
+ * A focused Group: its members, the interior edges between them, one stub per
+ * outside port an edge enters the Group from or continues to, and one "Path
+ * ends" stub per member port where a path ends. The frame is not painted, and
+ * its stored position and every stored member position are never read. The
+ * member rows follow the frame's stored direction. Null when the graph holds no
+ * Group `groupId`.
  */
 export function focusedGroupCanvasGraph(
   input: CanvasGraph & { groupId: string }
@@ -474,32 +554,92 @@ export function focusedGroupCanvasGraph(
   );
   const acrossCentre = vertical ? 0 : WORKFLOW_NODE_HEIGHT / 2;
   const stubDepth = vertical ? GROUP_BOUNDARY_STUB_HEIGHT : WORKFLOW_NODE_WIDTH;
-  const stubs = (stubDirection: StubDirection, ports: readonly GroupPort[]) => {
-    const outside = ports.flatMap((port) => {
-      const node = byId.get(port.nodeId);
-      return node ? [{ node, port }] : [];
+  const stubs = (
+    along: number,
+    entries: readonly { direction: StubDirection; port: GroupPort }[]
+  ) => {
+    const found = entries.flatMap((entry) => {
+      const step = byId.get(entry.port.nodeId);
+      return step ? [{ ...entry, step }] : [];
     });
-    const along =
-      stubDirection === "ingress"
-        ? Math.min(...starts) - RANK_SPACING - stubDepth
-        : Math.max(...ends) + RANK_SPACING;
-    const line = stubLine(outside.length, acrossCentre, along, direction);
-    return outside.map(({ node, port }, index) =>
+    const line = stubLine(found.length, acrossCentre, along, direction);
+    return found.map((entry, index) =>
       boundaryStub({
-        direction: stubDirection,
+        direction: entry.direction,
         layout: direction,
-        outside: node,
-        port,
+        step: entry.step,
+        port: entry.port,
         position: line[index] ?? { x: 0, y: along },
+        endStubCache: endStubs,
       })
     );
   };
 
-  const nodes = [
-    ...stubs("ingress", boundary.externalIngress),
-    ...members,
-    ...stubs("continuation", boundary.externalTargets),
+  // "Continues to" and "Path ends" stubs share the line after the members,
+  // ordered by where the member port each one leaves sits: across the flow
+  // first, so their edges cross as little as the line allows, then along the
+  // flow, then True before False.
+  const projectedById = new Map(members.map((member) => [member.id, member]));
+  const centreOf = (port: GroupPort) => {
+    const member = projectedById.get(port.nodeId);
+    return member
+      ? {
+          x: member.position.x + WORKFLOW_NODE_WIDTH / 2,
+          y: member.position.y + WORKFLOW_NODE_HEIGHT / 2,
+        }
+      : { x: 0, y: 0 };
+  };
+  const byFlow = [
+    (entry: { from: GroupPort }) =>
+      vertical ? centreOf(entry.from).x : centreOf(entry.from).y,
+    (entry: { from: GroupPort }) =>
+      vertical ? centreOf(entry.from).y : centreOf(entry.from).x,
+    (entry: { from: GroupPort }) => outletRank(entry.from.handle),
   ];
+  // One "Continues to" stub per outside port, drawn from the member port that
+  // comes first in flow order among the edges reaching it.
+  const continuations = uniqBy(
+    sortBy(
+      boundary.continuationEdges.map((edge) => ({
+        direction: "continuation" as const,
+        port: { nodeId: edge.target, handle: edge.targetHandle ?? null },
+        from: { nodeId: edge.source, handle: edge.sourceHandle ?? null },
+      })),
+      byFlow
+    ),
+    (entry) => boundaryStubId(entry.direction, entry.port)
+  );
+  const endPorts = groupEndPorts({ nodes: input.nodes, boundary });
+  const afterMembers = sortBy(
+    [
+      ...continuations,
+      ...endPorts.map((port) => ({
+        direction: "end" as const,
+        port,
+        from: port,
+      })),
+    ],
+    byFlow
+  );
+
+  const nodes = [
+    ...stubs(
+      Math.min(...starts) - RANK_SPACING - stubDepth,
+      boundary.externalIngress.map((port) => ({
+        direction: "ingress" as const,
+        port,
+      }))
+    ),
+    ...members,
+    ...stubs(Math.max(...ends) + RANK_SPACING, afterMembers),
+  ];
+  const paintedEndEdges = endPorts.map((port) => endEdge(port, endEdges));
+  endStubs = new Map(
+    nodes
+      .filter((node) => node.type === GROUP_BOUNDARY_NODE_TYPES.end)
+      .map((node) => [node.id, node])
+  );
+  endEdges = new Map(paintedEndEdges.map((item) => [item.id, item]));
   return {
     nodes,
     edges: [
@@ -508,6 +648,7 @@ export function focusedGroupCanvasGraph(
       ...boundary.continuationEdges.map((edge) =>
         focusedEdge(edge, "continuation")
       ),
+      ...paintedEndEdges,
     ],
     anchor: { nodeId: firstMember.id, pinToTop: false },
     projectedNodeIds: new Set(nodes.map((node) => node.id)),

@@ -11,14 +11,19 @@ import {
   groupCanvasPositions,
   groupLayoutDirection,
   groupMemberSlots,
-  groupOutletHandle,
-  groupOutletHandles,
+  groupEndPorts,
+  groupOutlets,
   orderGroupParentsFirst,
   resolveStoredSources,
   storedTargetsFor,
   undersizedGroupIds,
 } from "#src/graph/node-group";
-import { type GroupGraphNode, isGroupNode } from "#src/graph/group-boundary";
+import {
+  analyzeGroupBoundaryById,
+  type GroupGraphNode,
+  isGroupNode,
+} from "#src/graph/group-boundary";
+import { groupPortKey } from "#src/graph/group-port-key";
 import type { WorkflowEdge } from "#src/graph/types";
 import {
   NODE_SPACING,
@@ -253,7 +258,14 @@ describe("display and store endpoints", () => {
       "out",
     ]);
 
-    expect(resolveStoredSources(nodes, edges, "g")).toEqual(["c"]);
+    expect(
+      resolveStoredSources({
+        nodes,
+        edges,
+        sourceId: "g",
+        sourceHandle: "true",
+      })
+    ).toEqual([{ source: "c", sourceHandle: "true" }]);
     expect(storedTargetsFor(nodes, edges, "g")).toEqual(["a"]);
   });
 
@@ -362,7 +374,12 @@ describe("display and store endpoints", () => {
     expect(displayEdgesForGroups(nodes, edges)).toEqual([
       { ...edges[0], source: "g" },
     ]);
-    expect(resolveStoredSources(nodes, edges, "g")).toEqual(["a", "b"]);
+    expect(
+      resolveStoredSources({ nodes, edges, sourceId: "g", sourceHandle: null })
+    ).toEqual([
+      { source: "a", sourceHandle: undefined },
+      { source: "b", sourceHandle: undefined },
+    ]);
     expect(fanOutStoreEdgeIds(nodes, edges, "out-a")).toEqual([
       "out-a",
       "out-b",
@@ -500,65 +517,199 @@ describe("undersizedGroupIds", () => {
   });
 });
 
-describe("groupOutletHandle", () => {
+describe("groupEndPorts", () => {
+  const ports = (nodes: GroupGraphNode[], edges: WorkflowEdge[]) =>
+    groupEndPorts({
+      nodes,
+      boundary: analyzeGroupBoundaryById({ nodes, edges, groupId: "g" }),
+    });
+
+  it("names each member nothing leaves and each unwired Condition outlet", () => {
+    const nodes: GroupGraphNode[] = [
+      group("g"),
+      { ...lookupA, parentId: "g" },
+      { ...condition, parentId: "g" },
+      { ...lookupB, parentId: "g" },
+      action("sms", "resend/send-email"),
+    ];
+
+    expect(ports(nodes, [edge("ac", "a", "c")])).toEqual([
+      { nodeId: "c", handle: "true" },
+      { nodeId: "c", handle: "false" },
+      { nodeId: "b", handle: null },
+    ]);
+    expect(
+      ports(nodes, [
+        edge("ac", "a", "c"),
+        edge("out", "c", "sms", "true"),
+        edge("cb", "c", "b", "false"),
+      ])
+    ).toEqual([{ nodeId: "b", handle: null }]);
+  });
+
+  it("reads a member id that names a prototype member as an ordinary id", () => {
+    const nodes: GroupGraphNode[] = [
+      group("g"),
+      { ...lookupA, id: "constructor", parentId: "g" },
+      { ...lookupB, id: "__proto__", parentId: "g" },
+    ];
+
+    expect(ports(nodes, [edge("e", "constructor", "__proto__")])).toEqual([
+      { nodeId: "__proto__", handle: null },
+    ]);
+  });
+});
+
+describe("groupOutlets", () => {
   const conditionGroup: GroupGraphNode[] = [
     group("g"),
     { ...lookupA, parentId: "g" },
     { ...condition, parentId: "g" },
     action("sms", "resend/send-email"),
   ];
+  const handleOf = (outlets: ReturnType<typeof groupOutlets>, label: string) =>
+    outlets.find((outlet) => outlet.label === label)?.handleId;
 
-  it("names the handle the Group's continuation already uses", () => {
+  it("draws the handle the Group's continuation already uses", () => {
     expect(
-      groupOutletHandle(
+      groupOutlets(
         conditionGroup,
         [edge("ac", "a", "c"), edge("out", "c", "sms", "true")],
         "g"
       )
-    ).toBe("true");
+    ).toEqual([
+      {
+        handleId: "true",
+        label: "True",
+        ports: [{ nodeId: "c", handle: "true" }],
+      },
+    ]);
   });
 
-  it("names True for a Condition exit before anything leaves the Group", () => {
-    expect(groupOutletHandle(conditionGroup, [edge("ac", "a", "c")], "g")).toBe(
-      "true"
+  it("keeps the continuing branch when the other branch ends inside the Group", () => {
+    const nodes = [...conditionGroup, { ...lookupB, parentId: "g" }];
+    const edges = [
+      edge("ac", "a", "c"),
+      edge("out", "c", "sms", "false"),
+      edge("in", "c", "b", "true"),
+    ];
+    expect(
+      groupOutlets(nodes, edges, "g").map((item) => item.handleId)
+    ).toEqual(["false"]);
+    expect(
+      resolveStoredSources({
+        nodes,
+        edges,
+        sourceId: "g",
+        sourceHandle: "false",
+      })
+    ).toEqual([{ source: "c", sourceHandle: "false" }]);
+  });
+
+  it("draws a labelled handle per end port while nothing leaves the Group", () => {
+    const nodes = [...conditionGroup, { ...lookupB, parentId: "g" }];
+    const outlets = groupOutlets(nodes, [edge("ac", "a", "c")], "g");
+
+    expect(outlets.map((item) => [item.label, item.ports])).toEqual([
+      ["True", [{ nodeId: "c", handle: "true" }]],
+      ["False", [{ nodeId: "c", handle: "false" }]],
+      ["b", [{ nodeId: "b", handle: null }]],
+    ]);
+    expect(new Set(outlets.map((item) => item.handleId)).size).toBe(3);
+  });
+
+  it("draws a distinct handle per end port when member ids hold a lone surrogate or the separator characters", () => {
+    const memberIds = ["\ud800", "x/y", "x", "x%2Fy"];
+    const nodes: GroupGraphNode[] = [
+      group("g"),
+      ...memberIds.map((id) => ({
+        ...action(id, "fountain/get-user"),
+        parentId: "g",
+      })),
+    ];
+
+    const outlets = groupOutlets(nodes, [], "g");
+
+    expect(outlets.map((item) => item.handleId)).toEqual(
+      memberIds.map((nodeId) => `end:${groupPortKey({ nodeId, handle: null })}`)
+    );
+    expect(new Set(outlets.map((item) => item.handleId)).size).toBe(
+      memberIds.length
     );
   });
 
-  it("names no handle when a Condition is one of several exits", () => {
+  it("names each plain end port with the title `titleOf` gives its member", () => {
+    const nodes: GroupGraphNode[] = [
+      group("g"),
+      { ...action("m1", "clerk/get-user"), parentId: "g" },
+      { ...action("m2", "linear/find-issues"), parentId: "g" },
+    ].map((node) =>
+      node.id === "g" ? node : { ...node, data: { ...node.data, label: "" } }
+    );
+    const titles: Record<string, string> = {
+      m1: "Get User",
+      m2: "Find Issues",
+    };
+
     expect(
-      groupOutletHandle(
-        [...conditionGroup, { ...lookupB, parentId: "g" }],
-        [edge("ac", "a", "c")],
-        "g"
+      groupOutlets(nodes, [], "g", (node) => titles[node.id] ?? node.id).map(
+        (item) => item.label
       )
-    ).toBeUndefined();
+    ).toEqual(["Get User", "Find Issues"]);
   });
 
-  it("names no handle for an id that is not a Group", () => {
-    expect(
-      groupOutletHandle(conditionGroup, [edge("ac", "a", "c")], "sms")
-    ).toBeUndefined();
-  });
-
-  it("names no handle for lookup exits", () => {
+  it("leaves a lone plain end port unlabelled", () => {
     const nodes: GroupGraphNode[] = [
       group("g"),
       { ...lookupA, parentId: "g" },
       { ...lookupB, parentId: "g" },
-      action("sms", "resend/send-email"),
     ];
     expect(
-      groupOutletHandle(
-        nodes,
-        [edge("ab", "a", "b"), edge("out", "b", "sms")],
-        "g"
-      )
-    ).toBeUndefined();
+      groupOutlets(nodes, [edge("ab", "a", "b")], "g").map((item) => item.label)
+    ).toEqual([null]);
   });
-});
 
-describe("groupOutletHandles", () => {
-  it("names every distinct handle the Group's continuation uses", () => {
+  it("stores one continuation from the True handle when False ends at a member", () => {
+    const nodes: GroupGraphNode[] = [
+      ...conditionGroup,
+      { ...lookupB, parentId: "g" },
+    ];
+    const edges = [edge("ac", "a", "c"), edge("cb", "c", "b", "false")];
+    const outlets = groupOutlets(nodes, edges, "g");
+
+    expect(outlets.map((item) => item.label)).toEqual(["True", "b"]);
+    expect(
+      fanOutStoreEdges({
+        nodes,
+        edges,
+        sourceId: "g",
+        targetId: "sms",
+        sourceHandle: handleOf(outlets, "True"),
+      })
+    ).toEqual([{ source: "c", target: "sms", sourceHandle: "true" }]);
+  });
+
+  it("stores one continuation from the handle a drag starts on when both branches end inside", () => {
+    const outlets = groupOutlets(conditionGroup, [edge("ac", "a", "c")], "g");
+
+    expect(
+      fanOutStoreEdges({
+        nodes: conditionGroup,
+        edges: [edge("ac", "a", "c")],
+        sourceId: "g",
+        targetId: "sms",
+        sourceHandle: handleOf(outlets, "False"),
+      })
+    ).toEqual([{ source: "c", target: "sms", sourceHandle: "false" }]);
+  });
+
+  it("draws one unlabelled handle standing for no port for an id that is not a Group", () => {
+    expect(groupOutlets(conditionGroup, [edge("ac", "a", "c")], "sms")).toEqual(
+      [{ handleId: null, label: null, ports: [] }]
+    );
+  });
+
+  it("draws one handle per distinct handle the Group's continuation uses", () => {
     const nodes: GroupGraphNode[] = [
       group("g"),
       { ...lookupB, parentId: "g" },
@@ -572,12 +723,14 @@ describe("groupOutletHandles", () => {
       edge("cy", "c", "y", "true"),
     ];
 
-    expect(groupOutletHandles(nodes, edges, "g")).toEqual([null, "true"]);
+    expect(
+      groupOutlets(nodes, edges, "g").map((item) => item.handleId)
+    ).toEqual([null, "true"]);
   });
 });
 
 describe("fanOutStoreEdges through a frame outlet", () => {
-  it("stores a Condition branch handle only on an exit that is a Condition", () => {
+  it("stores from the continuing ports of the handle the connection names", () => {
     const nodes: GroupGraphNode[] = [
       group("g"),
       { ...lookupB, parentId: "g" },
@@ -587,18 +740,20 @@ describe("fanOutStoreEdges through a frame outlet", () => {
       action("z", "resend/send-email"),
     ];
     const edges = [edge("by", "b", "y"), edge("cx", "c", "x", "true")];
-
-    expect(
+    const connect = (sourceHandle: string | null) =>
       fanOutStoreEdges({
         nodes,
         edges,
         sourceId: "g",
         targetId: "z",
-        sourceHandle: "true",
-      })
-    ).toEqual([
-      { source: "b", target: "z", sourceHandle: undefined },
+        sourceHandle,
+      });
+
+    expect(connect("true")).toEqual([
       { source: "c", target: "z", sourceHandle: "true" },
+    ]);
+    expect(connect(null)).toEqual([
+      { source: "b", target: "z", sourceHandle: undefined },
     ]);
   });
 });

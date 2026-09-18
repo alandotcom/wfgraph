@@ -1,8 +1,8 @@
 /**
  * A Group is organizational, so grouping steps must leave every run of the
- * workflow unchanged. These cases run a linear chain and a fan-out from one
- * outside outlet, ungrouped and inside a Group laid out in each direction, and
- * compare what the engine dispatched and recorded.
+ * workflow unchanged. These cases run a linear chain, a fan-out from one outside
+ * outlet, and a Condition with a path ending inside the Group, ungrouped and
+ * grouped in each direction, and compare what the engine dispatched and recorded.
  */
 
 import { Effect } from "effect";
@@ -360,6 +360,126 @@ describe("a Group around a fan-out that joins inside it", () => {
       );
       expect(before.dispatched.map((call) => call.actionType)).toContain(
         "test/send"
+      );
+      expect(after).toEqual(before);
+    }
+  );
+});
+
+/** Where the Group around the Condition `gate` continues to `after` from. */
+type ConditionContinuation = "branch" | "step";
+
+/**
+ * The lookup `read` feeds the Condition `gate`, which reads the literal `open`.
+ * False reaches `notify`, which ends its path. When the Group continues from a
+ * `branch`, True reaches `after` directly and the Group holds `read`, `gate` and
+ * `notify`. When it continues from a `step`, True reaches `send`, which
+ * continues to `after`, so both branches stay inside the Group.
+ */
+function conditionInside(
+  open: boolean,
+  continuesFrom: ConditionContinuation
+): { nodes: WorkflowNode[]; edges: WorkflowEdge[]; memberIds: Set<string> } {
+  const nodes = [
+    createLifecycleNode("life"),
+    step("read", { actionType: "test/read", customerId: "cus_1" }),
+    step("gate", {
+      actionType: BUILT_IN_ACTION_IDS.condition,
+      condition: open,
+    }),
+    step("send", { actionType: "test/send", to: "{{@read:read.email}}" }),
+    step("notify", { actionType: "test/send", to: "ops@example.com" }),
+    step("after", { actionType: "test/read", customerId: "cus_2" }),
+  ];
+  const shared: WorkflowEdge[] = [
+    {
+      id: "life-read",
+      source: "life",
+      target: "read",
+      sourceHandle: "started",
+    },
+    { id: "read-gate", source: "read", target: "gate" },
+    {
+      id: "gate-false",
+      source: "gate",
+      target: "notify",
+      sourceHandle: "false",
+    },
+  ];
+  if (continuesFrom === "branch") {
+    return {
+      nodes: nodes.filter((node) => node.id !== "send"),
+      edges: [
+        ...shared,
+        {
+          id: "gate-true",
+          source: "gate",
+          target: "after",
+          sourceHandle: "true",
+        },
+      ],
+      memberIds: new Set(["read", "gate", "notify"]),
+    };
+  }
+  return {
+    nodes,
+    edges: [
+      ...shared,
+      { id: "gate-true", source: "gate", target: "send", sourceHandle: "true" },
+      { id: "send-after", source: "send", target: "after" },
+    ],
+    memberIds: new Set(["read", "gate", "send", "notify"]),
+  };
+}
+
+describe("a Group around a Condition with a path that ends inside it", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-19T15:00:00.000Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it.each(["branch", "step"] as const)(
+    "is a Group the editor may create and Publish accepts when it continues from a %s",
+    (continuesFrom) => {
+      const { nodes, edges, memberIds } = conditionInside(true, continuesFrom);
+      expect(
+        analyzeGroupableSelection({ nodes, edges, selectedIds: memberIds })
+      ).toMatchObject({ ok: true });
+      expect(
+        groupContractViolations({
+          nodes: grouped("vertical", nodes, memberIds),
+          edges,
+        })
+      ).toEqual([]);
+    }
+  );
+
+  const cases = (["branch", "step"] as const).flatMap((continuesFrom) =>
+    [true, false].flatMap((open) =>
+      (["vertical", "horizontal"] as const).map((direction) => ({
+        continuesFrom,
+        open,
+        direction,
+      }))
+    )
+  );
+
+  it.each(cases)(
+    "takes the same branch with the gate open $open when a $direction Group continues from a $continuesFrom",
+    async ({ continuesFrom, open, direction }) => {
+      const { nodes, edges, memberIds } = conditionInside(open, continuesFrom);
+      const before = await run(nodes, edges);
+      const after = await run(grouped(direction, nodes, memberIds), edges);
+
+      expect(before.success).toBe(true);
+      const trueBranch =
+        continuesFrom === "branch" ? ["after"] : ["after", "send"];
+      expect(Object.keys(before.results).sort()).toEqual(
+        ["gate", "life", "read", ...(open ? trueBranch : ["notify"])].sort()
       );
       expect(after).toEqual(before);
     }

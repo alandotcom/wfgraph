@@ -20,7 +20,7 @@ import {
 } from "#src/lib/workflow-issues-store";
 import {
   childIdsOfGroup,
-  groupOutletHandles,
+  groupOutlets,
   orderGroupParentsFirst,
 } from "@wfgraph/shared/graph/node-group";
 import { scopeCanvasGraph } from "#src/lib/group-scope-canvas";
@@ -45,12 +45,14 @@ import {
 } from "#src/lib/workflow-ui-store";
 import type { RunNodeEvidenceStatus } from "@wfgraph/shared/graph/group-run-status";
 import type { WorkflowExecutionStatus } from "@wfgraph/shared/lifecycle/execution-contracts";
-import type {
-  NodeIssueSummary,
-  NodeRunStatus,
-  WorkflowEdge,
-  WorkflowNode,
+import {
+  comparisonNodeTitle,
+  type NodeIssueSummary,
+  type NodeRunStatus,
+  type WorkflowEdge,
+  type WorkflowNode,
 } from "#src/lib/workflow-graph-types";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 
 /**
  * Run evidence status by node id, separate from every persisted graph. Step
@@ -387,15 +389,19 @@ const frameSourceGraphAtom = atom(
 );
 
 /**
- * An atom holding the source handle ids the Group frame `groupId` draws, read
- * from the presented graph's member edges. It keeps the same array while the
- * handles are unchanged, so dragging a node re-renders no frame. Create it once
- * per frame id, because each call makes a new atom.
+ * An atom holding the source handles the Group frame `groupId` draws, read
+ * from the presented graph's member edges, with each member named by the title
+ * its card shows under `catalog`. It keeps the same array while the handles are
+ * unchanged, so dragging a node re-renders no frame. Create it once per frame
+ * id and catalog, because each call makes a new atom.
  */
-export function groupOutletHandlesAtom(groupId: string) {
+export function groupOutletsAtom(groupId: string, catalog: ExtensionCatalog) {
   return selectAtom(
     frameSourceGraphAtom,
-    (graph) => groupOutletHandles(graph.nodes, graph.edges, groupId),
+    (graph) =>
+      groupOutlets(graph.nodes, graph.edges, groupId, (node) =>
+        comparisonNodeTitle(node.data, catalog)
+      ),
     isEqual
   );
 }

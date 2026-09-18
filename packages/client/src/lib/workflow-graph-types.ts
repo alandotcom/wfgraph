@@ -70,9 +70,13 @@ export const COMPARISON_GROUP_ANNOTATION: unique symbol = Symbol(
   "wfgraph.comparison.group"
 );
 
-/** The outside port a boundary stub on a focused Group canvas stands for. */
+/**
+ * The port a boundary stub on a focused Group canvas stands for: an outside
+ * port for an ingress or continuation stub, or a member outlet where a path
+ * ends for an end stub.
+ */
 export type GroupBoundaryStubPort = {
-  direction: "ingress" | "continuation";
+  direction: "ingress" | "continuation" | "end";
   port: GroupPort;
 };
 

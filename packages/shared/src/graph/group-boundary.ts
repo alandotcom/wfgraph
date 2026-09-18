@@ -55,11 +55,6 @@ export type GroupBoundary<E extends GroupBoundaryEdge> = {
   internalContinuation: GroupPort[];
   /** Each distinct non-member target port of `continuationEdges`. */
   externalTargets: GroupPort[];
-  /**
-   * Members with no outgoing stored edge, where a path through the Group ends
-   * inside it. A member with an unwired outlet beside a wired one is not listed.
-   */
-  terminalMemberIds: string[];
 };
 
 /**
@@ -77,9 +72,6 @@ export function analyzeGroupBoundary<E extends GroupBoundaryEdge>(input: {
   const interiorEdges = byCrossing.interior ?? [];
   const ingressEdges = byCrossing.ingress ?? [];
   const continuationEdges = byCrossing.continuation ?? [];
-  const sourcesWithOutgoing = new Set(
-    [...interiorEdges, ...continuationEdges].map((edge) => edge.source)
-  );
 
   return {
     memberIds,
@@ -90,7 +82,6 @@ export function analyzeGroupBoundary<E extends GroupBoundaryEdge>(input: {
     internalEntryPorts: distinctPorts(ingressEdges.map(targetPort)),
     internalContinuation: distinctPorts(continuationEdges.map(sourcePort)),
     externalTargets: distinctPorts(continuationEdges.map(targetPort)),
-    terminalMemberIds: memberIds.filter((id) => !sourcesWithOutgoing.has(id)),
   };
 }
 
