@@ -1,36 +1,92 @@
 import { spawn } from "node:child_process";
-import { createServer } from "node:net";
-import { resolve } from "node:path";
+import { randomInt } from "node:crypto";
+import { mkdir, rm } from "node:fs/promises";
+import { createServer, type Server } from "node:net";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { Schema } from "effect";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import { eventually } from "#src/backend/testing/reliability/control";
 
-async function freePorts() {
-  const servers = await Promise.all(
-    Array.from({ length: 4 }, async () => {
-      const server = createServer();
-      await new Promise<void>((done, reject) => {
-        server.once("error", reject);
-        server.listen(0, "127.0.0.1", done);
-      });
-      return server;
-    })
-  );
-  const ports = servers.map((server) => {
-    const address = server.address();
-    if (!address || typeof address === "string")
-      throw new Error("Missing reserved port");
-    return address.port;
+const PORT_BLOCK_START = 10_000;
+const PORT_BLOCK_COUNT = 4_000;
+const PORTS_PER_BLOCK = 4;
+const portLeaseRoot = join(
+  tmpdir(),
+  `wfgraph-reliability-ports-${process.env.GITHUB_RUN_ID ?? process.ppid}`
+);
+
+type PortReservation = {
+  ports: readonly [number, number, number, number];
+  release: () => Promise<void>;
+};
+
+function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error;
+}
+
+function listenOnPort(port: number): Promise<Server> {
+  const server = createServer();
+  return new Promise((done, reject) => {
+    server.once("error", reject);
+    server.listen(port, "127.0.0.1", () => done(server));
   });
-  await Promise.all(
-    servers.map(
-      (server) =>
-        new Promise<void>((done, reject) =>
-          server.close((error) => (error ? reject(error) : done()))
-        )
-    )
+}
+
+function closeServer(server: Server): Promise<void> {
+  return new Promise((done, reject) =>
+    server.close((error) => (error ? reject(error) : done()))
   );
-  return ports;
+}
+
+export async function reserveInngestPorts(
+  options: { firstBlock?: number } = {}
+): Promise<PortReservation> {
+  await mkdir(portLeaseRoot, { recursive: true });
+  const firstBlock = options.firstBlock ?? randomInt(PORT_BLOCK_COUNT);
+  for (let offset = 0; offset < PORT_BLOCK_COUNT; offset++) {
+    const block = (firstBlock + offset) % PORT_BLOCK_COUNT;
+    const leasePath = join(portLeaseRoot, String(block));
+    try {
+      // mkdir is the cross-process claim shared by Vitest's fork workers.
+      // eslint-disable-next-line no-await-in-loop
+      await mkdir(leasePath);
+    } catch (error) {
+      if (isErrnoException(error) && error.code === "EEXIST") continue;
+      throw error;
+    }
+    const firstPort = PORT_BLOCK_START + block * PORTS_PER_BLOCK;
+    const ports = [
+      firstPort,
+      firstPort + 1,
+      firstPort + 2,
+      firstPort + 3,
+    ] as const;
+    // The sockets prove that no unrelated process already owns this block. The
+    // lease directory keeps sibling workers away after the sockets close.
+    // eslint-disable-next-line no-await-in-loop
+    const results = await Promise.allSettled(ports.map(listenOnPort));
+    const servers = results.flatMap((result) =>
+      result.status === "fulfilled" ? [result.value] : []
+    );
+    if (results.some((result) => result.status === "rejected")) {
+      // Cleanup must finish before another block is attempted.
+      // eslint-disable-next-line no-await-in-loop
+      await Promise.all(servers.map(closeServer));
+      // eslint-disable-next-line no-await-in-loop
+      await rm(leasePath, { recursive: true, force: true });
+      continue;
+    }
+    // eslint-disable-next-line no-await-in-loop
+    await Promise.all(servers.map(closeServer));
+    let releasePromise: Promise<void> | undefined;
+    return {
+      ports,
+      release: () =>
+        (releasePromise ??= rm(leasePath, { recursive: true, force: true })),
+    };
+  }
+  throw new Error("No four-port block is available for Inngest");
 }
 type InngestRunner = {
   url: string;
@@ -69,8 +125,8 @@ export async function startInngest(
   options: StartupOptions = {}
 ): Promise<InngestRunner> {
   const previousLogs: string[] = [];
-  // The CLI cannot inherit our listening sockets. Another worker or an outgoing
-  // connection can take a port between releasing it and the CLI binding it.
+  // The CLI cannot inherit our listening sockets. A shared block lease keeps
+  // sibling workers from taking these ports before the CLI binds them.
   for (let attempt = 1; ; attempt++) {
     const logs: string[] = [`Inngest startup attempt ${attempt}\n`];
     try {
@@ -97,32 +153,41 @@ async function startInngestAttempt(
   logs: string[],
   options: StartupOptions
 ): Promise<InngestRunner> {
-  const ports = await freePorts();
+  const reservation = await reserveInngestPorts();
+  const { ports } = reservation;
   const url = `http://127.0.0.1:${ports[0]}`;
-  const child = spawn(
-    options.binary ?? resolve("node_modules/.bin/inngest"),
-    [
-      "dev",
-      "--no-discovery",
-      "--no-poll",
-      "--persist",
-      "--retry-interval",
-      "1",
-      "--port",
-      String(ports[0]),
-      "--connect-gateway-port",
-      String(ports[1]),
-      "--connect-gateway-grpc-port",
-      String(ports[2]),
-      "--connect-executor-grpc-port",
-      String(ports[3]),
-    ],
-    {
-      cwd: directory,
-      env: { ...process.env, DO_NOT_TRACK: "1" },
-      stdio: ["ignore", "pipe", "pipe"],
+  const spawnInngest = async () => {
+    try {
+      return spawn(
+        options.binary ?? resolve("node_modules/.bin/inngest"),
+        [
+          "dev",
+          "--no-discovery",
+          "--no-poll",
+          "--persist",
+          "--retry-interval",
+          "1",
+          "--port",
+          String(ports[0]),
+          "--connect-gateway-port",
+          String(ports[1]),
+          "--connect-gateway-grpc-port",
+          String(ports[2]),
+          "--connect-executor-grpc-port",
+          String(ports[3]),
+        ],
+        {
+          cwd: directory,
+          env: { ...process.env, DO_NOT_TRACK: "1" },
+          stdio: ["ignore", "pipe", "pipe"],
+        }
+      );
+    } catch (error) {
+      await reservation.release();
+      throw error;
     }
-  );
+  };
+  const child = await spawnInngest();
   child.stdout.on("data", (value) => logs.push(String(value)));
   child.stderr.on("data", (value) => logs.push(String(value)));
   let spawnError: Error | undefined;
@@ -141,6 +206,7 @@ async function startInngestAttempt(
       await closed;
     } finally {
       clearTimeout(timer);
+      await reservation.release();
     }
   };
   try {
