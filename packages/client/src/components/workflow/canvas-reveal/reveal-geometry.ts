@@ -290,6 +290,19 @@ export function measureObstacles(canvas: HTMLElement): Rect[] {
 export type SubjectBounds = { bounds: Rect; optionalBounds: readonly Rect[] };
 
 /**
+ * The node ids a Reveal subject's placement is measured from. A placement of the
+ * whole graph, or no placement, names none.
+ */
+export function placementNodeIds(
+  placement: RevealPlacement | undefined
+): readonly string[] {
+  if (placement?.kind === "nodes") {
+    return placement.nodeIds;
+  }
+  return placement?.kind === "node-outlets" ? [placement.nodeId] : [];
+}
+
+/**
  * The flow-space boxes a Reveal subject's placement names: its nodes, a node
  * with its outlet labels as optional boxes, or the whole graph.
  */

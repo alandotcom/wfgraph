@@ -53,7 +53,7 @@ function dissolve(nodes: readonly WorkflowNode[], ...groupIds: string[]) {
   return dissolveGroups({
     nodes,
     groupIds: new Set(groupIds),
-    releaseMember: releaseAtGroupCanvasPosition({ nodes, edges }),
+    releaseMember: releaseAtGroupCanvasPosition({ nodes }),
   });
 }
 
@@ -70,13 +70,9 @@ describe("dissolveGroups", () => {
 
     expect(dissolved.map((node) => node.id)).toEqual(["a", "b", "after"]);
     expect(dissolved[0]).not.toHaveProperty("parentId");
-    // The first row starts at the collapsed card's top left, and the next row
-    // is one card height and one rank gap below it.
-    expect(dissolved[0]?.position).toEqual({ x: 100, y: 200 });
-    expect(dissolved[1]?.position).toEqual({
-      x: 100,
-      y: 200 + WORKFLOW_NODE_HEIGHT + RANK_SPACING,
-    });
+    // Ungroup translates stored positions, including an intentional overlap.
+    expect(dissolved[0]?.position).toEqual({ x: 110, y: 220 });
+    expect(dissolved[1]?.position).toEqual({ x: 130, y: 240 });
     expect(dissolved[2]).toBe(nodes[3]);
     expect(groupStructureRefusalReason({ nodes: dissolved, edges })).toBeNull();
   });
@@ -150,21 +146,16 @@ describe("dissolveGroups", () => {
       lookup("a", "original"),
       lookup("b", "original"),
       lookup("p1", "pasted"),
-      lookup("p2", "pasted"),
+      lookup("p2", "pasted", {
+        x: 10,
+        y: 20 + WORKFLOW_NODE_HEIGHT + RANK_SPACING,
+      }),
       lookup("three", undefined, { x: 624, y: 585 }),
     ];
-    const pastedEdges: WorkflowEdge[] = [
-      { id: "ab", source: "a", target: "b" },
-      { id: "p1p2", source: "p1", target: "p2" },
-    ];
-
     const dissolved = dissolveGroups({
       nodes,
       groupIds: new Set(["pasted"]),
-      releaseMember: releaseAtGroupCanvasPosition({
-        nodes,
-        edges: pastedEdges,
-      }),
+      releaseMember: releaseAtGroupCanvasPosition({ nodes }),
     });
 
     const byId = new Map(dissolved.map((node) => [node.id, node]));
@@ -184,15 +175,15 @@ describe("dissolveGroups", () => {
       frame("g", { x: 0, y: 0 }),
       frame("h", { x: 0, y: 0 }),
       lookup("a", "g"),
-      lookup("b", "g"),
+      lookup("b", "g", { x: 10, y: 220 }),
       lookup("c", "h"),
-      lookup("d", "h"),
+      lookup("d", "h", { x: 10, y: 220 }),
     ];
 
     const dissolved = dissolveGroups({
       nodes,
       groupIds: new Set(["g", "h"]),
-      releaseMember: releaseAtGroupCanvasPosition({ nodes, edges: [] }),
+      releaseMember: releaseAtGroupCanvasPosition({ nodes }),
     });
 
     expect(dissolved.map((node) => node.id)).toEqual(["a", "b", "c", "d"]);
@@ -238,7 +229,7 @@ describe("repairGroups", () => {
     const repair = repairGroups({
       nodes,
       edges: [],
-      releaseMember: releaseAtGroupCanvasPosition({ nodes, edges: [] }),
+      releaseMember: releaseAtGroupCanvasPosition({ nodes }),
     });
 
     expect(repair.ok).toBe(true);
@@ -248,7 +239,7 @@ describe("repairGroups", () => {
     expect(repair.dissolvedGroupIds).toEqual(["g"]);
     expect(repair.nodes.map((node) => node.id)).toEqual(["h", "a", "c", "d"]);
     expect(repair.nodes[1]).not.toHaveProperty("parentId");
-    expect(repair.nodes[1]?.position).toEqual({ x: 100, y: 200 });
+    expect(repair.nodes[1]?.position).toEqual({ x: 110, y: 220 });
   });
 
   it("removes a frame with no members", () => {
@@ -257,7 +248,7 @@ describe("repairGroups", () => {
     const repair = repairGroups({
       nodes,
       edges: [],
-      releaseMember: releaseAtGroupCanvasPosition({ nodes, edges: [] }),
+      releaseMember: releaseAtGroupCanvasPosition({ nodes }),
     });
 
     expect(repair).toEqual({
@@ -273,7 +264,7 @@ describe("repairGroups", () => {
     const repair = repairGroups({
       nodes,
       edges: [],
-      releaseMember: releaseAtGroupCanvasPosition({ nodes, edges: [] }),
+      releaseMember: releaseAtGroupCanvasPosition({ nodes }),
     });
 
     expect(repair.ok && repair.nodes.map((node) => node.id)).toEqual(["a"]);
@@ -287,7 +278,7 @@ describe("repairGroups", () => {
     const repair = repairGroups({
       nodes,
       edges: [],
-      releaseMember: releaseAtGroupCanvasPosition({ nodes, edges: [] }),
+      releaseMember: releaseAtGroupCanvasPosition({ nodes }),
     });
 
     expect(
@@ -303,13 +294,13 @@ describe("repairGroups", () => {
       repairGroups({
         nodes,
         edges,
-        releaseMember: releaseAtGroupCanvasPosition({ nodes, edges }),
+        releaseMember: releaseAtGroupCanvasPosition({ nodes }),
       })
     ).toEqual({ ok: true, nodes, dissolvedGroupIds: [] });
     const repair = repairGroups({
       nodes,
       edges,
-      releaseMember: releaseAtGroupCanvasPosition({ nodes, edges }),
+      releaseMember: releaseAtGroupCanvasPosition({ nodes }),
     });
     expect(repair.ok && repair.nodes).toBe(nodes);
   });
@@ -320,7 +311,7 @@ describe("repairGroups", () => {
     const repair = repairGroups({
       nodes,
       edges: [],
-      releaseMember: releaseAtGroupCanvasPosition({ nodes, edges: [] }),
+      releaseMember: releaseAtGroupCanvasPosition({ nodes }),
     });
 
     expect(repair.ok).toBe(false);

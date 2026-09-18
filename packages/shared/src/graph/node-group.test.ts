@@ -1,4 +1,3 @@
-import { uniq } from "es-toolkit/array";
 import { describe, expect, it } from "vitest";
 import { BUILT_IN_ACTION_IDS } from "#src/actions/built-in-actions";
 import { groupContractMatrix } from "#src/graph/group-contract-test-support";
@@ -9,11 +8,8 @@ import {
   expandGroupCopyIds,
   fanOutStoreEdgeIds,
   fanOutStoreEdges,
-  groupCanvasPositions,
-  groupLayoutDirection,
-  groupMemberSlots,
   groupEndPorts,
-  groupOutlets,
+  groupOutlet,
   orderGroupParentsFirst,
   resolveStoredSources,
   storedTargetsFor,
@@ -24,14 +20,7 @@ import {
   type GroupGraphNode,
   isGroupNode,
 } from "#src/graph/group-boundary";
-import { groupPortKey } from "#src/graph/group-port-key";
 import type { WorkflowEdge } from "#src/graph/types";
-import {
-  NODE_SPACING,
-  RANK_SPACING,
-  WORKFLOW_NODE_HEIGHT,
-  WORKFLOW_NODE_WIDTH,
-} from "#src/graph/workflow-layout-geometry";
 
 function action(
   id: string,
@@ -121,7 +110,7 @@ describe("analyzeGroupableSelection", () => {
     });
   });
 
-  it("refuses a selection that continues from two outlets inside it", () => {
+  it("refuses a selection that continues from two outlets to two outside steps", () => {
     expect(
       analyze(
         [lookupA, condition],
@@ -134,7 +123,7 @@ describe("analyzeGroupableSelection", () => {
       )
     ).toEqual({
       ok: false,
-      error: "The steps must continue from one outlet",
+      error: "The steps must continue to one outside step",
     });
   });
 
@@ -251,7 +240,12 @@ describe("display and store endpoints", () => {
       { ...edges[0], target: "g" },
       edges[1],
       edges[2],
-      { ...edges[3], source: "g" },
+      {
+        ...edges[3],
+        source: "g",
+        sourceHandle: null,
+        data: { displayLabel: "True" },
+      },
     ]);
 
     expect(edgesForGroupLayout(nodes, edges).map((item) => item.id)).toEqual([
@@ -302,7 +296,7 @@ describe("display and store endpoints", () => {
 
     expect(displayEdgesForGroups(nodes, edges)).toEqual([
       edges[0],
-      { ...edges[1], source: "g1", target: "g2" },
+      { ...edges[1], source: "g1", sourceHandle: null, target: "g2" },
       edges[2],
     ]);
     expect(edgesForGroupLayout(nodes, edges).map((item) => item.id)).toEqual([
@@ -373,7 +367,7 @@ describe("display and store endpoints", () => {
     ];
 
     expect(displayEdgesForGroups(nodes, edges)).toEqual([
-      { ...edges[0], source: "g" },
+      { ...edges[0], source: "g", sourceHandle: null },
     ]);
     expect(
       resolveStoredSources({ nodes, edges, sourceId: "g", sourceHandle: null })
@@ -397,276 +391,6 @@ describe("display and store endpoints", () => {
       { source: "a", target: "next", sourceHandle: undefined },
       { source: "b", target: "next", sourceHandle: undefined },
     ]);
-  });
-});
-
-describe("groupMemberSlots", () => {
-  it("places parallel lookups on one row and the join below", () => {
-    expect(
-      groupMemberSlots(
-        ["a", "b", "c"],
-        [edge("e-a", "a", "c"), edge("e-b", "b", "c")]
-      )
-    ).toEqual([
-      { id: "a", row: 0, column: 0 },
-      { id: "b", row: 0, column: 1 },
-      { id: "c", row: 1, column: 0 },
-    ]);
-  });
-});
-
-describe("groupCanvasPositions", () => {
-  const W = WORKFLOW_NODE_WIDTH;
-  const H = WORKFLOW_NODE_HEIGHT;
-
-  it("starts at the collapsed card's slot and centres each row on it", () => {
-    const positions = groupCanvasPositions({
-      memberIds: ["a", "b", "c", "d"],
-      interiorEdges: [
-        edge("e-a", "a", "d"),
-        edge("e-b", "b", "d"),
-        edge("e-c", "c", "d"),
-      ],
-    });
-    const column = W + NODE_SPACING;
-    expect(positions).toEqual(
-      new Map([
-        ["a", { x: -column - W / 2, y: 0 }],
-        ["b", { x: -W / 2, y: 0 }],
-        ["c", { x: column - W / 2, y: 0 }],
-        ["d", { x: -W / 2, y: H + RANK_SPACING }],
-      ])
-    );
-  });
-
-  it("puts a lone member exactly on the card in either direction", () => {
-    for (const direction of ["vertical", "horizontal"] as const) {
-      expect(
-        groupCanvasPositions({ memberIds: ["a"], interiorEdges: [], direction })
-      ).toEqual(new Map([["a", { x: -W / 2, y: 0 }]]));
-    }
-  });
-
-  describe("branches converging on a join", () => {
-    type Box = { left: number; top: number; right: number; bottom: number };
-    type Segment = { x1: number; y1: number; x2: number; y2: number };
-
-    /** Member ids and interior edges written as "source>target" pairs. */
-    function shape(...pairs: string[]) {
-      const interiorEdges = pairs.map((pair) => {
-        const [source = "", target = ""] = pair.split(">");
-        return edge(pair, source, target);
-      });
-      const memberIds = uniq(
-        interiorEdges.flatMap((item) => [item.source, item.target])
-      );
-      return { memberIds, interiorEdges };
-    }
-
-    const shapes = {
-      "two equal arms": shape("a>b", "a>c", "b>j", "c>j"),
-      "uneven arms": shape("a>b", "b>b2", "b2>b3", "a>c", "b3>j", "c>j"),
-      "the fan-out's own edge beside a long arm": shape(
-        "a>b",
-        "b>b2",
-        "b2>j",
-        "a>j"
-      ),
-      "three arms of different lengths": shape(
-        "a>b",
-        "a>c",
-        "c>c2",
-        "a>d",
-        "d>d2",
-        "d2>d3",
-        "b>j",
-        "c2>j",
-        "d3>j"
-      ),
-      "two joins in a row": shape(
-        "a>b",
-        "a>c",
-        "b>j",
-        "c>j",
-        "j>k",
-        "j>m",
-        "m>m2",
-        "k>n",
-        "m2>n"
-      ),
-      "entries from outside joining after a long arm": shape(
-        "a>j",
-        "b>b2",
-        "b2>b3",
-        "b3>j"
-      ),
-    };
-
-    /** A card's box, at the standard card size in either direction. */
-    function boxOf(position: { x: number; y: number }): Box {
-      return {
-        left: position.x,
-        top: position.y,
-        right: position.x + W,
-        bottom: position.y + H,
-      };
-    }
-
-    /**
-     * The three segments the canvas draws for an edge between two boxes: out of
-     * the source along the flow, across in the middle of the rank gap before
-     * the target, and into the target. `edge-path.ts` turns edges there.
-     */
-    function route(
-      source: Box,
-      target: Box,
-      direction: "vertical" | "horizontal"
-    ): Segment[] {
-      if (direction === "vertical") {
-        const sx = (source.left + source.right) / 2;
-        const tx = (target.left + target.right) / 2;
-        const turn = Math.max(
-          (source.bottom + target.top) / 2,
-          target.top - RANK_SPACING / 2
-        );
-        return [
-          { x1: sx, y1: source.bottom, x2: sx, y2: turn },
-          { x1: sx, y1: turn, x2: tx, y2: turn },
-          { x1: tx, y1: turn, x2: tx, y2: target.top },
-        ];
-      }
-      const sy = (source.top + source.bottom) / 2;
-      const ty = (target.top + target.bottom) / 2;
-      const turn = Math.max(
-        (source.right + target.left) / 2,
-        target.left - RANK_SPACING / 2
-      );
-      return [
-        { x1: source.right, y1: sy, x2: turn, y2: sy },
-        { x1: turn, y1: sy, x2: turn, y2: ty },
-        { x1: turn, y1: ty, x2: target.left, y2: ty },
-      ];
-    }
-
-    function crosses(segment: Segment, box: Box): boolean {
-      const left = Math.min(segment.x1, segment.x2);
-      const right = Math.max(segment.x1, segment.x2);
-      const top = Math.min(segment.y1, segment.y2);
-      const bottom = Math.max(segment.y1, segment.y2);
-      return (
-        left < box.right &&
-        right > box.left &&
-        top < box.bottom &&
-        bottom > box.top
-      );
-    }
-
-    function overlaps(a: Box, b: Box): boolean {
-      return (
-        a.left < b.right &&
-        a.right > b.left &&
-        a.top < b.bottom &&
-        a.bottom > b.top
-      );
-    }
-
-    const cases = Object.entries(shapes).flatMap(([name, graph]) =>
-      (["vertical", "horizontal"] as const).map((direction) => ({
-        name,
-        direction,
-        ...graph,
-      }))
-    );
-
-    it.each(cases)(
-      "$name in a $direction Group: each join follows its predecessors, no cards overlap, and no edge crosses a card",
-      ({ memberIds, interiorEdges, direction }) => {
-        const positions = groupCanvasPositions({
-          memberIds,
-          interiorEdges,
-          direction,
-        });
-        const box = (id: string) => {
-          const position = positions.get(id);
-          if (!position) {
-            throw new Error(`no position for ${id}`);
-          }
-          return boxOf(position);
-        };
-
-        for (const item of interiorEdges) {
-          const source = box(item.source);
-          const target = box(item.target);
-          if (direction === "vertical") {
-            expect(target.top).toBeGreaterThanOrEqual(
-              source.bottom + RANK_SPACING
-            );
-          } else {
-            expect(target.left).toBeGreaterThanOrEqual(
-              source.right + RANK_SPACING
-            );
-          }
-        }
-
-        for (const [index, id] of memberIds.entries()) {
-          for (const other of memberIds.slice(index + 1)) {
-            expect(overlaps(box(id), box(other))).toBe(false);
-          }
-        }
-
-        for (const item of interiorEdges) {
-          const segments = route(box(item.source), box(item.target), direction);
-          for (const id of memberIds) {
-            if (id === item.source || id === item.target) {
-              continue;
-            }
-            for (const segment of segments) {
-              expect(
-                crosses(segment, box(id)),
-                `${item.id} crosses ${id}`
-              ).toBe(false);
-            }
-          }
-        }
-      }
-    );
-
-    it("keeps a lane clear from an early continuation to the stubs after the last row", () => {
-      const { memberIds, interiorEdges } = shape("a>b", "b>c");
-      const laneOf = (positions: Map<string, { x: number; y: number }>) =>
-        (positions.get("a")?.x ?? 0) + W / 2;
-      const covers = (
-        positions: Map<string, { x: number; y: number }>,
-        id: string
-      ) => {
-        const card = boxOf(positions.get(id) ?? { x: 0, y: 0 });
-        const lane = laneOf(positions);
-        return lane > card.left && lane < card.right;
-      };
-
-      const stacked = groupCanvasPositions({ memberIds, interiorEdges });
-      expect(covers(stacked, "b")).toBe(true);
-
-      const positions = groupCanvasPositions({
-        memberIds,
-        interiorEdges,
-        trailingStubPorts: [{ nodeId: "a", handle: null }],
-      });
-      expect(covers(positions, "b")).toBe(false);
-      expect(covers(positions, "c")).toBe(false);
-    });
-  });
-
-  it("lays rows left to right when horizontal", () => {
-    const positions = groupCanvasPositions({
-      memberIds: ["a", "b"],
-      interiorEdges: [edge("e-a", "a", "b")],
-      direction: "horizontal",
-    });
-    expect(positions.get("b")).toEqual({
-      x: W + RANK_SPACING - W / 2,
-      y: 0,
-    });
   });
 });
 
@@ -771,201 +495,143 @@ describe("groupEndPorts", () => {
   });
 });
 
-describe("groupOutlets", () => {
+describe("groupOutlet", () => {
   const conditionGroup: GroupGraphNode[] = [
     group("g"),
     { ...lookupA, parentId: "g" },
     { ...condition, parentId: "g" },
     action("sms", "resend/send-email"),
   ];
-  const handleOf = (outlets: ReturnType<typeof groupOutlets>, label: string) =>
-    outlets.find((outlet) => outlet.label === label)?.handleId;
 
-  it("draws the handle the Group's continuation already uses", () => {
+  it("stands for the ports the Group's continuation already leaves by", () => {
     expect(
-      groupOutlets(
+      groupOutlet(
         conditionGroup,
         [edge("ac", "a", "c"), edge("out", "c", "sms", "true")],
         "g"
       )
+    ).toEqual({ ports: [{ nodeId: "c", handle: "true" }], continues: true });
+  });
+
+  it("stands for both path ends of two parallel members while nothing leaves the Group", () => {
+    const nodes: GroupGraphNode[] = [
+      action("life", "ignored", {
+        data: { type: "lifecycle", label: "Start" },
+      }),
+      group("g"),
+      { ...action("user", "clerk/get-user"), parentId: "g" },
+      { ...action("issues", "linear/find-issues"), parentId: "g" },
+      action("notify", "resend/send-email"),
+    ];
+    const edges = [
+      edge("in-user", "life", "user", "started"),
+      edge("in-issues", "life", "issues", "started"),
+    ];
+
+    expect(groupOutlet(nodes, edges, "g")).toEqual({
+      ports: [
+        { nodeId: "user", handle: null },
+        { nodeId: "issues", handle: null },
+      ],
+      continues: false,
+    });
+    expect(
+      fanOutStoreEdges({
+        nodes,
+        edges,
+        sourceId: "g",
+        targetId: "notify",
+        sourceHandle: null,
+      })
     ).toEqual([
-      {
-        handleId: "true",
-        label: "True",
-        ports: [{ nodeId: "c", handle: "true" }],
-        continues: true,
-      },
+      { source: "user", target: "notify", sourceHandle: undefined },
+      { source: "issues", target: "notify", sourceHandle: undefined },
     ]);
   });
 
-  it("keeps the continuing branch when the other branch ends inside the Group", () => {
+  it("continues from terminal steps without wiring unused Condition branches", () => {
     const nodes = [...conditionGroup, { ...lookupB, parentId: "g" }];
-    const edges = [
-      edge("ac", "a", "c"),
-      edge("out", "c", "sms", "false"),
-      edge("in", "c", "b", "true"),
-    ];
+
+    expect(groupOutlet(nodes, [edge("ac", "a", "c")], "g").ports).toEqual([
+      { nodeId: "b", handle: null },
+    ]);
     expect(
-      groupOutlets(nodes, edges, "g").map((item) => item.handleId)
-    ).toEqual(["false"]);
+      fanOutStoreEdges({
+        nodes,
+        edges: [edge("ac", "a", "c")],
+        sourceId: "g",
+        targetId: "sms",
+        sourceHandle: null,
+      })
+    ).toEqual([{ source: "b", target: "sms", sourceHandle: undefined }]);
+  });
+
+  it("offers no continuation when only unused Condition outlets remain", () => {
+    expect(groupOutlet(conditionGroup, [edge("ac", "a", "c")], "g")).toEqual({
+      ports: [],
+      continues: false,
+    });
+  });
+
+  it("ignores the handle a connection names, since the card has one outlet", () => {
+    const nodes = [...conditionGroup, { ...lookupB, parentId: "g" }];
+    const edges = [edge("ac", "a", "c"), edge("cb", "c", "b", "false")];
+
     expect(
       resolveStoredSources({
         nodes,
         edges,
         sourceId: "g",
-        sourceHandle: "false",
+        sourceHandle: "true",
       })
-    ).toEqual([{ source: "c", sourceHandle: "false" }]);
-  });
-
-  it("draws a labelled handle per end port while nothing leaves the Group", () => {
-    const nodes = [...conditionGroup, { ...lookupB, parentId: "g" }];
-    const outlets = groupOutlets(nodes, [edge("ac", "a", "c")], "g");
-
-    expect(outlets.map((item) => [item.label, item.ports])).toEqual([
-      ["True", [{ nodeId: "c", handle: "true" }]],
-      ["False", [{ nodeId: "c", handle: "false" }]],
-      ["b", [{ nodeId: "b", handle: null }]],
-    ]);
-    expect(new Set(outlets.map((item) => item.handleId)).size).toBe(3);
-  });
-
-  it("draws a distinct handle per end port when member ids hold a lone surrogate or the separator characters", () => {
-    const memberIds = ["\ud800", "x/y", "x", "x%2Fy"];
-    const nodes: GroupGraphNode[] = [
-      group("g"),
-      ...memberIds.map((id) => ({
-        ...action(id, "fountain/get-user"),
-        parentId: "g",
-      })),
-    ];
-
-    const outlets = groupOutlets(nodes, [], "g");
-
-    expect(outlets.map((item) => item.handleId)).toEqual(
-      memberIds.map((nodeId) => `end:${groupPortKey({ nodeId, handle: null })}`)
-    );
-    expect(new Set(outlets.map((item) => item.handleId)).size).toBe(
-      memberIds.length
+    ).toEqual(
+      resolveStoredSources({ nodes, edges, sourceId: "g", sourceHandle: null })
     );
   });
 
-  it("names each plain end port with the title `titleOf` gives its member", () => {
-    const nodes: GroupGraphNode[] = [
-      group("g"),
-      { ...action("m1", "clerk/get-user"), parentId: "g" },
-      { ...action("m2", "linear/find-issues"), parentId: "g" },
-    ].map((node) =>
-      node.id === "g" ? node : { ...node, data: { ...node.data, label: "" } }
-    );
-    const titles: Record<string, string> = {
-      m1: "Get User",
-      m2: "Find Issues",
-    };
-
-    expect(
-      groupOutlets(nodes, [], "g", (node) => titles[node.id] ?? node.id).map(
-        (item) => item.label
-      )
-    ).toEqual(["Get User", "Find Issues"]);
-  });
-
-  it("leaves a lone plain end port unlabelled", () => {
-    const nodes: GroupGraphNode[] = [
-      group("g"),
-      { ...lookupA, parentId: "g" },
-      { ...lookupB, parentId: "g" },
-    ];
-    expect(
-      groupOutlets(nodes, [edge("ab", "a", "b")], "g").map((item) => item.label)
-    ).toEqual([null]);
-  });
-
-  it("stores one continuation from the True handle when False ends at a member", () => {
-    const nodes: GroupGraphNode[] = [
-      ...conditionGroup,
-      { ...lookupB, parentId: "g" },
-    ];
-    const edges = [edge("ac", "a", "c"), edge("cb", "c", "b", "false")];
-    const outlets = groupOutlets(nodes, edges, "g");
-
-    expect(outlets.map((item) => item.label)).toEqual(["True", "b"]);
-    expect(
-      fanOutStoreEdges({
-        nodes,
-        edges,
-        sourceId: "g",
-        targetId: "sms",
-        sourceHandle: handleOf(outlets, "True"),
-      })
-    ).toEqual([{ source: "c", target: "sms", sourceHandle: "true" }]);
-  });
-
-  it("stores one continuation from the handle a drag starts on when both branches end inside", () => {
-    const outlets = groupOutlets(conditionGroup, [edge("ac", "a", "c")], "g");
-
-    expect(
-      fanOutStoreEdges({
-        nodes: conditionGroup,
-        edges: [edge("ac", "a", "c")],
-        sourceId: "g",
-        targetId: "sms",
-        sourceHandle: handleOf(outlets, "False"),
-      })
-    ).toEqual([{ source: "c", target: "sms", sourceHandle: "false" }]);
-  });
-
-  it("draws one unlabelled handle standing for no port for an id that is not a Group", () => {
-    expect(groupOutlets(conditionGroup, [edge("ac", "a", "c")], "sms")).toEqual(
-      [{ handleId: null, label: null, ports: [], continues: false }]
-    );
-  });
-
-  it("draws one handle per distinct handle the Group's continuation uses", () => {
-    const nodes: GroupGraphNode[] = [
-      group("g"),
-      { ...lookupB, parentId: "g" },
-      { ...condition, parentId: "g" },
-      action("x", "resend/send-email"),
-      action("y", "resend/send-email"),
-    ];
-    const edges = [
-      edge("by", "b", "y"),
-      edge("cx", "c", "x", "true"),
-      edge("cy", "c", "y", "true"),
-    ];
-
-    expect(
-      groupOutlets(nodes, edges, "g").map((item) => item.handleId)
-    ).toEqual([null, "true"]);
+  it("stands for no port for an id that is not a Group", () => {
+    expect(groupOutlet(conditionGroup, [edge("ac", "a", "c")], "sms")).toEqual({
+      ports: [],
+      continues: false,
+    });
   });
 });
 
-describe("fanOutStoreEdges through a frame outlet", () => {
-  it("stores from the continuing ports of the handle the connection names", () => {
-    const nodes: GroupGraphNode[] = [
-      group("g"),
-      { ...lookupB, parentId: "g" },
-      { ...condition, parentId: "g" },
-      action("x", "resend/send-email"),
-      action("y", "resend/send-email"),
-      action("z", "resend/send-email"),
-    ];
-    const edges = [edge("by", "b", "y"), edge("cx", "c", "x", "true")];
-    const connect = (sourceHandle: string | null) =>
-      fanOutStoreEdges({
-        nodes,
-        edges,
-        sourceId: "g",
-        targetId: "z",
-        sourceHandle,
-      });
+describe("displayEdgesForGroups on the card's one outlet", () => {
+  const nodes: GroupGraphNode[] = [
+    group("g"),
+    { ...lookupA, parentId: "g" },
+    { ...condition, parentId: "g" },
+    action("x", "resend/send-email"),
+  ];
 
-    expect(connect("true")).toEqual([
-      { source: "c", target: "z", sourceHandle: "true" },
+  it("paints every continuation to one step as one edge, and deleting it names each stored edge", () => {
+    const edges = [
+      edge("a-x", "a", "x"),
+      edge("c-x", "c", "x", "true"),
+      edge("c-x-false", "c", "x", "false"),
+    ];
+
+    expect(displayEdgesForGroups(nodes, edges)).toEqual([
+      { ...edges[0], source: "g", sourceHandle: null },
     ]);
-    expect(connect(null)).toEqual([
-      { source: "b", target: "z", sourceHandle: undefined },
+    expect(fanOutStoreEdgeIds(nodes, edges, "c-x")).toEqual([
+      "a-x",
+      "c-x",
+      "c-x-false",
+    ]);
+  });
+
+  it("names the Condition branch on the painted edge when it is the only one", () => {
+    const edges = [edge("c-x", "c", "x", "true")];
+
+    expect(displayEdgesForGroups(nodes, edges)).toEqual([
+      {
+        ...edges[0],
+        source: "g",
+        sourceHandle: null,
+        data: { displayLabel: "True" },
+      },
     ]);
   });
 });
@@ -991,25 +657,5 @@ describe("orderGroupParentsFirst", () => {
       frame,
       child,
     ]);
-  });
-});
-
-describe("groupLayoutDirection", () => {
-  it("reads the stored direction and lays out vertically when none is stored", () => {
-    const frame = group("g");
-    expect(groupLayoutDirection(frame)).toBe("vertical");
-    expect(groupLayoutDirection(undefined)).toBe("vertical");
-    expect(
-      groupLayoutDirection({
-        ...frame,
-        data: { ...frame.data, config: { direction: "horizontal" } },
-      })
-    ).toBe("horizontal");
-    expect(
-      groupLayoutDirection({
-        ...frame,
-        data: { ...frame.data, config: { direction: "sideways" } },
-      })
-    ).toBe("vertical");
   });
 });

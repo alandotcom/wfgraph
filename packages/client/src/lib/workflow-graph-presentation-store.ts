@@ -4,9 +4,8 @@
  * Draft mutation and history remain in `workflow-graph-store`.
  */
 
-import { atom, type Atom } from "jotai";
+import { atom } from "jotai";
 import { selectAtom } from "jotai/utils";
-import { isEqual } from "es-toolkit/predicate";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { mapOrSame } from "@wfgraph/shared/utils/map-or-same";
 import { inactiveBranch } from "#src/lib/inactive-branch";
@@ -20,14 +19,12 @@ import {
 } from "#src/lib/workflow-issues-store";
 import {
   childIdsOfGroup,
-  groupOutlets,
   orderGroupParentsFirst,
 } from "@wfgraph/shared/graph/node-group";
 import {
   scopeCanvasGraph,
   type ScopeCanvasGraph,
 } from "#src/lib/group-scope-canvas";
-import type { GroupLayoutDirection } from "@wfgraph/shared/graph/schemas";
 import {
   edgesStateAtom,
   executionOverlayGraphAtom,
@@ -48,13 +45,11 @@ import {
 import type { RunNodeEvidenceStatus } from "@wfgraph/shared/graph/group-run-status";
 import type { WorkflowExecutionStatus } from "@wfgraph/shared/lifecycle/execution-contracts";
 import {
-  comparisonNodeTitle,
   type NodeIssueSummary,
   type NodeRunStatus,
   type WorkflowEdge,
   type WorkflowNode,
 } from "#src/lib/workflow-graph-types";
-import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 
 /**
  * Run evidence status by node id, separate from every persisted graph. Step
@@ -358,40 +353,14 @@ const paintedEdgesAtom = atom((get) => {
   return paintSelection(withInactiveBranch);
 });
 
-function scopeCanvasGraphAtom(
-  focusedGroupDirection: GroupLayoutDirection | null
-): Atom<ScopeCanvasGraph> {
-  return atom((get) =>
-    scopeCanvasGraph({
-      nodes: get(displayNodesAtom),
-      edges: get(paintedEdgesAtom),
-      scope: get(activeWorkspaceAddressAtom).scope,
-      focusedGroupDirection,
-    })
-  );
-}
-
-/**
- * What the canvas paints for the active scope: the overview with each Group
- * collapsed, or one focused Group's members and boundary stubs laid out along
- * the Group's stored direction. Painting reads the stored graph and never
- * writes to it.
- */
-const canvasGraphAtom = scopeCanvasGraphAtom(null);
-
-/** `canvasGraphAtom` with every focused Group laid out top to bottom. */
-const verticalCanvasGraphAtom = scopeCanvasGraphAtom("vertical");
-
-/**
- * `canvasGraphAtom` with every focused Group laid out top to bottom for
- * "vertical", or `canvasGraphAtom` itself for null. A phone paints with
- * "vertical" (see `useFocusedGroupDirection`), which changes nothing stored.
- */
-export function canvasGraphAtomFor(
-  direction: "vertical" | null
-): Atom<ScopeCanvasGraph> {
-  return direction === null ? canvasGraphAtom : verticalCanvasGraphAtom;
-}
+/** Every form factor paints the same stored positions for the active scope. */
+export const canvasGraphAtom = atom((get): ScopeCanvasGraph =>
+  scopeCanvasGraph({
+    nodes: get(displayNodesAtom),
+    edges: get(paintedEdgesAtom),
+    scope: get(activeWorkspaceAddressAtom).scope,
+  })
+);
 
 /** The nodes `canvasGraphAtom` paints for the active scope. */
 export const canvasNodesAtom = atom((get) => get(canvasGraphAtom).nodes);
@@ -411,24 +380,6 @@ const frameSourceGraphAtom = atom(
       edges: get(edgesStateAtom),
     }
 );
-
-/**
- * An atom holding the source handles the Group frame `groupId` draws, read
- * from the presented graph's member edges, with each member named by the title
- * its card shows under `catalog`. It keeps the same array while the handles are
- * unchanged, so dragging a node re-renders no frame. Create it once per frame
- * id and catalog, because each call makes a new atom.
- */
-export function groupOutletsAtom(groupId: string, catalog: ExtensionCatalog) {
-  return selectAtom(
-    frameSourceGraphAtom,
-    (graph) =>
-      groupOutlets(graph.nodes, graph.edges, groupId, (node) =>
-        comparisonNodeTitle(node.data, catalog)
-      ),
-    isEqual
-  );
-}
 
 /**
  * An atom holding how many members the Group frame `groupId` holds in the

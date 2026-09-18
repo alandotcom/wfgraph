@@ -1,14 +1,8 @@
-import {
-  Handle,
-  type NodeProps,
-  Position,
-  useUpdateNodeInternals,
-} from "@xyflow/react";
+import { Handle, type NodeProps, Position } from "@xyflow/react";
 import { useAtomValue } from "jotai";
 import { ArrowRight, Group } from "lucide-react";
 import {
   createContext,
-  Fragment,
   memo,
   type ReactNode,
   useContext,
@@ -16,11 +10,7 @@ import {
 } from "react";
 import { cn } from "@wfgraph/shared/utils";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
-import { useAfterPaint } from "#src/hooks/effects";
-import {
-  groupMemberCountAtom,
-  groupOutletsAtom,
-} from "#src/lib/workflow-graph-presentation-store";
+import { groupMemberCountAtom } from "#src/lib/workflow-graph-presentation-store";
 import {
   COMPARISON_GROUP_ANNOTATION,
   COMPARISON_NODE_ANNOTATION,
@@ -29,14 +19,9 @@ import {
 } from "#src/lib/workflow-graph-types";
 import { NODE_ICON_CLASS } from "#src/lib/workflow-node-dimensions";
 import { ComparisonMarker } from "#src/components/flow-elements/comparison-marker";
+import { NodeDescription } from "#src/components/flow-elements/node";
 import { NodeIssueBadge } from "#src/components/flow-elements/node-issue-badge";
-import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { Button } from "#src/components/ui/button";
-import {
-  alongOutletSide,
-  OutletLabel,
-} from "#src/components/workflow/nodes/outlet-label";
-import { groupOutletSlots } from "#src/components/workflow/nodes/group-outlet-slots";
 import { useGroupScopeNavigation } from "#src/components/workflow/use-group-scope-navigation";
 import { useRunGroupSummary } from "#src/components/workflow/use-run-node-evidence";
 import {
@@ -77,34 +62,19 @@ type GroupNodeProps = NodeProps & {
  */
 export const GroupNode = memo(
   ({ data, selected, id, isConnectable }: GroupNodeProps) => {
-    const updateNodeInternals = useUpdateNodeInternals();
     const { enterGroup } = useGroupScopeNavigation();
     const renderChangedSteps = useContext(GroupChangedStepsSlot);
-    // The canvas paints each edge leaving a Group as leaving its frame, keeping
-    // the member's source handle, and React Flow draws such an edge only from a
-    // handle with that id. A Group nothing leaves draws a handle per place a
-    // path ends inside it, so a drag starts from the one it continues by.
-    const catalog = useExtensionCatalog();
-    const outlets = useAtomValue(
-      useMemo(() => groupOutletsAtom(id, catalog), [id, catalog])
-    );
     const memberCount = useAtomValue(
       useMemo(() => groupMemberCountAtom(id), [id])
     );
     // Null outside a run. A Group records nothing in a run, so its status and
     // counts are read from its members' evidence.
     const runSummary = useRunGroupSummary(id);
-    // React Flow records handle ids when it measures a node, so a changed set of
-    // ids has to be measured again before an edge can attach to a new one.
-    useAfterPaint(outlets, () => {
-      updateNodeInternals(id);
-    });
 
     if (!data || !isGroupNode({ data })) {
       return null;
     }
     const label = groupLabel(data.label);
-    const slots = groupOutletSlots(outlets.length);
     const changedMemberIds =
       data[COMPARISON_GROUP_ANNOTATION]?.changedMemberIds;
 
@@ -161,6 +131,11 @@ export const GroupNode = memo(
             <ArrowRight />
           </Button>
         </div>
+        {data.description ? (
+          <NodeDescription className="shrink-0 px-3 pt-2">
+            {data.description}
+          </NodeDescription>
+        ) : null}
         {runSummary ? (
           <div
             className="flex min-w-0 flex-1 flex-col justify-center gap-0.5 px-3 text-xs"
@@ -191,47 +166,19 @@ export const GroupNode = memo(
               : null}
           </div>
         )}
-        {outlets.map((outlet, index) => {
-          // Several handles spread evenly across the bottom edge, each label
-          // within its own handle's slot.
-          const { offset, labelMaxWidth } = slots[index];
-          return (
-            <Fragment key={outlet.handleId ?? ""}>
-              <Handle
-                aria-label={
-                  outlet.label === null
-                    ? "Group output"
-                    : `Group output, ${outlet.label}`
-                }
-                // React Flow's `id` prop takes a string or `null`, not `undefined`.
-                id={outlet.handleId}
-                isConnectable={isConnectable}
-                isConnectableEnd={isConnectable}
-                isConnectableStart={isConnectable}
-                position={Position.Bottom}
-                role="img"
-                style={alongOutletSide(Position.Bottom, offset)}
-                type="source"
-              />
-              {/* An edge leaving the Group draws its Condition branch name on
-                  itself, so the card captions only a path-end outlet. */}
-              {outlet.label === null || outlet.continues ? null : (
-                <OutletLabel
-                  // A member's name can be long, and several labels share the
-                  // card's bottom edge, so a long name truncates within its
-                  // slot. The handle's accessible name carries it whole.
-                  className="truncate"
-                  maxWidth={labelMaxWidth}
-                  offset={offset}
-                  outlet={Position.Bottom}
-                  title={outlet.label}
-                >
-                  {outlet.label}
-                </OutletLabel>
-              )}
-            </Fragment>
-          );
-        })}
+        {/* One outlet for the whole Group. The canvas paints every edge
+          leaving the Group from it. Connections keep existing continuation
+          ports or use terminal non-Condition members, leaving unused branches
+          unwired. */}
+        <Handle
+          aria-label="Group output"
+          isConnectable={isConnectable}
+          isConnectableEnd={isConnectable}
+          isConnectableStart={isConnectable}
+          position={Position.Bottom}
+          role="img"
+          type="source"
+        />
       </div>
     );
   }

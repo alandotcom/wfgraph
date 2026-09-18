@@ -42,6 +42,13 @@ import { cn } from "@wfgraph/shared/utils";
 import { analyzeGroupableSelection } from "@wfgraph/shared/graph/node-group";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { deleteGroupWithStepsConfirmation } from "./group-delete-confirmation";
+import { showGraphEditRefusal } from "#src/components/workflow/graph-edit-refusal";
+import { stepOutlets } from "#src/components/workflow/connection-handle";
+import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
+import {
+  useAddStepAfter,
+  useInsertStepOnEdge,
+} from "#src/components/workflow/use-add-step";
 
 export type ContextMenuType = "node" | "edge" | "pane" | null;
 
@@ -99,6 +106,9 @@ export function WorkflowContextMenu({
   const updateNodeData = useSetAtom(updateNodeDataAtom);
   const { open: openOverlay } = useOverlay();
   const navigation = useRevealNavigation();
+  const catalog = useExtensionCatalog();
+  const addStepAfter = useAddStepAfter();
+  const insertStepOnEdge = useInsertStepOnEdge();
   const store = useStore();
   const menuRef = useRef<HTMLDivElement>(null);
   const clicked = menuState?.nodeId
@@ -134,7 +144,11 @@ export function WorkflowContextMenu({
       const nodeId = menuState.nodeId;
       onClose();
       selectOnlyNode(nodeId);
-      navigation.followSelection(store.get(activeWorkspaceAddressAtom));
+      navigation.openNode({
+        address: store.get(activeWorkspaceAddressAtom),
+        nodeId,
+        level: "focus",
+      });
     }
   }, [menuState, onClose, selectOnlyNode, navigation, store]);
 
@@ -205,7 +219,7 @@ export function WorkflowContextMenu({
 
   const handleDuplicateNode = useCallback(() => {
     if (canInsert && menuState?.nodeId) {
-      duplicateSelection(menuState.nodeId);
+      showGraphEditRefusal(duplicateSelection(menuState.nodeId));
     }
     onClose();
   }, [canInsert, menuState, duplicateSelection, onClose]);
@@ -226,9 +240,26 @@ export function WorkflowContextMenu({
     onClose();
   }, [canEdit, menuState, ungroupSelected, onClose]);
 
+  const handleAddStepAfter = useCallback(
+    (source: { nodeId: string; handle: string | null }) => {
+      if (canInsert) {
+        addStepAfter({ source });
+      }
+      onClose();
+    },
+    [addStepAfter, canInsert, onClose]
+  );
+
+  const handleInsertStep = useCallback(() => {
+    if (canInsert && menuState?.edgeId) {
+      insertStepOnEdge({ edgeId: menuState.edgeId });
+    }
+    onClose();
+  }, [canInsert, insertStepOnEdge, menuState, onClose]);
+
   const handlePaste = useCallback(() => {
     if (canInsert) {
-      pasteSelection(menuState?.flowPosition);
+      showGraphEditRefusal(pasteSelection(menuState?.flowPosition));
     }
     onClose();
   }, [canInsert, menuState, pasteSelection, onClose]);
@@ -289,6 +320,13 @@ export function WorkflowContextMenu({
   });
   const canGroup = grouping.ok;
   const showUngroup = canUngroup(clicked);
+  // One row per outlet, so a Condition or an Event Split says which branch the
+  // step goes on. A collapsed Group card uses its existing continuation ports
+  // or terminal non-Condition members, leaving unused branches unwired.
+  const outlets =
+    clicked && menuState.type === "node"
+      ? stepOutlets({ node: clicked, nodes, edges, catalog })
+      : [];
   // Below the cursor when the menu fits there, above it otherwise.
   const opensUpward =
     menuState.position.y + MENU_HEIGHT_PX + VIEWPORT_MARGIN_PX >
@@ -333,6 +371,24 @@ export function WorkflowContextMenu({
               onClick={handleToggleEnabled}
             />
           ) : null}
+          {outlets.map((outlet) => (
+            <MenuItem
+              disabled={!canInsert}
+              icon={<Plus className="size-4" />}
+              key={outlet.handle ?? "only"}
+              label={
+                outlet.label === null
+                  ? "Add step after"
+                  : `Add step after ${outlet.label}`
+              }
+              onClick={() =>
+                handleAddStepAfter({
+                  nodeId: clicked?.id ?? "",
+                  handle: outlet.handle,
+                })
+              }
+            />
+          ))}
           <MenuItem
             disabled={isLifecycleNode}
             icon={<Copy className="size-4" />}
@@ -355,12 +411,13 @@ export function WorkflowContextMenu({
             onClick={handleGroup}
             shortcut={shortcutLabel("G")}
           />
-          <MenuItem
-            disabled={!showUngroup}
-            icon={<Ungroup className="size-4" />}
-            label="Ungroup"
-            onClick={handleUngroup}
-          />
+          {showUngroup ? (
+            <MenuItem
+              icon={<Ungroup className="size-4" />}
+              label="Ungroup"
+              onClick={handleUngroup}
+            />
+          ) : null}
           {/* Ungroup is how a frame alone is removed, so a frame's destructive
               row is the explicit, confirmed delete of the Group's steps. */}
           {clickedIsGroup ? (
@@ -383,12 +440,20 @@ export function WorkflowContextMenu({
       )}
 
       {menuState.type === "edge" && (
-        <MenuItem
-          icon={<Link2Off className="size-4" />}
-          label="Delete Connection"
-          onClick={handleDeleteEdge}
-          variant="destructive"
-        />
+        <>
+          <MenuItem
+            disabled={!canInsert}
+            icon={<Plus className="size-4" />}
+            label="Insert step"
+            onClick={handleInsertStep}
+          />
+          <MenuItem
+            icon={<Link2Off className="size-4" />}
+            label="Delete Connection"
+            onClick={handleDeleteEdge}
+            variant="destructive"
+          />
+        </>
       )}
 
       {menuState.type === "pane" && (

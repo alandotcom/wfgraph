@@ -191,12 +191,12 @@ describe("diffWorkflowGraphs", () => {
     expect(result.hasChanges).toBe(true);
   });
 
-  it("reports a Group's direction and membership and no edge change", () => {
-    const frame = (direction: string): WorkflowNode => ({
+  it("reports a Group's description and membership and no edge change", () => {
+    const frame = (description: string): WorkflowNode => ({
       id: "group",
       type: "group",
       position: { x: 0, y: 0 },
-      data: { label: "Outreach", type: "group", config: { direction } },
+      data: { label: "Outreach", type: "group", description },
     });
     const edges: WorkflowEdge[] = [{ id: "a-b", source: "a", target: "b" }];
     const ungrouped = graph([node("a"), node("b")], edges);
@@ -237,7 +237,7 @@ describe("diffWorkflowGraphs", () => {
         kind: "modified",
         fields: [
           {
-            path: ["data", "config", "direction"],
+            path: ["data", "description"],
             kind: "modified",
             before: "vertical",
             after: "horizontal",
@@ -606,7 +606,7 @@ describe("classifying a Group comparison", () => {
   ];
   function frame(
     id: string,
-    data: { label?: string; direction?: string } = {}
+    data: { label?: string; description?: string } = {}
   ): WorkflowNode {
     return {
       id,
@@ -615,7 +615,7 @@ describe("classifying a Group comparison", () => {
       data: {
         label: data.label ?? "Outreach",
         type: "group",
-        config: { direction: data.direction ?? "vertical" },
+        description: data.description ?? "vertical",
       },
     };
   }
@@ -726,10 +726,10 @@ describe("classifying a Group comparison", () => {
     });
   });
 
-  it("classifies a turned Group direction as Organization only", () => {
+  it("classifies a turned Group description as Organization only", () => {
     const horizontal = graph(
       [
-        frame("group", { direction: "horizontal" }),
+        frame("group", { description: "horizontal" }),
         member("a"),
         member("b"),
         node("c"),
@@ -740,7 +740,7 @@ describe("classifying a Group comparison", () => {
 
     expect(
       result.diff.nodeChanges[0]?.fields.map((field) => field.path)
-    ).toEqual([["data", "config", "direction"]]);
+    ).toEqual([["data", "description"]]);
     expect(result).toMatchObject({
       organization: true,
       behavior: false,

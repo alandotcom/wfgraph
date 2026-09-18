@@ -21,14 +21,15 @@ import { Connection } from "#src/components/flow-elements/connection";
 import { Controls } from "#src/components/flow-elements/controls";
 import "@xyflow/react/dist/style.css";
 
-import { Edge } from "#src/components/flow-elements/edge";
+import { Edge, InsertStepSlot } from "#src/components/flow-elements/edge";
+import { useInsertStepOnEdge } from "#src/components/workflow/use-add-step";
 import { Panel } from "#src/components/flow-elements/panel";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { useAfterDelay, useAfterPaint, useDomEvent } from "#src/hooks/effects";
 import { isTextEntry } from "#src/lib/is-text-entry";
 import { viewportAnimationDuration } from "#src/lib/motion";
 import {
-  canvasGraphAtomFor,
+  canvasGraphAtom,
   displayNodesAtom,
   edgesAtom,
   canvasEditingLockedAtom,
@@ -69,17 +70,13 @@ import { GroupScopeBar } from "./group-scope-bar";
 import { useGroupScopeNavigation } from "./use-group-scope-navigation";
 import { withoutProjectedDimensions } from "#src/lib/group-scope-canvas";
 import { scopeId } from "#src/lib/workflow-navigation-state";
-import {
-  activeWorkspaceAddressAtom,
-  groupScopeActiveAtom,
-} from "#src/lib/workflow-workspace-navigation";
+import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
 import { LifecycleNode } from "./nodes/lifecycle-node";
 import { useCanvasConnections } from "./use-canvas-connections";
 import { useCanvasCopyPaste } from "./use-canvas-copy-paste";
 import { useReflowLayout } from "./use-reflow-layout";
 import {
   canvasInteractionState,
-  useFocusedGroupDirection,
   useTopologyAuthoring,
 } from "./canvas-interaction";
 import { useWorkspaceCamera } from "./use-workspace-camera";
@@ -145,12 +142,10 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   // connection rules read because a Group frame stands for its members.
   // A phone lays a focused Group out top to bottom whatever its stored
   // direction, which changes only what the canvas paints.
-  const focusedGroupDirection = useFocusedGroupDirection();
-  const canvasGraph = useAtomValue(canvasGraphAtomFor(focusedGroupDirection));
+  const canvasGraph = useAtomValue(canvasGraphAtom);
   const { nodes, edges } = canvasGraph;
   const graphNodes = useAtomValue(displayNodesAtom);
   const { scope } = useAtomValue(activeWorkspaceAddressAtom);
-  const groupScopeActive = useAtomValue(groupScopeActiveAtom);
   const topologyAuthoring = useTopologyAuthoring();
   const { onNodeDoubleClick } = useGroupScopeNavigation();
   const storeEdges = useAtomValue(edgesAtom);
@@ -281,7 +276,6 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
     editingLocked: graphEditingLocked,
     comparisonActive,
     overlayActive,
-    groupScopeActive,
     topologyAuthoring,
   });
   // Without topology authoring nothing a gesture or key below would add,
@@ -299,6 +293,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   // The workspace camera restores a scope's saved camera before paint, and
   // Canvas Reveal's camera runs after paint, so a placement always compares
   // against the restored camera.
+  const insertStepOnEdge = useInsertStepOnEdge();
   const revealCamera = useRevealCamera({
     isCanvasPlaced,
     isCanvasReady,
@@ -608,86 +603,90 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
     >
       {/* React Flow Canvas. A Group card on a comparison canvas leads to its
           changed steps through the control the slot supplies. */}
-      <GroupChangedStepsSlot.Provider value={renderGroupChangedSteps}>
-        <Canvas
-          className="bg-background"
-          connectionLineComponent={Connection}
-          connectionMode={ConnectionMode.Strict}
-          // A tap on a handle starts a connection only where one can be made.
-          connectOnClick={!topologyLocked}
-          defaultEdgeOptions={defaultEdgeOptions}
-          deleteKeyCode={interaction.deleteKeyCode}
-          edges={accessibleGraph.edges}
-          edgesFocusable={interaction.edgesFocusable}
-          edgeTypes={edgeTypes}
-          elementsSelectable={interaction.elementsSelectable}
-          isValidConnection={isValidConnection}
-          minZoom={WORKFLOW_CANVAS_MIN_ZOOM}
-          nodes={accessibleGraph.nodes}
-          multiSelectionKeyCode={interaction.multiSelectionKeyCode}
-          nodesConnectable={interaction.editsTopology}
-          nodesDraggable={interaction.nodesDraggable}
-          nodeTypes={nodeTypes}
-          onBeforeDelete={
-            interaction.comparisonVisible
-              ? () => Promise.resolve(false)
-              : onBeforeDelete
-          }
-          onConnect={topologyLocked ? undefined : onConnect}
-          onConnectEnd={topologyLocked ? undefined : onConnectEnd}
-          onConnectStart={topologyLocked ? undefined : onConnectStart}
-          onEdgeContextMenu={topologyLocked ? undefined : onEdgeContextMenu}
-          onEdgesChange={graphEditingLocked ? undefined : handleEdgesChange}
-          onNodeClick={isGenerating ? undefined : onNodeClick}
-          onNodeDoubleClick={onNodeDoubleClick}
-          onNodeContextMenu={topologyLocked ? undefined : onNodeContextMenu}
-          onNodesChange={
-            interaction.comparisonVisible
-              ? onComparisonNodesChange
-              : graphEditingLocked
-                ? undefined
-                : handleNodesChange
-          }
-          onMoveEnd={() => {
-            workspaceCamera.onMoveEnd();
-            revealCamera.onMoveEnd();
-          }}
-          onMoveStart={workspaceCamera.onMoveStart}
-          onPaneClick={onPaneClick}
-          onPaneContextMenu={topologyLocked ? undefined : onPaneContextMenu}
-          selectionKeyCode={interaction.selectionKeyCode}
-        >
-          <Panel
-            className="[--workflow-controls-bottom:3.5rem] border-none bg-transparent p-0 md:[--workflow-controls-bottom:0px]"
-            data-slot={CANVAS_OBSTACLE_SLOTS.controls}
-            position="bottom-left"
-            style={{ bottom: "var(--workflow-controls-bottom)" }}
+      <InsertStepSlot.Provider
+        value={interaction.insertsNodes ? insertStepOnEdge : null}
+      >
+        <GroupChangedStepsSlot.Provider value={renderGroupChangedSteps}>
+          <Canvas
+            className="bg-background"
+            connectionLineComponent={Connection}
+            connectionMode={ConnectionMode.Strict}
+            // A tap on a handle starts a connection only where one can be made.
+            connectOnClick={!topologyLocked}
+            defaultEdgeOptions={defaultEdgeOptions}
+            deleteKeyCode={interaction.deleteKeyCode}
+            edges={accessibleGraph.edges}
+            edgesFocusable={interaction.edgesFocusable}
+            edgeTypes={edgeTypes}
+            elementsSelectable={interaction.elementsSelectable}
+            isValidConnection={isValidConnection}
+            minZoom={WORKFLOW_CANVAS_MIN_ZOOM}
+            nodes={accessibleGraph.nodes}
+            multiSelectionKeyCode={interaction.multiSelectionKeyCode}
+            nodesConnectable={interaction.editsTopology}
+            nodesDraggable={interaction.nodesDraggable}
+            nodeTypes={nodeTypes}
+            onBeforeDelete={
+              interaction.comparisonVisible
+                ? () => Promise.resolve(false)
+                : onBeforeDelete
+            }
+            onConnect={topologyLocked ? undefined : onConnect}
+            onConnectEnd={topologyLocked ? undefined : onConnectEnd}
+            onConnectStart={topologyLocked ? undefined : onConnectStart}
+            onEdgeContextMenu={topologyLocked ? undefined : onEdgeContextMenu}
+            onEdgesChange={graphEditingLocked ? undefined : handleEdgesChange}
+            onNodeClick={isGenerating ? undefined : onNodeClick}
+            onNodeDoubleClick={onNodeDoubleClick}
+            onNodeContextMenu={topologyLocked ? undefined : onNodeContextMenu}
+            onNodesChange={
+              interaction.comparisonVisible
+                ? onComparisonNodesChange
+                : graphEditingLocked
+                  ? undefined
+                  : handleNodesChange
+            }
+            onMoveEnd={() => {
+              workspaceCamera.onMoveEnd();
+              revealCamera.onMoveEnd();
+            }}
+            onMoveStart={workspaceCamera.onMoveStart}
+            onPaneClick={onPaneClick}
+            onPaneContextMenu={topologyLocked ? undefined : onPaneContextMenu}
+            selectionKeyCode={interaction.selectionKeyCode}
           >
-            <Controls
-              canReflow={!graphEditingLocked && canReflow}
-              // A phone offers no topology authoring, so it shows no Tidy layout.
-              onReflow={
-                graphEditingLocked || !topologyAuthoring ? undefined : reflow
-              }
-            />
-          </Panel>
-          {showMinimap && (
-            // maskColor and nodeColor default to hardcoded light-mode values that
-            // never invert: the viewport rectangle was invisible in light (1.05:1)
-            // and a bright reversed frame in dark (6.58:1). The test-mode banner
-            // moved to bottom-centre, so this corner is no longer contested.
-            <MiniMap
-              bgColor="var(--sidebar)"
-              className="rounded-lg border shadow-sm"
-              maskColor="color-mix(in oklch, var(--muted) 60%, transparent)"
-              nodeColor="var(--muted-foreground)"
-              nodeStrokeColor="var(--border)"
-              pannable
-              zoomable
-            />
-          )}
-        </Canvas>
-      </GroupChangedStepsSlot.Provider>
+            <Panel
+              className="[--workflow-controls-bottom:3.5rem] border-none bg-transparent p-0 md:[--workflow-controls-bottom:0px]"
+              data-slot={CANVAS_OBSTACLE_SLOTS.controls}
+              position="bottom-left"
+              style={{ bottom: "var(--workflow-controls-bottom)" }}
+            >
+              <Controls
+                canReflow={!graphEditingLocked && canReflow}
+                // A phone offers no topology authoring, so it shows no Tidy layout.
+                onReflow={
+                  graphEditingLocked || !topologyAuthoring ? undefined : reflow
+                }
+              />
+            </Panel>
+            {showMinimap && (
+              // maskColor and nodeColor default to hardcoded light-mode values that
+              // never invert: the viewport rectangle was invisible in light (1.05:1)
+              // and a bright reversed frame in dark (6.58:1). The test-mode banner
+              // moved to bottom-centre, so this corner is no longer contested.
+              <MiniMap
+                bgColor="var(--sidebar)"
+                className="rounded-lg border shadow-sm"
+                maskColor="color-mix(in oklch, var(--muted) 60%, transparent)"
+                nodeColor="var(--muted-foreground)"
+                nodeStrokeColor="var(--border)"
+                pannable
+                zoomable
+              />
+            )}
+          </Canvas>
+        </GroupChangedStepsSlot.Provider>
+      </InsertStepSlot.Provider>
 
       <GroupScopeBar />
 

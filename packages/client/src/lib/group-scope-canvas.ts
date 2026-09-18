@@ -1,12 +1,10 @@
 /**
- * The graph the canvas paints for one workspace scope. The overview shows each
- * Group as one collapsed card with its boundary edges on the frame. A focused
- * Group lays its members out from the Group's topology and stored direction,
- * with a stub for each outside port an edge enters or leaves by and for each
- * member port where a path ends. Nothing here writes the graph.
+ * The overview paints collapsed Groups. A focused Group paints members at their
+ * stored, frame-relative positions and derives boundary stubs from those cards.
+ * Projection never writes positions; dragging, adding steps and Tidy own them.
  */
-
-import { sortBy, uniqBy } from "es-toolkit/array";
+import { omit } from "es-toolkit/object";
+import { sortBy } from "es-toolkit/array";
 import {
   analyzeGroupBoundary,
   type GroupPort,
@@ -14,16 +12,14 @@ import {
 } from "@wfgraph/shared/graph/group-boundary";
 import { groupPortKey } from "@wfgraph/shared/graph/group-port-key";
 import {
-  displayEdgesForGroups,
-  groupCanvasPositions,
-  groupEndPorts,
-  groupLayoutDirection,
-} from "@wfgraph/shared/graph/node-group";
-import type { GroupLayoutDirection } from "@wfgraph/shared/graph/schemas";
+  rectanglesOverlap,
+  type NodeRectangle,
+} from "@wfgraph/shared/graph/node-placement";
 import {
-  getConditionBranchDisplayLabel,
-  normalizeConditionBranch,
-} from "@wfgraph/shared/conditions/condition-branch";
+  displayEdgesForGroups,
+  groupEndPorts,
+} from "@wfgraph/shared/graph/node-group";
+import { getConditionBranchDisplayLabel } from "@wfgraph/shared/conditions/condition-branch";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { type NodeChange, Position } from "@xyflow/react";
 import type { WorkspaceScope } from "#src/lib/workflow-navigation-state";
@@ -34,76 +30,35 @@ import {
   type WorkflowNode,
 } from "#src/lib/workflow-graph-types";
 import {
-  NODE_SPACING,
   RANK_SPACING,
   WORKFLOW_NODE_HEIGHT,
   WORKFLOW_NODE_WIDTH,
 } from "#src/lib/workflow-node-dimensions";
 
 export type CanvasGraph = { nodes: WorkflowNode[]; edges: WorkflowEdge[] };
-
 export type ScopeCanvasGraph = CanvasGraph & {
-  /**
-   * The node whose measurement tells the canvas's first placement that React
-   * Flow holds the graph. `pinToTop` asks that placement to hold the node near
-   * the top of the canvas, which the overview does for its Lifecycle Node.
-   */
   anchor: { nodeId: string; pinToTop: boolean } | null;
-  /**
-   * Nodes painted at a size this module chose. React Flow's measurements of
-   * them describe the painting, so the canvas never writes them to the store.
-   */
+  /** Only painted frames and stubs have measurements that must not be stored. */
   projectedNodeIds: ReadonlySet<string>;
 };
 
-/**
- * The React Flow node types of the boundary stubs: "Incoming from" before the
- * members, and "Continues to" and "Path ends" after them.
- */
 export const GROUP_BOUNDARY_NODE_TYPES = {
   ingress: "groupIngress",
   continuation: "groupContinuation",
   end: "groupEnd",
 } as const;
-
-/** The height of a boundary stub. Its width is the standard card width. */
 export const GROUP_BOUNDARY_STUB_HEIGHT = 40;
-
-/** The words an end stub reads, and the name assistive technology reads for it. */
 export const GROUP_END_STUB_LABEL = "Path ends";
-
 type StubDirection = keyof typeof GROUP_BOUNDARY_NODE_TYPES;
-
-/** The stored edges a focused Group paints, by where they sit. */
 type EdgeRole = "interior" | "ingress" | "continuation";
-
 const CARD_SIZE = { width: WORKFLOW_NODE_WIDTH, height: WORKFLOW_NODE_HEIGHT };
-
-/**
- * Where a focused Group's cards and stubs draw their handles, so edges run along
- * the Group's direction: top to bottom, or left to right.
- */
-const HANDLE_POSITIONS: Record<
-  GroupLayoutDirection,
-  { sourcePosition: Position; targetPosition: Position }
-> = {
-  vertical: { sourcePosition: Position.Bottom, targetPosition: Position.Top },
-  horizontal: { sourcePosition: Position.Right, targetPosition: Position.Left },
+const HANDLES = {
+  sourcePosition: Position.Bottom,
+  targetPosition: Position.Top,
 };
-
-/**
- * The text every painted id this module makes starts with. The graph schema
- * trims a stored node or edge id when it decodes a graph, so a stored id can
- * never start with a space, and no stub or display-only edge shares an id with
- * a stored node or edge.
- */
+// Stored ids are trimmed by the schema, so this prefix cannot collide with one.
 const PAINTED_ID_PREFIX = " group-";
 
-/**
- * The id of the stub standing for one port. Two ports never share a port key,
- * so no two ports share a stub id. The id is only a React Flow key; the port
- * itself is read from the stub's data.
- */
 export function boundaryStubId(
   direction: StubDirection,
   port: GroupPort
@@ -111,18 +66,10 @@ export function boundaryStubId(
   return `${PAINTED_ID_PREFIX}${direction}:${groupPortKey(port)}`;
 }
 
-/**
- * The port the painted node `nodeId` stands for when it is a boundary stub, or
- * null when it is any other node. A node counts as a stub only when its type is
- * a stub type and its data carries the port.
- */
 function stubPortOf(
   nodeId: string | null,
   paintedNodes: readonly WorkflowNode[]
 ): GroupBoundaryStubPort | null {
-  if (nodeId === null) {
-    return null;
-  }
   const node = paintedNodes.find((item) => item.id === nodeId);
   const stubTypes: readonly (string | undefined)[] = Object.values(
     GROUP_BOUNDARY_NODE_TYPES
@@ -132,56 +79,54 @@ function stubPortOf(
     : null;
 }
 
-/**
- * A painted connection as the store reads it. `fromIngressStub` is true when
- * the painted source was an "Incoming from" stub, whose outside port became the
- * source. `refusal` explains a connection involving a stub that stores nothing.
- */
 export type StoredCanvasConnection<C> =
-  | { connection: C; fromIngressStub: boolean }
+  | { connection: C; throughBoundaryStub: boolean }
   | { refusal: string };
 
-/**
- * The connection a drag on the painted nodes `paintedNodes` stores. A drag from
- * an ingress stub onto a member names the stub's outside port as its source, so
- * it stores one more edge from the port that already enters the Group. A drag
- * onto a stub, or from a continuation or end stub, is refused. Every other
- * connection comes back as it was given.
- */
+/** Translate a stub into its stored port, refusing connections between stubs. */
 export function storedCanvasConnection<
   C extends {
     source: string | null;
     target: string | null;
     sourceHandle?: string | null | undefined;
+    targetHandle?: string | null | undefined;
   },
 >(
   connection: C,
   paintedNodes: readonly WorkflowNode[]
 ): StoredCanvasConnection<C> {
   const source = stubPortOf(connection.source, paintedNodes);
+  const target = stubPortOf(connection.target, paintedNodes);
   if (
-    stubPortOf(connection.target, paintedNodes) !== null ||
-    (source !== null && source.direction !== "ingress")
+    (source !== null && target !== null) ||
+    (source !== null && source.direction !== "ingress") ||
+    (target !== null && target.direction !== "continuation")
   ) {
     return { refusal: "Connect to a step inside the Group." };
   }
-  if (source === null) {
-    return { connection, fromIngressStub: false };
+  if (source !== null) {
+    return {
+      connection: {
+        ...connection,
+        source: source.port.nodeId,
+        sourceHandle: source.port.handle,
+      },
+      throughBoundaryStub: true,
+    };
   }
-  return {
-    connection: {
-      ...connection,
-      source: source.port.nodeId,
-      sourceHandle: source.port.handle,
-    },
-    fromIngressStub: true,
-  };
+  if (target !== null) {
+    return {
+      connection: {
+        ...connection,
+        target: target.port.nodeId,
+        targetHandle: target.port.handle,
+      },
+      throughBoundaryStub: true,
+    };
+  }
+  return { connection, throughBoundaryStub: false };
 }
 
-/**
- * One painted copy per stored boundary edge and role, so a recompute that
- * changed nothing hands React Flow the edge objects it already holds.
- */
 const paintedBoundaryEdges: Record<
   Exclude<EdgeRole, "interior">,
   WeakMap<WorkflowEdge, WorkflowEdge>
@@ -190,112 +135,64 @@ const paintedBoundaryEdges: Record<
   continuation: new WeakMap(),
 };
 
-/**
- * The edge a focused Group paints for a stored edge, before `withTurn` places
- * its turn. An interior edge is the stored edge itself. An ingress edge keeps the stored id, so selecting or
- * deleting it names that one stored edge; its outside end moves onto the stub
- * for its outside port, and it keeps the branch label that port's handle gives
- * it. A continuation edge moves onto its stub and is display only. A stub draws
- * one handle with no id.
- */
+/** Boundary edges retain their stored ids, so selection and deletion stay exact. */
 function focusedEdge(edge: WorkflowEdge, role: EdgeRole): WorkflowEdge {
-  if (role === "interior") {
-    return edge;
-  }
+  if (role === "interior") return edge;
   const cached = paintedBoundaryEdges[role].get(edge);
-  if (cached) {
-    return cached;
-  }
-  let painted: WorkflowEdge;
-  if (role === "ingress") {
-    const { sourceHandle, ...rest } = edge;
-    const displayLabel =
-      getConditionBranchDisplayLabel(sourceHandle) ?? edge.data?.displayLabel;
-    painted = {
-      ...rest,
-      source: boundaryStubId("ingress", {
-        nodeId: edge.source,
-        handle: sourceHandle ?? null,
-      }),
-      data: omitUndefined({ ...edge.data, displayLabel }),
-    };
-  } else {
-    const { targetHandle, ...rest } = edge;
-    painted = {
-      ...rest,
-      selectable: false,
-      deletable: false,
-      focusable: false,
-      target: boundaryStubId("continuation", {
-        nodeId: edge.target,
-        handle: targetHandle ?? null,
-      }),
-    };
-  }
+  if (cached) return cached;
+  const painted: WorkflowEdge =
+    role === "ingress"
+      ? {
+          ...omit(edge, ["sourceHandle"]),
+          source: boundaryStubId("ingress", {
+            nodeId: edge.source,
+            handle: edge.sourceHandle ?? null,
+          }),
+          data: omitUndefined({
+            ...edge.data,
+            displayLabel:
+              getConditionBranchDisplayLabel(edge.sourceHandle) ??
+              edge.data?.displayLabel,
+          }),
+        }
+      : {
+          ...omit(edge, ["targetHandle"]),
+          target: boundaryStubId("continuation", {
+            nodeId: edge.target,
+            handle: edge.targetHandle ?? null,
+          }),
+        };
   paintedBoundaryEdges[role].set(edge, painted);
   return painted;
 }
 
 const collapsedFrames = new WeakMap<WorkflowNode, WorkflowNode>();
-
-/**
- * A frame at the card size the overview draws a collapsed Group at. The copy is
- * cached per frame, so an unchanged frame keeps its identity across repaints.
- */
 function collapsedFrame(frame: WorkflowNode): WorkflowNode {
-  if (
-    frame.width === WORKFLOW_NODE_WIDTH &&
-    frame.height === WORKFLOW_NODE_HEIGHT &&
-    frame.measured?.width === WORKFLOW_NODE_WIDTH &&
-    frame.measured.height === WORKFLOW_NODE_HEIGHT &&
-    frame.style?.width === undefined &&
-    frame.style?.height === undefined
-  ) {
-    return frame;
-  }
   const cached = collapsedFrames.get(frame);
-  if (cached) {
-    return cached;
-  }
-  const { width: _width, height: _height, ...style } = frame.style ?? {};
+  if (cached) return cached;
   const collapsed: WorkflowNode = {
     ...frame,
     ...CARD_SIZE,
     measured: CARD_SIZE,
-    style,
+    style: omit(frame.style ?? {}, ["width", "height"]),
   };
   collapsedFrames.set(frame, collapsed);
   return collapsed;
 }
 
-/** Whether a node sits inside a Group frame the graph holds. */
-function framedBy(
-  node: WorkflowNode,
-  byId: ReadonlyMap<string, WorkflowNode>
-): boolean {
-  return node.parentId !== undefined && isGroupNode(byId.get(node.parentId));
-}
-
-/**
- * The overview: members hidden, each frame a collapsed card, each boundary edge
- * painted on the frame, and interior edges dropped. Answers the given arrays
- * when the graph holds no Group.
- */
 export function overviewCanvasGraph(input: CanvasGraph): ScopeCanvasGraph {
   const lifecycle = input.nodes.find((node) => node.data.type === "lifecycle");
   const anchor = lifecycle ? { nodeId: lifecycle.id, pinToTop: true } : null;
   const frameIds = new Set(
-    input.nodes.filter((node) => isGroupNode(node)).map((node) => node.id)
+    input.nodes.filter(isGroupNode).map((node) => node.id)
   );
-  if (frameIds.size === 0) {
+  if (frameIds.size === 0)
     return { ...input, anchor, projectedNodeIds: frameIds };
-  }
-  const byId = new Map(input.nodes.map((node) => [node.id, node]));
   const nodes = input.nodes.flatMap((node) => {
-    if (isGroupNode(node)) {
-      return [collapsedFrame(node)];
-    }
-    return framedBy(node, byId) ? [] : [node];
+    if (isGroupNode(node)) return [collapsedFrame(node)];
+    return node.parentId !== undefined && frameIds.has(node.parentId)
+      ? []
+      : [node];
   });
   const shownIds = new Set(nodes.map((node) => node.id));
   const edges = displayEdgesForGroups(input.nodes, input.edges).filter(
@@ -305,55 +202,32 @@ export function overviewCanvasGraph(input: CanvasGraph): ScopeCanvasGraph {
 }
 
 const boundaryStubs = new WeakMap<WorkflowNode, Map<string, WorkflowNode>>();
-
-/**
- * End stubs by stub id. An end stub reads nothing from its member but the id,
- * so a member repainted for selection or run status keeps its stub. Each
- * focused compute keeps only the entries it painted.
- */
 let endStubs = new Map<string, WorkflowNode>();
-
-/**
- * The stub standing for the port `port` of the step `step`: an outside step for
- * an ingress or continuation stub, which carries that step's label, type and
- * config so the stub can name it, or a member for an end stub, which is
- * labelled "Path ends". A stub never enters the store. An ingress or
- * continuation stub is cached per step, direction and handle, an end stub per
- * stub id in `endStubCache`, and each is kept while its position holds, so React Flow
- * keeps its measured handle.
- */
 function boundaryStub(input: {
   direction: StubDirection;
-  layout: GroupLayoutDirection;
   step: WorkflowNode;
   port: GroupPort;
   position: { x: number; y: number };
-  endStubCache: ReadonlyMap<string, WorkflowNode>;
 }): WorkflowNode {
   const { step, position } = input;
   const id = boundaryStubId(input.direction, input.port);
-  const stepCache =
+  const cache =
     input.direction === "end"
-      ? null
+      ? endStubs
       : (boundaryStubs.get(step) ?? new Map<string, WorkflowNode>());
-  if (stepCache) {
-    boundaryStubs.set(step, stepCache);
-  }
-  const handles = HANDLE_POSITIONS[input.layout];
-  const cached = (stepCache ?? input.endStubCache).get(id);
+  if (input.direction !== "end") boundaryStubs.set(step, cache);
+  const cached = cache.get(id);
   if (
     cached?.position.x === position.x &&
     cached.position.y === position.y &&
-    cached.sourcePosition === handles.sourcePosition &&
     cached.data.type === step.data.type
-  ) {
+  )
     return cached;
-  }
   const size = {
     width: WORKFLOW_NODE_WIDTH,
     height: GROUP_BOUNDARY_STUB_HEIGHT,
   };
-  const stubNames =
+  const names =
     input.direction === "end"
       ? { label: GROUP_END_STUB_LABEL, type: step.data.type }
       : omitUndefined({
@@ -365,7 +239,7 @@ function boundaryStub(input: {
     id,
     type: GROUP_BOUNDARY_NODE_TYPES[input.direction],
     position,
-    ...handles,
+    ...HANDLES,
     ...size,
     measured: size,
     selectable: false,
@@ -373,172 +247,45 @@ function boundaryStub(input: {
     deletable: false,
     focusable: false,
     data: {
-      ...stubNames,
+      ...names,
       [GROUP_BOUNDARY_STUB_PORT]: {
         direction: input.direction,
         port: input.port,
       },
     },
   };
-  // An ingress stub leaves `connectable` unset, so it follows the canvas's
-  // `nodesConnectable`, and a drag from it onto a member adds one more edge from
-  // the outside port it stands for (see `storedCanvasConnection`). Continuation
-  // and end stubs are never connectable.
-  if (input.direction !== "ingress") {
-    stub.connectable = false;
-  }
-  stepCache?.set(id, stub);
+  if (input.direction === "end") stub.connectable = false;
+  cache.set(id, stub);
   return stub;
 }
 
 const projectedMembers = new WeakMap<WorkflowNode, WorkflowNode>();
-
-/**
- * A member drawn as a full card with no parent, at `position`, keeping the
- * member's id so a selection or a connection on it names the stored member. It
- * cannot be dragged, because the layout comes from topology and the focused
- * canvas never writes a coordinate back. It leaves `connectable` unset, so it
- * connects to another member exactly when the canvas's `nodesConnectable` allows.
- * The copy is kept while the member, its position and its handle sides hold.
- */
-function projectedMember(
-  member: WorkflowNode,
-  position: { x: number; y: number },
-  layout: GroupLayoutDirection
-): WorkflowNode {
-  const handles = HANDLE_POSITIONS[layout];
+/** Removing the frame changes no coordinate: stored member positions are local. */
+function projectedMember(member: WorkflowNode): WorkflowNode {
   const cached = projectedMembers.get(member);
-  if (
-    cached?.position.x === position.x &&
-    cached.position.y === position.y &&
-    cached.sourcePosition === handles.sourcePosition
-  ) {
-    return cached;
-  }
-  const {
-    parentId: _parentId,
-    extent: _extent,
-    connectable: _connectable,
-    ...rest
-  } = member;
+  if (cached) return cached;
   const projected: WorkflowNode = {
-    ...rest,
-    ...CARD_SIZE,
-    ...handles,
-    measured: CARD_SIZE,
-    draggable: false,
-    position,
+    ...omit(member, [
+      "parentId",
+      "extent",
+      "expandParent",
+      "connectable",
+      "draggable",
+    ]),
+    width: member.width ?? WORKFLOW_NODE_WIDTH,
+    height: member.height ?? WORKFLOW_NODE_HEIGHT,
+    measured: member.measured ?? CARD_SIZE,
+    ...HANDLES,
   };
   projectedMembers.set(member, projected);
   return projected;
 }
 
-const turningEdges = new WeakMap<WorkflowEdge, WorkflowEdge>();
-
-/**
- * `edge` with `turnAlong` on its data, or `edge` itself when `turnAlong` is
- * undefined. The copy is kept per edge while its turn holds, so a recompute that
- * moved nothing hands React Flow the edge objects it already holds.
- */
-function withTurn(
-  edge: WorkflowEdge,
-  turnAlong: number | undefined
-): WorkflowEdge {
-  if (turnAlong === undefined) {
-    return edge;
-  }
-  const cached = turningEdges.get(edge);
-  if (cached?.data?.turnAlong === turnAlong) {
-    return cached;
-  }
-  const turning = { ...edge, data: { ...edge.data, turnAlong } };
-  turningEdges.set(edge, turning);
-  return turning;
-}
-
-/**
- * Where each edge between the painted `nodes` turns across the flow, as
- * `EditorEdgeData.turnAlong` reads it: the middle of the gap that ends where
- * the target starts, measured back to the nearest painted card or stub end.
- * Undefined unless the target starts at or past the source's end, so a backward
- * or same-row edge keeps React Flow's routing.
- */
-function turnLocator(
-  nodes: readonly WorkflowNode[],
-  direction: GroupLayoutDirection
-): (edge: WorkflowEdge) => number | undefined {
-  const vertical = direction === "vertical";
-  // A Map, because member ids are chosen by the builder.
-  const spans = new Map(
-    nodes.map((node) => {
-      const start = vertical ? node.position.y : node.position.x;
-      const depth = (vertical ? node.height : node.width) ?? 0;
-      return [node.id, { start, end: start + depth }];
-    })
-  );
-  const ends = [...spans.values()].map((span) => span.end);
-  return (edge) => {
-    const source = spans.get(edge.source);
-    const target = spans.get(edge.target);
-    if (!(source && target) || source.end > target.start) {
-      return undefined;
-    }
-    const gapStart = Math.max(...ends.filter((end) => end <= target.start));
-    return (gapStart + target.start) / 2;
-  };
-}
-
-/**
- * Positions for `count` stubs in one line across the flow, centred on `centre`
- * and sitting at `along` on the flow axis.
- */
-function stubLine(
-  count: number,
-  centre: number,
-  along: number,
-  direction: GroupLayoutDirection
-): { x: number; y: number }[] {
-  const pitch =
-    direction === "vertical"
-      ? WORKFLOW_NODE_WIDTH + NODE_SPACING
-      : GROUP_BOUNDARY_STUB_HEIGHT + NODE_SPACING;
-  return Array.from({ length: count }, (_, index) => {
-    const across = centre + (index - (count - 1) / 2) * pitch;
-    return direction === "vertical"
-      ? { x: across - WORKFLOW_NODE_WIDTH / 2, y: along }
-      : { x: along, y: across - GROUP_BOUNDARY_STUB_HEIGHT / 2 };
-  });
-}
-
-/**
- * Where a port sits among the outlets of one card: True first, then an unnamed
- * outlet, then False, matching the order a Condition card draws its outlets in.
- */
-function outletRank(handle: string | null): number {
-  const branch = normalizeConditionBranch(handle);
-  return branch === "true" ? 0 : branch === "false" ? 2 : 1;
-}
-
-/**
- * End edges by edge id. An end edge reads only its member port, so it is kept
- * across every repaint of that member. Each focused compute keeps only the
- * entries it painted.
- */
 let endEdges = new Map<string, WorkflowEdge>();
-
-/**
- * The display-only edge from the member port `port` to its "Path ends" stub,
- * taken from `cache` when it holds one. It keeps the port's handle, so a
- * Condition branch reads True or False on it, and it cannot be selected,
- * deleted or focused.
- */
-function endEdge(
-  port: GroupPort,
-  cache: ReadonlyMap<string, WorkflowEdge>
-): WorkflowEdge {
+function endEdge(port: GroupPort): WorkflowEdge {
   const id = `${PAINTED_ID_PREFIX}end-edge:${groupPortKey(port)}`;
   return (
-    cache.get(id) ?? {
+    endEdges.get(id) ?? {
       id,
       source: port.nodeId,
       sourceHandle: port.handle,
@@ -546,208 +293,309 @@ function endEdge(
       selectable: false,
       deletable: false,
       focusable: false,
+      data: { insertable: false },
     }
   );
 }
 
-/**
- * A focused Group: its members, the interior edges between them, one stub per
- * outside port an edge enters the Group from or continues to, and one "Path
- * ends" stub per member port where a path ends. The frame is not painted, and
- * its stored position and every stored member position are never read. The
- * member rows follow `direction` when it is given, and the frame's stored
- * direction otherwise; `direction` changes only the painting. Each forward
- * edge, including an edge into a stub, carries where it turns across the rows
- * in `data.turnAlong`. Null when the graph holds no Group `groupId`.
- */
-export function focusedGroupCanvasGraph(
-  input: CanvasGraph & {
-    groupId: string;
-    direction?: GroupLayoutDirection | undefined;
-  }
-): ScopeCanvasGraph | null {
-  const frame = input.nodes.find(
-    (node) => node.id === input.groupId && isGroupNode(node)
+function workflowNodeDimensions(node: WorkflowNode) {
+  return {
+    width: node.measured?.width ?? node.width ?? WORKFLOW_NODE_WIDTH,
+    height: node.measured?.height ?? node.height ?? WORKFLOW_NODE_HEIGHT,
+  };
+}
+
+/** Centre a stub on the cards it meets, one rank above or below those cards. */
+function stubPosition(
+  cards: readonly WorkflowNode[],
+  direction: StubDirection
+): { x: number; y: number } {
+  const left = Math.min(...cards.map((node) => node.position.x));
+  const right = Math.max(
+    ...cards.map((node) => node.position.x + workflowNodeDimensions(node).width)
   );
-  if (!frame) {
-    return null;
+  return {
+    x: (left + right - WORKFLOW_NODE_WIDTH) / 2,
+    y:
+      direction === "ingress"
+        ? Math.min(...cards.map((node) => node.position.y)) -
+          RANK_SPACING -
+          GROUP_BOUNDARY_STUB_HEIGHT
+        : Math.max(
+            ...cards.map(
+              (node) => node.position.y + workflowNodeDimensions(node).height
+            )
+          ) + RANK_SPACING,
+  };
+}
+
+const separatedStubs = new WeakMap<WorkflowNode, WorkflowNode>();
+
+/** The nearest horizontal slot that clears members and follows the preceding stub. */
+function clearStubX(input: {
+  x: number;
+  y: number;
+  minimumX: number;
+  obstacles: NodeRectangle[];
+}): number {
+  const obstacles = input.obstacles.filter(
+    (obstacle) =>
+      obstacle.y < input.y + GROUP_BOUNDARY_STUB_HEIGHT &&
+      obstacle.y + obstacle.height > input.y
+  );
+  const candidates = [
+    Math.max(input.x, input.minimumX),
+    ...obstacles.flatMap((obstacle) => [
+      obstacle.x - WORKFLOW_NODE_WIDTH,
+      obstacle.x + obstacle.width,
+    ]),
+  ]
+    .filter((x) => x >= input.minimumX)
+    .map((x) => ({ x, distance: Math.abs(x - input.x) }));
+  // The rightmost obstacle boundary (or minimumX beyond it) is always clear.
+  return sortBy(candidates, ["distance", "x"]).find(({ x }) =>
+    obstacles.every(
+      (obstacle) =>
+        !rectanglesOverlap(
+          {
+            x,
+            y: input.y,
+            width: WORKFLOW_NODE_WIDTH,
+            height: GROUP_BOUNDARY_STUB_HEIGHT,
+          },
+          obstacle
+        )
+    )
+  )!.x;
+}
+
+/** Separate stubs near their anchors, preserving branch order and clearing members. */
+function separateBoundaryStubs(
+  stubs: WorkflowNode[],
+  edges: WorkflowEdge[],
+  members: WorkflowNode[]
+): WorkflowNode[] {
+  const gap = 24;
+  const obstacles = members.map((member) => {
+    const size = workflowNodeDimensions(member);
+    return {
+      x: member.position.x - gap,
+      y: member.position.y - gap,
+      width: size.width + 2 * gap,
+      height: size.height + 2 * gap,
+    };
+  });
+  const edgesByTarget = Map.groupBy(edges, (edge) => edge.target);
+  const branchOrder = (stub: WorkflowNode) => {
+    const incoming = edgesByTarget.get(stub.id);
+    const handle = incoming?.length === 1 ? incoming[0]?.sourceHandle : null;
+    return handle === "true" ? -1 : handle === "false" ? 1 : 0;
+  };
+  const bands: WorkflowNode[][] = [];
+  // Build connected vertical intervals, including stubs under staggered cards.
+  for (const stub of sortBy(stubs, [(node) => node.position.y])) {
+    const band = bands.at(-1);
+    const last = band?.at(-1);
+    if (
+      band &&
+      last &&
+      stub.position.y < last.position.y + GROUP_BOUNDARY_STUB_HEIGHT + gap
+    )
+      band.push(stub);
+    else bands.push([stub]);
   }
-  const direction = input.direction ?? groupLayoutDirection(frame);
-  const byId = new Map(input.nodes.map((node) => [node.id, node]));
+  const positions = new Map(
+    bands.flatMap((band) => {
+      const ordered = sortBy(band, [(node) => node.position.x, branchOrder]);
+      let right = -Infinity;
+      const placed = ordered.map((stub) => {
+        const x = Math.max(stub.position.x, right + gap);
+        right = x + WORKFLOW_NODE_WIDTH;
+        return { stub, x };
+      });
+      const last = ordered.at(-1)!;
+      const shift = (right - last.position.x - WORKFLOW_NODE_WIDTH) / 2;
+      let minimumX = -Infinity;
+      return placed.map(({ stub, x }): [string, number] => {
+        const clearedX = clearStubX({
+          x: x - shift,
+          y: stub.position.y,
+          minimumX,
+          obstacles,
+        });
+        minimumX = clearedX + WORKFLOW_NODE_WIDTH + gap;
+        return [stub.id, clearedX];
+      });
+    })
+  );
+  return stubs.map((stub) => {
+    const x = positions.get(stub.id);
+    if (x === undefined || x === stub.position.x) return stub;
+    const cached = separatedStubs.get(stub);
+    if (cached?.position.x === x) return cached;
+    const shifted = { ...stub, position: { ...stub.position, x } };
+    separatedStubs.set(stub, shifted);
+    return shifted;
+  });
+}
+
+const bentEdges = new WeakMap<WorkflowEdge, WorkflowEdge>();
+/** Forward edges entering the same row share the midpoint of its nearest gap. */
+function rowBends(
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[]
+): WorkflowEdge[] {
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const rowBottoms = new Map<number, number>();
+  for (const edge of edges) {
+    const source = byId.get(edge.source);
+    const target = byId.get(edge.target);
+    if (!source || !target) continue;
+    const bottom = source.position.y + workflowNodeDimensions(source).height;
+    if (bottom < target.position.y)
+      rowBottoms.set(
+        target.position.y,
+        Math.max(rowBottoms.get(target.position.y) ?? bottom, bottom)
+      );
+  }
+  return edges.map((edge) => {
+    const source = byId.get(edge.source);
+    const target = byId.get(edge.target);
+    const bottom = target && rowBottoms.get(target.position.y);
+    if (
+      !source ||
+      !target ||
+      bottom === undefined ||
+      source.position.y + workflowNodeDimensions(source).height >=
+        target.position.y
+    )
+      return edge;
+    const centerY = (bottom + target.position.y) / 2;
+    const cached = bentEdges.get(edge);
+    if (cached?.data?.centerY === centerY) return cached;
+    const bent = { ...edge, data: { ...edge.data, centerY } };
+    bentEdges.set(edge, bent);
+    return bent;
+  });
+}
+
+export function focusedGroupCanvasGraph(
+  input: CanvasGraph & { groupId: string }
+): ScopeCanvasGraph | null {
+  if (
+    !input.nodes.some((node) => node.id === input.groupId && isGroupNode(node))
+  )
+    return null;
   const storedMembers = input.nodes.filter(
     (node) => node.parentId === input.groupId
   );
+  const firstMember = storedMembers[0];
+  if (!firstMember)
+    return { nodes: [], edges: [], anchor: null, projectedNodeIds: new Set() };
+  const byId = new Map(input.nodes.map((node) => [node.id, node]));
+  const members = storedMembers.map(projectedMember);
+  const memberById = new Map(members.map((node) => [node.id, node]));
   const boundary = analyzeGroupBoundary({
-    memberIds: storedMembers.map((member) => member.id),
+    memberIds: members.map((node) => node.id),
     edges: input.edges,
   });
   const endPorts = groupEndPorts({ nodes: input.nodes, boundary });
-  const positions = groupCanvasPositions({
-    memberIds: boundary.memberIds,
-    interiorEdges: boundary.interiorEdges,
-    trailingStubPorts: [...boundary.internalContinuation, ...endPorts],
-    direction,
-  });
-  const members = storedMembers.map((member) =>
-    projectedMember(
-      member,
-      positions.get(member.id) ?? { x: -WORKFLOW_NODE_WIDTH / 2, y: 0 },
-      direction
-    )
-  );
-  const firstMember = members[0];
-  if (!firstMember) {
-    return {
-      nodes: [],
-      edges: [],
-      anchor: null,
-      projectedNodeIds: new Set(),
-    };
-  }
-
-  const vertical = direction === "vertical";
-  const starts = members.map((member) =>
-    vertical ? member.position.y : member.position.x
-  );
-  const ends = members.map((member) =>
-    vertical
-      ? member.position.y + WORKFLOW_NODE_HEIGHT
-      : member.position.x + WORKFLOW_NODE_WIDTH
-  );
-  const acrossCentre = vertical ? 0 : WORKFLOW_NODE_HEIGHT / 2;
-  const stubDepth = vertical ? GROUP_BOUNDARY_STUB_HEIGHT : WORKFLOW_NODE_WIDTH;
-  const stubs = (
-    along: number,
-    entries: readonly { direction: StubDirection; port: GroupPort }[]
-  ) => {
-    const found = entries.flatMap((entry) => {
-      const step = byId.get(entry.port.nodeId);
-      return step ? [{ ...entry, step }] : [];
+  const ingress = boundary.externalIngress.flatMap((port) => {
+    const step = byId.get(port.nodeId);
+    const cards = boundary.ingressEdges.flatMap((edge) => {
+      const member = memberById.get(edge.target);
+      return member &&
+        edge.source === port.nodeId &&
+        (edge.sourceHandle ?? null) === port.handle
+        ? [member]
+        : [];
     });
-    const line = stubLine(found.length, acrossCentre, along, direction);
-    return found.map((entry, index) =>
-      boundaryStub({
-        direction: entry.direction,
-        layout: direction,
-        step: entry.step,
-        port: entry.port,
-        position: line[index] ?? { x: 0, y: along },
-        endStubCache: endStubs,
-      })
-    );
-  };
-
-  // "Continues to" and "Path ends" stubs share the line after the members,
-  // ordered by where the member port each one leaves sits: across the flow
-  // first, so their edges cross as little as the line allows, then along the
-  // flow, then True before False.
-  const projectedById = new Map(members.map((member) => [member.id, member]));
-  const centreOf = (port: GroupPort) => {
-    const member = projectedById.get(port.nodeId);
+    return step && cards.length
+      ? [
+          boundaryStub({
+            direction: "ingress",
+            step,
+            port,
+            position: stubPosition(cards, "ingress"),
+          }),
+        ]
+      : [];
+  });
+  const continuations = [
+    ...Map.groupBy(boundary.continuationEdges, (edge) =>
+      groupPortKey({ nodeId: edge.target, handle: edge.targetHandle ?? null })
+    ).values(),
+  ].flatMap((edges) => {
+    const first = edges[0];
+    const step = first && byId.get(first.target);
+    const cards = edges.flatMap((edge) => {
+      const member = memberById.get(edge.source);
+      return member ? [member] : [];
+    });
+    return first && step && cards.length
+      ? [
+          boundaryStub({
+            direction: "continuation",
+            step,
+            port: { nodeId: first.target, handle: first.targetHandle ?? null },
+            position: stubPosition(cards, "continuation"),
+          }),
+        ]
+      : [];
+  });
+  const ends = endPorts.flatMap((port) => {
+    const member = memberById.get(port.nodeId);
     return member
-      ? {
-          x: member.position.x + WORKFLOW_NODE_WIDTH / 2,
-          y: member.position.y + WORKFLOW_NODE_HEIGHT / 2,
-        }
-      : { x: 0, y: 0 };
-  };
-  const byFlow = [
-    (entry: { from: GroupPort }) =>
-      vertical ? centreOf(entry.from).x : centreOf(entry.from).y,
-    (entry: { from: GroupPort }) =>
-      vertical ? centreOf(entry.from).y : centreOf(entry.from).x,
-    (entry: { from: GroupPort }) => outletRank(entry.from.handle),
-  ];
-  // One "Continues to" stub per outside port, drawn from the member port that
-  // comes first in flow order among the edges reaching it.
-  const continuations = uniqBy(
-    sortBy(
-      boundary.continuationEdges.map((edge) => ({
-        direction: "continuation" as const,
-        port: { nodeId: edge.target, handle: edge.targetHandle ?? null },
-        from: { nodeId: edge.source, handle: edge.sourceHandle ?? null },
-      })),
-      byFlow
+      ? [
+          boundaryStub({
+            direction: "end",
+            step: member,
+            port,
+            position: stubPosition([member], "end"),
+          }),
+        ]
+      : [];
+  });
+  const paintedEndEdges = endPorts.map(endEdge);
+  endEdges = new Map(paintedEndEdges.map((edge) => [edge.id, edge]));
+  endStubs = new Map(ends.map((node) => [node.id, node]));
+  const edges = [
+    ...boundary.interiorEdges,
+    ...boundary.ingressEdges.map((edge) => focusedEdge(edge, "ingress")),
+    ...boundary.continuationEdges.map((edge) =>
+      focusedEdge(edge, "continuation")
     ),
-    (entry) => boundaryStubId(entry.direction, entry.port)
+    ...paintedEndEdges,
+  ];
+  const stubs = separateBoundaryStubs(
+    [...ingress, ...continuations, ...ends],
+    edges,
+    members
   );
-  const afterMembers = sortBy(
-    [
-      ...continuations,
-      ...endPorts.map((port) => ({
-        direction: "end" as const,
-        port,
-        from: port,
-      })),
-    ],
-    byFlow
-  );
-
   const nodes = [
-    ...stubs(
-      Math.min(...starts) - RANK_SPACING - stubDepth,
-      boundary.externalIngress.map((port) => ({
-        direction: "ingress" as const,
-        port,
-      }))
-    ),
+    ...stubs.slice(0, ingress.length),
     ...members,
-    ...stubs(Math.max(...ends) + RANK_SPACING, afterMembers),
+    ...stubs.slice(ingress.length),
   ];
-  const paintedEndEdges = endPorts.map((port) => endEdge(port, endEdges));
-  endStubs = new Map(
-    nodes
-      .filter((node) => node.type === GROUP_BOUNDARY_NODE_TYPES.end)
-      .map((node) => [node.id, node])
-  );
-  endEdges = new Map(paintedEndEdges.map((item) => [item.id, item]));
-  const turnAlong = turnLocator(nodes, direction);
   return {
     nodes,
-    edges: [
-      ...boundary.interiorEdges.map((edge) => focusedEdge(edge, "interior")),
-      ...boundary.ingressEdges.map((edge) => focusedEdge(edge, "ingress")),
-      ...boundary.continuationEdges.map((edge) =>
-        focusedEdge(edge, "continuation")
-      ),
-      ...paintedEndEdges,
-    ].map((edge) => withTurn(edge, turnAlong(edge))),
+    edges: rowBends(nodes, edges),
     anchor: { nodeId: firstMember.id, pinToTop: false },
-    projectedNodeIds: new Set(nodes.map((node) => node.id)),
+    projectedNodeIds: new Set(
+      [...ingress, ...continuations, ...ends].map((node) => node.id)
+    ),
   };
 }
 
-/**
- * The graph the canvas paints for `scope`, from the painted nodes and the painted
- * stored edges. `focusedGroupDirection` lays a focused Group's members out along
- * that direction in place of the stored one. A focused Group the graph no
- * longer holds shows the overview until route recovery leaves it.
- */
 export function scopeCanvasGraph(
-  input: CanvasGraph & {
-    scope: WorkspaceScope;
-    focusedGroupDirection?: GroupLayoutDirection | null | undefined;
-  }
+  input: CanvasGraph & { scope: WorkspaceScope }
 ): ScopeCanvasGraph {
-  const graph = { nodes: input.nodes, edges: input.edges };
-  if (input.scope.kind === "group") {
-    const focused = focusedGroupCanvasGraph({
-      ...graph,
-      groupId: input.scope.groupId,
-      direction: input.focusedGroupDirection ?? undefined,
-    });
-    if (focused) {
-      return focused;
-    }
-  }
-  return overviewCanvasGraph(graph);
+  return input.scope.kind === "group"
+    ? (focusedGroupCanvasGraph({ ...input, groupId: input.scope.groupId }) ??
+        overviewCanvasGraph(input))
+    : overviewCanvasGraph(input);
 }
 
-/**
- * `changes` without React Flow's measurements of projected nodes. A projected
- * node's size belongs to the painting, so the store never records it. Answers
- * `changes` itself when it holds no such measurement.
- */
 export function withoutProjectedDimensions(
   changes: NodeChange<WorkflowNode>[],
   projectedNodeIds: ReadonlySet<string>

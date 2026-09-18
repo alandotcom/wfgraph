@@ -242,7 +242,8 @@ describe("collectWorkflowIssues Group rules", () => {
   it("lists each Group's messages under the Group in the overlay", () => {
     const twoContinuations = groupContractMatrix.find(
       (matrixCase) =>
-        matrixCase.name === "two continuation ports to the same target"
+        matrixCase.name ===
+        "two continuation ports to two different outside steps"
     );
     if (!twoContinuations) {
       throw new Error("matrix case missing");
@@ -259,7 +260,9 @@ describe("collectWorkflowIssues Group rules", () => {
         problems: [
           {
             rule: "multiple_continuations",
-            message: expect.stringContaining("continues from 2 outlets"),
+            message: expect.stringContaining(
+              "continues from 2 outlets inside it to 2 steps"
+            ),
           },
         ],
       },

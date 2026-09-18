@@ -11,8 +11,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import { groupContractViolations } from "@wfgraph/shared/graph/group-contract";
-import { analyzeGroupableSelection } from "@wfgraph/shared/graph/node-group";
-import type { GroupLayoutDirection } from "@wfgraph/shared/graph/schemas";
+import {
+  analyzeGroupableSelection,
+  fanOutStoreEdges,
+} from "@wfgraph/shared/graph/node-group";
 import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
 import type { WorkflowActions } from "#src/backend/engine/actions";
 import { createRecordingWorkflowStore } from "#src/backend/engine/recording-store";
@@ -52,7 +54,7 @@ const MEMBER_IDS = new Set(["read", "send", "wait"]);
 
 /** `nodes` with `memberIds` inside one Group laid out along `direction`. */
 function grouped(
-  direction: GroupLayoutDirection,
+  direction: "vertical" | "horizontal",
   nodes: readonly WorkflowNode[] = NODES,
   memberIds: ReadonlySet<string> = MEMBER_IDS
 ): WorkflowNode[] {
@@ -61,10 +63,19 @@ function grouped(
       id: "group",
       type: "group",
       position: { x: 0, y: 0 },
-      data: { label: "Outreach", type: "group", config: { direction } },
+      data: { label: "Outreach", type: "group" },
     },
     ...nodes.map((node) =>
-      memberIds.has(node.id) ? { ...node, parentId: "group" } : node
+      memberIds.has(node.id)
+        ? {
+            ...node,
+            parentId: "group",
+            position:
+              direction === "horizontal"
+                ? { x: node.position.y, y: node.position.x }
+                : node.position,
+          }
+        : node
     ),
   ];
 }
@@ -456,6 +467,44 @@ describe("a Group around a Condition with a path that ends inside it", () => {
           edges,
         })
       ).toEqual([]);
+    }
+  );
+
+  it.each([true, false])(
+    "continues a newly connected Group only when its wired branch is taken: %s",
+    async (open) => {
+      const original = conditionInside(open, "step");
+      const nodes = grouped(
+        "vertical",
+        original.nodes.filter((node) => node.id !== "notify"),
+        new Set(["read", "gate", "send"])
+      );
+      const edges = original.edges.filter(
+        (edge) => edge.target !== "notify" && edge.target !== "after"
+      );
+      const additions = fanOutStoreEdges({
+        nodes,
+        edges,
+        sourceId: "group",
+        targetId: "after",
+        sourceHandle: null,
+      });
+      expect(additions).toEqual([
+        { source: "send", target: "after", sourceHandle: undefined },
+      ]);
+      const connected = [
+        ...edges,
+        ...additions.map((edge, index) => ({
+          ...edge,
+          id: `continue-${index}`,
+        })),
+      ];
+      expect(groupContractViolations({ nodes, edges: connected })).toEqual([]);
+      const result = await run(nodes, connected);
+      expect(result.success).toBe(true);
+      expect(Object.keys(result.results).sort()).toEqual(
+        ["life", "read", "gate", ...(open ? ["send", "after"] : [])].sort()
+      );
     }
   );
 

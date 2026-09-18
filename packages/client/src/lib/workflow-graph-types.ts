@@ -105,11 +105,12 @@ export type EditorEdgeData = Record<string, unknown> & {
   /** Set on an edge landing on a node the run can never reach. */
   inactive?: boolean | undefined;
   /**
-   * Where a forward edge on a focused Group canvas turns across the flow: a y
-   * coordinate in a top to bottom Group, an x coordinate in a left to right one.
-   * `focusedGroupCanvasGraph` sets it, and every other edge turns halfway.
+   * False on a painted connection that stands for no stored edge, such as the
+   * one to a "Path ends" stub, which offers no Insert step control.
    */
-  turnAlong?: number | undefined;
+  insertable?: boolean | undefined;
+  /** Shared bend for forward edges entering the same focused Group row. */
+  centerY?: number | undefined;
   [COMPARISON_EDGE_ANNOTATION]?: ComparisonEdgeAnnotation | undefined;
 };
 

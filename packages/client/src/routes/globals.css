@@ -495,6 +495,25 @@
   cursor: pointer !important;
 }
 
+/* The + control a connection draws shows while the connection is hovered,
+   selected or focused, and is out of reach the rest of the time. */
+.insert-step-control {
+  pointer-events: none;
+}
+
+.react-flow__edge:hover .insert-step-control,
+.react-flow__edge.selected .insert-step-control,
+.react-flow__edge:focus-visible .insert-step-control,
+.insert-step-control:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.insert-step-control:focus-visible circle {
+  stroke: var(--ring);
+  stroke-width: 3;
+}
+
 /* React Flow handle positioning and styling. */
 .react-flow__handle {
   width: 12px !important;

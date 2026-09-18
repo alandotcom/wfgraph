@@ -1,14 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { type NodeChange, Position } from "@xyflow/react";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
-import { groupCanvasPositions } from "@wfgraph/shared/graph/node-group";
 import { resolveEdgeLabel } from "#src/components/flow-elements/edge-label";
+import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import { layoutWorkflowNodes } from "#src/components/workflow/workflow-layout";
+import { rectanglesOverlap } from "@wfgraph/shared/graph/node-placement";
 import {
   boundaryStubId,
   focusedGroupCanvasGraph,
-  GROUP_BOUNDARY_NODE_TYPES,
-  GROUP_BOUNDARY_STUB_HEIGHT,
-  GROUP_END_STUB_LABEL,
   overviewCanvasGraph,
   scopeCanvasGraph,
   storedCanvasConnection,
@@ -16,875 +15,518 @@ import {
 } from "#src/lib/group-scope-canvas";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import {
+  RANK_SPACING,
   WORKFLOW_NODE_HEIGHT,
   WORKFLOW_NODE_WIDTH,
 } from "#src/lib/workflow-node-dimensions";
 
 function step(
   id: string,
-  position: { x: number; y: number },
+  x: number,
+  y: number,
   parentId?: string
 ): WorkflowNode {
-  const node: WorkflowNode = {
+  return {
     id,
     type: "action",
-    position,
+    position: { x, y },
+    ...(parentId
+      ? { parentId, extent: "parent" as const, draggable: false }
+      : {}),
     data: { label: id, type: "action", config: { actionType: "mailer/send" } },
   };
-  return parentId
-    ? {
-        ...node,
-        parentId,
-        extent: "parent",
-        draggable: false,
-      }
-    : node;
 }
-
-function edge(
-  id: string,
-  source: string,
-  target: string,
-  sourceHandle?: string
-): WorkflowEdge {
-  return sourceHandle
-    ? { id, source, target, sourceHandle }
-    : { id, source, target };
-}
-
-const FRAME: WorkflowNode = {
+const frame: WorkflowNode = {
   id: "g",
   type: "group",
   position: { x: 400, y: 300 },
-  width: 424,
-  height: 200,
-  style: { width: 424, height: 200 },
-  data: { label: "Outreach", type: "group" },
+  width: 800,
+  height: 700,
+  data: { label: "Group", type: "group" },
 };
-
-const NODES: WorkflowNode[] = [
-  {
-    id: "life",
-    type: "lifecycle",
-    position: { x: 400, y: 0 },
-    data: { label: "", type: "lifecycle" },
-  },
-  step("before", { x: 400, y: 150 }),
-  FRAME,
-  step("a", { x: 12, y: 48 }, "g"),
-  step("b", { x: 12, y: 144 }, "g"),
-  step("after", { x: 400, y: 600 }),
+const nodes = [
+  step("before", 400, 0),
+  frame,
+  step("a", 12, 48, "g"),
+  step("b", 312, 260, "g"),
+  step("after", 400, 900),
 ];
-
-const EDGES: WorkflowEdge[] = [
-  edge("life-before", "life", "before", "started"),
-  edge("before-a", "before", "a"),
-  edge("a-b", "a", "b"),
-  edge("b-after", "b", "after"),
+const edges: WorkflowEdge[] = [
+  { id: "in", source: "before", target: "a" },
+  { id: "ab", source: "a", target: "b" },
+  { id: "out", source: "b", target: "after" },
 ];
+const ingress = (nodeId = "before", handle: string | null = null) =>
+  boundaryStubId("ingress", { nodeId, handle });
+const continuation = () =>
+  boundaryStubId("continuation", { nodeId: "after", handle: null });
+const end = (nodeId: string, handle: string | null = null) =>
+  boundaryStubId("end", { nodeId, handle });
+function focused(inputNodes = nodes, inputEdges = edges) {
+  const graph = focusedGroupCanvasGraph({
+    nodes: inputNodes,
+    edges: inputEdges,
+    groupId: "g",
+  });
+  if (!graph) throw new Error("expected Group");
+  return graph;
+}
+const position = (graph: ReturnType<typeof focused>, id: string) =>
+  graph.nodes.find((node) => node.id === id)?.position;
 
-describe("overviewCanvasGraph", () => {
-  it("draws each Group as one collapsed card with its boundary on the frame", () => {
-    const graph = overviewCanvasGraph({ nodes: NODES, edges: EDGES });
-
+describe("Group canvas projection", () => {
+  it("collapses the overview without changing stored members", () => {
+    const graph = overviewCanvasGraph({ nodes, edges });
     expect(graph.nodes.map((node) => node.id)).toEqual([
-      "life",
       "before",
       "g",
       "after",
     ]);
-    const frame = graph.nodes.find((node) => node.id === "g");
-    expect(frame).toMatchObject({
+    expect(graph.nodes[1]).toMatchObject({
+      position: frame.position,
       width: WORKFLOW_NODE_WIDTH,
       height: WORKFLOW_NODE_HEIGHT,
-      measured: { width: WORKFLOW_NODE_WIDTH, height: WORKFLOW_NODE_HEIGHT },
-      position: FRAME.position,
-      style: {},
     });
-    expect(graph.anchor).toEqual({ nodeId: "life", pinToTop: true });
-    expect([...graph.projectedNodeIds]).toEqual(["g"]);
     expect(
-      graph.edges.map((item) => [item.id, item.source, item.target])
+      graph.edges.map((edge) => [edge.id, edge.source, edge.target])
     ).toEqual([
-      ["life-before", "life", "before"],
-      ["before-a", "before", "g"],
-      ["b-after", "g", "after"],
+      ["in", "before", "g"],
+      ["out", "g", "after"],
     ]);
+    expect(graph.projectedNodeIds).toEqual(new Set(["g"]));
+    expect(overviewCanvasGraph({ nodes, edges }).nodes[1]).toBe(graph.nodes[1]);
   });
 
-  it("answers the same graph when nothing is grouped", () => {
-    const input = {
-      nodes: [step("x", { x: 0, y: 0 })],
-      edges: [] as WorkflowEdge[],
-    };
+  it("returns the input arrays on an ungrouped overview", () => {
+    const input = { nodes: [step("x", 0, 0)], edges: [] };
     const graph = overviewCanvasGraph(input);
     expect(graph.nodes).toBe(input.nodes);
     expect(graph.edges).toBe(input.edges);
   });
 
-  it("keeps a collapsed frame's identity across repaints", () => {
-    const first = overviewCanvasGraph({ nodes: NODES, edges: EDGES });
-    const second = overviewCanvasGraph({ nodes: [...NODES], edges: EDGES });
-    expect(second.nodes[2]).toBe(first.nodes[2]);
-  });
-});
-
-const ingress = (nodeId: string, handle: string | null = null) =>
-  boundaryStubId("ingress", { nodeId, handle });
-const continuation = (nodeId: string, handle: string | null = null) =>
-  boundaryStubId("continuation", { nodeId, handle });
-
-function focused(
-  nodes: WorkflowNode[] = NODES,
-  edges: WorkflowEdge[] = EDGES
-): NonNullable<ReturnType<typeof focusedGroupCanvasGraph>> {
-  const graph = focusedGroupCanvasGraph({ nodes, edges, groupId: "g" });
-  if (!graph) {
-    throw new Error("the Group was not found");
-  }
-  return graph;
-}
-
-const CARD = { width: WORKFLOW_NODE_WIDTH, height: WORKFLOW_NODE_HEIGHT };
-
-describe("focusedGroupCanvasGraph", () => {
-  it("lays the members out from topology, with stubs and no frame", () => {
+  it("paints draggable members at their stored local positions", () => {
     const graph = focused();
-    const byId = new Map(graph.nodes.map((node) => [node.id, node]));
-    expect(byId.has("g")).toBe(false);
-    expect(byId.has("before")).toBe(false);
-
-    const positions = groupCanvasPositions({
-      memberIds: ["a", "b"],
-      interiorEdges: [EDGES[2]],
-    });
-    const a = byId.get("a");
-    expect(a).toMatchObject({
-      ...CARD,
-      measured: CARD,
-      draggable: false,
-      sourcePosition: Position.Bottom,
-      targetPosition: Position.Top,
-      position: positions.get("a"),
-    });
-    expect(byId.get("b")?.position).toEqual(positions.get("b"));
-    expect(a).not.toHaveProperty("parentId");
-    expect(a).not.toHaveProperty("extent");
-    expect(a).not.toHaveProperty("connectable");
-
-    const stubIn = byId.get(ingress("before"));
-    const stubOut = byId.get(continuation("after"));
-    const stubSize = {
-      width: WORKFLOW_NODE_WIDTH,
-      height: GROUP_BOUNDARY_STUB_HEIGHT,
-    };
-    expect(stubIn).toMatchObject({
-      type: GROUP_BOUNDARY_NODE_TYPES.ingress,
-      ...stubSize,
-      measured: stubSize,
-      selectable: false,
-      deletable: false,
-      data: { label: "before", type: "action" },
-    });
-    expect(stubIn).not.toHaveProperty("connectable");
-    expect(stubOut).toMatchObject({
-      type: GROUP_BOUNDARY_NODE_TYPES.continuation,
-      connectable: false,
-    });
-    expect(stubIn?.position.y ?? 0).toBeLessThan(a?.position.y ?? 0);
-    expect(stubOut?.position.y ?? 0).toBeGreaterThan(
-      byId.get("b")?.position.y ?? 0
-    );
-
+    expect(graph.nodes.some((node) => node.id === "g")).toBe(false);
+    for (const member of nodes.filter((node) => node.parentId)) {
+      const painted = graph.nodes.find((node) => node.id === member.id);
+      expect(painted?.position).toBe(member.position);
+      expect(painted).not.toHaveProperty("parentId");
+      expect(painted).not.toHaveProperty("extent");
+      expect(painted).not.toHaveProperty("draggable");
+      expect(painted).toMatchObject({
+        sourcePosition: Position.Bottom,
+        targetPosition: Position.Top,
+      });
+      expect(graph.projectedNodeIds.has(member.id)).toBe(false);
+    }
     expect(
-      graph.edges.map((item) => [
-        item.id,
-        item.source,
-        item.target,
-        item.selectable,
-        item.deletable,
-      ])
+      graph.edges.map((edge) => [edge.id, edge.source, edge.target])
     ).toEqual([
-      ["a-b", "a", "b", undefined, undefined],
-      ["before-a", ingress("before"), "a", undefined, undefined],
-      ["b-after", "b", continuation("after"), false, false],
+      ["ab", "a", "b"],
+      ["in", ingress(), "a"],
+      ["out", "b", continuation()],
     ]);
-    // An interior edge is the stored edge with its turn painted on, and an
-    // ingress edge keeps the stored id, so selecting or deleting either names
-    // the one edge the store holds.
-    expect(graph.edges[0]).toEqual({
-      ...EDGES[2],
-      data: { turnAlong: expect.any(Number) },
-    });
-    expect(graph.anchor).toEqual({ nodeId: "a", pinToTop: false });
-    expect(graph.projectedNodeIds).toEqual(new Set(byId.keys()));
   });
 
-  it("lays a horizontal Group out left to right over the same topology", () => {
-    const vertical = focused();
-    const horizontalNodes = NODES.map((node) =>
-      node.id === "g"
+  it("centres ingress above its topmost target and continuation below its lowest source", () => {
+    const graph = focused(nodes, [
+      ...edges,
+      { id: "in-b", source: "before", target: "b" },
+      { id: "out-a", source: "a", target: "after" },
+    ]);
+    expect(position(graph, ingress())).toEqual({
+      x: 162,
+      y: 48 - RANK_SPACING - 40,
+    });
+    expect(position(graph, continuation())).toEqual({
+      x: 162,
+      y: 260 + WORKFLOW_NODE_HEIGHT + RANK_SPACING,
+    });
+    expect(
+      graph.nodes.filter((node) => node.type === "groupIngress")
+    ).toHaveLength(1);
+    expect(
+      graph.nodes.filter((node) => node.type === "groupContinuation")
+    ).toHaveLength(1);
+  });
+
+  it("changes neither member position when an edge changes", () => {
+    const before = structuredClone(nodes);
+    const graph = focused(nodes, [edges[0]!]);
+    expect(position(graph, "a")).toEqual(position(focused(), "a"));
+    expect(position(graph, "b")).toEqual(position(focused(), "b"));
+    expect(nodes).toEqual(before);
+  });
+
+  it("ignores frame movement but follows a dragged member", () => {
+    const first = focused();
+    const movedFrame = focused(
+      nodes.map((node) =>
+        node.id === "g" ? { ...node, position: { x: 4000, y: -900 } } : node
+      )
+    );
+    expect(movedFrame.nodes).toEqual(first.nodes);
+    const movedMember = focused(
+      nodes.map((node) =>
+        node.id === "b" ? { ...node, position: { x: 720, y: 800 } } : node
+      )
+    );
+    expect(position(movedMember, "b")).toEqual({ x: 720, y: 800 });
+    expect(position(movedMember, "a")).toEqual(position(first, "a"));
+    expect(position(movedMember, continuation())).toEqual({
+      x: 720,
+      y: 800 + WORKFLOW_NODE_HEIGHT + RANK_SPACING,
+    });
+  });
+
+  it("shares one bend for edges entering the same row without routing fragments", () => {
+    const graph = focused(
+      [...nodes, step("c", 600, 500, "g")],
+      [
+        ...edges,
+        { id: "ac", source: "a", target: "c" },
+        { id: "bc", source: "b", target: "c" },
+      ]
+    );
+    const ac = graph.edges.find((edge) => edge.id === "ac");
+    const bc = graph.edges.find((edge) => edge.id === "bc");
+    expect(ac?.data?.centerY).toBe((260 + WORKFLOW_NODE_HEIGHT + 500) / 2);
+    expect(bc?.data?.centerY).toBe(ac?.data?.centerY);
+    expect(ac?.data).not.toHaveProperty("drawn");
+  });
+
+  it("keeps node and edge identity across unchanged repaints", () => {
+    const first = focused();
+    const second = focused([...nodes], [...edges]);
+    second.nodes.forEach((node, index) =>
+      expect(node).toBe(first.nodes[index])
+    );
+    second.edges.forEach((edge, index) =>
+      expect(edge).toBe(first.edges[index])
+    );
+  });
+
+  it("labels outside Condition outlets separately", () => {
+    const graph = focused(nodes, [
+      { id: "true", source: "before", sourceHandle: "true", target: "a" },
+      { id: "false", source: "before", sourceHandle: "false", target: "b" },
+    ]);
+    expect(
+      graph.nodes
+        .filter((node) => node.type === "groupIngress")
+        .map((node) => node.id)
+    ).toEqual([ingress("before", "true"), ingress("before", "false")]);
+    expect(
+      graph.edges
+        .filter((edge) => ["true", "false"].includes(edge.id))
+        .map((edge) => edge.data?.displayLabel)
+    ).toEqual(["True", "False"]);
+  });
+
+  it("ends an unconnected Condition branch below its source, preserving its label and inert stub", () => {
+    const conditionNodes = nodes.map((node) =>
+      node.id === "a"
         ? {
             ...node,
-            data: { ...node.data, config: { direction: "horizontal" } },
+            data: {
+              ...node.data,
+              config: { actionType: BUILT_IN_ACTION_IDS.condition },
+            },
           }
         : node
     );
-    const horizontal = focused(horizontalNodes);
-    const byId = new Map(horizontal.nodes.map((node) => [node.id, node]));
-
-    const positions = groupCanvasPositions({
-      memberIds: ["a", "b"],
-      interiorEdges: [EDGES[2]],
-      direction: "horizontal",
-    });
-    expect(byId.get("a")?.position).toEqual(positions.get("a"));
-    expect(byId.get("b")?.position).toEqual(positions.get("b"));
-    expect(byId.get("a")?.position.y).toBe(byId.get("b")?.position.y);
-    expect(byId.get("a")?.position.x ?? 0).toBeLessThan(
-      byId.get("b")?.position.x ?? 0
-    );
-    expect(byId.get("a")).toMatchObject({
-      sourcePosition: Position.Right,
-      targetPosition: Position.Left,
-    });
-    expect(byId.get(ingress("before"))?.position.x ?? 0).toBeLessThan(
-      byId.get("a")?.position.x ?? 0
-    );
-    expect(byId.get(continuation("after"))?.position.x ?? 0).toBeGreaterThan(
-      byId.get("b")?.position.x ?? 0
-    );
-
-    const topology = (graph: typeof vertical) => ({
-      nodeIds: graph.nodes.map((node) => node.id).sort(),
-      edges: graph.edges.map((item) => [item.id, item.source, item.target]),
-    });
-    expect(topology(horizontal)).toEqual(topology(vertical));
-  });
-
-  it("ignores where the collapsed card and the stored slots are", () => {
-    const first = focused();
-    const moved = NODES.map((node) => {
-      if (node.id === "g") {
-        return { ...node, position: { x: 4000, y: -900 }, width: 900 };
-      }
-      return node.parentId ? { ...node, position: { x: 700, y: 0 } } : node;
-    });
-    const second = focused(moved);
-    expect(second.nodes.map((node) => [node.id, node.position])).toEqual(
-      first.nodes.map((node) => [node.id, node.position])
-    );
-  });
-
-  it("re-projects when interior edges change and writes nothing", () => {
-    const nodes = structuredClone(NODES);
-    const stacked = focused(nodes);
-    const sideBySide = focused(nodes, [EDGES[0], EDGES[1]]);
-    const y = (graph: typeof stacked, id: string) =>
-      graph.nodes.find((node) => node.id === id)?.position.y;
-    expect(y(stacked, "a")).not.toBe(y(stacked, "b"));
-    expect(y(sideBySide, "a")).toBe(y(sideBySide, "b"));
-    expect(nodes).toEqual(NODES);
-  });
-
-  it("turns each forward edge in the middle of the gap its layout leaves before the target", () => {
-    const nodes = [...NODES, step("c", { x: 12, y: 240 }, "g")];
-    // `a` feeds `b` and `c`, and `b` feeds `c`, so `a` -> `c` passes `b`'s row.
-    const edges = [
-      edge("before-a", "before", "a"),
-      edge("a-b", "a", "b"),
-      edge("a-c", "a", "c"),
-      edge("b-c", "b", "c"),
-      edge("c-after", "c", "after"),
-    ];
-    for (const direction of ["vertical", "horizontal"] as const) {
-      const graph = focused(
-        nodes.map((node) =>
-          node.id === "g"
-            ? { ...node, data: { ...node.data, config: { direction } } }
-            : node
-        ),
-        edges
-      );
-      const span = (id: string) => {
-        const node = graph.nodes.find((item) => item.id === id);
-        const start =
-          (direction === "vertical" ? node?.position.y : node?.position.x) ??
-          Number.NaN;
-        const depth =
-          (direction === "vertical" ? node?.height : node?.width) ?? Number.NaN;
-        return { start, end: start + depth };
-      };
-      const turnOf = (id: string) =>
-        graph.edges.find((item) => item.id === id)?.data?.turnAlong;
-
-      expect(turnOf("a-c")).toBe((span("b").end + span("c").start) / 2);
-      expect(turnOf("b-c")).toBe(turnOf("a-c"));
-      expect(turnOf("a-b")).toBe((span("a").end + span("b").start) / 2);
-      expect(turnOf("before-a")).toBe(
-        (span(ingress("before")).end + span("a").start) / 2
-      );
-      expect(turnOf("c-after")).toBe(
-        (span("c").end + span(continuation("after")).start) / 2
-      );
-    }
-  });
-
-  it("keeps each painted node's identity across an unchanged recompute", () => {
-    const first = focused();
-    const second = focused([...NODES], [...EDGES]);
-    second.nodes.forEach((node, index) => {
-      expect(node).toBe(first.nodes[index]);
-    });
-    second.edges.forEach((item, index) => {
-      expect(item).toBe(first.edges[index]);
-    });
-  });
-
-  it("draws one labelled stub edge per branch of an outside Condition", () => {
-    const check: WorkflowNode = {
-      ...step("check", { x: 0, y: 0 }),
-      data: {
-        label: "Check",
-        type: "action",
-        config: { actionType: "condition" },
-      },
-    };
     const graph = focused(
-      [...NODES, check],
-      [
-        edge("true-a", "check", "a", "true"),
-        edge("false-a", "check", "a", "false"),
-        edge("a-b", "a", "b"),
-      ]
+      conditionNodes,
+      edges.map((edge) =>
+        edge.id === "ab" ? { ...edge, sourceHandle: "true" } : edge
+      )
     );
+    const stub = graph.nodes.find((node) => node.id === end("a", "false"));
+    expect(stub).toMatchObject({
+      selectable: false,
+      draggable: false,
+      deletable: false,
+      connectable: false,
+      data: { label: "Path ends" },
+    });
+    expect(stub?.position).toEqual({
+      x: 12,
+      y: 48 + WORKFLOW_NODE_HEIGHT + RANK_SPACING,
+    });
+    const endEdge = graph.edges.find((edge) => edge.target === stub?.id);
+    expect(resolveEdgeLabel(endEdge?.sourceHandle, endEdge?.data)).toBe(
+      "False"
+    );
+    expect(endEdge).toMatchObject({
+      selectable: false,
+      deletable: false,
+      data: { insertable: false },
+    });
     expect(
-      graph.nodes
-        .filter((node) => node.type === GROUP_BOUNDARY_NODE_TYPES.ingress)
-        .map((node) => node.id)
-    ).toEqual([ingress("check", "true"), ingress("check", "false")]);
-    expect(
-      graph.edges
-        .filter((item) => item.target === "a")
-        .map((item) => [item.source, item.data?.displayLabel])
-    ).toEqual([
-      [ingress("check", "true"), "True"],
-      [ingress("check", "false"), "False"],
-    ]);
+      storedCanvasConnection({ source: stub!.id, target: "b" }, graph.nodes)
+    ).toHaveProperty("refusal");
   });
 
-  it.each(["vertical", "horizontal"] as const)(
-    "fans one %s ingress stub out onto each entry it enters",
-    (direction) => {
-      const nodes = NODES.map((node) =>
-        node.id === "g"
-          ? { ...node, data: { ...node.data, config: { direction } } }
+  it.each([
+    "condition",
+    "false continuation",
+    "multiple targets",
+    "two ends",
+    "staggered ends",
+  ])("separates boundary stubs for %s before and after Tidy", (scenario) => {
+    let stored = [
+      frame,
+      step("a", 0, 0, "g"),
+      step("b", 0, 240, "g"),
+      step("after", 400, 900),
+      step("other", 700, 900),
+    ];
+    const storedEdges: WorkflowEdge[] =
+      scenario === "staggered ends"
+        ? []
+        : [{ id: "ab", source: "a", target: "b" }];
+    if (
+      scenario === "condition" ||
+      scenario === "false continuation" ||
+      scenario === "two ends"
+    ) {
+      stored = stored.map((node) =>
+        node.id === "b"
+          ? {
+              ...node,
+              data: {
+                ...node.data,
+                config: { actionType: BUILT_IN_ACTION_IDS.condition },
+              },
+            }
           : node
-      );
-      const graph = focused(nodes, [
-        edge("before-a", "before", "a"),
-        edge("before-b", "before", "b"),
-      ]);
-      const byId = new Map(graph.nodes.map((node) => [node.id, node]));
-      const stubs = graph.nodes.filter(
-        (node) => node.type === GROUP_BOUNDARY_NODE_TYPES.ingress
-      );
-      expect(stubs.map((node) => node.id)).toEqual([ingress("before")]);
-      expect(
-        graph.edges
-          .filter((item) => item.source === ingress("before"))
-          .map((item) => [item.id, item.source, item.target])
-      ).toEqual([
-        ["before-a", ingress("before"), "a"],
-        ["before-b", ingress("before"), "b"],
-      ]);
-
-      // Along the flow the stub comes first and both entries share one rank;
-      // across it the entries sit apart and the stub is centred between them.
-      const vertical = direction === "vertical";
-      const along = (id: string) => {
-        const position = byId.get(id)?.position ?? { x: 0, y: 0 };
-        return vertical ? position.y : position.x;
-      };
-      const acrossCentre = (id: string) => {
-        const node = byId.get(id);
-        const position = node?.position ?? { x: 0, y: 0 };
-        return vertical
-          ? position.x + (node?.width ?? 0) / 2
-          : position.y + (node?.height ?? 0) / 2;
-      };
-      const acrossSize = vertical ? WORKFLOW_NODE_WIDTH : WORKFLOW_NODE_HEIGHT;
-      expect(along("a")).toBe(along("b"));
-      expect(along(ingress("before"))).toBeLessThan(along("a"));
-      expect(Math.abs(acrossCentre("a") - acrossCentre("b"))).toBeGreaterThan(
-        acrossSize
-      );
-      expect(acrossCentre(ingress("before"))).toBe(
-        (acrossCentre("a") + acrossCentre("b")) / 2
       );
     }
-  );
-
-  describe("a Condition inside the Group", () => {
-    const gate: WorkflowNode = {
-      ...step("gate", { x: 0, y: 0 }, "g"),
-      data: {
-        label: "Gate",
-        type: "action",
-        config: { actionType: BUILT_IN_ACTION_IDS.condition },
-      },
-    };
-    // `a` feeds the Condition `gate`, whose True outlet continues to `after`
-    // outside the Group. False either reaches the member `b`, which ends its
-    // path, or is left unconnected.
-    const nodesWith = (direction: "vertical" | "horizontal") => [
-      ...NODES.map((node) =>
-        node.id === "g"
-          ? { ...node, data: { ...node.data, config: { direction } } }
-          : node
-      ),
-      gate,
-    ];
-    const falseToMember = [
-      edge("before-a", "before", "a"),
-      edge("a-gate", "a", "gate"),
-      edge("gate-after", "gate", "after", "true"),
-      edge("gate-b", "gate", "b", "false"),
-    ];
-    const falseUnconnected = falseToMember.filter(
-      (item) => item.id !== "gate-b"
-    );
-    const end = (nodeId: string, handle: string | null = null) =>
-      boundaryStubId("end", { nodeId, handle });
-
-    it.each(["vertical", "horizontal"] as const)(
-      "ends a False branch unconnected in a %s Group at a labelled end stub beside the True continuation",
-      (direction) => {
-        const graph = focused(nodesWith(direction), falseUnconnected);
-        const byId = new Map(graph.nodes.map((node) => [node.id, node]));
-
-        // `b` has no edge at all, so its own path ends too.
-        expect(
-          graph.nodes
-            .filter((node) => node.type !== "action")
-            .map((node) => [node.id, node.type])
-        ).toEqual([
-          [ingress("before"), GROUP_BOUNDARY_NODE_TYPES.ingress],
-          [continuation("after"), GROUP_BOUNDARY_NODE_TYPES.continuation],
-          [end("gate", "false"), GROUP_BOUNDARY_NODE_TYPES.end],
-          [end("b"), GROUP_BOUNDARY_NODE_TYPES.end],
-        ]);
-        const endStub = byId.get(end("gate", "false"));
-        expect(endStub).toMatchObject({
-          selectable: false,
-          draggable: false,
-          deletable: false,
-          connectable: false,
-          data: { label: GROUP_END_STUB_LABEL },
-        });
-
-        const endEdge = graph.edges.find(
-          (item) => item.target === end("gate", "false")
-        );
-        expect(endEdge).toMatchObject({
-          source: "gate",
-          sourceHandle: "false",
-          selectable: false,
-          deletable: false,
-          focusable: false,
-        });
-        expect(resolveEdgeLabel(endEdge?.sourceHandle, endEdge?.data)).toBe(
-          "False"
-        );
-        const continuationEdge = graph.edges.find(
-          (item) => item.id === "gate-after"
-        );
-        expect(
-          resolveEdgeLabel(
-            continuationEdge?.sourceHandle,
-            continuationEdge?.data
-          )
-        ).toBe("True");
-
-        // Both stubs sit on the one line after the members, True before False.
-        const vertical = direction === "vertical";
-        const along = (id: string) => {
-          const position = byId.get(id)?.position ?? { x: 0, y: 0 };
-          return vertical ? position.y : position.x;
-        };
-        const across = (id: string) => {
-          const position = byId.get(id)?.position ?? { x: 0, y: 0 };
-          return vertical ? position.x : position.y;
-        };
-        const lastMemberEnd = Math.max(
-          ...["a", "b", "gate"].map(
-            (id) =>
-              along(id) +
-              (vertical ? WORKFLOW_NODE_HEIGHT : WORKFLOW_NODE_WIDTH)
-          )
-        );
-        expect(along(continuation("after"))).toBeGreaterThan(lastMemberEnd);
-        expect(along(end("gate", "false"))).toBe(along(continuation("after")));
-        expect(across(continuation("after"))).toBeLessThan(
-          across(end("gate", "false"))
-        );
-      }
-    );
-
-    it.each(["vertical", "horizontal"] as const)(
-      "keeps a lane clear from an unconnected False outlet to its end stub in a %s Group",
-      (direction) => {
-        // True reaches `b` in the row after `gate`, which would otherwise
-        // stand on `gate`'s lane to the "Path ends" stub.
-        const graph = focused(nodesWith(direction), [
-          edge("before-a", "before", "a"),
-          edge("a-gate", "a", "gate"),
-          edge("gate-b", "gate", "b", "true"),
-          edge("b-after", "b", "after"),
-        ]);
-        const byId = new Map(graph.nodes.map((node) => [node.id, node]));
-        const vertical = direction === "vertical";
-        const centreAcross = (id: string) => {
-          const position = byId.get(id)?.position ?? { x: 0, y: 0 };
-          return vertical
-            ? position.x + WORKFLOW_NODE_WIDTH / 2
-            : position.y + WORKFLOW_NODE_HEIGHT / 2;
-        };
-        const cardHalf =
-          (vertical ? WORKFLOW_NODE_WIDTH : WORKFLOW_NODE_HEIGHT) / 2;
-
-        expect(
-          Math.abs(centreAcross("b") - centreAcross("gate"))
-        ).toBeGreaterThanOrEqual(cardHalf);
-        const endEdge = graph.edges.find(
-          (item) => item.target === end("gate", "false")
-        );
-        expect(endEdge?.data?.turnAlong).toEqual(expect.any(Number));
-      }
-    );
-
-    it("paints a horizontal Group given the vertical direction exactly as a vertical Group, stubs and turns included", () => {
-      const edges = [
-        edge("before-a", "before", "a"),
-        edge("a-gate", "a", "gate"),
-        edge("gate-b", "gate", "b", "true"),
-        edge("b-after", "b", "after"),
-      ];
-      const overridden = focusedGroupCanvasGraph({
-        nodes: nodesWith("horizontal"),
-        edges,
-        groupId: "g",
-        direction: "vertical",
+    if (
+      scenario === "condition" ||
+      scenario === "false continuation" ||
+      scenario === "multiple targets"
+    )
+      storedEdges.push({
+        id: "out",
+        source: "b",
+        sourceHandle:
+          scenario === "condition"
+            ? "true"
+            : scenario === "false continuation"
+              ? "false"
+              : null,
+        target: "after",
       });
-      const vertical = focused(nodesWith("vertical"), edges);
-      const layout = (graph: typeof vertical | null) => ({
-        nodes: graph?.nodes.map((node) => [
-          node.id,
-          node.position,
-          node.sourcePosition,
-        ]),
-        edges: graph?.edges.map((item) => [item.id, item.data?.turnAlong]),
-      });
-
-      expect(vertical.nodes.map((node) => node.id)).toContain(
-        end("gate", "false")
+    if (scenario === "multiple targets")
+      storedEdges.push({ id: "other", source: "b", target: "other" });
+    if (scenario === "staggered ends")
+      stored = stored.map((node) =>
+        node.id === "b" ? { ...node, position: { x: 12, y: 20 } } : node
       );
-      expect(layout(overridden)).toEqual(layout(vertical));
-    });
-
-    it("ends a False branch that reaches a member at that member", () => {
-      const graph = focused(nodesWith("vertical"), falseToMember);
-      expect(
-        graph.nodes
-          .filter((node) => node.type === GROUP_BOUNDARY_NODE_TYPES.end)
-          .map((node) => node.id)
-      ).toEqual([end("b")]);
-      expect(
-        graph.edges
-          .filter((item) => item.target === end("b"))
-          .map((item) => [item.source, item.sourceHandle])
-      ).toEqual([["b", null]]);
-    });
-
-    it("keeps end stubs and their edges across an unchanged recompute", () => {
-      const nodes = nodesWith("vertical");
-      const first = focused(nodes, falseUnconnected);
-      const second = focused([...nodes], [...falseUnconnected]);
-      second.nodes.forEach((node, index) => {
-        expect(node).toBe(first.nodes[index]);
-      });
-      second.edges.forEach((item, index) => {
-        expect(item).toBe(first.edges[index]);
-      });
-    });
-
-    it("keeps a Condition's path-end stub and edge when the Condition is selected", () => {
-      const nodes = nodesWith("vertical");
-      const first = focused(nodes, falseUnconnected);
-      const second = focused(
-        nodes.map((node) =>
-          node.id === "gate" ? { ...node, selected: true } : node
-        ),
-        falseUnconnected
+    for (let pass = 0; pass < 2; pass++) {
+      const graph = focused(stored, storedEdges);
+      const stubs = graph.nodes.filter((node) =>
+        graph.projectedNodeIds.has(node.id)
       );
-      const stubOf = (graph: typeof first) =>
-        graph.nodes.find((node) => node.id === end("gate", "false"));
-      const edgeOf = (graph: typeof first) =>
-        graph.edges.find((item) => item.target === end("gate", "false"));
-
-      expect(stubOf(first)).toBeDefined();
-      expect(stubOf(second)).toBe(stubOf(first));
-      expect(edgeOf(second)).toBe(edgeOf(first));
-    });
-
-    it("never gives a stub or display-only edge the id of a stored node or edge", () => {
-      // A stored id is trimmed, so builder ids that spell out a stub id or an
-      // end edge id without its leading space are still distinct.
-      const endEdgeId = (nodeId: string) =>
-        graph().edges.find((item) => item.target === end(nodeId))?.id ?? "";
-      const graph = () => focused(nodesWith("vertical"), falseUnconnected);
-      const lookalikeNode = step(end("b").trim(), { x: 0, y: 0 }, "g");
-      const lookalikeEdge = edge(endEdgeId("b").trim(), "a", "b");
-      const painted = focused(
-        [...nodesWith("vertical"), lookalikeNode],
-        [...falseUnconnected, lookalikeEdge]
-      );
-      const nodeIds = painted.nodes.map((node) => node.id);
-      const edgeIds = painted.edges.map((item) => item.id);
-
-      expect(nodeIds).toContain(lookalikeNode.id);
-      expect(nodeIds).toContain(end(lookalikeNode.id));
-      expect(new Set(nodeIds).size).toBe(nodeIds.length);
-      expect(edgeIds).toContain(lookalikeEdge.id);
-      expect(new Set(edgeIds).size).toBe(edgeIds.length);
-    });
-
-    it("refuses a drag from an end stub", () => {
-      const painted = focused(nodesWith("vertical"), falseUnconnected).nodes;
+      expect(stubs).toHaveLength(2);
       expect(
-        storedCanvasConnection(
-          { source: end("gate", "false"), target: "b", sourceHandle: null },
-          painted
+        rectanglesOverlap(
+          { ...stubs[0]!.position, width: WORKFLOW_NODE_WIDTH, height: 40 },
+          { ...stubs[1]!.position, width: WORKFLOW_NODE_WIDTH, height: 40 }
         )
-      ).toEqual({ refusal: "Connect to a step inside the Group." });
+      ).toBe(false);
+      if (
+        scenario === "condition" ||
+        scenario === "false continuation" ||
+        scenario === "two ends"
+      ) {
+        const trueTarget = graph.edges.find(
+          (edge) => edge.source === "b" && edge.sourceHandle === "true"
+        )!.target;
+        const falseTarget = graph.edges.find(
+          (edge) => edge.source === "b" && edge.sourceHandle === "false"
+        )!.target;
+        expect(position(graph, trueTarget)!.x).toBeLessThan(
+          position(graph, falseTarget)!.x
+        );
+      }
+      for (const member of stored.filter((node) => node.parentId === "g"))
+        expect(position(graph, member.id)).toBe(member.position);
+      const again = focused(stored, storedEdges);
+      graph.nodes.forEach((node, index) =>
+        expect(again.nodes[index]).toBe(node)
+      );
+      const laidOut = layoutWorkflowNodes({
+        ...graph,
+        catalog: emptyExtensionCatalog,
+      });
+      stored = stored.map((node) =>
+        node.parentId === "g"
+          ? {
+              ...node,
+              position: laidOut.nodes.find((item) => item.id === node.id)!
+                .position,
+            }
+          : node
+      );
+    }
+  });
+
+  it("keeps Path ends clear of member cards before and after Tidy and dragging", () => {
+    let stored: WorkflowNode[] = [
+      frame,
+      step("get", 0, 0, "g"),
+      {
+        ...step("condition", 0, 180, "g"),
+        data: {
+          label: "Condition",
+          type: "action",
+          config: { actionType: BUILT_IN_ACTION_IDS.condition },
+        },
+      },
+      step("create", -150, 360, "g"),
+    ];
+    const storedEdges: WorkflowEdge[] = [
+      { id: "check", source: "get", target: "condition" },
+      {
+        id: "create",
+        source: "condition",
+        sourceHandle: "true",
+        target: "create",
+      },
+    ];
+    const assertClear = () => {
+      const graph = focused(stored, storedEdges);
+      const members = graph.nodes.filter(
+        (node) => !graph.projectedNodeIds.has(node.id)
+      );
+      for (const stub of graph.nodes.filter((node) =>
+        graph.projectedNodeIds.has(node.id)
+      )) {
+        for (const member of members) {
+          expect(
+            rectanglesOverlap(
+              { ...stub.position, width: WORKFLOW_NODE_WIDTH, height: 40 },
+              {
+                ...member.position,
+                width: WORKFLOW_NODE_WIDTH,
+                height: WORKFLOW_NODE_HEIGHT,
+              }
+            )
+          ).toBe(false);
+        }
+      }
+      for (const member of stored.filter((node) => node.parentId === "g"))
+        expect(position(graph, member.id)).toBe(member.position);
+      const again = focused(stored, storedEdges);
+      graph.nodes.forEach((node, index) =>
+        expect(again.nodes[index]).toBe(node)
+      );
+      return graph;
+    };
+    const first = assertClear();
+    const laidOut = layoutWorkflowNodes({
+      ...first,
+      catalog: emptyExtensionCatalog,
     });
-  });
-
-  it("names the Lifecycle Node through the stub's own data", () => {
-    const graph = focused(NODES, [
-      edge("life-a", "life", "a", "started"),
-      edge("a-b", "a", "b"),
-    ]);
-    const stub = graph.nodes.find(
-      (node) => node.id === ingress("life", "started")
+    stored = stored.map((node) =>
+      node.parentId === "g"
+        ? {
+            ...node,
+            position: laidOut.nodes.find((item) => item.id === node.id)!
+              .position,
+          }
+        : node
     );
-    expect(stub?.data.type).toBe("lifecycle");
-    const painted = graph.edges.find((item) => item.id === "life-a");
-    expect(painted).not.toHaveProperty("sourceHandle");
+    const tidied = assertClear();
+    stored = stored.map((node) =>
+      node.id === "create"
+        ? { ...node, position: position(tidied, end("condition", "false"))! }
+        : node
+    );
+    assertClear();
   });
 
-  it("paints a distinct stub for each port when member ids hold a lone surrogate or the separator characters", () => {
-    const memberIds = ["\ud800", "x/y", "x", "x%2Fy"];
-    const nodes: WorkflowNode[] = [
-      NODES[0] as WorkflowNode,
-      step("before", { x: 400, y: 150 }),
-      FRAME,
-      ...memberIds.map((id, index) =>
-        step(id, { x: 12, y: 48 + index * 96 }, "g")
-      ),
-    ];
-    const edges = [
-      edge("life-before", "life", "before", "started"),
-      ...memberIds.map((id) => edge(`before-${id}`, "before", id)),
-    ];
-
-    const graph = focused(nodes, edges);
-
-    const endStubIds = graph.nodes
-      .filter((node) => node.type === GROUP_BOUNDARY_NODE_TYPES.end)
-      .map((node) => node.id);
-    expect(endStubIds).toEqual(
-      memberIds.map((nodeId) => boundaryStubId("end", { nodeId, handle: null }))
+  it("keeps distinct end stubs for builder-chosen ids including separators", () => {
+    const ids = ["\ud800", "x/y", "x", "x%2Fy", "constructor", "__proto__"];
+    const graph = focused(
+      [frame, ...ids.map((id, index) => step(id, index * 300, 0, "g"))],
+      []
     );
     expect(new Set(graph.nodes.map((node) => node.id)).size).toBe(
       graph.nodes.length
     );
-    expect(new Set(graph.edges.map((item) => item.id)).size).toBe(
-      graph.edges.length
-    );
-  });
-
-  it("answers null for a Group the graph does not hold", () => {
     expect(
-      focusedGroupCanvasGraph({ nodes: NODES, edges: EDGES, groupId: "a" })
-    ).toBeNull();
+      graph.nodes
+        .filter((node) => node.type === "groupEnd")
+        .map((node) => node.id)
+    ).toEqual(ids.map((id) => end(id)));
   });
 
-  it("leaves the stored nodes and edges untouched", () => {
-    const nodes = structuredClone(NODES);
-    const edges = structuredClone(EDGES);
-    focusedGroupCanvasGraph({ nodes, edges, groupId: "g" });
-    overviewCanvasGraph({ nodes, edges });
-    expect(nodes).toEqual(NODES);
-    expect(edges).toEqual(EDGES);
+  it("returns null for a missing Group and recovers its scope to the overview", () => {
+    expect(
+      focusedGroupCanvasGraph({ nodes, edges, groupId: "missing" })
+    ).toBeNull();
+    expect(
+      scopeCanvasGraph({
+        nodes,
+        edges,
+        scope: { kind: "group", groupId: "missing" },
+      }).nodes.map((node) => node.id)
+    ).toContain("g");
   });
 });
 
 describe("storedCanvasConnection", () => {
-  const check: WorkflowNode = {
-    ...step("a/b c", { x: 0, y: 0 }),
-    data: {
-      label: "check",
-      type: "action",
-      config: { actionType: "condition" },
-    },
-  };
-  const painted = focused(
-    [...NODES, check],
-    [...EDGES, edge("check-a", "a/b c", "a", "true")]
-  ).nodes;
-
-  it("stores a drag from an ingress stub as an edge from its outside port", () => {
+  const painted = focused().nodes;
+  it("translates incoming and continuation stubs to their stored ports", () => {
     expect(
-      storedCanvasConnection(
-        {
-          source: ingress("a/b c", "true"),
-          target: "b",
-          sourceHandle: null,
-          targetHandle: null,
-        },
-        painted
-      )
+      storedCanvasConnection({ source: ingress(), target: "b" }, painted)
     ).toEqual({
-      connection: {
-        source: "a/b c",
-        target: "b",
-        sourceHandle: "true",
-        targetHandle: null,
-      },
-      fromIngressStub: true,
+      connection: { source: "before", sourceHandle: null, target: "b" },
+      throughBoundaryStub: true,
     });
     expect(
-      storedCanvasConnection(
-        { source: ingress("before"), target: "b", sourceHandle: null },
-        painted
-      )
+      storedCanvasConnection({ source: "a", target: continuation() }, painted)
     ).toEqual({
-      connection: { source: "before", target: "b", sourceHandle: null },
-      fromIngressStub: true,
+      connection: { source: "a", target: "after", targetHandle: null },
+      throughBoundaryStub: true,
     });
   });
-
-  it("refuses a drag onto a stub or from a continuation stub", () => {
-    const refusal = { refusal: "Connect to a step inside the Group." };
-    expect(
-      storedCanvasConnection(
-        { source: "a", target: continuation("after"), sourceHandle: null },
-        painted
-      )
-    ).toEqual(refusal);
-    expect(
-      storedCanvasConnection(
-        { source: continuation("after"), target: "a", sourceHandle: null },
-        painted
-      )
-    ).toEqual(refusal);
+  it("refuses backward stub connections and stub-to-stub connections", () => {
+    for (const connection of [
+      { source: continuation(), target: "a" },
+      { source: "a", target: ingress() },
+      { source: ingress(), target: continuation() },
+    ]) {
+      expect(storedCanvasConnection(connection, painted)).toEqual({
+        refusal: "Connect to a step inside the Group.",
+      });
+    }
   });
-
-  it("answers any other connection as it was given", () => {
-    const connection = { source: "a", target: "b", sourceHandle: null };
+  it("leaves member connections and lookalike ids alone", () => {
+    const connection = { source: "a", target: "b" };
     expect(storedCanvasConnection(connection, painted)).toEqual({
       connection,
-      fromIngressStub: false,
+      throughBoundaryStub: false,
     });
-  });
-
-  it("reads a node whose id looks like a stub id as that node", () => {
-    const lookalike = step(ingress("before"), { x: 0, y: 0 });
-    const connection = {
-      source: lookalike.id,
-      target: "b",
-      sourceHandle: null,
-    };
-    expect(storedCanvasConnection(connection, [lookalike, ...NODES])).toEqual({
-      connection,
-      fromIngressStub: false,
+    const lookalike = { source: ingress(), target: "b" };
+    expect(storedCanvasConnection(lookalike, [step(ingress(), 0, 0)])).toEqual({
+      connection: lookalike,
+      throughBoundaryStub: false,
     });
   });
 });
 
-describe("withoutProjectedDimensions", () => {
-  it("drops measurements of projected nodes and keeps every other change", () => {
-    const changes: NodeChange<WorkflowNode>[] = [
-      { type: "dimensions", id: "a", dimensions: { width: 1, height: 1 } },
-      { type: "dimensions", id: "x", dimensions: { width: 1, height: 1 } },
-      { type: "select", id: "a", selected: true },
-    ];
-    expect(
-      withoutProjectedDimensions(changes, new Set(["a"])).map((change) => [
-        change.type,
-        "id" in change ? change.id : null,
-      ])
-    ).toEqual([
-      ["dimensions", "x"],
-      ["select", "a"],
-    ]);
-    expect(withoutProjectedDimensions(changes, new Set())).toBe(changes);
-  });
-});
-
-describe("scopeCanvasGraph", () => {
-  it("lays a horizontal Group out top to bottom when given the vertical direction, reading the stored graph only", () => {
-    const horizontalNodes = NODES.map((node) =>
-      node.id === "g"
-        ? {
-            ...node,
-            data: { ...node.data, config: { direction: "horizontal" } },
-          }
-        : node
-    );
-    const before = structuredClone(horizontalNodes);
-    const scope = { kind: "group", groupId: "g" } as const;
-    const stored = scopeCanvasGraph({
-      nodes: horizontalNodes,
-      edges: EDGES,
-      scope,
-    });
-    const projected = scopeCanvasGraph({
-      nodes: horizontalNodes,
-      edges: EDGES,
-      scope,
-      focusedGroupDirection: "vertical",
-    });
-    const vertical = focused();
-    const painted = (graph: typeof vertical, id: string) =>
-      graph.nodes.find((node) => node.id === id);
-
-    expect(painted(stored, "a")?.sourcePosition).toBe(Position.Right);
-    for (const id of ["a", "b", ingress("before"), continuation("after")]) {
-      expect(painted(projected, id)?.position).toEqual(
-        painted(vertical, id)?.position
-      );
-      expect(painted(projected, id)?.sourcePosition).toBe(
-        painted(vertical, id)?.sourcePosition
-      );
-    }
-    expect(projected.edges.map((item) => item.id)).toEqual(
-      stored.edges.map((item) => item.id)
-    );
-    expect(horizontalNodes).toEqual(before);
-  });
-
-  it("shows the overview for a Group scope whose Group is gone", () => {
-    const graph = scopeCanvasGraph({
-      nodes: NODES,
-      edges: EDGES,
-      scope: { kind: "group", groupId: "missing" },
-    });
-    expect(graph.nodes.map((node) => node.id)).toContain("g");
-    // The overview's edges carry no turn, so each turns halfway between its ends.
-    expect(graph.edges.map((item) => item.data?.turnAlong)).toEqual(
-      graph.edges.map(() => undefined)
-    );
-  });
+it("filters only stub measurements, preserving member drags and measurements", () => {
+  const changes: NodeChange<WorkflowNode>[] = [
+    { type: "dimensions", id: ingress(), dimensions: { width: 1, height: 1 } },
+    { type: "dimensions", id: "a", dimensions: { width: 192, height: 112 } },
+    { type: "position", id: "a", position: { x: 30, y: 40 }, dragging: true },
+  ];
+  expect(
+    withoutProjectedDimensions(changes, focused().projectedNodeIds)
+  ).toEqual(changes.slice(1));
+  expect(withoutProjectedDimensions(changes, new Set())).toBe(changes);
 });

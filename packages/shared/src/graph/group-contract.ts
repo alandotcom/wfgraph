@@ -32,7 +32,10 @@ export type GroupContractRule =
   | "disallowed_member"
   /** Stored edges enter the Group from more than one outside source port. */
   | "multiple_ingress_sources"
-  /** Stored edges leave the Group from more than one member source port. */
+  /**
+   * Stored edges leave the Group from more than one member source port, and
+   * those edges reach more than one outside target port.
+   */
   | "multiple_continuations"
   /** A join inside the Group has an arm node or a predecessor outside it. */
   | "join_crosses_boundary"
@@ -106,6 +109,24 @@ function entersFromSeveralPorts(
 }
 
 /**
+ * Whether stored edges leave a Group as more than one continuation. Edges from
+ * one member source port are one continuation, whatever they reach. Edges from
+ * several member source ports are one continuation when every one of them
+ * reaches the same outside target port, which runs once after all of them.
+ */
+function continuesSeveralWays(
+  boundary: Pick<
+    GroupBoundary<GroupBoundaryEdge>,
+    "internalContinuation" | "externalTargets"
+  >
+): boolean {
+  return (
+    boundary.internalContinuation.length > 1 &&
+    boundary.externalTargets.length > 1
+  );
+}
+
+/**
  * The join rules a Group breaks for one join. A join whose node is inside the
  * Group must have every arm node and every predecessor inside it too. A join
  * outside the Group may have the Group on an arm. Either way, a Condition member
@@ -160,7 +181,7 @@ function ruleBreaksForMembers(input: {
   const groupName = `Group "${input.groupLabel}"`;
   const members = nodes.filter((node) => memberIds.has(node.id));
   const boundary = analyzeGroupBoundary({ memberIds: [...memberIds], edges });
-  const { externalIngress, internalContinuation } = boundary;
+  const { externalIngress, internalContinuation, externalTargets } = boundary;
 
   return compact([
     members.filter((node) => isGroupableStep(node)).length < 2
@@ -181,10 +202,10 @@ function ruleBreaksForMembers(input: {
           message: `${groupName} is entered from ${externalIngress.length} outlets outside it. Connect the Group from one outlet`,
         }
       : undefined,
-    internalContinuation.length > 1
+    continuesSeveralWays(boundary)
       ? {
           rule: "multiple_continuations",
-          message: `${groupName} continues from ${internalContinuation.length} outlets inside it. Only one outlet inside a Group can connect to steps outside it`,
+          message: `${groupName} continues from ${internalContinuation.length} outlets inside it to ${externalTargets.length} steps outside it. Connect every outlet that leaves a Group to the same step, or leave the Group from one outlet`,
         }
       : undefined,
     ...joins.flatMap((join) =>
@@ -237,6 +258,48 @@ export function addedIngressSourceRefusal(input: {
     return current === undefined
       ? `This connection would enter the Group ${groupName} from ${withAdditions.externalIngress.length} outlets. A Group is entered from one outlet.`
       : `The Group ${groupName} is already entered from ${portLabel(current, nodeById)}. A Group is entered from one outlet, so remove that connection first.`;
+  }
+  return null;
+}
+
+/**
+ * Why the editor refuses to add the stored edges `additions` to `edges`: they
+ * would make a Group that leaves as one continuation now leave as several,
+ * which the answer names with the message Publish reports. Null when every
+ * Group the additions leave still continues one way, or already continued
+ * several ways, which is left to Publish.
+ */
+export function addedContinuationRefusal(input: {
+  nodes: readonly GroupGraphNode[];
+  edges: readonly GroupBoundaryEdge[];
+  additions: readonly GroupBoundaryEdge[];
+}): string | null {
+  const nodeById = new Map(input.nodes.map((node) => [node.id, node]));
+  const leftGroups = uniq(
+    input.additions.flatMap((edge) => {
+      const parentId = nodeById.get(edge.source)?.parentId;
+      return parentId !== undefined && isGroupNode(nodeById.get(parentId))
+        ? [parentId]
+        : [];
+    })
+  );
+  const after = [...input.edges, ...input.additions];
+  for (const groupId of leftGroups) {
+    const before = analyzeGroupBoundaryById({
+      nodes: input.nodes,
+      edges: input.edges,
+      groupId,
+    });
+    const withAdditions = analyzeGroupBoundaryById({
+      nodes: input.nodes,
+      edges: after,
+      groupId,
+    });
+    if (continuesSeveralWays(before) || !continuesSeveralWays(withAdditions)) {
+      continue;
+    }
+    const groupName = `"${labelOf(groupId, nodeById)}"`;
+    return `The Group ${groupName} would continue to ${withAdditions.externalTargets.length} steps from ${withAdditions.internalContinuation.length} outlets inside it. Connect every outlet that leaves a Group to the same step, or continue from one outlet on the Group's own canvas.`;
   }
   return null;
 }

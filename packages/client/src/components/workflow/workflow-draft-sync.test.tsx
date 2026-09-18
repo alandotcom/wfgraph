@@ -260,7 +260,7 @@ describe("WorkflowDraftSync", () => {
         ).toEqual([["remote", undefined]]),
       { timeout: 2_000 }
     );
-    expect(store.get(nodesAtom)[0]?.position).toEqual({ x: 100, y: 100 });
+    expect(store.get(nodesAtom)[0]?.position).toEqual({ x: 120, y: 140 });
     expect(procedureCalls).not.toContain("workflow/update");
   });
 

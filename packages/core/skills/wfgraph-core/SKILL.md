@@ -75,7 +75,7 @@ the editor.
   writes also take the latest `expectedDraftRevision`. After a
   `workflow_draft_stale` result, read the workflow again before editing.
 - MCP tools and the build agent keep existing Groups valid and cannot create a
-  Group, ungroup one, or change its direction. A write that leaves a Group with
+  Group or ungroup one. A write that leaves a Group with
   fewer than two steps ungroups it, and the tool result names that Group.
 - Grouping never changes what a run executes. A draft save refuses Group
   membership errors and edges that touch a Group frame. The remaining Group rules block Publish, and a draft run
@@ -161,13 +161,11 @@ Source: alandotcom/wfgraph:docs/embedding.md (Cloudflare Workers and Hyperdrive)
 
 ### HIGH Upgrade with legacy Group config keys
 
-Wrong: Upgrade while a stored draft or published version has `entryNodeIds`,
-`exitNodeIds`, or `outletHandle` in a Group's config.
+Wrong: Upgrade while a stored draft or published version has keys in a Group's
+config, including `direction`, `entryNodeIds`, `exitNodeIds`, or `outletHandle`.
 
-Correct: Before upgrading, remove `entryNodeIds`, `exitNodeIds`, and
-`outletHandle` from each stored Group config and keep `direction`. Graph
-decoding refuses a Group config holding any other key, and no migration ships
-for the removed keys.
+Correct: Before upgrading, empty each stored Group config. Graph decoding
+refuses every Group config key, and no migration ships for the removed keys.
 
 Source: alandotcom/wfgraph:docs/embedding.md (Groups)
 

@@ -212,7 +212,8 @@ and the members where a path ends inside it. A frame has no enabled state or
 run behavior of its own. Its config holds one key, `direction`, vertical or
 horizontal, which decides only how the editor draws its members when the Group
 is entered. The editor shows a Group on the workflow canvas as one collapsed
-card, and entering the Group shows its members on a canvas of their own.
+card with one outlet, and entering the Group shows its members on a canvas of
+their own, where a step added, pasted or duplicated becomes a member.
 Removing a frame ungroups its members and keeps every stored edge, and an edit
 that leaves a Group with fewer than two steps ungroups it the same way. The
 editor groups a selection only when the Group it would form meets the Publish
@@ -221,10 +222,11 @@ A draft save refuses a Group member that is the Lifecycle Node, an Add node,
 or another Group, and refuses a stored edge that touches a frame. Publish
 refuses a Group that holds an Event Split or holds fewer than two other steps.
 Edges may enter the Group from one outside outlet, which may connect to several
-members, and may leave it from one inside outlet, and a path may end inside the
-Group. That inside outlet may be one branch of a Condition whose other branch
-ends inside the Group, and two outlets leaving it are refused even when they
-reach the same outside step. A join inside a Group takes every arm and every
+members, and a path may end inside the Group. Edges leave the Group as one
+continuation. That continuation is one inside outlet, which may be one branch of
+a Condition whose other branch ends inside the Group, or several inside outlets
+whose edges all reach the same outside step and target handle, which then runs
+once after all of them. A join inside a Group takes every arm and every
 predecessor from inside the Group. A Group may sit on an arm of a join outside
 it. Publish refuses a Group whose Condition sits on an arm of any join, because
 the branch the Condition does not take leaves that join unreleased. A draft

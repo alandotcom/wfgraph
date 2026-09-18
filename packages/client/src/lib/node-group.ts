@@ -72,19 +72,14 @@ export function groupSelection(input: {
     width: size.width,
     height: size.height,
     style: { width: size.width, height: size.height },
-    // A new Group is laid out top to bottom until its direction is changed.
     data: {
       label: "Group",
       type: "group",
-      config: { direction: "vertical" },
     },
   };
 
-  // Each member keeps its own data and size, so grouping leaves every step's
-  // enabled state and configuration exactly as they were. Its position is kept
-  // relative to the frame. The focused Group canvas and Ungroup place members
-  // with `groupCanvasPositions`; the comparison graph reads the stored position
-  // only to draw a member deleted from a Group that still exists.
+  // Grouping preserves each step's data and size. Positions become local to
+  // the frame; focus paints them unchanged and Ungroup translates them back.
   const children = members.map((node): WorkflowNode => ({
     ...node,
     parentId: groupId,
@@ -114,7 +109,6 @@ export function groupSelection(input: {
  */
 export function ungroupNode(input: {
   nodes: WorkflowNode[];
-  edges: readonly WorkflowEdge[];
   groupId: string;
 }): WorkflowNode[] {
   return ungroupFrames({ ...input, groupIds: new Set([input.groupId]) });
@@ -170,7 +164,6 @@ export function removeNodes(input: {
   return {
     nodes: ungroupFrames({
       nodes: remaining,
-      edges,
       groupIds: new Set([...frameIds, ...undersizedGroupIds(remaining)]),
     }),
     edges,
@@ -265,7 +258,6 @@ export function expandEdgeRemovals(
  */
 function ungroupFrames(input: {
   nodes: WorkflowNode[];
-  edges: readonly WorkflowEdge[];
   groupIds: ReadonlySet<string>;
 }): WorkflowNode[] {
   return orderGroupParentsFirst(
@@ -284,7 +276,6 @@ function ungroupFrames(input: {
  */
 function memberReleaser(graph: {
   nodes: readonly WorkflowNode[];
-  edges: readonly WorkflowEdge[];
 }): ReleaseMember<WorkflowNode> {
   const place = groupCanvasReleasePosition(graph);
   return ({ frame, member }) => {

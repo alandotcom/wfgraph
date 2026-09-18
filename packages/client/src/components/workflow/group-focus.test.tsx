@@ -8,7 +8,13 @@ import {
   RouterProvider,
   type SearchSchemaInput,
 } from "@tanstack/react-router";
-import { act, fireEvent, render, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { ReactFlowProvider, useReactFlow } from "@xyflow/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -40,6 +46,7 @@ import {
   executionOverlayGraphAtom,
   loadWorkflowGraphAtom,
   nodesAtom,
+  selectedNodeAtom,
   selectOnlyNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
@@ -421,6 +428,69 @@ describe("the collapsed Group overview", () => {
     expect(renderedNodeIds()).not.toContain("welcome");
   });
 
+  it.each(["browse", "closed"] as const)(
+    "Edit Group opens the editing form from %s",
+    async (level) => {
+      const { view, store, select, reveal, search } = await renderEditor();
+      await select("outreach");
+      await act(async () => {
+        store.set(setWorkspaceRevealLevelAtom, {
+          address: store.get(activeWorkspaceAddressAtom),
+          level,
+        });
+      });
+      fireEvent.contextMenu(view.getByTestId("group-node-outreach"), {
+        clientX: 500,
+        clientY: 400,
+      });
+      fireEvent.click(
+        await view.findByRole("button", { name: "Edit Initial outreach" })
+      );
+      await waitFor(() => expect(reveal()?.dataset.level).toBe("focus"));
+      expect(view.getByRole("textbox", { name: "Label" })).toBeTruthy();
+      expect(view.getByRole("textbox", { name: "Description" })).toBeTruthy();
+      expect(
+        view.queryByRole("button", { name: "Edit Initial outreach" })
+      ).toBeNull();
+      expect(search().group).toBeUndefined();
+    }
+  );
+
+  it("shows the Group description on its card and in its summary after editing", async () => {
+    const description =
+      "Welcome returning patients.\nSend the follow-up sequence.";
+    const nodes = NODES.map((node) =>
+      node.id === "outreach"
+        ? { ...node, data: { ...node.data, description } }
+        : node
+    );
+    const { view, select } = await renderEditor("", { nodes, edges: EDGES });
+    await select("outreach");
+    const inspector = () =>
+      within(view.getByRole("complementary", { name: "Group inspector" }));
+    expect(
+      inspector().getByText(
+        "Welcome returning patients. Send the follow-up sequence."
+      ).textContent
+    ).toBe(description);
+    const cardDescription = () =>
+      view
+        .getByTestId("group-node-outreach")
+        .querySelector(".workflow-node-description");
+    expect(cardDescription()?.textContent).toBe(description);
+    fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
+    const input = await view.findByRole("textbox", { name: "Description" });
+    fireEvent.change(input, {
+      target: { value: "Updated outreach description" },
+    });
+    fireEvent.blur(input);
+    fireEvent.click(view.getByRole("button", { name: "Return to summary" }));
+    await waitFor(() =>
+      expect(inspector().getByText("Updated outreach description")).toBeTruthy()
+    );
+    expect(cardDescription()?.textContent).toBe("Updated outreach description");
+  });
+
   it("opens a step inside the Group from the summary's step list", async () => {
     const { view, store, search, select } = await renderEditor();
     await select("outreach");
@@ -450,7 +520,7 @@ describe("the collapsed Group overview", () => {
     expect(steps.textContent).toContain("Send case study");
     expect(view.getByRole("button", { name: "Enter group" })).toBeTruthy();
     expect(view.getByRole("button", { name: "Ungroup" })).toBeTruthy();
-    expect(view.getByRole("group", { name: "Layout direction" })).toBeTruthy();
+    expect(view.queryByRole("group", { name: "Layout direction" })).toBeNull();
     expect(reveal()?.textContent).toContain(
       "A Group is entered from one outlet outside it, and that outlet can lead to several steps. Inside, steps can branch, join, and end. The Group continues outside from at most one outlet."
     );
@@ -504,21 +574,23 @@ describe("the collapsed Group overview", () => {
     const { view, store } = await renderEditor();
     const firstMenu = render(
       <JotaiProvider store={store}>
-        <ExtensionCatalogProvider value={catalog}>
-          <OverlayProvider>
-            <WorkflowContextMenu
-              canEdit
-              canInsert
-              menuState={{
-                type: "node",
-                nodeId: "outreach",
-                position: { x: 10, y: 10 },
-                selectedIds: new Set(["outreach"]),
-              }}
-              onClose={() => undefined}
-            />
-          </OverlayProvider>
-        </ExtensionCatalogProvider>
+        <QueryClientProvider client={new QueryClient()}>
+          <ExtensionCatalogProvider value={catalog}>
+            <OverlayProvider>
+              <WorkflowContextMenu
+                canEdit
+                canInsert
+                menuState={{
+                  type: "node",
+                  nodeId: "outreach",
+                  position: { x: 10, y: 10 },
+                  selectedIds: new Set(["outreach"]),
+                }}
+                onClose={() => undefined}
+              />
+            </OverlayProvider>
+          </ExtensionCatalogProvider>
+        </QueryClientProvider>
       </JotaiProvider>
     );
     expect(
@@ -541,21 +613,23 @@ describe("the collapsed Group overview", () => {
     // Grouping the freed steps again collapses them into a new card.
     render(
       <JotaiProvider store={store}>
-        <ExtensionCatalogProvider value={catalog}>
-          <OverlayProvider>
-            <WorkflowContextMenu
-              canEdit
-              canInsert
-              menuState={{
-                type: "node",
-                nodeId: "welcome",
-                position: { x: 10, y: 10 },
-                selectedIds: new Set(["welcome", "case_study"]),
-              }}
-              onClose={() => undefined}
-            />
-          </OverlayProvider>
-        </ExtensionCatalogProvider>
+        <QueryClientProvider client={new QueryClient()}>
+          <ExtensionCatalogProvider value={catalog}>
+            <OverlayProvider>
+              <WorkflowContextMenu
+                canEdit
+                canInsert
+                menuState={{
+                  type: "node",
+                  nodeId: "welcome",
+                  position: { x: 10, y: 10 },
+                  selectedIds: new Set(["welcome", "case_study"]),
+                }}
+                onClose={() => undefined}
+              />
+            </OverlayProvider>
+          </ExtensionCatalogProvider>
+        </QueryClientProvider>
       </JotaiProvider>
     );
     fireEvent.click(view.getByRole("button", { name: /^Group/ }));
@@ -995,53 +1069,53 @@ describe("the focused Group canvas", () => {
     await waitFor(() => expect(search()).toEqual({ group: "outreach" }));
   });
 
-  it("offers no insert, paste, duplicate, or Tidy layout", async () => {
+  it("adds, pastes and duplicates steps as members of the focused Group, and offers Tidy layout", async () => {
     const { view, store, select, renderedNodeIds } = await renderEditor();
     const pane = () =>
       view.container.querySelector<HTMLElement>(".react-flow__pane");
     const menuButton = (name: RegExp) => view.getByRole("button", { name });
     const closeMenu = () => fireEvent.keyDown(window, { key: "Escape" });
-
-    // The overview offers each path, which is what the focused canvas takes away.
-    await waitFor(() => expect(pane()).toBeTruthy());
-    fireEvent.contextMenu(pane() as HTMLElement);
-    expect(menuButton(/^Add Step/).hasAttribute("disabled")).toBe(false);
-    closeMenu();
+    const members = () =>
+      store
+        .get(nodesAtom)
+        .filter((node) => node.parentId === "outreach")
+        .map((node) => node.id);
 
     fireEvent.click(
       await view.findByRole("button", { name: "Enter group Initial outreach" })
     );
     await waitFor(() => expect(renderedNodeIds()).toContain("welcome"));
-    const stored = store.get(nodesAtom);
 
+    await waitFor(() => expect(pane()).toBeTruthy());
     fireEvent.contextMenu(pane() as HTMLElement);
-    expect(menuButton(/^Add Step/).hasAttribute("disabled")).toBe(true);
-    expect(menuButton(/^Paste/).hasAttribute("disabled")).toBe(true);
+    expect(menuButton(/^Add Step/).hasAttribute("disabled")).toBe(false);
     closeMenu();
-
     const member = view.container.querySelector<HTMLElement>(
       '.react-flow__node[data-id="welcome"]'
     );
     fireEvent.contextMenu(member as HTMLElement);
-    expect(menuButton(/^Duplicate/).hasAttribute("disabled")).toBe(true);
+    expect(menuButton(/^Duplicate/).hasAttribute("disabled")).toBe(false);
     closeMenu();
+    expect(store.set(openCommandPaletteAtom, { id: "add-step" })).toBe(true);
 
-    expect(store.set(openCommandPaletteAtom, { id: "add-step" })).toBe(false);
+    fireEvent.click(view.getByRole("button", { name: "Probe add step" }));
+    await waitFor(() => expect(members()).toHaveLength(3));
 
     await select("welcome");
     await act(async () => {
       store.set(copySelectionAtom);
     });
     fireEvent.keyDown(window, { key: "v", metaKey: true });
+    await waitFor(() => expect(members()).toHaveLength(4));
     fireEvent.keyDown(window, { key: "d", metaKey: true });
+    await waitFor(() => expect(members()).toHaveLength(5));
+    await waitFor(() =>
+      expect(renderedNodeIds()).toEqual(expect.arrayContaining(members()))
+    );
+    expect(store.get(historyAtom)).toHaveLength(3);
 
-    expect(
-      view
-        .getByRole("button", { name: "Reflow nodes" })
-        .hasAttribute("disabled")
-    ).toBe(true);
-    expect(store.get(nodesAtom)).toBe(stored);
-    expect(store.get(historyAtom)).toEqual([]);
+    const reflow = view.getByRole("button", { name: "Reflow nodes" });
+    expect(reflow.hasAttribute("disabled")).toBe(false);
   });
 
   it("writes no coordinates and records no history on entry, exit, and Reveal", async () => {
@@ -1069,43 +1143,25 @@ describe("the focused Group canvas", () => {
     expect(store.get(workflowGraphUpdateAtom)).toBe(graphUpdate);
   });
 
-  it("changes the layout direction from the Group summary as one undo step", async () => {
-    const { view, store, search, select } = await renderEditor();
-    await select("outreach");
-
-    const vertical = view.getByRole("button", { name: "Top to bottom" });
-    const horizontal = view.getByRole("button", { name: "Left to right" });
-    expect(vertical.getAttribute("aria-pressed")).toBe("true");
-    expect(horizontal.getAttribute("aria-pressed")).toBe("false");
-
-    fireEvent.click(horizontal);
-
-    const frame = () =>
-      store.get(nodesAtom).find((node) => node.id === "outreach");
-    expect(frame()?.data.config).toEqual({ direction: "horizontal" });
+  it("Tidies a focused Group in one undo step without changing the overview", async () => {
+    const { view, store, renderedNodeIds } =
+      await renderEditor("?group=outreach");
+    await waitFor(() => expect(renderedNodeIds()).toContain("welcome"));
+    const before = store.get(nodesAtom);
+    fireEvent.click(view.getByRole("button", { name: "Reflow nodes" }));
     expect(store.get(historyAtom)).toHaveLength(1);
+    for (const node of before.filter((item) => !item.parentId)) {
+      expect(store.get(nodesAtom).find((item) => item.id === node.id)).toBe(
+        node
+      );
+    }
     expect(store.get(edgesAtom)).toEqual(EDGES);
-    await waitFor(() =>
-      expect(
-        view
-          .getByRole("button", { name: "Left to right" })
-          .getAttribute("aria-pressed")
-      ).toBe("true")
-    );
-
-    fireEvent.click(view.getByRole("button", { name: "Enter group" }));
-    await waitFor(() => expect(search()).toEqual({ group: "outreach" }));
-    const painted = (id: string) =>
-      store.get(canvasNodesAtom).find((node) => node.id === id);
-    expect(painted("welcome")?.position.y).toBe(
-      painted("case_study")?.position.y
-    );
-    expect(painted("welcome")?.position.x ?? 0).toBeLessThan(
-      painted("case_study")?.position.x ?? 0
-    );
+    expect(
+      store.get(nodesAtom).find((node) => node.id === "welcome")?.position
+    ).not.toEqual(before.find((node) => node.id === "welcome")?.position);
   });
 
-  it("offers interior and ingress edges for selection and deletion, and member and ingress stub handles for connection", async () => {
+  it("offers interior, ingress and continuation edges for selection and deletion, and member and stub handles for connection", async () => {
     const { store, renderedNodeIds } = await renderEditor("?group=outreach");
     await waitFor(() => expect(renderedNodeIds()).toContain("welcome"));
 
@@ -1123,13 +1179,14 @@ describe("the focused Group canvas", () => {
     const continuation = store
       .get(canvasEdgesAtom)
       .find((edge) => edge.id === "case-route");
-    expect(continuation?.selectable).toBe(false);
+    expect(continuation?.selectable).not.toBe(false);
+    expect(continuation?.deletable).not.toBe(false);
     const stubs = store
       .get(canvasNodesAtom)
       .filter((node) => node.type?.startsWith("group"));
     expect(stubs.map((node) => [node.type, node.connectable])).toEqual([
       ["groupIngress", undefined],
-      ["groupContinuation", false],
+      ["groupContinuation", undefined],
     ]);
     expect(
       store.get(canvasNodesAtom).find((node) => node.id === "welcome")
@@ -1157,8 +1214,8 @@ describe("a Group holding a Condition whose False path ends inside it", () => {
   const graphWith = (direction: "vertical" | "horizontal") => ({
     nodes: [
       ...NODES.map((node) =>
-        node.id === "outreach"
-          ? { ...node, data: { ...node.data, config: { direction } } }
+        node.parentId === "outreach" && direction === "horizontal"
+          ? { ...node, position: { x: node.position.y, y: node.position.x } }
           : node
       ),
       gate,
@@ -1182,13 +1239,9 @@ describe("a Group holding a Condition whose False path ends inside it", () => {
     ],
   });
 
-  it("labels each path end on the collapsed card with its step's title, within its slot", async () => {
+  it("draws one unlabelled outlet on the collapsed card for two path ends", async () => {
     const graph = {
-      nodes: NODES.filter((node) => node.id !== "route").map((node) =>
-        node.id === "case_study"
-          ? { ...node, data: { ...node.data, label: "" } }
-          : node
-      ),
+      nodes: NODES.filter((node) => node.id !== "route"),
       edges: [
         EDGES[0],
         { id: "qualify-welcome", source: "qualify", target: "welcome" },
@@ -1199,29 +1252,15 @@ describe("a Group holding a Condition whose False path ends inside it", () => {
     await waitFor(() => expect(renderedNodeIds()).toContain("outreach"));
 
     const card = view.getByTestId("group-node-outreach");
-    const labels = [
-      ...card.querySelectorAll<HTMLElement>("[data-slot=outlet-label]"),
-    ];
-    expect(labels.map((label) => label.textContent)).toEqual([
-      "Send welcome back",
-      "Send email",
-    ]);
-    expect(labels.map((label) => label.title)).toEqual([
-      "Send welcome back",
-      "Send email",
-    ]);
-    expect(
-      labels.map((label) => [label.style.left, label.style.maxWidth])
-    ).toEqual([
-      ["25%", "calc(50% - 4px)"],
-      ["75%", "calc(50% - 4px)"],
-    ]);
-    expect(
-      card.querySelector('[aria-label="Group output, Send email"]')
-    ).toBeTruthy();
+    const outlets = card.querySelectorAll<HTMLElement>(
+      ".react-flow__handle.source"
+    );
+    expect(outlets).toHaveLength(1);
+    expect(outlets[0]?.getAttribute("aria-label")).toBe("Group output");
+    expect(card.querySelector("[data-slot=outlet-label]")).toBeNull();
   });
 
-  it("names the continuing True outlet on the collapsed card and in its summary", async () => {
+  it("paints the continuing True branch from the card's one outlet and names it in the summary", async () => {
     const { view, store, select, renderedNodeIds } = await renderEditor(
       "",
       graphWith("vertical")
@@ -1229,18 +1268,18 @@ describe("a Group holding a Condition whose False path ends inside it", () => {
     await waitFor(() => expect(renderedNodeIds()).toContain("outreach"));
 
     const card = view.getByTestId("group-node-outreach");
-    const outlet = card.querySelector<HTMLElement>(
-      '[aria-label="Group output, True"]'
-    );
-    expect(outlet?.dataset.handleid).toBe("true");
-    // The edge leaving by the True handle names the branch, so the card does not.
+    expect(card.querySelectorAll(".react-flow__handle.source")).toHaveLength(1);
     expect(card.querySelector("[data-slot=outlet-label]")).toBeNull();
     expect(
       store
         .get(canvasEdgesAtom)
         .filter((edge) => edge.source === "outreach")
-        .map((edge) => [edge.target, edge.sourceHandle])
-    ).toEqual([["route", "true"]]);
+        .map((edge) => [
+          edge.target,
+          edge.sourceHandle,
+          edge.data?.displayLabel,
+        ])
+    ).toEqual([["route", null, "True"]]);
 
     await select("outreach");
     expect(view.getByRole("list", { name: "Continues from" }).textContent).toBe(
@@ -1286,4 +1325,143 @@ describe("a Group holding a Condition whose False path ends inside it", () => {
       ]);
     }
   );
+});
+
+describe("adding a step after a step and inserting one into a connection", () => {
+  const links = (store: ReturnType<typeof createStore>) =>
+    store
+      .get(edgesAtom)
+      .map((edge) => `${edge.source}>${edge.target}`)
+      .toSorted();
+
+  const openNodeMenu = (
+    store: ReturnType<typeof createStore>,
+    nodeId: string
+  ) =>
+    render(
+      <JotaiProvider store={store}>
+        <QueryClientProvider client={new QueryClient()}>
+          <ExtensionCatalogProvider value={catalog}>
+            <OverlayProvider>
+              <WorkflowContextMenu
+                canEdit
+                canInsert
+                menuState={{
+                  type: "node",
+                  nodeId,
+                  position: { x: 10, y: 10 },
+                  selectedIds: new Set([nodeId]),
+                }}
+                onClose={() => undefined}
+              />
+            </OverlayProvider>
+          </ExtensionCatalogProvider>
+        </QueryClientProvider>
+      </JotaiProvider>
+    );
+
+  it("inserts a step before what the outlet reaches, from the overview context menu", async () => {
+    const { store } = await renderEditor("", {
+      nodes: NODES.filter(
+        (node) => !["outreach", "welcome", "case_study"].includes(node.id)
+      ),
+      edges: [
+        {
+          id: "life-qualify",
+          source: "life",
+          target: "qualify",
+          sourceHandle: "started",
+        },
+        { id: "qualify-route", source: "qualify", target: "route" },
+      ],
+    });
+
+    const menu = openNodeMenu(store, "qualify");
+    await act(async () => {
+      fireEvent.click(menu.getByRole("button", { name: "Add step after" }));
+    });
+
+    // The source now reaches the new step, which reaches the previous target.
+    const added = store.get(selectedNodeAtom);
+    expect(added).toEqual(expect.any(String));
+    expect(links(store)).toEqual([
+      `${added}>route`,
+      "life>qualify",
+      `qualify>${added}`,
+    ]);
+  });
+
+  it("names each outlet of a Condition it can add a step after", async () => {
+    const { store } = await renderEditor("", {
+      nodes: [
+        ...NODES,
+        {
+          id: "gate",
+          type: "action",
+          position: { x: 800, y: 180 },
+          data: {
+            label: "Eligible?",
+            type: "action",
+            config: { actionType: BUILT_IN_ACTION_IDS.condition },
+          },
+        },
+      ],
+      edges: EDGES,
+    });
+
+    const menu = openNodeMenu(store, "gate");
+    expect(
+      menu.getByRole("button", { name: "Add step after True" })
+    ).toBeTruthy();
+    expect(
+      menu.getByRole("button", { name: "Add step after False" })
+    ).toBeTruthy();
+  });
+
+  it("leaves Ungroup off the menu of a step that is in no Group", async () => {
+    const { store } = await renderEditor();
+
+    const menu = openNodeMenu(store, "qualify");
+    expect(menu.queryByRole("button", { name: "Ungroup" })).toBeNull();
+  });
+
+  it("inserts a step into a member's connection inside a focused Group", async () => {
+    const { store } = await renderEditor("?group=outreach");
+
+    const menu = render(
+      <JotaiProvider store={store}>
+        <QueryClientProvider client={new QueryClient()}>
+          <ExtensionCatalogProvider value={catalog}>
+            <OverlayProvider>
+              <WorkflowContextMenu
+                canEdit
+                canInsert
+                menuState={{
+                  type: "edge",
+                  edgeId: "welcome-case",
+                  position: { x: 10, y: 10 },
+                }}
+                onClose={() => undefined}
+              />
+            </OverlayProvider>
+          </ExtensionCatalogProvider>
+        </QueryClientProvider>
+      </JotaiProvider>
+    );
+    await act(async () => {
+      fireEvent.click(menu.getByRole("button", { name: "Insert step" }));
+    });
+
+    const added = store.get(selectedNodeAtom);
+    expect(links(store)).toEqual([
+      `${added}>case_study`,
+      "case_study>route",
+      "life>qualify",
+      "qualify>welcome",
+      `welcome>${added}`,
+    ]);
+    expect(
+      store.get(nodesAtom).find((node) => node.id === added)?.parentId
+    ).toBe("outreach");
+  });
 });

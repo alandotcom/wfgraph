@@ -490,48 +490,6 @@ export function withoutDraftSelections(
     : { ...navigation, workspaces: new Map(cleared) };
 }
 
-/**
- * Clear the desktop camera saved for the focused Group `groupId` in every Draft
- * and comparison key, as when that Group's layout direction changed. Entering
- * the Group on desktop then fits the camera to the steps it paints. A phone
- * draws every focused Group top to bottom, so the mobile camera stays, and run
- * keys present the graph their run pinned, so their cameras stay too.
- */
-export function withoutGroupCameras(
-  navigation: WorkflowNavigation,
-  groupId: string
-): WorkflowNavigation {
-  const entries = [...navigation.workspaces];
-  const cleared = mapOrSame(entries, (item): [string, WorkspaceNavigation] => {
-    const [keyId, entry] = item;
-    const group = entry.group;
-    if (
-      !keyIdPresentsDraft(keyId) ||
-      group?.groupId !== groupId ||
-      group.navigation.desktop.camera === null
-    ) {
-      return item;
-    }
-    const scope = group.navigation;
-    return [
-      keyId,
-      {
-        ...entry,
-        group: {
-          groupId,
-          navigation: {
-            ...scope,
-            desktop: { ...scope.desktop, camera: null },
-          },
-        },
-      },
-    ];
-  });
-  return cleared === entries
-    ? navigation
-    : { ...navigation, workspaces: new Map(cleared) };
-}
-
 /** The scope with nothing selected and no mobile sheet open. */
 function withoutSelection(scope: ScopeNavigation): ScopeNavigation {
   return withoutMobileSheets(withSelection(scope, EMPTY_SELECTION));

@@ -40,39 +40,41 @@ export function isCopyableNode(node: WorkflowNode): boolean {
 
 /**
  * The copyable nodes a node-context Copy should take: the whole selection when
- * the clicked node is in `selectedNodeIds`, otherwise just that node.
+ * the clicked node is in `selectedNodeIds`, otherwise just that node. With
+ * `wholeGroups`, the default, a Group frame or member brings its whole Group.
  */
 export function nodeIdsForContextCopy(
   nodes: readonly WorkflowNode[],
   clickedNodeId: string,
-  selectedNodeIds: ReadonlySet<string>
+  selectedNodeIds: ReadonlySet<string>,
+  options: { wholeGroups?: boolean | undefined } = {}
 ): ReadonlySet<string> {
   const clicked = nodes.find((node) => node.id === clickedNodeId);
   if (!clicked || !isCopyableNode(clicked)) {
     return new Set();
   }
 
-  if (selectedNodeIds.has(clicked.id)) {
-    return expandGroupCopyIds(
-      nodes,
-      new Set(
+  const ids = selectedNodeIds.has(clicked.id)
+    ? new Set(
         nodes
           .filter(
             (node) => selectedNodeIds.has(node.id) && isCopyableNode(node)
           )
           .map((node) => node.id)
       )
-    );
-  }
-
-  return expandGroupCopyIds(nodes, new Set([clicked.id]));
+    : new Set([clicked.id]);
+  return (options.wholeGroups ?? true) ? expandGroupCopyIds(nodes, ids) : ids;
 }
 
-/** The copyable subgraph `nodeIds` names, or null when it names none. */
+/**
+ * The copyable subgraph `nodeIds` names, or null when it names none. With
+ * `wholeGroups`, the default, a Group frame or member brings its whole Group.
+ */
 export function extractCopyableSelection(input: {
   nodes: readonly WorkflowNode[];
   edges: readonly WorkflowEdge[];
   nodeIds: ReadonlySet<string>;
+  wholeGroups?: boolean | undefined;
 }): CopiedSelection | null {
   const requested = input.nodes.filter(
     (node) => isCopyableNode(node) && input.nodeIds.has(node.id)
@@ -82,10 +84,11 @@ export function extractCopyableSelection(input: {
     return null;
   }
 
-  const ids = expandGroupCopyIds(
-    input.nodes,
-    new Set(requested.map((node) => node.id))
-  );
+  const requestedIds = new Set(requested.map((node) => node.id));
+  const ids =
+    (input.wholeGroups ?? true)
+      ? expandGroupCopyIds(input.nodes, requestedIds)
+      : requestedIds;
   const copyable = input.nodes.filter((node) => ids.has(node.id));
   const edges = input.edges.filter(
     (edge) => ids.has(edge.source) && ids.has(edge.target)

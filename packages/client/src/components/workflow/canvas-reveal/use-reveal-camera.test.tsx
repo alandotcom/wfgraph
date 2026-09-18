@@ -10,8 +10,13 @@ import { useRef } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearSelectionAtom,
+  addNodeAtom,
+  canvasNodesAtom,
+  copySelectionAtom,
+  pasteCopiedSelectionAtom,
   executionOverlayGraphAtom,
   loadWorkflowGraphAtom,
+  nodesAtom,
   selectOnlyNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
@@ -19,7 +24,10 @@ import {
   workspaceAddressFromSearch,
   workspaceAddressId,
 } from "#src/lib/workflow-navigation-state";
-import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
+import {
+  currentWorkflowIdAtom,
+  workflowApiAtom,
+} from "#src/lib/workflow-save-store";
 import {
   activeWorkspaceAddressAtom,
   openInspectorSectionAtom,
@@ -37,8 +45,10 @@ import {
   expectSteadyCamera,
   recordCameraMotion,
 } from "#src/components/workflow/camera-motion-test-support";
+import { revealOccupiedWidth } from "./reveal-geometry";
 import {
   finishRevealResizeAtom,
+  rememberedRevealWidthsAtom,
   resizeRevealWidthAtom,
   startRevealKeyResizeAtom,
 } from "./reveal-width-preference";
@@ -244,6 +254,10 @@ function renderCamera(
     viewport: (): Viewport => {
       const [x, y, zoom] = flowState().getState().transform;
       return { x, y, zoom };
+    },
+    /** Replace the nodes React Flow holds, as the canvas does on a repaint. */
+    setFlowNodes: (nodes: WorkflowNode[]) => {
+      flowState().getState().setNodes(nodes);
     },
     setSize: async (size: { width: number; height: number }) => {
       await act(async () => {
@@ -566,6 +580,138 @@ describe("useRevealCamera", () => {
       camera.store.set(showCanvasRevealLevelAtom, "closed")
     );
     expect(camera.moves).toHaveLength(1);
+  });
+
+  it("places a step added inside a focused Group in one steady move", async () => {
+    const members = [step("first", 100, 300), step("second", 100, 460)];
+    const camera = renderCamera(
+      {
+        nodes: [
+          {
+            id: "g",
+            type: "group",
+            position: { x: 0, y: 0 },
+            data: { label: "Group", type: "group" },
+          },
+          ...members.map((node) => ({ ...node, parentId: "g" })),
+        ],
+        edges: [],
+      },
+      { flowNodes: members }
+    );
+    // The add saves the draft, which this harness answers and never settles.
+    camera.store.set(workflowApiAtom, {
+      update: vi.fn(() => new Promise(() => undefined)),
+    } as never);
+    await camera.run(() => showWorkspaceRoute(camera.store, { group: "g" }));
+    const start = camera.viewport();
+    camera.motion.moves.length = 0;
+
+    await camera.run(() => {
+      camera.store.set(addNodeAtom, {
+        ...step("added", 0, 0),
+        data: { label: "", type: "action", config: {} },
+      });
+      // React Flow holds what the focused canvas paints, which now includes
+      // the new member at the place the Group's layout gives it.
+      camera.setFlowNodes(camera.store.get(canvasNodesAtom));
+    });
+
+    expect(
+      camera.store.get(nodesAtom).find((node) => node.id === "added")?.parentId
+    ).toBe("g");
+    expectSteadyCamera(camera.motion.moves, start);
+  });
+
+  describe("a step pasted inside a focused Group", () => {
+    // Three members across one row, so the pasted fourth lands at the right
+    // end, under where Reveal draws when the canvas has not moved.
+    const members = [
+      step("first", 0, 0),
+      step("second", 0, 0),
+      step("third", 0, 0),
+    ];
+    const pasteInside = async (options: { flowNodesLate: boolean }) => {
+      const graph: { nodes: WorkflowNode[]; edges: WorkflowEdge[] } = {
+        nodes: [
+          {
+            id: "g",
+            type: "group",
+            position: { x: 0, y: 0 },
+            data: { label: "Group", type: "group" },
+          },
+          ...members.map((node) => ({ ...node, parentId: "g" })),
+        ],
+        edges: [],
+      };
+      const camera = renderCamera(graph, { flowNodes: members });
+      camera.store.set(workflowApiAtom, {
+        update: vi.fn(() => new Promise(() => undefined)),
+      } as never);
+      await camera.run(() => showWorkspaceRoute(camera.store, { group: "g" }));
+      await camera.run(() => {
+        camera.setFlowNodes(camera.store.get(canvasNodesAtom));
+        camera.store.set(selectOnlyNodeAtom, "third");
+      });
+      await camera.finishAnimation();
+      // A person pans so the right end of the row sits beside Reveal, where
+      // the pasted step lands under Reveal unless the camera moves.
+      await camera.pan({ x: 500, y: 88, zoom: 1 });
+      await camera.run(() => {
+        camera.store.set(copySelectionAtom);
+      });
+      const start = camera.viewport();
+      camera.motion.moves.length = 0;
+
+      await camera.run(() => {
+        camera.store.set(pasteCopiedSelectionAtom);
+        if (!options.flowNodesLate) {
+          camera.setFlowNodes(camera.store.get(canvasNodesAtom));
+        }
+      });
+      if (options.flowNodesLate) {
+        // React Flow takes the repainted nodes a frame after the selection
+        // moved to the pasted step.
+        await camera.run(() => {
+          camera.setFlowNodes(camera.store.get(canvasNodesAtom));
+        });
+      }
+      await camera.finishAnimation();
+
+      const pasted = camera.store
+        .get(canvasNodesAtom)
+        .find(
+          (node) =>
+            !["first", "second", "third"].includes(node.id) &&
+            node.type === "action"
+        );
+      return { camera, start, pasted };
+    };
+
+    it.each([false, true])(
+      "moves the camera once to show it beside Reveal when React Flow takes the paste late: %s",
+      async (flowNodesLate) => {
+        const { camera, start, pasted } = await pasteInside({ flowNodesLate });
+        if (!pasted) {
+          throw new Error("nothing was pasted");
+        }
+        expect(pasted.parentId).toBeUndefined();
+        expectSteadyCamera(camera.motion.moves, start);
+        expect(camera.motion.moves).toHaveLength(1);
+
+        const { x, zoom } = camera.viewport();
+        const right = (pasted.position.x + (pasted.width ?? 0)) * zoom + x;
+        const revealLeft =
+          CANVAS.width -
+          revealOccupiedWidth(
+            camera.store.get(canvasRevealAtom).level,
+            CANVAS.width,
+            camera.store.get(canvasRevealAtom).focusWidth,
+            camera.store.get(rememberedRevealWidthsAtom)
+          );
+        expect(right).toBeLessThanOrEqual(revealLeft);
+      }
+    );
   });
 
   it("selects the node a jump started from on Back and places it like any other subject", async () => {

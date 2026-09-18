@@ -33,6 +33,11 @@ type GroupShape =
       branches: Array<{ waits: boolean; wakeRank: number }>;
       sharedWake: boolean;
     }
+  /**
+   * Parallel records from the prefix whose edges all reach the suffix, which
+   * runs once after every branch finishes.
+   */
+  | { kind: "sharedContinuation"; branchCount: number }
   /** A Condition whose other branch ends inside the Group. */
   | {
       kind: "condition";
@@ -161,10 +166,15 @@ class ScenarioBuilder {
 
 type ShapeResult = {
   members: string[];
-  /** The step the suffix follows, or null when every path ends in the shape. */
-  exit: { source: string; handle: string | null } | null;
+  /**
+   * The outlets the suffix follows, empty when every path ends in the shape.
+   * Several outlets make the suffix a join that runs once after all of them.
+   */
+  exits: Array<{ source: string; handle: string | null }>;
   /** The record and optional event Wait the suffix's marker reads. */
   suffixSources: { source: string; wakeSource?: string | undefined };
+  /** Records whose markers the suffix joins in place of `suffixSources`. */
+  suffixReads?: string[] | undefined;
   suffixReached: boolean;
 };
 
@@ -204,7 +214,7 @@ function buildChain(
   });
   return {
     members,
-    exit: { source: previous, handle: null },
+    exits: [{ source: previous, handle: null }],
     suffixSources: { source: lastRecord, wakeSource: pendingWake },
     suffixReached: true,
   };
@@ -277,9 +287,28 @@ function buildFanout(
   }
   return {
     members,
-    exit: null,
+    exits: [],
     suffixSources: { source: "prefix" },
     suffixReached: false,
+  };
+}
+
+function buildSharedContinuation(
+  builder: ScenarioBuilder,
+  shape: Extract<GroupShape, { kind: "sharedContinuation" }>
+): ShapeResult {
+  const members = Array.from({ length: shape.branchCount }, (_, index) => {
+    const id = `parallel_${index}`;
+    builder.record({ id, source: "prefix", reached: true });
+    builder.connect("prefix", id);
+    return id;
+  });
+  return {
+    members,
+    exits: members.map((source) => ({ source, handle: null })),
+    suffixSources: { source: "prefix" },
+    suffixReads: members,
+    suffixReached: true,
   };
 }
 
@@ -310,7 +339,7 @@ function buildCondition(
   if (shape.continueFrom === "branch") {
     return {
       members,
-      exit: { source: "gate", handle: "true" },
+      exits: [{ source: "gate", handle: "true" }],
       suffixSources: { source: "prefix" },
       suffixReached: shape.takesTrue,
     };
@@ -320,7 +349,7 @@ function buildCondition(
   members.push("open");
   return {
     members,
-    exit: { source: "open", handle: null },
+    exits: [{ source: "open", handle: null }],
     suffixSources: { source: "open" },
     suffixReached: shape.takesTrue,
   };
@@ -380,7 +409,7 @@ function buildJoin(
   members.push("merge");
   return {
     members,
-    exit: { source: "merge", handle: null },
+    exits: [{ source: "merge", handle: null }],
     suffixSources: { source: "merge" },
     suffixReached: true,
   };
@@ -407,23 +436,40 @@ export function buildGroupScenario(
       ? buildChain(builder, shape.steps)
       : shape.kind === "fanout"
         ? buildFanout(builder, shape)
-        : shape.kind === "condition"
-          ? buildCondition(builder, shape)
-          : buildJoin(builder, shape);
+        : shape.kind === "sharedContinuation"
+          ? buildSharedContinuation(builder, shape)
+          : shape.kind === "condition"
+            ? buildCondition(builder, shape)
+            : buildJoin(builder, shape);
 
   const members = [
     ...(scenario.groupPrefix ? ["prefix"] : []),
     ...result.members,
   ];
-  if (result.exit !== null) {
+  if (result.suffixReads !== undefined) {
+    const reads = result.suffixReads;
+    builder.nodes.push(
+      record(
+        "suffix",
+        `suffix<${reads.map((id) => `{{@${id}:${id}.marker}}`).join("+")}`
+      )
+    );
+    builder.resolved.set(
+      "suffix",
+      `suffix<${reads.map((id) => required(builder.resolved, id, "resolved marker")).join("+")}`
+    );
+    if (result.suffixReached) builder.reached.push("suffix");
+  } else if (result.exits.length > 0) {
     builder.record({
       id: "suffix",
       ...result.suffixSources,
       reached: result.suffixReached,
     });
-    builder.connect(result.exit.source, "suffix", result.exit.handle);
-    if (scenario.groupSuffix) members.push("suffix");
   }
+  for (const exit of result.exits) {
+    builder.connect(exit.source, "suffix", exit.handle);
+  }
+  if (result.exits.length > 0 && scenario.groupSuffix) members.push("suffix");
 
   const hasEventWake = builder.stages.length > 0;
   return {
@@ -468,6 +514,10 @@ const groupShapes: fc.Arbitrary<GroupShape> = fc.oneof(
       sharedWake: fc.boolean(),
     })
     .map((fanout) => ({ kind: "fanout" as const, ...fanout })),
+  fc.record({
+    kind: fc.constant("sharedContinuation" as const),
+    branchCount: fc.integer({ min: 2, max: 3 }),
+  }),
   fc.record({
     kind: fc.constant("condition" as const),
     takesTrue: fc.boolean(),

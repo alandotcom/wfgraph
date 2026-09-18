@@ -88,10 +88,7 @@ type WorkflowCommandState = {
   readonly canPaste: boolean;
   readonly canGroupSelection: boolean;
   readonly editingLocked: boolean;
-  /**
-   * Whether the canvas shows a focused Group, which inserts no step: adding,
-   * pasting, and duplicating are off there.
-   */
+  /** Whether the canvas shows a focused Group. */
   readonly groupScopeActive: boolean;
 };
 
@@ -218,8 +215,7 @@ export function workflowCommands({
       group: "steps",
       label: "Add step",
       keywords: "Add step node action new create insert",
-      disabled:
-        !state.canAddStep || state.editingLocked || state.groupScopeActive,
+      disabled: !state.canAddStep || state.editingLocked,
       execute: callbacks.addStep,
     },
     {
@@ -347,7 +343,7 @@ export function workflowCommands({
       label: "Paste",
       keywords: "Paste selection nodes steps",
       hint: shortcuts.paste,
-      disabled: !state.canPaste || state.groupScopeActive,
+      disabled: !state.canPaste,
       execute: callbacks.pasteSelection,
     },
     {
@@ -356,7 +352,7 @@ export function workflowCommands({
       label: "Duplicate selection",
       keywords: "Duplicate selection copy nodes steps",
       hint: shortcuts.duplicate,
-      disabled: !state.canDuplicateSelection || state.groupScopeActive,
+      disabled: !state.canDuplicateSelection,
       execute: callbacks.duplicateSelection,
     },
     {

@@ -13,7 +13,7 @@ import type { FixtureGraph } from "#src/backend/testing/reliability/fixtures";
 import { node } from "#src/backend/testing/reliability/fixtures";
 
 export const GROUP_LAYOUTS = ["ungrouped", "vertical", "horizontal"] as const;
-/** How a variant organizes the steps: no Group, or a Group with a direction. */
+/** No Group, or a Group whose members have vertical or horizontal positions. */
 export type GroupLayout = (typeof GROUP_LAYOUTS)[number];
 
 export const GROUP_FRAME_ID = "reliability_group";
@@ -59,16 +59,23 @@ function groupRefusal(
 function addGroupFrame(
   graph: FixtureGraph,
   memberIds: ReadonlySet<string>,
-  direction: Exclude<GroupLayout, "ungrouped">
+  layout: Exclude<GroupLayout, "ungrouped">
 ): FixtureGraph {
   return {
     nodes: [
-      node(GROUP_FRAME_ID, "group", { direction }),
-      ...graph.nodes.map((item) =>
+      node(GROUP_FRAME_ID, "group", {}),
+      ...graph.nodes.map((item, index) =>
         memberIds.has(item.key)
           ? {
               ...item,
-              attributes: { ...item.attributes, parentId: GROUP_FRAME_ID },
+              attributes: {
+                ...item.attributes,
+                parentId: GROUP_FRAME_ID,
+                position:
+                  layout === "horizontal"
+                    ? { x: index * 280, y: 0 }
+                    : { x: 0, y: index * 200 },
+              },
             }
           : item
       ),
@@ -79,7 +86,7 @@ function addGroupFrame(
 
 /**
  * `graph` organized as `layout`. The stored edges and every step's config are
- * the same in each variant; only the frame and the members' `parentId` differ.
+ * the same in each variant; only the frame, membership and positions differ.
  */
 export function withGroupLayout(
   graph: FixtureGraph,

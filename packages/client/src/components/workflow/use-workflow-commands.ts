@@ -24,6 +24,7 @@ import {
   pasteCopiedSelectionAtom,
 } from "#src/lib/workflow-graph-store";
 import { groupScopeActiveAtom } from "#src/lib/workflow-workspace-navigation";
+import { showGraphEditRefusal } from "#src/components/workflow/graph-edit-refusal";
 import {
   isWorkflowPublishDisabled,
   workflowCommands,
@@ -143,8 +144,8 @@ export function useWorkflowCommands({
       fitView: () =>
         void fitView(workflowFitViewOptions(viewportAnimationDuration())),
       copySelection: () => void copySelection(),
-      pasteSelection: () => void pasteSelection(),
-      duplicateSelection: () => void duplicateSelection(),
+      pasteSelection: () => showGraphEditRefusal(pasteSelection()),
+      duplicateSelection: () => showGraphEditRefusal(duplicateSelection()),
       groupSelection: () => void groupSelection(),
       undo: state.undo,
       redo: state.redo,

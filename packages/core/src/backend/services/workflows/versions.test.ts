@@ -652,7 +652,7 @@ describe("workflow versions", () => {
           assert.instanceOf(failure, InvalidInput);
           assert.strictEqual(
             failure.error,
-            "nodes[2].attributes.data.config.outletHandle: Group config holds only direction"
+            "nodes[2].attributes.data.config.outletHandle: Group config must be empty"
           );
         })
     );
@@ -682,7 +682,7 @@ describe("workflow versions", () => {
           assert.instanceOf(failure, InvalidInput);
           assert.strictEqual(
             failure.error,
-            "nodes[2].attributes.data.config.outletHandle: Group config holds only direction"
+            "nodes[2].attributes.data.config.outletHandle: Group config must be empty"
           );
         })
     );

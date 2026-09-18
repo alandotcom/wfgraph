@@ -7,7 +7,7 @@ import {
 import { createStore, Provider as JotaiProvider, useAtomValue } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  canvasGraphAtomFor,
+  canvasGraphAtom,
   canvasNodesAtom,
   loadWorkflowGraphAtom,
   nodesAtom,
@@ -21,7 +21,6 @@ import {
   expectSteadyCamera,
   recordCameraMotion,
 } from "#src/components/workflow/camera-motion-test-support";
-import { useFocusedGroupDirection } from "./canvas-interaction";
 import { useWorkspaceCamera } from "./use-workspace-camera";
 
 const CANVAS = { width: 1200, height: 800 };
@@ -87,9 +86,7 @@ function renderCamera(
 
   function Harness() {
     flow = useStoreApi();
-    const painted = useAtomValue(
-      canvasGraphAtomFor(useFocusedGroupDirection())
-    );
+    const painted = useAtomValue(canvasGraphAtom);
     camera = useWorkspaceCamera({
       isCanvasPlaced: () => true,
       paintedNodes: painted.nodes,
@@ -295,17 +292,9 @@ describe("useWorkspaceCamera across Group scopes", () => {
     ).toBe(true);
   });
 
-  it("keeps a desktop and a mobile camera in a horizontal Group, fitting the top-to-bottom steps on the first mobile visit", async () => {
-    const horizontal = NODES.map((node) =>
-      node.id === "g"
-        ? {
-            ...node,
-            data: { ...node.data, config: { direction: "horizontal" } },
-          }
-        : node
-    );
+  it("keeps separate desktop and mobile cameras over the same stored Group positions", async () => {
     const camera = renderCamera({
-      nodes: horizontal,
+      nodes: NODES,
       edges: [{ id: "a-b", source: "a", target: "b" }],
     });
     await camera.settleViewportListener();
@@ -315,12 +304,12 @@ describe("useWorkspaceCamera across Group scopes", () => {
     await camera.pan(desktop);
 
     await camera.resize(390);
-    const mobileNodes = camera.store.get(canvasGraphAtomFor("vertical")).nodes;
-    const [first, second] = mobileNodes.filter(
-      (node) => node.type === "action"
-    );
-    expect(first?.position.x).toBe(second?.position.x);
-    expect(first?.position.y ?? 0).toBeLessThan(second?.position.y ?? 0);
+    const mobileNodes = camera.store.get(canvasGraphAtom).nodes;
+    for (const member of stored.filter((node) => node.parentId === "g")) {
+      expect(
+        mobileNodes.find((node) => node.id === member.id)?.position
+      ).toEqual(member.position);
+    }
     expect(camera.viewport()).not.toEqual(desktop);
     expect(mobileNodes.every((node) => onScreen(node, camera.viewport()))).toBe(
       true

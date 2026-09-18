@@ -45,6 +45,7 @@ import {
 } from "@wfgraph/shared/lifecycle/event-split";
 import { useEventSplitOutlets } from "#src/lib/event-split-outlets";
 import {
+  CONDITION_OUTLET_FRACTION,
   eventSplitCardWidth,
   NODE_ICON_CLASS,
   NODE_ICON_PX,
@@ -429,8 +430,8 @@ type ActionNodeProps = NodeProps & {
   id: string;
 };
 
-const CONDITION_TRUE_OUTLET_OFFSET = "38%";
-const CONDITION_FALSE_OUTLET_OFFSET = "62%";
+const CONDITION_TRUE_OUTLET_OFFSET = `${CONDITION_OUTLET_FRACTION.true * 100}%`;
+const CONDITION_FALSE_OUTLET_OFFSET = `${CONDITION_OUTLET_FRACTION.false * 100}%`;
 
 /**
  * Where one Event Split outlet's handle sits along the outlet side, as a

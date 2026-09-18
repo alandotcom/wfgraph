@@ -822,7 +822,7 @@ describe("layoutWorkflowNodes", () => {
         node.id === "g"
           ? {
               ...node,
-              data: { ...node.data, config: { direction: "horizontal" } },
+              data: { ...node.data, config: {} },
             }
           : node
       ),

@@ -21,6 +21,7 @@ import { canvasRevealAtom } from "./canvas-reveal-state";
 import { revealCameraStep, type RevealCameraSlot } from "./reveal-camera";
 import {
   measureObstacles,
+  placementNodeIds,
   revealOccupiedWidth,
   subjectBounds,
   type SubjectBounds,
@@ -64,6 +65,14 @@ export function useRevealCamera(input: {
   const request = useAtomValue(revealPlacementRequestAtom);
   const resizeSequence = useAtomValue(revealResizeSequenceAtom);
   const isKeyResizing = useAtomValue(revealKeyResizeInProgressAtom);
+  // Whether React Flow holds every node the subject is placed by. A paste or an
+  // added step becomes the subject in the commit that paints it, so the first
+  // look can come before React Flow has taken the new node.
+  const isSubjectHeld = useFlowStore((state) =>
+    placementNodeIds(reveal.subject?.placement).every((id) =>
+      state.nodeLookup.has(id)
+    )
+  );
   /** The slot the camera last acted on while the canvas could be placed. */
   const shownRef = useRef<RevealCameraSlot | null>(null);
   const answeredSequenceRef = useRef(0);
@@ -81,6 +90,7 @@ export function useRevealCamera(input: {
     isMobile,
     isSized,
     input.isCanvasReady,
+    isSubjectHeld,
   ].join("|");
 
   useAfterPaint(slotKey, () => {
@@ -121,6 +131,7 @@ export function useRevealCamera(input: {
       request: placementRequest,
       answeredSequence: answeredSequenceRef.current,
     });
+    const shownBefore = shownRef.current;
     shownRef.current = next;
     if (step === "keep") {
       return;
@@ -137,6 +148,11 @@ export function useRevealCamera(input: {
       placed = subjectBounds(state.subject.placement, flow);
     }
     if (!placed || placed.bounds.width <= 0 || placed.bounds.height <= 0) {
+      // Nothing to place yet. A subject React Flow does not hold stays unshown,
+      // so the camera places it once, when React Flow takes its nodes.
+      if (step === "place") {
+        shownRef.current = shownBefore;
+      }
       return;
     }
     const { bounds, optionalBounds } = placed;

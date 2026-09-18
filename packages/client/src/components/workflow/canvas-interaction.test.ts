@@ -5,7 +5,6 @@ const EDITABLE = {
   editingLocked: false,
   comparisonActive: false,
   overlayActive: false,
-  groupScopeActive: false,
   topologyAuthoring: true,
 };
 
@@ -51,12 +50,11 @@ describe("canvasInteractionState", () => {
     });
   });
 
-  it("inserts nodes only on an editable canvas outside a focused Group", () => {
-    const state = (groupScopeActive: boolean) =>
-      canvasInteractionState({ ...EDITABLE, groupScopeActive });
-    expect(state(false).insertsNodes).toBe(true);
-    expect(state(true).insertsNodes).toBe(false);
-    expect(state(true).nodesDraggable).toBe(true);
+  it("inserts nodes on an editable canvas, including a focused Group", () => {
+    expect(canvasInteractionState(EDITABLE).insertsNodes).toBe(true);
+    expect(
+      canvasInteractionState({ ...EDITABLE, editingLocked: true }).insertsNodes
+    ).toBe(false);
   });
 
   it("offers selection alone without topology authoring", () => {

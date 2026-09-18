@@ -16,11 +16,10 @@ import {
 } from "@xyflow/react";
 import { useCallback, useRef } from "react";
 import { useSetAtom } from "jotai";
-import { toast } from "sonner";
 import { generateId } from "@wfgraph/shared/utils/id";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import {
-  addNodeAtom,
+  addConnectedNodeAtom,
   connectNodesAtom,
   selectOnlyNodeAtom,
 } from "#src/lib/workflow-graph-store";
@@ -32,6 +31,7 @@ import {
   connectionHandleTypesMatch,
   connectionRefusalReason,
 } from "./connection-validation";
+import { showGraphEditRefusal } from "./graph-edit-refusal";
 import {
   storedCanvasConnection,
   type StoredCanvasConnection,
@@ -76,7 +76,7 @@ export function useCanvasConnections(input: {
     screenToFlowPosition,
   } = input;
 
-  const addNode = useSetAtom(addNodeAtom);
+  const addConnectedNode = useSetAtom(addConnectedNodeAtom);
   const connectNodes = useSetAtom(connectNodesAtom);
   const selectOnlyNode = useSetAtom(selectOnlyNodeAtom);
 
@@ -138,19 +138,18 @@ export function useCanvasConnections(input: {
       }
       const outcome = connectionOutcome(connection);
       if ("refusal" in outcome) {
-        toast.info(outcome.refusal, { id: "connection-refused" });
+        showGraphEditRefusal(outcome);
         return;
       }
       // The store plans the connection again against the graph it holds now,
       // which a save or an agent edit may have moved since the preview.
-      const committed = connectNodes({
-        connection: { ...outcome.connection, id: generateId() },
-        fromIngressStub: outcome.fromIngressStub,
-        catalog,
-      });
-      if (committed !== null && "refusal" in committed) {
-        toast.info(committed.refusal, { id: "connection-refused" });
-      }
+      showGraphEditRefusal(
+        connectNodes({
+          connection: { ...outcome.connection, id: generateId() },
+          throughBoundaryStub: outcome.throughBoundaryStub,
+          catalog,
+        })
+      );
     },
     [catalog, connectNodes, connectionOutcome, connectionsLocked]
   );
@@ -261,15 +260,6 @@ export function useCanvasConnections(input: {
         }),
       };
 
-      // Adding the node makes it the selection.
-      addNode(newNode);
-
-      // Deselect all other nodes and select only the new node
-      // Need to do this after a delay because panOnDrag will clear selection
-      setTimeout(() => {
-        selectOnlyNode(newNode.id);
-      }, 50);
-
       const sourceId = fromSource ? sourceNodeId : newNode.id;
       const targetId = fromSource ? newNode.id : sourceNodeId;
       const sourceHandle = normalizeSourceHandleForConnection(
@@ -277,13 +267,36 @@ export function useCanvasConnections(input: {
         fromSource ? connectingHandleId.current : null
       );
       const targetHandle = fromSource ? null : connectingHandleId.current;
+      // A drag from an "Incoming from" stub names the outside outlet it stands
+      // for. The store plans the connection with the new step in the graph, so
+      // on a focused Group the step joins the Group first.
+      const stored = storedCanvasConnection(
+        { source: sourceId, target: targetId, sourceHandle, targetHandle },
+        nodes
+      );
+      if ("refusal" in stored) {
+        showGraphEditRefusal(stored);
+        return;
+      }
 
-      onConnect({
-        source: sourceId,
-        target: targetId,
-        sourceHandle,
-        targetHandle,
+      // Adding the node makes it the selection, and the step and its
+      // connection are one undo step.
+      const added = addConnectedNode({
+        node: newNode,
+        connection: { ...stored.connection, id: generateId() },
+        throughBoundaryStub: stored.throughBoundaryStub,
+        catalog,
       });
+      showGraphEditRefusal(added);
+      if (added === null || "refusal" in added) {
+        return;
+      }
+
+      // Deselect all other nodes and select only the new node
+      // Need to do this after a delay because panOnDrag will clear selection
+      setTimeout(() => {
+        selectOnlyNode(newNode.id);
+      }, 50);
 
       justCreatedNodeFromConnection.current = true;
       setTimeout(() => {
@@ -292,10 +305,11 @@ export function useCanvasConnections(input: {
     },
     [
       screenToFlowPosition,
-      addNode,
+      addConnectedNode,
+      catalog,
+      nodes,
       selectOnlyNode,
       normalizeSourceHandleForConnection,
-      onConnect,
       isValidConnection,
       insertsNodes,
     ]
@@ -346,8 +360,8 @@ export function useCanvasConnections(input: {
           droppedHandleType
         )
       ) {
-        toast.info("Connect an output handle to an input handle.", {
-          id: "connection-refused",
+        showGraphEditRefusal({
+          refusal: "Connect an output handle to an input handle.",
         });
         connectingNodeId.current = null;
         connectingHandleType.current = null;

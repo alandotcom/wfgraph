@@ -13,6 +13,7 @@ import {
   storedCanvasConnection,
 } from "#src/lib/group-scope-canvas";
 import {
+  addStepAfterAtom,
   canvasEdgesAtom,
   canvasNodesAtom,
   connectNodesAtom,
@@ -90,6 +91,119 @@ function groupedFanOut(): { store: Store; frameId: string; grouped: Graph } {
   vi.clearAllMocks();
   return { store, frameId, grouped: graphOf(store) };
 }
+
+describe("continuing a Group with an unused Condition outlet", () => {
+  it.each([
+    { operation: "connect", branch: "true" },
+    { operation: "add after", branch: "true" },
+    { operation: "connect", branch: "false" },
+    { operation: "add after", branch: "false" },
+  ])(
+    "$operation continues only from the wired $branch branch's last step",
+    async ({ operation, branch }) => {
+      const after = lookup("after");
+      const store = createGraphStore({
+        nodes: [
+          lifecycle(),
+          lookup("get"),
+          condition("gate"),
+          lookup("create"),
+          ...(operation === "connect" ? [after] : []),
+        ],
+        edges: [
+          edge("start", "life", "get", "started"),
+          edge("check", "get", "gate"),
+          edge("create", "gate", "create", branch),
+        ],
+      });
+      store.set(groupSelectionAtom, {
+        selectedIds: new Set(["get", "gate", "create"]),
+      });
+      const frameId = store.get(nodesAtom).find(isGroupNode)!.id;
+      await tick();
+      vi.clearAllMocks();
+      const before = graphOf(store);
+      const connection = { id: "next", source: frameId, target: "after" };
+      expect(
+        connectionRefusalReason({
+          nodes:
+            operation === "connect" ? before.nodes : [...before.nodes, after],
+          storeEdges: before.edges,
+          connection,
+          catalog: emptyExtensionCatalog,
+        })
+      ).toBeNull();
+      const outcome =
+        operation === "connect"
+          ? store.set(connectNodesAtom, {
+              connection,
+              catalog: emptyExtensionCatalog,
+            })
+          : store.set(addStepAfterAtom, {
+              node: after,
+              source: { nodeId: frameId, handle: null },
+              catalog: emptyExtensionCatalog,
+            });
+      expect(outcome).not.toHaveProperty("refusal");
+      await tick();
+      const continued = graphOf(store);
+      expect(
+        continued.edges.filter((item) => item.target === "after")
+      ).toMatchObject([{ source: "create", target: "after" }]);
+      expect(continued.edges.filter((item) => item.source === "gate")).toEqual([
+        edge("create", "gate", "create", branch),
+      ]);
+      expect(groupContractViolations(continued)).toEqual([]);
+      expect(lastSaved().edges).toEqual(continued.edges);
+      expectEverySaveWhole();
+      store.set(undoAtom);
+      expect(graphOf(store)).toEqual(before);
+      store.set(redoAtom);
+      expect(graphOf(store)).toEqual(continued);
+    }
+  );
+});
+
+describe("a Group with no connected branch to continue", () => {
+  it("asks for a branch without changing the graph, but permits an explicit branch connection", async () => {
+    const store = createGraphStore({
+      nodes: [lifecycle(), lookup("get"), condition("gate"), lookup("after")],
+      edges: [
+        edge("start", "life", "get", "started"),
+        edge("check", "get", "gate"),
+      ],
+    });
+    store.set(groupSelectionAtom, { selectedIds: new Set(["get", "gate"]) });
+    const frameId = store.get(nodesAtom).find(isGroupNode)!.id;
+    await tick();
+    vi.clearAllMocks();
+    const before = graphOf(store);
+    const history = store.get(historyAtom);
+    expect(
+      store.set(connectNodesAtom, {
+        connection: { id: "next", source: frameId, target: "after" },
+        catalog: emptyExtensionCatalog,
+      })
+    ).toEqual({
+      refusal: "Open this Group and connect the branch you want to continue.",
+    });
+    await tick();
+    expect(graphOf(store)).toEqual(before);
+    expect(store.get(historyAtom)).toBe(history);
+    expect(updateMock).not.toHaveBeenCalled();
+    expect(
+      planConnection({
+        nodes: before.nodes,
+        storeEdges: before.edges,
+        connection: { source: "gate", sourceHandle: "false", target: "after" },
+        throughBoundaryStub: true,
+        catalog: emptyExtensionCatalog,
+      })
+    ).toEqual({
+      additions: [{ source: "gate", sourceHandle: "false", target: "after" }],
+    });
+  });
+});
 
 describe("parallel ingress fan-out", () => {
   it("groups a fan-out that Publish accepts and paints one inlet on the card", () => {
@@ -238,7 +352,7 @@ describe("parallel ingress fan-out", () => {
     ).toBeNull();
     store.set(connectNodesAtom, {
       connection: { id: "again", ...translated.connection },
-      fromIngressStub: translated.fromIngressStub,
+      throughBoundaryStub: translated.throughBoundaryStub,
       catalog: emptyExtensionCatalog,
     });
     await tick();
@@ -286,6 +400,48 @@ describe("parallel ingress fan-out", () => {
 });
 
 describe("connection planning", () => {
+  it("refuses a cycle inside a focused Group before saving or recording history", async () => {
+    const store = createGraphStore({
+      nodes: [lifecycle(), lookup("read"), lookup("send")],
+      edges: [edge("read-send", "read", "send")],
+    });
+    store.set(groupSelectionAtom, { selectedIds: new Set(["read", "send"]) });
+    const frameId = store.get(nodesAtom).find(isGroupNode)!.id;
+    showWorkspaceRoute(store, { group: frameId });
+    await tick();
+    vi.clearAllMocks();
+    const grouped = graphOf(store);
+    const history = store.get(historyAtom);
+    const connection = { source: "send", target: "read" };
+    const refusal =
+      "This connection would create a cycle. Connect to a step that does not lead back here.";
+
+    expect(
+      connectionRefusalReason({
+        connection,
+        nodes: store.get(nodesAtom),
+        storeEdges: store.get(edgesAtom),
+        catalog: emptyExtensionCatalog,
+      })
+    ).toBe(refusal);
+    expect(
+      store.set(connectNodesAtom, {
+        connection: { id: "cycle", ...connection },
+        catalog: emptyExtensionCatalog,
+      })
+    ).toEqual({ refusal });
+    await tick();
+    expect(graphOf(store)).toEqual(grouped);
+    expect(store.get(historyAtom)).toBe(history);
+    expect(updateMock).not.toHaveBeenCalled();
+    expect(
+      workflowTopologyRefusalReason({
+        nodes: toPersistedNodes(store.get(nodesAtom)),
+        edges: store.get(edgesAtom).map(toPersistedEdge),
+      })
+    ).toBeNull();
+  });
+
   it("stores exactly the additions the preview planned against the same graph", async () => {
     const { store, frameId } = groupedFanOut();
     store.set(onEdgesChangeAtom, [{ type: "remove", id: "qualify-read" }]);
@@ -463,10 +619,12 @@ describe("joins inside a Group", () => {
     expect(edgeIds(store)).toContain("e-j");
     expect(groupContractViolations(graphOf(store))).toEqual([]);
     expectEverySaveWhole();
-    const y = (id: string) =>
-      store.get(canvasNodesAtom).find((node) => node.id === id)?.position.y ??
-      Number.NaN;
-    expect(y("j")).toBeGreaterThan(Math.max(y("b"), y("e")));
+    for (const member of store.get(nodesAtom).filter((node) => node.parentId)) {
+      expect(
+        store.get(canvasNodesAtom).find((node) => node.id === member.id)
+          ?.position
+      ).toEqual(member.position);
+    }
   });
 
   it("refuses a branch into an inside join from the Group's outside port, as Publish does", async () => {
@@ -487,7 +645,7 @@ describe("joins inside a Group", () => {
     expect(
       store.set(connectNodesAtom, {
         connection: { id: "qualify-j", source: "qualify", target: "j" },
-        fromIngressStub: true,
+        throughBoundaryStub: true,
         catalog: emptyExtensionCatalog,
       })
     ).toEqual({ refusal });
