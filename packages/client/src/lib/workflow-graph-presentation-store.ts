@@ -4,6 +4,8 @@
  */
 
 import { atom } from "jotai";
+import { selectAtom } from "jotai/utils";
+import { isEqual } from "es-toolkit/predicate";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { mapOrSame } from "@wfgraph/shared/utils/map-or-same";
 import { inactiveBranch } from "#src/lib/inactive-branch";
@@ -14,6 +16,7 @@ import {
 import {
   displayEdgesForGroups,
   disabledGroupIds,
+  groupOutletHandles,
   orderGroupParentsFirst,
 } from "@wfgraph/shared/graph/node-group";
 import { lockGroupInteriorEdges } from "#src/lib/node-group";
@@ -225,6 +228,39 @@ export const displayEdgesAtom = atom((get) => {
     return Boolean(edge.selected) === selected ? edge : { ...edge, selected };
   });
 });
+
+/**
+ * The graph the canvas presents before any edge is painted onto a Group frame:
+ * a run's pinned graph in Runs, the comparison graph in Changes, and the draft
+ * otherwise or when neither of those is loaded.
+ */
+const presentedGraphAtom = atom((get) => {
+  const view = get(workflowWorkspaceViewAtom);
+  const displayGraph =
+    view === "runs"
+      ? get(executionOverlayGraphAtom)
+      : view === "changes"
+        ? get(comparisonDisplayGraphAtom)
+        : null;
+  return {
+    nodes: displayGraph?.nodes ?? get(nodesStateAtom),
+    edges: displayGraph?.edges ?? get(edgesStateAtom),
+  };
+});
+
+/**
+ * An atom holding the source handle ids the Group frame `groupId` draws, read
+ * from the presented graph's member edges. It keeps the same array while the
+ * handles are unchanged, so dragging a node re-renders no frame. Create it once
+ * per frame id, because each call makes a new atom.
+ */
+export function groupOutletHandlesAtom(groupId: string) {
+  return selectAtom(
+    presentedGraphAtom,
+    (graph) => groupOutletHandles(graph.nodes, graph.edges, groupId),
+    isEqual
+  );
+}
 
 /** Reset run badges and drop the pinned graph after deleting runs. */
 export const clearNodeStatusesAtom = atom(null, (_get, set) => {

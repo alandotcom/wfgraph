@@ -446,23 +446,24 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
       connectionRefusalReason({
         connection,
         nodes,
-        edges,
         storeEdges,
         catalog,
       }) === null,
-    [catalog, edges, graphEditingLocked, nodes, storeEdges]
+    [catalog, graphEditingLocked, nodes, storeEdges]
   );
 
+  // Stored edges, which name Group members, so the handle chosen here is the
+  // one `connectNodesAtom` derives when it saves the connection.
   const normalizeSourceHandleForConnection = useCallback(
     (sourceNodeId: string, sourceHandle: string | null | undefined) =>
       normalizeSourceHandle({
         nodes,
-        edges,
+        edges: storeEdges,
         sourceNodeId,
         sourceHandle,
         catalog,
       }),
-    [nodes, edges, catalog]
+    [nodes, storeEdges, catalog]
   );
 
   const onConnect: OnConnect = useCallback(
@@ -477,7 +478,6 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
       const refusal = connectionRefusalReason({
         connection,
         nodes,
-        edges,
         storeEdges,
         catalog,
       });
@@ -501,7 +501,6 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
       normalizeSourceHandleForConnection,
       connectNodes,
       nodes,
-      edges,
       storeEdges,
       catalog,
       graphEditingLocked,

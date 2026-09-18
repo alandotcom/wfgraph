@@ -26,10 +26,8 @@ import {
   updateNodeDataAtom,
 } from "#src/lib/workflow-graph-store";
 import { canUngroup, refuseDelete } from "#src/lib/node-group";
-import {
-  disabledGroupIds,
-  isGroupNode,
-} from "@wfgraph/shared/graph/node-group";
+import { disabledGroupIds } from "@wfgraph/shared/graph/node-group";
+import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { can } from "#src/lib/authorization";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";

@@ -11,7 +11,6 @@ describe("editor workflow layout", () => {
       data: {
         type: "group",
         label: "Group",
-        config: { entryNodeIds: ["child_1"], exitNodeIds: ["child_1"] },
       },
     };
     const child: WorkflowNode = {

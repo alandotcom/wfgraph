@@ -1,7 +1,7 @@
 /** Adds React Flow presentation fields to the shared automatic layout. */
 
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
-import { isGroupNode } from "@wfgraph/shared/graph/node-group";
+import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { layoutWorkflowNodes as layoutSharedWorkflowNodes } from "@wfgraph/shared/graph/workflow-layout";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 

@@ -1,11 +1,16 @@
-import { Handle, type NodeProps, Position } from "@xyflow/react";
-import { EyeOff } from "lucide-react";
-import { memo } from "react";
-import { cn } from "@wfgraph/shared/utils";
 import {
-  groupOutletHandle,
-  isGroupNode,
-} from "@wfgraph/shared/graph/node-group";
+  Handle,
+  type NodeProps,
+  Position,
+  useUpdateNodeInternals,
+} from "@xyflow/react";
+import { useAtomValue } from "jotai";
+import { EyeOff } from "lucide-react";
+import { memo, useMemo } from "react";
+import { cn } from "@wfgraph/shared/utils";
+import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
+import { useAfterPaint } from "#src/hooks/effects";
+import { groupOutletHandlesAtom } from "#src/lib/workflow-graph-presentation-store";
 import {
   COMPARISON_NODE_ANNOTATION,
   type WorkflowNodeData,
@@ -18,6 +23,20 @@ type GroupNodeProps = NodeProps & {
 };
 
 export const GroupNode = memo(({ data, selected, id }: GroupNodeProps) => {
+  const updateNodeInternals = useUpdateNodeInternals();
+  // The canvas paints each edge leaving a Group as leaving its frame, keeping
+  // the member's source handle. React Flow draws such an edge only from a
+  // handle with that id, so the frame draws one handle per distinct handle its
+  // continuation edges name.
+  const outletHandles = useAtomValue(
+    useMemo(() => groupOutletHandlesAtom(id), [id])
+  );
+  // React Flow records handle ids when it measures a node, so a changed set of
+  // ids has to be measured again before an edge can attach to a new one.
+  useAfterPaint(outletHandles, () => {
+    updateNodeInternals(id);
+  });
+
   if (!data || !isGroupNode({ data })) {
     return null;
   }
@@ -57,15 +76,21 @@ export const GroupNode = memo(({ data, selected, id }: GroupNodeProps) => {
         )}
         {data.label || "Group"}
       </div>
-      <Handle
-        aria-label="Group output"
-        // React Flow's `id` prop takes a string or `null`, not `undefined`. A
-        // frame whose exit is not a Condition has no handle name.
-        id={groupOutletHandle({ data, id }) ?? null}
-        position={Position.Bottom}
-        role="img"
-        type="source"
-      />
+      {outletHandles.map((handle, index) => (
+        <Handle
+          aria-label="Group output"
+          // React Flow's `id` prop takes a string or `null`, not `undefined`.
+          id={handle}
+          key={handle ?? ""}
+          position={Position.Bottom}
+          role="img"
+          // Several handles spread evenly across the bottom edge.
+          style={{
+            left: `${((index + 1) / (outletHandles.length + 1)) * 100}%`,
+          }}
+          type="source"
+        />
+      ))}
     </div>
   );
 });
