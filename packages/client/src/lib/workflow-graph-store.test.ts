@@ -650,7 +650,7 @@ describe("the collapsed Group card's one outlet", () => {
     expect(store.get(edgesAtom)).toBe(before);
   });
 
-  it("refuses to join a Condition's unconnected branches after the Group, with the join rule's notice", () => {
+  it("asks for an explicit branch when the Group ends at an unwired Condition", () => {
     const store = createGraphStore(
       [
         lifecycleNode("t"),
@@ -666,8 +666,7 @@ describe("the collapsed Group card's one outlet", () => {
     );
     const before = store.get(edgesAtom);
 
-    // Both unconnected branches are path ends, and one of them never runs, so
-    // a step after both would wait forever.
+    // The collapsed card must not activate either unused branch implicitly.
     expect(
       store.set(connectNodesAtom, {
         connection: {
@@ -680,7 +679,7 @@ describe("the collapsed Group card's one outlet", () => {
         catalog: emptyCatalog,
       })
     ).toEqual({
-      refusal: 'Node "x" cannot join mutually exclusive branches from "gate"',
+      refusal: "Open this Group and connect the branch you want to continue.",
     });
     expect(store.get(edgesAtom)).toBe(before);
   });

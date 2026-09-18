@@ -12,6 +12,10 @@ import {
 } from "@wfgraph/shared/graph/group-boundary";
 import { groupPortKey } from "@wfgraph/shared/graph/group-port-key";
 import {
+  rectanglesOverlap,
+  type NodeRectangle,
+} from "@wfgraph/shared/graph/node-placement";
+import {
   displayEdgesForGroups,
   groupEndPorts,
 } from "@wfgraph/shared/graph/node-group";
@@ -326,12 +330,61 @@ function stubPosition(
 }
 
 const separatedStubs = new WeakMap<WorkflowNode, WorkflowNode>();
-/** Separate vertically overlapping stubs horizontally, keeping each band's centre. */
+
+/** The nearest horizontal slot that clears members and follows the preceding stub. */
+function clearStubX(input: {
+  x: number;
+  y: number;
+  minimumX: number;
+  obstacles: NodeRectangle[];
+}): number {
+  const obstacles = input.obstacles.filter(
+    (obstacle) =>
+      obstacle.y < input.y + GROUP_BOUNDARY_STUB_HEIGHT &&
+      obstacle.y + obstacle.height > input.y
+  );
+  const candidates = [
+    Math.max(input.x, input.minimumX),
+    ...obstacles.flatMap((obstacle) => [
+      obstacle.x - WORKFLOW_NODE_WIDTH,
+      obstacle.x + obstacle.width,
+    ]),
+  ]
+    .filter((x) => x >= input.minimumX)
+    .map((x) => ({ x, distance: Math.abs(x - input.x) }));
+  // The rightmost obstacle boundary (or minimumX beyond it) is always clear.
+  return sortBy(candidates, ["distance", "x"]).find(({ x }) =>
+    obstacles.every(
+      (obstacle) =>
+        !rectanglesOverlap(
+          {
+            x,
+            y: input.y,
+            width: WORKFLOW_NODE_WIDTH,
+            height: GROUP_BOUNDARY_STUB_HEIGHT,
+          },
+          obstacle
+        )
+    )
+  )!.x;
+}
+
+/** Separate stubs near their anchors, preserving branch order and clearing members. */
 function separateBoundaryStubs(
   stubs: WorkflowNode[],
-  edges: WorkflowEdge[]
+  edges: WorkflowEdge[],
+  members: WorkflowNode[]
 ): WorkflowNode[] {
   const gap = 24;
+  const obstacles = members.map((member) => {
+    const size = workflowNodeDimensions(member);
+    return {
+      x: member.position.x - gap,
+      y: member.position.y - gap,
+      width: size.width + 2 * gap,
+      height: size.height + 2 * gap,
+    };
+  });
   const edgesByTarget = Map.groupBy(edges, (edge) => edge.target);
   const branchOrder = (stub: WorkflowNode) => {
     const incoming = edgesByTarget.get(stub.id);
@@ -362,10 +415,17 @@ function separateBoundaryStubs(
       });
       const last = ordered.at(-1)!;
       const shift = (right - last.position.x - WORKFLOW_NODE_WIDTH) / 2;
-      return placed.map(({ stub, x }): [string, number] => [
-        stub.id,
-        x - shift,
-      ]);
+      let minimumX = -Infinity;
+      return placed.map(({ stub, x }): [string, number] => {
+        const clearedX = clearStubX({
+          x: x - shift,
+          y: stub.position.y,
+          minimumX,
+          obstacles,
+        });
+        minimumX = clearedX + WORKFLOW_NODE_WIDTH + gap;
+        return [stub.id, clearedX];
+      });
     })
   );
   return stubs.map((stub) => {
@@ -509,7 +569,8 @@ export function focusedGroupCanvasGraph(
   ];
   const stubs = separateBoundaryStubs(
     [...ingress, ...continuations, ...ends],
-    edges
+    edges,
+    members
   );
   const nodes = [
     ...stubs.slice(0, ingress.length),

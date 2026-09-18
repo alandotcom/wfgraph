@@ -90,13 +90,10 @@ export type GroupOutlet = {
 };
 
 /**
- * The outlet of the collapsed card of the Group `groupId`. A Group that
- * continues outside stands for the member ports its continuation edges leave
- * by, so a connection from the card reaches its new step from those same
- * ports. A Group that does not continue stands for every end port, so a step
- * connected from the card runs once after every path inside the Group
- * finishes. A Group with neither, or an id that is not a Group, stands for no
- * port.
+ * A collapsed Group keeps its existing continuation ports. Without a
+ * continuation, it connects from terminal non-Condition members only:
+ * unused Condition outlets remain unwired. No eligible member, or an id
+ * that is not a Group, answers no port.
  */
 export function groupOutlet(
   nodes: readonly GroupGraphNode[],
@@ -107,7 +104,12 @@ export function groupOutlet(
   if (boundary.internalContinuation.length > 0) {
     return { ports: boundary.internalContinuation, continues: true };
   }
-  return { ports: groupEndPorts({ nodes, boundary }), continues: false };
+  return {
+    ports: groupEndPorts({ nodes, boundary }).filter(
+      (port) => port.handle === null
+    ),
+    continues: false,
+  };
 }
 
 export function predecessorKey(edge: {
@@ -200,7 +202,7 @@ type StoredSource = {
  * The stored sources a connection from `sourceId` leaves by. A step answers
  * itself with the handle as given. A Group answers the member ports its one
  * card outlet stands for (see `groupOutlet`), each with its own handle, and a
- * Group whose outlet stands for no port answers its own id.
+ * Group whose outlet stands for no port answers no sources.
  */
 export function resolveStoredSources(input: {
   nodes: readonly GroupGraphNode[];
@@ -213,9 +215,6 @@ export function resolveStoredSources(input: {
     return [{ source: input.sourceId, sourceHandle: input.sourceHandle }];
   }
   const { ports } = groupOutlet(input.nodes, input.edges, input.sourceId);
-  if (ports.length === 0) {
-    return [{ source: input.sourceId, sourceHandle: input.sourceHandle }];
-  }
   return ports.map((port) => ({
     source: port.nodeId,
     sourceHandle: port.handle ?? undefined,
@@ -225,7 +224,7 @@ export function resolveStoredSources(input: {
 /**
  * Store edges a connection onto `targetId` would add: a Group inlet fans out
  * onto every entry, and a Group outlet stores from every member port the card
- * outlet stands for. Empty means the painted connection already exists. A
+ * outlet stands for. Empty means no eligible source or no new connection. A
  * connection that would enter a Group from a second outside outlet is
  * `addedIngressSourceRefusal`'s to refuse, and one that would leave a Group
  * several ways is `addedContinuationRefusal`'s.

@@ -549,12 +549,10 @@ describe("groupOutlet", () => {
     ]);
   });
 
-  it("stands for every unconnected Condition branch and every step that connects to nothing", () => {
+  it("continues from terminal steps without wiring unused Condition branches", () => {
     const nodes = [...conditionGroup, { ...lookupB, parentId: "g" }];
 
     expect(groupOutlet(nodes, [edge("ac", "a", "c")], "g").ports).toEqual([
-      { nodeId: "c", handle: "true" },
-      { nodeId: "c", handle: "false" },
       { nodeId: "b", handle: null },
     ]);
     expect(
@@ -565,11 +563,14 @@ describe("groupOutlet", () => {
         targetId: "sms",
         sourceHandle: null,
       })
-    ).toEqual([
-      { source: "c", target: "sms", sourceHandle: "true" },
-      { source: "c", target: "sms", sourceHandle: "false" },
-      { source: "b", target: "sms", sourceHandle: undefined },
-    ]);
+    ).toEqual([{ source: "b", target: "sms", sourceHandle: undefined }]);
+  });
+
+  it("offers no continuation when only unused Condition outlets remain", () => {
+    expect(groupOutlet(conditionGroup, [edge("ac", "a", "c")], "g")).toEqual({
+      ports: [],
+      continues: false,
+    });
   });
 
   it("ignores the handle a connection names, since the card has one outlet", () => {

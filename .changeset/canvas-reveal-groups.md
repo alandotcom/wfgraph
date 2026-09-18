@@ -25,9 +25,9 @@ members in one undoable edit without moving outside steps. Add step after
 inserts between an outlet and its existing targets; dragging an outlet into
 empty canvas creates a branch without an automatic rejoin. Connections that
 would create a cycle are refused before saving.
-Connecting the card's outlet to a step outside the Group connects every place a
-path ends inside the Group to that step, which then runs once after every
-branch. Grouping never changes what a run executes. Runs shows a Group's run status and step counts, and Changes
+Connecting the card's outlet keeps existing continuation ports or connects from
+terminal non-Condition steps. Unused Condition outlets stay unwired, so an unused
+branch ends the path without running the step after the Group. Grouping never changes what a run executes. Runs shows a Group's run status and step counts, and Changes
 counts Group edits as Organization changes. Publish refuses a Group that breaks
 the rules listed in `docs/embedding.md` ("Groups"). A draft save refuses Group
 membership errors and edges that touch a Group frame, and a draft that breaks only the Publish rules still saves

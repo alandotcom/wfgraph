@@ -373,6 +373,81 @@ describe("Group canvas projection", () => {
     }
   });
 
+  it("keeps Path ends clear of member cards before and after Tidy and dragging", () => {
+    let stored: WorkflowNode[] = [
+      frame,
+      step("get", 0, 0, "g"),
+      {
+        ...step("condition", 0, 180, "g"),
+        data: {
+          label: "Condition",
+          type: "action",
+          config: { actionType: BUILT_IN_ACTION_IDS.condition },
+        },
+      },
+      step("create", -150, 360, "g"),
+    ];
+    const storedEdges: WorkflowEdge[] = [
+      { id: "check", source: "get", target: "condition" },
+      {
+        id: "create",
+        source: "condition",
+        sourceHandle: "true",
+        target: "create",
+      },
+    ];
+    const assertClear = () => {
+      const graph = focused(stored, storedEdges);
+      const members = graph.nodes.filter(
+        (node) => !graph.projectedNodeIds.has(node.id)
+      );
+      for (const stub of graph.nodes.filter((node) =>
+        graph.projectedNodeIds.has(node.id)
+      )) {
+        for (const member of members) {
+          expect(
+            rectanglesOverlap(
+              { ...stub.position, width: WORKFLOW_NODE_WIDTH, height: 40 },
+              {
+                ...member.position,
+                width: WORKFLOW_NODE_WIDTH,
+                height: WORKFLOW_NODE_HEIGHT,
+              }
+            )
+          ).toBe(false);
+        }
+      }
+      for (const member of stored.filter((node) => node.parentId === "g"))
+        expect(position(graph, member.id)).toBe(member.position);
+      const again = focused(stored, storedEdges);
+      graph.nodes.forEach((node, index) =>
+        expect(again.nodes[index]).toBe(node)
+      );
+      return graph;
+    };
+    const first = assertClear();
+    const laidOut = layoutWorkflowNodes({
+      ...first,
+      catalog: emptyExtensionCatalog,
+    });
+    stored = stored.map((node) =>
+      node.parentId === "g"
+        ? {
+            ...node,
+            position: laidOut.nodes.find((item) => item.id === node.id)!
+              .position,
+          }
+        : node
+    );
+    const tidied = assertClear();
+    stored = stored.map((node) =>
+      node.id === "create"
+        ? { ...node, position: position(tidied, end("condition", "false"))! }
+        : node
+    );
+    assertClear();
+  });
+
   it("keeps distinct end stubs for builder-chosen ids including separators", () => {
     const ids = ["\ud800", "x/y", "x", "x%2Fy", "constructor", "__proto__"];
     const graph = focused(

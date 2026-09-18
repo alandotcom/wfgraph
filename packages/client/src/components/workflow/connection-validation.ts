@@ -9,7 +9,10 @@ import {
   addedIngressSourceRefusal,
   addedJoinRuleRefusal,
 } from "@wfgraph/shared/graph/group-contract";
-import { fanOutStoreEdges } from "@wfgraph/shared/graph/node-group";
+import {
+  fanOutStoreEdges,
+  groupOutlet,
+} from "@wfgraph/shared/graph/node-group";
 import { upstreamNodeIdsOver } from "@wfgraph/shared/graph/upstream-nodes";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { normalizeSourceHandleForConnection } from "#src/components/workflow/connection-handle";
@@ -128,6 +131,15 @@ export function expandConnection({
     })
   );
   if (additions.length === 0) {
+    if (
+      sourceNode &&
+      isGroupNode(sourceNode) &&
+      groupOutlet(nodes, storeEdges, sourceNodeId).ports.length === 0
+    ) {
+      return {
+        refusal: "Open this Group and connect the branch you want to continue.",
+      };
+    }
     return {
       refusal: hasUnenteredMember({
         nodes,

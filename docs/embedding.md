@@ -181,16 +181,19 @@ A Workflow Builder groups two or more steps with **Group** in the canvas context
 run unchanged: the engine walks the same stored edges whether or not a step sits in a
 Group, and a Group writes no run log, result, or retry of its own. The workflow canvas
 shows a Group as one collapsed card, and entering the Group opens a canvas of its members.
-A connection dragged from the card's one outlet to a step outside the Group connects every
-place a path ends inside the Group to that step, so the step runs once after every branch
-finishes, and deleting that connection deletes each of those edges. On an entered Group's
+A connection dragged from the card's one outlet keeps the Group's existing continuation
+ports. If nothing leaves the Group yet, it connects from each terminal non-Condition step.
+Unused Condition outlets stay unwired: a False branch with no steps ends the path and
+does not run the step after the Group. If only unused Condition outlets remain, open
+the Group and choose a branch to continue. Deleting the card's outgoing connection
+deletes each stored edge it represents. On an entered Group's
 canvas a Workflow Builder adds, pastes, duplicates, connects, disables, and deletes steps,
 and a step added, pasted, or duplicated there becomes a member of that Group. Members
 keep their stored positions and can be dragged. **Tidy layout** arranges the entered
 Group's members in one undoable edit without moving its frame or outside steps.
 **Add step after** inserts a step between the chosen outlet and its existing targets;
 dragging an outlet into empty canvas creates a branch with no automatic rejoin.
-Continuing one branch alone is done on the entered canvas: each edge to a
+To change which branch continues, use the entered canvas: each edge to a
 "Continues to" stub can be deleted on its own, and dragging from a step onto a "Continues
 to" stub connects that step alone to the outside step the stub names.
 In **Runs** the card shows the Group's run status and step counts. In **Changes** Group
