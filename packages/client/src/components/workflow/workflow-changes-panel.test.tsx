@@ -110,12 +110,14 @@ describe("comparison properties", () => {
         label: "Label",
         before: "Published email",
         after: "Current email",
+        category: "behavior",
       },
       {
         key: 'field:["data","config","subject"]',
         label: "Subject",
         before: "Before",
         after: "After",
+        category: "behavior",
       },
     ]);
     expect(fields.map((field) => field.label).join(" ")).not.toContain(

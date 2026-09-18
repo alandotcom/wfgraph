@@ -54,7 +54,11 @@ import {
 } from "#src/lib/workflow-save-store";
 import { savedWorkflow } from "#src/lib/workflow-save-test-support";
 import { workflowGraphUpdateAtom } from "#src/lib/workflow-ui-store";
-import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
+import {
+  activeSelectionAtom,
+  activeWorkspaceAddressAtom,
+  setWorkspaceRevealLevelAtom,
+} from "#src/lib/workflow-workspace-navigation";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
@@ -605,6 +609,79 @@ describe("the collapsed Group overview", () => {
     expect(
       view.getByRole("complementary", { name: "Changes inspector" })
     ).toBeTruthy();
+  });
+
+  it("counts changed steps on the collapsed card and enters the Group to show the first one", async () => {
+    const { view, store, router, search, reveal } = await renderEditor();
+    const graph = createSerializedWorkflowGraph({ nodes: NODES, edges: EDGES });
+    const payload: WorkflowComparisonPayload = {
+      baseVersion: {
+        id: "version_3",
+        version: 3,
+        publishedAt: "2026-09-01T00:00:00.000Z",
+        isCurrent: true,
+      },
+      proposedVersion: 4,
+      baseGraph: graph,
+      draftGraph: graph,
+      hasChanges: true,
+      nodeChanges: [
+        { nodeId: "case_study", kind: "modified", fields: [] },
+        { nodeId: "qualify", kind: "modified", fields: [] },
+        { nodeId: "welcome", kind: "modified", fields: [] },
+      ],
+      edgeChanges: [],
+    };
+    await act(async () => {
+      const epoch = store.set(beginWorkflowComparisonRequestAtom, "wf_1");
+      store.set(installWorkflowComparisonAtom, {
+        workflowId: "wf_1",
+        epoch,
+        payload,
+      });
+      store.set(settleWorkflowComparisonRequestAtom, {
+        workflowId: "wf_1",
+        epoch,
+      });
+      await router.navigate({
+        to: "/workflows/$workflowId",
+        params: { workflowId: "wf_1" },
+        search: { view: "changes", compare: "version_3" },
+      });
+    });
+    await act(async () => {
+      store.set(setWorkspaceRevealLevelAtom, {
+        address: store.get(activeWorkspaceAddressAtom),
+        level: "closed",
+      });
+    });
+    await waitFor(() => expect(reveal()?.dataset.level).toBe("closed"));
+
+    const marker = await view.findByRole("button", {
+      name: "Show 2 changed steps in group Initial outreach",
+    });
+    expect(marker.textContent).toBe("2 changed");
+    fireEvent.click(marker);
+
+    await waitFor(() =>
+      expect(search()).toEqual({
+        view: "changes",
+        compare: "version_3",
+        group: "outreach",
+      })
+    );
+    await waitFor(() =>
+      expect(store.get(activeSelectionAtom)).toEqual({
+        nodeIds: ["case_study"],
+        edgeIds: [],
+      })
+    );
+    expect(reveal()?.dataset.level).toBe("browse");
+    expect(
+      view
+        .getByRole("button", { name: "Send case study Modified" })
+        .getAttribute("aria-pressed")
+    ).toBe("true");
   });
 });
 

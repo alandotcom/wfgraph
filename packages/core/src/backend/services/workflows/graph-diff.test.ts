@@ -5,6 +5,7 @@ import {
   draftDiffersFromPublished,
   graphDigest,
 } from "#src/backend/services/workflows/version-digest";
+import { classifyWorkflowComparison } from "@wfgraph/shared/graph/change-classification";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import { emptyLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import type {
@@ -567,6 +568,239 @@ describe("diffWorkflowGraphs", () => {
       ]);
       expect(semanticWorkflowGraphsEqual(published, draft)).toBe(false);
       expect(draftDiffersFromPublished(draft, published)).toBe(true);
+    });
+  });
+});
+
+/**
+ * The server's diff of two graphs, classified the way every Changes surface
+ * reads it: whether the comparison touches Organization and Behavior, and the
+ * categories of each changed node by id.
+ */
+function classifiedDiff(
+  base: SerializedWorkflowGraph,
+  draft: SerializedWorkflowGraph
+) {
+  const diff = diffWorkflowGraphs(base, draft);
+  const categories = classifyWorkflowComparison({
+    baseGraph: base,
+    draftGraph: draft,
+    nodeChanges: diff.nodeChanges,
+    edgeChanges: diff.edgeChanges,
+  });
+  return {
+    diff,
+    organization: categories.organization,
+    behavior: categories.behavior,
+    groupFrameIds: [...categories.groupFrameIds],
+    nodes: Object.fromEntries(categories.nodes),
+  };
+}
+
+describe("classifying a Group comparison", () => {
+  const ORGANIZATION = { organization: true, behavior: false };
+  const BEHAVIOR = { organization: false, behavior: true };
+  const edges: WorkflowEdge[] = [
+    { id: "a-b", source: "a", target: "b" },
+    { id: "b-c", source: "b", target: "c" },
+  ];
+  function frame(
+    id: string,
+    data: { label?: string; direction?: string } = {}
+  ): WorkflowNode {
+    return {
+      id,
+      type: "group",
+      position: { x: 0, y: 0 },
+      data: {
+        label: data.label ?? "Outreach",
+        type: "group",
+        config: { direction: data.direction ?? "vertical" },
+      },
+    };
+  }
+  const member = (id: string, groupId = "group") =>
+    node(id, { parentId: groupId });
+  const ungrouped = graph([node("a"), node("b"), node("c")], edges);
+  const grouped = graph(
+    [frame("group"), member("a"), member("b"), node("c")],
+    edges
+  );
+
+  it("classifies an added Group and its new members as Organization only", () => {
+    const result = classifiedDiff(ungrouped, grouped);
+
+    expect(result.diff.edgeChanges).toEqual([]);
+    expect(result).toMatchObject({
+      organization: true,
+      behavior: false,
+      groupFrameIds: ["group"],
+      nodes: { a: ORGANIZATION, b: ORGANIZATION, group: ORGANIZATION },
+    });
+  });
+
+  it("classifies a removed Group and its released members as Organization only", () => {
+    const result = classifiedDiff(grouped, ungrouped);
+
+    expect(
+      result.diff.nodeChanges.map(({ nodeId, kind }) => [nodeId, kind])
+    ).toEqual([
+      ["a", "modified"],
+      ["b", "modified"],
+      ["group", "removed"],
+    ]);
+    expect(result).toMatchObject({
+      organization: true,
+      behavior: false,
+      nodes: { a: ORGANIZATION, b: ORGANIZATION, group: ORGANIZATION },
+    });
+  });
+
+  it("classifies a renamed Group as Organization only", () => {
+    const renamed = graph(
+      [
+        frame("group", { label: "Follow-up" }),
+        member("a"),
+        member("b"),
+        node("c"),
+      ],
+      edges
+    );
+    const result = classifiedDiff(grouped, renamed);
+
+    expect(result.diff.nodeChanges).toEqual([
+      {
+        nodeId: "group",
+        kind: "modified",
+        fields: [
+          {
+            path: ["data", "label"],
+            kind: "modified",
+            before: "Outreach",
+            after: "Follow-up",
+          },
+        ],
+      },
+    ]);
+    expect(result).toMatchObject({
+      organization: true,
+      behavior: false,
+      nodes: { group: ORGANIZATION },
+    });
+  });
+
+  it("classifies a step moved between Groups as Organization only", () => {
+    const twoGroups = (cGroup: string) =>
+      graph(
+        [
+          frame("group"),
+          frame("other", { label: "Reminders" }),
+          member("a"),
+          member("b"),
+          member("c", cGroup),
+          member("d", "other"),
+        ],
+        edges
+      );
+    const result = classifiedDiff(twoGroups("group"), twoGroups("other"));
+
+    expect(result.diff.nodeChanges).toEqual([
+      {
+        nodeId: "c",
+        kind: "modified",
+        fields: [
+          {
+            path: ["parentId"],
+            kind: "modified",
+            before: "group",
+            after: "other",
+          },
+        ],
+      },
+    ]);
+    expect(result).toMatchObject({
+      organization: true,
+      behavior: false,
+      groupFrameIds: [],
+      nodes: { c: ORGANIZATION },
+    });
+  });
+
+  it("classifies a turned Group direction as Organization only", () => {
+    const horizontal = graph(
+      [
+        frame("group", { direction: "horizontal" }),
+        member("a"),
+        member("b"),
+        node("c"),
+      ],
+      edges
+    );
+    const result = classifiedDiff(grouped, horizontal);
+
+    expect(
+      result.diff.nodeChanges[0]?.fields.map((field) => field.path)
+    ).toEqual([["data", "config", "direction"]]);
+    expect(result).toMatchObject({
+      organization: true,
+      behavior: false,
+      nodes: { group: ORGANIZATION },
+    });
+  });
+
+  it("separates Organization from Behavior in a mixed comparison", () => {
+    const mixed = graph(
+      [
+        frame("group", { label: "Follow-up" }),
+        member("a"),
+        node("b"),
+        node("c", {
+          parentId: "group",
+          data: {
+            label: "c",
+            type: "action",
+            config: { actionType: "example/send", nested: { value: "edited" } },
+          },
+        }),
+        member("added"),
+      ],
+      [...edges, { id: "c-added", source: "c", target: "added" }]
+    );
+    const disabledA = withStoredEnabled(mixed, "a", false);
+    const result = classifiedDiff(grouped, disabledA);
+
+    expect(result).toMatchObject({
+      organization: true,
+      behavior: true,
+      groupFrameIds: ["group"],
+      nodes: {
+        a: BEHAVIOR,
+        added: BEHAVIOR,
+        b: ORGANIZATION,
+        c: { organization: true, behavior: true },
+        group: ORGANIZATION,
+      },
+    });
+    expect(result.diff.edgeChanges).toEqual([
+      { edgeId: "c-added", kind: "added" },
+    ]);
+  });
+
+  it("keeps selection, visibility, and viewport out of the comparison", () => {
+    const sessionState = { selected: true, dragging: true, hidden: true };
+    const draft: SerializedWorkflowGraph = {
+      ...grouped,
+      attributes: { viewport: { x: 40, y: 80, zoom: 2 } },
+      nodes: grouped.nodes.map((serialized) => ({
+        ...serialized,
+        attributes: { ...serialized.attributes, ...sessionState },
+      })),
+    };
+
+    expect(classifiedDiff(grouped, draft)).toMatchObject({
+      diff: { hasChanges: false },
+      organization: false,
+      behavior: false,
     });
   });
 });

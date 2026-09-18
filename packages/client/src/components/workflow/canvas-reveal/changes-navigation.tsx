@@ -3,7 +3,8 @@
  * list with the selected entry, and the Previous and Next bar. Choosing an entry
  * writes the canvas selection, which both bodies and the camera follow. A step
  * inside a collapsed Group is selected on that Group's focused canvas, and
- * Previous and Next reach it by replacing the route's history entry.
+ * Previous and Next reach it by replacing the route's history entry. A
+ * collapsed Group card leads to the changed steps inside it the same way.
  */
 
 import { useNavigate } from "@tanstack/react-router";
@@ -18,6 +19,7 @@ import {
   scopeOfNode,
   workspaceAddressId,
   workspaceRouteSearch,
+  type InspectedObject,
   type WorkspaceScope,
 } from "#src/lib/workflow-navigation-state";
 import {
@@ -38,10 +40,12 @@ import {
 } from "./changes-summary";
 import { requestRevealPlacementAtom } from "./reveal-requests";
 
-/** How selecting a changed object in another scope writes the route. */
+/** How selecting a changed object writes the route and Reveal. */
 export type SelectChangeOptions = {
   /** Replace the current history entry, for a step through the list. */
   replace?: boolean | undefined;
+  /** Open Reveal at Browse when it is closed, so the object's comparison shows. */
+  openReveal?: boolean | undefined;
 };
 
 /**
@@ -61,7 +65,7 @@ export function useChangedObjects(payload: WorkflowComparisonPayload): {
   const catalog = useExtensionCatalog();
   const graph = useAtomValue(comparisonDisplayGraphAtom);
   const selection = useAtomValue(activeSelectionAtom);
-  const selectChange = useSelectChange();
+  const selectChange = useSelectChangedObject();
   const objects = useMemo(
     () => (graph ? changedObjects({ payload, graph, catalog }) : []),
     [catalog, graph, payload]
@@ -73,7 +77,7 @@ export function useChangedObjects(payload: WorkflowComparisonPayload): {
     selectedKey: objects[selectedIndex]?.key ?? null,
     select: (item, options) => {
       if (item) {
-        selectChange(item, options);
+        selectChange(item.object, options);
       }
     },
   };
@@ -83,13 +87,13 @@ export function useChangedObjects(payload: WorkflowComparisonPayload): {
  * Select one changed object in the scope that shows it. A node inside a Group
  * frame shows on that Group's focused canvas, and every other node and every
  * connection on the overview. Reaching the other scope pushes its route, or
- * replaces it with `options.replace`, keeps the Reveal level showing now, and
- * asks the camera to place the object there. From Focus it also carries the
- * change list's scroll to the other scope, so Back shows the list where Focus
- * was entered.
+ * replaces it with `options.replace`, keeps the Reveal level showing now, or
+ * Browse for a closed Reveal with `options.openReveal`, and asks the camera to
+ * place the object there. From Focus it also carries the change list's scroll
+ * to the other scope, so Back shows the list where Focus was entered.
  */
-function useSelectChange(): (
-  item: ChangedObject,
+function useSelectChangedObject(): (
+  object: InspectedObject,
   options?: SelectChangeOptions
 ) => void {
   const store = useStore();
@@ -98,20 +102,25 @@ function useSelectChange(): (
   const setRevealLevel = useSetAtom(setWorkspaceRevealLevelAtom);
   const requestPlacement = useSetAtom(requestRevealPlacementAtom);
   const recordScroll = useSetAtom(recordInspectorScrollAtom);
-  return (item, options) => {
+  return (object, options) => {
     const active = store.get(activeWorkspaceAddressAtom);
     const nodes = store.get(comparisonDisplayGraphAtom)?.nodes ?? [];
     const scope: WorkspaceScope =
-      item.object.kind === "node"
-        ? scopeOfNode(nodes, item.object.id)
+      object.kind === "node"
+        ? scopeOfNode(nodes, object.id)
         : { kind: "overview" };
-    const selection = changeSelection(item.object);
+    const selection = changeSelection(object);
+    const shownLevel = store.get(activeDesktopRevealLevelAtom);
+    const level =
+      options?.openReveal && shownLevel === "closed" ? "browse" : shownLevel;
     if (scopeId(scope) === scopeId(active.scope)) {
       setSelection({ address: active, selection });
+      if (level !== shownLevel) {
+        setRevealLevel({ address: active, level });
+      }
       return;
     }
     const target = { ...active, scope };
-    const level = store.get(activeDesktopRevealLevelAtom);
     setSelection({ address: target, selection });
     setRevealLevel({ address: target, level });
     if (level === "focus") {
@@ -122,10 +131,10 @@ function useSelectChange(): (
         top: store.get(activeRevealPresentationAtom).inspectorScroll.browse,
       });
     }
-    if (item.object.kind === "node") {
+    if (object.kind === "node") {
       requestPlacement({
         addressId: workspaceAddressId(target),
-        nodeIds: [item.object.id],
+        nodeIds: [object.id],
       });
     }
     void navigate({
@@ -133,6 +142,44 @@ function useSelectChange(): (
       replace: options?.replace ?? false,
     });
   };
+}
+
+/**
+ * The control on a collapsed Group card that counts the changed steps inside
+ * the Group. Pressing it enters the Group and selects the first of them,
+ * opening Reveal at Browse when it is closed, so that step's comparison shows.
+ */
+export function GroupChangedStepsButton({
+  groupLabel,
+  changedMemberIds,
+}: {
+  groupLabel: string;
+  changedMemberIds: readonly string[];
+}) {
+  const selectChange = useSelectChangedObject();
+  const count = changedMemberIds.length;
+  const firstId = changedMemberIds[0];
+  if (firstId === undefined) {
+    return null;
+  }
+  return (
+    <Button
+      aria-label={`Show ${count} changed ${count === 1 ? "step" : "steps"} in group ${groupLabel}`}
+      // `nodrag` keeps a press on the button from starting a drag or selecting
+      // the card underneath it.
+      className="nodrag nopan h-6 px-2 text-xs"
+      data-slot="group-changed-steps"
+      onClick={(event) => {
+        event.stopPropagation();
+        selectChange({ kind: "node", id: firstId }, { openReveal: true });
+      }}
+      size="sm"
+      type="button"
+      variant="outline"
+    >
+      {count} changed
+    </Button>
+  );
 }
 
 /**

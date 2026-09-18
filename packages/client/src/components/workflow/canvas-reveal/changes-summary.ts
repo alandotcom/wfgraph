@@ -6,14 +6,20 @@
  * a pure function.
  */
 
-import { compact, countBy } from "es-toolkit/array";
+import { compact, partition } from "es-toolkit/array";
 import { atom } from "jotai";
 import { isBuiltInActionId } from "@wfgraph/shared/actions/built-in-actions";
 import {
   findAction,
   type ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
+import {
+  classifyWorkflowComparison,
+  fieldChangeCategory,
+  type NodeChangeCategories,
+} from "@wfgraph/shared/graph/change-classification";
 import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
+import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import type {
@@ -25,7 +31,10 @@ import {
   type WorkflowIssue,
 } from "@wfgraph/shared/graph/workflow-issues";
 import { resolveEdgeLabel } from "#src/components/flow-elements/edge-label";
-import { changedNodeTitle } from "#src/components/workflow/comparison-properties";
+import {
+  changedNodeTitle,
+  comparisonGroupMembership,
+} from "#src/components/workflow/comparison-properties";
 import type { ComparisonDisplayGraph } from "#src/lib/workflow-comparison";
 import {
   comparisonRequestBaseIdAtom,
@@ -37,6 +46,7 @@ import {
   type WorkflowComparisonSession,
 } from "#src/lib/workflow-comparison-store";
 import {
+  COMPARISON_CHANGE_KIND_LABEL,
   COMPARISON_EDGE_ANNOTATION,
   comparisonNodeTitle,
 } from "#src/lib/workflow-graph-types";
@@ -194,6 +204,9 @@ export function changesHeaderModel(input: {
 
 export type ChangeKind = WorkflowNodeChange["kind"];
 
+/** What a change list row says for a step whose only change is its Group. */
+const GROUP_MEMBERSHIP_DETAIL = "Group membership";
+
 /** One changed node or connection, as the change list shows it. */
 export type ChangedObject = {
   /** Unique in the list: the object's kind and its canvas id. */
@@ -202,13 +215,21 @@ export type ChangedObject = {
   object: InspectedObject;
   change: ChangeKind;
   title: string;
+  /**
+   * The words beside the title: the change kind, or `GROUP_MEMBERSHIP_DETAIL`
+   * for a step whose only change is the Group it sits in.
+   */
+  detail: string;
+  /** Whether the object is a Group frame. */
+  groupFrame: boolean;
 };
 
 /**
- * The changed nodes in the order the server lists them, then the changed
- * connections. A connection is named by its display edge on `graph`, since a
- * removed connection can be drawn under an id of its own, and by the titles of
- * the steps it joins. A change with no display edge is left out.
+ * The changed Group frames, then the changed steps, each in the order the
+ * server lists them, then the changed connections. A connection is named by
+ * its display edge on `graph`, since a removed connection can be drawn under an
+ * id of its own, and by the titles of the steps it joins. A change with no
+ * display edge is left out.
  */
 export function changedObjects(input: {
   payload: WorkflowComparisonPayload;
@@ -221,12 +242,23 @@ export function changedObjects(input: {
     const node = nodesById.get(nodeId);
     return node ? comparisonNodeTitle(node.data, catalog) : "Unavailable step";
   };
-  const nodes = payload.nodeChanges.map((change): ChangedObject => ({
-    key: `node:${change.nodeId}`,
-    object: { kind: "node", id: change.nodeId },
-    change: change.kind,
-    title: changedNodeTitle(catalog, payload, change),
-  }));
+  const categories = classifyWorkflowComparison(payload);
+  const nodes = payload.nodeChanges.map((change): ChangedObject => {
+    const nodeCategories = categories.nodes.get(change.nodeId);
+    const groupFrame = categories.groupFrameIds.has(change.nodeId);
+    return {
+      key: `node:${change.nodeId}`,
+      object: { kind: "node", id: change.nodeId },
+      change: change.kind,
+      title: changedNodeTitle(catalog, payload, change),
+      detail:
+        !groupFrame && nodeCategories?.behavior === false
+          ? GROUP_MEMBERSHIP_DETAIL
+          : COMPARISON_CHANGE_KIND_LABEL[change.kind],
+      groupFrame,
+    };
+  });
+  const [groupFrames, steps] = partition(nodes, (item) => item.groupFrame);
   const edges = payload.edgeChanges.flatMap((change): ChangedObject[] => {
     const edge = graph.edges.find((candidate) => {
       const annotation = candidate.data?.[COMPARISON_EDGE_ANNOTATION];
@@ -242,11 +274,13 @@ export function changedObjects(input: {
             object: { kind: "edge", id: edge.id },
             change: change.kind,
             title: `${nodeTitle(edge.source)} → ${nodeTitle(edge.target)}`,
+            detail: COMPARISON_CHANGE_KIND_LABEL[change.kind],
+            groupFrame: false,
           },
         ]
       : [];
   });
-  return [...nodes, ...edges];
+  return [...groupFrames, ...steps, ...edges];
 }
 
 /** The index of the one selected object in `objects`, or -1. */
@@ -271,20 +305,6 @@ export function changeSelection(object: InspectedObject): CanvasSelection {
 }
 
 /**
- * How many changes of each kind a list holds, as "1 added, 2 removed", or
- * "No changes" for none.
- */
-export function describeChangeCounts(
-  changes: ReadonlyArray<{ kind: ChangeKind }>
-): string {
-  const counts = countBy(changes, (change) => change.kind);
-  const parts = (["added", "modified", "removed"] as const).flatMap((kind) =>
-    counts[kind] ? [`${counts[kind]} ${kind}`] : []
-  );
-  return parts.length === 0 ? "No changes" : parts.join(", ");
-}
-
-/**
  * A name for the comparison a payload holds. It changes exactly when Focus
  * must drop what it shows: another base, or another proposed version.
  */
@@ -304,11 +324,18 @@ export function comparisonBaseLabel(
 /** The heading of the draft side. */
 export const COMPARISON_DRAFT_LABEL = "Current draft";
 
+/** The Groups a step sits in on each side, by title, null for no Group. */
+export type GroupMembershipChange = {
+  before: string | null;
+  after: string | null;
+};
+
 /**
  * What Focus shows for the selected object. A node carries its server change,
  * null when the node is unchanged, and the changed connections that touch it.
- * A connection carries the titles of the steps it joins and its branch label.
- * `unavailable` is an object the comparison graph does not hold.
+ * A Group frame also carries the changed steps drawn inside it. A connection
+ * carries the titles of the steps it joins and its branch label. `unavailable`
+ * is an object the comparison graph does not hold.
  */
 export type ChangeInspection =
   | {
@@ -318,6 +345,13 @@ export type ChangeInspection =
       nodeChange: WorkflowNodeChange | null;
       title: string;
       connections: readonly ChangedObject[];
+      groupFrame: boolean;
+      /** The categories the node's change touches, or null when unchanged. */
+      categories: NodeChangeCategories | null;
+      /** The Group change of a modified step, or null when its Group is the same. */
+      membership: GroupMembershipChange | null;
+      /** The changed steps a Group frame holds on the comparison canvas. */
+      changedMembers: readonly ChangedObject[];
     }
   | {
       kind: "edge";
@@ -356,6 +390,10 @@ export function inspectChange(input: {
     const nodeChange =
       payload.nodeChanges.find((change) => change.nodeId === object.id) ?? null;
     const edgesById = new Map(graph.edges.map((edge) => [edge.id, edge]));
+    const categories = classifyWorkflowComparison(payload);
+    const groupFrame = nodeChange
+      ? categories.groupFrameIds.has(object.id)
+      : isGroupNode(node);
     return {
       kind: "node",
       nodeId: object.id,
@@ -369,6 +407,19 @@ export function inspectChange(input: {
           item.object.kind === "edge" ? edgesById.get(item.object.id) : null;
         return edge?.source === object.id || edge?.target === object.id;
       }),
+      groupFrame,
+      categories: categories.nodes.get(object.id) ?? null,
+      membership:
+        groupFrame || !nodeChange
+          ? null
+          : comparisonGroupMembership(catalog, payload, nodeChange),
+      changedMembers: groupFrame
+        ? input.objects.filter(
+            (item) =>
+              item.object.kind === "node" &&
+              nodesById.get(item.object.id)?.parentId === object.id
+          )
+        : [],
     };
   }
   const edge = graph.edges.find((candidate) => candidate.id === object.id);
@@ -388,9 +439,62 @@ export function inspectChange(input: {
   };
 }
 
+/** The sentence that names the Groups a step moved between. */
+export function describeMembershipChange(
+  membership: GroupMembershipChange
+): string {
+  const { before, after } = membership;
+  if (before === null) {
+    return after === null
+      ? "Its Group membership changed."
+      : `It now sits in the Group ${after}.`;
+  }
+  return after === null
+    ? `It no longer sits in the Group ${before}.`
+    : `It moved from the Group ${before} to the Group ${after}.`;
+}
+
+/**
+ * The sentences about a Group frame. A changed Group says execution behavior
+ * is unchanged only when no changed step inside it changes Behavior; otherwise
+ * it says the Group's own change leaves execution as it was.
+ */
+function describeGroupInspection(
+  inspection: Extract<ChangeInspection, { kind: "node" }>,
+  payload: WorkflowComparisonPayload,
+  base: string
+): string {
+  const count = inspection.nodeChange?.fields.length ?? 0;
+  const own = {
+    added: `This Group is new in the draft. It is not in ${base}.`,
+    removed: `This Group is removed from the draft. Only ${base} has it.`,
+    modified: `${count} Group ${count === 1 ? "setting differs" : "settings differ"} between ${base} and the draft.`,
+    unchanged: `This Group is the same in ${base} and the draft.`,
+  }[inspection.change];
+  const members = inspection.changedMembers.length;
+  const categories = classifyWorkflowComparison(payload);
+  const membersChangeBehavior = inspection.changedMembers.some(
+    (item) =>
+      item.object.kind === "node" &&
+      categories.nodes.get(item.object.id)?.behavior === true
+  );
+  const organizationStatement = membersChangeBehavior
+    ? "The Group's own change does not affect execution."
+    : "Groups only organize steps, so execution behavior is unchanged.";
+  return compact([
+    own,
+    members > 0
+      ? `${members} ${members === 1 ? "step" : "steps"} inside it changed.`
+      : undefined,
+    inspection.change === "unchanged" ? undefined : organizationStatement,
+  ]).join(" ");
+}
+
 /**
  * The sentence under the inspected object's title: which sides hold it and
- * what changed.
+ * what changed. A step whose only change is its Group says that execution
+ * behavior is unchanged, and so does a changed Group whose changed steps all
+ * keep their behavior.
  */
 export function describeInspection(
   inspection: Exclude<ChangeInspection, { kind: "unavailable" }>,
@@ -406,14 +510,34 @@ export function describeInspection(
       unchanged: `This connection is the same in ${base} and the draft.`,
     }[inspection.change];
   }
+  if (inspection.groupFrame) {
+    return describeGroupInspection(inspection, payload, base);
+  }
   switch (inspection.change) {
     case "added":
       return `This step is new in the draft. It is not in ${base}, so only the draft's values are shown.`;
     case "removed":
       return `This step is removed from the draft. Only ${base} has values for it.`;
     case "modified": {
-      const count = inspection.nodeChange?.fields.length ?? 0;
-      return `${count} ${count === 1 ? "setting differs" : "settings differ"} between ${base} and the draft.`;
+      const membership = inspection.membership
+        ? describeMembershipChange(inspection.membership)
+        : undefined;
+      if (inspection.categories?.behavior === false) {
+        return compact([
+          membership,
+          "Execution behavior is unchanged for this step.",
+        ]).join(" ");
+      }
+      const count =
+        inspection.nodeChange?.fields.filter(
+          (field) =>
+            fieldChangeCategory({ path: field.path, groupFrame: false }) ===
+            "behavior"
+        ).length ?? 0;
+      return compact([
+        `${count} ${count === 1 ? "setting differs" : "settings differ"} between ${base} and the draft.`,
+        membership,
+      ]).join(" ");
     }
     default:
       return inspection.connections.length > 0

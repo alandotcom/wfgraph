@@ -7,14 +7,22 @@
 import { atom } from "jotai";
 import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
 import type {
+  WorkflowComparisonPayload,
   WorkflowEdgeChange,
   WorkflowNodeChange,
 } from "@wfgraph/shared/graph/publication-contracts";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 
+/**
+ * What the Publish confirmation shows. `baseGraph` and `draftGraph` are the
+ * comparison's redacted graphs, which the confirmation classifies its changes
+ * against.
+ */
 export type PublicationReview = {
   baseVersion?: number | undefined;
   proposedVersion: number;
+  baseGraph: WorkflowComparisonPayload["baseGraph"];
+  draftGraph: WorkflowComparisonPayload["draftGraph"];
   nodeChanges: WorkflowNodeChange[];
   edgeChanges: WorkflowEdgeChange[];
 };

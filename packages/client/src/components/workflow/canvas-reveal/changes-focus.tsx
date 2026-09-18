@@ -5,7 +5,7 @@
  * by that comparison and object, so another comparison starts it over.
  */
 
-import { compact, uniqBy } from "es-toolkit/array";
+import { compact, partition, uniqBy } from "es-toolkit/array";
 import { useAtomValue } from "jotai";
 import { useMemo, useRef } from "react";
 import { useBeforePaint } from "#src/hooks/effects";
@@ -209,6 +209,7 @@ function InspectionView({
             <>
               <StepProperties
                 change={inspection.nodeChange}
+                groupFrame={inspection.groupFrame}
                 payload={payload}
               />
               <StepValidation
@@ -217,10 +218,18 @@ function InspectionView({
               />
             </>
           ) : null}
-          {inspection.connections.length > 0 ? (
-            <ChangedConnections
-              connections={inspection.connections}
+          {inspection.changedMembers.length > 0 ? (
+            <ChangedObjectList
+              items={inspection.changedMembers}
               onSelect={onSelect}
+              title="Changed steps in this Group"
+            />
+          ) : null}
+          {inspection.connections.length > 0 ? (
+            <ChangedObjectList
+              items={inspection.connections}
+              onSelect={onSelect}
+              title="Changed connections"
             />
           ) : null}
         </>
@@ -230,15 +239,19 @@ function InspectionView({
 }
 
 /**
- * A changed step's settings. The published column shows for a removed or
- * modified step and the draft column for an added or modified one. A side the
- * comparison lacks, or a modification that records no setting, says so.
+ * A changed step's or Group's settings. The published column shows for a
+ * removed or modified object and the draft column for an added or modified
+ * one. A modified step lists its Group membership in a section of its own. A
+ * side the comparison lacks, or a modification that records no setting, says
+ * so.
  */
 function StepProperties({
   change,
+  groupFrame,
   payload,
 }: {
   change: WorkflowNodeChange;
+  groupFrame: boolean;
   payload: WorkflowComparisonPayload;
 }) {
   const catalog = useExtensionCatalog();
@@ -258,30 +271,50 @@ function StepProperties({
     connections,
   });
   const notice = comparisonMetadataNotice({ catalog, payload, change, fields });
+  const [membershipFields, settingFields] = partition(
+    fields,
+    (field) => !groupFrame && field.category === "organization"
+  );
+  const noun = groupFrame ? "Group" : "step";
   return (
-    <Section title="Settings">
-      {notice ? (
-        <p
-          className="rounded-md border border-warning/40 bg-warning/10 px-2 py-1.5 text-xs"
-          data-state="missing-metadata"
-        >
-          {notice}
-        </p>
+    <>
+      {settingFields.length > 0 || membershipFields.length === 0 ? (
+        <Section title={groupFrame ? "Group settings" : "Settings"}>
+          {notice ? (
+            <p
+              className="rounded-md border border-warning/40 bg-warning/10 px-2 py-1.5 text-xs"
+              data-state="missing-metadata"
+            >
+              {notice}
+            </p>
+          ) : null}
+          {settingFields.length === 0 ? (
+            <p className="text-muted-foreground text-xs" data-state="no-fields">
+              The comparison records no setting that differs for this {noun}.
+            </p>
+          ) : (
+            <ComparisonFieldTable
+              afterLabel={COMPARISON_DRAFT_LABEL}
+              beforeLabel={comparisonBaseLabel(payload)}
+              caption={`Settings of this ${noun}`}
+              fields={settingFields}
+              sides={comparisonSides(change.kind)}
+            />
+          )}
+        </Section>
       ) : null}
-      {fields.length === 0 ? (
-        <p className="text-muted-foreground text-xs" data-state="no-fields">
-          The comparison records no setting that differs for this step.
-        </p>
-      ) : (
-        <ComparisonFieldTable
-          afterLabel={COMPARISON_DRAFT_LABEL}
-          beforeLabel={comparisonBaseLabel(payload)}
-          caption="Settings of this step"
-          fields={fields}
-          sides={comparisonSides(change.kind)}
-        />
-      )}
-    </Section>
+      {membershipFields.length > 0 ? (
+        <Section title="Group membership">
+          <ComparisonFieldTable
+            afterLabel={COMPARISON_DRAFT_LABEL}
+            beforeLabel={comparisonBaseLabel(payload)}
+            caption="Group membership of this step"
+            fields={membershipFields}
+            sides={comparisonSides(change.kind)}
+          />
+        </Section>
+      ) : null}
+    </>
   );
 }
 
@@ -385,18 +418,24 @@ function ConnectionProperties({
   );
 }
 
-/** The changed connections that touch the step, each selecting its connection. */
-function ChangedConnections({
-  connections,
+/**
+ * Changed objects that belong to the inspected one: the connections that touch
+ * a step, or the steps inside a Group. Each row selects its object, entering
+ * the Group that shows it.
+ */
+function ChangedObjectList({
+  items,
   onSelect,
+  title,
 }: {
-  connections: readonly ChangedObject[];
+  items: readonly ChangedObject[];
   onSelect: (item: ChangedObject) => void;
+  title: string;
 }) {
   return (
-    <Section title="Changed connections">
+    <Section title={title}>
       <ul className="-mx-2">
-        {connections.map((item) => (
+        {items.map((item) => (
           <li key={item.key}>
             <button
               className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted"
@@ -409,7 +448,7 @@ function ChangedConnections({
               />
               <span className="min-w-0 flex-1 truncate">{item.title}</span>
               <span className="shrink-0 text-muted-foreground">
-                {COMPARISON_CHANGE_KIND_LABEL[item.change]}
+                {item.detail}
               </span>
             </button>
           </li>

@@ -49,12 +49,24 @@ export type ComparisonEdgeAnnotation = {
   sourceId: string;
 };
 
+/**
+ * The changed nodes a Group frame holds on a comparison canvas, by id, in the
+ * order the server lists changes. A collapsed Group card counts them and leads
+ * to the first one.
+ */
+export type ComparisonGroupAnnotation = {
+  changedMemberIds: readonly string[];
+};
+
 /** Collision-proof keys for metadata that exists only on the comparison canvas. */
 export const COMPARISON_NODE_ANNOTATION: unique symbol = Symbol(
   "wfgraph.comparison.node"
 );
 export const COMPARISON_EDGE_ANNOTATION: unique symbol = Symbol(
   "wfgraph.comparison.edge"
+);
+export const COMPARISON_GROUP_ANNOTATION: unique symbol = Symbol(
+  "wfgraph.comparison.group"
 );
 
 /** The outside port a boundary stub on a focused Group canvas stands for. */
@@ -75,6 +87,7 @@ export type EditorNodeData = PersistedNodeData & {
   issues?: NodeIssueSummary | undefined;
   [COMPARISON_NODE_ANNOTATION]?: ComparisonNodeAnnotation | undefined;
   [GROUP_BOUNDARY_STUB_PORT]?: GroupBoundaryStubPort | undefined;
+  [COMPARISON_GROUP_ANNOTATION]?: ComparisonGroupAnnotation | undefined;
 };
 
 /** Display-only fields painted onto edges; never part of the draft save path. */
@@ -186,6 +199,7 @@ export function toPersistedNode(node: WorkflowNode): PersistedWorkflowNode {
     status: _status,
     issues: _issues,
     [COMPARISON_NODE_ANNOTATION]: _comparison,
+    [COMPARISON_GROUP_ANNOTATION]: _groupComparison,
     ...data
   } = node.data;
   const persisted: PersistedWorkflowNode = {

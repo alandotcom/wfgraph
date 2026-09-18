@@ -60,6 +60,8 @@ describe("publication review store", () => {
       expectedPublishedVersionId: null,
       review: {
         proposedVersion: 1,
+        baseGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+        draftGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
         nodeChanges: [],
         edgeChanges: [],
       },
@@ -88,7 +90,13 @@ describe("publication review store", () => {
       graph,
       expectedDraftRevision: 1,
       expectedPublishedVersionId: "version_1",
-      review: { proposedVersion: 2, nodeChanges: [], edgeChanges: [] },
+      review: {
+        proposedVersion: 2,
+        baseGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+        draftGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+        nodeChanges: [],
+        edgeChanges: [],
+      },
     });
 
     expect(store.get(publicationReviewAtom)).toBeNull();
@@ -121,7 +129,13 @@ describe("publication review store", () => {
         graph,
         expectedDraftRevision: 1,
         expectedPublishedVersionId: null,
-        review: { proposedVersion: 1, nodeChanges: [], edgeChanges: [] },
+        review: {
+          proposedVersion: 1,
+          baseGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+          draftGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+          nodeChanges: [],
+          edgeChanges: [],
+        },
       })
     ).toBe(false);
     expect(store.get(publicationReviewAtom)).toBeNull();
@@ -142,7 +156,13 @@ describe("publication review store", () => {
         graph,
         expectedDraftRevision: 1,
         expectedPublishedVersionId: null,
-        review: { proposedVersion: 1, nodeChanges: [], edgeChanges: [] },
+        review: {
+          proposedVersion: 1,
+          baseGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+          draftGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+          nodeChanges: [],
+          edgeChanges: [],
+        },
       })
     ).toBe(false);
     expect(store.get(publicationReviewAtom)).toBeNull();
@@ -171,7 +191,13 @@ describe("publication review store", () => {
         graph,
         expectedDraftRevision: 1,
         expectedPublishedVersionId: null,
-        review: { proposedVersion: 1, nodeChanges: [], edgeChanges: [] },
+        review: {
+          proposedVersion: 1,
+          baseGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+          draftGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+          nodeChanges: [],
+          edgeChanges: [],
+        },
       })
     ).toBe(false);
     store.set(settlePublicationReviewAtom, {

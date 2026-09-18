@@ -2,43 +2,44 @@ import { useQuery } from "@tanstack/react-query";
 import { useAtomValue } from "jotai";
 import { useState } from "react";
 import {
-  type ConditionModel,
-  parseConditionModel,
-} from "@wfgraph/shared/conditions/conditions";
-import {
   findAction,
-  findEntity,
   type ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
+import {
+  fieldChangeCategory,
+  isGroupFrameChange,
+  isGroupMembershipPath,
+  type WorkflowChangeCategory,
+} from "@wfgraph/shared/graph/change-classification";
 import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
 import type {
   WorkflowComparisonPayload,
-  WorkflowFieldChange,
   WorkflowNodeChange,
 } from "@wfgraph/shared/graph/publication-contracts";
 import { TEST_PAYLOADS_CONFIG_KEY } from "@wfgraph/shared/lifecycle/test-payloads";
-import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
-import { flattenConfigFields } from "@wfgraph/shared/plugins/action-fields";
-import { compareText, isBlank } from "@wfgraph/shared/types/string";
+import { compareText } from "@wfgraph/shared/types/string";
 import { cn } from "@wfgraph/shared/utils";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { Button } from "#src/components/ui/button";
+import {
+  type ComparisonConnection,
+  comparisonFieldLabel,
+  type ComparisonNode,
+  ConditionValue,
+  configFieldLabel,
+  GENERIC_LABELS,
+  groupConfigFieldLabel,
+  groupMembershipTitle,
+  isHiddenComparisonValue,
+  readableValue,
+  ValueNote,
+} from "#src/components/workflow/comparison-field-labels";
 import { ConditionSummary } from "#src/components/workflow/config/condition-summary";
-import { eventLabel } from "#src/components/workflow/config/lifecycle-policy-summary";
-import { CONCURRENCY_OPTIONS } from "#src/components/workflow/config/lifecycle-concurrency-group";
 import { PanelState } from "#src/components/workflow/workflow-changes-panel-state";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
-import {
-  type ConditionSelectableField,
-  getEntityConditionFields,
-  getEventConditionFields,
-} from "#src/lib/upstream-node-fields";
 import { comparisonSessionAtom } from "#src/lib/workflow-comparison-store";
 import { selectedNodeAtom } from "#src/lib/workflow-graph-store";
-import {
-  comparisonNodeTitle,
-  toEditorNode,
-} from "#src/lib/workflow-graph-types";
+import { comparisonNodeTitle } from "#src/lib/workflow-graph-types";
 
 /**
  * One property row of a comparison. `before` is the published version's value
@@ -51,6 +52,11 @@ export type ComparisonField = {
   label: string;
   before?: unknown;
   after?: unknown;
+  /**
+   * Whether the row is a Group organization change or a behavior change. Set
+   * on each row of a modified node, since each of those rows is one field change.
+   */
+  category?: WorkflowChangeCategory | undefined;
 };
 
 /**
@@ -60,80 +66,19 @@ export type ComparisonField = {
  */
 export type ComparisonSides = "both" | "before" | "after";
 
-type ComparisonNode = ReturnType<typeof toWorkflowGraphData>["nodes"][number];
 type ComparisonPayloadIndex = {
   baseNodes: ReadonlyMap<string, ComparisonNode>;
   draftNodes: ReadonlyMap<string, ComparisonNode>;
 };
-
-/** The label of a config value the step's action does not describe. */
-const GENERIC_CONFIG_LABEL = "Configuration value";
-/** The label of a node property outside `data` the editor has no name for. */
-const GENERIC_PROPERTY_LABEL = "Property";
-/** The label of a Lifecycle Rules value the editor has no name for. */
-const GENERIC_LIFECYCLE_LABEL = "Lifecycle rule";
-const GENERIC_LABELS: ReadonlySet<string> = new Set([
-  GENERIC_CONFIG_LABEL,
-  GENERIC_PROPERTY_LABEL,
-  GENERIC_LIFECYCLE_LABEL,
-]);
-
-/** The text the server's redactor puts in place of a sensitive value. */
-const REDACTED_TEXT = "[REDACTED]";
-/**
- * A sensitive string as the server's `maskValue` masks it: four stars for a
- * string of four characters or fewer, and otherwise one to eight stars followed
- * by the string's last four characters.
- */
-const MASKED_VALUE = /^(?:\*{4}|\*{1,8}[\s\S]{4})$/;
-
-/** Whether a comparison value is one the server redacted before sending it. */
-export function isHiddenComparisonValue(value: unknown): boolean {
-  return (
-    typeof value === "string" &&
-    (value.includes(REDACTED_TEXT) || MASKED_VALUE.test(value))
-  );
-}
-
-/**
- * A stored condition shown as sentences. `fields` names what its rules read,
- * and `setOperatorsRequireEnumValues` is set for Entity eligibility.
- */
-class ConditionValue {
-  constructor(
-    readonly model: ConditionModel,
-    readonly fields: readonly ConditionSelectableField[],
-    readonly setOperatorsRequireEnumValues: boolean
-  ) {}
-}
-
-/** A sentence shown in place of a stored value that cannot be read as it is. */
-class ValueNote {
-  constructor(readonly text: string) {}
-}
-
-/** A connection the person has, by id, with the name it was given. */
-export type ComparisonConnection = { id: string; name: string };
 
 /** A string longer than this many characters is shown shortened until expanded. */
 export const LONG_VALUE_LENGTH = 200;
 /** A string with more lines than this is shown shortened until expanded. */
 const LONG_VALUE_LINES = 4;
 
-const NODE_TYPE_LABEL: Readonly<Record<string, string>> = {
-  action: "Step",
-  lifecycle: "Lifecycle",
-  group: "Group",
-  add: "Placeholder",
-};
-
 const payloadIndexes = new WeakMap<
   WorkflowComparisonPayload,
   ComparisonPayloadIndex
->();
-const actionFieldLabels = new WeakMap<
-  ExtensionCatalog,
-  Map<string, Map<string, string>>
 >();
 
 function payloadIndex(
@@ -157,287 +102,6 @@ function payloadIndex(
   };
   payloadIndexes.set(payload, index);
   return index;
-}
-
-function configFieldLabel(
-  catalog: ExtensionCatalog,
-  actionType: unknown,
-  key: string
-): string {
-  if (typeof actionType !== "string") return GENERIC_CONFIG_LABEL;
-  let catalogLabels = actionFieldLabels.get(catalog);
-  if (!catalogLabels) {
-    catalogLabels = new Map();
-    actionFieldLabels.set(catalog, catalogLabels);
-  }
-  let labels = catalogLabels.get(actionType);
-  if (!labels) {
-    const action = findAction(catalog, actionType);
-    labels = new Map(
-      (action ? flattenConfigFields(action.configFields) : []).map((field) => [
-        field.key,
-        field.label,
-      ])
-    );
-    catalogLabels.set(actionType, labels);
-  }
-  return labels.get(key) ?? GENERIC_CONFIG_LABEL;
-}
-
-function titleFromPath(path: string): string {
-  const key =
-    path
-      .split(".")
-      .at(-1)
-      ?.replace(/\[\d+\]$/g, "") ?? "Value";
-  return key
-    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-    .replace(/[_-]+/g, " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-/**
- * The part of a config path below its config key, as "Item 2 › Name": a list
- * index counts from one and a key reads as words.
- */
-function nestedPathLabel(segments: readonly string[]): string {
-  return segments
-    .map((segment) =>
-      /^\d+$/.test(segment)
-        ? `Item ${Number(segment) + 1}`
-        : titleFromPath(segment)
-    )
-    .join(" › ");
-}
-
-/** The name of each Lifecycle Rules key whose values are not keyed by Event. */
-const LIFECYCLE_RULE_LABELS: Readonly<Record<string, string>> = {
-  startEvents: "Start events",
-  cancelEvents: "Cancel events",
-  concurrency: "Concurrency",
-  allowManualStart: "Manual runs",
-};
-
-/** The name of each Lifecycle Rules record keyed by Event name. */
-const LIFECYCLE_EVENT_RECORD_LABELS: Readonly<Record<string, string>> = {
-  correlationPaths: "Correlation path",
-  connectionIds: "Connection",
-  startFilters: "Start filter",
-  cancelFilters: "Cancel filter",
-};
-
-/** The words each Entity eligibility checkpoint reads as. */
-const ELIGIBILITY_CHECKPOINT_LABELS: Readonly<Record<string, string>> = {
-  "before-execution": "Before starting",
-  "before-node": "Before each step",
-};
-
-/**
- * The label of a value inside Lifecycle Rules, where `rulePath` is the path
- * below `lifecycleRules`. A value keyed by Event name carries that Event's
- * catalog label, as "Start filter › Appointment booked".
- */
-function lifecycleRuleLabel(
-  catalog: ExtensionCatalog,
-  rulePath: readonly string[]
-): string {
-  const [ruleKey = "", second, third] = rulePath;
-  const eventRecordLabel = LIFECYCLE_EVENT_RECORD_LABELS[ruleKey];
-  if (eventRecordLabel !== undefined) {
-    return second === undefined
-      ? eventRecordLabel
-      : `${eventRecordLabel} › ${eventLabel(catalog, second)}`;
-  }
-  if (ruleKey === "trackedEntity") {
-    if (second === "type" || second === undefined) return "Tracked Entity";
-    if (second === "bindings") {
-      return third === undefined
-        ? "Tracked Entity in each Event"
-        : `Tracked Entity › ${eventLabel(catalog, third)}`;
-    }
-    return GENERIC_LIFECYCLE_LABEL;
-  }
-  if (ruleKey === "entityEligibility") {
-    if (second === "condition") return "Eligible when";
-    if (second === "checkpoints") return "Eligibility checked";
-    return second === undefined
-      ? "Entity eligibility"
-      : GENERIC_LIFECYCLE_LABEL;
-  }
-  return LIFECYCLE_RULE_LABELS[ruleKey] ?? GENERIC_LIFECYCLE_LABEL;
-}
-
-function lifecycleConfigFieldLabel(
-  catalog: ExtensionCatalog,
-  path: readonly string[]
-): string {
-  const configKey = path[2];
-  if (configKey === "lifecycleRules") {
-    return lifecycleRuleLabel(catalog, path.slice(3));
-  }
-  return GENERIC_CONFIG_LABEL;
-}
-
-export function comparisonFieldLabel(
-  catalog: ExtensionCatalog,
-  change: WorkflowFieldChange,
-  beforeNode: ComparisonNode | undefined,
-  afterNode: ComparisonNode | undefined
-): string {
-  const path = change.path;
-  if (path.length === 1 && path[0] === "type") return "Type";
-  if (path.length === 1 && path[0] === "parentId") return "Group";
-  if (path[0] !== "data") return GENERIC_PROPERTY_LABEL;
-  const key = path[1];
-  if (key === "type") return "Type";
-  if (key === "label") return "Label";
-  if (key === "description") return "Description";
-  if (key === "enabled") return "Enabled";
-  if (key !== "config") return GENERIC_PROPERTY_LABEL;
-  const configKey = path[2];
-  if (configKey === "actionType") return "Action";
-  const node = afterNode ?? beforeNode;
-  if (node?.data.type === "lifecycle") {
-    return lifecycleConfigFieldLabel(catalog, path);
-  }
-  const label = configFieldLabel(
-    catalog,
-    afterNode?.data.config?.actionType ?? beforeNode?.data.config?.actionType,
-    configKey ?? "value"
-  );
-  return path.length > 3 && label !== GENERIC_CONFIG_LABEL
-    ? `${label} › ${nestedPathLabel(path.slice(3))}`
-    : label;
-}
-
-/**
- * A stored condition model as sentences reading `fields`, a note when the
- * model does not decode, and undefined when nothing is stored.
- */
-function readableCondition(
-  stored: string,
-  fields: () => readonly ConditionSelectableField[],
-  setOperatorsRequireEnumValues: boolean
-): ConditionValue | ValueNote | undefined {
-  if (isBlank(stored)) return undefined;
-  const parsed = parseConditionModel(stored);
-  return parsed.valid
-    ? new ConditionValue(parsed.model, fields(), setOperatorsRequireEnumValues)
-    : new ValueNote("Filter changed");
-}
-
-/**
- * The value a person reads for a string inside Lifecycle Rules, where
- * `rulePath` is the path below `lifecycleRules` and `node` is the Lifecycle
- * Node on the side the value comes from.
- */
-function readableLifecycleValue(input: {
-  catalog: ExtensionCatalog;
-  rulePath: readonly string[];
-  value: string;
-  node: ComparisonNode | undefined;
-  nodes: ReadonlyMap<string, ComparisonNode>;
-  connections: readonly ComparisonConnection[] | null;
-}): unknown {
-  const { catalog, value } = input;
-  const [ruleKey, second, third] = input.rulePath;
-  switch (ruleKey) {
-    case "startEvents":
-    case "cancelEvents":
-      return eventLabel(catalog, value);
-    case "concurrency":
-      return (
-        CONCURRENCY_OPTIONS.find((option) => option.value === value)?.label ??
-        value
-      );
-    case "startFilters":
-    case "cancelFilters":
-      return second === undefined
-        ? value
-        : readableCondition(
-            value,
-            () =>
-              getEventConditionFields(
-                catalog,
-                second,
-                [...input.nodes.values()].map(toEditorNode)
-              ),
-            false
-          );
-    case "connectionIds": {
-      const name = input.connections?.find(
-        (connection) => connection.id === value
-      )?.name;
-      return name === undefined || isBlank(name)
-        ? new ValueNote("Connection changed")
-        : name;
-    }
-    case "trackedEntity":
-      return second === "type"
-        ? (findEntity(catalog, value)?.label ?? value)
-        : value;
-    case "entityEligibility": {
-      if (second === "checkpoints" && third !== undefined) {
-        return ELIGIBILITY_CHECKPOINT_LABELS[value] ?? value;
-      }
-      if (second !== "condition") return value;
-      const entityType = readLifecycleRules(input.node?.data.config)
-        ?.trackedEntity?.type;
-      return readableCondition(
-        value,
-        () =>
-          entityType === undefined
-            ? []
-            : getEntityConditionFields(catalog, entityType),
-        true
-      );
-    }
-    default:
-      return value;
-  }
-}
-
-/**
- * The value a person reads for a property whose stored value is an identifier
- * or a serialized rule: a node type, an action id, a Group's node id, or a
- * Lifecycle Rules value. A value the server hid, and any other value, is
- * returned as it is. `node` and `nodes` are the node and the graph of the side
- * the value comes from.
- */
-function readableValue(input: {
-  catalog: ExtensionCatalog;
-  path: readonly string[];
-  value: unknown;
-  node: ComparisonNode | undefined;
-  nodes: ReadonlyMap<string, ComparisonNode>;
-  connections: readonly ComparisonConnection[] | null;
-}): unknown {
-  const { catalog, path, value } = input;
-  const joined = path.join(".");
-  if (joined === "parentId") {
-    if (typeof value !== "string") return "Not in a Group";
-    const group = input.nodes.get(value);
-    return group
-      ? comparisonNodeTitle(group.data, catalog)
-      : "Unavailable Group";
-  }
-  if (typeof value !== "string" || isHiddenComparisonValue(value)) {
-    return value;
-  }
-  if (joined === "type" || joined === "data.type") {
-    return NODE_TYPE_LABEL[value] ?? value;
-  }
-  if (joined === "data.config.actionType") {
-    return findAction(catalog, value)?.label ?? "Unavailable action";
-  }
-  if (path[2] === "lifecycleRules") {
-    return readableLifecycleValue({
-      ...input,
-      rulePath: path.slice(3),
-      value,
-    });
-  }
-  return value;
 }
 
 /** The plain text of a value that needs no expanding. */
@@ -526,11 +190,19 @@ function snapshotFields(
         ([key]) => key !== "actionType" && key !== TEST_PAYLOADS_CONFIG_KEY
       )
       .toSorted(([left], [right]) => compareText(left, right))
-      .map(([key, raw]) => ({
-        key: `snapshot:config:${key}`,
-        label: configFieldLabel(catalog, actionType, key),
-        [side]: raw,
-      })),
+      .map(([key, raw]) =>
+        node.data.type === "group"
+          ? {
+              key: `snapshot:config:${key}`,
+              label: groupConfigFieldLabel([key]),
+              ...value(["data", "config", key], raw),
+            }
+          : {
+              key: `snapshot:config:${key}`,
+              label: configFieldLabel(catalog, actionType, key),
+              [side]: raw,
+            }
+      ),
   ];
 }
 
@@ -565,7 +237,8 @@ export function comparisonSides(
  * node lists each changed property with both values. Identifiers read as names,
  * and a Connection id reads as a name from `options.connections` when that
  * list holds it. A row's key is its path, and the path plus its position only
- * when the change lists that path more than once.
+ * when the change lists that path more than once. Each row of a modified node
+ * carries its category, Organization or Behavior.
  */
 export function comparisonFields(
   catalog: ExtensionCatalog,
@@ -585,7 +258,12 @@ export function comparisonFields(
     return snapshotFields(catalog, baseNode, index.baseNodes, "before");
   const pathKeys = change.fields.map((field) => JSON.stringify(field.path));
   const pathsUnique = new Set(pathKeys).size === pathKeys.length;
+  const groupFrame = isGroupFrameChange({
+    before: baseNode?.data.type,
+    after: draftNode?.data.type,
+  });
   return change.fields.map((field, position) => ({
+    category: fieldChangeCategory({ path: field.path, groupFrame }),
     key: pathsUnique
       ? `field:${pathKeys[position]}`
       : `field:${pathKeys[position]}:${position}`,
@@ -607,6 +285,37 @@ export function comparisonFields(
       connections,
     }),
   }));
+}
+
+/**
+ * The Group a modified step sits in on each side of `payload`, by title, or
+ * null when `change` records no Group membership change. Each side's title is
+ * read from that side's own graph, so a Group renamed in the draft keeps its
+ * published title on the published side, as the step's field table shows it.
+ */
+export function comparisonGroupMembership(
+  catalog: ExtensionCatalog,
+  payload: WorkflowComparisonPayload,
+  change: WorkflowNodeChange
+): { before: string | null; after: string | null } | null {
+  const field =
+    change.kind === "modified"
+      ? change.fields.find((item) => isGroupMembershipPath(item.path))
+      : undefined;
+  if (!field) return null;
+  const index = payloadIndex(payload);
+  return {
+    before: groupMembershipTitle({
+      catalog,
+      groupId: field.before,
+      nodes: index.baseNodes,
+    }),
+    after: groupMembershipTitle({
+      catalog,
+      groupId: field.after,
+      nodes: index.draftNodes,
+    }),
+  };
 }
 
 /**

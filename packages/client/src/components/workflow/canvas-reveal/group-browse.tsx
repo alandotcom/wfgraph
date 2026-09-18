@@ -40,6 +40,7 @@ import {
 } from "@wfgraph/shared/graph/group-boundary";
 import {
   groupCanvasPositions,
+  GROUP_DIRECTION_LABEL,
   groupLayoutDirection,
 } from "@wfgraph/shared/graph/node-group";
 import type { GroupLayoutDirection } from "@wfgraph/shared/graph/schemas";
@@ -88,8 +89,16 @@ const DIRECTION_CHOICES: ReadonlyArray<{
   label: string;
   Icon: typeof ArrowDown;
 }> = [
-  { direction: "vertical", label: "Top to bottom", Icon: ArrowDown },
-  { direction: "horizontal", label: "Left to right", Icon: ArrowRight },
+  {
+    direction: "vertical",
+    label: GROUP_DIRECTION_LABEL.vertical,
+    Icon: ArrowDown,
+  },
+  {
+    direction: "horizontal",
+    label: GROUP_DIRECTION_LABEL.horizontal,
+    Icon: ArrowRight,
+  },
 ];
 
 /**

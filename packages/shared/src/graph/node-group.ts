@@ -567,6 +567,14 @@ export function groupLayoutDirection(
   return isGroupLayoutDirection(direction) ? direction : "vertical";
 }
 
+/** The words each Group layout direction reads as, wherever the editor names one. */
+export const GROUP_DIRECTION_LABEL: Readonly<
+  Record<GroupLayoutDirection, string>
+> = {
+  vertical: "Top to bottom",
+  horizontal: "Left to right",
+};
+
 /**
  * Each member's top-left corner on the focused Group canvas, at the standard
  * card size, keyed by member id. The coordinates belong to the Group alone: a

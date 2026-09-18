@@ -26,7 +26,14 @@ import {
 import {
   loadWorkflowGraphAtom,
   nodesAtom,
+  selectOnlyNodeAtom,
 } from "#src/lib/workflow-graph-store";
+import {
+  activeWorkspaceAddressAtom,
+  recordInspectorScrollAtom,
+  recordWorkspaceCameraAtom,
+  setWorkspaceRevealLevelAtom,
+} from "#src/lib/workflow-workspace-navigation";
 import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import { orpcQuery } from "#src/lib/rpc-query";
 import {
@@ -179,6 +186,85 @@ describe("useWorkflowComparisonActions", () => {
     });
 
     expect(renders).toBe(rendersBeforeGraphChange);
+  });
+
+  it("sends the same draft graph whatever the Group scope, selection, Reveal, camera, and scroll are", async () => {
+    const requests: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+        requests.push((await parseRpcRequestInput(init)).draftGraph);
+        return rpcJsonResponse(comparison);
+      })
+    );
+    const store = createStore();
+    store.set(currentWorkflowIdAtom, "workflow_1");
+    store.set(loadWorkflowGraphAtom, {
+      nodes: [
+        {
+          id: "group",
+          type: "group",
+          position: { x: 0, y: 0 },
+          data: { label: "Reminders", type: "group" },
+        },
+        {
+          id: "a",
+          type: "action",
+          position: { x: 0, y: 0 },
+          parentId: "group",
+          data: { label: "A", type: "action" },
+        },
+        {
+          id: "b",
+          type: "action",
+          position: { x: 0, y: 200 },
+          parentId: "group",
+          data: { label: "B", type: "action" },
+        },
+      ],
+      edges: [{ id: "a-b", source: "a", target: "b" }],
+    });
+    showWorkspaceRoute(store, { view: "changes" });
+    const queryClient = new QueryClient({
+      defaultOptions: { mutations: { retry: false } },
+    });
+    function Wrapper({ children }: { children: ReactNode }) {
+      return (
+        <QueryClientProvider client={queryClient}>
+          <JotaiProvider store={store}>{children}</JotaiProvider>
+        </QueryClientProvider>
+      );
+    }
+    const { result } = renderHook(() => useWorkflowComparisonActions(), {
+      wrapper: Wrapper,
+    });
+    await waitFor(() => expect(result.current.canCompare).toBe(true));
+    await act(async () => result.current.openComparison({ force: true }));
+
+    // Enter the Group, select a member, open Focus, and move the camera and
+    // the inspector scroll for that address.
+    showWorkspaceRoute(store, { view: "changes", group: "group" });
+    const address = store.get(activeWorkspaceAddressAtom);
+    store.set(selectOnlyNodeAtom, "a");
+    store.set(setWorkspaceRevealLevelAtom, { address, level: "focus" });
+    store.set(recordWorkspaceCameraAtom, {
+      address,
+      formFactor: "desktop",
+      camera: { centerX: 400, centerY: 300, zoom: 2 },
+    });
+    store.set(recordInspectorScrollAtom, {
+      address,
+      inspectedId: "a",
+      level: "focus",
+      top: 120,
+    });
+    await act(async () => result.current.openComparison({ force: true }));
+
+    expect(requests).toHaveLength(2);
+    expect(requests[1]).toEqual(requests[0]);
+    expect(JSON.stringify(requests[1])).not.toMatch(
+      /selected|camera|scroll|reveal|hidden/i
+    );
   });
 
   it("keeps the installed comparison when a refresh fails", async () => {

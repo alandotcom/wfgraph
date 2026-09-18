@@ -6,7 +6,13 @@ import {
 } from "@xyflow/react";
 import { useAtomValue } from "jotai";
 import { ArrowRight, Group } from "lucide-react";
-import { memo, useMemo } from "react";
+import {
+  createContext,
+  memo,
+  type ReactNode,
+  useContext,
+  useMemo,
+} from "react";
 import { cn } from "@wfgraph/shared/utils";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { useAfterPaint } from "#src/hooks/effects";
@@ -15,6 +21,7 @@ import {
   groupOutletHandlesAtom,
 } from "#src/lib/workflow-graph-presentation-store";
 import {
+  COMPARISON_GROUP_ANNOTATION,
   COMPARISON_NODE_ANNOTATION,
   type WorkflowNodeData,
 } from "#src/lib/workflow-graph-types";
@@ -24,6 +31,21 @@ import { NodeIssueBadge } from "#src/components/flow-elements/node-issue-badge";
 import { Button } from "#src/components/ui/button";
 import { useGroupScopeNavigation } from "#src/components/workflow/use-group-scope-navigation";
 
+/** What a collapsed Group card hands the control for its changed steps. */
+export type GroupChangedStepsControlProps = {
+  groupLabel: string;
+  changedMemberIds: readonly string[];
+};
+
+/**
+ * The control a canvas supplies for the changed steps inside a Group. A Group
+ * card on a comparison canvas draws it beside the step count, and a card under
+ * no provider draws none.
+ */
+export const GroupChangedStepsSlot = createContext<
+  ((props: GroupChangedStepsControlProps) => ReactNode) | null
+>(null);
+
 type GroupNodeProps = NodeProps & {
   data?: WorkflowNodeData;
   id: string;
@@ -32,11 +54,13 @@ type GroupNodeProps = NodeProps & {
 /**
  * A Group on the overview: one collapsed card naming the Group and how many
  * steps it holds. Its members show only on the focused Group canvas, which the
- * card's Enter group button opens.
+ * card's Enter group button opens. On a comparison canvas the card also counts
+ * its changed steps and leads to the first one.
  */
 export const GroupNode = memo(({ data, selected, id }: GroupNodeProps) => {
   const updateNodeInternals = useUpdateNodeInternals();
   const { enterGroup } = useGroupScopeNavigation();
+  const renderChangedSteps = useContext(GroupChangedStepsSlot);
   // The canvas paints each edge leaving a Group as leaving its frame, keeping
   // the member's source handle. React Flow draws such an edge only from a
   // handle with that id, so the frame draws one handle per distinct handle its
@@ -57,6 +81,7 @@ export const GroupNode = memo(({ data, selected, id }: GroupNodeProps) => {
     return null;
   }
   const label = data.label || "Group";
+  const changedMemberIds = data[COMPARISON_GROUP_ANNOTATION]?.changedMemberIds;
 
   return (
     <div
@@ -103,10 +128,17 @@ export const GroupNode = memo(({ data, selected, id }: GroupNodeProps) => {
           <ArrowRight />
         </Button>
       </div>
-      <dl className="flex flex-1 items-center justify-between px-3 text-xs">
-        <dt className="text-muted-foreground">Steps</dt>
-        <dd className="font-medium tabular-nums">{memberCount}</dd>
-      </dl>
+      <div className="flex flex-1 items-center gap-2 px-3 text-xs">
+        <dl className="flex flex-1 items-center justify-between gap-2">
+          <dt className="text-muted-foreground">Steps</dt>
+          <dd className="font-medium tabular-nums">{memberCount}</dd>
+        </dl>
+        {/* On a comparison canvas the card counts the changed steps inside
+            the Group, which show only once the Group is entered. */}
+        {changedMemberIds && renderChangedSteps
+          ? renderChangedSteps({ changedMemberIds, groupLabel: label })
+          : null}
+      </div>
       {outletHandles.map((handle, index) => (
         <Handle
           aria-label="Group output"

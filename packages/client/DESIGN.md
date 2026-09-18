@@ -494,10 +494,26 @@ The toolbar shows **Changes** after the first publication. **Changes** compares
 the selected published version with the exact draft that was visible when the
 view opened. Its Canvas Reveal header names the comparison as "Version N →
 proposed version M" and keeps that title while the comparison refreshes. Browse
-holds **Refresh comparison**, **Version history**, and **Exit comparison**, counts
-the added, modified, and removed steps and connections, and lists each changed
-step and then each changed connection with its marker and change. Choosing a
-row, **Previous**, or **Next** selects that object on the canvas and places it.
+holds **Refresh comparison**, **Version history**, and **Exit comparison**, and
+counts changes under **Behavior** and **Organization**. Behavior counts the
+added, modified, and removed steps whose execution changed and the changed
+connections. Organization appears when Groups changed and counts the added,
+modified, and removed Groups and the steps whose Group membership changed. A
+Group's label, layout direction, creation, and removal, and a step's Group
+membership, are Organization; a step's settings, its enabled state, and every
+connection are Behavior. A comparison whose only changes are Organization shows
+"Execution behavior is unchanged. Only how steps are organized in Groups
+differs." in place of the Behavior counts. The list shows each changed Group,
+then each changed step, then each changed connection with its marker and
+change, and a step whose only change is its Group reads **Group membership**.
+Choosing a row, **Previous**, or **Next** selects that object on the canvas and
+places it. A collapsed Group card on the comparison canvas counts the changed
+steps inside it, as "2 changed"; pressing that count enters the Group, selects
+the first of those steps, and opens Browse when Reveal is closed.
+Collapse, camera, Group depth, selection, Reveal state, and scroll never enter
+a comparison.
+The Publish confirmation shows the same Behavior and Organization counts, and
+the same sentence for a version whose only changes are Organization.
 While a different comparison is loading or has failed, Browse shows that state
 and never the comparison it replaces, and the canvas shows the draft without
 change markers until the comparison the route names arrives. Version history opens inside Browse with focus
@@ -519,7 +535,13 @@ rules or "Filter changed" when it cannot be read, and a Connection reads as its
 name or "Connection changed". Focus says so when a step's action is missing from
 the catalog and its settings show general names, when the comparison lacks a
 side's values, and when a step is unchanged and only its connections changed,
-listing those connections. A changed step also shows how the editor's issue
+listing those connections. A changed Group lists its own settings, reads its
+layout direction as "Top to bottom" or "Left to right", and lists the changed
+steps inside it, each entering the Group to show that step. It says execution
+behavior is unchanged when none of those steps changed behavior, and otherwise
+says that the Group's own change does not affect execution. A step whose Group changed shows a **Group membership** table
+naming each version's Group or "Not in a Group", and its sentence names the
+Groups it moved between. A changed step also shows how the editor's issue
 checks differ between the two versions, and says validation is unknown for a
 version whose action is missing from the catalog. **Previous** and **Next** in Focus move the canvas selection and
 Focus together, and a changed step inside a collapsed Group is selected on that
