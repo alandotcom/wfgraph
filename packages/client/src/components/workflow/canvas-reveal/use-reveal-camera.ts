@@ -24,6 +24,7 @@ import {
   revealOccupiedWidth,
   usableCanvasRect,
 } from "./reveal-geometry";
+import { outletPlacement } from "./reveal-outlets";
 import { revealPlacementRequestAtom } from "./reveal-requests";
 
 /** Elements floating over the canvas that a placed step must not sit under. */
@@ -71,7 +72,14 @@ export function useRevealCamera(input: {
 } {
   const store = useStore();
   const flowStore = useStoreApi();
-  const { getNodes, getNodesBounds, getViewport, setViewport } = useReactFlow();
+  const {
+    getEdges,
+    getInternalNode,
+    getNodes,
+    getNodesBounds,
+    getViewport,
+    setViewport,
+  } = useReactFlow();
   const isMobile = useIsMobile();
   const isSized = useFlowStore((state) => state.width > 0 && state.height > 0);
   const reveal = useAtomValue(canvasRevealAtom);
@@ -125,11 +133,22 @@ export function useRevealCamera(input: {
       inFlightRef.current ?? worldCameraFromViewport(getViewport(), size);
 
     let bounds: Rect | null = null;
+    let optionalBounds: readonly Rect[] = [];
     if (step === "place-request" && placementRequest) {
       answeredSequenceRef.current = placementRequest.sequence;
       bounds = getNodesBounds([...placementRequest.nodeIds]);
     } else if (state.subject?.placement.kind === "nodes") {
       bounds = getNodesBounds([...state.subject.placement.nodeIds]);
+    } else if (state.subject?.placement.kind === "node-outlets") {
+      const { nodeId } = state.subject.placement;
+      const placement = outletPlacement({
+        nodeId,
+        nodeBounds: getNodesBounds([nodeId]),
+        edges: getEdges(),
+        getInternalNode,
+      });
+      bounds = placement.bounds;
+      optionalBounds = placement.labels;
     } else if (state.subject?.placement.kind === "graph") {
       bounds = getNodesBounds(getNodes());
     }
@@ -149,6 +168,7 @@ export function useRevealCamera(input: {
             viewport: viewportFromWorldCamera(current, size),
             usable,
             bounds,
+            optionalBounds,
           }),
           size
         )

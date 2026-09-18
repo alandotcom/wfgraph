@@ -1,16 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { useAtomValue, useSetAtom } from "jotai";
 import { compact } from "es-toolkit/array";
-import { type ReactNode, useMemo } from "react";
+import { useMemo } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { Input } from "#src/components/ui/input";
 import { Label } from "#src/components/ui/label";
 import { ConditionSummary } from "#src/components/workflow/config/condition-summary";
 import { NodePropertiesForm } from "#src/components/workflow/node-properties-form";
-import {
-  DeleteStepButton,
-  StepEnableToggle,
-} from "#src/components/workflow/step-controls";
+import { NodeControls } from "#src/components/workflow/step-controls";
 import { can } from "#src/lib/authorization";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
 import { getEventConditionFields } from "#src/lib/upstream-node-fields";
@@ -29,21 +26,12 @@ import {
 import { readConfigString } from "@wfgraph/shared/graph/node-config";
 import { readWaitSubscriptions } from "@wfgraph/shared/lifecycle/wait-subscription";
 import type { RevealBodyProps } from "./reveal-kinds";
+import { NodeIssueList, Section } from "./reveal-sections";
 import {
   type SummaryRow,
   summarizeActionFields,
   summarizeWait,
 } from "./step-summary";
-
-/** A Browse section: a heading over its content, divided from the next. */
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="space-y-2 border-t px-4 py-3 first:border-t-0">
-      <h3 className="font-medium text-sm">{title}</h3>
-      {children}
-    </section>
-  );
-}
 
 function SummaryRows({ rows }: { rows: readonly SummaryRow[] }) {
   return (
@@ -122,7 +110,7 @@ function WaitEventsSummary({ node }: { node: WorkflowNode }) {
 /**
  * Browse for an ordinary step: an editable label, the step's action and
  * connection, its settings as label and value pairs, its validation issues, and
- * its enable and delete controls. An issue opens Focus on the field it names.
+ * its node controls. An issue opens Focus on the field it names.
  * A step with no action chosen shows the action picker.
  */
 export function StepBrowse({ subject, frame, openFocus }: RevealBodyProps) {
@@ -209,39 +197,10 @@ export function StepBrowse({ subject, frame, openFocus }: RevealBodyProps) {
       ) : null}
 
       <Section title="Validation">
-        {nodeIssues.length === 0 ? (
-          <p className="text-muted-foreground text-xs">No issues.</p>
-        ) : (
-          <ul className="space-y-1">
-            {nodeIssues.map((issue) => (
-              <li
-                key={`${issue.kind}:${"fieldKey" in issue ? issue.fieldKey : ""}:${issue.message}`}
-              >
-                <button
-                  className={
-                    issue.severity === "blocking"
-                      ? "text-left text-destructive text-xs underline-offset-2 hover:underline"
-                      : "text-left text-warning text-xs underline-offset-2 hover:underline"
-                  }
-                  onClick={() =>
-                    openFocus("fieldKey" in issue ? issue.fieldKey : undefined)
-                  }
-                  type="button"
-                >
-                  {issue.message}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+        <NodeIssueList issues={nodeIssues} onSelect={openFocus} />
       </Section>
 
-      {canUpdate ? (
-        <div className="flex items-center gap-2 border-t px-4 pt-3">
-          <StepEnableToggle node={node} />
-          <DeleteStepButton frame={frame} nodeId={nodeId} />
-        </div>
-      ) : null}
+      <NodeControls className="border-t px-4 pt-3" frame={frame} node={node} />
     </div>
   );
 }

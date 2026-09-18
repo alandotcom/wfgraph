@@ -2,13 +2,14 @@ import {
   BaseEdge,
   EdgeLabelRenderer,
   type EdgeProps,
-  type InternalNode,
-  Position,
   useInternalNode,
 } from "@xyflow/react";
 import { memo } from "react";
 import { resolveEdgeLabel } from "#src/components/flow-elements/edge-label";
-import { getWorkflowEdgePath } from "#src/components/flow-elements/edge-path";
+import {
+  getEdgeParams,
+  getWorkflowEdgePath,
+} from "#src/components/flow-elements/edge-path";
 import {
   COMPARISON_EDGE_ANNOTATION,
   type ComparisonEdgeAnnotation,
@@ -35,88 +36,6 @@ export function comparisonEdgeStyle(
       return {};
   }
 }
-
-const getHandleCoordsByPosition = (
-  node: InternalNode,
-  handleType: "source" | "target",
-  handlePosition: Position,
-  handleId?: string | null
-) => {
-  const handles = node.internals.handleBounds?.[handleType];
-  if (!(handles && handles.length > 0)) {
-    return [0, 0] as const;
-  }
-
-  const handle =
-    (handleId
-      ? handles.find((candidate) => (candidate.id ?? null) === handleId)
-      : undefined) ??
-    handles.find((candidate) => candidate.position === handlePosition) ??
-    handles[0];
-
-  if (!handle) {
-    return [0, 0] as const;
-  }
-
-  let offsetX = handle.width / 2;
-  let offsetY = handle.height / 2;
-
-  // this is a tiny detail to make the markerEnd of an edge visible.
-  // The handle position that gets calculated has the origin top-left, so depending which side we are using, we add a little offset
-  // when the handlePosition is Position.Right for example, we need to add an offset as big as the handle itself in order to get the correct position
-  switch (handlePosition) {
-    case Position.Left:
-      offsetX = 0;
-      break;
-    case Position.Right:
-      offsetX = handle.width;
-      break;
-    case Position.Top:
-      offsetY = 0;
-      break;
-    case Position.Bottom:
-      offsetY = handle.height;
-      break;
-    default:
-      throw new Error("Invalid handle position");
-  }
-
-  const x = node.internals.positionAbsolute.x + handle.x + offsetX;
-  const y = node.internals.positionAbsolute.y + handle.y + offsetY;
-
-  return [x, y] as const;
-};
-
-const getEdgeParams = (
-  source: InternalNode,
-  target: InternalNode,
-  sourceHandle?: string | null,
-  targetHandle?: string | null
-) => {
-  const sourcePos = Position.Bottom;
-  const [sx, sy] = getHandleCoordsByPosition(
-    source,
-    "source",
-    sourcePos,
-    sourceHandle
-  );
-  const targetPos = Position.Top;
-  const [tx, ty] = getHandleCoordsByPosition(
-    target,
-    "target",
-    targetPos,
-    targetHandle
-  );
-
-  return {
-    sx,
-    sy,
-    tx,
-    ty,
-    sourcePos,
-    targetPos,
-  };
-};
 
 const Animated = memo(function Animated({
   id,
