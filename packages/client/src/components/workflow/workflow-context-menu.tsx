@@ -144,7 +144,11 @@ export function WorkflowContextMenu({
       const nodeId = menuState.nodeId;
       onClose();
       selectOnlyNode(nodeId);
-      navigation.followSelection(store.get(activeWorkspaceAddressAtom));
+      navigation.openNode({
+        address: store.get(activeWorkspaceAddressAtom),
+        nodeId,
+        level: "focus",
+      });
     }
   }, [menuState, onClose, selectOnlyNode, navigation, store]);
 
@@ -317,8 +321,8 @@ export function WorkflowContextMenu({
   const canGroup = grouping.ok;
   const showUngroup = canUngroup(clicked);
   // One row per outlet, so a Condition or an Event Split says which branch the
-  // step goes on. A collapsed Group card's one outlet stands for every path
-  // that ends inside it.
+  // step goes on. A collapsed Group card uses its existing continuation ports
+  // or terminal non-Condition members, leaving unused branches unwired.
   const outlets =
     clicked && menuState.type === "node"
       ? stepOutlets({ node: clicked, nodes, edges, catalog })

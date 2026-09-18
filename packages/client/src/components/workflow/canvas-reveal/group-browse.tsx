@@ -171,6 +171,7 @@ export function GroupBrowse({ subject, openFocus }: RevealBodyProps) {
     const node = byId.get(nodeId);
     return node ? comparisonNodeTitle(node.data, catalog) : "Unknown step";
   };
+  const description = byId.get(groupId)?.data.description;
   const boundary = analyzeGroupBoundaryById({ nodes, edges, groupId });
   const ownIssues = issues.filter((issue) => issue.nodeId === groupId);
   const memberIds = new Set(boundary.memberIds);
@@ -181,6 +182,11 @@ export function GroupBrowse({ subject, openFocus }: RevealBodyProps) {
   return (
     <div className="pb-4">
       <Section title="Group summary">
+        {description ? (
+          <p className="whitespace-pre-wrap text-sm text-muted-foreground [overflow-wrap:anywhere]">
+            {description}
+          </p>
+        ) : null}
         <dl className="space-y-1.5 text-xs">
           <div className="flex items-baseline justify-between gap-3">
             <dt className="text-muted-foreground">Steps</dt>

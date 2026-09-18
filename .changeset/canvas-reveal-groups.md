@@ -18,7 +18,9 @@ same view.
 
 A Group can now hold any two or more steps that meet the version 1 Group rules,
 including side-effecting actions, Waits, and Conditions. The workflow canvas
-shows a Group as one collapsed card with one outlet, and entering it opens a
+shows a Group as one collapsed card with one outlet. The card and summary display
+the Group's description, and the context menu's Edit command opens its editing
+form directly. Entering a Group opens a
 canvas of its members at their stored positions. Members can be dragged, added,
 pasted, duplicated, connected, and deleted. Tidy layout arranges the focused
 members in one undoable edit without moving outside steps. Add step after

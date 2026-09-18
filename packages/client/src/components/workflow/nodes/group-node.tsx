@@ -19,6 +19,7 @@ import {
 } from "#src/lib/workflow-graph-types";
 import { NODE_ICON_CLASS } from "#src/lib/workflow-node-dimensions";
 import { ComparisonMarker } from "#src/components/flow-elements/comparison-marker";
+import { NodeDescription } from "#src/components/flow-elements/node";
 import { NodeIssueBadge } from "#src/components/flow-elements/node-issue-badge";
 import { Button } from "#src/components/ui/button";
 import { useGroupScopeNavigation } from "#src/components/workflow/use-group-scope-navigation";
@@ -130,6 +131,11 @@ export const GroupNode = memo(
             <ArrowRight />
           </Button>
         </div>
+        {data.description ? (
+          <NodeDescription className="shrink-0 px-3 pt-2">
+            {data.description}
+          </NodeDescription>
+        ) : null}
         {runSummary ? (
           <div
             className="flex min-w-0 flex-1 flex-col justify-center gap-0.5 px-3 text-xs"
@@ -161,9 +167,9 @@ export const GroupNode = memo(
           </div>
         )}
         {/* One outlet for the whole Group. The canvas paints every edge
-          leaving the Group from it, and a connection dragged from it continues
-          from every place a path ends inside the Group, or from the outlets the
-          Group already continues by. */}
+          leaving the Group from it. Connections keep existing continuation
+          ports or use terminal non-Condition members, leaving unused branches
+          unwired. */}
         <Handle
           aria-label="Group output"
           isConnectable={isConnectable}

@@ -8,7 +8,13 @@ import {
   RouterProvider,
   type SearchSchemaInput,
 } from "@tanstack/react-router";
-import { act, fireEvent, render, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { ReactFlowProvider, useReactFlow } from "@xyflow/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -420,6 +426,69 @@ describe("the collapsed Group overview", () => {
     ).toContain("Route outcome");
     expect(view.getByRole("button", { name: "Enter group" })).toBeTruthy();
     expect(renderedNodeIds()).not.toContain("welcome");
+  });
+
+  it.each(["browse", "closed"] as const)(
+    "Edit Group opens the editing form from %s",
+    async (level) => {
+      const { view, store, select, reveal, search } = await renderEditor();
+      await select("outreach");
+      await act(async () => {
+        store.set(setWorkspaceRevealLevelAtom, {
+          address: store.get(activeWorkspaceAddressAtom),
+          level,
+        });
+      });
+      fireEvent.contextMenu(view.getByTestId("group-node-outreach"), {
+        clientX: 500,
+        clientY: 400,
+      });
+      fireEvent.click(
+        await view.findByRole("button", { name: "Edit Initial outreach" })
+      );
+      await waitFor(() => expect(reveal()?.dataset.level).toBe("focus"));
+      expect(view.getByRole("textbox", { name: "Label" })).toBeTruthy();
+      expect(view.getByRole("textbox", { name: "Description" })).toBeTruthy();
+      expect(
+        view.queryByRole("button", { name: "Edit Initial outreach" })
+      ).toBeNull();
+      expect(search().group).toBeUndefined();
+    }
+  );
+
+  it("shows the Group description on its card and in its summary after editing", async () => {
+    const description =
+      "Welcome returning patients.\nSend the follow-up sequence.";
+    const nodes = NODES.map((node) =>
+      node.id === "outreach"
+        ? { ...node, data: { ...node.data, description } }
+        : node
+    );
+    const { view, select } = await renderEditor("", { nodes, edges: EDGES });
+    await select("outreach");
+    const inspector = () =>
+      within(view.getByRole("complementary", { name: "Group inspector" }));
+    expect(
+      inspector().getByText(
+        "Welcome returning patients. Send the follow-up sequence."
+      ).textContent
+    ).toBe(description);
+    const cardDescription = () =>
+      view
+        .getByTestId("group-node-outreach")
+        .querySelector(".workflow-node-description");
+    expect(cardDescription()?.textContent).toBe(description);
+    fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
+    const input = await view.findByRole("textbox", { name: "Description" });
+    fireEvent.change(input, {
+      target: { value: "Updated outreach description" },
+    });
+    fireEvent.blur(input);
+    fireEvent.click(view.getByRole("button", { name: "Return to summary" }));
+    await waitFor(() =>
+      expect(inspector().getByText("Updated outreach description")).toBeTruthy()
+    );
+    expect(cardDescription()?.textContent).toBe("Updated outreach description");
   });
 
   it("opens a step inside the Group from the summary's step list", async () => {
