@@ -16,9 +16,9 @@ import {
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
   revealFollowsSelection,
-  selectedObject,
   workspaceAddressId,
 } from "#src/lib/workflow-navigation-state";
+import { selectedObject } from "#src/lib/canvas-selection";
 import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import {
   activeSelectionAtom,

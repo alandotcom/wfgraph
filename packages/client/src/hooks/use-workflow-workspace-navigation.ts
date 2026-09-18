@@ -1,7 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
-import { useAtomValue, useSetAtom, useStore } from "jotai";
+import { useAtomValue, useStore } from "jotai";
 import { useCallback } from "react";
-import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
+import { useRevealNavigation } from "#src/components/workflow/canvas-reveal/use-reveal-navigation";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import { comparisonSessionAtom } from "#src/lib/workflow-comparison-store";
 import {
@@ -14,7 +14,6 @@ import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import {
   activeWorkspaceAddressAtom,
   rememberedRouteSearchesAtom,
-  setWorkspaceRevealLevelAtom,
 } from "#src/lib/workflow-workspace-navigation";
 
 type OpenComparison = (options: {
@@ -41,27 +40,26 @@ export function useWorkflowWorkspaceNavigation(
   const navigate = useNavigate({ from: "/workflows/$workflowId" });
   const store = useStore();
   const isMobile = useIsMobile();
-  const { openSheet } = useConfigurationSheet();
+  const navigation = useRevealNavigation();
   const workspaceView = useAtomValue(workflowWorkspaceViewAtom);
-  const setRevealLevel = useSetAtom(setWorkspaceRevealLevelAtom);
 
-  /** Open the inspector for the address a search names, without the cookie. */
+  /**
+   * Open the inspector for the address a search names, or the active address
+   * for null, without the cookie. The route has not synced a named search yet,
+   * so the address is read from the search itself.
+   */
   const openInspector = useCallback(
     (search: WorkflowRouteSearch | null) => {
-      if (isMobile) {
-        openSheet();
-        return;
-      }
-      const address =
+      navigation.openInspector(
         search === null
           ? store.get(activeWorkspaceAddressAtom)
           : workspaceAddressFromSearch(
               store.get(currentWorkflowIdAtom) ?? "",
               search
-            );
-      setRevealLevel({ address, level: "browse" });
+            )
+      );
     },
-    [isMobile, openSheet, setRevealLevel, store]
+    [navigation, store]
   );
 
   const switchTo = useCallback(

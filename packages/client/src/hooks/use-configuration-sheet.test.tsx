@@ -80,7 +80,11 @@ function Host() {
 
   return (
     <>
-      <button data-testid="open-sheet" onClick={openSheet} type="button" />
+      <button
+        data-testid="open-sheet"
+        onClick={() => openSheet()}
+        type="button"
+      />
       <button
         data-testid="open-other"
         onClick={() => open(OtherOverlay, {})}

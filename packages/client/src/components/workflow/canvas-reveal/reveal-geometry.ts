@@ -37,6 +37,9 @@ const NARROW_FOCUS_WIDTH = 640;
 /** The smallest rectangle worth placing a selected step in. */
 export const MIN_USABLE_SIZE = { width: 240, height: 160 } as const;
 
+/** The smallest rectangle above a mobile summary sheet worth placing a step in. */
+const MOBILE_MIN_USABLE_SIZE = { width: 200, height: 120 } as const;
+
 /**
  * How wide a subject kind's Focus is. Standard fits one form column. Wide adds
  * 200px for an editor that pairs a section list with its form, such as the
@@ -164,4 +167,34 @@ export function usableCanvasRect(input: {
     }
   }
   return usable;
+}
+
+/**
+ * The part of the canvas a mobile summary sheet leaves for placing its subject:
+ * the canvas above `sheetTop`, the sheet's top edge measured from the canvas
+ * top, less each other obstacle as `usableCanvasRect` trims it. Null when the
+ * sheet leaves less than `minSize`.
+ */
+export function usableAboveSheet(input: {
+  canvas: { width: number; height: number };
+  sheetTop: number;
+  obstacles: readonly Rect[];
+  minSize?: { width: number; height: number } | undefined;
+}): Rect | null {
+  const sheet: Rect = {
+    x: 0,
+    y: input.sheetTop,
+    width: input.canvas.width,
+    height: Math.max(0, input.canvas.height - input.sheetTop),
+  };
+  const minSize = input.minSize ?? MOBILE_MIN_USABLE_SIZE;
+  if (input.sheetTop < minSize.height) {
+    return null;
+  }
+  return usableCanvasRect({
+    canvas: input.canvas,
+    revealOccupiedWidth: 0,
+    obstacles: [sheet, ...input.obstacles],
+    minSize,
+  });
 }

@@ -181,15 +181,17 @@ function LifecyclePolicyEditor({
   };
 
   return (
-    <div className="grid min-h-full grid-cols-[11rem_minmax(0,1fr)]">
+    // Below `md` the full-screen mobile inspector puts the section list above
+    // the section, since a phone has no width for the two side by side.
+    <div className="grid min-h-full grid-cols-1 md:grid-cols-[11rem_minmax(0,1fr)]">
       <nav
         aria-label="Lifecycle policy"
-        className="sticky top-0 self-start p-2"
+        className="p-2 md:sticky md:top-0 md:self-start"
       >
         <p className="px-2 pt-1 pb-2 text-muted-foreground text-xs">
           Lifecycle policy
         </p>
-        <ul className="space-y-0.5">
+        <ul className="flex flex-wrap gap-1 md:block md:space-y-0.5">
           {LIFECYCLE_SECTIONS.map((entry) => {
             const count = counts[entry.id];
             return (
@@ -197,7 +199,7 @@ function LifecyclePolicyEditor({
                 <button
                   aria-current={entry.id === section ? "true" : undefined}
                   className={cn(
-                    "flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-muted",
+                    "flex items-center justify-between gap-2 rounded-md md:w-full px-2 py-1.5 text-left text-xs transition-colors hover:bg-muted",
                     entry.id === section && "bg-muted font-medium"
                   )}
                   id={navButtonId(entry.id)}
@@ -216,7 +218,7 @@ function LifecyclePolicyEditor({
           })}
         </ul>
       </nav>
-      <div className="min-w-0 border-l p-4">
+      <div className="min-w-0 border-t p-4 md:border-t-0 md:border-l">
         {LIFECYCLE_SECTIONS.map((entry) => (
           <section
             aria-label={entry.label}

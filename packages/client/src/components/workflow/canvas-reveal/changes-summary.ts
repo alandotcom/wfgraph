@@ -51,11 +51,11 @@ import {
   comparisonNodeTitle,
 } from "#src/lib/workflow-graph-types";
 import {
-  selectedObject,
   type CanvasSelection,
   type InspectedObject,
   type OpenRevealLevel,
 } from "#src/lib/workflow-navigation-state";
+import { selectedObject } from "#src/lib/canvas-selection";
 import type { RevealHeaderModel } from "./reveal-header";
 
 /** The comparison states that have no comparison to show yet. */

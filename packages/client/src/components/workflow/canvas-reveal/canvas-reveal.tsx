@@ -10,7 +10,6 @@ import type {
   NodeConfigFrame,
 } from "#src/components/workflow/node-config-panel";
 import { useAfterCommit, useAfterPaint } from "#src/hooks/effects";
-import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import { nodesAtom, selectedNodeAtom } from "#src/lib/workflow-graph-store";
 import { workflowIssuesAtom } from "#src/lib/workflow-issues-store";
@@ -32,14 +31,15 @@ import { revealFieldRequestAtom } from "./reveal-requests";
 import { useInspectorScroll } from "./use-inspector-scroll";
 import { useRevealFocusReturn } from "./use-reveal-focus-return";
 import { useRevealKeyboard } from "./use-reveal-keyboard";
+import { useRevealNavigation } from "./use-reveal-navigation";
 import { useRevealCanvasWidth } from "./use-reveal-width";
 
 /**
  * Canvas Reveal: the desktop inspector floating over the right of the canvas
  * box, at the fixed width of its Closed, Browse, or Focus level. The subject's
  * kind supplies the header and bodies. Escape, Back, and Close unwind one level
- * at a time and hand focus back to what opened it. Below `md` the
- * configuration sheet replaces it.
+ * at a time and hand focus back to what opened it. Below `md` the mobile Reveal
+ * sequence replaces it in Draft, and the configuration sheet elsewhere.
  */
 export function CanvasReveal() {
   const isMobile = useIsMobile();
@@ -56,7 +56,7 @@ export function CanvasReveal() {
   const fieldRequest = useAtomValue(revealFieldRequestAtom);
   const setFieldRequest = useSetAtom(revealFieldRequestAtom);
   const { hasOverlays } = useOverlay();
-  const { openSheet } = useConfigurationSheet();
+  const navigation = useRevealNavigation();
   const canvasWidth = useRevealCanvasWidth();
   const [request, setRequest] = useState<ConfirmRequest | null>(null);
   const frame = useMemo<NodeConfigFrame>(() => ({ confirm: setRequest }), []);
@@ -69,11 +69,12 @@ export function CanvasReveal() {
   const { subject, level, address, presentation } = reveal;
   const kind = subject ? revealKind(subject) : null;
 
-  // Narrowing past the breakpoint unmounts Reveal. If it was showing a node,
-  // the sheet picks that node up, so one editor is on screen at any width.
+  // Narrowing past the breakpoint unmounts Reveal. Draft's mobile sequence
+  // follows the same selection by itself. In Runs and Changes the sheet picks
+  // the node up, so one editor is on screen at any width.
   useAfterCommit(isMobile, () => {
-    if (isMobile && selectedNodeId && !hasOverlays) {
-      openSheet();
+    if (address.key.workspace !== "draft" && selectedNodeId && !hasOverlays) {
+      navigation.followSelection(address);
     }
   });
 

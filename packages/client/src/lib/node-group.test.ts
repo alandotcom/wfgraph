@@ -437,7 +437,7 @@ describe("removeNodes", () => {
     const freed = removed.nodes.find((node) => node.id === "a");
     expect(freed).not.toHaveProperty("parentId");
     expect(freed).not.toHaveProperty("extent");
-    expect(freed?.draggable).toBe(true);
+    expect(freed).not.toHaveProperty("draggable");
     expect(freed).not.toHaveProperty("connectable");
     expectWholeGroups(removed.nodes, removed.edges);
   });
@@ -456,7 +456,7 @@ describe("removeNodes", () => {
       ["b", undefined],
       ["c", undefined],
     ]);
-    expect(removed.nodes[1]?.draggable).toBe(true);
+    expect(removed.nodes[1]).not.toHaveProperty("draggable");
     expect(removed.edges.map((item) => item.id)).toEqual(["in-b", "b-c"]);
     expectWholeGroups(removed.nodes, removed.edges);
   });

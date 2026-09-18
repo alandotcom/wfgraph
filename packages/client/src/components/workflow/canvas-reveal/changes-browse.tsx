@@ -18,10 +18,10 @@ import {
   setComparisonSubviewAtom,
 } from "#src/lib/workflow-comparison-store";
 import {
-  selectedObject,
   workspaceAddressId,
   type WorkspaceAddress,
 } from "#src/lib/workflow-navigation-state";
+import { selectedObject } from "#src/lib/canvas-selection";
 import {
   comparisonSummary,
   ORGANIZATION_ONLY_STATEMENT,

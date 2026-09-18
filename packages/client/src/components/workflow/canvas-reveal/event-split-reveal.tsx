@@ -13,10 +13,7 @@ import {
 import { edgesAtom, nodesAtom } from "#src/lib/workflow-graph-store";
 import { workflowIssuesAtom } from "#src/lib/workflow-issues-store";
 import { isGeneratingAtom } from "#src/lib/workflow-ui-store";
-import {
-  activeWorkspaceAddressAtom,
-  openNodeRevealFromOriginAtom,
-} from "#src/lib/workflow-workspace-navigation";
+import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { arrivingEventSources } from "@wfgraph/shared/graph/events-reaching";
 import {
@@ -28,6 +25,7 @@ import {
   type EventSplitOwner,
 } from "./event-split-reveal-summary";
 import { useOpenLifecycleSection } from "./lifecycle-reveal-model";
+import { useRevealNavigation } from "./use-reveal-navigation";
 import type { RevealBodyProps } from "./reveal-kinds";
 import { NodeIssueList, Section } from "./reveal-sections";
 
@@ -94,8 +92,9 @@ function OutletTargets({ row }: { row: EventSplitOutletRow }) {
 
 /**
  * The primary action for one owner: the Lifecycle Node at its Start Events or
- * Cancel Events section, or the Wait node's Reveal. Either jump records the
- * Event Split `splitId` as the origin Back returns to.
+ * Cancel Events section, or the Wait node's inspector. Either jump records the
+ * Event Split `splitId` as the origin Back returns to. Below `md` the jump
+ * opens a sheet over the Event Split's summary, and Back removes it.
  */
 function OwnerButton({
   owner,
@@ -105,6 +104,7 @@ function OwnerButton({
   splitId: string;
 }) {
   const store = useStore();
+  const navigation = useRevealNavigation();
   const openLifecycleSection = useOpenLifecycleSection(owner.source.nodeId);
   const { source } = owner;
   const open = () => {
@@ -116,7 +116,7 @@ function OwnerButton({
       );
       return;
     }
-    store.set(openNodeRevealFromOriginAtom, {
+    navigation.openNode({
       address: store.get(activeWorkspaceAddressAtom),
       nodeId: source.nodeId,
       origin,

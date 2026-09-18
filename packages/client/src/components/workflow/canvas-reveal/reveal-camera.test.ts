@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  mobileSheetCameraStep,
   revealCameraStep,
+  type MobileSheetCameraSlot,
   type RevealCameraSlot,
   type RevealPlacementRequest,
 } from "./reveal-camera";
@@ -83,5 +85,60 @@ describe("revealCameraStep", () => {
       "keep"
     );
     expect(step({ shown: slot({}), next: slot({}), request })).toBe("keep");
+  });
+});
+
+describe("mobileSheetCameraStep", () => {
+  const address = "wf|draft|overview";
+  const sheet = (
+    depth: number,
+    id: string,
+    level: "summary" | "inspector" = "summary"
+  ): MobileSheetCameraSlot => ({
+    addressId: address,
+    sheet: { depth, level, inspected: { kind: "node", id } },
+  });
+  const none: MobileSheetCameraSlot = { addressId: address, sheet: null };
+
+  it("places a summary sheet that opens over the canvas or over another sheet", () => {
+    expect(mobileSheetCameraStep({ shown: none, next: sheet(1, "a") })).toBe(
+      "place"
+    );
+    expect(
+      mobileSheetCameraStep({
+        shown: sheet(1, "split"),
+        next: sheet(2, "wait"),
+      })
+    ).toBe("place");
+    expect(
+      mobileSheetCameraStep({ shown: sheet(1, "a"), next: sheet(1, "b") })
+    ).toBe("place");
+  });
+
+  it("keeps the camera on Back, for the inspector, and in a new address", () => {
+    expect(
+      mobileSheetCameraStep({
+        shown: sheet(2, "wait"),
+        next: sheet(1, "split"),
+      })
+    ).toBe("keep");
+    expect(
+      mobileSheetCameraStep({
+        shown: sheet(1, "a"),
+        next: sheet(2, "a", "inspector"),
+      })
+    ).toBe("keep");
+    expect(
+      mobileSheetCameraStep({
+        shown: { addressId: "wf|runs|run_1", sheet: null },
+        next: sheet(1, "a"),
+      })
+    ).toBe("keep");
+    expect(mobileSheetCameraStep({ shown: null, next: sheet(1, "a") })).toBe(
+      "keep"
+    );
+    expect(mobileSheetCameraStep({ shown: sheet(1, "a"), next: none })).toBe(
+      "keep"
+    );
   });
 });

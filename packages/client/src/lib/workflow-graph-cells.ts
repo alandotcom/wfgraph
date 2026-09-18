@@ -16,7 +16,7 @@ import { saveWorkflowAtom } from "#src/lib/workflow-save-store";
 import {
   singleSelectedEdgeId,
   singleSelectedNodeId,
-} from "#src/lib/workflow-navigation-state";
+} from "#src/lib/canvas-selection";
 import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 

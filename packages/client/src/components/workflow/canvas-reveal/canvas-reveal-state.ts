@@ -5,8 +5,13 @@
  * no history entry.
  */
 
-import { atom } from "jotai";
+import { atom, useAtomValue } from "jotai";
+import { useIsMobile } from "#src/hooks/use-mobile";
 import { presentedGraphAtom } from "#src/lib/workflow-graph-presentation-store";
+import {
+  type MobileRevealLevel,
+  type MobileSheet,
+} from "#src/lib/mobile-sheet-navigation";
 import {
   revealFollowsSelection,
   workspaceAddressId,
@@ -14,8 +19,10 @@ import {
   type RevealLevel,
   type WorkspaceAddress,
 } from "#src/lib/workflow-navigation-state";
+import { sameObject, selectedObject } from "#src/lib/canvas-selection";
 import {
   activeDesktopRevealLevelAtom,
+  activeMobileSheetsAtom,
   activeRevealPresentationAtom,
   activeSelectionAtom,
   activeWorkspaceAddressAtom,
@@ -58,6 +65,60 @@ export const canvasRevealAtom = atom((get): CanvasRevealState => {
     presentation: get(activeRevealPresentationAtom),
   };
 });
+
+/**
+ * What the mobile Reveal sequence shows for the active address: its last sheet
+ * and the sheet beneath it, and the level on screen, which is the summary when
+ * the subject offers no Focus. Null outside Draft, with no sheet open, or while
+ * the selection no longer holds the last sheet's object alone. Form factor is
+ * the reader's to check.
+ */
+export type MobileRevealState = {
+  address: WorkspaceAddress;
+  addressId: string;
+  subject: RevealSubject;
+  sheet: MobileSheet;
+  beneath: MobileSheet | null;
+  /** The number of open sheets, 1 for the first. */
+  depth: number;
+  level: MobileRevealLevel;
+};
+
+export const mobileRevealAtom = atom((get): MobileRevealState | null => {
+  const { address, addressId, subject } = get(canvasRevealAtom);
+  const sheets = get(activeMobileSheetsAtom);
+  const sheet = sheets.at(-1);
+  if (
+    address.key.workspace !== "draft" ||
+    !sheet ||
+    subject === null ||
+    !sameObject(selectedObject(get(activeSelectionAtom)), sheet.inspected)
+  ) {
+    return null;
+  }
+  return {
+    address,
+    addressId,
+    subject,
+    sheet,
+    beneath: sheets.at(-2) ?? null,
+    depth: sheets.length,
+    level:
+      sheet.level === "inspector" && subject.levels.includes("focus")
+        ? "inspector"
+        : "summary",
+  };
+});
+
+/**
+ * The mobile Reveal state while the viewport is below `md`, and null at wider
+ * viewports, where Canvas Reveal shows the selection.
+ */
+export function useShownMobileReveal(): MobileRevealState | null {
+  const isMobile = useIsMobile();
+  const state = useAtomValue(mobileRevealAtom);
+  return isMobile ? state : null;
+}
 
 /**
  * Show one level for the active address. A workspace that follows its selection

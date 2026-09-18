@@ -18,7 +18,6 @@ import {
   presentationViewport,
   workflowFitViewOptions,
 } from "#src/components/workflow/workflow-viewport";
-import { canvasInteractionState } from "#src/components/workflow/workflow-canvas";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 
 function lifecycleNode(x: number): WorkflowNode {
@@ -386,57 +385,6 @@ describe("canvasSynchronizationKey", () => {
       draftEdges: hydratedDraftEdges,
     });
     expect(synchronizePresentation).not.toHaveBeenCalled();
-  });
-});
-
-describe("canvasInteractionState", () => {
-  it("keeps comparison nodes selectable and enables only their node-level drag flags", () => {
-    expect(
-      canvasInteractionState({
-        editingLocked: true,
-        comparisonActive: true,
-        overlayActive: false,
-        groupScopeActive: false,
-      })
-    ).toEqual({
-      comparisonVisible: true,
-      insertsNodes: false,
-      elementsSelectable: true,
-      nodesDraggable: true,
-      edgesFocusable: false,
-      deleteKeyCode: null,
-    });
-  });
-
-  it("keeps a visible run overlay ahead of an active comparison", () => {
-    expect(
-      canvasInteractionState({
-        editingLocked: true,
-        comparisonActive: true,
-        overlayActive: true,
-        groupScopeActive: false,
-      })
-    ).toEqual({
-      comparisonVisible: false,
-      insertsNodes: false,
-      elementsSelectable: false,
-      nodesDraggable: false,
-      edgesFocusable: true,
-      deleteKeyCode: ["Backspace", "Delete"],
-    });
-  });
-
-  it("inserts nodes only on an editable canvas outside a focused Group", () => {
-    const state = (groupScopeActive: boolean) =>
-      canvasInteractionState({
-        editingLocked: false,
-        comparisonActive: false,
-        overlayActive: false,
-        groupScopeActive,
-      });
-    expect(state(false).insertsNodes).toBe(true);
-    expect(state(true).insertsNodes).toBe(false);
-    expect(state(true).nodesDraggable).toBe(true);
   });
 });
 

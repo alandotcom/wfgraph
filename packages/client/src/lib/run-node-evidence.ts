@@ -22,8 +22,8 @@ import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import {
   type CanvasSelection,
   type ChosenRunExecution,
-  singleSelectedNodeId,
 } from "#src/lib/workflow-navigation-state";
+import { singleSelectedNodeId } from "#src/lib/canvas-selection";
 
 /**
  * Whether the graph a run pinned is on the canvas: `ready` once it is,

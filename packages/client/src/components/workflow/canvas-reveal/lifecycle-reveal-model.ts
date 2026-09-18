@@ -11,12 +11,8 @@ import type {
   WorkflowIssue,
 } from "@wfgraph/shared/graph/workflow-issues";
 import type { InspectedOrigin } from "#src/lib/workflow-navigation-state";
-import {
-  activeRevealPresentationAtom,
-  activeWorkspaceAddressAtom,
-  openInspectorSectionAtom,
-  recordInspectorSectionAtom,
-} from "#src/lib/workflow-workspace-navigation";
+import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
+import { useRevealNavigation } from "./use-reveal-navigation";
 
 export const LIFECYCLE_SECTIONS = [
   { id: "start-events", label: "Start Events" },
@@ -64,14 +60,17 @@ export function lifecycleIssueSection(
 /**
  * Open the Lifecycle Node `nodeId` at Focus on `section` in the active address,
  * selecting it first when another object is selected. `origin`, when given,
- * records where the jump started, which Back returns to.
+ * records where the jump started, which Back returns to. Below `md` it opens
+ * the full-screen inspector sheet at `section` over the sheets already open,
+ * which is itself the way Back returns.
  */
 export function useOpenLifecycleSection(
   nodeId: string
 ): (section: LifecycleSectionId, origin?: InspectedOrigin) => void {
   const store = useStore();
+  const navigation = useRevealNavigation();
   return (section, origin) => {
-    store.set(openInspectorSectionAtom, {
+    navigation.openSection({
       address: store.get(activeWorkspaceAddressAtom),
       nodeId,
       section,
@@ -82,24 +81,25 @@ export function useOpenLifecycleSection(
 
 /**
  * The Focus section the active scope shows for the Lifecycle Node `nodeId`,
- * and `choose`, which records another section. A scope inspecting a different
- * object shows the first section.
+ * and `choose`, which records another section. An inspector showing a
+ * different object shows the first section.
  */
 export function useLifecycleSection(nodeId: string): {
   section: LifecycleSectionId;
   choose: (section: LifecycleSectionId) => void;
 } {
   const store = useStore();
-  const presentation = useAtomValue(activeRevealPresentationAtom);
+  const navigation = useRevealNavigation();
+  const shown = useAtomValue(navigation.shownSectionAtom);
   const section = readSectionId(
-    presentation.inspected?.id === nodeId ? presentation.inspectorSection : null
+    shown?.inspected.id === nodeId ? shown.section : null
   );
   return {
     section,
     choose: (next) => {
-      store.set(recordInspectorSectionAtom, {
+      navigation.recordSection({
         address: store.get(activeWorkspaceAddressAtom),
-        inspectedId: nodeId,
+        nodeId,
         section: next,
       });
     },

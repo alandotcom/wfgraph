@@ -10,8 +10,13 @@ import {
 } from "@tanstack/react-router";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
-import { describe, expect, it } from "vitest";
-import { OverlayProvider } from "#src/components/overlays/overlay-provider";
+import { afterEach, describe, expect, it } from "vitest";
+import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
+import { ConfigurationOverlay } from "#src/components/overlays/configuration-overlay";
+import {
+  OverlayProvider,
+  useOverlay,
+} from "#src/components/overlays/overlay-provider";
 import { WorkspaceRouteSync } from "#src/components/workflow/workspace-route-sync";
 import { useWorkflowWorkspaceNavigation } from "#src/hooks/use-workflow-workspace-navigation";
 import {
@@ -24,6 +29,7 @@ import { authorizedWorkflowSearch } from "#src/lib/workflow-route-state";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
   activeDesktopRevealLevelAtom,
+  activeMobileSheetsAtom,
   activeWorkspaceAddressAtom,
   setWorkspaceRevealLevelAtom,
 } from "#src/lib/workflow-workspace-navigation";
@@ -32,16 +38,46 @@ import {
   workflowWorkspaceViewAtom,
 } from "#src/lib/workflow-ui-store";
 
+/**
+ * The overlays on the stack, each mounted as the overlay container would, and
+ * named by a probe so a case can tell which surface is on screen.
+ */
+function OverlayStack() {
+  const { stack } = useOverlay();
+  return (
+    <>
+      {stack.map(({ id, component: Overlay, props }) => (
+        <div data-testid={`overlay:${Overlay.name}`} key={id}>
+          <Overlay overlayId={id} {...props} />
+        </div>
+      ))}
+    </>
+  );
+}
+
+/** The viewport happy-dom answers the `md` media query from. */
+function setViewportWidth(width: number): void {
+  (
+    window as unknown as {
+      happyDOM: { setViewport: (viewport: { width: number }) => void };
+    }
+  ).happyDOM.setViewport({ width });
+}
+
 function SwitcherHost() {
   const navigation = useWorkflowWorkspaceNavigation();
   return (
     <>
       <WorkspaceRouteSync />
+      <OverlayStack />
       <button onClick={navigation.showDraft} type="button">
         Draft
       </button>
       <button onClick={navigation.showRuns} type="button">
         Runs
+      </button>
+      <button onClick={navigation.showChanges} type="button">
+        Changes
       </button>
     </>
   );
@@ -78,18 +114,26 @@ async function renderSwitcher(initialEntry: string) {
     history: createMemoryHistory({ initialEntries: [initialEntry] }),
   });
   const view = render(
-    <QueryClientProvider client={new QueryClient()}>
-      <JotaiProvider store={store}>
-        <OverlayProvider>
-          <RouterProvider router={router} />
-        </OverlayProvider>
-      </JotaiProvider>
-    </QueryClientProvider>
+    <ExtensionCatalogProvider
+      value={{ entities: [], integrations: [], actions: [], events: [] }}
+    >
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <JotaiProvider store={store}>
+          <OverlayProvider>
+            <RouterProvider router={router} />
+          </OverlayProvider>
+        </JotaiProvider>
+      </QueryClientProvider>
+    </ExtensionCatalogProvider>
   );
   await view.findByRole("button", { name: "Runs" });
   const click = (name: string) =>
     fireEvent.click(view.getByRole("button", { name }));
-  return { store, router, click };
+  return { store, router, click, view };
 }
 
 describe("useWorkflowWorkspaceNavigation", () => {
@@ -167,5 +211,42 @@ describe("useWorkflowWorkspaceNavigation", () => {
     await waitFor(() =>
       expect(router.state.location.search).toEqual({ view: "runs" })
     );
+  });
+
+  describe("below md", () => {
+    afterEach(() => setViewportWidth(1440));
+
+    it("opens the configuration sheet for Runs and Changes over a Draft sheet, and closes it on return to Draft", async () => {
+      setViewportWidth(390);
+      const { store, router, click, view } = await renderSwitcher(
+        "/workflows/workflow_1"
+      );
+      const configurationSheet = () =>
+        view.queryByTestId(`overlay:${ConfigurationOverlay.name}`);
+      act(() => store.set(selectOnlyNodeAtom, "draft_step"));
+      expect(
+        store.get(activeMobileSheetsAtom).map((sheet) => sheet.level)
+      ).toEqual(["summary"]);
+
+      click("Runs");
+      await waitFor(() =>
+        expect(router.state.location.search).toEqual({ view: "runs" })
+      );
+      await waitFor(() => expect(configurationSheet()).not.toBeNull());
+
+      click("Changes");
+      await waitFor(() =>
+        expect(store.get(workflowWorkspaceViewAtom)).toBe("changes")
+      );
+      await waitFor(() => expect(configurationSheet()).not.toBeNull());
+
+      click("Draft");
+      await waitFor(() => expect(router.state.location.search).toEqual({}));
+      await waitFor(() => expect(configurationSheet()).toBeNull());
+      expect(store.get(selectedNodeAtom)).toBe("draft_step");
+      expect(
+        store.get(activeMobileSheetsAtom).map((sheet) => sheet.level)
+      ).toEqual(["summary"]);
+    });
   });
 });

@@ -14,22 +14,17 @@
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useAtomValue, useSetAtom, useStore } from "jotai";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
 import { WorkflowIssuesOverlay } from "#src/components/overlays/workflow-issues-overlay";
-import {
-  useAfterPaint,
-  useDebouncedValue,
-  useAfterCommit,
-} from "#src/hooks/effects";
+import { useDebouncedValue, useAfterCommit } from "#src/hooks/effects";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
 import { can } from "#src/lib/authorization";
 import { edgesAtom, nodesAtom } from "#src/lib/workflow-graph-store";
 import {
   scopeOfNode,
   workspaceAddressFromSearch,
-  workspaceAddressId,
   workspaceRouteSearch,
 } from "#src/lib/workflow-navigation-state";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
@@ -45,7 +40,6 @@ import {
 } from "#src/lib/workflow-issues-store";
 import { useProviderFieldIssues } from "#src/hooks/use-provider-field-issues";
 import {
-  openWorkspaceRevealAtom,
   rememberedRouteSearchesAtom,
   setWorkspaceSelectionAtom,
 } from "#src/lib/workflow-workspace-navigation";
@@ -53,11 +47,8 @@ import {
   isOrdinaryStep,
   revealFocusTarget,
 } from "#src/components/workflow/canvas-reveal/reveal-subject";
-import {
-  requestRevealPlacementAtom,
-  revealFieldRequestAtom,
-} from "#src/components/workflow/canvas-reveal/reveal-requests";
-import { isMobileViewport } from "#src/hooks/use-mobile";
+import { revealFieldRequestAtom } from "#src/components/workflow/canvas-reveal/reveal-requests";
+import { useRevealNavigation } from "#src/components/workflow/canvas-reveal/use-reveal-navigation";
 import { groupWorkflowIssuesForOverlay } from "@wfgraph/shared/graph/workflow-issues";
 import { isConditionNode } from "@wfgraph/shared/graph/node-config";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
@@ -148,33 +139,16 @@ function issueFocusTarget(
  * Open a step, and optionally put the cursor in the field an issue named. On a
  * wide viewport the step opens in Canvas Reveal, in Focus when the node's kind
  * offers Focus for the named field, and Reveal places the step and focuses the
- * field once its form has painted. On a narrow viewport the sheet shows the
- * step, and the field is focused after the next paint, once the sheet's panel
- * has mounted.
+ * field once its form has painted. On a narrow viewport the mobile Reveal
+ * sequence opens the step's full-screen inspector over its summary for such a
+ * field, and its summary sheet otherwise, and focuses the field the same way.
  */
 export function useGoToStep(): (nodeId: string, fieldKey?: string) => void {
   const store = useStore();
   const navigate = useNavigate({ from: "/workflows/$workflowId" });
   const setWorkspaceSelection = useSetAtom(setWorkspaceSelectionAtom);
-  const openWorkspaceReveal = useSetAtom(openWorkspaceRevealAtom);
-  const requestPlacement = useSetAtom(requestRevealPlacementAtom);
   const setRevealFieldRequest = useSetAtom(revealFieldRequestAtom);
-  const [pendingFieldFocus, setPendingFieldFocus] = useState<string | null>(
-    null
-  );
-
-  useAfterPaint(pendingFieldFocus, () => {
-    if (!pendingFieldFocus) {
-      return;
-    }
-    setPendingFieldFocus(null);
-    const element = document.getElementById(pendingFieldFocus);
-    if (!element) {
-      return;
-    }
-    element.focus();
-    element.scrollIntoView({ behavior: "smooth", block: "center" });
-  });
+  const navigation = useRevealNavigation();
 
   return useCallback(
     (nodeId: string, fieldKey?: string) => {
@@ -197,31 +171,17 @@ export function useGoToStep(): (nodeId: string, fieldKey?: string) => void {
         selection: { nodeIds: [nodeId], edgeIds: [] },
       });
       void navigate({ search, replace: true });
-      if (isMobileViewport()) {
-        setPendingFieldFocus(fieldKey ?? null);
-        return;
-      }
       const focusTarget = issueFocusTarget(node, fieldKey);
-      openWorkspaceReveal({
-        address,
-        level: focusTarget !== undefined ? "focus" : undefined,
-      });
-      requestPlacement({
-        addressId: workspaceAddressId(address),
-        nodeIds: [nodeId],
-      });
       setRevealFieldRequest(
         focusTarget === undefined ? null : { nodeId, targetId: focusTarget }
       );
+      navigation.openNode({
+        address,
+        nodeId,
+        level: focusTarget === undefined ? undefined : "focus",
+      });
     },
-    [
-      navigate,
-      openWorkspaceReveal,
-      requestPlacement,
-      setRevealFieldRequest,
-      setWorkspaceSelection,
-      store,
-    ]
+    [navigate, navigation, setRevealFieldRequest, setWorkspaceSelection, store]
   );
 }
 

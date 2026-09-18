@@ -1,8 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { useCallback } from "react";
-import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
-import { useIsMobile } from "#src/hooks/use-mobile";
 import {
   displayNodesAtom,
   selectOnlyNodeAtom,
@@ -19,6 +17,7 @@ import {
   setWorkspaceSelectionAtom,
 } from "#src/lib/workflow-workspace-navigation";
 import { requestRevealPlacementAtom } from "./canvas-reveal/reveal-requests";
+import { useRevealNavigation } from "./canvas-reveal/use-reveal-navigation";
 import { useWorkflowNodeInspection } from "./use-workflow-node-inspection";
 
 /**
@@ -39,8 +38,7 @@ export function useFocusWorkflowNode(): (input: {
   const setWorkspaceSelection = useSetAtom(setWorkspaceSelectionAtom);
   const requestPlacement = useSetAtom(requestRevealPlacementAtom);
   const navigate = useNavigate({ from: "/workflows/$workflowId" });
-  const isMobile = useIsMobile();
-  const { openSheet } = useConfigurationSheet();
+  const navigation = useRevealNavigation();
   const store = useStore();
   return useCallback(
     (input) => {
@@ -71,17 +69,14 @@ export function useFocusWorkflowNode(): (input: {
         nodeIds: [input.nodeId],
       });
       void navigate({ search: workspaceRouteSearch(target) });
-      if (isMobile) {
-        openSheet();
-      }
+      navigation.followSelection(target);
       return true;
     },
     [
       inspectNode,
-      isMobile,
       navigate,
+      navigation,
       nodes,
-      openSheet,
       requestPlacement,
       selectOnlyNode,
       setWorkspaceSelection,
