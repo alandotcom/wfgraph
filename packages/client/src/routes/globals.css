@@ -494,11 +494,22 @@
   height: 12px !important;
   border: 2px solid var(--border) !important;
   background: var(--primary) !important;
-  cursor: crosshair !important;
   z-index: 20 !important;
 }
 
-/* Invisible hit area for desktop.
+/* A handle that takes a connection shows the crosshair. A handle that takes
+   none lets a press through to the node and the pane beneath, because React
+   Flow marks every handle `nodrag nopan` and a touch on it would otherwise
+   start no pan. */
+.react-flow__handle.connectable {
+  cursor: crosshair !important;
+}
+
+.react-flow__handle:not(.connectable) {
+  pointer-events: none !important;
+}
+
+/* Invisible hit area of a connectable handle on desktop.
    The pseudo-element lives inside `.react-flow__viewport`, which carries the
    pan/zoom scale transform, so a flat px size shrinks with the zoom: the 44px
    mobile rule below was measuring 24.6px on a phone after fitView. Dividing by
@@ -506,7 +517,7 @@
    published by the canvas on every viewport move; the fallback of 1 keeps this
    correct before the first move fires. The cap stops a zoomed-out canvas from
    growing hit areas until neighbouring handles overlap. */
-.react-flow__handle::after {
+.react-flow__handle.connectable::after {
   content: "" !important;
   position: absolute !important;
   top: 50% !important;
@@ -520,7 +531,7 @@
    breakpoint everything else turns over at, which is also where `useIsMobile`
    stops rendering the properties rail. */
 @media (width < theme(--breakpoint-md)) {
-  .react-flow__handle::after {
+  .react-flow__handle.connectable::after {
     width: min(calc(44px / var(--rf-zoom, 1)), 88px) !important;
     height: min(calc(44px / var(--rf-zoom, 1)), 88px) !important;
   }

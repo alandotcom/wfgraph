@@ -723,8 +723,9 @@ export const recordWorkspaceCameraAtom = atom(
 );
 
 /**
- * Clear the cameras saved for the focused Group `groupId` of one workflow's
- * Draft and comparison keys, as when the Group's layout direction changed.
+ * Clear the desktop cameras saved for the focused Group `groupId` of one
+ * workflow's Draft and comparison keys, as when the Group's layout direction
+ * changed.
  */
 export const forgetGroupCamerasAtom = atom(
   null,

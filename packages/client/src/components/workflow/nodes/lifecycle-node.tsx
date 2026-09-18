@@ -39,83 +39,86 @@ type LifecycleNodeProps = NodeProps & {
   data?: WorkflowNodeData;
 };
 
-export const LifecycleNode = memo(({ data, selected }: LifecycleNodeProps) => {
-  const catalog = useExtensionCatalog();
+export const LifecycleNode = memo(
+  ({ data, selected, isConnectable }: LifecycleNodeProps) => {
+    const catalog = useExtensionCatalog();
 
-  if (!data) {
-    return null;
-  }
+    if (!data) {
+      return null;
+    }
 
-  const displayTitle = data.label || "Lifecycle";
-  const startSummary = getStartSummary(data.config, catalog);
-  const displayDescription = data.description || startSummary;
-  const status = data.status;
-  // Soften the chip when no Cancel Event can take this outlet; the handle stays
-  // connectable so a builder can still wire the branch before naming Events.
-  const canceledInactive = !configDeclaresCancelEvent(data.config);
+    const displayTitle = data.label || "Lifecycle";
+    const startSummary = getStartSummary(data.config, catalog);
+    const displayDescription = data.description || startSummary;
+    const status = data.status;
+    // Soften the chip when no Cancel Event can take this outlet; the handle stays
+    // connectable so a builder can still wire the branch before naming Events.
+    const canceledInactive = !configDeclaresCancelEvent(data.config);
 
-  return (
-    <Node
-      handles={{
-        target: false,
-        source: [
-          {
-            id: LIFECYCLE_STARTED_HANDLE,
-            label: "Started outlet",
-            position: Position.Bottom,
-            style: { left: STARTED_HANDLE_LEFT, width: 12, height: 12 },
-          },
-          {
-            id: LIFECYCLE_CANCELED_HANDLE,
-            label: "Canceled outlet",
-            position: Position.Bottom,
-            style: {
-              left: CANCELED_HANDLE_LEFT,
-              width: 12,
-              height: 12,
-              opacity: canceledInactive ? 0.45 : undefined,
+    return (
+      <Node
+        isConnectable={isConnectable}
+        handles={{
+          target: false,
+          source: [
+            {
+              id: LIFECYCLE_STARTED_HANDLE,
+              label: "Started outlet",
+              position: Position.Bottom,
+              style: { left: STARTED_HANDLE_LEFT, width: 12, height: 12 },
             },
-          },
-        ],
-      }}
-      selected={selected}
-      status={status}
-      style={workflowNodeSize()}
-    >
-      <ComparisonMarker comparison={data[COMPARISON_NODE_ANNOTATION]} />
-      <div
-        className="pointer-events-none absolute -bottom-8 -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-xs text-muted-foreground leading-none"
-        style={{ left: STARTED_HANDLE_LEFT }}
+            {
+              id: LIFECYCLE_CANCELED_HANDLE,
+              label: "Canceled outlet",
+              position: Position.Bottom,
+              style: {
+                left: CANCELED_HANDLE_LEFT,
+                width: 12,
+                height: 12,
+                opacity: canceledInactive ? 0.45 : undefined,
+              },
+            },
+          ],
+        }}
+        selected={selected}
+        status={status}
+        style={workflowNodeSize()}
       >
-        Started
-      </div>
-      <div
-        className={cn(
-          "pointer-events-none absolute -bottom-8 -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-xs text-muted-foreground leading-none",
-          canceledInactive && "opacity-50"
-        )}
-        style={{ left: CANCELED_HANDLE_LEFT }}
-      >
-        Canceled
-      </div>
+        <ComparisonMarker comparison={data[COMPARISON_NODE_ANNOTATION]} />
+        <div
+          className="pointer-events-none absolute -bottom-8 -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-xs text-muted-foreground leading-none"
+          style={{ left: STARTED_HANDLE_LEFT }}
+        >
+          Started
+        </div>
+        <div
+          className={cn(
+            "pointer-events-none absolute -bottom-8 -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-xs text-muted-foreground leading-none",
+            canceledInactive && "opacity-50"
+          )}
+          style={{ left: CANCELED_HANDLE_LEFT }}
+        >
+          Canceled
+        </div>
 
-      {/* The collector walks every node, not only actions: a broken template
+        {/* The collector walks every node, not only actions: a broken template
           token in the Lifecycle config is an issue the toolbar counts, and
           without this it was one no card on the canvas admitted to. */}
-      <NodeIssueBadge issues={data.issues} />
+        <NodeIssueBadge issues={data.issues} />
 
-      <NodeBody>
-        <Play
-          className={cn(NODE_ICON_CLASS, "text-node-lifecycle")}
-          strokeWidth={1.5}
-        />
-        <NodeTitle>{displayTitle}</NodeTitle>
-        {displayDescription && (
-          <NodeDescription>{displayDescription}</NodeDescription>
-        )}
-      </NodeBody>
-    </Node>
-  );
-});
+        <NodeBody>
+          <Play
+            className={cn(NODE_ICON_CLASS, "text-node-lifecycle")}
+            strokeWidth={1.5}
+          />
+          <NodeTitle>{displayTitle}</NodeTitle>
+          {displayDescription && (
+            <NodeDescription>{displayDescription}</NodeDescription>
+          )}
+        </NodeBody>
+      </Node>
+    );
+  }
+);
 
 LifecycleNode.displayName = "LifecycleNode";

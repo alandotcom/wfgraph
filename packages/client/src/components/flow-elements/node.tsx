@@ -30,6 +30,11 @@ export type NodeProps = ComponentProps<typeof Card> & {
   sourcePosition?: Position | undefined;
   /** The card side a `true` target handle sits on. Top when unset. */
   targetPosition?: Position | undefined;
+  /**
+   * Whether a connection can start or end on the card's handles, which is the
+   * `isConnectable` React Flow gives the node component.
+   */
+  isConnectable: boolean;
 };
 
 // Run status is worn as a border color, which a colorblind user cannot read and
@@ -103,7 +108,8 @@ type NodeHandleConfig = {
 function renderHandles(
   handleType: "source" | "target",
   config: boolean | NodeHandleConfig[],
-  position: Position
+  position: Position,
+  isConnectable: boolean
 ): ReactNode {
   if (config === false) {
     return null;
@@ -113,6 +119,9 @@ function renderHandles(
     return (
       <Handle
         aria-label={handleType === "source" ? "Output handle" : "Input handle"}
+        isConnectable={isConnectable}
+        isConnectableEnd={isConnectable}
+        isConnectableStart={isConnectable}
         position={position}
         role="img"
         type={handleType}
@@ -139,6 +148,9 @@ function renderHandles(
         className={handleConfig.className}
         // React Flow's `id` prop takes a string or `null`, not `undefined`.
         id={handleConfig.id ?? null}
+        isConnectable={isConnectable}
+        isConnectableEnd={isConnectable}
+        isConnectableStart={isConnectable}
         key={handleConfig.id ?? fallbackKey}
         position={handleConfig.position}
         role="img"
@@ -156,6 +168,7 @@ export const Node = ({
   status,
   sourcePosition = Position.Bottom,
   targetPosition = Position.Top,
+  isConnectable,
   ...props
 }: NodeProps) => (
   <Card
@@ -175,8 +188,8 @@ export const Node = ({
   >
     {status === "running" && <AnimatedBorder />}
     <NodeStatusChip status={status} />
-    {renderHandles("target", handles.target, targetPosition)}
-    {renderHandles("source", handles.source, sourcePosition)}
+    {renderHandles("target", handles.target, targetPosition, isConnectable)}
+    {renderHandles("source", handles.source, sourcePosition, isConnectable)}
     {props.children}
   </Card>
 );

@@ -508,6 +508,22 @@ phone, because restoring an earlier state of the workflow is not topology
 authoring. **Runs** and **Changes** keep the configuration sheet below `md`,
 and returning to Draft closes that sheet.
 
+On a phone, a collapsed Group's summary sheet names the Group's stored layout
+direction, and for a Left to right Group it also says "On a phone, a Group's
+steps show top to bottom." **Enter group** opens the focused Group canvas, whose
+**Workflow** button is 44px tall. A phone draws every focused Group top to
+bottom, whatever direction the Group stores. That drawing changes nothing
+stored: the Group's direction, every coordinate, and the saved draft stay as
+they are, and a wider screen draws the stored direction with its own camera. A
+handle on a phone, on a step or on a stub, starts no connection, and a touch on
+it pans the canvas. Selecting a step on the focused canvas opens its summary
+sheet, whose first control is a Back control named for the Group in place of
+**Close**, and **Open editor** opens the step's full-screen inspector.
+**Workflow** or browser Back returns to the overview with the Group's summary
+sheet, its scroll position, the overview's camera, and focus on **Enter group**.
+Browser Forward returns to the Group with its sheets, their scroll positions,
+and the Group's camera.
+
 A Panel-toned status strip closes the canvas column: 32px tall, Caption type, a
 hairline top border, and one line that never wraps. While the draft is on
 screen, the strip names the published version and carries **Published mode** one

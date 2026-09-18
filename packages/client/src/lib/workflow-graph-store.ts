@@ -82,7 +82,7 @@ export {
 export {
   canvasEditingLockedAtom,
   canvasEdgesAtom,
-  canvasGraphAtom,
+  canvasGraphAtomFor,
   canvasNodesAtom,
   clearNodeStatusesAtom,
   displayNodesAtom,

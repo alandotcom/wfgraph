@@ -555,12 +555,16 @@ function endEdge(
  * outside port an edge enters the Group from or continues to, and one "Path
  * ends" stub per member port where a path ends. The frame is not painted, and
  * its stored position and every stored member position are never read. The
- * member rows follow the frame's stored direction, and each forward edge,
- * including an edge into a stub, carries where it turns across them in
- * `data.turnAlong`. Null when the graph holds no Group `groupId`.
+ * member rows follow `direction` when it is given, and the frame's stored
+ * direction otherwise; `direction` changes only the painting. Each forward
+ * edge, including an edge into a stub, carries where it turns across the rows
+ * in `data.turnAlong`. Null when the graph holds no Group `groupId`.
  */
 export function focusedGroupCanvasGraph(
-  input: CanvasGraph & { groupId: string }
+  input: CanvasGraph & {
+    groupId: string;
+    direction?: GroupLayoutDirection | undefined;
+  }
 ): ScopeCanvasGraph | null {
   const frame = input.nodes.find(
     (node) => node.id === input.groupId && isGroupNode(node)
@@ -568,7 +572,7 @@ export function focusedGroupCanvasGraph(
   if (!frame) {
     return null;
   }
-  const direction = groupLayoutDirection(frame);
+  const direction = input.direction ?? groupLayoutDirection(frame);
   const byId = new Map(input.nodes.map((node) => [node.id, node]));
   const storedMembers = input.nodes.filter(
     (node) => node.parentId === input.groupId
@@ -715,17 +719,22 @@ export function focusedGroupCanvasGraph(
 
 /**
  * The graph the canvas paints for `scope`, from the painted nodes and the painted
- * stored edges. A focused Group the graph no longer holds shows the overview
- * until route recovery leaves it.
+ * stored edges. `focusedGroupDirection` lays a focused Group's members out along
+ * that direction in place of the stored one. A focused Group the graph no
+ * longer holds shows the overview until route recovery leaves it.
  */
 export function scopeCanvasGraph(
-  input: CanvasGraph & { scope: WorkspaceScope }
+  input: CanvasGraph & {
+    scope: WorkspaceScope;
+    focusedGroupDirection?: GroupLayoutDirection | null | undefined;
+  }
 ): ScopeCanvasGraph {
   const graph = { nodes: input.nodes, edges: input.edges };
   if (input.scope.kind === "group") {
     const focused = focusedGroupCanvasGraph({
       ...graph,
       groupId: input.scope.groupId,
+      direction: input.focusedGroupDirection ?? undefined,
     });
     if (focused) {
       return focused;

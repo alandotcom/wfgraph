@@ -53,6 +53,9 @@ export function GroupScopeBar() {
       data-slot={CANVAS_OBSTACLE_SLOTS.groupScopeBar}
     >
       <Button
+        // A finger's 44px target below `md`, where the button is the way out
+        // of the Group.
+        className="max-md:h-11 max-md:px-3"
         onClick={leaveGroup}
         ref={leaveRef}
         size="sm"

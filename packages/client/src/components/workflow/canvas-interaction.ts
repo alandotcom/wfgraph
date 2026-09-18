@@ -1,8 +1,8 @@
 /**
- * What the workflow canvas lets a person do, and the one flag that turns off
- * topology authoring below `md`. Every surface that changes which steps exist,
- * how they connect, how they are grouped, or where they sit reads that flag,
- * directly or through `useTopologyCapabilities`.
+ * What the workflow canvas lets a person do below and above `md`. Every surface
+ * that changes which steps exist, how they connect, how they are grouped, or
+ * where they sit reads `useTopologyAuthoring`, directly or through
+ * `useTopologyCapabilities`, and the canvas reads `useFocusedGroupDirection`.
  */
 
 import { useCallback } from "react";
@@ -21,6 +21,17 @@ import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
  */
 export function useTopologyAuthoring(): boolean {
   return !useIsMobile();
+}
+
+/**
+ * The direction a focused Group canvas lays its steps out along on this form
+ * factor. A phone shows every focused Group top to bottom, whatever direction
+ * the Group stores, so the answer is "vertical" below `md`. Null means each
+ * Group follows its stored direction. The answer changes only what the canvas
+ * paints: the Group's direction, coordinates and saved draft stay as stored.
+ */
+export function useFocusedGroupDirection(): "vertical" | null {
+  return useIsMobile() ? "vertical" : null;
 }
 
 /**

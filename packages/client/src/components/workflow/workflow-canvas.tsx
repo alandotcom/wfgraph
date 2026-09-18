@@ -22,7 +22,7 @@ import { useAfterDelay, useAfterPaint, useDomEvent } from "#src/hooks/effects";
 import { isTextEntry } from "#src/lib/is-text-entry";
 import { viewportAnimationDuration } from "#src/lib/motion";
 import {
-  canvasGraphAtom,
+  canvasGraphAtomFor,
   displayNodesAtom,
   edgesAtom,
   canvasEditingLockedAtom,
@@ -73,6 +73,7 @@ import { useCanvasCopyPaste } from "./use-canvas-copy-paste";
 import { useReflowLayout } from "./use-reflow-layout";
 import {
   canvasInteractionState,
+  useFocusedGroupDirection,
   useTopologyAuthoring,
 } from "./canvas-interaction";
 import { useWorkspaceCamera } from "./use-workspace-camera";
@@ -136,7 +137,10 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const catalog = useExtensionCatalog();
   // What the active scope paints, and every node of the graph, which the
   // connection rules read because a Group frame stands for its members.
-  const canvasGraph = useAtomValue(canvasGraphAtom);
+  // A phone lays a focused Group out top to bottom whatever its stored
+  // direction, which changes only what the canvas paints.
+  const focusedGroupDirection = useFocusedGroupDirection();
+  const canvasGraph = useAtomValue(canvasGraphAtomFor(focusedGroupDirection));
   const { nodes, edges } = canvasGraph;
   const graphNodes = useAtomValue(displayNodesAtom);
   const { scope } = useAtomValue(activeWorkspaceAddressAtom);
@@ -602,6 +606,8 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
           className="bg-background"
           connectionLineComponent={Connection}
           connectionMode={ConnectionMode.Strict}
+          // A tap on a handle starts a connection only where one can be made.
+          connectOnClick={!topologyLocked}
           defaultEdgeOptions={defaultEdgeOptions}
           deleteKeyCode={interaction.deleteKeyCode}
           edges={accessibleGraph.edges}
