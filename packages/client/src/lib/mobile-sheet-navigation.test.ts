@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  withMobileAddressSection,
   withMobileAddressSheet,
   withMobileInspectorOverAddress,
   withMobileSequenceFrom,
@@ -338,6 +339,38 @@ describe("mobile Reveal sheets", () => {
       ["summary", null, null],
       ["summary", "changes", null],
       ["inspector", null, "send"],
+    ]);
+  });
+
+  it("opens a section of the address over its sheets, with the address sheet beneath when none is open", () => {
+    const list = withMobileAddressSection(EMPTY, {
+      level: "summary",
+      section: "changes",
+    });
+    expect(
+      list.mobile.sheets.map((sheet) => [
+        sheet.level,
+        sheet.inspected,
+        sheet.section,
+      ])
+    ).toEqual([
+      ["summary", null, null],
+      ["summary", null, "changes"],
+    ]);
+    expect(list.selection).toBe(EMPTY.selection);
+    expect(
+      withMobileAddressSection(list, { level: "summary", section: "changes" })
+    ).toBe(list);
+
+    const history = withMobileAddressSection(withoutTopMobileSheet(list), {
+      level: "inspector",
+      section: "history",
+    });
+    expect(
+      history.mobile.sheets.map((sheet) => [sheet.level, sheet.section])
+    ).toEqual([
+      ["summary", null],
+      ["inspector", "history"],
     ]);
   });
 });

@@ -24,9 +24,10 @@ export type MobileRevealLevel = "summary" | "inspector";
 /**
  * One sheet of the mobile Reveal sequence. `inspected` is the object the sheet
  * shows, or null for an address sheet, which shows the address itself, such as
- * a run list or a run's overview. `scroll` is its body's scroll in pixels from
- * the top, and `section` is
- * the section a sectioned inspector shows, with null for its first section.
+ * a run list, a run's overview, or a comparison's summary. `scroll` is its
+ * body's scroll in pixels from the top. `section` is the section a sectioned
+ * inspector shows, or the part of the address an address sheet shows, such as
+ * a comparison's change list, with null for the first section.
  */
 export type MobileSheet = {
   level: MobileRevealLevel;
@@ -211,6 +212,34 @@ export function withMobileAddressSheet(
   return scope.mobile.sheets.length === 0
     ? withMobileSheets(scope, [ADDRESS_SHEET])
     : scope;
+}
+
+/**
+ * Show one section of the address itself over the open sequence, as a sheet at
+ * `level`, such as a comparison's change list or its version history. With no
+ * sheet open the address sheet opens beneath it, so Back reaches that sheet
+ * before the canvas. When the last sheet already shows that section at that
+ * level, nothing changes. The new sheet records the scope's mobile camera, which
+ * Back restores, and the selection is left as it is.
+ */
+export function withMobileAddressSection(
+  scope: ScopeNavigation,
+  input: { level: MobileRevealLevel; section: string }
+): ScopeNavigation {
+  const { sheets } = scope.mobile;
+  const top = sheets.at(-1);
+  if (
+    top !== undefined &&
+    top.inspected === null &&
+    top.level === input.level &&
+    top.section === input.section
+  ) {
+    return scope;
+  }
+  return withMobileSheets(scope, [
+    ...(top === undefined ? [ADDRESS_SHEET] : sheets),
+    { ...ADDRESS_SHEET, level: input.level, section: input.section },
+  ]);
 }
 
 /**

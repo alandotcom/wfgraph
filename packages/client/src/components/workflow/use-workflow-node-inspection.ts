@@ -1,9 +1,5 @@
 import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { useCallback } from "react";
-import {
-  activeComparisonAtom,
-  setComparisonSubviewAtom,
-} from "#src/lib/workflow-comparison-store";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import {
   clearSelectionAtom,
@@ -11,7 +7,6 @@ import {
   isExecutionOverlayActiveAtom,
   selectOnlyNodeAtom,
 } from "#src/lib/workflow-graph-store";
-import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import {
   activeWorkspaceAddressAtom,
@@ -35,10 +30,7 @@ export function useWorkflowNodeInspection(): (
 ) => void {
   const selectOnlyNode = useSetAtom(selectOnlyNodeAtom);
   const overlayActive = useAtomValue(isExecutionOverlayActiveAtom);
-  const comparisonActive = useAtomValue(activeComparisonAtom) !== null;
   const workspaceView = useAtomValue(workflowWorkspaceViewAtom);
-  const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
-  const setComparisonSubview = useSetAtom(setComparisonSubviewAtom);
   const navigation = useRevealNavigation();
   const store = useStore();
 
@@ -59,24 +51,9 @@ export function useWorkflowNodeInspection(): (
       if (!options?.selectionApplied) {
         selectOnlyNode(nodeId);
       }
-      if (comparisonActive && currentWorkflowId) {
-        setComparisonSubview({
-          workflowId: currentWorkflowId,
-          subview: "properties",
-        });
-      }
       navigation.showPressedNode({ address, nodeId });
     },
-    [
-      comparisonActive,
-      currentWorkflowId,
-      navigation,
-      overlayActive,
-      selectOnlyNode,
-      setComparisonSubview,
-      store,
-      workspaceView,
-    ]
+    [navigation, overlayActive, selectOnlyNode, store, workspaceView]
   );
 }
 

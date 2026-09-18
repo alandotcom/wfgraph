@@ -36,6 +36,7 @@ function openerIn(sheet: HTMLElement, opener: Opener): HTMLElement | null {
  * focus to, inside the sheet or the canvas area, such as the row of the run
  * just left or the canvas node that opened the evidence; `backFocusTarget`;
  * the control that opened the removed sheet; the title of the sheet on screen.
+ * A control focused after Back is scrolled into view when it is out of view.
  * A sheet whose control moved to another address, as Enter group does, gets
  * focus back on that control when its address shows again. Closing the last
  * sheet in the same address returns focus to its canvas node when focus had
@@ -195,6 +196,11 @@ export function useMobileSheetFocus(input: {
     const target = kindTarget ?? opener ?? title;
     if (target && document.activeElement !== target) {
       target.focus({ preventScroll: true });
+      // The restored scroll stays unless the control Back focused is out of
+      // view, as a change list row that Previous or Next moved to can be.
+      if (target !== title) {
+        target.scrollIntoView?.({ block: "nearest" });
+      }
     }
   });
 

@@ -141,4 +141,26 @@ describe("mobileSheetCameraStep", () => {
       "keep"
     );
   });
+
+  it("places an address sheet over the bottom of the canvas and keeps the camera under an address inspector", () => {
+    const addressSheet = (
+      depth: number,
+      level: "summary" | "inspector"
+    ): MobileSheetCameraSlot => ({
+      addressId: address,
+      sheet: { depth, level, inspected: null },
+    });
+    expect(
+      mobileSheetCameraStep({
+        shown: addressSheet(1, "summary"),
+        next: addressSheet(2, "summary"),
+      })
+    ).toBe("place");
+    expect(
+      mobileSheetCameraStep({
+        shown: addressSheet(1, "summary"),
+        next: addressSheet(2, "inspector"),
+      })
+    ).toBe("keep");
+  });
 });

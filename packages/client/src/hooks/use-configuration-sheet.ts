@@ -13,9 +13,9 @@ import {
  * when none is named. A caller about to navigate names the address it goes to,
  * because the active address changes only once the route has synced. In Draft
  * with one object selected, that inspector is the object's summary sheet in the
- * mobile Reveal sequence, and in Runs it is the address sheet of the run list
- * or the run; the navigation state records both, and with a sheet already open
- * it changes nothing. Anywhere else it is the configuration sheet,
+ * mobile Reveal sequence, in Runs it is the address sheet of the run list or
+ * the run, and in Changes the comparison summary sheet; the navigation state
+ * records each, and with a sheet already open it changes nothing. Anywhere else it is the configuration sheet,
  * opened with the same `onClose` from every caller, so it cannot be dismissed
  * into a state nothing on screen explains.
  */

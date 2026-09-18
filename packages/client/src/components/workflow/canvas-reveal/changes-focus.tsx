@@ -1,8 +1,8 @@
 /**
  * Changes Focus: the selected changed object's properties as the published
- * version and the draft each hold them, side by side. It reads only the
- * comparison the route names, and every piece of view state below it is keyed
- * by that comparison and object, so another comparison starts it over.
+ * version and the draft each hold them, side by side, or stacked in the phone's
+ * field differences sheet. It reads only the comparison the route names, and
+ * every piece of view state below it is keyed by that comparison and object.
  */
 
 import { compact, partition, uniqBy } from "es-toolkit/array";
@@ -19,9 +19,10 @@ import {
   ComparisonFieldTable,
   useCachedConnections,
   type ComparisonField,
+  type ComparisonLayout,
 } from "#src/components/workflow/comparison-properties";
 import { useWorkflowComparisonActions } from "#src/components/workflow/use-workflow-comparison-actions";
-import { PanelState } from "#src/components/workflow/workflow-changes-panel-state";
+import { PanelState } from "#src/components/workflow/panel-state";
 import { comparisonDisplayGraphAtom } from "#src/lib/workflow-comparison-store";
 import { COMPARISON_CHANGE_KIND_LABEL } from "#src/lib/workflow-graph-types";
 import { workspaceAddressId } from "#src/lib/workflow-navigation-state";
@@ -36,7 +37,13 @@ import type {
 } from "@wfgraph/shared/graph/publication-contracts";
 import { cn } from "@wfgraph/shared/utils";
 import { ComparisonState } from "./changes-browse";
-import { ChangeNavigation, useChangedObjects } from "./changes-navigation";
+import {
+  ChangeNavigation,
+  useChangedObjects,
+  useOpenMobileChange,
+  useSelectChange,
+  type ChooseChange,
+} from "./changes-navigation";
 import {
   COMPARISON_DRAFT_LABEL,
   comparisonBaseLabel,
@@ -60,6 +67,7 @@ import { useInspectorScroll } from "./use-inspector-scroll";
  */
 export function ChangesFocus(_props: RevealBodyProps) {
   const actions = useWorkflowComparisonActions();
+  const selectChange = useSelectChange();
   const comparison = useAtomValue(comparisonRevealContextAtom);
   const address = useAtomValue(activeWorkspaceAddressAtom);
   return (
@@ -68,7 +76,11 @@ export function ChangesFocus(_props: RevealBodyProps) {
       data-testid="workflow-change-focus"
     >
       {"payload" in comparison ? (
-        <ChangeFocusContent payload={comparison.payload} />
+        <ChangeFocusContent
+          layout="columns"
+          onSelect={selectChange}
+          payload={comparison.payload}
+        />
       ) : (
         <ComparisonState
           actions={actions}
@@ -81,32 +93,76 @@ export function ChangesFocus(_props: RevealBodyProps) {
 }
 
 /**
- * The inspected object and Previous and Next. The scrolling content is keyed
- * by the comparison and the object, so a long value expanded for one object
- * starts shortened for the next. Its scroll is kept per address, so another
- * object starts at the top and returning to the address restores its scroll.
+ * The field differences sheet of the phone's Changes sequence: the selected
+ * object's settings with each version's value stacked under the setting, and
+ * Previous and Next pinned to the bottom of the sheet. Choosing another
+ * changed object shows it in this sheet.
+ */
+export function ChangeFieldDifferences() {
+  const actions = useWorkflowComparisonActions();
+  const openChange = useOpenMobileChange();
+  const comparison = useAtomValue(comparisonRevealContextAtom);
+  const address = useAtomValue(activeWorkspaceAddressAtom);
+  return (
+    <div data-testid="workflow-change-focus">
+      {"payload" in comparison ? (
+        <ChangeFocusContent
+          layout="stacked"
+          onSelect={openChange}
+          payload={comparison.payload}
+        />
+      ) : (
+        <ComparisonState
+          actions={actions}
+          address={address}
+          status={comparison.status}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * The inspected object and Previous and Next, which choose an object through
+ * `onSelect`. The content is keyed by the comparison and the object, so a long
+ * value expanded for one object starts shortened for the next. In `columns`
+ * the content scrolls inside Focus, and its scroll is kept per address: another
+ * object starts at the top, and returning to the address restores its scroll.
+ * In `stacked` the sheet around it scrolls and Previous and Next stay at its
+ * bottom.
  */
 function ChangeFocusContent({
   payload,
+  layout,
+  onSelect,
 }: {
   payload: WorkflowComparisonPayload;
+  layout: ComparisonLayout;
+  onSelect: ChooseChange;
 }) {
   const catalog = useExtensionCatalog();
   const graph = useAtomValue(comparisonDisplayGraphAtom);
   const selection = useAtomValue(activeSelectionAtom);
+  const { objects, selectedIndex } = useChangedObjects(payload);
+  const stacked = layout === "stacked";
   const address = useAtomValue(activeWorkspaceAddressAtom);
+  // In `stacked` the phone's sheet owns the scroll, so only `columns` keeps
+  // this scroller's position.
   const {
     ref: scrollRef,
     onScroll,
     onScrollEnd,
     adoptScroll,
-  } = useInspectorScroll({
-    address,
-    addressId: workspaceAddressId(address),
-    inspectedId: null,
-    level: "focus",
-  });
-  const { objects, selectedIndex, select } = useChangedObjects(payload);
+  } = useInspectorScroll(
+    stacked
+      ? null
+      : {
+          address,
+          addressId: workspaceAddressId(address),
+          inspectedId: null,
+          level: "focus",
+        }
+  );
   const object = selectedObject(selection);
   const objectKind = object?.kind;
   const objectId = object?.id;
@@ -123,6 +179,13 @@ function ChangeFocusContent({
         : { kind: "unavailable" },
     [catalog, graph, objectId, objectKind, objects, payload]
   );
+  const navigation = (
+    <ChangeNavigation
+      objects={objects}
+      onSelect={onSelect}
+      selectedIndex={selectedIndex}
+    />
+  );
   const contentKey = `${comparisonIdentity(payload)}|${object?.kind ?? ""}:${object?.id ?? ""}`;
   // The scroll is stored per address, and every object of a comparison shares
   // that address. Another object mounts a new scroller at the top, and that
@@ -138,7 +201,11 @@ function ChangeFocusContent({
   return (
     <>
       <div
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+        className={
+          stacked
+            ? undefined
+            : "min-h-0 flex-1 overflow-y-auto overscroll-contain"
+        }
         data-slot="change-focus-content"
         key={contentKey}
         onScroll={onScroll}
@@ -150,16 +217,17 @@ function ChangeFocusContent({
         ) : (
           <InspectionView
             inspection={inspection}
-            onSelect={select}
+            layout={layout}
+            onSelect={onSelect}
             payload={payload}
           />
         )}
       </div>
-      <ChangeNavigation
-        objects={objects}
-        onSelect={select}
-        selectedIndex={selectedIndex}
-      />
+      {stacked ? (
+        <div className="sticky bottom-0 bg-card">{navigation}</div>
+      ) : (
+        navigation
+      )}
     </>
   );
 }
@@ -167,10 +235,12 @@ function ChangeFocusContent({
 function InspectionView({
   inspection,
   payload,
+  layout,
   onSelect,
 }: {
   inspection: Exclude<ChangeInspection, { kind: "unavailable" }>;
   payload: WorkflowComparisonPayload;
+  layout: ComparisonLayout;
   onSelect: (item: ChangedObject) => void;
 }) {
   return (
@@ -200,7 +270,11 @@ function InspectionView({
         </p>
       </section>
       {inspection.kind === "edge" ? (
-        <ConnectionProperties inspection={inspection} payload={payload} />
+        <ConnectionProperties
+          inspection={inspection}
+          layout={layout}
+          payload={payload}
+        />
       ) : (
         <>
           {inspection.nodeChange ? (
@@ -208,10 +282,12 @@ function InspectionView({
               <StepProperties
                 change={inspection.nodeChange}
                 groupFrame={inspection.groupFrame}
+                layout={layout}
                 payload={payload}
               />
               <StepValidation
                 change={inspection.nodeChange}
+                layout={layout}
                 payload={payload}
               />
             </>
@@ -246,10 +322,12 @@ function InspectionView({
 function StepProperties({
   change,
   groupFrame,
+  layout,
   payload,
 }: {
   change: WorkflowNodeChange;
   groupFrame: boolean;
+  layout: ComparisonLayout;
   payload: WorkflowComparisonPayload;
 }) {
   const catalog = useExtensionCatalog();
@@ -296,6 +374,7 @@ function StepProperties({
               beforeLabel={comparisonBaseLabel(payload)}
               caption={`Settings of this ${noun}`}
               fields={settingFields}
+              layout={layout}
               sides={comparisonSides(change.kind)}
             />
           )}
@@ -308,6 +387,7 @@ function StepProperties({
             beforeLabel={comparisonBaseLabel(payload)}
             caption="Group membership of this step"
             fields={membershipFields}
+            layout={layout}
             sides={comparisonSides(change.kind)}
           />
         </Section>
@@ -324,9 +404,11 @@ function StepProperties({
  */
 function StepValidation({
   change,
+  layout,
   payload,
 }: {
   change: WorkflowNodeChange;
+  layout: ComparisonLayout;
   payload: WorkflowComparisonPayload;
 }) {
   const catalog = useExtensionCatalog();
@@ -360,7 +442,7 @@ function StepValidation({
         <div
           className={cn(
             "grid gap-3 text-xs",
-            lists.length === 2 && "grid-cols-2"
+            lists.length === 2 && layout === "columns" && "grid-cols-2"
           )}
         >
           {lists.map((list) => (
@@ -382,9 +464,11 @@ function StepValidation({
 /** Where a connection runs, in the columns of the sides that hold it. */
 function ConnectionProperties({
   inspection,
+  layout,
   payload,
 }: {
   inspection: Extract<ChangeInspection, { kind: "edge" }>;
+  layout: ComparisonLayout;
   payload: WorkflowComparisonPayload;
 }) {
   const side = inspection.change === "added" ? "after" : "before";
@@ -410,6 +494,7 @@ function ConnectionProperties({
         beforeLabel={comparisonBaseLabel(payload)}
         caption="This connection"
         fields={fields}
+        layout={layout}
         sides={comparisonSides(inspection.change)}
       />
     </Section>

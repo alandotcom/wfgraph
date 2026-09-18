@@ -6,7 +6,7 @@
  * a pure function.
  */
 
-import { compact, partition } from "es-toolkit/array";
+import { compact, groupBy, partition } from "es-toolkit/array";
 import { atom } from "jotai";
 import { isBuiltInActionId } from "@wfgraph/shared/actions/built-in-actions";
 import {
@@ -35,6 +35,7 @@ import {
   changedNodeTitle,
   comparisonGroupMembership,
 } from "#src/components/workflow/comparison-properties";
+import type { MobileSheet } from "#src/lib/mobile-sheet-navigation";
 import type { ComparisonDisplayGraph } from "#src/lib/workflow-comparison";
 import {
   comparisonRequestBaseIdAtom,
@@ -202,6 +203,87 @@ export function changesHeaderModel(input: {
   };
 }
 
+/** The `section` of the address sheet that shows a comparison's change list. */
+export const CHANGE_LIST_SECTION = "changes";
+
+/** The `section` of the address sheet that shows version history. */
+export const VERSION_HISTORY_SECTION = "history";
+
+/**
+ * Which Changes sheet a mobile sheet is: the comparison summary, the change
+ * list, version history, or one object's field differences.
+ */
+export type ChangesMobileSheet = "summary" | "changes" | "history" | "change";
+
+export function changesMobileSheet(
+  sheet: Pick<MobileSheet, "inspected" | "section">
+): ChangesMobileSheet {
+  if (sheet.inspected !== null) {
+    return "change";
+  }
+  if (sheet.section === CHANGE_LIST_SECTION) {
+    return "changes";
+  }
+  return sheet.section === VERSION_HISTORY_SECTION ? "history" : "summary";
+}
+
+/**
+ * The title and status of a Changes sheet on a phone. The comparison summary
+ * is titled by the comparison, and the change list and version history by
+ * their own names over the comparison's name. The field differences of an
+ * object are titled by the object, over its change. A refresh's progress takes
+ * the status line while it runs or after it failed.
+ */
+export function changesMobileHeading(input: {
+  comparison: ComparisonRevealContext;
+  sheet: ChangesMobileSheet;
+  inspection: ChangeInspection;
+}): Pick<RevealHeaderModel, "title" | "status"> {
+  const { comparison, sheet, inspection } = input;
+  if (!("payload" in comparison)) {
+    return {
+      title:
+        sheet === "history"
+          ? changesMobileSheetName(sheet)
+          : TITLE_WITHOUT_COMPARISON[comparison.status],
+      status: null,
+    };
+  }
+  const name = comparisonTitle(comparison.payload);
+  const status = SHOWN_STATUS[comparison.status];
+  if (sheet === "summary") {
+    return { title: name, status };
+  }
+  if (sheet === "change") {
+    return inspection.kind === "unavailable"
+      ? { title: "Change unavailable", status }
+      : {
+          title: inspection.title,
+          status: status ?? {
+            text:
+              inspection.change === "unchanged"
+                ? "Unchanged"
+                : COMPARISON_CHANGE_KIND_LABEL[inspection.change],
+            tone: "muted",
+          },
+        };
+  }
+  return {
+    title: changesMobileSheetName(sheet),
+    status: status ?? { text: name, tone: "muted" },
+  };
+}
+
+/** The name of a Changes sheet in the Back control of the sheet above it. */
+export function changesMobileSheetName(sheet: ChangesMobileSheet): string {
+  return {
+    summary: "Summary",
+    changes: "Changes",
+    history: "Version history",
+    change: "Change",
+  }[sheet];
+}
+
 export type ChangeKind = WorkflowNodeChange["kind"];
 
 /** What a change list row says for a step whose only change is its Group. */
@@ -281,6 +363,51 @@ export function changedObjects(input: {
       : [];
   });
   return [...groupFrames, ...steps, ...edges];
+}
+
+/** One section of the change list and the changed objects it holds. */
+export type ChangeListSection = {
+  id: "groups" | "steps" | "connections";
+  title: string;
+  /** The section's accessible name. */
+  label: string;
+  items: readonly ChangedObject[];
+};
+
+const CHANGE_LIST_SECTIONS = [
+  { id: "groups", title: "Groups", label: "Changed Groups" },
+  { id: "steps", title: "Steps", label: "Changed steps" },
+  { id: "connections", title: "Connections", label: "Changed connections" },
+] as const;
+
+/**
+ * The change list's non-empty sections, changed Groups, then steps, then
+ * connections, each holding its objects in the order `changedObjects` lists
+ * them.
+ */
+export function changeListSections(
+  objects: readonly ChangedObject[]
+): ChangeListSection[] {
+  const sections = groupBy(objects, (item): ChangeListSection["id"] => {
+    if (item.object.kind === "edge") {
+      return "connections";
+    }
+    return item.groupFrame ? "groups" : "steps";
+  });
+  return CHANGE_LIST_SECTIONS.flatMap((section) => {
+    const items = sections[section.id] ?? [];
+    return items.length > 0 ? [{ ...section, items }] : [];
+  });
+}
+
+/**
+ * What the change list says when a comparison holds no changed object: that
+ * the draft matches its base version, or has no steps to publish.
+ */
+export function noChangesLabel(payload: WorkflowComparisonPayload): string {
+  return payload.baseVersion
+    ? `This draft has no changes from version ${payload.baseVersion.version}.`
+    : "This draft has no steps to publish.";
 }
 
 /** The index of the one selected object in `objects`, or -1. */

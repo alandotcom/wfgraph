@@ -18,7 +18,7 @@ import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
 
-export type ComparisonSubview = "review" | "properties" | "history";
+export type ComparisonSubview = "review" | "history";
 
 export type WorkflowComparisonSession = {
   payload: WorkflowComparisonPayload;

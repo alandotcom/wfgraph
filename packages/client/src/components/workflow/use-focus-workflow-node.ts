@@ -68,8 +68,8 @@ export function useFocusWorkflowNode(): (input: {
         addressId: workspaceAddressId(target),
         nodeIds: [input.nodeId],
       });
+      navigation.showPressedNode({ address: target, nodeId: input.nodeId });
       void navigate({ search: workspaceRouteSearch(target) });
-      navigation.followSelection(target);
       return true;
     },
     [

@@ -10,22 +10,31 @@ import {
 } from "@tanstack/react-router";
 import { act, fireEvent, render, within } from "@testing-library/react";
 import { ReactFlowProvider } from "@xyflow/react";
-import { createStore, Provider as JotaiProvider } from "jotai";
+import { createStore, Provider as JotaiProvider, useAtomValue } from "jotai";
 import { vi } from "vitest";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
 import type { WorkflowNode as PersistedWorkflowNode } from "@wfgraph/shared/graph/types";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
+import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import { CanvasReveal } from "#src/components/workflow/canvas-reveal/canvas-reveal";
+import {
+  MobileReveal,
+  MobileRevealCovered,
+} from "#src/components/workflow/canvas-reveal/mobile-reveal";
+import { useWorkflowNodeInspection } from "#src/components/workflow/use-workflow-node-inspection";
+import { WorkflowCanvas } from "#src/components/workflow/workflow-canvas";
 import {
   extractRpcProcedurePath,
   parseRpcRequestInput,
   rpcJsonResponse,
   rpcUrl,
 } from "#src/lib/rpc-fetch-test-support";
+import { integrationsQueryOptions } from "#src/lib/rpc-query";
 import {
   beginWorkflowComparisonRequestAtom,
+  comparisonDisplayGraphAtom,
   installWorkflowComparisonAtom,
   settleWorkflowComparisonRequestAtom,
 } from "#src/lib/workflow-comparison-store";
@@ -121,16 +130,43 @@ export function installComparison(
 }
 
 /**
+ * The comparison canvas as a phone shows it: one control per displayed node,
+ * each inspecting its node as a tap on the canvas does.
+ */
+function ComparisonCanvasNodes() {
+  const graph = useAtomValue(comparisonDisplayGraphAtom);
+  const inspectNode = useWorkflowNodeInspection();
+  return (
+    <div data-testid="comparison-canvas">
+      {graph?.nodes.map((node) => (
+        <button
+          className="react-flow__node"
+          data-id={node.id}
+          key={node.id}
+          onClick={() => inspectNode(node.id)}
+          type="button"
+        >
+          {`Canvas ${node.data.label}`}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
  * Render Canvas Reveal inside the editor route at `search`, over a Draft of
  * `draftNodes`, with `installed` installed as the comparison when it is given.
- * The route is not synced to the store, so a case that follows a navigation
- * calls `show` with the route's search.
+ * With `mobile`, the mobile Reveal sequence renders over a canvas whose nodes
+ * are buttons, or over the real `WorkflowCanvas` with `workflowCanvas`. The route is not synced to the store, so a case that follows a
+ * navigation calls `show` with the route's search.
  */
 export async function renderChangesReveal(input: {
   search: WorkflowRouteSearch;
   installed: WorkflowComparisonPayload | null;
   draftNodes: readonly PersistedWorkflowNode[];
   catalog?: ExtensionCatalog | undefined;
+  mobile?: boolean | undefined;
+  workflowCanvas?: boolean | undefined;
 }) {
   const { search } = input;
   const store = createStore();
@@ -156,7 +192,17 @@ export async function renderChangesReveal(input: {
       }),
     component: () => (
       <div className="relative" data-testid="canvas-area">
+        {input.mobile ? (
+          <MobileRevealCovered>
+            {input.workflowCanvas ? (
+              <WorkflowCanvas canEdit />
+            ) : (
+              <ComparisonCanvasNodes />
+            )}
+          </MobileRevealCovered>
+        ) : null}
         <CanvasReveal />
+        {input.mobile ? <MobileReveal /> : null}
       </div>
     ),
   });
@@ -177,18 +223,24 @@ export async function renderChangesReveal(input: {
       mutations: { retry: false },
     },
   });
+  if (input.workflowCanvas) {
+    // The canvas's nodes read the connected integrations.
+    queryClient.setQueryData(integrationsQueryOptions().queryKey, []);
+  }
 
   const view = render(
     <ExtensionCatalogProvider value={input.catalog ?? EMPTY_CATALOG}>
-      <QueryClientProvider client={queryClient}>
-        <JotaiProvider store={store}>
-          <ReactFlowProvider>
-            <OverlayProvider>
-              <RouterProvider router={router} />
-            </OverlayProvider>
-          </ReactFlowProvider>
-        </JotaiProvider>
-      </QueryClientProvider>
+      <IntegrationUiProvider value={{}}>
+        <QueryClientProvider client={queryClient}>
+          <JotaiProvider store={store}>
+            <ReactFlowProvider>
+              <OverlayProvider>
+                <RouterProvider router={router} />
+              </OverlayProvider>
+            </ReactFlowProvider>
+          </JotaiProvider>
+        </QueryClientProvider>
+      </IntegrationUiProvider>
     </ExtensionCatalogProvider>
   );
   await view.findByTestId("canvas-area");
