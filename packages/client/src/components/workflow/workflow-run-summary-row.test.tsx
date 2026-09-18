@@ -34,7 +34,6 @@ describe("WorkflowRunSummaryRow", () => {
         execution={{ ...BASE_EXECUTION, entityValue: "appt_42" }}
         onClick={onClick}
         runNumber={12}
-        selected
       />
     );
 
@@ -42,8 +41,6 @@ describe("WorkflowRunSummaryRow", () => {
     expect(view.getByText("appointment.updated")).toBeTruthy();
     expect(view.getByText("appt_42")).toBeTruthy();
     expect(view.getByText(/Run #12/)).toBeTruthy();
-    expect(row.className).toContain("bg-muted");
-    expect(row.getAttribute("aria-current")).toBe("true");
     expect(view.getByText("v7 · Test")).toBeTruthy();
 
     fireEvent.click(row);

@@ -691,9 +691,7 @@ describe("Canvas Reveal in Runs", () => {
     fireEvent.click(view.getByRole("button", { name: "Close" }));
 
     expect(aside()?.hasAttribute("inert")).toBe(true);
-    expect(
-      aside()?.querySelector('[data-testid="properties-panel"]')
-    ).toBeTruthy();
+    expect(aside()?.querySelector('[data-testid="runs-browse"]')).toBeTruthy();
   });
 });
 
@@ -801,11 +799,8 @@ describe("Canvas Reveal subjects and focus return", () => {
     expect(document.activeElement).toBe(view.getByText("Send reminder card"));
   });
 
-  it("gives Runs a header with its title and Close and no Back", async () => {
-    const { view, store, level } = await renderReveal({
-      view: "runs",
-      executionId: "exec_1",
-    });
+  it("gives the run list a header with its title and Close and no Back", async () => {
+    const { view, store, level } = await renderReveal({ view: "runs" });
     await act(async () => {
       store.set(executionOverlayGraphAtom, { nodes: [NODES[0]], edges: [] });
     });

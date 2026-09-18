@@ -1,5 +1,5 @@
 import { useAtomValue } from "jotai";
-import { useState } from "react";
+import { type RefObject, useState } from "react";
 import { getRelativeTime } from "@wfgraph/shared/utils/time";
 import { parseConditionModel } from "@wfgraph/shared/conditions/conditions";
 import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
@@ -30,7 +30,7 @@ import {
 } from "./workflow-run-summary-row";
 import { WorkflowRunNodeIndex } from "./workflow-run-timeline";
 
-type WorkflowRunDetailProps = {
+export type WorkflowRunDetailProps = {
   execution: WorkflowExecution;
   runNumber: number;
   /** Why this run is no longer in the list behind it, when it has left. */
@@ -41,9 +41,22 @@ type WorkflowRunDetailProps = {
   waits: ExecutionWait[];
   isCanceling: boolean;
   isResuming: boolean;
-  onBack: () => void;
+  /** Back to the run list, shown in the run summary when given. */
+  onBack?: (() => void) | undefined;
   onCancel?: ((executionId: string) => void) | undefined;
   onResume?: ((token: string) => void) | undefined;
+  /**
+   * The run overview's scroll container binding, for a frame that keeps the
+   * overview's scroll position. The node inspector has scroll containers of its
+   * own and takes no binding.
+   */
+  scroll?:
+    | {
+        ref: RefObject<HTMLDivElement | null>;
+        onScroll: () => void;
+        onScrollEnd: () => void;
+      }
+    | undefined;
 };
 
 function exitSummary(input: {
@@ -82,6 +95,7 @@ export function WorkflowRunDetail({
   onBack,
   onCancel,
   onResume,
+  scroll,
 }: WorkflowRunDetailProps) {
   const selectedNodeId = useAtomValue(selectedNodeAtom);
   const executionGraph = useAtomValue(executionOverlayGraphAtom);
@@ -178,7 +192,12 @@ export function WorkflowRunDetail({
         variant="header"
       />
 
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4 [scrollbar-gutter:stable_both-edges]">
+      <div
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4 [scrollbar-gutter:stable_both-edges]"
+        onScroll={scroll?.onScroll}
+        onScrollEnd={scroll?.onScrollEnd}
+        ref={scroll?.ref}
+      >
         <div className="space-y-4">
           {notice ? (
             <p className="rounded-md border bg-muted/30 p-2 text-muted-foreground text-xs">

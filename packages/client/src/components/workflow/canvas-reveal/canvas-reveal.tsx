@@ -1,3 +1,4 @@
+import { useNavigate } from "@tanstack/react-router";
 import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { ChevronLeft } from "lucide-react";
 import { type ReactNode, useMemo, useRef, useState } from "react";
@@ -51,6 +52,7 @@ export function CanvasReveal() {
   const workflowName = useAtomValue(currentWorkflowNameAtom);
   const catalog = useExtensionCatalog();
   const store = useStore();
+  const navigate = useNavigate({ from: "/workflows/$workflowId" });
   const fieldRequest = useAtomValue(revealFieldRequestAtom);
   const setFieldRequest = useSetAtom(revealFieldRequestAtom);
   const { hasOverlays } = useOverlay();
@@ -112,7 +114,14 @@ export function CanvasReveal() {
   const unwind = () => {
     const unwindLevel = () => close(unwoundLevel(level));
     if (subject && kind?.unwind) {
-      kind.unwind({ subject, level: displayedLevel, store, unwindLevel });
+      kind.unwind({
+        subject,
+        level: displayedLevel,
+        store,
+        unwindLevel,
+        replaceRouteSearch: (search) =>
+          void navigate({ search, replace: true }),
+      });
     } else {
       unwindLevel();
     }

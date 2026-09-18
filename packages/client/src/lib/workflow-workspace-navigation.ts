@@ -19,6 +19,7 @@ import {
   withInspectorScroll,
   withSelection,
   withSelectionOpeningReveal,
+  withShowSuperseded,
   withoutDraftSelections,
   workspaceAddressFromSearch,
   type CanvasSelection,
@@ -262,8 +263,9 @@ export const setWorkspaceRevealLevelAtom = atom(
 /**
  * Record the inspector scroll of one open level for a named address. The write
  * is dropped when the address no longer inspects the node `inspectedId` names,
- * so a scroll read before a selection change never lands on the next object.
- * A null `inspectedId` is the scroll of an address that inspects no object.
+ * so a scroll read before a selection change never lands on the next object. A
+ * null `inspectedId` is the scroll of an address that inspects no object, such
+ * as a run list, a run, or a comparison.
  */
 export const recordInspectorScrollAtom = atom(
   null,
@@ -314,6 +316,22 @@ export const keepActiveInspectionInGraphAtom = atom(
     set(writeNavigationAtom, address.workflowId, (navigation) =>
       updateScopeNavigation(navigation, address, (scope) =>
         inspectionInGraph(scope, graph)
+      )
+    );
+  }
+);
+
+/**
+ * Whether the active run list shows superseded runs. Each run list address
+ * keeps its own value, so a return to that list restores it.
+ */
+export const activeShowSupersededAtom = atom(
+  (get) => get(activeScopeNavigationAtom).showSuperseded,
+  (get, set, showSuperseded: boolean) => {
+    const address = get(activeWorkspaceAddressAtom);
+    set(writeNavigationAtom, address.workflowId, (navigation) =>
+      updateScopeNavigation(navigation, address, (scope) =>
+        withShowSuperseded(scope, showSuperseded)
       )
     );
   }

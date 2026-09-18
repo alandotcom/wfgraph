@@ -8,6 +8,7 @@ import {
   matchChangesSubject,
   matchConditionSubject,
   matchPanelSubject,
+  matchRunsSubject,
   matchStepSubject,
   revealFocusTarget,
   type RevealMatchInput,
@@ -117,16 +118,32 @@ describe("matchPanelSubject", () => {
     expect(matchPanelSubject(input("draft", ["deleted"]))).toBeNull();
   });
 
-  it("always shows Runs, placing the selected node or the whole graph", () => {
-    expect(matchPanelSubject(input("runs", []))).toMatchObject({
-      kind: "panel",
+  it("leaves Runs and Changes to their own kinds", () => {
+    expect(matchPanelSubject(input("runs", ["send"]))).toBeNull();
+    expect(matchPanelSubject(input("changes", ["send"]))).toBeNull();
+  });
+});
+
+describe("matchRunsSubject", () => {
+  it("always shows Runs at Browse, placing the selected node or the whole graph", () => {
+    expect(matchRunsSubject(input("runs", []))).toMatchObject({
+      kind: "runs",
       key: "graph",
+      nodeId: null,
       placement: { kind: "graph" },
+      levels: ["browse"],
     });
-    expect(matchPanelSubject(input("runs", ["send"]))).toMatchObject({
+    expect(matchRunsSubject(input("runs", ["send"]))).toMatchObject({
+      kind: "runs",
+      key: "node:send",
       nodeId: "send",
       placement: { kind: "nodes", nodeIds: ["send"] },
     });
+  });
+
+  it("refuses Draft and Changes", () => {
+    expect(matchRunsSubject(input("draft", ["send"]))).toBeNull();
+    expect(matchRunsSubject(input("changes", []))).toBeNull();
   });
 });
 

@@ -28,28 +28,36 @@ const logger = getClientLogger("workflow", "run");
 const RUN_STATUS_TONES = {
   pending: "muted",
   running: "info",
-  waiting: "pending",
-  completed: "good",
-  canceled: "quiet",
-  exited: "quiet",
-  superseded: "quiet",
-  failed: "bad",
+  waiting: "warning",
+  completed: "success",
+  canceled: "cancelled",
+  exited: "cancelled",
+  superseded: "cancelled",
+  failed: "destructive",
 } satisfies Record<WorkflowExecutionStatus, StatusTone>;
 
 const NODE_STATUS_TONES = {
   pending: "muted",
   running: "info",
-  success: "good",
-  error: "bad",
-  cancelled: "quiet",
+  success: "success",
+  error: "destructive",
+  cancelled: "cancelled",
 } satisfies Record<NodeStatus, StatusTone>;
 
-type StatusTone = "good" | "bad" | "info" | "pending" | "quiet" | "muted";
+/** The signal color a status reads in, named by its color token. */
+export type StatusTone =
+  | "success"
+  | "destructive"
+  | "info"
+  | "warning"
+  | "cancelled"
+  | "muted";
 
 /** A node's own statuses, which the engine writes and the canvas draws. */
 type NodeStatus = "pending" | "running" | "success" | "error" | "cancelled";
 
-function toneOf(status: string): StatusTone {
+/** The tone of a run or node status, and `muted` for a status neither names. */
+export function statusTone(status: string): StatusTone {
   return (
     (RUN_STATUS_TONES as Record<string, StatusTone | undefined>)[status] ??
     (NODE_STATUS_TONES as Record<string, StatusTone | undefined>)[status] ??
@@ -58,11 +66,11 @@ function toneOf(status: string): StatusTone {
 }
 
 const DOT_CLASSES: Record<StatusTone, string> = {
-  good: "bg-success",
-  bad: "bg-destructive",
+  success: "bg-success",
+  destructive: "bg-destructive",
   info: "bg-info",
-  pending: "bg-warning",
-  quiet: "bg-cancelled",
+  warning: "bg-warning",
+  cancelled: "bg-cancelled",
   muted: "bg-muted-foreground",
 };
 
@@ -70,7 +78,7 @@ const DOT_CLASSES: Record<StatusTone, string> = {
  * How each status reads, keyed by the status rather than by its tone.
  *
  * Colour is shared between the two vocabularies and wording is not: a displaced
- * run and a cancelled one are both quiet, and calling the first "Cancelled"
+ * run and a cancelled one share the cancelled tone, and calling the first "Cancelled"
  * sends a builder looking for who cancelled it. Keying the words to the status
  * makes a new one a compile error here instead of a silent "Unknown".
  */
@@ -94,16 +102,16 @@ const NODE_STATUS_LABELS = {
 } satisfies Record<NodeStatus, string>;
 
 const BADGE_CLASSES: Record<StatusTone, string> = {
-  good: "border-success/30 bg-success/10 text-success",
-  bad: "border-destructive/30 bg-destructive/10 text-destructive",
+  success: "border-success/30 bg-success/10 text-success",
+  destructive: "border-destructive/30 bg-destructive/10 text-destructive",
   info: "border-info/30 bg-info/10 text-info",
-  pending: "border-warning/30 bg-warning/10 text-warning",
-  quiet: "border-cancelled/30 bg-cancelled/10 text-cancelled",
+  warning: "border-warning/30 bg-warning/10 text-warning",
+  cancelled: "border-cancelled/30 bg-cancelled/10 text-cancelled",
   muted: "border-muted bg-muted/40 text-muted-foreground",
 };
 
 export function getStatusDotClass(status: string): string {
-  return DOT_CLASSES[toneOf(status)];
+  return DOT_CLASSES[statusTone(status)];
 }
 
 export function getStatusLabel(status: string): string {
@@ -115,20 +123,24 @@ export function getStatusLabel(status: string): string {
 }
 
 export function getStatusBadgeClass(status: string): string {
-  return BADGE_CLASSES[toneOf(status)];
+  return BADGE_CLASSES[statusTone(status)];
 }
 
 const TEXT_CLASSES: Record<StatusTone, string> = {
-  good: "text-success",
-  bad: "text-destructive",
+  success: "text-success",
+  destructive: "text-destructive",
   info: "text-info",
-  pending: "text-warning",
-  quiet: "text-cancelled",
+  warning: "text-warning",
+  cancelled: "text-cancelled",
   muted: "text-muted-foreground",
 };
 
 export function getStatusTextClass(status: string): string {
-  return TEXT_CLASSES[toneOf(status)];
+  return TEXT_CLASSES[statusTone(status)];
+}
+
+export function statusToneTextClass(tone: StatusTone): string {
+  return TEXT_CLASSES[tone];
 }
 
 export function nodeKindLabel(nodeType: string): string {

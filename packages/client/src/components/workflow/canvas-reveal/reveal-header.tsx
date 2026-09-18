@@ -1,6 +1,10 @@
 import { ArrowLeft, Maximize2, Minimize2, X } from "lucide-react";
 import type { Ref } from "react";
 import { Button } from "#src/components/ui/button";
+import {
+  type StatusTone,
+  statusToneTextClass,
+} from "#src/components/workflow/workflow-run-shared";
 import type { OpenRevealLevel } from "#src/lib/workflow-navigation-state";
 
 /** What a subject kind puts in Canvas Reveal's context header. */
@@ -10,7 +14,8 @@ export type RevealHeaderModel = {
   title: string;
   /** Ancestors of the shown object, outermost first, ending with the object. */
   path: readonly string[];
-  status: { text: string; tone: "muted" | "warning" | "destructive" } | null;
+  /** A step's validation status or a run's status, in its signal color. */
+  status: { text: string; tone: StatusTone } | null;
   /** Whether Back is offered. Close is always offered. */
   showsBack: boolean;
 };
@@ -27,16 +32,10 @@ export type RevealHeaderControls = {
   focusToggleRef: Ref<HTMLButtonElement>;
 };
 
-const STATUS_TONE_CLASS = {
-  muted: "text-muted-foreground",
-  warning: "text-warning",
-  destructive: "text-destructive",
-} as const;
-
 /**
  * Canvas Reveal's context header: the workspace, the object shown, the path to
- * it, and its validation status, with Back, the Focus toggle, and Close. The
- * title takes focus when Focus opens, so it carries `tabIndex={-1}`.
+ * it, and its status, with Back, the Focus toggle, and Close. The title takes
+ * focus when Focus opens, so it carries `tabIndex={-1}`.
  */
 export function RevealHeader({
   model,
@@ -71,6 +70,7 @@ export function RevealHeader({
         )}
         <h2
           className="min-w-0 flex-1 truncate px-1 font-semibold text-sm outline-none"
+          data-slot="reveal-title"
           ref={titleRef}
           tabIndex={-1}
         >
@@ -108,7 +108,7 @@ export function RevealHeader({
           </p>
           {status ? (
             <span
-              className={`shrink-0 text-xs ${STATUS_TONE_CLASS[status.tone]}`}
+              className={`shrink-0 text-xs ${statusToneTextClass(status.tone)}`}
             >
               {status.text}
             </span>

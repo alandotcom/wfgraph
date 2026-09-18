@@ -27,8 +27,9 @@ import { WorkflowRuns } from "./workflow-runs";
 /**
  * Configuring the selected node, edge, or the workflow itself.
  *
- * The editor mounts this in two places: Canvas Reveal on a wide viewport, and
- * a sheet from the toolbar's Configuration button or from the issues overlay.
+ * The editor mounts this in two places: Canvas Reveal on a wide viewport, for
+ * Changes and the Draft selections no other Reveal kind shows, and a sheet from
+ * the toolbar's Configuration button or from the issues overlay.
  * Everything the two placements share is here; what a frame genuinely owns is
  * `NodeConfigFrame`.
  */
@@ -79,10 +80,10 @@ export function useNodeConfigTitle(): string {
 }
 
 /**
- * Refresh and Clear All for the Runs surface. In Canvas Reveal they trail the
- * Properties / Runs control; on the sheet they trail the header title. The
- * confirm callback is the frame's, so Canvas Reveal and the sheet can each ask in
- * their own way.
+ * Refresh and Clear All for the Runs surface. In Canvas Reveal they sit above
+ * the run list; in the sheet they trail the run list's title. The confirm
+ * callback is the frame's, so Canvas Reveal and the sheet can each ask in their
+ * own way.
  */
 export function RunsPanelActions({
   confirm,

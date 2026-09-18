@@ -15,7 +15,7 @@ import type {
 } from "#src/lib/workflow-navigation-state";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 
-export type RevealKindId = "step" | "condition" | "changes" | "panel";
+export type RevealKindId = "step" | "condition" | "runs" | "changes" | "panel";
 
 /**
  * What the camera keeps in view while Reveal shows a subject: listed nodes, one
@@ -133,6 +133,31 @@ export function matchConditionSubject(
 }
 
 /**
+ * Runs, at Browse only: the run list, or the run the route opens. It always
+ * shows, placing the one selected node or else the whole graph.
+ */
+export function matchRunsSubject(
+  input: RevealMatchInput
+): RevealSubject | null {
+  if (input.workspace !== "runs") {
+    return null;
+  }
+  const { nodes, edges } = selectedGraph(input);
+  const onlyNodeId =
+    nodes.length === 1 && edges.length === 0 ? nodes[0].id : null;
+  return {
+    kind: "runs",
+    workspace: input.workspace,
+    key: onlyNodeId ? `node:${onlyNodeId}` : "graph",
+    nodeId: onlyNodeId,
+    placement: onlyNodeId
+      ? { kind: "nodes", nodeIds: [onlyNodeId] }
+      : { kind: "graph" },
+    levels: ["browse"],
+  };
+}
+
+/**
  * The Changes workspace, whatever it has selected. A single selected node or
  * connection is placed on the canvas, and any other selection places the whole
  * comparison graph. It offers Browse alone.
@@ -172,32 +197,22 @@ export function matchChangesSubject(
 }
 
 /**
- * The node config panel at Browse. In Runs it always shows, placing the one
- * selected node or else the whole graph. In Draft it shows any selection no
- * other kind matches: a Lifecycle, Event Split, Group, connection, or several
+ * The node config panel at Browse, in Draft alone: any selection no other kind
+ * matches, such as a Lifecycle, Event Split, Group, connection, or several
  * objects.
  */
 export function matchPanelSubject(
   input: RevealMatchInput
 ): RevealSubject | null {
-  const { nodes, edges } = selectedGraph(input);
-  const onlyNodeId =
-    nodes.length === 1 && edges.length === 0 ? nodes[0].id : null;
   if (input.workspace !== "draft") {
-    return {
-      kind: "panel",
-      workspace: input.workspace,
-      key: onlyNodeId ? `node:${onlyNodeId}` : "graph",
-      nodeId: onlyNodeId,
-      placement: onlyNodeId
-        ? { kind: "nodes", nodeIds: [onlyNodeId] }
-        : { kind: "graph" },
-      levels: ["browse"],
-    };
+    return null;
   }
+  const { nodes, edges } = selectedGraph(input);
   if (nodes.length + edges.length === 0) {
     return null;
   }
+  const onlyNodeId =
+    nodes.length === 1 && edges.length === 0 ? nodes[0].id : null;
   return {
     kind: "panel",
     workspace: input.workspace,
