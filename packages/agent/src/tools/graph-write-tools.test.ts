@@ -1498,31 +1498,49 @@ describe("Group membership", () => {
     })
   );
 
-  it.effect("keeps a Group frame's config and enabled state closed", () =>
-    Effect.gen(function* () {
-      const { tools, draft } = yield* agentToolsFor({
-        nodes: [entry, frame, member("a"), member("b")],
-        edges: [entryToA, aToB],
-        catalog,
-      });
+  it.effect(
+    "keeps a Group frame's direction, config and enabled state out of reach",
+    () =>
+      Effect.gen(function* () {
+        const verticalFrame = {
+          ...frame,
+          data: { ...frame.data, config: { direction: "vertical" } },
+        };
+        const { tools, draft } = yield* agentToolsFor({
+          nodes: [entry, verticalFrame, member("a"), member("b")],
+          edges: [entryToA, aToB],
+          catalog,
+        });
 
-      const enabled = yield* Effect.flip(
-        tools.update_node({ nodeId: frame.id, enabled: false })
-      );
-      const config = yield* Effect.flip(
-        tools.update_node({
-          nodeId: frame.id,
-          config: [{ key: "direction", value: "TB" }],
-        })
-      );
-      yield* tools.update_node({ nodeId: frame.id, label: "Enrichment" });
+        const enabled = yield* Effect.flip(
+          tools.update_node({ nodeId: frame.id, enabled: false })
+        );
+        const direction = yield* Effect.flip(
+          tools.update_node({
+            nodeId: frame.id,
+            config: [{ key: "direction", value: "horizontal" }],
+          })
+        );
+        const cleared = yield* Effect.flip(
+          tools.update_node({
+            nodeId: frame.id,
+            clearConfigKeys: ["direction"],
+          })
+        );
+        yield* tools.update_node({ nodeId: frame.id, label: "Enrichment" });
 
-      for (const failure of [enabled, config]) {
-        expect(failure.reason).toContain("holds no config");
-      }
-      expect(
-        (yield* draft.current).nodes.find((node) => node.id === frame.id)?.data
-      ).toMatchObject({ label: "Enrichment", type: "group" });
-    })
+        for (const failure of [enabled, direction, cleared]) {
+          expect(failure.reason).toContain(
+            "layout direction is set in the editor"
+          );
+        }
+        expect(
+          (yield* draft.current).nodes.find((node) => node.id === frame.id)
+            ?.data
+        ).toEqual({
+          ...verticalFrame.data,
+          label: "Enrichment",
+        });
+      })
   );
 });

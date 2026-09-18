@@ -6,7 +6,7 @@ import {
 import { useAtomValue } from "jotai";
 import { EyeOff, GitBranch, Hourglass, Split, Zap } from "lucide-react";
 import { Schema } from "effect";
-import { memo, useMemo, useState } from "react";
+import { type CSSProperties, memo, useMemo, useState } from "react";
 import {
   Node,
   NodeBody,
@@ -424,12 +424,52 @@ type ActionNodeProps = NodeProps & {
   id: string;
 };
 
-const CONDITION_TRUE_HANDLE_LEFT = "38%";
-const CONDITION_FALSE_HANDLE_LEFT = "62%";
+const CONDITION_TRUE_OUTLET_OFFSET = "38%";
+const CONDITION_FALSE_OUTLET_OFFSET = "62%";
 
-/** Where one outlet's handle sits, as a percentage of the card's own width. */
-function eventSplitOutletLeft(index: number, count: number): string {
+/**
+ * Where one Event Split outlet's handle sits along the outlet side, as a
+ * percentage of the card's length on that side.
+ */
+function eventSplitOutletOffset(index: number, count: number): string {
   return `${((index + 0.5) / count) * 100}%`;
+}
+
+/**
+ * The style placing an outlet handle or its label `offset` along the card side
+ * `outlet`: measured from the card's top on the right side, and from its left
+ * on the bottom.
+ */
+function alongOutletSide(outlet: Position, offset: string): CSSProperties {
+  return outlet === Position.Right ? { top: offset } : { left: offset };
+}
+
+/**
+ * The caption naming one outlet, drawn outside the card at `offset` along the
+ * outlet side: beside the handle on the right side, or under it on the bottom.
+ */
+function OutletLabel(input: {
+  outlet: Position;
+  offset: string;
+  className?: string | undefined;
+  title?: string | undefined;
+  children: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "pointer-events-none absolute rounded-sm border bg-card px-1.5 py-0.5 text-xs text-muted-foreground leading-none",
+        input.outlet === Position.Right
+          ? "left-full ml-3 -translate-y-1/2"
+          : "-bottom-8 -translate-x-1/2",
+        input.className
+      )}
+      style={alongOutletSide(input.outlet, input.offset)}
+      title={input.title}
+    >
+      {input.children}
+    </div>
+  );
 }
 
 /** Comparison cards share the accessible graph name's safe action fallback. */
@@ -449,7 +489,11 @@ export function actionNodeDisplayTitle(
   );
 }
 
-export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
+export const ActionNode = memo((props: ActionNodeProps) => {
+  const { data, selected, id, targetPosition } = props;
+  // The side the outlets sit on: the bottom on the overview, the right in a
+  // Left to right Group.
+  const outlet = props.sourcePosition ?? Position.Bottom;
   const catalog = useExtensionCatalog();
   const updateNodeInternals = useUpdateNodeInternals();
   const selectedExecutionId = useAtomValue(selectedExecutionIdAtom);
@@ -510,8 +554,10 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
         data-testid={`action-node-${id}`}
         handles={{ target: true, source: true }}
         selected={selected}
+        sourcePosition={outlet}
         status={status}
         style={workflowNodeSize()}
+        targetPosition={targetPosition}
       >
         <ComparisonMarker comparison={data[COMPARISON_NODE_ANNOTATION]} />
         {isDisabled && (
@@ -567,9 +613,9 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
               {
                 id: "true",
                 label: "True outlet",
-                position: Position.Bottom,
+                position: outlet,
                 style: {
-                  left: CONDITION_TRUE_HANDLE_LEFT,
+                  ...alongOutletSide(outlet, CONDITION_TRUE_OUTLET_OFFSET),
                   width: 12,
                   height: 12,
                 },
@@ -577,9 +623,9 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
               {
                 id: "false",
                 label: "False outlet",
-                position: Position.Bottom,
+                position: outlet,
                 style: {
-                  left: CONDITION_FALSE_HANDLE_LEFT,
+                  ...alongOutletSide(outlet, CONDITION_FALSE_OUTLET_OFFSET),
                   width: 12,
                   height: 12,
                 },
@@ -589,9 +635,12 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
             ? splitOutlets.map((event, index) => ({
                 id: eventSplitOutlet(event.name),
                 label: `${event.label} outlet`,
-                position: Position.Bottom,
+                position: outlet,
                 style: {
-                  left: eventSplitOutletLeft(index, splitOutlets.length),
+                  ...alongOutletSide(
+                    outlet,
+                    eventSplitOutletOffset(index, splitOutlets.length)
+                  ),
                   width: 12,
                   height: 12,
                 },
@@ -600,12 +649,14 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
       }}
       // A split is as wide as its outlets. Every other node keeps the default.
       selected={selected}
+      sourcePosition={outlet}
       status={status}
       style={workflowNodeSize(
         isEventSplitAction
           ? eventSplitCardWidth(splitOutlets.length)
           : WORKFLOW_NODE_WIDTH
       )}
+      targetPosition={targetPosition}
     >
       <ComparisonMarker comparison={data[COMPARISON_NODE_ANNOTATION]} />
       {/* Disabled badge in top left */}
@@ -622,27 +673,26 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
 
       {isConditionAction && (
         <>
-          <div className="pointer-events-none absolute -bottom-8 left-[38%] -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-xs text-muted-foreground leading-none">
+          <OutletLabel offset={CONDITION_TRUE_OUTLET_OFFSET} outlet={outlet}>
             True
-          </div>
-          <div className="pointer-events-none absolute -bottom-8 left-[62%] -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-xs text-muted-foreground leading-none">
+          </OutletLabel>
+          <OutletLabel offset={CONDITION_FALSE_OUTLET_OFFSET} outlet={outlet}>
             False
-          </div>
+          </OutletLabel>
         </>
       )}
 
       {isEventSplitAction &&
         splitOutlets.map((event, index) => (
-          <div
-            className="pointer-events-none absolute -bottom-8 max-w-28 -translate-x-1/2 truncate rounded-sm border bg-card px-1.5 py-0.5 text-xs text-muted-foreground leading-none"
+          <OutletLabel
+            className="max-w-28 truncate"
             key={event.name}
-            style={{
-              left: eventSplitOutletLeft(index, splitOutlets.length),
-            }}
+            offset={eventSplitOutletOffset(index, splitOutlets.length)}
+            outlet={outlet}
             title={event.name}
           >
             {event.label}
-          </div>
+          </OutletLabel>
         ))}
 
       <NodeBody>

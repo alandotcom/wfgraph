@@ -314,7 +314,7 @@ describe("prepareGraphSave with a Group", () => {
           assert.instanceOf(failure, InvalidInput);
           assert.strictEqual(
             failure.error,
-            `nodes[1].attributes.data.config.${key}: Group config holds no keys`
+            `nodes[1].attributes.data.config.${key}: Group config holds only direction`
           );
         })
       );

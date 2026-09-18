@@ -17,61 +17,54 @@ export function getWorkflowEdgePath(
   });
 }
 
-const getHandleCoordsByPosition = (
+/**
+ * The world coordinates of one handle's outer edge midpoint, and the side of the
+ * node the handle sits on. The handle is the one named `handleId`, else the
+ * first handle of `handleType` on `fallbackPosition`, else the first handle.
+ * Before React Flow measures any handle, the point is the origin on
+ * `fallbackPosition`.
+ */
+const getHandleCoords = (
   node: InternalNode,
   handleType: "source" | "target",
-  handlePosition: Position,
+  fallbackPosition: Position,
   handleId?: string | null
-) => {
+): { x: number; y: number; position: Position } => {
   const handles = node.internals.handleBounds?.[handleType];
-  if (!(handles && handles.length > 0)) {
-    return [0, 0] as const;
-  }
-
   const handle =
     (handleId
-      ? handles.find((candidate) => (candidate.id ?? null) === handleId)
+      ? handles?.find((candidate) => (candidate.id ?? null) === handleId)
       : undefined) ??
-    handles.find((candidate) => candidate.position === handlePosition) ??
-    handles[0];
+    handles?.find((candidate) => candidate.position === fallbackPosition) ??
+    handles?.[0];
 
   if (!handle) {
-    return [0, 0] as const;
+    return { x: 0, y: 0, position: fallbackPosition };
   }
 
-  let offsetX = handle.width / 2;
-  let offsetY = handle.height / 2;
+  const { position } = handle;
+  // The handle's own box has its origin at the top left. The edge starts at the
+  // middle of the handle's outer side, so the marker at its end stays visible.
+  const offset = {
+    [Position.Left]: { x: 0, y: handle.height / 2 },
+    [Position.Right]: { x: handle.width, y: handle.height / 2 },
+    [Position.Top]: { x: handle.width / 2, y: 0 },
+    [Position.Bottom]: { x: handle.width / 2, y: handle.height },
+  }[position];
 
-  // this is a tiny detail to make the markerEnd of an edge visible.
-  // The handle position that gets calculated has the origin top-left, so depending which side we are using, we add a little offset
-  // when the handlePosition is Position.Right for example, we need to add an offset as big as the handle itself in order to get the correct position
-  switch (handlePosition) {
-    case Position.Left:
-      offsetX = 0;
-      break;
-    case Position.Right:
-      offsetX = handle.width;
-      break;
-    case Position.Top:
-      offsetY = 0;
-      break;
-    case Position.Bottom:
-      offsetY = handle.height;
-      break;
-    default:
-      throw new Error("Invalid handle position");
-  }
-
-  const x = node.internals.positionAbsolute.x + handle.x + offsetX;
-  const y = node.internals.positionAbsolute.y + handle.y + offsetY;
-
-  return [x, y] as const;
+  return {
+    x: node.internals.positionAbsolute.x + handle.x + offset.x,
+    y: node.internals.positionAbsolute.y + handle.y + offset.y,
+    position,
+  };
 };
 
 /**
- * Where a workflow edge starts and ends in world coordinates: the bottom of the
- * source handle and the top of the target handle. The canvas edge and Canvas
- * Reveal's outlet placement both read it, so the two agree on where a label sits.
+ * Where a workflow edge starts and ends in world coordinates, and the side of
+ * each node its handle sits on. An overview card draws its outlets on the bottom
+ * and its inlet on top; a card in a Left to right Group draws them on the right
+ * and left. The canvas edge and Canvas Reveal's outlet placement both read it,
+ * so the two agree on where a label sits.
  */
 export const getEdgeParams = (
   source: InternalNode,
@@ -79,27 +72,20 @@ export const getEdgeParams = (
   sourceHandle?: string | null,
   targetHandle?: string | null
 ) => {
-  const sourcePos = Position.Bottom;
-  const [sx, sy] = getHandleCoordsByPosition(
+  const start = getHandleCoords(
     source,
     "source",
-    sourcePos,
+    Position.Bottom,
     sourceHandle
   );
-  const targetPos = Position.Top;
-  const [tx, ty] = getHandleCoordsByPosition(
-    target,
-    "target",
-    targetPos,
-    targetHandle
-  );
+  const end = getHandleCoords(target, "target", Position.Top, targetHandle);
 
   return {
-    sx,
-    sy,
-    tx,
-    ty,
-    sourcePos,
-    targetPos,
+    sx: start.x,
+    sy: start.y,
+    tx: end.x,
+    ty: end.y,
+    sourcePos: start.position,
+    targetPos: end.position,
   };
 };

@@ -1,8 +1,9 @@
 /**
  * The graph the canvas paints for one workspace scope. The overview shows each
  * Group as one collapsed card with its boundary edges on the frame. A focused
- * Group lays its members out from the Group's topology alone, with a stub for
- * each outside port an edge enters or leaves by. Nothing here writes the graph.
+ * Group lays its members out from the Group's topology and stored direction,
+ * with a stub for each outside port an edge enters or leaves by. Nothing here
+ * writes the graph.
  */
 
 import {
@@ -13,11 +14,12 @@ import {
 import {
   displayEdgesForGroups,
   groupCanvasPositions,
-  type GroupLayoutDirection,
+  groupLayoutDirection,
 } from "@wfgraph/shared/graph/node-group";
+import type { GroupLayoutDirection } from "@wfgraph/shared/graph/schemas";
 import { getConditionBranchDisplayLabel } from "@wfgraph/shared/conditions/condition-branch";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
-import type { NodeChange } from "@xyflow/react";
+import { type NodeChange, Position } from "@xyflow/react";
 import type { WorkspaceScope } from "#src/lib/workflow-navigation-state";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import {
@@ -59,6 +61,18 @@ type EdgeRole = "interior" | StubDirection;
 const CARD_SIZE = { width: WORKFLOW_NODE_WIDTH, height: WORKFLOW_NODE_HEIGHT };
 
 /**
+ * Where a focused Group's cards and stubs draw their handles, so edges run along
+ * the Group's direction: top to bottom, or left to right.
+ */
+const HANDLE_POSITIONS: Record<
+  GroupLayoutDirection,
+  { sourcePosition: Position; targetPosition: Position }
+> = {
+  vertical: { sourcePosition: Position.Bottom, targetPosition: Position.Top },
+  horizontal: { sourcePosition: Position.Right, targetPosition: Position.Left },
+};
+
+/**
  * The id of the stub standing for one outside port: the encoded node id, then a
  * slash and the encoded handle when the port has one. An encoded id holds no
  * slash, so no two ports share a stub id.
@@ -74,25 +88,28 @@ export function boundaryStubId(
 }
 
 /**
- * One display-only copy per stored edge and role, so a recompute that changed
- * nothing hands React Flow the edge objects it already holds.
+ * One display-only copy per stored boundary edge and role, so a recompute that
+ * changed nothing hands React Flow the edge objects it already holds.
  */
 const displayOnlyEdges: Record<
-  EdgeRole,
+  StubDirection,
   WeakMap<WorkflowEdge, WorkflowEdge>
 > = {
-  interior: new WeakMap(),
   ingress: new WeakMap(),
   continuation: new WeakMap(),
 };
 
 /**
- * The edge a focused Group paints for a stored edge. Every one is display only.
- * A boundary edge's outside end moves onto the stub for its outside port, which
- * draws one handle with no id. An ingress edge keeps the branch label its
- * outside source handle gave it.
+ * The edge a focused Group paints for a stored edge. An interior edge is the
+ * stored edge itself, so it can be selected and deleted on the focused canvas.
+ * A boundary edge is display only: its outside end moves onto the stub for its
+ * outside port, which draws one handle with no id, and an ingress edge keeps the
+ * branch label its outside source handle gave it.
  */
 function focusedEdge(edge: WorkflowEdge, role: EdgeRole): WorkflowEdge {
+  if (role === "interior") {
+    return edge;
+  }
   const cached = displayOnlyEdges[role].get(edge);
   if (cached) {
     return cached;
@@ -208,6 +225,7 @@ const boundaryStubs = new WeakMap<WorkflowNode, Map<string, WorkflowNode>>();
  */
 function boundaryStub(input: {
   direction: StubDirection;
+  layout: GroupLayoutDirection;
   outside: WorkflowNode;
   port: GroupPort;
   position: { x: number; y: number };
@@ -216,8 +234,13 @@ function boundaryStub(input: {
   const id = boundaryStubId(input.direction, input.port);
   const cache = boundaryStubs.get(outside) ?? new Map<string, WorkflowNode>();
   boundaryStubs.set(outside, cache);
+  const handles = HANDLE_POSITIONS[input.layout];
   const cached = cache.get(id);
-  if (cached?.position.x === position.x && cached.position.y === position.y) {
+  if (
+    cached?.position.x === position.x &&
+    cached.position.y === position.y &&
+    cached.sourcePosition === handles.sourcePosition
+  ) {
     return cached;
   }
   const size = {
@@ -228,6 +251,7 @@ function boundaryStub(input: {
     id,
     type: GROUP_BOUNDARY_NODE_TYPES[input.direction],
     position,
+    ...handles,
     ...size,
     measured: size,
     selectable: false,
@@ -248,25 +272,34 @@ function boundaryStub(input: {
 const projectedMembers = new WeakMap<WorkflowNode, WorkflowNode>();
 
 /**
- * A member drawn as a full card with no parent, at `position`. It cannot be
- * dragged or connected, because the focused canvas never writes a coordinate or
- * an edge back. The copy is kept while the member and its position hold.
+ * A member drawn as a full card with no parent, at `position`, keeping the
+ * member's id so a selection or a connection on it names the stored member. It
+ * cannot be dragged, because the layout comes from topology and the focused
+ * canvas never writes a coordinate back. It can be connected to another member.
+ * The copy is kept while the member, its position and its handle sides hold.
  */
 function projectedMember(
   member: WorkflowNode,
-  position: { x: number; y: number }
+  position: { x: number; y: number },
+  layout: GroupLayoutDirection
 ): WorkflowNode {
+  const handles = HANDLE_POSITIONS[layout];
   const cached = projectedMembers.get(member);
-  if (cached?.position.x === position.x && cached.position.y === position.y) {
+  if (
+    cached?.position.x === position.x &&
+    cached.position.y === position.y &&
+    cached.sourcePosition === handles.sourcePosition
+  ) {
     return cached;
   }
   const { parentId: _parentId, extent: _extent, ...rest } = member;
   const projected: WorkflowNode = {
     ...rest,
     ...CARD_SIZE,
+    ...handles,
     measured: CARD_SIZE,
     draggable: false,
-    connectable: false,
+    connectable: true,
     position,
   };
   projectedMembers.set(member, projected);
@@ -299,22 +332,19 @@ function stubLine(
  * A focused Group: its members, the interior edges between them, and one stub
  * per outside port an edge enters the Group from or continues to. The frame is
  * not painted, and its stored position and every stored member position are
- * never read. `direction` is the axis the member rows follow. Null when the
- * graph holds no Group `groupId`.
+ * never read. The member rows follow the frame's stored direction. Null when
+ * the graph holds no Group `groupId`.
  */
 export function focusedGroupCanvasGraph(
-  input: CanvasGraph & {
-    groupId: string;
-    direction?: GroupLayoutDirection | undefined;
-  }
+  input: CanvasGraph & { groupId: string }
 ): ScopeCanvasGraph | null {
-  const direction = input.direction ?? "vertical";
   const frame = input.nodes.find(
     (node) => node.id === input.groupId && isGroupNode(node)
   );
   if (!frame) {
     return null;
   }
+  const direction = groupLayoutDirection(frame);
   const byId = new Map(input.nodes.map((node) => [node.id, node]));
   const storedMembers = input.nodes.filter(
     (node) => node.parentId === input.groupId
@@ -331,7 +361,8 @@ export function focusedGroupCanvasGraph(
   const members = storedMembers.map((member) =>
     projectedMember(
       member,
-      positions.get(member.id) ?? { x: -WORKFLOW_NODE_WIDTH / 2, y: 0 }
+      positions.get(member.id) ?? { x: -WORKFLOW_NODE_WIDTH / 2, y: 0 },
+      direction
     )
   );
   const firstMember = members[0];
@@ -368,6 +399,7 @@ export function focusedGroupCanvasGraph(
     return outside.map(({ node, port }, index) =>
       boundaryStub({
         direction: stubDirection,
+        layout: direction,
         outside: node,
         port,
         position: line[index] ?? { x: 0, y: along },

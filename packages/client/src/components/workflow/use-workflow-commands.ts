@@ -1,7 +1,6 @@
 import { useReactFlow } from "@xyflow/react";
 import { useAtomValue, useSetAtom } from "jotai";
 import { useMemo } from "react";
-import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { useReflowLayout } from "#src/components/workflow/use-reflow-layout";
 import { useWorkflowComparisonActions } from "#src/components/workflow/use-workflow-comparison-actions";
 import type { WorkflowToolbarActions } from "#src/components/workflow/workflow-toolbar-handlers";
@@ -47,7 +46,6 @@ export function useWorkflowCommands({
   const pasteSelection = useSetAtom(pasteCopiedSelectionAtom);
   const duplicateSelection = useSetAtom(duplicateSelectionAtom);
   const groupSelection = useSetAtom(groupSelectionAtom);
-  const catalog = useExtensionCatalog();
   const { fitView } = useReactFlow();
   const { canReflow, reflow } = useReflowLayout();
   const comparisonActions = useWorkflowComparisonActions();
@@ -68,12 +66,11 @@ export function useWorkflowCommands({
       node.data.type !== "lifecycle" &&
       node.type !== "add"
   );
-  const grouping = analyzeGroupableSelection(
-    state.nodes,
-    state.edges,
+  const grouping = analyzeGroupableSelection({
+    nodes: state.nodes,
+    edges: state.edges,
     selectedIds,
-    catalog
-  );
+  });
 
   return workflowCommands({
     state: {
@@ -133,7 +130,7 @@ export function useWorkflowCommands({
       copySelection: () => void copySelection(),
       pasteSelection: () => void pasteSelection(),
       duplicateSelection: () => void duplicateSelection(),
-      groupSelection: () => void groupSelection({ catalog }),
+      groupSelection: () => void groupSelection(),
       undo: state.undo,
       redo: state.redo,
       reflow,

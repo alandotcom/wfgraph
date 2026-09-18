@@ -14,6 +14,7 @@ export function connectionHandleTypesMatch(
 
 /**
  * Explain a refused canvas connection, or return null when it can be saved.
+ * Two members of the same Group may connect; a member and any other node may not.
  * `storeEdges` are the stored edges, which name Group members; the painted
  * edges name frames and would give a Group outlet a different handle from the
  * one `connectNodesAtom` saves.
@@ -47,8 +48,15 @@ export function connectionRefusalReason({
   if (targetNode?.data.type === "lifecycle") {
     return "Lifecycle is the workflow entry and cannot accept a connection.";
   }
-  if (sourceNode?.parentId || targetNode?.parentId) {
-    return "Connect the Group frame rather than a step inside the Group.";
+  // A focused Group canvas paints members under their stored ids, so a
+  // connection there names two members of one Group and is stored as an
+  // interior edge. A member and a step outside its Group are connected through
+  // the Group's collapsed card on the overview.
+  if (
+    (sourceNode?.parentId || targetNode?.parentId) &&
+    sourceNode?.parentId !== targetNode?.parentId
+  ) {
+    return "Connect two steps inside the same Group, or connect the Group card.";
   }
 
   const connectionId =

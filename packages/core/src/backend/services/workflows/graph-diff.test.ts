@@ -190,6 +190,63 @@ describe("diffWorkflowGraphs", () => {
     expect(result.hasChanges).toBe(true);
   });
 
+  it("reports a Group's direction and membership and no edge change", () => {
+    const frame = (direction: string): WorkflowNode => ({
+      id: "group",
+      type: "group",
+      position: { x: 0, y: 0 },
+      data: { label: "Outreach", type: "group", config: { direction } },
+    });
+    const edges: WorkflowEdge[] = [{ id: "a-b", source: "a", target: "b" }];
+    const ungrouped = graph([node("a"), node("b")], edges);
+    const vertical = graph(
+      [
+        frame("vertical"),
+        node("a", { parentId: "group" }),
+        node("b", { parentId: "group" }),
+      ],
+      edges
+    );
+    const horizontal = graph(
+      [
+        frame("horizontal"),
+        node("a", { parentId: "group" }),
+        node("b", { parentId: "group" }),
+      ],
+      edges
+    );
+
+    const groupedDiff = diffWorkflowGraphs(ungrouped, vertical);
+    expect(
+      groupedDiff.nodeChanges.map(({ nodeId, kind }) => ({ nodeId, kind }))
+    ).toEqual([
+      { nodeId: "a", kind: "modified" },
+      { nodeId: "b", kind: "modified" },
+      { nodeId: "group", kind: "added" },
+    ]);
+    expect(groupedDiff.nodeChanges[0]?.fields).toEqual([
+      { path: ["parentId"], kind: "added", after: "group" },
+    ]);
+    expect(groupedDiff.edgeChanges).toEqual([]);
+
+    const turned = diffWorkflowGraphs(vertical, horizontal);
+    expect(turned.nodeChanges).toEqual([
+      {
+        nodeId: "group",
+        kind: "modified",
+        fields: [
+          {
+            path: ["data", "config", "direction"],
+            kind: "modified",
+            before: "vertical",
+            after: "horizontal",
+          },
+        ],
+      },
+    ]);
+    expect(turned.edgeChanges).toEqual([]);
+  });
+
   it("distinguishes a missing value from null", () => {
     const base = graph([
       node("config", {

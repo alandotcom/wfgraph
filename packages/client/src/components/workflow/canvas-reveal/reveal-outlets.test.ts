@@ -8,7 +8,8 @@ function internal(
   x: number,
   y: number,
   handles?: {
-    source: Array<{ id: string; x: number }>;
+    source: Array<{ id: string; x: number; y?: number; position?: Position }>;
+    target?: { x: number; y: number; position: Position };
   }
 ): InternalNode {
   return {
@@ -26,9 +27,9 @@ function internal(
               id: handle.id,
               type: "source",
               nodeId: id,
-              position: Position.Bottom,
+              position: handle.position ?? Position.Bottom,
               x: handle.x,
-              y: 94,
+              y: handle.y ?? 94,
               width: 12,
               height: 12,
             })),
@@ -37,9 +38,9 @@ function internal(
                 id: null,
                 type: "target",
                 nodeId: id,
-                position: Position.Top,
-                x: 94,
-                y: -6,
+                position: handles.target?.position ?? Position.Top,
+                x: handles.target?.x ?? 94,
+                y: handles.target?.y ?? -6,
                 width: 12,
                 height: 12,
               },
@@ -101,6 +102,44 @@ describe("outletPlacement", () => {
       labels: [
         { x: -90, y: 238, width: 56, height: 24 },
         { x: 234, y: 138, width: 56, height: 24 },
+      ],
+    });
+  });
+
+  it("places the labels of a Condition in a Left to right Group along edges leaving its right side", () => {
+    const left = { x: -6, y: 44, position: Position.Left };
+    const nodes = new Map([
+      [
+        "condition",
+        internal("condition", 0, 0, {
+          source: [
+            { id: "true", x: 194, y: 32, position: Position.Right },
+            { id: "false", x: 194, y: 56, position: Position.Right },
+          ],
+          target: left,
+        }),
+      ],
+      ["yes", internal("yes", 400, -200, { source: [], target: left })],
+      ["no", internal("no", 400, 200, { source: [], target: left })],
+    ]);
+    const placement = outletPlacement({
+      nodeId: "condition",
+      nodeBounds: NODE_BOUNDS,
+      edges: [
+        { source: "condition", sourceHandle: "true", target: "yes" },
+        { source: "condition", sourceHandle: "false", target: "no" },
+      ],
+      getInternalNode: (id) => nodes.get(id),
+    });
+
+    // The handles end at x 206. The True edge runs from (206, 38) to
+    // (394, -150), so its label centers at (300, -56). The False edge runs from
+    // (206, 62) to (394, 250), so its label centers at (300, 156).
+    expect(placement).toEqual({
+      bounds: { x: 0, y: 0, width: 206, height: 100 },
+      labels: [
+        { x: 272, y: -68, width: 56, height: 24 },
+        { x: 272, y: 144, width: 56, height: 24 },
       ],
     });
   });

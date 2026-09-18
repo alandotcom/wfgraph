@@ -6,7 +6,7 @@
  * Graph cells stay in workflow-graph-cells; this file is the operations.
  */
 
-import { atom } from "jotai";
+import { atom, type Getter, type Setter } from "jotai";
 import {
   groupSelection,
   removeGroupWithMembers,
@@ -17,11 +17,12 @@ import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
   fanOutStoreEdges,
   fanOutStoreEdgeIds,
+  groupLayoutDirection,
   groupOutletHandle,
 } from "@wfgraph/shared/graph/node-group";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
-import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
-import type { WorkflowEdge } from "#src/lib/workflow-graph-types";
+import type { GroupLayoutDirection } from "@wfgraph/shared/graph/schemas";
+import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import {
   draftEditable,
   edgesStateAtom,
@@ -33,35 +34,31 @@ import {
   EMPTY_SELECTION,
   selectionInGraph,
 } from "#src/lib/workflow-navigation-state";
-import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
+import {
+  activeSelectionAtom,
+  forgetGroupCamerasAtom,
+} from "#src/lib/workflow-workspace-navigation";
+import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 
 /**
- * Wrap a valid lookup+Condition selection in a Group frame.
- *
- * The catalog is an argument rather than a read, because this runs outside
- * React and the analysis needs each member's `sideEffect`. `selectedIds` is
- * for a caller whose live selection has already collapsed; omitting it groups
- * the selected nodes of the active address. The new frame becomes the
- * selection.
+ * Wrap a selection `analyzeGroupableSelection` accepts in a Group frame, as one
+ * undo step. `selectedIds` is for a caller whose live selection has already
+ * collapsed; omitting it groups the selected nodes of the active address. The
+ * new frame becomes the selection.
  */
 export const groupSelectionAtom = atom(
   null,
-  (
-    get,
-    set,
-    input: { catalog: ExtensionCatalog; selectedIds?: ReadonlySet<string> }
-  ) => {
+  (get, set, input?: { selectedIds?: ReadonlySet<string> | undefined }) => {
     if (!draftEditable(get)) {
       return false;
     }
 
     const nodes = get(nodesStateAtom);
-    const ids = input.selectedIds ?? new Set(get(activeSelectionAtom).nodeIds);
+    const ids = input?.selectedIds ?? new Set(get(activeSelectionAtom).nodeIds);
     const grouped = groupSelection({
       nodes,
       edges: get(edgesStateAtom),
       selectedIds: ids,
-      catalog: input.catalog,
     });
     if (!grouped) {
       return false;
@@ -78,6 +75,90 @@ export const groupSelectionAtom = atom(
     return true;
   }
 );
+
+/**
+ * Store `direction` as the Group frame's authored layout direction, as one undo
+ * step that saves. The direction is organizational, so members, their data and
+ * the stored edges stay as they are. The Group's saved focused cameras are
+ * cleared, since they framed the other layout. Answers false when `groupId`
+ * names no frame or the frame is already laid out along `direction`.
+ */
+export const setGroupDirectionAtom = atom(
+  null,
+  (get, set, input: { groupId: string; direction: GroupLayoutDirection }) => {
+    if (!draftEditable(get)) {
+      return false;
+    }
+
+    const nodes = get(nodesStateAtom);
+    const frame = nodes.find((node) => node.id === input.groupId);
+    if (
+      frame === undefined ||
+      !isGroupNode(frame) ||
+      groupLayoutDirection(frame) === input.direction
+    ) {
+      return false;
+    }
+
+    pushHistory(get, set);
+    set(
+      nodesStateAtom,
+      nodes.map((node) =>
+        node === frame
+          ? {
+              ...node,
+              data: {
+                ...node.data,
+                config: { ...node.data.config, direction: input.direction },
+              },
+            }
+          : node
+      )
+    );
+    forgetGroupCameras(get, set, [input.groupId]);
+    requestGraphSave(get, set, { immediate: true });
+    return true;
+  }
+);
+
+function forgetGroupCameras(
+  get: Getter,
+  set: Setter,
+  groupIds: readonly string[]
+): void {
+  const workflowId = get(currentWorkflowIdAtom);
+  if (workflowId === null) {
+    return;
+  }
+  for (const groupId of groupIds) {
+    set(forgetGroupCamerasAtom, { workflowId, groupId });
+  }
+}
+
+/**
+ * Clear the saved focused cameras of every Group whose layout direction differs
+ * between `before` and `after`, as when undo or redo replaced the graph.
+ */
+export function forgetFlippedGroupCameras(
+  get: Getter,
+  set: Setter,
+  graphs: { before: readonly WorkflowNode[]; after: readonly WorkflowNode[] }
+): void {
+  const directionBefore = new Map(
+    graphs.before
+      .filter((node) => isGroupNode(node))
+      .map((frame) => [frame.id, groupLayoutDirection(frame)])
+  );
+  const flipped = graphs.after
+    .filter(
+      (node) =>
+        isGroupNode(node) &&
+        directionBefore.has(node.id) &&
+        directionBefore.get(node.id) !== groupLayoutDirection(node)
+    )
+    .map((frame) => frame.id);
+  forgetGroupCameras(get, set, flipped);
+}
 
 /** Lift children out of a Group and remove the frame. */
 export const ungroupNodeAtom = atom(null, (get, set, nodeId: string) => {

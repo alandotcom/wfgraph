@@ -652,7 +652,7 @@ describe("workflow versions", () => {
           assert.instanceOf(failure, InvalidInput);
           assert.strictEqual(
             failure.error,
-            "nodes[2].attributes.data.config.outletHandle: Group config holds no keys"
+            "nodes[2].attributes.data.config.outletHandle: Group config holds only direction"
           );
         })
     );
@@ -682,7 +682,7 @@ describe("workflow versions", () => {
           assert.instanceOf(failure, InvalidInput);
           assert.strictEqual(
             failure.error,
-            "nodes[2].attributes.data.config.outletHandle: Group config holds no keys"
+            "nodes[2].attributes.data.config.outletHandle: Group config holds only direction"
           );
         })
     );

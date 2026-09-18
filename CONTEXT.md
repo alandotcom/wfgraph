@@ -209,9 +209,12 @@ graph only through its members. The Group's boundary is derived from membership
 and the stored edges: the outside steps that enter the Group, the members they
 enter, the members whose edges leave it, the outside steps those edges reach,
 and the members where a path ends inside it. A frame has no enabled state or
-run behavior of its own. Removing a frame ungroups its members and keeps every
-stored edge, and an edit that leaves a Group with fewer than two steps ungroups
-it the same way.
+run behavior of its own. It stores a layout direction, vertical or horizontal,
+which decides only how the editor draws its members when the Group is entered.
+Removing a frame ungroups its members and keeps every stored edge, and an edit
+that leaves a Group with fewer than two steps ungroups it the same way. The
+editor groups a selection only when the Group it would form meets the Publish
+rules below.
 A draft save refuses a Group member that is the Lifecycle Node, an Add node, or
 another Group. Publish refuses a Group that holds an Event Split or holds fewer
 than two other steps. Its edges may enter from one outside outlet and may leave

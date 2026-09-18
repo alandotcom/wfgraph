@@ -1,9 +1,17 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { sortBy } from "es-toolkit/array";
+import { ArrowDown, ArrowRight } from "lucide-react";
 import { useMemo } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
-import { edgesAtom, nodesAtom } from "#src/lib/workflow-graph-store";
+import { Button } from "#src/components/ui/button";
+import { ButtonGroup } from "#src/components/ui/button-group";
+import { can } from "#src/lib/authorization";
+import {
+  edgesAtom,
+  nodesAtom,
+  setGroupDirectionAtom,
+} from "#src/lib/workflow-graph-store";
 import { groupMemberCountAtom } from "#src/lib/workflow-graph-presentation-store";
 import {
   comparisonNodeTitle,
@@ -22,13 +30,19 @@ import {
 } from "#src/lib/workflow-workspace-navigation";
 import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
 import { useIsMobile } from "#src/hooks/use-mobile";
+import { isGeneratingAtom } from "#src/lib/workflow-ui-store";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { cn } from "@wfgraph/shared/utils";
 import { getConditionBranchDisplayLabel } from "@wfgraph/shared/conditions/condition-branch";
 import {
   analyzeGroupBoundaryById,
   type GroupPort,
 } from "@wfgraph/shared/graph/group-boundary";
-import { groupCanvasPositions } from "@wfgraph/shared/graph/node-group";
+import {
+  groupCanvasPositions,
+  groupLayoutDirection,
+} from "@wfgraph/shared/graph/node-group";
+import type { GroupLayoutDirection } from "@wfgraph/shared/graph/schemas";
 import type { RevealBodyProps } from "./reveal-kinds";
 import { requestRevealPlacementAtom } from "./reveal-requests";
 import { EnterGroupButton, NodeIssueList, Section } from "./reveal-sections";
@@ -68,6 +82,49 @@ function StepList({
   );
 }
 
+/** The two layout directions a Group offers, in the order the control lists them. */
+const DIRECTION_CHOICES: ReadonlyArray<{
+  direction: GroupLayoutDirection;
+  label: string;
+  Icon: typeof ArrowDown;
+}> = [
+  { direction: "vertical", label: "Top to bottom", Icon: ArrowDown },
+  { direction: "horizontal", label: "Left to right", Icon: ArrowRight },
+];
+
+/**
+ * The Group's stored layout direction as a two-button choice. Choosing the other
+ * direction is one undo step that saves, and the focused Group canvas lays its
+ * steps out along it.
+ */
+function DirectionChoice({ groupId }: { groupId: string }) {
+  const nodes = useAtomValue(nodesAtom);
+  const isGenerating = useAtomValue(isGeneratingAtom);
+  const setDirection = useSetAtom(setGroupDirectionAtom);
+  const current = groupLayoutDirection(
+    nodes.find((node) => node.id === groupId)
+  );
+  const disabled = isGenerating || !can(WfGraphOperations.workflowUpdate.id);
+  return (
+    <ButtonGroup aria-label="Layout direction">
+      {DIRECTION_CHOICES.map(({ direction, label, Icon }) => (
+        <Button
+          aria-pressed={current === direction}
+          disabled={disabled}
+          key={direction}
+          onClick={() => setDirection({ groupId, direction })}
+          size="sm"
+          type="button"
+          variant={current === direction ? "secondary" : "outline"}
+        >
+          <Icon data-icon="inline-start" />
+          {label}
+        </Button>
+      ))}
+    </ButtonGroup>
+  );
+}
+
 /**
  * The members of the Group `groupId` in the row order the focused Group canvas
  * lays them out in.
@@ -78,6 +135,8 @@ function orderedMemberIds(input: {
   groupId: string;
 }): string[] {
   const boundary = analyzeGroupBoundaryById(input);
+  // Row by row, which is the same order in either layout direction, so the
+  // vertical positions are enough to sort by.
   const positions = groupCanvasPositions(boundary);
   const members = boundary.memberIds.map((nodeId) => ({
     nodeId,
@@ -180,13 +239,17 @@ function GroupStepLinks({ groupId }: { groupId: string }) {
 }
 
 /**
- * What Group Focus shows between the Group's form and its commands: its steps,
- * each opening that step inside the Group, and Enter group.
+ * What Group Focus shows between the Group's form and its commands: its layout
+ * direction, its steps, each opening that step inside the Group, and Enter
+ * group.
  */
 export function GroupFocusSections({ groupId }: { groupId: string }) {
   return (
     // The form pads its own content, and each section pads itself.
     <div className="-mx-4 border-t">
+      <Section title="Layout">
+        <DirectionChoice groupId={groupId} />
+      </Section>
       <Section title="Steps">
         <GroupStepLinks groupId={groupId} />
       </Section>
@@ -196,10 +259,10 @@ export function GroupFocusSections({ groupId }: { groupId: string }) {
 }
 
 /**
- * Browse for a collapsed Group: how many steps it holds, each step, the outside
- * ports that enter it and the ones it continues to, which are the ports the
- * focused canvas draws a stub for, its Group issues, and Enter group, which opens
- * the focused Group canvas. Nothing expands in place.
+ * Browse for a collapsed Group: how many steps it holds, its layout direction,
+ * each step, the outside ports that enter it and the ones it continues to, which
+ * are the ports the focused canvas draws a stub for, its Group issues, and Enter
+ * group, which opens the focused Group canvas. Nothing expands in place.
  */
 export function GroupBrowse({ subject, openFocus }: RevealBodyProps) {
   const catalog = useExtensionCatalog();
@@ -235,6 +298,10 @@ export function GroupBrowse({ subject, openFocus }: RevealBodyProps) {
             <dd className="tabular-nums">{memberCount}</dd>
           </div>
         </dl>
+      </Section>
+
+      <Section title="Layout">
+        <DirectionChoice groupId={groupId} />
       </Section>
 
       <Section title="Steps">

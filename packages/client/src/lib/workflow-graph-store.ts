@@ -63,6 +63,7 @@ import {
   type SelectionChange,
 } from "#src/lib/workflow-navigation-state";
 import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
+import { forgetFlippedGroupCameras } from "#src/lib/workflow-group-store";
 
 export {
   executionOverlayGraphAtom,
@@ -74,6 +75,7 @@ export {
   deleteEdgeAtom,
   deleteGroupWithMembersAtom,
   groupSelectionAtom,
+  setGroupDirectionAtom,
   ungroupNodeAtom,
 } from "#src/lib/workflow-group-store";
 export {
@@ -837,6 +839,10 @@ export const undoAtom = atom(null, (get, set) => {
     { nodes: get(nodesStateAtom), edges: get(edgesStateAtom) },
   ]);
   set(historyAtom, history.slice(0, -1));
+  forgetFlippedGroupCameras(get, set, {
+    before: get(nodesStateAtom),
+    after: previousState.nodes,
+  });
   set(nodesStateAtom, previousState.nodes);
   set(edgesStateAtom, previousState.edges);
   keepSelectionInDraft(get, set);
@@ -860,6 +866,10 @@ export const redoAtom = atom(null, (get, set) => {
     { nodes: get(nodesStateAtom), edges: get(edgesStateAtom) },
   ]);
   set(futureAtom, future.slice(0, -1));
+  forgetFlippedGroupCameras(get, set, {
+    before: get(nodesStateAtom),
+    after: nextState.nodes,
+  });
   set(nodesStateAtom, nextState.nodes);
   set(edgesStateAtom, nextState.edges);
   keepSelectionInDraft(get, set);

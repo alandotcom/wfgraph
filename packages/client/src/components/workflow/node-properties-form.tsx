@@ -132,9 +132,8 @@ export function NodePropertiesForm({
 
       {selectedNode.data.type === "group" ? (
         <p className="text-muted-foreground text-sm">
-          Lookups in a frame share an incoming step. They can join at one
-          Condition or leave separately for the same target and target handle.
-          Only Condition True can continue.
+          Steps in a Group run the same way they would outside it. A Group is
+          entered from one outlet and continues from one outlet.
         </p>
       ) : null}
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BUILT_IN_ACTION_IDS } from "#src/actions/built-in-actions";
-import type { ExtensionCatalog } from "#src/extensions/catalog";
+import { groupContractMatrix } from "#src/graph/group-contract-test-support";
 import {
   analyzeGroupableSelection,
   displayEdgesForGroups,
@@ -9,6 +9,7 @@ import {
   fanOutStoreEdgeIds,
   fanOutStoreEdges,
   groupCanvasPositions,
+  groupLayoutDirection,
   groupMemberSlots,
   groupOutletHandle,
   groupOutletHandles,
@@ -63,289 +64,161 @@ const wait = action("w", BUILT_IN_ACTION_IDS.wait);
 const split = action("s", BUILT_IN_ACTION_IDS.eventSplit);
 const sendEmail = action("sms", "resend/send-email");
 
-/**
- * The two lookups the fixtures group, and the one send they may not. Only
- * `sideEffect` matters to these cases; the rest is what the type asks for.
- */
-const catalog: ExtensionCatalog = {
-  entities: [],
-  events: [],
-  actions: [
-    {
-      id: "fountain/get-user",
-      label: "Get User",
-      description: "Reads a user",
-      category: "Fountain",
-      configFields: [],
-      outputFields: [],
-    },
-    {
-      id: "fountain/get-appointment",
-      label: "Get Appointment",
-      description: "Reads an appointment",
-      category: "Fountain",
-      configFields: [],
-      outputFields: [],
-    },
-    {
-      id: "resend/send-email",
-      label: "Send Email",
-      description: "Sends an email",
-      category: "Resend",
-      sideEffect: true,
-      configFields: [],
-      outputFields: [],
-    },
-  ],
-  integrations: [],
-};
-
 describe("analyzeGroupableSelection", () => {
-  it("accepts a lookup chain that ends on an unwired Condition", () => {
-    const result = analyzeGroupableSelection(
-      [lookupA, lookupB, condition],
-      [
-        edge("e1", "a", "b"),
-        edge("e2", "b", "c"),
-        edge("e-out", "c", "sms", "true"),
-      ],
-      new Set(["a", "b", "c"]),
-      catalog
-    );
-
-    expect(result).toEqual({
-      ok: true,
-      memberIds: ["a", "b", "c"],
+  function analyze(
+    nodes: GroupGraphNode[],
+    edges: WorkflowEdge[],
+    ids: string[]
+  ) {
+    return analyzeGroupableSelection({
+      nodes,
+      edges,
+      selectedIds: new Set(ids),
     });
-  });
+  }
 
-  it("accepts parallel lookups that AND-join at a Condition", () => {
-    const result = analyzeGroupableSelection(
-      [lookupA, lookupB, condition],
-      [
-        edge("e-a", "a", "c"),
-        edge("e-b", "b", "c"),
-        edge("e-out", "c", "sms", "true"),
-      ],
-      new Set(["a", "b", "c"]),
-      catalog
-    );
-
-    expect(result).toEqual({
-      ok: true,
-      memberIds: ["a", "b", "c"],
-    });
-  });
-
-  it("accepts parallel lookups that already share a Started inlet", () => {
-    const result = analyzeGroupableSelection(
-      [lookupA, lookupB, condition],
-      [
-        edge("e-start-a", "life", "a", "started"),
-        edge("e-start-b", "life", "b", "started"),
-        edge("e-a", "a", "c"),
-        edge("e-b", "b", "c"),
-      ],
-      new Set(["a", "b", "c"]),
-      catalog
-    );
-
-    expect(result).toMatchObject({
-      ok: true,
-    });
-  });
-
-  it("accepts disconnected lookups with a shared predecessor and outgoing target", () => {
-    const result = analyzeGroupableSelection(
-      [lookupA, lookupB],
-      [
-        edge("e-start-a", "life", "a", "started"),
-        edge("e-start-b", "life", "b", "started"),
-        { ...edge("e-a-out", "a", "sms"), targetHandle: "input" },
-        { ...edge("e-b-out", "b", "sms"), targetHandle: "input" },
-      ],
-      new Set(["a", "b"]),
-      catalog
-    );
-
-    expect(result).toEqual({
-      ok: true,
-      memberIds: ["a", "b"],
-    });
-  });
-
-  it("refuses parallel lookup exits with different target handles", () => {
+  it("accepts a linear chain of a lookup, a side-effecting action and a Wait", () => {
     expect(
-      analyzeGroupableSelection(
-        [lookupA, lookupB],
+      analyze(
+        [lookupA, sendEmail, wait, lookupB],
         [
-          edge("e-start-a", "life", "a", "started"),
-          edge("e-start-b", "life", "b", "started"),
-          { ...edge("e-a-out", "a", "sms"), targetHandle: "one" },
-          { ...edge("e-b-out", "b", "sms"), targetHandle: "two" },
+          edge("e-in", "life", "a", "started"),
+          edge("e1", "a", "sms"),
+          edge("e2", "sms", "w"),
+          edge("e-out", "w", "b"),
         ],
-        new Set(["a", "b"]),
-        catalog
+        ["w", "sms", "a"]
       )
-    ).toMatchObject({
-      ok: false,
-      error:
-        "Parallel lookup exits must share the same target and target handle",
-    });
+    ).toEqual({ ok: true, memberIds: ["a", "sms", "w"] });
   });
 
-  it("refuses a partial outgoing edge from parallel lookup exits", () => {
+  it("accepts a chain that ends on a Condition whose True branch continues", () => {
     expect(
-      analyzeGroupableSelection(
-        [lookupA, lookupB],
-        [edge("e-a-out", "a", "sms")],
-        new Set(["a", "b"]),
-        catalog
-      )
-    ).toMatchObject({
-      ok: false,
-      error:
-        "Parallel lookup exits must share the same target and target handle",
-    });
-  });
-
-  it("refuses a Condition among multiple exits", () => {
-    expect(
-      analyzeGroupableSelection(
+      analyze(
         [lookupA, condition],
-        [
-          edge("e-start-a", "life", "a", "started"),
-          edge("e-start-c", "life", "c", "started"),
-          { ...edge("e-a-out", "a", "sms"), targetHandle: "input" },
-          {
-            ...edge("e-c-out", "c", "sms", "true"),
-            targetHandle: "input",
-          },
-        ],
-        new Set(["a", "c"]),
-        catalog
+        [edge("e1", "a", "c"), edge("e-true", "c", "sms", "true")],
+        ["a", "c"]
       )
-    ).toMatchObject({
+    ).toEqual({ ok: true, memberIds: ["a", "c"] });
+  });
+
+  it("refuses a selection entered from two outlets outside it", () => {
+    expect(
+      analyze(
+        [lookupA, lookupB],
+        [edge("e1", "life", "a", "started"), edge("e2", "w", "b")],
+        ["a", "b"]
+      )
+    ).toEqual({
       ok: false,
-      error: "A Condition must be the only exit step",
+      error: "The steps must be entered from one outlet",
     });
   });
 
-  it("refuses Wait and Event Split", () => {
+  it("refuses a selection that continues from two outlets inside it", () => {
     expect(
-      analyzeGroupableSelection(
-        [lookupA, wait],
-        [edge("e1", "a", "w")],
-        new Set(["a", "w"]),
-        catalog
-      )
-    ).toMatchObject({ ok: false, error: "Wait cannot be grouped" });
-
-    expect(
-      analyzeGroupableSelection(
-        [lookupA, split],
-        [edge("e1", "a", "s")],
-        new Set(["a", "s"]),
-        catalog
-      )
-    ).toMatchObject({ ok: false, error: "Event Split cannot be grouped" });
-  });
-
-  it("refuses a Condition False that leaves the selection", () => {
-    expect(
-      analyzeGroupableSelection(
+      analyze(
         [lookupA, condition],
         [
           edge("e1", "a", "c"),
           edge("e-true", "c", "sms", "true"),
           edge("e-false", "c", "cancel", "false"),
         ],
-        new Set(["a", "c"]),
-        catalog
-      )
-    ).toMatchObject({
-      ok: false,
-      error: "Condition False cannot leave the group",
-    });
-  });
-
-  it("accepts parallel lookup exits with no outgoing edges", () => {
-    expect(
-      analyzeGroupableSelection(
-        [lookupA, lookupB],
-        [],
-        new Set(["a", "b"]),
-        catalog
+        ["a", "c"]
       )
     ).toEqual({
-      ok: true,
-      memberIds: ["a", "b"],
+      ok: false,
+      error: "The steps must continue from one outlet",
     });
   });
 
-  it("refuses grouping one step", () => {
+  it("refuses an Event Split", () => {
     expect(
-      analyzeGroupableSelection([lookupA], [], new Set(["a"]), catalog)
-    ).toMatchObject({ ok: false, error: "Select at least two steps" });
+      analyze(
+        [lookupA, lookupB, split],
+        [edge("e1", "a", "s")],
+        ["a", "b", "s"]
+      )
+    ).toEqual({ ok: false, error: "Event Split cannot be grouped" });
   });
 
-  it("refuses parallel lookups wired from different steps", () => {
+  it("names the Event Split when it is one of several reasons", () => {
     expect(
-      analyzeGroupableSelection(
-        [lookupA, lookupB, condition],
+      analyze([lookupA, split], [edge("e1", "a", "s")], ["a", "s"])
+    ).toEqual({ ok: false, error: "Event Split cannot be grouped" });
+  });
+
+  it("asks for every branch into a join to start inside the Group", () => {
+    const joinStep = action("j", "fountain/get-user");
+    expect(
+      analyze(
+        [action("s0", "fountain/get-user"), lookupA, joinStep, sendEmail],
         [
-          edge("e-start-a", "life", "a", "started"),
-          edge("e-wait-b", "w", "b"),
-          edge("e-a", "a", "c"),
-          edge("e-b", "b", "c"),
+          edge("e-sa", "s0", "a"),
+          edge("e-sj", "s0", "j"),
+          edge("e-aj", "a", "j"),
+          edge("e-out", "j", "sms"),
         ],
-        new Set(["a", "b", "c"]),
-        catalog
+        ["a", "j"]
       )
-    ).toMatchObject({
+    ).toEqual({
       ok: false,
-      error: "Parallel lookups must share the same incoming step",
+      error: "Every branch into the join must start inside the Group",
     });
   });
 
-  it("refuses a step whose action has a side effect", () => {
-    expect(
-      analyzeGroupableSelection(
-        [lookupA, sendEmail],
-        [edge("e1", "a", "sms")],
-        new Set(["a", "sms"]),
-        catalog
-      )
-    ).toMatchObject({
+  it("refuses one step, an unknown id, and a node that is not a step", () => {
+    expect(analyze([lookupA], [], ["a"])).toEqual({
       ok: false,
-      error:
-        "A step that changes something outside the workflow stays outside the frame",
+      error: "Select at least two steps",
+    });
+    expect(analyze([lookupA], [], ["a", "ghost"])).toEqual({
+      ok: false,
+      error: "Select at least two steps",
+    });
+    expect(analyze([lookupA, group("g")], [], ["a", "g"])).toEqual({
+      ok: false,
+      error: "Only steps can be grouped",
     });
   });
 
-  it("accepts an action the catalog does not list, which declares nothing", () => {
+  it("refuses steps already inside a group", () => {
     expect(
-      analyzeGroupableSelection(
-        [action("x", "host/unlisted"), lookupA],
-        [edge("e1", "x", "a")],
-        new Set(["x", "a"]),
-        catalog
-      )
-    ).toMatchObject({ ok: true });
-  });
-
-  it("refuses nodes already inside a group", () => {
-    expect(
-      analyzeGroupableSelection(
+      analyze(
         [
           { ...lookupA, parentId: "g" },
           { ...lookupB, parentId: "g" },
         ],
         [edge("e1", "a", "b")],
-        new Set(["a", "b"]),
-        catalog
+        ["a", "b"]
       )
-    ).toMatchObject({ ok: false, error: "Already in a group" });
+    ).toEqual({ ok: false, error: "Already in a group" });
+  });
+
+  // The grouping policy is the Publish contract applied to the would-be Group,
+  // so each matrix Group, taken apart and selected again, is groupable exactly
+  // when the contract reports no rule for it.
+  it.each(
+    groupContractMatrix.filter(
+      (item) =>
+        item.savesAsDraft &&
+        item.nodes.every(
+          (node) => node.parentId === undefined || node.data.type === "action"
+        )
+    )
+  )("agrees with the Group contract for $name", (item) => {
+    const memberIds = item.nodes
+      .filter((node) => node.parentId !== undefined)
+      .map((node) => node.id);
+    const result = analyze(
+      item.nodes
+        .filter((node) => !isGroupNode(node))
+        .map(({ parentId: _parentId, ...node }) => node),
+      item.edges,
+      memberIds
+    );
+
+    expect(result.ok).toBe(item.rules.length === 0);
   });
 });
 
@@ -751,5 +624,25 @@ describe("orderGroupParentsFirst", () => {
       frame,
       child,
     ]);
+  });
+});
+
+describe("groupLayoutDirection", () => {
+  it("reads the stored direction and lays out vertically when none is stored", () => {
+    const frame = group("g");
+    expect(groupLayoutDirection(frame)).toBe("vertical");
+    expect(groupLayoutDirection(undefined)).toBe("vertical");
+    expect(
+      groupLayoutDirection({
+        ...frame,
+        data: { ...frame.data, config: { direction: "horizontal" } },
+      })
+    ).toBe("horizontal");
+    expect(
+      groupLayoutDirection({
+        ...frame,
+        data: { ...frame.data, config: { direction: "sideways" } },
+      })
+    ).toBe("vertical");
   });
 });

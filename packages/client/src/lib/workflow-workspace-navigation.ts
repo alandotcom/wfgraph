@@ -22,6 +22,7 @@ import {
   withSelectionOpeningReveal,
   withShowSuperseded,
   withoutDraftSelections,
+  withoutGroupCameras,
   workspaceAddressFromSearch,
   type CanvasSelection,
   type DesktopScopePresentation,
@@ -427,6 +428,19 @@ export const recordWorkspaceCameraAtom = atom(
       updateScopeNavigation(navigation, input.address, (scope) =>
         withCamera(scope, input.formFactor, input.camera)
       )
+    );
+  }
+);
+
+/**
+ * Clear the cameras saved for the focused Group `groupId` of one workflow's
+ * Draft and comparison keys, as when the Group's layout direction changed.
+ */
+export const forgetGroupCamerasAtom = atom(
+  null,
+  (_get, set, input: { workflowId: string; groupId: string }) => {
+    set(writeNavigationAtom, input.workflowId, (navigation) =>
+      withoutGroupCameras(navigation, input.groupId)
     );
   }
 );

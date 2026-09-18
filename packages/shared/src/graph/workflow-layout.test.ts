@@ -807,6 +807,52 @@ describe("layoutWorkflowNodes", () => {
     );
   });
 
+  test("lays out a horizontal Group as the same one-card region", async () => {
+    const graph = buildFramedChain({
+      entryIds: ["lookup"],
+      members: ["lookup", "send", "exit"],
+      interior: [
+        buildEdge("i1", "lookup", "send"),
+        buildEdge("i2", "send", "exit"),
+      ],
+    });
+    const horizontal = {
+      ...graph,
+      nodes: graph.nodes.map((node) =>
+        node.id === "g"
+          ? {
+              ...node,
+              data: { ...node.data, config: { direction: "horizontal" } },
+            }
+          : node
+      ),
+    };
+
+    const vertical = await layoutWorkflowNodes({
+      catalog: layoutCatalog,
+      ...graph,
+    });
+    const turned = await layoutWorkflowNodes({
+      catalog: layoutCatalog,
+      ...horizontal,
+    });
+
+    // A Group's direction lays out its own focused canvas only. The overview
+    // places the collapsed card, and the steps around it, the same either way.
+    expect(findNode(turned.nodes, "g")).toMatchObject({
+      width: WORKFLOW_NODE_WIDTH,
+      height: WORKFLOW_NODE_HEIGHT,
+    });
+    for (const id of ["entry", "wait", "g", "sms"]) {
+      expect(findNode(turned.nodes, id).position).toEqual(
+        findNode(vertical.nodes, id).position
+      );
+    }
+    expect(positionY(turned.nodes, "sms")).toBe(
+      positionY(turned.nodes, "g") + WORKFLOW_NODE_HEIGHT + RANK_SPACING
+    );
+  });
+
   test("lays out a chain holding a parallel-lookup Group", async () => {
     // Two entries fanning in on one exit: the painted inlet edges collapse to
     // one, so the frame keeps an in-degree of one and stays on the tree path.
