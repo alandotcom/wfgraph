@@ -29,6 +29,7 @@ import { cn } from "@wfgraph/shared/utils";
 import { AgentThread } from "#src/components/agent/agent-thread";
 import { useAgentRuntime } from "#src/components/agent/use-agent-runtime";
 import { Button } from "#src/components/ui/button";
+import { CANVAS_OBSTACLE_SLOTS } from "#src/components/workflow/canvas-reveal/reveal-geometry";
 import { useDomEvent, useFocusTrap } from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import { can } from "#src/lib/authorization";
@@ -302,10 +303,12 @@ function WorkflowAgentPanel({ workflowId }: { workflowId: string }) {
     //
     // A positioned element with a z-index makes a stacking context, so this is
     // where the expanded card's depth is decided rather than on the card: no
-    // z-index inside can lift it past the `z-20` set here. The properties rail
+    // z-index inside can lift it past the `z-20` set here. Canvas Reveal
     // is also `z-20` and comes later in the document, so the card would paint
-    // under it at an equal depth.
+    // under it at an equal depth. Canvas Reveal's camera reads the slot to keep
+    // a placed step out from under the card.
     <div
+      data-slot={CANVAS_OBSTACLE_SLOTS.agentPanel}
       className={cn(
         "pointer-events-none absolute bottom-4 left-4 flex flex-col items-start gap-2 md:left-[4.25rem]",
         isExpanded ? "z-30" : "z-20"

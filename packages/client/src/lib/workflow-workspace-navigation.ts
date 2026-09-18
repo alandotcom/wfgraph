@@ -1,24 +1,31 @@
 /**
  * The workspace address the editor route names, and the navigation each
  * address remembers. The route is the system of record for the active address;
- * the selection, Reveal level, and cameras stored here per address are the
- * system of record for those values. The UI and graph stores read this module.
+ * the selection, Canvas Reveal state, and cameras stored here per address are
+ * the system of record for those values. The UI and graph stores read this module.
  */
 
 import { atom, type Getter } from "jotai";
 import { readCookie, writeCookie } from "#src/lib/preference-cookies";
 import {
   EMPTY_WORKFLOW_NAVIGATION,
+  inspectionInGraph,
   rememberRouteSearch,
+  revealFollowsSelection,
   scopeNavigationAt,
   updateScopeNavigation,
   withCamera,
   withDesktopRevealLevel,
+  withInspectorScroll,
   withSelection,
+  withSelectionOpeningReveal,
   withoutDraftSelections,
   workspaceAddressFromSearch,
   type CanvasSelection,
+  type DesktopScopePresentation,
   type FormFactor,
+  type NavigationGraph,
+  type OpenRevealLevel,
   type RevealLevel,
   type ScopeNavigation,
   type WorkflowNavigation,
@@ -65,10 +72,11 @@ const writeNavigationAtom = atom(
 const REVEAL_PREFERENCE_COOKIE = "sidebar-collapsed";
 
 /**
- * The desktop Reveal level a person last chose, kept in a cookie across
- * reloads. A scope shown for the first time from another view starts here.
+ * Whether a person last left Canvas Reveal open or closed in a workspace that
+ * does not follow its selection, kept in a cookie across reloads. A scope of
+ * that workspace shown for the first time from another view starts here.
  */
-const revealLevelPreferenceAtom = atom<RevealLevel>(
+const revealLevelPreferenceAtom = atom<"closed" | "browse">(
   readCookie(REVEAL_PREFERENCE_COOKIE) === "true" ? "closed" : "browse"
 );
 
@@ -76,8 +84,10 @@ const revealLevelPreferenceAtom = atom<RevealLevel>(
  * Apply the route the router committed: the workflow in the path and its
  * validated search. Records the search as the one its view returns to. An
  * address shown for the first time stores the desktop Reveal level it
- * displays: the level of the address it was reached from when both belong to
- * one view, as a run opened from the run list, and otherwise the preference.
+ * displays. An address whose workspace follows its selection starts closed.
+ * Any other address starts at the level of the address it was reached from in
+ * the same view, as a run opened from the run list, and otherwise at the
+ * preference.
  */
 export const applyWorkspaceRouteAtom = atom(
   null,
@@ -95,8 +105,13 @@ export const applyWorkspaceRouteAtom = atom(
       const sameView =
         previous.workflowId === next.workflowId &&
         previous.key.workspace === next.key.workspace;
+      const firstLevel: RevealLevel = revealFollowsSelection(next.key.workspace)
+        ? "closed"
+        : sameView
+          ? previousLevel
+          : preference;
       return updateScopeNavigation(remembered, next, (scope) =>
-        withDesktopRevealLevel(scope, sameView ? previousLevel : preference)
+        withDesktopRevealLevel(scope, firstLevel)
       );
     });
   }
@@ -158,7 +173,11 @@ export const activeSelectionAtom = atom(
   }
 );
 
-/** Set the selection of a named address, which need not be the active one. */
+/**
+ * Set the selection of a named address, which need not be the active one. In a
+ * workspace that follows its selection, a selection that comes to hold one
+ * object opens Canvas Reveal for it.
+ */
 export const setWorkspaceSelectionAtom = atom(
   null,
   (
@@ -166,9 +185,12 @@ export const setWorkspaceSelectionAtom = atom(
     set,
     input: { address: WorkspaceAddress; selection: CanvasSelection }
   ) => {
+    const write = revealFollowsSelection(input.address.key.workspace)
+      ? withSelectionOpeningReveal
+      : withSelection;
     set(writeNavigationAtom, input.address.workflowId, (navigation) =>
       updateScopeNavigation(navigation, input.address, (scope) =>
-        withSelection(scope, input.selection)
+        write(scope, input.selection)
       )
     );
   }
@@ -189,18 +211,29 @@ export const clearDraftSelectionsAtom = atom(
 );
 
 /**
- * The desktop Reveal level of the active address. An address that was never
- * shown reads as the preference.
+ * The stored desktop Reveal level of the active address, before Canvas Reveal
+ * applies what it is showing. An address that was never shown reads as closed
+ * when its workspace follows its selection, and otherwise as the preference.
  */
-export const activeDesktopRevealLevelAtom = atom(
-  (get): RevealLevel =>
-    get(activeScopeNavigationAtom).desktop.revealLevel ??
-    get(revealLevelPreferenceAtom)
+export const activeDesktopRevealLevelAtom = atom((get): RevealLevel => {
+  const stored = get(activeScopeNavigationAtom).desktop.revealLevel;
+  if (stored !== null) {
+    return stored;
+  }
+  return revealFollowsSelection(get(activeWorkspaceAddressAtom).key.workspace)
+    ? "closed"
+    : get(revealLevelPreferenceAtom);
+});
+
+/** The desktop Canvas Reveal state stored for the active address. */
+export const activeRevealPresentationAtom = atom(
+  (get): DesktopScopePresentation => get(activeScopeNavigationAtom).desktop
 );
 
 /**
- * A person choosing the desktop Reveal level: it sets the active address's
- * level and becomes the preference, which the cookie keeps.
+ * A person choosing the Canvas Reveal level in a workspace that does not follow
+ * its selection: it sets the active address's level, and whether that level is
+ * closed becomes the preference, which the cookie keeps.
  */
 export const chooseDesktopRevealLevelAtom = atom(
   null,
@@ -209,7 +242,7 @@ export const chooseDesktopRevealLevelAtom = atom(
       address: get(activeWorkspaceAddressAtom),
       level,
     });
-    set(revealLevelPreferenceAtom, level);
+    set(revealLevelPreferenceAtom, level === "closed" ? "closed" : "browse");
     writeCookie(REVEAL_PREFERENCE_COOKIE, String(level === "closed"));
   }
 );
@@ -221,6 +254,65 @@ export const setWorkspaceRevealLevelAtom = atom(
     set(writeNavigationAtom, input.address.workflowId, (navigation) =>
       updateScopeNavigation(navigation, input.address, (scope) =>
         withDesktopRevealLevel(scope, input.level)
+      )
+    );
+  }
+);
+
+/**
+ * Record the inspector scroll of one open level for a named address. The write
+ * is dropped when the address no longer inspects the node `inspectedId` names,
+ * so a scroll read before a selection change never lands on the next object.
+ */
+export const recordInspectorScrollAtom = atom(
+  null,
+  (
+    _get,
+    set,
+    input: {
+      address: WorkspaceAddress;
+      inspectedId: string;
+      level: OpenRevealLevel;
+      top: number;
+    }
+  ) => {
+    set(writeNavigationAtom, input.address.workflowId, (navigation) =>
+      updateScopeNavigation(navigation, input.address, (scope) =>
+        scope.desktop.inspected?.id === input.inspectedId
+          ? withInspectorScroll(scope, input.level, input.top)
+          : scope
+      )
+    );
+  }
+);
+
+/**
+ * Open Canvas Reveal for a named address at `level`, or at the level the
+ * address reopens at when `level` is absent.
+ */
+export const openWorkspaceRevealAtom = atom(
+  null,
+  (
+    _get,
+    set,
+    input: { address: WorkspaceAddress; level?: OpenRevealLevel | undefined }
+  ) => {
+    set(writeNavigationAtom, input.address.workflowId, (navigation) =>
+      updateScopeNavigation(navigation, input.address, (scope) =>
+        withDesktopRevealLevel(scope, input.level ?? scope.desktop.reopenLevel)
+      )
+    );
+  }
+);
+
+/** Forget the active address's inspected object when the graph lost it. */
+export const keepActiveInspectionInGraphAtom = atom(
+  null,
+  (get, set, graph: NavigationGraph) => {
+    const address = get(activeWorkspaceAddressAtom);
+    set(writeNavigationAtom, address.workflowId, (navigation) =>
+      updateScopeNavigation(navigation, address, (scope) =>
+        inspectionInGraph(scope, graph)
       )
     );
   }

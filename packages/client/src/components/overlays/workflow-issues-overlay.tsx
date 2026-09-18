@@ -17,8 +17,9 @@ type WorkflowIssuesOverlayProps = OverlayComponentProps<{
   /**
    * Starts the draft run these issues were collected for. Absent whenever an
    * issue that stops a draft run stands, and absent for every reader who
-   * opened the list on their own. A run of the published version never arrives here: publish
-   * refused that graph's blocking issues before it became a version.
+   * opened the list on their own. A run of the published version never
+   * arrives here: publish refused that graph's blocking issues before it
+   * became a version.
    */
   onRunDraftAnyway?: (() => void) | undefined;
   allowRunDraftAnyway?: boolean | undefined;
@@ -58,7 +59,7 @@ export function WorkflowIssuesOverlay({
     onGoToStep(nodeId, fieldKey);
 
     // On mobile, push ConfigurationOverlay on top so back button returns here
-    // On desktop, close all overlays because the sidebar shows the config
+    // On desktop, close all overlays because Canvas Reveal shows the config
     if (isMobile) {
       pushSheet();
     } else {

@@ -126,7 +126,7 @@ An achromatic graphite ramp carries the entire interface; saturated hues exist o
 ### Neutral
 
 - **Paper** (oklch(1 0 0)): The content surface and card background in light mode.
-- **Panel** (oklch(0.985 0 0)): The sidebar layer, half a step off Paper so panels read as a separate plane without a border doing all the work.
+- **Panel** (oklch(0.985 0 0)): The inspector layer, half a step off Paper so panels read as a separate plane without a border doing all the work.
 - **Graphite Wash** (oklch(0.97 0 0)): Secondary and muted fills: hover states, secondary buttons, muted badges.
 - **Page** (oklch(0.96 0 0), oklch(0.18 0 0) in dark): The surface the editor shell is inset on, and the only thing that uses it. `--page`. Solved for the step against the two surfaces the shell shows at its edge, Paper and Panel, which measures 1.12:1 and 1.08:1. It is its own step on the ramp rather than a reuse of Graphite Wash, because a page and a fill inside a panel are different things and one value cannot be retuned for both; at three levels of 255 apart nobody would tell them apart where they met, so the separation is in what each token means. In dark mode the step goes up rather than down, as Graphite Wash Dark and the card step do, because nothing renders darker than Void: it sits between those two, above the wash so a fill inside the shell never matches the page and below the card so the page never reads as a surface something could sit on. The shell is what stays Void there, since the canvas is Void by design and lifting the shell would repaint the field the graph floats on.
 - **Graphite Line** (oklch(0.922 0 0)): Hairline borders and input strokes (oklch(0.27 0 0) in dark mode).
@@ -272,15 +272,16 @@ A step the run can never reach is muted: the card drops to 50% opacity, its inco
 
 ### Navigation
 
-A quiet menu bar spans the canvas and a Panel-toned inspector shows details for
-the active workspace view. The selected workspace uses a Graphite Ink fill with
-Paper text. Tone, rather than an accent stripe, marks the active workflow.
+A quiet menu bar spans the canvas. Canvas Reveal, a Panel-toned inspector
+floating over the canvas, shows details for the active workspace view. The
+selected workspace uses a Graphite Ink fill with Paper text. Tone, rather than an
+accent stripe, marks the active workflow.
 
 The workflow workspace has three views: **Draft**, **Runs**, and **Changes**. A
 segmented control precedes the Run split button and **Publish** at desktop
 widths. Below `md` the three views sit at the top of the toolbar's overflow
 menu, the active one checked, above the run commands and **Publish**. The control
-remains available when the inspector is collapsed or dismissed. The canvas,
+remains available when the inspector is closed. The canvas,
 inspector, editing lock, and status strip always follow the same active view.
 When a resolved view changes, the canvas keeps its zoom and anchors the Lifecycle
 card at the top center when the full graph fits. A graph that would clip is
@@ -292,7 +293,59 @@ only when the next presentation is ready.
 initial load directly to the newest run, and owns the run list, run details, and
 run-node inspection. **Changes** owns publication review, comparison properties,
 and version history. Entering **Runs** or **Changes** opens the inspector.
-Collapsing or dismissing the inspector doesn't change the active view.
+Closing the inspector doesn't change the active view.
+
+Canvas Reveal has three levels: Closed, Browse, and Focus. It floats 8px inside
+the canvas box's top, right, and bottom edges with a hairline border and
+shadow-sm, and it never resizes the canvas. Its width is fixed per level and
+canvas width, and no control resizes it:
+
+| Canvas width     | Browse | Focus                                   |
+| ---------------- | ------ | --------------------------------------- |
+| Under 1024px     | 320px  | 640px, at most the canvas less 16px     |
+| 1024px to 1279px | 360px  | 640px, leaving at least 256px of canvas |
+| 1280px to 1535px | 380px  | 720px, leaving at least 256px of canvas |
+| 1536px and wider | 400px  | 800px, leaving at least 256px of canvas |
+
+The Draft canvas rests with Reveal closed. Selecting an ordinary step, which is
+any Action or Wait, opens Browse. A context header names the workspace, the step,
+the path from the workflow through any Group to the step, and the step's
+validation status, beside **Back**, **Focus editor**, and **Close**. Browse is a
+summary: an editable label, the action and its Connection, each setting as a
+label and value with "Not set" for a missing one, and the step's issues, each of
+which opens Focus on the field it names. Focus holds the complete form, and
+**Return to summary** goes back to Browse. Edits write to the draft as they are
+made, so changing level loses nothing and autosave carries on. A step with no
+action chosen shows the action picker in Browse and has no Focus. A Condition,
+Lifecycle, Event Split, Group, connection, multiple selection, **Runs**, and
+**Changes** show their panel at Browse width, under a header holding the panel's
+title and **Close**.
+
+Escape, **Back**, and **Close** unwind one level at a time: Focus to Browse to
+Closed. Escape belongs to an open select, combobox, menu, autocomplete, or
+dialog first. Opening Focus moves focus to the step title, returning to Browse
+puts focus on **Focus editor**, and closing returns focus to the canvas object or
+control that opened Browse. Closing keeps the canvas selection. Selecting a step
+again, or the chevron on the canvas's right edge, reopens the level Reveal was
+closed from. Cmd+B opens and closes Canvas Reveal. The level, the inspected step, and the
+inspector's scroll position are remembered separately for Draft, each Group
+view, each run, and each comparison. Levels add no browser history.
+
+Opening or changing Reveal moves the camera and nothing else: it never runs
+layout, moves a node, or marks the draft changed. The camera keeps its zoom when
+the selected step fits the usable canvas, the part left after Reveal, the canvas
+controls, the MiniMap, and the docked agent card, and zooms out only as far as
+fitting it needs. It then moves the least distance that keeps the step and 64px
+of its neighbors inside the usable canvas, so a long horizontal or vertical workflow
+keeps its direction. **Runs** and **Changes** place their selected node the same
+way, or the whole graph when no single node is selected. The MiniMap sits beside
+open Reveal. The camera moves once per change and only when Reveal would cover
+the step or its 64px of neighbors: a step already in the usable canvas stays
+where it is. Opening Reveal, selecting another step, and widening Browse to
+Focus can each move it. Closing Reveal by any path (Close, Escape, Back,
+clicking empty canvas, or clearing the selection) and returning from Focus to
+Browse never move the camera. Below `md` the configuration sheet replaces
+Canvas Reveal.
 
 A Panel-toned status strip closes the canvas column: 32px tall, Caption type, a
 hairline top border, and one line that never wraps. While the draft is on
@@ -318,8 +371,8 @@ menu holds the run of the published version, labelled with that version number
 and the Published mode. Below `md` the workspace control, both run commands and
 **Publish** collapse into one overflow menu, each disabled for the reason its
 desktop control is disabled. **Configuration** stays beside that menu as an icon
-button, joined by **Delete** while something is selected, because the properties
-rail those two belong to is absent at that width.
+button, joined by **Delete** while something is selected, because Canvas Reveal,
+where those two otherwise live, is absent at that width.
 
 ### Publication review
 

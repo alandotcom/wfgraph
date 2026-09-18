@@ -23,7 +23,11 @@ import type { WorkflowRouteSearch } from "#src/lib/workflow-navigation-state";
 import { authorizedWorkflowSearch } from "#src/lib/workflow-route-state";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
-  isSidebarCollapsedAtom,
+  activeDesktopRevealLevelAtom,
+  activeWorkspaceAddressAtom,
+  setWorkspaceRevealLevelAtom,
+} from "#src/lib/workflow-workspace-navigation";
+import {
   selectedExecutionIdAtom,
   workflowWorkspaceViewAtom,
 } from "#src/lib/workflow-ui-store";
@@ -95,7 +99,10 @@ describe("useWorkflowWorkspaceNavigation", () => {
     );
     act(() => {
       store.set(selectOnlyNodeAtom, "draft_step");
-      store.set(isSidebarCollapsedAtom, true);
+      store.set(setWorkspaceRevealLevelAtom, {
+        address: store.get(activeWorkspaceAddressAtom),
+        level: "closed",
+      });
     });
 
     click("Runs");
@@ -103,7 +110,7 @@ describe("useWorkflowWorkspaceNavigation", () => {
       expect(router.state.location.search).toEqual({ view: "runs" })
     );
     // A first visit opens the inspector for that view alone.
-    expect(store.get(isSidebarCollapsedAtom)).toBe(false);
+    expect(store.get(activeDesktopRevealLevelAtom)).toBe("browse");
     await act(() =>
       router.navigate({
         to: "/workflows/$workflowId",
@@ -117,7 +124,7 @@ describe("useWorkflowWorkspaceNavigation", () => {
     await waitFor(() => expect(router.state.location.search).toEqual({}));
     expect(store.get(workflowWorkspaceViewAtom)).toBe("draft");
     expect(store.get(selectedNodeAtom)).toBe("draft_step");
-    expect(store.get(isSidebarCollapsedAtom)).toBe(true);
+    expect(store.get(activeDesktopRevealLevelAtom)).toBe("closed");
 
     click("Runs");
     await waitFor(() =>
@@ -128,7 +135,7 @@ describe("useWorkflowWorkspaceNavigation", () => {
     );
     expect(store.get(selectedExecutionIdAtom)).toBe("run_1");
     expect(store.get(selectedNodeAtom)).toBe("run_step");
-    expect(store.get(isSidebarCollapsedAtom)).toBe(false);
+    expect(store.get(activeDesktopRevealLevelAtom)).toBe("browse");
   });
 
   it("opens a first-visit inspector without writing the cookie", async () => {
@@ -142,7 +149,7 @@ describe("useWorkflowWorkspaceNavigation", () => {
       expect(router.state.location.search).toEqual({ view: "runs" })
     );
 
-    expect(store.get(isSidebarCollapsedAtom)).toBe(false);
+    expect(store.get(activeDesktopRevealLevelAtom)).toBe("browse");
     expect(document.cookie).toBe(cookie);
   });
 

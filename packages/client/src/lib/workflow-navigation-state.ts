@@ -48,7 +48,25 @@ export type FormFactor = "desktop" | "mobile";
 /** The flow-coordinate point at the middle of the canvas, and the zoom there. */
 export type WorldCamera = { centerX: number; centerY: number; zoom: number };
 
-export type RevealLevel = "closed" | "browse";
+/**
+ * Canvas Reveal's presentation states on desktop. Closed shows only the canvas,
+ * Browse a compact summary beside it, and Focus the complete editor.
+ */
+export type RevealLevel = "closed" | "browse" | "focus";
+
+export type OpenRevealLevel = Exclude<RevealLevel, "closed">;
+
+/**
+ * Whether a selection opens and closes Canvas Reveal in a workspace. Draft
+ * follows its selection, and a Draft address starts closed. Runs and Changes
+ * open and close at the level a person last chose, which a cookie keeps.
+ */
+export function revealFollowsSelection(workspace: WorkspaceView): boolean {
+  return workspace === "draft";
+}
+
+/** The one node or edge Canvas Reveal shows. */
+export type InspectedObject = { kind: "node" | "edge"; id: string };
 
 /**
  * The nodes and edges selected in one scope, by id, each id listed once. React
@@ -66,11 +84,16 @@ export type SelectionChange = { id: string; selected: boolean };
 export type ScopePresentation = { camera: WorldCamera | null };
 
 /**
- * The desktop presentation adds the Reveal level. A null level belongs to a
- * scope that has never been shown.
+ * The desktop presentation adds Canvas Reveal. A null `revealLevel` belongs to
+ * a scope that has never been shown. `reopenLevel` is the level a newly
+ * selected object opens at. `inspected` is the object the stored level and
+ * `inspectorScroll` (pixels from the top, per open level) belong to.
  */
 export type DesktopScopePresentation = ScopePresentation & {
   revealLevel: RevealLevel | null;
+  reopenLevel: OpenRevealLevel;
+  inspected: InspectedObject | null;
+  inspectorScroll: Readonly<Record<OpenRevealLevel, number>>;
 };
 
 export type ScopeNavigation = {
@@ -123,7 +146,13 @@ export const EMPTY_SELECTION: CanvasSelection = { nodeIds: [], edgeIds: [] };
 
 export const EMPTY_SCOPE_NAVIGATION: ScopeNavigation = {
   selection: EMPTY_SELECTION,
-  desktop: { camera: null, revealLevel: null },
+  desktop: {
+    camera: null,
+    revealLevel: null,
+    reopenLevel: "browse",
+    inspected: null,
+    inspectorScroll: { browse: 0, focus: 0 },
+  },
   mobile: { camera: null },
 };
 
@@ -472,13 +501,117 @@ function workspaceWithoutSelections(
   };
 }
 
+/**
+ * Set the desktop Reveal level. An open level also becomes the level a newly
+ * selected object opens at; closing keeps the level Reveal was closed from.
+ */
 export function withDesktopRevealLevel(
   scope: ScopeNavigation,
   revealLevel: RevealLevel
 ): ScopeNavigation {
-  return scope.desktop.revealLevel === revealLevel
+  const reopenLevel =
+    revealLevel === "closed" ? scope.desktop.reopenLevel : revealLevel;
+  return scope.desktop.revealLevel === revealLevel &&
+    scope.desktop.reopenLevel === reopenLevel
     ? scope
-    : { ...scope, desktop: { ...scope.desktop, revealLevel } };
+    : { ...scope, desktop: { ...scope.desktop, revealLevel, reopenLevel } };
+}
+
+/** The one node or edge a selection holds, or null for none or several. */
+export function selectedObject(
+  selection: CanvasSelection
+): InspectedObject | null {
+  const nodeId = singleSelectedNodeId(selection);
+  if (nodeId !== null) {
+    return { kind: "node", id: nodeId };
+  }
+  const edgeId = singleSelectedEdgeId(selection);
+  return edgeId === null ? null : { kind: "edge", id: edgeId };
+}
+
+function sameObject(
+  left: InspectedObject | null,
+  right: InspectedObject | null
+): boolean {
+  return left?.kind === right?.kind && left?.id === right?.id;
+}
+
+/**
+ * Write a Draft selection and open Canvas Reveal for it. When the selection
+ * comes to hold one object it did not hold alone before, Reveal opens at the
+ * scope's `reopenLevel`. A different object than the one inspected becomes the
+ * inspected object, and its inspector scroll starts at the top.
+ */
+export function withSelectionOpeningReveal(
+  scope: ScopeNavigation,
+  selection: CanvasSelection
+): ScopeNavigation {
+  const selected = selectedObject(selection);
+  const withNext = withSelection(scope, selection);
+  if (
+    selected === null ||
+    sameObject(selectedObject(scope.selection), selected)
+  ) {
+    return withNext;
+  }
+  const opened = withDesktopRevealLevel(withNext, scope.desktop.reopenLevel);
+  if (sameObject(scope.desktop.inspected, selected)) {
+    return opened;
+  }
+  return {
+    ...opened,
+    desktop: {
+      ...opened.desktop,
+      inspected: selected,
+      inspectorScroll: EMPTY_SCOPE_NAVIGATION.desktop.inspectorScroll,
+    },
+  };
+}
+
+/** Record how far the inspector at one open level is scrolled. */
+export function withInspectorScroll(
+  scope: ScopeNavigation,
+  level: OpenRevealLevel,
+  top: number
+): ScopeNavigation {
+  const stored = scope.desktop.inspectorScroll;
+  return stored[level] === top
+    ? scope
+    : {
+        ...scope,
+        desktop: {
+          ...scope.desktop,
+          inspectorScroll: { ...stored, [level]: top },
+        },
+      };
+}
+
+/**
+ * The scope without an inspected object the graph no longer holds, and without
+ * the scroll recorded for it.
+ */
+export function inspectionInGraph(
+  scope: ScopeNavigation,
+  graph: NavigationGraph
+): ScopeNavigation {
+  const { inspected } = scope.desktop;
+  if (inspected === null) {
+    return scope;
+  }
+  const present =
+    inspected.kind === "node"
+      ? graph.nodes.some((node) => node.id === inspected.id)
+      : graph.edges.some((edge) => edge.id === inspected.id);
+  return present
+    ? scope
+    : {
+        ...scope,
+        desktop: {
+          ...scope.desktop,
+          inspected: null,
+          inspectorScroll: EMPTY_SCOPE_NAVIGATION.desktop.inspectorScroll,
+        },
+      };
 }
 
 export function withCamera(
