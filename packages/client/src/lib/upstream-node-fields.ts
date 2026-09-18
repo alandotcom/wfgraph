@@ -467,7 +467,7 @@ function eventNameConditionField(input: {
  * play.
  *
  * A node in the graph asks `eventNameConditionField`, which works out the Events
- * by walking upstream of it. The Lifecycle panel's Start Filter and Cancel
+ * by walking upstream of it. The Lifecycle Node inspector's Start Filter and Cancel
  * Filter know them outright, because each control lists its Events and has no
  * upstream to walk.
  */

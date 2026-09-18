@@ -68,8 +68,25 @@ export type EvalNodeSelector =
 /** Every kind returned by the canonical agent publication validator. */
 export type PublicationBlockerKind = AgentPublicationBlockerKind;
 
+/** A Group the final graph must hold, found by its label. */
+export type EvalGroupExpectation = {
+  label: string;
+  /** Each selector must match at least one step whose `parentId` names the Group. */
+  members: EvalNodeSelector[];
+  /**
+   * How many nodes name the Group as their parent. Omit it to allow members
+   * beyond the ones `members` selects.
+   */
+  memberCount?: number;
+};
+
 export type AgentEvalExpectations = {
   editSafety?: AgentEvalEditSafety;
+  requiredGroups?: EvalGroupExpectation[];
+  /** Group labels the final graph must not hold, such as a dissolved Group's label. */
+  forbiddenGroups?: string[];
+  /** How many Group frames the final graph holds. */
+  exactGroupCount?: number;
   exactActions?: Record<string, number>;
   exactEvents?: {
     start: string[];
@@ -188,7 +205,11 @@ export type AgentEvalExpectations = {
 };
 
 export type AgentEvalExpectedCompletion =
-  | { outcome: "ready" }
+  | {
+      outcome: "ready";
+      /** Terms the answer must contain, for a reply that has to report a fact. */
+      answerMustMention?: string[];
+    }
   | { outcome: "clarification"; questionMustMention: string[] }
   | {
       outcome: "blocked";

@@ -406,7 +406,7 @@ describe("useRevealCamera", () => {
     expect(camera.moves).toHaveLength(2);
   });
 
-  it("fits the whole graph beside the Runs panel when no node is selected", async () => {
+  it("fits the whole graph beside Canvas Reveal in Runs when no node is selected", async () => {
     const camera = renderCamera();
     await camera.settle();
     await camera.run(() =>

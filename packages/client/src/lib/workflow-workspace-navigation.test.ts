@@ -31,12 +31,14 @@ import {
   workflowWorkspaceViewAtom,
 } from "#src/lib/workflow-ui-store";
 import {
-  activeDesktopRevealLevelAtom,
-  activeMobileSheetsAtom,
   closeMobileSheetAtom,
   openMobileAddressSheetAtom,
   openMobileInspectorOverAddressAtom,
   openMobileSheetAtom,
+} from "#src/lib/mobile-sheet-store";
+import {
+  activeDesktopRevealLevelAtom,
+  activeMobileSheetsAtom,
   activeRevealPresentationAtom,
   activeSelectionAtom,
   activeWorkspaceAddressAtom,

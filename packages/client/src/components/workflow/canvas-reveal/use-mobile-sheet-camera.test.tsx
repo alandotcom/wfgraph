@@ -13,10 +13,8 @@ import {
 } from "#src/lib/workflow-graph-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
-import {
-  activeWorkspaceAddressAtom,
-  closeMobileSheetAtom,
-} from "#src/lib/workflow-workspace-navigation";
+import { closeMobileSheetAtom } from "#src/lib/mobile-sheet-store";
+import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
 import {
   expectSteadyCamera,

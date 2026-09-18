@@ -64,7 +64,7 @@ describe("defineEvent identity", () => {
 
   // An Event with no Correlation Path is a real case: an unlimited-concurrency
   // workflow may start on one, and a Wait node may subscribe to it. The Workflow
-  // Builder supplies a path in the Lifecycle panel when one is needed.
+  // Builder supplies a path in the Lifecycle Node inspector when one is needed.
   it("allows an Event that declares no Correlation Path", () => {
     const event = defineEvent({
       name: "ops/nightly.tick",

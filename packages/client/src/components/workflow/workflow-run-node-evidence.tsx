@@ -10,9 +10,10 @@ import { waitingSummary } from "./workflow-run-detail";
 import {
   CopyButton,
   formatDuration,
-  getStatusLabel,
-  getStatusTextClass,
   JSON_PRE_CLASS,
+  nodeStatusLabel,
+  nodeStatusTone,
+  statusToneTextClass,
   JsonWithLinks,
   OutputDisplay,
 } from "./workflow-run-shared";
@@ -88,8 +89,12 @@ function ExecutionList({
           >
             <span className="font-medium text-sm">Execution {index + 1}</span>
             <span className="flex items-baseline gap-2 text-xs">
-              <span className={getStatusTextClass(execution.status)}>
-                {getStatusLabel(execution.status)}
+              <span
+                className={statusToneTextClass(
+                  nodeStatusTone(execution.status)
+                )}
+              >
+                {nodeStatusLabel(execution.status)}
               </span>
               {execution.duration ? (
                 <span className="font-mono text-muted-foreground tabular-nums">
@@ -180,8 +185,13 @@ export function WorkflowRunNodeEvidence({
               <dt className="text-muted-foreground text-xs leading-5">
                 Status
               </dt>
-              <dd className={cn("leading-5", getStatusTextClass(shown.status))}>
-                {getStatusLabel(shown.status)}
+              <dd
+                className={cn(
+                  "leading-5",
+                  statusToneTextClass(nodeStatusTone(shown.status))
+                )}
+              >
+                {nodeStatusLabel(shown.status)}
               </dd>
               <dt className="text-muted-foreground text-xs leading-5">
                 Started

@@ -314,9 +314,20 @@ describe("WorkflowToolbarChrome", () => {
         .className
     ).toContain("w-80");
     expect(findNode.className).toContain("min-[70rem]:hidden");
-    expect(
-      dashboard.closest("[data-slot='workflow-toolbar-left']")?.className
-    ).toContain("pr-72");
+    const leftClasses =
+      dashboard
+        .closest("[data-slot='workflow-toolbar-left']")
+        ?.className.split(" ") ?? [];
+    // From `md` the row scrolls under the trailing group, so the leading group
+    // keeps its full width and room to scroll clear of it.
+    expect(leftClasses).toEqual(
+      expect.arrayContaining(["md:min-w-max", "md:pr-72"])
+    );
+    // Below `md` the leading group shrinks to fit beside the trailing group, and
+    // the workflow name truncates, so no menu label is cut off at phone width.
+    expect(leftClasses).toEqual(expect.arrayContaining(["min-w-0", "flex-1"]));
+    expect(leftClasses).not.toContain("min-w-max");
+    expect(workflow.className).toContain("min-w-0");
   });
 
   // Published mode lives in the status strip, beside the version it governs.

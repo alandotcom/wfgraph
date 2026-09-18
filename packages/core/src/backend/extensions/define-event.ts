@@ -102,7 +102,7 @@ export type EventDefinition<
    * Where this payload carries its Entity Value.
    *
    * Optional, because an imported Event may have no path its author knew to
-   * declare, and the Workflow Builder then supplies one in the Lifecycle panel.
+   * declare, and the Workflow Builder then supplies one in the Lifecycle Node inspector.
    */
   readonly correlationPath?: string | undefined;
   readonly source: EventSource;

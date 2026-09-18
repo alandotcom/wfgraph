@@ -64,7 +64,7 @@ const TEST_INTEGRATION_ID = "int_test";
  * that transforms on the way out: an Effect `Schema.Date` is typed here as a
  * `Date` and arrives as an ISO string. `OutputSchema` carries the decoded side
  * alone, so there is nothing better to read it off yet. Assert on the encoded
- * value, which is also what the engine memoizes and the run panel shows.
+ * value, which is also what the engine memoizes and the Runs view shows.
  */
 export function runAction<
   TIntegration extends Integration,

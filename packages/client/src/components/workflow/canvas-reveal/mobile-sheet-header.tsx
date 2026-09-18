@@ -10,18 +10,22 @@ import type { RevealHeaderModel } from "./reveal-header";
  * the shell answers through the kind's mobile unwind. `openInspector` opens the
  * inspector over the sheet, and is null when the sheet offers none. `titleRef`
  * goes on the sheet title, which takes focus as a sheet opens.
+ * `scopeBackLabel` is the focused Group's name on the first sheet inside that
+ * Group, whose canvas Back leaves showing, and null on every other sheet.
  */
 export type MobileSheetControls = {
   back: () => void;
   openInspector: (() => void) | null;
   titleRef: RefObject<HTMLHeadingElement | null>;
+  scopeBackLabel: string | null;
 };
 
 /**
- * The header of a mobile Reveal sheet. `backLabel` names where Back leads, and
- * a null `backLabel` belongs to a first sheet, which offers Close. The sheet's
- * title and status follow, and then the control named `inspectorLabel` when
- * the sheet offers an inspector.
+ * The header of a mobile Reveal sheet. Back is named for the controls'
+ * `scopeBackLabel` when it has one, and for the kind's `backLabel` otherwise;
+ * with neither, the sheet offers Close. The sheet's title and status follow,
+ * and then the inspector control named `inspectorLabel`, shown when the sheet
+ * offers an inspector and the kind names the control.
  */
 export function MobileSheetHeader({
   title,
@@ -33,22 +37,23 @@ export function MobileSheetHeader({
   title: string;
   status: RevealHeaderModel["status"];
   backLabel: string | null;
-  inspectorLabel: string;
+  inspectorLabel?: string | undefined;
   controls: MobileSheetControls;
 }) {
   const { back, openInspector, titleRef } = controls;
+  const shownBackLabel = controls.scopeBackLabel ?? backLabel;
   return (
     <header className="flex shrink-0 items-center gap-1 border-b px-2 py-1">
-      {backLabel === null ? null : (
+      {shownBackLabel === null ? null : (
         <Button
-          aria-label={`Back to ${backLabel}`}
+          aria-label={`Back to ${shownBackLabel}`}
           className="h-11 max-w-[40%] shrink-0 px-2"
           onClick={back}
           type="button"
           variant="ghost"
         >
           <ChevronLeft className="size-4" />
-          <span className="truncate">{backLabel}</span>
+          <span className="truncate">{shownBackLabel}</span>
         </Button>
       )}
       <div className="min-w-0 flex-1 px-2">
@@ -68,7 +73,7 @@ export function MobileSheetHeader({
           </p>
         ) : null}
       </div>
-      {openInspector === null ? null : (
+      {openInspector === null || inspectorLabel === undefined ? null : (
         <Button
           className="h-11 shrink-0 px-3"
           onClick={openInspector}
@@ -79,7 +84,7 @@ export function MobileSheetHeader({
           {inspectorLabel}
         </Button>
       )}
-      {backLabel === null ? (
+      {shownBackLabel === null ? (
         <Button
           aria-label="Close"
           className="size-11 shrink-0"

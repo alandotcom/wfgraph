@@ -682,7 +682,7 @@ describe("the collapsed Group overview", () => {
     expect(card.textContent).toContain("2 of 2 steps reached, 1 running");
     await enterOutreach(router);
     await waitFor(() => expect(chipText(view, "case_study")).toBe("Running"));
-    expect(chipText(view, "welcome")).toBe("Succeeded");
+    expect(chipText(view, "welcome")).toBe("Successful");
 
     // The run completes. Only the status poll reads it.
     served.items[0].status = "completed";
@@ -692,10 +692,10 @@ describe("the collapsed Group overview", () => {
       route: "success",
     });
     await waitFor(
-      () => expect(chipText(view, "case_study")).toBe("Succeeded"),
+      () => expect(chipText(view, "case_study")).toBe("Successful"),
       { timeout: 3000 }
     );
-    expect(chipText(view, "welcome")).toBe("Succeeded");
+    expect(chipText(view, "welcome")).toBe("Successful");
     await leaveOutreach(router);
     const completedCard = await view.findByTestId("group-run-summary-outreach");
     expect(completedCard.textContent).toContain("Successful");
@@ -745,7 +745,7 @@ describe("the collapsed Group overview", () => {
       expect(summary.textContent).toContain(counts);
       await enterOutreach(router);
       await waitFor(() => expect(chipText(view, "case_study")).toBe(chip));
-      expect(chipText(view, "welcome")).toBe("Succeeded");
+      expect(chipText(view, "welcome")).toBe("Successful");
     }
   );
 
@@ -1233,9 +1233,8 @@ describe("a Group holding a Condition whose False path ends inside it", () => {
       '[aria-label="Group output, True"]'
     );
     expect(outlet?.dataset.handleid).toBe("true");
-    expect(card.querySelector("[data-slot=outlet-label]")?.textContent).toBe(
-      "True"
-    );
+    // The edge leaving by the True handle names the branch, so the card does not.
+    expect(card.querySelector("[data-slot=outlet-label]")).toBeNull();
     expect(
       store
         .get(canvasEdgesAtom)
@@ -1275,7 +1274,7 @@ describe("a Group holding a Condition whose False path ends inside it", () => {
         [...gateCard.querySelectorAll("[data-slot=outlet-label]")].map(
           (label) => label.textContent
         )
-      ).toEqual(["True", "False"]);
+      ).toEqual([]);
       expect(
         store
           .get(canvasEdgesAtom)

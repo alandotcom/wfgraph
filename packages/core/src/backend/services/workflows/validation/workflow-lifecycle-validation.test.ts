@@ -471,7 +471,7 @@ describe("validateEventSplitOutlets", () => {
   });
 });
 
-/** One finished string rule over `path`, as the Lifecycle panel serializes it. */
+/** One finished string rule over `path`, as the Lifecycle Node inspector serializes it. */
 function filterOn(path: string, value = "video"): string {
   return serializeConditionModel({
     version: 2,

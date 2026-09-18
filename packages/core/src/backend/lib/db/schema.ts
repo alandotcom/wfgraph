@@ -266,7 +266,7 @@ export const workflowExecutions = pgTable(
     /**
      * The version this run walks: a published one, or the snapshot a draft run
      * minted for itself. Every Execution pins one, including a terminal row that
-     * never ran the graph. Readers (run panel, logs) resolve node ids against
+     * never ran the graph. Readers (Runs view, logs) resolve node ids against
      * this graph rather than the live draft column. Cascade with the
      * version so a workflow delete cannot race sibling cascades against a
      * required pin.
@@ -349,7 +349,7 @@ export const workflowExecutions = pgTable(
       table.startedAt,
       table.id
     ),
-    // The Refused Starts toggle's count, on the runs panel's two-second poll.
+    // The Refused Starts toggle's count, on the Runs view's two-second poll.
     // Partial because superseded is the status that accretes without bound, and
     // counting it off the (workflow_id, started_at) index meant walking every
     // run the workflow ever produced.
@@ -478,7 +478,7 @@ export const workflowWaitStates = pgTable(
       .notNull()
       .$type<"waiting" | "resuming" | "resumed" | "timed_out" | "cancelled">(),
     /**
-     * What the authenticated runs panel uses to address this parked run.
+     * What the authenticated Runs view uses to address this parked run.
      * Generated per park so concurrent runs at the same node cannot collide.
      */
     resumeToken: text("resume_token"),

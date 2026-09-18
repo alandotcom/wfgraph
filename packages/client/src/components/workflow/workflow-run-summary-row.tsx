@@ -15,9 +15,10 @@ import {
 } from "#src/lib/workflow-run-labels";
 import {
   formatDuration,
-  getStatusDotClass,
-  getStatusLabel,
-  getStatusTextClass,
+  runStatusLabel,
+  runStatusTone,
+  statusToneDotClass,
+  statusToneTextClass,
 } from "./workflow-run-shared";
 
 type WorkflowRunSummaryRowProps = {
@@ -123,7 +124,7 @@ function ListSummary({
             "size-2 shrink-0 rounded-full",
             execution.status === "running" &&
               "ring-2 ring-info/20 motion-safe:animate-pulse",
-            getStatusDotClass(execution.status)
+            statusToneDotClass(runStatusTone(execution.status))
           )}
         />
       </div>
@@ -142,8 +143,10 @@ function ListSummary({
         <p className="mt-0.5 flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-muted-foreground text-xs">
           <span>Run #{runNumber}</span>
           <span aria-hidden="true">·</span>
-          <span className={getStatusTextClass(execution.status)}>
-            {getStatusLabel(execution.status)}
+          <span
+            className={statusToneTextClass(runStatusTone(execution.status))}
+          >
+            {runStatusLabel(execution.status)}
           </span>
           <span aria-hidden="true">·</span>
           <span>{runGraphRecipientsLabel(execution)}</span>
@@ -207,7 +210,10 @@ function HeaderSummary({
           </h2>
           <p
             aria-live="polite"
-            className={cn("mt-1 text-sm", getStatusTextClass(execution.status))}
+            className={cn(
+              "mt-1 text-sm",
+              statusToneTextClass(runStatusTone(execution.status))
+            )}
             role="status"
           >
             {outcome ?? getRunOutcome(execution, [])}

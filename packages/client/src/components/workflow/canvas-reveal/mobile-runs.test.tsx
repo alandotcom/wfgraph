@@ -8,8 +8,8 @@ import { selectedNodeAtom } from "#src/lib/workflow-graph-store";
 import {
   activeMobileSheetsAtom,
   activeWorkspaceAddressAtom,
-  activeWorkspaceCamerasAtom,
   recordWorkspaceCameraAtom,
+  activeWorkspaceCamerasAtom,
 } from "#src/lib/workflow-workspace-navigation";
 import {
   afterPaint,
@@ -152,7 +152,7 @@ describe("mobile Runs sequence", () => {
     await waitFor(() => expect(document.activeElement).toBe(sheetTitle()));
 
     const entry = await view.findByRole("button", {
-      name: "Send reminder, Success",
+      name: "Send reminder, Successful",
     });
     fireEvent.click(entry);
     await waitFor(() => expect(sheet()?.dataset.level).toBe("inspector"));
@@ -161,7 +161,7 @@ describe("mobile Runs sequence", () => {
     expect(within(evidence()).getByText(/patient@example.com/)).toBeTruthy();
     // One pane at a time: the journey is hidden behind the evidence.
     expect(
-      view.queryByRole("button", { name: "Send reminder, Success" })
+      view.queryByRole("button", { name: "Send reminder, Successful" })
     ).toBeNull();
     expect(canvasCovered()).toBe(true);
     expect(store.get(selectedNodeAtom)).toBe("send");
@@ -172,7 +172,7 @@ describe("mobile Runs sequence", () => {
     expect(sheetTitle()?.textContent).toBe("Run #1");
     await waitFor(() =>
       expect(document.activeElement).toBe(
-        view.getByRole("button", { name: "Send reminder, Success" })
+        view.getByRole("button", { name: "Send reminder, Successful" })
       )
     );
 

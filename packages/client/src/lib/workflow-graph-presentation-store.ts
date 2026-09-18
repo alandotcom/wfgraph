@@ -33,10 +33,8 @@ import {
   executionOverlayGraphAtom,
   nodesStateAtom,
 } from "#src/lib/workflow-graph-cells";
-import {
-  graphStructureKey,
-  type NavigationGraph,
-} from "#src/lib/workflow-navigation-state";
+import { graphStructureKey } from "#src/lib/workflow-scope-graph";
+import { type NavigationGraph } from "#src/lib/workflow-navigation-state";
 import {
   activeSelectionAtom,
   activeWorkspaceAddressAtom,

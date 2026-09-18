@@ -185,10 +185,11 @@ describe("groupSelection", () => {
     });
     expect(frame?.position).toEqual({ x: 100, y: 200 });
     expect(children?.map((node) => node.id)).toEqual(["a", "b", "c"]);
-    expect(children?.every((node) => node.extent === "parent")).toBe(true);
-    expect(children?.[0]?.position.y).toBeLessThan(
-      children?.[1]?.position.y ?? 0
-    );
+    expect(children?.map((node) => node.position)).toEqual([
+      { x: 0, y: 0 },
+      { x: 0, y: 200 },
+      { x: 0, y: 400 },
+    ]);
 
     const restored = ungroupNode({
       nodes: grouped?.nodes ?? [],
@@ -199,7 +200,7 @@ describe("groupSelection", () => {
     expect(restored.every((node) => !node.parentId)).toBe(true);
   });
 
-  it("places parallel lookups side by side and leaves the stored edges alone", () => {
+  it("keeps each member's own offset from the frame and leaves the stored edges alone", () => {
     const grouped = groupSelection({
       nodes: parallelNodes(),
       edges: parallelEdges(),
@@ -217,15 +218,10 @@ describe("groupSelection", () => {
       type: "group",
       config: { direction: "vertical" },
     });
-    // Row 0 fills the frame: `GROUP_PAD`, then one card and one gap over.
-    expect(childA?.position.x).toBe(12);
-    expect(childB?.position.x).toBe(224);
-    expect(childA?.position.y).toBe(48);
-    expect(childB?.position.y).toBe(48);
-    // Row 1 holds the join alone, indented by half a column so it sits under
-    // the centre of the row above and the interior edges paint as a fan-in.
-    expect(childC?.position.x).toBe(118);
-    expect(childC?.position.y).toBe(144);
+    expect(frame?.position).toEqual({ x: 40, y: 200 });
+    expect(childA?.position).toEqual({ x: 0, y: 0 });
+    expect(childB?.position).toEqual({ x: 200, y: 0 });
+    expect(childC?.position).toEqual({ x: 100, y: 200 });
     expect(grouped?.edges).toEqual(parallelEdges());
   });
 

@@ -14,7 +14,7 @@ import { Context, Effect, Layer, Ref } from "effect";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import {
   dissolveGroups,
-  releaseAtFramePosition,
+  releaseAtGroupCanvasPosition,
 } from "@wfgraph/shared/graph/group-dissolution";
 import { nodeLabel } from "@wfgraph/shared/graph/group-structure";
 import { undersizedGroupIds } from "@wfgraph/shared/graph/node-group";
@@ -140,7 +140,7 @@ export function makeWorkflowDraft(
               nodes: dissolveGroups({
                 nodes: edited.nodes,
                 groupIds: dissolvedIds,
-                releaseMember: releaseAtFramePosition,
+                releaseMember: releaseAtGroupCanvasPosition(edited),
               }),
             };
             const reason =

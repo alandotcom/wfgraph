@@ -17,13 +17,16 @@ import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { useCallback, useMemo } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
-import { WorkflowIssuesOverlay } from "#src/components/overlays/workflow-issues-overlay";
+import {
+  WorkflowIssuesOverlay,
+  type WorkflowIssuesOverlayInput,
+} from "#src/components/overlays/workflow-issues-overlay";
 import { useDebouncedValue, useAfterCommit } from "#src/hooks/effects";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
 import { can } from "#src/lib/authorization";
 import { edgesAtom, nodesAtom } from "#src/lib/workflow-graph-store";
+import { scopeOfNode } from "#src/lib/workflow-scope-graph";
 import {
-  scopeOfNode,
   workspaceAddressFromSearch,
   workspaceRouteSearch,
 } from "#src/lib/workflow-navigation-state";
@@ -200,10 +203,10 @@ export function useShowWorkflowIssues(): () => void {
   const issues = useAtomValue(workflowIssuesAtom);
 
   return useCallback(() => {
-    openOverlay(WorkflowIssuesOverlay, {
+    openOverlay<WorkflowIssuesOverlayInput>(WorkflowIssuesOverlay, {
       issues: groupWorkflowIssuesForOverlay(issues),
+      trigger: "list",
       onGoToStep: goToStep,
-      allowRunDraftAnyway: false,
     });
   }, [issues, openOverlay, goToStep]);
 }

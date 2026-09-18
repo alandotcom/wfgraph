@@ -170,7 +170,7 @@ const conditionEdges: WorkflowEdge[] = [
   { id: "score-condition", source: "score", target: "branch" },
 ];
 
-/** A finished one-rule filter, as the Lifecycle panel serializes it. */
+/** A finished one-rule filter, as the Lifecycle Node inspector serializes it. */
 const startFilter = JSON.stringify({
   version: 2,
   groupLogic: "and",

@@ -111,7 +111,7 @@ export function workflowPublicationQueryOptions(workflowId: string) {
  *
  * Each one takes procedure keys, never an area key like
  * `orpcQuery.workflow.key()`. The area also covers the editor's run queries:
- * `getExecutions` polls every two seconds while the runs panel is open, and
+ * `getExecutions` polls every two seconds while the Runs view is open, and
  * `getExecutionLogs` and `getExecutionEvents` poll alongside it while an
  * unfinished run is open. Widening the key turns one write into a burst.
  */

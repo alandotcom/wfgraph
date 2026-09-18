@@ -100,13 +100,15 @@ function renderCard(input: {
   data: WorkflowNodeData;
   sides?: { sourcePosition: Position; targetPosition: Position };
   store?: ReturnType<typeof createStore>;
+  /** The edges React Flow holds, which decide which outlets are connected. */
+  edges?: WorkflowEdge[];
 }) {
   return render(
     <QueryClientProvider client={new QueryClient()}>
       <Provider store={input.store ?? createStore()}>
         <ExtensionCatalogProvider value={catalog}>
           <IntegrationUiProvider value={{}}>
-            <ReactFlowProvider>
+            <ReactFlowProvider initialEdges={input.edges ?? []}>
               <ActionNode
                 data={input.data}
                 id={input.id}
@@ -153,6 +155,27 @@ describe("ActionNode outlets", () => {
     expect(trueLabel.className).toContain("-bottom-8");
     expect(trueLabel.style.left).toBe("38%");
     expect(label(view, "False").style.left).toBe("62%");
+  });
+
+  it("names only the unconnected branch on a Condition card", () => {
+    const view = renderCard({
+      id: "gate",
+      data: conditionData,
+      edges: [
+        {
+          id: "gate-route",
+          source: "gate",
+          target: "route",
+          sourceHandle: "true",
+        },
+      ],
+    });
+
+    expect(
+      [...view.container.querySelectorAll("[data-slot=outlet-label]")].map(
+        (caption) => caption.textContent
+      )
+    ).toEqual(["False"]);
   });
 
   it("draws Condition outlets on the right in a Left to right Group, with each label beside its handle", () => {

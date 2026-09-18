@@ -5,46 +5,152 @@
  * the node list alone, and it answers the given array when it removes no frame.
  */
 
-import { isGroupNode, type GroupGraphNode } from "#src/graph/group-boundary";
+import {
+  analyzeGroupBoundaryById,
+  isGroupNode,
+  type GroupGraphNode,
+} from "#src/graph/group-boundary";
 import {
   groupStructureRefusalReason,
   type GroupStructureEdge,
 } from "#src/graph/group-structure";
-import { undersizedGroupIds } from "#src/graph/node-group";
-import type { WorkflowNode } from "#src/graph/types";
+import {
+  groupCanvasPositions,
+  groupEndPorts,
+  groupLayoutDirection,
+  undersizedGroupIds,
+} from "#src/graph/node-group";
+import {
+  offsetClearOfRectangles,
+  overviewCardRectangle,
+  overviewCardRectangles,
+  type NodeRectangle,
+  type PlacedNode,
+} from "#src/graph/node-placement";
+import type { WorkflowEdge, WorkflowNode } from "#src/graph/types";
+import {
+  WORKFLOW_NODE_HEIGHT,
+  WORKFLOW_NODE_WIDTH,
+} from "#src/graph/workflow-layout-geometry";
 
 type Position = { x: number; y: number };
 
 /** A node with the canvas position dissolution rewrites. */
 export type DissolvableNode = GroupGraphNode & { position: Position };
 
-/**
- * Builds the node a member becomes once its frame is gone. `member.position`
- * is relative to `frame.position`, and the answer carries no `parentId`.
- */
+/** Builds the node a member becomes once its frame is gone, with no `parentId`. */
 export type ReleaseMember<N extends DissolvableNode> = (input: {
   frame: N;
   member: N;
 }) => N;
 
-/** The canvas position of a member drawn at `member.position` inside `frame`. */
-export function positionInFrame(input: {
-  frame: DissolvableNode;
-  member: DissolvableNode;
-}): Position {
-  return {
-    x: input.frame.position.x + input.member.position.x,
-    y: input.frame.position.y + input.member.position.y,
+/**
+ * Where a member of a dissolved frame lands: where the focused Group canvas
+ * draws it, moved so the Group's slots are centred on the collapsed card's
+ * centre line and its first row starts at the card's top, along the frame's
+ * stored layout direction. The members of one frame then move together by
+ * `offsetClearOfRectangles`, down and right until no card the overview draws
+ * overlaps them. Those cards are every top-level node in `graph` except a
+ * frame already dissolved, plus the members already released from such a
+ * frame. Each frame is placed once, from `graph` as it was given.
+ */
+export function groupCanvasReleasePosition(graph: {
+  nodes: readonly PlacedNode[];
+  edges: readonly WorkflowEdge[];
+}): (input: { frame: DissolvableNode; member: DissolvableNode }) => Position {
+  // Maps, because node and Group ids are chosen by the builder.
+  const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
+  const positionsByFrame = new Map<string, Map<string, Position>>();
+  const released: NodeRectangle[] = [];
+
+  const placeFrame = (frame: DissolvableNode): Map<string, Position> => {
+    const boundary = analyzeGroupBoundaryById({
+      nodes: graph.nodes,
+      edges: graph.edges,
+      groupId: frame.id,
+    });
+    const slots = groupCanvasPositions({
+      memberIds: boundary.memberIds,
+      interiorEdges: boundary.interiorEdges,
+      trailingStubPorts: [
+        ...boundary.internalContinuation,
+        ...groupEndPorts({ nodes: graph.nodes, boundary }),
+      ],
+      direction: groupLayoutDirection(frame),
+    });
+    const unmoved = boundary.memberIds.map((memberId) => {
+      const slot = slots.get(memberId) ?? { x: -WORKFLOW_NODE_WIDTH / 2, y: 0 };
+      const member = nodeById.get(memberId);
+      const position = {
+        x: frame.position.x + WORKFLOW_NODE_WIDTH / 2 + slot.x,
+        y: frame.position.y + slot.y,
+      };
+      return {
+        memberId,
+        rectangle: member
+          ? overviewCardRectangle({ ...member, position })
+          : {
+              ...position,
+              width: WORKFLOW_NODE_WIDTH,
+              height: WORKFLOW_NODE_HEIGHT,
+            },
+      };
+    });
+    const obstacles = [
+      ...overviewCardRectangles(
+        graph.nodes.filter(
+          (node) => node.id !== frame.id && !positionsByFrame.has(node.id)
+        )
+      ),
+      ...released,
+    ];
+    const offset = offsetClearOfRectangles(
+      unmoved.map((entry) => entry.rectangle),
+      obstacles
+    );
+    const positions = new Map<string, Position>();
+    for (const { memberId, rectangle } of unmoved) {
+      const moved = {
+        ...rectangle,
+        x: rectangle.x + offset.x,
+        y: rectangle.y + offset.y,
+      };
+      released.push(moved);
+      positions.set(memberId, { x: moved.x, y: moved.y });
+    }
+    return positions;
+  };
+
+  return ({ frame, member }) => {
+    let positions = positionsByFrame.get(frame.id);
+    if (!positions) {
+      positions = placeFrame(frame);
+      positionsByFrame.set(frame.id, positions);
+    }
+    return (
+      positions.get(member.id) ?? {
+        x: frame.position.x,
+        y: frame.position.y,
+      }
+    );
   };
 }
 
-/** Releases a persisted member at `positionInFrame`, with no `parentId`. */
-export function releaseAtFramePosition(input: {
-  frame: WorkflowNode;
-  member: WorkflowNode;
-}): WorkflowNode {
-  const { parentId: _parentId, ...released } = input.member;
-  return { ...released, position: positionInFrame(input) };
+/**
+ * Releases each persisted member of a frame in `graph` at
+ * `groupCanvasReleasePosition`, with no `parentId`. The build agent dissolves
+ * with it, so a Group it dissolves leaves its members where the editor's
+ * Ungroup leaves them.
+ */
+export function releaseAtGroupCanvasPosition(graph: {
+  nodes: readonly WorkflowNode[];
+  edges: readonly WorkflowEdge[];
+}): ReleaseMember<WorkflowNode> {
+  const place = groupCanvasReleasePosition(graph);
+  return (input) => {
+    const { parentId: _parentId, ...released } = input.member;
+    return { ...released, position: place(input) };
+  };
 }
 
 /**

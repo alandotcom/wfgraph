@@ -9,7 +9,13 @@ import {
   type Edge as XYFlowEdge,
 } from "@xyflow/react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { useCallback, useMemo, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Canvas } from "#src/components/flow-elements/canvas";
 import { Connection } from "#src/components/flow-elements/connection";
 import { Controls } from "#src/components/flow-elements/controls";
@@ -595,9 +601,10 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
       className="relative h-full w-full bg-background"
       data-testid="workflow-canvas"
       ref={canvasContainerRef}
-      style={{
-        opacity: isCanvasReady ? 1 : 0,
-      }}
+      style={canvasContainerStyle({
+        ready: isCanvasReady,
+        revealOccupiedWidth,
+      })}
     >
       {/* React Flow Canvas. A Group card on a comparison canvas leads to its
           changed steps through the control the slot supplies. */}
@@ -676,9 +683,6 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
               nodeColor="var(--muted-foreground)"
               nodeStrokeColor="var(--border)"
               pannable
-              // Sits beside open Canvas Reveal. The panel's own margin keeps the
-              // gap to Reveal's edge.
-              style={{ right: revealOccupiedWidth }}
               zoomable
             />
           )}
@@ -696,4 +700,19 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
       />
     </div>
   );
+}
+
+/**
+ * The canvas box's opacity and `--reveal-occupied-width`, the pixels open
+ * Canvas Reveal covers at the canvas's right edge. The React Flow attribution
+ * rule in `globals.css` reads that variable to sit beside Reveal.
+ */
+function canvasContainerStyle(input: {
+  ready: boolean;
+  revealOccupiedWidth: number;
+}): CSSProperties & Record<"--reveal-occupied-width", string> {
+  return {
+    opacity: input.ready ? 1 : 0,
+    "--reveal-occupied-width": `${input.revealOccupiedWidth}px`,
+  };
 }

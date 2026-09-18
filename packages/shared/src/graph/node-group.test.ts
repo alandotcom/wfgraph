@@ -793,6 +793,7 @@ describe("groupOutlets", () => {
         handleId: "true",
         label: "True",
         ports: [{ nodeId: "c", handle: "true" }],
+        continues: true,
       },
     ]);
   });
@@ -916,7 +917,7 @@ describe("groupOutlets", () => {
 
   it("draws one unlabelled handle standing for no port for an id that is not a Group", () => {
     expect(groupOutlets(conditionGroup, [edge("ac", "a", "c")], "sms")).toEqual(
-      [{ handleId: null, label: null, ports: [] }]
+      [{ handleId: null, label: null, ports: [], continues: false }]
     );
   });
 

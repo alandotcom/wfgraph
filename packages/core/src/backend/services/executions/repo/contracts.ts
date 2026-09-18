@@ -15,7 +15,7 @@ import type {
 import type { JsonObject, JsonObjectDraft } from "@wfgraph/shared/types/json";
 import type { WorkflowVersionKind } from "@wfgraph/shared/graph/version-kinds";
 
-/** One row of `workflow_executions`, as the run panel and the engine see it. */
+/** One row of `workflow_executions`, as the Runs view and the engine see it. */
 export type WorkflowExecution = typeof workflowExecutions.$inferSelect;
 
 /** One row of `workflow_execution_logs`, one node's attempt within a run. */
@@ -47,7 +47,7 @@ export type NewExecution = {
   workflowId: string;
   /**
    * The version this run pins, published or a draft snapshot. Required even when
-   * the row is terminal and never executes: the runs panel still resolves node
+   * the row is terminal and never executes: the Runs view still resolves node
    * ids against it.
    */
   workflowVersionId: string;

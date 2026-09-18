@@ -101,7 +101,7 @@ function useExecutionOverlaySync(): void {
  * Headless owner of the canvas overlay for the run the route opens.
  *
  * Mount on the workflow editor shell so the pinned-graph overlay outlives the
- * Runs panel; the panel only queries what its list and detail views display.
+ * Runs view, which queries only what its run list and run display show.
  */
 export function ExecutionOverlaySync() {
   useExecutionOverlaySync();

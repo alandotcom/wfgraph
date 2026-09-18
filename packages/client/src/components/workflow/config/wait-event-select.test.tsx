@@ -258,7 +258,7 @@ describe("WaitEventSelect match editor", () => {
   });
 
   // F2: this workflow's Correlation Path for the Event -- the entry node's
-  // rules, resolved the same way the Lifecycle panel resolves them -- wins over
+  // rules, resolved the same way the Lifecycle Node inspector resolves them -- wins over
   // the Event Author's declaration, so the seed reads the field this workflow
   // actually correlates on rather than the one nothing here overrode.
   it("seeds a match at this workflow's overridden Correlation Path", () => {

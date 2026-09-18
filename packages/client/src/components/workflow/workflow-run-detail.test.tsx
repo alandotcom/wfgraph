@@ -276,7 +276,7 @@ describe("WorkflowRunDetail", () => {
       { logs, onSelectLog, focusLogId: "log_wait", onFocusRestored }
     );
 
-    const entry = view.getByRole("button", { name: "Wait, Success" });
+    const entry = view.getByRole("button", { name: "Wait, Successful" });
     expect(document.activeElement).toBe(entry);
     expect(onFocusRestored).toHaveBeenCalledOnce();
     fireEvent.click(entry);
@@ -318,7 +318,7 @@ describe("WorkflowRunDetail", () => {
       { logs }
     );
 
-    expect(view.getByRole("button", { name: "Wait, Cancelled" })).toBeTruthy();
+    expect(view.getByRole("button", { name: "Wait, Canceled" })).toBeTruthy();
     expect(view.queryByText("In progress")).toBeNull();
     expect(view.queryByText("Running")).toBeNull();
   });

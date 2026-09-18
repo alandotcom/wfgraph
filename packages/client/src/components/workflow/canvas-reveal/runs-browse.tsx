@@ -1,7 +1,7 @@
 import { useAtomValue, useSetAtom } from "jotai";
 import { useRef } from "react";
 import { cn } from "@wfgraph/shared/utils";
-import { RunsPanelActions } from "#src/components/workflow/node-config-panel";
+import { RunsListActions } from "#src/components/workflow/node-config-panel";
 import { runEvidenceOriginAtom } from "#src/components/workflow/run-evidence-origin";
 import {
   runBrowseFocusRequestAtom,
@@ -19,9 +19,11 @@ import {
 import { WorkflowRunDetail } from "#src/components/workflow/workflow-run-detail";
 import { WorkflowRunNodeEvidence } from "#src/components/workflow/workflow-run-node-evidence";
 import {
-  getStatusLabel,
   groupRunStatusTone,
-  statusTone,
+  type NodeStatus,
+  runNodeEvidenceLabel,
+  runStatusLabel,
+  runStatusTone,
 } from "#src/components/workflow/workflow-run-shared";
 import {
   RunsEmptyState,
@@ -76,7 +78,7 @@ const RUNS_FOCUS_TOGGLE_TEXT = {
  */
 type RunsHeaderTarget =
   | { kind: "run" }
-  | { kind: "node"; title: string; status: string | null }
+  | { kind: "node"; title: string; status: NodeStatus | null }
   | { kind: "group"; title: string; status: GroupRunStatus };
 
 /**
@@ -122,8 +124,8 @@ function runsHeaderModel(input: {
   }
   const { execution, runNumber } = openRun;
   const run = runHeader(runNumber > 0 ? `Run #${runNumber}` : "Run", {
-    text: getStatusLabel(execution.status),
-    tone: statusTone(execution.status),
+    text: runStatusLabel(execution.status),
+    tone: runStatusTone(execution.status),
   });
   if (target.kind === "run") {
     return run;
@@ -138,12 +140,7 @@ function runsHeaderModel(input: {
             text: groupRunStatusLabel(target.status),
             tone: groupRunStatusTone(target.status),
           }
-        : target.status === null
-          ? { text: "Not run", tone: "muted" }
-          : {
-              text: getStatusLabel(target.status),
-              tone: statusTone(target.status),
-            },
+        : runNodeEvidenceLabel(target.status ?? "none"),
   };
 }
 
@@ -193,24 +190,14 @@ function useRunsHeaderModel(
 /**
  * The Runs header on a mobile sheet, from the same model as `RunsHeader`. Back
  * is named for the level before the sheet's own in the model's path, and a
- * model with no Back offers Close. The first sheet inside a focused Group names
- * the Group, whose canvas Back leaves showing.
+ * model with no Back offers Close.
  */
-export function RunsMobileHeader({
-  state,
-  controls,
-  scopeBackLabel,
-}: MobileKindHeaderProps) {
+export function RunsMobileHeader({ state, controls }: MobileKindHeaderProps) {
   const model = useRunsHeaderModel(
     state.subject,
     state.level === "inspector" ? "focus" : "browse"
   );
-  const backLabel =
-    state.beneath === null && scopeBackLabel !== null
-      ? scopeBackLabel
-      : model.showsBack
-        ? (model.path.at(-2) ?? "Back")
-        : null;
+  const backLabel = model.showsBack ? (model.path.at(-2) ?? "Back") : null;
   return (
     <MobileSheetHeader
       backLabel={backLabel}
@@ -513,7 +500,7 @@ export function RunsBody({ subject, frame, level, mobile }: RevealBodyProps) {
           <p className="text-muted-foreground text-xs">
             Select a run to inspect its journey on the canvas.
           </p>
-          <RunsPanelActions confirm={frame.confirm} />
+          <RunsListActions confirm={frame.confirm} />
         </div>
       ) : null}
       {screen.kind === "list-error" ? (

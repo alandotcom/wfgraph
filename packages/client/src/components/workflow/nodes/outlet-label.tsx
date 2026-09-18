@@ -5,7 +5,7 @@
  * bottom.
  */
 
-import { Position } from "@xyflow/react";
+import { Position, useNodeConnections } from "@xyflow/react";
 import type { CSSProperties } from "react";
 import { cn } from "@wfgraph/shared/utils";
 
@@ -18,6 +18,39 @@ export function alongOutletSide(
   offset: string
 ): CSSProperties {
   return outlet === Position.Right ? { top: offset } : { left: offset };
+}
+
+/**
+ * The caption naming a Condition branch outlet, such as True, drawn only while
+ * no edge leaves the node `nodeId` by the handle `handleId`. An edge leaving by
+ * a branch handle draws the branch name on itself, so the card names only an
+ * unconnected branch.
+ */
+export function BranchOutletLabel(input: {
+  nodeId: string;
+  handleId: string;
+  outlet: Position;
+  offset: string;
+  className?: string | undefined;
+  children: string;
+}) {
+  const connections = useNodeConnections({
+    id: input.nodeId,
+    handleType: "source",
+    handleId: input.handleId,
+  });
+  if (connections.length > 0) {
+    return null;
+  }
+  return (
+    <OutletLabel
+      className={input.className}
+      offset={input.offset}
+      outlet={input.outlet}
+    >
+      {input.children}
+    </OutletLabel>
+  );
 }
 
 /**

@@ -1,19 +1,15 @@
 /**
  * Group mutations on editor nodes: grouping, ungrouping, and the removals that
- * touch a Group. Each keeps React Flow's parent fields in step with `parentId`.
- * Analysis and dissolution live in shared.
+ * touch a Group. Analysis, dissolution, and where a released member lands live
+ * in shared.
  */
 
-import { countBy } from "es-toolkit/array";
 import { generateId } from "@wfgraph/shared/utils/id";
 import type { EdgeChange } from "@xyflow/react";
-import {
-  analyzeGroupBoundary,
-  analyzeGroupBoundaryById,
-  isGroupNode,
-} from "@wfgraph/shared/graph/group-boundary";
+import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import {
   dissolveGroups,
+  groupCanvasReleasePosition,
   type GroupRepair,
   type ReleaseMember,
   repairGroups,
@@ -22,24 +18,13 @@ import {
   analyzeGroupableSelection,
   childIdsOfGroup,
   fanOutStoreEdgeIds,
-  groupCanvasPositions,
-  groupEndPorts,
-  groupInteriorLayout,
-  groupLayoutDirection,
   orderGroupParentsFirst,
   undersizedGroupIds,
   type GroupAnalysis,
-  type GroupMemberSlot,
 } from "@wfgraph/shared/graph/node-group";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import type { WorkspaceScope } from "#src/lib/workflow-navigation-state";
 import {
-  GROUP_CHILD_HEIGHT,
-  GROUP_CHILD_WIDTH,
-  GROUP_COLUMN_GAP,
-  GROUP_HEADER_HEIGHT,
-  GROUP_PAD,
-  GROUP_ROW_GAP,
   WORKFLOW_NODE_HEIGHT,
   WORKFLOW_NODE_WIDTH,
   workflowNodeSize,
@@ -76,18 +61,9 @@ export function groupSelection(input: {
     y: Math.min(...members.map((node) => node.position.y)),
   };
   const memberSet = new Set(analysis.memberIds);
-  const { interiorEdges } = analyzeGroupBoundary({
-    memberIds: analysis.memberIds,
-    edges: input.edges,
-  });
-  const { slots, bounds } = groupInteriorLayout(
-    analysis.memberIds,
-    interiorEdges
-  );
   // The overview draws a Group as one collapsed card.
   const size = workflowNodeSize();
   const groupId = (input.createId ?? generateId)();
-  const positionById = childPositions(slots, bounds.columns);
 
   const groupNode: WorkflowNode = {
     id: groupId,
@@ -104,11 +80,19 @@ export function groupSelection(input: {
     },
   };
 
-  // Each member keeps its own data, so grouping leaves every step's enabled
-  // state and configuration exactly as they were.
-  const children = members.map((node) =>
-    nestInGroup(node, groupId, childPosition(positionById, node.id))
-  );
+  // Each member keeps its own data and size, so grouping leaves every step's
+  // enabled state and configuration exactly as they were. Its position is kept
+  // relative to the frame. The focused Group canvas and Ungroup place members
+  // with `groupCanvasPositions`; the comparison graph reads the stored position
+  // only to draw a member deleted from a Group that still exists.
+  const children = members.map((node): WorkflowNode => ({
+    ...node,
+    parentId: groupId,
+    position: {
+      x: node.position.x - origin.x,
+      y: node.position.y - origin.y,
+    },
+  }));
   const rest = input.nodes.filter((node) => !memberSet.has(node.id));
 
   return {
@@ -276,68 +260,6 @@ export function expandEdgeRemovals(
 }
 
 /**
- * Where each member draws inside the frame. A row narrower than the widest one
- * is centred, so the step several parallel lookups join at sits under all of
- * them and the interior edges read as a fan-in rather than a stack.
- */
-function childPositions(
-  slots: readonly GroupMemberSlot[],
-  columns: number
-): Map<string, { x: number; y: number }> {
-  const widthOfRow = countBy(slots, (slot) => slot.row);
-
-  const positions = new Map<string, { x: number; y: number }>();
-  for (const slot of slots) {
-    const spare = columns - (widthOfRow[slot.row] ?? 1);
-    const indent = (spare * (GROUP_CHILD_WIDTH + GROUP_COLUMN_GAP)) / 2;
-    positions.set(slot.id, {
-      x:
-        GROUP_PAD +
-        indent +
-        slot.column * (GROUP_CHILD_WIDTH + GROUP_COLUMN_GAP),
-      y:
-        GROUP_HEADER_HEIGHT +
-        GROUP_PAD +
-        slot.row * (GROUP_CHILD_HEIGHT + GROUP_ROW_GAP),
-    });
-  }
-  return positions;
-}
-
-/**
- * `childPositions` is built from the slots of the very members being placed, so
- * a miss means the two disagree about who is in the frame. Fail there rather
- * than stack every affected member on one point and call it a layout.
- */
-function childPosition(
-  positions: ReadonlyMap<string, { x: number; y: number }>,
-  nodeId: string
-): { x: number; y: number } {
-  const position = positions.get(nodeId);
-  if (!position) {
-    throw new Error(`Group layout has no slot for member '${nodeId}'`);
-  }
-  return position;
-}
-
-function nestInGroup(
-  node: WorkflowNode,
-  groupId: string,
-  position: { x: number; y: number }
-): WorkflowNode {
-  return {
-    ...node,
-    parentId: groupId,
-    extent: "parent",
-    draggable: false,
-    connectable: false,
-    width: GROUP_CHILD_WIDTH,
-    height: GROUP_CHILD_HEIGHT,
-    position,
-  };
-}
-
-/**
  * Dissolve the frames `groupIds` names and keep the frames-first order
  * `orderGroupParentsFirst` describes. Answers `nodes` when no id names a frame.
  */
@@ -357,43 +279,15 @@ function ungroupFrames(input: {
 
 /**
  * Frees each member of a dissolved frame as a full-size card with no parent
- * constraint, draggable and connectable whenever the canvas allows it. It
- * lands where the focused Group canvas draws it, moved so the Group's slots are
- * centred on the collapsed card's centre line and its first row starts at the
- * card's top, along the frame's stored layout direction. The layout of each
- * frame is computed once, from `nodes` and `edges` as they were given.
+ * constraint, draggable and connectable whenever the canvas allows it, at
+ * `groupCanvasReleasePosition` for `graph`.
  */
 function memberReleaser(graph: {
   nodes: readonly WorkflowNode[];
   edges: readonly WorkflowEdge[];
 }): ReleaseMember<WorkflowNode> {
-  const positionsByFrame = new Map<
-    string,
-    Map<string, { x: number; y: number }>
-  >();
+  const place = groupCanvasReleasePosition(graph);
   return ({ frame, member }) => {
-    let positions = positionsByFrame.get(frame.id);
-    if (!positions) {
-      const boundary = analyzeGroupBoundaryById({
-        nodes: graph.nodes,
-        edges: graph.edges,
-        groupId: frame.id,
-      });
-      positions = groupCanvasPositions({
-        memberIds: boundary.memberIds,
-        interiorEdges: boundary.interiorEdges,
-        trailingStubPorts: [
-          ...boundary.internalContinuation,
-          ...groupEndPorts({ nodes: graph.nodes, boundary }),
-        ],
-        direction: groupLayoutDirection(frame),
-      });
-      positionsByFrame.set(frame.id, positions);
-    }
-    const offset = positions.get(member.id) ?? {
-      x: -WORKFLOW_NODE_WIDTH / 2,
-      y: 0,
-    };
     const {
       extent: _extent,
       parentId: _parentId,
@@ -405,10 +299,7 @@ function memberReleaser(graph: {
       ...rest,
       width: WORKFLOW_NODE_WIDTH,
       height: WORKFLOW_NODE_HEIGHT,
-      position: {
-        x: frame.position.x + WORKFLOW_NODE_WIDTH / 2 + offset.x,
-        y: frame.position.y + offset.y,
-      },
+      position: place({ frame, member }),
     };
   };
 }

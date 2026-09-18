@@ -76,7 +76,7 @@ export function useNodeConfigTitle(): string {
  * Reveal and in the mobile run list sheet. The confirm callback is the frame's,
  * so each frame asks in its own way.
  */
-export function RunsPanelActions({
+export function RunsListActions({
   confirm,
 }: {
   confirm: NodeConfigFrame["confirm"];

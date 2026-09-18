@@ -46,6 +46,29 @@ describe("assessExpectedCompletion", () => {
     });
   });
 
+  it("accepts a ready workflow whose answer names every required term", () => {
+    expect(
+      assess({
+        expected: { outcome: "ready", answerMustMention: ["Screening"] },
+        finalText: "I removed the step, and the Screening Group was removed.",
+        facts: readyFacts,
+      })
+    ).toMatchObject({ score: 1 });
+  });
+
+  it("rejects a ready workflow whose answer omits a required term", () => {
+    expect(
+      assess({
+        expected: { outcome: "ready", answerMustMention: ["Screening"] },
+        finalText: "I removed the step.",
+        facts: readyFacts,
+      })
+    ).toEqual({
+      score: 0,
+      rationale: "The answer does not mention: Screening.",
+    });
+  });
+
   it("accepts production warnings on a ready graph", () => {
     expect(
       assess({

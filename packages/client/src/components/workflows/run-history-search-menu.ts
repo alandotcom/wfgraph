@@ -1,4 +1,4 @@
-import { getStatusLabel } from "#src/components/workflow/workflow-run-shared";
+import { runStatusLabel } from "#src/components/workflow/workflow-run-shared";
 import {
   autofillRemainder,
   GRAPH_VALUE_OPTIONS,
@@ -81,7 +81,7 @@ function filterValueOptions(input: {
     case "status":
       return WORKFLOW_EXECUTION_STATUSES.map((value) => ({
         value,
-        label: getStatusLabel(value),
+        label: runStatusLabel(value),
       }));
     case "mode":
       return MODE_VALUE_OPTIONS;

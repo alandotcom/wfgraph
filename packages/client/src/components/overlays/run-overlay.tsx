@@ -58,7 +58,7 @@ type RunOverlayProps = OverlayComponentProps<{
    * confirms the command that opened it.
    */
   target: WorkflowRunTarget;
-  /** The workflow's Start Events, in the order the Lifecycle panel lists them. */
+  /** The workflow's Start Events, in the order the Lifecycle Node inspector lists them. */
   startEvents: readonly string[];
   /** Whether a run naming no Event is one this workflow takes at all. */
   allowManualStart: boolean;

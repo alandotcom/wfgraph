@@ -95,13 +95,15 @@ export function groupEndPorts(input: {
 /**
  * One source handle a collapsed Group card draws. `handleId` is the React Flow
  * handle id, `ports` are the member ports a connection dragged from the handle
- * stores edges from, and `label` names the outlet beside the handle, or is
- * null when the card draws the handle unlabelled.
+ * stores edges from, and `label` names the outlet, or is null for an unnamed
+ * outlet. `continues` is true for an outlet whose edges leave the Group, which
+ * name a Condition branch on the edge itself.
  */
 export type GroupOutlet = {
   handleId: string | null;
   label: string | null;
   ports: GroupPort[];
+  continues: boolean;
 };
 
 /**
@@ -140,11 +142,12 @@ export function groupOutlets<N extends GroupGraphNode>(
       handleId: handle,
       label: getConditionBranchDisplayLabel(handle),
       ports,
+      continues: true,
     }));
   }
   const endPorts = groupEndPorts({ nodes, boundary });
   if (endPorts.length === 0) {
-    return [{ handleId: null, label: null, ports: [] }];
+    return [{ handleId: null, label: null, ports: [], continues: false }];
   }
   const byId = new Map(nodes.map((node) => [node.id, node]));
   return endPorts.map((port) => {
@@ -154,6 +157,7 @@ export function groupOutlets<N extends GroupGraphNode>(
       handleId: endPortHandleId(port),
       label: getConditionBranchDisplayLabel(port.handle) ?? memberName,
       ports: [port],
+      continues: false,
     };
   });
 }
@@ -599,30 +603,6 @@ export function groupMemberSlots(
     columnsByRow.set(row, column + 1);
     return { id, row, column };
   });
-}
-
-export function groupSlotBounds(slots: readonly GroupMemberSlot[]): {
-  rows: number;
-  columns: number;
-} {
-  if (slots.length === 0) {
-    return { rows: 1, columns: 1 };
-  }
-  return {
-    rows: Math.max(...slots.map((slot) => slot.row + 1)),
-    columns: Math.max(...slots.map((slot) => slot.column + 1)),
-  };
-}
-
-export function groupInteriorLayout(
-  memberIds: readonly string[],
-  interior: readonly WorkflowEdge[]
-): {
-  slots: GroupMemberSlot[];
-  bounds: { rows: number; columns: number };
-} {
-  const slots = groupMemberSlots(memberIds, interior);
-  return { slots, bounds: groupSlotBounds(slots) };
 }
 
 /**

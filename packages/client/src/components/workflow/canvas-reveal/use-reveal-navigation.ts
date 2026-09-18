@@ -14,20 +14,22 @@ import {
 } from "#src/lib/workflow-navigation-state";
 import { selectedObject } from "#src/lib/canvas-selection";
 import {
+  openMobileAddressSheetAtom,
+  openMobileChangeAtom,
+  openMobileInspectorOverAddressAtom,
+  openMobileSheetAtom,
+  recordMobileSheetSectionAtom,
+} from "#src/lib/mobile-sheet-store";
+import {
   activeDesktopRevealLevelAtom,
   activeMobileSheetsAtom,
   activeRevealPresentationAtom,
   activeSelectionAtom,
   inspectRunNodeAtom,
   openInspectorSectionAtom,
-  openMobileAddressSheetAtom,
-  openMobileChangeAtom,
-  openMobileInspectorOverAddressAtom,
-  openMobileSheetAtom,
   openNodeRevealFromOriginAtom,
   openWorkspaceRevealAtom,
   recordInspectorSectionAtom,
-  recordMobileSheetSectionAtom,
   setWorkspaceRevealLevelAtom,
   setWorkspaceSelectionAtom,
 } from "#src/lib/workflow-workspace-navigation";
@@ -87,6 +89,16 @@ export type RevealNavigation = {
   shownSectionAtom: Atom<ShownInspectorSection>;
   /** Open the inspector of `address` at Browse, or its sheet below `md`. */
   openInspector: (address: WorkspaceAddress) => void;
+  /**
+   * Show the inspector of a Runs or Changes workspace just switched to at
+   * `address`. Desktop opens Canvas Reveal only on the workspace's first visit,
+   * since Canvas Reveal remembers each address's level. Below `md` the sheets
+   * are not remembered across a switch, so every switch opens the inspector.
+   */
+  showSwitchedWorkspace: (input: {
+    address: WorkspaceAddress;
+    firstVisit: boolean;
+  }) => void;
   /**
    * Show the inspector for a selection just written to `address`, where the
    * form factor does not show it by itself. Canvas Reveal follows the
@@ -201,6 +213,7 @@ export function useRevealNavigation(): RevealNavigation {
           }),
         shownSectionAtom: mobileShownSectionAtom,
         openInspector: openSheet,
+        showSwitchedWorkspace: ({ address }) => openSheet(address),
         followSelection: openSheet,
         showPressedNode: ({ address, nodeId }) => {
           if (address.key.workspace === "changes") {
@@ -258,6 +271,11 @@ export function useRevealNavigation(): RevealNavigation {
       shownSectionAtom: desktopShownSectionAtom,
       openInspector: (address) =>
         store.set(setWorkspaceRevealLevelAtom, { address, level: "browse" }),
+      showSwitchedWorkspace: ({ address, firstVisit }) => {
+        if (firstVisit) {
+          store.set(setWorkspaceRevealLevelAtom, { address, level: "browse" });
+        }
+      },
       followSelection: () => {},
       showPressedNode: ({ address, nodeId }) => {
         if (

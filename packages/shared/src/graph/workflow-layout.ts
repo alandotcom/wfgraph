@@ -28,10 +28,10 @@ import {
   RANK_SPACING,
   WORKFLOW_NODE_HEIGHT,
   WORKFLOW_NODE_WIDTH,
+  workflowNodeSize,
 } from "#src/graph/workflow-layout-geometry";
 import { isGroupNode } from "#src/graph/group-boundary";
 import { edgesForGroupLayout } from "#src/graph/node-group";
-import { layoutGroupChildren } from "#src/graph/layout-group-children";
 
 const LAYOUT_DIRECTION = "TB";
 const GRAPH_MARGIN = 40;
@@ -212,8 +212,8 @@ function readNodeShape(input: {
   edges: readonly WorkflowEdge[];
   catalog: ExtensionCatalog;
 }): NodeShape {
-  // A Group draws as one collapsed card on the overview, and its members are
-  // laid out inside the frame by `layoutGroupChildren`.
+  // A Group draws as one collapsed card on the overview. Its members are
+  // placed by the focused Group canvas, so layout leaves them where they are.
   if (isGroupNode(input.node)) {
     return standardCard({ outletHandles: [], holdsOutletsOpen: false });
   }
@@ -715,7 +715,7 @@ export function layoutWorkflowNodes(input: {
     }
     return { ...node, position: next };
   });
-  const nodes = layoutGroupChildren(positioned, input.edges);
+  const nodes = sizeGroupFrames(positioned);
   const previousById = new Map(input.nodes.map((node) => [node.id, node]));
   const changed = nodes.some((node) => {
     const previous = previousById.get(node.id);
@@ -730,4 +730,14 @@ export function layoutWorkflowNodes(input: {
   });
 
   return { nodes, changed };
+}
+
+/** Gives each Group frame holding a member the one card size it draws at. */
+function sizeGroupFrames(nodes: WorkflowNode[]): WorkflowNode[] {
+  const parentIds = new Set(nodes.map((node) => node.parentId));
+  return nodes.map((node) =>
+    isGroupNode(node) && parentIds.has(node.id)
+      ? { ...node, ...workflowNodeSize() }
+      : node
+  );
 }

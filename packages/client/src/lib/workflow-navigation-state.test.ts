@@ -4,10 +4,6 @@ import {
   EMPTY_WORKFLOW_NAVIGATION,
   RETAINED_KEYS_PER_VIEW,
   cameraStep,
-  graphInScope,
-  scopeOfNode,
-  graphStructureKey,
-  groupScopeExists,
   inspectionInGraph,
   recoveredRouteSearch,
   rememberRouteSearch,
@@ -359,54 +355,6 @@ describe("recovery", () => {
     });
     const kept = { nodeIds: ["child"], edgeIds: [] };
     expect(selectionInGraph(kept, graph)).toBe(kept);
-  });
-
-  it("limits a scope to what it shows: members and the edges entering them on a Group, the rest on the overview", () => {
-    expect(
-      graphInScope(graph, { kind: "overview" }).nodes.map((node) => node.id)
-    ).toEqual(["trigger", "group_1"]);
-    expect(graphInScope(graph, { kind: "overview" }).edges).toBe(graph.edges);
-    expect(graphInScope(graph, { kind: "group", groupId: "group_1" })).toEqual({
-      nodes: [graph.nodes[2]],
-      edges: graph.edges,
-    });
-    const flat = { nodes: [graph.nodes[0]], edges: [] };
-    expect(graphInScope(flat, { kind: "overview" })).toBe(flat);
-  });
-
-  it("names the scope that shows a node", () => {
-    expect(scopeOfNode(graph.nodes, "child")).toEqual({
-      kind: "group",
-      groupId: "group_1",
-    });
-    expect(scopeOfNode(graph.nodes, "trigger")).toEqual({ kind: "overview" });
-    expect(scopeOfNode(graph.nodes, "gone")).toEqual({ kind: "overview" });
-  });
-
-  it("accepts a focused scope only for a Group node", () => {
-    expect(groupScopeExists({ kind: "group", groupId: "group_1" }, graph)).toBe(
-      true
-    );
-    expect(groupScopeExists({ kind: "group", groupId: "child" }, graph)).toBe(
-      false
-    );
-    expect(groupScopeExists({ kind: "overview" }, graph)).toBe(true);
-  });
-
-  it("keys structure on ids, kinds, and parents and ignores positions", () => {
-    const moved = {
-      ...graph,
-      nodes: graph.nodes.map((node) => ({ ...node, position: { x: 9, y: 9 } })),
-    };
-    expect(graphStructureKey(moved)).toBe(graphStructureKey(graph));
-    expect(
-      graphStructureKey({
-        ...graph,
-        nodes: graph.nodes.map((node) =>
-          node.id === "child" ? { ...node, parentId: undefined } : node
-        ),
-      })
-    ).not.toBe(graphStructureKey(graph));
   });
 
   it("settles a route on the nearest address the editor can open", () => {

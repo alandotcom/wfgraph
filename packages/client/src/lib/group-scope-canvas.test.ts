@@ -16,8 +16,6 @@ import {
 } from "#src/lib/group-scope-canvas";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import {
-  GROUP_CHILD_HEIGHT,
-  GROUP_CHILD_WIDTH,
   WORKFLOW_NODE_HEIGHT,
   WORKFLOW_NODE_WIDTH,
 } from "#src/lib/workflow-node-dimensions";
@@ -39,8 +37,6 @@ function step(
         parentId,
         extent: "parent",
         draggable: false,
-        width: GROUP_CHILD_WIDTH,
-        height: GROUP_CHILD_HEIGHT,
       }
     : node;
 }

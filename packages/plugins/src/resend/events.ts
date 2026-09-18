@@ -2,7 +2,7 @@
  * The 19 Events Resend's webhook can raise, each a Workflow Graph Event on the
  * umbrella Inngest source `resend/webhook`.
  *
- * Identity is `resend/{type}` so the Lifecycle panel lists one Event per thing
+ * Identity is `resend/{type}` so the Lifecycle Node inspector lists one Event per thing
  * that happened. The listener filter is `source.when` on the envelope's `type`.
  * Payload is the Svix envelope `{ type, created_at, data }`. Extra keys pass
  * the intake gate; the structs below name the fields the editor offers.

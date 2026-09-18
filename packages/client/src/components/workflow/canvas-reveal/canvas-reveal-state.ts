@@ -9,6 +9,7 @@ import { atom, useAtomValue } from "jotai";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import { presentedGraphAtom } from "#src/lib/workflow-graph-presentation-store";
 import {
+  mobileSheetKey,
   type MobileRevealLevel,
   type MobileSheet,
 } from "#src/lib/mobile-sheet-navigation";
@@ -83,6 +84,8 @@ export type MobileRevealState = {
   /** The number of open sheets, 1 for the first. */
   depth: number;
   level: MobileRevealLevel;
+  /** The `mobileSheetKey` of the sheet on screen. */
+  sheetKey: string;
 };
 
 export const mobileRevealAtom = atom((get): MobileRevealState | null => {
@@ -96,6 +99,11 @@ export const mobileRevealAtom = atom((get): MobileRevealState | null => {
   ) {
     return null;
   }
+  const level: MobileRevealLevel =
+    sheet.level === "inspector" &&
+    (sheet.inspected === null || subject.levels.includes("focus"))
+      ? "inspector"
+      : "summary";
   return {
     address,
     addressId,
@@ -103,11 +111,13 @@ export const mobileRevealAtom = atom((get): MobileRevealState | null => {
     sheet,
     beneath: sheets.at(-2) ?? null,
     depth: sheets.length,
-    level:
-      sheet.level === "inspector" &&
-      (sheet.inspected === null || subject.levels.includes("focus"))
-        ? "inspector"
-        : "summary",
+    level,
+    sheetKey: mobileSheetKey({
+      addressId,
+      depth: sheets.length,
+      level,
+      inspected: sheet.inspected,
+    }),
   };
 });
 

@@ -7,6 +7,7 @@ import {
   extractCopyableSelection,
   nodeIdsForContextCopy,
   offsetToOrigin,
+  pasteOffsetClearOfCanvas,
   PASTE_OFFSET,
   type CopiedSelection,
 } from "#src/lib/copy-selection";
@@ -463,7 +464,8 @@ export const copySelectionAtom = atom(
  * Insert the copied subgraph with fresh ids. One undo step, like addNode.
  *
  * `origin` places the copied bounding-box origin at a pane click; without it
- * each paste steps down-right from the original so repeats do not stack.
+ * each paste steps down-right from the original so repeats do not stack. The
+ * pasted nodes then move clear of every card on the overview.
  */
 export const pasteCopiedSelectionAtom = atom(
   null,
@@ -478,9 +480,13 @@ export const pasteCopiedSelectionAtom = atom(
     }
 
     const nextCount = clipboard.pasteCount + 1;
-    const offset = origin
-      ? offsetToOrigin(clipboard.selection.nodes, origin)
-      : { x: PASTE_OFFSET * nextCount, y: PASTE_OFFSET * nextCount };
+    const offset = pasteOffsetClearOfCanvas({
+      selection: clipboard.selection,
+      offset: origin
+        ? offsetToOrigin(clipboard.selection.nodes, origin)
+        : { x: PASTE_OFFSET * nextCount, y: PASTE_OFFSET * nextCount },
+      canvasNodes: get(nodesStateAtom),
+    });
 
     set(copiedSelectionAtom, { ...clipboard, pasteCount: nextCount });
     insertClonedSubgraph(
@@ -512,7 +518,11 @@ export const duplicateSelectionAtom = atom(
       get,
       set,
       cloneSelection(selection, {
-        offset: { x: PASTE_OFFSET, y: PASTE_OFFSET },
+        offset: pasteOffsetClearOfCanvas({
+          selection,
+          offset: { x: PASTE_OFFSET, y: PASTE_OFFSET },
+          canvasNodes: get(nodesStateAtom),
+        }),
       })
     );
     return true;

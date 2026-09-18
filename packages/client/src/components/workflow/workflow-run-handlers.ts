@@ -12,7 +12,10 @@ import {
   RunOverlay,
   type RunRequest,
 } from "#src/components/overlays/run-overlay";
-import { WorkflowIssuesOverlay } from "#src/components/overlays/workflow-issues-overlay";
+import {
+  WorkflowIssuesOverlay,
+  type WorkflowIssuesOverlayInput,
+} from "#src/components/overlays/workflow-issues-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
 import { useGoToStep } from "#src/hooks/use-workflow-issues";
 import {
@@ -429,13 +432,13 @@ export function useWorkflowHandlers({
       // A Group problem stops Publish only, so a draft whose only blockers are
       // Group problems is offered "Run draft anyway".
       const hasBlocking = hasDraftRunBlockingIssues(issues);
-      openOverlay(WorkflowIssuesOverlay, {
+      openOverlay<WorkflowIssuesOverlayInput>(WorkflowIssuesOverlay, {
         issues: groupWorkflowIssuesForOverlay(issues),
+        trigger: "run",
         onGoToStep: handleGoToStep,
         onRunDraftAnyway: hasBlocking
           ? undefined
           : () => openRunOverlay(target, draftFacts),
-        allowRunDraftAnyway: !hasBlocking,
       });
       return;
     }

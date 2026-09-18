@@ -1,10 +1,10 @@
 /**
  * Where a new step goes when the person adding it did not point at a spot.
  *
- * The canvas centre is the obvious place and is also where the last step landed,
- * so a candidate that overlaps something already on the graph steps down and to
- * the right until it is clear. Positions are canvas coordinates and name a
- * node's top-left corner, which is what React Flow stores.
+ * The canvas centre is the obvious place and is also where the last step
+ * landed, so a candidate that overlaps something already on the graph steps
+ * down and to the right until it is clear, by `offsetClearOfRectangles`.
+ * Positions are canvas coordinates naming a node's top-left corner.
  */
 
 import {
@@ -12,16 +12,10 @@ import {
   WORKFLOW_NODE_WIDTH,
 } from "#src/lib/workflow-node-dimensions";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
-
-/** How far one step down and right a blocked candidate moves. */
-const CASCADE_OFFSET = 20;
-
-export type NodeRectangle = {
-  readonly x: number;
-  readonly y: number;
-  readonly width: number;
-  readonly height: number;
-};
+import {
+  offsetClearOfRectangles,
+  type NodeRectangle,
+} from "@wfgraph/shared/graph/node-placement";
 
 /**
  * Convert editor nodes into canvas-space rectangles.
@@ -72,36 +66,17 @@ export function workflowNodeRectangles(
 }
 
 /**
- * `position`, moved clear of every node in `nodes`.
- *
- * The test is full rectangles, not top-left corners. Comparing corners against a
- * 20px threshold meant a node offset by 21px counted as clear, so a new step
- * landed on top of a neighbour it overlapped by nearly its whole width.
+ * `position`, moved clear of every rectangle in `nodes`. The test is full
+ * rectangles: a new step whose corner is 21px from a neighbour still overlaps
+ * it by nearly its whole width, so it moves.
  */
 export function positionClearOfNodes(
   position: { readonly x: number; readonly y: number },
   nodes: readonly NodeRectangle[]
 ): { x: number; y: number } {
-  const candidate = { x: position.x, y: position.y };
-
-  let overlaps = nodes.some(
-    (node) =>
-      candidate.x < node.x + node.width &&
-      candidate.x + WORKFLOW_NODE_WIDTH > node.x &&
-      candidate.y < node.y + node.height &&
-      candidate.y + WORKFLOW_NODE_HEIGHT > node.y
+  const offset = offsetClearOfRectangles(
+    [{ ...position, width: WORKFLOW_NODE_WIDTH, height: WORKFLOW_NODE_HEIGHT }],
+    nodes
   );
-  while (overlaps) {
-    candidate.x += CASCADE_OFFSET;
-    candidate.y += CASCADE_OFFSET;
-    overlaps = nodes.some(
-      (node) =>
-        candidate.x < node.x + node.width &&
-        candidate.x + WORKFLOW_NODE_WIDTH > node.x &&
-        candidate.y < node.y + node.height &&
-        candidate.y + WORKFLOW_NODE_HEIGHT > node.y
-    );
-  }
-
-  return candidate;
+  return { x: position.x + offset.x, y: position.y + offset.y };
 }

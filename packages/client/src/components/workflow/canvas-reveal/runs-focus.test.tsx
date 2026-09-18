@@ -72,7 +72,9 @@ describe("Runs Focus node evidence", () => {
     expect(path()).toBe(
       "Appointment reminders › Runs › Run #1 › Send reminder"
     );
-    expect(aside()?.querySelector("header")?.textContent).toContain("Success");
+    expect(aside()?.querySelector("header")?.textContent).toContain(
+      "Successful"
+    );
     expect(view.getByRole("button", { name: "Return to run" })).toBeTruthy();
     expect(within(evidence()).getByText(/patient@example.com/)).toBeTruthy();
     expect(within(evidence()).getAllByText(/msg_42/).length).toBeGreaterThan(0);
@@ -91,7 +93,9 @@ describe("Runs Focus node evidence", () => {
     overview.scrollTop = 90;
     fireEvent.scroll(overview);
     fireEvent(overview, new Event("scrollend"));
-    const entry = view.getByRole("button", { name: "Send reminder, Success" });
+    const entry = view.getByRole("button", {
+      name: "Send reminder, Successful",
+    });
     fireEvent.click(entry);
     await waitFor(() => expect(aside()?.dataset.level).toBe("focus"));
     expect(title()).toBe("Send reminder");
@@ -102,7 +106,7 @@ describe("Runs Focus node evidence", () => {
     await waitFor(() => expect(aside()?.dataset.level).toBe("browse"));
     await waitFor(() =>
       expect(document.activeElement).toBe(
-        view.getByRole("button", { name: "Send reminder, Success" })
+        view.getByRole("button", { name: "Send reminder, Successful" })
       )
     );
     await afterPaint();
@@ -134,7 +138,7 @@ describe("Runs Focus node evidence", () => {
 
     fireEvent.click(await canvasNode("Send reminder"));
     await waitFor(() => expect(aside()?.dataset.level).toBe("focus"));
-    expect(aside()?.querySelector("header")?.textContent).toContain("Error");
+    expect(aside()?.querySelector("header")?.textContent).toContain("Failed");
     expect(
       within(evidence()).getByRole("heading", { name: "Error" })
     ).toBeTruthy();
@@ -232,7 +236,7 @@ describe("Runs Focus node evidence", () => {
       {
         id: "evt_resumed",
         eventType: "run_resumed",
-        message: "Run resumed from the runs panel",
+        message: "Run resumed from the Runs view",
         metadata: { nodeId: "w", hops: 0, waitStateId: "wait_1" },
         createdAt: "2026-03-01T10:00:05.000Z",
       },
@@ -253,12 +257,12 @@ describe("Runs Focus node evidence", () => {
     fireEvent.click(await canvasNode("Wait for reply"));
     await waitFor(() => expect(aside()?.dataset.level).toBe("focus"));
     const activity = await within(evidence()).findByText(
-      "Run resumed from the runs panel"
+      "Run resumed from the Runs view"
     );
     const entries = activity.closest("ol")?.querySelectorAll("li") ?? [];
     expect([...entries].map((entry) => entry.firstChild?.textContent)).toEqual([
       "Run waiting in event node 'Wait for reply'",
-      "Run resumed from the runs panel",
+      "Run resumed from the Runs view",
     ]);
     expect(within(evidence()).queryByText("Resume now")).toBeNull();
   });
@@ -295,9 +299,7 @@ describe("Runs Focus node evidence", () => {
 
     fireEvent.click(await canvasNode("Send reminder"));
     await waitFor(() => expect(aside()?.dataset.level).toBe("focus"));
-    expect(aside()?.querySelector("header")?.textContent).toContain(
-      "Cancelled"
-    );
+    expect(aside()?.querySelector("header")?.textContent).toContain("Canceled");
     const shown = within(evidence());
     expect(shown.getByRole("heading", { name: "Cancellation" })).toBeTruthy();
     expect(
@@ -356,7 +358,9 @@ describe("Runs Focus node evidence", () => {
     await waitFor(() => expect(title()).toBe("Run #1"));
     await canvasNode("Loop step");
 
-    fireEvent.click(view.getByRole("button", { name: "Loop step, Success" }));
+    fireEvent.click(
+      view.getByRole("button", { name: "Loop step, Successful" })
+    );
     await waitFor(() => expect(aside()?.dataset.level).toBe("focus"));
     expect(
       within(evidence()).getByRole("heading", { name: "Execution 1 of 2" })
@@ -387,7 +391,7 @@ describe("Runs Focus node evidence", () => {
       within(evidence()).getByText("The branch run's pass was refused")
     ).toBeTruthy();
     expect(store.get(selectedNodeAtom)).toBe("loop");
-    expect(aside()?.querySelector("header")?.textContent).toContain("Error");
+    expect(aside()?.querySelector("header")?.textContent).toContain("Failed");
 
     await show({});
     expect(view.queryByTestId("runs-browse")).toBeNull();
@@ -478,7 +482,7 @@ describe("Runs Focus node evidence", () => {
     await waitFor(() => expect(title()).toBe("Run #1"));
     await canvasNode("Send reminder");
 
-    fireEvent.click(view.getByRole("button", { name: "Old step, Success" }));
+    fireEvent.click(view.getByRole("button", { name: "Old step, Successful" }));
     await waitFor(() => expect(aside()?.dataset.level).toBe("focus"));
     expect(title()).toBe("Old step");
     expect(store.get(selectedNodeAtom)).toBeNull();
@@ -496,7 +500,7 @@ describe("Runs Focus node evidence", () => {
     await waitFor(() => expect(aside()?.dataset.level).toBe("browse"));
     await waitFor(() =>
       expect(document.activeElement).toBe(
-        view.getByRole("button", { name: "Old step, Success" })
+        view.getByRole("button", { name: "Old step, Successful" })
       )
     );
 
@@ -535,7 +539,7 @@ describe("Runs Focus node evidence", () => {
     await waitFor(() => expect(title()).toBe("Run #1"));
 
     fireEvent.click(
-      view.getByRole("button", { name: "Send reminder, Success" })
+      view.getByRole("button", { name: "Send reminder, Successful" })
     );
     await waitFor(() => expect(aside()?.dataset.level).toBe("focus"));
     expect(
@@ -573,7 +577,7 @@ describe("Runs Focus node evidence", () => {
     await canvasNode("Send reminder");
 
     fireEvent.click(
-      view.getByRole("button", { name: "Send reminder, Success" })
+      view.getByRole("button", { name: "Send reminder, Successful" })
     );
     await waitFor(() =>
       expect(router.state.location.search).toEqual({
@@ -599,7 +603,7 @@ describe("Runs Focus node evidence", () => {
     await waitFor(() => expect(aside()?.dataset.level).toBe("browse"));
     await waitFor(() =>
       expect(document.activeElement).toBe(
-        view.getByRole("button", { name: "Send reminder, Success" })
+        view.getByRole("button", { name: "Send reminder, Successful" })
       )
     );
   });
@@ -627,11 +631,11 @@ describe("Runs Focus node evidence", () => {
     const preference = () =>
       document.cookie
         .split("; ")
-        .find((entry) => entry.startsWith("sidebar-collapsed="));
+        .find((entry) => entry.startsWith("canvas-reveal-closed="));
 
     fireEvent.click(view.getByRole("button", { name: "Close" }));
     await waitFor(() => expect(aside()?.dataset.level).toBe("closed"));
-    expect(preference()).toBe("sidebar-collapsed=true");
+    expect(preference()).toBe("canvas-reveal-closed=true");
 
     const node = await canvasNode("Send reminder");
     node.focus();
@@ -642,12 +646,12 @@ describe("Runs Focus node evidence", () => {
     escape();
     await waitFor(() => expect(aside()?.dataset.level).toBe("closed"));
     await waitFor(() => expect(document.activeElement).toBe(node));
-    expect(preference()).toBe("sidebar-collapsed=true");
+    expect(preference()).toBe("canvas-reveal-closed=true");
 
     fireEvent.click(view.getByRole("button", { name: "Open inspector" }));
     await waitFor(() => expect(aside()?.dataset.level).toBe("browse"));
     expect(title()).toBe("Run #1");
-    expect(preference()).toBe("sidebar-collapsed=false");
+    expect(preference()).toBe("canvas-reveal-closed=false");
   });
 
   it("dismisses a chosen execution of a node nothing selects with a click on the canvas pane", async () => {
@@ -670,7 +674,7 @@ describe("Runs Focus node evidence", () => {
     await waitFor(() => expect(title()).toBe("Run #1"));
     await canvasNode("Send reminder");
 
-    fireEvent.click(view.getByRole("button", { name: "Old step, Success" }));
+    fireEvent.click(view.getByRole("button", { name: "Old step, Successful" }));
     await waitFor(() => expect(aside()?.dataset.level).toBe("focus"));
     expect(store.get(activeChosenExecutionAtom)).toEqual({
       nodeId: "gone",

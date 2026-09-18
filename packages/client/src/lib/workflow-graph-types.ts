@@ -317,9 +317,6 @@ export function toEditorNode(node: PersistedWorkflowNode): WorkflowNode {
   }
   if (node.parentId) {
     editor.parentId = node.parentId;
-    editor.extent = "parent";
-    editor.draggable = false;
-    editor.connectable = false;
   }
   return editor;
 }

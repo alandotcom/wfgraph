@@ -750,7 +750,7 @@ describe("pruneConnectionIds", () => {
 });
 
 describe("manualStartAllowed", () => {
-  // A graph the Lifecycle panel has never been near is one the Run button is how
+  // A graph the Lifecycle Node inspector has never been near is one the Run button is how
   // anybody tries, so the absence of rules is a yes rather than a no.
   it("allows a manual start of a workflow carrying no rules", () => {
     expect(manualStartAllowed(undefined)).toBe(true);

@@ -106,12 +106,12 @@ type ExecuteWorkflowRunParams = {
   setIsExecuting: (value: boolean) => void;
   /**
    * The command label, from `runCommandLabel`. Both run commands open the same
-   * run panel, so the start toast is what tells "Run draft" and "Run v7 · Live"
+   * Runs view, so the start toast is what tells "Run draft" and "Run v7 · Live"
    * apart.
    */
   runLabel: string;
   /**
-   * Opens the new run in the URL, which is what the Runs panel and the
+   * Opens the new run in the URL, which is what the Runs view and the
    * canvas overlay both read (#33). Called only once a run has actually
    * started: the ignored and error paths below leave the URL exactly where
    * it stood, because neither one created an execution for it to point at.
@@ -182,7 +182,7 @@ export async function executeWorkflowRun({
       toast.success(`${runLabel} started`);
     }
 
-    // The URL is the one writer of which run is open; the Runs panel and the
+    // The URL is the one writer of which run is open; the Runs view and the
     // canvas overlay both derive their selection from it.
     await navigateToExecution(result.executionId);
   } catch (error) {

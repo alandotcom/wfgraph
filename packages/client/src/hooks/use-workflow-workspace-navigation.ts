@@ -2,7 +2,6 @@ import { useNavigate } from "@tanstack/react-router";
 import { useAtomValue, useStore } from "jotai";
 import { useCallback } from "react";
 import { useRevealNavigation } from "#src/components/workflow/canvas-reveal/use-reveal-navigation";
-import { useIsMobile } from "#src/hooks/use-mobile";
 import { comparisonSessionAtom } from "#src/lib/workflow-comparison-store";
 import {
   workspaceAddressFromSearch,
@@ -30,55 +29,48 @@ export type WorkflowWorkspaceNavigation = {
 /**
  * Switches Draft, Runs, and Changes by navigating to the route search the
  * target view last showed, so each view comes back as it was left. Each switch
- * pushes a history entry, so Back returns to the workspace left. The inspector
- * opens on a view's first visit, and on mobile, where the sheet is not
- * remembered.
+ * pushes a history entry, so Back returns to the workspace left. The Reveal
+ * navigation decides whether the switch opens the inspector.
  */
 export function useWorkflowWorkspaceNavigation(
   openComparison?: OpenComparison
 ): WorkflowWorkspaceNavigation {
   const navigate = useNavigate({ from: "/workflows/$workflowId" });
   const store = useStore();
-  const isMobile = useIsMobile();
   const navigation = useRevealNavigation();
   const workspaceView = useAtomValue(workflowWorkspaceViewAtom);
 
-  /**
-   * Open the inspector for the address a search names, or the active address
-   * for null, without the cookie. The route has not synced a named search yet,
-   * so the address is read from the search itself.
-   */
+  /** Open the inspector of the active address, without the cookie. */
   const openInspector = useCallback(
-    (search: WorkflowRouteSearch | null) => {
-      navigation.openInspector(
-        search === null
-          ? store.get(activeWorkspaceAddressAtom)
-          : workspaceAddressFromSearch(
-              store.get(currentWorkflowIdAtom) ?? "",
-              search
-            )
-      );
-    },
+    () => navigation.openInspector(store.get(activeWorkspaceAddressAtom)),
     [navigation, store]
   );
 
+  // The route has not synced the search just navigated to, so the address is
+  // read from the search itself.
   const switchTo = useCallback(
     (view: WorkspaceView, search?: WorkflowRouteSearch) => {
       const remembered = store.get(rememberedRouteSearchesAtom)[view];
       const target = search ?? remembered ?? (view === "draft" ? {} : { view });
       void navigate({ search: target });
-      if (view !== "draft" && (isMobile || remembered === undefined)) {
-        openInspector(target);
+      if (view !== "draft") {
+        navigation.showSwitchedWorkspace({
+          address: workspaceAddressFromSearch(
+            store.get(currentWorkflowIdAtom) ?? "",
+            target
+          ),
+          firstVisit: remembered === undefined,
+        });
       }
     },
-    [isMobile, navigate, openInspector, store]
+    [navigate, navigation, store]
   );
 
   const showDraft = useCallback(() => switchTo("draft"), [switchTo]);
 
   const showRuns = useCallback(() => {
     if (workspaceView === "runs") {
-      openInspector(null);
+      openInspector();
       return;
     }
     switchTo("runs");
@@ -86,7 +78,7 @@ export function useWorkflowWorkspaceNavigation(
 
   const showChanges = useCallback(() => {
     if (workspaceView === "changes") {
-      openInspector(null);
+      openInspector();
       return;
     }
     const session = store.get(comparisonSessionAtom);

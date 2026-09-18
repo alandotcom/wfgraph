@@ -133,9 +133,9 @@ export const emptyLifecycleRules: LifecycleRules = {
 };
 
 /**
- * What the panel offers a graph that has never had rules.
+ * What the Lifecycle Node inspector offers a graph that has never had rules.
  *
- * Read by the Lifecycle panel and by the canvas summary beside it. Manual starts
+ * Read by the Lifecycle Node inspector and by the canvas summary beside it. Manual starts
  * are on, which is the whole of the delta: the moment rules exist they are held to
  * the start-source rule, so rules written with no Start Event yet would refuse the
  * save that wrote them, and a workflow carrying no rules is one the Run button
@@ -197,7 +197,7 @@ export function hasStartSource(rules: LifecycleRules): boolean {
 /**
  * Whether the Run button and the execute route may start this workflow.
  *
- * Absent rules mean yes: a graph the Lifecycle panel has never been near is one
+ * Absent rules mean yes: a graph the Lifecycle Node inspector has never been near is one
  * the Run button is how anybody tries. Rules that exist and leave manual starts
  * out are a decision, and taking `undefined` here is what keeps that distinction
  * in one place instead of at each call site.
@@ -545,7 +545,7 @@ export function checkLifecycleRules(input: {
   // `checkStartFilters` or `checkCancelFilters`, and whether it is readable at
   // all is `checkStartFilterModels` or `checkCancelFilterModels`, which the save
   // battery runs. Those checks parse, and this function does not, because the
-  // Lifecycle panel calls it on every render.
+  // Lifecycle Node inspector calls it on every render.
   const strayFilter = Object.keys(rules.startFilters ?? {}).find(
     (eventName) => !rules.startEvents.includes(eventName)
   );

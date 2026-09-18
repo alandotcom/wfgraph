@@ -9,6 +9,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "#src/components/ui/tooltip";
+import { runNodeEvidenceLabel } from "#src/components/workflow/workflow-run-shared";
 import { useElementOverflow } from "#src/hooks/effects";
 import { cn } from "@wfgraph/shared/utils";
 
@@ -39,35 +40,31 @@ export type NodeProps = ComponentProps<typeof Card> & {
 
 // Run status is worn as a border color, which a colorblind user cannot read and
 // a screen reader cannot see at all. This chip is the text equivalent: every
-// non-idle status renders its word next to its icon, and the whole thing is a
-// live region so status transitions are announced.
+// non-idle status renders its word next to its icon, in the words
+// `runNodeEvidenceLabel` gives every surface that names a step's run status,
+// and the whole thing is a live region so status transitions are announced.
 const STATUS_CHIP = {
   running: {
-    label: "Running",
     Icon: Loader2,
     className: "bg-primary/5 text-foreground",
     iconClassName: "animate-spin motion-reduce:animate-none",
   },
   waiting: {
-    label: "Waiting",
     Icon: Hourglass,
     className: "bg-warning/10 text-warning",
     iconClassName: "",
   },
   success: {
-    label: "Succeeded",
     Icon: Check,
     className: "bg-success/10 text-success",
     iconClassName: "",
   },
   error: {
-    label: "Failed",
     Icon: XCircle,
     className: "bg-destructive/10 text-destructive",
     iconClassName: "",
   },
   cancelled: {
-    label: "Cancelled",
     Icon: Ban,
     className: "bg-cancelled/10 text-cancelled",
     iconClassName: "",
@@ -92,7 +89,7 @@ const NodeStatusChip = ({ status }: { status?: NodeProps["status"] }) => {
         className={cn("size-3", chip.iconClassName)}
         strokeWidth={2.5}
       />
-      {chip.label}
+      {runNodeEvidenceLabel(status).text}
     </div>
   );
 };

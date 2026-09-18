@@ -61,7 +61,7 @@ export type NodeLogsRepoMethods = {
   ) => Effect.Effect<WorkflowExecutionLog[], DatabaseError>;
   /**
    * The same logs reduced to what the status poll reads. The two columns are
-   * the point: the editor asks for this every two seconds while a run panel is
+   * the point: the editor asks for this every two seconds while the Runs view is
    * open, and the rows carry a node's whole input and output.
    */
   readonly listNodeStatuses: (

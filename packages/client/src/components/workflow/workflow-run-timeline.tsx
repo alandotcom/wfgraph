@@ -4,9 +4,10 @@ import { useAfterCommit } from "#src/hooks/effects";
 import { type ExecutionLog } from "#src/lib/execution-logs";
 import {
   formatDuration,
-  getStatusDotClass,
-  getStatusLabel,
-  getStatusTextClass,
+  nodeStatusLabel,
+  nodeStatusTone,
+  statusToneDotClass,
+  statusToneTextClass,
 } from "./workflow-run-shared";
 
 /**
@@ -64,11 +65,11 @@ export function WorkflowRunNodeIndex({
                 "absolute top-[1.125rem] left-1 size-2 rounded-full ring-2 ring-background",
                 log.status === "running" &&
                   "ring-info/20 motion-safe:animate-pulse",
-                getStatusDotClass(log.status)
+                statusToneDotClass(nodeStatusTone(log.status))
               )}
             />
             <button
-              aria-label={`${log.nodeName || log.nodeType}, ${getStatusLabel(log.status)}`}
+              aria-label={`${log.nodeName || log.nodeType}, ${nodeStatusLabel(log.status)}`}
               className="grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 rounded-sm px-2 py-1.5 text-left transition-colors duration-100 hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
               data-run-node-id={log.nodeId}
               data-run-log-id={log.id}
@@ -95,8 +96,13 @@ export function WorkflowRunNodeIndex({
                 ) : null}
               </span>
               <span className="flex shrink-0 items-baseline gap-2">
-                <span className={cn("text-xs", getStatusTextClass(log.status))}>
-                  {getStatusLabel(log.status)}
+                <span
+                  className={cn(
+                    "text-xs",
+                    statusToneTextClass(nodeStatusTone(log.status))
+                  )}
+                >
+                  {nodeStatusLabel(log.status)}
                 </span>
                 {log.duration ? (
                   <span className="font-mono text-muted-foreground text-xs tabular-nums">

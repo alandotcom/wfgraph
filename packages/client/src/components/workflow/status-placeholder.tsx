@@ -1,6 +1,10 @@
 import { Button } from "#src/components/ui/button";
 
-export function PanelState({
+/**
+ * A status line centred in the space a body would fill, such as a loading or
+ * failed request, with an optional action below it.
+ */
+export function StatusPlaceholder({
   label,
   actionLabel,
   onAction,

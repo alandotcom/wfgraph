@@ -469,7 +469,7 @@ describe("wait node - event mode", () => {
     ]);
   });
 
-  it("records a manual resume as coming from the runs panel", async () => {
+  it("records a manual resume as coming from the Runs view", async () => {
     const { execution } = runWait({
       config: {
         waitMode: "event",
@@ -487,7 +487,7 @@ describe("wait node - event mode", () => {
         .filter((event) => event.eventType === "run_resumed")
     ).toEqual([
       expect.objectContaining({
-        message: "Run resumed from the runs panel",
+        message: "Run resumed from the Runs view",
         metadata: { nodeId: "wait_1", hops: 1, waitStateId: "wait_state_1" },
       }),
     ]);

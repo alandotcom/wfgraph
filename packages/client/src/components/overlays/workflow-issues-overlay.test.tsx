@@ -157,6 +157,7 @@ function renderIssues(
   issues: WorkflowIssuesOverlayModel,
   options: {
     onGoToStep?: ((nodeId: string, fieldKey?: string) => void) | undefined;
+    trigger?: "run" | "publish" | "list" | undefined;
   } = {}
 ) {
   return render(
@@ -172,6 +173,7 @@ function renderIssues(
             <OverlayProvider>
               <WorkflowIssuesOverlay
                 issues={issues}
+                trigger={options.trigger ?? "run"}
                 onGoToStep={options.onGoToStep ?? (() => {})}
                 overlayId="issues"
               />
@@ -259,6 +261,33 @@ describe("WorkflowIssuesOverlay", () => {
     expect(getByRole("button", { name: "Add" }).className).not.toContain(
       "bg-primary"
     );
+  });
+
+  // Publish refused by an issue that also stops a draft run names Publish, the
+  // action the person took.
+  it("names Publish when a blocker stopped Publish", () => {
+    const { getByText, queryByText } = renderIssues(
+      issuesModel({
+        totalIssues: 1,
+        draftRunBlockingCount: 1,
+        publishBlockingCount: 1,
+        missingIntegrations: [
+          {
+            integrationType: "linear",
+            integrationLabel: "Linear",
+            nodeNames: ["Find issues"],
+          },
+        ],
+      }),
+      { trigger: "publish" }
+    );
+
+    expect(
+      getByText("Resolve blocking issues before publishing.")
+    ).toBeTruthy();
+    expect(
+      queryByText("Resolve blocking issues before running the draft.")
+    ).toBeNull();
   });
 
   // A Group problem stops Publish and leaves the draft run free, so its sentence

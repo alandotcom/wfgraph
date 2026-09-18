@@ -3,6 +3,7 @@ import {
   workspaceAddressId,
   type WorkspaceAddress,
 } from "#src/lib/workflow-navigation-state";
+import { mobileSheetKey } from "#src/lib/mobile-sheet-navigation";
 import type { MobileRevealState } from "./canvas-reveal-state";
 import { useInspectorScroll } from "./use-inspector-scroll";
 import { useMobileSheetScroll } from "./use-mobile-sheet-scroll";
@@ -35,7 +36,12 @@ export function useAddressBodyScroll(
     address && addressId && onSheet
       ? {
           address,
-          addressId,
+          sheetKey: mobileSheetKey({
+            addressId,
+            depth: 1,
+            level: "summary",
+            inspected: null,
+          }),
           depth: 1,
           level: "summary",
           inspected: null,

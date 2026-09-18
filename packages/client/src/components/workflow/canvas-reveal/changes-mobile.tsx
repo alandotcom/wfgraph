@@ -10,7 +10,7 @@ import { History, ListChecks, RefreshCw, X } from "lucide-react";
 import { useMemo } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { Button } from "#src/components/ui/button";
-import { PanelState } from "#src/components/workflow/panel-state";
+import { StatusPlaceholder } from "#src/components/workflow/status-placeholder";
 import { useWorkflowComparisonActions } from "#src/components/workflow/use-workflow-comparison-actions";
 import { WorkflowVersionHistory } from "#src/components/workflow/workflow-version-history";
 import { useWorkflowWorkspaceNavigation } from "#src/hooks/use-workflow-workspace-navigation";
@@ -19,7 +19,7 @@ import type { WorkspaceAddress } from "#src/lib/workflow-navigation-state";
 import {
   closeMobileSheetAtom,
   openMobileAddressSectionAtom,
-} from "#src/lib/workflow-workspace-navigation";
+} from "#src/lib/mobile-sheet-store";
 import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
 import type { RevealBodyProps } from "./reveal-kinds";
 import {
@@ -45,14 +45,12 @@ import type { MobileKindHeaderProps } from "./reveal-kinds";
 
 /**
  * The header of the Changes sheet on screen. Back is named for the sheet
- * beneath. The first sheet offers Close on the overview, and inside a focused
- * Group it names the Group, whose canvas Back leaves showing. The field
- * differences are the deepest sheet, so no sheet offers an inspector control.
+ * beneath. The field differences are the deepest sheet, so no sheet names an
+ * inspector control.
  */
 export function ChangesMobileHeader({
   state,
   controls,
-  scopeBackLabel,
 }: MobileKindHeaderProps) {
   const comparison = useAtomValue(comparisonRevealContextAtom);
   const graph = useAtomValue(comparisonDisplayGraphAtom);
@@ -82,11 +80,10 @@ export function ChangesMobileHeader({
     <MobileSheetHeader
       backLabel={
         state.beneath === null
-          ? scopeBackLabel
+          ? null
           : changesMobileSheetName(changesMobileSheet(state.beneath))
       }
-      controls={{ ...controls, openInspector: null }}
-      inspectorLabel=""
+      controls={controls}
       status={heading.status}
       title={heading.title}
     />
@@ -245,7 +242,7 @@ function ChangeListSheet({ payload }: { payload: WorkflowComparisonPayload }) {
   const { objects, selectedKey } = useChangedObjects(payload);
   const openChange = useOpenMobileChange();
   if (objects.length === 0) {
-    return <PanelState label={noChangesLabel(payload)} />;
+    return <StatusPlaceholder label={noChangesLabel(payload)} />;
   }
   return (
     <div data-slot="change-list">

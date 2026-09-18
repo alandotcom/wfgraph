@@ -18,7 +18,7 @@ export const WAIT_SIGNAL_EVENT = "workflow/wait.signal";
 /**
  * Why a wait signal was sent, as the `signalType` key spells it.
  *
- * `wait-resume` is an Event arrival or a manual resume from the runs panel.
+ * `wait-resume` is an Event arrival or a manual resume from the Runs view.
  * `lifecycle-cancel` is a Cancel Event claiming the run. `lifecycle-exit` is an
  * Entity Eligibility Exit claimed by another branch of the same run.
  * `version-migrate` tells a parked Wait to prepare itself again against the

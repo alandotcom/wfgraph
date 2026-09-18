@@ -1,5 +1,5 @@
 import type { Edge, Node, XYPosition } from "@xyflow/react";
-import { useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue, useSetAtom, useStore } from "jotai";
 import {
   ClipboardPaste,
   Copy,
@@ -17,9 +17,9 @@ import { useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { ConfirmOverlay } from "#src/components/overlays/confirm-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
-import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
 import { useDomEvent } from "#src/hooks/effects";
-import { useIsMobile } from "#src/hooks/use-mobile";
+import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
+import { useRevealNavigation } from "./canvas-reveal/use-reveal-navigation";
 import {
   copySelectionAtom,
   deleteEdgeAtom,
@@ -98,8 +98,8 @@ export function WorkflowContextMenu({
   const deleteGroupWithMembers = useSetAtom(deleteGroupWithMembersAtom);
   const updateNodeData = useSetAtom(updateNodeDataAtom);
   const { open: openOverlay } = useOverlay();
-  const { openSheet } = useConfigurationSheet();
-  const isMobile = useIsMobile();
+  const navigation = useRevealNavigation();
+  const store = useStore();
   const menuRef = useRef<HTMLDivElement>(null);
   const clicked = menuState?.nodeId
     ? nodes.find((node) => node.id === menuState.nodeId)
@@ -134,13 +134,9 @@ export function WorkflowContextMenu({
       const nodeId = menuState.nodeId;
       onClose();
       selectOnlyNode(nodeId);
-      // On a narrow canvas no Canvas Reveal is mounted to show the selection, so the
-      // sheet is the only surface that can answer this click.
-      if (isMobile) {
-        openSheet();
-      }
+      navigation.followSelection(store.get(activeWorkspaceAddressAtom));
     }
-  }, [menuState, onClose, selectOnlyNode, isMobile, openSheet]);
+  }, [menuState, onClose, selectOnlyNode, navigation, store]);
 
   const handleDeleteGroupWithSteps = useCallback(() => {
     if (canEdit && menuState?.nodeId) {

@@ -1010,6 +1010,47 @@ describe("Changes Focus navigation", () => {
     view.click("Compare fields");
     expect(settingsTable(view).rows).toEqual([["Label", "Old inner", "Inner"]]);
   });
+
+  it("enters a collapsed Group to select a changed connection between two of its members", async () => {
+    const group: PersistedWorkflowNode = {
+      id: "group_1",
+      type: "group",
+      position: { x: 0, y: 0 },
+      data: { label: "Reminders", type: "group" },
+    };
+    const members = [
+      { ...changesStep("first", "First"), parentId: "group_1" },
+      { ...changesStep("second", "Second"), parentId: "group_1" },
+    ];
+    const inside = { id: "first-second", source: "first", target: "second" };
+    const payload: WorkflowComparisonPayload = {
+      ...comparisonAgainst(3),
+      baseGraph: createSerializedWorkflowGraph({
+        nodes: [group, ...members],
+        edges: [],
+      }),
+      draftGraph: createSerializedWorkflowGraph({
+        nodes: [group, ...members],
+        edges: [inside],
+      }),
+      nodeChanges: [],
+      edgeChanges: [{ edgeId: inside.id, kind: "added" }],
+    };
+    const view = await renderFocus({ installed: payload });
+    view.click("First → Second Added");
+
+    await waitFor(() =>
+      expect(view.router.state.location.search).toEqual({
+        ...CHANGES_V3,
+        group: "group_1",
+      })
+    );
+    await view.show({ ...CHANGES_V3, group: "group_1" });
+    expect(view.store.get(activeSelectionAtom)).toEqual({
+      nodeIds: [],
+      edgeIds: [inside.id],
+    });
+  });
 });
 
 describe("Changes Group organization", () => {
