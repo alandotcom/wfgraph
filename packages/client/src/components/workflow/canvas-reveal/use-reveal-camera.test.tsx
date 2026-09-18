@@ -37,6 +37,11 @@ import {
   expectSteadyCamera,
   recordCameraMotion,
 } from "#src/components/workflow/camera-motion-test-support";
+import {
+  finishRevealResizeAtom,
+  resizeRevealWidthAtom,
+  startRevealKeyResizeAtom,
+} from "./reveal-width-preference";
 
 const CANVAS = { width: 1200, height: 800 };
 
@@ -452,6 +457,67 @@ describe("useRevealCamera", () => {
     expect(600 + (camera.moves[0]?.x ?? 0)).toBeCloseTo(352 - 24);
   });
 
+  it("holds the camera during a resize and places the step once when it ends", async () => {
+    const camera = renderCamera();
+    await camera.settle();
+    await camera.run(() => camera.store.set(selectOnlyNodeAtom, "near"));
+    expect(camera.moves).toEqual([]);
+
+    // The step spans 100px to 300px. A Browse widened to 900px leaves 292px of
+    // usable canvas, so the step no longer fits until the resize ends.
+    for (const width of [500, 700, 900]) {
+      await camera.run(() =>
+        camera.store.set(resizeRevealWidthAtom, { key: "browse", width })
+      );
+    }
+    expect(camera.moves).toEqual([]);
+
+    await camera.run(() => camera.store.set(finishRevealResizeAtom));
+    expect(camera.moves).toHaveLength(1);
+    const viewport = camera.moves[0];
+    const zoom = viewport?.zoom ?? 1;
+    const right = 300 * zoom + (viewport?.x ?? 0);
+    expect(right).toBeLessThanOrEqual(1200 - 900 - 8);
+
+    await camera.finishAnimation();
+    await camera.settle();
+    expect(camera.moves).toHaveLength(1);
+    expectSteadyCamera(camera.motion.moves, { x: 0, y: 0, zoom: 1 });
+  });
+
+  it("places a keyboard resize from the camera it began with", async () => {
+    const resizeOnce = async (
+      camera: ReturnType<typeof renderCamera>,
+      during: () => Promise<void>
+    ) => {
+      await camera.settle();
+      await camera.run(() => camera.store.set(selectOnlyNodeAtom, "near"));
+      await camera.run(() => camera.store.set(startRevealKeyResizeAtom));
+      await during();
+      await camera.run(() =>
+        camera.store.set(resizeRevealWidthAtom, { key: "browse", width: 900 })
+      );
+      await camera.run(() => camera.store.set(finishRevealResizeAtom));
+    };
+
+    const single = renderCamera();
+    await resizeOnce(single, async () => undefined);
+    expect(single.moves).toHaveLength(1);
+
+    // A viewport that changes while the keys are pressed, as an interrupted
+    // animation reports, is not where the placement starts.
+    const burst = renderCamera();
+    await resizeOnce(burst, async () => {
+      for (const width of [500, 700]) {
+        await burst.run(() =>
+          burst.store.set(resizeRevealWidthAtom, { key: "browse", width })
+        );
+      }
+      await burst.pan({ x: -140, y: 30, zoom: 1 });
+    });
+    expect(burst.moves).toEqual(single.moves);
+  });
+
   it("answers a placement request once its address is shown", async () => {
     const camera = renderCamera();
     await camera.settle();
@@ -494,6 +560,7 @@ describe("useRevealCamera", () => {
     await camera.run(() => camera.store.set(selectOnlyNodeAtom, "far"));
     expect(camera.moves).toHaveLength(1);
     expect(camera.moves[0]?.zoom).toBe(1);
+    expectSteadyCamera(camera.motion.moves, { x: 0, y: 0, zoom: 1 });
 
     await camera.run(() =>
       camera.store.set(showCanvasRevealLevelAtom, "closed")

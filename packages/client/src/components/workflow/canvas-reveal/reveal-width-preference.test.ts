@@ -1,0 +1,63 @@
+import { describe, expect, it } from "vitest";
+import {
+  readRememberedRevealWidths,
+  rememberedRevealWidthsCookie,
+} from "./reveal-width-preference";
+
+const cookie = (value: unknown) => encodeURIComponent(JSON.stringify(value));
+
+describe("readRememberedRevealWidths", () => {
+  it("reads the three widths a valid cookie holds", () => {
+    expect(
+      readRememberedRevealWidths(
+        cookie({ browse: 420, standard: 700, wide: 960 })
+      )
+    ).toEqual({ browse: 420, standard: 700, wide: 960 });
+  });
+
+  it("round-trips the value the preference writes", () => {
+    const widths = { browse: 344, wide: 1012 };
+    expect(
+      readRememberedRevealWidths(rememberedRevealWidthsCookie(widths))
+    ).toEqual(widths);
+  });
+
+  it.each([
+    { name: "no cookie", value: undefined },
+    { name: "an empty value", value: "" },
+    { name: "text that is not JSON", value: "wide" },
+    { name: "a malformed escape", value: "%E0%A4%A" },
+    { name: "a JSON array", value: cookie([420, 700]) },
+    { name: "a JSON number", value: cookie(420) },
+  ])("reads $name as no remembered widths", ({ value }) => {
+    expect(readRememberedRevealWidths(value)).toEqual({});
+  });
+
+  it("drops each width that is not a whole number and keeps the rest", () => {
+    expect(
+      readRememberedRevealWidths(
+        cookie({ browse: "420", standard: 700.5, wide: null })
+      )
+    ).toEqual({});
+    expect(
+      readRememberedRevealWidths(cookie({ browse: true, standard: 700 }))
+    ).toEqual({ standard: 700 });
+  });
+
+  it("drops each width below its key's minimum", () => {
+    expect(
+      readRememberedRevealWidths(
+        cookie({ browse: 319, standard: 479, wide: -900 })
+      )
+    ).toEqual({});
+    expect(
+      readRememberedRevealWidths(cookie({ browse: 320, standard: 480 }))
+    ).toEqual({ browse: 320, standard: 480 });
+  });
+
+  it("ignores keys it does not know", () => {
+    expect(
+      readRememberedRevealWidths(cookie({ browse: 400, sidebar: 300 }))
+    ).toEqual({ browse: 400 });
+  });
+});

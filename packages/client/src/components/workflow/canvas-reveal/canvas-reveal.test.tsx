@@ -30,6 +30,9 @@ import {
   type RevealKind,
   revealKind,
 } from "#src/components/workflow/canvas-reveal/reveal-kinds";
+import { revealResizeSequenceAtom } from "#src/components/workflow/canvas-reveal/reveal-requests";
+import { KEYBOARD_RESIZE_SETTLE_MS } from "#src/components/workflow/canvas-reveal/reveal-resize-handle";
+import { rememberedRevealWidthsAtom } from "#src/components/workflow/canvas-reveal/reveal-width-preference";
 import { useRevealOccupiedWidth } from "#src/components/workflow/canvas-reveal/use-reveal-width";
 import { WorkflowContextMenu } from "#src/components/workflow/workflow-context-menu";
 import {
@@ -72,6 +75,7 @@ import {
   rpcUrl,
 } from "#src/lib/rpc-fetch-test-support";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 
@@ -212,7 +216,12 @@ function FlowCanvas() {
 
 async function renderReveal(
   initialSearch: WorkflowRouteSearch = {},
-  options?: { selected?: string; canvas?: () => ReactNode }
+  options?: {
+    selected?: string;
+    canvas?: () => ReactNode;
+    /** The canvas box width React Flow reports, 1280px when unset. */
+    canvasWidth?: number;
+  }
 ) {
   const Canvas = options?.canvas ?? FakeCanvas;
   const update = vi.fn(async (..._args: unknown[]) => savedWorkflow("wf_1"));
@@ -265,7 +274,13 @@ async function renderReveal(
       <IntegrationUiProvider value={{}}>
         <QueryClientProvider client={queryClient}>
           <JotaiProvider store={store}>
-            <ReactFlowProvider>
+            <ReactFlowProvider
+              {...omitUndefined({
+                initialWidth: options?.canvasWidth,
+                initialHeight:
+                  options?.canvasWidth === undefined ? undefined : 800,
+              })}
+            >
               <OverlayProvider>
                 <RouterProvider router={router} />
               </OverlayProvider>
@@ -471,6 +486,225 @@ describe("Canvas Reveal editing", () => {
     expect(store.get(hasUnsavedChangesAtom)).toBe(false);
     expect(store.get(historyAtom)).toEqual([]);
     expect(store.get(workflowGraphUpdateAtom)).toBe(graphUpdate);
+  });
+});
+
+describe("Canvas Reveal resizing", () => {
+  const handle = (view: Awaited<ReturnType<typeof renderReveal>>["view"]) =>
+    view.getByRole("separator", { name: "Resize inspector" });
+  const shownWidth = (aside: HTMLElement | null) =>
+    Number.parseFloat(aside?.style.width ?? "");
+  const press = async (separator: HTMLElement, key: string) => {
+    await act(async () => {
+      fireEvent.keyDown(separator, { key });
+      fireEvent.keyUp(separator, { key });
+    });
+  };
+  /** Wait past the pause that finishes a keyboard resize. */
+  const settleKeyResize = async () => {
+    await act(async () => {
+      await new Promise((resolve) =>
+        setTimeout(resolve, KEYBOARD_RESIZE_SETTLE_MS + 50)
+      );
+    });
+  };
+
+  it("resizes from the keyboard in 16 px steps within its range", async () => {
+    const { view, store, aside, select } = await renderReveal(
+      {},
+      { canvasWidth: 1440 }
+    );
+    await select("send");
+    const separator = handle(view);
+
+    // A 1440px canvas gives Browse 380px by default, and at most the canvas
+    // less 256px and the 8px inset.
+    expect(separator.getAttribute("aria-orientation")).toBe("vertical");
+    expect(separator.getAttribute("aria-valuenow")).toBe("380");
+    expect(separator.getAttribute("aria-valuemin")).toBe("320");
+    expect(separator.getAttribute("aria-valuemax")).toBe(String(1440 - 264));
+    expect(separator.tabIndex).toBe(0);
+
+    await press(separator, "ArrowLeft");
+    expect(separator.getAttribute("aria-valuenow")).toBe("396");
+    expect(shownWidth(aside())).toBe(396);
+    await press(separator, "ArrowRight");
+    await press(separator, "ArrowRight");
+    expect(separator.getAttribute("aria-valuenow")).toBe("364");
+    await press(separator, "End");
+    expect(shownWidth(aside())).toBe(1440 - 264);
+    await press(separator, "Home");
+    expect(shownWidth(aside())).toBe(320);
+    await settleKeyResize();
+    expect(store.get(revealResizeSequenceAtom)).toBe(1);
+
+    // Pressing Home again changes nothing, so nothing is placed again.
+    await press(separator, "Home");
+    await settleKeyResize();
+    expect(store.get(revealResizeSequenceAtom)).toBe(1);
+  });
+
+  it("finishes quick key presses as one resize after the last release", async () => {
+    const { view, store, aside, select } = await renderReveal(
+      {},
+      { canvasWidth: 1440 }
+    );
+    await select("send");
+    const separator = handle(view);
+
+    for (let count = 0; count < 20; count += 1) {
+      await press(separator, "ArrowLeft");
+    }
+    expect(shownWidth(aside())).toBe(380 + 20 * 16);
+    expect(store.get(revealResizeSequenceAtom)).toBe(0);
+
+    // A key held down repeats without a release, so the resize waits for it.
+    await act(async () => {
+      fireEvent.keyDown(separator, { key: "ArrowRight" });
+    });
+    await settleKeyResize();
+    expect(store.get(revealResizeSequenceAtom)).toBe(0);
+
+    await act(async () => {
+      fireEvent.keyUp(separator, { key: "ArrowRight" });
+    });
+    await settleKeyResize();
+    expect(store.get(revealResizeSequenceAtom)).toBe(1);
+    expect(store.get(rememberedRevealWidthsAtom)).toEqual({
+      browse: 380 + 19 * 16,
+    });
+  });
+
+  it("finishes a keyboard resize once when focus leaves the handle", async () => {
+    const { view, store, select } = await renderReveal(
+      {},
+      { canvasWidth: 1440 }
+    );
+    await select("send");
+    const separator = handle(view);
+
+    for (let count = 0; count < 5; count += 1) {
+      await press(separator, "ArrowLeft");
+    }
+    await act(async () => {
+      fireEvent.blur(separator);
+    });
+    expect(store.get(revealResizeSequenceAtom)).toBe(1);
+    await settleKeyResize();
+    expect(store.get(revealResizeSequenceAtom)).toBe(1);
+  });
+
+  it("remembers Browse and Focus widths separately", async () => {
+    const { view, store, aside, select } = await renderReveal(
+      {},
+      { canvasWidth: 1440 }
+    );
+    await select("send");
+    await act(async () => {
+      fireEvent.keyDown(handle(view), { key: "ArrowLeft" });
+      fireEvent.keyUp(handle(view), { key: "ArrowLeft" });
+    });
+    fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
+    expect(shownWidth(aside())).toBe(720);
+    await act(async () => {
+      fireEvent.keyDown(handle(view), { key: "Home" });
+      fireEvent.keyUp(handle(view), { key: "Home" });
+    });
+    expect(store.get(rememberedRevealWidthsAtom)).toEqual({
+      browse: 396,
+      standard: 480,
+    });
+  });
+
+  it("follows a drag and places the subject once when it ends", async () => {
+    const { view, store, aside, select } = await renderReveal(
+      {},
+      { canvasWidth: 1440 }
+    );
+    await select("send");
+    const separator = handle(view);
+
+    await act(async () => {
+      fireEvent.pointerDown(separator, {
+        button: 0,
+        clientX: 600,
+        pointerId: 1,
+      });
+    });
+    await act(async () => {
+      fireEvent.pointerMove(separator, { clientX: 560, pointerId: 1 });
+    });
+    expect(shownWidth(aside())).toBe(420);
+    await act(async () => {
+      fireEvent.pointerMove(separator, { clientX: 500, pointerId: 1 });
+    });
+    expect(shownWidth(aside())).toBe(480);
+    expect(store.get(revealResizeSequenceAtom)).toBe(0);
+
+    await act(async () => {
+      fireEvent.pointerUp(separator, { clientX: 500, pointerId: 1 });
+    });
+    expect(store.get(revealResizeSequenceAtom)).toBe(1);
+    expect(store.get(rememberedRevealWidthsAtom)).toEqual({ browse: 480 });
+    await settleKeyResize();
+    expect(store.get(revealResizeSequenceAtom)).toBe(1);
+  });
+
+  it("resets the level's width to its default on double-click", async () => {
+    const { view, store, aside, select } = await renderReveal(
+      {},
+      { canvasWidth: 1440 }
+    );
+    await select("send");
+    await act(async () => {
+      fireEvent.keyDown(handle(view), { key: "End" });
+      fireEvent.keyUp(handle(view), { key: "End" });
+    });
+    expect(shownWidth(aside())).toBe(1440 - 264);
+
+    await act(async () => {
+      fireEvent.doubleClick(handle(view));
+    });
+    expect(shownWidth(aside())).toBe(380);
+    expect(store.get(rememberedRevealWidthsAtom)).toEqual({});
+    expect(store.get(revealResizeSequenceAtom)).toBe(1);
+    await settleKeyResize();
+    expect(store.get(revealResizeSequenceAtom)).toBe(1);
+  });
+
+  it("offers no handle on a canvas narrower than 1024 px", async () => {
+    const { view, level, select } = await renderReveal(
+      {},
+      { canvasWidth: 1000 }
+    );
+    await select("send");
+    expect(level()).toBe("browse");
+    expect(view.queryByRole("separator")).toBeNull();
+  });
+
+  it("never moves, dirties, or records history while resizing", async () => {
+    const { view, store, select } = await renderReveal(
+      {},
+      { canvasWidth: 1440 }
+    );
+    const positions = store.get(nodesAtom).map((item) => item.position);
+    await select("send");
+    await act(async () => {
+      fireEvent.pointerDown(handle(view), {
+        button: 0,
+        clientX: 600,
+        pointerId: 1,
+      });
+      fireEvent.pointerMove(handle(view), { clientX: 520, pointerId: 1 });
+      fireEvent.pointerUp(handle(view), { clientX: 520, pointerId: 1 });
+      fireEvent.doubleClick(handle(view));
+    });
+
+    expect(store.get(nodesAtom).map((item) => item.position)).toEqual(
+      positions
+    );
+    expect(store.get(hasUnsavedChangesAtom)).toBe(false);
+    expect(store.get(historyAtom)).toEqual([]);
   });
 });
 

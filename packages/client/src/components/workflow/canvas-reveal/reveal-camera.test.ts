@@ -11,6 +11,7 @@ const slot = (overrides: Partial<RevealCameraSlot>): RevealCameraSlot => ({
   addressId: "wf|draft|overview",
   subjectKey: "node:a",
   level: "browse",
+  resizeSequence: 0,
   ...overrides,
 });
 

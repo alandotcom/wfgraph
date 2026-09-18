@@ -26,16 +26,23 @@ import {
   type SubjectBounds,
   usableCanvasRect,
 } from "./reveal-geometry";
-import { revealPlacementRequestAtom } from "./reveal-requests";
+import {
+  revealKeyResizeInProgressAtom,
+  revealPlacementRequestAtom,
+  revealResizeSequenceAtom,
+} from "./reveal-requests";
+import { rememberedRevealWidthsAtom } from "./reveal-width-preference";
 
 /**
  * Moves the desktop camera the least it must when Canvas Reveal opens, changes
- * subject, widens to Focus, or answers a placement request, so the subject
- * stays visible beside it. The camera starts from where it is, so a subject
- * Reveal does not cover moves nothing. It only calls `setViewport`: no layout
- * runs and no node moves. Closing Reveal never moves the camera. Nothing is
- * compared while the canvas cannot be placed, so a change made then is acted
- * on once it can.
+ * subject, widens to Focus, finishes a resize, or answers a placement request,
+ * so the subject stays visible beside it. The camera starts from where it is,
+ * so a subject Reveal does not cover moves nothing. It only calls
+ * `setViewport`: no layout runs and no node moves. Closing Reveal never moves
+ * the camera. A keyboard resize places from the camera recorded when it began,
+ * even if an earlier placement was still animating then. Nothing is compared
+ * while the canvas cannot be placed, so a change made then is acted on once it
+ * can.
  * `canvas` is the element React Flow fills.
  */
 export function useRevealCamera(input: {
@@ -55,16 +62,22 @@ export function useRevealCamera(input: {
   const isSized = useFlowStore((state) => state.width > 0 && state.height > 0);
   const reveal = useAtomValue(canvasRevealAtom);
   const request = useAtomValue(revealPlacementRequestAtom);
+  const resizeSequence = useAtomValue(revealResizeSequenceAtom);
+  const isKeyResizing = useAtomValue(revealKeyResizeInProgressAtom);
   /** The slot the camera last acted on while the canvas could be placed. */
   const shownRef = useRef<RevealCameraSlot | null>(null);
   const answeredSequenceRef = useRef(0);
   /** Where an animation this hook started is heading, until the move ends. */
   const inFlightRef = useRef<WorldCamera | null>(null);
+  /** The camera when the keyboard resize in progress began. */
+  const keyResizeStartRef = useRef<WorldCamera | null>(null);
   const slotKey = [
     reveal.addressId,
     reveal.subject?.key ?? "",
     reveal.level,
     request?.sequence ?? 0,
+    resizeSequence,
+    isKeyResizing,
     isMobile,
     isSized,
     input.isCanvasReady,
@@ -83,12 +96,25 @@ export function useRevealCamera(input: {
     ) {
       return;
     }
+    const size = { width, height };
+    const current =
+      inFlightRef.current ?? worldCameraFromViewport(getViewport(), size);
+    // Record the camera once when a keyboard resize begins, and hand it to the
+    // placement that ends the resize.
+    const keyResizeStart = keyResizeStartRef.current ?? current;
+    keyResizeStartRef.current = store.get(revealKeyResizeInProgressAtom)
+      ? keyResizeStart
+      : null;
     const next: RevealCameraSlot = {
       addressId: state.addressId,
       subjectKey: state.subject?.key ?? null,
       level: state.level,
+      resizeSequence: store.get(revealResizeSequenceAtom),
     };
     const placementRequest = store.get(revealPlacementRequestAtom);
+    const finishedResize =
+      shownRef.current !== null &&
+      shownRef.current.resizeSequence !== next.resizeSequence;
     const step = revealCameraStep({
       shown: shownRef.current,
       next,
@@ -99,9 +125,6 @@ export function useRevealCamera(input: {
     if (step === "keep") {
       return;
     }
-    const size = { width, height };
-    const current =
-      inFlightRef.current ?? worldCameraFromViewport(getViewport(), size);
 
     let placed: SubjectBounds | null = null;
     if (step === "place-request" && placementRequest) {
@@ -117,6 +140,7 @@ export function useRevealCamera(input: {
       return;
     }
     const { bounds, optionalBounds } = placed;
+    const from = finishedResize ? keyResizeStart : current;
     const usable = store.get(isAgentPanelExpandedAtom)
       ? null
       : usableCanvasRect({
@@ -124,14 +148,15 @@ export function useRevealCamera(input: {
           revealOccupiedWidth: revealOccupiedWidth(
             state.level,
             width,
-            state.focusWidth
+            state.focusWidth,
+            store.get(rememberedRevealWidthsAtom)
           ),
           obstacles: measureObstacles(element),
         });
     const target = usable
       ? worldCameraFromViewport(
           revealViewport({
-            viewport: viewportFromWorldCamera(current, size),
+            viewport: viewportFromWorldCamera(from, size),
             usable,
             bounds,
             optionalBounds,
