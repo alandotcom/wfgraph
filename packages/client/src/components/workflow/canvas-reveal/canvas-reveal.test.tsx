@@ -537,7 +537,13 @@ describe("Canvas Reveal keyboard and focus", () => {
       throw new Error("no Reveal subject for the selected step");
     }
     // A stub unwind on the step kind that records each call and moves nothing.
+    // The kind object is shared by every file in this worker, so the `finally`
+    // block puts the step kind's own unwind back.
     const kind = revealKind(subject);
+    const ownUnwind = kind.unwind;
+    if (!ownUnwind) {
+      throw new Error("the step kind has no unwind to stub");
+    }
     const unwind = vi.fn<NonNullable<RevealKind["unwind"]>>();
     kind.unwind = unwind;
     try {
@@ -556,7 +562,7 @@ describe("Canvas Reveal keyboard and focus", () => {
       });
       expect(level()).toBe("browse");
     } finally {
-      delete kind.unwind;
+      kind.unwind = ownUnwind;
     }
   });
 

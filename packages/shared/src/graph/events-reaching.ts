@@ -5,7 +5,7 @@
  * Events, and the values a rule about the arriving Event can select between.
  */
 
-import { compact } from "es-toolkit/array";
+import { compact, uniqBy } from "es-toolkit/array";
 import {
   isConditionActionNode,
   normalizeConditionBranch,
@@ -287,25 +287,42 @@ function actionOutputPaths(
 }
 
 /**
+ * A node that names the Events a run below it can arrive on: the Lifecycle
+ * Node through its Started or Canceled outlet, or an event-mode Wait.
+ */
+export type ArrivingEventSource =
+  | { kind: "lifecycle"; nodeId: string; side: "started" | "canceled" }
+  | { kind: "wait"; nodeId: string };
+
+/** The Events at a node, and the nearest Event sources above it they came from. */
+type Reaching = {
+  events: EventMetadata[];
+  sources: ArrivingEventSource[];
+};
+
+const REACHES_NOTHING: Reaching = { events: [], sources: [] };
+
+/**
  * The Events that could have put a run at this node, narrowed by the Conditions
- * it sits behind.
+ * it sits behind, with the nearest Event sources those Events came from.
  *
  * Events at a node are the intersection of what each incoming edge admits, the
  * same AND the engine uses for readiness. A parent that is the Lifecycle Node
  * contributes its outlet's Events; a parent that is an event-mode Wait
  * contributes the Events it parks on, which is how an Event Split below it has
  * something new to split; anything else is narrowed by the handle the edge left
- * on. A node no path reaches is offered nothing.
+ * on. A node no path reaches is offered nothing. The sources are every source
+ * any incoming path stops at, each listed once.
  *
  * Where the walk cannot tell, it keeps the Event. Offering a field too many is
  * noise a builder can read past; hiding one is a promise they cannot see broken.
  */
-export function eventsReaching(input: {
+function walkEventsReaching(input: {
   targetNodeId: string;
   nodes: readonly WorkflowNode[];
   edges: readonly WorkflowEdge[];
   catalog: ExtensionCatalog;
-}): EventMetadata[] {
+}): Reaching {
   const { catalog } = input;
   const nodeById = new Map(input.nodes.map((node) => [node.id, node]));
   const incomingByTarget = new Map<string, WorkflowEdge[]>();
@@ -336,50 +353,90 @@ export function eventsReaching(input: {
     return paths;
   };
 
-  const memo = new Map<string, EventMetadata[]>();
+  const memo = new Map<string, Reaching>();
 
-  const eventsAt = (nodeId: string, seen: Set<string>): EventMetadata[] => {
+  const reachingAt = (nodeId: string, seen: Set<string>): Reaching => {
     const cached = memo.get(nodeId);
     if (cached) {
       return cached;
     }
     if (seen.has(nodeId)) {
-      return [];
+      return REACHES_NOTHING;
     }
 
     const incoming = incomingByTarget.get(nodeId) ?? [];
     if (incoming.length === 0) {
-      memo.set(nodeId, []);
-      return [];
+      memo.set(nodeId, REACHES_NOTHING);
+      return REACHES_NOTHING;
     }
 
     const nextSeen = new Set(seen);
     nextSeen.add(nodeId);
 
-    let acc: EventMetadata[] | null = null;
+    let acc: Reaching | null = null;
     for (const edge of incoming) {
       const parent = nodeById.get(edge.source);
       if (!parent) {
         continue;
       }
 
-      const fromParent = eventsFromParent({
+      const fromParent = reachingFromParent({
         parent,
         handle: edge.sourceHandle,
         catalog,
-        eventsAbove: eventsAt(parent.id, nextSeen),
+        above: reachingAt(parent.id, nextSeen),
         declaredElsewhere: outputPathsAt(parent.id),
       });
 
-      acc = acc === null ? fromParent : intersectEventsByName(acc, fromParent);
+      acc =
+        acc === null
+          ? fromParent
+          : {
+              events: intersectEventsByName(acc.events, fromParent.events),
+              sources: uniqBy(
+                [...acc.sources, ...fromParent.sources],
+                sourceKey
+              ),
+            };
     }
 
-    const result = acc ?? [];
+    const result = acc ?? REACHES_NOTHING;
     memo.set(nodeId, result);
     return result;
   };
 
-  return eventsAt(input.targetNodeId, new Set());
+  return reachingAt(input.targetNodeId, new Set());
+}
+
+/** One string per source, which two paths reaching the same source share. */
+function sourceKey(source: ArrivingEventSource): string {
+  return source.kind === "lifecycle"
+    ? `${source.nodeId}:${source.side}`
+    : source.nodeId;
+}
+
+/** The Events that could have put a run at this node. */
+export function eventsReaching(input: {
+  targetNodeId: string;
+  nodes: readonly WorkflowNode[];
+  edges: readonly WorkflowEdge[];
+  catalog: ExtensionCatalog;
+}): EventMetadata[] {
+  return walkEventsReaching(input).events;
+}
+
+/**
+ * The nearest Event sources above this node, which name the Events
+ * `eventsReaching` answers for it. An Event Split's outlets are owned by these
+ * nodes. Empty when no path from a source reaches the node.
+ */
+export function arrivingEventSources(input: {
+  targetNodeId: string;
+  nodes: readonly WorkflowNode[];
+  edges: readonly WorkflowEdge[];
+  catalog: ExtensionCatalog;
+}): ArrivingEventSource[] {
+  return walkEventsReaching(input).sources;
 }
 
 /**
@@ -387,35 +444,50 @@ export function eventsReaching(input: {
  *
  * A Lifecycle Node and an event-mode Wait are sources: they name the Events
  * they hand on, and the walk does not keep what reached them. Everything else
- * narrows the inherited set.
+ * narrows the inherited set and passes on the sources above it.
  */
-function eventsFromParent(input: {
+function reachingFromParent(input: {
   parent: WorkflowNode;
   handle: unknown;
   catalog: ExtensionCatalog;
-  eventsAbove: EventMetadata[];
+  above: Reaching;
   declaredElsewhere: ReadonlySet<string>;
-}): EventMetadata[] {
+}): Reaching {
   const { parent, catalog } = input;
 
   if (isLifecycleNode(parent)) {
-    return outletEvents({
-      entryNode: parent,
-      handle: input.handle,
-      catalog,
-    });
+    const side =
+      input.handle === LIFECYCLE_STARTED_HANDLE
+        ? "started"
+        : input.handle === LIFECYCLE_CANCELED_HANDLE
+          ? "canceled"
+          : null;
+    return {
+      events: outletEvents({
+        entryNode: parent,
+        handle: input.handle,
+        catalog,
+      }),
+      sources: side ? [{ kind: "lifecycle", nodeId: parent.id, side }] : [],
+    };
   }
 
   if (isEventWaitNode(parent)) {
-    return waitEvents({ node: parent, catalog });
+    return {
+      events: waitEvents({ node: parent, catalog }),
+      sources: [{ kind: "wait", nodeId: parent.id }],
+    };
   }
 
-  return narrowLeaving({
-    parent,
-    handle: input.handle,
-    events: input.eventsAbove,
-    declaredElsewhere: input.declaredElsewhere,
-  });
+  return {
+    events: narrowLeaving({
+      parent,
+      handle: input.handle,
+      events: input.above.events,
+      declaredElsewhere: input.declaredElsewhere,
+    }),
+    sources: input.above.sources,
+  };
 }
 
 function narrowLeaving(input: {

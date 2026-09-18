@@ -50,40 +50,51 @@ export function Section({
 }
 
 /**
- * The validation issues of one node, each a button that calls `onSelect` with
- * the config key of the field it names, or undefined, and the issue itself.
+ * The validation issues of one node. With `onSelect`, each issue is a button
+ * that calls it with the config key of the field it names, or undefined, and
+ * the issue itself. Without it, each issue is its message alone, for a node
+ * with no field to open.
  */
 export function NodeIssueList({
   issues,
   onSelect,
 }: {
   issues: readonly WorkflowIssue[];
-  onSelect: (fieldKey: string | undefined, issue: WorkflowIssue) => void;
+  onSelect?:
+    | ((fieldKey: string | undefined, issue: WorkflowIssue) => void)
+    | undefined;
 }) {
   if (issues.length === 0) {
     return <p className="text-muted-foreground text-xs">No issues.</p>;
   }
   return (
     <ul className="space-y-1">
-      {issues.map((issue) => (
-        <li
-          key={`${issue.kind}:${"fieldKey" in issue ? issue.fieldKey : ""}:${issue.message}`}
-        >
-          <button
-            className={
-              issue.severity === "blocking"
-                ? "text-left text-destructive text-xs underline-offset-2 hover:underline"
-                : "text-left text-warning text-xs underline-offset-2 hover:underline"
-            }
-            onClick={() =>
-              onSelect("fieldKey" in issue ? issue.fieldKey : undefined, issue)
-            }
-            type="button"
+      {issues.map((issue) => {
+        const tone =
+          issue.severity === "blocking" ? "text-destructive" : "text-warning";
+        return (
+          <li
+            key={`${issue.kind}:${"fieldKey" in issue ? issue.fieldKey : ""}:${issue.message}`}
           >
-            {issue.message}
-          </button>
-        </li>
-      ))}
+            {onSelect ? (
+              <button
+                className={`text-left ${tone} text-xs underline-offset-2 hover:underline`}
+                onClick={() =>
+                  onSelect(
+                    "fieldKey" in issue ? issue.fieldKey : undefined,
+                    issue
+                  )
+                }
+                type="button"
+              >
+                {issue.message}
+              </button>
+            ) : (
+              <p className={`${tone} text-xs`}>{issue.message}</p>
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
 }

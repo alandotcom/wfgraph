@@ -69,6 +69,12 @@ export function revealFollowsSelection(workspace: WorkspaceView): boolean {
 export type InspectedObject = { kind: "node" | "edge"; id: string };
 
 /**
+ * The node Canvas Reveal jumped from to reach the inspected object, which Back
+ * returns to by selecting it again.
+ */
+export type InspectedOrigin = { nodeId: string };
+
+/**
  * The nodes and edges selected in one scope, by id, each id listed once. React
  * Flow's `selected` flags on the canvas are painted from this value.
  */
@@ -90,6 +96,8 @@ export type ScopePresentation = { camera: WorldCamera | null };
  * `inspectorScroll` (pixels from the top, per open level), and
  * `inspectorSection` belong to. `inspectorSection` is the id of the Focus
  * section a sectioned inspector shows, and null shows its first section.
+ * `inspectedOrigin` is where a jump to `inspected` started. It lasts while
+ * Reveal stays open and the selection holds `inspected` alone.
  */
 export type DesktopScopePresentation = ScopePresentation & {
   revealLevel: RevealLevel | null;
@@ -97,6 +105,7 @@ export type DesktopScopePresentation = ScopePresentation & {
   inspected: InspectedObject | null;
   inspectorScroll: Readonly<Record<OpenRevealLevel, number>>;
   inspectorSection: string | null;
+  inspectedOrigin: InspectedOrigin | null;
 };
 
 /**
@@ -174,6 +183,7 @@ export const EMPTY_SCOPE_NAVIGATION: ScopeNavigation = {
     inspected: null,
     inspectorScroll: { browse: 0, focus: 0 },
     inspectorSection: null,
+    inspectedOrigin: null,
   },
   mobile: { camera: null },
   showSuperseded: false,
@@ -403,7 +413,8 @@ export function sameSelection(
 /**
  * Write a selection. A chosen run node execution is kept only while the
  * selection holds its node alone, so selecting anything else never shows a
- * stale execution.
+ * stale execution. A selection that no longer holds the inspected object alone
+ * ends the jump `inspectedOrigin` recorded, so the origin is cleared.
  */
 export function withSelection(
   scope: ScopeNavigation,
@@ -413,9 +424,15 @@ export function withSelection(
     return scope;
   }
   const { chosenExecution } = scope;
+  const keepsOrigin =
+    scope.desktop.inspectedOrigin === null ||
+    sameObject(selectedObject(selection), scope.desktop.inspected);
   return {
     ...scope,
     selection,
+    desktop: keepsOrigin
+      ? scope.desktop
+      : { ...scope.desktop, inspectedOrigin: null },
     chosenExecution:
       chosenExecution !== null &&
       singleSelectedNodeId(selection) === chosenExecution.nodeId
@@ -596,6 +613,7 @@ function workspaceWithoutSelections(
 /**
  * Set the desktop Reveal level. An open level also becomes the level a newly
  * selected object opens at; closing keeps the level Reveal was closed from.
+ * Closing also clears `inspectedOrigin`, which ends the jump it recorded.
  */
 export function withDesktopRevealLevel(
   scope: ScopeNavigation,
@@ -603,10 +621,21 @@ export function withDesktopRevealLevel(
 ): ScopeNavigation {
   const reopenLevel =
     revealLevel === "closed" ? scope.desktop.reopenLevel : revealLevel;
+  const inspectedOrigin =
+    revealLevel === "closed" ? null : scope.desktop.inspectedOrigin;
   return scope.desktop.revealLevel === revealLevel &&
-    scope.desktop.reopenLevel === reopenLevel
+    scope.desktop.reopenLevel === reopenLevel &&
+    scope.desktop.inspectedOrigin === inspectedOrigin
     ? scope
-    : { ...scope, desktop: { ...scope.desktop, revealLevel, reopenLevel } };
+    : {
+        ...scope,
+        desktop: {
+          ...scope.desktop,
+          revealLevel,
+          reopenLevel,
+          inspectedOrigin,
+        },
+      };
 }
 
 /** The one node or edge a selection holds, or null for none or several. */
@@ -657,6 +686,7 @@ export function withSelectionOpeningReveal(
       inspected: selected,
       inspectorScroll: EMPTY_SCOPE_NAVIGATION.desktop.inspectorScroll,
       inspectorSection: null,
+      inspectedOrigin: null,
     },
   };
 }
@@ -708,6 +738,16 @@ export function withInspectorSection(
       };
 }
 
+/** Record where a jump to the inspected object started. */
+export function withInspectedOrigin(
+  scope: ScopeNavigation,
+  inspectedOrigin: InspectedOrigin | null
+): ScopeNavigation {
+  return scope.desktop.inspectedOrigin === inspectedOrigin
+    ? scope
+    : { ...scope, desktop: { ...scope.desktop, inspectedOrigin } };
+}
+
 /**
  * The scope without an inspected object the graph no longer holds, and without
  * the scroll and section recorded for it.
@@ -733,6 +773,7 @@ export function inspectionInGraph(
           inspected: null,
           inspectorScroll: EMPTY_SCOPE_NAVIGATION.desktop.inspectorScroll,
           inspectorSection: null,
+          inspectedOrigin: null,
         },
       };
 }

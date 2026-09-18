@@ -19,6 +19,7 @@ import {
   updateScopeNavigation,
   withCamera,
   withDesktopRevealLevel,
+  withInspectedOrigin,
   withInspectorScroll,
   withInspectorSection,
   withChosenExecution,
@@ -644,6 +645,52 @@ describe("Canvas Reveal state", () => {
         graph
       ).desktop.inspectorSection
     ).toBeNull();
+  });
+
+  it("keeps the inspected object's origin across its own section changes and clears it for another object", () => {
+    const origin = { nodeId: "split_a" };
+    const opened = withInspectedOrigin(
+      withSelectionOpeningReveal(EMPTY, nodeSelection("lifecycle_a")),
+      origin
+    );
+    expect(opened.desktop.inspectedOrigin).toBe(origin);
+    expect(withInspectedOrigin(opened, origin)).toBe(opened);
+
+    const resectioned = withInspectorSection(opened, "start-events");
+    expect(resectioned.desktop.inspectedOrigin).toBe(origin);
+
+    const other = withSelectionOpeningReveal(opened, nodeSelection("step_b"));
+    expect(other.desktop.inspectedOrigin).toBeNull();
+
+    expect(inspectionInGraph(opened, graph).desktop.inspectedOrigin).toBeNull();
+  });
+
+  it("clears the origin when Reveal closes or the selection stops holding the inspected object alone", () => {
+    const opened = withInspectedOrigin(
+      withSelectionOpeningReveal(EMPTY, nodeSelection("lifecycle_a")),
+      { nodeId: "split_a" }
+    );
+
+    expect(
+      withDesktopRevealLevel(opened, "closed").desktop.inspectedOrigin
+    ).toBeNull();
+    expect(
+      withDesktopRevealLevel(opened, "focus").desktop.inspectedOrigin
+    ).not.toBeNull();
+
+    const cleared = withSelectionOpeningReveal(opened, EMPTY_SELECTION);
+    expect(cleared.desktop.inspectedOrigin).toBeNull();
+    const reselected = withSelectionOpeningReveal(
+      cleared,
+      nodeSelection("lifecycle_a")
+    );
+    expect(reselected.desktop.inspectedOrigin).toBeNull();
+
+    const widened = withSelection(opened, {
+      nodeIds: ["lifecycle_a", "step_b"],
+      edgeIds: [],
+    });
+    expect(widened.desktop.inspectedOrigin).toBeNull();
   });
 
   it("forgets an inspected object the graph no longer holds", () => {

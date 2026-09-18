@@ -10,6 +10,7 @@ import type {
   LifecycleRulesCheckId,
   WorkflowIssue,
 } from "@wfgraph/shared/graph/workflow-issues";
+import type { InspectedOrigin } from "#src/lib/workflow-navigation-state";
 import {
   activeRevealPresentationAtom,
   activeWorkspaceAddressAtom,
@@ -62,17 +63,19 @@ export function lifecycleIssueSection(
 
 /**
  * Open the Lifecycle Node `nodeId` at Focus on `section` in the active address,
- * selecting it first when another object is selected.
+ * selecting it first when another object is selected. `origin`, when given,
+ * records where the jump started, which Back returns to.
  */
 export function useOpenLifecycleSection(
   nodeId: string
-): (section: LifecycleSectionId) => void {
+): (section: LifecycleSectionId, origin?: InspectedOrigin) => void {
   const store = useStore();
-  return (section) => {
+  return (section, origin) => {
     store.set(openInspectorSectionAtom, {
       address: store.get(activeWorkspaceAddressAtom),
       nodeId,
       section,
+      origin,
     });
   };
 }

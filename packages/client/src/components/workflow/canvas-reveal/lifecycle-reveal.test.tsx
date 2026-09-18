@@ -47,6 +47,7 @@ import {
   openInspectorSectionAtom,
 } from "#src/lib/workflow-workspace-navigation";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
+import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { collectWorkflowIssues } from "@wfgraph/shared/graph/workflow-issues";
@@ -525,6 +526,52 @@ describe("Lifecycle Focus", () => {
     expect(view.getByRole("region", { name: "Cancel Events" }).hidden).toBe(
       false
     );
+  });
+
+  it("returns to the Event Split that opened it, on Back, instead of Browse", async () => {
+    const split: WorkflowNode = {
+      id: "split",
+      type: "action",
+      position: { x: 0, y: 200 },
+      data: {
+        label: "Split",
+        type: "action",
+        config: { actionType: BUILT_IN_ACTION_IDS.eventSplit },
+      },
+    };
+    const { view, store, aside } = await renderLifecycle(CONFIGURED, {
+      extraNodes: [split],
+    });
+
+    await act(async () => {
+      store.set(openInspectorSectionAtom, {
+        address: store.get(activeWorkspaceAddressAtom),
+        nodeId: "lifecycle",
+        section: "start-events",
+        origin: { nodeId: "split" },
+      });
+    });
+    expect(aside()?.dataset.level).toBe("focus");
+
+    fireEvent.click(view.getByRole("button", { name: "Back" }));
+
+    // Back returns to the Event Split: the active address now inspects the
+    // Event Split, at the level its own Browse-only kind clamps to.
+    expect(store.get(activeRevealPresentationAtom).inspected).toEqual({
+      kind: "node",
+      id: "split",
+    });
+    expect(aside()?.dataset.level).toBe("browse");
+  });
+
+  it("steps back to Browse on a Back with no recorded origin", async () => {
+    const { view, aside } = await renderLifecycle(CONFIGURED);
+    fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
+    expect(aside()?.dataset.level).toBe("focus");
+
+    fireEvent.click(view.getByRole("button", { name: "Back" }));
+
+    expect(aside()?.dataset.level).toBe("browse");
   });
 
   it("restores the section and scroll after closing and reopening", async () => {

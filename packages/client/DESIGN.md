@@ -335,10 +335,10 @@ the card's issue badge and the status in the Group's header count the steps'
 issues with the Group's own. Double-clicking the card or its arrow also enters it.
 Entering and leaving a Group each add a browser history entry, so Back leaves a
 Group and Forward enters it again. On a focused Group canvas, selecting a step
-opens that step's own inspector. An Event Split, connection, and multiple
-selection show their panel at Browse width, under a header holding the panel's
-title and **Close**. **Runs** and **Changes** each have a Browse of their own,
-and **Changes** is described under Publication review.
+opens that step's own inspector. A connection and a multiple selection show
+their panel at Browse width, under a header holding the panel's title and
+**Close**. **Runs** and **Changes** each have a Browse of their own, and
+**Changes** is described under Publication review.
 
 Selecting the Lifecycle node opens Browse with the workflow's lifecycle policy:
 an editable label, the Start Events with each payload Start Filter, the
@@ -370,6 +370,22 @@ Placing a Condition sets the zoom from its card and both outlet handles, and
 keeps each True and False label on its outgoing edges inside the usable canvas
 too when the label fits at that zoom. A label on an edge to a distant step stays
 off screen.
+
+A selected Event Split opens the same header, with Browse only. Browse names the
+Event source its outlets come from: the Lifecycle node's Start Events for a
+split on the Started side, its Cancel Events for a split on the Canceled side,
+or the Wait Subscriptions of the nearest event-mode Wait above it. It lists each
+outlet with the Event's label, the raw Event name on a second line, and the step
+its stored connection leads to, or a line saying a disconnected outlet ends the
+run there. The primary action opens the source: **Open Lifecycle Start Events**
+or **Open Lifecycle Cancel Events** selects the Lifecycle node and opens Focus
+on that section, and **Open** followed by the Wait's name selects the Wait and
+opens its Browse. The list also says when no Event source reaches the Event
+Split, when an outlet's Event is no longer declared by the app, when a stored
+connection names an Event that no longer reaches it, and when a connection
+leaves by no outlet. Placing an Event Split sets the zoom from its card and its
+outlet handles the same way a Condition does, keeping every outlet label that
+still fits inside the usable canvas.
 
 **Runs** has a Browse of its own and shows a run node's evidence in Focus. On
 the run list the header path names the workflow and Runs, and **Refresh** and
@@ -413,8 +429,13 @@ its heading takes focus.
 Escape and **Back** take one step back as the shown object's kind defines it.
 For a step or Condition that step is one level: Focus to Browse to Closed. For a
 run node's evidence it is the run, for a run it is the run list, and on the run
-list Escape closes Reveal. **Close** closes Reveal from any level. Escape
-belongs to an open select, combobox, menu, autocomplete, or dialog first.
+list Escape closes Reveal. For the Lifecycle node or a Wait opened from an Event
+Split, the step back selects that Event Split again, and the camera moves only
+if Reveal would cover it. The way back lasts while
+Reveal stays open and the source stays selected alone; closing Reveal or
+selecting anything else ends it, and Back then steps one level. **Close** closes
+Reveal from any level. Escape belongs to an open select, combobox, menu,
+autocomplete, or dialog first.
 Opening Focus moves focus to the step title, returning to Browse puts focus on
 **Focus editor**, and closing returns focus to the canvas object or control that
 opened Browse. Closing keeps the canvas selection. Selecting a step again, or
