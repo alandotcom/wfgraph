@@ -2,14 +2,10 @@ import {
   ConnectionMode,
   MiniMap,
   type NodeMouseHandler,
-  type OnConnect,
-  type OnConnectEnd,
-  type OnConnectStartParams,
   useInternalNode,
   useReactFlow,
   useStoreApi,
   useUpdateNodeInternals,
-  type Connection as XYFlowConnection,
   type Edge as XYFlowEdge,
 } from "@xyflow/react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
@@ -19,8 +15,6 @@ import { Connection } from "#src/components/flow-elements/connection";
 import { Controls } from "#src/components/flow-elements/controls";
 import "@xyflow/react/dist/style.css";
 
-import { toast } from "sonner";
-import { generateId } from "@wfgraph/shared/utils/id";
 import { Edge } from "#src/components/flow-elements/edge";
 import { Panel } from "#src/components/flow-elements/panel";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
@@ -28,8 +22,6 @@ import { useAfterDelay, useAfterPaint, useDomEvent } from "#src/hooks/effects";
 import { isTextEntry } from "#src/lib/is-text-entry";
 import { viewportAnimationDuration } from "#src/lib/motion";
 import {
-  addNodeAtom,
-  connectNodesAtom,
   canvasGraphAtom,
   displayNodesAtom,
   edgesAtom,
@@ -41,7 +33,6 @@ import {
   onNodesChangeAtom,
   redoAtom,
   canvasSelectionAtom,
-  selectOnlyNodeAtom,
   snapshotHistoryAtom,
   undoAtom,
 } from "#src/lib/workflow-graph-store";
@@ -56,13 +47,9 @@ import {
   workflowGraphUpdateAtom,
   workflowWorkspaceViewAtom,
 } from "#src/lib/workflow-ui-store";
-import {
-  workflowNodeAriaLabel,
-  WORKFLOW_EDGE_TYPE,
-} from "#src/lib/workflow-graph-types";
+import { WORKFLOW_EDGE_TYPE } from "#src/lib/workflow-graph-types";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
-import { normalizeSourceHandleForConnection as normalizeSourceHandle } from "./connection-handle";
 import { ActionNode } from "./nodes/action-node";
 import { AddNode } from "./nodes/add-node";
 import { GroupNode } from "./nodes/group-node";
@@ -76,6 +63,7 @@ import {
   groupScopeActiveAtom,
 } from "#src/lib/workflow-workspace-navigation";
 import { LifecycleNode } from "./nodes/lifecycle-node";
+import { useCanvasConnections } from "./use-canvas-connections";
 import { useCanvasCopyPaste } from "./use-canvas-copy-paste";
 import { useReflowLayout } from "./use-reflow-layout";
 import { useWorkspaceCamera } from "./use-workspace-camera";
@@ -92,14 +80,7 @@ import {
   useContextMenuHandlers,
   WorkflowContextMenu,
 } from "./workflow-context-menu";
-import {
-  WORKFLOW_NODE_HEIGHT,
-  WORKFLOW_NODE_WIDTH,
-} from "#src/lib/workflow-node-dimensions";
-import {
-  connectionHandleTypesMatch,
-  connectionRefusalReason,
-} from "./connection-validation";
+import { WORKFLOW_NODE_WIDTH } from "#src/lib/workflow-node-dimensions";
 import { accessibleGraphElements } from "./workflow-canvas-accessibility";
 import {
   canvasSynchronizationKey,
@@ -191,9 +172,6 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const onEdgesChange = useSetAtom(onEdgesChangeAtom);
   const selection = useAtomValue(canvasSelectionAtom);
   const clearSelection = useClearWorkflowNodeInspection();
-  const addNode = useSetAtom(addNodeAtom);
-  const connectNodes = useSetAtom(connectNodesAtom);
-  const selectOnlyNode = useSetAtom(selectOnlyNodeAtom);
   const snapshotHistory = useSetAtom(snapshotHistoryAtom);
   const deleteSelectedItems = useSetAtom(deleteSelectedItemsAtom);
   const undo = useSetAtom(undoAtom);
@@ -310,10 +288,6 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   // The same pass the Actions menu's "Tidy layout" runs.
   const { canReflow, reflow } = useReflowLayout();
 
-  const connectingNodeId = useRef<string | null>(null);
-  const connectingHandleType = useRef<"source" | "target" | null>(null);
-  const connectingHandleId = useRef<string | null>(null);
-  const justCreatedNodeFromConnection = useRef(false);
   const [readyWorkflowId, setReadyWorkflowId] = useState<string | null>(null);
   const isCanvasReady =
     currentWorkflowId !== null && readyWorkflowId === currentWorkflowId;
@@ -501,73 +475,6 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
 
   useDomEvent(window, "keydown", handleFitViewShortcut);
 
-  const isValidConnection = useCallback(
-    (connection: XYFlowConnection | XYFlowEdge) =>
-      !graphEditingLocked &&
-      connectionRefusalReason({
-        connection,
-        nodes: graphNodes,
-        storeEdges,
-        catalog,
-      }) === null,
-    [catalog, graphEditingLocked, graphNodes, storeEdges]
-  );
-
-  // Stored edges, which name Group members, so the handle chosen here is the
-  // one `connectNodesAtom` derives when it saves the connection.
-  const normalizeSourceHandleForConnection = useCallback(
-    (sourceNodeId: string, sourceHandle: string | null | undefined) =>
-      normalizeSourceHandle({
-        nodes: graphNodes,
-        edges: storeEdges,
-        sourceNodeId,
-        sourceHandle,
-        catalog,
-      }),
-    [graphNodes, storeEdges, catalog]
-  );
-
-  const onConnect: OnConnect = useCallback(
-    (connection: XYFlowConnection) => {
-      if (graphEditingLocked) {
-        return;
-      }
-      if (!(connection.source && connection.target)) {
-        return;
-      }
-
-      const refusal = connectionRefusalReason({
-        connection,
-        nodes: graphNodes,
-        storeEdges,
-        catalog,
-      });
-      if (refusal) {
-        toast.info(refusal, { id: "connection-refused" });
-        return;
-      }
-
-      const sourceHandle = normalizeSourceHandleForConnection(
-        connection.source,
-        connection.sourceHandle
-      );
-      const newEdge = {
-        id: generateId(),
-        ...connection,
-        sourceHandle,
-      };
-      connectNodes(newEdge);
-    },
-    [
-      normalizeSourceHandleForConnection,
-      connectNodes,
-      graphNodes,
-      storeEdges,
-      catalog,
-      graphEditingLocked,
-    ]
-  );
-
   /**
    * Record the undo step for a deletion before React Flow starts removing.
    *
@@ -656,245 +563,30 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
     [graphEditingLocked, onEdgesChange]
   );
 
-  const onConnectStart = useCallback(
-    (
-      _event: MouseEvent | TouchEvent,
-      connectionStart: OnConnectStartParams
-    ) => {
-      if (graphEditingLocked) {
-        return;
-      }
-      connectingNodeId.current = connectionStart.nodeId;
-      connectingHandleType.current = connectionStart.handleType;
-      connectingHandleId.current = connectionStart.handleId ?? null;
-    },
-    [graphEditingLocked]
-  );
-
-  const getClientPosition = useCallback((event: MouseEvent | TouchEvent) => {
-    const clientX =
-      "changedTouches" in event
-        ? event.changedTouches[0].clientX
-        : event.clientX;
-    const clientY =
-      "changedTouches" in event
-        ? event.changedTouches[0].clientY
-        : event.clientY;
-    return { clientX, clientY };
-  }, []);
-
-  const handleConnectionToExistingNode = useCallback(
-    (nodeElement: Element) => {
-      const targetNodeId = nodeElement.getAttribute("data-id");
-      const fromSource = connectingHandleType.current === "source";
-      const connectingId = connectingNodeId.current;
-
-      if (targetNodeId && connectingId) {
-        const sourceId = fromSource ? connectingId : targetNodeId;
-        const targetId = fromSource ? targetNodeId : connectingId;
-        const sourceHandle = normalizeSourceHandleForConnection(
-          sourceId,
-          fromSource ? connectingHandleId.current : null
-        );
-        const targetHandle = fromSource ? null : connectingHandleId.current;
-        onConnect({
-          source: sourceId,
-          target: targetId,
-          sourceHandle,
-          targetHandle,
-        });
-      }
-    },
-    [normalizeSourceHandleForConnection, onConnect]
-  );
-
-  const handleConnectionToNewNode = useCallback(
-    (clientX: number, clientY: number) => {
-      if (!interaction.insertsNodes) {
-        return;
-      }
-      const sourceNodeId = connectingNodeId.current;
-      if (!sourceNodeId) {
-        return;
-      }
-
-      const fromSource = connectingHandleType.current === "source";
-      if (
-        !(
-          fromSource ||
-          isValidConnection({
-            source: "__new_node__",
-            target: sourceNodeId,
-            sourceHandle: null,
-            targetHandle: null,
-          })
-        )
-      ) {
-        return;
-      }
-
-      // Client coordinates, which is what `screenToFlowPosition` takes: it
-      // subtracts the pane's own rect itself. This used to hand it the release
-      // point already measured from the pane's top-left, which put every node
-      // made by dropping a connection up and to the left of the cursor by
-      // however far the pane sat from the window's corner, over the zoom. That
-      // was the menu bar's 44px, and the shell's inset and border since added
-      // 13px across.
-      const position = screenToFlowPosition({ x: clientX, y: clientY });
-
-      // Center vertically on the cursor.
-      position.y -= WORKFLOW_NODE_HEIGHT / 2;
-
-      const newNode: WorkflowNode = {
-        id: generateId(),
-        type: "action",
-        position,
-        data: {
-          label: "",
-          description: "",
-          type: "action",
-          config: {},
-          status: "idle",
-        },
-        ariaLabel: workflowNodeAriaLabel({
-          label: "",
-          description: "",
-          type: "action",
-          config: {},
-          status: "idle",
-        }),
-      };
-
-      // Adding the node makes it the selection.
-      addNode(newNode);
-
-      // Deselect all other nodes and select only the new node
-      // Need to do this after a delay because panOnDrag will clear selection
-      setTimeout(() => {
-        selectOnlyNode(newNode.id);
-      }, 50);
-
-      const sourceId = fromSource ? sourceNodeId : newNode.id;
-      const targetId = fromSource ? newNode.id : sourceNodeId;
-      const sourceHandle = normalizeSourceHandleForConnection(
-        sourceId,
-        fromSource ? connectingHandleId.current : null
-      );
-      const targetHandle = fromSource ? null : connectingHandleId.current;
-
-      onConnect({
-        source: sourceId,
-        target: targetId,
-        sourceHandle,
-        targetHandle,
-      });
-
-      justCreatedNodeFromConnection.current = true;
-      setTimeout(() => {
-        justCreatedNodeFromConnection.current = false;
-      }, 100);
-    },
-    [
-      screenToFlowPosition,
-      addNode,
-      selectOnlyNode,
-      normalizeSourceHandleForConnection,
-      onConnect,
-      isValidConnection,
-      interaction.insertsNodes,
-    ]
-  );
-
-  const onConnectEnd: OnConnectEnd = useCallback(
-    (event, connectionState) => {
-      if (graphEditingLocked) {
-        return;
-      }
-      if (!connectingNodeId.current) {
-        return;
-      }
-
-      const { clientX, clientY } = getClientPosition(event);
-
-      // Touch ends on a different target than the drag started on, so hit-test
-      // the release point; mouse can use event.target.
-      let target: Element | null;
-      if ("changedTouches" in event) {
-        target = document.elementFromPoint(clientX, clientY);
-      } else if (event.target instanceof Element) {
-        target = event.target;
-      } else {
-        target = null;
-      }
-
-      if (!target) {
-        connectingNodeId.current = null;
-        connectingHandleType.current = null;
-        connectingHandleId.current = null;
-        return;
-      }
-
-      const nodeElement = target.closest(".react-flow__node");
-      const isHandle = target.closest(".react-flow__handle");
-      const droppedHandleType = isHandle?.classList.contains("source")
-        ? "source"
-        : isHandle?.classList.contains("target")
-          ? "target"
-          : null;
-
-      if (
-        connectingHandleType.current &&
-        droppedHandleType &&
-        !connectionHandleTypesMatch(
-          connectingHandleType.current,
-          droppedHandleType
-        )
-      ) {
-        toast.info("Connect an output handle to an input handle.", {
-          id: "connection-refused",
-        });
-        connectingNodeId.current = null;
-        connectingHandleType.current = null;
-        connectingHandleId.current = null;
-        return;
-      }
-
-      if (
-        nodeElement &&
-        connectingHandleType.current &&
-        (!isHandle || !connectionState.isValid)
-      ) {
-        handleConnectionToExistingNode(nodeElement);
-        connectingNodeId.current = null;
-        connectingHandleType.current = null;
-        connectingHandleId.current = null;
-        return;
-      }
-
-      if (!(nodeElement || isHandle)) {
-        handleConnectionToNewNode(clientX, clientY);
-      }
-
-      connectingNodeId.current = null;
-      connectingHandleType.current = null;
-      connectingHandleId.current = null;
-    },
-    [
-      getClientPosition,
-      handleConnectionToExistingNode,
-      handleConnectionToNewNode,
-      graphEditingLocked,
-    ]
-  );
+  const {
+    isValidConnection,
+    onConnect,
+    onConnectStart,
+    onConnectEnd,
+    wasNodeJustCreatedFromConnection,
+  } = useCanvasConnections({
+    nodes,
+    graphNodes,
+    storeEdges,
+    catalog,
+    graphEditingLocked,
+    insertsNodes: interaction.insertsNodes,
+    screenToFlowPosition,
+  });
 
   const onPaneClick = useCallback(() => {
     // Don't deselect if we just created a node from a connection
-    if (justCreatedNodeFromConnection.current) {
+    if (wasNodeJustCreatedFromConnection()) {
       return;
     }
     clearSelection();
     closeContextMenu();
-  }, [clearSelection, closeContextMenu]);
+  }, [clearSelection, closeContextMenu, wasNodeJustCreatedFromConnection]);
 
   return (
     // Size comes from the canvas box, which Canvas Reveal floats over without

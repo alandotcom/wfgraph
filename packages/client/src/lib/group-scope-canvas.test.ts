@@ -8,6 +8,7 @@ import {
   GROUP_BOUNDARY_STUB_HEIGHT,
   overviewCanvasGraph,
   scopeCanvasGraph,
+  storedCanvasConnection,
   withoutProjectedDimensions,
 } from "#src/lib/group-scope-canvas";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
@@ -163,7 +164,6 @@ describe("focusedGroupCanvasGraph", () => {
       ...CARD,
       measured: CARD,
       draggable: false,
-      connectable: true,
       sourcePosition: Position.Bottom,
       targetPosition: Position.Top,
       position: positions.get("a"),
@@ -171,6 +171,7 @@ describe("focusedGroupCanvasGraph", () => {
     expect(byId.get("b")?.position).toEqual(positions.get("b"));
     expect(a).not.toHaveProperty("parentId");
     expect(a).not.toHaveProperty("extent");
+    expect(a).not.toHaveProperty("connectable");
 
     const stubIn = byId.get(ingress("before"));
     const stubOut = byId.get(continuation("after"));
@@ -186,7 +187,11 @@ describe("focusedGroupCanvasGraph", () => {
       deletable: false,
       data: { label: "before", type: "action" },
     });
-    expect(stubOut?.type).toBe(GROUP_BOUNDARY_NODE_TYPES.continuation);
+    expect(stubIn).not.toHaveProperty("connectable");
+    expect(stubOut).toMatchObject({
+      type: GROUP_BOUNDARY_NODE_TYPES.continuation,
+      connectable: false,
+    });
     expect(stubIn?.position.y ?? 0).toBeLessThan(a?.position.y ?? 0);
     expect(stubOut?.position.y ?? 0).toBeGreaterThan(
       byId.get("b")?.position.y ?? 0
@@ -202,11 +207,11 @@ describe("focusedGroupCanvasGraph", () => {
       ])
     ).toEqual([
       ["a-b", "a", "b", undefined, undefined],
-      ["before-a", ingress("before"), "a", false, false],
+      ["before-a", ingress("before"), "a", undefined, undefined],
       ["b-after", "b", continuation("after"), false, false],
     ]);
-    // An interior edge is the stored edge, so selecting or deleting it on the
-    // focused canvas names the edge the store holds.
+    // An interior edge is the stored edge, and an ingress edge keeps the stored
+    // id, so selecting or deleting either names the one edge the store holds.
     expect(graph.edges[0]).toBe(EDGES[2]);
     expect(graph.anchor).toEqual({ nodeId: "a", pinToTop: false });
     expect(graph.projectedNodeIds).toEqual(new Set(byId.keys()));
@@ -322,6 +327,56 @@ describe("focusedGroupCanvasGraph", () => {
     ]);
   });
 
+  it.each(["vertical", "horizontal"] as const)(
+    "fans one %s ingress stub out onto each entry it enters",
+    (direction) => {
+      const nodes = NODES.map((node) =>
+        node.id === "g"
+          ? { ...node, data: { ...node.data, config: { direction } } }
+          : node
+      );
+      const graph = focused(nodes, [
+        edge("before-a", "before", "a"),
+        edge("before-b", "before", "b"),
+      ]);
+      const byId = new Map(graph.nodes.map((node) => [node.id, node]));
+      const stubs = graph.nodes.filter(
+        (node) => node.type === GROUP_BOUNDARY_NODE_TYPES.ingress
+      );
+      expect(stubs.map((node) => node.id)).toEqual([ingress("before")]);
+      expect(
+        graph.edges.map((item) => [item.id, item.source, item.target])
+      ).toEqual([
+        ["before-a", ingress("before"), "a"],
+        ["before-b", ingress("before"), "b"],
+      ]);
+
+      // Along the flow the stub comes first and both entries share one rank;
+      // across it the entries sit apart and the stub is centred between them.
+      const vertical = direction === "vertical";
+      const along = (id: string) => {
+        const position = byId.get(id)?.position ?? { x: 0, y: 0 };
+        return vertical ? position.y : position.x;
+      };
+      const acrossCentre = (id: string) => {
+        const node = byId.get(id);
+        const position = node?.position ?? { x: 0, y: 0 };
+        return vertical
+          ? position.x + (node?.width ?? 0) / 2
+          : position.y + (node?.height ?? 0) / 2;
+      };
+      const acrossSize = vertical ? WORKFLOW_NODE_WIDTH : WORKFLOW_NODE_HEIGHT;
+      expect(along("a")).toBe(along("b"));
+      expect(along(ingress("before"))).toBeLessThan(along("a"));
+      expect(Math.abs(acrossCentre("a") - acrossCentre("b"))).toBeGreaterThan(
+        acrossSize
+      );
+      expect(acrossCentre(ingress("before"))).toBe(
+        (acrossCentre("a") + acrossCentre("b")) / 2
+      );
+    }
+  );
+
   it("names the Lifecycle Node through the stub's own data", () => {
     const graph = focused(NODES, [
       edge("life-a", "life", "a", "started"),
@@ -348,6 +403,89 @@ describe("focusedGroupCanvasGraph", () => {
     overviewCanvasGraph({ nodes, edges });
     expect(nodes).toEqual(NODES);
     expect(edges).toEqual(EDGES);
+  });
+});
+
+describe("storedCanvasConnection", () => {
+  const check: WorkflowNode = {
+    ...step("a/b c", { x: 0, y: 0 }),
+    data: {
+      label: "check",
+      type: "action",
+      config: { actionType: "condition" },
+    },
+  };
+  const painted = focused(
+    [...NODES, check],
+    [...EDGES, edge("check-a", "a/b c", "a", "true")]
+  ).nodes;
+
+  it("stores a drag from an ingress stub as an edge from its outside port", () => {
+    expect(
+      storedCanvasConnection(
+        {
+          source: ingress("a/b c", "true"),
+          target: "b",
+          sourceHandle: null,
+          targetHandle: null,
+        },
+        painted
+      )
+    ).toEqual({
+      connection: {
+        source: "a/b c",
+        target: "b",
+        sourceHandle: "true",
+        targetHandle: null,
+      },
+      fromIngressStub: true,
+    });
+    expect(
+      storedCanvasConnection(
+        { source: ingress("before"), target: "b", sourceHandle: null },
+        painted
+      )
+    ).toEqual({
+      connection: { source: "before", target: "b", sourceHandle: null },
+      fromIngressStub: true,
+    });
+  });
+
+  it("refuses a drag onto a stub or from a continuation stub", () => {
+    const refusal = { refusal: "Connect to a step inside the Group." };
+    expect(
+      storedCanvasConnection(
+        { source: "a", target: continuation("after"), sourceHandle: null },
+        painted
+      )
+    ).toEqual(refusal);
+    expect(
+      storedCanvasConnection(
+        { source: continuation("after"), target: "a", sourceHandle: null },
+        painted
+      )
+    ).toEqual(refusal);
+  });
+
+  it("answers any other connection as it was given", () => {
+    const connection = { source: "a", target: "b", sourceHandle: null };
+    expect(storedCanvasConnection(connection, painted)).toEqual({
+      connection,
+      fromIngressStub: false,
+    });
+  });
+
+  it("reads a node whose id looks like a stub id as that node", () => {
+    const lookalike = step(ingress("before"), { x: 0, y: 0 });
+    const connection = {
+      source: lookalike.id,
+      target: "b",
+      sourceHandle: null,
+    };
+    expect(storedCanvasConnection(connection, [lookalike, ...NODES])).toEqual({
+      connection,
+      fromIngressStub: false,
+    });
   });
 });
 

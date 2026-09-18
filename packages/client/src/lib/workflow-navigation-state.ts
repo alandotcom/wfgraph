@@ -161,7 +161,7 @@ export type NavigationGraph = {
     parentId?: string | undefined;
     data: { type: string };
   }>;
-  edges: ReadonlyArray<{ id: string }>;
+  edges: ReadonlyArray<{ id: string; target: string }>;
 };
 
 /**
@@ -799,17 +799,20 @@ export function withCamera(
 /**
  * The part of a graph one scope shows and can select. The overview holds every
  * node outside a Group frame and every edge. A Group scope holds that Group's
- * members and no edge, because the edges a focused Group paints are display
- * only.
+ * members and the stored edges entering a member, which are the interior and
+ * ingress edges a focused Group lets a person select. Continuation edges are
+ * display only there.
  */
 export function graphInScope(
   graph: NavigationGraph,
   scope: WorkspaceScope
 ): NavigationGraph {
   if (scope.kind === "group") {
+    const nodes = graph.nodes.filter((node) => node.parentId === scope.groupId);
+    const memberIds = new Set(nodes.map((node) => node.id));
     return {
-      nodes: graph.nodes.filter((node) => node.parentId === scope.groupId),
-      edges: [],
+      nodes,
+      edges: graph.edges.filter((edge) => memberIds.has(edge.target)),
     };
   }
   const groupIds = new Set(

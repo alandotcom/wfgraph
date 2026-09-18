@@ -26,16 +26,14 @@ import {
   expandEdgeRemovals,
   removeNodes,
   repairCanvasGroups,
+  storedEdgeIdsForPaintedEdge,
 } from "#src/lib/node-group";
 import { getClientLogger } from "#src/lib/logger";
 import {
   canonicalizeNodeEnabled,
   persistedNodeEnabled,
 } from "@wfgraph/shared/graph/node-enabled";
-import {
-  fanOutStoreEdgeIds,
-  orderGroupParentsFirst,
-} from "@wfgraph/shared/graph/node-group";
+import { orderGroupParentsFirst } from "@wfgraph/shared/graph/node-group";
 import { omit } from "es-toolkit/object";
 import {
   draftEditable,
@@ -62,7 +60,10 @@ import {
   selectionWithChanges,
   type SelectionChange,
 } from "#src/lib/workflow-navigation-state";
-import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
+import {
+  activeSelectionAtom,
+  activeWorkspaceAddressAtom,
+} from "#src/lib/workflow-workspace-navigation";
 import { forgetFlippedGroupCameras } from "#src/lib/workflow-group-store";
 
 export {
@@ -349,7 +350,8 @@ export const onEdgesChangeAtom = atom(
     const expandedChanges = expandEdgeRemovals(
       get(nodesStateAtom),
       currentEdges,
-      graphChanges
+      graphChanges,
+      get(activeWorkspaceAddressAtom).scope
     );
     set(edgesStateAtom, applyEdgeChanges(expandedChanges, currentEdges));
 
@@ -754,13 +756,19 @@ export const deleteSelectedItemsAtom = atom(null, (get, set) => {
   const currentNodes = get(nodesStateAtom);
   const currentEdges = get(edgesStateAtom);
   const selection = get(activeSelectionAtom);
+  const { scope } = get(activeWorkspaceAddressAtom);
 
   // `removeNodes` keeps the Lifecycle Node, which the graph needs as its
   // entrypoint, removes the selected steps, ungroups a selected frame, and
   // ungroups a frame the removal leaves holding fewer than two steps.
   const selectedFanOut = new Set(
     selection.edgeIds.flatMap((edgeId) =>
-      fanOutStoreEdgeIds(currentNodes, currentEdges, edgeId)
+      storedEdgeIdsForPaintedEdge({
+        nodes: currentNodes,
+        edges: currentEdges,
+        edgeId,
+        scope,
+      })
     )
   );
   const removal = removeNodes({

@@ -21,7 +21,12 @@ import { getConditionBranchDisplayLabel } from "@wfgraph/shared/conditions/condi
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { type NodeChange, Position } from "@xyflow/react";
 import type { WorkspaceScope } from "#src/lib/workflow-navigation-state";
-import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
+import {
+  GROUP_BOUNDARY_STUB_PORT,
+  type GroupBoundaryStubPort,
+  type WorkflowEdge,
+  type WorkflowNode,
+} from "#src/lib/workflow-graph-types";
 import {
   NODE_SPACING,
   RANK_SPACING,
@@ -75,7 +80,8 @@ const HANDLE_POSITIONS: Record<
 /**
  * The id of the stub standing for one outside port: the encoded node id, then a
  * slash and the encoded handle when the port has one. An encoded id holds no
- * slash, so no two ports share a stub id.
+ * slash, so no two ports share a stub id. The id is only a React Flow key; the
+ * port itself is read from the stub's data.
  */
 export function boundaryStubId(
   direction: StubDirection,
@@ -88,10 +94,77 @@ export function boundaryStubId(
 }
 
 /**
- * One display-only copy per stored boundary edge and role, so a recompute that
+ * The port the painted node `nodeId` stands for when it is a boundary stub, or
+ * null when it is any other node. A node counts as a stub only when its type is
+ * a stub type and its data carries the port.
+ */
+function stubPortOf(
+  nodeId: string | null,
+  paintedNodes: readonly WorkflowNode[]
+): GroupBoundaryStubPort | null {
+  if (nodeId === null) {
+    return null;
+  }
+  const node = paintedNodes.find((item) => item.id === nodeId);
+  const stubTypes: readonly (string | undefined)[] = Object.values(
+    GROUP_BOUNDARY_NODE_TYPES
+  );
+  return node && stubTypes.includes(node.type)
+    ? (node.data[GROUP_BOUNDARY_STUB_PORT] ?? null)
+    : null;
+}
+
+/**
+ * A painted connection as the store reads it. `fromIngressStub` is true when
+ * the painted source was an "Incoming from" stub, whose outside port became the
+ * source. `refusal` explains a connection involving a stub that stores nothing.
+ */
+export type StoredCanvasConnection<C> =
+  | { connection: C; fromIngressStub: boolean }
+  | { refusal: string };
+
+/**
+ * The connection a drag on the painted nodes `paintedNodes` stores. A drag from
+ * an ingress stub onto a member names the stub's outside port as its source, so
+ * it stores one more edge from the port that already enters the Group. A drag
+ * onto a stub, or from a continuation stub, is refused. Every other connection
+ * comes back as it was given.
+ */
+export function storedCanvasConnection<
+  C extends {
+    source: string | null;
+    target: string | null;
+    sourceHandle?: string | null | undefined;
+  },
+>(
+  connection: C,
+  paintedNodes: readonly WorkflowNode[]
+): StoredCanvasConnection<C> {
+  const source = stubPortOf(connection.source, paintedNodes);
+  if (
+    stubPortOf(connection.target, paintedNodes) !== null ||
+    source?.direction === "continuation"
+  ) {
+    return { refusal: "Connect to a step inside the Group." };
+  }
+  if (source === null) {
+    return { connection, fromIngressStub: false };
+  }
+  return {
+    connection: {
+      ...connection,
+      source: source.port.nodeId,
+      sourceHandle: source.port.handle,
+    },
+    fromIngressStub: true,
+  };
+}
+
+/**
+ * One painted copy per stored boundary edge and role, so a recompute that
  * changed nothing hands React Flow the edge objects it already holds.
  */
-const displayOnlyEdges: Record<
+const paintedBoundaryEdges: Record<
   StubDirection,
   WeakMap<WorkflowEdge, WorkflowEdge>
 > = {
@@ -101,28 +174,23 @@ const displayOnlyEdges: Record<
 
 /**
  * The edge a focused Group paints for a stored edge. An interior edge is the
- * stored edge itself, so it can be selected and deleted on the focused canvas.
- * A boundary edge is display only: its outside end moves onto the stub for its
- * outside port, which draws one handle with no id, and an ingress edge keeps the
- * branch label its outside source handle gave it.
+ * stored edge itself. An ingress edge keeps the stored id, so selecting or
+ * deleting it names that one stored edge; its outside end moves onto the stub
+ * for its outside port, and it keeps the branch label that port's handle gives
+ * it. A continuation edge moves onto its stub and is display only. A stub draws
+ * one handle with no id.
  */
 function focusedEdge(edge: WorkflowEdge, role: EdgeRole): WorkflowEdge {
   if (role === "interior") {
     return edge;
   }
-  const cached = displayOnlyEdges[role].get(edge);
+  const cached = paintedBoundaryEdges[role].get(edge);
   if (cached) {
     return cached;
   }
-  const locked = {
-    ...edge,
-    selectable: false,
-    deletable: false,
-    focusable: false,
-  };
-  let painted: WorkflowEdge = locked;
+  let painted: WorkflowEdge;
   if (role === "ingress") {
-    const { sourceHandle, ...rest } = locked;
+    const { sourceHandle, ...rest } = edge;
     const displayLabel =
       getConditionBranchDisplayLabel(sourceHandle) ?? edge.data?.displayLabel;
     painted = {
@@ -133,17 +201,20 @@ function focusedEdge(edge: WorkflowEdge, role: EdgeRole): WorkflowEdge {
       }),
       data: omitUndefined({ ...edge.data, displayLabel }),
     };
-  } else if (role === "continuation") {
-    const { targetHandle, ...rest } = locked;
+  } else {
+    const { targetHandle, ...rest } = edge;
     painted = {
       ...rest,
+      selectable: false,
+      deletable: false,
+      focusable: false,
       target: boundaryStubId("continuation", {
         nodeId: edge.target,
         handle: targetHandle ?? null,
       }),
     };
   }
-  displayOnlyEdges[role].set(edge, painted);
+  paintedBoundaryEdges[role].set(edge, painted);
   return painted;
 }
 
@@ -256,15 +327,27 @@ function boundaryStub(input: {
     measured: size,
     selectable: false,
     draggable: false,
-    connectable: false,
     deletable: false,
     focusable: false,
-    data: omitUndefined({
-      label: outside.data.label,
-      type: outside.data.type,
-      config: outside.data.config,
-    }),
+    data: {
+      ...omitUndefined({
+        label: outside.data.label,
+        type: outside.data.type,
+        config: outside.data.config,
+      }),
+      [GROUP_BOUNDARY_STUB_PORT]: {
+        direction: input.direction,
+        port: input.port,
+      },
+    },
   };
+  // An ingress stub leaves `connectable` unset, so it follows the canvas's
+  // `nodesConnectable`, and a drag from it onto a member adds one more edge from
+  // the outside port it stands for (see `storedCanvasConnection`). A
+  // continuation stub is never connectable.
+  if (input.direction === "continuation") {
+    stub.connectable = false;
+  }
   cache.set(id, stub);
   return stub;
 }
@@ -275,7 +358,8 @@ const projectedMembers = new WeakMap<WorkflowNode, WorkflowNode>();
  * A member drawn as a full card with no parent, at `position`, keeping the
  * member's id so a selection or a connection on it names the stored member. It
  * cannot be dragged, because the layout comes from topology and the focused
- * canvas never writes a coordinate back. It can be connected to another member.
+ * canvas never writes a coordinate back. It leaves `connectable` unset, so it
+ * connects to another member exactly when the canvas's `nodesConnectable` allows.
  * The copy is kept while the member, its position and its handle sides hold.
  */
 function projectedMember(
@@ -292,14 +376,18 @@ function projectedMember(
   ) {
     return cached;
   }
-  const { parentId: _parentId, extent: _extent, ...rest } = member;
+  const {
+    parentId: _parentId,
+    extent: _extent,
+    connectable: _connectable,
+    ...rest
+  } = member;
   const projected: WorkflowNode = {
     ...rest,
     ...CARD_SIZE,
     ...handles,
     measured: CARD_SIZE,
     draggable: false,
-    connectable: true,
     position,
   };
   projectedMembers.set(member, projected);

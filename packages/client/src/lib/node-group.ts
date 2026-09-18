@@ -31,6 +31,7 @@ import {
   type GroupMemberSlot,
 } from "@wfgraph/shared/graph/node-group";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
+import type { WorkspaceScope } from "#src/lib/workflow-navigation-state";
 import {
   GROUP_CHILD_HEIGHT,
   GROUP_CHILD_WIDTH,
@@ -219,17 +220,48 @@ export function canUngroup(node: WorkflowNode | undefined): boolean {
   return Boolean(node && (isGroupNode(node) || node.parentId));
 }
 
+/**
+ * The stored edge ids that deleting the painted edge `edgeId` removes. On the
+ * overview, a painted edge on a collapsed card stands for every stored edge
+ * `fanOutStoreEdgeIds` collapses onto it. A focused Group paints each stored
+ * edge under its own id, so there the painted edge is that one stored edge.
+ * Empty when no stored edge has the id.
+ */
+export function storedEdgeIdsForPaintedEdge(input: {
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+  edgeId: string;
+  scope: WorkspaceScope;
+}): string[] {
+  if (input.scope.kind === "group") {
+    return input.edges.some((edge) => edge.id === input.edgeId)
+      ? [input.edgeId]
+      : [];
+  }
+  return fanOutStoreEdgeIds(input.nodes, input.edges, input.edgeId);
+}
+
+/**
+ * `changes` with each removal replaced by removals of the stored edges
+ * `storedEdgeIdsForPaintedEdge` says it stands for in `scope`.
+ */
 export function expandEdgeRemovals(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
-  changes: EdgeChange[]
+  changes: EdgeChange[],
+  scope: WorkspaceScope
 ): EdgeChange[] {
   const removedIds = new Set<string>();
   for (const change of changes) {
     if (change.type !== "remove") {
       continue;
     }
-    for (const id of fanOutStoreEdgeIds(nodes, edges, change.id)) {
+    for (const id of storedEdgeIdsForPaintedEdge({
+      nodes,
+      edges,
+      edgeId: change.id,
+      scope,
+    })) {
       removedIds.add(id);
     }
   }
@@ -323,12 +355,12 @@ function ungroupFrames(input: {
 }
 
 /**
- * Frees each member of a dissolved frame as a full-size card, draggable and
- * connectable, with no parent constraint. It lands where the focused Group
- * canvas draws it, moved so the Group's slots are centred on the collapsed
- * card's centre line and its first row starts at the card's top, along the
- * frame's stored layout direction. The layout of
- * each frame is computed once, from `nodes` and `edges` as they were given.
+ * Frees each member of a dissolved frame as a full-size draggable card with no
+ * parent constraint, connectable whenever the canvas allows connecting. It
+ * lands where the focused Group canvas draws it, moved so the Group's slots are
+ * centred on the collapsed card's centre line and its first row starts at the
+ * card's top, along the frame's stored layout direction. The layout of each
+ * frame is computed once, from `nodes` and `edges` as they were given.
  */
 function memberReleaser(graph: {
   nodes: readonly WorkflowNode[];
@@ -357,11 +389,15 @@ function memberReleaser(graph: {
       x: -WORKFLOW_NODE_WIDTH / 2,
       y: 0,
     };
-    const { extent: _extent, parentId: _parentId, ...rest } = member;
+    const {
+      extent: _extent,
+      parentId: _parentId,
+      connectable: _connectable,
+      ...rest
+    } = member;
     return {
       ...rest,
       draggable: true,
-      connectable: true,
       width: WORKFLOW_NODE_WIDTH,
       height: WORKFLOW_NODE_HEIGHT,
       position: {

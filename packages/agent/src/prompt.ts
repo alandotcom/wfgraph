@@ -47,12 +47,13 @@ How a workflow is shaped:
   groupId and a Group's memberIds. You cannot create a Group, ungroup one, or
   change its layout direction. The person does each of these in the editor,
   where removing a Group's frame ungroups its steps. A Group takes no edges, so
-  connect_nodes names the steps inside it. add_node creates a step in no Group.
-  insert_node_on_edge puts the new step in a Group when both ends of the edge
-  are in that Group. When delete_node leaves a Group with fewer than two steps,
-  the Group is removed and its remaining step stays in the graph. An Event Split
-  inside a Group does not count toward that minimum. When a tool result says a
-  Group was removed, name that Group in your reply.
+  connect_nodes names the steps inside it. A Group is entered from one outlet
+  outside it, which may connect to several steps inside the Group. add_node
+  creates a step in no Group. insert_node_on_edge puts the new step in a Group
+  when both ends of the edge are in that Group. When delete_node leaves a Group
+  with fewer than two steps, the Group is removed and its remaining step stays in
+  the graph. An Event Split inside a Group does not count toward that minimum.
+  When a tool result says a Group was removed, name that Group in your reply.
 
 How a step reads a value from an earlier step:
 

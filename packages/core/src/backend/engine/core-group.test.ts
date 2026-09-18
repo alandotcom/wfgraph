@@ -1,8 +1,8 @@
 /**
- * A Group is organizational, so grouping a linear sequence must leave every run
- * of the workflow unchanged. These cases run the same chain, holding a lookup, a
- * side-effecting action and a Wait, ungrouped and inside a Group laid out in
- * each direction, and compare what the engine dispatched and recorded.
+ * A Group is organizational, so grouping steps must leave every run of the
+ * workflow unchanged. These cases run a linear chain and a fan-out from one
+ * outside outlet, ungrouped and inside a Group laid out in each direction, and
+ * compare what the engine dispatched and recorded.
  */
 
 import { Effect } from "effect";
@@ -49,8 +49,12 @@ const EDGES: WorkflowEdge[] = [
 
 const MEMBER_IDS = new Set(["read", "send", "wait"]);
 
-/** The same nodes and edges with `read`, `send` and `wait` inside one Group. */
-function grouped(direction: GroupLayoutDirection): WorkflowNode[] {
+/** `nodes` with `memberIds` inside one Group laid out along `direction`. */
+function grouped(
+  direction: GroupLayoutDirection,
+  nodes: readonly WorkflowNode[] = NODES,
+  memberIds: ReadonlySet<string> = MEMBER_IDS
+): WorkflowNode[] {
   return [
     {
       id: "group",
@@ -58,8 +62,8 @@ function grouped(direction: GroupLayoutDirection): WorkflowNode[] {
       position: { x: 0, y: 0 },
       data: { label: "Outreach", type: "group", config: { direction } },
     },
-    ...NODES.map((node) =>
-      MEMBER_IDS.has(node.id) ? { ...node, parentId: "group" } : node
+    ...nodes.map((node) =>
+      memberIds.has(node.id) ? { ...node, parentId: "group" } : node
     ),
   ];
 }
@@ -92,13 +96,13 @@ function recordingActions() {
   return { actions, dispatched };
 }
 
-async function run(nodes: WorkflowNode[]) {
+async function run(nodes: WorkflowNode[], edges: WorkflowEdge[] = EDGES) {
   const store = createRecordingWorkflowStore();
   const runtime = createInMemoryWorkflowRuntime();
   const { actions, dispatched } = recordingActions();
   const result = await executeTestWorkflow(
     {
-      graph: createSerializedWorkflowGraph({ nodes, edges: EDGES }),
+      graph: createSerializedWorkflowGraph({ nodes, edges }),
       executionId: "exec_group",
       workflowId: "workflow_group",
     },
@@ -154,6 +158,195 @@ describe("a Group around a linear sequence", () => {
       ]);
       expect(Object.keys(before.results).sort()).toEqual(
         ["after", "life", "read", "send", "wait"].sort()
+      );
+      expect(after).toEqual(before);
+    }
+  );
+});
+
+/**
+ * A Condition `gate` whose True outlet fans out onto the lookups `read` and
+ * `profile` and whose False outlet reaches `fallback`. `read` feeds `send`,
+ * which continues to `after`, and `profile` ends its path. `gate` reads the
+ * literal `open`.
+ */
+function fanOut(open: boolean): {
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+} {
+  const condition = BUILT_IN_ACTION_IDS.condition;
+  return {
+    nodes: [
+      createLifecycleNode("life"),
+      step("gate", { actionType: condition, condition: open }),
+      step("read", { actionType: "test/read", customerId: "cus_1" }),
+      step("profile", { actionType: "test/read", customerId: "cus_3" }),
+      step("send", { actionType: "test/send", to: "{{@read:read.email}}" }),
+      step("after", { actionType: "test/read", customerId: "cus_2" }),
+      step("fallback", { actionType: "test/send", to: "ops@example.com" }),
+    ],
+    edges: [
+      {
+        id: "life-gate",
+        source: "life",
+        target: "gate",
+        sourceHandle: "started",
+      },
+      { id: "gate-read", source: "gate", target: "read", sourceHandle: "true" },
+      {
+        id: "gate-profile",
+        source: "gate",
+        target: "profile",
+        sourceHandle: "true",
+      },
+      {
+        id: "gate-fallback",
+        source: "gate",
+        target: "fallback",
+        sourceHandle: "false",
+      },
+      { id: "read-send", source: "read", target: "send" },
+      { id: "send-after", source: "send", target: "after" },
+    ],
+  };
+}
+
+const FAN_OUT_MEMBER_IDS = new Set(["read", "profile", "send"]);
+
+describe("a Group around a fan-out from one outside outlet", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-19T15:00:00.000Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("is a Group the editor may create and Publish accepts", () => {
+    const { nodes, edges } = fanOut(true);
+    expect(
+      analyzeGroupableSelection({
+        nodes,
+        edges,
+        selectedIds: FAN_OUT_MEMBER_IDS,
+      })
+    ).toEqual({ ok: true, memberIds: ["read", "profile", "send"] });
+    expect(
+      groupContractViolations({
+        nodes: grouped("vertical", nodes, FAN_OUT_MEMBER_IDS),
+        edges,
+      })
+    ).toEqual([]);
+  });
+
+  it.each([
+    { open: true, direction: "vertical" },
+    { open: true, direction: "horizontal" },
+    { open: false, direction: "vertical" },
+    { open: false, direction: "horizontal" },
+  ] as const)(
+    "releases the same children with the gate open $open in a $direction Group",
+    async ({ open, direction }) => {
+      const { nodes, edges } = fanOut(open);
+      const before = await run(nodes, edges);
+      const after = await run(
+        grouped(direction, nodes, FAN_OUT_MEMBER_IDS),
+        edges
+      );
+
+      expect(before.success).toBe(true);
+      const released = Object.keys(before.results).sort();
+      expect(released).toEqual(
+        open
+          ? ["after", "gate", "life", "profile", "read", "send"]
+          : ["fallback", "gate", "life"]
+      );
+      expect(Object.keys(after.results).sort()).toEqual(released);
+      expect(after).toEqual(before);
+    }
+  );
+});
+
+/**
+ * `qualify` fans out onto the lookups `read` and `profile`, which join at
+ * `merge`, and `merge` continues to `after`. `merge` reads both lookups.
+ */
+function joiningFanOut(): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } {
+  return {
+    nodes: [
+      createLifecycleNode("life"),
+      step("qualify", { actionType: "test/read", customerId: "cus_0" }),
+      step("read", { actionType: "test/read", customerId: "cus_1" }),
+      step("profile", { actionType: "test/read", customerId: "cus_3" }),
+      step("merge", {
+        actionType: "test/send",
+        to: "{{@read:read.email}}",
+        cc: "{{@profile:profile.email}}",
+      }),
+      step("after", { actionType: "test/read", customerId: "cus_2" }),
+    ],
+    edges: [
+      {
+        id: "life-qualify",
+        source: "life",
+        target: "qualify",
+        sourceHandle: "started",
+      },
+      { id: "qualify-read", source: "qualify", target: "read" },
+      { id: "qualify-profile", source: "qualify", target: "profile" },
+      { id: "read-merge", source: "read", target: "merge" },
+      { id: "profile-merge", source: "profile", target: "merge" },
+      { id: "merge-after", source: "merge", target: "after" },
+    ],
+  };
+}
+
+const JOINING_MEMBER_IDS = new Set(["read", "profile", "merge"]);
+
+describe("a Group around a fan-out that joins inside it", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-19T15:00:00.000Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("is a Group the editor may create and Publish accepts", () => {
+    const { nodes, edges } = joiningFanOut();
+    expect(
+      analyzeGroupableSelection({
+        nodes,
+        edges,
+        selectedIds: JOINING_MEMBER_IDS,
+      })
+    ).toMatchObject({ ok: true });
+    expect(
+      groupContractViolations({
+        nodes: grouped("vertical", nodes, JOINING_MEMBER_IDS),
+        edges,
+      })
+    ).toEqual([]);
+  });
+
+  it.each(["vertical", "horizontal"] as const)(
+    "runs the join identically when grouped with a %s layout",
+    async (direction) => {
+      const { nodes, edges } = joiningFanOut();
+      const before = await run(nodes, edges);
+      const after = await run(
+        grouped(direction, nodes, JOINING_MEMBER_IDS),
+        edges
+      );
+
+      expect(before.success).toBe(true);
+      expect(Object.keys(before.results).sort()).toEqual(
+        ["after", "life", "merge", "profile", "qualify", "read"].sort()
+      );
+      expect(before.dispatched.map((call) => call.actionType)).toContain(
+        "test/send"
       );
       expect(after).toEqual(before);
     }

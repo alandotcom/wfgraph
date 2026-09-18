@@ -2,12 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { createStore as createJotaiStore } from "jotai";
 import { createStore } from "jotai";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
-import {
-  fanOutStoreEdges,
-  orderGroupParentsFirst,
-} from "@wfgraph/shared/graph/node-group";
-import { connectionRefusalReason } from "#src/components/workflow/connection-validation";
-import { normalizeSourceHandleForConnection } from "#src/components/workflow/connection-handle";
+import { orderGroupParentsFirst } from "@wfgraph/shared/graph/node-group";
+import { planConnection } from "#src/components/workflow/connection-validation";
 import { groupOutletHandlesAtom } from "#src/lib/workflow-graph-presentation-store";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
@@ -261,7 +257,11 @@ describe("graph mutations are undoable and persisted", () => {
     ["addNode", (store) => store.set(addNodeAtom, actionNode("new"))],
     [
       "connectNodes",
-      (store) => store.set(connectNodesAtom, edge("e9", "a", "b")),
+      (store) =>
+        store.set(connectNodesAtom, {
+          connection: edge("e9", "a", "b"),
+          catalog: emptyCatalog,
+        }),
     ],
     [
       "applyNodeLayout",
@@ -400,7 +400,10 @@ describe("graph history", () => {
   it("undoes a connection", () => {
     const store = createGraphStore(...standardGraph());
 
-    store.set(connectNodesAtom, edge("e9", "a", "b"));
+    store.set(connectNodesAtom, {
+      connection: edge("e9", "a", "b"),
+      catalog: emptyCatalog,
+    });
     expect(store.get(edgesAtom)).toHaveLength(2);
 
     store.set(undoAtom);
@@ -525,18 +528,28 @@ describe("multi-exit Group outlet", () => {
   }
 
   it("connects the visible outlet from every lookup exit", () => {
-    const store = createGraphStore([
-      multiExitGroupNode("g"),
-      groupedLookup("a"),
-      groupedLookup("b"),
-      actionNode("next"),
-    ]);
+    // The Lifecycle Node reaches both exits, so the join they form at `next`
+    // is one the draft save accepts.
+    const store = createGraphStore(
+      [
+        lifecycleNode("t"),
+        multiExitGroupNode("g"),
+        groupedLookup("a"),
+        groupedLookup("b"),
+        actionNode("next"),
+      ],
+      [edge("t-a", "t", "a"), edge("t-b", "t", "b")]
+    );
 
-    store.set(connectNodesAtom, edge("new-a", "g", "next"));
+    store.set(connectNodesAtom, {
+      connection: edge("new-a", "g", "next"),
+      catalog: emptyCatalog,
+    });
 
     expect(
       store
         .get(edgesAtom)
+        .filter((item) => item.target === "next")
         .map((item) => `${item.source}->${item.target}`)
         .sort()
     ).toEqual(["a->next", "b->next"]);
@@ -586,42 +599,26 @@ describe("multi-exit Group outlet", () => {
         targetHandle: null,
       };
 
-      expect(
-        connectionRefusalReason({
-          connection,
-          nodes,
-          storeEdges,
-          catalog: emptyCatalog,
-        })
-      ).toBeNull();
-      const sourceHandle = normalizeSourceHandleForConnection({
+      const plan = planConnection({
+        connection,
         nodes,
-        edges: storeEdges,
-        sourceNodeId: "g",
-        sourceHandle: draggedHandle,
+        storeEdges,
         catalog: emptyCatalog,
       });
-      // The lookup's edge is the first continuation, and it names no handle.
-      expect(sourceHandle).toBe(draggedHandle);
-      const validated = fanOutStoreEdges({
-        nodes,
-        edges: storeEdges,
-        sourceId: "g",
-        targetId: "z",
-        sourceHandle,
-      });
+      if ("refusal" in plan) {
+        throw new Error(plan.refusal);
+      }
 
-      store.set(connectNodesAtom, { id: "new", ...connection, sourceHandle });
+      store.set(connectNodesAtom, {
+        connection: { id: "new", ...connection },
+        catalog: emptyCatalog,
+      });
 
       const saved = store
         .get(edgesAtom)
         .filter((item) => item.target === "z")
-        .map((item) => ({
-          source: item.source,
-          target: item.target,
-          sourceHandle: item.sourceHandle,
-        }));
-      expect(saved).toEqual(validated);
+        .map(({ id: _id, ...addition }) => addition);
+      expect(saved).toEqual(plan.additions);
       expect(saved.map((item) => item.source)).toEqual(["b", "c"]);
     }
   );
