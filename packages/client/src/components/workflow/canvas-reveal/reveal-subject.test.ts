@@ -7,6 +7,7 @@ import {
   isOrdinaryStep,
   matchChangesSubject,
   matchConditionSubject,
+  matchLifecycleSubject,
   matchPanelSubject,
   matchRunsSubject,
   matchStepSubject,
@@ -27,7 +28,13 @@ function action(id: string, actionType?: string): WorkflowNode {
   };
 }
 
-const nodes = [
+const nodes: WorkflowNode[] = [
+  {
+    id: "lifecycle",
+    type: "lifecycle",
+    position: { x: 0, y: 0 },
+    data: { label: "Lifecycle", type: "lifecycle", config: {} },
+  },
   action("send", "resend/send-email"),
   action("wait", BUILT_IN_ACTION_IDS.wait),
   action("blank"),
@@ -48,8 +55,9 @@ const input = (
 });
 
 describe("isOrdinaryStep", () => {
-  it("accepts Actions and Waits and refuses Conditions and Event Splits", () => {
+  it("accepts Actions and Waits and refuses the Lifecycle Node, Conditions, and Event Splits", () => {
     expect(nodes.map((node) => [node.id, isOrdinaryStep(node)])).toEqual([
+      ["lifecycle", false],
       ["send", true],
       ["wait", true],
       ["blank", true],
@@ -99,6 +107,27 @@ describe("matchConditionSubject", () => {
     ).toBeNull();
     expect(matchConditionSubject(input("runs", ["condition"]))).toBeNull();
     expect(matchConditionSubject(input("changes", ["condition"]))).toBeNull();
+  });
+});
+
+describe("matchLifecycleSubject", () => {
+  it("matches the Draft Lifecycle Node alone, with Focus", () => {
+    expect(matchLifecycleSubject(input("draft", ["lifecycle"]))).toEqual({
+      kind: "lifecycle",
+      workspace: "draft",
+      key: "node:lifecycle",
+      nodeId: "lifecycle",
+      placement: { kind: "nodes", nodeIds: ["lifecycle"] },
+      levels: ["browse", "focus"],
+    });
+  });
+
+  it("refuses a step, several objects, and other workspaces", () => {
+    expect(matchLifecycleSubject(input("draft", ["send"]))).toBeNull();
+    expect(
+      matchLifecycleSubject(input("draft", ["lifecycle", "send"]))
+    ).toBeNull();
+    expect(matchLifecycleSubject(input("runs", ["lifecycle"]))).toBeNull();
   });
 });
 

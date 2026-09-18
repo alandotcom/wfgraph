@@ -135,8 +135,10 @@ describe("LifecyclePanel Connection picker", () => {
   it("offers a Connection only for an integration-owned Event", () => {
     const view = renderPanel({});
 
-    expect(view.getByText("Appointment created")).toBeTruthy();
-    expect(view.getByText("Email delivered")).toBeTruthy();
+    expect(
+      view.getByRole("heading", { name: "Appointment created" })
+    ).toBeTruthy();
+    expect(view.getByRole("heading", { name: "Email delivered" })).toBeTruthy();
     expect(
       view.getByRole("combobox", { name: "Resend connection" })
     ).toBeTruthy();
@@ -238,7 +240,7 @@ describe("LifecyclePanel Connection picker", () => {
       connections: [resendConnection],
     });
 
-    expect(view.getByText("Email delivered")).toBeTruthy();
+    expect(view.getByRole("heading", { name: "Email delivered" })).toBeTruthy();
     expect(view.getByText("Resend API Key")).toBeTruthy();
     expect(view.getByText("Webhook URL")).toBeTruthy();
     expect(

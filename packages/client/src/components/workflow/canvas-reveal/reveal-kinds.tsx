@@ -31,6 +31,9 @@ import type { createStore } from "jotai";
 import { ChangesBrowse, ChangesHeader } from "./changes-browse";
 import { comparisonRevealContextAtom } from "./changes-summary";
 import { ConditionBrowse, ConditionFocus } from "./condition-reveal";
+import { LifecycleBrowse } from "./lifecycle-browse";
+import { LifecycleFocus } from "./lifecycle-focus";
+import type { RevealFocusWidth } from "./reveal-geometry";
 import {
   RevealHeader,
   type RevealHeaderControls,
@@ -39,6 +42,7 @@ import {
 import {
   matchChangesSubject,
   matchConditionSubject,
+  matchLifecycleSubject,
   matchPanelSubject,
   matchRunsSubject,
   matchStepSubject,
@@ -57,6 +61,11 @@ export type RevealBodyProps = {
    * config key, or the `headingId` of a section.
    */
   openFocus: (targetId?: string) => void;
+  /**
+   * Scroll the body to its top without recording a scroll, for a body that
+   * replaces what it shows after a navigation write already reset its scroll.
+   */
+  scrollToTop: () => void;
 };
 
 /** The graph state the shell reads for a header it builds from a model. */
@@ -124,6 +133,8 @@ export type RevealKind = {
    * A kind that sets it false scrolls inside its own body.
    */
   shellOwnsScroll: boolean;
+  /** How wide Focus is. */
+  focusWidth: RevealFocusWidth;
 };
 
 /** The React Flow node element of `nodeId` inside the canvas area. */
@@ -136,6 +147,21 @@ function canvasNodeElement(
     : area.querySelector<HTMLElement>(
         `.react-flow__node[data-id="${CSS.escape(subject.nodeId)}"]`
       );
+}
+
+/** Ready with no issues, and otherwise the count in the tone of the worst one. */
+function issueStatus(
+  issues: readonly { severity: "blocking" | "warning" }[]
+): RevealHeaderModel["status"] {
+  if (issues.length === 0) {
+    return { text: "Ready", tone: "muted" };
+  }
+  return {
+    text: `${issues.length} ${issues.length === 1 ? "issue" : "issues"}`,
+    tone: issues.some((issue) => issue.severity === "blocking")
+      ? "destructive"
+      : "warning",
+  };
 }
 
 function stepHeaderModel(
@@ -163,15 +189,27 @@ function stepHeaderModel(
       groupLabel,
       title,
     ]),
-    status:
-      issues.length === 0
-        ? { text: "Ready", tone: "muted" }
-        : {
-            text: `${issues.length} ${issues.length === 1 ? "issue" : "issues"}`,
-            tone: issues.some((issue) => issue.severity === "blocking")
-              ? "destructive"
-              : "warning",
-          },
+    status: issueStatus(issues),
+    showsBack: true,
+  };
+}
+
+function lifecycleHeaderModel(
+  subject: RevealSubject,
+  context: RevealHeaderContext
+): RevealHeaderModel {
+  const node = context.nodes.find((item) => item.id === subject.nodeId);
+  const title =
+    node && !isBlank(node.data.label) ? node.data.label : "Lifecycle";
+  return {
+    workspaceLabel: "Draft",
+    title,
+    path: [context.workflowName || "Untitled workflow", title],
+    status: node
+      ? issueStatus(
+          context.issues.filter((issue) => issue.nodeId === subject.nodeId)
+        )
+      : null,
     showsBack: true,
   };
 }
@@ -234,6 +272,7 @@ const STEP_KIND: RevealKind = {
   Focus: StepFocus,
   focusReturnTarget: canvasNodeElement,
   shellOwnsScroll: true,
+  focusWidth: "standard",
 };
 
 /**
@@ -249,6 +288,23 @@ const CONDITION_KIND: RevealKind = {
   Focus: ConditionFocus,
   focusReturnTarget: canvasNodeElement,
   shellOwnsScroll: true,
+  focusWidth: "standard",
+};
+
+/**
+ * The Draft Lifecycle Node: its policy summary in Browse and the sectioned
+ * policy editor in a wide Focus, which still leaves room to place the node.
+ */
+const LIFECYCLE_KIND: RevealKind = {
+  id: "lifecycle",
+  match: matchLifecycleSubject,
+  regionLabel: "Lifecycle inspector",
+  header: { owner: "shell", model: lifecycleHeaderModel },
+  Browse: LifecycleBrowse,
+  Focus: LifecycleFocus,
+  focusReturnTarget: canvasNodeElement,
+  shellOwnsScroll: true,
+  focusWidth: "wide",
 };
 
 /**
@@ -265,6 +321,7 @@ const RUNS_KIND: RevealKind = {
   unwind: unwindRuns,
   focusReturnTarget: canvasNodeElement,
   shellOwnsScroll: false,
+  focusWidth: "standard",
 };
 
 /**
@@ -282,6 +339,7 @@ const CHANGES_KIND: RevealKind = {
   unwind: unwindChanges,
   focusReturnTarget: canvasNodeElement,
   shellOwnsScroll: false,
+  focusWidth: "standard",
 };
 
 /**
@@ -297,12 +355,14 @@ const PANEL_KIND: RevealKind = {
   Focus: null,
   focusReturnTarget: canvasNodeElement,
   shellOwnsScroll: false,
+  focusWidth: "standard",
 };
 
 /** Every kind, in the order a selection is matched against them. */
 const REVEAL_KINDS: readonly RevealKind[] = [
   STEP_KIND,
   CONDITION_KIND,
+  LIFECYCLE_KIND,
   RUNS_KIND,
   CHANGES_KIND,
   PANEL_KIND,
@@ -311,6 +371,7 @@ const REVEAL_KINDS: readonly RevealKind[] = [
 const REVEAL_KINDS_BY_ID: Readonly<Record<RevealKindId, RevealKind>> = {
   step: STEP_KIND,
   condition: CONDITION_KIND,
+  lifecycle: LIFECYCLE_KIND,
   runs: RUNS_KIND,
   changes: CHANGES_KIND,
   panel: PANEL_KIND,

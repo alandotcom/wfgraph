@@ -82,7 +82,8 @@ function DeleteStepButton({
  * The control row of one node, shown only to a person who may update the
  * workflow: the enable toggle for a step, Ungroup for a Group or a Group
  * member, and a confirmed delete. A Group's delete removes the frame with every
- * step inside it, since Ungroup is how the frame alone is removed.
+ * step inside it, since Ungroup is how the frame alone is removed. The
+ * Lifecycle Node is the workflow's entry and cannot be deleted, so it has none.
  */
 export function NodeControls({
   node,
@@ -96,7 +97,10 @@ export function NodeControls({
 }) {
   const ungroupNode = useSetAtom(ungroupNodeAtom);
   const deleteGroupWithMembers = useSetAtom(deleteGroupWithMembersAtom);
-  if (!can(WfGraphOperations.workflowUpdate.id)) {
+  if (
+    !can(WfGraphOperations.workflowUpdate.id) ||
+    node.data.type === "lifecycle"
+  ) {
     return null;
   }
   return (

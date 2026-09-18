@@ -20,7 +20,7 @@ export function useRevealCanvasWidth(): number {
  */
 export function useRevealOccupiedWidth(): number {
   const isMobile = useIsMobile();
-  const { level } = useAtomValue(canvasRevealAtom);
+  const { level, focusWidth } = useAtomValue(canvasRevealAtom);
   const canvasWidth = useRevealCanvasWidth();
-  return isMobile ? 0 : revealOccupiedWidth(level, canvasWidth);
+  return isMobile ? 0 : revealOccupiedWidth(level, canvasWidth, focusWidth);
 }

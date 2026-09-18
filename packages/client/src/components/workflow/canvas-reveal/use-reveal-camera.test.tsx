@@ -418,6 +418,31 @@ describe("useRevealCamera", () => {
     expect(camera.moves[0]?.zoom).toBeCloseTo(784 / 1200);
   });
 
+  it("keeps the Lifecycle Node beside its wide Focus", async () => {
+    const lifecycle: WorkflowNode = {
+      id: "lifecycle",
+      type: "lifecycle",
+      position: { x: 400, y: 300 },
+      width: 200,
+      height: 80,
+      data: { label: "Lifecycle", type: "lifecycle", config: {} },
+    };
+    const camera = renderCamera({ nodes: [lifecycle], edges: [] });
+    await camera.settle();
+    await camera.run(() => camera.store.set(selectOnlyNodeAtom, "lifecycle"));
+    expect(camera.moves).toEqual([]);
+
+    await camera.run(() =>
+      camera.store.set(showCanvasRevealLevelAtom, "focus")
+    );
+    // A wide Focus on a 1200px canvas is 840px, so the usable canvas ends at
+    // 352px. That leaves no room for 64px of context, so the node moves the
+    // least distance that keeps its right edge 24px inside the usable canvas.
+    expect(camera.moves).toHaveLength(1);
+    expect(camera.moves[0]).toMatchObject({ zoom: 1 });
+    expect(600 + (camera.moves[0]?.x ?? 0)).toBeCloseTo(352 - 24);
+  });
+
   it("answers a placement request once its address is shown", async () => {
     const camera = renderCamera();
     await camera.settle();

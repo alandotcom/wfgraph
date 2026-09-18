@@ -48,6 +48,12 @@ export function useInspectorScroll(
    * other than the person scrolled it, such as focusing a field.
    */
   adoptScroll: () => void;
+  /**
+   * Scroll the body to its top, for a body whose navigation state already
+   * holds a top scroll, such as a sectioned inspector showing another section.
+   * It writes nothing to that state.
+   */
+  scrollToTop: () => void;
 } {
   const store = useStore();
   const ref = useRef<HTMLDivElement>(null);
@@ -107,6 +113,12 @@ export function useInspectorScroll(
     adoptScroll: () => {
       readScroll();
       record();
+    },
+    scrollToTop: () => {
+      if (ref.current) {
+        ref.current.scrollTop = 0;
+      }
+      readScroll();
     },
   };
 }

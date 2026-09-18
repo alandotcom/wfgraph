@@ -139,9 +139,10 @@ describe("LifecyclePanel display", () => {
   it("shows the selected overlap outcome and keeps alternatives and manual-run details in help", () => {
     const view = renderPanel();
 
+    // The policy summary above the editor states the same outcome.
     expect(
-      view.getByText(/End matching active runs, then start the new run/)
-    ).toBeTruthy();
+      view.getAllByText(/End matching active runs, then start the new run/)
+    ).toHaveLength(2);
     expect(view.queryByText(/Each event starts a separate run/)).toBeNull();
     expect(view.queryByText(/The editor and execute API/)).toBeNull();
 

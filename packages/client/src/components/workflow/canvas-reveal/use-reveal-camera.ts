@@ -159,7 +159,11 @@ export function useRevealCamera(input: {
       ? null
       : usableCanvasRect({
           canvas: size,
-          revealOccupiedWidth: revealOccupiedWidth(state.level, width),
+          revealOccupiedWidth: revealOccupiedWidth(
+            state.level,
+            width,
+            state.focusWidth
+          ),
           obstacles: measureObstacles(element),
         });
     const target = usable

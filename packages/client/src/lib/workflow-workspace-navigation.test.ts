@@ -37,6 +37,8 @@ import {
   activeWorkspaceAddressAtom,
   chooseDesktopRevealLevelAtom,
   recordInspectorScrollAtom,
+  openInspectorSectionAtom,
+  recordInspectorSectionAtom,
   setWorkspaceRevealLevelAtom,
   activeWorkspaceCamerasAtom,
   forgetWorkflowNavigationAtom,
@@ -363,6 +365,57 @@ describe("desktop Reveal level", () => {
     expect(store.get(activeRevealPresentationAtom)).toMatchObject({
       inspected: { kind: "node", id: "draft_step" },
       inspectorScroll: { browse: 0, focus: 240 },
+    });
+  });
+
+  it("keeps each scope's inspector section apart and drops one for another object", () => {
+    const store = draftStore();
+    store.set(selectOnlyNodeAtom, "draft_step");
+    const draft = store.get(activeWorkspaceAddressAtom);
+    store.set(recordInspectorSectionAtom, {
+      address: draft,
+      inspectedId: "draft_step",
+      section: "validation",
+    });
+    store.set(recordInspectorSectionAtom, {
+      address: draft,
+      inspectedId: "child_step",
+      section: "connections",
+    });
+    expect(store.get(activeRevealPresentationAtom).inspectorSection).toBe(
+      "validation"
+    );
+
+    showWorkspaceRoute(store, { group: "group_1" });
+    store.set(selectOnlyNodeAtom, "child_step");
+    expect(store.get(activeRevealPresentationAtom).inspectorSection).toBeNull();
+
+    showWorkspaceRoute(store, {});
+    expect(store.get(activeRevealPresentationAtom).inspectorSection).toBe(
+      "validation"
+    );
+  });
+
+  it("opens another object's section at Focus in one write", () => {
+    const store = draftStore();
+    store.set(selectOnlyNodeAtom, "draft_step");
+    const draft = store.get(activeWorkspaceAddressAtom);
+    store.set(setWorkspaceRevealLevelAtom, { address: draft, level: "closed" });
+
+    store.set(openInspectorSectionAtom, {
+      address: draft,
+      nodeId: "child_step",
+      section: "connections",
+    });
+
+    expect(store.get(activeSelectionAtom)).toEqual({
+      nodeIds: ["child_step"],
+      edgeIds: [],
+    });
+    expect(store.get(activeRevealPresentationAtom)).toMatchObject({
+      revealLevel: "focus",
+      inspected: { kind: "node", id: "child_step" },
+      inspectorSection: "connections",
     });
   });
 

@@ -15,7 +15,13 @@ import type {
 } from "#src/lib/workflow-navigation-state";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 
-export type RevealKindId = "step" | "condition" | "runs" | "changes" | "panel";
+export type RevealKindId =
+  | "step"
+  | "condition"
+  | "lifecycle"
+  | "runs"
+  | "changes"
+  | "panel";
 
 /**
  * What the camera keeps in view while Reveal shows a subject: listed nodes, one
@@ -133,6 +139,35 @@ export function matchConditionSubject(
 }
 
 /**
+ * The Draft Lifecycle Node selected alone: its policy summary in Browse and the
+ * sectioned policy editor in Focus.
+ */
+export function matchLifecycleSubject(
+  input: RevealMatchInput
+): RevealSubject | null {
+  if (input.workspace !== "draft") {
+    return null;
+  }
+  const { nodes, edges } = selectedGraph(input);
+  const [onlyNode] = nodes;
+  if (
+    nodes.length !== 1 ||
+    edges.length > 0 ||
+    onlyNode.data.type !== "lifecycle"
+  ) {
+    return null;
+  }
+  return {
+    kind: "lifecycle",
+    workspace: input.workspace,
+    key: `node:${onlyNode.id}`,
+    nodeId: onlyNode.id,
+    placement: { kind: "nodes", nodeIds: [onlyNode.id] },
+    levels: ["browse", "focus"],
+  };
+}
+
+/**
  * Runs, at Browse only: the run list, or the run the route opens. It always
  * shows, placing the one selected node or else the whole graph.
  */
@@ -198,8 +233,7 @@ export function matchChangesSubject(
 
 /**
  * The node config panel at Browse, in Draft alone: any selection no other kind
- * matches, such as a Lifecycle, Event Split, Group, connection, or several
- * objects.
+ * matches, such as an Event Split, Group, connection, or several objects.
  */
 export function matchPanelSubject(
   input: RevealMatchInput
