@@ -9,7 +9,9 @@ import { can } from "#src/lib/authorization";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { collectAllWorkflowIssues } from "#src/lib/workflow-issues-store";
 import {
+  toPersistedEdge,
   toPersistedNodes,
+  type WorkflowEdge,
   type WorkflowNode,
 } from "#src/lib/workflow-graph-types";
 import type { WorkflowIssue } from "@wfgraph/shared/graph/workflow-issues";
@@ -20,6 +22,13 @@ export type WorkflowIssuePreflightResult =
   | { readonly status: "busy" }
   | { readonly status: "workflow_changed" }
   | { readonly status: "unavailable" };
+
+/** The click-time graph snapshot a Run or Publish preflight checks. */
+export type WorkflowIssuePreflightInput = {
+  workflowId: string;
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+};
 
 /** What a caller says when a second click lands on a check already running. */
 export const PREFLIGHT_BUSY_MESSAGE = "Still checking this workflow";
@@ -34,10 +43,9 @@ type ActivePreflight = {
 export function useWorkflowIssuePreflight(
   integrations: ReadonlyArray<{ id: string; type: string }>
 ): {
-  checkWorkflowIssues: (input: {
-    workflowId: string;
-    nodes: WorkflowNode[];
-  }) => Promise<WorkflowIssuePreflightResult>;
+  checkWorkflowIssues: (
+    input: WorkflowIssuePreflightInput
+  ) => Promise<WorkflowIssuePreflightResult>;
   isPreflighting: boolean;
 } {
   const catalog = useExtensionCatalog();
@@ -57,10 +65,8 @@ export function useWorkflowIssuePreflight(
     async ({
       workflowId,
       nodes,
-    }: {
-      workflowId: string;
-      nodes: WorkflowNode[];
-    }): Promise<WorkflowIssuePreflightResult> => {
+      edges,
+    }: WorkflowIssuePreflightInput): Promise<WorkflowIssuePreflightResult> => {
       if (active.current) {
         return { status: "busy" };
       }
@@ -69,6 +75,7 @@ export function useWorkflowIssuePreflight(
       }
 
       const nodeSnapshot = toPersistedNodes(nodes);
+      const edgeSnapshot = edges.map(toPersistedEdge);
       const check: ActivePreflight = {
         generation: ++generation.current,
         workflowId,
@@ -107,6 +114,7 @@ export function useWorkflowIssuePreflight(
           status: "ready",
           issues: collectAllWorkflowIssues({
             nodes: nodeSnapshot,
+            edges: edgeSnapshot,
             catalog,
             integrations,
             providerIssues,

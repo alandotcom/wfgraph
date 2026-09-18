@@ -66,6 +66,7 @@ export function validateAgentPublication(input: {
     shouldEnforceStrictIntegrationValidation();
   const workflowIssues = collectWorkflowIssues({
     nodes,
+    edges,
     catalog: input.catalog,
     integrations: input.integrations,
   });
@@ -87,9 +88,14 @@ export function validateAgentPublication(input: {
     edges,
     catalog: input.catalog,
   })) {
-    if (failure.kind === "missing_required_field") {
+    // The publication check reports its first problem of these two kinds as one
+    // sentence, and the agent reads one blocker per node and rule instead.
+    if (
+      failure.kind === "missing_required_field" ||
+      failure.kind === "invalid_group"
+    ) {
       const detailedFailures = blockingWorkflowIssues
-        .filter((issue) => issue.kind === "missing_required_field")
+        .filter((issue) => issue.kind === failure.kind)
         .map(toPublicationBlocker);
       publishBlockers.push(
         ...(detailedFailures.length > 0

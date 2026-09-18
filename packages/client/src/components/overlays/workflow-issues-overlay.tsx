@@ -15,9 +15,9 @@ type WorkflowIssuesOverlayProps = OverlayComponentProps<{
   issues: WorkflowIssuesOverlayModel;
   onGoToStep: (nodeId: string, fieldKey?: string) => void;
   /**
-   * Starts the draft run these issues were collected for. Absent whenever a
-   * blocking issue stands, and absent for every reader who opened the list on
-   * their own. A run of the published version never arrives here: publish
+   * Starts the draft run these issues were collected for. Absent whenever an
+   * issue that stops a draft run stands, and absent for every reader who
+   * opened the list on their own. A run of the published version never arrives here: publish
    * refused that graph's blocking issues before it became a version.
    */
   onRunDraftAnyway?: (() => void) | undefined;
@@ -42,7 +42,10 @@ export function WorkflowIssuesOverlay({
   const repairAgainstConnectionList = useConnectionRepair();
 
   const {
+    draftRunBlockingCount,
+    publishBlockingCount,
     brokenReferences,
+    invalidGroups,
     missingRequiredFields,
     missingIntegrations,
     unverifiedProviderFields,
@@ -82,9 +85,6 @@ export function WorkflowIssuesOverlay({
     onRunDraftAnyway();
   };
 
-  const blockingIssueCount =
-    missingRequiredFields.length + missingIntegrations.length;
-
   return (
     <Overlay
       actions={
@@ -113,14 +113,22 @@ export function WorkflowIssuesOverlay({
       // the list opens under the words that opened it.
       title={workflowIssuesLabel(totalIssues)}
     >
-      {/* One sentence, and the blocker's is the one that survives: a reader
-          with a blocking issue needs the harder fact, and printing both left
-          the softer one to be read first. */}
-      {blockingIssueCount > 0 ? (
+      {/* One sentence, and the hardest fact is the one that survives: an
+          issue stopping the run outranks a Group problem, which stops only
+          Publish, and that outranks a warning. */}
+      {draftRunBlockingCount > 0 ? (
         <div className="flex items-center gap-2 text-destructive">
           <AlertTriangle className="size-5" />
           <p className="text-sm">
             Resolve blocking issues before running the draft.
+          </p>
+        </div>
+      ) : publishBlockingCount > 0 ? (
+        <div className="flex items-center gap-2 text-warning">
+          <AlertTriangle className="size-5" />
+          <p className="text-sm">
+            Resolve the Group problems before publishing. The draft can still
+            run.
           </p>
         </div>
       ) : (
@@ -166,6 +174,40 @@ export function WorkflowIssuesOverlay({
                   variant="outline"
                 >
                   Add
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Group Rules Section */}
+        {invalidGroups.length > 0 && (
+          <div className="space-y-2">
+            <h4 className="font-medium text-muted-foreground text-sm">
+              Group Problems
+            </h4>
+            {invalidGroups.map((group) => (
+              <div className="flex items-start gap-3" key={group.nodeId}>
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-sm">{group.nodeLabel}</p>
+                  <ul className="mt-1 space-y-0.5 pl-3">
+                    {group.problems.map((problem) => (
+                      <li
+                        className="text-muted-foreground text-sm"
+                        key={`${problem.rule}-${problem.message}`}
+                      >
+                        {problem.message}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <Button
+                  className="shrink-0"
+                  onClick={() => handleGoToStep(group.nodeId)}
+                  size="sm"
+                  variant="outline"
+                >
+                  Show
                 </Button>
               </div>
             ))}

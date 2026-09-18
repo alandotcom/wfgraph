@@ -310,15 +310,17 @@ export function useWorkflowActions(
       return;
     }
 
-    // Says the common half early: required fields and connections, which the
-    // canvas has been badging all along. The server stays the authority and
-    // asks more than this -- Events, Event Split outlets, template types,
+    // Says the common half early: required fields, connections, and the Group
+    // rules, which the canvas badges and which publication checks through the
+    // same `groupContractViolations`. The server stays the authority and asks
+    // more than this -- Events, Event Split outlets, template types,
     // unreachable subtrees -- so a graph can still be refused after passing
-    // here. A draft saves in any state; this gate does not move, so there is no
-    // Publish Anyway.
+    // here. A draft saves in any state; this gate does not move, so there is
+    // no Publish Anyway.
     const preflight = await checkWorkflowIssues({
       workflowId: currentWorkflowId,
       nodes,
+      edges,
     });
     if (preflight.status !== "ready") {
       clearPublicationReview({ workflowId: currentWorkflowId, epoch });
