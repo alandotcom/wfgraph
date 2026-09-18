@@ -2,7 +2,8 @@
  * The Canvas Reveal widths a person chose, kept in one cookie across reloads.
  * A value the cookie holds that is not a whole number of pixels at or above
  * its key's minimum reads as absent, so that key uses its default width. The
- * canvas clamps each remembered width every time it reads one.
+ * legacy `browse` key is read as `compact`. The canvas clamps each remembered
+ * width every time it reads one.
  */
 
 import { omit } from "es-toolkit/object";
@@ -21,12 +22,13 @@ import {
 
 const REVEAL_WIDTHS_COOKIE = "canvas-reveal-widths";
 
-const WIDTH_KEYS: readonly RevealWidthKey[] = ["browse", "standard", "wide"];
+const WIDTH_KEYS: readonly RevealWidthKey[] = ["compact", "standard", "wide"];
 
 /** The cookie's JSON object, with each key's value checked on its own. */
 const cookieObject = Schema.fromJsonString(
   Schema.Struct({
     browse: Schema.optionalKey(Schema.Unknown),
+    compact: Schema.optionalKey(Schema.Unknown),
     standard: Schema.optionalKey(Schema.Unknown),
     wide: Schema.optionalKey(Schema.Unknown),
   })
@@ -36,7 +38,7 @@ const decodeCookieObject = Schema.decodeUnknownOption(cookieObject);
 const decodeWidth: Readonly<
   Record<RevealWidthKey, (input: unknown) => Option.Option<number>>
 > = {
-  browse: widthDecoder("browse"),
+  compact: widthDecoder("compact"),
   standard: widthDecoder("standard"),
   wide: widthDecoder("wide"),
 };
@@ -73,12 +75,16 @@ export function readRememberedRevealWidths(
     return {};
   }
   return Object.fromEntries(
-    WIDTH_KEYS.flatMap((key) =>
-      Option.match(decodeWidth[key](stored[key]), {
+    WIDTH_KEYS.flatMap((key) => {
+      const value =
+        key === "compact" && stored.compact === undefined
+          ? stored.browse
+          : stored[key];
+      return Option.match(decodeWidth[key](value), {
         onNone: () => [],
         onSome: (width) => [[key, width] as const],
-      })
-    )
+      });
+    })
   );
 }
 

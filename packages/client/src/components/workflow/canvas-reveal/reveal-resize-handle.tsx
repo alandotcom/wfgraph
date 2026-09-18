@@ -4,9 +4,8 @@ import { useAfterDelay, useUnmountCleanup } from "#src/hooks/effects";
 import {
   clampRevealWidth,
   revealWidth,
-  revealWidthKey,
   revealWidthRange,
-  type RevealFocusWidth,
+  type RevealWidthKey,
 } from "./reveal-geometry";
 import {
   finishRevealResizeAtom,
@@ -40,7 +39,7 @@ type DragStart = { clientX: number; width: number; changed: boolean };
  */
 export function RevealResizeHandle(input: {
   level: "browse" | "focus";
-  focusWidth: RevealFocusWidth;
+  widthKey: RevealWidthKey;
   canvasWidth: number;
 }) {
   const remembered = useAtomValue(rememberedRevealWidthsAtom);
@@ -72,15 +71,14 @@ export function RevealResizeHandle(input: {
   // Reveal can close in the middle of a keyboard resize.
   useUnmountCleanup(finishKeyResize);
 
-  const key = revealWidthKey(input.level, input.focusWidth);
-  const range = revealWidthRange(key, input.canvasWidth);
+  const range = revealWidthRange(input.widthKey, input.canvasWidth);
   if (!range) {
     return null;
   }
   const width = revealWidth(
     input.level,
     input.canvasWidth,
-    input.focusWidth,
+    input.widthKey,
     remembered
   );
 
@@ -89,7 +87,7 @@ export function RevealResizeHandle(input: {
     if (clamped === width) {
       return false;
     }
-    resize({ key, width: clamped });
+    resize({ key: input.widthKey, width: clamped });
     return true;
   };
 
@@ -141,7 +139,7 @@ export function RevealResizeHandle(input: {
       onDoubleClick={() => {
         // The reset finishes any keyboard resize in progress along with itself.
         keyResizePendingRef.current = false;
-        reset(key);
+        reset(input.widthKey);
       }}
       onKeyDown={onKeyDown}
       onKeyUp={onKeyUp}

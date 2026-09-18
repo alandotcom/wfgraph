@@ -46,6 +46,7 @@ import {
 import { ConditionBuilderRow } from "./condition-builder-row";
 import { ConfigGroup } from "./config-section";
 import { EventMultiCombobox } from "./event-combobox";
+import { trackedEntityLabel } from "./lifecycle-policy-summary";
 
 const ROLE_COPY = {
   start: {
@@ -56,6 +57,8 @@ const ROLE_COPY = {
       "A correlation path identifies related runs when this workflow does not track an Entity.",
       "A start filter limits which events can start a run.",
     ],
+    entityIdentity: (label: string) =>
+      `Each Event's ${label} binding identifies the run's Entity.`,
   },
   cancel: {
     label: "Cancel Events",
@@ -65,6 +68,8 @@ const ROLE_COPY = {
       "A cancel filter limits which events can stop a run.",
       "Matching uses the tracked Entity, or the correlation path when no Entity is tracked.",
     ],
+    entityIdentity: (label: string) =>
+      `Each Event's ${label} binding identifies matching active runs.`,
   },
 } as const;
 
@@ -111,6 +116,10 @@ export function LifecycleEventGroup(props: LifecycleEventGroupProps) {
   const copy = ROLE_COPY[role];
   const filterCopy = FILTER_COPY[role];
   const eventNames = role === "start" ? rules.startEvents : rules.cancelEvents;
+  const entityLabel = trackedEntityLabel(rules, catalog);
+  const entityIdentityCopy = entityLabel
+    ? copy.entityIdentity(entityLabel)
+    : undefined;
 
   /**
    * The Events the builder asked to see filtered separately.
@@ -185,6 +194,11 @@ export function LifecycleEventGroup(props: LifecycleEventGroupProps) {
             value={eventNames}
           />
         </EventPicker>
+        {entityIdentityCopy ? (
+          <p className="text-muted-foreground text-xs">
+            {entityIdentityCopy} Correlation Paths are not used.
+          </p>
+        ) : null}
         {eventNames.map((eventName) => (
           <ChosenEvent
             catalog={catalog}

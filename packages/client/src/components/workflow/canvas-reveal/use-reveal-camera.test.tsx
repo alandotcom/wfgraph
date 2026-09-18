@@ -18,6 +18,7 @@ import {
   loadWorkflowGraphAtom,
   nodesAtom,
   selectOnlyNodeAtom,
+  updateNodeDataAtom,
 } from "#src/lib/workflow-graph-store";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import {
@@ -309,16 +310,16 @@ describe("useRevealCamera", () => {
     await camera.settle();
     await camera.run(() => camera.store.set(selectOnlyNodeAtom, "far"));
 
-    // Browse on a 1200px canvas takes 360px and the 8px inset. The step's right
-    // edge and 64px of context end at 1364px, and the usable edge less 24px of
-    // padding is at 808px.
+    // Standard Reveal on a 1200px canvas takes 640px and the 8px inset. The
+    // step's right edge and 64px of context end at 1364px, and the usable edge
+    // less 24px of padding is at 528px.
     expect(camera.moves).toHaveLength(1);
-    expect(camera.moves[0]?.x).toBeCloseTo(-556);
+    expect(camera.moves[0]?.x).toBeCloseTo(-836);
     expect(camera.moves[0]?.y).toBeCloseTo(0);
     expect(camera.moves[0]?.zoom).toBe(1);
   });
 
-  it("places a selected step under Reveal in one straight animation", async () => {
+  it("places a selected step beside Reveal in one straight animation", async () => {
     const camera = renderCamera();
     await camera.settle();
     await camera.run(() => camera.store.set(selectOnlyNodeAtom, "far"));
@@ -358,6 +359,47 @@ describe("useRevealCamera", () => {
     expect(camera.viewport()).toEqual(start);
   });
 
+  it("keeps a manual pan when Browse changes to same-width Focus", async () => {
+    const camera = renderCamera();
+    await camera.settle();
+    await camera.run(() => camera.store.set(selectOnlyNodeAtom, "far"));
+    await camera.finishAnimation();
+
+    await camera.pan({ x: 0, y: 0, zoom: 1 });
+    camera.moves.length = 0;
+    await camera.run(() =>
+      camera.store.set(showCanvasRevealLevelAtom, "focus")
+    );
+
+    expect(camera.moves).toEqual([]);
+    expect(camera.viewport()).toEqual({ x: 0, y: 0, zoom: 1 });
+  });
+
+  it("places a subject when it gains Focus and needs more width", async () => {
+    const unconfigured: WorkflowNode = {
+      ...step("unconfigured", 500, 300),
+      data: { label: "unconfigured", type: "action", config: {} },
+    };
+    const camera = renderCamera({ nodes: [unconfigured], edges: [] });
+    camera.store.set(workflowApiAtom, {
+      update: vi.fn(() => new Promise(() => undefined)),
+    } as never);
+    await camera.settle();
+    await camera.run(() =>
+      camera.store.set(selectOnlyNodeAtom, "unconfigured")
+    );
+    expect(camera.moves).toEqual([]);
+
+    await camera.run(() =>
+      camera.store.set(updateNodeDataAtom, {
+        id: "unconfigured",
+        data: { config: { actionType: "mailer/send" } },
+      })
+    );
+
+    expect(camera.moves).toHaveLength(1);
+  });
+
   it("keeps the camera on close while a placement is still animating", async () => {
     const camera = renderCamera();
     await camera.settle();
@@ -391,16 +433,19 @@ describe("useRevealCamera", () => {
     }
   });
 
-  it("places a step beside standard Focus on a 900px canvas", async () => {
+  it("places a step beside standard Reveal on a 900px canvas", async () => {
     const camera = renderCamera();
     await camera.setSize({ width: 900, height: 800 });
     await camera.run(() => camera.store.set(selectOnlyNodeAtom, "near"));
     await camera.finishAnimation();
+    const movesBeforeFocus = camera.moves.length;
     await camera.run(() =>
       camera.store.set(showCanvasRevealLevelAtom, "focus")
     );
 
-    // Focus is 640px wide beside its 8px inset, which leaves 252px of canvas.
+    // Browse and Focus are both 640px wide beside the 8px inset, which leaves
+    // 252px of canvas. Changing levels does not place the step again.
+    expect(camera.moves).toHaveLength(movesBeforeFocus);
     const viewport = camera.moves.at(-1);
     expect(viewport).toBeDefined();
     const zoom = viewport?.zoom ?? 1;
@@ -409,7 +454,7 @@ describe("useRevealCamera", () => {
     expect(left + 200 * zoom).toBeLessThanOrEqual(900 - 640 - 8);
   });
 
-  it("acts on a level change made while the canvas had no size", async () => {
+  it("does not re-place a same-width level change made with no canvas size", async () => {
     const camera = renderCamera();
     await camera.settle();
     await camera.run(() => camera.store.set(selectOnlyNodeAtom, "far"));
@@ -422,7 +467,7 @@ describe("useRevealCamera", () => {
     expect(camera.moves).toHaveLength(1);
 
     await camera.setSize(CANVAS);
-    expect(camera.moves).toHaveLength(2);
+    expect(camera.moves).toHaveLength(1);
   });
 
   it("fits the whole graph beside Canvas Reveal in Runs when no node is selected", async () => {
@@ -446,7 +491,7 @@ describe("useRevealCamera", () => {
     expect(camera.moves[0]?.zoom).toBeCloseTo(784 / 1200);
   });
 
-  it("keeps the Lifecycle Node beside its wide Focus", async () => {
+  it("keeps the Lifecycle Node beside its shared wide Reveal", async () => {
     const lifecycle: WorkflowNode = {
       id: "lifecycle",
       type: "lifecycle",
@@ -458,17 +503,16 @@ describe("useRevealCamera", () => {
     const camera = renderCamera({ nodes: [lifecycle], edges: [] });
     await camera.settle();
     await camera.run(() => camera.store.set(selectOnlyNodeAtom, "lifecycle"));
-    expect(camera.moves).toEqual([]);
+    // Wide Reveal on a 1200px canvas is 840px, so the usable canvas ends at
+    // 352px. The node moves when Browse opens, then stays put for Focus.
+    expect(camera.moves).toHaveLength(1);
+    expect(camera.moves[0]).toMatchObject({ zoom: 1 });
+    expect(600 + (camera.moves[0]?.x ?? 0)).toBeCloseTo(352 - 24);
 
     await camera.run(() =>
       camera.store.set(showCanvasRevealLevelAtom, "focus")
     );
-    // A wide Focus on a 1200px canvas is 840px, so the usable canvas ends at
-    // 352px. That leaves no room for 64px of context, so the node moves the
-    // least distance that keeps its right edge 24px inside the usable canvas.
     expect(camera.moves).toHaveLength(1);
-    expect(camera.moves[0]).toMatchObject({ zoom: 1 });
-    expect(600 + (camera.moves[0]?.x ?? 0)).toBeCloseTo(352 - 24);
   });
 
   it("holds the camera during a resize and places the step once when it ends", async () => {
@@ -477,11 +521,11 @@ describe("useRevealCamera", () => {
     await camera.run(() => camera.store.set(selectOnlyNodeAtom, "near"));
     expect(camera.moves).toEqual([]);
 
-    // The step spans 100px to 300px. A Browse widened to 900px leaves 292px of
-    // usable canvas, so the step no longer fits until the resize ends.
+    // The step spans 100px to 300px. Standard Reveal widened to 900px leaves
+    // 292px of usable canvas, so the step no longer fits until the resize ends.
     for (const width of [500, 700, 900]) {
       await camera.run(() =>
-        camera.store.set(resizeRevealWidthAtom, { key: "browse", width })
+        camera.store.set(resizeRevealWidthAtom, { key: "standard", width })
       );
     }
     expect(camera.moves).toEqual([]);
@@ -509,7 +553,10 @@ describe("useRevealCamera", () => {
       await camera.run(() => camera.store.set(startRevealKeyResizeAtom));
       await during();
       await camera.run(() =>
-        camera.store.set(resizeRevealWidthAtom, { key: "browse", width: 900 })
+        camera.store.set(resizeRevealWidthAtom, {
+          key: "standard",
+          width: 900,
+        })
       );
       await camera.run(() => camera.store.set(finishRevealResizeAtom));
     };
@@ -524,7 +571,7 @@ describe("useRevealCamera", () => {
     await resizeOnce(burst, async () => {
       for (const width of [500, 700]) {
         await burst.run(() =>
-          burst.store.set(resizeRevealWidthAtom, { key: "browse", width })
+          burst.store.set(resizeRevealWidthAtom, { key: "standard", width })
         );
       }
       await burst.pan({ x: -140, y: 30, zoom: 1 });
@@ -706,7 +753,7 @@ describe("useRevealCamera", () => {
           revealOccupiedWidth(
             camera.store.get(canvasRevealAtom).level,
             CANVAS.width,
-            camera.store.get(canvasRevealAtom).focusWidth,
+            camera.store.get(canvasRevealAtom).widthKey,
             camera.store.get(rememberedRevealWidthsAtom)
           );
         expect(right).toBeLessThanOrEqual(revealLeft);

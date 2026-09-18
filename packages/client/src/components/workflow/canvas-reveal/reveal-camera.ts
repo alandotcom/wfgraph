@@ -16,6 +16,8 @@ export type RevealCameraSlot = {
   addressId: string;
   subjectKey: string | null;
   level: RevealLevel;
+  /** Canvas width occupied by Reveal and its inset. */
+  occupiedWidth: number;
   /** The `revealResizeSequenceAtom` count: how many resizes have finished. */
   resizeSequence: number;
 };
@@ -35,9 +37,10 @@ export type RevealPlacementRequest = {
  * What to do when the Reveal the canvas shows changes. A placement request the
  * camera has not answered places its nodes once its address is shown, whichever
  * address was shown before. Otherwise a new address does nothing, because the
- * scope's saved camera restores it. A new subject, opening from Closed,
- * widening Browse to Focus, and a finished resize of open Reveal place the
- * subject. Closing, and narrowing Focus to Browse, keep the camera where it is.
+ * scope's saved camera restores it. A new subject, opening from Closed, an
+ * increase in occupied width, and a finished resize of open Reveal place the
+ * subject. Closing and any width-preserving level change keep the camera where
+ * it is.
  */
 export function revealCameraStep(input: {
   shown: RevealCameraSlot | null;
@@ -61,7 +64,7 @@ export function revealCameraStep(input: {
   }
   return shown.subjectKey !== next.subjectKey ||
     shown.level === "closed" ||
-    (shown.level === "browse" && next.level === "focus") ||
+    next.occupiedWidth > shown.occupiedWidth ||
     shown.resizeSequence !== next.resizeSequence
     ? "place"
     : "keep";

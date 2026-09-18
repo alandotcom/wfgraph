@@ -36,8 +36,8 @@ export const CANVAS_OBSTACLE_SLOTS = {
 /** The canvas width Reveal and its inset leave beside them at 1024px and wider. */
 const REVEAL_CANVAS_MARGIN = 256;
 
-/** Focus's widest size on a canvas narrower than 1024px. */
-const NARROW_FOCUS_WIDTH = 640;
+/** Standard Reveal's widest size on a canvas narrower than 1024px. */
+const NARROW_STANDARD_WIDTH = 640;
 
 /** The smallest rectangle worth placing a selected step in. */
 export const MIN_USABLE_SIZE = { width: 240, height: 160 } as const;
@@ -46,17 +46,16 @@ export const MIN_USABLE_SIZE = { width: 240, height: 160 } as const;
 const MOBILE_MIN_USABLE_SIZE = { width: 200, height: 120 } as const;
 
 /**
- * How wide a subject kind's Focus is. Standard fits one form column. Wide adds
- * 200px for an editor that pairs a section list with its form, such as the
- * Lifecycle policy editor.
+ * How wide a subject kind with Focus is. Standard fits one form column. Wide
+ * adds 200px for a section list beside its form, such as Lifecycle policy.
  */
 export type RevealFocusWidth = "standard" | "wide";
 
 /**
- * The name a remembered width is kept under: Browse, a standard Focus, or a
- * wide Focus. Each is resized and remembered on its own.
+ * The width family an inspector uses at every level. Subjects with Focus use
+ * standard or wide for both Browse and Focus; Browse-only subjects stay compact.
  */
-export type RevealWidthKey = "browse" | RevealFocusWidth;
+export type RevealWidthKey = "compact" | RevealFocusWidth;
 
 /**
  * The widths a person chose by resizing Canvas Reveal, in CSS pixels. A missing
@@ -66,27 +65,19 @@ export type RememberedRevealWidths = {
   readonly [Key in RevealWidthKey]?: number | undefined;
 };
 
-/** The narrowest width a person can resize Browse or either Focus to. */
+/** The narrowest width a person can resize each width family to. */
 export const REVEAL_MIN_WIDTH: Readonly<Record<RevealWidthKey, number>> = {
-  browse: 320,
+  compact: 320,
   standard: 480,
   wide: 480,
 };
 
-/** The default Browse and Focus widths at 1024px, 1280px, and 1536px canvas widths. */
+/** The default widths at 1024px, 1280px, and 1536px canvas widths. */
 const WIDTH_STEPS = [
-  { minCanvas: 1536, browse: 400, standard: 800, wide: 1000 },
-  { minCanvas: 1280, browse: 380, standard: 720, wide: 920 },
-  { minCanvas: 1024, browse: 360, standard: 640, wide: 840 },
+  { minCanvas: 1536, compact: 400, standard: 800, wide: 1000 },
+  { minCanvas: 1280, compact: 380, standard: 720, wide: 920 },
+  { minCanvas: 1024, compact: 360, standard: 640, wide: 840 },
 ] as const;
-
-/** The key an open level's width is remembered under. */
-export function revealWidthKey(
-  level: "browse" | "focus",
-  focusWidth: RevealFocusWidth
-): RevealWidthKey {
-  return level === "browse" ? "browse" : focusWidth;
-}
 
 /**
  * The range a person can resize one width key through on a canvas box of
@@ -119,31 +110,29 @@ export function clampRevealWidth(
 
 /**
  * The width of Canvas Reveal at one level on a canvas box of `canvasWidth`.
- * Below 1024px Browse is 320px, a standard Focus is at most 640px, so part of
- * the canvas stays visible beside it, and a wide Focus covers the canvas, and
- * `remembered` does not apply. From 1024px the width is the one `remembered`
- * holds for the level, or the default from `revealWidthRange`, held inside
- * that range.
+ * Browse and Focus share the subject's width key, so changing levels never
+ * changes width. Below 1024px compact is 320px, standard is at most 640px, and
+ * wide covers the available canvas; remembered widths do not apply. From
+ * 1024px the remembered or default width is held inside its range.
  */
 export function revealWidth(
   level: RevealLevel,
   canvasWidth: number,
-  focusWidth: RevealFocusWidth,
+  key: RevealWidthKey,
   remembered: RememberedRevealWidths
 ): number {
   if (level === "closed") {
     return 0;
   }
-  const key = revealWidthKey(level, focusWidth);
   const range = revealWidthRange(key, canvasWidth);
   if (!range) {
     const available = Math.max(0, canvasWidth - 2 * REVEAL_INSET);
-    if (level === "browse") {
+    if (key === "compact") {
       return Math.min(320, available);
     }
-    return focusWidth === "wide"
+    return key === "wide"
       ? available
-      : Math.min(NARROW_FOCUS_WIDTH, available);
+      : Math.min(NARROW_STANDARD_WIDTH, available);
   }
   return clampRevealWidth(remembered[key] ?? range.defaultWidth, range);
 }
@@ -155,10 +144,10 @@ export function revealWidth(
 export function revealOccupiedWidth(
   level: RevealLevel,
   canvasWidth: number,
-  focusWidth: RevealFocusWidth,
+  key: RevealWidthKey,
   remembered: RememberedRevealWidths
 ): number {
-  const width = revealWidth(level, canvasWidth, focusWidth, remembered);
+  const width = revealWidth(level, canvasWidth, key, remembered);
   return width > 0 ? width + REVEAL_INSET : 0;
 }
 

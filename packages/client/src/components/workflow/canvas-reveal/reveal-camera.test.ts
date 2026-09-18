@@ -11,6 +11,7 @@ const slot = (overrides: Partial<RevealCameraSlot>): RevealCameraSlot => ({
   addressId: "wf|draft|overview",
   subjectKey: "node:a",
   level: "browse",
+  occupiedWidth: 368,
   resizeSequence: 0,
   ...overrides,
 });
@@ -29,11 +30,14 @@ const step = (input: {
   });
 
 describe("revealCameraStep", () => {
-  it("places on open, on Browse widening to Focus, and on a new subject", () => {
-    expect(step({ shown: slot({ level: "closed" }), next: slot({}) })).toBe(
-      "place"
-    );
-    expect(step({ shown: slot({}), next: slot({ level: "focus" }) })).toBe(
+  it("places on open, on an occupied-width increase, and on a new subject", () => {
+    expect(
+      step({
+        shown: slot({ level: "closed", occupiedWidth: 0 }),
+        next: slot({}),
+      })
+    ).toBe("place");
+    expect(step({ shown: slot({}), next: slot({ occupiedWidth: 648 }) })).toBe(
       "place"
     );
     expect(
@@ -41,7 +45,7 @@ describe("revealCameraStep", () => {
     ).toBe("place");
   });
 
-  it("keeps the camera on close, on Focus back to Browse, and while nothing changed", () => {
+  it("keeps the camera on close, on same-width level changes, and while nothing changed", () => {
     expect(
       step({ shown: slot({ level: "focus" }), next: slot({ level: "closed" }) })
     ).toBe("keep");
@@ -51,9 +55,15 @@ describe("revealCameraStep", () => {
         next: slot({ level: "closed" }),
       })
     ).toBe("keep");
+    expect(step({ shown: slot({}), next: slot({ level: "focus" }) })).toBe(
+      "keep"
+    );
     expect(
       step({ shown: slot({ level: "focus" }), next: slot({ level: "browse" }) })
     ).toBe("keep");
+    expect(step({ shown: slot({ occupiedWidth: 648 }), next: slot({}) })).toBe(
+      "keep"
+    );
     expect(step({ shown: slot({}), next: slot({}) })).toBe("keep");
     expect(
       step({
