@@ -41,7 +41,7 @@ export type GroupContractViolation = {
 type RuleBreak = Pick<GroupContractViolation, "rule" | "message">;
 
 /** Whether a member is a step a Group may contain: any action but an Event Split. */
-function isGroupableStep(node: GroupGraphNode): boolean {
+export function isGroupableStep(node: GroupGraphNode): boolean {
   return node.data.type === "action" && !isEventSplitActionNode(node);
 }
 

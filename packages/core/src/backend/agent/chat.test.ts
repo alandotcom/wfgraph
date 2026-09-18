@@ -289,7 +289,7 @@ describe("withGraphParts", () => {
               current = next;
               revisions.push(next);
               activeHandlers -= 1;
-              return next;
+              return { document: next, dissolvedGroups: [] };
             }),
           revision: (revision) => Effect.succeed(revisions[revision]!),
           catalog: { actions: [], entities: [], events: [], integrations: [] },
