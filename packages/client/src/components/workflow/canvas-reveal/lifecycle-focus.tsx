@@ -128,7 +128,7 @@ function LifecyclePolicyEditor({
       </>
     ),
     "evaluation-checkpoints": (
-      <ConfigGroup label="Evaluation checkpoints" prominent>
+      <ConfigGroup label="Entity Lookup" prominent>
         {rules.entityEligibility ? (
           <LifecycleEligibilityCheckpoints
             catalog={catalog}

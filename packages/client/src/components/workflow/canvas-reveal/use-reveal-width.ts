@@ -21,10 +21,10 @@ export function useRevealCanvasWidth(): number {
  */
 export function useRevealOccupiedWidth(): number {
   const isMobile = useIsMobile();
-  const { level, focusWidth } = useAtomValue(canvasRevealAtom);
+  const { level, widthKey } = useAtomValue(canvasRevealAtom);
   const remembered = useAtomValue(rememberedRevealWidthsAtom);
   const canvasWidth = useRevealCanvasWidth();
   return isMobile
     ? 0
-    : revealOccupiedWidth(level, canvasWidth, focusWidth, remembered);
+    : revealOccupiedWidth(level, canvasWidth, widthKey, remembered);
 }

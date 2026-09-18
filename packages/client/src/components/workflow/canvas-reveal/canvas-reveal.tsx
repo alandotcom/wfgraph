@@ -38,9 +38,10 @@ import { useRevealCanvasWidth } from "./use-reveal-width";
 
 /**
  * Canvas Reveal: the desktop inspector floating over the right of the canvas
- * box, at the width of its Closed, Browse, or Focus level. From a 1024px canvas
- * a handle on its left edge resizes Browse and Focus. The subject's
- * kind supplies the header and bodies. Escape, Back, and Close unwind one level
+ * box. Browse and Focus share the subject's width, while Browse-only inspectors
+ * stay compact. From a 1024px canvas a handle on its left edge resizes that
+ * shared width. The subject's kind supplies the header and bodies. Escape,
+ * Back, and Close unwind one level
  * at a time and hand focus back to what opened it. Below `md` the mobile Reveal
  * sequence replaces it.
  */
@@ -279,7 +280,7 @@ export function CanvasReveal() {
           width: revealWidth(
             displayedLevel,
             canvasWidth,
-            reveal.focusWidth,
+            reveal.widthKey,
             rememberedWidths
           ),
           transform:
@@ -291,8 +292,8 @@ export function CanvasReveal() {
         {level === "closed" ? null : (
           <RevealResizeHandle
             canvasWidth={canvasWidth}
-            focusWidth={reveal.focusWidth}
             level={level}
+            widthKey={reveal.widthKey}
           />
         )}
         {header}

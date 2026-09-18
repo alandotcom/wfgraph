@@ -507,7 +507,7 @@ export function LifecycleEntityEligibilityGroup({
                   type="button"
                   variant="outline"
                 >
-                  Go to Evaluation checkpoints
+                  Go to Entity Lookup
                 </Button>
               ) : null}
             </div>

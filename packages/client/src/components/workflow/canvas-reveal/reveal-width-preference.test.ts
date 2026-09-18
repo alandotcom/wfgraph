@@ -10,13 +10,19 @@ describe("readRememberedRevealWidths", () => {
   it("reads the three widths a valid cookie holds", () => {
     expect(
       readRememberedRevealWidths(
-        cookie({ browse: 420, standard: 700, wide: 960 })
+        cookie({ compact: 420, standard: 700, wide: 960 })
       )
-    ).toEqual({ browse: 420, standard: 700, wide: 960 });
+    ).toEqual({ compact: 420, standard: 700, wide: 960 });
+  });
+
+  it("migrates the legacy Browse width to Compact", () => {
+    expect(readRememberedRevealWidths(cookie({ browse: 420 }))).toEqual({
+      compact: 420,
+    });
   });
 
   it("round-trips the value the preference writes", () => {
-    const widths = { browse: 344, wide: 1012 };
+    const widths = { compact: 344, wide: 1012 };
     expect(
       readRememberedRevealWidths(rememberedRevealWidthsCookie(widths))
     ).toEqual(widths);
@@ -36,28 +42,28 @@ describe("readRememberedRevealWidths", () => {
   it("drops each width that is not a whole number and keeps the rest", () => {
     expect(
       readRememberedRevealWidths(
-        cookie({ browse: "420", standard: 700.5, wide: null })
+        cookie({ compact: "420", standard: 700.5, wide: null })
       )
     ).toEqual({});
     expect(
-      readRememberedRevealWidths(cookie({ browse: true, standard: 700 }))
+      readRememberedRevealWidths(cookie({ compact: true, standard: 700 }))
     ).toEqual({ standard: 700 });
   });
 
   it("drops each width below its key's minimum", () => {
     expect(
       readRememberedRevealWidths(
-        cookie({ browse: 319, standard: 479, wide: -900 })
+        cookie({ compact: 319, standard: 479, wide: -900 })
       )
     ).toEqual({});
     expect(
-      readRememberedRevealWidths(cookie({ browse: 320, standard: 480 }))
-    ).toEqual({ browse: 320, standard: 480 });
+      readRememberedRevealWidths(cookie({ compact: 320, standard: 480 }))
+    ).toEqual({ compact: 320, standard: 480 });
   });
 
   it("ignores keys it does not know", () => {
     expect(
-      readRememberedRevealWidths(cookie({ browse: 400, sidebar: 300 }))
-    ).toEqual({ browse: 400 });
+      readRememberedRevealWidths(cookie({ compact: 400, sidebar: 300 }))
+    ).toEqual({ compact: 400 });
   });
 });

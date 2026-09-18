@@ -517,24 +517,24 @@ describe("Canvas Reveal resizing", () => {
     await select("send");
     const separator = handle(view);
 
-    // A 1440px canvas gives Browse 380px by default, and at most the canvas
-    // less 256px and the 8px inset.
+    // A 1440px canvas gives a standard inspector 720px by default, and at
+    // most the canvas less 256px and the 8px inset.
     expect(separator.getAttribute("aria-orientation")).toBe("vertical");
-    expect(separator.getAttribute("aria-valuenow")).toBe("380");
-    expect(separator.getAttribute("aria-valuemin")).toBe("320");
+    expect(separator.getAttribute("aria-valuenow")).toBe("720");
+    expect(separator.getAttribute("aria-valuemin")).toBe("480");
     expect(separator.getAttribute("aria-valuemax")).toBe(String(1440 - 264));
     expect(separator.tabIndex).toBe(0);
 
     await press(separator, "ArrowLeft");
-    expect(separator.getAttribute("aria-valuenow")).toBe("396");
-    expect(shownWidth(aside())).toBe(396);
+    expect(separator.getAttribute("aria-valuenow")).toBe("736");
+    expect(shownWidth(aside())).toBe(736);
     await press(separator, "ArrowRight");
     await press(separator, "ArrowRight");
-    expect(separator.getAttribute("aria-valuenow")).toBe("364");
+    expect(separator.getAttribute("aria-valuenow")).toBe("704");
     await press(separator, "End");
     expect(shownWidth(aside())).toBe(1440 - 264);
     await press(separator, "Home");
-    expect(shownWidth(aside())).toBe(320);
+    expect(shownWidth(aside())).toBe(480);
     await settleKeyResize();
     expect(store.get(revealResizeSequenceAtom)).toBe(1);
 
@@ -555,7 +555,7 @@ describe("Canvas Reveal resizing", () => {
     for (let count = 0; count < 20; count += 1) {
       await press(separator, "ArrowLeft");
     }
-    expect(shownWidth(aside())).toBe(380 + 20 * 16);
+    expect(shownWidth(aside())).toBe(720 + 20 * 16);
     expect(store.get(revealResizeSequenceAtom)).toBe(0);
 
     // A key held down repeats without a release, so the resize waits for it.
@@ -571,7 +571,7 @@ describe("Canvas Reveal resizing", () => {
     await settleKeyResize();
     expect(store.get(revealResizeSequenceAtom)).toBe(1);
     expect(store.get(rememberedRevealWidthsAtom)).toEqual({
-      browse: 380 + 19 * 16,
+      standard: 720 + 19 * 16,
     });
   });
 
@@ -594,7 +594,7 @@ describe("Canvas Reveal resizing", () => {
     expect(store.get(revealResizeSequenceAtom)).toBe(1);
   });
 
-  it("remembers Browse and Focus widths separately", async () => {
+  it("shares one remembered width between Browse and Focus", async () => {
     const { view, store, aside, select } = await renderReveal(
       {},
       { canvasWidth: 1440 }
@@ -604,16 +604,15 @@ describe("Canvas Reveal resizing", () => {
       fireEvent.keyDown(handle(view), { key: "ArrowLeft" });
       fireEvent.keyUp(handle(view), { key: "ArrowLeft" });
     });
+    expect(shownWidth(aside())).toBe(736);
+
     fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
-    expect(shownWidth(aside())).toBe(720);
+    expect(shownWidth(aside())).toBe(736);
     await act(async () => {
       fireEvent.keyDown(handle(view), { key: "Home" });
       fireEvent.keyUp(handle(view), { key: "Home" });
     });
-    expect(store.get(rememberedRevealWidthsAtom)).toEqual({
-      browse: 396,
-      standard: 480,
-    });
+    expect(store.get(rememberedRevealWidthsAtom)).toEqual({ standard: 480 });
   });
 
   it("follows a drag and places the subject once when it ends", async () => {
@@ -634,18 +633,18 @@ describe("Canvas Reveal resizing", () => {
     await act(async () => {
       fireEvent.pointerMove(separator, { clientX: 560, pointerId: 1 });
     });
-    expect(shownWidth(aside())).toBe(420);
+    expect(shownWidth(aside())).toBe(760);
     await act(async () => {
       fireEvent.pointerMove(separator, { clientX: 500, pointerId: 1 });
     });
-    expect(shownWidth(aside())).toBe(480);
+    expect(shownWidth(aside())).toBe(820);
     expect(store.get(revealResizeSequenceAtom)).toBe(0);
 
     await act(async () => {
       fireEvent.pointerUp(separator, { clientX: 500, pointerId: 1 });
     });
     expect(store.get(revealResizeSequenceAtom)).toBe(1);
-    expect(store.get(rememberedRevealWidthsAtom)).toEqual({ browse: 480 });
+    expect(store.get(rememberedRevealWidthsAtom)).toEqual({ standard: 820 });
     await settleKeyResize();
     expect(store.get(revealResizeSequenceAtom)).toBe(1);
   });
@@ -665,7 +664,7 @@ describe("Canvas Reveal resizing", () => {
     await act(async () => {
       fireEvent.doubleClick(handle(view));
     });
-    expect(shownWidth(aside())).toBe(380);
+    expect(shownWidth(aside())).toBe(720);
     expect(store.get(rememberedRevealWidthsAtom)).toEqual({});
     expect(store.get(revealResizeSequenceAtom)).toBe(1);
     await settleKeyResize();

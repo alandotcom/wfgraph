@@ -36,7 +36,7 @@ import { rememberedRevealWidthsAtom } from "./reveal-width-preference";
 
 /**
  * Moves the desktop camera the least it must when Canvas Reveal opens, changes
- * subject, widens to Focus, finishes a resize, or answers a placement request,
+ * subject, takes more canvas width, finishes a resize, or answers a placement request,
  * so the subject stays visible beside it. The camera starts from where it is,
  * so a subject Reveal does not cover moves nothing. It only calls
  * `setViewport`: no layout runs and no node moves. Closing Reveal never moves
@@ -84,6 +84,7 @@ export function useRevealCamera(input: {
     reveal.addressId,
     reveal.subject?.key ?? "",
     reveal.level,
+    reveal.widthKey,
     request?.sequence ?? 0,
     resizeSequence,
     isKeyResizing,
@@ -115,10 +116,17 @@ export function useRevealCamera(input: {
     keyResizeStartRef.current = store.get(revealKeyResizeInProgressAtom)
       ? keyResizeStart
       : null;
+    const occupiedWidth = revealOccupiedWidth(
+      state.level,
+      width,
+      state.widthKey,
+      store.get(rememberedRevealWidthsAtom)
+    );
     const next: RevealCameraSlot = {
       addressId: state.addressId,
       subjectKey: state.subject?.key ?? null,
       level: state.level,
+      occupiedWidth,
       resizeSequence: store.get(revealResizeSequenceAtom),
     };
     const placementRequest = store.get(revealPlacementRequestAtom);
@@ -161,12 +169,7 @@ export function useRevealCamera(input: {
       ? null
       : usableCanvasRect({
           canvas: size,
-          revealOccupiedWidth: revealOccupiedWidth(
-            state.level,
-            width,
-            state.focusWidth,
-            store.get(rememberedRevealWidthsAtom)
-          ),
+          revealOccupiedWidth: occupiedWidth,
           obstacles: measureObstacles(element),
         });
     const target = usable

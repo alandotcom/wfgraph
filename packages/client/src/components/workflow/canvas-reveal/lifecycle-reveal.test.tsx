@@ -411,13 +411,14 @@ describe("Lifecycle Browse", () => {
 });
 
 describe("Lifecycle Focus", () => {
-  it("opens a wide Focus with a stable section for each policy concept", async () => {
+  it("keeps a wide width while opening Focus for each policy concept", async () => {
     const { view, aside } = await renderLifecycle(CONFIGURED);
+    // An unmeasured canvas counts as 1280px wide, where wide Reveal is 920px.
+    expect(aside()?.style.width).toBe("920px");
+
     fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
 
     expect(aside()?.dataset.level).toBe("focus");
-    // An unmeasured canvas counts as 1280px wide, where a standard Focus is
-    // 720px and a wide one 920px.
     expect(aside()?.style.width).toBe("920px");
     const nav = view.getByRole("navigation", { name: "Lifecycle policy" });
     expect(
@@ -429,7 +430,7 @@ describe("Lifecycle Focus", () => {
       "Overlapping runs",
       "Cancel Events1",
       "Entity eligibility",
-      "Evaluation checkpoints",
+      "Entity Lookup",
       "Connections",
       "Validation",
     ]);
@@ -440,7 +441,7 @@ describe("Lifecycle Focus", () => {
     ).toBe("true");
   });
 
-  it("shows each Event's binding and the checkpoints in their own sections", async () => {
+  it("shows Event bindings and Entity Lookup in separate sections", async () => {
     const { view } = await renderLifecycle(CONFIGURED);
     fireEvent.click(
       view.getByRole("button", { name: "Edit Entity eligibility" })
@@ -454,15 +455,25 @@ describe("Lifecycle Focus", () => {
     expect(eligibility.textContent).toContain("Uses patient automatically");
     expect(within(eligibility).queryByText("When to check")).toBeNull();
 
-    fireEvent.click(
-      view.getByRole("button", { name: "Evaluation checkpoints" })
-    );
+    fireEvent.click(view.getByRole("button", { name: "Entity Lookup" }));
     const checkpoints = view.getByRole("region", {
-      name: "Evaluation checkpoints",
+      name: "Entity Lookup",
     });
     expect(
       within(checkpoints).getByRole("checkbox", { name: "Before each step" })
     ).toBeTruthy();
+  });
+
+  it("explains why tracked Entity Events have no Correlation Path", async () => {
+    const { view } = await renderLifecycle(CONFIGURED);
+    fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
+    fireEvent.click(view.getByRole("button", { name: /Cancel Events/ }));
+
+    const cancelEvents = view.getByRole("region", { name: "Cancel Events" });
+    expect(cancelEvents.textContent).toContain(
+      "Each Event's Patient binding identifies matching active runs. Correlation Paths are not used."
+    );
+    expect(within(cancelEvents).queryByText("Correlation Path")).toBeNull();
   });
 
   it("writes an edit through the graph store and autosaves it", async () => {
@@ -659,9 +670,7 @@ describe("Lifecycle Focus", () => {
       view.getByRole("region", { name: "Connections" }).textContent
     ).toContain("needs no Connection");
 
-    fireEvent.click(
-      view.getByRole("button", { name: "Evaluation checkpoints" })
-    );
+    fireEvent.click(view.getByRole("button", { name: "Entity Lookup" }));
     fireEvent.click(
       view.getByRole("button", { name: "Go to Entity eligibility" })
     );
@@ -692,12 +701,12 @@ describe("Lifecycle Focus", () => {
     );
     fireEvent.click(
       within(eligibility).getByRole("button", {
-        name: "Go to Evaluation checkpoints",
+        name: "Go to Entity Lookup",
       })
     );
 
     const checkpointsEntry = view.getByRole("button", {
-      name: "Evaluation checkpoints",
+      name: "Entity Lookup",
     });
     expect(checkpointsEntry.getAttribute("aria-current")).toBe("true");
     expect(document.activeElement).toBe(checkpointsEntry);
