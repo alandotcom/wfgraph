@@ -6,11 +6,14 @@ import { getClientLogger } from "#src/lib/logger";
 import { queryClient } from "#src/lib/query-client";
 import { ApiError, type SavedWorkflow, workflowApi } from "#src/lib/rpc-client";
 import { cacheWorkflowPublication, orpcQuery } from "#src/lib/rpc-query";
-import type {
-  WorkflowEdge,
-  WorkflowMode,
-  WorkflowNode,
-  WorkflowVisibility,
+import { groupStructureRefusalReason } from "@wfgraph/shared/graph/group-structure";
+import {
+  toPersistedEdge,
+  toPersistedNodes,
+  type WorkflowEdge,
+  type WorkflowMode,
+  type WorkflowNode,
+  type WorkflowVisibility,
 } from "#src/lib/workflow-graph-types";
 
 /**
@@ -182,6 +185,13 @@ type SaveQueue = {
    * look clean while the failed graph fields are still absent on the server.
    */
   failedPatches: Map<string, WorkflowPatch>;
+  /**
+   * The newest graph `saveWorkflowAtom` refused before queueing it, per
+   * workflow, held until an accepted graph for that workflow is queued or the
+   * workflow is loaded again. While one is held, a successful save of an older
+   * patch keeps the dirty flag raised and reports this refusal.
+   */
+  refusedGraphs: Map<string, Error>;
   /** Draft conflicts block retries until a fresh workflow load resets the revision. */
   blockedConflicts: Map<string, Error>;
   /** Rename state shared by overlapping callers until the last one settles. */
@@ -219,6 +229,7 @@ const saveQueueAtom = atom((): SaveQueue => ({
   timeoutId: null,
   pending: [],
   failedPatches: new Map(),
+  refusedGraphs: new Map(),
   blockedConflicts: new Map(),
   renames: new Map(),
   nextRenameRequestId: 0,
@@ -239,6 +250,7 @@ export const recordLoadedDraftRevisionAtom = atom(
     const queue = get(saveQueueAtom);
     queue.blockedConflicts.delete(input.workflowId);
     queue.failedPatches.delete(input.workflowId);
+    queue.refusedGraphs.delete(input.workflowId);
   }
 );
 
@@ -268,6 +280,21 @@ function toUpdatePayload(patch: WorkflowPatch) {
     nodes: nodes.filter((node) => node.type !== "add"),
     edges,
   };
+}
+
+/**
+ * Why the server's draft save would refuse this graph's Group structure, or
+ * null when it would store it. A Group that breaks the Publish rules, such as
+ * one holding fewer than two steps, still saves.
+ */
+function groupPatchRefusalReason(
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[]
+): string | null {
+  return groupStructureRefusalReason({
+    nodes: toPersistedNodes(nodes),
+    edges: edges.map(toPersistedEdge),
+  });
 }
 
 /**
@@ -302,6 +329,24 @@ export const saveWorkflowAtom = atom(
     }
 
     const queue = get(saveQueueAtom);
+
+    // Every graph writer keeps its Groups whole, so a refusal here means one of
+    // them left a Group half built. Nothing is queued, which keeps that graph
+    // off the server. The refusal is held in `refusedGraphs`, so an older patch
+    // still queued cannot report the edit as saved when it lands.
+    const groupRefusal = patch.nodes
+      ? groupPatchRefusalReason(patch.nodes, patch.edges)
+      : null;
+    if (groupRefusal) {
+      const error = new Error(groupRefusal);
+      queue.refusedGraphs.set(workflowId, error);
+      set(lastSaveErrorAtom, error);
+      logger.error("Save refused a malformed Group", { workflowId });
+      return { ok: false, error };
+    }
+    if (patch.nodes) {
+      queue.refusedGraphs.delete(workflowId);
+    }
 
     const flush = async (): Promise<void> => {
       if (queue.isFlushing) {
@@ -357,7 +402,10 @@ export const saveWorkflowAtom = atom(
             if (rename) {
               rename.confirmedName = workflow.name;
             }
-            set(lastSaveErrorAtom, null);
+            set(
+              lastSaveErrorAtom,
+              queue.refusedGraphs.get(next.workflowId) ?? null
+            );
             markWorkflowListStale();
             cacheWorkflowPublication(queryClient, workflow);
 
@@ -377,6 +425,7 @@ export const saveWorkflowAtom = atom(
                 (pending) => pending.workflowId === next.workflowId
               ) &&
               !queue.failedPatches.has(next.workflowId) &&
+              !queue.refusedGraphs.has(next.workflowId) &&
               get(currentWorkflowIdAtom) === next.workflowId
             ) {
               set(hasUnsavedChangesAtom, false);

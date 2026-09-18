@@ -5,7 +5,6 @@ import {
   useUpdateNodeInternals,
 } from "@xyflow/react";
 import { useAtomValue } from "jotai";
-import { EyeOff } from "lucide-react";
 import { memo, useMemo } from "react";
 import { cn } from "@wfgraph/shared/utils";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
@@ -42,9 +41,6 @@ export const GroupNode = memo(({ data, selected, id }: GroupNodeProps) => {
     return null;
   }
 
-  // Stamped onto the frame by `displayNodesAtom`; the members hold the flag.
-  const isDisabled = data.enabled === false;
-
   return (
     <div
       className={cn(
@@ -54,8 +50,7 @@ export const GroupNode = memo(({ data, selected, id }: GroupNodeProps) => {
         // Paper canvas, recessed frame, Paper member cards -- and it inverts on
         // its own in dark, where Void, 0.15 and 0.205 stack the same way.
         "relative flex h-full w-full flex-col rounded-md border-[1.5px] border-canvas-line bg-muted shadow-none",
-        "group-node-container",
-        isDisabled && "opacity-50"
+        "group-node-container"
       )}
       data-selected={selected}
       data-testid={`group-node-${id}`}
@@ -70,15 +65,10 @@ export const GroupNode = memo(({ data, selected, id }: GroupNodeProps) => {
       {/* The rule under the title is what separates the frame's own chrome from
           the members below it; without it the header floats in the fill. */}
       <div className="flex h-9 shrink-0 items-center gap-2 border-canvas-line/60 border-b px-3 font-medium text-sm">
-        {isDisabled && (
-          <span className="rounded-full bg-muted-foreground/50 p-1">
-            <EyeOff className="size-3.5 text-background" />
-          </span>
-        )}
         <span className="min-w-0 flex-1 truncate">{data.label || "Group"}</span>
         {/* The Group rules judge the frame as a whole, so their badge sits on
-            the frame's header. It shows on a disabled frame too, because
-            publication still refuses a disabled Group that breaks them. */}
+            the frame's header. The badge shows whatever the members' enabled
+            states are, because publication judges every Group. */}
         <NodeIssueBadge issues={data.issues} placement="inline" />
       </div>
       {outletHandles.map((handle, index) => (

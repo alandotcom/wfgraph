@@ -67,12 +67,20 @@ const SEARCH_GRAPH: WorkflowNode[] = [
     position: { x: 24, y: 48 },
     data: { label: "Notify customer", type: "action" },
   },
+  {
+    id: "load_customer",
+    parentId: "group_1",
+    type: "action",
+    position: { x: 24, y: 160 },
+    data: { label: "Load customer", type: "action" },
+  },
 ];
 
+/** Stored edges name Group members, so this one enters the Group at a member. */
 const SELECTED_SEARCH_EDGE: WorkflowEdge = {
   id: "lifecycle-to-group",
   source: "lifecycle_1",
-  target: "group_1",
+  target: "notify_customer",
   selected: true,
 };
 

@@ -193,6 +193,77 @@ describe("WorkflowDraftSync", () => {
     expect(procedureCalls).not.toContain("workflow/update");
   });
 
+  it("ungroups a Group a newer draft left with one member", async () => {
+    const draftStream = createDraftStreamHarness();
+    const procedureCalls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const procedurePath = extractRpcProcedurePath(rpcUrl(input));
+        procedureCalls.push(procedurePath);
+        if (procedurePath === "workflow/subscribeDraft") {
+          return draftStream.open();
+        }
+        if (procedurePath === "workflow/getById") {
+          return rpcJsonResponse({
+            ...workflowPayload(2, "remote"),
+            graph: createSerializedWorkflowGraph({
+              nodes: [
+                {
+                  id: "group_1",
+                  type: "group",
+                  position: { x: 100, y: 100 },
+                  data: { label: "Lookups", type: "group" },
+                },
+                {
+                  ...actionNode("remote"),
+                  position: { x: 20, y: 40 },
+                  parentId: "group_1",
+                },
+              ],
+              edges: [],
+            }),
+          });
+        }
+        throw new Error(`Unexpected RPC procedure: ${procedurePath}`);
+      })
+    );
+
+    const store = createStore();
+    store.set(currentWorkflowIdAtom, WORKFLOW_ID);
+    store.set(recordLoadedDraftRevisionAtom, {
+      workflowId: WORKFLOW_ID,
+      draftRevision: 1,
+    });
+    store.set(loadWorkflowGraphAtom, {
+      nodes: [actionNode("local")],
+      edges: [],
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    render(
+      <JotaiProvider store={store}>
+        <QueryClientProvider client={queryClient}>
+          <WorkflowDraftSync workflowId={WORKFLOW_ID} />
+        </QueryClientProvider>
+      </JotaiProvider>
+    );
+
+    await waitFor(() => expect(draftStream.connectionCount).toBe(1));
+    draftStream.emit(2);
+    await waitFor(
+      () =>
+        expect(
+          store.get(nodesAtom).map((node) => [node.id, node.parentId])
+        ).toEqual([["remote", undefined]]),
+      { timeout: 2_000 }
+    );
+    expect(store.get(nodesAtom)[0]?.position).toEqual({ x: 120, y: 140 });
+    expect(procedureCalls).not.toContain("workflow/update");
+  });
+
   it("preserves unsaved browser work and reports the newer draft", async () => {
     const draftStream = createDraftStreamHarness();
     const procedureCalls: string[] = [];

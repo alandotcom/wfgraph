@@ -1,18 +1,20 @@
 /**
  * Group mutations on the canvas graph: wrap a selection, lift it back out,
- * connect through a frame (fan-out onto its derived entries), and delete a
- * painted inlet.
+ * delete a Group with its steps, connect through a frame (fan-out onto its
+ * derived entries), and delete a painted inlet.
  *
  * Graph cells stay in workflow-graph-cells; this file is the operations.
  */
 
 import { atom } from "jotai";
-import { groupSelection, ungroupNode } from "#src/lib/node-group";
-import { canonicalizeNodeEnabled } from "@wfgraph/shared/graph/node-enabled";
+import {
+  groupSelection,
+  removeGroupWithMembers,
+  ungroupNode,
+} from "#src/lib/node-group";
 import { generateId } from "@wfgraph/shared/utils/id";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
-  childIdsOfGroup,
   fanOutStoreEdges,
   fanOutStoreEdgeIds,
   groupOutletHandle,
@@ -102,36 +104,35 @@ export const ungroupNodeAtom = atom(null, (get, set, nodeId: string) => {
   return true;
 });
 
-/** Switch a whole frame off or on, which writes every member (`disabledGroupIds`). */
-export const setGroupEnabledAtom = atom(
+/**
+ * Delete a Group frame together with its members and every stored edge that
+ * touches a member, as one undo step. Removing a frame on its own ungroups it,
+ * so this is the one operation that deletes a Group's steps, and every caller
+ * asks the person to confirm first.
+ */
+export const deleteGroupWithMembersAtom = atom(
   null,
-  (get, set, input: { groupId: string; enabled: boolean }) => {
+  (get, set, groupId: string) => {
     if (!draftEditable(get)) {
       return false;
     }
 
     const nodes = get(nodesStateAtom);
-    const memberIds = new Set(childIdsOfGroup(nodes, input.groupId));
-    if (memberIds.size === 0) {
+    const next = removeGroupWithMembers({
+      nodes,
+      edges: get(edgesStateAtom),
+      groupId,
+    });
+    if (next.nodes === nodes) {
       return false;
     }
 
     pushHistory(get, set);
-    set(
-      nodesStateAtom,
-      nodes.map((node) =>
-        memberIds.has(node.id)
-          ? {
-              ...node,
-              data: canonicalizeNodeEnabled({
-                ...node.data,
-                enabled: input.enabled,
-              }),
-            }
-          : node
-      )
-    );
-    requestGraphSave(get, set);
+    set(nodesStateAtom, next.nodes);
+    set(edgesStateAtom, next.edges);
+    set(selectedNodeAtom, null);
+    set(selectedEdgeAtom, null);
+    requestGraphSave(get, set, { immediate: true });
     return true;
   }
 );

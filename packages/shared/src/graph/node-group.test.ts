@@ -561,6 +561,18 @@ describe("undersizedGroupIds", () => {
     ];
     expect(undersizedGroupIds(nodes)).toEqual(["constructor"]);
   });
+
+  it("counts an Event Split member as no step, as Publish does", () => {
+    const nodes = [
+      group("g"),
+      { ...lookupA, parentId: "g" },
+      { ...split, parentId: "g" },
+      group("h"),
+      { ...lookupB, parentId: "h" },
+      { ...condition, parentId: "h" },
+    ];
+    expect(undersizedGroupIds(nodes)).toEqual(["g"]);
+  });
 });
 
 describe("groupOutletHandle", () => {

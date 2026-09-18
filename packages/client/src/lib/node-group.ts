@@ -1,16 +1,22 @@
 /**
- * Apply and undo a Group on editor nodes: relative positions, compact child
- * size, and React Flow parent constraints. Analysis lives in shared.
+ * Group mutations on editor nodes: grouping, ungrouping, and the removals that
+ * touch a Group. Each keeps React Flow's parent fields in step with `parentId`.
+ * Analysis and dissolution live in shared.
  */
 
 import { countBy } from "es-toolkit/array";
 import { generateId } from "@wfgraph/shared/utils/id";
-import { toast } from "sonner";
 import type { EdgeChange } from "@xyflow/react";
 import {
   analyzeGroupBoundary,
   isGroupNode,
 } from "@wfgraph/shared/graph/group-boundary";
+import {
+  dissolveGroups,
+  type GroupRepair,
+  positionInFrame,
+  repairGroups,
+} from "@wfgraph/shared/graph/group-dissolution";
 import {
   analyzeGroupableSelection,
   childIdsOfGroup,
@@ -110,17 +116,10 @@ export function groupSelection(input: {
     },
   };
 
-  // Disabled belongs to the frame, and a frame reads disabled only when every
-  // member is. Grouping one step that was already switched off therefore takes
-  // the whole frame with it, which is the safe direction: the other reading
-  // would run a step the person had turned off.
-  const disabled = members.some((node) => node.data.enabled === false);
+  // Each member keeps its own data, so grouping leaves every step's enabled
+  // state and configuration exactly as they were.
   const children = members.map((node) =>
-    nestInGroup(
-      disabled ? { ...node, data: { ...node.data, enabled: false } } : node,
-      groupId,
-      childPosition(positionById, node.id)
-    )
+    nestInGroup(node, groupId, childPosition(positionById, node.id))
   );
   const rest = input.nodes
     .filter((node) => !memberSet.has(node.id))
@@ -138,26 +137,30 @@ export function groupSelection(input: {
   };
 }
 
+/**
+ * Remove the frame `groupId` and free its members on the open canvas, keeping
+ * every stored edge. Answers `nodes` itself when `groupId` names no frame.
+ */
 export function ungroupNode(
   nodes: WorkflowNode[],
   groupId: string
 ): WorkflowNode[] {
-  const group = nodes.find((node) => node.id === groupId);
-  if (!group || !isGroupNode(group)) {
-    return nodes;
-  }
+  return ungroupFrames(nodes, new Set([groupId]));
+}
 
-  // Sorted for the same reason `groupSelection` is: the freed members stay
-  // where the frame stood, which puts them ahead of any frame that remains.
-  return orderGroupParentsFirst(
-    nodes
-      .filter((node) => node.id !== groupId)
-      .map((node) =>
-        node.parentId === groupId
-          ? unnestFromGroup(node, freedPosition(group, node))
-          : node
-      )
-  );
+/**
+ * `repairGroups` for a graph arriving on the open canvas from outside it: a
+ * loaded draft or a build agent edit. Dissolved members are freed the way
+ * `ungroupNode` frees them.
+ */
+export function repairCanvasGroups(input: {
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+}): GroupRepair<WorkflowNode[]> {
+  const repair = repairGroups({ ...input, releaseMember });
+  return repair.ok
+    ? { ...repair, nodes: orderGroupParentsFirst(repair.nodes) }
+    : repair;
 }
 
 /**
@@ -202,72 +205,69 @@ export function lockGroupInteriorEdges(
   return locked ? next : edges;
 }
 
-export function dissolveUndersizedGroups(
-  nodes: WorkflowNode[]
-): WorkflowNode[] {
-  let next = nodes;
-  for (const groupId of undersizedGroupIds(next)) {
-    next = ungroupNode(next, groupId);
-  }
-  return next;
+/**
+ * Remove a batch of nodes as one graph change. A frame in the batch is
+ * ungrouped, and a member the batch also names is removed, which is what a box
+ * selection over a frame and some of its members asks for. Every removed node
+ * goes with its stored edges, the Lifecycle Node stays, and a frame left
+ * holding fewer than two steps is ungrouped. Deleting a Group with every step
+ * inside it is `removeGroupWithMembers`. Answers the given arrays when the
+ * batch changes nothing.
+ */
+export function removeNodes(input: {
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+  nodeIds: ReadonlySet<string>;
+}): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } {
+  const batch = input.nodes.filter((node) => input.nodeIds.has(node.id));
+  const frameIds = batch
+    .filter((node) => isGroupNode(node))
+    .map((node) => node.id);
+  const removedIds = new Set(
+    batch
+      .filter((node) => !isGroupNode(node) && node.data.type !== "lifecycle")
+      .map((node) => node.id)
+  );
+
+  const remaining =
+    removedIds.size === 0
+      ? input.nodes
+      : input.nodes.filter((node) => !removedIds.has(node.id));
+  return {
+    nodes: ungroupFrames(
+      remaining,
+      new Set([...frameIds, ...undersizedGroupIds(remaining)])
+    ),
+    edges: removeEdgesTouching(input.edges, removedIds),
+  };
 }
 
 /**
- * Why this batch cannot be deleted, or null when it can. A member deleted
- * without its frame changes the boundary the frame paints and can leave the
- * frame holding fewer than two members, so the editor asks for an ungroup
- * first. A batch holding the frame is allowed, because the frame takes its
- * members with it; see `idsRemovedWith`.
- *
- * Every delete path asks this one question, with a batch of one where it has
- * one node, so the delete key, the context menu, and the panel cannot disagree.
- * Marking a member `deletable: false` instead would not do: React Flow drops
- * such a node before it expands a frame into its children, which would delete
- * the frame and leave its members pointing at a frame that is gone.
+ * Remove the frame `groupId`, every member, and every stored edge touching a
+ * member. Answers the given arrays when `groupId` names no frame.
  */
-export function refuseDelete(batch: readonly WorkflowNode[]): string | null {
-  const frameIds = new Set(
-    batch.filter((node) => isGroupNode(node)).map((node) => node.id)
-  );
-  const stranded = batch.some(
-    (node) => node.parentId && !frameIds.has(node.parentId)
-  );
-  return stranded ? "Ungroup the frame before deleting a step inside it" : null;
-}
-
-/**
- * `refuseDelete` for the paths that act rather than render: the delete key and
- * the panel's Delete button both cancel the whole batch and say why. Refusing
- * without a word is what let those two paths disagree, one deleting the rest of
- * the selection while the other deleted nothing.
- */
-export function refuseDeleteWithNotice(
-  batch: readonly WorkflowNode[]
-): string | null {
-  const refusal = refuseDelete(batch);
-  if (refusal) {
-    toast.error(refusal);
+export function removeGroupWithMembers(input: {
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+  groupId: string;
+}): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } {
+  const frame = input.nodes.find((node) => node.id === input.groupId);
+  if (!isGroupNode(frame)) {
+    return { nodes: input.nodes, edges: input.edges };
   }
-  return refusal;
+  const removedIds = new Set([
+    input.groupId,
+    ...childIdsOfGroup(input.nodes, input.groupId),
+  ]);
+  return {
+    nodes: input.nodes.filter((node) => !removedIds.has(node.id)),
+    edges: removeEdgesTouching(input.edges, removedIds),
+  };
 }
 
 /** Whether this step has a frame to leave: a frame itself, or a member. */
 export function canUngroup(node: WorkflowNode | undefined): boolean {
   return Boolean(node && (isGroupNode(node) || node.parentId));
-}
-
-export function idsRemovedWith(
-  nodes: readonly WorkflowNode[],
-  nodeId: string
-): Set<string> {
-  const ids = new Set([nodeId]);
-  const target = nodes.find((node) => node.id === nodeId);
-  if (isGroupNode(target)) {
-    for (const childId of childIdsOfGroup(nodes, nodeId)) {
-      ids.add(childId);
-    }
-  }
-  return ids;
 }
 
 export function expandEdgeRemovals(
@@ -291,27 +291,6 @@ export function expandEdgeRemovals(
     ...changes.filter((change) => change.type !== "remove"),
     ...[...removedIds].map((id) => ({ type: "remove" as const, id })),
   ];
-}
-
-/**
- * Drop the edges whose source or target is no longer a node, which the graph
- * has to be free of before `createSerializedWorkflowGraph` will take it.
- *
- * React Flow asks for no edge it was told it cannot delete, and a frame's
- * interior edges are painted `deletable: false` by `lockGroupInteriorEdges`; a
- * collapsed inlet edge never reaches it at all. Deleting a frame therefore
- * removes its children and leaves both kinds behind. Returns the same array
- * when every edge still has both ends.
- */
-export function dropOrphanedEdges(
-  nodes: readonly WorkflowNode[],
-  edges: WorkflowEdge[]
-): WorkflowEdge[] {
-  const liveIds = new Set(nodes.map((node) => node.id));
-  const kept = edges.filter(
-    (edge) => liveIds.has(edge.source) && liveIds.has(edge.target)
-  );
-  return kept.length === edges.length ? edges : kept;
 }
 
 /**
@@ -387,12 +366,15 @@ function nestInGroup(
  * the ratio of the two pitches rebuilds the same arrangement at canvas scale,
  * and the shape a person read inside the frame survives the ungroup.
  */
-function freedPosition(
-  group: WorkflowNode,
-  child: WorkflowNode
-): { x: number; y: number } {
+function freedPosition(input: { frame: WorkflowNode; member: WorkflowNode }): {
+  x: number;
+  y: number;
+} {
+  const { frame: group, member: child } = input;
+  // A frame from a graph no editor has laid out yet has no width to scale
+  // around, so its members keep the spot they drew at inside it.
   if (typeof group.width !== "number") {
-    throw new Error(`Group '${group.id}' has no width to ungroup around`);
+    return positionInFrame(input);
   }
   const frameCentreX = group.position.x + group.width / 2;
   const childCentreX =
@@ -408,17 +390,55 @@ function freedPosition(
   };
 }
 
-function unnestFromGroup(
-  node: WorkflowNode,
-  position: { x: number; y: number }
-): WorkflowNode {
-  const { extent: _extent, parentId: _parentId, ...rest } = node;
+/**
+ * Dissolve the frames `groupIds` names and keep the frames-first order
+ * `orderGroupParentsFirst` describes. Answers `nodes` when no id names a frame.
+ */
+function ungroupFrames(
+  nodes: WorkflowNode[],
+  groupIds: ReadonlySet<string>
+): WorkflowNode[] {
+  return orderGroupParentsFirst(
+    dissolveGroups({ nodes, groupIds, releaseMember })
+  );
+}
+
+/**
+ * The node a member becomes on the open canvas once its frame is gone: a
+ * full-size card at `freedPosition`, draggable and connectable, with no parent
+ * constraint.
+ */
+function releaseMember(input: {
+  frame: WorkflowNode;
+  member: WorkflowNode;
+}): WorkflowNode {
+  const { extent: _extent, parentId: _parentId, ...rest } = input.member;
   return {
     ...rest,
     draggable: true,
     connectable: true,
     width: WORKFLOW_NODE_WIDTH,
     height: WORKFLOW_NODE_HEIGHT,
-    position,
+    position: freedPosition(input),
   };
+}
+
+/**
+ * The stored edges with no end on a removed node, which the graph has to be free
+ * of before `createSerializedWorkflowGraph` will take it. React Flow offers no
+ * edge painted `deletable: false`, such as a member's interior edges, and no
+ * stored edge its painted frame edge stands for, so every removal reads the
+ * stored edges here. Answers `edges` itself when no edge touches `nodeIds`.
+ */
+function removeEdgesTouching(
+  edges: WorkflowEdge[],
+  nodeIds: ReadonlySet<string>
+): WorkflowEdge[] {
+  if (nodeIds.size === 0) {
+    return edges;
+  }
+  const kept = edges.filter(
+    (edge) => !nodeIds.has(edge.source) && !nodeIds.has(edge.target)
+  );
+  return kept.length === edges.length ? edges : kept;
 }

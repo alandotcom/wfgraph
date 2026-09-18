@@ -8,6 +8,8 @@
 import type { Getter } from "jotai";
 import { atom } from "jotai";
 import { orderGroupParentsFirst } from "@wfgraph/shared/graph/node-group";
+import { getClientLogger } from "#src/lib/logger";
+import { repairCanvasGroups } from "#src/lib/node-group";
 import type { SavedWorkflow } from "#src/lib/rpc-client";
 import {
   currentWorkflowDraftRevisionAtom,
@@ -45,6 +47,8 @@ import { clearWorkflowComparisonAtom } from "#src/lib/workflow-comparison-store"
 import { resetNodeStatusesAtom as resetPresentationNodeStatusesAtom } from "#src/lib/workflow-graph-presentation-store";
 import { NO_ISSUES, workflowIssuesAtom } from "#src/lib/workflow-issues-store";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
+
+const logger = getClientLogger("workflow", "graph");
 
 /** Lets the config panel focus a node that has not received an action type yet. */
 export const newlyCreatedNodeIdAtom = atom<string | null>(null);
@@ -124,7 +128,11 @@ export const endWorkflowEditorLifetimeAtom = atom(null, (_get, set) => {
   set(workflowDragActiveAtom, false);
 });
 
-/** Replace the graph and clear state that belongs to the previous graph. */
+/**
+ * Replace the graph and clear state that belongs to the previous graph. A
+ * Group holding fewer than two steps is ungrouped on the way in, and that
+ * repair leaves the graph unsaved, so the next save writes it to the server.
+ */
 export const loadWorkflowGraphAtom = atom(
   null,
   (get, set, graph: { nodes: WorkflowNode[]; edges: WorkflowEdge[] }) => {
@@ -132,7 +140,17 @@ export const loadWorkflowGraphAtom = atom(
     if (workflowId) {
       set(clearWorkflowComparisonAtom, workflowId);
     }
-    set(nodesStateAtom, orderGroupParentsFirst(graph.nodes));
+    const repair = repairCanvasGroups(graph);
+    if (!repair.ok) {
+      // The server refuses to store such a graph, so reaching this means the
+      // draft was written around that check. It loads unchanged, and the next
+      // save reports the refusal.
+      logger.error("Loaded graph holds a malformed Group", { workflowId });
+    }
+    set(
+      nodesStateAtom,
+      repair.ok ? repair.nodes : orderGroupParentsFirst(graph.nodes)
+    );
     set(edgesStateAtom, graph.edges);
     set(historyAtom, []);
     set(futureAtom, []);
@@ -140,7 +158,10 @@ export const loadWorkflowGraphAtom = atom(
     set(selectedNodeAtom, null);
     set(selectedEdgeAtom, null);
     set(newlyCreatedNodeIdAtom, null);
-    set(hasUnsavedChangesAtom, false);
+    set(
+      hasUnsavedChangesAtom,
+      repair.ok && repair.dissolvedGroupIds.length > 0
+    );
     set(workflowIssuesAtom, NO_ISSUES);
   }
 );

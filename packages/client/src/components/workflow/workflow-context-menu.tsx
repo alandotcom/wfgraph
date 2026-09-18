@@ -24,6 +24,7 @@ import { useIsMobile } from "#src/hooks/use-mobile";
 import {
   copySelectionAtom,
   deleteEdgeAtom,
+  deleteGroupWithMembersAtom,
   deleteNodeAtom,
   duplicateSelectionAtom,
   edgesAtom,
@@ -32,19 +33,16 @@ import {
   nodesAtom,
   pasteCopiedSelectionAtom,
   selectedNodeAtom,
-  setGroupEnabledAtom,
   ungroupNodeAtom,
   updateNodeDataAtom,
 } from "#src/lib/workflow-graph-store";
 import { openCommandPaletteAtom } from "#src/lib/command-palette-store";
-import { canUngroup, refuseDelete } from "#src/lib/node-group";
+import { canUngroup } from "#src/lib/node-group";
 import { WORKFLOW_NODE_HEIGHT } from "#src/lib/workflow-node-dimensions";
 import { cn } from "@wfgraph/shared/utils";
-import {
-  analyzeGroupableSelection,
-  disabledGroupIds,
-} from "@wfgraph/shared/graph/node-group";
+import { analyzeGroupableSelection } from "@wfgraph/shared/graph/node-group";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
+import { deleteGroupWithStepsConfirmation } from "./group-delete-confirmation";
 
 export type ContextMenuType = "node" | "edge" | "pane" | null;
 
@@ -95,7 +93,7 @@ export function WorkflowContextMenu({
   const ungroupSelected = useSetAtom(ungroupNodeAtom);
   const hasCopiedSelection = useAtomValue(hasCopiedSelectionAtom);
   const setSelectedNode = useSetAtom(selectedNodeAtom);
-  const setGroupEnabled = useSetAtom(setGroupEnabledAtom);
+  const deleteGroupWithMembers = useSetAtom(deleteGroupWithMembersAtom);
   const updateNodeData = useSetAtom(updateNodeDataAtom);
   const catalog = useExtensionCatalog();
   const { open: openOverlay } = useOverlay();
@@ -105,17 +103,11 @@ export function WorkflowContextMenu({
   const clicked = menuState?.nodeId
     ? nodes.find((node) => node.id === menuState.nodeId)
     : undefined;
-  const isDisabledGroup = Boolean(
-    clicked && isGroupNode(clicked) && disabledGroupIds(nodes).has(clicked.id)
-  );
-  const isDisabled = isGroupNode(clicked)
-    ? isDisabledGroup
-    : clicked?.data.enabled === false;
-  const canToggleEnabled = Boolean(
-    clicked &&
-    !clicked.parentId &&
-    (clicked.data.type === "action" || isGroupNode(clicked))
-  );
+  const isDisabled = clicked?.data.enabled === false;
+  // A step switches on and off by itself, inside a Group or outside one. A
+  // frame is organization only and has no enabled state of its own.
+  const canToggleEnabled = clicked?.data.type === "action";
+  const clickedIsGroup = isGroupNode(clicked);
 
   const handleDeleteNode = useCallback(() => {
     if (canEdit && menuState?.nodeId) {
@@ -149,17 +141,28 @@ export function WorkflowContextMenu({
     }
   }, [menuState, onClose, setSelectedNode, isMobile, openSheet]);
 
+  const handleDeleteGroupWithSteps = useCallback(() => {
+    if (canEdit && menuState?.nodeId) {
+      const groupId = menuState.nodeId;
+      onClose();
+      openOverlay(
+        ConfirmOverlay,
+        deleteGroupWithStepsConfirmation(() => {
+          if (canEdit) {
+            deleteGroupWithMembers(groupId);
+          }
+        })
+      );
+    }
+  }, [canEdit, menuState, deleteGroupWithMembers, onClose, openOverlay]);
+
   const handleToggleEnabled = useCallback(() => {
     if (!(canEdit && clicked)) {
       return;
     }
-    if (isGroupNode(clicked)) {
-      setGroupEnabled({ groupId: clicked.id, enabled: isDisabled });
-    } else {
-      updateNodeData({ id: clicked.id, data: { enabled: isDisabled } });
-    }
+    updateNodeData({ id: clicked.id, data: { enabled: isDisabled } });
     onClose();
-  }, [canEdit, clicked, isDisabled, onClose, setGroupEnabled, updateNodeData]);
+  }, [canEdit, clicked, isDisabled, onClose, updateNodeData]);
 
   const handleDeleteEdge = useCallback(() => {
     if (canEdit && menuState?.edgeId) {
@@ -283,7 +286,6 @@ export function WorkflowContextMenu({
   );
   const canGroup = grouping.ok;
   const showUngroup = canUngroup(clicked);
-  const deleteRefusal = clicked ? refuseDelete([clicked]) : null;
   // Below the cursor when the menu fits there, above it otherwise.
   const opensUpward =
     menuState.position.y + MENU_HEIGHT_PX + VIEWPORT_MARGIN_PX >
@@ -356,14 +358,24 @@ export function WorkflowContextMenu({
             label="Ungroup"
             onClick={handleUngroup}
           />
-          <MenuItem
-            disabled={isLifecycleNode || Boolean(deleteRefusal)}
-            hint={deleteRefusal ?? undefined}
-            icon={<Trash2 className="size-4" />}
-            label={`Delete ${nodeLabel}`}
-            onClick={handleDeleteNode}
-            variant="destructive"
-          />
+          {/* Ungroup is how a frame alone is removed, so a frame's destructive
+              row is the explicit, confirmed delete of the Group's steps. */}
+          {clickedIsGroup ? (
+            <MenuItem
+              icon={<Trash2 className="size-4" />}
+              label="Delete Group and Steps"
+              onClick={handleDeleteGroupWithSteps}
+              variant="destructive"
+            />
+          ) : (
+            <MenuItem
+              disabled={isLifecycleNode}
+              icon={<Trash2 className="size-4" />}
+              label={`Delete ${nodeLabel}`}
+              onClick={handleDeleteNode}
+              variant="destructive"
+            />
+          )}
         </>
       )}
 
