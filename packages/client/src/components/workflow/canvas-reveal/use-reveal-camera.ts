@@ -9,6 +9,7 @@ import { type RefObject, useRef } from "react";
 import { useAfterPaint } from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import { viewportAnimationDuration } from "#src/lib/motion";
+import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import type { WorldCamera } from "#src/lib/workflow-navigation-state";
 import { isAgentPanelExpandedAtom } from "#src/lib/workflow-ui-store";
 import {
@@ -64,7 +65,7 @@ export type SubjectBounds = { bounds: Rect; optionalBounds: readonly Rect[] };
 export function subjectBounds(
   placement: RevealPlacement,
   flow: Pick<
-    ReactFlowInstance,
+    ReactFlowInstance<WorkflowNode, WorkflowEdge>,
     "getEdges" | "getInternalNode" | "getNodes" | "getNodesBounds"
   >
 ): SubjectBounds {
@@ -107,7 +108,7 @@ export function useRevealCamera(input: {
 } {
   const store = useStore();
   const flowStore = useStoreApi();
-  const flow = useReactFlow();
+  const flow = useReactFlow<WorkflowNode, WorkflowEdge>();
   const { getNodesBounds, getViewport, setViewport } = flow;
   const isMobile = useIsMobile();
   const isSized = useFlowStore((state) => state.width > 0 && state.height > 0);

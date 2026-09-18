@@ -4,7 +4,10 @@ import {
   analyzeGroupBoundaryById,
   isGroupNode,
 } from "@wfgraph/shared/graph/group-boundary";
-import { addedIngressSourceRefusal } from "@wfgraph/shared/graph/group-contract";
+import {
+  addedIngressSourceRefusal,
+  addedJoinRuleRefusal,
+} from "@wfgraph/shared/graph/group-contract";
 import { fanOutStoreEdges } from "@wfgraph/shared/graph/node-group";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { normalizeSourceHandleForConnection } from "#src/components/workflow/connection-handle";
@@ -50,9 +53,10 @@ export type ConnectionPlan =
  * Group connect only from an "Incoming from" stub, marked by `fromIngressStub`,
  * and a connection that would enter a Group from a second outside outlet is
  * `addedIngressSourceRefusal`'s to refuse. A join the draft save refuses is
- * `andJoinRefusalReason`'s. `storeEdges` are the stored edges, which name Group
- * members; the painted edges name frames and would give a Group outlet a
- * different handle.
+ * `andJoinRefusalReason`'s, and a join a Group may not hold, such as one with a
+ * branch from outside the Group, is `addedJoinRuleRefusal`'s. `storeEdges` are
+ * the stored edges, which name Group members; the painted edges name frames and
+ * would give a Group outlet a different handle.
  */
 export function planConnection({
   connection,
@@ -142,10 +146,15 @@ export function planConnection({
     };
   }
 
-  const remaining = storeEdges.filter((edge) => edge.id !== connectionId);
+  // The stored array itself when no edge is replaced, so the Group join rules
+  // read the breaks `joinRuleBreakKeys` already holds for it.
+  const remaining = storeEdges.some((edge) => edge.id === connectionId)
+    ? storeEdges.filter((edge) => edge.id !== connectionId)
+    : storeEdges;
   const refusal =
     addedIngressSourceRefusal({ nodes, edges: remaining, additions }) ??
-    andJoinRefusalReason({ nodes, edges: [...remaining, ...additions] });
+    andJoinRefusalReason({ nodes, edges: [...remaining, ...additions] }) ??
+    addedJoinRuleRefusal({ nodes, edges: remaining, additions });
   return refusal === null ? { additions } : { refusal };
 }
 

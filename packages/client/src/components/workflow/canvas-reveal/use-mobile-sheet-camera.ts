@@ -3,6 +3,7 @@ import { useAtomValue } from "jotai";
 import { type RefObject, useRef } from "react";
 import { useAfterPaint } from "#src/hooks/effects";
 import { viewportAnimationDuration } from "#src/lib/motion";
+import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import {
   revealViewport,
   sameWorldCamera,
@@ -31,7 +32,7 @@ export function useMobileSheetCamera(input: {
   state: MobileRevealState | null;
   sheet: RefObject<HTMLElement | null>;
 }): void {
-  const flow = useReactFlow();
+  const flow = useReactFlow<WorkflowNode, WorkflowEdge>();
   const flowStore = useStoreApi();
   const { addressId } = useAtomValue(canvasRevealAtom);
   const shownRef = useRef<MobileSheetCameraSlot | null>(null);

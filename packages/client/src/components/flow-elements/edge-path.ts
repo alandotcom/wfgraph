@@ -7,10 +7,48 @@ import { getSmoothStepPath, type InternalNode, Position } from "@xyflow/react";
 const BORDER_RADIUS = 16;
 const OFFSET = 16;
 
+/**
+ * The turn for an edge that runs forward along the flow and crosses at
+ * `turnAlong`, a coordinate strictly between its ends on the flow axis. Any
+ * other edge gets no turn here, and React Flow turns it halfway.
+ */
+function turnPoint(
+  input: Parameters<typeof getSmoothStepPath>[0],
+  turnAlong: number | undefined
+): { centerX?: number; centerY?: number } {
+  if (turnAlong === undefined) {
+    return {};
+  }
+  const { sourceX, sourceY, targetX, targetY } = input;
+  if (
+    input.sourcePosition === Position.Bottom &&
+    input.targetPosition === Position.Top &&
+    sourceY < turnAlong &&
+    turnAlong < targetY
+  ) {
+    return { centerY: turnAlong };
+  }
+  if (
+    input.sourcePosition === Position.Right &&
+    input.targetPosition === Position.Left &&
+    sourceX < turnAlong &&
+    turnAlong < targetX
+  ) {
+    return { centerX: turnAlong };
+  }
+  return {};
+}
+
+/**
+ * A workflow edge's path, with its label placed where the path turns.
+ * `options.turnAlong` is the painted edge's `data.turnAlong`.
+ */
 export function getWorkflowEdgePath(
-  input: Parameters<typeof getSmoothStepPath>[0]
+  input: Parameters<typeof getSmoothStepPath>[0],
+  options?: { turnAlong?: number | undefined }
 ): ReturnType<typeof getSmoothStepPath> {
   return getSmoothStepPath({
+    ...turnPoint(input, options?.turnAlong),
     ...input,
     borderRadius: BORDER_RADIUS,
     offset: OFFSET,

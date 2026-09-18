@@ -61,14 +61,17 @@ const Animated = memo(function Animated({
     targetHandleId
   );
 
-  const [edgePath, labelX, labelY] = getWorkflowEdgePath({
-    sourceX: sx,
-    sourceY: sy,
-    sourcePosition: sourcePos,
-    targetX: tx,
-    targetY: ty,
-    targetPosition: targetPos,
-  });
+  const [edgePath, labelX, labelY] = getWorkflowEdgePath(
+    {
+      sourceX: sx,
+      sourceY: sy,
+      sourcePosition: sourcePos,
+      targetX: tx,
+      targetY: ty,
+      targetPosition: targetPos,
+    },
+    { turnAlong: data?.turnAlong }
+  );
   const edgeLabel = resolveEdgeLabel(sourceHandleId, data);
   // `canvasEdgesAtom` sets this on every edge landing where the run cannot go.
   const inactive = data?.inactive === true;

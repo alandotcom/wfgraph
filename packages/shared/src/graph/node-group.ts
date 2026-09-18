@@ -5,7 +5,7 @@
  * frame's inlet and outlet stand for the boundary `group-boundary.ts` derives.
  */
 
-import { countBy, groupBy, uniqBy } from "es-toolkit/array";
+import { groupBy, uniqBy } from "es-toolkit/array";
 import {
   getConditionBranchDisplayLabel,
   normalizeConditionBranch,
@@ -24,6 +24,7 @@ import {
   type GroupPort,
   isGroupNode,
 } from "#src/graph/group-boundary";
+import { groupAcrossOffsets } from "#src/graph/group-canvas-lanes";
 import { groupPortKey } from "#src/graph/group-port-key";
 import { nodeLabel } from "#src/graph/group-structure";
 import { isConditionNode } from "#src/graph/node-config";
@@ -646,17 +647,21 @@ export const GROUP_DIRECTION_LABEL: Readonly<
 /**
  * Each member's top-left corner on the focused Group canvas, at the standard
  * card size, keyed by member id. The coordinates belong to the Group alone: a
- * collapsed card at the origin spans x -W/2 to W/2 and y 0 to H, the first row
- * starts where that card starts, and every row is centred on the card's centre
- * line. Only the members, their interior edges, and `direction` decide it.
+ * collapsed card at the origin spans x -W/2 to W/2 and y 0 to H, and the first
+ * row starts where that card starts. Rows follow interior edges, so a join sits
+ * after every predecessor, and `groupAcrossOffsets` keeps a lane clear through
+ * each row an edge skips, including an edge from a port in `trailingStubPorts`:
+ * the member ports whose edges run to the "Continues to" and "Path ends" stubs
+ * after the last row. Only the members, their interior edges, those ports, and
+ * `direction` decide it.
  */
 export function groupCanvasPositions(input: {
   memberIds: readonly string[];
   interiorEdges: readonly WorkflowEdge[];
+  trailingStubPorts?: readonly GroupPort[] | undefined;
   direction?: GroupLayoutDirection | undefined;
 }): Map<string, { x: number; y: number }> {
   const slots = groupMemberSlots(input.memberIds, input.interiorEdges);
-  const widthOfRow = countBy(slots, (slot) => slot.row);
   const vertical = (input.direction ?? "vertical") === "vertical";
   const rowPitch = vertical
     ? WORKFLOW_NODE_HEIGHT + RANK_SPACING
@@ -664,11 +669,18 @@ export function groupCanvasPositions(input: {
   const columnPitch = vertical
     ? WORKFLOW_NODE_WIDTH + NODE_SPACING
     : WORKFLOW_NODE_HEIGHT + NODE_SPACING;
+  const acrossById = groupAcrossOffsets({
+    slots,
+    edges: input.interiorEdges,
+    trailingStubSourceIds: new Set(
+      (input.trailingStubPorts ?? []).map((port) => port.nodeId)
+    ),
+    pitch: columnPitch,
+  });
   return new Map(
     slots.map((slot) => {
-      const rowWidth = widthOfRow[slot.row] ?? 1;
       const along = slot.row * rowPitch;
-      const across = (slot.column - (rowWidth - 1) / 2) * columnPitch;
+      const across = acrossById.get(slot.id) ?? 0;
       const position = vertical
         ? { x: across - WORKFLOW_NODE_WIDTH / 2, y: along }
         : { x: along - WORKFLOW_NODE_WIDTH / 2, y: across };

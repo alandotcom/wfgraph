@@ -1,3 +1,4 @@
+import { uniq } from "es-toolkit/array";
 import { describe, expect, it } from "vitest";
 import { BUILT_IN_ACTION_IDS } from "#src/actions/built-in-actions";
 import { groupContractMatrix } from "#src/graph/group-contract-test-support";
@@ -444,6 +445,216 @@ describe("groupCanvasPositions", () => {
         groupCanvasPositions({ memberIds: ["a"], interiorEdges: [], direction })
       ).toEqual(new Map([["a", { x: -W / 2, y: 0 }]]));
     }
+  });
+
+  describe("branches converging on a join", () => {
+    type Box = { left: number; top: number; right: number; bottom: number };
+    type Segment = { x1: number; y1: number; x2: number; y2: number };
+
+    /** Member ids and interior edges written as "source>target" pairs. */
+    function shape(...pairs: string[]) {
+      const interiorEdges = pairs.map((pair) => {
+        const [source = "", target = ""] = pair.split(">");
+        return edge(pair, source, target);
+      });
+      const memberIds = uniq(
+        interiorEdges.flatMap((item) => [item.source, item.target])
+      );
+      return { memberIds, interiorEdges };
+    }
+
+    const shapes = {
+      "two equal arms": shape("a>b", "a>c", "b>j", "c>j"),
+      "uneven arms": shape("a>b", "b>b2", "b2>b3", "a>c", "b3>j", "c>j"),
+      "the fan-out's own edge beside a long arm": shape(
+        "a>b",
+        "b>b2",
+        "b2>j",
+        "a>j"
+      ),
+      "three arms of different lengths": shape(
+        "a>b",
+        "a>c",
+        "c>c2",
+        "a>d",
+        "d>d2",
+        "d2>d3",
+        "b>j",
+        "c2>j",
+        "d3>j"
+      ),
+      "two joins in a row": shape(
+        "a>b",
+        "a>c",
+        "b>j",
+        "c>j",
+        "j>k",
+        "j>m",
+        "m>m2",
+        "k>n",
+        "m2>n"
+      ),
+      "entries from outside joining after a long arm": shape(
+        "a>j",
+        "b>b2",
+        "b2>b3",
+        "b3>j"
+      ),
+    };
+
+    /** A card's box, at the standard card size in either direction. */
+    function boxOf(position: { x: number; y: number }): Box {
+      return {
+        left: position.x,
+        top: position.y,
+        right: position.x + W,
+        bottom: position.y + H,
+      };
+    }
+
+    /**
+     * The three segments the canvas draws for an edge between two boxes: out of
+     * the source along the flow, across in the middle of the rank gap before
+     * the target, and into the target. `edge-path.ts` turns edges there.
+     */
+    function route(
+      source: Box,
+      target: Box,
+      direction: "vertical" | "horizontal"
+    ): Segment[] {
+      if (direction === "vertical") {
+        const sx = (source.left + source.right) / 2;
+        const tx = (target.left + target.right) / 2;
+        const turn = Math.max(
+          (source.bottom + target.top) / 2,
+          target.top - RANK_SPACING / 2
+        );
+        return [
+          { x1: sx, y1: source.bottom, x2: sx, y2: turn },
+          { x1: sx, y1: turn, x2: tx, y2: turn },
+          { x1: tx, y1: turn, x2: tx, y2: target.top },
+        ];
+      }
+      const sy = (source.top + source.bottom) / 2;
+      const ty = (target.top + target.bottom) / 2;
+      const turn = Math.max(
+        (source.right + target.left) / 2,
+        target.left - RANK_SPACING / 2
+      );
+      return [
+        { x1: source.right, y1: sy, x2: turn, y2: sy },
+        { x1: turn, y1: sy, x2: turn, y2: ty },
+        { x1: turn, y1: ty, x2: target.left, y2: ty },
+      ];
+    }
+
+    function crosses(segment: Segment, box: Box): boolean {
+      const left = Math.min(segment.x1, segment.x2);
+      const right = Math.max(segment.x1, segment.x2);
+      const top = Math.min(segment.y1, segment.y2);
+      const bottom = Math.max(segment.y1, segment.y2);
+      return (
+        left < box.right &&
+        right > box.left &&
+        top < box.bottom &&
+        bottom > box.top
+      );
+    }
+
+    function overlaps(a: Box, b: Box): boolean {
+      return (
+        a.left < b.right &&
+        a.right > b.left &&
+        a.top < b.bottom &&
+        a.bottom > b.top
+      );
+    }
+
+    const cases = Object.entries(shapes).flatMap(([name, graph]) =>
+      (["vertical", "horizontal"] as const).map((direction) => ({
+        name,
+        direction,
+        ...graph,
+      }))
+    );
+
+    it.each(cases)(
+      "$name in a $direction Group: each join follows its predecessors, no cards overlap, and no edge crosses a card",
+      ({ memberIds, interiorEdges, direction }) => {
+        const positions = groupCanvasPositions({
+          memberIds,
+          interiorEdges,
+          direction,
+        });
+        const box = (id: string) => {
+          const position = positions.get(id);
+          if (!position) {
+            throw new Error(`no position for ${id}`);
+          }
+          return boxOf(position);
+        };
+
+        for (const item of interiorEdges) {
+          const source = box(item.source);
+          const target = box(item.target);
+          if (direction === "vertical") {
+            expect(target.top).toBeGreaterThanOrEqual(
+              source.bottom + RANK_SPACING
+            );
+          } else {
+            expect(target.left).toBeGreaterThanOrEqual(
+              source.right + RANK_SPACING
+            );
+          }
+        }
+
+        for (const [index, id] of memberIds.entries()) {
+          for (const other of memberIds.slice(index + 1)) {
+            expect(overlaps(box(id), box(other))).toBe(false);
+          }
+        }
+
+        for (const item of interiorEdges) {
+          const segments = route(box(item.source), box(item.target), direction);
+          for (const id of memberIds) {
+            if (id === item.source || id === item.target) {
+              continue;
+            }
+            for (const segment of segments) {
+              expect(
+                crosses(segment, box(id)),
+                `${item.id} crosses ${id}`
+              ).toBe(false);
+            }
+          }
+        }
+      }
+    );
+
+    it("keeps a lane clear from an early continuation to the stubs after the last row", () => {
+      const { memberIds, interiorEdges } = shape("a>b", "b>c");
+      const laneOf = (positions: Map<string, { x: number; y: number }>) =>
+        (positions.get("a")?.x ?? 0) + W / 2;
+      const covers = (
+        positions: Map<string, { x: number; y: number }>,
+        id: string
+      ) => {
+        const card = boxOf(positions.get(id) ?? { x: 0, y: 0 });
+        const lane = laneOf(positions);
+        return lane > card.left && lane < card.right;
+      };
+
+      const stacked = groupCanvasPositions({ memberIds, interiorEdges });
+      expect(covers(stacked, "b")).toBe(true);
+
+      const positions = groupCanvasPositions({
+        memberIds,
+        interiorEdges,
+        trailingStubPorts: [{ nodeId: "a", handle: null }],
+      });
+      expect(covers(positions, "b")).toBe(false);
+      expect(covers(positions, "c")).toBe(false);
+    });
   });
 
   it("lays rows left to right when horizontal", () => {

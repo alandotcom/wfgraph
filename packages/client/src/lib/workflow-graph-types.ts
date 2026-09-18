@@ -100,6 +100,12 @@ export type EditorEdgeData = Record<string, unknown> & {
   displayLabel?: string | undefined;
   /** Set on an edge landing on a node the run can never reach. */
   inactive?: boolean | undefined;
+  /**
+   * Where a forward edge on a focused Group canvas turns across the flow: a y
+   * coordinate in a top to bottom Group, an x coordinate in a left to right one.
+   * `focusedGroupCanvasGraph` sets it, and every other edge turns halfway.
+   */
+  turnAlong?: number | undefined;
   [COMPARISON_EDGE_ANNOTATION]?: ComparisonEdgeAnnotation | undefined;
 };
 

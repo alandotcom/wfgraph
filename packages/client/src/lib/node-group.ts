@@ -23,6 +23,7 @@ import {
   childIdsOfGroup,
   fanOutStoreEdgeIds,
   groupCanvasPositions,
+  groupEndPorts,
   groupInteriorLayout,
   groupLayoutDirection,
   orderGroupParentsFirst,
@@ -373,14 +374,18 @@ function memberReleaser(graph: {
   return ({ frame, member }) => {
     let positions = positionsByFrame.get(frame.id);
     if (!positions) {
-      const { memberIds, interiorEdges } = analyzeGroupBoundaryById({
+      const boundary = analyzeGroupBoundaryById({
         nodes: graph.nodes,
         edges: graph.edges,
         groupId: frame.id,
       });
       positions = groupCanvasPositions({
-        memberIds,
-        interiorEdges,
+        memberIds: boundary.memberIds,
+        interiorEdges: boundary.interiorEdges,
+        trailingStubPorts: [
+          ...boundary.internalContinuation,
+          ...groupEndPorts({ nodes: graph.nodes, boundary }),
+        ],
         direction: groupLayoutDirection(frame),
       });
       positionsByFrame.set(frame.id, positions);
