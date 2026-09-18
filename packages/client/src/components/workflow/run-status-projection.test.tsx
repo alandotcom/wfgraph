@@ -17,15 +17,7 @@ import {
   served,
   waitingRun,
 } from "./canvas-reveal/runs-reveal.test-support";
-
-/** Happy-dom's viewport, which the `md` media query answers from. */
-function setViewportWidth(width: number): void {
-  (
-    window as unknown as {
-      happyDOM: { setViewport: (viewport: { width: number }) => void };
-    }
-  ).happyDOM.setViewport({ width });
-}
+import { setViewportWidth } from "#src/lib/viewport-test-support";
 
 beforeEach(() => {
   setViewportWidth(1440);

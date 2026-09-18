@@ -548,6 +548,26 @@ sheet, its scroll position, the overview's camera, and focus on **Enter group**.
 Browser Forward returns to the Group with its sheets, their scroll positions,
 and the Group's camera.
 
+Runs and **Changes** use the same Group sequence on a phone. In Runs, a Group
+card shows the Group's run summary in the run's sheet, with its run status, its
+member counts, and each step with its status. A step in that summary, or a
+journey entry for a step inside a collapsed Group, opens the Group's focused
+canvas with the step's evidence as the inspector over the run's sheet, and
+**Enter group** opens the focused canvas with the run's sheet still open. In
+**Changes**, a Group card opens the Group's organization summary as the
+inspector: the Group's own settings, whether execution behavior changed, the
+changed steps inside it, and **Enter group**, at every width. A changed step in
+that summary, a change list row, the Group card's **N changed** control, and
+**Previous** or **Next** each open the focused canvas of the Group that holds
+the step, with the step's field differences over the sheets that were open.
+Inside a Group, Draft, Runs, and **Changes** give the first sheet the same Back
+control named for the Group. Back and Escape on that sheet remove it and leave
+the focused canvas showing. **Workflow** or browser Back returns to the
+overview with the sheets it last showed, such as the Group's run summary or its
+organization summary. Runs and **Changes** draw every focused Group top to
+bottom and offer no topology authoring. Switching between Draft, Runs, and **Changes** returns each
+workspace to the Group it showed, with its sheets, selection, and camera.
+
 A Panel-toned status strip closes the canvas column: 32px tall, Caption type, a
 hairline top border, and one line that never wraps. While the draft is on
 screen, the strip names the published version and carries **Published mode** one

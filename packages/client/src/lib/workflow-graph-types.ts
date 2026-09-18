@@ -17,9 +17,13 @@ import {
   findAction,
   type ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
-import type { GroupPort } from "@wfgraph/shared/graph/group-boundary";
+import {
+  isGroupNode,
+  type GroupPort,
+} from "@wfgraph/shared/graph/group-boundary";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { isBlank } from "@wfgraph/shared/types/string";
+import type { WorkspaceScope } from "#src/lib/workflow-navigation-state";
 
 export type { NodeRunStatus, PersistedNodeData };
 export type {
@@ -138,6 +142,21 @@ export function comparisonChangeLabel(
 /** The name a Group shows: its label, or "Group" when the label is blank. */
 export function groupLabel(label: string | undefined): string {
   return label === undefined || isBlank(label) ? "Group" : label;
+}
+
+/**
+ * The name of the Group a focused canvas `scope` shows, found among `nodes`.
+ * Null on the overview, and while `nodes` holds no Group frame with that id.
+ */
+export function scopeGroupLabel(
+  nodes: readonly WorkflowNode[],
+  scope: WorkspaceScope
+): string | null {
+  if (scope.kind !== "group") {
+    return null;
+  }
+  const frame = nodes.find((node) => node.id === scope.groupId);
+  return isGroupNode(frame) ? groupLabel(frame?.data.label) : null;
 }
 
 /** A comparison names an unavailable action safely rather than exposing its id. */

@@ -27,7 +27,6 @@ import {
   revealFollowsSelection,
   scopeNavigationAt,
   updateScopeNavigation,
-  usesMobileSheetSequence,
   withCamera,
   withDesktopRevealLevel,
   withInspectedOrigin,
@@ -113,8 +112,8 @@ const revealLevelPreferenceAtom = atom<"closed" | "browse">(
  * the same view, as a run opened from the run list, and otherwise at the
  * preference.
  *
- * The mobile Reveal sequence carries across addresses of one workspace whose
- * sheets show the address itself, which is every such workspace but Draft:
+ * The mobile Reveal sequence carries across addresses of Runs or of Changes,
+ * whose sheets show the address itself:
  * when the previous address had a sheet open and the next has none, the next
  * opens its address sheet. Selecting a run, the newest run opening by itself,
  * Back to the run list, a newly started run, and choosing another comparison
@@ -133,9 +132,7 @@ export const applyWorkspaceRouteAtom = atom(
       previous.workflowId === next.workflowId &&
       previous.key.workspace === next.key.workspace;
     const carriesSequence =
-      sameView &&
-      next.key.workspace !== "draft" &&
-      usesMobileSheetSequence(next.key.workspace);
+      sameView && !revealFollowsSelection(next.key.workspace);
     set(writeNavigationAtom, route.workflowId, (navigation) => {
       const remembered = updateScopeNavigation(
         rememberRouteSearch(navigation, next),
@@ -719,19 +716,15 @@ export const openMobileChangeAtom = atom(
 /**
  * Open the mobile Reveal sequence of a named address, unless a sheet is
  * already open there: in Draft the summary sheet of the one object the address
- * selects, and in any other workspace that uses the sequence the address sheet,
- * such as a run list, a run, or a comparison's summary. Answers whether the address shows the mobile
- * Reveal sequence, which a workspace outside `usesMobileSheetSequence` and a
- * Draft address whose selection holds no single object do not.
+ * selects, and in Runs and Changes the address sheet, such as a run list, a
+ * run, or a comparison's summary. Answers whether the address shows the mobile
+ * Reveal sequence, which a Draft address whose selection holds no single object
+ * does not.
  */
 export const openMobileSelectionAtom = atom(
   null,
   (get, set, address: WorkspaceAddress): boolean => {
-    const { workspace } = address.key;
-    if (!usesMobileSheetSequence(workspace)) {
-      return false;
-    }
-    if (workspace !== "draft") {
+    if (!revealFollowsSelection(address.key.workspace)) {
       set(openMobileAddressSheetAtom, address);
       return true;
     }

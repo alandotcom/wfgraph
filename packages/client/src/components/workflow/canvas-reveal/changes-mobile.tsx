@@ -21,7 +21,6 @@ import {
   openMobileAddressSectionAtom,
 } from "#src/lib/workflow-workspace-navigation";
 import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
-import type { MobileRevealState } from "./canvas-reveal-state";
 import type { RevealBodyProps } from "./reveal-kinds";
 import {
   ChangeListSections,
@@ -41,23 +40,20 @@ import {
   VERSION_HISTORY_SECTION,
   type ChangeInspection,
 } from "./changes-summary";
-import {
-  MobileSheetHeader,
-  type MobileSheetControls,
-} from "./mobile-sheet-header";
+import { MobileSheetHeader } from "./mobile-sheet-header";
+import type { MobileKindHeaderProps } from "./reveal-kinds";
 
 /**
  * The header of the Changes sheet on screen. Back is named for the sheet
- * beneath, and the first sheet offers Close. The field differences are the
- * deepest sheet, so no sheet offers an inspector control.
+ * beneath. The first sheet offers Close on the overview, and inside a focused
+ * Group it names the Group, whose canvas Back leaves showing. The field
+ * differences are the deepest sheet, so no sheet offers an inspector control.
  */
 export function ChangesMobileHeader({
   state,
   controls,
-}: {
-  state: MobileRevealState;
-  controls: MobileSheetControls;
-}) {
+  scopeBackLabel,
+}: MobileKindHeaderProps) {
   const comparison = useAtomValue(comparisonRevealContextAtom);
   const graph = useAtomValue(comparisonDisplayGraphAtom);
   const catalog = useExtensionCatalog();
@@ -86,7 +82,7 @@ export function ChangesMobileHeader({
     <MobileSheetHeader
       backLabel={
         state.beneath === null
-          ? null
+          ? scopeBackLabel
           : changesMobileSheetName(changesMobileSheet(state.beneath))
       }
       controls={{ ...controls, openInspector: null }}

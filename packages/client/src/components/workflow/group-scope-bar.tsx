@@ -5,10 +5,9 @@ import { Button } from "#src/components/ui/button";
 import { useAfterCommit } from "#src/hooks/effects";
 import { presentedGraphAtom } from "#src/lib/workflow-graph-store";
 import { groupMemberCountAtom } from "#src/lib/workflow-graph-presentation-store";
-import { groupLabel } from "#src/lib/workflow-graph-types";
+import { scopeGroupLabel } from "#src/lib/workflow-graph-types";
 import { currentWorkflowNameAtom } from "#src/lib/workflow-save-store";
 import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
-import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { CANVAS_OBSTACLE_SLOTS } from "./canvas-reveal/reveal-geometry";
 import { useGroupScopeNavigation } from "./use-group-scope-navigation";
 
@@ -25,16 +24,14 @@ export function GroupScopeBar() {
   const { leaveGroup } = useGroupScopeNavigation();
   const leaveRef = useRef<HTMLButtonElement>(null);
   const groupId = scope.kind === "group" ? scope.groupId : null;
-  const frame = graph?.nodes.find(
-    (node) => node.id === groupId && isGroupNode(node)
-  );
+  const label = scopeGroupLabel(graph?.nodes ?? [], scope);
   const count = useAtomValue(
     useMemo(() => groupMemberCountAtom(groupId ?? ""), [groupId])
   );
 
-  useAfterCommit(frame ? groupId : null, () => {
+  useAfterCommit(label === null ? null : groupId, () => {
     if (
-      frame &&
+      label !== null &&
       (document.activeElement === null ||
         document.activeElement === document.body)
     ) {
@@ -42,7 +39,7 @@ export function GroupScopeBar() {
     }
   });
 
-  if (!frame) {
+  if (label === null) {
     return null;
   }
 
@@ -73,7 +70,7 @@ export function GroupScopeBar() {
           ›
         </li>
         <li aria-current="page" className="min-w-0 truncate font-medium">
-          {groupLabel(frame.data.label)}
+          {label}
         </li>
       </ol>
       <span className="shrink-0 text-muted-foreground">

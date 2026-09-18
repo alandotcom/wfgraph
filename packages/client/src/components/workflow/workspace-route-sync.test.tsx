@@ -93,6 +93,8 @@ function comparisonFor(base: {
   isCurrent: boolean;
   /** Steps the published version holds and the draft removed. */
   removedStepIds?: readonly string[] | undefined;
+  /** The draft's nodes as the comparison against this base holds them. */
+  draftNodes?: readonly WorkflowNode[] | undefined;
 }): WorkflowComparisonPayload {
   const removed = base.removedStepIds ?? [];
   return {
@@ -112,7 +114,10 @@ function comparisonFor(base: {
       })),
       edges: [],
     }),
-    draftGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+    draftGraph: createSerializedWorkflowGraph({
+      nodes: [...(base.draftNodes ?? [])],
+      edges: [],
+    }),
     hasChanges: removed.length > 0,
     nodeChanges: removed.map((nodeId) => ({
       nodeId,
@@ -137,6 +142,7 @@ function stubServer() {
     currentVersionId: "version_1",
     comparisonRequests: [] as Array<string | undefined>,
     removedStepIds: {} as Record<string, readonly string[]>,
+    draftNodesByBase: {} as Record<string, readonly WorkflowNode[]>,
     hold: (baseVersionId: string): ((answer: HeldAnswer) => void) => {
       let release: (answer: HeldAnswer) => void = () => undefined;
       holds.set(
@@ -182,6 +188,7 @@ function stubServer() {
             id,
             isCurrent: id === server.currentVersionId,
             removedStepIds: server.removedStepIds[id],
+            draftNodes: server.draftNodesByBase[id],
           })
         );
       }
@@ -543,6 +550,44 @@ describe("WorkspaceRouteSync", () => {
       expect(search()).toEqual({ view: "changes", compare: "version_2" })
     );
     expect(server.comparisonRequests.at(-1)).toBeUndefined();
+  });
+
+  it("keeps the focused Group when returning to Changes, and drops it once a publish leaves the comparison without that Group", async () => {
+    const server = stubServer();
+    server.draftNodesByBase = { version_1: draftNodes };
+    const { router, search, click } = await renderEditorRoute(
+      "/workflows/workflow_1?view=changes"
+    );
+    await waitFor(() =>
+      expect(search()).toEqual({ view: "changes", compare: "version_1" })
+    );
+    await act(() =>
+      router.navigate({
+        to: "/workflows/$workflowId",
+        params: { workflowId: "workflow_1" },
+        search: { view: "changes", compare: "version_1", group: "group_1" },
+      })
+    );
+
+    click("Draft");
+    await waitFor(() => expect(search()).toEqual({}));
+    click("Changes");
+    await waitFor(() => expect(server.comparisonRequests).toHaveLength(2));
+    await waitFor(() =>
+      expect(search()).toEqual({
+        view: "changes",
+        compare: "version_1",
+        group: "group_1",
+      })
+    );
+
+    click("Draft");
+    await waitFor(() => expect(search()).toEqual({}));
+    server.currentVersionId = "version_2";
+    click("Changes");
+    await waitFor(() =>
+      expect(search()).toEqual({ view: "changes", compare: "version_2" })
+    );
   });
 
   it("keeps an older chosen base when returning to Changes", async () => {
