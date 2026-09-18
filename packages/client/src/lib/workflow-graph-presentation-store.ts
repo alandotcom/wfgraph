@@ -12,14 +12,18 @@ import { mapOrSame } from "@wfgraph/shared/utils/map-or-same";
 import { inactiveBranch } from "#src/lib/inactive-branch";
 import {
   EMPTY_ISSUES,
+  groupIssues,
+  sameSummary,
+  summarizeNodeIssues,
+  workflowIssuesAtom,
   workflowIssuesByNodeIdAtom,
 } from "#src/lib/workflow-issues-store";
 import {
-  displayEdgesForGroups,
+  childIdsOfGroup,
   groupOutletHandles,
   orderGroupParentsFirst,
 } from "@wfgraph/shared/graph/node-group";
-import { lockGroupInteriorEdges } from "#src/lib/node-group";
+import { scopeCanvasGraph } from "#src/lib/group-scope-canvas";
 import {
   edgesStateAtom,
   executionOverlayGraphAtom,
@@ -29,7 +33,10 @@ import {
   graphStructureKey,
   type NavigationGraph,
 } from "#src/lib/workflow-navigation-state";
-import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
+import {
+  activeSelectionAtom,
+  activeWorkspaceAddressAtom,
+} from "#src/lib/workflow-workspace-navigation";
 import { comparisonDisplayGraphAtom } from "#src/lib/workflow-comparison-store";
 import { isPublicationReviewActiveAtom } from "#src/lib/workflow-publication-review-store";
 import {
@@ -146,7 +153,57 @@ function withSelectedFlag<T extends { selected?: boolean | undefined }>(
   return flagged;
 }
 
-/** Nodes painted for the active workspace without modifying the stored graph. */
+/** The Group summaries handed out last time, so an unchanged Group keeps its identity. */
+let lastGroupIssueSummaries: ReadonlyMap<string, NodeIssueSummary> = new Map();
+
+/**
+ * The issue badge each Draft node wears on the canvas. A Group member's issues
+ * also count toward its Group's badge, because the collapsed card hides the
+ * member. A Group whose badge is unchanged keeps the same summary object, so
+ * its card is not painted again.
+ */
+export const canvasIssuesByNodeIdAtom = atom((get) => {
+  const byNode = get(workflowIssuesByNodeIdAtom);
+  if (byNode.size === 0) {
+    return byNode;
+  }
+  const issues = get(workflowIssuesAtom);
+  const nodes = get(nodesStateAtom);
+  const parentById = new Map(
+    nodes.flatMap((node) =>
+      node.parentId === undefined ? [] : [[node.id, node.parentId] as const]
+    )
+  );
+  const groupIds = new Set(
+    issues.flatMap((issue) => {
+      const parentId = parentById.get(issue.nodeId);
+      return parentId === undefined ? [] : [parentId];
+    })
+  );
+  if (groupIds.size === 0) {
+    lastGroupIssueSummaries = new Map();
+    return byNode;
+  }
+  const groupSummaries = new Map(
+    [...groupIds].map((groupId) => {
+      const summary = summarizeNodeIssues(
+        groupIssues({ issues, nodes, groupId })
+      );
+      const previous = lastGroupIssueSummaries.get(groupId);
+      return [
+        groupId,
+        previous && sameSummary(previous, summary) ? previous : summary,
+      ] as const;
+    })
+  );
+  lastGroupIssueSummaries = groupSummaries;
+  return new Map([...byNode, ...groupSummaries]);
+});
+
+/**
+ * Every node of the active workspace, painted without modifying the stored
+ * graph, whichever scope the canvas shows.
+ */
 export const displayNodesAtom = atom((get) => {
   const view = get(workflowWorkspaceViewAtom);
   const overlay = view === "runs" ? get(executionOverlayGraphAtom) : null;
@@ -159,7 +216,7 @@ export const displayNodesAtom = atom((get) => {
   const ordered = orderGroupParentsFirst(nodes);
   const issuesByNodeId = displayGraph
     ? EMPTY_ISSUES
-    : get(workflowIssuesByNodeIdAtom);
+    : get(canvasIssuesByNodeIdAtom);
   const selectedIds = new Set(get(activeSelectionAtom).nodeIds);
   const paintSelection = (items: WorkflowNode[]) =>
     mapOrSame(items, (node) =>
@@ -228,8 +285,11 @@ export const displayNodesAtom = atom((get) => {
   return paintSelection(painted);
 });
 
-/** Edges painted for the active workspace without modifying the stored graph. */
-export const displayEdgesAtom = atom((get) => {
+/**
+ * The stored edges of the active workspace, painted with inactive branches and
+ * selection, before `scopeCanvasGraph` places them on Group frames or stubs.
+ */
+const paintedEdgesAtom = atom((get) => {
   const view = get(workflowWorkspaceViewAtom);
   const overlay = view === "runs" ? get(executionOverlayGraphAtom) : null;
   const comparison =
@@ -242,17 +302,12 @@ export const displayEdgesAtom = atom((get) => {
   if (comparison) {
     return paintSelection(comparison.edges);
   }
-  const nodes = overlay?.nodes ?? get(nodesStateAtom);
   const edges = overlay?.edges ?? get(edgesStateAtom);
-  const painted = lockGroupInteriorEdges(
-    nodes,
-    displayEdgesForGroups(nodes, edges)
-  );
   const { nodeIds, outletEdgeIds } = get(inactiveBranchAtom);
   const withInactiveBranch =
     nodeIds.size === 0
-      ? painted
-      : mapOrSame(painted, (edge) => {
+      ? edges
+      : mapOrSame(edges, (edge) => {
           if (!nodeIds.has(edge.target)) {
             return edge;
           }
@@ -271,11 +326,30 @@ export const displayEdgesAtom = atom((get) => {
 });
 
 /**
+ * What the canvas paints for the active scope: the overview with each Group
+ * collapsed, or one focused Group's members and boundary stubs. Painting reads
+ * the stored graph and never writes to it.
+ */
+export const canvasGraphAtom = atom((get) =>
+  scopeCanvasGraph({
+    nodes: get(displayNodesAtom),
+    edges: get(paintedEdgesAtom),
+    scope: get(activeWorkspaceAddressAtom).scope,
+  })
+);
+
+/** The nodes the canvas paints for the active scope. */
+export const canvasNodesAtom = atom((get) => get(canvasGraphAtom).nodes);
+
+/** The edges the canvas paints for the active scope. */
+export const canvasEdgesAtom = atom((get) => get(canvasGraphAtom).edges);
+
+/**
  * The graph the canvas paints Group frames from: the presented graph, or the
  * Draft while Runs or Changes is waiting for its graph, the same fallback
  * `displayNodesAtom` paints.
  */
-const canvasGraphAtom = atom(
+const frameSourceGraphAtom = atom(
   (get) =>
     get(presentedGraphAtom) ?? {
       nodes: get(nodesStateAtom),
@@ -291,9 +365,21 @@ const canvasGraphAtom = atom(
  */
 export function groupOutletHandlesAtom(groupId: string) {
   return selectAtom(
-    canvasGraphAtom,
+    frameSourceGraphAtom,
     (graph) => groupOutletHandles(graph.nodes, graph.edges, groupId),
     isEqual
+  );
+}
+
+/**
+ * An atom holding how many members the Group frame `groupId` holds in the
+ * presented graph. Create it once per frame id, because each call makes a new
+ * atom.
+ */
+export function groupMemberCountAtom(groupId: string) {
+  return selectAtom(
+    frameSourceGraphAtom,
+    (graph) => childIdsOfGroup(graph.nodes, groupId).length
   );
 }
 

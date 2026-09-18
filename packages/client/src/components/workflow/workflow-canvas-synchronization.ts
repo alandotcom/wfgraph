@@ -226,24 +226,38 @@ export async function fitInitialWorkflowViewport({
   }
 }
 
+const scopedPresentations = new WeakMap<object, Map<string, object>>();
+
+/**
+ * The key the canvas installs its graph on: the presented run or comparison, or
+ * the Draft's stored edges, paired with the `scopeId` of the scope shown. The
+ * pair is one object per source and scope, so moving between the overview and a
+ * focused Group installs the next graph and a repaint of either does not.
+ */
 export function canvasSynchronizationKey({
   workspaceView,
   executionOverlay,
   comparison,
   draftEdges,
+  scope,
 }: {
   workspaceView: "draft" | "runs" | "changes";
-  executionOverlay: unknown;
-  comparison: unknown;
+  executionOverlay: object | null;
+  comparison: object | null;
   draftEdges: WorkflowEdge[];
-}): unknown {
-  if (workspaceView === "runs") {
-    return executionOverlay ?? EMPTY_RUN_PRESENTATION;
-  }
-  if (workspaceView === "changes") {
-    return comparison ?? EMPTY_CHANGES_PRESENTATION;
-  }
-  return draftEdges;
+  scope: string;
+}): object {
+  const source =
+    workspaceView === "runs"
+      ? (executionOverlay ?? EMPTY_RUN_PRESENTATION)
+      : workspaceView === "changes"
+        ? (comparison ?? EMPTY_CHANGES_PRESENTATION)
+        : draftEdges;
+  const byScope = scopedPresentations.get(source) ?? new Map<string, object>();
+  scopedPresentations.set(source, byScope);
+  const key = byScope.get(scope) ?? { source, scope };
+  byScope.set(scope, key);
+  return key;
 }
 
 export function synchronizeCanvasGraph({

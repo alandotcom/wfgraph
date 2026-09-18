@@ -8,6 +8,7 @@ import {
   expandGroupCopyIds,
   fanOutStoreEdgeIds,
   fanOutStoreEdges,
+  groupCanvasPositions,
   groupMemberSlots,
   groupOutletHandle,
   groupOutletHandles,
@@ -18,6 +19,12 @@ import {
 } from "#src/graph/node-group";
 import { type GroupGraphNode, isGroupNode } from "#src/graph/group-boundary";
 import type { WorkflowEdge } from "#src/graph/types";
+import {
+  NODE_SPACING,
+  RANK_SPACING,
+  WORKFLOW_NODE_HEIGHT,
+  WORKFLOW_NODE_WIDTH,
+} from "#src/graph/workflow-layout-geometry";
 
 function action(
   id: string,
@@ -514,6 +521,51 @@ describe("groupMemberSlots", () => {
       { id: "b", row: 0, column: 1 },
       { id: "c", row: 1, column: 0 },
     ]);
+  });
+});
+
+describe("groupCanvasPositions", () => {
+  const W = WORKFLOW_NODE_WIDTH;
+  const H = WORKFLOW_NODE_HEIGHT;
+
+  it("starts at the collapsed card's slot and centres each row on it", () => {
+    const positions = groupCanvasPositions({
+      memberIds: ["a", "b", "c", "d"],
+      interiorEdges: [
+        edge("e-a", "a", "d"),
+        edge("e-b", "b", "d"),
+        edge("e-c", "c", "d"),
+      ],
+    });
+    const column = W + NODE_SPACING;
+    expect(positions).toEqual(
+      new Map([
+        ["a", { x: -column - W / 2, y: 0 }],
+        ["b", { x: -W / 2, y: 0 }],
+        ["c", { x: column - W / 2, y: 0 }],
+        ["d", { x: -W / 2, y: H + RANK_SPACING }],
+      ])
+    );
+  });
+
+  it("puts a lone member exactly on the card in either direction", () => {
+    for (const direction of ["vertical", "horizontal"] as const) {
+      expect(
+        groupCanvasPositions({ memberIds: ["a"], interiorEdges: [], direction })
+      ).toEqual(new Map([["a", { x: -W / 2, y: 0 }]]));
+    }
+  });
+
+  it("lays rows left to right when horizontal", () => {
+    const positions = groupCanvasPositions({
+      memberIds: ["a", "b"],
+      interiorEdges: [edge("e-a", "a", "b")],
+      direction: "horizontal",
+    });
+    expect(positions.get("b")).toEqual({
+      x: W + RANK_SPACING - W / 2,
+      y: 0,
+    });
   });
 });
 

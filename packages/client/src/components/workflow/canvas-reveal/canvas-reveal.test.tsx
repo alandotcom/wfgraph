@@ -182,6 +182,7 @@ function FlowCanvas() {
       </button>
       <WorkflowContextMenu
         canEdit
+        canInsert
         menuState={
           menuOpen
             ? {

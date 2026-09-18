@@ -24,6 +24,7 @@ function commandInput(
       canGroupSelection: true,
       currentWorkflowId: "workflow_1",
       editingLocked: false,
+      groupScopeActive: false,
       hasNodes: true,
       isExecuting: false,
       isPreflighting: false,
@@ -133,6 +134,20 @@ describe("workflowCommands", () => {
     expect(commands.find((command) => command.id === "redo")?.disabled).toBe(
       true
     );
+  });
+
+  it("offers no insert on a focused Group canvas", () => {
+    const commands = workflowCommands(
+      commandInput({ groupScopeActive: true, canReflow: false })
+    );
+    const disabled = (id: string) =>
+      commands.find((command) => command.id === id)?.disabled;
+
+    expect(disabled("add-step")).toBe(true);
+    expect(disabled("paste")).toBe(true);
+    expect(disabled("duplicate-selection")).toBe(true);
+    expect(disabled("reflow")).toBe(true);
+    expect(disabled("copy-selection")).toBe(false);
   });
 
   /**

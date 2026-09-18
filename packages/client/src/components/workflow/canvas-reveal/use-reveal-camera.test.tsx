@@ -126,7 +126,8 @@ function renderCamera(
   graph: { nodes: WorkflowNode[]; edges: WorkflowEdge[] } = {
     nodes: NODES,
     edges: [],
-  }
+  },
+  options?: { flowNodes?: WorkflowNode[] }
 ) {
   const store = createStore();
   store.set(currentWorkflowIdAtom, "wf_1");
@@ -159,7 +160,7 @@ function renderCamera(
       <ReactFlowProvider
         initialEdges={graph.edges}
         initialHeight={CANVAS.height}
-        initialNodes={graph.nodes}
+        initialNodes={options?.flowNodes ?? graph.nodes}
         initialWidth={CANVAS.width}
       >
         <Harness />
@@ -457,6 +458,38 @@ describe("useRevealCamera", () => {
     expect(camera.moves).toEqual([]);
 
     await camera.run(() => showWorkspaceRoute(camera.store, {}));
+    expect(camera.moves).toHaveLength(1);
+  });
+
+  it("places a covered member of a focused Group once and keeps the camera on close", async () => {
+    // React Flow holds the projected members at the positions in `NODES`,
+    // while the stored graph nests them in a Group.
+    const camera = renderCamera(
+      {
+        nodes: [
+          {
+            id: "g",
+            type: "group",
+            position: { x: 0, y: 0 },
+            data: { label: "Group", type: "group" },
+          },
+          ...NODES.map((node) => ({ ...node, parentId: "g" })),
+        ],
+        edges: [],
+      },
+      { flowNodes: NODES }
+    );
+    await camera.run(() => showWorkspaceRoute(camera.store, { group: "g" }));
+    await camera.run(() => camera.store.set(selectOnlyNodeAtom, "near"));
+    expect(camera.moves).toEqual([]);
+
+    await camera.run(() => camera.store.set(selectOnlyNodeAtom, "far"));
+    expect(camera.moves).toHaveLength(1);
+    expect(camera.moves[0]?.zoom).toBe(1);
+
+    await camera.run(() =>
+      camera.store.set(showCanvasRevealLevelAtom, "closed")
+    );
     expect(camera.moves).toHaveLength(1);
   });
 });

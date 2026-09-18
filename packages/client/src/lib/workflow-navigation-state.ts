@@ -673,6 +673,49 @@ export function withCamera(
     : { ...scope, mobile: { ...scope.mobile, camera } };
 }
 
+/**
+ * The part of a graph one scope shows and can select. The overview holds every
+ * node outside a Group frame and every edge. A Group scope holds that Group's
+ * members and no edge, because the edges a focused Group paints are display
+ * only.
+ */
+export function graphInScope(
+  graph: NavigationGraph,
+  scope: WorkspaceScope
+): NavigationGraph {
+  if (scope.kind === "group") {
+    return {
+      nodes: graph.nodes.filter((node) => node.parentId === scope.groupId),
+      edges: [],
+    };
+  }
+  const groupIds = new Set(
+    graph.nodes.filter((node) => isGroupNode(node)).map((node) => node.id)
+  );
+  const nodes = graph.nodes.filter(
+    (node) => node.parentId === undefined || !groupIds.has(node.parentId)
+  );
+  return nodes.length === graph.nodes.length ? graph : { ...graph, nodes };
+}
+
+/**
+ * The scope that shows `nodeId`: the focused canvas of the Group frame holding
+ * it, or the overview for every other node, including one the graph lacks.
+ */
+export function scopeOfNode(
+  nodes: NavigationGraph["nodes"],
+  nodeId: string
+): WorkspaceScope {
+  const node = nodes.find((item) => item.id === nodeId);
+  const parent =
+    node?.parentId === undefined
+      ? undefined
+      : nodes.find((item) => item.id === node.parentId);
+  return parent && isGroupNode(parent)
+    ? { kind: "group", groupId: parent.id }
+    : OVERVIEW_SCOPE;
+}
+
 /** Node ids, kinds, and parents plus edge ids: the facts recovery reads. */
 export function graphStructureKey(graph: NavigationGraph): string {
   const nodes = graph.nodes

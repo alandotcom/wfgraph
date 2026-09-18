@@ -161,24 +161,18 @@ export const Node = ({
   </Card>
 );
 
-export type NodeTitleProps = ComponentProps<typeof CardTitle> & {
-  /** Compact Group members have one text line; full-size nodes can use two. */
-  singleLine?: boolean | undefined;
-};
+export type NodeTitleProps = ComponentProps<typeof CardTitle>;
 
 export const NodeTitle = ({
   children,
   className,
-  singleLine = false,
   title,
   ...props
 }: NodeTitleProps) => (
   <CardTitle
     className={cn(
       "w-full text-sm leading-tight",
-      singleLine
-        ? "truncate"
-        : "line-clamp-2 text-balance [overflow-wrap:anywhere]",
+      "line-clamp-2 text-balance [overflow-wrap:anywhere]",
       className
     )}
     title={title ?? (typeof children === "string" ? children : undefined)}

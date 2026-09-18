@@ -31,6 +31,7 @@ import { revealPlacementRequestAtom } from "./reveal-requests";
 const OBSTACLE_SELECTORS = [
   `[data-slot="${CANVAS_OBSTACLE_SLOTS.controls}"]`,
   `[data-slot="${CANVAS_OBSTACLE_SLOTS.agentPanel}"]`,
+  `[data-slot="${CANVAS_OBSTACLE_SLOTS.groupScopeBar}"]`,
   ".react-flow__minimap",
 ];
 

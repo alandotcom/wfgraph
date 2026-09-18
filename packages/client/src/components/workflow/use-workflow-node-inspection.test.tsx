@@ -8,7 +8,7 @@ import {
   installWorkflowComparisonAtom,
 } from "#src/lib/workflow-comparison-store";
 import {
-  displayEdgesAtom,
+  canvasEdgesAtom,
   displayNodesAtom,
   executionOverlayGraphAtom,
   loadWorkflowGraphAtom,
@@ -103,7 +103,7 @@ function selectionState(store: ReturnType<typeof createStore>) {
         .filter((node) => node.selected)
         .map((node) => node.id),
       edgeIds: store
-        .get(displayEdgesAtom)
+        .get(canvasEdgesAtom)
         .filter((edge) => edge.selected)
         .map((edge) => edge.id),
     },

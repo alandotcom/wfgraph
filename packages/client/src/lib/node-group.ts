@@ -9,20 +9,21 @@ import { generateId } from "@wfgraph/shared/utils/id";
 import type { EdgeChange } from "@xyflow/react";
 import {
   analyzeGroupBoundary,
+  analyzeGroupBoundaryById,
   isGroupNode,
 } from "@wfgraph/shared/graph/group-boundary";
 import {
   dissolveGroups,
   type GroupRepair,
-  positionInFrame,
+  type ReleaseMember,
   repairGroups,
 } from "@wfgraph/shared/graph/group-dissolution";
 import {
   analyzeGroupableSelection,
   childIdsOfGroup,
   fanOutStoreEdgeIds,
+  groupCanvasPositions,
   groupInteriorLayout,
-  isInteriorEdge,
   orderGroupParentsFirst,
   undersizedGroupIds,
   type GroupAnalysis,
@@ -37,22 +38,10 @@ import {
   GROUP_HEADER_HEIGHT,
   GROUP_PAD,
   GROUP_ROW_GAP,
-  NODE_SPACING,
-  RANK_SPACING,
   WORKFLOW_NODE_HEIGHT,
   WORKFLOW_NODE_WIDTH,
-  groupFrameSize,
+  workflowNodeSize,
 } from "#src/lib/workflow-node-dimensions";
-
-/**
- * How much wider one step of the outer canvas is than the compact card a frame
- * packs it into. Ungrouping scales a member's offset from the frame's centre by
- * these, which is what makes the shape a person read inside the frame survive.
- */
-const COLUMN_PITCH_RATIO =
-  (WORKFLOW_NODE_WIDTH + NODE_SPACING) / (GROUP_CHILD_WIDTH + GROUP_COLUMN_GAP);
-const ROW_PITCH_RATIO =
-  (WORKFLOW_NODE_HEIGHT + RANK_SPACING) / (GROUP_CHILD_HEIGHT + GROUP_ROW_GAP);
 
 export function groupSelection(input: {
   nodes: WorkflowNode[];
@@ -100,7 +89,8 @@ export function groupSelection(input: {
     analysis.memberIds,
     interiorEdges
   );
-  const size = groupFrameSize(bounds.columns, bounds.rows);
+  // The overview draws a Group as one collapsed card.
+  const size = workflowNodeSize();
   const groupId = (input.createId ?? generateId)();
   const positionById = childPositions(slots, bounds.columns);
 
@@ -141,11 +131,12 @@ export function groupSelection(input: {
  * Remove the frame `groupId` and free its members on the open canvas, keeping
  * every stored edge. Answers `nodes` itself when `groupId` names no frame.
  */
-export function ungroupNode(
-  nodes: WorkflowNode[],
-  groupId: string
-): WorkflowNode[] {
-  return ungroupFrames(nodes, new Set([groupId]));
+export function ungroupNode(input: {
+  nodes: WorkflowNode[];
+  edges: readonly WorkflowEdge[];
+  groupId: string;
+}): WorkflowNode[] {
+  return ungroupFrames({ ...input, groupIds: new Set([input.groupId]) });
 }
 
 /**
@@ -157,52 +148,13 @@ export function repairCanvasGroups(input: {
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
 }): GroupRepair<WorkflowNode[]> {
-  const repair = repairGroups({ ...input, releaseMember });
+  const repair = repairGroups({
+    ...input,
+    releaseMember: memberReleaser(input),
+  });
   return repair.ok
     ? { ...repair, nodes: orderGroupParentsFirst(repair.nodes) }
     : repair;
-}
-
-/**
- * One locked copy per store edge, so a recompute that changed nothing hands
- * React Flow the same object it saw last time. The three flags never vary, so
- * a cached copy cannot go stale: an edge that stops being interior fails the
- * check above the cache and comes back untouched.
- */
-const lockedInteriorEdges = new WeakMap<WorkflowEdge, WorkflowEdge>();
-
-/**
- * Mark the edges between two members of one frame as display only. They paint
- * so the interior fan-out and its join can be read, and the frame owns every
- * edit: deleting one would strand a member the analysis proved connected.
- * Returns the same array when no edge is interior.
- */
-export function lockGroupInteriorEdges(
-  nodes: readonly WorkflowNode[],
-  edges: WorkflowEdge[]
-): WorkflowEdge[] {
-  const parentById = new Map(nodes.map((node) => [node.id, node.parentId]));
-  const parentOf = (nodeId: string) => parentById.get(nodeId);
-  let locked = false;
-  const next = edges.map((edge) => {
-    if (!isInteriorEdge(parentOf, edge)) {
-      return edge;
-    }
-    locked = true;
-    const cached = lockedInteriorEdges.get(edge);
-    if (cached) {
-      return cached;
-    }
-    const lockedEdge: WorkflowEdge = {
-      ...edge,
-      selectable: false,
-      deletable: false,
-      focusable: false,
-    };
-    lockedInteriorEdges.set(edge, lockedEdge);
-    return lockedEdge;
-  });
-  return locked ? next : edges;
 }
 
 /**
@@ -233,12 +185,14 @@ export function removeNodes(input: {
     removedIds.size === 0
       ? input.nodes
       : input.nodes.filter((node) => !removedIds.has(node.id));
+  const edges = removeEdgesTouching(input.edges, removedIds);
   return {
-    nodes: ungroupFrames(
-      remaining,
-      new Set([...frameIds, ...undersizedGroupIds(remaining)])
-    ),
-    edges: removeEdgesTouching(input.edges, removedIds),
+    nodes: ungroupFrames({
+      nodes: remaining,
+      edges,
+      groupIds: new Set([...frameIds, ...undersizedGroupIds(remaining)]),
+    }),
+    edges,
   };
 }
 
@@ -356,69 +310,65 @@ function nestInGroup(
 }
 
 /**
- * Where one freed member lands on the open canvas. The frame packs its members
- * into compact cards; a full-size node needs the pitch auto-layout gives one.
- *
- * `childPositions` places a member's centre a whole number of column pitches
- * either side of the frame's centre, and its top a whole number of row pitches
- * below the frame's first row. Both are linear, so stretching each offset by
- * the ratio of the two pitches rebuilds the same arrangement at canvas scale,
- * and the shape a person read inside the frame survives the ungroup.
- */
-function freedPosition(input: { frame: WorkflowNode; member: WorkflowNode }): {
-  x: number;
-  y: number;
-} {
-  const { frame: group, member: child } = input;
-  // A frame from a graph no editor has laid out yet has no width to scale
-  // around, so its members keep the spot they drew at inside it.
-  if (typeof group.width !== "number") {
-    return positionInFrame(input);
-  }
-  const frameCentreX = group.position.x + group.width / 2;
-  const childCentreX =
-    group.position.x + child.position.x + GROUP_CHILD_WIDTH / 2;
-  const rowTop = child.position.y - GROUP_HEADER_HEIGHT - GROUP_PAD;
-
-  return {
-    x:
-      frameCentreX +
-      (childCentreX - frameCentreX) * COLUMN_PITCH_RATIO -
-      WORKFLOW_NODE_WIDTH / 2,
-    y: group.position.y + rowTop * ROW_PITCH_RATIO,
-  };
-}
-
-/**
  * Dissolve the frames `groupIds` names and keep the frames-first order
  * `orderGroupParentsFirst` describes. Answers `nodes` when no id names a frame.
  */
-function ungroupFrames(
-  nodes: WorkflowNode[],
-  groupIds: ReadonlySet<string>
-): WorkflowNode[] {
+function ungroupFrames(input: {
+  nodes: WorkflowNode[];
+  edges: readonly WorkflowEdge[];
+  groupIds: ReadonlySet<string>;
+}): WorkflowNode[] {
   return orderGroupParentsFirst(
-    dissolveGroups({ nodes, groupIds, releaseMember })
+    dissolveGroups({
+      nodes: input.nodes,
+      groupIds: input.groupIds,
+      releaseMember: memberReleaser(input),
+    })
   );
 }
 
 /**
- * The node a member becomes on the open canvas once its frame is gone: a
- * full-size card at `freedPosition`, draggable and connectable, with no parent
- * constraint.
+ * Frees each member of a dissolved frame as a full-size card, draggable and
+ * connectable, with no parent constraint. It lands where the focused Group
+ * canvas draws it, moved so the Group's slots are centred on the collapsed
+ * card's centre line and its first row starts at the card's top. The layout of
+ * each frame is computed once, from `nodes` and `edges` as they were given.
  */
-function releaseMember(input: {
-  frame: WorkflowNode;
-  member: WorkflowNode;
-}): WorkflowNode {
-  const { extent: _extent, parentId: _parentId, ...rest } = input.member;
-  return {
-    ...rest,
-    draggable: true,
-    connectable: true,
-    width: WORKFLOW_NODE_WIDTH,
-    height: WORKFLOW_NODE_HEIGHT,
-    position: freedPosition(input),
+function memberReleaser(graph: {
+  nodes: readonly WorkflowNode[];
+  edges: readonly WorkflowEdge[];
+}): ReleaseMember<WorkflowNode> {
+  const positionsByFrame = new Map<
+    string,
+    Map<string, { x: number; y: number }>
+  >();
+  return ({ frame, member }) => {
+    let positions = positionsByFrame.get(frame.id);
+    if (!positions) {
+      const { memberIds, interiorEdges } = analyzeGroupBoundaryById({
+        nodes: graph.nodes,
+        edges: graph.edges,
+        groupId: frame.id,
+      });
+      positions = groupCanvasPositions({ memberIds, interiorEdges });
+      positionsByFrame.set(frame.id, positions);
+    }
+    const offset = positions.get(member.id) ?? {
+      x: -WORKFLOW_NODE_WIDTH / 2,
+      y: 0,
+    };
+    const { extent: _extent, parentId: _parentId, ...rest } = member;
+    return {
+      ...rest,
+      draggable: true,
+      connectable: true,
+      width: WORKFLOW_NODE_WIDTH,
+      height: WORKFLOW_NODE_HEIGHT,
+      position: {
+        x: frame.position.x + WORKFLOW_NODE_WIDTH / 2 + offset.x,
+        y: frame.position.y + offset.y,
+      },
+    };
   };
 }
 

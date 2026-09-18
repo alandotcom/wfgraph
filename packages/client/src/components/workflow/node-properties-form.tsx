@@ -1,4 +1,5 @@
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import type { ReactNode } from "react";
 import { Input } from "#src/components/ui/input";
 import { Label } from "#src/components/ui/label";
 import { can } from "#src/lib/authorization";
@@ -72,9 +73,12 @@ export function NodeDetailsFields({
 export function NodePropertiesForm({
   nodeId,
   frame,
+  children,
 }: {
   nodeId: string;
   frame: NodeConfigFrame;
+  /** Sections a Reveal kind adds, shown after the configuration and before the enable, ungroup, and delete controls. */
+  children?: ReactNode | undefined;
 }) {
   const { updateConfig: handleUpdateConfig } = useNodeConfigWriter(nodeId);
   const nodes = useAtomValue(nodesAtom);
@@ -170,6 +174,8 @@ export function NodePropertiesForm({
           onUpdateConfig={handleUpdateConfig}
         />
       ) : null}
+
+      {children}
 
       <NodeControls className="pt-4" frame={frame} node={selectedNode} />
     </div>

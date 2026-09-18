@@ -258,11 +258,13 @@ All primitives are shadcn/ui on Base UI, refined and restrained: quiet at rest, 
 
 ### Workflow Node (signature component)
 
-The reason the product exists. A 192×112px rectangular card at 8px radius sitting on the React Flow canvas: a 16px integration icon, a 14px semibold title that wraps to two lines, and a one-line description at detail zoom. The overview presentation hides descriptions while retaining card geometry. Event Split is wider at 264px on purpose, because it carries two labelled outlets. Nested Group children are compact (188×56) with a single-line title so the frame reads as one step; parallel lookups sit side by side inside it. 192×112 remains the top-level card. The card is flat; elevation on the canvas would compete with the status border.
+The reason the product exists. A 192×112px rectangular card at 8px radius sitting on the React Flow canvas: a 16px integration icon, a 14px semibold title that wraps to two lines, and a one-line description at detail zoom. The overview presentation hides descriptions while retaining card geometry. Event Split is wider at 264px on purpose, because it carries two labelled outlets. A collapsed Group draws at the same 192×112. The card is flat; elevation on the canvas would compete with the status border.
 
 At rest the border is 1.5px of Canvas Line. Status is worn on that same border, stepping up to 2px: Signal Green for success, Signal Red for failure, Signal Slate for cancelled, and an animated Signal Blue sweep while running. Every status also renders its word in a chip, so the border is never the only carrier. Focus shifts the border to Graphite Ink rather than the ring color, because the resting border already sits at the ring's lightness and the shift would otherwise read as nothing.
 
-A Group frame is the one container on the canvas: solid Graphite Wash behind a 1.5px Canvas Line border, with a rule under its title band. That gives the eye three tones to order, Paper canvas, recessed frame, Paper member cards, and it inverts on its own in dark.
+The workflow overview draws each Group as one collapsed card: solid Graphite Wash behind a 1.5px Canvas Line border, a title band holding the Group icon, the label, the issue badge, and an **Enter group** arrow, and the number of steps below a rule. The Wash is what separates a Group from a step, and it inverts on its own in dark. Its members never expand in place. Edges entering and leaving the Group attach to the card's top and bottom handles.
+
+The focused Group canvas shows only the Group's members, as standard cards laid out in rows from the Group's interior edges, with those edges between them. The layout depends on the Group's steps and edges alone, so moving the collapsed card never moves a member or the camera a person left on the Group. The Group card itself is not drawn. Each outside step that enters the Group is a dashed stub above the members reading "Incoming from" and the step's name, one per outlet it enters by, so a Condition entering by both branches draws two stubs with True and False on their edges. Each step the Group continues to is a dashed stub below them reading "Continues to" and the step's name. Stubs and the edges on a focused canvas cannot be selected, dragged, or connected, members cannot be dragged, and **Add Step**, **Paste**, **Duplicate**, and **Tidy layout** are not offered, so entering, leaving, or inspecting a Group never writes a coordinate. **Ungroup** places the steps in the same rows, centred under the collapsed card, with the first row where the card was. A bar at the canvas's top left holds a **Workflow** button that returns to the overview, the workflow and Group names, and the step count.
 
 Handles are 12px dots in Graphite Ink with a hairline ring, and their hit areas are 24px on desktop and 44px on touch. Those sizes are divided by `--rf-zoom`, the live canvas scale the viewport transform applies, because a flat pixel size inside that transform shrinks with the zoom and delivered 24.6px on a phone.
 
@@ -321,11 +323,21 @@ label and value with "Not set" for a missing one, and the step's issues, each of
 which opens Focus on the field it names. Focus holds the complete form, and
 **Return to summary** goes back to Browse. Edits write to the draft as they are
 made, so changing level loses nothing and autosave carries on. A step with no
-action chosen shows the action picker in Browse and has no Focus. An Event
-Split, Group, connection, and multiple selection show their panel at Browse
-width, under a header holding the panel's title and **Close**. **Runs** and
-**Changes** each have a Browse of their own, and **Changes** is described under
-Publication review.
+action chosen shows the action picker in Browse and has no Focus. Selecting a
+collapsed Group opens its summary in Browse: the step count, each step, the
+outside steps that enter it, the steps it continues to, its issues, and **Enter
+group**. Focus holds the Group's label, description, each step, **Enter group**,
+**Ungroup**, and **Delete Group and Steps**. In Browse and Focus, each step is
+listed with its issue count and opens that step inside the Group: the Group is
+entered and the step is selected. The collapsed card hides the Group's steps, so
+the card's issue badge and the status in the Group's header count the steps'
+issues with the Group's own. Double-clicking the card or its arrow also enters it.
+Entering and leaving a Group each add a browser history entry, so Back leaves a
+Group and Forward enters it again. On a focused Group canvas, selecting a step
+opens that step's own inspector. An Event Split, connection, and multiple
+selection show their panel at Browse width, under a header holding the panel's
+title and **Close**. **Runs** and **Changes** each have a Browse of their own,
+and **Changes** is described under Publication review.
 
 Selecting the Lifecycle node opens Browse with the workflow's lifecycle policy:
 an editable label, the Start Events with each payload Start Filter, the

@@ -5,7 +5,7 @@
  * frame's inlet and outlet stand for the boundary `group-boundary.ts` derives.
  */
 
-import { groupBy, uniq, uniqBy } from "es-toolkit/array";
+import { countBy, groupBy, uniq, uniqBy } from "es-toolkit/array";
 import { normalizeConditionBranch } from "#src/conditions/condition-branch";
 import { type ExtensionCatalog, findAction } from "#src/extensions/catalog";
 import { groupStepCount } from "#src/graph/group-contract";
@@ -23,6 +23,12 @@ import {
   isWaitNode,
 } from "#src/graph/node-config";
 import type { WorkflowEdge } from "#src/graph/types";
+import {
+  NODE_SPACING,
+  RANK_SPACING,
+  WORKFLOW_NODE_HEIGHT,
+  WORKFLOW_NODE_WIDTH,
+} from "#src/graph/workflow-layout-geometry";
 
 /**
  * The members a connection onto the frame's inlet reaches: every member an
@@ -590,6 +596,43 @@ export function groupInteriorLayout(
 } {
   const slots = groupMemberSlots(memberIds, interior);
   return { slots, bounds: groupSlotBounds(slots) };
+}
+
+/** The axis a focused Group canvas lays its rows along. */
+export type GroupLayoutDirection = "vertical" | "horizontal";
+
+/**
+ * Each member's top-left corner on the focused Group canvas, at the standard
+ * card size, keyed by member id. The coordinates belong to the Group alone: a
+ * collapsed card at the origin spans x -W/2 to W/2 and y 0 to H, the first row
+ * starts where that card starts, and every row is centred on the card's centre
+ * line. Only the members, their interior edges, and `direction` decide it.
+ */
+export function groupCanvasPositions(input: {
+  memberIds: readonly string[];
+  interiorEdges: readonly WorkflowEdge[];
+  direction?: GroupLayoutDirection | undefined;
+}): Map<string, { x: number; y: number }> {
+  const slots = groupMemberSlots(input.memberIds, input.interiorEdges);
+  const widthOfRow = countBy(slots, (slot) => slot.row);
+  const vertical = (input.direction ?? "vertical") === "vertical";
+  const rowPitch = vertical
+    ? WORKFLOW_NODE_HEIGHT + RANK_SPACING
+    : WORKFLOW_NODE_WIDTH + RANK_SPACING;
+  const columnPitch = vertical
+    ? WORKFLOW_NODE_WIDTH + NODE_SPACING
+    : WORKFLOW_NODE_HEIGHT + NODE_SPACING;
+  return new Map(
+    slots.map((slot) => {
+      const rowWidth = widthOfRow[slot.row] ?? 1;
+      const along = slot.row * rowPitch;
+      const across = (slot.column - (rowWidth - 1) / 2) * columnPitch;
+      const position = vertical
+        ? { x: across - WORKFLOW_NODE_WIDTH / 2, y: along }
+        : { x: along - WORKFLOW_NODE_WIDTH / 2, y: across };
+      return [slot.id, position];
+    })
+  );
 }
 
 function refuseGroupedMember(

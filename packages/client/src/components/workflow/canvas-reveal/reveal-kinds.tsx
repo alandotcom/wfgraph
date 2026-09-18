@@ -18,6 +18,7 @@ import type {
   OpenRevealLevel,
   WorkflowRouteSearch,
 } from "#src/lib/workflow-navigation-state";
+import { groupIssues } from "#src/lib/workflow-issues-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
   findAction,
@@ -31,6 +32,7 @@ import type { createStore } from "jotai";
 import { ChangesBrowse, ChangesHeader } from "./changes-browse";
 import { comparisonRevealContextAtom } from "./changes-summary";
 import { ConditionBrowse, ConditionFocus } from "./condition-reveal";
+import { GroupBrowse, GroupFocusSections } from "./group-browse";
 import { LifecycleBrowse } from "./lifecycle-browse";
 import { LifecycleFocus } from "./lifecycle-focus";
 import type { RevealFocusWidth } from "./reveal-geometry";
@@ -42,6 +44,7 @@ import {
 import {
   matchChangesSubject,
   matchConditionSubject,
+  matchGroupSubject,
   matchLifecycleSubject,
   matchPanelSubject,
   matchRunsSubject,
@@ -194,6 +197,32 @@ function stepHeaderModel(
   };
 }
 
+function groupHeaderModel(
+  subject: RevealSubject,
+  context: RevealHeaderContext
+): RevealHeaderModel {
+  const node = context.nodes.find((item) => item.id === subject.nodeId);
+  const title = node && !isBlank(node.data.label) ? node.data.label : "Group";
+  return {
+    workspaceLabel: "Draft",
+    title,
+    path: [context.workflowName || "Untitled workflow", title],
+    // The collapsed card hides the Group's steps, so the status counts their
+    // issues with the Group's own.
+    status:
+      node && subject.nodeId !== null
+        ? issueStatus(
+            groupIssues({
+              issues: context.issues,
+              nodes: context.nodes,
+              groupId: subject.nodeId,
+            })
+          )
+        : null,
+    showsBack: true,
+  };
+}
+
 function lifecycleHeaderModel(
   subject: RevealSubject,
   context: RevealHeaderContext
@@ -217,6 +246,18 @@ function lifecycleHeaderModel(
 function StepFocus({ subject, frame }: RevealBodyProps) {
   return subject.nodeId === null ? null : (
     <NodePropertiesForm frame={frame} nodeId={subject.nodeId} />
+  );
+}
+
+/**
+ * The complete form of a Group frame: label and description, its steps, Enter
+ * group, and its commands.
+ */
+function GroupFocus({ subject, frame }: RevealBodyProps) {
+  return subject.nodeId === null ? null : (
+    <NodePropertiesForm frame={frame} nodeId={subject.nodeId}>
+      <GroupFocusSections groupId={subject.nodeId} />
+    </NodePropertiesForm>
   );
 }
 
@@ -286,6 +327,22 @@ const CONDITION_KIND: RevealKind = {
   header: { owner: "shell", model: stepHeaderModel },
   Browse: ConditionBrowse,
   Focus: ConditionFocus,
+  focusReturnTarget: canvasNodeElement,
+  shellOwnsScroll: true,
+  focusWidth: "standard",
+};
+
+/**
+ * A Draft Group frame on the overview: a summary and Enter group in Browse, and
+ * the frame's form in Focus.
+ */
+const GROUP_KIND: RevealKind = {
+  id: "group",
+  match: matchGroupSubject,
+  regionLabel: "Group inspector",
+  header: { owner: "shell", model: groupHeaderModel },
+  Browse: GroupBrowse,
+  Focus: GroupFocus,
   focusReturnTarget: canvasNodeElement,
   shellOwnsScroll: true,
   focusWidth: "standard",
@@ -362,6 +419,7 @@ const PANEL_KIND: RevealKind = {
 const REVEAL_KINDS: readonly RevealKind[] = [
   STEP_KIND,
   CONDITION_KIND,
+  GROUP_KIND,
   LIFECYCLE_KIND,
   RUNS_KIND,
   CHANGES_KIND,
@@ -371,6 +429,7 @@ const REVEAL_KINDS: readonly RevealKind[] = [
 const REVEAL_KINDS_BY_ID: Readonly<Record<RevealKindId, RevealKind>> = {
   step: STEP_KIND,
   condition: CONDITION_KIND,
+  group: GROUP_KIND,
   lifecycle: LIFECYCLE_KIND,
   runs: RUNS_KIND,
   changes: CHANGES_KIND,

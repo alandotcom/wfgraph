@@ -92,7 +92,7 @@ export const ungroupNodeAtom = atom(null, (get, set, nodeId: string) => {
     return false;
   }
 
-  const next = ungroupNode(nodes, groupId);
+  const next = ungroupNode({ nodes, edges: get(edgesStateAtom), groupId });
   if (next === nodes) {
     return false;
   }

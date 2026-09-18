@@ -24,7 +24,7 @@ import {
   deleteEdgeAtom,
   deleteNodeAtom,
   deleteSelectedItemsAtom,
-  displayEdgesAtom,
+  canvasEdgesAtom,
   displayNodesAtom,
   duplicateSelectionAtom,
   edgesAtom,
@@ -634,7 +634,7 @@ describe("multi-exit Group outlet", () => {
 
     const handles = store.get(groupOutletHandlesAtom("g"));
     const leaving = store
-      .get(displayEdgesAtom)
+      .get(canvasEdgesAtom)
       .filter((item) => item.source === "g");
 
     expect(handles).toEqual([null, "true"]);
@@ -655,7 +655,7 @@ describe("multi-exit Group outlet", () => {
       [edge("out-a", "a", "next"), edge("out-b", "b", "next")]
     );
 
-    expect(store.get(displayEdgesAtom)).toHaveLength(1);
+    expect(store.get(canvasEdgesAtom)).toHaveLength(1);
     store.set(deleteEdgeAtom, "out-a");
 
     expect(store.get(edgesAtom)).toEqual([]);
@@ -1882,7 +1882,7 @@ describe("what the canvas paints for a step that cannot run", () => {
       [edge("e-in", "t", "a"), edge("e-out", "a", "b")]
     );
 
-    const edges = store.get(displayEdgesAtom);
+    const edges = store.get(canvasEdgesAtom);
     expect(edges.find((item) => item.id === "e-in")?.data?.inactive).toBe(
       undefined
     );

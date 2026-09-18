@@ -25,6 +25,7 @@ export const REVEAL_CONTEXT_PX = 64;
 export const CANVAS_OBSTACLE_SLOTS = {
   controls: "workflow-canvas-controls",
   agentPanel: "agent-panel",
+  groupScopeBar: "group-scope-bar",
 } as const;
 
 /** The canvas width Focus and its inset leave beside them at 1024px and wider. */

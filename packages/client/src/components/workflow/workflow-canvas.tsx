@@ -30,7 +30,7 @@ import { viewportAnimationDuration } from "#src/lib/motion";
 import {
   addNodeAtom,
   connectNodesAtom,
-  displayEdgesAtom,
+  canvasGraphAtom,
   displayNodesAtom,
   edgesAtom,
   canvasEditingLockedAtom,
@@ -67,6 +67,15 @@ import { normalizeSourceHandleForConnection as normalizeSourceHandle } from "./c
 import { ActionNode } from "./nodes/action-node";
 import { AddNode } from "./nodes/add-node";
 import { GroupNode } from "./nodes/group-node";
+import { groupBoundaryNodeTypes } from "./nodes/group-boundary-node";
+import { GroupScopeBar } from "./group-scope-bar";
+import { useGroupScopeNavigation } from "./use-group-scope-navigation";
+import { withoutProjectedDimensions } from "#src/lib/group-scope-canvas";
+import { scopeId } from "#src/lib/workflow-navigation-state";
+import {
+  activeWorkspaceAddressAtom,
+  groupScopeActiveAtom,
+} from "#src/lib/workflow-workspace-navigation";
 import { LifecycleNode } from "./nodes/lifecycle-node";
 import { useCanvasCopyPaste } from "./use-canvas-copy-paste";
 import { useReflowLayout } from "./use-reflow-layout";
@@ -123,20 +132,26 @@ const nodeTypes = {
   action: ActionNode,
   add: AddNode,
   group: GroupNode,
+  ...groupBoundaryNodeTypes,
 };
 
 export function canvasInteractionState({
   editingLocked,
   comparisonActive,
   overlayActive,
+  groupScopeActive,
 }: {
   editingLocked: boolean;
   comparisonActive: boolean;
   overlayActive: boolean;
+  /** A focused Group canvas, which inserts no node until it can edit topology. */
+  groupScopeActive: boolean;
 }) {
   const comparisonVisible = comparisonActive && !overlayActive;
   return {
     comparisonVisible,
+    /** Whether adding, pasting, and duplicating steps is offered. */
+    insertsNodes: !editingLocked && !comparisonVisible && !groupScopeActive,
     elementsSelectable: !editingLocked || comparisonVisible,
     nodesDraggable: !editingLocked || comparisonVisible,
     edgesFocusable: !comparisonVisible,
@@ -146,8 +161,14 @@ export function canvasInteractionState({
 
 export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const catalog = useExtensionCatalog();
-  const nodes = useAtomValue(displayNodesAtom);
-  const edges = useAtomValue(displayEdgesAtom);
+  // What the active scope paints, and every node of the graph, which the
+  // connection rules read because a Group frame stands for its members.
+  const canvasGraph = useAtomValue(canvasGraphAtom);
+  const { nodes, edges } = canvasGraph;
+  const graphNodes = useAtomValue(displayNodesAtom);
+  const { scope } = useAtomValue(activeWorkspaceAddressAtom);
+  const groupScopeActive = useAtomValue(groupScopeActiveAtom);
+  const { onNodeDoubleClick } = useGroupScopeNavigation();
   const storeEdges = useAtomValue(edgesAtom);
   // Draft edits and run-overlay viewing are mutually exclusive: mutating while
   // the overlay is up would write the draft under a canvas that is not showing
@@ -188,19 +209,30 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   /** Whether the canvas has made its first placement for a workflow. */
   const isCanvasPlaced = (workflowId: string) =>
     fittedWorkflowIdRef.current === workflowId;
-  // Declared ahead of the synchronized canvas below, so the camera of the
-  // workspace being left is stored before any placement for the next one.
-  const workspaceCamera = useWorkspaceCamera({ isCanvasPlaced });
-  const fitGenerationRef = useRef(0);
   // React Flow owns the semantic wrappers around custom nodes and edges. Build
   // their names from the same catalog labels the cards render, while preserving
   // element identity until the graph or catalog actually changes.
   const accessibleGraph = accessibleGraphElements(nodes, edges, catalog);
+  // The node whose measurement tells the first placement that React Flow holds
+  // the graph, which the placement pins near the top when the scope asks.
+  const anchorNode = accessibleGraph.nodes.find(
+    (node) => node.id === canvasGraph.anchor?.nodeId
+  );
+  const pinnedAnchor = canvasGraph.anchor?.pinToTop ? anchorNode : undefined;
+  // Declared ahead of the synchronized canvas below, so the camera of the
+  // workspace being left is stored before any placement for the next one.
+  const workspaceCamera = useWorkspaceCamera({
+    isCanvasPlaced,
+    paintedNodes: accessibleGraph.nodes,
+    revealOccupiedWidth,
+  });
+  const fitGenerationRef = useRef(0);
   const canvasPresentation = canvasSynchronizationKey({
     workspaceView,
     executionOverlay,
     comparison,
     draftEdges: storeEdges,
+    scope: scopeId(scope),
   });
   const resolvedWorkspacePresentation =
     workspaceView === "runs"
@@ -233,13 +265,10 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const correctViewport = () => {
     const canvasWidth = canvasContainerRef.current?.clientWidth;
     const canvasHeight = canvasContainerRef.current?.clientHeight;
-    const lifecycleNode = accessibleGraph.nodes.find(
-      (node) => node.data.type === "lifecycle"
-    );
     if (
       currentWorkflowId &&
       fittedWorkflowIdRef.current === currentWorkflowId &&
-      lifecycleNode &&
+      pinnedAnchor &&
       canvasWidth &&
       canvasHeight
     ) {
@@ -253,11 +282,11 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
           currentViewport: getViewport(),
           graphBounds: getNodesBounds(accessibleGraph.nodes),
           lifecycle: {
-            nodePosition: lifecycleNode.position,
+            nodePosition: pinnedAnchor.position,
             nodeWidth:
-              lifecycleNode.measured?.width ??
-              lifecycleNode.width ??
-              lifecycleNode.initialWidth ??
+              pinnedAnchor.measured?.width ??
+              pinnedAnchor.width ??
+              pinnedAnchor.initialWidth ??
               WORKFLOW_NODE_WIDTH,
             top: 48,
           },
@@ -271,12 +300,10 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
     editingLocked: graphEditingLocked,
     comparisonActive,
     overlayActive,
+    groupScopeActive,
   });
-  const lifecycleNode = accessibleGraph.nodes.find(
-    (node) => node.data.type === "lifecycle"
-  );
-  const internalLifecycleNode = useInternalNode<WorkflowNode>(
-    lifecycleNode?.id ?? ""
+  const internalAnchorNode = useInternalNode<WorkflowNode>(
+    anchorNode?.id ?? ""
   );
   // The same pass the Actions menu's "Tidy layout" runs.
   const { canReflow, reflow } = useReflowLayout();
@@ -312,12 +339,12 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
     remeasureNodes: updateNodeInternals,
     nodeIds: accessibleGraph.nodes.map((node) => node.id),
     currentWorkflowId,
-    lifecycleNode: lifecycleNode ?? null,
-    internalNode: internalLifecycleNode
+    lifecycleNode: anchorNode ?? null,
+    internalNode: internalAnchorNode
       ? {
-          userNode: internalLifecycleNode.internals.userNode,
-          position: internalLifecycleNode.internals.positionAbsolute,
-          width: internalLifecycleNode.measured.width,
+          userNode: internalAnchorNode.internals.userNode,
+          position: internalAnchorNode.internals.positionAbsolute,
+          width: internalAnchorNode.measured.width,
         }
       : null,
     fitGenerationRef,
@@ -399,7 +426,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
       readAnchor: () => {
         const canvasWidth = canvasContainerRef.current?.clientWidth;
         const canvasHeight = canvasContainerRef.current?.clientHeight;
-        if (!canvasWidth || !canvasHeight) {
+        if (!canvasWidth || !canvasHeight || !canvasGraph.anchor?.pinToTop) {
           return null;
         }
 
@@ -452,7 +479,10 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   );
 
   useDomEvent(window, "keydown", handleUndoRedoShortcut);
-  useCanvasCopyPaste(!graphEditingLocked);
+  useCanvasCopyPaste({
+    enabled: !graphEditingLocked,
+    insertsNodes: interaction.insertsNodes,
+  });
   // Mounted once, here, because the node badges and the toolbar count both read
   // what it writes and neither should run the pass itself.
   useCollectWorkflowIssues();
@@ -474,11 +504,11 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
       !graphEditingLocked &&
       connectionRefusalReason({
         connection,
-        nodes,
+        nodes: graphNodes,
         storeEdges,
         catalog,
       }) === null,
-    [catalog, graphEditingLocked, nodes, storeEdges]
+    [catalog, graphEditingLocked, graphNodes, storeEdges]
   );
 
   // Stored edges, which name Group members, so the handle chosen here is the
@@ -486,13 +516,13 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const normalizeSourceHandleForConnection = useCallback(
     (sourceNodeId: string, sourceHandle: string | null | undefined) =>
       normalizeSourceHandle({
-        nodes,
+        nodes: graphNodes,
         edges: storeEdges,
         sourceNodeId,
         sourceHandle,
         catalog,
       }),
-    [nodes, storeEdges, catalog]
+    [graphNodes, storeEdges, catalog]
   );
 
   const onConnect: OnConnect = useCallback(
@@ -506,7 +536,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
 
       const refusal = connectionRefusalReason({
         connection,
-        nodes,
+        nodes: graphNodes,
         storeEdges,
         catalog,
       });
@@ -529,7 +559,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
     [
       normalizeSourceHandleForConnection,
       connectNodes,
-      nodes,
+      graphNodes,
       storeEdges,
       catalog,
       graphEditingLocked,
@@ -607,9 +637,11 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
       if (graphEditingLocked) {
         return;
       }
-      onNodesChange(changes);
+      onNodesChange(
+        withoutProjectedDimensions(changes, canvasGraph.projectedNodeIds)
+      );
     },
-    [graphEditingLocked, onNodesChange]
+    [canvasGraph.projectedNodeIds, graphEditingLocked, onNodesChange]
   );
 
   const handleEdgesChange = useCallback(
@@ -676,7 +708,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
 
   const handleConnectionToNewNode = useCallback(
     (clientX: number, clientY: number) => {
-      if (graphEditingLocked) {
+      if (!interaction.insertsNodes) {
         return;
       }
       const sourceNodeId = connectingNodeId.current;
@@ -767,7 +799,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
       normalizeSourceHandleForConnection,
       onConnect,
       isValidConnection,
-      graphEditingLocked,
+      interaction.insertsNodes,
     ]
   );
 
@@ -902,6 +934,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
         onEdgeContextMenu={graphEditingLocked ? undefined : onEdgeContextMenu}
         onEdgesChange={graphEditingLocked ? undefined : handleEdgesChange}
         onNodeClick={isGenerating ? undefined : onNodeClick}
+        onNodeDoubleClick={onNodeDoubleClick}
         onNodeContextMenu={graphEditingLocked ? undefined : onNodeContextMenu}
         onNodesChange={
           interaction.comparisonVisible
@@ -949,9 +982,12 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
         )}
       </Canvas>
 
+      <GroupScopeBar />
+
       {/* Context Menu */}
       <WorkflowContextMenu
         canEdit={canEdit}
+        canInsert={interaction.insertsNodes}
         menuState={contextMenuState}
         onClose={closeContextMenu}
       />

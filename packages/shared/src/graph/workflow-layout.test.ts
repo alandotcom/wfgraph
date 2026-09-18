@@ -12,7 +12,6 @@ import { layoutWorkflowNodes } from "#src/graph/workflow-layout";
 import {
   COUSIN_SPACING_FACTOR,
   eventSplitCardWidth,
-  groupFrameSize,
   NODE_SPACING,
   RANK_SPACING,
   WORKFLOW_NODE_HEIGHT,
@@ -742,7 +741,7 @@ describe("layoutWorkflowNodes", () => {
   });
 
   test("lays out a chain holding a Group as a tree", async () => {
-    const frame = groupFrameSize(1, 2);
+    const frame = { width: WORKFLOW_NODE_WIDTH, height: WORKFLOW_NODE_HEIGHT };
     const graph = buildFramedChain({
       entryIds: ["lookup"],
       members: ["lookup", "exit"],
@@ -766,9 +765,9 @@ describe("layoutWorkflowNodes", () => {
 
   // A frame id comes from the persisted graph, so it can be any string.
   // Gathering the members into a plain object files a frame named "__proto__"
-  // onto the prototype, and the frame is then never sized around them.
-  test("sizes a frame whose id is __proto__ around its members", async () => {
-    const frame = groupFrameSize(1, 2);
+  // onto the prototype, and the frame then never receives its card size.
+  test("sizes a frame whose id is __proto__ as a collapsed card", async () => {
+    const frame = { width: WORKFLOW_NODE_WIDTH, height: WORKFLOW_NODE_HEIGHT };
     const graph = buildFramedChain({
       groupId: "__proto__",
       entryIds: ["lookup"],
@@ -786,7 +785,7 @@ describe("layoutWorkflowNodes", () => {
   });
 
   test("gives a Group a rank as tall as the frame draws", async () => {
-    const frame = groupFrameSize(1, 2);
+    const frame = { width: WORKFLOW_NODE_WIDTH, height: WORKFLOW_NODE_HEIGHT };
     const graph = buildFramedChain({
       entryIds: ["lookup"],
       members: ["lookup", "exit"],
@@ -798,8 +797,8 @@ describe("layoutWorkflowNodes", () => {
       ...graph,
     });
 
-    // The step after the frame clears the whole box, so the frame's own height
-    // is what sets the gap rather than the height of a standard card.
+    // The overview draws a Group as one collapsed card, so the step after it
+    // sits one standard rank below.
     expect(positionY(result.nodes, "g")).toBe(
       positionY(result.nodes, "wait") + WORKFLOW_NODE_HEIGHT + RANK_SPACING
     );
@@ -811,7 +810,7 @@ describe("layoutWorkflowNodes", () => {
   test("lays out a chain holding a parallel-lookup Group", async () => {
     // Two entries fanning in on one exit: the painted inlet edges collapse to
     // one, so the frame keeps an in-degree of one and stays on the tree path.
-    const frame = groupFrameSize(2, 2);
+    const frame = { width: WORKFLOW_NODE_WIDTH, height: WORKFLOW_NODE_HEIGHT };
     const graph = buildFramedChain({
       entryIds: ["one", "two"],
       members: ["one", "two", "exit"],

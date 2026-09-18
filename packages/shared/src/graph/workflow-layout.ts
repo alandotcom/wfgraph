@@ -24,20 +24,13 @@ import { isConditionNode, isLifecycleNode } from "#src/graph/node-config";
 import {
   COUSIN_SPACING_FACTOR,
   eventSplitCardWidth,
-  groupFrameSize,
   NODE_SPACING,
   RANK_SPACING,
   WORKFLOW_NODE_HEIGHT,
   WORKFLOW_NODE_WIDTH,
 } from "#src/graph/workflow-layout-geometry";
-import {
-  analyzeGroupBoundaryById,
-  isGroupNode,
-} from "#src/graph/group-boundary";
-import {
-  edgesForGroupLayout,
-  groupInteriorLayout,
-} from "#src/graph/node-group";
+import { isGroupNode } from "#src/graph/group-boundary";
+import { edgesForGroupLayout } from "#src/graph/node-group";
 import { layoutGroupChildren } from "#src/graph/layout-group-children";
 
 const LAYOUT_DIRECTION = "TB";
@@ -190,7 +183,7 @@ const CONDITION_OUTLETS: readonly string[] = ["true", "false"];
 /** A handle the node draws no slot for sorts after every one it does. */
 const UNRANKED_HANDLE = Number.MAX_SAFE_INTEGER;
 
-/** Every node but an Event Split and a Group draws at the one card size. */
+/** Every node but an Event Split draws at the one card size. */
 function standardCard(options: {
   outletHandles: readonly string[];
   holdsOutletsOpen: boolean;
@@ -219,20 +212,10 @@ function readNodeShape(input: {
   edges: readonly WorkflowEdge[];
   catalog: ExtensionCatalog;
 }): NodeShape {
+  // A Group draws as one collapsed card on the overview, and its members are
+  // laid out inside the frame by `layoutGroupChildren`.
   if (isGroupNode(input.node)) {
-    const { memberIds, interiorEdges } = analyzeGroupBoundaryById({
-      nodes: input.nodes,
-      edges: input.edges,
-      groupId: input.node.id,
-    });
-    const { bounds } = groupInteriorLayout(memberIds, interiorEdges);
-    const size = groupFrameSize(bounds.columns, bounds.rows);
-    return {
-      width: size.width,
-      height: size.height,
-      outletHandles: [],
-      holdsOutletsOpen: false,
-    };
+    return standardCard({ outletHandles: [], holdsOutletsOpen: false });
   }
 
   if (isLifecycleNode(input.node)) {

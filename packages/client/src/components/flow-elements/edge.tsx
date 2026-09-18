@@ -70,7 +70,7 @@ const Animated = memo(function Animated({
     targetPosition: targetPos,
   });
   const edgeLabel = resolveEdgeLabel(sourceHandleId, data);
-  // `displayEdgesAtom` sets this on every edge landing where the run cannot go.
+  // `canvasEdgesAtom` sets this on every edge landing where the run cannot go.
   const inactive = data?.inactive === true;
   const comparison = data?.[COMPARISON_EDGE_ANNOTATION];
   const comparisonStyle = comparisonEdgeStyle(comparison);

@@ -72,12 +72,15 @@ export type ContextMenuState = {
 
 type WorkflowContextMenuProps = {
   canEdit: boolean;
+  /** Whether Add Step, Paste, and Duplicate may insert steps. */
+  canInsert: boolean;
   menuState: ContextMenuState;
   onClose: () => void;
 };
 
 export function WorkflowContextMenu({
   canEdit,
+  canInsert,
   menuState,
   onClose,
 }: WorkflowContextMenuProps) {
@@ -187,7 +190,7 @@ export function WorkflowContextMenu({
   // someone who opened this menu on the graph has already said where the step
   // goes, so the palette's root page has nothing left to ask.
   const handleAddStep = useCallback(() => {
-    if (canEdit && menuState?.flowPosition) {
+    if (canInsert && menuState?.flowPosition) {
       openPalette({
         id: "add-step",
         at: {
@@ -197,7 +200,7 @@ export function WorkflowContextMenu({
       });
     }
     onClose();
-  }, [canEdit, menuState, openPalette, onClose]);
+  }, [canInsert, menuState, openPalette, onClose]);
 
   const handleCopyNode = useCallback(() => {
     if (menuState?.nodeId) {
@@ -207,11 +210,11 @@ export function WorkflowContextMenu({
   }, [menuState, copySelection, onClose]);
 
   const handleDuplicateNode = useCallback(() => {
-    if (canEdit && menuState?.nodeId) {
+    if (canInsert && menuState?.nodeId) {
       duplicateSelection(menuState.nodeId);
     }
     onClose();
-  }, [canEdit, menuState, duplicateSelection, onClose]);
+  }, [canInsert, menuState, duplicateSelection, onClose]);
 
   const handleGroup = useCallback(() => {
     if (!canEdit || menuState?.type !== "node") {
@@ -230,11 +233,11 @@ export function WorkflowContextMenu({
   }, [canEdit, menuState, ungroupSelected, onClose]);
 
   const handlePaste = useCallback(() => {
-    if (canEdit) {
+    if (canInsert) {
       pasteSelection(menuState?.flowPosition);
     }
     onClose();
-  }, [canEdit, menuState, pasteSelection, onClose]);
+  }, [canInsert, menuState, pasteSelection, onClose]);
 
   const handleClickOutside = useCallback(
     (event: MouseEvent) => {
@@ -345,7 +348,7 @@ export function WorkflowContextMenu({
             shortcut={shortcutLabel("C")}
           />
           <MenuItem
-            disabled={isLifecycleNode}
+            disabled={isLifecycleNode || !canInsert}
             icon={<CopyPlus className="size-4" />}
             label="Duplicate"
             onClick={handleDuplicateNode}
@@ -398,12 +401,13 @@ export function WorkflowContextMenu({
       {menuState.type === "pane" && (
         <>
           <MenuItem
+            disabled={!canInsert}
             icon={<Plus className="size-4" />}
             label="Add Step"
             onClick={handleAddStep}
           />
           <MenuItem
-            disabled={!hasCopiedSelection}
+            disabled={!(canInsert && hasCopiedSelection)}
             icon={<ClipboardPaste className="size-4" />}
             label="Paste"
             onClick={handlePaste}
