@@ -6,8 +6,8 @@ export function PanelState({
   onAction,
 }: {
   label: string;
-  actionLabel?: string;
-  onAction?: () => void;
+  actionLabel?: string | undefined;
+  onAction?: (() => void) | undefined;
 }) {
   return (
     <div

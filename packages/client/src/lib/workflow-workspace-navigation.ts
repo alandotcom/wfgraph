@@ -263,6 +263,7 @@ export const setWorkspaceRevealLevelAtom = atom(
  * Record the inspector scroll of one open level for a named address. The write
  * is dropped when the address no longer inspects the node `inspectedId` names,
  * so a scroll read before a selection change never lands on the next object.
+ * A null `inspectedId` is the scroll of an address that inspects no object.
  */
 export const recordInspectorScrollAtom = atom(
   null,
@@ -271,14 +272,14 @@ export const recordInspectorScrollAtom = atom(
     set,
     input: {
       address: WorkspaceAddress;
-      inspectedId: string;
+      inspectedId: string | null;
       level: OpenRevealLevel;
       top: number;
     }
   ) => {
     set(writeNavigationAtom, input.address.workflowId, (navigation) =>
       updateScopeNavigation(navigation, input.address, (scope) =>
-        scope.desktop.inspected?.id === input.inspectedId
+        (scope.desktop.inspected?.id ?? null) === input.inspectedId
           ? withInspectorScroll(scope, input.level, input.top)
           : scope
       )

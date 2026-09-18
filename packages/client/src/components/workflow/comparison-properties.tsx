@@ -16,7 +16,7 @@ import { useExtensionCatalog } from "#src/components/extension-catalog-provider"
 import { PanelState } from "#src/components/workflow/workflow-changes-panel-state";
 import { comparisonSessionAtom } from "#src/lib/workflow-comparison-store";
 import { selectedNodeAtom } from "#src/lib/workflow-graph-store";
-import { comparisonNodeTitle as comparisonGraphNodeTitle } from "#src/lib/workflow-graph-types";
+import { comparisonNodeTitle } from "#src/lib/workflow-graph-types";
 
 export type ComparisonField = {
   /** Machine-only identity for repeated generic labels in this list. */
@@ -218,16 +218,18 @@ export function comparisonFields(
   }));
 }
 
-export function comparisonNodeTitle(
+/**
+ * The title of the node a change names, read from the published graph for a
+ * removed node and from the draft for any other.
+ */
+export function changedNodeTitle(
   catalog: ExtensionCatalog,
   payload: WorkflowComparisonPayload,
   change: WorkflowNodeChange
 ): string {
   const { baseNode, draftNode } = nodeSnapshots(payload, change.nodeId);
   const node = change.kind === "removed" ? baseNode : draftNode;
-  return node
-    ? comparisonGraphNodeTitle(node.data, catalog)
-    : "Unavailable action";
+  return node ? comparisonNodeTitle(node.data, catalog) : "Unavailable action";
 }
 
 export function ComparisonProperties({
@@ -244,7 +246,7 @@ export function ComparisonProperties({
   return (
     <section className="border-t p-4" data-testid="comparison-properties">
       <h3 className="font-medium text-sm">
-        {comparisonNodeTitle(catalog, payload, change)}
+        {changedNodeTitle(catalog, payload, change)}
       </h3>
       <p className="mt-1 text-muted-foreground text-xs">
         {modified

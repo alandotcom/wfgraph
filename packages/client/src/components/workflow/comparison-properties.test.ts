@@ -4,12 +4,12 @@ import { emptyLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
 import {
   comparisonFields,
-  comparisonNodeTitle,
+  changedNodeTitle,
 } from "#src/components/workflow/comparison-properties";
 
 const catalog = { actions: [], entities: [], events: [], integrations: [] };
 
-describe("comparisonNodeTitle", () => {
+describe("changedNodeTitle", () => {
   it("keeps internal action ids out of comparison labels", () => {
     const payload: WorkflowComparisonPayload = {
       baseVersion: null,
@@ -35,7 +35,7 @@ describe("comparisonNodeTitle", () => {
       edgeChanges: [],
     };
 
-    expect(comparisonNodeTitle(catalog, payload, payload.nodeChanges[0]!)).toBe(
+    expect(changedNodeTitle(catalog, payload, payload.nodeChanges[0]!)).toBe(
       "Unavailable action"
     );
   });
