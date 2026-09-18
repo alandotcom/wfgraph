@@ -19,7 +19,7 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { useAtomValue } from "jotai";
+import { useAtomValue, useAtomValueRawSync } from "jotai";
 import { can } from "#src/lib/authorization";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import {
@@ -353,7 +353,8 @@ function DraftStatus({ workflowId }: { workflowId?: string | undefined }) {
 }
 
 function PinnedRunStatus() {
-  const executionId = useAtomValue(selectedExecutionIdAtom);
+  // Route synchronization can select the run before subscriptions mount.
+  const executionId = useAtomValueRawSync(selectedExecutionIdAtom);
   const { showDraft } = useWorkflowWorkspaceNavigation();
   const canReadLogs = can(WfGraphOperations.workflowGetExecutionLogs.id);
 
@@ -464,7 +465,8 @@ export function WorkflowStatusStrip({
 }: {
   workflowId?: string | undefined;
 }) {
-  const workspaceView = useAtomValue(workflowWorkspaceViewAtom);
+  // Route synchronization can switch the workspace before subscriptions mount.
+  const workspaceView = useAtomValueRawSync(workflowWorkspaceViewAtom);
   const readOnly = workspaceView !== "draft";
 
   return (

@@ -1,0 +1,26 @@
+diff --git a/lib/cjs/fast-check.js b/lib/cjs/fast-check.js
+index 977eaa5e2e6f033de2857b7697b3a159364e4141..4c41365ad55baa60ec325a18515b5a8f2ef0e778 100644
+--- a/lib/cjs/fast-check.js
++++ b/lib/cjs/fast-check.js
+@@ -11747,7 +11747,7 @@ function skipEqualValues() {
+ //#region src/check/plugin/InterruptAfterTimeLimitPlugin.ts
+ const safeSetTimeout$1 = setTimeout;
+ const safeClearTimeout$1 = clearTimeout;
+-const safePerformanceNow = typeof performance !== "undefined" ? performance.now : Date.now;
++const safePerformanceNow = typeof performance !== "undefined" ? performance.now.bind(performance) : Date.now;
+ /** @internal */
+ function interruptAfterDelay(timeMs, probe) {
+ 	const limitTime = safePerformanceNow() + timeMs;
+diff --git a/lib/fast-check.js b/lib/fast-check.js
+index 45ef489688290a25b697170bfde8b6d977805acc..61d5abedc6166d3e575c6eb072270147a86987c7 100644
+--- a/lib/fast-check.js
++++ b/lib/fast-check.js
+@@ -11732,7 +11732,7 @@ function skipEqualValues() {
+ //#region src/check/plugin/InterruptAfterTimeLimitPlugin.ts
+ const safeSetTimeout$1 = setTimeout;
+ const safeClearTimeout$1 = clearTimeout;
+-const safePerformanceNow = typeof performance !== "undefined" ? performance.now : Date.now;
++const safePerformanceNow = typeof performance !== "undefined" ? performance.now.bind(performance) : Date.now;
+ /** @internal */
+ function interruptAfterDelay(timeMs, probe) {
+ 	const limitTime = safePerformanceNow() + timeMs;

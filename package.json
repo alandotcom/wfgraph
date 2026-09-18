@@ -38,35 +38,35 @@
   },
   "devDependencies": {
     "@changesets/changelog-github": "1.0.1",
-    "@changesets/cli": "3.0.2",
-    "@effect/tsgo": "0.43.0",
+    "@changesets/cli": "3.0.3",
+    "@effect/tsgo": "0.45.0",
     "@effect/vitest": "catalog:",
     "@tanstack/intent": "^0.4.0",
-    "@testing-library/dom": "^10.4.1",
+    "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "catalog:",
     "@types/d3-hierarchy": "^3.1.7",
-    "@types/node": "^24.13.3",
+    "@types/node": "^24.13.5",
     "@types/react": "catalog:",
-    "@types/react-dom": "^19.2.7",
+    "@types/react-dom": "^19.3.0",
     "concurrently": "^10.0.5",
     "drizzle-kit": "1.0.0-rc.4",
     "esbuild": "^0.28.2",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-you-might-not-need-an-effect": "1.0.2",
-    "happy-dom": "^20.14.0",
-    "knip": "^6.35.0",
-    "oxfmt": "^0.67.0",
-    "oxlint": "^1.82.0",
+    "happy-dom": "^20.14.5",
+    "knip": "^6.36.0",
+    "oxfmt": "^0.68.0",
+    "oxlint": "^1.83.0",
     "oxlint-tsgolint": "^7.0.2001",
     "pkg-pr-new": "^0.0.88",
     "tsdown": "^0.23.0",
     "tsx": "catalog:",
     "typescript": "^7.0.2",
     "vite": "catalog:",
-    "vitest": "^5.0.0"
+    "vitest": "^5.0.1"
   },
   "optionalDependencies": {
-    "inngest-cli": "^1.44.0"
+    "inngest-cli": "^1.45.1"
   },
   "engines": {
     "node": ">=24"

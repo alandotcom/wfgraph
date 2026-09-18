@@ -6,7 +6,7 @@
  */
 
 import { useReactFlow } from "@xyflow/react";
-import { useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue, useAtomValueRawSync, useSetAtom } from "jotai";
 import { useCallback } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { layoutWorkflowNodes } from "#src/components/workflow/workflow-layout";
@@ -49,8 +49,9 @@ export function useReflowLayout(): {
   const nodes = useAtomValue(nodesAtom);
   const edges = useAtomValue(edgesAtom);
   const editingLocked = useAtomValue(canvasEditingLockedAtom);
-  const groupScopeActive = useAtomValue(groupScopeActiveAtom);
-  const canvasGraph = useAtomValue(canvasGraphAtom);
+  // Route synchronization can establish Group scope before subscriptions mount.
+  const groupScopeActive = useAtomValueRawSync(groupScopeActiveAtom);
+  const canvasGraph = useAtomValueRawSync(canvasGraphAtom);
   const layoutNodes = groupScopeActive ? canvasGraph.nodes : nodes;
   const layoutEdges = groupScopeActive ? canvasGraph.edges : edges;
   const topologyAuthoring = useTopologyAuthoring();

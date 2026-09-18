@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useAtomValue, useSetAtom } from "jotai";
+import { useAtomValueRawSync, useSetAtom } from "jotai";
 import { useAfterCommit } from "#src/hooks/effects";
 import { toExecutionOverlaySource } from "#src/lib/execution-logs";
 import { orpcQuery } from "#src/lib/rpc-query";
@@ -19,8 +19,9 @@ import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
  * so the editor tree shows who owns the sync.
  */
 function useExecutionOverlaySync(): void {
-  const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
-  const executionId = useAtomValue(selectedExecutionIdAtom) ?? undefined;
+  // Route synchronizers can write these before normal subscriptions mount.
+  const currentWorkflowId = useAtomValueRawSync(currentWorkflowIdAtom);
+  const executionId = useAtomValueRawSync(selectedExecutionIdAtom) ?? undefined;
   const setExecutionOverlay = useSetAtom(executionOverlayGraphAtom);
   const canReadLogs = can(WfGraphOperations.workflowGetExecutionLogs.id);
   const canReadVersionGraph = can(WfGraphOperations.workflowGetVersionGraph.id);

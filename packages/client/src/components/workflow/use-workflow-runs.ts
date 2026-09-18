@@ -6,7 +6,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { atom, useAtom, useAtomValue } from "jotai";
+import { atom, useAtom, useAtomValue, useAtomValueRawSync } from "jotai";
 import {
   type CancelNotDelivered,
   type ExecutionEvent,
@@ -138,12 +138,13 @@ export interface RunReads {
  * so the cache answers both from one request and one polling interval.
  */
 function useRunReads(): RunReads {
-  const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
+  // Route synchronization can write these before normal subscriptions mount.
+  const currentWorkflowId = useAtomValueRawSync(currentWorkflowIdAtom);
   // Which run is open is URL state, read through the active workspace address
   // that Canvas Reveal and its scroll are keyed by, so the screen and the
   // address change in the same render. ExecutionOverlaySync pins the graph.
-  const executionId = useAtomValue(selectedExecutionIdAtom) ?? undefined;
-  const showSuperseded = useAtomValue(activeShowSupersededAtom);
+  const executionId = useAtomValueRawSync(selectedExecutionIdAtom) ?? undefined;
+  const showSuperseded = useAtomValueRawSync(activeShowSupersededAtom);
   const canReadList = can(WfGraphOperations.workflowGetExecutions.id);
   const canReadLogs = can(WfGraphOperations.workflowGetExecutionLogs.id);
   const canReadEvents = can(WfGraphOperations.workflowGetExecutionEvents.id);

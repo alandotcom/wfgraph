@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
-import { useAtomValue, useSetAtom, useStore } from "jotai";
+import { useAtomValueRawSync, useSetAtom, useStore } from "jotai";
 import { useWorkflowComparisonActions } from "#src/components/workflow/use-workflow-comparison-actions";
 import { useAfterCommit, useBeforePaint } from "#src/hooks/effects";
 import { orpcQuery } from "#src/lib/rpc-query";
@@ -95,15 +95,19 @@ function useWorkspaceRouteSync(): void {
   const { workflowId: routeWorkflowId } = workflowRouteApi.useParams();
   const search = workflowRouteApi.useSearch();
   const applyRoute = useSetAtom(applyWorkspaceRouteAtom);
-  const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
-  const address = useAtomValue(activeWorkspaceAddressAtom);
-  const selection = useAtomValue(activeSelectionAtom);
-  const inspected = useAtomValue(activeRevealPresentationAtom).inspected;
+  // This hook and sibling synchronizers write these atoms before subscriptions
+  // mount, so every read must catch that same-commit update.
+  const currentWorkflowId = useAtomValueRawSync(currentWorkflowIdAtom);
+  const address = useAtomValueRawSync(activeWorkspaceAddressAtom);
+  const selection = useAtomValueRawSync(activeSelectionAtom);
+  const inspected = useAtomValueRawSync(activeRevealPresentationAtom).inspected;
   // The structure alone, so a drag that only moves nodes does not re-render.
-  const presentedStructure = useAtomValue(presentedGraphStructureAtom);
-  const session = useAtomValue(comparisonSessionAtom);
-  const isComparisonPending = useAtomValue(isComparisonPendingAtom);
-  const missingComparisonBaseId = useAtomValue(missingComparisonBaseIdAtom);
+  const presentedStructure = useAtomValueRawSync(presentedGraphStructureAtom);
+  const session = useAtomValueRawSync(comparisonSessionAtom);
+  const isComparisonPending = useAtomValueRawSync(isComparisonPendingAtom);
+  const missingComparisonBaseId = useAtomValueRawSync(
+    missingComparisonBaseIdAtom
+  );
   const { openComparison } = useWorkflowComparisonActions();
   const routeReady = currentWorkflowId === routeWorkflowId;
   const routeAddressId = workspaceAddressId(
