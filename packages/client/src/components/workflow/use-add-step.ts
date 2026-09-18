@@ -18,11 +18,7 @@ import { useExtensionCatalog } from "#src/components/extension-catalog-provider"
 import type { CanvasPosition } from "#src/lib/command-palette";
 import { repairNodeIntegration } from "#src/lib/node-integration";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
-import {
-  addNodeAtom,
-  nodesAtom,
-  selectedNodeAtom,
-} from "#src/lib/workflow-graph-store";
+import { addNodeAtom, nodesAtom } from "#src/lib/workflow-graph-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import {
   WORKFLOW_NODE_HEIGHT,
@@ -53,7 +49,6 @@ export function useAddStep(): (request: AddStepRequest) => void {
   // on any graph change.
   const store = useStore();
   const addNode = useSetAtom(addNodeAtom);
-  const setSelectedNode = useSetAtom(selectedNodeAtom);
   const { getInternalNode, screenToFlowPosition } = useReactFlow();
 
   return useCallback(
@@ -96,15 +91,14 @@ export function useAddStep(): (request: AddStepRequest) => void {
         ? repairNodeIntegration(catalog, node, integrations)
         : node;
 
+      // Adding a node makes it the selection.
       addNode(bound);
-      setSelectedNode(bound.id);
     },
     [
       catalog,
       queryClient,
       store,
       addNode,
-      setSelectedNode,
       getInternalNode,
       screenToFlowPosition,
     ]

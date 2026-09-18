@@ -1,4 +1,5 @@
 import { ApiError } from "#src/lib/rpc-client";
+import type { WorkflowRouteSearch } from "#src/lib/workflow-navigation-state";
 
 export type WorkflowLoadFailure = {
   notFound: boolean;
@@ -8,36 +9,55 @@ export type WorkflowLoadFailure = {
 export const WORKFLOW_LOAD_ERROR_MESSAGE =
   "The workflow could not be loaded. Try again.";
 
-export function executionIdFromWorkflowSearch(
-  search: unknown
-): string | undefined {
-  if (
-    typeof search !== "object" ||
-    search === null ||
-    !("executionId" in search)
-  ) {
+function searchString(search: unknown, key: string): string | undefined {
+  if (typeof search !== "object" || search === null || !(key in search)) {
     return undefined;
   }
-  const executionId = search.executionId;
-  return typeof executionId === "string" && executionId.length > 0
-    ? executionId
-    : undefined;
+  const value: unknown = Reflect.get(search, key);
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
-/** Removes a run selection when the current authorization cannot open it. */
+/**
+ * The editor route search the viewer may open. A value that is not a
+ * non-empty string is dropped. A run belongs to `view=runs` and a comparison
+ * base to `view=changes`; a view the viewer cannot open falls back to Draft
+ * along with the run or comparison it named.
+ */
 export function authorizedWorkflowSearch(
   search: unknown,
-  canOpenRun: boolean
-): { executionId?: string | undefined } {
-  return canOpenRun
-    ? { executionId: executionIdFromWorkflowSearch(search) }
-    : {};
+  access: { canOpenRuns: boolean; canOpenComparison: boolean }
+): WorkflowRouteSearch {
+  const view = searchString(search, "view");
+  const group = searchString(search, "group");
+  const result: WorkflowRouteSearch = {};
+  if (view === "runs" && access.canOpenRuns) {
+    result.view = "runs";
+    const executionId = searchString(search, "executionId");
+    if (executionId !== undefined) {
+      result.executionId = executionId;
+    }
+  } else if (view === "changes" && access.canOpenComparison) {
+    result.view = "changes";
+    const compare = searchString(search, "compare");
+    if (compare !== undefined) {
+      result.compare = compare;
+    }
+  }
+  if (group !== undefined) {
+    result.group = group;
+  }
+  return result;
+}
+
+/** Whether a request failed because the thing it named does not exist. */
+export function isNotFoundError(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 404;
 }
 
 export function classifyWorkflowLoadFailure(
   error: unknown
 ): WorkflowLoadFailure {
-  return error instanceof ApiError && error.status === 404
+  return isNotFoundError(error)
     ? { notFound: true, message: null }
     : {
         notFound: false,
@@ -89,20 +109,4 @@ export async function publishWorkflowAfterCompletedSaves<T>({
   }
 
   return false;
-}
-
-/**
- * The workspace a deep-linked run opens, or null when the URL names no run and
- * the editor's current workspace stands.
- *
- * Opening only, never closing. Closing a run from the panel's Back button is a
- * step back inside the Runs workspace to its list, so a rule that read the absent
- * `executionId` as "leave Runs" sent that button to Properties instead, and the
- * runs list its label promises never came back. Workspace navigation, rather
- * than panel visibility, decides when Runs ends.
- */
-export function workflowWorkspaceView(
-  executionId: string | undefined
-): "runs" | null {
-  return executionId ? "runs" : null;
 }

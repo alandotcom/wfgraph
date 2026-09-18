@@ -1,11 +1,13 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
+import { useSetAtom } from "jotai";
 import { toast } from "sonner";
 import {
   orpcQuery,
   refreshRunHistory,
   refreshWorkflowList,
 } from "#src/lib/rpc-query";
+import { forgetWorkflowNavigationAtom } from "#src/lib/workflow-workspace-navigation";
 
 /**
  * Delete the workflow the editor is on, then leave for the dashboard.
@@ -22,11 +24,13 @@ import {
 export function useDeleteWorkflow() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const forgetWorkflowNavigation = useSetAtom(forgetWorkflowNavigationAtom);
 
   return useMutation(
     orpcQuery.workflow.delete.mutationOptions({
-      onSuccess: async () => {
+      onSuccess: async (_result, input) => {
         toast.success("Workflow deleted successfully");
+        forgetWorkflowNavigation(input.workflowId);
         // The runs cascade with the workflow, so the dashboard's run history is
         // wrong too.
         await Promise.all([

@@ -1,4 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  RouterContextProvider,
+} from "@tanstack/react-router";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import type { ReactNode } from "react";
@@ -34,6 +41,7 @@ import {
   installAuthorizationGrantsForTests,
   resetAuthorizationGrantsForTests,
 } from "#src/lib/authorization-test-support";
+import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
 
 const comparison: WorkflowComparisonPayload = {
   baseVersion: null,
@@ -44,6 +52,20 @@ const comparison: WorkflowComparisonPayload = {
   nodeChanges: [],
   edgeChanges: [],
 };
+
+/** A router holding the editor route, for hooks that navigate. */
+function routerAt(entry: string) {
+  const rootRoute = createRootRoute();
+  return createRouter({
+    routeTree: rootRoute.addChildren([
+      createRoute({
+        getParentRoute: () => rootRoute,
+        path: "/workflows/$workflowId",
+      }),
+    ]),
+    history: createMemoryHistory({ initialEntries: [entry] }),
+  });
+}
 
 const comparisonOperationIds = [
   "workflow.compareVersion",
@@ -166,7 +188,7 @@ describe("useWorkflowComparisonActions", () => {
     );
     const store = createStore();
     store.set(currentWorkflowIdAtom, "workflow_1");
-    store.set(workflowWorkspaceViewAtom, "changes");
+    showWorkspaceRoute(store, { view: "changes" });
     const epoch = store.set(beginWorkflowComparisonRequestAtom, "workflow_1");
     store.set(installWorkflowComparisonAtom, {
       workflowId: "workflow_1",
@@ -228,11 +250,16 @@ describe("useWorkflowComparisonActions", () => {
     const queryClient = new QueryClient({
       defaultOptions: { mutations: { retry: false } },
     });
+    // A restore returns to Draft through the route, so the hook needs a router
+    // in context.
+    const router = routerAt("/workflows/workflow_1?view=changes");
     function Wrapper({ children }: { children: ReactNode }) {
       return (
-        <QueryClientProvider client={queryClient}>
-          <JotaiProvider store={store}>{children}</JotaiProvider>
-        </QueryClientProvider>
+        <RouterContextProvider router={router}>
+          <QueryClientProvider client={queryClient}>
+            <JotaiProvider store={store}>{children}</JotaiProvider>
+          </QueryClientProvider>
+        </RouterContextProvider>
       );
     }
     const { result } = renderHook(() => useWorkflowComparisonActions(), {
@@ -265,6 +292,7 @@ describe("useWorkflowComparisonActions", () => {
       versionId: "version_1",
       expectedDraftRevision: 2,
     });
+    await waitFor(() => expect(router.state.location.search).toEqual({}));
   });
 
   it("suppresses restore when the immediate draft save fails", async () => {
@@ -282,11 +310,16 @@ describe("useWorkflowComparisonActions", () => {
     const queryClient = new QueryClient({
       defaultOptions: { mutations: { retry: false } },
     });
+    // A restore returns to Draft through the route, so the hook needs a router
+    // in context.
+    const router = routerAt("/workflows/workflow_1?view=changes");
     function Wrapper({ children }: { children: ReactNode }) {
       return (
-        <QueryClientProvider client={queryClient}>
-          <JotaiProvider store={store}>{children}</JotaiProvider>
-        </QueryClientProvider>
+        <RouterContextProvider router={router}>
+          <QueryClientProvider client={queryClient}>
+            <JotaiProvider store={store}>{children}</JotaiProvider>
+          </QueryClientProvider>
+        </RouterContextProvider>
       );
     }
     const { result } = renderHook(() => useWorkflowComparisonActions(), {
@@ -377,7 +410,7 @@ describe("useWorkflowComparisonActions", () => {
         ],
         edges: [],
       });
-      store.set(workflowWorkspaceViewAtom, "runs");
+      showWorkspaceRoute(store, { view: "runs" });
     });
     await act(async () =>
       resolveRestore(rpcJsonResponse(savedWorkflow("workflow_a")))

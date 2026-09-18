@@ -1,4 +1,5 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { useAtomValue, useSetAtom } from "jotai";
 import { ArrowLeft, RotateCcw } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -42,6 +43,7 @@ export function WorkflowVersionHistory({
   const draftRevision = useAtomValue(currentWorkflowDraftRevisionAtom);
   const session = useAtomValue(comparisonSessionAtom);
   const setSubview = useSetAtom(setComparisonSubviewAtom);
+  const navigate = useNavigate({ from: "/workflows/$workflowId" });
   const [restoreOpen, setRestoreOpen] = useState(false);
   const canReadHistory = can(WfGraphOperations.workflowGetVersionHistory.id);
   const canReadUsage = can(WfGraphOperations.workflowGetVersionUsage.id);
@@ -125,9 +127,16 @@ export function WorkflowVersionHistory({
                   disabled={actions.isPending}
                   onClick={() => {
                     if (!workflowId) return;
-                    void actions.openComparison({
-                      baseVersionId: item.id,
-                    });
+                    // Choosing another base is navigation: the route names the
+                    // comparison, and applying the route opens it. Choosing the
+                    // base already shown refreshes it.
+                    if (session.payload.baseVersion?.id === item.id) {
+                      void actions.openComparison({ baseVersionId: item.id });
+                    } else {
+                      void navigate({
+                        search: { view: "changes", compare: item.id },
+                      });
+                    }
                   }}
                   type="button"
                 >

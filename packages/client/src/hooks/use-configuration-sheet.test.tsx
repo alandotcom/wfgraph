@@ -18,7 +18,10 @@ import {
   executionOverlayGraphAtom,
 } from "#src/lib/workflow-graph-store";
 import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
-import { workflowWorkspaceView } from "#src/lib/workflow-route-state";
+import type { WorkflowRouteSearch } from "#src/lib/workflow-navigation-state";
+import { authorizedWorkflowSearch } from "#src/lib/workflow-route-state";
+import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
+import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
 
 /**
  * The sheet's dismissal contract, driven through the real `OverlayProvider`
@@ -91,33 +94,26 @@ function Host() {
 
 async function renderSheetHost() {
   const store = createStore();
-  store.set(workflowWorkspaceViewAtom, "runs");
+  store.set(currentWorkflowIdAtom, "wf_1");
+  // The route this harness opens, applied as `WorkspaceRouteSync` would.
+  showWorkspaceRoute(store, { view: "runs", executionId: "exec_1" });
   pinRun(store);
 
   const rootRoute = createRootRoute({ component: () => <Outlet /> });
   const workflowRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/workflows/$workflowId",
-    validateSearch: (search: { executionId?: string } & SearchSchemaInput) => ({
-      executionId:
-        typeof search.executionId === "string" && search.executionId.length > 0
-          ? search.executionId
-          : undefined,
-    }),
-    // Mirrors the production route, so a case can tell an exit that clears the
-    // run apart from one the router would put straight back.
-    beforeLoad: ({ search }) => {
-      const tab = workflowWorkspaceView(search.executionId);
-      if (tab !== null) {
-        store.set(workflowWorkspaceViewAtom, tab);
-      }
-    },
+    validateSearch: (search: WorkflowRouteSearch & SearchSchemaInput) =>
+      authorizedWorkflowSearch(search, {
+        canOpenRuns: true,
+        canOpenComparison: true,
+      }),
     component: () => <Host />,
   });
   const router = createRouter({
     routeTree: rootRoute.addChildren([workflowRoute]),
     history: createMemoryHistory({
-      initialEntries: ["/workflows/wf_1?executionId=exec_1"],
+      initialEntries: ["/workflows/wf_1?view=runs&executionId=exec_1"],
     }),
   });
 
@@ -159,7 +155,10 @@ describe("useConfigurationSheet", () => {
     await click("close-all");
 
     expect(store.get(workflowWorkspaceViewAtom)).toBe("runs");
-    expect(router.state.location.search).toEqual({ executionId: "exec_1" });
+    expect(router.state.location.search).toEqual({
+      view: "runs",
+      executionId: "exec_1",
+    });
     expect(store.get(canvasEditingLockedAtom)).toBe(true);
   });
 
@@ -173,7 +172,10 @@ describe("useConfigurationSheet", () => {
     await click("pop");
 
     expect(store.get(workflowWorkspaceViewAtom)).toBe("runs");
-    expect(router.state.location.search).toEqual({ executionId: "exec_1" });
+    expect(router.state.location.search).toEqual({
+      view: "runs",
+      executionId: "exec_1",
+    });
   });
 
   // Opening another overlay replaces the stack rather than stacking on it, so
@@ -187,7 +189,10 @@ describe("useConfigurationSheet", () => {
     await click("open-other");
 
     expect(store.get(workflowWorkspaceViewAtom)).toBe("runs");
-    expect(router.state.location.search).toEqual({ executionId: "exec_1" });
+    expect(router.state.location.search).toEqual({
+      view: "runs",
+      executionId: "exec_1",
+    });
     expect(store.get(canvasEditingLockedAtom)).toBe(true);
   });
 
@@ -204,7 +209,10 @@ describe("useConfigurationSheet", () => {
     await click("close-all");
 
     expect(store.get(workflowWorkspaceViewAtom)).toBe("runs");
-    expect(router.state.location.search).toEqual({ executionId: "exec_1" });
+    expect(router.state.location.search).toEqual({
+      view: "runs",
+      executionId: "exec_1",
+    });
     expect(store.get(canvasEditingLockedAtom)).toBe(true);
   });
 });

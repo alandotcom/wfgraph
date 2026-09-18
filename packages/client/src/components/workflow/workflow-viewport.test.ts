@@ -4,9 +4,33 @@ import {
   WORKFLOW_CANVAS_MIN_ZOOM,
   initialWorkflowViewport,
   presentationViewport,
+  viewportFromWorldCamera,
   workflowFitViewOptions,
   workflowZoomPresentation,
+  worldCameraFromViewport,
 } from "#src/components/workflow/workflow-viewport";
+
+describe("workspace camera", () => {
+  it("restores the same world-space center on a canvas of another size", () => {
+    const desktopCanvas = { width: 1200, height: 800 };
+    const camera = worldCameraFromViewport(
+      { x: -300, y: 40, zoom: 0.5 },
+      desktopCanvas
+    );
+
+    expect(camera).toEqual({ centerX: 1800, centerY: 720, zoom: 0.5 });
+    expect(viewportFromWorldCamera(camera, desktopCanvas)).toEqual({
+      x: -300,
+      y: 40,
+      zoom: 0.5,
+    });
+
+    // A phone-width canvas keeps the same flow point in its middle.
+    const phoneCanvas = { width: 390, height: 640 };
+    const phoneViewport = viewportFromWorldCamera(camera, phoneCanvas);
+    expect(worldCameraFromViewport(phoneViewport, phoneCanvas)).toEqual(camera);
+  });
+});
 
 describe("workflow viewport policy", () => {
   it("fits supported large workflow bounds into the shortest canvas with padding", () => {

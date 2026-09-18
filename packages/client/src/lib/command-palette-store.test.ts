@@ -7,10 +7,8 @@ import {
 } from "#src/lib/command-palette-store";
 import { executionOverlayGraphAtom } from "#src/lib/workflow-graph-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
-import {
-  isGeneratingAtom,
-  workflowWorkspaceViewAtom,
-} from "#src/lib/workflow-ui-store";
+import { isGeneratingAtom } from "#src/lib/workflow-ui-store";
+import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
 
 /** A store with a workflow open and nothing holding the canvas. */
 function editorStore(workflowId: string | null = "workflow_1") {
@@ -24,7 +22,7 @@ function editorStore(workflowId: string | null = "workflow_1") {
  * that state go in together.
  */
 function pinRunToCanvas(store: ReturnType<typeof editorStore>) {
-  store.set(workflowWorkspaceViewAtom, "runs");
+  showWorkspaceRoute(store, { view: "runs" });
   store.set(executionOverlayGraphAtom, { nodes: [], edges: [] });
 }
 

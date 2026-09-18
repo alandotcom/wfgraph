@@ -1,5 +1,6 @@
 /**
- * Read-only canvas presentation derived from draft, run, and comparison state.
+ * Read-only canvas presentation derived from draft, run, comparison, and
+ * selection state.
  * Draft mutation and history remain in `workflow-graph-store`.
  */
 
@@ -22,10 +23,13 @@ import { lockGroupInteriorEdges } from "#src/lib/node-group";
 import {
   edgesStateAtom,
   executionOverlayGraphAtom,
-  selectedEdgeAtom,
   nodesStateAtom,
-  selectedNodeAtom,
 } from "#src/lib/workflow-graph-cells";
+import {
+  graphStructureKey,
+  type NavigationGraph,
+} from "#src/lib/workflow-navigation-state";
+import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
 import { comparisonDisplayGraphAtom } from "#src/lib/workflow-comparison-store";
 import { isPublicationReviewActiveAtom } from "#src/lib/workflow-publication-review-store";
 import {
@@ -35,6 +39,7 @@ import {
 import type {
   NodeIssueSummary,
   NodeRunStatus,
+  WorkflowEdge,
   WorkflowNode,
 } from "#src/lib/workflow-graph-types";
 
@@ -52,6 +57,44 @@ export const canvasEditingLockedAtom = atom(
     get(isGeneratingAtom) ||
     get(workflowWorkspaceViewAtom) !== "draft" ||
     get(isPublicationReviewActiveAtom)
+);
+
+/**
+ * The graph the active workspace presents before any paint: the Draft, the
+ * open run's pinned graph, or the comparison graph. Null while Runs or Changes
+ * is waiting for its graph.
+ */
+export const presentedGraphAtom = atom(
+  (get): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } | null => {
+    const view = get(workflowWorkspaceViewAtom);
+    if (view === "runs") {
+      return get(executionOverlayGraphAtom);
+    }
+    if (view === "changes") {
+      return get(comparisonDisplayGraphAtom);
+    }
+    return { nodes: get(nodesStateAtom), edges: get(edgesStateAtom) };
+  }
+);
+
+/** A presented graph and its `graphStructureKey`. */
+export type PresentedGraphStructure = {
+  graph: NavigationGraph;
+  key: string;
+};
+
+/**
+ * The presented graph's structure, or null while `presentedGraphAtom` is null.
+ * The value stays the same object while the structure key is unchanged, so a
+ * drag that only moves nodes notifies no subscriber. Its graph keeps the
+ * positions of the last structural change, so a reader takes only node ids,
+ * kinds, parents, and edge ids from it.
+ */
+export const presentedGraphStructureAtom = selectAtom(
+  presentedGraphAtom,
+  (graph): PresentedGraphStructure | null =>
+    graph ? { graph, key: graphStructureKey(graph) } : null,
+  (left, right) => left?.key === right?.key
 );
 
 const inactiveBranchAtom = atom((get) => {
@@ -78,6 +121,31 @@ type PaintedNode = {
 
 const paintedNodes = new WeakMap<WorkflowNode, PaintedNode>();
 
+/** The copy of each node or edge whose `selected` flag differs from its own. */
+const flaggedNodes = new WeakMap<WorkflowNode, WorkflowNode>();
+const flaggedEdges = new WeakMap<WorkflowEdge, WorkflowEdge>();
+
+/**
+ * `item` with its `selected` flag equal to `selected`. A flipped copy is cached
+ * per item, so an unchanged selection keeps element identity across repaints.
+ */
+function withSelectedFlag<T extends { selected?: boolean | undefined }>(
+  item: T,
+  selected: boolean,
+  cache: WeakMap<T, T>
+): T {
+  if (Boolean(item.selected) === selected) {
+    return item;
+  }
+  const cached = cache.get(item);
+  if (cached && Boolean(cached.selected) === selected) {
+    return cached;
+  }
+  const flagged = { ...item, selected };
+  cache.set(item, flagged);
+  return flagged;
+}
+
 /** Nodes painted for the active workspace without modifying the stored graph. */
 export const displayNodesAtom = atom((get) => {
   const view = get(workflowWorkspaceViewAtom);
@@ -92,20 +160,18 @@ export const displayNodesAtom = atom((get) => {
   const issuesByNodeId = displayGraph
     ? EMPTY_ISSUES
     : get(workflowIssuesByNodeIdAtom);
-  const overlaySelectedId = displayGraph ? get(selectedNodeAtom) : null;
-  const selectionAlreadyMatches =
-    !displayGraph ||
-    ordered.every(
-      (node) => Boolean(node.selected) === (node.id === overlaySelectedId)
+  const selectedIds = new Set(get(activeSelectionAtom).nodeIds);
+  const paintSelection = (items: WorkflowNode[]) =>
+    mapOrSame(items, (node) =>
+      withSelectedFlag(node, selectedIds.has(node.id), flaggedNodes)
     );
 
   if (
     statusByNodeId.size === 0 &&
     nodeIds.size === 0 &&
-    issuesByNodeId.size === 0 &&
-    selectionAlreadyMatches
+    issuesByNodeId.size === 0
   ) {
-    return ordered;
+    return paintSelection(ordered);
   }
 
   const paintingRun =
@@ -159,14 +225,7 @@ export const displayNodesAtom = atom((get) => {
     return paintedNode;
   });
 
-  if (!displayGraph) {
-    return painted;
-  }
-
-  return painted.map((node) => {
-    const selected = node.id === overlaySelectedId;
-    return Boolean(node.selected) === selected ? node : { ...node, selected };
-  });
+  return paintSelection(painted);
 });
 
 /** Edges painted for the active workspace without modifying the stored graph. */
@@ -175,12 +234,13 @@ export const displayEdgesAtom = atom((get) => {
   const overlay = view === "runs" ? get(executionOverlayGraphAtom) : null;
   const comparison =
     view === "changes" ? get(comparisonDisplayGraphAtom) : null;
+  const selectedIds = new Set(get(activeSelectionAtom).edgeIds);
+  const paintSelection = (items: WorkflowEdge[]) =>
+    mapOrSame(items, (edge) =>
+      withSelectedFlag(edge, selectedIds.has(edge.id), flaggedEdges)
+    );
   if (comparison) {
-    const selectedEdgeId = get(selectedEdgeAtom);
-    return mapOrSame(comparison.edges, (edge) => {
-      const selected = edge.id === selectedEdgeId;
-      return Boolean(edge.selected) === selected ? edge : { ...edge, selected };
-    });
+    return paintSelection(comparison.edges);
   }
   const nodes = overlay?.nodes ?? get(nodesStateAtom);
   const edges = overlay?.edges ?? get(edgesStateAtom);
@@ -207,34 +267,21 @@ export const displayEdgesAtom = atom((get) => {
             }),
           };
         });
-  if (!overlay) {
-    return withInactiveBranch;
-  }
-  const selectedEdgeId = get(selectedEdgeAtom);
-  return mapOrSame(withInactiveBranch, (edge) => {
-    const selected = edge.id === selectedEdgeId;
-    return Boolean(edge.selected) === selected ? edge : { ...edge, selected };
-  });
+  return paintSelection(withInactiveBranch);
 });
 
 /**
- * The graph the canvas presents before any edge is painted onto a Group frame:
- * a run's pinned graph in Runs, the comparison graph in Changes, and the draft
- * otherwise or when neither of those is loaded.
+ * The graph the canvas paints Group frames from: the presented graph, or the
+ * Draft while Runs or Changes is waiting for its graph, the same fallback
+ * `displayNodesAtom` paints.
  */
-const presentedGraphAtom = atom((get) => {
-  const view = get(workflowWorkspaceViewAtom);
-  const displayGraph =
-    view === "runs"
-      ? get(executionOverlayGraphAtom)
-      : view === "changes"
-        ? get(comparisonDisplayGraphAtom)
-        : null;
-  return {
-    nodes: displayGraph?.nodes ?? get(nodesStateAtom),
-    edges: displayGraph?.edges ?? get(edgesStateAtom),
-  };
-});
+const canvasGraphAtom = atom(
+  (get) =>
+    get(presentedGraphAtom) ?? {
+      nodes: get(nodesStateAtom),
+      edges: get(edgesStateAtom),
+    }
+);
 
 /**
  * An atom holding the source handle ids the Group frame `groupId` draws, read
@@ -244,7 +291,7 @@ const presentedGraphAtom = atom((get) => {
  */
 export function groupOutletHandlesAtom(groupId: string) {
   return selectAtom(
-    presentedGraphAtom,
+    canvasGraphAtom,
     (graph) => groupOutletHandles(graph.nodes, graph.edges, groupId),
     isEqual
   );

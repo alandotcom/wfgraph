@@ -3,7 +3,7 @@ import { useSetAtom } from "jotai";
 import { cn } from "@wfgraph/shared/utils";
 import { useAfterCommit } from "#src/hooks/effects";
 import { type ExecutionLog } from "#src/lib/execution-logs";
-import { selectedNodeAtom } from "#src/lib/workflow-graph-store";
+import { selectOnlyNodeAtom } from "#src/lib/workflow-graph-store";
 import {
   formatDuration,
   getStatusDotClass,
@@ -24,7 +24,7 @@ export function WorkflowRunNodeIndex({
   onFocusRestored?: () => void;
   onSelect?: (log: ExecutionLog) => void;
 }) {
-  const setSelectedNode = useSetAtom(selectedNodeAtom);
+  const selectOnlyNode = useSetAtom(selectOnlyNodeAtom);
   const rowRefs = useRef(new Map<string, HTMLButtonElement>());
 
   useAfterCommit(focusLogId, () => {
@@ -45,7 +45,7 @@ export function WorkflowRunNodeIndex({
 
   const selectLog = (log: ExecutionLog) => {
     onSelect?.(log);
-    setSelectedNode(log.nodeId);
+    selectOnlyNode(log.nodeId);
   };
 
   return (

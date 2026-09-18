@@ -16,6 +16,7 @@ import {
 } from "#src/lib/shortcut-label";
 import {
   canvasEditingLockedAtom,
+  canvasSelectionAtom,
   copySelectionAtom,
   duplicateSelectionAtom,
   groupSelectionAtom,
@@ -56,13 +57,14 @@ export function useWorkflowCommands({
     []
   );
 
-  const selectedIds = new Set(
-    state.nodes.filter((node) => node.selected).map((node) => node.id)
-  );
+  const selection = useAtomValue(canvasSelectionAtom);
+  const selectedIds = new Set(selection.nodeIds);
   const hasNodes = state.nodes.some((node) => node.type !== "add");
   const hasCopyableSelection = state.nodes.some(
     (node) =>
-      node.selected && node.data.type !== "lifecycle" && node.type !== "add"
+      selectedIds.has(node.id) &&
+      node.data.type !== "lifecycle" &&
+      node.type !== "add"
   );
   const grouping = analyzeGroupableSelection(
     state.nodes,
