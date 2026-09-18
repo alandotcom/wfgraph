@@ -3,6 +3,7 @@ import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
+import type { WorkflowIssue } from "@wfgraph/shared/graph/workflow-issues";
 import { buildComparisonDisplayGraph } from "#src/lib/workflow-comparison";
 import type { WorkflowComparisonSession } from "#src/lib/workflow-comparison-store";
 import {
@@ -11,6 +12,11 @@ import {
   comparisonRevealContext,
   comparisonTitle,
   describeChangeCounts,
+  describeInspection,
+  describeValidationDifference,
+  inspectChange,
+  issueIdentity,
+  nodeValidationSides,
   selectedChangeIndex,
 } from "./changes-summary";
 
@@ -174,6 +180,8 @@ describe("changesHeaderModel", () => {
     const refreshing = changesHeaderModel({
       comparison: { status: "refreshing", payload, showsHistory: true },
       workflowName: "Reminders",
+      level: "browse",
+      inspectedTitle: null,
     });
     expect(refreshing).toMatchObject({
       workspaceLabel: "Changes",
@@ -184,11 +192,29 @@ describe("changesHeaderModel", () => {
     });
   });
 
+  it("ends the path with the inspected object at Focus and offers Back", () => {
+    expect(
+      changesHeaderModel({
+        comparison: { status: "ready", payload, showsHistory: false },
+        workflowName: "Reminders",
+        level: "focus",
+        inspectedTitle: "New",
+      })
+    ).toMatchObject({
+      title: "Version 3 → proposed version 4",
+      path: ["Reminders", "Version 3 → proposed version 4", "New"],
+      showsBack: true,
+      focusLabel: "Compare fields",
+    });
+  });
+
   it("names what is happening while no comparison is shown", () => {
     const title = (status: "idle" | "loading" | "error") =>
       changesHeaderModel({
         comparison: { status },
         workflowName: "Reminders",
+        level: "browse",
+        inspectedTitle: null,
       });
     expect(title("loading")).toMatchObject({
       title: "Comparing changes",
@@ -248,5 +274,137 @@ describe("describeChangeCounts", () => {
       describeChangeCounts([{ kind: "removed" }, { kind: "removed" }])
     ).toBe("2 removed");
     expect(describeChangeCounts([])).toBe("No changes");
+  });
+});
+
+describe("inspectChange", () => {
+  const graph = buildComparisonDisplayGraph(payload);
+  const objects = changedObjects({ payload, graph, catalog });
+  const inspect = (object: { kind: "node" | "edge"; id: string }) =>
+    inspectChange({ payload, graph, catalog, objects, object });
+
+  it("describes added, modified, removed, and unchanged steps by the sides that hold them", () => {
+    const sentence = (id: string) => {
+      const inspection = inspect({ kind: "node", id });
+      if (inspection.kind === "unavailable") {
+        throw new Error(`${id} is not on the comparison canvas`);
+      }
+      return describeInspection(inspection, payload);
+    };
+    expect(sentence("fresh")).toBe(
+      "This step is new in the draft. It is not in version 3, so only the draft's values are shown."
+    );
+    expect(sentence("gone")).toBe(
+      "This step is removed from the draft. Only version 3 has values for it."
+    );
+    expect(sentence("edited")).toBe(
+      "0 settings differ between version 3 and the draft."
+    );
+    expect(sentence("kept")).toBe(
+      "This step's settings are the same in version 3 and the draft. Only its connections changed."
+    );
+    expect(inspect({ kind: "node", id: "kept" })).toMatchObject({
+      change: "unchanged",
+      nodeChange: null,
+      connections: [{ key: "edge:kept-fresh" }, { key: "edge:kept-gone" }],
+    });
+  });
+
+  it("names a connection by the steps it joins, and an object off the canvas as unavailable", () => {
+    expect(inspect({ kind: "edge", id: "kept-gone" })).toMatchObject({
+      kind: "edge",
+      change: "removed",
+      source: "Kept",
+      target: "Gone",
+      branch: null,
+    });
+    expect(inspect({ kind: "node", id: "missing" })).toEqual({
+      kind: "unavailable",
+    });
+  });
+});
+
+describe("describeValidationDifference", () => {
+  const issue = (fieldKey: string, nodeLabel = "New"): WorkflowIssue => ({
+    kind: "missing_required_field",
+    severity: "blocking",
+    nodeId: "edited",
+    nodeLabel,
+    fieldKey,
+    fieldLabel: fieldKey,
+    message: `Node "${nodeLabel}" is missing required field "${fieldKey}"`,
+  });
+  const checked = (...issues: WorkflowIssue[]) => ({
+    kind: "checked" as const,
+    issues,
+  });
+  const absent = { kind: "absent" as const };
+  const unknown = { kind: "unknown" as const };
+
+  it("counts the issues the draft adds and resolves", () => {
+    expect(
+      describeValidationDifference({
+        before: checked(issue("subject")),
+        after: checked(issue("recipient")),
+      })
+    ).toBe("The draft adds 1 issue and resolves 1 issue.");
+    expect(
+      describeValidationDifference({ before: checked(), after: checked() })
+    ).toBe("No issues in either version.");
+    expect(
+      describeValidationDifference({
+        before: absent,
+        after: checked(issue("subject")),
+      })
+    ).toBe("The draft's step has 1 issue.");
+    expect(
+      describeValidationDifference({ before: checked(), after: absent })
+    ).toBe("The published step had no issues.");
+  });
+
+  it("keeps an issue the same when a renamed step changes its message", () => {
+    const before = issue("subject", "Old reminder");
+    const after = issue("subject", "Reminder");
+    expect(issueIdentity(before)).toBe(issueIdentity(after));
+    expect(
+      describeValidationDifference({
+        before: checked(before),
+        after: checked(after),
+      })
+    ).toBe("Validation is the same in both versions.");
+  });
+
+  it("says validation is unknown for a side whose action is missing", () => {
+    expect(
+      describeValidationDifference({ before: unknown, after: checked() })
+    ).toBe(
+      "Validation of the published step is unknown, because its action is not available in this editor. The draft's step has no issues."
+    );
+  });
+});
+
+describe("nodeValidationSides", () => {
+  it("marks a side unknown when its action is missing from the catalog", () => {
+    const withAction = (actionType: string): WorkflowNode => ({
+      ...step("edited", "Edited"),
+      data: { label: "Edited", type: "action", config: { actionType } },
+    });
+    const sides = nodeValidationSides({
+      payload: {
+        ...payload,
+        baseGraph: createSerializedWorkflowGraph({
+          nodes: [withAction("old/removed")],
+          edges: [],
+        }),
+        draftGraph: createSerializedWorkflowGraph({
+          nodes: [step("edited", "Edited")],
+          edges: [],
+        }),
+      },
+      nodeId: "edited",
+      catalog,
+    });
+    expect(sides.before).toEqual({ kind: "unknown" });
+    expect(sides.after.kind).toBe("checked");
   });
 });

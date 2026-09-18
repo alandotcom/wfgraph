@@ -14,12 +14,14 @@ import {
 import { NodePropertiesForm } from "#src/components/workflow/node-properties-form";
 import { setComparisonSubviewAtom } from "#src/lib/workflow-comparison-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
-import type {
-  OpenRevealLevel,
-  WorkflowRouteSearch,
+import {
+  workspaceAddressId,
+  type OpenRevealLevel,
+  type WorkflowRouteSearch,
 } from "#src/lib/workflow-navigation-state";
 import { groupIssues } from "#src/lib/workflow-issues-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
+import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
 import {
   findAction,
   type ExtensionCatalog,
@@ -30,7 +32,11 @@ import { isBlank } from "@wfgraph/shared/types/string";
 import { compact } from "es-toolkit/array";
 import type { createStore } from "jotai";
 import { ChangesBrowse, ChangesHeader } from "./changes-browse";
-import { comparisonRevealContextAtom } from "./changes-summary";
+import { ChangesFocus } from "./changes-focus";
+import {
+  changeRowFocusRequestAtom,
+  comparisonRevealContextAtom,
+} from "./changes-summary";
 import { ConditionBrowse, ConditionFocus } from "./condition-reveal";
 import { GroupBrowse, GroupFocusSections } from "./group-browse";
 import { LifecycleBrowse } from "./lifecycle-browse";
@@ -287,20 +293,32 @@ function PanelHeader({ level, controls }: RevealKindHeaderProps) {
 }
 
 /**
- * One step back in Changes: from version history to the change list, and
- * otherwise one level.
+ * One step back in Changes: from version history in Browse to the change list,
+ * from Focus to the change list in Browse with DOM focus on the inspected
+ * object's row, and otherwise one level. The row focus request is set only
+ * when a comparison is shown, since only then does the list render.
  */
 function unwindChanges({
   store,
+  level,
   unwindLevel,
 }: Parameters<NonNullable<RevealKind["unwind"]>>[0]) {
   const comparison = store.get(comparisonRevealContextAtom);
   const workflowId = store.get(currentWorkflowIdAtom);
-  if ("payload" in comparison && comparison.showsHistory && workflowId) {
+  const showsHistory = "payload" in comparison && comparison.showsHistory;
+  if (showsHistory && workflowId) {
     store.set(setComparisonSubviewAtom, { workflowId, subview: "review" });
-  } else {
-    unwindLevel();
   }
+  if (level === "browse" && showsHistory && workflowId) {
+    return;
+  }
+  if (level === "focus" && "payload" in comparison) {
+    store.set(
+      changeRowFocusRequestAtom,
+      workspaceAddressId(store.get(activeWorkspaceAddressAtom))
+    );
+  }
+  unwindLevel();
 }
 
 /** A Draft ordinary step: a summary in Browse and its complete form in Focus. */
@@ -383,8 +401,9 @@ const RUNS_KIND: RevealKind = {
 
 /**
  * The Changes workspace: the comparison summary, the changed-object list, and
- * version history in Browse, under a header naming the comparison. It has no
- * Focus, and the list keeps its own scroll.
+ * version history in Browse, and the selected object's before-and-after
+ * properties side by side in a wide Focus, under a header naming the
+ * comparison. Each body keeps its own scroll.
  */
 const CHANGES_KIND: RevealKind = {
   id: "changes",
@@ -392,11 +411,11 @@ const CHANGES_KIND: RevealKind = {
   regionLabel: "Changes inspector",
   header: { owner: "kind", Header: ChangesHeader },
   Browse: ChangesBrowse,
-  Focus: null,
+  Focus: ChangesFocus,
   unwind: unwindChanges,
   focusReturnTarget: canvasNodeElement,
   shellOwnsScroll: false,
-  focusWidth: "standard",
+  focusWidth: "wide",
 };
 
 /**
