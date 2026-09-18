@@ -1,4 +1,4 @@
-import { act, fireEvent } from "@testing-library/react";
+import { act, fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ToolbarActions } from "#src/components/workflow/workflow-toolbar-chrome";
 import { renderChrome } from "#src/components/workflow/workflow-toolbar-chrome.test-support";
@@ -6,10 +6,9 @@ import {
   currentWorkflowDraftRevisionAtom,
   currentWorkflowIdAtom,
 } from "#src/lib/workflow-save-store";
-import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import {
   canUndoAtom,
-  displayEdgesAtom,
+  canvasEdgesAtom,
   displayNodesAtom,
   edgesAtom,
   nodesAtom,
@@ -24,6 +23,8 @@ import {
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
+import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
+import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
 
 /**
  * The command palette is mounted by `ToolbarActions`, so what is exercised here
@@ -67,12 +68,20 @@ const SEARCH_GRAPH: WorkflowNode[] = [
     position: { x: 24, y: 48 },
     data: { label: "Notify customer", type: "action" },
   },
+  {
+    id: "load_customer",
+    parentId: "group_1",
+    type: "action",
+    position: { x: 24, y: 160 },
+    data: { label: "Load customer", type: "action" },
+  },
 ];
 
+/** Stored edges name Group members, so this one enters the Group at a member. */
 const SELECTED_SEARCH_EDGE: WorkflowEdge = {
   id: "lifecycle-to-group",
   source: "lifecycle_1",
-  target: "group_1",
+  target: "notify_customer",
   selected: true,
 };
 
@@ -90,6 +99,41 @@ function persistedDraft(input: ReturnType<typeof renderChrome>["store"]) {
     nodes: input.get(nodesAtom).map(toPersistedNode),
     edges: input.get(edgesAtom).map(toPersistedEdge),
   });
+}
+
+/**
+ * Apply the route search the router now holds to the store, as
+ * `WorkspaceRouteSync` does in the editor. Finding a Group member pushes that
+ * Group's route.
+ */
+async function followRoute(rendered: ReturnType<typeof renderChrome>) {
+  await waitFor(() =>
+    expect(rendered.router.state.location.search).toMatchObject({
+      group: "group_1",
+    })
+  );
+  act(() =>
+    showWorkspaceRoute(rendered.store, rendered.router.state.location.search)
+  );
+}
+
+/** Draft still selects, and paints, the node and edge the fixture selected. */
+function expectDraftSelectionKept(
+  store: ReturnType<typeof renderChrome>["store"]
+) {
+  act(() => showWorkspaceRoute(store, {}));
+  const kept = { nodeIds: ["lifecycle_1"], edgeIds: ["lifecycle-to-group"] };
+  expect(store.get(activeSelectionAtom)).toEqual(kept);
+  expect({
+    nodeIds: store
+      .get(displayNodesAtom)
+      .filter((node) => node.selected)
+      .map((node) => node.id),
+    edgeIds: store
+      .get(canvasEdgesAtom)
+      .filter((edge) => edge.selected)
+      .map((edge) => edge.id),
+  }).toEqual(kept);
 }
 
 describe("the command palette", () => {
@@ -154,7 +198,10 @@ describe("the command palette", () => {
     fireEvent.click(
       rendered.getByRole("option", { name: "Go to run history" })
     );
-    expect(rendered.store.get(workflowWorkspaceViewAtom)).toBe("runs");
+    // The command names Runs in the route, which `WorkspaceRouteSync` applies.
+    await waitFor(() =>
+      expect(rendered.router.state.location.search).toEqual({ view: "runs" })
+    );
   });
 
   // The same rule Cmd+Enter follows: a chord is not worth a keystroke taken out
@@ -312,7 +359,7 @@ describe("the command palette", () => {
 
   it("keeps node search read-only in Changes without enabling run commands", async () => {
     const rendered = renderChrome(ToolbarActions);
-    act(() => rendered.store.set(workflowWorkspaceViewAtom, "changes"));
+    act(() => showWorkspaceRoute(rendered.store, { view: "changes" }));
 
     await openedPalette(rendered);
 
@@ -328,7 +375,7 @@ describe("the command palette", () => {
     ).not.toBeNull();
   });
 
-  it("finds and selects displayed Group children in a read-only Draft", async () => {
+  it("opens the Group of a found child and selects it there in a read-only Draft", async () => {
     const rendered = renderChrome(ToolbarActions, {
       graph: SEARCH_GRAPH,
       state: { canUpdate: false },
@@ -342,6 +389,7 @@ describe("the command palette", () => {
     });
 
     fireEvent.click(result);
+    await followRoute(rendered);
 
     expect(rendered.store.get(selectedNodeAtom)).toBe("notify_customer");
     expect(
@@ -371,6 +419,7 @@ describe("the command palette", () => {
     const input = await openedPalette(rendered);
     fireEvent.change(input, { target: { value: "notify" } });
     fireEvent.click(rendered.getByRole("option", { name: /Notify customer/ }));
+    await followRoute(rendered);
 
     expect(rendered.store.get(selectedNodeAtom)).toBe("notify_customer");
     expect(rendered.store.get(selectedEdgeAtom)).toBeNull();
@@ -381,7 +430,7 @@ describe("the command palette", () => {
         .map((node) => node.id)
     ).toEqual(["notify_customer"]);
     expect(
-      rendered.store.get(displayEdgesAtom).some((edge) => edge.selected)
+      rendered.store.get(canvasEdgesAtom).some((edge) => edge.selected)
     ).toBe(false);
     expect(persistedDraft(rendered.store)).toEqual(serializedBefore);
     expect(rendered.store.get(canUndoAtom)).toBe(false);
@@ -447,6 +496,7 @@ describe("the command palette", () => {
 
     fireEvent.change(input, { target: { value: "notify" } });
     fireEvent.click(rendered.getByRole("option", { name: /Notify customer/ }));
+    await followRoute(rendered);
 
     expect(rendered.store.get(selectedNodeAtom)).toBe("notify_customer");
     expect(
@@ -456,18 +506,7 @@ describe("the command palette", () => {
         .map((node) => node.id)
     ).toEqual(["notify_customer"]);
     expect(persistedDraft(rendered.store)).toEqual(draftBefore);
-    expect(
-      rendered.store
-        .get(nodesAtom)
-        .filter((node) => node.selected)
-        .map((node) => node.id)
-    ).toEqual(["lifecycle_1"]);
-    expect(
-      rendered.store
-        .get(edgesAtom)
-        .filter((edge) => edge.selected)
-        .map((edge) => edge.id)
-    ).toEqual(["lifecycle-to-group"]);
+    expectDraftSelectionKept(rendered.store);
     expect(rendered.actions.handleExecute).not.toHaveBeenCalled();
   });
 
@@ -506,18 +545,7 @@ describe("the command palette", () => {
         .map((node) => node.id)
     ).toEqual(["notify_customer"]);
     expect(persistedDraft(rendered.store)).toEqual(draftBefore);
-    expect(
-      rendered.store
-        .get(nodesAtom)
-        .filter((node) => node.selected)
-        .map((node) => node.id)
-    ).toEqual(["lifecycle_1"]);
-    expect(
-      rendered.store
-        .get(edgesAtom)
-        .filter((edge) => edge.selected)
-        .map((edge) => edge.id)
-    ).toEqual(["lifecycle-to-group"]);
+    expectDraftSelectionKept(rendered.store);
   });
 
   // A held palette belongs to the workflow it was opened over. Opening another

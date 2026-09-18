@@ -7,7 +7,10 @@
 
 import type { Getter } from "jotai";
 import { atom } from "jotai";
+import { omit } from "es-toolkit/object";
 import { orderGroupParentsFirst } from "@wfgraph/shared/graph/node-group";
+import { getClientLogger } from "#src/lib/logger";
+import { repairCanvasGroups } from "#src/lib/node-group";
 import type { SavedWorkflow } from "#src/lib/rpc-client";
 import {
   currentWorkflowDraftRevisionAtom,
@@ -26,9 +29,7 @@ import {
 import {
   activeAgentTurnIdAtom,
   isGeneratingAtom,
-  selectedExecutionIdAtom,
   workflowGraphUpdateAtom,
-  workflowWorkspaceViewAtom,
 } from "#src/lib/workflow-ui-store";
 import { clearPublicationReviewAtom } from "#src/lib/workflow-publication-review-store";
 import {
@@ -38,13 +39,14 @@ import {
   futureAtom,
   historyAtom,
   nodesStateAtom,
-  selectedEdgeAtom,
-  selectedNodeAtom,
 } from "#src/lib/workflow-graph-cells";
 import { clearWorkflowComparisonAtom } from "#src/lib/workflow-comparison-store";
 import { resetNodeStatusesAtom as resetPresentationNodeStatusesAtom } from "#src/lib/workflow-graph-presentation-store";
 import { NO_ISSUES, workflowIssuesAtom } from "#src/lib/workflow-issues-store";
+import { clearDraftSelectionsAtom } from "#src/lib/workflow-workspace-navigation";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
+
+const logger = getClientLogger("workflow", "graph");
 
 /** Lets the config panel focus a node that has not received an action type yet. */
 export const newlyCreatedNodeIdAtom = atom<string | null>(null);
@@ -124,7 +126,14 @@ export const endWorkflowEditorLifetimeAtom = atom(null, (_get, set) => {
   set(workflowDragActiveAtom, false);
 });
 
-/** Replace the graph and clear state that belongs to the previous graph. */
+/**
+ * Replace the Draft graph of the current workflow and clear state that belongs
+ * to the previous graph, including the selection of every Draft and comparison
+ * address of that workflow. A run address keeps its selection, because the
+ * graph its run pinned is unchanged. Set `currentWorkflowIdAtom` first when the workflow changes. A
+ * Group holding fewer than two steps is ungrouped on the way in, and that
+ * repair leaves the graph unsaved, so the next save writes it to the server.
+ */
 export const loadWorkflowGraphAtom = atom(
   null,
   (get, set, graph: { nodes: WorkflowNode[]; edges: WorkflowEdge[] }) => {
@@ -132,15 +141,33 @@ export const loadWorkflowGraphAtom = atom(
     if (workflowId) {
       set(clearWorkflowComparisonAtom, workflowId);
     }
-    set(nodesStateAtom, orderGroupParentsFirst(graph.nodes));
-    set(edgesStateAtom, graph.edges);
+    // With no open workflow the active address belongs to the empty id.
+    set(clearDraftSelectionsAtom, workflowId ?? "");
+    // Selection lives in workspace navigation, so no `selected` flag is kept.
+    const unselected = {
+      nodes: graph.nodes.map((node) => omit(node, ["selected"])),
+      edges: graph.edges.map((edge) => omit(edge, ["selected"])),
+    };
+    const repair = repairCanvasGroups(unselected);
+    if (!repair.ok) {
+      // The server refuses to store such a graph, so reaching this means the
+      // draft was written around that check. It loads unchanged, and the next
+      // save reports the refusal.
+      logger.error("Loaded graph holds a malformed Group", { workflowId });
+    }
+    set(
+      nodesStateAtom,
+      repair.ok ? repair.nodes : orderGroupParentsFirst(unselected.nodes)
+    );
+    set(edgesStateAtom, unselected.edges);
     set(historyAtom, []);
     set(futureAtom, []);
     set(workflowDragActiveAtom, false);
-    set(selectedNodeAtom, null);
-    set(selectedEdgeAtom, null);
     set(newlyCreatedNodeIdAtom, null);
-    set(hasUnsavedChangesAtom, false);
+    set(
+      hasUnsavedChangesAtom,
+      repair.ok && repair.dissolvedGroupIds.length > 0
+    );
     set(workflowIssuesAtom, NO_ISSUES);
   }
 );
@@ -159,18 +186,27 @@ export const hydrateWorkflowAtom = atom(
 
     set(clearWorkflowComparisonAtom, workflow.id);
     set(clearPublicationReviewAtom);
-    const nodes = workflow.nodes.map((node) => ({
-      ...node,
-      selected: false,
-    }));
+    const switchingWorkflow = get(currentWorkflowIdAtom) !== workflow.id;
     const clientIsAheadOfServer =
-      get(currentWorkflowIdAtom) === workflow.id &&
+      !switchingWorkflow &&
       (get(hasUnsavedChangesAtom) ||
         get(isSavingAtom) ||
         get(workflowDragActiveAtom));
 
+    // Which workspace shows is route state, so a new workflow only drops the
+    // run presentation the previous workflow painted.
+    if (switchingWorkflow) {
+      set(resetPresentationNodeStatusesAtom);
+      set(executionOverlayGraphAtom, null);
+    }
+    // Before the graph loads, which clears the current workflow's Draft selections.
+    set(currentWorkflowIdAtom, workflow.id);
+
     if (!clientIsAheadOfServer) {
-      set(loadWorkflowGraphAtom, { nodes, edges: workflow.edges });
+      set(loadWorkflowGraphAtom, {
+        nodes: workflow.nodes,
+        edges: workflow.edges,
+      });
       set(recordLoadedDraftRevisionAtom, {
         workflowId: workflow.id,
         draftRevision: workflow.draftRevision,
@@ -178,18 +214,8 @@ export const hydrateWorkflowAtom = atom(
       set(observedRemoteDraftRevisionStateAtom, null);
     }
 
-    if (get(currentWorkflowIdAtom) !== workflow.id) {
-      const preserveDeepLinkedRun =
-        get(workflowWorkspaceViewAtom) === "runs" &&
-        get(selectedExecutionIdAtom) !== null;
-      set(resetPresentationNodeStatusesAtom);
-      set(executionOverlayGraphAtom, null);
-      set(selectedExecutionIdAtom, null);
-      set(workflowWorkspaceViewAtom, preserveDeepLinkedRun ? "runs" : "draft");
-    }
     set(activeAgentTurnIdAtom, null);
     set(isGeneratingAtom, false);
-    set(currentWorkflowIdAtom, workflow.id);
     set(currentWorkflowNameAtom, workflow.name);
     set(lastSavedAtAtom, null);
     set(currentWorkflowVisibilityAtom, workflow.visibility ?? "private");

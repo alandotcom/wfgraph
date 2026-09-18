@@ -38,7 +38,15 @@ type PublicationBlocker = Omit<AgentValidationIssue, "kind"> & {
   readonly kind: AgentPublicationBlockerKind;
 };
 
-type BlockingWorkflowIssue = Extract<WorkflowIssue, { severity: "blocking" }>;
+/**
+ * The blocking editor issues the agent reads one per node. A Lifecycle Rules
+ * issue is left out, because the publication checks report the same refusal
+ * under their own kinds.
+ */
+type BlockingWorkflowIssue = Extract<
+  WorkflowIssue,
+  { severity: "blocking"; kind: AgentPublicationBlockerKind }
+>;
 
 function integrationBlockerKey(nodeId: string, requiredType: string): string {
   return `${nodeId}\u0000${requiredType}`;
@@ -66,11 +74,13 @@ export function validateAgentPublication(input: {
     shouldEnforceStrictIntegrationValidation();
   const workflowIssues = collectWorkflowIssues({
     nodes,
+    edges,
     catalog: input.catalog,
     integrations: input.integrations,
   });
   const blockingWorkflowIssues = workflowIssues.filter(
-    (issue): issue is BlockingWorkflowIssue => issue.severity === "blocking"
+    (issue): issue is BlockingWorkflowIssue =>
+      issue.severity === "blocking" && issue.kind !== "invalid_lifecycle_rules"
   );
   const warnings: AgentValidationIssue[] = workflowIssues
     .filter((issue) => issue.severity === "warning")
@@ -87,9 +97,14 @@ export function validateAgentPublication(input: {
     edges,
     catalog: input.catalog,
   })) {
-    if (failure.kind === "missing_required_field") {
+    // The publication check reports its first problem of these two kinds as one
+    // sentence, and the agent reads one blocker per node and rule instead.
+    if (
+      failure.kind === "missing_required_field" ||
+      failure.kind === "invalid_group"
+    ) {
       const detailedFailures = blockingWorkflowIssues
-        .filter((issue) => issue.kind === "missing_required_field")
+        .filter((issue) => issue.kind === failure.kind)
         .map(toPublicationBlocker);
       publishBlockers.push(
         ...(detailedFailures.length > 0

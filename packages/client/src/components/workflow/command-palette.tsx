@@ -38,6 +38,7 @@ import {
 } from "#src/components/ui/dialog";
 import { ActionIcon } from "#src/components/workflow/config/action-grid";
 import { useAddStep } from "#src/components/workflow/use-add-step";
+import { useTopologyAuthoring } from "#src/components/workflow/canvas-interaction";
 import { useFocusWorkflowNode } from "#src/components/workflow/use-focus-workflow-node";
 import { useAfterCommit, useDomEvent } from "#src/hooks/effects";
 import { isTextEntry } from "#src/lib/is-text-entry";
@@ -296,6 +297,7 @@ function CommandPaletteDialog({
   const displayNodes = useAtomValue(displayNodesAtom);
   const focusNode = useFocusWorkflowNode();
   const addStep = useAddStep();
+  const topologyAuthoring = useTopologyAuthoring();
   const hintsId = useId();
   const pageId = useId();
 
@@ -351,7 +353,7 @@ function CommandPaletteDialog({
         // The same lock "Add step" carries in the Actions menu. The canvas's
         // context menu opens this page directly, which is the one way in that
         // does not pass that item.
-        disabled: editingLocked,
+        disabled: editingLocked || !topologyAuthoring,
         // Adding a step edits the canvas and sends nothing outward.
         consequential: false,
         icon: <ActionIcon action={action} className="size-3.5" />,
@@ -361,7 +363,15 @@ function CommandPaletteDialog({
         },
       })),
     }));
-  }, [onStepPage, stepAt, catalog, editingLocked, addStep, setPalette]);
+  }, [
+    onStepPage,
+    stepAt,
+    catalog,
+    editingLocked,
+    topologyAuthoring,
+    addStep,
+    setPalette,
+  ]);
 
   const nodeItems = useMemo((): readonly PaletteItem[] => {
     const labels = new Map(

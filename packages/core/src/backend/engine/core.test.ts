@@ -683,7 +683,7 @@ describe("run persistence through the store port", () => {
     ).toContain("run_completed");
   });
 
-  // The error a run carries is the one a person reads in the run panel, so it
+  // The error a run carries is the one a person reads in the Runs view, so it
   // stays the node's own even when the timeline write beneath it fails.
   it("reports a failed node's own error when its timeline write fails", async () => {
     handlerFn.mockImplementation(() => {

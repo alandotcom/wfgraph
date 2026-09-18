@@ -1,36 +1,27 @@
 import { useQuery } from "@tanstack/react-query";
-import { getRouteApi } from "@tanstack/react-router";
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import { useAfterCommit } from "#src/hooks/effects";
 import { toExecutionOverlaySource } from "#src/lib/execution-logs";
 import { orpcQuery } from "#src/lib/rpc-query";
 import { can } from "#src/lib/authorization";
-import {
-  executionOverlayGraphAtom,
-  resetNodeStatusesAtom,
-} from "#src/lib/workflow-graph-store";
+import { executionOverlayGraphAtom } from "#src/lib/workflow-graph-store";
 import { toEditorEdge, toEditorNode } from "#src/lib/workflow-graph-types";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { selectedExecutionIdAtom } from "#src/lib/workflow-ui-store";
 import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 
-const workflowRouteApi = getRouteApi("/workflows/$workflowId");
-
 /**
- * URL search → selection atom and pinned-graph overlay for the open run.
+ * The open run → pinned-graph overlay. The run is the one the route names,
+ * read through `selectedExecutionIdAtom`.
  *
  * Private to `ExecutionOverlaySync`: the headless component is the mount API
  * so the editor tree shows who owns the sync.
  */
 function useExecutionOverlaySync(): void {
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
-  const [selectedExecutionId, setSelectedExecutionId] = useAtom(
-    selectedExecutionIdAtom
-  );
+  const executionId = useAtomValue(selectedExecutionIdAtom) ?? undefined;
   const setExecutionOverlay = useSetAtom(executionOverlayGraphAtom);
-  const resetNodeStatuses = useSetAtom(resetNodeStatusesAtom);
-  const { executionId } = workflowRouteApi.useSearch();
   const canReadLogs = can(WfGraphOperations.workflowGetExecutionLogs.id);
   const canReadVersionGraph = can(WfGraphOperations.workflowGetVersionGraph.id);
 
@@ -60,11 +51,11 @@ function useExecutionOverlaySync(): void {
     staleTime: Number.POSITIVE_INFINITY,
   });
 
-  // URL search owns which run is open. One sync: selection and the
-  // pinned-graph overlay. Paint only when the run's workflowId matches the
-  // hydrated editor (`currentWorkflowId`) — never before, or the new run's
-  // graph lands on the previous workflow's canvas. Never fetch timestamps, so
-  // a logs poll cannot rebuild nodes as idle and wipe statuses.
+  // The route owns which run is open. One sync: the pinned-graph overlay.
+  // Paint only when the run's workflowId matches the hydrated editor
+  // (`currentWorkflowId`), never before, or the new run's graph lands on the
+  // previous workflow's canvas. Never fetch timestamps, so a logs poll cannot
+  // rebuild nodes as idle and wipe statuses.
   const detail = detailQuery.data;
   const graph = graphQuery.data;
   const workflowAligned =
@@ -78,26 +69,12 @@ function useExecutionOverlaySync(): void {
         ? `ready:${executionId}:${currentWorkflowId}`
         : `open:${executionId}:${currentWorkflowId ?? ""}`,
     () => {
+      // Run statuses are `RunStatusProjection`'s to write, run by run, so
+      // this sync moves only the pinned graph.
       if (executionId === undefined) {
-        setSelectedExecutionId(null);
         setExecutionOverlay(null);
-        resetNodeStatuses();
         return;
       }
-
-      // The server's node-status list only names nodes the run actually
-      // reached, so moving the effective selection to a different run has to
-      // drop what the previous one left behind before the new run's own
-      // statuses land -- otherwise a node the new run never reaches goes on
-      // reporting what the old run did. A repeat commit for the run already
-      // open (a logs poll, or the open→ready transition of the same run)
-      // must not reset, or it would wipe statuses the status poll just
-      // painted for this very run.
-      if (selectedExecutionId !== executionId) {
-        resetNodeStatuses();
-      }
-
-      setSelectedExecutionId(executionId);
 
       if (
         detail === undefined ||
@@ -113,10 +90,7 @@ function useExecutionOverlaySync(): void {
 
       const graphData = toWorkflowGraphData(graph);
       setExecutionOverlay({
-        nodes: graphData.nodes.map((node) => ({
-          ...toEditorNode(node),
-          selected: false,
-        })),
+        nodes: graphData.nodes.map(toEditorNode),
         edges: graphData.edges.map(toEditorEdge),
       });
     }
@@ -124,14 +98,10 @@ function useExecutionOverlaySync(): void {
 }
 
 /**
- * Headless owner of URL → canvas overlay wiring for the open run.
+ * Headless owner of the canvas overlay for the run the route opens.
  *
- * Mount on the workflow editor shell so selection and the pinned-graph
- * overlay outlive the Runs panel. ActionNode badges and
- * `useExecutionLogsByNode` read the selection atom this writes; the panel
- * only queries what its list and detail views display.
- *
- * Route integration makes a deep-linked execution open the Runs workspace.
+ * Mount on the workflow editor shell so the pinned-graph overlay outlives the
+ * Runs view, which queries only what its run list and run display show.
  */
 export function ExecutionOverlaySync() {
   useExecutionOverlaySync();

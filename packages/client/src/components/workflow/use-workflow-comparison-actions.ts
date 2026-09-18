@@ -1,11 +1,11 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { toast } from "sonner";
 import {
   edgesAtom,
   installRestoredWorkflowAtom,
   nodesAtom,
-  selectedNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import {
   beginWorkflowComparisonRequestAtom,
@@ -16,6 +16,7 @@ import {
   settleWorkflowComparisonRequestAtom,
 } from "#src/lib/workflow-comparison-store";
 import { toSavedWorkflow, toSerializedGraph } from "#src/lib/rpc-client";
+import { isNotFoundError } from "#src/lib/workflow-route-state";
 import {
   cacheWorkflow,
   orpcQuery,
@@ -25,9 +26,8 @@ import {
   currentWorkflowIdAtom,
   saveWorkflowAtom,
 } from "#src/lib/workflow-save-store";
-import { enterDraftWorkspaceAtom } from "#src/lib/workflow-workspace-navigation";
+import { rememberedRouteSearchesAtom } from "#src/lib/workflow-workspace-navigation";
 import { can } from "#src/lib/authorization";
-import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
@@ -38,10 +38,9 @@ export function useWorkflowComparisonActions() {
   const session = useAtomValue(comparisonSessionAtom);
   const install = useSetAtom(installWorkflowComparisonAtom);
   const installRestoredWorkflow = useSetAtom(installRestoredWorkflowAtom);
-  const enterDraft = useSetAtom(enterDraftWorkspaceAtom);
+  const navigate = useNavigate({ from: "/workflows/$workflowId" });
+  const rememberedSearches = useAtomValue(rememberedRouteSearchesAtom);
   const saveWorkflow = useSetAtom(saveWorkflowAtom);
-  const selectedNodeId = useAtomValue(selectedNodeAtom);
-  const setSelectedNode = useSetAtom(selectedNodeAtom);
   const beginRequest = useSetAtom(beginWorkflowComparisonRequestAtom);
   const settleRequest = useSetAtom(settleWorkflowComparisonRequestAtom);
   const isPending = useAtomValue(isComparisonPendingAtom);
@@ -58,25 +57,39 @@ export function useWorkflowComparisonActions() {
     })
   );
 
+  /**
+   * Compare the draft with a published version. With no options this opens a
+   * comparison only when none is installed. `baseVersionId` compares against
+   * that version, `current` against the current publication, and `force`
+   * refreshes the installed comparison against its own base. A base version
+   * the server does not have settles with its id, which route recovery answers.
+   * A response for a base other than the one the Changes route names by then
+   * is dropped, and `WorkspaceRouteSync` drops selected ids the installed
+   * comparison graph does not hold.
+   */
   const openComparison = async (options?: {
     baseVersionId?: string;
+    current?: boolean;
     force?: boolean;
-    fresh?: boolean;
   }) => {
     if (
       !canCompare ||
       !workflowId ||
-      (session && !options?.force && !options?.fresh && !options?.baseVersionId)
+      (session &&
+        !options?.force &&
+        !options?.current &&
+        !options?.baseVersionId)
     ) {
       return;
     }
     const baseVersionId =
       options?.baseVersionId ??
-      (options?.force && !options.fresh
+      (options?.force && !options.current
         ? session?.payload.baseVersion?.id
         : undefined);
-    const epoch = beginRequest(workflowId);
+    const epoch = beginRequest(workflowId, baseVersionId ?? null);
     let outcome: "success" | "error" = "success";
+    let missingBaseVersionId: string | undefined;
     try {
       const graph = {
         nodes: store.get(nodesAtom),
@@ -89,31 +102,22 @@ export function useWorkflowComparisonActions() {
           draftGraph: toSerializedGraph(graph),
         })
       );
-      const installed = install({
+      install({
         workflowId,
         epoch,
         payload,
-        preserveSession: options?.fresh ? false : Boolean(session),
+        preserveSession: Boolean(session),
         selectedHistoryVersionId: baseVersionId,
       });
-      if (
-        installed &&
-        selectedNodeId &&
-        !toWorkflowGraphData(payload.baseGraph).nodes.some(
-          (node) => node.id === selectedNodeId
-        ) &&
-        !toWorkflowGraphData(payload.draftGraph).nodes.some(
-          (node) => node.id === selectedNodeId
-        )
-      ) {
-        setSelectedNode(null);
-      }
-    } catch {
+    } catch (error) {
       outcome = "error";
+      if (isNotFoundError(error)) {
+        missingBaseVersionId = baseVersionId;
+      }
       // Mutation metadata reports this failure. Event handlers may discard
       // this promise because opening a comparison has completed as a UI outcome.
     } finally {
-      settleRequest({ workflowId, epoch, outcome });
+      settleRequest({ workflowId, epoch, outcome, missingBaseVersionId });
     }
   };
 
@@ -151,7 +155,10 @@ export function useWorkflowComparisonActions() {
           workflow,
         })
       ) {
-        enterDraft();
+        void navigate({
+          search: rememberedSearches.draft ?? {},
+          replace: true,
+        });
         toast.success("Version restored as draft");
       }
     },

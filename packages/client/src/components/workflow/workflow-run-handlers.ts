@@ -12,11 +12,15 @@ import {
   RunOverlay,
   type RunRequest,
 } from "#src/components/overlays/run-overlay";
-import { WorkflowIssuesOverlay } from "#src/components/overlays/workflow-issues-overlay";
+import {
+  WorkflowIssuesOverlay,
+  type WorkflowIssuesOverlayInput,
+} from "#src/components/overlays/workflow-issues-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
 import { useGoToStep } from "#src/hooks/use-workflow-issues";
 import {
   PREFLIGHT_BUSY_MESSAGE,
+  type WorkflowIssuePreflightInput,
   type WorkflowIssuePreflightResult,
 } from "#src/hooks/use-workflow-issue-preflight";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
@@ -26,7 +30,6 @@ import {
   refreshWorkflowPublication,
 } from "#src/lib/rpc-query";
 import {
-  clearGraphSelectionAtom,
   executionOverlayGraphAtom,
   setNodeStatusesAtom,
 } from "#src/lib/workflow-graph-store";
@@ -54,7 +57,6 @@ import {
   type WorkflowPatch,
 } from "#src/lib/workflow-save-store";
 import { ApiError } from "#src/lib/rpc-client";
-import { enterRunsWorkspaceAtom } from "#src/lib/workflow-workspace-navigation";
 import {
   readEntryLifecycleRules,
   readEntryTestPayloads,
@@ -66,7 +68,7 @@ import {
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import {
   groupWorkflowIssuesForOverlay,
-  hasBlockingWorkflowIssues,
+  hasDraftRunBlockingIssues,
 } from "@wfgraph/shared/graph/workflow-issues";
 import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
@@ -108,10 +110,9 @@ type SaveWorkflow = (
 
 export type WorkflowHandlerInput = {
   state: WorkflowToolbarState;
-  checkWorkflowIssues: (input: {
-    workflowId: string;
-    nodes: WorkflowNode[];
-  }) => Promise<WorkflowIssuePreflightResult>;
+  checkWorkflowIssues: (
+    input: WorkflowIssuePreflightInput
+  ) => Promise<WorkflowIssuePreflightResult>;
   saveWorkflow: SaveWorkflow;
 };
 
@@ -167,7 +168,6 @@ export function useWorkflowHandlers({
     nodes,
     publication,
     setIsExecuting,
-    setSelectedNodeId,
     updateNodeData,
     workflowMode,
   } = state;
@@ -187,10 +187,8 @@ export function useWorkflowHandlers({
   const { open: openOverlay } = useOverlay();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const clearGraphSelection = useSetAtom(clearGraphSelectionAtom);
   const setExecutionOverlay = useSetAtom(executionOverlayGraphAtom);
   const setNodeStatuses = useSetAtom(setNodeStatusesAtom);
-  const enterRuns = useSetAtom(enterRunsWorkspaceAtom);
   const setCurrentWorkflowMode = useSetAtom(currentWorkflowModeAtom);
 
   /**
@@ -268,15 +266,18 @@ export function useWorkflowHandlers({
       rememberTestPayload({ nodes, updateNodeData, request });
     }
 
-    enterRuns();
+    // Show the run list while the run starts. The run list is its own
+    // workspace address, so its selection starts empty and Draft keeps its own.
+    void navigate({
+      to: "/workflows/$workflowId",
+      params: { workflowId: currentWorkflowId },
+      search: { view: "runs" },
+      replace: true,
+    });
 
-    // Drop any run overlay so optimistic status and the new selection paint the
-    // draft until the new run's pinned graph arrives.
+    // Drop any run overlay so optimistic status paints the draft until the new
+    // run's pinned graph arrives.
     setExecutionOverlay(null);
-
-    // Deselect all nodes and edges
-    clearGraphSelection();
-    setSelectedNodeId(null);
 
     setIsExecuting(true);
     await executeWorkflowRun({
@@ -302,13 +303,13 @@ export function useWorkflowHandlers({
       setNodeStatuses,
       setIsExecuting,
       runLabel: runCommandLabel(target),
-      // The URL is the one writer of which run is open; workflow-runs.tsx
-      // derives the selection atom and the pinned-graph overlay from it.
+      // The URL is the one writer of which run is open; the run selection and
+      // the pinned-graph overlay are derived from it.
       navigateToExecution: (executionId) =>
         navigate({
           to: "/workflows/$workflowId",
           params: { workflowId: currentWorkflowId },
-          search: { executionId },
+          search: { view: "runs", executionId },
         }),
     });
     // Don't set executing to false here - let polling handle it
@@ -412,6 +413,7 @@ export function useWorkflowHandlers({
     const preflight = await checkWorkflowIssues({
       workflowId: currentWorkflowId,
       nodes,
+      edges,
     });
     if (preflight.status !== "ready") {
       // Cmd+Enter reaches this without passing the command palette's disabled
@@ -427,14 +429,16 @@ export function useWorkflowHandlers({
     const draftFacts = runOverlayGraphFacts(nodes, edges, catalog);
 
     if (issues.length > 0) {
-      const hasBlocking = hasBlockingWorkflowIssues(issues);
-      openOverlay(WorkflowIssuesOverlay, {
+      // A Group problem stops Publish only, so a draft whose only blockers are
+      // Group problems is offered "Run draft anyway".
+      const hasBlocking = hasDraftRunBlockingIssues(issues);
+      openOverlay<WorkflowIssuesOverlayInput>(WorkflowIssuesOverlay, {
         issues: groupWorkflowIssuesForOverlay(issues),
+        trigger: "run",
         onGoToStep: handleGoToStep,
         onRunDraftAnyway: hasBlocking
           ? undefined
           : () => openRunOverlay(target, draftFacts),
-        allowRunDraftAnyway: !hasBlocking,
       });
       return;
     }

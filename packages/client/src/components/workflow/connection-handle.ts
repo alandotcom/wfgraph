@@ -15,13 +15,11 @@ import {
 } from "@wfgraph/shared/lifecycle/event-split";
 import {
   isLifecycleOutlet,
+  LIFECYCLE_CANCELED_HANDLE,
   LIFECYCLE_STARTED_HANDLE,
 } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import { eventsReachingTarget } from "#src/lib/upstream-node-fields";
-import {
-  groupOutletHandle,
-  isGroupNode,
-} from "@wfgraph/shared/graph/node-group";
+import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 
@@ -100,15 +98,17 @@ export function normalizeSourceHandleForConnection(input: {
 }): string | null {
   const { nodes, edges, sourceNodeId, sourceHandle, catalog } = input;
 
+  const sourceNode = nodes.find((node) => node.id === sourceNodeId);
+
+  // A Group card draws one outlet with no handle id, and `fanOutStoreEdges`
+  // reads the member ports it stands for from the Group's boundary.
+  if (isGroupNode(sourceNode)) {
+    return null;
+  }
+
   const explicitBranch = normalizeConditionBranch(sourceHandle);
   if (explicitBranch) {
     return explicitBranch;
-  }
-
-  const sourceNode = nodes.find((node) => node.id === sourceNodeId);
-
-  if (isGroupNode(sourceNode)) {
-    return groupOutletHandle(sourceNode) ?? sourceHandle ?? null;
   }
 
   if (sourceNode?.data.type === "lifecycle") {
@@ -129,4 +129,51 @@ export function normalizeSourceHandleForConnection(input: {
   }
 
   return inferConditionBranch(sourceNodeId, edges);
+}
+
+/** One outlet a step draws, as a menu names it. */
+export type StepOutlet = {
+  /** The handle the outlet stores, null for a step with one outlet. */
+  handle: string | null;
+  /** What the outlet is called where a menu lists more than one. */
+  label: string | null;
+};
+
+/**
+ * The outlets of the step `node`, in the order its card draws them: one unnamed
+ * outlet for an ordinary step, True and False for a Condition, Started and
+ * Canceled for the Lifecycle Node, and one per Event reaching an Event Split.
+ * Empty for a step nothing can leave, such as an Event Split no Event reaches.
+ */
+export function stepOutlets(input: {
+  node: WorkflowNode;
+  nodes: readonly WorkflowNode[];
+  edges: readonly WorkflowEdge[];
+  catalog: ExtensionCatalog;
+}): StepOutlet[] {
+  const { node } = input;
+  if (isConditionActionNode(node)) {
+    return [
+      { handle: "true", label: "True" },
+      { handle: "false", label: "False" },
+    ];
+  }
+  if (node.data.type === "lifecycle") {
+    return [
+      { handle: LIFECYCLE_STARTED_HANDLE, label: "Started" },
+      { handle: LIFECYCLE_CANCELED_HANDLE, label: "Canceled" },
+    ];
+  }
+  if (isEventSplitNode(node)) {
+    return eventsReachingTarget({
+      targetNodeId: node.id,
+      nodes: input.nodes,
+      edges: input.edges,
+      catalog: input.catalog,
+    }).map((event) => ({
+      handle: eventSplitOutlet(event.name),
+      label: event.label ?? event.name,
+    }));
+  }
+  return [{ handle: null, label: null }];
 }

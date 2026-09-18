@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
@@ -82,6 +82,10 @@ describe("workflowIssueCount", () => {
     expect(
       workflowIssueCount({
         totalIssues: 6,
+        draftRunBlockingCount: 0,
+        publishBlockingCount: 0,
+        invalidGroups: [],
+        invalidLifecycleRules: [],
         missingIntegrations: [
           {
             integrationType: "linear",
@@ -137,6 +141,10 @@ function issuesModel(
 ): WorkflowIssuesOverlayModel {
   return {
     totalIssues: 0,
+    draftRunBlockingCount: 0,
+    publishBlockingCount: 0,
+    invalidGroups: [],
+    invalidLifecycleRules: [],
     missingIntegrations: [],
     brokenReferences: [],
     missingRequiredFields: [],
@@ -145,7 +153,13 @@ function issuesModel(
   };
 }
 
-function renderIssues(issues: WorkflowIssuesOverlayModel) {
+function renderIssues(
+  issues: WorkflowIssuesOverlayModel,
+  options: {
+    onGoToStep?: ((nodeId: string, fieldKey?: string) => void) | undefined;
+    trigger?: "run" | "publish" | "list" | undefined;
+  } = {}
+) {
   return render(
     <JotaiProvider store={createStore()}>
       <QueryClientProvider
@@ -159,7 +173,8 @@ function renderIssues(issues: WorkflowIssuesOverlayModel) {
             <OverlayProvider>
               <WorkflowIssuesOverlay
                 issues={issues}
-                onGoToStep={() => {}}
+                trigger={options.trigger ?? "run"}
+                onGoToStep={options.onGoToStep ?? (() => {})}
                 overlayId="issues"
               />
             </OverlayProvider>
@@ -220,6 +235,8 @@ describe("WorkflowIssuesOverlay", () => {
     const { getByRole, getByText, queryByText } = renderIssues(
       issuesModel({
         totalIssues: 1,
+        draftRunBlockingCount: 1,
+        publishBlockingCount: 1,
         missingIntegrations: [
           {
             integrationType: "linear",
@@ -244,5 +261,96 @@ describe("WorkflowIssuesOverlay", () => {
     expect(getByRole("button", { name: "Add" }).className).not.toContain(
       "bg-primary"
     );
+  });
+
+  // Publish refused by an issue that also stops a draft run names Publish, the
+  // action the person took.
+  it("names Publish when a blocker stopped Publish", () => {
+    const { getByText, queryByText } = renderIssues(
+      issuesModel({
+        totalIssues: 1,
+        draftRunBlockingCount: 1,
+        publishBlockingCount: 1,
+        missingIntegrations: [
+          {
+            integrationType: "linear",
+            integrationLabel: "Linear",
+            nodeNames: ["Find issues"],
+          },
+        ],
+      }),
+      { trigger: "publish" }
+    );
+
+    expect(
+      getByText("Resolve blocking issues before publishing.")
+    ).toBeTruthy();
+    expect(
+      queryByText("Resolve blocking issues before running the draft.")
+    ).toBeNull();
+  });
+
+  // A Group problem stops Publish and leaves the draft run free, so its sentence
+  // names Publish and the Group's own name heads its messages.
+  it("lists a Group's rule messages under the Group and says the draft can run", () => {
+    const { getByRole, getByText, queryByText } = renderIssues(
+      issuesModel({
+        totalIssues: 1,
+        publishBlockingCount: 1,
+        invalidGroups: [
+          {
+            nodeId: "group-1",
+            nodeLabel: "Lookups",
+            problems: [
+              {
+                rule: "too_few_members",
+                message: 'Group "Lookups" needs at least two steps',
+              },
+            ],
+          },
+        ],
+      })
+    );
+
+    expect(getByText("Group Problems")).toBeTruthy();
+    expect(getByText("Lookups")).toBeTruthy();
+    expect(getByText('Group "Lookups" needs at least two steps')).toBeTruthy();
+    expect(
+      getByText(
+        "Resolve the blocking issues before publishing. The draft can still run."
+      )
+    ).toBeTruthy();
+    expect(
+      queryByText("Resolve blocking issues before running the draft.")
+    ).toBeNull();
+    expect(getByRole("button", { name: "Show" })).toBeTruthy();
+  });
+
+  it("lists a Lifecycle Node's Publish problems and opens the node", () => {
+    const onGoToStep = vi.fn();
+    const { getByRole, getByText } = renderIssues(
+      issuesModel({
+        totalIssues: 1,
+        publishBlockingCount: 1,
+        invalidLifecycleRules: [
+          {
+            nodeId: "lifecycle",
+            nodeLabel: "Lifecycle",
+            problems: [
+              {
+                check: "start_filter",
+                message: "Start Filter reads an undeclared path",
+              },
+            ],
+          },
+        ],
+      }),
+      { onGoToStep }
+    );
+
+    expect(getByText("Lifecycle Problems")).toBeTruthy();
+    expect(getByText("Start Filter reads an undeclared path")).toBeTruthy();
+    fireEvent.click(getByRole("button", { name: "Show" }));
+    expect(onGoToStep).toHaveBeenCalledWith("lifecycle", undefined);
   });
 });

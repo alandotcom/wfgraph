@@ -21,7 +21,7 @@ const resumeLogger = Effect.map(AppLogger, (appLogger) =>
  *
  * The token is the whole of the address: no Event name and no match are consulted,
  * which is what makes this the way out for a run parked on an Event that will
- * never arrive. The runs panel reaches it through its authenticated RPC call.
+ * never arrive. The Runs view reaches it through its authenticated RPC call.
  */
 export const resumeWaitByToken = Effect.fn("resumeWaitByToken")(
   function* (input: { token: string; body: JsonObject }) {

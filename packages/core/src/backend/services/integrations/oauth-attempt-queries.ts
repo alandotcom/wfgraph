@@ -25,10 +25,10 @@ import type {
   EncryptionKeyMismatch,
   IntegrationCipher,
 } from "#src/backend/services/integrations/cipher";
-import {
-  type ClaimedOAuthAuthorizationAttempt,
-  type IntegrationRepo,
-  readOAuthAuthorizationAttemptPayload,
+import { readOAuthAuthorizationAttemptPayload } from "#src/backend/services/integrations/oauth-attempt-payload";
+import type {
+  ClaimedOAuthAuthorizationAttempt,
+  IntegrationRepo,
 } from "#src/backend/services/integrations/repo";
 
 /**

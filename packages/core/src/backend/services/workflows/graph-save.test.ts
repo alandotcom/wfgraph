@@ -203,3 +203,139 @@ describe("prepareGraphSave", () => {
     );
   });
 });
+
+/**
+ * A Lifecycle Node, then a Group holding two lookups, then a send outside it.
+ * `frameConfig` is what the frame's `data.config` holds, when it holds one.
+ */
+function graphWithGroup(
+  input: {
+    frameConfig?: Record<string, unknown>;
+    extraEdges?: Array<{ id: string; source: string; target: string }>;
+  } = {}
+) {
+  const lookup = (id: string) => ({
+    id,
+    type: "action",
+    parentId: "group-1",
+    position: { x: 12, y: 48 },
+    data: {
+      label: id,
+      type: "action" as const,
+      config: { actionType: "custom/lookup" },
+    },
+  });
+  return {
+    attributes: {},
+    options: { allowSelfLoops: false, multi: false, type: "directed" },
+    nodes: [
+      {
+        id: "lifecycle-1",
+        type: "lifecycle",
+        position: { x: 0, y: 0 },
+        data: { label: "Start", type: "lifecycle" as const },
+      },
+      {
+        id: "group-1",
+        type: "group",
+        position: { x: 0, y: 200 },
+        data: {
+          label: "Lookups",
+          type: "group" as const,
+          config: input.frameConfig,
+        },
+      },
+      lookup("lookup-a"),
+      lookup("lookup-b"),
+      {
+        id: "send-1",
+        type: "action",
+        position: { x: 0, y: 500 },
+        data: {
+          label: "Send",
+          type: "action" as const,
+          config: { actionType: "custom/send" },
+        },
+      },
+    ].map((attributes) => ({ key: attributes.id, attributes })),
+    edges: [
+      {
+        id: "in",
+        source: "lifecycle-1",
+        target: "lookup-a",
+        sourceHandle: LIFECYCLE_STARTED_HANDLE,
+      },
+      { id: "ab", source: "lookup-a", target: "lookup-b" },
+      { id: "out", source: "lookup-b", target: "send-1" },
+      ...(input.extraEdges ?? []),
+    ].map((attributes) => ({
+      key: attributes.id,
+      source: attributes.source,
+      target: attributes.target,
+      attributes,
+    })),
+  };
+}
+
+describe("prepareGraphSave with a Group", () => {
+  layer(Layer.mergeAll(SilentAppLoggerLayer))((it) => {
+    it.effect("saves a Group's membership and executable edges as given", () =>
+      Effect.gen(function* () {
+        const prepared = yield* prepareGraphSave({ graph: graphWithGroup() });
+
+        assert.deepStrictEqual(
+          prepared.nodes.map((node) => [node.id, node.parentId ?? null]),
+          [
+            ["lifecycle-1", null],
+            ["group-1", null],
+            ["lookup-a", "group-1"],
+            ["lookup-b", "group-1"],
+            ["send-1", null],
+          ]
+        );
+        assert.deepStrictEqual(
+          prepared.edges.map((edge) => [edge.source, edge.target]),
+          [
+            ["lifecycle-1", "lookup-a"],
+            ["lookup-a", "lookup-b"],
+            ["lookup-b", "send-1"],
+          ]
+        );
+      })
+    );
+
+    for (const key of ["entryNodeIds", "exitNodeIds", "outletHandle"]) {
+      it.effect(`refuses a Group config carrying ${key}`, () =>
+        Effect.gen(function* () {
+          const failure = yield* prepareGraphSave({
+            graph: graphWithGroup({ frameConfig: { [key]: "lookup-a" } }),
+          }).pipe(Effect.flip);
+
+          assert.instanceOf(failure, InvalidInput);
+          assert.strictEqual(
+            failure.error,
+            `nodes[1].attributes.data.config.${key}: Group config must be empty`
+          );
+        })
+      );
+    }
+
+    it.effect("refuses a stored edge that names the Group frame", () =>
+      Effect.gen(function* () {
+        const failure = yield* prepareGraphSave({
+          graph: graphWithGroup({
+            extraEdges: [
+              { id: "frame-out", source: "group-1", target: "send-1" },
+            ],
+          }),
+        }).pipe(Effect.flip);
+
+        assert.instanceOf(failure, InvalidInput);
+        assert.strictEqual(
+          failure.error,
+          'Edge "frame-out" connects to Group "Lookups". Connect a step inside the Group.'
+        );
+      })
+    );
+  });
+});

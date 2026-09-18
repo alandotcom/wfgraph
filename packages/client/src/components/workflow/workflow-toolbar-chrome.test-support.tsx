@@ -10,6 +10,7 @@ import { ReactFlowProvider } from "@xyflow/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
+import { OverlayContainer } from "#src/components/overlays/overlay-container";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import {
   ToolbarActions,
@@ -22,10 +23,7 @@ import {
   executionOverlayGraphAtom,
   loadWorkflowGraphAtom,
 } from "#src/lib/workflow-graph-store";
-import {
-  isGeneratingAtom,
-  workflowWorkspaceViewAtom,
-} from "#src/lib/workflow-ui-store";
+import { isGeneratingAtom } from "#src/lib/workflow-ui-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import { toEditorNode } from "#src/lib/workflow-graph-types";
@@ -37,6 +35,8 @@ import {
   beginWorkflowComparisonRequestAtom,
   installWorkflowComparisonAtom,
 } from "#src/lib/workflow-comparison-store";
+import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
+import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
 
 const emptyCatalog: ExtensionCatalog = {
   entities: [],
@@ -117,7 +117,6 @@ function baseState(): WorkflowToolbarState {
     canUndo: false,
     canRedo: false,
     allWorkflows: [],
-    setSelectedNodeId: vi.fn(),
     userIntegrations: [],
     publication: undefined,
   };
@@ -183,15 +182,6 @@ export function renderChrome(
       edges: lock.edges ? [...lock.edges] : [],
     });
   }
-  if (lock.overlayActive) {
-    // The overlay is only on the canvas while the Runs workspace is, so both halves
-    // of that state go in together.
-    store.set(workflowWorkspaceViewAtom, "runs");
-    store.set(
-      executionOverlayGraphAtom,
-      lock.overlayGraph ?? { nodes: [], edges: [] }
-    );
-  }
   if (lock.generating) {
     store.set(isGeneratingAtom, true);
   }
@@ -202,6 +192,28 @@ export function renderChrome(
     currentWorkflowIdAtom,
     ("workflowId" in lock ? lock.workflowId : "workflow_1") ?? null
   );
+  if (lock.graph) {
+    // A fixture node or edge marked `selected` starts selected in the Draft,
+    // which keeps its selection in workspace navigation.
+    showWorkspaceRoute(store, {});
+    store.set(activeSelectionAtom, {
+      nodeIds: lock.graph
+        .filter((node) => node.selected)
+        .map((node) => node.id),
+      edgeIds: (lock.edges ?? [])
+        .filter((edge) => edge.selected)
+        .map((edge) => edge.id),
+    });
+  }
+  if (lock.overlayActive) {
+    // The overlay is only on the canvas while the Runs workspace is, so both halves
+    // of that state go in together, after the workflow the route names.
+    showWorkspaceRoute(store, { view: "runs" });
+    store.set(
+      executionOverlayGraphAtom,
+      lock.overlayGraph ?? { nodes: [], edges: [] }
+    );
+  }
   if (lock.comparison) {
     const workflowId = "workflowId" in lock ? lock.workflowId : "workflow_1";
     if (workflowId) {
@@ -211,7 +223,7 @@ export function renderChrome(
         epoch,
         payload: lock.comparison,
       });
-      store.set(workflowWorkspaceViewAtom, "changes");
+      showWorkspaceRoute(store, { view: "changes" });
     }
   }
 
@@ -258,6 +270,8 @@ export function renderChrome(
                     />
                   </>
                 ) : null}
+                {/* Renders what the chrome pushes, such as a delete confirmation. */}
+                <OverlayContainer />
               </OverlayProvider>
             </ExtensionCatalogProvider>
           </ReactFlowProvider>
@@ -266,18 +280,17 @@ export function renderChrome(
     ),
   });
 
+  const router = createRouter({
+    routeTree: rootRoute,
+    history: createMemoryHistory({
+      initialEntries: ["/workflows/workflow_1"],
+    }),
+  });
+
   return {
-    ...render(
-      <RouterProvider
-        router={createRouter({
-          routeTree: rootRoute,
-          history: createMemoryHistory({
-            initialEntries: ["/workflows/workflow_1"],
-          }),
-        })}
-      />
-    ),
+    ...render(<RouterProvider router={router} />),
     actions,
+    router,
     store,
   };
 }

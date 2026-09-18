@@ -17,7 +17,13 @@ import {
   findAction,
   type ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
+import {
+  isGroupNode,
+  type GroupPort,
+} from "@wfgraph/shared/graph/group-boundary";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
+import { isBlank } from "@wfgraph/shared/types/string";
+import type { WorkspaceScope } from "#src/lib/workflow-navigation-state";
 
 export type { NodeRunStatus, PersistedNodeData };
 export type {
@@ -48,12 +54,39 @@ export type ComparisonEdgeAnnotation = {
   sourceId: string;
 };
 
+/**
+ * The changed nodes a Group frame holds on a comparison canvas, by id, in the
+ * order the server lists changes. A collapsed Group card counts them and leads
+ * to the first one.
+ */
+export type ComparisonGroupAnnotation = {
+  changedMemberIds: readonly string[];
+};
+
 /** Collision-proof keys for metadata that exists only on the comparison canvas. */
 export const COMPARISON_NODE_ANNOTATION: unique symbol = Symbol(
   "wfgraph.comparison.node"
 );
 export const COMPARISON_EDGE_ANNOTATION: unique symbol = Symbol(
   "wfgraph.comparison.edge"
+);
+export const COMPARISON_GROUP_ANNOTATION: unique symbol = Symbol(
+  "wfgraph.comparison.group"
+);
+
+/**
+ * The port a boundary stub on a focused Group canvas stands for: an outside
+ * port for an ingress or continuation stub, or a member outlet where a path
+ * ends for an end stub.
+ */
+export type GroupBoundaryStubPort = {
+  direction: "ingress" | "continuation" | "end";
+  port: GroupPort;
+};
+
+/** Collision-proof key for the port a boundary stub's data carries. */
+export const GROUP_BOUNDARY_STUB_PORT: unique symbol = Symbol(
+  "wfgraph.group.boundaryStubPort"
 );
 
 export type EditorNodeData = PersistedNodeData & {
@@ -62,6 +95,8 @@ export type EditorNodeData = PersistedNodeData & {
   status?: NodeRunStatus | undefined;
   issues?: NodeIssueSummary | undefined;
   [COMPARISON_NODE_ANNOTATION]?: ComparisonNodeAnnotation | undefined;
+  [GROUP_BOUNDARY_STUB_PORT]?: GroupBoundaryStubPort | undefined;
+  [COMPARISON_GROUP_ANNOTATION]?: ComparisonGroupAnnotation | undefined;
 };
 
 /** Display-only fields painted onto edges; never part of the draft save path. */
@@ -69,6 +104,13 @@ export type EditorEdgeData = Record<string, unknown> & {
   displayLabel?: string | undefined;
   /** Set on an edge landing on a node the run can never reach. */
   inactive?: boolean | undefined;
+  /**
+   * False on a painted connection that stands for no stored edge, such as the
+   * one to a "Path ends" stub, which offers no Insert step control.
+   */
+  insertable?: boolean | undefined;
+  /** Shared bend for forward edges entering the same focused Group row. */
+  centerY?: number | undefined;
   [COMPARISON_EDGE_ANNOTATION]?: ComparisonEdgeAnnotation | undefined;
 };
 
@@ -83,16 +125,39 @@ export type WorkflowEdge = Edge<EditorEdgeData>;
  */
 export const WORKFLOW_EDGE_TYPE = "animated";
 
+/** The word naming each kind of comparison change, as a list row shows it. */
+export const COMPARISON_CHANGE_KIND_LABEL: Readonly<
+  Record<ComparisonNodeAnnotation["kind"], string>
+> = {
+  added: "Added",
+  modified: "Modified",
+  removed: "Removed",
+};
+
 export function comparisonChangeLabel(
   kind: ComparisonNodeAnnotation["kind"] | ComparisonEdgeAnnotation["kind"]
 ): string {
-  if (kind === "added") {
-    return "Added in comparison";
+  return `${COMPARISON_CHANGE_KIND_LABEL[kind]} in comparison`;
+}
+
+/** The name a Group shows: its label, or "Group" when the label is blank. */
+export function groupLabel(label: string | undefined): string {
+  return label === undefined || isBlank(label) ? "Group" : label;
+}
+
+/**
+ * The name of the Group a focused canvas `scope` shows, found among `nodes`.
+ * Null on the overview, and while `nodes` holds no Group frame with that id.
+ */
+export function scopeGroupLabel(
+  nodes: readonly WorkflowNode[],
+  scope: WorkspaceScope
+): string | null {
+  if (scope.kind !== "group") {
+    return null;
   }
-  if (kind === "modified") {
-    return "Modified in comparison";
-  }
-  return "Removed in comparison";
+  const frame = nodes.find((node) => node.id === scope.groupId);
+  return isGroupNode(frame) ? groupLabel(frame?.data.label) : null;
 }
 
 /** A comparison names an unavailable action safely rather than exposing its id. */
@@ -170,6 +235,7 @@ export function toPersistedNode(node: WorkflowNode): PersistedWorkflowNode {
     status: _status,
     issues: _issues,
     [COMPARISON_NODE_ANNOTATION]: _comparison,
+    [COMPARISON_GROUP_ANNOTATION]: _groupComparison,
     ...data
   } = node.data;
   const persisted: PersistedWorkflowNode = {
@@ -252,9 +318,6 @@ export function toEditorNode(node: PersistedWorkflowNode): WorkflowNode {
   }
   if (node.parentId) {
     editor.parentId = node.parentId;
-    editor.extent = "parent";
-    editor.draggable = false;
-    editor.connectable = false;
   }
   return editor;
 }

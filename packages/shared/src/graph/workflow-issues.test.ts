@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { ExtensionCatalog } from "#src/extensions/catalog";
+import { groupContractMatrix } from "#src/graph/group-contract-test-support";
 import type { WorkflowNode } from "#src/graph/types";
 import {
   collectWorkflowIssues,
   findUnconfiguredIntegrationNodes,
   groupWorkflowIssuesForOverlay,
   hasBlockingWorkflowIssues,
+  hasDraftRunBlockingIssues,
 } from "#src/graph/workflow-issues";
 
 const catalog: ExtensionCatalog = {
@@ -66,6 +68,7 @@ describe("collectWorkflowIssues", () => {
   it("reports missing required fields as blocking", () => {
     const issues = collectWorkflowIssues({
       nodes: [actionNode("a1", { actionType: "custom/send" }, "Notify")],
+      edges: [],
       catalog,
       integrations: [{ id: "int_1", type: "slack" }],
     });
@@ -92,6 +95,7 @@ describe("collectWorkflowIssues", () => {
           "Notify"
         ),
       ],
+      edges: [],
       catalog,
       integrations: [],
     });
@@ -119,6 +123,7 @@ describe("collectWorkflowIssues", () => {
           "Notify"
         ),
       ],
+      edges: [],
       catalog,
       integrations: [{ id: "int_1", type: "slack" }],
     });
@@ -144,6 +149,7 @@ describe("collectWorkflowIssues", () => {
           "Notify"
         ),
       ],
+      edges: [],
       catalog,
       integrations: [{ id: "int_1", type: "slack" }],
     });
@@ -174,6 +180,7 @@ describe("collectWorkflowIssues", () => {
           "Second"
         ),
       ],
+      edges: [],
       catalog,
       integrations: [],
     });
@@ -202,6 +209,7 @@ describe("collectWorkflowIssues", () => {
       nodes: [
         actionNode("__proto__", { actionType: "custom/send" }, "Prototype"),
       ],
+      edges: [],
       catalog,
       integrations: [],
     });
@@ -210,6 +218,237 @@ describe("collectWorkflowIssues", () => {
     expect(grouped.missingRequiredFields).toEqual([
       expect.objectContaining({ nodeId: "__proto__", nodeLabel: "Prototype" }),
     ]);
+  });
+});
+
+describe("collectWorkflowIssues Group rules", () => {
+  // The editor's badges and publish preflight read this list, so every matrix
+  // case must name the same rules publication refuses with.
+  it.each(groupContractMatrix)("$name", (matrixCase) => {
+    const issues = collectWorkflowIssues({
+      nodes: matrixCase.nodes,
+      edges: matrixCase.edges,
+      catalog,
+      integrations: [],
+    }).filter((issue) => issue.kind === "invalid_group");
+
+    expect(issues.map((issue) => issue.rule)).toEqual(matrixCase.rules);
+    expect(hasBlockingWorkflowIssues(issues)).toBe(matrixCase.rules.length > 0);
+    for (const issue of issues) {
+      expect(issue).toMatchObject({ nodeId: "g", nodeLabel: "Lookups" });
+    }
+  });
+
+  it("lists each Group's messages under the Group in the overlay", () => {
+    const twoContinuations = groupContractMatrix.find(
+      (matrixCase) =>
+        matrixCase.name ===
+        "two continuation ports to two different outside steps"
+    );
+    if (!twoContinuations) {
+      throw new Error("matrix case missing");
+    }
+
+    const grouped = groupWorkflowIssuesForOverlay(
+      collectWorkflowIssues({ ...twoContinuations, catalog, integrations: [] })
+    );
+
+    expect(grouped.invalidGroups).toEqual([
+      {
+        nodeId: "g",
+        nodeLabel: "Lookups",
+        problems: [
+          {
+            rule: "multiple_continuations",
+            message: expect.stringContaining(
+              "continues from 2 outlets inside it to 2 steps"
+            ),
+          },
+        ],
+      },
+    ]);
+  });
+
+  // Group membership does not change how a run executes, so a Group problem
+  // stops Publish and leaves the draft run free.
+  it("blocks Publish and leaves a draft run free", () => {
+    const oneMember = groupContractMatrix.find(
+      (matrixCase) => matrixCase.name === "one member"
+    );
+    if (!oneMember) {
+      throw new Error("matrix case missing");
+    }
+
+    const issues = collectWorkflowIssues({
+      ...oneMember,
+      catalog,
+      integrations: [],
+    });
+
+    expect(hasBlockingWorkflowIssues(issues)).toBe(true);
+    expect(hasDraftRunBlockingIssues(issues)).toBe(false);
+    expect(groupWorkflowIssuesForOverlay(issues)).toMatchObject({
+      draftRunBlockingCount: 0,
+      publishBlockingCount: 1,
+    });
+  });
+});
+
+describe("collectWorkflowIssues Lifecycle Rules", () => {
+  const lifecycleCatalog: ExtensionCatalog = {
+    ...catalog,
+    events: [
+      {
+        name: "app/appointment.created",
+        label: "Appointment created",
+        correlationPath: "appointment.id",
+        payloadFields: [{ path: "appointment.id", type: "string" }],
+      },
+      {
+        name: "app/appointment.canceled",
+        label: "Appointment canceled",
+        correlationPath: "appointment.id",
+        payloadFields: [{ path: "appointment.id", type: "string" }],
+      },
+    ],
+  };
+
+  function rule(field: string): string {
+    return JSON.stringify({
+      version: 2,
+      groupLogic: "and",
+      groups: [
+        {
+          id: "group",
+          logic: "and",
+          conditions: [
+            {
+              id: "rule",
+              field,
+              fieldType: "string",
+              operator: "equals",
+              value: "x",
+            },
+          ],
+        },
+      ],
+    });
+  }
+
+  function lifecycle(rules: Record<string, unknown>): WorkflowNode {
+    return {
+      id: "lifecycle",
+      type: "lifecycle",
+      position: { x: 0, y: 0 },
+      data: {
+        label: "Lifecycle",
+        type: "lifecycle",
+        config: { lifecycleRules: rules },
+      },
+    };
+  }
+
+  function collect(rules: Record<string, unknown>) {
+    return collectWorkflowIssues({
+      nodes: [lifecycle(rules)],
+      edges: [],
+      catalog: lifecycleCatalog,
+      integrations: [],
+    });
+  }
+
+  // ADR-0016: a filter reading a path its Event does not declare compiles and
+  // reads false on every arrival, so Publish refuses it and the editor says so.
+  it("reports a Start Filter and a Cancel Filter reading undeclared paths as Publish blockers", () => {
+    const issues = collect({
+      startEvents: ["app/appointment.created"],
+      cancelEvents: ["app/appointment.canceled"],
+      concurrency: "unlimited",
+      startFilters: { "app/appointment.created": rule("tenantId") },
+      cancelFilters: { "app/appointment.canceled": rule("reason") },
+    });
+
+    expect(issues).toEqual([
+      expect.objectContaining({
+        kind: "invalid_lifecycle_rules",
+        severity: "blocking",
+        nodeId: "lifecycle",
+        nodeLabel: "Lifecycle",
+        check: "start_filter",
+        message: expect.stringContaining("tenantId"),
+      }),
+      expect.objectContaining({
+        kind: "invalid_lifecycle_rules",
+        check: "cancel_filter",
+        message: expect.stringContaining("reason"),
+      }),
+    ]);
+    expect(hasBlockingWorkflowIssues(issues)).toBe(true);
+    expect(hasDraftRunBlockingIssues(issues)).toBe(false);
+    expect(groupWorkflowIssuesForOverlay(issues)).toMatchObject({
+      draftRunBlockingCount: 0,
+      publishBlockingCount: 2,
+      invalidLifecycleRules: [
+        {
+          nodeId: "lifecycle",
+          problems: [{ check: "start_filter" }, { check: "cancel_filter" }],
+        },
+      ],
+    });
+  });
+
+  it("reports rules preflight refuses as blocking the draft run too", () => {
+    const issues = collect({
+      startEvents: ["app/appointment.created"],
+      cancelEvents: ["app/appointment.created"],
+      concurrency: "unlimited",
+    });
+
+    expect(issues).toEqual([
+      expect.objectContaining({
+        kind: "invalid_lifecycle_rules",
+        check: "rules",
+        message: expect.stringContaining("cannot both start and cancel runs"),
+      }),
+    ]);
+    expect(hasDraftRunBlockingIssues(issues)).toBe(true);
+  });
+
+  it("reports Entity Eligibility with no tracked Entity", () => {
+    const issues = collect({
+      startEvents: ["app/appointment.created"],
+      cancelEvents: [],
+      concurrency: "unlimited",
+      entityEligibility: {
+        condition: rule("status"),
+        checkpoints: ["before-execution"],
+      },
+    });
+
+    expect(issues).toEqual([
+      expect.objectContaining({ check: "entity_eligibility" }),
+    ]);
+  });
+
+  it("passes a valid policy and a Lifecycle Node with no stored rules", () => {
+    expect(
+      collect({
+        startEvents: ["app/appointment.created"],
+        cancelEvents: [],
+        concurrency: "unlimited",
+        startFilters: { "app/appointment.created": rule("appointment.id") },
+      })
+    ).toEqual([]);
+    expect(
+      collectWorkflowIssues({
+        nodes: [
+          { ...lifecycle({}), data: { ...lifecycle({}).data, config: {} } },
+        ],
+        edges: [],
+        catalog: lifecycleCatalog,
+        integrations: [],
+      })
+    ).toEqual([]);
   });
 });
 

@@ -1,6 +1,5 @@
 import { Effect, Schema } from "effect";
 import { describe, expect, it } from "vitest";
-import type { NodeSteps } from "@wfgraph/shared/actions/step-result";
 import {
   emptyExtensionCatalog,
   type ExtensionCatalog,
@@ -56,56 +55,10 @@ function slowStep() {
 }
 
 /**
- * What a shutdown does to a step already doing its work.
- *
- * Disposal interrupts the outer invocation, but a handler already doing work
- * must finish and deliver its result to the durable step before the runtime
- * closes. The outer invocation may reject: Inngest retries it and replays the
- * delivered step result instead of repeating the vendor call.
+ * What a disposed runtime does to a step. A dispose that lands while a step body
+ * runs is covered where the invocation runs, in `workflow-function.test.ts`.
  */
 describe("the step the app runs", () => {
-  it("delivers an in-flight handler result before the runtime is disposed", async () => {
-    const { calls, extensions } = slowStep();
-    const runtime = stubWfGraphRuntime();
-    const actions = createWorkflowActions(extensions, runtime);
-    const step = actions.stepFor(SLOW_ACTION_ID);
-    if (!step) {
-      throw new Error("Expected the slow action to be assembled.");
-    }
-
-    const delivered: unknown[] = [];
-    const nodeSteps: NodeSteps = {
-      run: async (_stepId, work) => {
-        const value = await work();
-        delivered.push(value);
-        return value;
-      },
-    };
-    const pending = runtime.runPromise(
-      step(
-        {
-          _context: {
-            executionId: "exec_1",
-            nodeId: "n1",
-            nodeName: "Slow",
-            nodeType: "action",
-            runMode: "live",
-          },
-        },
-        nodeSteps
-      )
-    );
-    await Effect.runPromise(Effect.sleep(10));
-    const disposed = runtime.dispose();
-
-    await expect(pending).rejects.toThrow(
-      "All fibers interrupted without error"
-    );
-    await disposed;
-    expect(calls).toEqual({ started: 1, finished: 1 });
-    expect(delivered).toEqual([{ ok: true, value: { sent: true } }]);
-  });
-
   it("rejects a step dispatched after the runtime was disposed", async () => {
     const { calls, extensions } = slowStep();
     const runtime = stubWfGraphRuntime();

@@ -1,4 +1,4 @@
-import { ArrowLeft, Ban, Loader2 } from "lucide-react";
+import { Ban, Loader2 } from "lucide-react";
 import { useRef } from "react";
 import { Button } from "#src/components/ui/button";
 import { useAfterCommit } from "#src/hooks/effects";
@@ -15,9 +15,10 @@ import {
 } from "#src/lib/workflow-run-labels";
 import {
   formatDuration,
-  getStatusDotClass,
-  getStatusLabel,
-  getStatusTextClass,
+  runStatusLabel,
+  runStatusTone,
+  statusToneDotClass,
+  statusToneTextClass,
 } from "./workflow-run-shared";
 
 type WorkflowRunSummaryRowProps = {
@@ -26,8 +27,6 @@ type WorkflowRunSummaryRowProps = {
   variant?: "list" | "header" | undefined;
   outcome?: string | undefined;
   onClick?: (() => void) | undefined;
-  selected?: boolean | undefined;
-  onBack?: (() => void) | undefined;
   onCancel?: ((executionId: string) => void) | undefined;
   isCanceling?: boolean | undefined;
   focusOnMount?: boolean | undefined;
@@ -125,7 +124,7 @@ function ListSummary({
             "size-2 shrink-0 rounded-full",
             execution.status === "running" &&
               "ring-2 ring-info/20 motion-safe:animate-pulse",
-            getStatusDotClass(execution.status)
+            statusToneDotClass(runStatusTone(execution.status))
           )}
         />
       </div>
@@ -144,8 +143,10 @@ function ListSummary({
         <p className="mt-0.5 flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-muted-foreground text-xs">
           <span>Run #{runNumber}</span>
           <span aria-hidden="true">·</span>
-          <span className={getStatusTextClass(execution.status)}>
-            {getStatusLabel(execution.status)}
+          <span
+            className={statusToneTextClass(runStatusTone(execution.status))}
+          >
+            {runStatusLabel(execution.status)}
           </span>
           <span aria-hidden="true">·</span>
           <span>{runGraphRecipientsLabel(execution)}</span>
@@ -176,7 +177,6 @@ function HeaderSummary({
   execution,
   runNumber,
   outcome,
-  onBack,
   onCancel,
   isCanceling = false,
   focusOnMount = false,
@@ -184,7 +184,6 @@ function HeaderSummary({
   execution: WorkflowExecution;
   runNumber: number;
   outcome?: string | undefined;
-  onBack?: (() => void) | undefined;
   onCancel?: ((executionId: string) => void) | undefined;
   isCanceling?: boolean | undefined;
   focusOnMount?: boolean | undefined;
@@ -201,18 +200,6 @@ function HeaderSummary({
   return (
     <div className="min-w-0 border-b bg-background px-3 py-3">
       <div className="flex min-w-0 items-start gap-1">
-        {onBack ? (
-          <Button
-            aria-label="Back to runs list"
-            className="-ml-1 max-md:size-11"
-            onClick={onBack}
-            size="icon-sm"
-            type="button"
-            variant="ghost"
-          >
-            <ArrowLeft />
-          </Button>
-        ) : null}
         <div className="min-w-0 flex-1 pt-0.5">
           <h2
             className="break-words font-semibold text-base outline-none"
@@ -223,7 +210,10 @@ function HeaderSummary({
           </h2>
           <p
             aria-live="polite"
-            className={cn("mt-1 text-sm", getStatusTextClass(execution.status))}
+            className={cn(
+              "mt-1 text-sm",
+              statusToneTextClass(runStatusTone(execution.status))
+            )}
             role="status"
           >
             {outcome ?? getRunOutcome(execution, [])}
@@ -292,8 +282,6 @@ export function WorkflowRunSummaryRow({
   variant = "list",
   outcome,
   onClick,
-  selected = false,
-  onBack,
   onCancel,
   isCanceling = false,
   focusOnMount = false,
@@ -305,7 +293,6 @@ export function WorkflowRunSummaryRow({
           execution={execution}
           isCanceling={isCanceling}
           focusOnMount={focusOnMount}
-          onBack={onBack}
           onCancel={onCancel}
           outcome={outcome}
           runNumber={runNumber}
@@ -316,11 +303,7 @@ export function WorkflowRunSummaryRow({
 
   return (
     <button
-      aria-current={selected ? "true" : undefined}
-      className={cn(
-        "min-h-13 w-full border-border border-b px-2 py-2 text-left transition-colors duration-100 hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/30",
-        selected && "bg-muted"
-      )}
+      className="min-h-13 w-full border-border border-b px-2 py-2 text-left transition-colors duration-100 hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/30"
       data-testid="workflow-run-summary-row"
       onClick={onClick}
       type="button"

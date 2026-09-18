@@ -102,12 +102,12 @@ heading in the selector still writes one.
 
 **`sideEffect: true` marks an action that changes something outside the workflow**: a
 message sent, a record written or removed. It defaults to `false`, which says the action
-only reads. The editor keeps an action carrying it out of a Group, because a Group is a
-bundle a builder pastes again after a Wait so the next send reads a fresh fetch, and a
-change to the outside world would land again with every paste. Note that this is a
-narrower question than the replay sense of the phrase the next section uses, where a
-lookup's own HTTP call counts too because `step.run` has to memoize it. `defineAction`
-takes the same field.
+only reads. Before a published run starts in Live mode, the run dialog counts the steps
+carrying it and names their integrations, so the Workflow Builder sees what the run will
+reach outside the workflow. Grouping does not read the field, and an action carrying it
+may sit in a Group. Note that this is a narrower question than the replay sense of the
+phrase the next section uses, where a lookup's own HTTP call counts too because `step.run`
+has to memoize it. `defineAction` takes the same field.
 
 **`events` are `defineEvent` values this integration owns.** Assembly folds them into
 the one catalog and stamps `EventMetadata.integration`, so the editor can offer a
@@ -163,7 +163,7 @@ Three rules:
 - **A `StepFailure` fails the node once.** It travels back as a value rather than a throw,
   so a system that refused a request does not spend the retry budget on an answer that will
   not change. Anything else that throws inside is a step the runtime retries.
-- **A handler that wraps nothing still opens one memoized log row.** The run panel then
+- **A handler that wraps nothing still opens one memoized log row.** The Runs view then
   shows one row for however many times the work ran, so the log is not evidence it ran once.
 
 `docs/adr/0009` is why this is the author's job rather than Workflow Graph's.

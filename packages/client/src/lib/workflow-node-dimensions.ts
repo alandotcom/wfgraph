@@ -1,19 +1,11 @@
 /**
- * Every size the canvas is laid out from: how large a node draws, how far
- * auto-layout spaces two of them, and the compact geometry inside a Group.
- * Auto-layout reserves these before React Flow has measured a card.
+ * Every size the canvas is laid out from: how large a node draws and how far
+ * auto-layout spaces two of them. Auto-layout reserves these before React Flow
+ * has measured a card.
  */
 
 export {
   eventSplitCardWidth,
-  GROUP_CHILD_HEIGHT,
-  GROUP_CHILD_WIDTH,
-  GROUP_COLUMN_GAP,
-  GROUP_HEADER_HEIGHT,
-  GROUP_PAD,
-  GROUP_ROW_GAP,
-  groupFrameSize,
-  NODE_SPACING,
   RANK_SPACING,
   WORKFLOW_NODE_HEIGHT,
   WORKFLOW_NODE_WIDTH,
@@ -27,3 +19,10 @@ export {
  */
 export const NODE_ICON_CLASS = "size-4";
 export const NODE_ICON_PX = 16;
+
+/**
+ * Where a Condition card's True and False outlets sit along its outlet side, as
+ * a fraction of that side's length. The card draws its handles there, and the
+ * focused Group canvas routes each branch's edge from there.
+ */
+export const CONDITION_OUTLET_FRACTION = { true: 0.38, false: 0.62 } as const;

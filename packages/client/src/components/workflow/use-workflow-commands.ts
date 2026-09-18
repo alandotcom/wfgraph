@@ -1,7 +1,6 @@
 import { useReactFlow } from "@xyflow/react";
 import { useAtomValue, useSetAtom } from "jotai";
 import { useMemo } from "react";
-import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { useReflowLayout } from "#src/components/workflow/use-reflow-layout";
 import { useWorkflowComparisonActions } from "#src/components/workflow/use-workflow-comparison-actions";
 import type { WorkflowToolbarActions } from "#src/components/workflow/workflow-toolbar-handlers";
@@ -9,6 +8,7 @@ import type { WorkflowToolbarState } from "#src/components/workflow/workflow-too
 import { useWorkflowWorkspaceNavigation } from "#src/hooks/use-workflow-workspace-navigation";
 import { viewportAnimationDuration } from "#src/lib/motion";
 import { workflowFitViewOptions } from "./workflow-viewport";
+import { useTopologyAuthoring } from "./canvas-interaction";
 import {
   currentPlatform,
   editorShortcutLabels,
@@ -16,12 +16,15 @@ import {
 } from "#src/lib/shortcut-label";
 import {
   canvasEditingLockedAtom,
+  canvasSelectionAtom,
   copySelectionAtom,
   duplicateSelectionAtom,
   groupSelectionAtom,
   hasCopiedSelectionAtom,
   pasteCopiedSelectionAtom,
 } from "#src/lib/workflow-graph-store";
+import { groupScopeActiveAtom } from "#src/lib/workflow-workspace-navigation";
+import { showGraphEditRefusal } from "#src/components/workflow/graph-edit-refusal";
 import {
   isWorkflowPublishDisabled,
   workflowCommands,
@@ -39,12 +42,13 @@ export function useWorkflowCommands({
   onAddStep: () => void;
 }) {
   const editingLocked = useAtomValue(canvasEditingLockedAtom);
+  const groupScopeActive = useAtomValue(groupScopeActiveAtom);
+  const topologyAuthoring = useTopologyAuthoring();
   const hasCopiedSelection = useAtomValue(hasCopiedSelectionAtom);
   const copySelection = useSetAtom(copySelectionAtom);
   const pasteSelection = useSetAtom(pasteCopiedSelectionAtom);
   const duplicateSelection = useSetAtom(duplicateSelectionAtom);
   const groupSelection = useSetAtom(groupSelectionAtom);
-  const catalog = useExtensionCatalog();
   const { fitView } = useReactFlow();
   const { canReflow, reflow } = useReflowLayout();
   const comparisonActions = useWorkflowComparisonActions();
@@ -56,20 +60,20 @@ export function useWorkflowCommands({
     []
   );
 
-  const selectedIds = new Set(
-    state.nodes.filter((node) => node.selected).map((node) => node.id)
-  );
+  const selection = useAtomValue(canvasSelectionAtom);
+  const selectedIds = new Set(selection.nodeIds);
   const hasNodes = state.nodes.some((node) => node.type !== "add");
   const hasCopyableSelection = state.nodes.some(
     (node) =>
-      node.selected && node.data.type !== "lifecycle" && node.type !== "add"
+      selectedIds.has(node.id) &&
+      node.data.type !== "lifecycle" &&
+      node.type !== "add"
   );
-  const grouping = analyzeGroupableSelection(
-    state.nodes,
-    state.edges,
+  const grouping = analyzeGroupableSelection({
+    nodes: state.nodes,
+    edges: state.edges,
     selectedIds,
-    catalog
-  );
+  });
 
   return workflowCommands({
     state: {
@@ -108,11 +112,25 @@ export function useWorkflowCommands({
           hasUnsavedChanges: state.hasUnsavedChanges,
           publication: state.publication,
         }),
+      // A phone offers no topology authoring, so every command that adds,
+      // groups, or lays out steps is off there.
+      canAddStep: state.canUpdate && topologyAuthoring,
       canCopySelection:
         state.canUpdate && hasCopyableSelection && !editingLocked,
-      canPaste: state.canUpdate && hasCopiedSelection && !editingLocked,
-      canGroupSelection: state.canUpdate && grouping.ok && !editingLocked,
+      canDuplicateSelection:
+        state.canUpdate &&
+        hasCopyableSelection &&
+        !editingLocked &&
+        topologyAuthoring,
+      canPaste:
+        state.canUpdate &&
+        hasCopiedSelection &&
+        !editingLocked &&
+        topologyAuthoring,
+      canGroupSelection:
+        state.canUpdate && grouping.ok && !editingLocked && topologyAuthoring,
       editingLocked,
+      groupScopeActive,
     },
     shortcuts,
     callbacks: {
@@ -126,9 +144,9 @@ export function useWorkflowCommands({
       fitView: () =>
         void fitView(workflowFitViewOptions(viewportAnimationDuration())),
       copySelection: () => void copySelection(),
-      pasteSelection: () => void pasteSelection(),
-      duplicateSelection: () => void duplicateSelection(),
-      groupSelection: () => void groupSelection({ catalog }),
+      pasteSelection: () => showGraphEditRefusal(pasteSelection()),
+      duplicateSelection: () => showGraphEditRefusal(duplicateSelection()),
+      groupSelection: () => void groupSelection(),
       undo: state.undo,
       redo: state.redo,
       reflow,

@@ -9,7 +9,7 @@ import {
   Settings,
   Zap,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Button } from "#src/components/ui/button";
 import {
   DropdownMenu,
@@ -25,6 +25,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "#src/components/ui/tooltip";
+import { useBeforePaint } from "#src/hooks/effects";
 import { hasTouchSupport } from "#src/hooks/use-touch";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { stepGroups, stepMatchesQuery } from "#src/lib/step-types";
@@ -132,6 +133,19 @@ export function ActionGrid({
   const [showHidden, setShowHidden] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>(getInitialViewMode);
   const actions = useAllActions();
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  // A node the user has just dropped on the canvas is waiting for an action to
+  // be chosen, so the search box takes focus when the grid mounts. Not on a
+  // touch device, where focus summons a keyboard over the grid the user is
+  // trying to read. `preventScroll`, because the grid can mount inside Canvas
+  // Reveal while Reveal is still sliding in from past the canvas edge, and a
+  // scrolling focus would drag the whole editor sideways to reach it.
+  useBeforePaint(null, () => {
+    if (isNewlyCreated === true && !hasTouchSupport()) {
+      searchRef.current?.focus({ preventScroll: true });
+    }
+  });
 
   const toggleViewMode = () => {
     const newMode = viewMode === "list" ? "grid" : "list";
@@ -194,17 +208,13 @@ export function ActionGrid({
         <div className="relative flex-1">
           <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            // A node the user has just dropped on the canvas is waiting for an
-            // action to be chosen, so the search box takes focus. Not on a
-            // touch device, where focus summons a keyboard over the grid the
-            // user is trying to read.
-            autoFocus={isNewlyCreated === true && !hasTouchSupport()}
             className="pl-9"
             data-testid="action-search-input"
             disabled={disabled}
             id="action-filter"
             onChange={(e) => setFilter(e.target.value)}
             placeholder="Search actions..."
+            ref={searchRef}
             value={filter}
           />
         </div>

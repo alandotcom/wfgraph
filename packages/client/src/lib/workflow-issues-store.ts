@@ -17,7 +17,7 @@ import {
   hasBlockingWorkflowIssues,
   type WorkflowIssue,
 } from "@wfgraph/shared/graph/workflow-issues";
-import type { WorkflowNode } from "@wfgraph/shared/graph/types";
+import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
 import type { NodeIssueSummary } from "#src/lib/workflow-graph-types";
 
 /**
@@ -47,10 +47,12 @@ export const workflowIssuesAtom = atom<WorkflowIssue[]>(NO_ISSUES);
  * that writes that atom is also a caller and must use the answers it just
  * received rather than the ones it is about to store. `nodes` arrives already
  * through `toPersistedNodes`, which is the same shape the provider half is asked
- * about, so both halves judge one graph.
+ * about, so both halves judge one graph. `edges` are the stored edges the Group
+ * rules read.
  */
 export function collectAllWorkflowIssues(input: {
   nodes: WorkflowNode[];
+  edges: readonly WorkflowEdge[];
   catalog: ExtensionCatalog;
   integrations: ReadonlyArray<{ id: string; type: string }>;
   providerIssues: readonly WorkflowIssue[];
@@ -58,6 +60,7 @@ export function collectAllWorkflowIssues(input: {
   return [
     ...collectWorkflowIssues({
       nodes: input.nodes,
+      edges: input.edges,
       catalog: input.catalog,
       integrations: input.integrations,
     }),
@@ -101,12 +104,36 @@ export const workflowIssuesByNodeIdAtom = atom((get) => {
 /** The summaries handed out last time, so unchanged nodes keep their identity. */
 let lastSummaries: ReadonlyMap<string, NodeIssueSummary> = new Map();
 
-function sameSummary(left: NodeIssueSummary, right: NodeIssueSummary): boolean {
+export function sameSummary(
+  left: NodeIssueSummary,
+  right: NodeIssueSummary
+): boolean {
   return (
     left.severity === right.severity &&
     left.messages.length === right.messages.length &&
     left.messages.every((message, index) => message === right.messages[index])
   );
+}
+
+/**
+ * The issues the Group `groupId` answers for: its own, then each member's, in
+ * collection order. The overview draws a Group as one collapsed card that hides
+ * its members, so the card's badge and the Group summary's status count both.
+ */
+export function groupIssues(input: {
+  issues: readonly WorkflowIssue[];
+  nodes: readonly { id: string; parentId?: string | undefined }[];
+  groupId: string;
+}): WorkflowIssue[] {
+  const memberIds = new Set(
+    input.nodes
+      .filter((node) => node.parentId === input.groupId)
+      .map((node) => node.id)
+  );
+  return [
+    ...input.issues.filter((issue) => issue.nodeId === input.groupId),
+    ...input.issues.filter((issue) => memberIds.has(issue.nodeId)),
+  ];
 }
 
 /** Whether anything in the graph stops it being published. */

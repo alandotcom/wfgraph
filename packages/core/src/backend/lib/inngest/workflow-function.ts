@@ -43,7 +43,7 @@ import {
   workflowRunCancelRequested,
   workflowRunRequested,
 } from "#src/backend/lib/inngest/events";
-import type { WfGraphRuntime } from "#src/backend/runtime";
+import type { WfGraphRuntime, WfGraphServices } from "#src/backend/runtime";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import type { ExecutionSummary } from "#src/backend/services/executions/repo/contracts";
 import { wakeParkedWaitsAfterExit } from "#src/backend/services/workflows/lifecycle/signal-parked-waits";
@@ -197,6 +197,51 @@ function createDurableRuntime(input: {
     attempt,
     runId,
   };
+}
+
+/**
+ * Runs one invocation's engine Effect on the app runtime.
+ *
+ * `app.dispose` interrupts every fiber the runtime is running and waits for each
+ * to end. In async step mode an invocation Inngest is done with stays parked on a
+ * `step.run` promise Inngest never settles: a step it only planned, or a body it
+ * ran and reported. That fiber ends as soon as it is interrupted. A started step
+ * body runs outside the fiber, and the app closes persistence once the runtime is
+ * disposed, so the interruption waits for every started body to settle.
+ */
+async function runInvocation<A, E>(
+  appRuntime: WfGraphRuntime,
+  step: DurableStep,
+  program: (step: DurableStep) => Effect.Effect<A, E, WfGraphServices>
+): Promise<A> {
+  const startedBodies = new Set<Promise<unknown>>();
+  const trackedStep: DurableStep = {
+    waitForEvent: (durableStep, options) =>
+      step.waitForEvent(durableStep, options),
+    invoke: (durableStep, options) => step.invoke(durableStep, options),
+    run: (durableStep, fn) =>
+      step.run(durableStep, () => {
+        const body = fn();
+        startedBodies.add(body);
+        const forget = () => startedBodies.delete(body);
+        void body.then(forget, forget);
+        return body;
+      }),
+  };
+
+  return await appRuntime.runPromise(
+    program(trackedStep).pipe(
+      Effect.onInterrupt(() =>
+        Effect.promise(async () => {
+          // A body Inngest starts while an earlier one settles is waited for too.
+          while (startedBodies.size > 0) {
+            // eslint-disable-next-line no-await-in-loop -- each pass waits for the bodies started so far
+            await Promise.allSettled(startedBodies);
+          }
+        })
+      )
+    )
+  );
 }
 
 /**
@@ -366,10 +411,16 @@ async function workflowRunRequestedHandler({
 
   // The engine persists nothing and implements nothing on its own: the store
   // and the dispatch port are the app's, built where the function was.
-  const result = await appRuntime.runPromise(
+  const result = await runInvocation(appRuntime, step, (trackedStep) =>
     executeWorkflow(
       data,
-      createDurableRuntime({ step, attempt, runId, data, appRuntime }),
+      createDurableRuntime({
+        step: trackedStep,
+        attempt,
+        runId,
+        data,
+        appRuntime,
+      }),
       store,
       actions,
       entities
@@ -448,10 +499,16 @@ async function workflowBranchRequestedHandler({
 
   await writeRunMetadata({ step, write, data });
 
-  return await appRuntime.runPromise(
+  return await runInvocation(appRuntime, step, (trackedStep) =>
     executeWorkflowBranch(
       data,
-      createDurableRuntime({ step, attempt, runId, data, appRuntime }),
+      createDurableRuntime({
+        step: trackedStep,
+        attempt,
+        runId,
+        data,
+        appRuntime,
+      }),
       store,
       actions,
       entities

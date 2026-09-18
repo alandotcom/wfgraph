@@ -753,7 +753,7 @@ function resumeAuditEntry(input: {
   return wake.eventName === null
     ? {
         eventType: "run_resumed",
-        message: "Run resumed from the runs panel",
+        message: "Run resumed from the Runs view",
         metadata: { ...where, waitStateId: input.waitStateId },
       }
     : {

@@ -1229,3 +1229,319 @@ describe("revert_draft", () => {
       })
   );
 });
+
+describe("Group membership", () => {
+  const frame: WorkflowNode = {
+    id: "lookups",
+    position: { x: 100, y: 200 },
+    type: "group",
+    data: { label: "Lookups", type: "group" },
+  };
+
+  function member(id: string): WorkflowNode {
+    return {
+      ...actionNode(id, "score-applicant"),
+      position: { x: 10, y: 20 },
+      parentId: frame.id,
+    };
+  }
+
+  const outside = actionNode("outside", "slack/send-message");
+  const entryToA: WorkflowEdge = {
+    id: "entry-a",
+    source: "entry",
+    target: "a",
+    sourceHandle: LIFECYCLE_STARTED_HANDLE,
+  };
+  const aToB: WorkflowEdge = { id: "a-b", source: "a", target: "b" };
+  const bToC: WorkflowEdge = { id: "b-c", source: "b", target: "c" };
+  const cToOutside: WorkflowEdge = {
+    id: "c-outside",
+    source: "c",
+    target: "outside",
+  };
+
+  it.effect("deletes a member and keeps a Group still holding two steps", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [entry, frame, member("a"), member("b"), member("c")],
+        edges: [entryToA, aToB, bToC],
+        catalog,
+      });
+
+      const result = yield* tools.delete_node({ nodeId: "b" });
+
+      const document = yield* draft.current;
+      expect(document.nodes).toEqual([entry, frame, member("a"), member("c")]);
+      expect(document.edges).toEqual([entryToA]);
+      expect(result.summary).not.toContain("Group");
+    })
+  );
+
+  it.effect("dissolves a Group left with one step in the same revision", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [entry, frame, member("a"), member("b"), outside],
+        edges: [entryToA, aToB],
+        catalog,
+      });
+
+      const result = yield* tools.delete_node({ nodeId: "b" });
+
+      const document = yield* draft.current;
+      expect(document.nodes).toEqual([
+        entry,
+        // Dissolution preserves the member's offset from the frame.
+        { ...actionNode("a", "score-applicant"), position: { x: 110, y: 220 } },
+        outside,
+      ]);
+      expect(document.nodes.some((node) => "parentId" in node)).toBe(false);
+      expect(document.edges).toEqual([entryToA]);
+      expect(yield* draft.revision(1)).toEqual(document);
+      expect(result.summary).toContain('Group "Lookups"');
+    })
+  );
+
+  it.effect(
+    "reports a dissolution a write other than delete_node uncovers",
+    () =>
+      Effect.gen(function* () {
+        // The Group already holds one step when the turn opens, which
+        // happens when the editor hands the agent a graph an earlier edit
+        // left undersized. add_node does not touch the Group, but every
+        // write dissolves an undersized Group before it saves.
+        const { tools, draft } = yield* agentToolsFor({
+          nodes: [entry, frame, member("a")],
+          edges: [entryToA],
+          catalog,
+        });
+
+        const result = yield* tools.add_node({
+          actionId: "score-applicant",
+          label: "Loose",
+        });
+
+        const document = yield* draft.current;
+        expect(document.nodes.some((node) => node.id === frame.id)).toBe(false);
+        expect(
+          document.nodes.find((node) => node.id === "a")?.parentId
+        ).toBeUndefined();
+        expect(result.summary).toContain('Group "Lookups"');
+        expect(result.summary).toContain("Loose");
+      })
+  );
+
+  it.effect("refuses to delete a Group frame", () =>
+    Effect.gen(function* () {
+      const nodes = [entry, frame, member("a"), member("b")];
+      const { tools, draft } = yield* agentToolsFor({
+        nodes,
+        edges: [entryToA, aToB],
+        catalog,
+      });
+
+      const failure = yield* Effect.flip(
+        tools.delete_node({ nodeId: frame.id })
+      );
+
+      expect(failure.reason).toContain('Group "Lookups" cannot be deleted');
+      expect((yield* draft.current).nodes).toEqual(nodes);
+    })
+  );
+
+  it.effect("puts a step inserted on an interior edge into the Group", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [entry, frame, member("a"), member("b")],
+        edges: [entryToA, aToB],
+        catalog,
+      });
+
+      const result = yield* tools.insert_node_on_edge({
+        edgeId: "a-b",
+        actionId: "score-applicant",
+        label: "Rescore",
+      });
+
+      const inserted = (yield* draft.current).nodes.find(
+        (node) => node.id === result.nodeId
+      );
+      expect(inserted?.parentId).toBe(frame.id);
+    })
+  );
+
+  it.effect(
+    "leaves an inserted Event Split in no Group even on an interior edge",
+    () =>
+      Effect.gen(function* () {
+        // A Group may not contain an Event Split. Both ends of a-b sit in
+        // the Group, but the inserted step is one no Group may hold, so it
+        // must join no Group rather than becoming a member the agent can
+        // only undo by deleting it.
+        const startedEntry: WorkflowNode = {
+          ...entry,
+          data: {
+            ...entry.data,
+            config: {
+              lifecycleRules: {
+                startEvents: ["applicant.created"],
+                cancelEvents: [],
+                concurrency: "unlimited",
+                allowManualStart: false,
+              },
+            },
+          },
+        };
+        const { tools, draft } = yield* agentToolsFor({
+          nodes: [startedEntry, frame, member("a"), member("b")],
+          edges: [entryToA, aToB],
+          catalog,
+        });
+
+        const result = yield* tools.insert_node_on_edge({
+          edgeId: "a-b",
+          actionId: "Event Split",
+          label: "Split",
+          outgoingSourceHandle: eventSplitOutlet("applicant.created"),
+        });
+
+        const inserted = (yield* draft.current).nodes.find(
+          (node) => node.id === result.nodeId
+        );
+        expect(inserted && "parentId" in inserted).toBe(false);
+      })
+  );
+
+  it.effect("leaves a step inserted on a boundary edge in no Group", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [entry, frame, member("a"), member("b"), outside],
+        edges: [entryToA, aToB, { ...cToOutside, source: "b", id: "b-out" }],
+        catalog,
+      });
+
+      const entering = yield* tools.insert_node_on_edge({
+        edgeId: "entry-a",
+        actionId: "score-applicant",
+        label: "Before the Group",
+      });
+      const leaving = yield* tools.insert_node_on_edge({
+        edgeId: "b-out",
+        actionId: "score-applicant",
+        label: "After the Group",
+      });
+
+      const document = yield* draft.current;
+      for (const nodeId of [entering.nodeId, leaving.nodeId]) {
+        const inserted = document.nodes.find((node) => node.id === nodeId);
+        expect(inserted).toBeDefined();
+        expect(inserted && "parentId" in inserted).toBe(false);
+      }
+    })
+  );
+
+  it.effect("adds a node that belongs to no Group", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [entry, frame, member("a"), member("b")],
+        edges: [entryToA, aToB],
+        catalog,
+      });
+
+      const result = yield* tools.add_node({
+        actionId: "score-applicant",
+        label: "Loose",
+      });
+
+      const added = (yield* draft.current).nodes.find(
+        (node) => node.id === result.nodeId
+      );
+      expect(added && "parentId" in added).toBe(false);
+    })
+  );
+
+  it.effect("refuses an edge that names a Group frame as either end", () =>
+    Effect.gen(function* () {
+      const document = {
+        nodes: [entry, frame, member("a"), member("b"), outside],
+        edges: [entryToA, aToB],
+      };
+      const { tools, draft } = yield* agentToolsFor({ ...document, catalog });
+
+      const intoFrame = yield* Effect.flip(
+        tools.connect_nodes({ source: "outside", target: frame.id })
+      );
+      const outOfFrame = yield* Effect.flip(
+        tools.connect_nodes({ source: frame.id, target: "outside" })
+      );
+
+      for (const failure of [intoFrame, outOfFrame]) {
+        expect(failure.reason).toContain('Group "Lookups"');
+        expect(failure.reason).toContain("Connect a step inside the Group");
+      }
+      expect(yield* draft.current).toEqual(document);
+    })
+  );
+
+  it.effect(
+    "saves a write that continues two members to one step outside the Group",
+    () =>
+      Effect.gen(function* () {
+        const { tools, draft } = yield* agentToolsFor({
+          nodes: [entry, frame, member("a"), member("b"), outside],
+          edges: [entryToA, aToB, { ...cToOutside, source: "b", id: "b-out" }],
+          catalog,
+        });
+
+        // A second member continuing to the step the first continues to is one
+        // continuation. It is a join outside the Group, which a draft keeps.
+        yield* tools.connect_nodes({ source: "a", target: "outside" });
+
+        expect((yield* draft.current).edges).toHaveLength(4);
+      })
+  );
+
+  it.effect(
+    "keeps a Group frame's direction, config and enabled state out of reach",
+    () =>
+      Effect.gen(function* () {
+        const verticalFrame = {
+          ...frame,
+          data: { ...frame.data, config: {} },
+        };
+        const { tools, draft } = yield* agentToolsFor({
+          nodes: [entry, verticalFrame, member("a"), member("b")],
+          edges: [entryToA, aToB],
+          catalog,
+        });
+
+        const enabled = yield* Effect.flip(
+          tools.update_node({ nodeId: frame.id, enabled: false })
+        );
+        const direction = yield* Effect.flip(
+          tools.update_node({
+            nodeId: frame.id,
+            config: [{ key: "direction", value: "horizontal" }],
+          })
+        );
+        const cleared = yield* Effect.flip(
+          tools.update_node({
+            nodeId: frame.id,
+            clearConfigKeys: ["direction"],
+          })
+        );
+        yield* tools.update_node({ nodeId: frame.id, label: "Enrichment" });
+
+        for (const failure of [enabled, direction, cleared]) {
+          expect(failure.reason).toContain("Group has no enabled state");
+        }
+        expect(
+          (yield* draft.current).nodes.find((node) => node.id === frame.id)
+            ?.data
+        ).toEqual({
+          ...verticalFrame.data,
+          label: "Enrichment",
+        });
+      })
+  );
+});

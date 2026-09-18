@@ -4,7 +4,11 @@ import type {
   PublishedWorkflowVersion,
   Workflow,
 } from "#src/backend/lib/db/schema";
-import { DraftConflict, NotFound } from "#src/backend/lib/effect/failures";
+import {
+  DraftConflict,
+  InvalidInput,
+  NotFound,
+} from "#src/backend/lib/effect/failures";
 import {
   SilentAppLoggerLayer,
   stubExtensionCatalog,
@@ -54,6 +58,28 @@ function graph(config: Record<string, unknown> = {}) {
     ],
     edges: [],
   });
+}
+
+/**
+ * `graph()` plus a Group frame whose config holds `outletHandle`, one of the
+ * legacy Group config keys graph decoding refuses.
+ */
+function graphWithLegacyGroupConfig() {
+  const legacy = structuredClone(graph());
+  legacy.nodes.push({
+    key: "group_1",
+    attributes: {
+      id: "group_1",
+      type: "group",
+      position: { x: 0, y: 200 },
+      data: {
+        label: "Lookups",
+        type: "group",
+        config: { outletHandle: "true" },
+      },
+    },
+  });
+  return legacy;
 }
 
 function graphWithActions(
@@ -598,6 +624,66 @@ describe("workflow versions", () => {
           assert.strictEqual(result.publishedVersionId, "ver_current");
           assert.strictEqual(result.publishedVersion, 4);
           assert.strictEqual(result.publishedAt, "2026-08-04T00:00:00.000Z");
+        })
+    );
+
+    it.effect(
+      "refuses to compare against a published version whose Group config carries a legacy key",
+      () =>
+        Effect.gen(function* () {
+          const legacy = version({
+            id: "ver_legacy",
+            graph: graphWithLegacyGroupConfig(),
+          });
+          const failure = yield* compareWorkflowVersion({
+            workflowId: "wf_1",
+            baseVersionId: legacy.id,
+            draftGraph: graph(),
+          }).pipe(
+            Effect.provide(
+              stubWorkflowRepo({
+                findById: () => Effect.succeed(workflow()),
+                findVersionById: () => Effect.succeed(legacy),
+              })
+            ),
+            Effect.flip
+          );
+
+          assert.instanceOf(failure, InvalidInput);
+          assert.strictEqual(
+            failure.error,
+            "nodes[2].attributes.data.config.outletHandle: Group config must be empty"
+          );
+        })
+    );
+
+    it.effect(
+      "refuses to restore a published version whose Group config carries a legacy key",
+      () =>
+        Effect.gen(function* () {
+          const legacy = version({
+            id: "ver_legacy",
+            graph: graphWithLegacyGroupConfig(),
+          });
+          const failure = yield* restoreWorkflowVersion({
+            workflowId: "wf_1",
+            versionId: legacy.id,
+            expectedDraftRevision: 1,
+          }).pipe(
+            Effect.provide(
+              stubWorkflowRepo({
+                findById: () => Effect.succeed(workflow()),
+                findVersionById: () => Effect.succeed(legacy),
+              })
+            ),
+            Effect.flip
+          );
+
+          assert.instanceOf(failure, InvalidInput);
+          assert.strictEqual(
+            failure.error,
+            "nodes[2].attributes.data.config.outletHandle: Group config must be empty"
+          );
         })
     );
 

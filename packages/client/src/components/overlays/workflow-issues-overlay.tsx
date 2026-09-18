@@ -1,48 +1,53 @@
 import { AlertTriangle } from "lucide-react";
+import { cn } from "@wfgraph/shared/utils";
 import { Button } from "#src/components/ui/button";
 import { IntegrationIcon } from "#src/components/ui/integration-icon";
-import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
 import { useConnectionRepair } from "#src/hooks/use-connection-repair";
 import { workflowIssuesLabel } from "#src/components/workflow/workflow-issues-chip";
-import { useIsMobile } from "#src/hooks/use-mobile";
 import { ConfigureConnectionOverlay } from "./add-connection-overlay";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";
 import type { OverlayComponentProps } from "./types";
 import type { WorkflowIssuesOverlayModel } from "@wfgraph/shared/graph/workflow-issues";
 
-type WorkflowIssuesOverlayProps = OverlayComponentProps<{
+/**
+ * What opened the list: a Run draft or Publish that the issues stopped, or a
+ * person opening the list from the status strip. A list a Run draft opened
+ * carries `onRunDraftAnyway`, which starts the draft run the issues were
+ * collected for; it is absent whenever an issue that stops a draft run stands.
+ * A run of the published version never arrives here, because publish refused
+ * that graph's blocking issues before it became a version.
+ */
+type WorkflowIssuesTrigger =
+  | { trigger: "run"; onRunDraftAnyway?: (() => void) | undefined }
+  | { trigger: "publish" }
+  | { trigger: "list" };
+
+/** What a caller opening the issues list passes. */
+export type WorkflowIssuesOverlayInput = {
   issues: WorkflowIssuesOverlayModel;
   onGoToStep: (nodeId: string, fieldKey?: string) => void;
-  /**
-   * Starts the draft run these issues were collected for. Absent whenever a
-   * blocking issue stands, and absent for every reader who opened the list on
-   * their own. A run of the published version never arrives here: publish
-   * refused that graph's blocking issues before it became a version.
-   */
-  onRunDraftAnyway?: (() => void) | undefined;
-  allowRunDraftAnyway?: boolean | undefined;
-}>;
+} & WorkflowIssuesTrigger;
+
+type WorkflowIssuesOverlayProps =
+  OverlayComponentProps<WorkflowIssuesOverlayInput>;
 
 /** Count the individual repairs represented by the overlay's grouped rows. */
 export function workflowIssueCount(issues: WorkflowIssuesOverlayModel): number {
   return issues.totalIssues;
 }
 
-export function WorkflowIssuesOverlay({
-  overlayId,
-  issues,
-  onGoToStep,
-  onRunDraftAnyway,
-  allowRunDraftAnyway = false,
-}: WorkflowIssuesOverlayProps) {
+export function WorkflowIssuesOverlay(props: WorkflowIssuesOverlayProps) {
+  const { overlayId, issues, trigger, onGoToStep } = props;
+  const onRunDraftAnyway =
+    props.trigger === "run" ? props.onRunDraftAnyway : undefined;
   const { push, closeAll } = useOverlay();
-  const { pushSheet } = useConfigurationSheet();
-  const isMobile = useIsMobile();
   const repairAgainstConnectionList = useConnectionRepair();
 
   const {
     brokenReferences,
+    invalidGroups,
+    invalidLifecycleRules,
     missingRequiredFields,
     missingIntegrations,
     unverifiedProviderFields,
@@ -51,16 +56,10 @@ export function WorkflowIssuesOverlay({
   const totalIssues = workflowIssueCount(issues);
 
   const handleGoToStep = (nodeId: string, fieldKey?: string) => {
-    // Select the node and set tab (this is handled by onGoToStep)
+    // `onGoToStep` opens the step in Canvas Reveal, or in the mobile Reveal
+    // sequence on a phone, so the list closes to show it.
     onGoToStep(nodeId, fieldKey);
-
-    // On mobile, push ConfigurationOverlay on top so back button returns here
-    // On desktop, close all overlays because the sidebar shows the config
-    if (isMobile) {
-      pushSheet();
-    } else {
-      closeAll();
-    }
+    closeAll();
   };
 
   const handleAddIntegration = (integrationType: string) => {
@@ -82,13 +81,10 @@ export function WorkflowIssuesOverlay({
     onRunDraftAnyway();
   };
 
-  const blockingIssueCount =
-    missingRequiredFields.length + missingIntegrations.length;
-
   return (
     <Overlay
       actions={
-        allowRunDraftAnyway && onRunDraftAnyway
+        onRunDraftAnyway
           ? [
               {
                 label: "Run draft anyway",
@@ -113,24 +109,11 @@ export function WorkflowIssuesOverlay({
       // the list opens under the words that opened it.
       title={workflowIssuesLabel(totalIssues)}
     >
-      {/* One sentence, and the blocker's is the one that survives: a reader
-          with a blocking issue needs the harder fact, and printing both left
-          the softer one to be read first. */}
-      {blockingIssueCount > 0 ? (
-        <div className="flex items-center gap-2 text-destructive">
-          <AlertTriangle className="size-5" />
-          <p className="text-sm">
-            Resolve blocking issues before running the draft.
-          </p>
-        </div>
-      ) : (
-        <div className="flex items-center gap-2 text-warning">
-          <AlertTriangle className="size-5" />
-          <p className="text-sm">
-            The draft has issues that might cause the run to fail.
-          </p>
-        </div>
-      )}
+      {/* One sentence, and the hardest fact is the one that survives: an
+          issue stopping the action that opened the list outranks one that
+          stops only Publish, such as a Group problem, and that outranks a
+          warning. */}
+      <IssuesHeadline issues={issues} trigger={trigger} />
 
       <div className="mt-4 space-y-4">
         {/* Missing Connections Section */}
@@ -166,6 +149,73 @@ export function WorkflowIssuesOverlay({
                   variant="outline"
                 >
                   Add
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Group Rules Section */}
+        {invalidGroups.length > 0 && (
+          <div className="space-y-2">
+            <h4 className="font-medium text-muted-foreground text-sm">
+              Group Problems
+            </h4>
+            {invalidGroups.map((group) => (
+              <div className="flex items-start gap-3" key={group.nodeId}>
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-sm">{group.nodeLabel}</p>
+                  <ul className="mt-1 space-y-0.5 pl-3">
+                    {group.problems.map((problem) => (
+                      <li
+                        className="text-muted-foreground text-sm"
+                        key={`${problem.rule}-${problem.message}`}
+                      >
+                        {problem.message}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <Button
+                  className="shrink-0"
+                  onClick={() => handleGoToStep(group.nodeId)}
+                  size="sm"
+                  variant="outline"
+                >
+                  Show
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {invalidLifecycleRules.length > 0 && (
+          <div className="space-y-2">
+            <h4 className="font-medium text-muted-foreground text-sm">
+              Lifecycle Problems
+            </h4>
+            {invalidLifecycleRules.map((lifecycle) => (
+              <div className="flex items-start gap-3" key={lifecycle.nodeId}>
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-sm">{lifecycle.nodeLabel}</p>
+                  <ul className="mt-1 space-y-0.5 pl-3">
+                    {lifecycle.problems.map((problem) => (
+                      <li
+                        className="text-muted-foreground text-sm"
+                        key={problem.check}
+                      >
+                        {problem.message}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <Button
+                  className="shrink-0"
+                  onClick={() => handleGoToStep(lifecycle.nodeId)}
+                  size="sm"
+                  variant="outline"
+                >
+                  Show
                 </Button>
               </div>
             ))}
@@ -287,5 +337,61 @@ export function WorkflowIssuesOverlay({
         )}
       </div>
     </Overlay>
+  );
+}
+
+function IssuesHeadline({
+  issues,
+  trigger,
+}: {
+  issues: WorkflowIssuesOverlayModel;
+  trigger: WorkflowIssuesTrigger["trigger"];
+}) {
+  const { draftRunBlockingCount, publishBlockingCount } = issues;
+  if (trigger === "publish" && publishBlockingCount > 0) {
+    return (
+      <IssuesSentence tone="destructive">
+        Resolve blocking issues before publishing.
+      </IssuesSentence>
+    );
+  }
+  if (draftRunBlockingCount > 0) {
+    return (
+      <IssuesSentence tone="destructive">
+        Resolve blocking issues before running the draft.
+      </IssuesSentence>
+    );
+  }
+  if (publishBlockingCount > 0) {
+    return (
+      <IssuesSentence tone="warning">
+        Resolve the blocking issues before publishing. The draft can still run.
+      </IssuesSentence>
+    );
+  }
+  return (
+    <IssuesSentence tone="warning">
+      The draft has issues that might cause the run to fail.
+    </IssuesSentence>
+  );
+}
+
+function IssuesSentence({
+  tone,
+  children,
+}: {
+  tone: "destructive" | "warning";
+  children: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-2",
+        tone === "destructive" ? "text-destructive" : "text-warning"
+      )}
+    >
+      <AlertTriangle className="size-5" />
+      <p className="text-sm">{children}</p>
+    </div>
   );
 }

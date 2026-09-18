@@ -10,10 +10,8 @@ import { toast } from "sonner";
 import { getClientLogger } from "#src/lib/logger";
 import type { RunRequest } from "#src/components/overlays/run-overlay";
 import type { WorkflowExecuteResult } from "#src/lib/rpc-client";
-import type {
-  NodeRunStatus,
-  WorkflowNode,
-} from "#src/lib/workflow-graph-types";
+import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import type { RunNodeEvidenceStatus } from "@wfgraph/shared/graph/group-run-status";
 import type { NodeDataUpdate } from "#src/lib/workflow-graph-store";
 import type { WorkflowExecutionIgnoredReason } from "@wfgraph/shared/lifecycle/execution-contracts";
 import {
@@ -60,13 +58,13 @@ export type UpdateNodeData = (update: NodeDataUpdate) => void;
 
 /** The graph store's status writer -- `setNodeStatusesAtom`, one call per batch. */
 export type SetNodeStatuses = (
-  statuses: Array<{ nodeId: string; status: NodeRunStatus }>
+  statuses: Array<{ nodeId: string; status: RunNodeEvidenceStatus }>
 ) => void;
 
 export function updateNodesStatus(
   nodes: WorkflowNode[],
   setNodeStatuses: SetNodeStatuses,
-  status: NodeRunStatus
+  status: RunNodeEvidenceStatus
 ) {
   setNodeStatuses(nodes.map((node) => ({ nodeId: node.id, status })));
 }
@@ -108,12 +106,12 @@ type ExecuteWorkflowRunParams = {
   setIsExecuting: (value: boolean) => void;
   /**
    * The command label, from `runCommandLabel`. Both run commands open the same
-   * run panel, so the start toast is what tells "Run draft" and "Run v7 · Live"
+   * Runs view, so the start toast is what tells "Run draft" and "Run v7 · Live"
    * apart.
    */
   runLabel: string;
   /**
-   * Opens the new run in the URL, which is what the Runs panel and the
+   * Opens the new run in the URL, which is what the Runs view and the
    * canvas overlay both read (#33). Called only once a run has actually
    * started: the ignored and error paths below leave the URL exactly where
    * it stood, because neither one created an execution for it to point at.
@@ -129,7 +127,7 @@ export async function executeWorkflowRun({
   runLabel,
   navigateToExecution,
 }: ExecuteWorkflowRunParams) {
-  updateNodesStatus(nodes, setNodeStatuses, "idle");
+  updateNodesStatus(nodes, setNodeStatuses, "none");
 
   // Instant visual feedback before the first poll lands.
   setNodeStatuses(
@@ -151,7 +149,7 @@ export async function executeWorkflowRun({
       // No execution was created, so there is no id for the URL to own.
       // Whatever run was already open (or not) is left as it stands.
       setIsExecuting(false);
-      updateNodesStatus(nodes, setNodeStatuses, "idle");
+      updateNodesStatus(nodes, setNodeStatuses, "none");
       return;
     }
 
@@ -184,7 +182,7 @@ export async function executeWorkflowRun({
       toast.success(`${runLabel} started`);
     }
 
-    // The URL is the one writer of which run is open; the Runs panel and the
+    // The URL is the one writer of which run is open; the Runs view and the
     // canvas overlay both derive their selection from it.
     await navigateToExecution(result.executionId);
   } catch (error) {

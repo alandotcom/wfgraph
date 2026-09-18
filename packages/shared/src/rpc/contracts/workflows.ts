@@ -215,9 +215,9 @@ const executionSummarySchema = Schema.Struct({
 });
 
 /**
- * One wait a run is parked on, as the runs panel reads it.
+ * One wait a run is parked on, as the Runs view reads it.
  *
- * The token is here because the panel's Resume affordance is what an operator
+ * The token is here because the Runs view's Resume affordance is what an operator
  * uses when the Event a run parked on will never arrive. It is a session-gated
  * read of a row this operator can already see.
  */
@@ -741,6 +741,12 @@ export const workflowContract = {
               ]),
             })
           ),
+          /**
+           * The nodes holding an open wait, which a node status alone reads
+           * as running. The editor shows each of them as Waiting while the
+           * run is in progress.
+           */
+          openWaitNodeIds: listOf(Schema.String),
         })
       )
     ),

@@ -45,7 +45,8 @@ The host passes it in `extensions.integrations`. Build against
   nullable field, which is what offers a condition `is set`, so keep a key
   required where the system always sends it.
 - `category` defaults to the integration `label`. `sideEffect: true` marks an
-  external write; the editor keeps those out of a Group.
+  external write. The run dialog counts those steps before a Live published
+  run; Groups ignore the field.
 - `events` are `defineEvent` values. Assembly stamps `EventMetadata.integration`.
   Optional `webhook`: `verify` on the raw body, `receive` on parsed JSON.
   `secret` names the Connection credential that verifies a POST. `helpText`

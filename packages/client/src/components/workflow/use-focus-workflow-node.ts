@@ -1,61 +1,32 @@
-import { useReactFlow, useStoreApi } from "@xyflow/react";
-import { useAtomValue, useSetAtom } from "jotai";
+import { useNavigate } from "@tanstack/react-router";
+import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { useCallback } from "react";
-import { viewportAnimationDuration } from "#src/lib/motion";
 import {
   displayNodesAtom,
   selectOnlyNodeAtom,
 } from "#src/lib/workflow-graph-store";
-import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
+import { scopeOfNode } from "#src/lib/workflow-scope-graph";
 import {
-  WORKFLOW_NODE_HEIGHT,
-  WORKFLOW_NODE_WIDTH,
-} from "#src/lib/workflow-node-dimensions";
+  scopeId,
+  workspaceAddressId,
+  workspaceRouteSearch,
+} from "#src/lib/workflow-navigation-state";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
+import {
+  activeWorkspaceAddressAtom,
+  setWorkspaceSelectionAtom,
+} from "#src/lib/workflow-workspace-navigation";
+import { requestRevealPlacementAtom } from "./canvas-reveal/reveal-requests";
+import { useRevealNavigation } from "./canvas-reveal/use-reveal-navigation";
 import { useWorkflowNodeInspection } from "./use-workflow-node-inspection";
 
-type Bounds = { x: number; y: number; width: number; height: number };
-
 /**
- * Returns a node's canvas bounds when it has an unmeasured parent. Group members
- * use positions relative to their Group frame, so their ancestors contribute to
- * the final position.
+ * Select a node, open its inspector, and ask the canvas camera to place it
+ * beside Canvas Reveal. A Group member is shown on its focused Group canvas and
+ * any other node on the overview, so reaching a node in the other scope pushes
+ * that scope's route and selects the node there. The zoom is kept unless the
+ * node needs less to fit, and no graph data changes.
  */
-export function workflowNodeBounds(
-  nodes: readonly WorkflowNode[],
-  node: WorkflowNode
-): Bounds {
-  const byId = new Map(nodes.map((item) => [item.id, item]));
-  let x = node.position.x;
-  let y = node.position.y;
-  let parentId = node.parentId;
-  while (parentId) {
-    const parent = byId.get(parentId);
-    if (!parent) {
-      break;
-    }
-    x += parent.position.x;
-    y += parent.position.y;
-    parentId = parent.parentId;
-  }
-
-  return {
-    x,
-    y,
-    width:
-      node.measured?.width ??
-      node.width ??
-      node.initialWidth ??
-      WORKFLOW_NODE_WIDTH,
-    height:
-      node.measured?.height ??
-      node.height ??
-      node.initialHeight ??
-      WORKFLOW_NODE_HEIGHT,
-  };
-}
-
-/** Focus a displayed node at a readable scale without changing persistable graph data. */
 export function useFocusWorkflowNode(): (input: {
   nodeId: string;
   workflowId: string;
@@ -64,39 +35,51 @@ export function useFocusWorkflowNode(): (input: {
   const workflowId = useAtomValue(currentWorkflowIdAtom);
   const inspectNode = useWorkflowNodeInspection();
   const selectOnlyNode = useSetAtom(selectOnlyNodeAtom);
-  const { getViewport, setCenter } = useReactFlow<WorkflowNode, WorkflowEdge>();
-  const store = useStoreApi<WorkflowNode, WorkflowEdge>();
+  const setWorkspaceSelection = useSetAtom(setWorkspaceSelectionAtom);
+  const requestPlacement = useSetAtom(requestRevealPlacementAtom);
+  const navigate = useNavigate({ from: "/workflows/$workflowId" });
+  const navigation = useRevealNavigation();
+  const store = useStore();
   return useCallback(
     (input) => {
       if (workflowId !== input.workflowId) {
         return false;
       }
-      const node = nodes.find((item) => item.id === input.nodeId);
-      if (!node) {
+      if (!nodes.some((item) => item.id === input.nodeId)) {
         return false;
       }
-
-      const internal = store.getState().nodeLookup.get(node.id);
-      const fallback = workflowNodeBounds(nodes, node);
-      const position = internal?.internals.positionAbsolute ?? fallback;
-      const width = internal?.measured?.width ?? fallback.width;
-      const height = internal?.measured?.height ?? fallback.height;
-      const zoom = Math.max(getViewport().zoom, 1);
-
-      selectOnlyNode(node.id);
-      inspectNode(node.id);
-      void setCenter(position.x + width / 2, position.y + height / 2, {
-        duration: viewportAnimationDuration(),
-        zoom,
+      const scope = scopeOfNode(nodes, input.nodeId);
+      const active = store.get(activeWorkspaceAddressAtom);
+      if (scopeId(scope) === scopeId(active.scope)) {
+        selectOnlyNode(input.nodeId);
+        inspectNode(input.nodeId);
+        requestPlacement({
+          addressId: workspaceAddressId(active),
+          nodeIds: [input.nodeId],
+        });
+        return true;
+      }
+      const target = { ...active, scope };
+      setWorkspaceSelection({
+        address: target,
+        selection: { nodeIds: [input.nodeId], edgeIds: [] },
       });
+      requestPlacement({
+        addressId: workspaceAddressId(target),
+        nodeIds: [input.nodeId],
+      });
+      navigation.showPressedNode({ address: target, nodeId: input.nodeId });
+      void navigate({ search: workspaceRouteSearch(target) });
       return true;
     },
     [
-      getViewport,
       inspectNode,
+      navigate,
+      navigation,
       nodes,
+      requestPlacement,
       selectOnlyNode,
-      setCenter,
+      setWorkspaceSelection,
       store,
       workflowId,
     ]

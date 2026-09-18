@@ -174,15 +174,17 @@ const workflowAddNodeDataSchema = Schema.StructWithRest(
   unknownRest
 );
 
-const workflowGroupConfigSchema = Schema.Struct({
-  entryNodeIds: Schema.optional(listOf(NonEmptyTrimmedString)),
-  exitNodeIds: Schema.optional(listOf(NonEmptyTrimmedString)),
-  // Baked at nest time so GroupNode can paint its one outlet without
-  // scanning the graph for the exit Condition.
-  outletHandle: Schema.optional(Schema.Literal("true")),
-}).annotate({
-  message: "Group config must be an object",
-});
+/** Group config is empty: membership and positions belong to member nodes. */
+const workflowGroupConfigSchema = Schema.Record(Schema.String, Schema.Unknown)
+  .annotate({ message: "Group config must be an object" })
+  .check(
+    Schema.makeFilter((config: Record<string, unknown>) =>
+      Object.keys(config).map((key) => ({
+        path: [key],
+        issue: "Group config must be empty",
+      }))
+    )
+  );
 
 const workflowGroupNodeDataSchema = Schema.StructWithRest(
   Schema.Struct({

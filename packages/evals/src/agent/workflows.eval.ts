@@ -20,6 +20,7 @@ import {
   capabilityScenarios,
   complexScenarios,
   focusedScenarios,
+  groupScenarios,
 } from "#src/agent/scenarios";
 
 const workflowAgentHarness = createWorkflowAgentHarness((input) =>
@@ -55,6 +56,21 @@ describeEval(
           threshold: null,
         });
       }
+    });
+  }
+);
+
+describeEval(
+  "workflow build agent Group behavior",
+  {
+    harness: workflowAgentHarness,
+    judges: deterministicJudges,
+    judgeThreshold: 1,
+    skipIf: skipWithoutModelKey,
+  },
+  (it) => {
+    it.for(groupScenarios)("$name", async ({ input }, { run }) => {
+      await run(input);
     });
   }
 );

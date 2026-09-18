@@ -189,7 +189,7 @@ function WaitSubscriptionRow({
 
   // The entry node's rules, if this graph has one, so the seed below can read
   // this workflow's own Correlation Path rather than the Event Author's
-  // declaration -- the two disagree the moment the Lifecycle panel overrides one.
+  // declaration -- the two disagree the moment the Lifecycle Node inspector overrides one.
   const entryRules = useMemo(
     () =>
       nodes

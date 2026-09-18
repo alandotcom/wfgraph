@@ -26,8 +26,15 @@ import {
   TooltipTrigger,
 } from "#src/components/ui/tooltip";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
-import { useEventSplitOutlets } from "#src/lib/event-split-outlets";
-import { getUpstreamConditionFields } from "#src/lib/upstream-node-fields";
+import {
+  EVENT_SPLIT_HEADING,
+  EVENT_SPLIT_NO_SOURCE_TEXT,
+  useEventSplitOutlets,
+} from "#src/lib/event-split-outlets";
+import {
+  type ConditionSelectableField,
+  getUpstreamConditionFields,
+} from "#src/lib/upstream-node-fields";
 import {
   edgesAtom,
   nodesAtom,
@@ -50,6 +57,14 @@ import { ActionConfigRenderer } from "./action-config-renderer";
 import { ConditionBuilderRow } from "./condition-builder-row";
 import type { UpdateNodeConfig } from "./node-config-patch";
 import { WaitEventSelect } from "./wait-event-select";
+import {
+  WAIT_DELAY_TIMING_OPTIONS,
+  WAIT_FIELD_LABELS,
+  WAIT_GATE_OPTIONS,
+  WAIT_MODE_OPTIONS,
+  WAIT_TIMEOUT_OPTIONS,
+  WAIT_WINDOW_OPTIONS,
+} from "./wait-options";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
 import { can } from "#src/lib/authorization";
 import { settledProviderParameter } from "#src/lib/provider-parameters";
@@ -72,27 +87,6 @@ type CategoryActionOption = {
   logoUrl?: string | undefined;
   integration?: string | undefined;
 };
-
-const WAIT_DELAY_TIMING_OPTIONS = [
-  { value: "duration", label: "Wait for duration" },
-  { value: "until", label: "Wait until date/time" },
-];
-const WAIT_GATE_OPTIONS = [
-  { value: "off", label: "Off (continue immediately)" },
-  { value: "require_actual_wait", label: "Skip branch when already due" },
-];
-const WAIT_WINDOW_OPTIONS = [
-  { value: "off", label: "Off (allow any time)" },
-  { value: "daily_window", label: "Daily window" },
-];
-const WAIT_TIMEOUT_OPTIONS = [
-  { value: "continue", label: "Continue workflow" },
-  { value: "skip", label: "Skip remaining branch" },
-];
-const WAIT_MODE_OPTIONS = [
-  { value: "delay", label: "Wait for time" },
-  { value: "event", label: "Wait for an event" },
-];
 
 function OptionLogo({
   logoUrl,
@@ -122,36 +116,52 @@ function OptionLogo({
 }
 
 /**
- * The Condition node's rule builder, over what the nodes above it produce.
+ * The values the rules of the Condition `nodeId` can compare: what the nodes
+ * above it produce. A null id has none.
+ */
+export function useUpstreamConditionFields(
+  nodeId: string | null
+): ConditionSelectableField[] {
+  const nodes = useAtomValue(nodesAtom);
+  const edges = useAtomValue(edgesAtom);
+  const catalog = useExtensionCatalog();
+  return useMemo(
+    () =>
+      nodeId === null
+        ? []
+        : getUpstreamConditionFields({
+            currentNodeId: nodeId,
+            nodes,
+            edges,
+            catalog,
+          }),
+    [nodeId, nodes, edges, catalog]
+  );
+}
+
+/**
+ * The rule builder of the Condition `nodeId`, over `fields`, the values
+ * `useUpstreamConditionFields` answers for it. `defaultEditing` opens the
+ * builder's controls on mount.
  *
  * The model and the CEL it compiles to are both stored, because the save path
  * checks one against the other before a run is allowed to read either.
  */
-function ConditionFields({
+export function ConditionFields({
+  nodeId,
+  fields,
   config,
   onUpdateConfig,
   disabled,
+  defaultEditing,
 }: {
+  nodeId: string;
+  fields: ConditionSelectableField[];
   config: Record<string, unknown>;
   onUpdateConfig: UpdateNodeConfig;
   disabled: boolean;
+  defaultEditing?: boolean | undefined;
 }) {
-  const selectedNodeId = useAtomValue(selectedNodeAtom);
-  const nodes = useAtomValue(nodesAtom);
-  const edges = useAtomValue(edgesAtom);
-
-  const catalog = useExtensionCatalog();
-  const fields = useMemo(
-    () =>
-      getUpstreamConditionFields({
-        currentNodeId: selectedNodeId ?? undefined,
-        nodes,
-        edges,
-        catalog,
-      }),
-    [selectedNodeId, nodes, edges, catalog]
-  );
-
   const handleChange = useCallback(
     (next: { model: string; expression: string }) => {
       onUpdateConfig({
@@ -164,7 +174,8 @@ function ConditionFields({
 
   return (
     <ConditionBuilderRow
-      currentNodeId={selectedNodeId ?? undefined}
+      currentNodeId={nodeId}
+      defaultEditing={defaultEditing}
       description="Build a condition from the Lifecycle Node and upstream action output fields. Timestamp fields support relative and absolute time filters."
       disabled={disabled}
       emptyFieldsMessage="No upstream fields available. Connect this node to the Lifecycle Node or an action with typed outputs first."
@@ -184,6 +195,19 @@ function ConditionFields({
   );
 }
 
+/** The rule builder of the selected node, which the panel shows for a Condition. */
+function SelectedConditionFields(input: {
+  config: Record<string, unknown>;
+  onUpdateConfig: UpdateNodeConfig;
+  disabled: boolean;
+}) {
+  const selectedNodeId = useAtomValue(selectedNodeAtom);
+  const fields = useUpstreamConditionFields(selectedNodeId);
+  return selectedNodeId === null ? null : (
+    <ConditionFields {...input} fields={fields} nodeId={selectedNodeId} />
+  );
+}
+
 /**
  * What the Event Split node splits on, which is a fact of the graph rather than
  * anything to fill in.
@@ -199,12 +223,11 @@ function EventSplitFields() {
 
   return (
     <div className="space-y-3 rounded-md border bg-muted/30 p-3">
-      <p className="font-medium text-sm">Splits On Event</p>
+      <p className="font-medium text-sm">{EVENT_SPLIT_HEADING}</p>
 
       {outlets.length === 0 ? (
         <p className="text-muted-foreground text-xs">
-          No Event reaches this node yet. Connect it below the Lifecycle Node,
-          and it draws one outlet per Start Event.
+          {EVENT_SPLIT_NO_SOURCE_TEXT}
         </p>
       ) : (
         <>
@@ -258,7 +281,9 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
       <p className="font-medium text-sm">Time-Based Wait</p>
 
       <div className="space-y-2">
-        <Label htmlFor="waitDelayTimingMode">Time input mode</Label>
+        <Label htmlFor="waitDelayTimingMode">
+          {WAIT_FIELD_LABELS.waitDelayTimingMode}
+        </Label>
         <Select
           disabled={disabled}
           items={WAIT_DELAY_TIMING_OPTIONS}
@@ -283,7 +308,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
 
       {delayTimingMode === "duration" ? (
         <div className="space-y-2">
-          <Label htmlFor="waitDuration">Wait for (duration)</Label>
+          <Label htmlFor="waitDuration">{WAIT_FIELD_LABELS.waitDuration}</Label>
           <TemplateBadgeInput
             disabled={disabled}
             fieldType={WAIT_VALUE_TARGETS.waitDuration.type}
@@ -299,7 +324,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
       ) : (
         <>
           <div className="space-y-2">
-            <Label htmlFor="waitUntil">Wait until this date/time</Label>
+            <Label htmlFor="waitUntil">{WAIT_FIELD_LABELS.waitUntil}</Label>
             <TemplateBadgeInput
               disabled={disabled}
               fieldType={WAIT_VALUE_TARGETS.waitUntil.type}
@@ -315,9 +340,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="waitOffset">
-              Send before/after that time (optional)
-            </Label>
+            <Label htmlFor="waitOffset">{WAIT_FIELD_LABELS.waitOffset}</Label>
             <TemplateBadgeInput
               disabled={disabled}
               fieldType={WAIT_VALUE_TARGETS.waitOffset.type}
@@ -334,9 +357,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
       )}
 
       <div className="space-y-2">
-        <Label htmlFor="waitGateMode">
-          Continue only if time actually elapsed
-        </Label>
+        <Label htmlFor="waitGateMode">{WAIT_FIELD_LABELS.waitGateMode}</Label>
         <Select
           disabled={disabled}
           items={WAIT_GATE_OPTIONS}
@@ -361,7 +382,9 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="waitAllowedHoursMode">Allowed send window</Label>
+        <Label htmlFor="waitAllowedHoursMode">
+          {WAIT_FIELD_LABELS.waitAllowedHoursMode}
+        </Label>
         <Select
           disabled={disabled}
           items={WAIT_WINDOW_OPTIONS}
@@ -390,7 +413,9 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
       {isWindowEnabled && (
         <div className="grid grid-cols-2 gap-2">
           <div className="space-y-2">
-            <Label htmlFor="waitAllowedStartTime">Window start</Label>
+            <Label htmlFor="waitAllowedStartTime">
+              {WAIT_FIELD_LABELS.waitAllowedStartTime}
+            </Label>
             <Input
               disabled={disabled}
               id="waitAllowedStartTime"
@@ -402,7 +427,9 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="waitAllowedEndTime">Window end</Label>
+            <Label htmlFor="waitAllowedEndTime">
+              {WAIT_FIELD_LABELS.waitAllowedEndTime}
+            </Label>
             <Input
               disabled={disabled}
               id="waitAllowedEndTime"
@@ -422,7 +449,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
 
       <div className="space-y-2">
         <Label htmlFor="waitTimezone">
-          Timezone
+          {WAIT_FIELD_LABELS.waitTimezone}
           {isWindowEnabled ? " (required for send window)" : " (optional)"}
         </Label>
         <TimezoneSelect
@@ -452,7 +479,7 @@ function EventWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
       />
 
       <div className="space-y-2">
-        <Label htmlFor="waitTimeout">Stop waiting after</Label>
+        <Label htmlFor="waitTimeout">{WAIT_FIELD_LABELS.waitTimeout}</Label>
         <TemplateBadgeInput
           disabled={disabled}
           fieldType={WAIT_VALUE_TARGETS.waitTimeout.type}
@@ -468,7 +495,9 @@ function EventWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="waitTimeoutBehavior">On timeout</Label>
+        <Label htmlFor="waitTimeoutBehavior">
+          {WAIT_FIELD_LABELS.waitTimeoutBehavior}
+        </Label>
         <Select
           disabled={disabled}
           items={WAIT_TIMEOUT_OPTIONS}
@@ -536,7 +565,7 @@ function WaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
   return (
     <>
       <div className="space-y-2">
-        <Label htmlFor="waitMode">How should this step wait?</Label>
+        <Label htmlFor="waitMode">{WAIT_FIELD_LABELS.waitMode}</Label>
         <Select
           disabled={disabled}
           items={WAIT_MODE_OPTIONS}
@@ -594,7 +623,7 @@ function SystemActionFields({
   switch (actionType) {
     case BUILT_IN_ACTION_IDS.condition:
       return (
-        <ConditionFields
+        <SelectedConditionFields
           config={config}
           disabled={disabled}
           onUpdateConfig={onUpdateConfig}

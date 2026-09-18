@@ -13,6 +13,11 @@ import {
 } from "#src/lib/workflow-comparison-store";
 import { isPublicationReviewActiveAtom } from "#src/lib/workflow-publication-review-store";
 import { saveWorkflowAtom } from "#src/lib/workflow-save-store";
+import {
+  singleSelectedEdgeId,
+  singleSelectedNodeId,
+} from "#src/lib/canvas-selection";
+import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 
 export const nodesStateAtom = atom<WorkflowNode[]>([]);
@@ -29,12 +34,10 @@ const pinnedRunGraphAtom = atom<{
  * when the run is deselected. Never saved: draft atoms stay draft-only so a
  * Cmd+S or toolbar save cannot persist the run graph over the editor's draft.
  *
- * Reads as null outside Runs, on the same `workflowWorkspaceViewAtom`
- * gate `selectedExecutionIdAtom` reads through, because the two describe one run
- * and must go off the canvas together. Leaving Runs through workspace
- * navigation clears the presentation without requiring route state to do it.
- * `ExecutionOverlaySync` clears the write side when run navigation clears the
- * route selection.
+ * Reads as null outside Runs, on the same route address
+ * `selectedExecutionIdAtom` reads, because the two describe one run and must go
+ * off the canvas together. `ExecutionOverlaySync` clears the write side when
+ * the route closes the run.
  */
 export const executionOverlayGraphAtom = atom(
   (get) =>
@@ -56,8 +59,19 @@ export const executionOverlayGraphAtom = atom(
   }
 );
 
-export const selectedNodeAtom = atom<string | null>(null);
-export const selectedEdgeAtom = atom<string | null>(null);
+/**
+ * The selected node of the active workspace address when the selection is
+ * exactly that one node, otherwise null. `activeSelectionAtom` holds the whole
+ * selection, including a multi-selection.
+ */
+export const selectedNodeAtom = atom((get) =>
+  singleSelectedNodeId(get(activeSelectionAtom))
+);
+
+/** The selected edge when the selection is exactly that one edge. */
+export const selectedEdgeAtom = atom((get) =>
+  singleSelectedEdgeId(get(activeSelectionAtom))
+);
 
 type HistoryState = {
   nodes: WorkflowNode[];

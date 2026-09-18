@@ -2,18 +2,31 @@ import {
   BaseEdge,
   EdgeLabelRenderer,
   type EdgeProps,
-  type InternalNode,
-  Position,
   useInternalNode,
 } from "@xyflow/react";
-import { memo } from "react";
+import { createContext, memo, useContext } from "react";
 import { resolveEdgeLabel } from "#src/components/flow-elements/edge-label";
-import { getWorkflowEdgePath } from "#src/components/flow-elements/edge-path";
+import {
+  getEdgeParams,
+  getWorkflowEdgePath,
+} from "#src/components/flow-elements/edge-path";
 import {
   COMPARISON_EDGE_ANNOTATION,
   type ComparisonEdgeAnnotation,
   type WorkflowEdge,
 } from "#src/lib/workflow-graph-types";
+
+/**
+ * What the + control on a connection does: put a step inside that connection.
+ * The canvas fills the slot while inserting steps is offered; null leaves every
+ * connection without the control, as a run, a comparison and a phone do.
+ */
+export const InsertStepSlot = createContext<
+  ((input: { edgeId: string }) => void) | null
+>(null);
+
+/** The radius of the + control a connection draws, in flow pixels. */
+const INSERT_CONTROL_RADIUS = 11;
 
 export function comparisonEdgeStyle(
   comparison: ComparisonEdgeAnnotation | undefined
@@ -36,88 +49,6 @@ export function comparisonEdgeStyle(
   }
 }
 
-const getHandleCoordsByPosition = (
-  node: InternalNode,
-  handleType: "source" | "target",
-  handlePosition: Position,
-  handleId?: string | null
-) => {
-  const handles = node.internals.handleBounds?.[handleType];
-  if (!(handles && handles.length > 0)) {
-    return [0, 0] as const;
-  }
-
-  const handle =
-    (handleId
-      ? handles.find((candidate) => (candidate.id ?? null) === handleId)
-      : undefined) ??
-    handles.find((candidate) => candidate.position === handlePosition) ??
-    handles[0];
-
-  if (!handle) {
-    return [0, 0] as const;
-  }
-
-  let offsetX = handle.width / 2;
-  let offsetY = handle.height / 2;
-
-  // this is a tiny detail to make the markerEnd of an edge visible.
-  // The handle position that gets calculated has the origin top-left, so depending which side we are using, we add a little offset
-  // when the handlePosition is Position.Right for example, we need to add an offset as big as the handle itself in order to get the correct position
-  switch (handlePosition) {
-    case Position.Left:
-      offsetX = 0;
-      break;
-    case Position.Right:
-      offsetX = handle.width;
-      break;
-    case Position.Top:
-      offsetY = 0;
-      break;
-    case Position.Bottom:
-      offsetY = handle.height;
-      break;
-    default:
-      throw new Error("Invalid handle position");
-  }
-
-  const x = node.internals.positionAbsolute.x + handle.x + offsetX;
-  const y = node.internals.positionAbsolute.y + handle.y + offsetY;
-
-  return [x, y] as const;
-};
-
-const getEdgeParams = (
-  source: InternalNode,
-  target: InternalNode,
-  sourceHandle?: string | null,
-  targetHandle?: string | null
-) => {
-  const sourcePos = Position.Bottom;
-  const [sx, sy] = getHandleCoordsByPosition(
-    source,
-    "source",
-    sourcePos,
-    sourceHandle
-  );
-  const targetPos = Position.Top;
-  const [tx, ty] = getHandleCoordsByPosition(
-    target,
-    "target",
-    targetPos,
-    targetHandle
-  );
-
-  return {
-    sx,
-    sy,
-    tx,
-    ty,
-    sourcePos,
-    targetPos,
-  };
-};
-
 const Animated = memo(function Animated({
   id,
   source,
@@ -130,6 +61,10 @@ const Animated = memo(function Animated({
 }: EdgeProps<WorkflowEdge>) {
   const sourceNode = useInternalNode(source);
   const targetNode = useInternalNode(target);
+  const insertStepOnEdge = useContext(InsertStepSlot);
+  // A painted connection that stands for nothing stored, such as the edge to a
+  // "Path ends" stub, takes no control: there is nothing to insert into.
+  const insertStep = data?.insertable === false ? null : insertStepOnEdge;
 
   if (!(sourceNode && targetNode)) {
     return null;
@@ -142,16 +77,18 @@ const Animated = memo(function Animated({
     targetHandleId
   );
 
-  const [edgePath, labelX, labelY] = getWorkflowEdgePath({
+  const pathInput = {
     sourceX: sx,
     sourceY: sy,
     sourcePosition: sourcePos,
     targetX: tx,
     targetY: ty,
     targetPosition: targetPos,
-  });
+    centerY: data?.centerY,
+  };
+  const [edgePath, labelX, labelY] = getWorkflowEdgePath(pathInput);
   const edgeLabel = resolveEdgeLabel(sourceHandleId, data);
-  // `displayEdgesAtom` sets this on every edge landing where the run cannot go.
+  // `canvasEdgesAtom` sets this on every edge landing where the run cannot go.
   const inactive = data?.inactive === true;
   const comparison = data?.[COMPARISON_EDGE_ANNOTATION];
   const comparisonStyle = comparisonEdgeStyle(comparison);
@@ -160,6 +97,7 @@ const Animated = memo(function Animated({
     <>
       <BaseEdge
         id={id}
+        interactionWidth={20}
         path={edgePath}
         style={{
           ...style,
@@ -182,6 +120,37 @@ const Animated = memo(function Animated({
               : "dashdraw 0.5s linear infinite",
         }}
       />
+      {insertStep && (
+        <g
+          aria-label="Insert step"
+          className="insert-step-control cursor-pointer opacity-0 outline-none transition-opacity duration-150 focus-visible:opacity-100 motion-reduce:transition-none"
+          onClick={(event) => {
+            event.stopPropagation();
+            insertStep({ edgeId: id });
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              insertStep({ edgeId: id });
+            }
+          }}
+          role="button"
+          tabIndex={0}
+          transform={`translate(${labelX}, ${labelY})`}
+        >
+          <circle
+            className="fill-background stroke-border"
+            r={INSERT_CONTROL_RADIUS}
+            strokeWidth={1}
+          />
+          <path
+            className="stroke-foreground"
+            d="M -4 0 H 4 M 0 -4 V 4"
+            strokeLinecap="round"
+            strokeWidth={1.5}
+          />
+        </g>
+      )}
       {edgeLabel && (
         <EdgeLabelRenderer>
           <div

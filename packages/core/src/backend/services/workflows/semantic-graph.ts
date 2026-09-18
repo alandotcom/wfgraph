@@ -1,10 +1,12 @@
 /**
  * Defines the canonical workflow meaning used by publication features.
- * Editor geometry, graph metadata, array order, and generated edge ids stay
- * outside this projection.
+ * Editor geometry, graph metadata, array order, generated edge ids, and the
+ * run panel's test payloads on the entry node config stay outside this
+ * projection.
  */
 
 import { sortBy } from "es-toolkit/array";
+import { omit } from "es-toolkit/object";
 import { isEmptyObject } from "es-toolkit/predicate";
 import {
   isJsonObject,
@@ -12,6 +14,7 @@ import {
   type JsonValue,
 } from "@wfgraph/shared/types/json";
 import { persistedNodeEnabled } from "@wfgraph/shared/graph/node-enabled";
+import { TEST_PAYLOADS_CONFIG_KEY } from "@wfgraph/shared/lifecycle/test-payloads";
 import type {
   SerializedWorkflowEdge,
   SerializedWorkflowGraph,
@@ -89,6 +92,9 @@ export function projectSemanticWorkflowNodeFields(
   node: SerializedWorkflowNode
 ): JsonObject {
   const data = node.attributes.data;
+  // Each node type narrows its own config, and their shared key set is empty,
+  // so the config is read as a plain record to drop a key by name.
+  const config: Record<string, unknown> | undefined = data.config;
   return normalizedObject({
     type: node.attributes.type,
     parentId: node.attributes.parentId,
@@ -97,7 +103,12 @@ export function projectSemanticWorkflowNodeFields(
       label: data.label,
       description: data.description,
       enabled: persistedNodeEnabled(data.enabled),
-      config: data.config,
+      // Test payloads are samples the editor sends with a run request, and the
+      // engine never reads them, so a changed sample is not a workflow change.
+      config:
+        config === undefined
+          ? undefined
+          : omit(config, [TEST_PAYLOADS_CONFIG_KEY]),
     },
   });
 }

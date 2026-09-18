@@ -6,8 +6,10 @@ import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
 import {
   JsonPropertyInspector,
   OutputDisplay,
+  runNodeEvidenceLabel,
 } from "#src/components/workflow/workflow-run-shared";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import { groupRunStatusLabel } from "@wfgraph/shared/graph/group-run-status";
 
 const testCatalog: ExtensionCatalog = {
   entities: [],
@@ -51,6 +53,22 @@ const SLACK_UI: Record<string, IntegrationUi> = {
     },
   },
 };
+
+describe("run status words", () => {
+  // A Group's summary header, its member rows, and the step cards' chips name
+  // one finished step the same way.
+  it("names a step's outcome in the words a Group's status uses", () => {
+    expect(runNodeEvidenceLabel("success").text).toBe(
+      groupRunStatusLabel("successful")
+    );
+    expect(runNodeEvidenceLabel("error").text).toBe(
+      groupRunStatusLabel("failed")
+    );
+    expect(runNodeEvidenceLabel("cancelled").text).toBe(
+      groupRunStatusLabel("canceled")
+    );
+  });
+});
 
 function renderOutput(actionType: string) {
   return render(

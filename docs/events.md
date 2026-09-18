@@ -78,7 +78,7 @@ const appointmentScheduled = defineEvent({
 ```
 
 An Event may expose another binding, such as `clinic`, beside `patient`. The record key
-is the binding name shown in the Lifecycle panel. `selectEntityId` receives
+is the binding name the Lifecycle Node's inspector shows. `selectEntityId` receives
 the validated Event value and must synchronously return a non-empty string. Different
 Events may select the same Entity type from different payload fields. Pass only the Events
 in `extensions.events`; assembly discovers their referenced Entity definitions transitively
@@ -127,7 +127,7 @@ and admits a path that resolves to a string.
 - Two Events describe one entity when their Entity Values are equal, also where their paths
   differ.
 - The path is optional. The author of an imported Event often lacks one, so the Workflow
-  Builder supplies it in the Lifecycle panel. The path of the builder outranks the path of
+  Builder supplies it on the Lifecycle Node. The path of the builder outranks the path of
   the author in every case.
 
 **A datetime field declares `format: "date-time"`.** That JSON Schema keyword gives the
@@ -200,7 +200,7 @@ would break a wait match that compares a literal captured at park time.
 
 ## The Lifecycle model
 
-A Workflow Builder declares the Lifecycle Rules in the Lifecycle panel:
+A Workflow Builder declares the Lifecycle Rules on the Lifecycle Node:
 
 - which Events start a run and the payload filters for those Events;
 - which Events cancel a run and the payload filters for those Events;

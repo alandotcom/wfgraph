@@ -572,9 +572,7 @@ export function buildStep<TInput, TOutput>(
   }
 
   return (app) => (rawInput, node) =>
-    Effect.uninterruptible(
-      runStep(app, rawInput, readStepContext(rawInput._context), node)
-    );
+    runStep(app, rawInput, readStepContext(rawInput._context), node);
 }
 
 /**

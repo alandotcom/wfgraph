@@ -290,7 +290,7 @@ export default function WorkflowsPage() {
         void navigate({
           to: "/workflows/$workflowId",
           params: { workflowId: item.workflowId },
-          search: { executionId: item.id },
+          search: { view: "runs", executionId: item.id },
         });
       }
     },

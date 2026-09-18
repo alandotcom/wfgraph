@@ -6,7 +6,7 @@
 
 import type { NodeChange } from "@xyflow/react";
 import { compact } from "es-toolkit/array";
-import { atom } from "jotai";
+import { atom, type Getter } from "jotai";
 import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
@@ -16,8 +16,9 @@ import {
 } from "#src/lib/workflow-comparison";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
+import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
 
-export type ComparisonSubview = "review" | "properties" | "history";
+export type ComparisonSubview = "review" | "history";
 
 export type WorkflowComparisonSession = {
   payload: WorkflowComparisonPayload;
@@ -30,6 +31,10 @@ type ComparisonSessions = Readonly<Record<string, WorkflowComparisonSession>>;
 type ComparisonRequestState = {
   epoch: number;
   status: "idle" | "pending" | "error";
+  /** The base version the latest request named, null for the current publication. */
+  baseVersionId: string | null;
+  /** The base version the latest request named when the server had none. */
+  missingBaseVersionId?: string | undefined;
 };
 
 const comparisonSessionsStateAtom = atom<ComparisonSessions>({});
@@ -41,7 +46,50 @@ function requestStateFor(
   states: Readonly<Record<string, ComparisonRequestState>>,
   workflowId: string
 ): ComparisonRequestState {
-  return states[workflowId] ?? { epoch: 0, status: "idle" };
+  return (
+    states[workflowId] ?? { epoch: 0, status: "idle", baseVersionId: null }
+  );
+}
+
+/**
+ * Whether `session` is the comparison an address naming `baseVersionId` shows.
+ * A null `baseVersionId` names no base, so any installed comparison is the one
+ * it shows.
+ */
+export function comparisonShowsBase(
+  session: WorkflowComparisonSession,
+  baseVersionId: string | null
+): boolean {
+  return (
+    baseVersionId === null || session.payload.baseVersion?.id === baseVersionId
+  );
+}
+
+/**
+ * The base version id the active address names: the `compare` of a Changes
+ * route. Null when the address is not Changes or names no base, since such an
+ * address accepts any comparison.
+ */
+export const routeComparisonBaseIdAtom = atom((get): string | null => {
+  const { key } = get(activeWorkspaceAddressAtom);
+  return key.workspace === "changes" ? key.baseVersionId : null;
+});
+
+/**
+ * Whether the active address is a Changes route of `workflowId` naming a base
+ * other than `baseVersionId`.
+ */
+function routeNamesOtherBase(
+  get: Getter,
+  workflowId: string,
+  baseVersionId: string | null
+): boolean {
+  const routeBaseId = get(routeComparisonBaseIdAtom);
+  return (
+    get(activeWorkspaceAddressAtom).workflowId === workflowId &&
+    routeBaseId !== null &&
+    routeBaseId !== baseVersionId
+  );
 }
 
 /** The comparison session for the workflow open in the editor, if one exists. */
@@ -83,21 +131,52 @@ export const isComparisonErrorAtom = atom((get) => {
     : false;
 });
 
-/** Start a request in this editor lifetime and return its workflow-local epoch. */
+/**
+ * The base version id the current workflow's latest comparison request named,
+ * or null when it named the current publication or no request was made.
+ */
+export const comparisonRequestBaseIdAtom = atom((get) => {
+  const workflowId = get(currentWorkflowIdAtom);
+  return workflowId
+    ? requestStateFor(get(comparisonRequestStateAtom), workflowId).baseVersionId
+    : null;
+});
+
+/**
+ * The base version id the current workflow's latest comparison request named
+ * when that version does not exist, or null.
+ */
+export const missingComparisonBaseIdAtom = atom((get) => {
+  const workflowId = get(currentWorkflowIdAtom);
+  return workflowId
+    ? (requestStateFor(get(comparisonRequestStateAtom), workflowId)
+        .missingBaseVersionId ?? null)
+    : null;
+});
+
+/**
+ * Start a request in this editor lifetime and return its workflow-local epoch.
+ * `baseVersionId` is the base the request names, null for the current
+ * publication.
+ */
 export const beginWorkflowComparisonRequestAtom = atom(
   null,
-  (get, set, workflowId: string) => {
+  (get, set, workflowId: string, baseVersionId: string | null = null) => {
     const next =
       requestStateFor(get(comparisonRequestStateAtom), workflowId).epoch + 1;
     set(comparisonRequestStateAtom, (states) => ({
       ...states,
-      [workflowId]: { epoch: next, status: "pending" },
+      [workflowId]: { epoch: next, status: "pending", baseVersionId },
     }));
     return next;
   }
 );
 
-/** A response can unlock only the request that is still current for its workflow. */
+/**
+ * A response can unlock only the request that is still current for its
+ * workflow. A failure for a base other than the one the active Changes route
+ * names settles as idle, so it is never reported against that route.
+ */
 export const settleWorkflowComparisonRequestAtom = atom(
   null,
   (
@@ -107,6 +186,8 @@ export const settleWorkflowComparisonRequestAtom = atom(
       workflowId: string;
       epoch: number;
       outcome?: "success" | "error";
+      /** The base version id the request named, when that version does not exist. */
+      missingBaseVersionId?: string | undefined;
     }
   ) => {
     const state = requestStateFor(
@@ -116,27 +197,45 @@ export const settleWorkflowComparisonRequestAtom = atom(
     if (state.epoch !== input.epoch) {
       return false;
     }
+    const superseded =
+      state.baseVersionId !== null &&
+      routeNamesOtherBase(get, input.workflowId, state.baseVersionId);
     set(comparisonRequestStateAtom, (states) => ({
       ...states,
       [input.workflowId]: {
-        ...state,
-        status: input.outcome === "error" ? "error" : "idle",
+        epoch: state.epoch,
+        status: input.outcome === "error" && !superseded ? "error" : "idle",
+        baseVersionId: state.baseVersionId,
+        missingBaseVersionId: superseded
+          ? undefined
+          : input.missingBaseVersionId,
       },
     }));
     return true;
   }
 );
 
-/** Read-only display graph that remains separate from the draft graph cells. */
+/**
+ * Read-only display graph that remains separate from the draft graph cells.
+ * Null unless the installed comparison is the one the Changes route names.
+ */
 export const comparisonDisplayGraphAtom = atom<ComparisonDisplayGraph | null>(
   (get) => {
     const session = get(comparisonSessionAtom);
-    return get(workflowWorkspaceViewAtom) === "changes" && session
+    return get(workflowWorkspaceViewAtom) === "changes" &&
+      session &&
+      comparisonShowsBase(session, get(routeComparisonBaseIdAtom))
       ? buildComparisonDisplayGraph(session.payload, session.positionOverrides)
       : null;
   }
 );
 
+/**
+ * Install a comparison response. It is refused when a newer request has
+ * started, and when the active Changes route names a different base than the
+ * response compares against, so a late answer never replaces what that route
+ * shows.
+ */
 export const installWorkflowComparisonAtom = atom(
   null,
   (
@@ -152,7 +251,12 @@ export const installWorkflowComparisonAtom = atom(
   ) => {
     if (
       requestStateFor(get(comparisonRequestStateAtom), input.workflowId)
-        .epoch !== input.epoch
+        .epoch !== input.epoch ||
+      routeNamesOtherBase(
+        get,
+        input.workflowId,
+        input.payload.baseVersion?.id ?? null
+      )
     ) {
       return false;
     }
@@ -186,7 +290,11 @@ export const clearWorkflowComparisonAtom = atom(
     const state = requestStateFor(get(comparisonRequestStateAtom), workflowId);
     set(comparisonRequestStateAtom, (states) => ({
       ...states,
-      [workflowId]: { epoch: state.epoch + 1, status: "idle" },
+      [workflowId]: {
+        epoch: state.epoch + 1,
+        status: "idle",
+        baseVersionId: null,
+      },
     }));
   }
 );

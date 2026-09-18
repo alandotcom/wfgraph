@@ -1,48 +1,45 @@
 import {
   ConnectionMode,
   MiniMap,
-  type Node,
   type NodeMouseHandler,
-  type OnConnect,
-  type OnConnectEnd,
-  type OnConnectStartParams,
   useInternalNode,
   useReactFlow,
   useStoreApi,
   useUpdateNodeInternals,
-  type Connection as XYFlowConnection,
   type Edge as XYFlowEdge,
 } from "@xyflow/react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { useCallback, useMemo, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Canvas } from "#src/components/flow-elements/canvas";
 import { Connection } from "#src/components/flow-elements/connection";
 import { Controls } from "#src/components/flow-elements/controls";
 import "@xyflow/react/dist/style.css";
 
-import { toast } from "sonner";
-import { generateId } from "@wfgraph/shared/utils/id";
-import { Edge } from "#src/components/flow-elements/edge";
+import { Edge, InsertStepSlot } from "#src/components/flow-elements/edge";
+import { useInsertStepOnEdge } from "#src/components/workflow/use-add-step";
 import { Panel } from "#src/components/flow-elements/panel";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { useAfterDelay, useAfterPaint, useDomEvent } from "#src/hooks/effects";
 import { isTextEntry } from "#src/lib/is-text-entry";
 import { viewportAnimationDuration } from "#src/lib/motion";
 import {
-  addNodeAtom,
-  connectNodesAtom,
-  displayEdgesAtom,
+  canvasGraphAtom,
   displayNodesAtom,
   edgesAtom,
   canvasEditingLockedAtom,
+  deleteSelectedItemsAtom,
   executionOverlayGraphAtom,
   isExecutionOverlayActiveAtom,
   onEdgesChangeAtom,
   onNodesChangeAtom,
   redoAtom,
-  selectedEdgeAtom,
-  selectedNodeAtom,
-  selectOnlyNodeAtom,
+  canvasSelectionAtom,
   snapshotHistoryAtom,
   undoAtom,
 } from "#src/lib/workflow-graph-store";
@@ -57,34 +54,46 @@ import {
   workflowGraphUpdateAtom,
   workflowWorkspaceViewAtom,
 } from "#src/lib/workflow-ui-store";
-import {
-  workflowNodeAriaLabel,
-  WORKFLOW_EDGE_TYPE,
-} from "#src/lib/workflow-graph-types";
+import { WORKFLOW_EDGE_TYPE } from "#src/lib/workflow-graph-types";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
-import { refuseDeleteWithNotice } from "#src/lib/node-group";
-import { normalizeSourceHandleForConnection as normalizeSourceHandle } from "./connection-handle";
+import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { ActionNode } from "./nodes/action-node";
 import { AddNode } from "./nodes/add-node";
-import { GroupNode } from "./nodes/group-node";
+import {
+  GroupChangedStepsSlot,
+  type GroupChangedStepsControlProps,
+  GroupNode,
+} from "./nodes/group-node";
+import { GroupChangedStepsButton } from "./canvas-reveal/changes-navigation";
+import { groupBoundaryNodeTypes } from "./nodes/group-boundary-node";
+import { GroupScopeBar } from "./group-scope-bar";
+import { useGroupScopeNavigation } from "./use-group-scope-navigation";
+import { withoutProjectedDimensions } from "#src/lib/group-scope-canvas";
+import { scopeId } from "#src/lib/workflow-navigation-state";
+import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
 import { LifecycleNode } from "./nodes/lifecycle-node";
+import { useCanvasConnections } from "./use-canvas-connections";
 import { useCanvasCopyPaste } from "./use-canvas-copy-paste";
 import { useReflowLayout } from "./use-reflow-layout";
+import {
+  canvasInteractionState,
+  useTopologyAuthoring,
+} from "./canvas-interaction";
+import { useWorkspaceCamera } from "./use-workspace-camera";
+import { useRevealCamera } from "./canvas-reveal/use-reveal-camera";
+import { useRevealOccupiedWidth } from "./canvas-reveal/use-reveal-width";
+import { CANVAS_OBSTACLE_SLOTS } from "./canvas-reveal/reveal-geometry";
 import { useCollectWorkflowIssues } from "#src/hooks/use-workflow-issues";
-import { useWorkflowNodeInspection } from "./use-workflow-node-inspection";
+import {
+  useClearWorkflowNodeInspection,
+  useWorkflowNodeInspection,
+} from "./use-workflow-node-inspection";
 import {
   type ContextMenuState,
   useContextMenuHandlers,
   WorkflowContextMenu,
 } from "./workflow-context-menu";
-import {
-  WORKFLOW_NODE_HEIGHT,
-  WORKFLOW_NODE_WIDTH,
-} from "#src/lib/workflow-node-dimensions";
-import {
-  connectionHandleTypesMatch,
-  connectionRefusalReason,
-} from "./connection-validation";
+import { WORKFLOW_NODE_WIDTH } from "#src/lib/workflow-node-dimensions";
 import { accessibleGraphElements } from "./workflow-canvas-accessibility";
 import {
   canvasSynchronizationKey,
@@ -114,36 +123,31 @@ const edgeTypes = {
  */
 const defaultEdgeOptions = { type: WORKFLOW_EDGE_TYPE };
 
+/** The changed-steps control a Group card draws on a comparison canvas. */
+function renderGroupChangedSteps(props: GroupChangedStepsControlProps) {
+  return <GroupChangedStepsButton {...props} />;
+}
+
 const nodeTypes = {
   lifecycle: LifecycleNode,
   action: ActionNode,
   add: AddNode,
   group: GroupNode,
+  ...groupBoundaryNodeTypes,
 };
-
-export function canvasInteractionState({
-  editingLocked,
-  comparisonActive,
-  overlayActive,
-}: {
-  editingLocked: boolean;
-  comparisonActive: boolean;
-  overlayActive: boolean;
-}) {
-  const comparisonVisible = comparisonActive && !overlayActive;
-  return {
-    comparisonVisible,
-    elementsSelectable: !editingLocked || comparisonVisible,
-    nodesDraggable: !editingLocked || comparisonVisible,
-    edgesFocusable: !comparisonVisible,
-    deleteKeyCode: comparisonVisible ? null : ["Backspace", "Delete"],
-  };
-}
 
 export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const catalog = useExtensionCatalog();
-  const nodes = useAtomValue(displayNodesAtom);
-  const edges = useAtomValue(displayEdgesAtom);
+  // What the active scope paints, and every node of the graph, which the
+  // connection rules read because a Group frame stands for its members.
+  // A phone lays a focused Group out top to bottom whatever its stored
+  // direction, which changes only what the canvas paints.
+  const canvasGraph = useAtomValue(canvasGraphAtom);
+  const { nodes, edges } = canvasGraph;
+  const graphNodes = useAtomValue(displayNodesAtom);
+  const { scope } = useAtomValue(activeWorkspaceAddressAtom);
+  const topologyAuthoring = useTopologyAuthoring();
+  const { onNodeDoubleClick } = useGroupScopeNavigation();
   const storeEdges = useAtomValue(edgesAtom);
   // Draft edits and run-overlay viewing are mutually exclusive: mutating while
   // the overlay is up would write the draft under a canvas that is not showing
@@ -158,15 +162,14 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const workflowGraphUpdate = useAtomValue(workflowGraphUpdateAtom);
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
   const [showMinimap] = useAtom(showMinimapAtom);
+  const revealOccupiedWidth = useRevealOccupiedWidth();
   const onNodesChange = useSetAtom(onNodesChangeAtom);
   const moveComparisonNodes = useSetAtom(moveComparisonNodesAtom);
   const onEdgesChange = useSetAtom(onEdgesChangeAtom);
-  const setSelectedNode = useSetAtom(selectedNodeAtom);
-  const setSelectedEdge = useSetAtom(selectedEdgeAtom);
-  const addNode = useSetAtom(addNodeAtom);
-  const connectNodes = useSetAtom(connectNodesAtom);
-  const selectOnlyNode = useSetAtom(selectOnlyNodeAtom);
+  const selection = useAtomValue(canvasSelectionAtom);
+  const clearSelection = useClearWorkflowNodeInspection();
   const snapshotHistory = useSetAtom(snapshotHistoryAtom);
+  const deleteSelectedItems = useSetAtom(deleteSelectedItemsAtom);
   const undo = useSetAtom(undoAtom);
   const redo = useSetAtom(redoAtom);
   const inspectNode = useWorkflowNodeInspection();
@@ -179,16 +182,33 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   } = useReactFlow();
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const fittedWorkflowIdRef = useRef<string | null>(null);
-  const fitGenerationRef = useRef(0);
+  /** Whether the canvas has made its first placement for a workflow. */
+  const isCanvasPlaced = (workflowId: string) =>
+    fittedWorkflowIdRef.current === workflowId;
   // React Flow owns the semantic wrappers around custom nodes and edges. Build
   // their names from the same catalog labels the cards render, while preserving
   // element identity until the graph or catalog actually changes.
   const accessibleGraph = accessibleGraphElements(nodes, edges, catalog);
+  // The node whose measurement tells the first placement that React Flow holds
+  // the graph, which the placement pins near the top when the scope asks.
+  const anchorNode = accessibleGraph.nodes.find(
+    (node) => node.id === canvasGraph.anchor?.nodeId
+  );
+  const pinnedAnchor = canvasGraph.anchor?.pinToTop ? anchorNode : undefined;
+  // Declared ahead of the synchronized canvas below, so the camera of the
+  // workspace being left is stored before any placement for the next one.
+  const workspaceCamera = useWorkspaceCamera({
+    isCanvasPlaced,
+    paintedNodes: accessibleGraph.nodes,
+    revealOccupiedWidth,
+  });
+  const fitGenerationRef = useRef(0);
   const canvasPresentation = canvasSynchronizationKey({
     workspaceView,
     executionOverlay,
     comparison,
     draftEdges: storeEdges,
+    scope: scopeId(scope),
   });
   const resolvedWorkspacePresentation =
     workspaceView === "runs"
@@ -221,28 +241,28 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const correctViewport = () => {
     const canvasWidth = canvasContainerRef.current?.clientWidth;
     const canvasHeight = canvasContainerRef.current?.clientHeight;
-    const lifecycleNode = accessibleGraph.nodes.find(
-      (node) => node.data.type === "lifecycle"
-    );
     if (
       currentWorkflowId &&
       fittedWorkflowIdRef.current === currentWorkflowId &&
-      lifecycleNode &&
+      pinnedAnchor &&
       canvasWidth &&
       canvasHeight
     ) {
       fitGenerationRef.current += 1;
+      if (workspaceCamera.placeReplacedGraph()) {
+        return;
+      }
       void setViewport(
         presentationViewport({
           canvas: { width: canvasWidth, height: canvasHeight },
           currentViewport: getViewport(),
           graphBounds: getNodesBounds(accessibleGraph.nodes),
           lifecycle: {
-            nodePosition: lifecycleNode.position,
+            nodePosition: pinnedAnchor.position,
             nodeWidth:
-              lifecycleNode.measured?.width ??
-              lifecycleNode.width ??
-              lifecycleNode.initialWidth ??
+              pinnedAnchor.measured?.width ??
+              pinnedAnchor.width ??
+              pinnedAnchor.initialWidth ??
               WORKFLOW_NODE_WIDTH,
             top: 48,
           },
@@ -256,23 +276,29 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
     editingLocked: graphEditingLocked,
     comparisonActive,
     overlayActive,
+    topologyAuthoring,
   });
-  const lifecycleNode = accessibleGraph.nodes.find(
-    (node) => node.data.type === "lifecycle"
-  );
-  const internalLifecycleNode = useInternalNode<WorkflowNode>(
-    lifecycleNode?.id ?? ""
+  // Without topology authoring nothing a gesture or key below would add,
+  // connect, or remove is offered, and the canvas only selects, pans and zooms.
+  const topologyLocked = !interaction.editsTopology;
+  const internalAnchorNode = useInternalNode<WorkflowNode>(
+    anchorNode?.id ?? ""
   );
   // The same pass the Actions menu's "Tidy layout" runs.
   const { canReflow, reflow } = useReflowLayout();
 
-  const connectingNodeId = useRef<string | null>(null);
-  const connectingHandleType = useRef<"source" | "target" | null>(null);
-  const connectingHandleId = useRef<string | null>(null);
-  const justCreatedNodeFromConnection = useRef(false);
   const [readyWorkflowId, setReadyWorkflowId] = useState<string | null>(null);
   const isCanvasReady =
     currentWorkflowId !== null && readyWorkflowId === currentWorkflowId;
+  // The workspace camera restores a scope's saved camera before paint, and
+  // Canvas Reveal's camera runs after paint, so a placement always compares
+  // against the restored camera.
+  const insertStepOnEdge = useInsertStepOnEdge();
+  const revealCamera = useRevealCamera({
+    isCanvasPlaced,
+    isCanvasReady,
+    canvas: canvasContainerRef,
+  });
   const [contextMenuState, setContextMenuState] =
     useState<ContextMenuState>(null);
   const rightClickSelectionRef = useRef<ReadonlySet<string>>(new Set());
@@ -289,12 +315,12 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
     remeasureNodes: updateNodeInternals,
     nodeIds: accessibleGraph.nodes.map((node) => node.id),
     currentWorkflowId,
-    lifecycleNode: lifecycleNode ?? null,
-    internalNode: internalLifecycleNode
+    lifecycleNode: anchorNode ?? null,
+    internalNode: internalAnchorNode
       ? {
-          userNode: internalLifecycleNode.internals.userNode,
-          position: internalLifecycleNode.internals.positionAbsolute,
-          width: internalLifecycleNode.measured.width,
+          userNode: internalAnchorNode.internals.userNode,
+          position: internalAnchorNode.internals.positionAbsolute,
+          width: internalAnchorNode.measured.width,
         }
       : null,
     fitGenerationRef,
@@ -317,11 +343,9 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
       if (event.button !== 2) {
         return;
       }
-      rightClickSelectionRef.current = new Set(
-        nodes.filter((node) => node.selected).map((node) => node.id)
-      );
+      rightClickSelectionRef.current = new Set(selection.nodeIds);
     },
-    { capture: true, enabled: !graphEditingLocked }
+    { capture: true, enabled: !topologyLocked }
   );
   const selectedIdsAtRightClick = useCallback(
     () => rightClickSelectionRef.current,
@@ -361,6 +385,14 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
     }
     const fitGeneration = fitGenerationRef.current;
     fittedWorkflowIdRef.current = currentWorkflowId;
+    // A workflow reopened in the same session returns to the camera its
+    // workspace was left with.
+    const savedViewport = workspaceCamera.savedViewport();
+    if (savedViewport) {
+      void setViewport(savedViewport, { duration: 0 });
+      setReadyWorkflowId(currentWorkflowId);
+      return;
+    }
     void fitInitialWorkflowViewport({
       fitView: () =>
         fitView({
@@ -370,7 +402,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
       readAnchor: () => {
         const canvasWidth = canvasContainerRef.current?.clientWidth;
         const canvasHeight = canvasContainerRef.current?.clientHeight;
-        if (!canvasWidth || !canvasHeight) {
+        if (!canvasWidth || !canvasHeight || !canvasGraph.anchor?.pinToTop) {
           return null;
         }
 
@@ -423,7 +455,10 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   );
 
   useDomEvent(window, "keydown", handleUndoRedoShortcut);
-  useCanvasCopyPaste(!graphEditingLocked);
+  useCanvasCopyPaste({
+    enabled: !graphEditingLocked && topologyAuthoring,
+    insertsNodes: interaction.insertsNodes,
+  });
   // Mounted once, here, because the node badges and the toolbar count both read
   // what it writes and neither should run the pass itself.
   useCollectWorkflowIssues();
@@ -439,74 +474,6 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   );
 
   useDomEvent(window, "keydown", handleFitViewShortcut);
-
-  const isValidConnection = useCallback(
-    (connection: XYFlowConnection | XYFlowEdge) =>
-      !graphEditingLocked &&
-      connectionRefusalReason({
-        connection,
-        nodes,
-        edges,
-        storeEdges,
-        catalog,
-      }) === null,
-    [catalog, edges, graphEditingLocked, nodes, storeEdges]
-  );
-
-  const normalizeSourceHandleForConnection = useCallback(
-    (sourceNodeId: string, sourceHandle: string | null | undefined) =>
-      normalizeSourceHandle({
-        nodes,
-        edges,
-        sourceNodeId,
-        sourceHandle,
-        catalog,
-      }),
-    [nodes, edges, catalog]
-  );
-
-  const onConnect: OnConnect = useCallback(
-    (connection: XYFlowConnection) => {
-      if (graphEditingLocked) {
-        return;
-      }
-      if (!(connection.source && connection.target)) {
-        return;
-      }
-
-      const refusal = connectionRefusalReason({
-        connection,
-        nodes,
-        edges,
-        storeEdges,
-        catalog,
-      });
-      if (refusal) {
-        toast.info(refusal, { id: "connection-refused" });
-        return;
-      }
-
-      const sourceHandle = normalizeSourceHandleForConnection(
-        connection.source,
-        connection.sourceHandle
-      );
-      const newEdge = {
-        id: generateId(),
-        ...connection,
-        sourceHandle,
-      };
-      connectNodes(newEdge);
-    },
-    [
-      normalizeSourceHandleForConnection,
-      connectNodes,
-      nodes,
-      edges,
-      storeEdges,
-      catalog,
-      graphEditingLocked,
-    ]
-  );
 
   /**
    * Record the undo step for a deletion before React Flow starts removing.
@@ -537,21 +504,32 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
         return Promise.resolve(false);
       }
 
-      // A Group's entry and exit are derived from the members it was built
-      // from, so a member only goes when its frame does.
-      if (refuseDeleteWithNotice(nodesToDelete)) {
+      // Removing a frame ungroups it. React Flow would instead take every
+      // member and the painted edges on the frame's handles, which stand for
+      // stored edges on the members. A batch holding a frame is therefore
+      // handed to the store's selection delete, which removes only the selected
+      // members and records its own undo step. The delete key only ever deletes
+      // the selection, so both name one batch.
+      if (nodesToDelete.some((node) => isGroupNode(node))) {
+        deleteSelectedItems();
         return Promise.resolve(false);
       }
 
       snapshotHistory();
       return Promise.resolve(true);
     },
-    [graphEditingLocked, snapshotHistory]
+    [deleteSelectedItems, graphEditingLocked, snapshotHistory]
   );
 
+  // React Flow writes the selection itself through `select` changes wherever
+  // it receives the node change handler for the Draft; everywhere else a click
+  // selects the node here.
+  const canvasWritesSelection =
+    !graphEditingLocked && !interaction.comparisonVisible;
   const onNodeClick: NodeMouseHandler = useCallback(
-    (_event, node) => inspectNode(node.id),
-    [inspectNode]
+    (_event, node) =>
+      inspectNode(node.id, { selectionApplied: canvasWritesSelection }),
+    [canvasWritesSelection, inspectNode]
   );
 
   const onComparisonNodesChange = useCallback(
@@ -568,9 +546,11 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
       if (graphEditingLocked) {
         return;
       }
-      onNodesChange(changes);
+      onNodesChange(
+        withoutProjectedDimensions(changes, canvasGraph.projectedNodeIds)
+      );
     },
-    [graphEditingLocked, onNodesChange]
+    [canvasGraph.projectedNodeIds, graphEditingLocked, onNodesChange]
   );
 
   const handleEdgesChange = useCallback(
@@ -583,354 +563,155 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
     [graphEditingLocked, onEdgesChange]
   );
 
-  const onConnectStart = useCallback(
-    (
-      _event: MouseEvent | TouchEvent,
-      connectionStart: OnConnectStartParams
-    ) => {
-      if (graphEditingLocked) {
-        return;
-      }
-      connectingNodeId.current = connectionStart.nodeId;
-      connectingHandleType.current = connectionStart.handleType;
-      connectingHandleId.current = connectionStart.handleId ?? null;
-    },
-    [graphEditingLocked]
-  );
-
-  const getClientPosition = useCallback((event: MouseEvent | TouchEvent) => {
-    const clientX =
-      "changedTouches" in event
-        ? event.changedTouches[0].clientX
-        : event.clientX;
-    const clientY =
-      "changedTouches" in event
-        ? event.changedTouches[0].clientY
-        : event.clientY;
-    return { clientX, clientY };
-  }, []);
-
-  const handleConnectionToExistingNode = useCallback(
-    (nodeElement: Element) => {
-      const targetNodeId = nodeElement.getAttribute("data-id");
-      const fromSource = connectingHandleType.current === "source";
-      const connectingId = connectingNodeId.current;
-
-      if (targetNodeId && connectingId) {
-        const sourceId = fromSource ? connectingId : targetNodeId;
-        const targetId = fromSource ? targetNodeId : connectingId;
-        const sourceHandle = normalizeSourceHandleForConnection(
-          sourceId,
-          fromSource ? connectingHandleId.current : null
-        );
-        const targetHandle = fromSource ? null : connectingHandleId.current;
-        onConnect({
-          source: sourceId,
-          target: targetId,
-          sourceHandle,
-          targetHandle,
-        });
-      }
-    },
-    [normalizeSourceHandleForConnection, onConnect]
-  );
-
-  const handleConnectionToNewNode = useCallback(
-    (clientX: number, clientY: number) => {
-      if (graphEditingLocked) {
-        return;
-      }
-      const sourceNodeId = connectingNodeId.current;
-      if (!sourceNodeId) {
-        return;
-      }
-
-      const fromSource = connectingHandleType.current === "source";
-      if (
-        !(
-          fromSource ||
-          isValidConnection({
-            source: "__new_node__",
-            target: sourceNodeId,
-            sourceHandle: null,
-            targetHandle: null,
-          })
-        )
-      ) {
-        return;
-      }
-
-      // Client coordinates, which is what `screenToFlowPosition` takes: it
-      // subtracts the pane's own rect itself. This used to hand it the release
-      // point already measured from the pane's top-left, which put every node
-      // made by dropping a connection up and to the left of the cursor by
-      // however far the pane sat from the window's corner, over the zoom. That
-      // was the menu bar's 44px, and the shell's inset and border since added
-      // 13px across.
-      const position = screenToFlowPosition({ x: clientX, y: clientY });
-
-      // Center vertically on the cursor.
-      position.y -= WORKFLOW_NODE_HEIGHT / 2;
-
-      const newNode: WorkflowNode = {
-        id: generateId(),
-        type: "action",
-        position,
-        data: {
-          label: "",
-          description: "",
-          type: "action",
-          config: {},
-          status: "idle",
-        },
-        ariaLabel: workflowNodeAriaLabel({
-          label: "",
-          description: "",
-          type: "action",
-          config: {},
-          status: "idle",
-        }),
-        selected: true,
-      };
-
-      addNode(newNode);
-      setSelectedNode(newNode.id);
-
-      // Deselect all other nodes and select only the new node
-      // Need to do this after a delay because panOnDrag will clear selection
-      setTimeout(() => {
-        selectOnlyNode(newNode.id);
-      }, 50);
-
-      const sourceId = fromSource ? sourceNodeId : newNode.id;
-      const targetId = fromSource ? newNode.id : sourceNodeId;
-      const sourceHandle = normalizeSourceHandleForConnection(
-        sourceId,
-        fromSource ? connectingHandleId.current : null
-      );
-      const targetHandle = fromSource ? null : connectingHandleId.current;
-
-      onConnect({
-        source: sourceId,
-        target: targetId,
-        sourceHandle,
-        targetHandle,
-      });
-
-      justCreatedNodeFromConnection.current = true;
-      setTimeout(() => {
-        justCreatedNodeFromConnection.current = false;
-      }, 100);
-    },
-    [
-      screenToFlowPosition,
-      addNode,
-      selectOnlyNode,
-      setSelectedNode,
-      normalizeSourceHandleForConnection,
-      onConnect,
-      isValidConnection,
-      graphEditingLocked,
-    ]
-  );
-
-  const onConnectEnd: OnConnectEnd = useCallback(
-    (event, connectionState) => {
-      if (graphEditingLocked) {
-        return;
-      }
-      if (!connectingNodeId.current) {
-        return;
-      }
-
-      const { clientX, clientY } = getClientPosition(event);
-
-      // Touch ends on a different target than the drag started on, so hit-test
-      // the release point; mouse can use event.target.
-      let target: Element | null;
-      if ("changedTouches" in event) {
-        target = document.elementFromPoint(clientX, clientY);
-      } else if (event.target instanceof Element) {
-        target = event.target;
-      } else {
-        target = null;
-      }
-
-      if (!target) {
-        connectingNodeId.current = null;
-        connectingHandleType.current = null;
-        connectingHandleId.current = null;
-        return;
-      }
-
-      const nodeElement = target.closest(".react-flow__node");
-      const isHandle = target.closest(".react-flow__handle");
-      const droppedHandleType = isHandle?.classList.contains("source")
-        ? "source"
-        : isHandle?.classList.contains("target")
-          ? "target"
-          : null;
-
-      if (
-        connectingHandleType.current &&
-        droppedHandleType &&
-        !connectionHandleTypesMatch(
-          connectingHandleType.current,
-          droppedHandleType
-        )
-      ) {
-        toast.info("Connect an output handle to an input handle.", {
-          id: "connection-refused",
-        });
-        connectingNodeId.current = null;
-        connectingHandleType.current = null;
-        connectingHandleId.current = null;
-        return;
-      }
-
-      if (
-        nodeElement &&
-        connectingHandleType.current &&
-        (!isHandle || !connectionState.isValid)
-      ) {
-        handleConnectionToExistingNode(nodeElement);
-        connectingNodeId.current = null;
-        connectingHandleType.current = null;
-        connectingHandleId.current = null;
-        return;
-      }
-
-      if (!(nodeElement || isHandle)) {
-        handleConnectionToNewNode(clientX, clientY);
-      }
-
-      connectingNodeId.current = null;
-      connectingHandleType.current = null;
-      connectingHandleId.current = null;
-    },
-    [
-      getClientPosition,
-      handleConnectionToExistingNode,
-      handleConnectionToNewNode,
-      graphEditingLocked,
-    ]
-  );
+  const {
+    isValidConnection,
+    onConnect,
+    onConnectStart,
+    onConnectEnd,
+    wasNodeJustCreatedFromConnection,
+  } = useCanvasConnections({
+    nodes,
+    graphNodes,
+    storeEdges,
+    catalog,
+    connectionsLocked: topologyLocked,
+    insertsNodes: interaction.insertsNodes,
+    screenToFlowPosition,
+  });
 
   const onPaneClick = useCallback(() => {
     // Don't deselect if we just created a node from a connection
-    if (justCreatedNodeFromConnection.current) {
+    if (wasNodeJustCreatedFromConnection()) {
       return;
     }
-    setSelectedNode(null);
-    setSelectedEdge(null);
+    clearSelection();
     closeContextMenu();
-  }, [setSelectedNode, setSelectedEdge, closeContextMenu]);
-
-  const onSelectionChange = useCallback(
-    ({ nodes: selectedNodes }: { nodes: Node[] }) => {
-      // Don't clear selection if we just created a node from a connection
-      if (justCreatedNodeFromConnection.current && selectedNodes.length === 0) {
-        return;
-      }
-
-      if (selectedNodes.length === 0) {
-        setSelectedNode(null);
-      } else if (selectedNodes.length === 1) {
-        setSelectedNode(selectedNodes[0].id);
-      }
-    },
-    [setSelectedNode]
-  );
+  }, [clearSelection, closeContextMenu, wasNodeJustCreatedFromConnection]);
 
   return (
-    // Size comes from the editor shell, which gives this box whatever the panel
-    // beside it leaves over. The shell is also where the rule against animating
-    // that size lives, because React Flow observes the parent box and a
-    // transition on it is what produces ResizeObserver loop warnings.
+    // Size comes from the canvas box, which Canvas Reveal floats over without
+    // resizing. Nothing animates that size, because React Flow observes the
+    // parent box and a transition on it produces ResizeObserver loop warnings.
     <div
       className="relative h-full w-full bg-background"
       data-testid="workflow-canvas"
       ref={canvasContainerRef}
-      style={{
-        opacity: isCanvasReady ? 1 : 0,
-      }}
+      style={canvasContainerStyle({
+        ready: isCanvasReady,
+        revealOccupiedWidth,
+      })}
     >
-      {/* React Flow Canvas */}
-      <Canvas
-        className="bg-background"
-        connectionLineComponent={Connection}
-        connectionMode={ConnectionMode.Strict}
-        defaultEdgeOptions={defaultEdgeOptions}
-        deleteKeyCode={interaction.deleteKeyCode}
-        edges={accessibleGraph.edges}
-        edgesFocusable={interaction.edgesFocusable}
-        edgeTypes={edgeTypes}
-        elementsSelectable={interaction.elementsSelectable}
-        isValidConnection={isValidConnection}
-        minZoom={WORKFLOW_CANVAS_MIN_ZOOM}
-        nodes={accessibleGraph.nodes}
-        nodesConnectable={!graphEditingLocked && !interaction.comparisonVisible}
-        nodesDraggable={interaction.nodesDraggable}
-        nodeTypes={nodeTypes}
-        onBeforeDelete={
-          interaction.comparisonVisible
-            ? () => Promise.resolve(false)
-            : onBeforeDelete
-        }
-        onConnect={graphEditingLocked ? undefined : onConnect}
-        onConnectEnd={graphEditingLocked ? undefined : onConnectEnd}
-        onConnectStart={graphEditingLocked ? undefined : onConnectStart}
-        onEdgeContextMenu={graphEditingLocked ? undefined : onEdgeContextMenu}
-        onEdgesChange={graphEditingLocked ? undefined : handleEdgesChange}
-        onNodeClick={isGenerating ? undefined : onNodeClick}
-        onNodeContextMenu={graphEditingLocked ? undefined : onNodeContextMenu}
-        onNodesChange={
-          interaction.comparisonVisible
-            ? onComparisonNodesChange
-            : graphEditingLocked
-              ? undefined
-              : handleNodesChange
-        }
-        onPaneClick={onPaneClick}
-        onPaneContextMenu={graphEditingLocked ? undefined : onPaneContextMenu}
-        onSelectionChange={
-          interaction.elementsSelectable ? onSelectionChange : undefined
-        }
+      {/* React Flow Canvas. A Group card on a comparison canvas leads to its
+          changed steps through the control the slot supplies. */}
+      <InsertStepSlot.Provider
+        value={interaction.insertsNodes ? insertStepOnEdge : null}
       >
-        <Panel
-          className="[--workflow-controls-bottom:3.5rem] border-none bg-transparent p-0 md:[--workflow-controls-bottom:0px]"
-          data-slot="workflow-canvas-controls"
-          position="bottom-left"
-          style={{ bottom: "var(--workflow-controls-bottom)" }}
-        >
-          <Controls
-            canReflow={!graphEditingLocked && canReflow}
-            onReflow={graphEditingLocked ? undefined : reflow}
-          />
-        </Panel>
-        {showMinimap && (
-          // maskColor and nodeColor default to hardcoded light-mode values that
-          // never invert: the viewport rectangle was invisible in light (1.05:1)
-          // and a bright reversed frame in dark (6.58:1). The test-mode banner
-          // moved to bottom-centre, so this corner is no longer contested.
-          <MiniMap
-            bgColor="var(--sidebar)"
-            className="rounded-lg border shadow-sm"
-            maskColor="color-mix(in oklch, var(--muted) 60%, transparent)"
-            nodeColor="var(--muted-foreground)"
-            nodeStrokeColor="var(--border)"
-            pannable
-            zoomable
-          />
-        )}
-      </Canvas>
+        <GroupChangedStepsSlot.Provider value={renderGroupChangedSteps}>
+          <Canvas
+            className="bg-background"
+            connectionLineComponent={Connection}
+            connectionMode={ConnectionMode.Strict}
+            // A tap on a handle starts a connection only where one can be made.
+            connectOnClick={!topologyLocked}
+            defaultEdgeOptions={defaultEdgeOptions}
+            deleteKeyCode={interaction.deleteKeyCode}
+            edges={accessibleGraph.edges}
+            edgesFocusable={interaction.edgesFocusable}
+            edgeTypes={edgeTypes}
+            elementsSelectable={interaction.elementsSelectable}
+            isValidConnection={isValidConnection}
+            minZoom={WORKFLOW_CANVAS_MIN_ZOOM}
+            nodes={accessibleGraph.nodes}
+            multiSelectionKeyCode={interaction.multiSelectionKeyCode}
+            nodesConnectable={interaction.editsTopology}
+            nodesDraggable={interaction.nodesDraggable}
+            nodeTypes={nodeTypes}
+            onBeforeDelete={
+              interaction.comparisonVisible
+                ? () => Promise.resolve(false)
+                : onBeforeDelete
+            }
+            onConnect={topologyLocked ? undefined : onConnect}
+            onConnectEnd={topologyLocked ? undefined : onConnectEnd}
+            onConnectStart={topologyLocked ? undefined : onConnectStart}
+            onEdgeContextMenu={topologyLocked ? undefined : onEdgeContextMenu}
+            onEdgesChange={graphEditingLocked ? undefined : handleEdgesChange}
+            onNodeClick={isGenerating ? undefined : onNodeClick}
+            onNodeDoubleClick={onNodeDoubleClick}
+            onNodeContextMenu={topologyLocked ? undefined : onNodeContextMenu}
+            onNodesChange={
+              interaction.comparisonVisible
+                ? onComparisonNodesChange
+                : graphEditingLocked
+                  ? undefined
+                  : handleNodesChange
+            }
+            onMoveEnd={() => {
+              workspaceCamera.onMoveEnd();
+              revealCamera.onMoveEnd();
+            }}
+            onMoveStart={workspaceCamera.onMoveStart}
+            onPaneClick={onPaneClick}
+            onPaneContextMenu={topologyLocked ? undefined : onPaneContextMenu}
+            selectionKeyCode={interaction.selectionKeyCode}
+          >
+            <Panel
+              className="[--workflow-controls-bottom:3.5rem] border-none bg-transparent p-0 md:[--workflow-controls-bottom:0px]"
+              data-slot={CANVAS_OBSTACLE_SLOTS.controls}
+              position="bottom-left"
+              style={{ bottom: "var(--workflow-controls-bottom)" }}
+            >
+              <Controls
+                canReflow={!graphEditingLocked && canReflow}
+                // A phone offers no topology authoring, so it shows no Tidy layout.
+                onReflow={
+                  graphEditingLocked || !topologyAuthoring ? undefined : reflow
+                }
+              />
+            </Panel>
+            {showMinimap && (
+              // maskColor and nodeColor default to hardcoded light-mode values that
+              // never invert: the viewport rectangle was invisible in light (1.05:1)
+              // and a bright reversed frame in dark (6.58:1). The test-mode banner
+              // moved to bottom-centre, so this corner is no longer contested.
+              <MiniMap
+                bgColor="var(--sidebar)"
+                className="rounded-lg border shadow-sm"
+                maskColor="color-mix(in oklch, var(--muted) 60%, transparent)"
+                nodeColor="var(--muted-foreground)"
+                nodeStrokeColor="var(--border)"
+                pannable
+                zoomable
+              />
+            )}
+          </Canvas>
+        </GroupChangedStepsSlot.Provider>
+      </InsertStepSlot.Provider>
+
+      <GroupScopeBar />
 
       {/* Context Menu */}
       <WorkflowContextMenu
         canEdit={canEdit}
+        canInsert={interaction.insertsNodes}
         menuState={contextMenuState}
         onClose={closeContextMenu}
       />
     </div>
   );
+}
+
+/**
+ * The canvas box's opacity and `--reveal-occupied-width`, the pixels open
+ * Canvas Reveal covers at the canvas's right edge. The React Flow attribution
+ * rule in `globals.css` reads that variable to sit beside Reveal.
+ */
+function canvasContainerStyle(input: {
+  ready: boolean;
+  revealOccupiedWidth: number;
+}): CSSProperties & Record<"--reveal-occupied-width", string> {
+  return {
+    opacity: input.ready ? 1 : 0,
+    "--reveal-occupied-width": `${input.revealOccupiedWidth}px`,
+  };
 }

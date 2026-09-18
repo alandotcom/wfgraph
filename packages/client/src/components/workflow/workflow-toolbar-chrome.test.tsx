@@ -11,8 +11,10 @@ import {
   REAL_NODES,
   renderChrome,
 } from "#src/components/workflow/workflow-toolbar-chrome.test-support";
-import { selectedNodeAtom } from "#src/lib/workflow-graph-store";
-import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
+import {
+  clearSelectionAtom,
+  selectOnlyNodeAtom,
+} from "#src/lib/workflow-graph-store";
 import { can } from "#src/lib/authorization";
 import {
   installAuthorizationGrantsForTests,
@@ -119,19 +121,49 @@ describe("ToolbarActions publish gating", () => {
 });
 
 describe("mobile editing actions", () => {
-  it("keeps Configuration available and disables Delete while editing is locked", async () => {
-    const selectedNode = { ...REAL_NODES[0], selected: true };
+  it("keeps Configuration available and offers no Delete for a selection", async () => {
+    const selectedNode = REAL_NODES[0];
     const view = renderChrome(ToolbarActions, {
       generating: true,
       graph: [selectedNode],
       state: { nodes: [selectedNode] },
     });
-    act(() => view.store.set(selectedNodeAtom, selectedNode.id));
+    act(() => view.store.set(selectOnlyNodeAtom, selectedNode.id));
 
     expect(
       (await view.findByTitle("Configuration")).hasAttribute("disabled")
     ).toBe(false);
-    expect(view.getByTitle("Delete").hasAttribute("disabled")).toBe(true);
+    expect(view.queryByTitle("Delete")).toBeNull();
+  });
+
+  it("hides Configuration while a mobile Reveal sheet shows the selection", async () => {
+    (
+      window as unknown as {
+        happyDOM: { setViewport: (viewport: { width: number }) => void };
+      }
+    ).happyDOM.setViewport({ width: 390 });
+    try {
+      const selectedNode = REAL_NODES[0];
+      const view = renderChrome(ToolbarActions, {
+        graph: [selectedNode],
+        state: { nodes: [selectedNode] },
+      });
+      expect(await view.findByTitle("Configuration")).toBeTruthy();
+
+      act(() => view.store.set(selectOnlyNodeAtom, selectedNode.id));
+      await waitFor(() =>
+        expect(view.queryByTitle("Configuration")).toBeNull()
+      );
+
+      act(() => view.store.set(clearSelectionAtom));
+      expect(await view.findByTitle("Configuration")).toBeTruthy();
+    } finally {
+      (
+        window as unknown as {
+          happyDOM: { setViewport: (viewport: { width: number }) => void };
+        }
+      ).happyDOM.setViewport({ width: 1440 });
+    }
   });
 });
 
@@ -216,7 +248,7 @@ describe("WorkflowToolbarChrome", () => {
   });
 
   it("shows available workspace views and moves the editor to Runs", async () => {
-    const { findAllByRole, findByRole, store } = renderChrome(
+    const { findAllByRole, findByRole, router } = renderChrome(
       WorkflowToolbarChrome,
       {
         state: {
@@ -246,8 +278,11 @@ describe("WorkflowToolbarChrome", () => {
     expect(selectedView?.className).toContain("bg-primary");
     expect(selectedView?.className).toContain("text-primary-foreground");
 
+    // The switch names Runs in the route, which `WorkspaceRouteSync` applies.
     fireEvent.click(await findByRole("button", { name: "Runs" }));
-    expect(store.get(workflowWorkspaceViewAtom)).toBe("runs");
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual({ view: "runs" })
+    );
   });
 
   it("puts navigation, Actions and Settings on the left and the views and Publish on the right", async () => {
@@ -279,9 +314,20 @@ describe("WorkflowToolbarChrome", () => {
         .className
     ).toContain("w-80");
     expect(findNode.className).toContain("min-[70rem]:hidden");
-    expect(
-      dashboard.closest("[data-slot='workflow-toolbar-left']")?.className
-    ).toContain("pr-72");
+    const leftClasses =
+      dashboard
+        .closest("[data-slot='workflow-toolbar-left']")
+        ?.className.split(" ") ?? [];
+    // From `md` the row scrolls under the trailing group, so the leading group
+    // keeps its full width and room to scroll clear of it.
+    expect(leftClasses).toEqual(
+      expect.arrayContaining(["md:min-w-max", "md:pr-72"])
+    );
+    // Below `md` the leading group shrinks to fit beside the trailing group, and
+    // the workflow name truncates, so no menu label is cut off at phone width.
+    expect(leftClasses).toEqual(expect.arrayContaining(["min-w-0", "flex-1"]));
+    expect(leftClasses).not.toContain("min-w-max");
+    expect(workflow.className).toContain("min-w-0");
   });
 
   // Published mode lives in the status strip, beside the version it governs.

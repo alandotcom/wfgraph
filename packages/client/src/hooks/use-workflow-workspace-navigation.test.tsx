@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   createMemoryHistory,
   createRootRoute,
@@ -5,122 +6,286 @@ import {
   createRouter,
   Outlet,
   RouterProvider,
+  type SearchSchemaInput,
 } from "@tanstack/react-router";
-import { act, fireEvent, render } from "@testing-library/react";
-import { createStore, Provider as JotaiProvider, useSetAtom } from "jotai";
-import { describe, expect, it, vi } from "vitest";
-import { OverlayProvider } from "#src/components/overlays/overlay-provider";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
+import { createStore, Provider as JotaiProvider } from "jotai";
+import { afterEach, describe, expect, it } from "vitest";
+import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
+import { ConfigurationOverlay } from "#src/components/overlays/configuration-overlay";
+import {
+  OverlayProvider,
+  useOverlay,
+} from "#src/components/overlays/overlay-provider";
+import { WorkspaceRouteSync } from "#src/components/workflow/workspace-route-sync";
+import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
 import { useWorkflowWorkspaceNavigation } from "#src/hooks/use-workflow-workspace-navigation";
+import {
+  loadWorkflowGraphAtom,
+  selectedNodeAtom,
+  selectOnlyNodeAtom,
+} from "#src/lib/workflow-graph-store";
+import type { WorkflowRouteSearch } from "#src/lib/workflow-navigation-state";
+import { authorizedWorkflowSearch } from "#src/lib/workflow-route-state";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
-import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
-import { enterRunsWorkspaceAtom } from "#src/lib/workflow-workspace-navigation";
+import {
+  activeDesktopRevealLevelAtom,
+  activeMobileSheetsAtom,
+  activeWorkspaceAddressAtom,
+  setWorkspaceRevealLevelAtom,
+} from "#src/lib/workflow-workspace-navigation";
+import {
+  selectedExecutionIdAtom,
+  workflowWorkspaceViewAtom,
+} from "#src/lib/workflow-ui-store";
 
-function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((resolvePromise) => {
-    resolve = resolvePromise;
-  });
-  return { promise, resolve };
-}
-
-function NavigationHost() {
-  const navigation = useWorkflowWorkspaceNavigation();
-  const otherNavigation = useWorkflowWorkspaceNavigation();
-  const setWorkflowId = useSetAtom(currentWorkflowIdAtom);
-  const enterRunsDirectly = useSetAtom(enterRunsWorkspaceAtom);
+/**
+ * The overlays on the stack, each mounted as the overlay container would, and
+ * named by a probe so a case can tell which surface is on screen.
+ */
+function OverlayStack() {
+  const { stack } = useOverlay();
   return (
     <>
+      {stack.map(({ id, component: Overlay, props }) => (
+        <div data-testid={`overlay:${Overlay.name}`} key={id}>
+          <Overlay overlayId={id} {...props} />
+        </div>
+      ))}
+    </>
+  );
+}
+
+/** The viewport happy-dom answers the `md` media query from. */
+function setViewportWidth(width: number): void {
+  (
+    window as unknown as {
+      happyDOM: { setViewport: (viewport: { width: number }) => void };
+    }
+  ).happyDOM.setViewport({ width });
+}
+
+function SwitcherHost() {
+  const navigation = useWorkflowWorkspaceNavigation();
+  const { openSheet } = useConfigurationSheet();
+  return (
+    <>
+      <WorkspaceRouteSync />
+      <OverlayStack />
+      <button onClick={() => openSheet()} type="button">
+        Configuration
+      </button>
+      <button onClick={navigation.showDraft} type="button">
+        Draft
+      </button>
+      <button onClick={navigation.showRuns} type="button">
+        Runs
+      </button>
       <button onClick={navigation.showChanges} type="button">
         Changes
-      </button>
-      <button onClick={otherNavigation.showDraft} type="button">
-        Draft elsewhere
-      </button>
-      <button onClick={otherNavigation.showRuns} type="button">
-        Runs elsewhere
-      </button>
-      <button onClick={enterRunsDirectly} type="button">
-        Start run directly
-      </button>
-      <button onClick={() => setWorkflowId("workflow_2")} type="button">
-        Workflow 2
       </button>
     </>
   );
 }
 
-async function renderNavigationHost() {
+async function renderSwitcher(initialEntry: string) {
   const store = createStore();
   store.set(currentWorkflowIdAtom, "workflow_1");
-  store.set(workflowWorkspaceViewAtom, "runs");
-  const navigation = deferred();
+  store.set(loadWorkflowGraphAtom, {
+    nodes: [
+      {
+        id: "draft_step",
+        type: "action",
+        position: { x: 0, y: 0 },
+        data: { label: "Draft step", type: "action" },
+      },
+    ],
+    edges: [],
+  });
   const rootRoute = createRootRoute({ component: () => <Outlet /> });
-  const workflowRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: "/workflows/$workflowId",
-    component: NavigationHost,
-  });
   const router = createRouter({
-    routeTree: rootRoute.addChildren([workflowRoute]),
-    history: createMemoryHistory({
-      initialEntries: ["/workflows/workflow_1?executionId=run_1"],
-    }),
+    routeTree: rootRoute.addChildren([
+      createRoute({
+        getParentRoute: () => rootRoute,
+        path: "/workflows/$workflowId",
+        validateSearch: (search: WorkflowRouteSearch & SearchSchemaInput) =>
+          authorizedWorkflowSearch(search, {
+            canOpenRuns: true,
+            canOpenComparison: true,
+          }),
+        component: SwitcherHost,
+      }),
+    ]),
+    history: createMemoryHistory({ initialEntries: [initialEntry] }),
   });
-
   const view = render(
-    <JotaiProvider store={store}>
-      <OverlayProvider>
-        <RouterProvider router={router} />
-      </OverlayProvider>
-    </JotaiProvider>
+    <ExtensionCatalogProvider
+      value={{ entities: [], integrations: [], actions: [], events: [] }}
+    >
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <JotaiProvider store={store}>
+          <OverlayProvider>
+            <RouterProvider router={router} />
+          </OverlayProvider>
+        </JotaiProvider>
+      </QueryClientProvider>
+    </ExtensionCatalogProvider>
   );
-  await view.findByRole("button", { name: "Changes" });
-  vi.spyOn(router, "navigate").mockImplementation(
-    () => navigation.promise as ReturnType<typeof router.navigate>
-  );
-
-  return { navigation, store, view };
+  await view.findByRole("button", { name: "Runs" });
+  const click = (name: string) =>
+    fireEvent.click(view.getByRole("button", { name }));
+  return { store, router, click, view };
 }
 
 describe("useWorkflowWorkspaceNavigation", () => {
-  it("does not enter Changes after a newer Draft transition", async () => {
-    const { navigation, store, view } = await renderNavigationHost();
+  it("returns each view to the search, selection, and Reveal it was left with", async () => {
+    const { store, router, click } = await renderSwitcher(
+      "/workflows/workflow_1"
+    );
+    act(() => {
+      store.set(selectOnlyNodeAtom, "draft_step");
+      store.set(setWorkspaceRevealLevelAtom, {
+        address: store.get(activeWorkspaceAddressAtom),
+        level: "closed",
+      });
+    });
 
-    fireEvent.click(view.getByRole("button", { name: "Changes" }));
-    fireEvent.click(view.getByRole("button", { name: "Draft elsewhere" }));
-    await act(async () => navigation.resolve());
+    click("Runs");
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual({ view: "runs" })
+    );
+    // A first visit opens the inspector for that view alone.
+    expect(store.get(activeDesktopRevealLevelAtom)).toBe("browse");
+    await act(() =>
+      router.navigate({
+        to: "/workflows/$workflowId",
+        params: { workflowId: "workflow_1" },
+        search: { view: "runs", executionId: "run_1" },
+      })
+    );
+    act(() => store.set(selectOnlyNodeAtom, "run_step"));
 
+    click("Draft");
+    await waitFor(() => expect(router.state.location.search).toEqual({}));
     expect(store.get(workflowWorkspaceViewAtom)).toBe("draft");
+    expect(store.get(selectedNodeAtom)).toBe("draft_step");
+    expect(store.get(activeDesktopRevealLevelAtom)).toBe("closed");
+
+    click("Runs");
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual({
+        view: "runs",
+        executionId: "run_1",
+      })
+    );
+    expect(store.get(selectedExecutionIdAtom)).toBe("run_1");
+    expect(store.get(selectedNodeAtom)).toBe("run_step");
+    expect(store.get(activeDesktopRevealLevelAtom)).toBe("browse");
   });
 
-  it("does not enter Changes after a newer Runs transition", async () => {
-    const { navigation, store, view } = await renderNavigationHost();
+  it("opens a first-visit inspector without writing the cookie", async () => {
+    const { store, router, click } = await renderSwitcher(
+      "/workflows/workflow_1"
+    );
+    const cookie = document.cookie;
 
-    fireEvent.click(view.getByRole("button", { name: "Changes" }));
-    fireEvent.click(view.getByRole("button", { name: "Runs elsewhere" }));
-    await act(async () => navigation.resolve());
+    click("Runs");
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual({ view: "runs" })
+    );
 
-    expect(store.get(workflowWorkspaceViewAtom)).toBe("runs");
+    expect(store.get(activeDesktopRevealLevelAtom)).toBe("browse");
+    expect(document.cookie).toBe(cookie);
   });
 
-  it("does not enter Changes after a direct run transition", async () => {
-    const { navigation, store, view } = await renderNavigationHost();
+  it("pushes a history entry so Back returns to the workspace left", async () => {
+    const { router, click } = await renderSwitcher(
+      "/workflows/workflow_1?view=runs"
+    );
+    const entries = router.history.length;
 
-    fireEvent.click(view.getByRole("button", { name: "Changes" }));
-    fireEvent.click(view.getByRole("button", { name: "Start run directly" }));
-    await act(async () => navigation.resolve());
+    click("Draft");
+    await waitFor(() => expect(router.state.location.search).toEqual({}));
+    expect(router.history.length).toBe(entries + 1);
 
-    expect(store.get(workflowWorkspaceViewAtom)).toBe("runs");
+    await act(async () => router.history.back());
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual({ view: "runs" })
+    );
   });
 
-  it("does not enter Changes in a workflow opened during navigation", async () => {
-    const { navigation, store, view } = await renderNavigationHost();
+  describe("below md", () => {
+    afterEach(() => setViewportWidth(1440));
 
-    fireEvent.click(view.getByRole("button", { name: "Changes" }));
-    fireEvent.click(view.getByRole("button", { name: "Workflow 2" }));
-    await act(async () => navigation.resolve());
+    it("opens the Runs and Changes address sheets over a Draft sheet, and shows the Draft sheet again on return to Draft", async () => {
+      setViewportWidth(390);
+      const { store, router, click, view } = await renderSwitcher(
+        "/workflows/workflow_1"
+      );
+      const configurationSheet = () =>
+        view.queryByTestId(`overlay:${ConfigurationOverlay.name}`);
+      act(() => store.set(selectOnlyNodeAtom, "draft_step"));
+      expect(
+        store.get(activeMobileSheetsAtom).map((sheet) => sheet.level)
+      ).toEqual(["summary"]);
 
-    expect(store.get(currentWorkflowIdAtom)).toBe("workflow_2");
-    expect(store.get(workflowWorkspaceViewAtom)).toBe("runs");
+      click("Runs");
+      await waitFor(() =>
+        expect(router.state.location.search).toEqual({ view: "runs" })
+      );
+      expect(configurationSheet()).toBeNull();
+      expect(store.get(activeMobileSheetsAtom)).toEqual([
+        {
+          level: "summary",
+          inspected: null,
+          scroll: 0,
+          section: null,
+        },
+      ]);
+
+      click("Changes");
+      await waitFor(() =>
+        expect(store.get(workflowWorkspaceViewAtom)).toBe("changes")
+      );
+      await waitFor(() =>
+        expect(store.get(activeMobileSheetsAtom)).toMatchObject([
+          { level: "summary", inspected: null, section: null },
+        ])
+      );
+      expect(configurationSheet()).toBeNull();
+
+      click("Draft");
+      await waitFor(() => expect(router.state.location.search).toEqual({}));
+      expect(configurationSheet()).toBeNull();
+      expect(store.get(selectedNodeAtom)).toBe("draft_step");
+      expect(
+        store.get(activeMobileSheetsAtom).map((sheet) => sheet.level)
+      ).toEqual(["summary"]);
+    });
+
+    it("closes the configuration sheet of a Draft with nothing selected when the view becomes Changes, where the comparison summary sheet shows", async () => {
+      setViewportWidth(390);
+      const { store, click, view } = await renderSwitcher(
+        "/workflows/workflow_1"
+      );
+      const configurationSheet = () =>
+        view.queryByTestId(`overlay:${ConfigurationOverlay.name}`);
+
+      click("Configuration");
+      await waitFor(() => expect(configurationSheet()).not.toBeNull());
+
+      click("Changes");
+      await waitFor(() =>
+        expect(store.get(workflowWorkspaceViewAtom)).toBe("changes")
+      );
+      await waitFor(() => expect(configurationSheet()).toBeNull());
+      expect(
+        store.get(activeMobileSheetsAtom).map((sheet) => sheet.inspected)
+      ).toEqual([null]);
+    });
   });
 });

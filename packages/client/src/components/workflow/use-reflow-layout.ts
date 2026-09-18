@@ -1,9 +1,8 @@
 /**
  * The graph's tidy-up pass, shared by the canvas control at bottom left and the
  * Actions menu's "Tidy layout" so the two cannot drift into different rules.
- *
- * `canReflow` is the whole gate: both call sites disable their control with it,
- * and `reflow` re-reads it because a graph can change between render and click.
+ * A focused Group lays out its members with boundary stubs as pseudo-nodes.
+ * Only member positions are stored. Phones offer no topology authoring.
  */
 
 import { useReactFlow } from "@xyflow/react";
@@ -14,11 +13,14 @@ import { layoutWorkflowNodes } from "#src/components/workflow/workflow-layout";
 import {
   applyNodeLayoutAtom,
   canvasEditingLockedAtom,
+  canvasGraphAtom,
   edgesAtom,
   nodesAtom,
 } from "#src/lib/workflow-graph-store";
+import { groupScopeActiveAtom } from "#src/lib/workflow-workspace-navigation";
 import { viewportAnimationDuration } from "#src/lib/motion";
 import { workflowFitViewOptions } from "./workflow-viewport";
+import { useTopologyAuthoring } from "./canvas-interaction";
 
 /**
  * The width the layout spaces nodes inside: the graph's own box rather than the
@@ -47,6 +49,11 @@ export function useReflowLayout(): {
   const nodes = useAtomValue(nodesAtom);
   const edges = useAtomValue(edgesAtom);
   const editingLocked = useAtomValue(canvasEditingLockedAtom);
+  const groupScopeActive = useAtomValue(groupScopeActiveAtom);
+  const canvasGraph = useAtomValue(canvasGraphAtom);
+  const layoutNodes = groupScopeActive ? canvasGraph.nodes : nodes;
+  const layoutEdges = groupScopeActive ? canvasGraph.edges : edges;
+  const topologyAuthoring = useTopologyAuthoring();
   const applyNodeLayout = useSetAtom(applyNodeLayoutAtom);
   const catalog = useExtensionCatalog();
   const { fitView } = useReactFlow();
@@ -54,7 +61,9 @@ export function useReflowLayout(): {
   // One node has nothing to be arranged against, and the placeholder `add` node
   // is not one of them.
   const canReflow =
-    !editingLocked && nodes.filter((node) => node.type !== "add").length > 1;
+    !editingLocked &&
+    topologyAuthoring &&
+    layoutNodes.filter((node) => node.type !== "add").length > 1;
 
   const reflow = useCallback(() => {
     if (!canReflow) {
@@ -64,8 +73,8 @@ export function useReflowLayout(): {
     // The pass is synchronous from here to `applyNodeLayout`, so a second click
     // cannot land inside it and there is no in-flight flag to keep.
     const { nodes: laidOutNodes, changed } = layoutWorkflowNodes({
-      nodes,
-      edges,
+      nodes: layoutNodes,
+      edges: layoutEdges,
       availableWidth: graphWidth(),
       catalog,
     });
@@ -83,7 +92,7 @@ export function useReflowLayout(): {
         })
       ).catch(() => undefined);
     });
-  }, [applyNodeLayout, canReflow, catalog, edges, fitView, nodes]);
+  }, [applyNodeLayout, canReflow, catalog, layoutEdges, fitView, layoutNodes]);
 
   return { canReflow, reflow };
 }

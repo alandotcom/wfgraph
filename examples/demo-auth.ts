@@ -63,7 +63,46 @@ function scalarFormValue(value: string | File | (string | File)[] | undefined) {
 type DemoAuthOptions = {
   isProduction: boolean;
   publicUrl?: string | undefined;
+  /**
+   * Names a demo account (a key of `demoUsers`) whose access every request
+   * receives, so a developer skips the login page while testing locally.
+   * Ignored outside development. `app.ts` reads `WFGRAPH_DEMO_USER` and
+   * passes the value here, which keeps this module free of environment
+   * reads of its own.
+   */
+  demoUser?: string | undefined;
 };
+
+/**
+ * Resolves the access `options.demoUser` grants to every request, skipping
+ * the demo login page during local development. Returns undefined when no
+ * account should be auto-granted: the option is unset, or the app is
+ * running in production, where it is always ignored.
+ *
+ * Throws at startup when the name matches no demo account, so a typo in the
+ * variable stops the app with a message naming the accepted accounts.
+ */
+function resolveDemoAutoLogin(
+  options: DemoAuthOptions
+): WfGraphAccess | undefined {
+  if (!options.demoUser) return undefined;
+
+  if (options.isProduction) {
+    console.warn(
+      "WFGRAPH_DEMO_USER is set but is ignored in production. Unset it to silence this warning."
+    );
+    return undefined;
+  }
+
+  const user = demoUsers[options.demoUser];
+  if (!user) {
+    const acceptedNames = Object.keys(demoUsers).join(", ");
+    throw new Error(
+      `WFGRAPH_DEMO_USER names no demo account. Accepted names: ${acceptedNames}.`
+    );
+  }
+  return WfGraphRoles[user.role];
+}
 
 function sessionToken(request: Request): string | undefined {
   const header = request.headers.get("cookie");
@@ -83,6 +122,9 @@ function sessionToken(request: Request): string | undefined {
 export function createDemoAuth(options: DemoAuthOptions) {
   const sessions = new Map<string, DemoSession>();
   const app = new Hono();
+  // Resolved once at startup: a fixed access to grant every request, or
+  // undefined when no demo account should be auto-granted.
+  const demoAutoLoginAccess = resolveDemoAutoLogin(options);
 
   const sessionForRequest = (request: Request): DemoSession | null => {
     const token = sessionToken(request);
@@ -100,6 +142,7 @@ export function createDemoAuth(options: DemoAuthOptions) {
 
   app.get("/login/session", (c) => {
     noStore(c);
+    if (demoAutoLoginAccess) return c.body(null, 204);
     return sessionForRequest(c.req.raw) ? c.body(null, 204) : c.body(null, 401);
   });
 
@@ -171,6 +214,7 @@ export function createDemoAuth(options: DemoAuthOptions) {
   });
 
   const auth = defineWfGraphAuth((request) => {
+    if (demoAutoLoginAccess) return demoAutoLoginAccess;
     if (!options.isProduction && new URL(request.url).pathname === "/api/mcp") {
       return WfGraphRoles.editor;
     }

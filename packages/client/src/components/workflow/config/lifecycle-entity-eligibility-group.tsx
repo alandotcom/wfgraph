@@ -22,6 +22,7 @@ import { getEntityConditionFields } from "#src/lib/upstream-node-fields";
 import { whenChosen } from "#src/lib/select-choice";
 import { ConditionBuilderRow } from "./condition-builder-row";
 import { ConfigGroup } from "./config-section";
+import { trackedEntityLabel } from "./lifecycle-policy-summary";
 
 const CHECKPOINTS = [
   {
@@ -207,7 +208,11 @@ function UnavailableEntityNote({
   );
 }
 
-export function LifecycleEntityEligibilityGroup({
+/**
+ * When Entity Eligibility is checked: before a run starts, before each step, or
+ * both. Renders nothing while the rules hold no eligibility rule.
+ */
+export function LifecycleEligibilityCheckpoints({
   rules,
   catalog,
   disabled,
@@ -217,6 +222,77 @@ export function LifecycleEntityEligibilityGroup({
   catalog: ExtensionCatalog;
   disabled: boolean;
   onChange: (rules: LifecycleRules) => void;
+}) {
+  const eligibility = rules.entityEligibility;
+  if (!eligibility) {
+    return null;
+  }
+  const entityLabel = trackedEntityLabel(rules, catalog) ?? "Entity";
+
+  const setCheckpoint = (
+    checkpoint: EntityEligibilityCheckpoint,
+    checked: boolean
+  ) => {
+    onChange({
+      ...rules,
+      entityEligibility: {
+        ...eligibility,
+        checkpoints: checked
+          ? uniq([...eligibility.checkpoints, checkpoint])
+          : eligibility.checkpoints.filter((value) => value !== checkpoint),
+      },
+    });
+  };
+
+  return (
+    <fieldset className="space-y-2">
+      <legend className="font-medium text-xs">When to check</legend>
+      {CHECKPOINTS.map((checkpoint) => {
+        const inputId = `entity-eligibility-${checkpoint.value}`;
+        const description = checkpoint.description.replace(
+          "the Entity",
+          `the ${entityLabel}`
+        );
+        return (
+          <div className="flex items-start gap-2" key={checkpoint.value}>
+            <Checkbox
+              checked={eligibility.checkpoints.includes(checkpoint.value)}
+              className="mt-0.5"
+              disabled={disabled}
+              id={inputId}
+              onCheckedChange={(checked) =>
+                setCheckpoint(checkpoint.value, checked)
+              }
+            />
+            <div className="space-y-0.5">
+              <Label htmlFor={inputId}>{checkpoint.label}</Label>
+              <p className="text-muted-foreground text-xs">{description}</p>
+            </div>
+          </div>
+        );
+      })}
+    </fieldset>
+  );
+}
+
+/**
+ * Tracking one Entity, its binding in each Lifecycle Event, and the eligibility
+ * rule over its current state, with its checkpoints. Given
+ * `onGoToCheckpoints`, the caller places `LifecycleEligibilityCheckpoints`
+ * elsewhere, and an empty checkpoint set offers a way to reach them.
+ */
+export function LifecycleEntityEligibilityGroup({
+  rules,
+  catalog,
+  disabled,
+  onChange,
+  onGoToCheckpoints,
+}: {
+  rules: LifecycleRules;
+  catalog: ExtensionCatalog;
+  disabled: boolean;
+  onChange: (rules: LifecycleRules) => void;
+  onGoToCheckpoints?: (() => void) | undefined;
 }) {
   const tracked = rules.trackedEntity;
   const eligibility = rules.entityEligibility;
@@ -283,24 +359,6 @@ export function LifecycleEntityEligibilityGroup({
           ),
           [eventName, bindingName],
         ]),
-      },
-    });
-  };
-
-  const setCheckpoint = (
-    checkpoint: EntityEligibilityCheckpoint,
-    checked: boolean
-  ) => {
-    if (!eligibility) {
-      return;
-    }
-    onChange({
-      ...rules,
-      entityEligibility: {
-        ...eligibility,
-        checkpoints: checked
-          ? uniq([...eligibility.checkpoints, checkpoint])
-          : eligibility.checkpoints.filter((value) => value !== checkpoint),
       },
     });
   };
@@ -438,47 +496,31 @@ export function LifecycleEntityEligibilityGroup({
           />
 
           {entity && !configurationCheck.valid ? (
-            <p className="text-warning text-xs" role="alert">
-              {configurationCheck.error}
-            </p>
+            <div className="space-y-2">
+              <p className="text-warning text-xs" role="alert">
+                {configurationCheck.error}
+              </p>
+              {onGoToCheckpoints && eligibility?.checkpoints.length === 0 ? (
+                <Button
+                  onClick={onGoToCheckpoints}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  Go to Evaluation checkpoints
+                </Button>
+              ) : null}
+            </div>
           ) : null}
 
-          {eligibility ? (
-            <fieldset className="space-y-2">
-              <legend className="font-medium text-xs">When to check</legend>
-              {CHECKPOINTS.map((checkpoint) => {
-                const inputId = `entity-eligibility-${checkpoint.value}`;
-                const description = checkpoint.description.replace(
-                  "the Entity",
-                  `the ${entityLabel}`
-                );
-                return (
-                  <div
-                    className="flex items-start gap-2"
-                    key={checkpoint.value}
-                  >
-                    <Checkbox
-                      checked={eligibility.checkpoints.includes(
-                        checkpoint.value
-                      )}
-                      className="mt-0.5"
-                      disabled={disabled}
-                      id={inputId}
-                      onCheckedChange={(checked) =>
-                        setCheckpoint(checkpoint.value, checked)
-                      }
-                    />
-                    <div className="space-y-0.5">
-                      <Label htmlFor={inputId}>{checkpoint.label}</Label>
-                      <p className="text-muted-foreground text-xs">
-                        {description}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
-            </fieldset>
-          ) : null}
+          {onGoToCheckpoints ? null : (
+            <LifecycleEligibilityCheckpoints
+              catalog={catalog}
+              disabled={disabled}
+              onChange={onChange}
+              rules={rules}
+            />
+          )}
 
           <Button
             disabled={disabled}

@@ -43,7 +43,8 @@ host actions").
 ### sideEffect
 
 `sideEffect: true` marks a change outside the workflow (send, write, delete).
-Default `false` (read). The editor keeps a side-effect action out of a Group.
+Default `false` (read). The run dialog counts these steps and names their
+integrations before a Live published run. Grouping ignores the field.
 
 ## Common Mistakes
 
@@ -70,6 +71,6 @@ Source: alandotcom/wfgraph:docs/integrations.md
 Wrong: `output: z.object({ id: z.string() })`.
 
 Correct: `id: z.string().describe("Item ID")`. Template autocomplete and the
-run panel derive labels from descriptions.
+Runs view derive labels from descriptions.
 
 Source: alandotcom/wfgraph:docs/embedding.md

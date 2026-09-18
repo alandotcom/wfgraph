@@ -5,16 +5,18 @@ import { WorkflowRunSummaryRow } from "./workflow-run-summary-row";
 
 type WorkflowRunsListProps = {
   executions: WorkflowExecution[];
-  selectedId: string | null;
   onSelect: (executionId: string) => void;
-  focusId?: string | null;
+  /** The run whose row takes focus, or null. */
+  focusId: string | null;
+  /** Called once the list has looked for the row of `focusId`, with whether it focused one. */
+  onFocusAnswered: (focused: boolean) => void;
 };
 
 export function WorkflowRunsList({
   executions,
-  selectedId,
   onSelect,
   focusId,
+  onFocusAnswered,
 }: WorkflowRunsListProps) {
   const rowsRef = useRef(new Map<string, HTMLDivElement>());
 
@@ -22,35 +24,31 @@ export function WorkflowRunsList({
     if (!focusId) {
       return;
     }
-    rowsRef.current.get(focusId)?.querySelector("button")?.focus();
+    const row = rowsRef.current.get(focusId)?.querySelector("button") ?? null;
+    row?.focus();
+    onFocusAnswered(row !== null);
   });
 
   return (
     <div>
-      {executions.map((execution, index) => {
-        const selected = selectedId === execution.id;
-        const runNumber = executions.length - index;
-
-        return (
-          <div
-            key={execution.id}
-            ref={(element) => {
-              if (element) {
-                rowsRef.current.set(execution.id, element);
-              } else {
-                rowsRef.current.delete(execution.id);
-              }
-            }}
-          >
-            <WorkflowRunSummaryRow
-              execution={execution}
-              onClick={() => onSelect(execution.id)}
-              runNumber={runNumber}
-              selected={selected}
-            />
-          </div>
-        );
-      })}
+      {executions.map((execution, index) => (
+        <div
+          key={execution.id}
+          ref={(element) => {
+            if (element) {
+              rowsRef.current.set(execution.id, element);
+            } else {
+              rowsRef.current.delete(execution.id);
+            }
+          }}
+        >
+          <WorkflowRunSummaryRow
+            execution={execution}
+            onClick={() => onSelect(execution.id)}
+            runNumber={executions.length - index}
+          />
+        </div>
+      ))}
     </div>
   );
 }

@@ -19,11 +19,14 @@ function commandInput(
       canViewChanges: true,
       canViewRuns: true,
       canPublish: true,
+      canAddStep: true,
       canCopySelection: true,
+      canDuplicateSelection: true,
       canPaste: true,
       canGroupSelection: true,
       currentWorkflowId: "workflow_1",
       editingLocked: false,
+      groupScopeActive: false,
       hasNodes: true,
       isExecuting: false,
       isPreflighting: false,
@@ -133,6 +136,47 @@ describe("workflowCommands", () => {
     expect(commands.find((command) => command.id === "redo")?.disabled).toBe(
       true
     );
+  });
+
+  it("offers inserts and Tidy layout on a focused Group canvas", () => {
+    const commands = workflowCommands(
+      commandInput({ groupScopeActive: true, canReflow: true })
+    );
+    const command = (id: string) => commands.find((item) => item.id === id);
+
+    expect(command("add-step")?.disabled).toBe(false);
+    expect(command("paste")?.disabled).toBe(false);
+    expect(command("duplicate-selection")?.disabled).toBe(false);
+    expect(command("copy-selection")?.disabled).toBe(false);
+    expect(command("reflow")).toMatchObject({
+      disabled: false,
+    });
+  });
+
+  it("offers no topology authoring command without its capabilities", () => {
+    // The capabilities a phone answers false, since it offers no topology
+    // authoring; copying stays, since it changes nothing.
+    const commands = workflowCommands(
+      commandInput({
+        canAddStep: false,
+        canDuplicateSelection: false,
+        canPaste: false,
+        canGroupSelection: false,
+        canReflow: false,
+      })
+    );
+    const disabled = (id: string) =>
+      commands.find((command) => command.id === id)?.disabled;
+
+    expect(disabled("add-step")).toBe(true);
+    expect(disabled("paste")).toBe(true);
+    expect(disabled("duplicate-selection")).toBe(true);
+    expect(disabled("group-selection")).toBe(true);
+    expect(disabled("reflow")).toBe(true);
+    expect(disabled("copy-selection")).toBe(false);
+    expect(disabled("run-draft")).toBe(false);
+    expect(disabled("publish")).toBe(false);
+    expect(disabled("save")).toBe(false);
   });
 
   /**

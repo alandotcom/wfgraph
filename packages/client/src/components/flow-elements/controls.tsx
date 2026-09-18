@@ -21,7 +21,10 @@ type ControlsProps = {
   canReflow?: boolean | undefined;
 };
 
-export const Controls = ({ onReflow, canReflow = true }: ControlsProps) => {
+export const Controls = ({
+  onReflow,
+  canReflow = true,
+}: ControlsProps) => {
   const { zoomIn, zoomOut, fitView } = useReactFlow();
   const [showMinimap, setShowMinimap] = useAtom(showMinimapAtom);
   const openPalette = useSetAtom(openCommandPaletteAtom);

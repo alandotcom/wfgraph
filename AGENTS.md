@@ -91,15 +91,17 @@ A change that alters what an adopter installs needs a changeset. Run
 A change nothing outside the repo can observe takes `pnpm exec changeset --empty` or no
 changeset at all.
 
-**The four packages share one version.** `.changeset/config.json` names `core`, `client`,
-`plugins` and `shared` as a `fixed` group, so a changeset naming any one of them releases
-all four at the same number. That is what keeps the editor bundle in `@wfgraph/client` from
-being installed against a `@wfgraph/core` whose oRPC contract it no longer matches, and it
+**The five packages share one version.** `.changeset/config.json` names `agent`, `core`,
+`client`, `plugins` and `shared` as a `fixed` group, so a changeset naming any one of them
+releases all five at the same number. That is what keeps the editor bundle in
+`@wfgraph/client` from being installed against a `@wfgraph/core` whose oRPC contract it no
+longer matches, and it
 is why a `@wfgraph/shared` change reaches the registry at all: shared is inlined into the
 other three at build time and is declared only as their devDependency, which on its own
 would bump nothing.
 
-`@wfgraph/shared` is private, so it is versioned for the lockstep and never published.
+`@wfgraph/shared` and `@wfgraph/agent` are private, so they are versioned for the lockstep
+and never published.
 `@wfgraph/evals` and `@wfgraph/example-app` are in `ignore`, so they stay at 0.0.0.
 
 **Each published manifest keeps its `devDependencies`, including `@wfgraph/shared` at a
@@ -532,7 +534,7 @@ and the client's `instanceof` check quietly stops matching.
 `packages/client/src/lib/rpc-query.ts` are the only place a cache key is named for
 invalidation, and a mutation calls one from its `onSuccess`. **Never invalidate an area
 key** like `orpcQuery.workflow.key()`: the area
-covers the run panel's three procedures, which poll every two seconds, so one write becomes
+covers the Runs view's three procedures, which poll every two seconds, so one write becomes
 a burst of refetches.
 
 **A write can also patch instead of invalidate, in the one place that names the entry.**
@@ -597,7 +599,7 @@ Edit `SKILL.md` when the published contract a skill teaches changes.
 `pnpm run skills:validate` is a required check.
 
 `metadata.library_version` is the published package version the skill targets
-(the four packages share one number). Move it with
+(the five packages share one number). Move it with
 `pnpm exec intent validate --set-version <version>` when that version bumps;
 do not hand-edit one file.
 

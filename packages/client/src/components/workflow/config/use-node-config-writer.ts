@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { useAtomValue, useSetAtom, useStore } from "jotai";
+import { useSetAtom, useStore } from "jotai";
 import { useCallback } from "react";
 import { toast } from "sonner";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
@@ -15,15 +15,15 @@ import {
   clearNodeStatusesAtom,
   edgesAtom,
   nodesAtom,
-  selectedNodeAtom,
   updateNodeDataAtom,
 } from "#src/lib/workflow-graph-store";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import type { NodeConfigPatch } from "./node-config-patch";
 
 /**
- * Writing a config change to the selected node, with everything that has to
- * settle at the same moment.
+ * Writing a config change to the node `nodeId` names, with everything that has
+ * to settle at the same moment. A caller that only reads runs passes null, and
+ * its `updateConfig` writes nothing.
  *
  * This is the write half of `NodeConfigPanel`, kept out of it because the rules
  * below are worth reading on their own: which keys move together, what a
@@ -31,12 +31,11 @@ import type { NodeConfigPatch } from "./node-config-patch";
  * It was extracted when the panel was two components that had drifted, one of
  * which never cleared a stale connection as the action changed.
  */
-export function useNodeConfigWriter() {
+export function useNodeConfigWriter(nodeId: string | null) {
   const catalog = useExtensionCatalog();
   const store = useStore();
   const queryClient = useQueryClient();
   const navigate = useNavigate({ from: "/workflows/$workflowId" });
-  const selectedNodeId = useAtomValue(selectedNodeAtom);
   const updateNodeData = useSetAtom(updateNodeDataAtom);
   const clearNodeStatuses = useSetAtom(clearNodeStatusesAtom);
 
@@ -45,7 +44,7 @@ export function useNodeConfigWriter() {
       // Read the node as the store has it right now, so a write that lands
       // while an earlier render is still in scope cannot carry stale keys back.
       const latestNodes = store.get(nodesAtom);
-      const latestNode = latestNodes.find((node) => node.id === selectedNodeId);
+      const latestNode = latestNodes.find((node) => node.id === nodeId);
       if (!latestNode) {
         return;
       }
@@ -106,7 +105,7 @@ export function useNodeConfigWriter() {
 
       updateNodeData({ id: latestNode.id, data: { config: repaired } });
     },
-    [store, selectedNodeId, queryClient, updateNodeData, catalog]
+    [store, nodeId, queryClient, updateNodeData, catalog]
   );
 
   /** Re-read the run list, behind the Refresh button above it. */
@@ -120,15 +119,17 @@ export function useNodeConfigWriter() {
    * success toast is part of it: written once per panel back when there were
    * two, one of them toasted and the other finished in silence.
    *
-   * Destroying every run includes the one being shown, so clear `executionId`
-   * from the URL the same way Back does (#40 / #75). The URL is the one writer
-   * of which run is open; ExecutionOverlaySync derives the selection atom from it.
+   * Destroying every run includes the one being shown, so the route moves to
+   * the empty run list with `{ view: "runs" }`, the same search Back from a run
+   * writes. An empty search names Draft, which would leave Runs entirely. The
+   * URL is the one writer of which run is open; ExecutionOverlaySync derives
+   * the selection atom from it.
    */
   const deleteRuns = useMutation(
     orpcQuery.workflow.deleteExecutions.mutationOptions({
       onSuccess: async () => {
         clearNodeStatuses();
-        void navigate({ search: {}, replace: true });
+        void navigate({ search: { view: "runs" }, replace: true });
         await refreshRunHistory(queryClient);
         toast.success("All runs deleted");
       },

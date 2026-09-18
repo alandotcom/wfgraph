@@ -10,6 +10,7 @@ import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publicatio
 import type { XYPosition } from "@xyflow/react";
 import {
   COMPARISON_EDGE_ANNOTATION,
+  COMPARISON_GROUP_ANNOTATION,
   COMPARISON_NODE_ANNOTATION,
   toEditorEdge,
   toEditorNode,
@@ -18,6 +19,7 @@ import {
   type WorkflowEdge,
   type WorkflowNode,
 } from "#src/lib/workflow-graph-types";
+import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { orderGroupParentsFirst } from "@wfgraph/shared/graph/node-group";
 
 export type ComparisonDisplayGraph = {
@@ -111,6 +113,38 @@ function applyPositionOverrides(
 }
 
 /**
+ * Annotates each Group frame with the changed nodes drawn inside it, in the
+ * order the server lists changes. A removed step whose Group remains is drawn
+ * on the overview, so it is not one of that Group's changed members.
+ */
+function withChangedMembers(
+  nodes: WorkflowNode[],
+  payload: WorkflowComparisonPayload
+): WorkflowNode[] {
+  const parentIds = new Map(nodes.map((node) => [node.id, node.parentId]));
+  const changedMembers = Map.groupBy(
+    payload.nodeChanges.filter(
+      (change) => parentIds.get(change.nodeId) !== undefined
+    ),
+    (change) => parentIds.get(change.nodeId)
+  );
+  return nodes.map((node) => {
+    const members = changedMembers.get(node.id);
+    return members && isGroupNode(node)
+      ? {
+          ...node,
+          data: {
+            ...node.data,
+            [COMPARISON_GROUP_ANNOTATION]: {
+              changedMemberIds: members.map((change) => change.nodeId),
+            },
+          },
+        }
+      : node;
+  });
+}
+
+/**
  * Produces a canvas graph from the redacted base and draft snapshots.
  *
  * Positions never determine a change marker. The server owns that decision in
@@ -166,10 +200,12 @@ export function buildComparisonDisplayGraph(
         const position = historicalParentDeleted
           ? node.position
           : absoluteBasePosition(node, baseNodesById);
+        // A removed node leaves `draggable` unset, so the canvas's
+        // `nodesDraggable` decides whether it moves: on desktop it can be
+        // dragged clear of the draft, and on a phone it cannot.
         const historical: WorkflowNode = {
-          ...omit(node, ["parentId", "extent"]),
+          ...omit(node, ["parentId", "extent", "draggable"]),
           position,
-          draggable: true,
           connectable: false,
           focusable: true,
           deletable: false,
@@ -249,7 +285,7 @@ export function buildComparisonDisplayGraph(
   }
 
   const staticGraph: ComparisonDisplayGraph = {
-    nodes: comparisonNodes,
+    nodes: withChangedMembers(comparisonNodes, payload),
     edges: comparisonEdges,
   };
   const removedNodeIndexes = new Map<

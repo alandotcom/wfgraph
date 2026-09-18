@@ -39,7 +39,9 @@ import {
   currentWorkflowModeAtom,
   hasUnsavedChangesAtom,
 } from "#src/lib/workflow-save-store";
-import { workflowWorkspaceView } from "#src/lib/workflow-route-state";
+import type { WorkflowRouteSearch } from "#src/lib/workflow-navigation-state";
+import { authorizedWorkflowSearch } from "#src/lib/workflow-route-state";
+import { WorkspaceRouteSync } from "#src/components/workflow/workspace-route-sync";
 import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
@@ -170,23 +172,17 @@ async function renderStrip(
   const workflowRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/workflows/$workflowId",
-    validateSearch: (search: { executionId?: string } & SearchSchemaInput) => ({
-      executionId:
-        typeof search.executionId === "string" && search.executionId.length > 0
-          ? search.executionId
-          : undefined,
-    }),
-    beforeLoad: ({ search }) => {
-      const tab = workflowWorkspaceView(search.executionId);
-      if (tab !== null) {
-        store.set(workflowWorkspaceViewAtom, tab);
-      }
-    },
-    // The editor shell's arrangement, minus the panel: the sync owns URL →
+    validateSearch: (search: WorkflowRouteSearch & SearchSchemaInput) =>
+      authorizedWorkflowSearch(search, {
+        canOpenRuns: true,
+        canOpenComparison: true,
+      }),
+    // The editor shell's arrangement, minus the panel: the syncs own route →
     // overlay, and the strip is the only thing on screen that can undo it.
     component: () => (
       <>
         <ExecutionOverlaySync />
+        <WorkspaceRouteSync />
         <WorkflowStatusStrip workflowId={WORKFLOW_ID} />
       </>
     ),
@@ -197,16 +193,15 @@ async function renderStrip(
     history: createMemoryHistory({
       initialEntries: [
         options.executionId
-          ? `/workflows/${WORKFLOW_ID}?executionId=${options.executionId}`
+          ? `/workflows/${WORKFLOW_ID}?view=runs&executionId=${options.executionId}`
           : `/workflows/${WORKFLOW_ID}`,
       ],
     }),
   });
 
-  // This history starts on a route carrying a `beforeLoad`, and the router
-  // resolves that first match in a microtask. Mounting is therefore an update
-  // act has to cover. Without this, a case that asserts before its first
-  // `await` reports the match as an update outside act.
+  // The router resolves the first match in a microtask. Mounting is
+  // therefore an update act has to cover. Without this, a case that asserts
+  // before its first `await` reports the match as an update outside act.
   const view = await act(async () =>
     render(
       <JotaiProvider store={store}>
@@ -242,14 +237,20 @@ afterEach(() => {
 
 describe("WorkflowStatusStrip", () => {
   it("identifies Changes and provides a return to Draft before comparison loads", async () => {
-    const { view, store } = await renderStrip();
+    const { view, store, router } = await renderStrip();
 
-    act(() => store.set(workflowWorkspaceViewAtom, "changes"));
+    await act(async () => {
+      await router.navigate({
+        to: "/workflows/$workflowId",
+        params: { workflowId: WORKFLOW_ID },
+        search: { view: "changes" },
+      });
+    });
 
     expect(await view.findByText("Changes")).toBeTruthy();
     expect(view.getByText("Editing is off")).toBeTruthy();
-    // Leaving Changes clears the run search, which is a real navigation. The
-    // match tree settles after the click, so the click holds the act scope.
+    // Leaving Changes is a real navigation. The match tree settles after the
+    // click, so the click holds the act scope.
     await act(async () => {
       fireEvent.click(view.getByRole("button", { name: "Back to draft" }));
     });
@@ -381,7 +382,7 @@ describe("WorkflowStatusStrip", () => {
     expect(view.getByText("Editing is off")).toBeTruthy();
     expect(store.get(canvasEditingLockedAtom)).toBe(true);
 
-    // #96: no run panel is mounted in this tree at all, which is the state a
+    // #96: no Runs view is mounted in this tree at all, which is the state a
     // collapsed rail leaves behind. The strip is the only way out.
     await act(async () => {
       fireEvent.click(view.getByText("Back to draft"));

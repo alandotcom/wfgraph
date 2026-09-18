@@ -125,6 +125,19 @@ describe("startForEntity", () => {
     expect(transactions).toHaveLength(2);
   });
 
+  // A detected deadlock rolls back the whole transaction just as a
+  // serialization failure does, so the decision runs again from the start.
+  it("retries a deadlock abort", async () => {
+    const { start, transactions } = harness({
+      transactionFailures: [{ cause: { code: "40P01" } }],
+    });
+
+    const outcome = await start("newest-wins");
+
+    expect(outcome.status).toBe("started");
+    expect(transactions).toHaveLength(2);
+  });
+
   // A failure that is not a serialization abort is the caller's to see, however
   // deep it sits. Otherwise a genuine outage would be retried out and then
   // reported as though it had been a race.

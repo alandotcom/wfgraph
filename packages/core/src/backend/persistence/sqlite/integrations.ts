@@ -10,8 +10,8 @@ import {
   IntegrationRepo,
   type DecryptedIntegration,
   type IntegrationWriteOutcome,
-  readOAuthAuthorizationAttemptPayload,
 } from "#src/backend/services/integrations/repo";
+import { readOAuthAuthorizationAttemptPayload } from "#src/backend/services/integrations/oauth-attempt-payload";
 import type {
   SqliteDatabase,
   SqliteExecutor,

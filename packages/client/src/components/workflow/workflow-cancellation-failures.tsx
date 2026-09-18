@@ -5,7 +5,7 @@ import { getRelativeTime } from "@wfgraph/shared/utils/time";
 /**
  * Cancellation failures: Cancel Events that reached no run. Missing Entity
  * Values and declined or unevaluable Cancel Filters produce these audit rows.
- * The Runs panel renders them separately from Refused Starts.
+ * The Runs view renders them separately from Refused Starts.
  */
 export function WorkflowCancellationFailures({
   cancelNotDelivered,

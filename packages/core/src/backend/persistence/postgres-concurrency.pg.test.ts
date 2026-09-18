@@ -156,8 +156,13 @@ describePostgres("PostgreSQL concurrency", () => {
 
   // newest-wins lets every start through and displaces the runs it found, so
   // the invariant is that exactly one survives and no run is displaced twice.
+  // Every racer writes the row the others read, so about one decision commits
+  // per round of aborts and the last racer needs about one attempt per racer.
+  // Twelve racers usually exhaust a retry budget sized near the burst, or one
+  // whose racers back off in step, where six did so only now and then.
   it("leaves one live run per entity when newest-wins starts race", async () => {
-    const racers = await openRacers(6);
+    const racerCount = 12;
+    const racers = await openRacers(racerCount);
     await seedPublishedWorkflow(racers[0]);
 
     await Promise.all(
@@ -193,9 +198,11 @@ describePostgres("PostgreSQL concurrency", () => {
       })
     );
 
-    expect(rows).toHaveLength(6);
+    expect(rows).toHaveLength(racerCount);
     expect(rows.filter((row) => row.status === "running")).toHaveLength(1);
-    expect(rows.filter((row) => row.status === "superseded")).toHaveLength(5);
+    expect(rows.filter((row) => row.status === "superseded")).toHaveLength(
+      racerCount - 1
+    );
   });
 
   // Both racers claim a version number no one holds, so both mint a row. One

@@ -21,40 +21,6 @@ export function workflowNodeSize(width: number = WORKFLOW_NODE_WIDTH): {
   return { width, height: WORKFLOW_NODE_HEIGHT };
 }
 
-/** Compact card a Group draws for each nested lookup or Condition. */
-export const GROUP_CHILD_WIDTH = 188;
-export const GROUP_CHILD_HEIGHT = 56;
-export const GROUP_HEADER_HEIGHT = 36;
-export const GROUP_PAD = 12;
-/** Space between two members of one Group row. */
-export const GROUP_COLUMN_GAP = 24;
-/** Space reserved for interior edges between two Group rows. */
-export const GROUP_ROW_GAP = 40;
-
-export function groupFrameSize(
-  columns: number,
-  rows: number
-): {
-  width: number;
-  height: number;
-} {
-  const cols = Math.max(columns, 1);
-  const stacked = Math.max(rows, 1);
-  return {
-    width:
-      GROUP_PAD +
-      cols * GROUP_CHILD_WIDTH +
-      (cols - 1) * GROUP_COLUMN_GAP +
-      GROUP_PAD,
-    height:
-      GROUP_HEADER_HEIGHT +
-      GROUP_PAD +
-      stacked * GROUP_CHILD_HEIGHT +
-      (stacked - 1) * GROUP_ROW_GAP +
-      GROUP_PAD,
-  };
-}
-
 /** Width reserved for one Event Split outlet and its Event-name chip. */
 const EVENT_SPLIT_OUTLET_WIDTH = 132;
 

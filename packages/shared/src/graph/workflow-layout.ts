@@ -24,19 +24,14 @@ import { isConditionNode, isLifecycleNode } from "#src/graph/node-config";
 import {
   COUSIN_SPACING_FACTOR,
   eventSplitCardWidth,
-  groupFrameSize,
   NODE_SPACING,
   RANK_SPACING,
   WORKFLOW_NODE_HEIGHT,
   WORKFLOW_NODE_WIDTH,
+  workflowNodeSize,
 } from "#src/graph/workflow-layout-geometry";
-import {
-  edgesForGroupLayout,
-  groupEntryIds,
-  groupInteriorLayout,
-  isGroupNode,
-} from "#src/graph/node-group";
-import { layoutGroupChildren } from "#src/graph/layout-group-children";
+import { isGroupNode } from "#src/graph/group-boundary";
+import { edgesForGroupLayout } from "#src/graph/node-group";
 
 const LAYOUT_DIRECTION = "TB";
 const GRAPH_MARGIN = 40;
@@ -188,7 +183,7 @@ const CONDITION_OUTLETS: readonly string[] = ["true", "false"];
 /** A handle the node draws no slot for sorts after every one it does. */
 const UNRANKED_HANDLE = Number.MAX_SAFE_INTEGER;
 
-/** Every node but an Event Split and a Group draws at the one card size. */
+/** Every node but an Event Split draws at the one card size. */
 function standardCard(options: {
   outletHandles: readonly string[];
   holdsOutletsOpen: boolean;
@@ -217,27 +212,10 @@ function readNodeShape(input: {
   edges: readonly WorkflowEdge[];
   catalog: ExtensionCatalog;
 }): NodeShape {
+  // A Group draws as one collapsed card on the overview. Its members are
+  // placed by the focused Group canvas, so layout leaves them where they are.
   if (isGroupNode(input.node)) {
-    const children = input.nodes.filter(
-      (node) => node.parentId === input.node.id
-    );
-    const memberIds = children.map((child) => child.id);
-    const memberSet = new Set(memberIds);
-    const interior = input.edges.filter(
-      (edge) => memberSet.has(edge.source) && memberSet.has(edge.target)
-    );
-    const { bounds } = groupInteriorLayout(
-      memberIds,
-      interior,
-      groupEntryIds(input.node)
-    );
-    const size = groupFrameSize(bounds.columns, bounds.rows);
-    return {
-      width: size.width,
-      height: size.height,
-      outletHandles: [],
-      holdsOutletsOpen: false,
-    };
+    return standardCard({ outletHandles: [], holdsOutletsOpen: false });
   }
 
   if (isLifecycleNode(input.node)) {
@@ -255,7 +233,11 @@ function readNodeShape(input: {
   }
 
   if (!isEventSplitNode(input.node)) {
-    return standardCard({ outletHandles: [], holdsOutletsOpen: false });
+    return {
+      ...standardCard({ outletHandles: [], holdsOutletsOpen: false }),
+      width: input.node.width ?? WORKFLOW_NODE_WIDTH,
+      height: input.node.height ?? WORKFLOW_NODE_HEIGHT,
+    };
   }
 
   const outlets = eventsReaching({
@@ -432,17 +414,19 @@ function layoutWorkflowNodesWithDagre(input: {
   });
   graph.setDefaultEdgeLabel(() => ({}));
 
-  for (const node of input.model.nodes) {
+  // Dagre can reverse equal-rank siblings relative to its insertion order.
+  // Seed it from stable ids, so each Tidy produces the same arrangement.
+  const nodes = sortBy(input.model.nodes, [(node) => node.id]);
+  for (const node of nodes) {
     graph.setNode(node.id, sizeOf(input.model, node.id));
   }
 
-  // dagre seeds its ordering pass from insertion order, so nodes and edges go in
-  // the left-to-right order the canvas already draws them in. Held columns stay
-  // out of this graph: dagre's median heuristic reorders a rank freely, so a
-  // spare node standing in one dragged the wired branch to whichever side it
-  // happened to land on.
-  for (const node of input.model.nodes) {
-    for (const edge of input.model.outEdgesBySource.get(node.id) ?? []) {
+  for (const node of nodes) {
+    for (const edge of orderBy(
+      input.model.outEdgesBySource.get(node.id) ?? [],
+      [(item) => getEdgeWeight(item), (item) => item.target],
+      ["desc", "asc"]
+    )) {
       graph.setEdge(edge.source, edge.target, {
         weight: getEdgeWeight(edge),
       });
@@ -737,7 +721,7 @@ export function layoutWorkflowNodes(input: {
     }
     return { ...node, position: next };
   });
-  const nodes = layoutGroupChildren(positioned, input.edges);
+  const nodes = sizeGroupFrames(positioned);
   const previousById = new Map(input.nodes.map((node) => [node.id, node]));
   const changed = nodes.some((node) => {
     const previous = previousById.get(node.id);
@@ -752,4 +736,14 @@ export function layoutWorkflowNodes(input: {
   });
 
   return { nodes, changed };
+}
+
+/** Gives each Group frame holding a member the one card size it draws at. */
+function sizeGroupFrames(nodes: WorkflowNode[]): WorkflowNode[] {
+  const parentIds = new Set(nodes.map((node) => node.parentId));
+  return nodes.map((node) =>
+    isGroupNode(node) && parentIds.has(node.id)
+      ? { ...node, ...workflowNodeSize() }
+      : node
+  );
 }

@@ -1,8 +1,8 @@
 import { useSetAtom } from "jotai";
 import { useCallback } from "react";
-import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { useDomEvent } from "#src/hooks/effects";
 import { isTextEntry } from "#src/lib/is-text-entry";
+import { showGraphEditRefusal } from "#src/components/workflow/graph-edit-refusal";
 import {
   copySelectionAtom,
   duplicateSelectionAtom,
@@ -13,13 +13,18 @@ import {
 /**
  * Cmd/Ctrl+C, V, D, and G for the canvas selection. Disabled while a run overlay
  * or generation owns the canvas, and skipped while a field is being typed in.
+ * Paste and duplicate insert steps, so they wait for `insertsNodes`, and a
+ * refused paste or duplicate shows its refusal.
  */
-export function useCanvasCopyPaste(enabled: boolean) {
+export function useCanvasCopyPaste(input: {
+  enabled: boolean;
+  insertsNodes: boolean;
+}) {
+  const { enabled, insertsNodes } = input;
   const copySelection = useSetAtom(copySelectionAtom);
   const pasteSelection = useSetAtom(pasteCopiedSelectionAtom);
   const duplicateSelection = useSetAtom(duplicateSelectionAtom);
   const groupSelection = useSetAtom(groupSelectionAtom);
-  const catalog = useExtensionCatalog();
 
   const onKeyDown = useCallback(
     (event: KeyboardEvent) => {
@@ -37,23 +42,29 @@ export function useCanvasCopyPaste(enabled: boolean) {
         }
         return;
       }
-      if (key === "v") {
-        if (pasteSelection()) {
+      if (key === "v" || key === "d") {
+        const outcome = insertsNodes
+          ? key === "v"
+            ? pasteSelection()
+            : duplicateSelection()
+          : null;
+        if (outcome !== null) {
           event.preventDefault();
+          showGraphEditRefusal(outcome);
         }
         return;
       }
-      if (key === "d") {
-        if (duplicateSelection()) {
-          event.preventDefault();
-        }
-        return;
-      }
-      if (key === "g" && groupSelection({ catalog })) {
+      if (key === "g" && groupSelection()) {
         event.preventDefault();
       }
     },
-    [copySelection, pasteSelection, duplicateSelection, groupSelection, catalog]
+    [
+      copySelection,
+      pasteSelection,
+      duplicateSelection,
+      groupSelection,
+      insertsNodes,
+    ]
   );
 
   useDomEvent(window, "keydown", onKeyDown, { enabled });

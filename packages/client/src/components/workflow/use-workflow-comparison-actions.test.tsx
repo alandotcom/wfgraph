@@ -1,4 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  RouterContextProvider,
+} from "@tanstack/react-router";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import type { ReactNode } from "react";
@@ -19,7 +26,14 @@ import {
 import {
   loadWorkflowGraphAtom,
   nodesAtom,
+  selectOnlyNodeAtom,
 } from "#src/lib/workflow-graph-store";
+import {
+  activeWorkspaceAddressAtom,
+  recordInspectorScrollAtom,
+  recordWorkspaceCameraAtom,
+  setWorkspaceRevealLevelAtom,
+} from "#src/lib/workflow-workspace-navigation";
 import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import { orpcQuery } from "#src/lib/rpc-query";
 import {
@@ -34,6 +48,7 @@ import {
   installAuthorizationGrantsForTests,
   resetAuthorizationGrantsForTests,
 } from "#src/lib/authorization-test-support";
+import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
 
 const comparison: WorkflowComparisonPayload = {
   baseVersion: null,
@@ -44,6 +59,20 @@ const comparison: WorkflowComparisonPayload = {
   nodeChanges: [],
   edgeChanges: [],
 };
+
+/** A router holding the editor route, for hooks that navigate. */
+function routerAt(entry: string) {
+  const rootRoute = createRootRoute();
+  return createRouter({
+    routeTree: rootRoute.addChildren([
+      createRoute({
+        getParentRoute: () => rootRoute,
+        path: "/workflows/$workflowId",
+      }),
+    ]),
+    history: createMemoryHistory({ initialEntries: [entry] }),
+  });
+}
 
 const comparisonOperationIds = [
   "workflow.compareVersion",
@@ -159,6 +188,85 @@ describe("useWorkflowComparisonActions", () => {
     expect(renders).toBe(rendersBeforeGraphChange);
   });
 
+  it("sends the same draft graph whatever the Group scope, selection, Reveal, camera, and scroll are", async () => {
+    const requests: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+        requests.push((await parseRpcRequestInput(init)).draftGraph);
+        return rpcJsonResponse(comparison);
+      })
+    );
+    const store = createStore();
+    store.set(currentWorkflowIdAtom, "workflow_1");
+    store.set(loadWorkflowGraphAtom, {
+      nodes: [
+        {
+          id: "group",
+          type: "group",
+          position: { x: 0, y: 0 },
+          data: { label: "Reminders", type: "group" },
+        },
+        {
+          id: "a",
+          type: "action",
+          position: { x: 0, y: 0 },
+          parentId: "group",
+          data: { label: "A", type: "action" },
+        },
+        {
+          id: "b",
+          type: "action",
+          position: { x: 0, y: 200 },
+          parentId: "group",
+          data: { label: "B", type: "action" },
+        },
+      ],
+      edges: [{ id: "a-b", source: "a", target: "b" }],
+    });
+    showWorkspaceRoute(store, { view: "changes" });
+    const queryClient = new QueryClient({
+      defaultOptions: { mutations: { retry: false } },
+    });
+    function Wrapper({ children }: { children: ReactNode }) {
+      return (
+        <QueryClientProvider client={queryClient}>
+          <JotaiProvider store={store}>{children}</JotaiProvider>
+        </QueryClientProvider>
+      );
+    }
+    const { result } = renderHook(() => useWorkflowComparisonActions(), {
+      wrapper: Wrapper,
+    });
+    await waitFor(() => expect(result.current.canCompare).toBe(true));
+    await act(async () => result.current.openComparison({ force: true }));
+
+    // Enter the Group, select a member, open Focus, and move the camera and
+    // the inspector scroll for that address.
+    showWorkspaceRoute(store, { view: "changes", group: "group" });
+    const address = store.get(activeWorkspaceAddressAtom);
+    store.set(selectOnlyNodeAtom, "a");
+    store.set(setWorkspaceRevealLevelAtom, { address, level: "focus" });
+    store.set(recordWorkspaceCameraAtom, {
+      address,
+      formFactor: "desktop",
+      camera: { centerX: 400, centerY: 300, zoom: 2 },
+    });
+    store.set(recordInspectorScrollAtom, {
+      address,
+      inspectedId: "a",
+      level: "focus",
+      top: 120,
+    });
+    await act(async () => result.current.openComparison({ force: true }));
+
+    expect(requests).toHaveLength(2);
+    expect(requests[1]).toEqual(requests[0]);
+    expect(JSON.stringify(requests[1])).not.toMatch(
+      /selected|camera|scroll|reveal|hidden/i
+    );
+  });
+
   it("keeps the installed comparison when a refresh fails", async () => {
     vi.stubGlobal(
       "fetch",
@@ -166,7 +274,7 @@ describe("useWorkflowComparisonActions", () => {
     );
     const store = createStore();
     store.set(currentWorkflowIdAtom, "workflow_1");
-    store.set(workflowWorkspaceViewAtom, "changes");
+    showWorkspaceRoute(store, { view: "changes" });
     const epoch = store.set(beginWorkflowComparisonRequestAtom, "workflow_1");
     store.set(installWorkflowComparisonAtom, {
       workflowId: "workflow_1",
@@ -228,11 +336,16 @@ describe("useWorkflowComparisonActions", () => {
     const queryClient = new QueryClient({
       defaultOptions: { mutations: { retry: false } },
     });
+    // A restore returns to Draft through the route, so the hook needs a router
+    // in context.
+    const router = routerAt("/workflows/workflow_1?view=changes");
     function Wrapper({ children }: { children: ReactNode }) {
       return (
-        <QueryClientProvider client={queryClient}>
-          <JotaiProvider store={store}>{children}</JotaiProvider>
-        </QueryClientProvider>
+        <RouterContextProvider router={router}>
+          <QueryClientProvider client={queryClient}>
+            <JotaiProvider store={store}>{children}</JotaiProvider>
+          </QueryClientProvider>
+        </RouterContextProvider>
       );
     }
     const { result } = renderHook(() => useWorkflowComparisonActions(), {
@@ -265,6 +378,7 @@ describe("useWorkflowComparisonActions", () => {
       versionId: "version_1",
       expectedDraftRevision: 2,
     });
+    await waitFor(() => expect(router.state.location.search).toEqual({}));
   });
 
   it("suppresses restore when the immediate draft save fails", async () => {
@@ -282,11 +396,16 @@ describe("useWorkflowComparisonActions", () => {
     const queryClient = new QueryClient({
       defaultOptions: { mutations: { retry: false } },
     });
+    // A restore returns to Draft through the route, so the hook needs a router
+    // in context.
+    const router = routerAt("/workflows/workflow_1?view=changes");
     function Wrapper({ children }: { children: ReactNode }) {
       return (
-        <QueryClientProvider client={queryClient}>
-          <JotaiProvider store={store}>{children}</JotaiProvider>
-        </QueryClientProvider>
+        <RouterContextProvider router={router}>
+          <QueryClientProvider client={queryClient}>
+            <JotaiProvider store={store}>{children}</JotaiProvider>
+          </QueryClientProvider>
+        </RouterContextProvider>
       );
     }
     const { result } = renderHook(() => useWorkflowComparisonActions(), {
@@ -377,7 +496,7 @@ describe("useWorkflowComparisonActions", () => {
         ],
         edges: [],
       });
-      store.set(workflowWorkspaceViewAtom, "runs");
+      showWorkspaceRoute(store, { view: "runs" });
     });
     await act(async () =>
       resolveRestore(rpcJsonResponse(savedWorkflow("workflow_a")))

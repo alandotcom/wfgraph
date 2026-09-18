@@ -243,12 +243,13 @@ export function WorkflowToolbarChrome({
 }) {
   return (
     <div className="relative h-11 shrink-0 border-b bg-background">
-      {/* The row remains one fixed height. A narrow editor can scroll through
-          every control while the palette trigger remains centred in this toolbar
-          container at desktop widths. */}
-      <div className="flex h-11 items-center gap-2 overflow-x-auto px-2.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {/* The row remains one fixed height. Below `md` every control fits, with
+          the workflow name truncating; from `md` a narrow editor scrolls through
+          every control, and at desktop widths the palette trigger is centred in
+          this toolbar container. */}
+      <div className="flex h-11 items-center gap-1 overflow-x-auto px-2.5 md:gap-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <Menubar
-          className="flex min-w-max items-center gap-2 pr-72 min-[70rem]:min-w-0 min-[70rem]:max-w-[calc(50%-10rem)] min-[70rem]:flex-1 min-[70rem]:overflow-x-auto min-[70rem]:overscroll-contain min-[70rem]:pr-0"
+          className="flex min-w-0 flex-1 items-center gap-1 md:min-w-max md:gap-2 md:flex-none md:pr-72 min-[70rem]:min-w-0 min-[70rem]:max-w-[calc(50%-10rem)] min-[70rem]:flex-1 min-[70rem]:overflow-x-auto min-[70rem]:overscroll-contain min-[70rem]:pr-0"
           data-slot="workflow-toolbar-left"
         >
           <DashboardLink />
@@ -272,12 +273,13 @@ export function WorkflowToolbarChrome({
             <CommandPaletteTrigger />
           </div>
         </div>
-        {/* Sticky against the right edge, because this row scrolls: a phone
-            cannot fit the leading menus and these controls at once, and the
-            group that writes is the one that must never be the half scrolled
-            out of reach. It is opaque for the same reason. */}
+        {/* Sticky against the right edge, because from `md` this row scrolls:
+            a tablet-width editor cannot fit the leading menus and these
+            controls at once, and the group that writes is the one that must
+            never be the half scrolled out of reach. It is opaque for the same
+            reason. */}
         <div
-          className="sticky right-0 z-10 ml-auto flex min-w-max items-center gap-2 bg-background pl-2 before:pointer-events-none before:absolute before:inset-y-0 before:right-full before:w-4 before:bg-gradient-to-l before:from-background min-[70rem]:before:hidden min-[70rem]:min-w-0 min-[70rem]:max-w-[calc(50%-10rem)] min-[70rem]:flex-1 min-[70rem]:justify-end min-[70rem]:overflow-x-auto min-[70rem]:overscroll-contain"
+          className="sticky right-0 z-10 ml-auto flex min-w-max items-center gap-1 bg-background pl-1 md:gap-2 md:pl-2 before:pointer-events-none before:absolute before:inset-y-0 before:right-full before:w-4 before:bg-gradient-to-l before:from-background min-[70rem]:before:hidden min-[70rem]:min-w-0 min-[70rem]:max-w-[calc(50%-10rem)] min-[70rem]:flex-1 min-[70rem]:justify-end min-[70rem]:overflow-x-auto min-[70rem]:overscroll-contain"
           data-slot="workflow-toolbar-right"
         >
           <WorkflowTrailingControls

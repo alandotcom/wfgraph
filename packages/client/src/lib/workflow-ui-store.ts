@@ -1,134 +1,35 @@
 import { atom } from "jotai";
+import type { WorkspaceView } from "#src/lib/workflow-navigation-state";
+import { readCookie, writeCookie } from "#src/lib/preference-cookies";
+import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
 
 /**
- * Editor chrome: which panel is open, how wide it is, which run is on screen.
+ * Editor chrome: which view is active, the agent panel, which run is on screen.
  *
  * None of this belongs to the graph, so this module does not import
  * `workflow-graph-store`. Authorization is server state and each UI surface
  * reads it through its own bounded authorization query.
  *
- * Two of these preferences survive a reload, in cookies. Both are read once as
- * the atom's initial value and written from the atom's own setter, so there is
+ * The agent panel survives a reload, in cookies. Each is read once as the
+ * atom's initial value and written from the atom's own setter, so there is
  * exactly one place each preference is persisted and no effect mirroring state
  * into storage after the fact.
  */
 
-const SIDEBAR_WIDTH_COOKIE = "sidebar-width";
-const SIDEBAR_COLLAPSED_COOKIE = "sidebar-collapsed";
 const AGENT_PANEL_OPEN_COOKIE = "agent-panel-open";
 const AGENT_PANEL_SIZE_COOKIE = "agent-panel-size";
-const COOKIE_MAX_AGE_SECONDS = 31_536_000; // one year
 
-const MIN_SIDEBAR_PERCENT = 20;
-const MAX_SIDEBAR_PERCENT = 50;
-const DEFAULT_SIDEBAR_PERCENT = 30;
-
-function readCookie(name: string): string | undefined {
-  if (typeof document === "undefined") {
-    return undefined;
-  }
-  return document.cookie
-    .split("; ")
-    .find((row) => row.startsWith(`${name}=`))
-    ?.split("=")[1];
-}
-
-function writeCookie(name: string, value: string) {
-  document.cookie = `${name}=${value}; path=/; max-age=${COOKIE_MAX_AGE_SECONDS}`;
-}
-
-function readInitialSidebarPercent(): number {
-  const value = Number.parseFloat(readCookie(SIDEBAR_WIDTH_COOKIE) ?? "");
-  return value >= MIN_SIDEBAR_PERCENT && value <= MAX_SIDEBAR_PERCENT
-    ? value
-    : DEFAULT_SIDEBAR_PERCENT;
-}
-
-export type WorkflowWorkspaceView = "draft" | "runs" | "changes";
-
-const workflowWorkspaceViewStateAtom = atom<WorkflowWorkspaceView>("draft");
+export type WorkflowWorkspaceView = WorkspaceView;
 
 /**
- * The editor-wide surface that owns the canvas and inspector.
+ * The editor-wide surface that owns the canvas and inspector, as the route
+ * names it.
  */
 export const workflowWorkspaceViewAtom = atom(
-  (get) => get(workflowWorkspaceViewStateAtom),
-  (_get, set, view: WorkflowWorkspaceView) => {
-    set(workflowWorkspaceViewStateAtom, view);
-  }
+  (get) => get(activeWorkspaceAddressAtom).key.workspace
 );
 
 export const showMinimapAtom = atom(false);
-
-const sidebarCollapsedStateAtom = atom(
-  readCookie(SIDEBAR_COLLAPSED_COOKIE) === "true"
-);
-
-/** Reading is plain; writing also persists, because that is the whole point. */
-export const isSidebarCollapsedAtom = atom(
-  (get) => get(sidebarCollapsedStateAtom),
-  (get, set, next: boolean | ((previous: boolean) => boolean)) => {
-    const value =
-      typeof next === "function" ? next(get(sidebarCollapsedStateAtom)) : next;
-    set(sidebarCollapsedStateAtom, value);
-    writeCookie(SIDEBAR_COLLAPSED_COOKIE, String(value));
-  }
-);
-
-const sidebarWidthStateAtom = atom(readInitialSidebarPercent());
-
-export const sidebarWidthPercentAtom = atom(
-  (get) => get(sidebarWidthStateAtom),
-  (_get, set, value: number) => {
-    set(sidebarWidthStateAtom, value);
-    writeCookie(SIDEBAR_WIDTH_COOKIE, String(value));
-  }
-);
-
-/**
- * The panel's rendered width as CSS, clamped.
- *
- * One home for the clamp, because two of them is a visible bug: the panel's
- * column reserves the space and the surface inside it slides through that
- * space, so a percentage in one and a clamped value in the other left a strip
- * of bare page between the canvas edge and the panel on any screen wide enough
- * for the percentage to beat the cap.
- *
- * Viewport units rather than `%`, because the two boxes have different
- * containing blocks and the collapsed one is zero wide. What the share is of is
- * the editor shell, which is the viewport less `--editor-inset` on each side:
- * `editorShellWidth` says the same thing to the resize drag, and the two have
- * to agree or the panel's edge lands an inset away from where the pointer
- * released it.
- *
- * The floor stops the panel becoming unusable on a small laptop; the cap stops
- * a bare percentage handing 576px of a 1920px screen to a column of form fields.
- */
-export function sidebarWidthCss(percent: number): string {
-  return `min(max(calc((100vw - 2 * var(--editor-inset, 0px)) * ${percent} / 100), 320px), 460px)`;
-}
-
-/**
- * The box the panel's percentage is a share of: the editor shell, which is the
- * viewport less `--editor-inset` on each side.
- *
- * Reconstructed from the same variable the CSS above reads rather than measured
- * off the shell element, so the two cannot answer with different widths. Called
- * per pointer move during a resize, which is a style read on the root element
- * and no layout; the window can change width mid-drag on a rotation or a
- * tiling window manager, and the drag it was replacing tracked that.
- *
- * The fallback is a full-width shell, which is what a document holding no
- * stylesheet has.
- */
-export function editorShellWidth(): number {
-  const inset = Number.parseFloat(
-    getComputedStyle(document.documentElement).getPropertyValue(
-      "--editor-inset"
-    )
-  );
-  return window.innerWidth - (Number.isFinite(inset) ? inset : 0) * 2;
-}
 
 export const isExecutingAtom = atom(false);
 export const isGeneratingAtom = atom(false);
@@ -211,21 +112,12 @@ export const agentPanelSizeAtom = atom(
   }
 );
 
-/** The run last opened in the Runs panel, whether or not that panel is up. */
-const watchedExecutionIdAtom = atom<string | null>(null);
-
 /**
- * The run the canvas is painting. It reports a run only while the Runs workspace
- * is active, so leaving it takes the chips, borders, and countdown off
- * the graph and stops both polls, without any caller having to remember to
- * clear it.
+ * The run the canvas is painting, as the route names it. It reports a run only
+ * while the Runs workspace is active, so leaving it takes the chips, borders,
+ * and countdown off the graph and stops both polls.
  */
-export const selectedExecutionIdAtom = atom(
-  (get) =>
-    get(workflowWorkspaceViewAtom) === "runs"
-      ? get(watchedExecutionIdAtom)
-      : null,
-  (_get, set, executionId: string | null) => {
-    set(watchedExecutionIdAtom, executionId);
-  }
-);
+export const selectedExecutionIdAtom = atom((get) => {
+  const { key } = get(activeWorkspaceAddressAtom);
+  return key.workspace === "runs" ? key.executionId : null;
+});

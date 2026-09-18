@@ -11,6 +11,10 @@ import {
   type ActionMetadata,
   findAction,
 } from "@wfgraph/shared/extensions/catalog";
+import type {
+  GroupRunStatus,
+  RunNodeEvidenceStatus,
+} from "@wfgraph/shared/graph/group-run-status";
 import type { WorkflowExecutionStatus } from "@wfgraph/shared/lifecycle/execution-contracts";
 import { type JsonValue, readJsonValue } from "@wfgraph/shared/types/json";
 import { readAs } from "@wfgraph/shared/types/schema";
@@ -19,50 +23,64 @@ import { readAs } from "@wfgraph/shared/types/schema";
  * How a status reads on screen, for the two vocabularies that reach these.
  *
  * An Execution ends `completed`, `failed`, `canceled`, `exited` or `superseded`; a node
- * inside one ends `success`, `error` or `cancelled`. Both arrive here as strings
- * off a payload, so the lookups are records rather than switches and `satisfies`
- * is what holds each to naming every member of its own union.
+ * inside one ends `success`, `error` or `cancelled`. Each vocabulary has its own
+ * label and tone function, and `satisfies` holds each record to naming every
+ * member of its own union.
  */
 const logger = getClientLogger("workflow", "run");
 
 const RUN_STATUS_TONES = {
   pending: "muted",
   running: "info",
-  waiting: "pending",
-  completed: "good",
-  canceled: "quiet",
-  exited: "quiet",
-  superseded: "quiet",
-  failed: "bad",
+  waiting: "warning",
+  completed: "success",
+  canceled: "cancelled",
+  exited: "cancelled",
+  superseded: "cancelled",
+  failed: "destructive",
 } satisfies Record<WorkflowExecutionStatus, StatusTone>;
 
 const NODE_STATUS_TONES = {
   pending: "muted",
   running: "info",
-  success: "good",
-  error: "bad",
-  cancelled: "quiet",
+  success: "success",
+  error: "destructive",
+  cancelled: "cancelled",
 } satisfies Record<NodeStatus, StatusTone>;
 
-type StatusTone = "good" | "bad" | "info" | "pending" | "quiet" | "muted";
+/** The signal color a status reads in, named by its color token. */
+export type StatusTone =
+  | "success"
+  | "destructive"
+  | "info"
+  | "warning"
+  | "cancelled"
+  | "muted";
 
 /** A node's own statuses, which the engine writes and the canvas draws. */
-type NodeStatus = "pending" | "running" | "success" | "error" | "cancelled";
+export type NodeStatus =
+  | "pending"
+  | "running"
+  | "success"
+  | "error"
+  | "cancelled";
 
-function toneOf(status: string): StatusTone {
-  return (
-    (RUN_STATUS_TONES as Record<string, StatusTone | undefined>)[status] ??
-    (NODE_STATUS_TONES as Record<string, StatusTone | undefined>)[status] ??
-    "muted"
-  );
+/** The tone of a run's status. */
+export function runStatusTone(status: WorkflowExecutionStatus): StatusTone {
+  return RUN_STATUS_TONES[status];
+}
+
+/** The tone of a node execution's status. */
+export function nodeStatusTone(status: NodeStatus): StatusTone {
+  return NODE_STATUS_TONES[status];
 }
 
 const DOT_CLASSES: Record<StatusTone, string> = {
-  good: "bg-success",
-  bad: "bg-destructive",
+  success: "bg-success",
+  destructive: "bg-destructive",
   info: "bg-info",
-  pending: "bg-warning",
-  quiet: "bg-cancelled",
+  warning: "bg-warning",
+  cancelled: "bg-cancelled",
   muted: "bg-muted-foreground",
 };
 
@@ -70,7 +88,7 @@ const DOT_CLASSES: Record<StatusTone, string> = {
  * How each status reads, keyed by the status rather than by its tone.
  *
  * Colour is shared between the two vocabularies and wording is not: a displaced
- * run and a cancelled one are both quiet, and calling the first "Cancelled"
+ * run and a cancelled one share the cancelled tone, and calling the first "Cancelled"
  * sends a builder looking for who cancelled it. Keying the words to the status
  * makes a new one a compile error here instead of a silent "Unknown".
  */
@@ -88,62 +106,81 @@ const RUN_STATUS_LABELS = {
 const NODE_STATUS_LABELS = {
   pending: "Pending",
   running: "Running",
-  success: "Success",
-  error: "Error",
-  cancelled: "Cancelled",
+  success: "Successful",
+  error: "Failed",
+  cancelled: "Canceled",
 } satisfies Record<NodeStatus, string>;
 
 const BADGE_CLASSES: Record<StatusTone, string> = {
-  good: "border-success/30 bg-success/10 text-success",
-  bad: "border-destructive/30 bg-destructive/10 text-destructive",
+  success: "border-success/30 bg-success/10 text-success",
+  destructive: "border-destructive/30 bg-destructive/10 text-destructive",
   info: "border-info/30 bg-info/10 text-info",
-  pending: "border-warning/30 bg-warning/10 text-warning",
-  quiet: "border-cancelled/30 bg-cancelled/10 text-cancelled",
+  warning: "border-warning/30 bg-warning/10 text-warning",
+  cancelled: "border-cancelled/30 bg-cancelled/10 text-cancelled",
   muted: "border-muted bg-muted/40 text-muted-foreground",
 };
 
-export function getStatusDotClass(status: string): string {
-  return DOT_CLASSES[toneOf(status)];
+export function statusToneDotClass(tone: StatusTone): string {
+  return DOT_CLASSES[tone];
 }
 
-export function getStatusLabel(status: string): string {
-  return (
-    (RUN_STATUS_LABELS as Record<string, string | undefined>)[status] ??
-    (NODE_STATUS_LABELS as Record<string, string | undefined>)[status] ??
-    "Unknown"
-  );
+/** How a run's status reads. */
+export function runStatusLabel(status: WorkflowExecutionStatus): string {
+  return RUN_STATUS_LABELS[status];
 }
 
-export function getStatusBadgeClass(status: string): string {
-  return BADGE_CLASSES[toneOf(status)];
+/** How a node execution's status reads. */
+export function nodeStatusLabel(status: NodeStatus): string {
+  return NODE_STATUS_LABELS[status];
+}
+
+export function statusToneBadgeClass(tone: StatusTone): string {
+  return BADGE_CLASSES[tone];
 }
 
 const TEXT_CLASSES: Record<StatusTone, string> = {
-  good: "text-success",
-  bad: "text-destructive",
+  success: "text-success",
+  destructive: "text-destructive",
   info: "text-info",
-  pending: "text-warning",
-  quiet: "text-cancelled",
+  warning: "text-warning",
+  cancelled: "text-cancelled",
   muted: "text-muted-foreground",
 };
 
-export function getStatusTextClass(status: string): string {
-  return TEXT_CLASSES[toneOf(status)];
+export function statusToneTextClass(tone: StatusTone): string {
+  return TEXT_CLASSES[tone];
 }
 
-export function nodeKindLabel(nodeType: string): string {
-  switch (nodeType) {
-    case "lifecycle":
-      return "Lifecycle";
-    case "wait":
-      return "Wait";
-    case "condition":
-      return "Condition";
-    case "group":
-      return "Group";
-    default:
-      return "Action";
+const GROUP_RUN_STATUS_TONES = {
+  idle: "muted",
+  reached: "muted",
+  running: "info",
+  waiting: "warning",
+  canceled: "cancelled",
+  failed: "destructive",
+  successful: "success",
+} satisfies Record<GroupRunStatus, StatusTone>;
+
+/** The tone of a Group's run status. Reached claims no outcome, so it is muted. */
+export function groupRunStatusTone(status: GroupRunStatus): StatusTone {
+  return GROUP_RUN_STATUS_TONES[status];
+}
+
+/**
+ * How a node's run evidence reads: "Not run" for a node the run has not
+ * reached, "Waiting" for one it is parked on, and the node status otherwise.
+ */
+export function runNodeEvidenceLabel(status: RunNodeEvidenceStatus): {
+  text: string;
+  tone: StatusTone;
+} {
+  if (status === "none") {
+    return { text: "Not run", tone: "muted" };
   }
+  if (status === "waiting") {
+    return { text: "Waiting", tone: "warning" };
+  }
+  return { text: nodeStatusLabel(status), tone: nodeStatusTone(status) };
 }
 
 export function formatDuration(duration: string): string {

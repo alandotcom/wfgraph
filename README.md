@@ -41,7 +41,8 @@ pnpm run dev
 
 Open the editor at [http://localhost:5173](http://localhost:5173). The example host app lives
 in `examples/app.ts`. Sign in at `/login` as `admin`, `editor`, or `readonly`. Each local
-demo account uses the password `password`.
+demo account uses the password `password`. Set `WFGRAPH_DEMO_USER=admin` in `.env.local` to
+skip the login page in development.
 
 The example app stores its data in SQLite, at `examples/wfgraph.sqlite`, which is gitignored
 and created on first boot. There is no migration step and no separate service. Point
@@ -72,12 +73,16 @@ UI. If startup fails, read `/tmp/wfgraph-dev.log` in the codespace.
 
 ## Test workflow reliability
 
-`pnpm run test:reliability` exercises admission recovery, late cancellation, and
-Entity Eligibility Exit through the real application and a private Inngest dev server.
-It runs fixed regression examples and five generated cases per property on SQLite and
-PostgreSQL. Each case creates and closes its own application, database, and Inngest state.
-The three property families run in separate worker processes. Pass `--maxWorkers=1`
-to run them sequentially.
+`pnpm run test:reliability` exercises admission recovery, late cancellation, Entity
+Eligibility Exit, and Group execution through the real application and a private Inngest
+dev server. It runs fixed regression examples and generated cases on SQLite and
+PostgreSQL. Each case creates and closes its own application, database, and Inngest
+state.
+The cancellation, Exit, and Group properties run every case three times: ungrouped, and
+with a vertical and a horizontal Group around part of the graph. Each run must reach the
+expected outcome, and the grouped runs must match the ungrouped run. The property
+families run in separate worker processes. Pass `--maxWorkers=1` to run them
+sequentially.
 
 ```bash
 docker compose up -d
@@ -86,7 +91,9 @@ WFGRAPH_TEST_DATABASE_URL=postgresql://workflow:workflow@localhost:55437/workflo
 ```
 
 For SQLite alone, use `WFGRAPH_RELIABILITY_BACKEND=sqlite`. Set
-`WFGRAPH_RELIABILITY_RUNS` to increase the generated case count. Failures write evidence
+`WFGRAPH_RELIABILITY_RUNS` to change the generated case count, which defaults to five,
+and `WFGRAPH_RELIABILITY_GROUP_RUNS` to change the Group property's count, which
+defaults to three. Failures write evidence
 under `test-results/reliability/` and print a replay command with
 `WFGRAPH_RELIABILITY_SEED` and `WFGRAPH_RELIABILITY_PATH`. The seed reproduces generated
 inputs; test controls coordinate the repository failure windows. The ordinary

@@ -1,15 +1,11 @@
 /**
- * One issue model for the editor overlay and the collector that feeds it.
- *
- * The client pre-run checks (required fields, missing connections, orphan
- * template refs, and provider-backed fields that went unchecked) land here as a
- * flat discriminated list. Overlay grouping and "Run draft anyway" are derived
- * from that list so the toolbar is chrome, not a second validator. Server
- * save/preflight reuse the same required-field and missing-connection pieces;
- * wrapping every server refusal into this model is deferred.
+ * One issue model for the editor overlay and the collector that feeds it. The
+ * editor's checks land here as one flat list, and the overlay grouping and "Run
+ * draft anyway" are derived from it. A `blocking` issue stops Publish, and also
+ * a draft run unless it is an `invalid_group` or a Publish-only Lifecycle check.
  */
 
-import { groupBy, uniq } from "es-toolkit/array";
+import { groupBy, uniq, uniqBy } from "es-toolkit/array";
 import {
   getMissingRequiredFieldsForNodes,
   type ResolveActionByType,
@@ -19,9 +15,22 @@ import {
   findAction,
   findIntegration,
 } from "#src/extensions/catalog";
+import {
+  type GroupContractRule,
+  groupContractViolations,
+} from "#src/graph/group-contract";
 import { readConfigTrimmedString } from "#src/graph/node-config";
+import { checkCancelFilters } from "#src/lifecycle/cancel-filters";
+import { checkEntityEligibility } from "#src/lifecycle/entity-eligibility";
+import {
+  checkLifecycleRules,
+  type LifecycleRules,
+  type LifecycleRulesCheck,
+  readLifecycleRules,
+} from "#src/lifecycle/lifecycle-rules";
+import { checkStartFilters } from "#src/lifecycle/start-filters";
 import { extractAllTemplateReferences } from "#src/graph/node-references";
-import type { WorkflowNode } from "#src/graph/types";
+import type { WorkflowEdge, WorkflowNode } from "#src/graph/types";
 import { flattenConfigFields } from "#src/plugins/action-fields";
 import { readJsonObjectLeniently } from "#src/types/json";
 import { asNonEmptyString } from "#src/types/string";
@@ -78,14 +87,58 @@ export type BrokenReferenceIssue = {
   message: string;
 };
 
+/**
+ * A Group that breaks a v1 Group rule, from the same `groupContractViolations`
+ * call publication makes. `nodeId` is the Group frame's id, so the frame wears
+ * the badge. It stops Publish and leaves a draft run free, because Group
+ * membership does not change how a run executes.
+ */
+export type InvalidGroupIssue = {
+  kind: "invalid_group";
+  severity: "blocking";
+  nodeId: string;
+  nodeLabel: string;
+  rule: GroupContractRule;
+  message: string;
+};
+
+/**
+ * The Lifecycle Rules checks Publish runs on a Lifecycle Node. Preflight also
+ * runs `rules`, so a `rules` problem stops a draft run; the other three checks
+ * stop Publish alone.
+ */
+export type LifecycleRulesCheckId =
+  | "rules"
+  | "entity_eligibility"
+  | "start_filter"
+  | "cancel_filter";
+
+/**
+ * A Lifecycle Node whose rules one Publish check refuses, with that check's
+ * sentence. `nodeId` is the Lifecycle Node's id. Each check reports its first
+ * problem, as Publish does.
+ */
+export type InvalidLifecycleRulesIssue = {
+  kind: "invalid_lifecycle_rules";
+  severity: "blocking";
+  nodeId: string;
+  nodeLabel: string;
+  check: LifecycleRulesCheckId;
+  message: string;
+};
+
 export type WorkflowIssue =
   | MissingRequiredFieldIssue
+  | InvalidGroupIssue
+  | InvalidLifecycleRulesIssue
   | MissingIntegrationIssue
   | UnverifiedProviderFieldIssue
   | BrokenReferenceIssue;
 
 export type CollectWorkflowIssuesInput = {
   nodes: WorkflowNode[];
+  /** The stored edges, which the Group rules read. */
+  edges: readonly WorkflowEdge[];
   catalog: ExtensionCatalog;
   /**
    * Connections the operator can bind. An id absent from this list counts as
@@ -130,8 +183,33 @@ export type UnverifiedProviderFieldGroup = {
   }>;
 };
 
+type InvalidGroupEntry = {
+  nodeId: string;
+  nodeLabel: string;
+  /**
+   * Each distinct rule and sentence once. A rule id holds no hyphen, so
+   * `${rule}-${message}` is a unique list key.
+   */
+  problems: Array<{ rule: GroupContractRule; message: string }>;
+};
+
+type InvalidLifecycleRulesEntry = {
+  nodeId: string;
+  nodeLabel: string;
+  problems: Array<{ check: LifecycleRulesCheckId; message: string }>;
+};
+
 export type WorkflowIssuesOverlayModel = {
   totalIssues: number;
+  /** How many issues stop a draft run. Each of them also stops Publish. */
+  draftRunBlockingCount: number;
+  /**
+   * How many issues stop Publish. A Group problem and a Publish-only Lifecycle
+   * Rules problem count here and are left out of `draftRunBlockingCount`.
+   */
+  publishBlockingCount: number;
+  invalidGroups: InvalidGroupEntry[];
+  invalidLifecycleRules: InvalidLifecycleRulesEntry[];
   brokenReferences: BrokenReferenceGroup[];
   missingRequiredFields: MissingRequiredFieldGroup[];
   missingIntegrations: MissingIntegrationGroup[];
@@ -365,7 +443,72 @@ function collectBrokenReferenceIssues(input: {
   return issues;
 }
 
-/** Flat issue list for the three client pre-run checks. */
+function collectInvalidGroupIssues(input: {
+  nodes: WorkflowNode[];
+  edges: readonly WorkflowEdge[];
+}): InvalidGroupIssue[] {
+  return groupContractViolations(input).map((violation) => ({
+    kind: "invalid_group",
+    severity: "blocking",
+    nodeId: violation.groupId,
+    nodeLabel: violation.groupLabel,
+    rule: violation.rule,
+    message: violation.message,
+  }));
+}
+
+/** Each Lifecycle Rules check Publish runs, in the order Publish runs them. */
+const LIFECYCLE_RULES_CHECKS: ReadonlyArray<
+  readonly [
+    LifecycleRulesCheckId,
+    (input: {
+      rules: LifecycleRules;
+      catalog: ExtensionCatalog;
+    }) => LifecycleRulesCheck,
+  ]
+> = [
+  ["rules", checkLifecycleRules],
+  ["entity_eligibility", checkEntityEligibility],
+  ["start_filter", checkStartFilters],
+  ["cancel_filter", checkCancelFilters],
+];
+
+/**
+ * The Lifecycle Rules checks Publish runs, on every Lifecycle Node that stores
+ * rules. A node with no stored rules passes, as it does at Publish.
+ */
+function collectInvalidLifecycleRulesIssues(input: {
+  nodes: WorkflowNode[];
+  catalog: ExtensionCatalog;
+}): InvalidLifecycleRulesIssue[] {
+  return input.nodes.flatMap((node) => {
+    const rules =
+      node.data.type === "lifecycle"
+        ? readLifecycleRules(node.data.config)
+        : null;
+    if (!rules) {
+      return [];
+    }
+    const nodeLabel = workflowNodeLabel({ node });
+    return LIFECYCLE_RULES_CHECKS.flatMap(([check, run]) => {
+      const result = run({ rules, catalog: input.catalog });
+      return result.valid
+        ? []
+        : [
+            {
+              kind: "invalid_lifecycle_rules" as const,
+              severity: "blocking" as const,
+              nodeId: node.id,
+              nodeLabel,
+              check,
+              message: result.error,
+            },
+          ];
+    });
+  });
+}
+
+/** Flat issue list for the client pre-run checks that need no provider. */
 export function collectWorkflowIssues(
   input: CollectWorkflowIssuesInput
 ): WorkflowIssue[] {
@@ -373,11 +516,37 @@ export function collectWorkflowIssues(
     ...collectMissingRequiredFieldIssues(input),
     ...collectMissingIntegrationIssues(input),
     ...collectBrokenReferenceIssues(input),
+    ...collectInvalidGroupIssues(input),
+    ...collectInvalidLifecycleRulesIssues(input),
   ];
 }
 
-export function hasBlockingWorkflowIssues(issues: WorkflowIssue[]): boolean {
+/** Whether any issue stops Publish. */
+export function hasBlockingWorkflowIssues(
+  issues: readonly WorkflowIssue[]
+): boolean {
   return issues.some((issue) => issue.severity === "blocking");
+}
+
+function blocksDraftRun(issue: WorkflowIssue): boolean {
+  switch (issue.kind) {
+    case "invalid_group":
+      return false;
+    case "invalid_lifecycle_rules":
+      return issue.check === "rules";
+    default:
+      return issue.severity === "blocking";
+  }
+}
+
+/**
+ * Whether any issue stops a draft run: every blocking issue except a Group
+ * problem and a Lifecycle Rules problem that only Publish checks.
+ */
+export function hasDraftRunBlockingIssues(
+  issues: readonly WorkflowIssue[]
+): boolean {
+  return issues.some(blocksDraftRun);
 }
 
 /** The issues of one kind, each narrowed to that kind's own fields. */
@@ -406,6 +575,8 @@ function issuesByKind(issues: readonly WorkflowIssue[]): IssuesByKind {
   return {
     missing_required_field: issuesOfKind(issues, "missing_required_field"),
     missing_integration: issuesOfKind(issues, "missing_integration"),
+    invalid_group: issuesOfKind(issues, "invalid_group"),
+    invalid_lifecycle_rules: issuesOfKind(issues, "invalid_lifecycle_rules"),
     broken_reference: issuesOfKind(issues, "broken_reference"),
     unverified_provider_field: issuesOfKind(
       issues,
@@ -470,6 +641,35 @@ export function groupWorkflowIssuesForOverlay(
 
   return {
     totalIssues: issues.length,
+    draftRunBlockingCount: issues.filter(blocksDraftRun).length,
+    publishBlockingCount: issues.filter(
+      (issue) => issue.severity === "blocking"
+    ).length,
+    invalidGroups: groupIssuesByNode(
+      byKind.invalid_group,
+      (node, nodeIssues) => ({
+        ...node,
+        // Two joins with the same label word their problem the same way, and
+        // the reader learns nothing from the second copy.
+        problems: uniqBy(
+          nodeIssues.map((issue) => ({
+            rule: issue.rule,
+            message: issue.message,
+          })),
+          (problem) => `${problem.rule}-${problem.message}`
+        ),
+      })
+    ),
+    invalidLifecycleRules: groupIssuesByNode(
+      byKind.invalid_lifecycle_rules,
+      (node, nodeIssues) => ({
+        ...node,
+        problems: nodeIssues.map((issue) => ({
+          check: issue.check,
+          message: issue.message,
+        })),
+      })
+    ),
     missingRequiredFields: groupIssuesByNode(
       byKind.missing_required_field,
       (node, nodeIssues) => ({

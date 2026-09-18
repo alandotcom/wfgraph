@@ -1,13 +1,24 @@
-import { Context, Effect, Layer, Schema } from "effect";
-import type { WfGraphDatabase } from "#src/backend/lib/db/index";
+import {
+  Context,
+  Duration,
+  Effect,
+  Layer,
+  Random,
+  Schedule,
+  Schema,
+} from "effect";
+import type {
+  WfGraphDatabase,
+  WfGraphTransaction,
+} from "#src/backend/lib/db/index";
 
 /**
  * A query did not reach the database, or the database refused it.
  *
  * `cause` is whatever `postgres.js` threw, kept so that a constraint violation
- * can be told apart from a dropped connection further up. The execution
- * repository inspects serialization failures so it can retry the whole decision;
- * services otherwise log database failures and answer "internal".
+ * can be told apart from a dropped connection further up.
+ * `serializableTransaction` reads it to retry an aborted transaction; services
+ * otherwise log database failures and answer "internal".
  */
 export class DatabaseError extends Schema.TaggedError<DatabaseError>()(
   "DatabaseError",
@@ -79,4 +90,68 @@ export function makeDatabaseLayer(db: WfGraphDatabase): Layer.Layer<Database> {
         catch: (cause) => new DatabaseError({ cause }),
       }),
   });
+}
+
+/**
+ * The SQLSTATEs PostgreSQL raises when it aborts a whole transaction: `40001`
+ * is a serialization failure and `40P01` a detected deadlock. Both roll back
+ * every statement the transaction ran, so running its body again is safe.
+ */
+const RETRYABLE_TRANSACTION_CODES = ["40001", "40P01"];
+
+function isRetryableTransactionFailure(error: DatabaseError): boolean {
+  return RETRYABLE_TRANSACTION_CODES.some((code) =>
+    hasDatabaseErrorCode(error, code)
+  );
+}
+
+const TRANSACTION_RETRY_BASE_DELAY = Duration.millis(5);
+const TRANSACTION_RETRY_MAX_DELAY = Duration.millis(100);
+const TRANSACTION_RETRIES = 30;
+
+/**
+ * Exponential backoff with full jitter: each delay is a uniform draw between
+ * zero and the capped exponential step.
+ *
+ * Aborted racers retry at almost the same moment when the jitter is narrow, and
+ * then collide again. About one decision on a contended row commits per round,
+ * so the last of N racers needs about N attempts. Drawing the whole delay at
+ * random spreads the racers across the window, and the budget of attempts is
+ * sized for bursts well past what one entity receives at once.
+ */
+const transactionRetrySchedule = Schedule.exponential(
+  TRANSACTION_RETRY_BASE_DELAY,
+  2
+).pipe(
+  Schedule.modifyDelay(({ duration }) =>
+    Effect.map(Random.next, (draw) =>
+      Duration.millis(
+        Duration.toMillis(Duration.min(duration, TRANSACTION_RETRY_MAX_DELAY)) *
+          draw
+      )
+    )
+  ),
+  Schedule.upTo({ times: TRANSACTION_RETRIES })
+);
+
+/**
+ * Runs `run` as one `SERIALIZABLE` transaction, and runs it again from the start
+ * whenever PostgreSQL aborts it with `40001` or `40P01`.
+ *
+ * `run` is repeated, so every effect it has must happen inside the transaction.
+ * Any other failure, or the last abort once the retries are spent, reaches the
+ * caller as a `DatabaseError`.
+ */
+export function serializableTransaction<A>(
+  database: Database["Service"],
+  run: (tx: WfGraphTransaction) => Promise<A>
+): Effect.Effect<A, DatabaseError> {
+  return database
+    .query((db) => db.transaction(run, { isolationLevel: "serializable" }))
+    .pipe(
+      Effect.retry({
+        schedule: transactionRetrySchedule,
+        while: isRetryableTransactionFailure,
+      })
+    );
 }

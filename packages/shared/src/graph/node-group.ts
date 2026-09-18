@@ -1,67 +1,115 @@
 /**
- * Group is editor chrome: a visual bundle of lookups plus a Condition.
- * The engine walks the children; edges in the store still name those children.
- * Display remaps boundary edges onto one frame inlet and outlet.
- * Lookup exits may share one downstream endpoint; a Condition is one True exit.
+ * Group frames on the editor canvas. Members name their frame through
+ * `parentId`, stored edges name members only, and the engine never sees the
+ * frame. Display remaps each boundary edge's member end onto the frame, and the
+ * frame's inlet and outlet stand for the boundary `group-boundary.ts` derives.
  */
 
-import { groupBy, uniqBy } from "es-toolkit/array";
-import { normalizeConditionBranch } from "#src/conditions/condition-branch";
-import { type ExtensionCatalog, findAction } from "#src/extensions/catalog";
+import { groupBy } from "es-toolkit/array";
 import {
-  actionTypeOf,
-  isConditionNode,
-  isEventSplitActionNode,
-  isWaitNode,
-  readConfigString,
-} from "#src/graph/node-config";
+  getConditionBranchDisplayLabel,
+  normalizeConditionBranch,
+} from "#src/conditions/condition-branch";
+import {
+  type GroupContractRule,
+  groupRuleBreaks,
+  groupStepCount,
+} from "#src/graph/group-contract";
+import {
+  analyzeGroupBoundaryById,
+  type GroupBoundary,
+  type GroupBoundaryEdge,
+  type GroupGraphNode,
+  type GroupPort,
+  isGroupNode,
+} from "#src/graph/group-boundary";
+import { isConditionNode } from "#src/graph/node-config";
 import type { WorkflowEdge } from "#src/graph/types";
 
-/** Node fields grouping reads; shared and editor nodes both satisfy this. */
-export type GroupGraphNode = {
-  id: string;
-  parentId?: string | undefined;
-  data: {
-    type: string;
-    label?: string | undefined;
-    config?: Record<string, unknown> | undefined;
-    enabled?: boolean | undefined;
-  };
+/**
+ * The members a connection onto the frame's inlet reaches, in member order.
+ * Once stored edges enter the Group, those are exactly the members they enter.
+ * A Group nothing enters yet is entered at every member no interior edge
+ * reaches. Empty when the boundary has no members.
+ */
+function groupEntryIds(boundary: GroupBoundary<WorkflowEdge>): string[] {
+  const entered = new Set(
+    boundary.internalEntryPorts.map((port) => port.nodeId)
+  );
+  if (entered.size > 0) {
+    return boundary.memberIds.filter((id) => entered.has(id));
+  }
+  const reached = new Set(boundary.interiorEdges.map((edge) => edge.target));
+  return boundary.memberIds.filter((id) => !reached.has(id));
+}
+
+const CONDITION_BRANCHES = ["true", "false"] as const;
+
+/**
+ * The member ports where a path ends inside a Group, in member order: each
+ * member no stored edge leaves, and each True or False outlet of a Condition
+ * member that no stored edge leaves by. A Condition with both outlets
+ * unconnected answers both.
+ */
+export function groupEndPorts(input: {
+  nodes: readonly GroupGraphNode[];
+  boundary: Pick<
+    GroupBoundary<GroupBoundaryEdge>,
+    "memberIds" | "interiorEdges" | "continuationEdges"
+  >;
+}): GroupPort[] {
+  // Maps, because node ids are chosen by the builder.
+  const byId = new Map(input.nodes.map((node) => [node.id, node]));
+  const leavingBySource = Map.groupBy(
+    [...input.boundary.interiorEdges, ...input.boundary.continuationEdges],
+    (edge) => edge.source
+  );
+  return input.boundary.memberIds.flatMap((memberId): GroupPort[] => {
+    const leaving = leavingBySource.get(memberId) ?? [];
+    if (!isConditionNode(byId.get(memberId))) {
+      return leaving.length === 0 ? [{ nodeId: memberId, handle: null }] : [];
+    }
+    const connected = new Set(
+      leaving.map((edge) => normalizeConditionBranch(edge.sourceHandle))
+    );
+    return CONDITION_BRANCHES.filter((branch) => !connected.has(branch)).map(
+      (branch) => ({ nodeId: memberId, handle: branch })
+    );
+  });
+}
+
+/**
+ * What the one bottom outlet of a collapsed Group card stands for. `ports` are
+ * the member ports a connection dragged from the outlet stores edges from.
+ * `continues` is true when those are the ports the Group's stored edges already
+ * leave it by.
+ */
+export type GroupOutlet = {
+  ports: GroupPort[];
+  continues: boolean;
 };
 
-export function isGroupNode(
-  node: { data: { type: string } } | undefined
-): boolean {
-  return node?.data.type === "group";
-}
-
-export function groupEntryIds(node: GroupGraphNode | undefined): string[] {
-  const value = node?.data.config?.entryNodeIds;
-  if (!Array.isArray(value)) {
-    return [];
+/**
+ * A collapsed Group keeps its existing continuation ports. Without a
+ * continuation, it connects from terminal non-Condition members only:
+ * unused Condition outlets remain unwired. No eligible member, or an id
+ * that is not a Group, answers no port.
+ */
+export function groupOutlet(
+  nodes: readonly GroupGraphNode[],
+  edges: readonly WorkflowEdge[],
+  groupId: string
+): GroupOutlet {
+  const boundary = analyzeGroupBoundaryById({ nodes, edges, groupId });
+  if (boundary.internalContinuation.length > 0) {
+    return { ports: boundary.internalContinuation, continues: true };
   }
-  return value.filter(
-    (id): id is string => typeof id === "string" && id.length > 0
-  );
-}
-
-export function groupExitIds(node: GroupGraphNode | undefined): string[] {
-  const value = node?.data.config?.exitNodeIds;
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value.filter(
-    (id): id is string => typeof id === "string" && id.length > 0
-  );
-}
-
-/** The frame's one source handle; `"true"` when the exit is a Condition. */
-export function groupOutletHandle(
-  node: GroupGraphNode | undefined
-): "true" | undefined {
-  return readConfigString(node?.data.config, "outletHandle") === "true"
-    ? "true"
-    : undefined;
+  return {
+    ports: groupEndPorts({ nodes, boundary }).filter(
+      (port) => port.handle === null
+    ),
+    continues: false,
+  };
 }
 
 export function predecessorKey(edge: {
@@ -84,192 +132,102 @@ export function isInteriorEdge(
   return parent !== undefined && parent === parentOf(edge.target);
 }
 
-/** `isInteriorEdge` against a fixed set of member ids. */
-export function isEdgeBetweenMembers(
-  memberIds: ReadonlySet<string>,
-  edge: { source: string; target: string }
-): boolean {
-  return memberIds.has(edge.source) && memberIds.has(edge.target);
-}
-
-export type GroupMemberSlot = {
-  id: string;
-  row: number;
-  column: number;
-};
-
 export type GroupAnalysis =
-  | {
-      ok: true;
-      entryIds: string[];
-      exitIds: string[];
-      memberIds: string[];
-    }
+  | { ok: true; memberIds: string[] }
   | { ok: false; error: string };
 
 /**
- * Whether the selection is a bundle of lookups and an optional Condition.
- * Parallel entries share one predecessor. Parallel lookup exits share one
- * downstream endpoint. A Condition remains a single True-only exit.
+ * The short reason a selection cannot be grouped, per Publish rule the would-be
+ * Group breaks. The editor shows it beside a disabled Group command, where the
+ * full rule message would not fit.
  */
-export function analyzeGroupableSelection(
-  nodes: readonly GroupGraphNode[],
-  edges: readonly WorkflowEdge[],
-  selectedIds: ReadonlySet<string>,
-  catalog: ExtensionCatalog
-): GroupAnalysis {
-  const byId = new Map(nodes.map((node) => [node.id, node]));
-  const members: GroupGraphNode[] = [];
+const GROUPING_REFUSALS: Record<GroupContractRule, string> = {
+  too_few_members: "Select at least two steps",
+  disallowed_member: "Event Split cannot be grouped",
+  multiple_ingress_sources: "The steps must be entered from one outlet",
+  multiple_continuations: "The steps must continue to one outside step",
+  join_crosses_boundary:
+    "Every branch into the join must start inside the Group",
+  conditional_join_arm: "A Condition on a branch into a join cannot be grouped",
+};
 
-  for (const id of selectedIds) {
-    const node = byId.get(id);
-    if (!node) {
-      return { ok: false, error: "Select at least two steps" };
-    }
-    const refused = refuseGroupedMember(node, catalog);
-    if (refused) {
-      return { ok: false, error: refused };
-    }
-    members.push(node);
-  }
-
-  if (members.length < 2) {
+/**
+ * Whether the selected steps may become one Group, and their order row by row.
+ * Every selected node must be a top-level action step. The would-be Group is
+ * then held to `groupRuleBreaks`, the rules Publish applies, so any selection
+ * the editor groups is a Group that may be published. An Event Split is named
+ * first when it is one of the reasons. Grouping
+ * changes membership only, so the stored edges it is checked against are the
+ * edges the Group keeps.
+ */
+export function analyzeGroupableSelection(input: {
+  nodes: readonly GroupGraphNode[];
+  edges: readonly WorkflowEdge[];
+  selectedIds: ReadonlySet<string>;
+}): GroupAnalysis {
+  const selected = input.nodes.filter((node) => input.selectedIds.has(node.id));
+  if (selected.length < 2 || selected.length !== input.selectedIds.size) {
     return { ok: false, error: "Select at least two steps" };
   }
-
-  const memberIds = new Set(members.map((node) => node.id));
-  const interior = edges.filter((edge) =>
-    isEdgeBetweenMembers(memberIds, edge)
-  );
-
-  const incomingFromMembers = new Map<string, number>();
-  const outgoingToMembers = new Map<string, number>();
-  for (const id of memberIds) {
-    incomingFromMembers.set(id, 0);
-    outgoingToMembers.set(id, 0);
+  if (selected.some((node) => node.parentId !== undefined)) {
+    return { ok: false, error: "Already in a group" };
   }
-  for (const edge of interior) {
-    incomingFromMembers.set(
-      edge.target,
-      (incomingFromMembers.get(edge.target) ?? 0) + 1
-    );
-    outgoingToMembers.set(
-      edge.source,
-      (outgoingToMembers.get(edge.source) ?? 0) + 1
-    );
+  if (selected.some((node) => node.data.type !== "action")) {
+    return { ok: false, error: "Only steps can be grouped" };
   }
 
-  const entries = members.filter(
-    (node) => (incomingFromMembers.get(node.id) ?? 0) === 0
-  );
-  const exits = members.filter(
-    (node) => (outgoingToMembers.get(node.id) ?? 0) === 0
-  );
-
-  if (entries.length === 0) {
-    return { ok: false, error: "Needs an entry step" };
-  }
-  if (exits.length === 0) {
-    return { ok: false, error: "Needs an exit step" };
-  }
-
-  const entryIds = entries.map((node) => node.id);
-  const exitIds = exits.map((node) => node.id);
-  const exitIdSet = new Set(exitIds);
-  const reachable = reachableFrom(entryIds, interior, memberIds);
-  if (reachable.size !== memberIds.size) {
-    return { ok: false, error: "Needs a connected lookup group" };
-  }
-  for (const entryId of entryIds) {
-    const entryReachable = reachableFrom([entryId], interior, memberIds);
-    if (!exitIds.some((exitId) => entryReachable.has(exitId))) {
-      return { ok: false, error: "Needs a connected lookup group" };
-    }
+  const ruleBreaks = groupRuleBreaks({
+    groupLabel: "Group",
+    memberIds: input.selectedIds,
+    nodes: input.nodes,
+    edges: input.edges,
+  });
+  const refusal =
+    ruleBreaks.find((item) => item.rule === "disallowed_member") ??
+    ruleBreaks[0];
+  if (refusal) {
+    return { ok: false, error: GROUPING_REFUSALS[refusal.rule] };
   }
 
-  const entryIdSet = new Set(entryIds);
-  const incomingKeys = new Set<string>();
-  const outgoingEndpoints = new Set<string>();
-  const exitsWithOutgoing = new Set<string>();
-  for (const edge of edges) {
-    const sourceInside = memberIds.has(edge.source);
-    const targetInside = memberIds.has(edge.target);
-    if (sourceInside === targetInside) {
-      continue;
-    }
-
-    if (targetInside && !entryIdSet.has(edge.target)) {
-      return { ok: false, error: "Needs an entry step" };
-    }
-    if (sourceInside && !exitIdSet.has(edge.source)) {
-      return { ok: false, error: "Only exit steps can leave the group" };
-    }
-    if (sourceInside && exitIdSet.has(edge.source)) {
-      const exit = byId.get(edge.source);
-      const branch = normalizeConditionBranch(edge.sourceHandle);
-      if (isConditionNode(exit) && branch === "false") {
-        return {
-          ok: false,
-          error: "Condition False cannot leave the group",
-        };
-      }
-      if (isConditionNode(exit) && branch !== "true") {
-        return { ok: false, error: "Only Condition True can leave the group" };
-      }
-      exitsWithOutgoing.add(edge.source);
-      outgoingEndpoints.add(`${edge.target}\0${edge.targetHandle ?? ""}`);
-    }
-    if (targetInside && entryIdSet.has(edge.target)) {
-      incomingKeys.add(predecessorKey(edge));
-    }
-  }
-
-  if (incomingKeys.size > 1) {
-    return {
-      ok: false,
-      error: "Parallel lookups must share the same incoming step",
-    };
-  }
-
-  if (exitIds.length > 1) {
-    if (exits.some((exit) => isConditionNode(exit))) {
-      return { ok: false, error: "A Condition must be the only exit step" };
-    }
-    const exitsAreTerminal = exitsWithOutgoing.size === 0;
-    const exitsShareEndpoint =
-      exitsWithOutgoing.size === exitIds.length && outgoingEndpoints.size === 1;
-    if (!exitsAreTerminal && !exitsShareEndpoint) {
-      return {
-        ok: false,
-        error:
-          "Parallel lookup exits must share the same target and target handle",
-      };
-    }
-  }
-
-  return {
-    ok: true,
-    entryIds,
-    exitIds,
-    memberIds: orderMembers(memberIds, interior, entryIds),
-  };
+  return { ok: true, memberIds: selected.map((node) => node.id) };
 }
 
-export function resolveStoredSources(
-  nodes: readonly GroupGraphNode[],
-  nodeId: string
-): string[] {
-  const node = nodes.find((item) => item.id === nodeId);
+/** The stored source of one edge a connection adds. */
+type StoredSource = {
+  source: string;
+  sourceHandle: string | null | undefined;
+};
+
+/**
+ * The stored sources a connection from `sourceId` leaves by. A step answers
+ * itself with the handle as given. A Group answers the member ports its one
+ * card outlet stands for (see `groupOutlet`), each with its own handle, and a
+ * Group whose outlet stands for no port answers no sources.
+ */
+export function resolveStoredSources(input: {
+  nodes: readonly GroupGraphNode[];
+  edges: readonly WorkflowEdge[];
+  sourceId: string;
+  sourceHandle: string | null | undefined;
+}): StoredSource[] {
+  const node = input.nodes.find((item) => item.id === input.sourceId);
   if (!isGroupNode(node)) {
-    return [nodeId];
+    return [{ source: input.sourceId, sourceHandle: input.sourceHandle }];
   }
-  const exits = groupExitIds(node);
-  return exits.length > 0 ? exits : [nodeId];
+  const { ports } = groupOutlet(input.nodes, input.edges, input.sourceId);
+  return ports.map((port) => ({
+    source: port.nodeId,
+    sourceHandle: port.handle ?? undefined,
+  }));
 }
 
 /**
  * Store edges a connection onto `targetId` would add: a Group inlet fans out
- * onto every entry. Empty means the painted connection already exists.
+ * onto every entry, and a Group outlet stores from every member port the card
+ * outlet stands for. Empty means no eligible source or no new connection. A
+ * connection that would enter a Group from a second outside outlet is
+ * `addedIngressSourceRefusal`'s to refuse, and one that would leave a Group
+ * several ways is `addedContinuationRefusal`'s.
  */
 export function fanOutStoreEdges(input: {
   nodes: readonly GroupGraphNode[];
@@ -278,46 +236,41 @@ export function fanOutStoreEdges(input: {
   targetId: string;
   sourceHandle: string | null | undefined;
   excludeEdgeId?: string | null;
-}): Array<{
-  source: string;
-  target: string;
-  sourceHandle: string | null | undefined;
-}> {
+}): Array<StoredSource & { target: string }> {
   const existing = new Set(
     input.edges
       .filter((edge) => edge.id !== input.excludeEdgeId)
       .map((edge) => `${predecessorKey(edge)}\0${edge.target}`)
   );
-  const additions: Array<{
-    source: string;
-    target: string;
-    sourceHandle: string | null | undefined;
-  }> = [];
-  for (const source of resolveStoredSources(input.nodes, input.sourceId)) {
-    for (const target of storedTargetsFor(input.nodes, input.targetId)) {
-      const key = `${predecessorKey({ source, sourceHandle: input.sourceHandle })}\0${target}`;
-      if (existing.has(key)) {
-        continue;
-      }
-      additions.push({
-        source,
-        target,
-        sourceHandle: input.sourceHandle,
-      });
-    }
-  }
-  return additions;
+  const targets = storedTargetsFor(input.nodes, input.edges, input.targetId);
+  return resolveStoredSources(input).flatMap(({ source, sourceHandle }) =>
+    targets
+      .filter(
+        (target) =>
+          !existing.has(
+            `${predecessorKey({ source, sourceHandle })}\0${target}`
+          )
+      )
+      .map((target) => ({ source, target, sourceHandle }))
+  );
 }
 
+/**
+ * The stored targets a connection onto `nodeId` reaches: the node itself, or a
+ * Group's entry members. A Group with no members answers its own id.
+ */
 export function storedTargetsFor(
   nodes: readonly GroupGraphNode[],
+  edges: readonly WorkflowEdge[],
   nodeId: string
 ): string[] {
   const node = nodes.find((item) => item.id === nodeId);
   if (!isGroupNode(node)) {
     return [nodeId];
   }
-  const entries = groupEntryIds(node);
+  const entries = groupEntryIds(
+    analyzeGroupBoundaryById({ nodes, edges, groupId: nodeId })
+  );
   return entries.length > 0 ? entries : [nodeId];
 }
 
@@ -344,32 +297,28 @@ export function fanOutStoreEdgeIds(
 }
 
 /**
- * Paint outside→entries as targeting the frame, and exit True→outside as
- * leaving the frame. Store edges still name the children. Fan-out onto
- * several entries collapses to one painted edge. Answers the same array when a
- * graph has no frame to paint onto, so the edges take a mutable array.
+ * Paint each edge entering a Group as targeting its frame, and each edge leaving
+ * a Group as leaving the frame's one outlet, which has no handle id. An edge
+ * leaving by a Condition branch carries that branch's name in
+ * `data.displayLabel`. Store edges still name the members. Edges that paint
+ * with the same ends collapse to one painted edge, such as a fan-out onto
+ * several entries or several members continuing to one step, and the painted
+ * edge keeps a label only when every edge it stands for has that label.
+ * Answers the same array when a graph has no frame to paint onto, so the edges
+ * take a mutable array.
  */
 export function displayEdgesForGroups<E extends WorkflowEdge>(
   nodes: readonly GroupGraphNode[],
   edges: E[]
 ): E[] {
   const byId = new Map(nodes.map((node) => [node.id, node]));
-  const entryOf = new Map<string, string>();
-  const exitOf = new Map<string, string>();
-
-  for (const node of nodes) {
-    if (!isGroupNode(node)) {
-      continue;
-    }
-    for (const entry of groupEntryIds(node)) {
-      entryOf.set(entry, node.id);
-    }
-    for (const exit of groupExitIds(node)) {
-      exitOf.set(exit, node.id);
-    }
-  }
-
   const parentOf = (nodeId: string) => byId.get(nodeId)?.parentId;
+  const frameOf = (nodeId: string) => {
+    const parentId = parentOf(nodeId);
+    return parentId !== undefined && isGroupNode(byId.get(parentId))
+      ? parentId
+      : undefined;
+  };
   let remappedAny = false;
 
   const remapped = edges.map((edge) => {
@@ -381,12 +330,16 @@ export function displayEdgesForGroups<E extends WorkflowEdge>(
     }
 
     let next = edge;
-    const sourceFrame = parentOf(edge.source);
-    if (sourceFrame && exitOf.get(edge.source) === sourceFrame) {
-      next = { ...next, source: sourceFrame };
+    const sourceFrame = frameOf(edge.source);
+    if (sourceFrame !== undefined) {
+      const branch = getConditionBranchDisplayLabel(edge.sourceHandle);
+      next = { ...next, source: sourceFrame, sourceHandle: null };
+      if (branch !== null) {
+        next = { ...next, data: { ...next.data, displayLabel: branch } };
+      }
     }
-    const targetFrame = parentOf(edge.target);
-    if (targetFrame && entryOf.get(edge.target) === targetFrame) {
+    const targetFrame = frameOf(edge.target);
+    if (targetFrame !== undefined) {
       next = { ...next, target: targetFrame };
     }
     remappedAny ||= next !== edge;
@@ -462,36 +415,6 @@ export function childIdsOfGroup(
 }
 
 /**
- * The frames that read as disabled, which is every member being disabled.
- *
- * The engine walks members and never sees the frame, so the members hold the
- * fact and the frame's face is read back off them. One pass, because the canvas
- * asks this on every render, including every drag frame.
- */
-export function disabledGroupIds(
-  nodes: readonly GroupGraphNode[]
-): Set<string> {
-  const enabledByFrame = new Map<string, boolean>();
-  for (const node of nodes) {
-    if (!node.parentId) {
-      continue;
-    }
-    const allDisabled =
-      (enabledByFrame.get(node.parentId) ?? true) &&
-      node.data.enabled === false;
-    enabledByFrame.set(node.parentId, allDisabled);
-  }
-
-  const disabled = new Set<string>();
-  for (const [frameId, allDisabled] of enabledByFrame) {
-    if (allDisabled) {
-      disabled.add(frameId);
-    }
-  }
-  return disabled;
-}
-
-/**
  * React Flow paints a parent before its children, and deletes them the same
  * way: `getElementsToRemove` pulls a child in by searching the nodes it has
  * already collected, so a frame sitting after its members takes none of them
@@ -546,192 +469,44 @@ function isRestGroupsChildrenOrder(nodes: readonly GroupGraphNode[]): boolean {
   return true;
 }
 
+/**
+ * The Group frames holding fewer than two steps, counted by `groupStepCount`.
+ * Dissolution reads this list and Publish's `too_few_members` rule reads the
+ * same count, so the two agree on which Groups are too small.
+ */
 export function undersizedGroupIds(nodes: readonly GroupGraphNode[]): string[] {
-  // A Map rather than a countBy record: `parentId` comes from the persisted
-  // graph, and a plain object would answer a group named `constructor` with a
-  // prototype member instead of undefined.
-  const childCount = new Map<string, number>();
-  for (const node of nodes) {
-    if (node.parentId) {
-      childCount.set(node.parentId, (childCount.get(node.parentId) ?? 0) + 1);
-    }
-  }
-
   return nodes
-    .filter((node) => isGroupNode(node) && (childCount.get(node.id) ?? 0) < 2)
+    .filter(
+      (node) =>
+        isGroupNode(node) && groupStepCount({ groupId: node.id, nodes }) < 2
+    )
     .map((node) => node.id);
-}
-
-export function groupMemberSlots(
-  memberIds: readonly string[],
-  interior: readonly WorkflowEdge[],
-  entryIds: readonly string[]
-): GroupMemberSlot[] {
-  const ordered = orderMembers(new Set(memberIds), interior, entryIds);
-  const preds = new Map<string, string[]>();
-  for (const id of memberIds) {
-    preds.set(id, []);
-  }
-  for (const edge of interior) {
-    preds.get(edge.target)?.push(edge.source);
-  }
-
-  const rank = new Map<string, number>();
-  for (const id of ordered) {
-    const parentRanks = (preds.get(id) ?? [])
-      .filter((predecessor) => rank.has(predecessor))
-      .map((predecessor) => rank.get(predecessor) ?? 0);
-    rank.set(id, parentRanks.length === 0 ? 0 : Math.max(...parentRanks) + 1);
-  }
-
-  const columnsByRow = new Map<number, number>();
-  return ordered.map((id) => {
-    const row = rank.get(id) ?? 0;
-    const column = columnsByRow.get(row) ?? 0;
-    columnsByRow.set(row, column + 1);
-    return { id, row, column };
-  });
-}
-
-export function groupSlotBounds(slots: readonly GroupMemberSlot[]): {
-  rows: number;
-  columns: number;
-} {
-  if (slots.length === 0) {
-    return { rows: 1, columns: 1 };
-  }
-  return {
-    rows: Math.max(...slots.map((slot) => slot.row + 1)),
-    columns: Math.max(...slots.map((slot) => slot.column + 1)),
-  };
-}
-
-export function groupInteriorLayout(
-  memberIds: readonly string[],
-  interior: readonly WorkflowEdge[],
-  entryIds: readonly string[]
-): {
-  slots: GroupMemberSlot[];
-  bounds: { rows: number; columns: number };
-} {
-  const slots = groupMemberSlots(memberIds, interior, entryIds);
-  return { slots, bounds: groupSlotBounds(slots) };
-}
-
-function refuseGroupedMember(
-  node: GroupGraphNode,
-  catalog: ExtensionCatalog
-): string | null {
-  if (node.data.type === "lifecycle" || node.data.type === "add") {
-    return "Only lookup and Condition steps can be grouped";
-  }
-  if (isGroupNode(node) || node.parentId) {
-    return "Already in a group";
-  }
-  if (node.data.type !== "action") {
-    return "Only lookup and Condition steps can be grouped";
-  }
-  const actionType = actionTypeOf(node);
-  if (!actionType) {
-    return "Every step needs an action";
-  }
-  if (isWaitNode(node)) {
-    return "Wait cannot be grouped";
-  }
-  if (isEventSplitActionNode(node)) {
-    return "Event Split cannot be grouped";
-  }
-  // A group is a bundle a builder pastes again after a Wait so the next send
-  // reads a fresh fetch, so a member that moves the outside world would move it
-  // again on every paste. An action the catalog does not list declares nothing
-  // and is taken at its word.
-  if (findAction(catalog, actionType)?.sideEffect) {
-    return "A step that changes something outside the workflow stays outside the frame";
-  }
-  return null;
-}
-
-function reachableFrom(
-  starts: readonly string[],
-  interior: readonly WorkflowEdge[],
-  memberIds: ReadonlySet<string>
-): Set<string> {
-  const outgoing = new Map<string, string[]>();
-  for (const edge of interior) {
-    const next = outgoing.get(edge.source) ?? [];
-    next.push(edge.target);
-    outgoing.set(edge.source, next);
-  }
-
-  const seen = new Set<string>();
-  const stack = [...starts];
-  while (stack.length > 0) {
-    const id = stack.pop();
-    if (!id || seen.has(id) || !memberIds.has(id)) {
-      continue;
-    }
-    seen.add(id);
-    for (const next of outgoing.get(id) ?? []) {
-      stack.push(next);
-    }
-  }
-  return seen;
-}
-
-function orderMembers(
-  memberIds: ReadonlySet<string>,
-  interior: readonly WorkflowEdge[],
-  entryIds: readonly string[]
-): string[] {
-  const indegree = new Map<string, number>();
-  const outgoing = new Map<string, string[]>();
-  for (const id of memberIds) {
-    indegree.set(id, 0);
-    outgoing.set(id, []);
-  }
-  for (const edge of interior) {
-    if (!memberIds.has(edge.source) || !memberIds.has(edge.target)) {
-      continue;
-    }
-    indegree.set(edge.target, (indegree.get(edge.target) ?? 0) + 1);
-    outgoing.get(edge.source)?.push(edge.target);
-  }
-
-  const queue = entryIds.filter((id) => memberIds.has(id));
-  const ordered: string[] = [];
-  const seen = new Set<string>();
-  while (queue.length > 0) {
-    const current = queue.shift();
-    if (!current || seen.has(current)) {
-      continue;
-    }
-    seen.add(current);
-    ordered.push(current);
-    for (const next of outgoing.get(current) ?? []) {
-      const nextDegree = (indegree.get(next) ?? 1) - 1;
-      indegree.set(next, nextDegree);
-      if (nextDegree === 0) {
-        queue.push(next);
-      }
-    }
-  }
-
-  for (const id of memberIds) {
-    if (!seen.has(id)) {
-      ordered.push(id);
-    }
-  }
-
-  return ordered;
 }
 
 function collapseDuplicateDisplayEdges<E extends WorkflowEdge>(
   edges: E[]
 ): E[] {
-  const collapsed = uniqBy(edges, edgeEndpointKey);
+  // A Map, because the key holds builder-chosen node ids.
+  const byEnds = Map.groupBy(edges, edgeEndpointKey);
   // The same array when nothing duplicated, so a canvas render that changed no
   // edge hands React Flow the `edges` prop it already holds.
-  return collapsed.length === edges.length ? edges : collapsed;
+  if (byEnds.size === edges.length) {
+    return edges;
+  }
+  return [...byEnds.values()].flatMap(([first, ...rest]) => {
+    if (first === undefined) {
+      return [];
+    }
+    const label = first.data?.displayLabel;
+    if (
+      label === undefined ||
+      rest.every((edge) => edge.data?.displayLabel === label)
+    ) {
+      return [first];
+    }
+    const { displayLabel: _displayLabel, ...data } = first.data ?? {};
+    return [{ ...first, data }];
+  });
 }
 
 function displayEdgeForGroups<E extends WorkflowEdge>(

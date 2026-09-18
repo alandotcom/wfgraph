@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { useAtomValue } from "jotai";
+import { useMemo, useRef } from "react";
 import { ConfirmOverlay } from "#src/components/overlays/confirm-overlay";
 import { SmartOverlayHeader } from "#src/components/overlays/overlay-header";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
@@ -9,20 +10,23 @@ import {
 } from "#src/components/workflow/node-config-panel";
 import { useAfterCommit } from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
+import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import type { OverlayComponentProps } from "./types";
 
 type ConfigurationOverlayProps = OverlayComponentProps;
 
 /**
  * The node config panel as a sheet, which is how a narrow viewport reaches it.
- * Everything on screen below the header is the same component the rail mounts;
- * this file is the frame around it: a confirmation is another overlay pushed on
- * the stack, and the sheet can close itself once what it was configuring is
- * gone.
+ * Everything on screen below the header is the same component Canvas Reveal
+ * mounts; this file is the frame around it: a confirmation is another
+ * overlay pushed on the stack, and the sheet can close itself once what it
+ * was configuring is gone.
  *
- * The sheet exists only while no rail does. Widening the window past the rail's
- * breakpoint with this open left both on screen, editing the same node through
- * two surfaces, so growing a rail dismisses the sheet.
+ * The sheet exists only while Canvas Reveal does not, so one surface edits a
+ * node at any width. Widening the window past the `md` breakpoint, where
+ * Canvas Reveal mounts, dismisses the sheet. Moving to another workspace also
+ * dismisses it, because every workspace shows the mobile Reveal sequence as its
+ * inspector there.
  */
 export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
   const { push, closeAll } = useOverlay();
@@ -31,6 +35,17 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
 
   useAfterCommit(isMobile, () => {
     if (!isMobile) {
+      closeAll();
+    }
+  });
+
+  const workspaceView = useAtomValue(workflowWorkspaceViewAtom);
+  /** The workspace view the sheet last showed over. */
+  const shownViewRef = useRef(workspaceView);
+  useAfterCommit(workspaceView, () => {
+    const left = shownViewRef.current;
+    shownViewRef.current = workspaceView;
+    if (workspaceView !== left) {
       closeAll();
     }
   });

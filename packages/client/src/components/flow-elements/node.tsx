@@ -1,5 +1,5 @@
 import { Handle, Position } from "@xyflow/react";
-import { Ban, Check, Loader2, XCircle } from "lucide-react";
+import { Ban, Check, Hourglass, Loader2, XCircle } from "lucide-react";
 import type { ComponentProps, CSSProperties, ReactNode } from "react";
 import { AnimatedBorder } from "#src/components/ui/animated-border";
 import { Card, CardTitle } from "#src/components/ui/card";
@@ -9,6 +9,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "#src/components/ui/tooltip";
+import { runNodeEvidenceLabel } from "#src/components/workflow/workflow-run-shared";
 import { useElementOverflow } from "#src/hooks/effects";
 import { cn } from "@wfgraph/shared/utils";
 
@@ -17,35 +18,53 @@ export type NodeProps = ComponentProps<typeof Card> & {
     target: boolean | NodeHandleConfig[];
     source: boolean | NodeHandleConfig[];
   };
-  status?: "idle" | "running" | "success" | "error" | "cancelled" | undefined;
+  status?:
+    | "idle"
+    | "running"
+    | "waiting"
+    | "success"
+    | "error"
+    | "cancelled"
+    | undefined;
   selected?: boolean | undefined;
+  /** The card side a `true` source handle sits on. Bottom when unset. */
+  sourcePosition?: Position | undefined;
+  /** The card side a `true` target handle sits on. Top when unset. */
+  targetPosition?: Position | undefined;
+  /**
+   * Whether a connection can start or end on the card's handles, which is the
+   * `isConnectable` React Flow gives the node component.
+   */
+  isConnectable: boolean;
 };
 
 // Run status is worn as a border color, which a colorblind user cannot read and
 // a screen reader cannot see at all. This chip is the text equivalent: every
-// non-idle status renders its word next to its icon, and the whole thing is a
-// live region so status transitions are announced.
+// non-idle status renders its word next to its icon, in the words
+// `runNodeEvidenceLabel` gives every surface that names a step's run status,
+// and the whole thing is a live region so status transitions are announced.
 const STATUS_CHIP = {
   running: {
-    label: "Running",
     Icon: Loader2,
     className: "bg-primary/5 text-foreground",
     iconClassName: "animate-spin motion-reduce:animate-none",
   },
+  waiting: {
+    Icon: Hourglass,
+    className: "bg-warning/10 text-warning",
+    iconClassName: "",
+  },
   success: {
-    label: "Succeeded",
     Icon: Check,
     className: "bg-success/10 text-success",
     iconClassName: "",
   },
   error: {
-    label: "Failed",
     Icon: XCircle,
     className: "bg-destructive/10 text-destructive",
     iconClassName: "",
   },
   cancelled: {
-    label: "Cancelled",
     Icon: Ban,
     className: "bg-cancelled/10 text-cancelled",
     iconClassName: "",
@@ -70,7 +89,7 @@ const NodeStatusChip = ({ status }: { status?: NodeProps["status"] }) => {
         className={cn("size-3", chip.iconClassName)}
         strokeWidth={2.5}
       />
-      {chip.label}
+      {runNodeEvidenceLabel(status).text}
     </div>
   );
 };
@@ -85,7 +104,9 @@ type NodeHandleConfig = {
 
 function renderHandles(
   handleType: "source" | "target",
-  config: boolean | NodeHandleConfig[]
+  config: boolean | NodeHandleConfig[],
+  position: Position,
+  isConnectable: boolean
 ): ReactNode {
   if (config === false) {
     return null;
@@ -95,7 +116,10 @@ function renderHandles(
     return (
       <Handle
         aria-label={handleType === "source" ? "Output handle" : "Input handle"}
-        position={handleType === "source" ? Position.Bottom : Position.Top}
+        isConnectable={isConnectable}
+        isConnectableEnd={isConnectable}
+        isConnectableStart={isConnectable}
+        position={position}
         role="img"
         type={handleType}
       />
@@ -121,6 +145,9 @@ function renderHandles(
         className={handleConfig.className}
         // React Flow's `id` prop takes a string or `null`, not `undefined`.
         id={handleConfig.id ?? null}
+        isConnectable={isConnectable}
+        isConnectableEnd={isConnectable}
+        isConnectableStart={isConnectable}
         key={handleConfig.id ?? fallbackKey}
         position={handleConfig.position}
         role="img"
@@ -136,6 +163,9 @@ export const Node = ({
   className,
   selected = false,
   status,
+  sourcePosition = Position.Bottom,
+  targetPosition = Position.Top,
+  isConnectable,
   ...props
 }: NodeProps) => (
   <Card
@@ -155,30 +185,24 @@ export const Node = ({
   >
     {status === "running" && <AnimatedBorder />}
     <NodeStatusChip status={status} />
-    {renderHandles("target", handles.target)}
-    {renderHandles("source", handles.source)}
+    {renderHandles("target", handles.target, targetPosition, isConnectable)}
+    {renderHandles("source", handles.source, sourcePosition, isConnectable)}
     {props.children}
   </Card>
 );
 
-export type NodeTitleProps = ComponentProps<typeof CardTitle> & {
-  /** Compact Group members have one text line; full-size nodes can use two. */
-  singleLine?: boolean | undefined;
-};
+export type NodeTitleProps = ComponentProps<typeof CardTitle>;
 
 export const NodeTitle = ({
   children,
   className,
-  singleLine = false,
   title,
   ...props
 }: NodeTitleProps) => (
   <CardTitle
     className={cn(
       "w-full text-sm leading-tight",
-      singleLine
-        ? "truncate"
-        : "line-clamp-2 text-balance [overflow-wrap:anywhere]",
+      "line-clamp-2 text-balance [overflow-wrap:anywhere]",
       className
     )}
     title={title ?? (typeof children === "string" ? children : undefined)}

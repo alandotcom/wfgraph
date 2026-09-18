@@ -613,6 +613,119 @@ describe("useWorkflowActions Run graph selection", () => {
   });
 });
 
+/** A draft whose only issue is a Group holding one step. */
+const groupProblemCatalog: ExtensionCatalog = {
+  entities: [],
+  actions: [
+    {
+      id: "custom/lookup",
+      label: "Lookup",
+      description: "Reads a record",
+      category: "Custom",
+      configFields: [],
+      outputFields: [],
+    },
+  ],
+  events: [],
+  integrations: [],
+};
+const groupProblemGraph = createSerializedWorkflowGraph({
+  nodes: [
+    {
+      id: "lifecycle_1",
+      type: "lifecycle",
+      position: { x: 0, y: 0 },
+      data: { label: "Lifecycle", type: "lifecycle" },
+    },
+    {
+      id: "group_1",
+      type: "group",
+      position: { x: 0, y: 180 },
+      data: { label: "Lookups", type: "group", config: {} },
+    },
+    {
+      id: "lookup_1",
+      type: "action",
+      position: { x: 20, y: 40 },
+      parentId: "group_1",
+      data: {
+        label: "Lookup",
+        type: "action",
+        config: { actionType: "custom/lookup" },
+      },
+    },
+  ],
+  edges: [],
+});
+
+function groupProblemState(): WorkflowToolbarState {
+  return {
+    ...state(),
+    nodes: toWorkflowGraphData(groupProblemGraph).nodes.map(toEditorNode),
+  };
+}
+
+/** Reads whether the issues list on top of the stack offers a draft run. */
+function IssueGateProbe({
+  workflowState,
+}: {
+  workflowState: WorkflowToolbarState;
+}) {
+  const actions = useWorkflowActions(workflowState);
+  const { stack } = useOverlay();
+  const top = stack.at(-1) as
+    | { props: { onRunDraftAnyway?: () => void } }
+    | undefined;
+
+  return (
+    <>
+      <button onClick={() => void actions.handleExecute("draft")} type="button">
+        Run draft
+      </button>
+      <button onClick={actions.handlePublish} type="button">
+        Start publish
+      </button>
+      <output aria-label="run draft anyway">
+        {top ? String(top.props.onRunDraftAnyway !== undefined) : "closed"}
+      </output>
+    </>
+  );
+}
+
+// Group membership does not change how a run executes, so a Group problem
+// stops Publish and leaves the draft run free.
+describe("useWorkflowActions Group problems", () => {
+  it("offers a draft run past a Group problem", async () => {
+    const view = renderProbe({
+      probe: <IssueGateProbe workflowState={groupProblemState()} />,
+      extensionCatalog: groupProblemCatalog,
+    });
+
+    fireEvent.click(await view.findByRole("button", { name: "Run draft" }));
+
+    await waitFor(() =>
+      expect(view.getByLabelText("run draft anyway").textContent).toBe("true")
+    );
+  });
+
+  it("refuses Publish on a Group problem before comparing", async () => {
+    const requests = serveRunRequests({});
+    const view = renderProbe({
+      probe: <IssueGateProbe workflowState={groupProblemState()} />,
+      extensionCatalog: groupProblemCatalog,
+    });
+
+    fireEvent.click(await view.findByRole("button", { name: "Start publish" }));
+
+    await waitFor(() =>
+      expect(view.getByLabelText("run draft anyway").textContent).toBe("false")
+    );
+    expect(requests.map((request) => request.path)).toEqual([
+      "workflow/update",
+    ]);
+  });
+});
+
 describe("useWorkflowActions publication preflight", () => {
   it("waits for the same provider preflight before opening a test run", async () => {
     const answer = deferred<Response>();

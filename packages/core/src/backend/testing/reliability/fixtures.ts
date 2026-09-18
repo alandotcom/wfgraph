@@ -4,6 +4,11 @@ import { defineEntity } from "#src/backend/extensions/define-entity";
 import { defineEvent } from "#src/backend/extensions/define-event";
 import { toStandardSchema } from "@wfgraph/shared/types/schema";
 import type { JsonObject } from "@wfgraph/shared/types/json";
+import {
+  compileConditionModel,
+  type ConditionModel,
+  serializeConditionModel,
+} from "@wfgraph/shared/conditions/conditions";
 
 export const START = "reliability/start";
 export const CANCEL = "reliability/cancel";
@@ -53,7 +58,26 @@ export function fixtureExtensions() {
   });
   return { ledger, state, extensions: { events, actions: [action] } };
 }
-export const node = (id: string, type: string, config: JsonObject) => ({
+/** A node in the serialized graph shape the workflow RPC accepts. */
+export type FixtureNode = {
+  key: string;
+  attributes: {
+    id: string;
+    type: string;
+    position: { x: number; y: number };
+    data: { id: string; type: string; label: string; config: JsonObject };
+    /** The id of the Group frame that holds this step. */
+    parentId?: string;
+  };
+};
+export type FixtureEdge = ReturnType<typeof edge>;
+export type FixtureGraph = { nodes: FixtureNode[]; edges: FixtureEdge[] };
+
+export const node = (
+  id: string,
+  type: string,
+  config: JsonObject
+): FixtureNode => ({
   key: id,
   attributes: {
     id,
@@ -104,6 +128,39 @@ export const wait = (
           waitGateMode: "require_actual_wait",
         }
   );
+/**
+ * A Condition that takes its `true` outlet when the payload's `marker` equals
+ * `marker`. Publish requires the expression to be the one compiled from the
+ * structured model, so both are stored.
+ */
+export function condition(id: string, marker: string) {
+  const model: ConditionModel = {
+    version: 2,
+    groupLogic: "and",
+    groups: [
+      {
+        id: "group",
+        logic: "and",
+        conditions: [
+          {
+            id: "marker",
+            field: "marker",
+            fieldType: "string",
+            operator: "equals",
+            value: marker,
+          },
+        ],
+      },
+    ],
+  };
+  const compiled = compileConditionModel(model);
+  if (!compiled.valid) throw new Error(compiled.error);
+  return node(id, "action", {
+    actionType: "Condition",
+    condition: compiled.expression,
+    conditionModel: serializeConditionModel(model),
+  });
+}
 export function lifecycle(checkpoints: string[]) {
   return node("entry", "lifecycle", {
     lifecycleRules: {

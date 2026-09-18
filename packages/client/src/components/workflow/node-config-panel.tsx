@@ -1,55 +1,34 @@
 import { compact } from "es-toolkit/array";
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import {
-  Eraser,
-  Eye,
-  EyeOff,
-  MousePointerClick,
-  RefreshCw,
-  Trash2,
-  Ungroup,
-} from "lucide-react";
+import { useAtomValue, useSetAtom } from "jotai";
+import { Eraser, MousePointerClick, RefreshCw, Trash2 } from "lucide-react";
 import { Button } from "#src/components/ui/button";
 import { Input } from "#src/components/ui/input";
 import { Label } from "#src/components/ui/label";
 import {
   deleteEdgeAtom,
-  deleteNodeAtom,
   deleteSelectedItemsAtom,
+  canvasSelectionAtom,
   edgesAtom,
-  newlyCreatedNodeIdAtom,
   nodesAtom,
   selectedEdgeAtom,
   selectedNodeAtom,
-  setGroupEnabledAtom,
-  ungroupNodeAtom,
-  updateNodeDataAtom,
 } from "#src/lib/workflow-graph-store";
-import { canUngroup, refuseDelete } from "#src/lib/node-group";
-import {
-  disabledGroupIds,
-  isGroupNode,
-} from "@wfgraph/shared/graph/node-group";
+import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { can } from "#src/lib/authorization";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
-import {
-  isGeneratingAtom,
-  workflowWorkspaceViewAtom,
-} from "#src/lib/workflow-ui-store";
-import { WorkflowChangesPanel } from "./workflow-changes-panel";
-import { useWorkflowComparisonActions } from "./use-workflow-comparison-actions";
-import { ActionConfig } from "./config/action-config";
-import { ActionGrid } from "./config/action-grid";
-import { LifecyclePanel } from "./config/lifecycle-panel";
+import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
+import { useTopologyCapabilities } from "./canvas-interaction";
 import { useNodeConfigWriter } from "./config/use-node-config-writer";
-import { WorkflowRuns } from "./workflow-runs";
+import { NodePropertiesForm } from "./node-properties-form";
 
 /**
  * Configuring the selected node, edge, or the workflow itself.
  *
- * The editor mounts this in two places: the right rail on a wide viewport, and
- * a sheet from the toolbar's Configuration button or from the issues overlay.
+ * The editor mounts this in two places: Canvas Reveal, for the Draft
+ * selections no other Reveal kind shows, on a wide viewport and in the mobile
+ * Reveal sequence, and the configuration sheet a narrow viewport opens for a
+ * Draft with nothing selected.
  * Everything the two placements share is here; what a frame genuinely owns is
  * `NodeConfigFrame`.
  */
@@ -69,26 +48,20 @@ export type NodeConfigFrame = {
   confirm: (request: ConfirmRequest) => void;
   /**
    * Close the frame, once what it was configuring no longer exists. A frame
-   * that is always on screen, like the rail, leaves this unset.
+   * that closes when its selection goes away, like Canvas Reveal, leaves this
+   * unset.
    */
   dismiss?: () => void;
 };
 
 /**
  * What the panel is currently configuring, for a frame that shows a title.
- * Derived from the workspace so the header and canvas cannot disagree.
+ * Derived from the selection so the header and canvas cannot disagree.
  */
 export function useNodeConfigTitle(): string {
-  const workspaceView = useAtomValue(workflowWorkspaceViewAtom);
   const selectedNodeId = useAtomValue(selectedNodeAtom);
   const selectedEdgeId = useAtomValue(selectedEdgeAtom);
 
-  if (workspaceView === "runs") {
-    return "Runs";
-  }
-  if (workspaceView === "changes") {
-    return "Changes";
-  }
   // An edge on its own is the one selection with a title of its own. Everything
   // else is Properties, including nothing at all: "Workflow" named a set of
   // fields this panel no longer holds.
@@ -99,17 +72,16 @@ export function useNodeConfigTitle(): string {
 }
 
 /**
- * Refresh and Clear All for the Runs surface. On the rail they trail the
- * Properties / Runs control; on the sheet they trail the header title. The
- * confirm callback is the frame's, so the rail and the sheet can each ask in
- * their own way.
+ * Refresh and Clear All for the Runs surface, above the run list in Canvas
+ * Reveal and in the mobile run list sheet. The confirm callback is the frame's,
+ * so each frame asks in its own way.
  */
-export function RunsPanelActions({
+export function RunsListActions({
   confirm,
 }: {
   confirm: NodeConfigFrame["confirm"];
 }) {
-  const { refreshRuns, deleteRuns } = useNodeConfigWriter();
+  const { refreshRuns, deleteRuns } = useNodeConfigWriter(null);
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
   const canDeleteExecutions = can(
     WfGraphOperations.workflowDeleteExecutions.id
@@ -153,105 +125,82 @@ export function RunsPanelActions({
   );
 }
 
+/** "1 step", "2 steps", or undefined for none. */
+function countPart(
+  count: number,
+  singular: string,
+  plural: string
+): string | undefined {
+  return count > 0 ? `${count} ${count === 1 ? singular : plural}` : undefined;
+}
+
+/**
+ * The confirmation wording for deleting a multiple selection. `deletedText`
+ * names the selected steps and connections the delete removes, and
+ * `frameCount` is the number of selected Group frames the delete ungroups.
+ */
+function deleteSelectionMessage(input: {
+  deletedText: string;
+  frameCount: number;
+}): string {
+  const { deletedText, frameCount } = input;
+  const groups = frameCount === 1 ? "Group" : "Groups";
+  if (deletedText === "") {
+    return `Are you sure you want to ungroup ${frameCount} ${groups}? Their steps and connections stay in the workflow.`;
+  }
+  const ungroupSentence =
+    frameCount === 0
+      ? ""
+      : ` The selected ${groups} ${frameCount === 1 ? "is" : "are"} ungrouped, and the steps inside that are not selected stay in the workflow.`;
+  return `Are you sure you want to delete ${deletedText}?${ungroupSentence}`;
+}
+
 export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
-  const { updateConfig: handleUpdateConfig } = useNodeConfigWriter();
   const workspaceView = useAtomValue(workflowWorkspaceViewAtom);
   const selectedNodeId = useAtomValue(selectedNodeAtom);
   const selectedEdgeId = useAtomValue(selectedEdgeAtom);
   const nodes = useAtomValue(nodesAtom);
   const edges = useAtomValue(edgesAtom);
-  const isGenerating = useAtomValue(isGeneratingAtom);
-  const canUpdate = can(WfGraphOperations.workflowUpdate.id);
-  const comparisonActions = useWorkflowComparisonActions();
-  const updateNodeData = useSetAtom(updateNodeDataAtom);
-  const deleteNode = useSetAtom(deleteNodeAtom);
-  const ungroupSelected = useSetAtom(ungroupNodeAtom);
-  const setGroupEnabled = useSetAtom(setGroupEnabledAtom);
+  const { canDelete } = useTopologyCapabilities();
   const deleteEdge = useSetAtom(deleteEdgeAtom);
   const deleteSelectedItems = useSetAtom(deleteSelectedItemsAtom);
-  const [newlyCreatedNodeId, setNewlyCreatedNodeId] = useAtom(
-    newlyCreatedNodeIdAtom
-  );
 
   const selectedNode = nodes.find((node) => node.id === selectedNodeId);
   const selectedEdge = edges.find((edge) => edge.id === selectedEdgeId);
 
-  const selectedNodes = nodes.filter((node) => node.selected);
-  const selectedEdges = edges.filter((edge) => edge.selected);
+  const selection = useAtomValue(canvasSelectionAtom);
+  const selectedNodes = nodes.filter((node) =>
+    selection.nodeIds.includes(node.id)
+  );
+  const selectedEdges = edges.filter((edge) =>
+    selection.edgeIds.includes(edge.id)
+  );
   const hasMultipleSelections = selectedNodes.length + selectedEdges.length > 1;
 
-  const selectedNodesPart =
-    selectedNodes.length > 0
-      ? `${selectedNodes.length} ${selectedNodes.length === 1 ? "step" : "steps"}`
-      : undefined;
-  const selectedEdgesPart =
-    selectedEdges.length > 0
-      ? `${selectedEdges.length} ${selectedEdges.length === 1 ? "connection" : "connections"}`
-      : undefined;
-  const selectionText = compact([selectedNodesPart, selectedEdgesPart]).join(
+  // A selected frame is ungrouped by a delete, so it is counted as a Group
+  // and kept out of the steps the delete removes.
+  const selectedFrameCount = selectedNodes.filter((node) =>
+    isGroupNode(node)
+  ).length;
+  const selectedStepsPart = countPart(
+    selectedNodes.length - selectedFrameCount,
+    "step",
+    "steps"
+  );
+  const selectedFramesPart = countPart(selectedFrameCount, "Group", "Groups");
+  const selectedEdgesPart = countPart(
+    selectedEdges.length,
+    "connection",
+    "connections"
+  );
+  const selectionText = compact([
+    selectedStepsPart,
+    selectedFramesPart,
+    selectedEdgesPart,
+  ]).join(" and ");
+  const deletedText = compact([selectedStepsPart, selectedEdgesPart]).join(
     " and "
   );
-
-  const handleUpdateLabel = (label: string) => {
-    if (selectedNode) {
-      updateNodeData({ id: selectedNode.id, data: { label } });
-    }
-  };
-
-  const handleUpdateDescription = (description: string) => {
-    if (selectedNode) {
-      updateNodeData({ id: selectedNode.id, data: { description } });
-    }
-  };
-
-  const frameDisabled =
-    selectedNode && isGroupNode(selectedNode)
-      ? disabledGroupIds(nodes).has(selectedNode.id)
-      : false;
-  const showDisabledToggle = Boolean(
-    selectedNode &&
-    !selectedNode.parentId &&
-    (selectedNode.data.type === "action" || isGroupNode(selectedNode))
-  );
-  const isSelectionDisabled = selectedNode
-    ? isGroupNode(selectedNode)
-      ? frameDisabled
-      : selectedNode.data.enabled === false
-    : false;
-
-  const handleToggleEnabled = () => {
-    if (!selectedNode) {
-      return;
-    }
-    if (isGroupNode(selectedNode)) {
-      setGroupEnabled({
-        groupId: selectedNode.id,
-        enabled: frameDisabled,
-      });
-      return;
-    }
-    updateNodeData({
-      id: selectedNode.id,
-      data: { enabled: selectedNode.data.enabled === false },
-    });
-  };
-
-  const confirmDeleteNode = () => {
-    if (!selectedNode) {
-      return;
-    }
-    const nodeId = selectedNode.id;
-    frame.confirm({
-      title: "Delete Step",
-      message:
-        "Are you sure you want to delete this step? This action cannot be undone.",
-      confirmLabel: "Delete",
-      onConfirm: () => {
-        deleteNode(nodeId);
-        frame.dismiss?.();
-      },
-    });
-  };
 
   const confirmDeleteEdge = () => {
     if (!selectedEdgeId) {
@@ -272,7 +221,10 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
   const confirmDeleteSelection = () => {
     frame.confirm({
       title: "Delete Selected Items",
-      message: `Are you sure you want to delete ${selectionText}? This action cannot be undone.`,
+      message: deleteSelectionMessage({
+        deletedText,
+        frameCount: selectedFrameCount,
+      }),
       confirmLabel: "Delete",
       onConfirm: () => {
         deleteSelectedItems();
@@ -280,13 +232,6 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
       },
     });
   };
-
-  // An action node with no action chosen yet gets the picker instead of a
-  // config form, and the picker is the whole screen while it is up.
-  const showActionGrid =
-    selectedNode?.data.type === "action" &&
-    !selectedNode.data.config?.actionType &&
-    canUpdate;
 
   const renderPropertiesContent = () => {
     if (hasMultipleSelections) {
@@ -298,7 +243,7 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
               {selectionText} selected
             </p>
           </div>
-          {canUpdate ? (
+          {canDelete ? (
             <div className="flex items-center gap-2 pt-4">
               <Button
                 onClick={confirmDeleteSelection}
@@ -330,7 +275,7 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
             <Input disabled id="edge-target" value={selectedEdge.target} />
           </div>
 
-          {canUpdate ? (
+          {canDelete ? (
             <div className="flex items-center gap-2 pt-4">
               <Button onClick={confirmDeleteEdge} size="sm" variant="outline">
                 <Trash2 className="mr-2 size-4 text-destructive" />
@@ -342,7 +287,7 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
       );
     }
 
-    // Nothing selected. The workflow's own settings moved into the menu beside
+    // Nothing selected. The workflow's own settings live in the menu beside
     // its name, so this is an empty state rather than a second place to rename
     // or delete the workflow from.
     if (!selectedNode) {
@@ -360,145 +305,7 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
       );
     }
 
-    if (showActionGrid) {
-      return (
-        <div className="px-4 pt-4">
-          <ActionGrid
-            disabled={isGenerating}
-            isNewlyCreated={selectedNode.id === newlyCreatedNodeId}
-            // A grid keyed to the node it configures starts fresh for each
-            // one: the search box empties, and a node dropped moments ago gets
-            // the autofocus that only fires on mount.
-            key={selectedNode.id}
-            onSelectAction={(actionType) => {
-              handleUpdateConfig({ actionType });
-              if (selectedNode.id === newlyCreatedNodeId) {
-                setNewlyCreatedNodeId(null);
-              }
-            }}
-          />
-        </div>
-      );
-    }
-
-    return (
-      <div className="space-y-4 p-4">
-        {selectedNode.data.type !== "action" ||
-        selectedNode.data.config?.actionType ? (
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="label">Label</Label>
-              <Input
-                disabled={isGenerating || !canUpdate}
-                id="label"
-                onChange={(e) => handleUpdateLabel(e.target.value)}
-                value={selectedNode.data.label}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
-              <Input
-                disabled={isGenerating || !canUpdate}
-                id="description"
-                onChange={(e) => handleUpdateDescription(e.target.value)}
-                placeholder="Optional description"
-                value={selectedNode.data.description || ""}
-              />
-            </div>
-          </div>
-        ) : null}
-
-        {selectedNode.data.type === "group" ? (
-          <p className="text-muted-foreground text-sm">
-            Lookups in a frame share an incoming step. They can join at one
-            Condition or leave separately for the same target and target handle.
-            Only Condition True can continue.
-          </p>
-        ) : null}
-
-        {selectedNode.data.type === "lifecycle" ? (
-          /* The Lifecycle Rules are the whole of the entry node's configuration.
-             The payload shape is not asked for here: it belongs to the Events the
-             rules name, and the editor derives the fields it offers from them. */
-          <LifecyclePanel
-            config={selectedNode.data.config || {}}
-            disabled={isGenerating || !canUpdate}
-            // Keyed to the node, so the pickers inside start clean for the
-            // entry node being configured. The panel itself holds no state,
-            // but its comboboxes hold a search term, and opening another
-            // workflow puts its entry node in this same slot: unkeyed, the
-            // second node arrives with the first one's filter still typed in.
-            key={selectedNode.id}
-            onUpdateConfig={handleUpdateConfig}
-          />
-        ) : null}
-
-        {selectedNode.data.type === "action" &&
-        !selectedNode.data.config?.actionType ? (
-          <div className="rounded-lg border border-muted bg-muted/30 p-3">
-            <p className="text-muted-foreground text-sm">
-              No action configured for this step.
-            </p>
-          </div>
-        ) : null}
-
-        {selectedNode.data.type === "action" &&
-        selectedNode.data.config?.actionType ? (
-          <ActionConfig
-            config={selectedNode.data.config || {}}
-            disabled={isGenerating || !canUpdate}
-            canUpdate={canUpdate}
-            key={selectedNode.id}
-            onUpdateConfig={handleUpdateConfig}
-          />
-        ) : null}
-
-        {canUpdate && selectedNode.parentId ? (
-          <p className="pt-4 text-muted-foreground text-xs">
-            This step runs with its Group. Select the frame to switch it off.
-          </p>
-        ) : null}
-
-        {canUpdate ? (
-          <div className="flex items-center gap-2 pt-4">
-            {showDisabledToggle ? (
-              <Button onClick={handleToggleEnabled} size="sm" variant="outline">
-                {isSelectionDisabled ? (
-                  <>
-                    <EyeOff className="mr-2 size-4" />
-                    Disabled
-                  </>
-                ) : (
-                  <>
-                    <Eye className="mr-2 size-4" />
-                    Enabled
-                  </>
-                )}
-              </Button>
-            ) : null}
-            {canUngroup(selectedNode) ? (
-              <Button
-                onClick={() => ungroupSelected(selectedNode.id)}
-                size="sm"
-                variant="outline"
-              >
-                <Ungroup className="mr-2 size-4" />
-                Ungroup
-              </Button>
-            ) : null}
-            {/* A member is deleted by deleting or ungrouping its frame, which
-                is what keeps the frame's entry and exit naming a live step. */}
-            {refuseDelete([selectedNode]) ? null : (
-              <Button onClick={confirmDeleteNode} size="sm" variant="outline">
-                <Trash2 className="mr-2 size-4 text-destructive" />
-                <span className="text-destructive">Delete</span>
-              </Button>
-            )}
-          </div>
-        ) : null}
-      </div>
-    );
+    return <NodePropertiesForm frame={frame} nodeId={selectedNode.id} />;
   };
 
   return (
@@ -513,15 +320,7 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable_both-edges]">
             {renderPropertiesContent()}
           </div>
-        ) : workspaceView === "changes" ? (
-          <WorkflowChangesPanel actions={comparisonActions} />
-        ) : (
-          <div className="min-h-0 flex-1 overflow-hidden">
-            <WorkflowRuns
-              listActions={<RunsPanelActions confirm={frame.confirm} />}
-            />
-          </div>
-        )}
+        ) : null}
       </div>
     </div>
   );

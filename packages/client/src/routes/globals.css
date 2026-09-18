@@ -234,12 +234,7 @@
 
 /* The editor shell's inset from the viewport edge.
 
-   A variable rather than a padding utility because three things have to agree
-   on it: the padding in `routes/workflows/[workflowId]/page.tsx`, the panel
-   width `sidebarWidthCss` writes, and the panel's resize drag. The last two
-   measure the shell rectangle, which is the viewport less this inset per side,
-   so a drag that measured the viewport instead would release the panel edge a
-   whole inset away from the pointer.
+   The padding in `routes/workflows/[workflowId]/page.tsx` reads it.
 
    Zero below the breakpoint, where the shell is the screen: 24px of a phone's
    width buys nothing, and the status strip's home-indicator padding assumes the
@@ -357,7 +352,7 @@
   /* Panel and node transitions collapse to an instant state change rather than
      being removed, so hierarchy and position still update. */
   .node-container,
-  .workflow-sidebar-panel {
+  .canvas-reveal {
     transition-duration: 1ms !important;
   }
 }
@@ -397,11 +392,9 @@
 /* The editor's frame node is typed `group`, which is also one of React Flow's
    four built-in types, so the wrapper it renders picks up
    `.react-flow__node-group` and every default-node paint that class carries: a
-   second border and fill around the frame `GroupNode` draws, plus 10px of
-   padding that pulls that frame inward while the member nodes keep positioning
-   from the wrapper's own origin, which is what closed the frame's side gutters
-   to 2px. The wrapper is positioning alone here, so each of those defaults is
-   handed back.
+   second border and fill around the card `GroupNode` draws, plus 10px of
+   padding that pulls the card inward from the wrapper's edges. The wrapper is
+   positioning alone here, so each of those defaults is handed back.
 
    `.react-flow` is in the selector to outrank the library's own rule: React
    Flow's stylesheet is imported by the canvas module rather than by `main.tsx`,
@@ -421,6 +414,15 @@
   color: inherit;
   font-size: inherit;
   text-align: left;
+}
+
+/* The attribution and the MiniMap sit beside open Canvas Reveal, whose covered
+   width the canvas box publishes as `--reveal-occupied-width`. The panel's own
+   margin keeps the gap to Reveal's edge. The extra classes outrank React Flow's
+   `.react-flow__panel.right`, which loads after this file. */
+.react-flow .react-flow__panel.react-flow__attribution.right,
+.react-flow .react-flow__panel.react-flow__minimap.right {
+  right: var(--reveal-occupied-width, 0px);
 }
 
 /* React Flow attribution styling */
@@ -493,28 +495,47 @@
   cursor: pointer !important;
 }
 
-/* React Flow handle positioning and styling.
-   `group-child-handle` is carved out rather than overridden: a Group member's
-   handle is an anchor for the interior edge the frame draws, never a place to
-   start a connection, so it takes none of the dot, the hit area, or the
-   crosshair. It keeps a 1px box so React Flow can still measure where the edge
-   meets the card. */
-.react-flow__handle:not(.group-child-handle) {
+/* The + control a connection draws shows while the connection is hovered,
+   selected or focused, and is out of reach the rest of the time. */
+.insert-step-control {
+  pointer-events: none;
+}
+
+.react-flow__edge:hover .insert-step-control,
+.react-flow__edge.selected .insert-step-control,
+.react-flow__edge:focus-visible .insert-step-control,
+.insert-step-control:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.insert-step-control:focus-visible circle {
+  stroke: var(--ring);
+  stroke-width: 3;
+}
+
+/* React Flow handle positioning and styling. */
+.react-flow__handle {
   width: 12px !important;
   height: 12px !important;
   border: 2px solid var(--border) !important;
   background: var(--primary) !important;
-  cursor: crosshair !important;
   z-index: 20 !important;
 }
 
-.react-flow__handle.group-child-handle {
-  width: 1px !important;
-  height: 1px !important;
+/* A handle that takes a connection shows the crosshair. A handle that takes
+   none lets a press through to the node and the pane beneath, because React
+   Flow marks every handle `nodrag nopan` and a touch on it would otherwise
+   start no pan. */
+.react-flow__handle.connectable {
+  cursor: crosshair !important;
+}
+
+.react-flow__handle:not(.connectable) {
   pointer-events: none !important;
 }
 
-/* Invisible hit area for desktop.
+/* Invisible hit area of a connectable handle on desktop.
    The pseudo-element lives inside `.react-flow__viewport`, which carries the
    pan/zoom scale transform, so a flat px size shrinks with the zoom: the 44px
    mobile rule below was measuring 24.6px on a phone after fitView. Dividing by
@@ -522,7 +543,7 @@
    published by the canvas on every viewport move; the fallback of 1 keeps this
    correct before the first move fires. The cap stops a zoomed-out canvas from
    growing hit areas until neighbouring handles overlap. */
-.react-flow__handle:not(.group-child-handle)::after {
+.react-flow__handle.connectable::after {
   content: "" !important;
   position: absolute !important;
   top: 50% !important;
@@ -536,7 +557,7 @@
    breakpoint everything else turns over at, which is also where `useIsMobile`
    stops rendering the properties rail. */
 @media (width < theme(--breakpoint-md)) {
-  .react-flow__handle:not(.group-child-handle)::after {
+  .react-flow__handle.connectable::after {
     width: min(calc(44px / var(--rf-zoom, 1)), 88px) !important;
     height: min(calc(44px / var(--rf-zoom, 1)), 88px) !important;
   }
@@ -578,5 +599,35 @@
   .workflow-status-strip {
     height: calc(2rem + env(safe-area-inset-bottom, 0px));
     padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+
+/* Every control in the mobile Reveal sequence answers a finger. Its bodies are
+   the ones Canvas Reveal shows on desktop at compact heights, so this raises
+   each button, checkbox, switch, select trigger and text field inside the
+   sequence to the 44px touch target instead of giving each body a second set
+   of sizes. Text fields also read at 1rem, below which iOS zooms the page when
+   a field takes focus. */
+@media (width < theme(--breakpoint-md)) {
+  .mobile-reveal
+    :is(button, [role="checkbox"], [role="switch"], [role="combobox"]) {
+    min-height: 2.75rem;
+    min-width: 2.75rem;
+  }
+
+  .mobile-reveal :is(input:not([type="checkbox"], [type="radio"]), textarea) {
+    min-height: 2.75rem;
+    font-size: 1rem;
+  }
+
+  /* A select, combobox or menu popup is portalled to the body, outside the
+     sequence, so its options take the same 44px while the sequence shows. */
+  body:has(.mobile-reveal)
+    :is(
+      [data-slot="select-item"],
+      [data-slot="combobox-item"],
+      [data-slot="dropdown-menu-item"]
+    ) {
+    min-height: 2.75rem;
   }
 }

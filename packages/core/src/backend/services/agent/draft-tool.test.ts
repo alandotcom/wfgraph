@@ -236,4 +236,155 @@ describe("executeDraftTool", () => {
     assert.strictEqual(stored.draftRevision, 2);
     assert.strictEqual(stored.graph.nodes.length, 2);
   });
+
+  describe("a workflow holding a Group", () => {
+    const groupedWorkflow: Workflow = {
+      ...workflow,
+      graph: createSerializedWorkflowGraph({
+        nodes: [
+          {
+            id: "entry",
+            type: "lifecycle",
+            position: { x: 0, y: 0 },
+            data: { type: "lifecycle", label: "Lifecycle", config: {} },
+          },
+          {
+            id: "lookups",
+            type: "group",
+            position: { x: 100, y: 200 },
+            data: { type: "group", label: "Lookups" },
+          },
+          ...["a", "b"].map((id) => ({
+            id,
+            type: "action",
+            position: { x: 10, y: 20 },
+            parentId: "lookups",
+            data: {
+              type: "action" as const,
+              label: `Score ${id}`,
+              config: { actionType: "score-applicant" },
+            },
+          })),
+          {
+            id: "outside",
+            type: "action",
+            position: { x: 0, y: 600 },
+            data: {
+              type: "action",
+              label: "Score outside",
+              config: { actionType: "score-applicant" },
+            },
+          },
+          {
+            id: "later",
+            type: "action",
+            position: { x: 0, y: 800 },
+            data: {
+              type: "action",
+              label: "Score later",
+              config: { actionType: "score-applicant" },
+            },
+          },
+        ],
+        edges: [
+          {
+            id: "entry-a",
+            source: "entry",
+            target: "a",
+            sourceHandle: "started",
+          },
+          { id: "a-b", source: "a", target: "b" },
+          { id: "b-outside", source: "b", target: "outside" },
+          { id: "outside-later", source: "outside", target: "later" },
+        ],
+      }),
+    };
+
+    function persistedDraft() {
+      let stored = groupedWorkflow;
+      const runtime = stubWfGraphRuntime({
+        extensions: { catalog: fixtureCatalog },
+        integrationRepo: { listIdentities: Effect.succeed([]) },
+        workflowRepo: {
+          findById: () => Effect.sync(() => stored),
+          writeDraft: (input) =>
+            Effect.sync(() => {
+              stored = {
+                ...stored,
+                ...input.updates,
+                draftRevision: stored.draftRevision + 1,
+              };
+              return { status: "updated" as const, workflow: stored };
+            }),
+        },
+      });
+      return { runtime, stored: () => stored };
+    }
+
+    test("stores a Group rule break and reports it on validation", async () => {
+      const { runtime, stored } = persistedDraft();
+      await using app = runtime;
+
+      const write = await app.runPromise(
+        executeDraftTool({
+          workflowId: workflow.id,
+          name: "connect_nodes",
+          arguments: { source: "a", target: "later" },
+          toolCallId: "call_connect",
+          expectedDraftRevision: 1,
+        })
+      );
+      const validation = await app.runPromise(
+        executeDraftTool({
+          workflowId: workflow.id,
+          name: "validate_workflow",
+          arguments: {},
+          toolCallId: "call_validate",
+        })
+      );
+
+      assert.isFalse(write.isFailure);
+      assert.strictEqual(stored().draftRevision, 2);
+      assert.strictEqual(stored().graph.edges.length, 5);
+      assert.isTrue(validation.result.draftValid);
+      assert.deepInclude(
+        Array.isArray(validation.result.publishBlockers)
+          ? validation.result.publishBlockers
+          : [],
+        {
+          kind: "invalid_group",
+          nodeId: "lookups",
+          nodeLabel: "Lookups",
+          message:
+            'Group "Lookups" continues from 2 outlets inside it to 2 steps outside it. Connect every outlet that leaves a Group to the same step, or leave the Group from one outlet',
+        }
+      );
+    });
+
+    test("stores the dissolved Group when a delete leaves one step", async () => {
+      const { runtime, stored } = persistedDraft();
+      await using app = runtime;
+
+      const write = await app.runPromise(
+        executeDraftTool({
+          workflowId: workflow.id,
+          name: "delete_node",
+          arguments: { nodeId: "b" },
+          toolCallId: "call_delete",
+          expectedDraftRevision: 1,
+        })
+      );
+
+      const nodes = stored().graph.nodes;
+      assert.isFalse(write.isFailure);
+      assert.strictEqual(write.draftRevision, 2);
+      assert.deepEqual(
+        nodes.map((node) => node.key),
+        ["entry", "a", "outside", "later"]
+      );
+      assert.isUndefined(
+        nodes.find((node) => node.key === "a")?.attributes.parentId
+      );
+    });
+  });
 });

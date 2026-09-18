@@ -190,7 +190,7 @@ type NumberFilterOperator = Extract<
 >["operator"];
 
 /**
- * One finished rule over `path`, as the Lifecycle panel would serialize it.
+ * One finished rule over `path`, as the Lifecycle Node inspector would serialize it.
  *
  * `fieldType` and `operator` are declared as a union rather than two
  * independent fields so that narrowing `input.fieldType` below also narrows

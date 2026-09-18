@@ -151,6 +151,90 @@ const wfgraph = await createWfGraphApp({ client: clientBundle, ... });
   is the same call with a different bundle.
 - Each of the two packages is independent of the other.
 
+### Workspaces and Canvas Reveal
+
+The editor shows a workflow on one canvas in three workspaces. **Draft** edits the
+workflow, **Runs** inspects its runs, and **Changes** compares the draft with a published
+version. Canvas Reveal is a panel that floats over the right side of the canvas at one of
+two open levels. In Draft, selecting an object on the canvas opens Canvas Reveal. In Runs
+and Changes, the first visit opens Browse, pressing a step on a run's canvas opens Focus,
+and otherwise Canvas Reveal keeps the level the person last chose. Browse summarizes the
+object, and Focus holds its complete editor, a run node's evidence, or its field-level
+differences. On a canvas 1024px or wider, a person can drag the panel's left edge, or focus
+that edge and use the arrow keys, to resize Browse and Focus. The browser remembers each
+width in a cookie, and double-clicking the edge restores the default width. Cmd+B or
+Ctrl+B opens and closes Canvas Reveal when it has an object to show, which in Draft means a
+selected object. On a screen narrower than 768px, the shortcut closes the open sheets.
+Opening, changing, or closing it moves the camera and leaves the saved draft unchanged.
+
+The editor keeps the workspace address in the page's query string: `view` (`runs` or
+`changes`, absent for Draft), `executionId`, `compare` (the base version id), and `group`.
+Browser Back and Forward move between those addresses, and a copied link opens the same
+run, comparison, or Group. Draft, each run, each comparison, and each entered Group keep
+their own selection, Canvas Reveal level, scroll position, and camera while the page is
+open.
+
+### Groups
+
+A Workflow Builder groups two or more steps with **Group** in the canvas context menu or
+**Group selection** in the command palette. A Group organizes the canvas and leaves every
+run unchanged: the engine walks the same stored edges whether or not a step sits in a
+Group, and a Group writes no run log, result, or retry of its own. The workflow canvas
+shows a Group as one collapsed card, and entering the Group opens a canvas of its members.
+A connection dragged from the card's one outlet keeps the Group's existing continuation
+ports. If nothing leaves the Group yet, it connects from each terminal non-Condition step.
+Unused Condition outlets stay unwired: a False branch with no steps ends the path and
+does not run the step after the Group. If only unused Condition outlets remain, open
+the Group and choose a branch to continue. Deleting the card's outgoing connection
+deletes each stored edge it represents. On an entered Group's
+canvas a Workflow Builder adds, pastes, duplicates, connects, disables, and deletes steps,
+and a step added, pasted, or duplicated there becomes a member of that Group. Members
+keep their stored positions and can be dragged. **Tidy layout** arranges the entered
+Group's members in one undoable edit without moving its frame or outside steps.
+**Add step after** inserts a step between the chosen outlet and its existing targets;
+dragging an outlet into empty canvas creates a branch with no automatic rejoin.
+To change which branch continues, use the entered canvas: each edge to a
+"Continues to" stub can be deleted on its own, and dragging from a step onto a "Continues
+to" stub connects that step alone to the outside step the stub names.
+In **Runs** the card shows the Group's run status and step counts. In **Changes** Group
+edits count as Organization changes, and the comparison says when a version changes
+nothing a run executes.
+
+Version 1 Groups follow these rules:
+
+- A draft save refuses a Group that holds the Lifecycle Node, an Add node, or another
+  Group, and refuses a stored edge that touches the Group frame itself.
+- Publish refuses a Group with fewer than two steps or with an Event Split inside it.
+- Publish refuses a Group entered from more than one outside outlet. One outlet may
+  connect to several steps inside the Group.
+- Publish refuses a Group that continues outside from more than one inside outlet when
+  those outlets reach more than one outside step. Several inside outlets that all connect
+  to the same outside step and target handle are one continuation. A single continuing
+  outlet may be one branch of a Condition whose other branch ends inside the Group.
+- Publish refuses a join inside a Group with a branch from outside it, and a Condition in
+  a Group on a branch into any join.
+
+A draft that breaks a Publish rule still saves, and a draft run still starts, because the
+rules do not change what a run executes. The editor forms a Group only from a selection
+that meets the rules, and refuses a connection that would enter a Group from a second
+outside outlet, continue a Group to a second outside step from several outlets, or break a
+join rule. A connection that would create a cycle is refused before saving.
+A refused connection, step, paste, or duplicate changes nothing and shows the
+reason.
+
+A Group frame's config is empty. Graph decoding refuses every Group config key, including
+`direction`, `entryNodeIds`, `exitNodeIds`, and `outletHandle`. A draft or published version
+that stores any of those keys fails to load; this release ships no migration for them.
+
+### On a phone
+
+Below 768px wide, Draft, Runs, and Changes show a sequence of sheets over a full-screen
+canvas in place of Canvas Reveal. A Workflow Builder there can inspect every object, edit
+the configuration of an existing step, run, publish, undo, and redo, as their grants
+allow. The graph's shape cannot be edited on a phone: steps cannot be added, moved,
+deleted, pasted, duplicated, grouped, or ungrouped, and connections cannot be drawn.
+An entered Group uses the same stored member positions on a phone as on desktop.
+
 ## Authentication and authorization
 
 The host owns operator sessions and policy. Authentication returns a request-scoped access
@@ -352,6 +436,13 @@ The MCP authoring surface supports draft creation and existing-draft edits. The
 unavailable operations are duplicate, restore, delete, run, and publish. MCP
 writes change the editable draft and leave the published workflow version
 unchanged.
+
+MCP tools read Group membership and keep existing Groups valid. `read_workflow`
+reports each step's `groupId` and each Group's `memberIds`. The tools cannot
+create a Group or ungroup one, and `delete_node` refuses
+a Group frame. When a write leaves a Group with fewer than two steps, the server
+ungroups it and the tool result names the Group. The build agent in the editor
+uses the same tools and follows the same rules.
 
 An open editor subscribes to persisted draft revisions through an authenticated
 server-sent events (SSE) stream. The server checks the persisted revision twice

@@ -7,13 +7,21 @@ import {
   it,
   vi,
 } from "vitest";
+import { setTimeout as delay } from "node:timers/promises";
 import { InngestTestEngine, InngestTestRun } from "@inngest/test";
 import { Inngest } from "inngest";
 import { metadataMiddleware } from "inngest/experimental";
 import { Effect, Schema } from "effect";
 import { omit } from "es-toolkit/object";
-import { noWorkflowActions } from "#src/backend/engine/actions";
+import {
+  noWorkflowActions,
+  type WorkflowActions,
+} from "#src/backend/engine/actions";
+import { defineAction } from "#src/backend/extensions/define-action";
+import { assembleExtensions } from "#src/backend/extensions/extension-set";
+import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
 import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
+import type { WfGraphRuntime } from "#src/backend/runtime";
 import {
   noopWorkflowStore,
   type WorkflowStore,
@@ -103,17 +111,21 @@ const parkedWait: WorkflowWaitState = {
 };
 const listActiveWaitStates = vi.fn(() => Effect.succeed([parkedWait]));
 const sendWaitSignal = vi.fn(() => Effect.void);
-const testAppRuntime = stubWfGraphRuntime({
-  executionRepo: {
-    findSummaryById,
-    listActiveWaitStates,
-  },
-  inngestClient: { sendWaitSignal },
-  workflowRepo: {
-    findById: () => Effect.succeed(testWorkflow),
-    findVersionById: () => Effect.succeed(testVersion),
-  },
-});
+/** An app runtime whose repositories answer for `exec_123`. */
+function createTestAppRuntime() {
+  return stubWfGraphRuntime({
+    executionRepo: {
+      findSummaryById,
+      listActiveWaitStates,
+    },
+    inngestClient: { sendWaitSignal },
+    workflowRepo: {
+      findById: () => Effect.succeed(testWorkflow),
+      findVersionById: () => Effect.succeed(testVersion),
+    },
+  });
+}
+const testAppRuntime = createTestAppRuntime();
 
 afterAll(() => testAppRuntime.dispose());
 
@@ -638,7 +650,13 @@ describe("the workflow run function", () => {
     ).toHaveLength(1);
     // The id and the display name both reach Inngest: the first memoizes, the
     // second is what the trace prints in place of the node's opaque id.
-    expect(runSpy).toHaveBeenCalledWith(step, work);
+    expect(runSpy).toHaveBeenCalledWith(step, expect.any(Function));
+    // The body Inngest is handed is the node's work, recorded on the way
+    // through so a dispose can wait for it.
+    const handed = runSpy.mock.calls.find(
+      ([called]) => typeof called !== "string" && called.id === step.id
+    )?.[1];
+    await expect(handed?.()).resolves.toBe("fresh-result");
     // The stored value wins over re-running the work: that is the whole point.
     expect(result).toBe("memoized-result");
   });
@@ -853,4 +871,252 @@ describe("the workflow run function", () => {
       }
     );
   });
+});
+
+const RECORD_ACTION_ID = "test/record";
+
+/**
+ * Which `step.run` overload the action's body is written against: a Promise
+ * body, as a host's `defineAction` usually writes it, or an Effect body, as an
+ * integration writes it.
+ */
+type BodyShape = "promise" | "effect";
+
+/**
+ * A host action whose work sits in one durable step. The action reports when
+ * that step's body starts and holds the body until `release` is called.
+ */
+function heldRecordAction(shape: BodyShape = "promise") {
+  const started = Promise.withResolvers<void>();
+  const released = Promise.withResolvers<void>();
+  const calls = { started: 0, finished: 0 };
+  const action = defineAction({
+    id: RECORD_ACTION_ID,
+    label: "Record",
+    description: "Records a marker inside one durable step",
+    input: Schema.Struct({ marker: Schema.String }),
+    output: Schema.Struct({ marker: Schema.String }),
+    handler: ({ input, step }) =>
+      shape === "promise"
+        ? step.run("record", async () => {
+            calls.started += 1;
+            started.resolve();
+            await released.promise;
+            calls.finished += 1;
+            return { marker: input.marker };
+          })
+        : step.run(
+            "record",
+            Effect.gen(function* () {
+              calls.started += 1;
+              started.resolve();
+              yield* Effect.promise(() => released.promise);
+              calls.finished += 1;
+              return { marker: input.marker };
+            })
+          ),
+  });
+
+  return {
+    action,
+    calls,
+    started: started.promise,
+    release: () => released.resolve(),
+  };
+}
+
+/**
+ * Dispatches the named action nodes at once, the way the scheduler runs the two
+ * arms of a fan-out. Each node's steps are namespaced the way the engine names
+ * them.
+ */
+function dispatchNodes(
+  nodeIds: string[],
+  runtime: WorkflowExecutionRuntime,
+  actions: WorkflowActions
+) {
+  return Effect.gen(function* () {
+    const step = actions.stepFor(RECORD_ACTION_ID);
+    if (!step) {
+      return yield* Effect.die("Expected the record action to be assembled.");
+    }
+
+    return yield* Effect.forEach(
+      nodeIds,
+      (nodeId) =>
+        step(
+          {
+            marker: nodeId,
+            _context: {
+              executionId: testExecution.id,
+              nodeId,
+              nodeName: nodeId,
+              nodeType: "action",
+              runMode: "live",
+            },
+          },
+          {
+            run: (stepId, work) =>
+              runtime.run({ id: `node:${nodeId}:${stepId}` }, work),
+          }
+        ),
+      { concurrency: "unbounded", discard: true }
+    );
+  });
+}
+
+/** A stand-in for `executeWorkflow` that runs `dispatchNodes` and completes. */
+function dispatchInParallel(nodeIds: string[]) {
+  return (
+    _data: unknown,
+    runtime: WorkflowExecutionRuntime,
+    _store: unknown,
+    actions: WorkflowActions
+  ) =>
+    dispatchNodes(nodeIds, runtime, actions).pipe(
+      Effect.as({
+        status: "completed" as const,
+        success: true,
+        outputs: {},
+        results: {},
+      })
+    );
+}
+
+/** A stand-in for `executeWorkflowBranch` that runs `dispatchNodes`. */
+function dispatchBranchInParallel(nodeIds: string[]) {
+  return (
+    _data: unknown,
+    runtime: WorkflowExecutionRuntime,
+    _store: unknown,
+    actions: WorkflowActions
+  ) =>
+    dispatchNodes(nodeIds, runtime, actions).pipe(
+      Effect.as({ results: {}, outputs: {} })
+    );
+}
+
+/** The two functions an app registers, each over the given action. */
+function workflowFunctions(
+  appRuntime: WfGraphRuntime,
+  action: ReturnType<typeof heldRecordAction>["action"],
+  nodeIds: string[]
+) {
+  const ports = {
+    actions: () =>
+      createWorkflowActions(
+        assembleExtensions({ actions: [action] }),
+        appRuntime
+      ),
+    store: testStore,
+    appRuntime,
+    executeWorkflow: vi.fn(dispatchInParallel(nodeIds)),
+    executeWorkflowBranch: vi.fn(dispatchBranchInParallel(nodeIds)),
+  };
+  return {
+    run: createWorkflowRunFunction(createTestClient(), ports),
+    branch: createWorkflowBranchFunction(createTestClient(), ports),
+  };
+}
+
+/** Whether `promise` settles before `ms` milliseconds of wall-clock time pass. */
+async function settlesWithin(promise: Promise<unknown>, ms: number) {
+  return await Promise.race([
+    promise.then(
+      () => true,
+      () => true
+    ),
+    delay(ms).then(() => false),
+  ]);
+}
+
+/**
+ * What disposing the app runtime does to a workflow invocation it is running.
+ *
+ * `app.dispose` closes the runtime's scope, which interrupts every fiber the
+ * runtime started and waits for each fiber to end. In async step mode Inngest
+ * never settles the `step.run` promise of a step it planned in parallel, so the
+ * dispose must not wait on that promise. A step body Inngest did start must
+ * deliver its answer before the dispose settles, because the app closes
+ * persistence next and a host may exit the process after that.
+ */
+describe("disposing the runtime an invocation runs on", () => {
+  const shapes: BodyShape[] = ["promise", "effect"];
+
+  it.each(shapes)(
+    "does not wait on steps a run planned in parallel (%s body)",
+    async (shape) => {
+      const appRuntime = createTestAppRuntime();
+      const held = heldRecordAction(shape);
+      held.release();
+      const functions = workflowFunctions(appRuntime, held.action, ["a", "b"]);
+
+      // Two new steps found in one pass go back to the executor as a plan, and
+      // the invocation that found them is left parked on both. The test engine
+      // then runs each body and the rest of the function in later invocations.
+      const { result } = await new InngestTestEngine({
+        function: functions.run,
+      }).execute({
+        events: [{ name: "workflow/run.requested", data: runRequestData() }],
+      });
+
+      expect(result).toMatchObject({ success: true });
+      expect(held.calls).toEqual({ started: 2, finished: 2 });
+      expect(await settlesWithin(appRuntime.dispose(), 2_000)).toBe(true);
+    }
+  );
+
+  it("does not wait on steps a branch run planned in parallel", async () => {
+    const appRuntime = createTestAppRuntime();
+    const held = heldRecordAction();
+    held.release();
+    const functions = workflowFunctions(appRuntime, held.action, ["a", "b"]);
+
+    const { result } = await new InngestTestEngine({
+      function: functions.branch,
+    }).execute({
+      events: [{ name: "inngest/function.invoked", data: branchInvokeData() }],
+    });
+
+    expect(result).toEqual({ results: {}, outputs: {} });
+    expect(held.calls).toEqual({ started: 2, finished: 2 });
+    expect(await settlesWithin(appRuntime.dispose(), 2_000)).toBe(true);
+  });
+
+  it.each(shapes)(
+    "settles only after a started step body finished, and its answer is stored (%s body)",
+    async (shape) => {
+      const appRuntime = createTestAppRuntime();
+      const held = heldRecordAction(shape);
+      const functions = workflowFunctions(appRuntime, held.action, ["a"]);
+
+      // Runs the function until Inngest has stored the answer of `record` on
+      // node `a`, and no further.
+      const stepRan = new InngestTestEngine({
+        function: functions.run,
+      }).executeStep("node:a:record", {
+        events: [{ name: "workflow/run.requested", data: runRequestData() }],
+      });
+      await held.started;
+
+      // The body's progress at the moment dispose settles.
+      const callsWhenDisposed = appRuntime
+        .dispose()
+        .then(() => ({ ...held.calls }));
+      expect(await settlesWithin(callsWhenDisposed, 50)).toBe(false);
+
+      held.release();
+      expect(await callsWhenDisposed).toEqual({ started: 1, finished: 1 });
+      // The interruption did not replace the answer with a failure: Inngest
+      // stored what the body returned, so a replay reads it instead of running
+      // the body again. A Promise body stores its bare value, and an Effect body
+      // stores the envelope `nodeStepApi` re-raises a `StepFailure` from.
+      const { result } = await stepRan;
+      expect(result).toEqual(
+        shape === "promise"
+          ? { marker: "a" }
+          : { ok: true, value: { marker: "a" } }
+      );
+    }
+  );
 });

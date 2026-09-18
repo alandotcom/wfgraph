@@ -16,8 +16,12 @@ import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { findAction } from "@wfgraph/shared/extensions/catalog";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { eventsReaching } from "@wfgraph/shared/graph/events-reaching";
+import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
+import { isGroupableStep } from "@wfgraph/shared/graph/group-contract";
+import { nodeLabel } from "@wfgraph/shared/graph/group-structure";
 import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
 import { canonicalizeNodeEnabled } from "@wfgraph/shared/graph/node-enabled";
+import { isInteriorEdge } from "@wfgraph/shared/graph/node-group";
 import { findTemplateTokens } from "@wfgraph/shared/graph/node-references";
 import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
 import { upstreamNodeIds } from "@wfgraph/shared/graph/upstream-nodes";
@@ -130,7 +134,7 @@ function wouldCycle(
 
 export const AddNode = Tool.make("add_node", {
   description:
-    "Add a step to the workflow and answer its new id. Call describe_action first so the config keys are the ones the action declares. The node arrives unconnected; call connect_nodes to place it in the flow. The Lifecycle Node is not added here: set_lifecycle_rules creates it.",
+    "Add a step to the workflow and answer its new id. Call describe_action first so the config keys are the ones the action declares. The node arrives unconnected and belongs to no Group; call connect_nodes to place it in the flow. The Lifecycle Node is not added here: set_lifecycle_rules creates it.",
   parameters: Schema.Struct({
     actionId: Schema.String.annotate({
       description:
@@ -155,7 +159,7 @@ export const AddNode = Tool.make("add_node", {
 
 export const UpdateNode = Tool.make("update_node", {
   description:
-    "Change a step's label, description, enabled flag or config. Config keys given here are merged over what the node already holds; name a key in clearConfigKeys to remove it.",
+    "Change a step's label, description, enabled flag or config. Config keys given here are merged over what the node already holds; name a key in clearConfigKeys to remove it. A Group takes a label and a description only.",
   parameters: Schema.Struct({
     nodeId: Schema.String.annotate({
       description: "The node to change, from read_workflow.",
@@ -197,7 +201,7 @@ export const RevertDraft = Tool.make("revert_draft", {
 
 export const DeleteNode = Tool.make("delete_node", {
   description:
-    "Remove a step and every edge touching it. Steps below it are left connected to nothing, so reconnect them afterwards.",
+    "Remove a step and every edge touching it. Steps below it are left connected to nothing, so reconnect them afterwards. When the step was in a Group and fewer than two steps remain in that Group, the Group is removed and its remaining step stays in the graph. An Event Split does not count toward that minimum. A Group itself cannot be deleted.",
   parameters: Schema.Struct({
     nodeId: Schema.String.annotate({
       description: "The node to remove, from read_workflow.",
@@ -210,7 +214,7 @@ export const DeleteNode = Tool.make("delete_node", {
 
 export const ConnectNodes = Tool.make("connect_nodes", {
   description:
-    'Draw an edge so a run flows from one step into the next. Out of a Condition, name sourceHandle "true" or "false". Out of the Lifecycle Node, name "started" or "canceled". Out of an Event Split, name "event:<Event name>".',
+    'Draw an edge so a run flows from one step into the next. Out of a Condition, name sourceHandle "true" or "false". Out of the Lifecycle Node, name "started" or "canceled". Out of an Event Split, name "event:<Event name>". A Group takes no edges, so connect a step inside it.',
   parameters: Schema.Struct({
     source: Schema.String.annotate({
       description: "The node the run leaves.",
@@ -242,7 +246,7 @@ export const DisconnectNodes = Tool.make("disconnect_nodes", {
 
 export const InsertNodeOnEdge = Tool.make("insert_node_on_edge", {
   description:
-    "Add one step on an existing edge as one atomic edit. The original source handle is preserved. The result returns both replacement edge ids; use outgoingEdgeId to insert another step before the original target.",
+    "Add one step on an existing edge as one atomic edit. The original source handle is preserved. When both ends of the edge are in the same Group, the new step joins that Group; otherwise it belongs to no Group. The result returns both replacement edge ids; use outgoingEdgeId to insert another step before the original target.",
   parameters: Schema.Struct({
     edgeId: Schema.String.annotate({
       description: "The edge to replace, from read_workflow.",
@@ -443,11 +447,14 @@ function actionNode(input: {
   readonly label: string;
   readonly description?: string | undefined;
   readonly config?: ConfigBag | undefined;
+  /** The Group frame the new step joins, absent for a step in no Group. */
+  readonly parentId?: string | undefined;
 }): WorkflowNode {
-  return {
+  return omitUndefined({
     id: input.nodeId,
     position: UNPLACED,
     type: "action",
+    parentId: input.parentId,
     data: {
       label: input.label,
       type: "action",
@@ -457,7 +464,40 @@ function actionNode(input: {
         ...toConfigRecord(input.config ?? []),
       },
     },
-  };
+  });
+}
+
+/**
+ * The Group an inserted `node` joins on `edge`: the shared Group of both ends,
+ * when `node` is a step a Group may contain. Undefined when either end is in
+ * no Group, the ends sit in different Groups, or the step is one no Group may
+ * contain, such as an Event Split.
+ */
+function insertedStepGroupId(input: {
+  readonly document: AgentDocument;
+  readonly edge: WorkflowEdge;
+  readonly node: WorkflowNode;
+}): string | undefined {
+  if (!isGroupableStep(input.node)) {
+    return undefined;
+  }
+  const parentOf = (nodeId: string) =>
+    findNode(input.document, nodeId)?.parentId;
+  return isInteriorEdge(parentOf, input.edge)
+    ? parentOf(input.edge.source)
+    : undefined;
+}
+
+/** A sentence naming each Group a write dissolved, or "" when it dissolved none. */
+function dissolvedGroupsSentence(
+  dissolvedGroups: readonly { readonly label: string }[]
+): string {
+  return dissolvedGroups
+    .map(
+      (group) =>
+        ` Group "${group.label}" had fewer than two steps and was removed; its steps now belong to no Group.`
+    )
+    .join("");
 }
 
 export const graphWriteToolHandlers = Effect.gen(function* () {
@@ -472,11 +512,11 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
      */
     revert_draft: (input: { readonly reason: string }) =>
       Effect.flatMap(draft.revision(0), (opening) =>
-        Effect.as(
+        Effect.map(
           draft.update(() => opening),
-          {
-            summary: `Put the graph back as it was when this turn began: ${input.reason}`,
-          }
+          (result) => ({
+            summary: `Put the graph back as it was when this turn began: ${input.reason}${dissolvedGroupsSentence(result.dissolvedGroups)}`,
+          })
         )
       ),
 
@@ -513,15 +553,15 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
         const nodeId = generateId();
         const node = actionNode({ ...input, nodeId });
 
-        return Effect.as(
+        return Effect.map(
           draft.update((current) => ({
             ...current,
             nodes: [...current.nodes, node],
           })),
-          {
+          (result) => ({
             nodeId,
-            summary: `Added ${input.label} (${input.actionId}) as ${nodeId}.`,
-          }
+            summary: `Added ${input.label} (${input.actionId}) as ${nodeId}.${dissolvedGroupsSentence(result.dissolvedGroups)}`,
+          })
         );
       }),
 
@@ -568,6 +608,16 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
           }
         }
         if (
+          isGroupNode(node) &&
+          (input.enabled !== undefined ||
+            (input.config?.length ?? 0) > 0 ||
+            (input.clearConfigKeys?.length ?? 0) > 0)
+        ) {
+          return Effect.fail({
+            reason: `Group "${nodeLabel(node)}" takes only a label or a description from update_node. A Group has no enabled state or configurable layout direction, and the steps inside it are switched on or off one at a time.`,
+          });
+        }
+        if (
           node.data.type === "lifecycle" &&
           ((input.config?.length ?? 0) > 0 ||
             (input.clearConfigKeys?.length ?? 0) > 0)
@@ -595,14 +645,16 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
           }),
         };
 
-        return Effect.as(
+        return Effect.map(
           draft.update((current) => ({
             ...current,
             nodes: current.nodes.map((candidate) =>
               candidate.id === input.nodeId ? updated : candidate
             ),
           })),
-          { summary: `Updated ${updated.data.label || input.nodeId}.` }
+          (result) => ({
+            summary: `Updated ${updated.data.label || input.nodeId}.${dissolvedGroupsSentence(result.dissolvedGroups)}`,
+          })
         );
       }),
 
@@ -615,11 +667,17 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
           });
         }
 
+        if (isGroupNode(node)) {
+          return Effect.fail({
+            reason: `Group "${nodeLabel(node)}" cannot be deleted or ungrouped. Delete the steps inside it instead; the Group is removed once fewer than two steps remain.`,
+          });
+        }
+
         const removedEdges = document.edges.filter(
           (edge) => edge.source === input.nodeId || edge.target === input.nodeId
         ).length;
 
-        return Effect.as(
+        return Effect.map(
           draft.update((current) => ({
             nodes: current.nodes.filter(
               (candidate) => candidate.id !== input.nodeId
@@ -629,9 +687,9 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
                 edge.source !== input.nodeId && edge.target !== input.nodeId
             ),
           })),
-          {
-            summary: `Removed ${node.data.label || input.nodeId} and ${removedEdges} edge(s).`,
-          }
+          (result) => ({
+            summary: `Removed ${node.data.label || input.nodeId} and ${removedEdges} edge(s).${dissolvedGroupsSentence(result.dissolvedGroups)}`,
+          })
         );
       }),
 
@@ -651,6 +709,12 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
         }
         if (input.source === input.target) {
           return Effect.fail({ reason: "A step cannot flow into itself." });
+        }
+        const frame = [source, target].find((end) => isGroupNode(end));
+        if (frame) {
+          return Effect.fail({
+            reason: `Group "${nodeLabel(frame)}" is an organizational frame and takes no edges. Connect a step inside the Group instead.`,
+          });
         }
 
         const refusal = outletRefusal({
@@ -688,14 +752,14 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
           sourceHandle: input.sourceHandle,
         };
 
-        return Effect.as(
+        return Effect.map(
           draft.update((current) => ({
             ...current,
             edges: [...current.edges, edge],
           })),
-          {
-            summary: `Connected ${source.data.label || input.source} to ${target.data.label || input.target}.`,
-          }
+          (result) => ({
+            summary: `Connected ${source.data.label || input.source} to ${target.data.label || input.target}.${dissolvedGroupsSentence(result.dissolvedGroups)}`,
+          })
         );
       }),
 
@@ -710,14 +774,16 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
           });
         }
 
-        return Effect.as(
+        return Effect.map(
           draft.update((current) => ({
             ...current,
             edges: current.edges.filter(
               (candidate) => candidate.id !== input.edgeId
             ),
           })),
-          { summary: `Disconnected ${edge.source} from ${edge.target}.` }
+          (result) => ({
+            summary: `Disconnected ${edge.source} from ${edge.target}.${dissolvedGroupsSentence(result.dissolvedGroups)}`,
+          })
         );
       }),
 
@@ -751,7 +817,14 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
         }
 
         const nodeId = generateId();
-        const node = actionNode({ ...input, nodeId });
+        const unparented = actionNode({ ...input, nodeId });
+        const parentId = insertedStepGroupId({
+          document,
+          edge,
+          node: unparented,
+        });
+        const node: WorkflowNode =
+          parentId === undefined ? unparented : { ...unparented, parentId };
         const incoming: WorkflowEdge = { ...edge, target: nodeId };
         const outgoing: WorkflowEdge = {
           id: generateId(),
@@ -785,14 +858,14 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
           return Effect.fail({ reason: configRefusal });
         }
 
-        return Effect.as(
+        return Effect.map(
           draft.update(() => candidate),
-          {
+          (result) => ({
             nodeId,
             incomingEdgeId: incoming.id,
             outgoingEdgeId: outgoing.id,
-            summary: `Inserted ${input.label} (${input.actionId}) on edge ${input.edgeId}.`,
-          }
+            summary: `Inserted ${input.label} (${input.actionId}) on edge ${input.edgeId}.${dissolvedGroupsSentence(result.dissolvedGroups)}`,
+          })
         );
       }),
   };

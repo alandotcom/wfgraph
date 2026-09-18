@@ -20,6 +20,18 @@ export function upstreamNodeIds(
   targetNodeId: string,
   edges: readonly Pick<WorkflowEdge, "source" | "target">[]
 ): Set<string> {
+  return upstreamNodeIdsOver(edges)(targetNodeId);
+}
+
+/**
+ * `upstreamNodeIds` over one fixed edge list, for a caller asking about many
+ * targets: the edges are indexed once, and each call walks that index. Every
+ * call answers a fresh set the caller may change.
+ */
+export function upstreamNodeIdsOver(
+  edges: readonly Pick<WorkflowEdge, "source" | "target">[]
+): (targetNodeId: string) => Set<string> {
+  // A Map, because node ids are chosen by the builder.
   const sourcesByTarget = new Map<string, string[]>();
   for (const edge of edges) {
     const sources = sourcesByTarget.get(edge.target);
@@ -30,24 +42,26 @@ export function upstreamNodeIds(
     }
   }
 
-  const upstream = new Set<string>();
-  const visited = new Set<string>([targetNodeId]);
-  const pending = [targetNodeId];
+  return (targetNodeId) => {
+    const upstream = new Set<string>();
+    const visited = new Set<string>([targetNodeId]);
+    const pending = [targetNodeId];
 
-  while (pending.length > 0) {
-    const nodeId = pending.pop();
-    if (!nodeId) {
-      continue;
-    }
+    while (pending.length > 0) {
+      const nodeId = pending.pop();
+      if (!nodeId) {
+        continue;
+      }
 
-    for (const source of sourcesByTarget.get(nodeId) ?? []) {
-      upstream.add(source);
-      if (!visited.has(source)) {
-        visited.add(source);
-        pending.push(source);
+      for (const source of sourcesByTarget.get(nodeId) ?? []) {
+        upstream.add(source);
+        if (!visited.has(source)) {
+          visited.add(source);
+          pending.push(source);
+        }
       }
     }
-  }
 
-  return upstream;
+    return upstream;
+  };
 }

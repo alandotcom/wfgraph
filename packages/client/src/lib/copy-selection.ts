@@ -11,10 +11,12 @@ import {
   mapTemplateTokens,
 } from "@wfgraph/shared/graph/node-references";
 import { generateId } from "@wfgraph/shared/utils/id";
+import { expandGroupCopyIds } from "@wfgraph/shared/graph/node-group";
 import {
-  expandGroupCopyIds,
-  isGroupNode,
-} from "@wfgraph/shared/graph/node-group";
+  offsetClearOfRectangles,
+  overviewCardRectangle,
+  overviewCardRectangles,
+} from "@wfgraph/shared/graph/node-placement";
 import {
   toEditorEdge,
   toEditorNode,
@@ -38,51 +40,55 @@ export function isCopyableNode(node: WorkflowNode): boolean {
 
 /**
  * The copyable nodes a node-context Copy should take: the whole selection when
- * the clicked node is already selected, otherwise just that node.
+ * the clicked node is in `selectedNodeIds`, otherwise just that node. With
+ * `wholeGroups`, the default, a Group frame or member brings its whole Group.
  */
 export function nodeIdsForContextCopy(
   nodes: readonly WorkflowNode[],
-  clickedNodeId: string
+  clickedNodeId: string,
+  selectedNodeIds: ReadonlySet<string>,
+  options: { wholeGroups?: boolean | undefined } = {}
 ): ReadonlySet<string> {
   const clicked = nodes.find((node) => node.id === clickedNodeId);
   if (!clicked || !isCopyableNode(clicked)) {
     return new Set();
   }
 
-  if (clicked.selected) {
-    return expandGroupCopyIds(
-      nodes,
-      new Set(
+  const ids = selectedNodeIds.has(clicked.id)
+    ? new Set(
         nodes
-          .filter((node) => node.selected && isCopyableNode(node))
+          .filter(
+            (node) => selectedNodeIds.has(node.id) && isCopyableNode(node)
+          )
           .map((node) => node.id)
       )
-    );
-  }
-
-  return expandGroupCopyIds(nodes, new Set([clicked.id]));
+    : new Set([clicked.id]);
+  return (options.wholeGroups ?? true) ? expandGroupCopyIds(nodes, ids) : ids;
 }
 
+/**
+ * The copyable subgraph `nodeIds` names, or null when it names none. With
+ * `wholeGroups`, the default, a Group frame or member brings its whole Group.
+ */
 export function extractCopyableSelection(input: {
   nodes: readonly WorkflowNode[];
   edges: readonly WorkflowEdge[];
-  nodeIds?: ReadonlySet<string> | undefined;
+  nodeIds: ReadonlySet<string>;
+  wholeGroups?: boolean | undefined;
 }): CopiedSelection | null {
-  const requested = input.nodes.filter((node) => {
-    if (!isCopyableNode(node)) {
-      return false;
-    }
-    return input.nodeIds ? input.nodeIds.has(node.id) : Boolean(node.selected);
-  });
+  const requested = input.nodes.filter(
+    (node) => isCopyableNode(node) && input.nodeIds.has(node.id)
+  );
 
   if (requested.length === 0) {
     return null;
   }
 
-  const ids = expandGroupCopyIds(
-    input.nodes,
-    new Set(requested.map((node) => node.id))
-  );
+  const requestedIds = new Set(requested.map((node) => node.id));
+  const ids =
+    (input.wholeGroups ?? true)
+      ? expandGroupCopyIds(input.nodes, requestedIds)
+      : requestedIds;
   const copyable = input.nodes.filter((node) => ids.has(node.id));
   const edges = input.edges.filter(
     (edge) => ids.has(edge.source) && ids.has(edge.target)
@@ -130,15 +136,10 @@ export function cloneSelection(
             x: node.position.x + options.offset.x,
             y: node.position.y + options.offset.y,
           },
-      selected: true,
       dragging: false,
       data: {
         ...node.data,
-        config: remapGroupEndpoints(
-          remapConfig(node.data.config, idMap),
-          idMap,
-          node
-        ),
+        config: remapConfig(node.data.config, idMap),
       },
     };
     if (nextParentId !== undefined) {
@@ -152,10 +153,44 @@ export function cloneSelection(
     id: createId(),
     source: mappedId(idMap, edge.source),
     target: mappedId(idMap, edge.target),
-    selected: true,
   }));
 
   return { nodes, edges };
+}
+
+/**
+ * `offset`, grown down and right by `offsetClearOfRectangles` until no top-level
+ * node of `selection` placed at it overlaps a card the overview draws from
+ * `canvasNodes`. A copied Group counts at its collapsed card size.
+ */
+export function pasteOffsetClearOfCanvas(input: {
+  selection: CopiedSelection;
+  offset: { x: number; y: number };
+  canvasNodes: readonly WorkflowNode[];
+}): { x: number; y: number } {
+  const block = topLevelNodes(input.selection.nodes).map((node) =>
+    overviewCardRectangle({
+      ...node,
+      position: {
+        x: node.position.x + input.offset.x,
+        y: node.position.y + input.offset.y,
+      },
+    })
+  );
+  const clearance = offsetClearOfRectangles(
+    block,
+    overviewCardRectangles(input.canvasNodes)
+  );
+  return {
+    x: input.offset.x + clearance.x,
+    y: input.offset.y + clearance.y,
+  };
+}
+
+/** The nodes of a copied subgraph whose frame was not copied with them. */
+function topLevelNodes(nodes: readonly WorkflowNode[]): WorkflowNode[] {
+  const ids = new Set(nodes.map((node) => node.id));
+  return nodes.filter((node) => !node.parentId || !ids.has(node.parentId));
 }
 
 /** Translate so the copied bounding-box origin lands on `origin`. */
@@ -163,10 +198,7 @@ export function offsetToOrigin(
   nodes: readonly WorkflowNode[],
   origin: { x: number; y: number }
 ): { x: number; y: number } {
-  const ids = new Set(nodes.map((node) => node.id));
-  const topLevel = nodes.filter(
-    (node) => !node.parentId || !ids.has(node.parentId)
-  );
+  const topLevel = topLevelNodes(nodes);
   const xs = topLevel.map((node) => node.position.x);
   const ys = topLevel.map((node) => node.position.y);
   return {
@@ -186,45 +218,12 @@ function mappedId(idMap: ReadonlyMap<string, string>, id: string): string {
 function snapshotNode(node: WorkflowNode): WorkflowNode {
   return {
     ...toEditorNode(toPersistedNode(node)),
-    selected: false,
     dragging: false,
   };
 }
 
 function snapshotEdge(edge: WorkflowEdge): WorkflowEdge {
-  return {
-    ...toEditorEdge(toPersistedEdge(edge)),
-    selected: false,
-  };
-}
-
-function remapGroupEndpoints(
-  config: Record<string, unknown> | undefined,
-  idMap: ReadonlyMap<string, string>,
-  node: WorkflowNode
-): Record<string, unknown> | undefined {
-  if (!config || !isGroupNode(node)) {
-    return config;
-  }
-
-  const next = { ...config };
-  const entryIds = Array.isArray(config.entryNodeIds)
-    ? config.entryNodeIds
-        .map((id) => (typeof id === "string" ? idMap.get(id) : undefined))
-        .filter((id): id is string => typeof id === "string")
-    : [];
-  const exitIds = Array.isArray(config.exitNodeIds)
-    ? config.exitNodeIds
-        .map((id) => (typeof id === "string" ? idMap.get(id) : undefined))
-        .filter((id): id is string => typeof id === "string")
-    : [];
-  if (entryIds.length > 0) {
-    next.entryNodeIds = entryIds;
-  }
-  if (exitIds.length > 0) {
-    next.exitNodeIds = exitIds;
-  }
-  return next;
+  return toEditorEdge(toPersistedEdge(edge));
 }
 
 function remapConfig(

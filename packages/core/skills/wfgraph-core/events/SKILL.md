@@ -69,7 +69,7 @@ replay, and Migration.
 
 Typed against the payload; must resolve to a string. Untracked workflows use
 that Entity Value for Concurrency and Cancel Events. Optional: a Workflow
-Builder can set it in the Lifecycle panel; the builder's path outranks the
+Builder can set it on the Lifecycle Node; the builder's path outranks the
 author's. Tracked workflows use their selected typed Entity bindings instead.
 
 ### Datetime fields

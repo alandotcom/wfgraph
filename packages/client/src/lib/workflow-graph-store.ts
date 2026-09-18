@@ -7,6 +7,7 @@ import {
   extractCopyableSelection,
   nodeIdsForContextCopy,
   offsetToOrigin,
+  pasteOffsetClearOfCanvas,
   PASTE_OFFSET,
   type CopiedSelection,
 } from "#src/lib/copy-selection";
@@ -16,7 +17,6 @@ import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
   activeAgentTurnIdAtom,
   workflowGraphUpdateAtom,
-  workflowWorkspaceViewAtom,
 } from "#src/lib/workflow-ui-store";
 import {
   formatTemplateToken,
@@ -24,21 +24,35 @@ import {
 } from "@wfgraph/shared/graph/node-references";
 import { layoutWorkflowNodes } from "#src/components/workflow/workflow-layout";
 import {
-  dissolveUndersizedGroups,
-  dropOrphanedEdges,
   expandEdgeRemovals,
-  idsRemovedWith,
-  refuseDeleteWithNotice,
+  removeNodes,
+  repairCanvasGroups,
+  storedEdgeIdsForPaintedEdge,
 } from "#src/lib/node-group";
+import { getClientLogger } from "#src/lib/logger";
 import {
   canonicalizeNodeEnabled,
   persistedNodeEnabled,
 } from "@wfgraph/shared/graph/node-enabled";
+import { orderGroupParentsFirst } from "@wfgraph/shared/graph/node-group";
+import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
+import { storedCanvasConnection } from "#src/lib/group-scope-canvas";
+import { groupStructureRefusalReason } from "@wfgraph/shared/graph/group-structure";
+import { generateId } from "@wfgraph/shared/utils/id";
 import {
-  fanOutStoreEdgeIds,
-  orderGroupParentsFirst,
-} from "@wfgraph/shared/graph/node-group";
+  expandConnection,
+  connectionAdditionsRefusal,
+  type RequestedConnection,
+  type ConnectionAddition,
+} from "#src/components/workflow/connection-validation";
+import { omit } from "es-toolkit/object";
+import { groupPortKey } from "@wfgraph/shared/graph/group-port-key";
+import { normalizeSourceHandleForConnection } from "#src/components/workflow/connection-handle";
 import { mapOrSame } from "@wfgraph/shared/utils/map-or-same";
+import {
+  canvasEdgesAtom as paintedEdgesAtom,
+  canvasNodesAtom as paintedNodesAtom,
+} from "#src/lib/workflow-graph-presentation-store";
 import {
   draftEditable,
   edgesStateAtom,
@@ -47,13 +61,8 @@ import {
   nodesStateAtom,
   pushHistory,
   requestGraphSave,
-  selectedEdgeAtom,
   selectedNodeAtom,
 } from "#src/lib/workflow-graph-cells";
-import {
-  clearWorkflowComparisonAtom,
-  comparisonSessionAtom,
-} from "#src/lib/workflow-comparison-store";
 import type {
   WorkflowEdge,
   WorkflowNode,
@@ -63,6 +72,16 @@ import {
   newlyCreatedNodeIdAtom,
   workflowDragActiveAtom,
 } from "#src/lib/workflow-graph-session-store";
+import {
+  EMPTY_SELECTION,
+  selectionInGraph,
+  selectionWithChanges,
+  type SelectionChange,
+} from "#src/lib/workflow-navigation-state";
+import {
+  activeSelectionAtom,
+  activeWorkspaceAddressAtom,
+} from "#src/lib/workflow-workspace-navigation";
 
 export {
   executionOverlayGraphAtom,
@@ -72,17 +91,23 @@ export {
 export {
   connectNodesAtom,
   deleteEdgeAtom,
+  deleteGroupWithMembersAtom,
   groupSelectionAtom,
-  setGroupEnabledAtom,
   ungroupNodeAtom,
 } from "#src/lib/workflow-group-store";
 export {
   canvasEditingLockedAtom,
+  canvasEdgesAtom,
+  canvasGraphAtom,
+  canvasNodesAtom,
   clearNodeStatusesAtom,
-  displayEdgesAtom,
   displayNodesAtom,
   isExecutionOverlayActiveAtom,
-  resetNodeStatusesAtom,
+  presentedGraphAtom,
+  presentedGraphStructureAtom,
+  projectedRunStatusAtom,
+  projectRunProgressAtom,
+  runNodeEvidenceStatusesAtom,
   setNodeStatusesAtom,
 } from "#src/lib/workflow-graph-presentation-store";
 export {
@@ -113,39 +138,14 @@ export {
 export const nodesAtom = atom((get) => get(nodesStateAtom));
 export const edgesAtom = atom((get) => get(edgesStateAtom));
 
+const logger = getClientLogger("workflow", "graph");
+
 type CopiedClipboard = {
   selection: CopiedSelection;
   pasteCount: number;
 };
 
 const copiedSelectionAtom = atom<CopiedClipboard | null>(null);
-
-/**
- * Return from a comparison without making selection a graph edit. A historical
- * node may not exist in the draft, while a draft node becomes its sole selection.
- */
-export const exitWorkflowComparisonAtom = atom(null, (get, set) => {
-  const workflowId = get(currentWorkflowIdAtom);
-  if (!workflowId || !get(comparisonSessionAtom)) {
-    return false;
-  }
-  const selectedNodeId = get(selectedNodeAtom);
-  const draftSelection = selectedNodeId
-    ? (get(nodesStateAtom).find((node) => node.id === selectedNodeId)?.id ??
-      null)
-    : null;
-  set(
-    nodesStateAtom,
-    get(nodesStateAtom).map((node) => ({
-      ...node,
-      selected: node.id === draftSelection,
-    }))
-  );
-  set(selectedNodeAtom, draftSelection);
-  set(selectedEdgeAtom, null);
-  set(clearWorkflowComparisonAtom, workflowId);
-  return true;
-});
 
 /**
  * Point every node at a connection that exists, given the list as it stands now.
@@ -199,51 +199,60 @@ export const snapshotHistoryAtom = atom(null, (get, set) => {
   pushHistory(get, set);
 });
 
-/** Drop selection flags without touching the graph's shape. Not an undo step. */
-export const clearGraphSelectionAtom = atom(null, (get, set) => {
-  if (!draftEditable(get)) {
-    return;
-  }
-  set(
-    nodesStateAtom,
-    get(nodesStateAtom).map((node) => ({ ...node, selected: false }))
-  );
-  set(
-    edgesStateAtom,
-    get(edgesStateAtom).map((edge) => ({ ...edge, selected: false }))
-  );
-  set(selectedNodeAtom, null);
-  set(selectedEdgeAtom, null);
-});
+/**
+ * The selected nodes and edges of the active workspace address, whichever
+ * graph it presents. Write through `selectOnlyNodeAtom`, `clearSelectionAtom`,
+ * or the React Flow change handlers.
+ */
+export const canvasSelectionAtom = atom((get) => get(activeSelectionAtom));
 
 /**
- * Make one displayed node the only selection. Selection stays out of history and
- * may change while the Draft is read-only; Runs and Changes project the selected
- * node without writing the underlying Draft.
+ * Make one displayed node the only selection of the active address. Selection
+ * stays out of history and saves, and may change while the Draft is read-only.
  */
-export const selectOnlyNodeAtom = atom(null, (get, set, nodeId: string) => {
-  if (get(workflowWorkspaceViewAtom) === "draft") {
-    set(
-      nodesStateAtom,
-      mapOrSame(get(nodesStateAtom), (node) => {
-        const selected = node.id === nodeId;
-        return node.selected === selected ? node : { ...node, selected };
-      })
-    );
-    set(
-      edgesStateAtom,
-      mapOrSame(get(edgesStateAtom), (edge) =>
-        edge.selected ? { ...edge, selected: false } : edge
-      )
-    );
-  }
-  set(selectedNodeAtom, nodeId);
-  set(selectedEdgeAtom, null);
+export const selectOnlyNodeAtom = atom(null, (_get, set, nodeId: string) => {
+  set(activeSelectionAtom, { nodeIds: [nodeId], edgeIds: [] });
 });
+
+/** Select nothing in the active address. */
+export const clearSelectionAtom = atom(null, (_get, set) => {
+  set(activeSelectionAtom, EMPTY_SELECTION);
+});
+
+/** The React Flow `select` changes in a batch of node or edge changes. */
+function selectChanges(
+  changes: readonly (NodeChange<WorkflowNode> | EdgeChange)[]
+): SelectionChange[] {
+  return changes.flatMap((change) =>
+    change.type === "select"
+      ? [{ id: change.id, selected: change.selected }]
+      : []
+  );
+}
+
+/** Drop the ids the Draft graph no longer holds from the active selection. */
+function keepSelectionInDraft(get: Getter, set: Setter) {
+  set(
+    activeSelectionAtom,
+    selectionInGraph(get(activeSelectionAtom), {
+      nodes: get(nodesStateAtom),
+      edges: get(edgesStateAtom),
+    })
+  );
+}
 
 export const onNodesChangeAtom = atom(
   null,
   (get, set, changes: NodeChange<WorkflowNode>[]) => {
+    // Selection is stored per workspace address, so it may change while the
+    // Draft is read-only, and the graph cells hold no `selected` flag.
+    set(
+      activeSelectionAtom,
+      selectionWithChanges(get(activeSelectionAtom), {
+        nodes: selectChanges(changes),
+      })
+    );
+
     if (!draftEditable(get)) {
       return;
     }
@@ -253,6 +262,9 @@ export const onNodesChangeAtom = atom(
     // Lifecycle Nodes are the workflow's entrypoint; the graph is invalid
     // without one, so drop any attempt to remove them.
     const filteredChanges = changes.filter((change) => {
+      if (change.type === "select") {
+        return false;
+      }
       if (change.type === "remove") {
         const nodeToRemove = currentNodes.find((n) => n.id === change.id);
         return nodeToRemove?.data.type !== "lifecycle";
@@ -285,41 +297,41 @@ export const onNodesChangeAtom = atom(
       set(workflowDragActiveAtom, false);
     }
 
-    const newNodes = dissolveUndersizedGroups(
-      applyNodeChanges<WorkflowNode>(filteredChanges, currentNodes)
-    );
-    set(nodesStateAtom, newNodes);
+    if (filteredChanges.length > 0) {
+      const changedNodes = applyNodeChanges<WorkflowNode>(
+        filteredChanges.filter((change) => change.type !== "remove"),
+        currentNodes
+      );
+      // Removals go through `removeNodes`, which every delete path shares. It
+      // removes the stored edges React Flow never offered to delete, such as a
+      // member's locked interior edges, ungroups a removed frame, and ungroups
+      // a frame the removal leaves holding fewer than two steps, all inside the
+      // undo step `snapshotHistoryAtom` recorded. A drag removes nothing and
+      // skips it.
+      const removal = hasRemoval
+        ? removeNodes({
+            nodes: changedNodes,
+            edges: get(edgesStateAtom),
+            nodeIds: new Set(
+              filteredChanges.flatMap((change) =>
+                change.type === "remove" ? [change.id] : []
+              )
+            ),
+          })
+        : undefined;
+      set(nodesStateAtom, removal?.nodes ?? changedNodes);
 
-    // A removal here can strand an edge React Flow never offered to delete;
-    // `dropOrphanedEdges` says which and why. It answers the same array when
-    // there is nothing to drop, and jotai skips a write of the value it holds.
-    if (hasRemoval) {
-      const remainingEdges = dropOrphanedEdges(newNodes, get(edgesStateAtom));
-      set(edgesStateAtom, remainingEdges);
-      // The paths that remove an edge clear the selection naming it, and this
-      // one answers to the same rule even though today's stranded edges are all
-      // unselectable.
-      const selectedEdge = get(selectedEdgeAtom);
-      if (selectedEdge && !remainingEdges.some((e) => e.id === selectedEdge)) {
-        set(selectedEdgeAtom, null);
+      // `removeNodes` answers the same edge array when it removed no edge, and
+      // jotai skips a write of the value it already holds.
+      if (removal) {
+        set(edgesStateAtom, removal.edges);
+        keepSelectionInDraft(get, set);
       }
     }
 
-    // Mirror React Flow's own selection state onto our selection atoms.
-    const selectedNode = newNodes.find((n) => n.selected);
-    if (selectedNode) {
-      set(selectedNodeAtom, selectedNode.id);
-      set(selectedEdgeAtom, null);
-      const newlyCreatedId = get(newlyCreatedNodeIdAtom);
-      if (newlyCreatedId && newlyCreatedId !== selectedNode.id) {
-        set(newlyCreatedNodeIdAtom, null);
-      }
-    } else if (get(selectedNodeAtom)) {
-      const currentSelection = get(selectedNodeAtom);
-      const stillExists = newNodes.find((n) => n.id === currentSelection);
-      if (!stillExists) {
-        set(selectedNodeAtom, null);
-      }
+    // The config panel focuses a new node only while it is the one selection.
+    const newlyCreatedId = get(newlyCreatedNodeIdAtom);
+    if (newlyCreatedId && get(selectedNodeAtom) !== newlyCreatedId) {
       set(newlyCreatedNodeIdAtom, null);
     }
 
@@ -335,68 +347,219 @@ export const onNodesChangeAtom = atom(
 export const onEdgesChangeAtom = atom(
   null,
   (get, set, changes: EdgeChange[]) => {
+    set(
+      activeSelectionAtom,
+      selectionWithChanges(get(activeSelectionAtom), {
+        edges: selectChanges(changes),
+      })
+    );
+
     if (!draftEditable(get)) {
       return;
     }
 
     // No history push here; see the note in onNodesChangeAtom.
-    const hasRemoval = changes.some((change) => change.type === "remove");
+    const graphChanges = changes.filter((change) => change.type !== "select");
+    if (graphChanges.length === 0) {
+      return;
+    }
+    const hasRemoval = graphChanges.some((change) => change.type === "remove");
     const currentEdges = get(edgesStateAtom);
     const expandedChanges = expandEdgeRemovals(
       get(nodesStateAtom),
       currentEdges,
-      changes
+      graphChanges,
+      get(activeWorkspaceAddressAtom).scope
     );
-    const newEdges = applyEdgeChanges(expandedChanges, currentEdges);
-    set(edgesStateAtom, newEdges);
-
-    const selectedEdge = newEdges.find((e) => e.selected);
-    if (selectedEdge) {
-      set(selectedEdgeAtom, selectedEdge.id);
-      set(selectedNodeAtom, null);
-    } else if (get(selectedEdgeAtom)) {
-      const currentSelection = get(selectedEdgeAtom);
-      const stillExists = newEdges.find((e) => e.id === currentSelection);
-      if (!stillExists) {
-        set(selectedEdgeAtom, null);
-      }
-    }
+    set(edgesStateAtom, applyEdgeChanges(expandedChanges, currentEdges));
 
     if (hasRemoval) {
+      keepSelectionInDraft(get, set);
       requestGraphSave(get, set, { immediate: true });
     }
   }
 );
 
 /**
+ * What inserting steps did: stored them, or refused with a sentence a person
+ * reads, in which case the graph, its history and its save are unchanged.
+ */
+export type InsertOutcome = { inserted: true } | { refusal: string };
+
+/**
+ * The id of the Group the active address has entered, when the graph still
+ * holds that frame. Null on the overview.
+ */
+function focusedGroupId(get: Getter): string | null {
+  const { scope } = get(activeWorkspaceAddressAtom);
+  if (scope.kind !== "group") {
+    return null;
+  }
+  return get(nodesStateAtom).some(
+    (node) => node.id === scope.groupId && isGroupNode(node)
+  )
+    ? scope.groupId
+    : null;
+}
+
+/**
+ * `subgraph` as the active address inserts it. On a focused Group each node
+ * whose frame was not inserted with it becomes a member of that Group. Its
+ * position stays in the focused canvas's coordinate space.
+ */
+function subgraphForActiveScope(
+  get: Getter,
+  subgraph: CopiedSelection
+): CopiedSelection {
+  const nodes = subgraph.nodes.map((node) => omit(node, ["selected"]));
+  const edges = subgraph.edges.map((edge) => omit(edge, ["selected"]));
+  const groupId = focusedGroupId(get);
+  if (groupId === null) {
+    return { nodes, edges };
+  }
+  const insertedIds = new Set(nodes.map((node) => node.id));
+  return {
+    nodes: nodes.map((node) =>
+      node.parentId !== undefined && insertedIds.has(node.parentId)
+        ? node
+        : { ...node, parentId: groupId }
+    ),
+    edges,
+  };
+}
+
+/**
+ * One connection an insert stores, as the canvas asked for it. A connection a
+ * stub stands for arrives translated by `storedCanvasConnection`, which
+ * `throughBoundaryStub` records.
+ */
+type PlannedConnection = {
+  request: RequestedConnection & { id: string };
+  throughBoundaryStub: boolean;
+};
+
+/** Expand the replacement first, then validate its complete graph atomically. */
+function planInsertedConnections(input: {
+  edges: WorkflowEdge[];
+  nodes: WorkflowNode[];
+  connections: readonly PlannedConnection[];
+  catalog: ExtensionCatalog;
+}): { edges: WorkflowEdge[] } | { refusal: string } {
+  let edges = input.edges;
+  for (const { request, throughBoundaryStub } of input.connections) {
+    const { id, ...requested } = request;
+    const plan = expandConnection({
+      connection: requested,
+      throughBoundaryStub,
+      nodes: input.nodes,
+      storeEdges: edges,
+      catalog: input.catalog,
+    });
+    if ("refusal" in plan) {
+      return plan;
+    }
+    edges = [
+      ...edges,
+      ...plan.additions.map((addition, index) => ({
+        id: index === 0 ? id : generateId(),
+        ...addition,
+      })),
+    ];
+  }
+  const refusal = connectionAdditionsRefusal({
+    nodes: input.nodes,
+    edges: input.edges,
+    additions: edges.slice(input.edges.length),
+  });
+  return refusal === null ? { edges } : { refusal };
+}
+
+/**
  * Append a subgraph as one undo step: deselect what is on the canvas, select
- * the inserted nodes, and save. Paste, duplicate, and addNode all go through
- * here so the history / selection / save bookkeeping cannot drift.
+ * the inserted nodes, and save. Paste, duplicate, addNode, Add step after and
+ * Insert step all go through here so the history / selection / save bookkeeping
+ * cannot drift. On a focused Group the inserted steps join that Group.
+ *
+ * A replacement names concrete additions and the stored edges it removes.
+ * Gestures resolve their painted ports against the graph containing the new
+ * nodes. Both paths validate the complete result before committing anything.
  */
 function insertClonedSubgraph(
   get: Getter,
   set: Setter,
-  subgraph: CopiedSelection
-) {
-  const nodes = subgraph.nodes.map((node) => ({ ...node, selected: true }));
-  const edges = subgraph.edges.map((edge) => ({ ...edge, selected: true }));
+  subgraph: CopiedSelection,
+  options?:
+    | StoredEdgeReplacement
+    | {
+        connections: readonly PlannedConnection[];
+        catalog: ExtensionCatalog;
+      }
+): InsertOutcome {
+  const { nodes, edges } = subgraphForActiveScope(get, subgraph);
 
-  pushHistory(get, set);
   // Sorted like the other two writers: a cloned frame appended after the
   // members already on the canvas costs `displayNodesAtom` its fast path.
-  set(
-    nodesStateAtom,
-    orderGroupParentsFirst([
-      ...get(nodesStateAtom).map((node) => ({ ...node, selected: false })),
-      ...nodes,
-    ])
+  const nextNodes = orderGroupParentsFirst([...get(nodesStateAtom), ...nodes]);
+  const removed = new Set(
+    options && "removeEdgeIds" in options ? options.removeEdgeIds : []
   );
-  set(edgesStateAtom, [
-    ...get(edgesStateAtom).map((edge) => ({ ...edge, selected: false })),
+  const insertedEdges = [
+    ...get(edgesStateAtom).filter((edge) => !removed.has(edge.id)),
     ...edges,
-  ]);
-  set(selectedNodeAtom, nodes[0].id);
-  set(selectedEdgeAtom, null);
+  ];
+  let nextEdges = insertedEdges;
+  if (options && "additions" in options) {
+    const refusal = connectionAdditionsRefusal({
+      nodes: nextNodes,
+      edges: insertedEdges,
+      additions: options.additions,
+    });
+    if (refusal !== null) return { refusal };
+    nextEdges = [
+      ...insertedEdges,
+      ...options.additions.map((addition) => ({
+        ...addition,
+        id: generateId(),
+      })),
+    ];
+  } else if (options) {
+    const planned = planInsertedConnections({
+      edges: insertedEdges,
+      nodes: nextNodes,
+      connections: options.connections,
+      catalog: options.catalog,
+    });
+    if ("refusal" in planned) {
+      return planned;
+    }
+    nextEdges = planned.edges;
+  }
+  const structureRefusal = groupStructureRefusalReason({
+    nodes: nextNodes,
+    edges: nextEdges,
+  });
+  if (structureRefusal !== null) return { refusal: structureRefusal };
+
+  pushHistory(get, set);
+  set(nodesStateAtom, nextNodes);
+  set(edgesStateAtom, nextEdges);
+  // The inserted top-level nodes and the edges between them become the
+  // selection. A pasted Group is selected as its frame, which carries its
+  // members, so a single pasted Group opens in the inspector.
+  const insertedIds = new Set(nodes.map((node) => node.id));
+  const topLevelIds = new Set(
+    nodes
+      .filter((node) => !node.parentId || !insertedIds.has(node.parentId))
+      .map((node) => node.id)
+  );
+  set(activeSelectionAtom, {
+    nodeIds: [...topLevelIds],
+    edgeIds: edges
+      .filter(
+        (edge) => topLevelIds.has(edge.source) && topLevelIds.has(edge.target)
+      )
+      .map((edge) => edge.id),
+  });
 
   const only = nodes.length === 1 ? nodes[0] : undefined;
   if (only?.data.type === "action" && !only.data.config?.actionType) {
@@ -406,29 +569,283 @@ function insertClonedSubgraph(
   }
 
   requestGraphSave(get, set, { immediate: true });
+  return { inserted: true };
 }
 
+/**
+ * The copyable selection, or the context-clicked node. On the overview a
+ * selected member or frame brings its whole Group. On a focused Group the
+ * selected members are copied alone, so a paste there adds those steps.
+ */
 function snapshotCopyable(
   get: Getter,
   clickedNodeId?: string
 ): CopiedSelection | null {
   const nodes = get(nodesStateAtom);
+  const selectedIds = new Set(get(activeSelectionAtom).nodeIds);
+  const wholeGroups = focusedGroupId(get) === null;
   return extractCopyableSelection({
     nodes,
     edges: get(edgesStateAtom),
     nodeIds: clickedNodeId
-      ? nodeIdsForContextCopy(nodes, clickedNodeId)
-      : undefined,
+      ? nodeIdsForContextCopy(nodes, clickedNodeId, selectedIds, {
+          wholeGroups,
+        })
+      : selectedIds,
+    wholeGroups,
   });
 }
 
-export const addNodeAtom = atom(null, (get, set, node: WorkflowNode) => {
-  if (!draftEditable(get)) {
-    return;
-  }
+/**
+ * Add one step, selected, as one undo step. On a focused Group it becomes a
+ * member of that Group. Null when the draft is not editable.
+ */
+export const addNodeAtom = atom(
+  null,
+  (get, set, node: WorkflowNode): InsertOutcome | null => {
+    if (!draftEditable(get)) {
+      return null;
+    }
 
-  insertClonedSubgraph(get, set, { nodes: [node], edges: [] });
-});
+    return insertClonedSubgraph(get, set, { nodes: [node], edges: [] });
+  }
+);
+
+/**
+ * Add one step and the connection a drag into empty canvas asked for, as one
+ * undo step. The connection is planned against the graph holding the new step,
+ * with the same rules `connectNodesAtom` applies, so a step added after a
+ * member of a focused Group joins that Group and connects the way it would
+ * between two existing members. A refused connection adds neither. Null when
+ * the draft is not editable.
+ */
+export const addConnectedNodeAtom = atom(
+  null,
+  (
+    get,
+    set,
+    input: {
+      node: WorkflowNode;
+      connection: RequestedConnection & { id: string };
+      throughBoundaryStub: boolean;
+      catalog: ExtensionCatalog;
+    }
+  ): InsertOutcome | null => {
+    if (!draftEditable(get)) {
+      return null;
+    }
+
+    return insertClonedSubgraph(
+      get,
+      set,
+      { nodes: [input.node], edges: [] },
+      {
+        connections: [
+          {
+            request: input.connection,
+            throughBoundaryStub: input.throughBoundaryStub,
+          },
+        ],
+        catalog: input.catalog,
+      }
+    );
+  }
+);
+
+/**
+ * `request` as the store connects it: a painted end that stands for a boundary
+ * stub becomes the outside port it names. Empty when the painted connection
+ * stores nothing, such as one onto a "Path ends" stub.
+ */
+function plannedConnection(
+  get: Getter,
+  request: RequestedConnection & { id: string }
+): PlannedConnection[] {
+  const { id, ...painted } = request;
+  const stored = storedCanvasConnection(painted, get(paintedNodesAtom));
+  return "refusal" in stored
+    ? []
+    : [
+        {
+          request: { ...stored.connection, id },
+          throughBoundaryStub: stored.throughBoundaryStub,
+        },
+      ];
+}
+
+type StoredEdgeReplacement = {
+  removeEdgeIds: readonly string[];
+  additions: ConnectionAddition[];
+};
+
+/** Exact stored ports are replaced directly; they never re-enter gesture expansion. */
+function replacementPlan(input: {
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+  edgeIds: readonly string[];
+  node: WorkflowNode;
+  catalog: ExtensionCatalog;
+}): StoredEdgeReplacement {
+  const removed = new Set(input.edgeIds);
+  const edges = input.edges.filter((edge) => removed.has(edge.id));
+  const nodeId = input.node.id;
+  const sources = Map.groupBy(edges, (edge) =>
+    groupPortKey({ nodeId: edge.source, handle: edge.sourceHandle ?? null })
+  );
+  const targets = Map.groupBy(edges, (edge) =>
+    groupPortKey({ nodeId: edge.target, handle: edge.targetHandle ?? null })
+  );
+  const incoming = [...sources.values()].flatMap(([edge]) =>
+    edge
+      ? [
+          {
+            id: edge.id,
+            source: edge.source,
+            sourceHandle: edge.sourceHandle ?? null,
+            target: nodeId,
+          },
+        ]
+      : []
+  );
+  // Only the new node needs an outlet choice; existing ports remain exact.
+  const sourceHandle = normalizeSourceHandleForConnection({
+    nodes: [...input.nodes, input.node],
+    edges: [
+      ...input.edges.filter((edge) => !removed.has(edge.id)),
+      ...incoming,
+    ],
+    sourceNodeId: nodeId,
+    sourceHandle: null,
+    catalog: input.catalog,
+  });
+  return {
+    removeEdgeIds: edges.map((edge) => edge.id),
+    additions: [
+      ...incoming.map(({ id: _id, ...addition }) => addition),
+      ...[...targets.values()].flatMap(([edge]) =>
+        edge
+          ? [
+              {
+                source: nodeId,
+                sourceHandle,
+                target: edge.target,
+                targetHandle: edge.targetHandle ?? null,
+              },
+            ]
+          : []
+      ),
+    ],
+  };
+}
+
+/**
+ * Insert one step after an outlet, replacing its outgoing connections with
+ * source → new step → previous targets. An empty outlet simply gains one edge.
+ * The whole edit is one undo step; a refusal stores nothing.
+ */
+export const addStepAfterAtom = atom(
+  null,
+  (
+    get,
+    set,
+    input: {
+      node: WorkflowNode;
+      source: { nodeId: string; handle: string | null };
+      catalog: ExtensionCatalog;
+    }
+  ): InsertOutcome | null => {
+    if (!draftEditable(get)) {
+      return null;
+    }
+
+    const connections = plannedConnection(get, {
+      id: generateId(),
+      source: input.source.nodeId,
+      target: input.node.id,
+      sourceHandle: input.source.handle,
+      targetHandle: null,
+    });
+    if (connections.length === 0) {
+      return { refusal: "Add a step after a step inside the Group." };
+    }
+    const outgoing = get(paintedEdgesAtom).filter(
+      (edge) =>
+        edge.source === input.source.nodeId &&
+        (edge.sourceHandle ?? null) === input.source.handle &&
+        edge.data?.insertable !== false
+    );
+    const removeEdgeIds = outgoing.flatMap((edge) =>
+      storedEdgeIdsForPaintedEdge({
+        nodes: get(nodesStateAtom),
+        edges: get(edgesStateAtom),
+        edgeId: edge.id,
+        scope: get(activeWorkspaceAddressAtom).scope,
+      })
+    );
+    return insertClonedSubgraph(
+      get,
+      set,
+      { nodes: [input.node], edges: [] },
+      removeEdgeIds.length > 0
+        ? replacementPlan({
+            nodes: get(nodesStateAtom),
+            edges: get(edgesStateAtom),
+            edgeIds: removeEdgeIds,
+            node: input.node,
+            catalog: input.catalog,
+          })
+        : { connections, catalog: input.catalog }
+    );
+  }
+);
+
+/**
+ * Put one step inside the connection `edgeId`, as one undo step: the connection
+ * is replaced by one from its source to the new step and one from the new step
+ * to its target, each keeping the handle the replaced connection used. On a
+ * collapsed Group card, or a Group's "Continues to" stub, the stored edges the
+ * painted connection stands for are the ones replaced. Null when the draft is
+ * not editable.
+ */
+export const insertStepOnEdgeAtom = atom(
+  null,
+  (
+    get,
+    set,
+    input: { node: WorkflowNode; edgeId: string; catalog: ExtensionCatalog }
+  ): InsertOutcome | null => {
+    if (!draftEditable(get)) {
+      return null;
+    }
+
+    const painted = get(paintedEdgesAtom).find(
+      (edge) => edge.id === input.edgeId
+    );
+    const removeEdgeIds = painted
+      ? storedEdgeIdsForPaintedEdge({
+          nodes: get(nodesStateAtom),
+          edges: get(edgesStateAtom),
+          edgeId: input.edgeId,
+          scope: get(activeWorkspaceAddressAtom).scope,
+        })
+      : [];
+    if (!painted || removeEdgeIds.length === 0) {
+      return { refusal: "Insert a step into a connection the draft holds." };
+    }
+    return insertClonedSubgraph(
+      get,
+      set,
+      { nodes: [input.node], edges: [] },
+      replacementPlan({
+        nodes: get(nodesStateAtom),
+        edges: get(edgesStateAtom),
+        edgeIds: removeEdgeIds,
+        node: input.node,
+        catalog: input.catalog,
+      })
+    );
+  }
+);
 
 /** Whether Cmd+V / Paste have a copied subgraph to insert. */
 export const hasCopiedSelectionAtom = atom(
@@ -457,32 +874,39 @@ export const copySelectionAtom = atom(
  * Insert the copied subgraph with fresh ids. One undo step, like addNode.
  *
  * `origin` places the copied bounding-box origin at a pane click; without it
- * each paste steps down-right from the original so repeats do not stack.
+ * each paste steps down-right from the original so repeats do not stack. The
+ * pasted nodes then move clear of every card on the overview.
  */
 export const pasteCopiedSelectionAtom = atom(
   null,
-  (get, set, origin?: { x: number; y: number }) => {
+  (get, set, origin?: { x: number; y: number }): InsertOutcome | null => {
     if (!draftEditable(get)) {
-      return false;
+      return null;
     }
 
     const clipboard = get(copiedSelectionAtom);
     if (!clipboard) {
-      return false;
+      return null;
     }
 
     const nextCount = clipboard.pasteCount + 1;
-    const offset = origin
-      ? offsetToOrigin(clipboard.selection.nodes, origin)
-      : { x: PASTE_OFFSET * nextCount, y: PASTE_OFFSET * nextCount };
+    const offset = pasteOffsetClearOfCanvas({
+      selection: clipboard.selection,
+      offset: origin
+        ? offsetToOrigin(clipboard.selection.nodes, origin)
+        : { x: PASTE_OFFSET * nextCount, y: PASTE_OFFSET * nextCount },
+      canvasNodes: get(paintedNodesAtom),
+    });
 
-    set(copiedSelectionAtom, { ...clipboard, pasteCount: nextCount });
-    insertClonedSubgraph(
+    const outcome = insertClonedSubgraph(
       get,
       set,
       cloneSelection(clipboard.selection, { offset })
     );
-    return true;
+    if ("inserted" in outcome) {
+      set(copiedSelectionAtom, { ...clipboard, pasteCount: nextCount });
+    }
+    return outcome;
   }
 );
 
@@ -492,24 +916,27 @@ export const pasteCopiedSelectionAtom = atom(
  */
 export const duplicateSelectionAtom = atom(
   null,
-  (get, set, clickedNodeId?: string) => {
+  (get, set, clickedNodeId?: string): InsertOutcome | null => {
     if (!draftEditable(get)) {
-      return false;
+      return null;
     }
 
     const selection = snapshotCopyable(get, clickedNodeId);
     if (!selection) {
-      return false;
+      return null;
     }
 
-    insertClonedSubgraph(
+    return insertClonedSubgraph(
       get,
       set,
       cloneSelection(selection, {
-        offset: { x: PASTE_OFFSET, y: PASTE_OFFSET },
+        offset: pasteOffsetClearOfCanvas({
+          selection,
+          offset: { x: PASTE_OFFSET, y: PASTE_OFFSET },
+          canvasNodes: get(paintedNodesAtom),
+        }),
       })
     );
-    return true;
   }
 );
 
@@ -545,12 +972,27 @@ export const applyAgentGraphAtom = atom(
       return false;
     }
 
+    // The graph arrives from the server, so it is held to the Group rules
+    // before it can reach the canvas or the save below. A graph whose Group
+    // structure a draft save would refuse is left off the canvas, and a Group
+    // holding fewer than two steps is ungrouped.
+    const repair = repairCanvasGroups({
+      nodes: input.nodes,
+      edges: input.edges,
+    });
+    if (!repair.ok) {
+      logger.error("Agent graph refused for its Group structure", {
+        workflowId: input.workflowId,
+      });
+      return false;
+    }
+
     const existingById = new Map(
       get(nodesStateAtom).map((node) => [node.id, node] as const)
     );
 
     const { nodes: laidOut } = layoutWorkflowNodes({
-      nodes: input.nodes,
+      nodes: repair.nodes,
       edges: input.edges,
       catalog: input.catalog,
     });
@@ -569,6 +1011,9 @@ export const applyAgentGraphAtom = atom(
     }
     set(nodesStateAtom, orderGroupParentsFirst(reconciled));
     set(edgesStateAtom, input.edges);
+    // The agent's graph can drop a selected step, and the repair can dissolve
+    // a selected frame.
+    keepSelectionInDraft(get, set);
     set(workflowGraphUpdateAtom, {
       workflowId: input.workflowId,
       revision: (get(workflowGraphUpdateAtom)?.revision ?? 0) + 1,
@@ -594,7 +1039,7 @@ function isSameNode(existing: WorkflowNode, incoming: WorkflowNode): boolean {
   );
 }
 
-/** Apply auto-layout positions. Also an undo step, for the same reason. */
+/** Apply Tidy as one undo step. A focused Tidy writes only member positions. */
 export const applyNodeLayoutAtom = atom(
   null,
   (get, set, nodes: WorkflowNode[]) => {
@@ -602,8 +1047,23 @@ export const applyNodeLayoutAtom = atom(
       return;
     }
 
+    const groupId = focusedGroupId(get);
+    const positions = new Map(nodes.map((node) => [node.id, node.position]));
+    const current = get(nodesStateAtom);
+    const next =
+      groupId === null
+        ? nodes
+        : mapOrSame(current, (node) => {
+            const position = positions.get(node.id);
+            return node.parentId === groupId &&
+              position &&
+              (position.x !== node.position.x || position.y !== node.position.y)
+              ? { ...node, position }
+              : node;
+          });
+    if (next === current) return;
     pushHistory(get, set);
-    set(nodesStateAtom, nodes);
+    set(nodesStateAtom, next);
     requestGraphSave(get, set, { immediate: true });
   }
 );
@@ -702,32 +1162,26 @@ export const deleteNodeAtom = atom(null, (get, set, nodeId: string) => {
   }
 
   const currentNodes = get(nodesStateAtom);
+  const currentEdges = get(edgesStateAtom);
 
-  const nodeToDelete = currentNodes.find((node) => node.id === nodeId);
-  if (nodeToDelete?.data.type === "lifecycle") {
-    return;
-  }
-  if (nodeToDelete && refuseDeleteWithNotice([nodeToDelete])) {
+  // A frame is ungrouped and keeps its members, a step goes with its stored
+  // edges, and a frame left holding fewer than two steps is ungrouped.
+  const next = removeNodes({
+    nodes: currentNodes,
+    edges: currentEdges,
+    nodeIds: new Set([nodeId]),
+  });
+  if (next.nodes === currentNodes && next.edges === currentEdges) {
     return;
   }
 
   pushHistory(get, set);
+  set(nodesStateAtom, next.nodes);
+  set(edgesStateAtom, next.edges);
 
-  const removed = idsRemovedWith(currentNodes, nodeId);
-  const remainingNodes = dissolveUndersizedGroups(
-    currentNodes.filter((node) => !removed.has(node.id))
-  );
-  set(nodesStateAtom, remainingNodes);
-  set(
-    edgesStateAtom,
-    get(edgesStateAtom).filter(
-      (edge) => !removed.has(edge.source) && !removed.has(edge.target)
-    )
-  );
-
-  if (get(selectedNodeAtom) && removed.has(get(selectedNodeAtom) ?? "")) {
-    set(selectedNodeAtom, null);
-  }
+  // The selection can name the deleted step, a frame the delete ungrouped, or
+  // a frame dissolved because the delete left it too small.
+  keepSelectionInDraft(get, set);
 
   requestGraphSave(get, set, { immediate: true });
 });
@@ -739,49 +1193,37 @@ export const deleteSelectedItemsAtom = atom(null, (get, set) => {
 
   const currentNodes = get(nodesStateAtom);
   const currentEdges = get(edgesStateAtom);
-  // The delete key asks the same question through `onBeforeDelete`, so a
-  // selection reaching into a frame without taking the frame is refused whole
-  // here too rather than quietly losing the member and taking the rest.
-  const selectedNodes = currentNodes.filter((node) => node.selected);
-  if (refuseDeleteWithNotice(selectedNodes)) {
-    return;
-  }
+  const selection = get(activeSelectionAtom);
+  const { scope } = get(activeWorkspaceAddressAtom);
 
-  const selectedNodeIds = new Set(
-    selectedNodes
-      .filter((node) => node.data.type !== "lifecycle")
-      .map((node) => node.id)
-  );
-  for (const node of currentNodes) {
-    if (node.parentId && selectedNodeIds.has(node.parentId)) {
-      selectedNodeIds.add(node.id);
-    }
-  }
-
-  // Lifecycle Nodes survive being selected; the graph needs an entrypoint.
-  const remainingNodes = dissolveUndersizedGroups(
-    currentNodes.filter(
-      (node) => node.data.type === "lifecycle" || !selectedNodeIds.has(node.id)
+  // `removeNodes` keeps the Lifecycle Node, which the graph needs as its
+  // entrypoint, removes the selected steps, ungroups a selected frame, and
+  // ungroups a frame the removal leaves holding fewer than two steps.
+  const selectedFanOut = new Set(
+    selection.edgeIds.flatMap((edgeId) =>
+      storedEdgeIdsForPaintedEdge({
+        nodes: currentNodes,
+        edges: currentEdges,
+        edgeId,
+        scope,
+      })
     )
   );
-  const selectedFanOut = new Set(
-    currentEdges
-      .filter((edge) => edge.selected)
-      .flatMap((edge) =>
-        fanOutStoreEdgeIds(currentNodes, currentEdges, edge.id)
-      )
-  );
-  const remainingEdges = currentEdges.filter(
-    (edge) =>
-      !selectedFanOut.has(edge.id) &&
-      !selectedNodeIds.has(edge.source) &&
-      !selectedNodeIds.has(edge.target)
-  );
+  const removal = removeNodes({
+    nodes: currentNodes,
+    edges: currentEdges,
+    nodeIds: new Set(selection.nodeIds),
+  });
+  const remainingNodes = removal.nodes;
+  const remainingEdges =
+    selectedFanOut.size === 0
+      ? removal.edges
+      : removal.edges.filter((edge) => !selectedFanOut.has(edge.id));
 
   // Selecting only the Lifecycle Node and pressing delete removes nothing, and
   // an undo step for a change that did not happen is worse than no undo step.
   if (
-    remainingNodes.length === currentNodes.length &&
+    remainingNodes === currentNodes &&
     remainingEdges.length === currentEdges.length
   ) {
     return;
@@ -790,8 +1232,7 @@ export const deleteSelectedItemsAtom = atom(null, (get, set) => {
   pushHistory(get, set);
   set(nodesStateAtom, remainingNodes);
   set(edgesStateAtom, remainingEdges);
-  set(selectedNodeAtom, null);
-  set(selectedEdgeAtom, null);
+  set(activeSelectionAtom, EMPTY_SELECTION);
 
   requestGraphSave(get, set, { immediate: true });
 });
@@ -823,8 +1264,7 @@ export const clearWorkflowAtom = atom(null, (get, set) => {
   set(nodesStateAtom, lifecycleNodes);
   // Every edge had at least one end on a removed node.
   set(edgesStateAtom, []);
-  set(selectedNodeAtom, null);
-  set(selectedEdgeAtom, null);
+  set(activeSelectionAtom, EMPTY_SELECTION);
 
   requestGraphSave(get, set, { immediate: true });
 });
@@ -847,6 +1287,7 @@ export const undoAtom = atom(null, (get, set) => {
   set(historyAtom, history.slice(0, -1));
   set(nodesStateAtom, previousState.nodes);
   set(edgesStateAtom, previousState.edges);
+  keepSelectionInDraft(get, set);
 
   requestGraphSave(get, set, { immediate: true });
 });
@@ -869,6 +1310,7 @@ export const redoAtom = atom(null, (get, set) => {
   set(futureAtom, future.slice(0, -1));
   set(nodesStateAtom, nextState.nodes);
   set(edgesStateAtom, nextState.edges);
+  keepSelectionInDraft(get, set);
 
   requestGraphSave(get, set, { immediate: true });
 });

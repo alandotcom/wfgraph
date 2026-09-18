@@ -1,28 +1,38 @@
+import { useStore } from "jotai";
 import { useCallback } from "react";
 import { ConfigurationOverlay } from "#src/components/overlays/configuration-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
+import type { WorkspaceAddress } from "#src/lib/workflow-navigation-state";
+import { openMobileSelectionAtom } from "#src/lib/mobile-sheet-store";
+import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
 
 /**
- * Open the node config sheet, which is how a narrow viewport reaches the config
- * panel. Every caller goes through here so the sheet is opened with the same
- * `onClose` and cannot be dismissed into a state nothing on screen explains.
- *
- * `openSheet` replaces the stack; `pushSheet` stacks on top so the overlay below
- * keeps its Back button.
+ * Open the inspector a narrow viewport shows for `address`, the active address
+ * when none is named. A caller about to navigate names the address it goes to,
+ * because the active address changes only once the route has synced. In Draft
+ * with one object selected, that inspector is the object's summary sheet in the
+ * mobile Reveal sequence, in Runs it is the address sheet of the run list or
+ * the run, and in Changes the comparison summary sheet; the navigation state
+ * records each, and with a sheet already open it changes nothing. Anywhere else it is the configuration sheet,
+ * opened with the same `onClose` from every caller, so it cannot be dismissed
+ * into a state nothing on screen explains.
  */
 export function useConfigurationSheet(): {
-  openSheet: () => void;
-  pushSheet: () => void;
+  openSheet: (address?: WorkspaceAddress) => void;
 } {
-  const { open, push } = useOverlay();
+  const { open } = useOverlay();
+  const store = useStore();
 
-  const openSheet = useCallback(() => {
-    open(ConfigurationOverlay, {});
-  }, [open]);
+  const openSheet = useCallback(
+    (address?: WorkspaceAddress) => {
+      const target = address ?? store.get(activeWorkspaceAddressAtom);
+      if (store.set(openMobileSelectionAtom, target)) {
+        return;
+      }
+      open(ConfigurationOverlay, {});
+    },
+    [open, store]
+  );
 
-  const pushSheet = useCallback(() => {
-    push(ConfigurationOverlay, {});
-  }, [push]);
-
-  return { openSheet, pushSheet };
+  return { openSheet };
 }

@@ -21,7 +21,7 @@ import {
 import {
   loadWorkflowGraphAtom,
   nodesAtom,
-  selectedNodeAtom,
+  selectOnlyNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import {
   autosaveDelayAtom,
@@ -35,12 +35,13 @@ import {
   installAuthorizationGrantsForTests,
   resetAuthorizationGrantsForTests,
 } from "#src/lib/authorization-test-support";
-import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import { orpcQuery } from "#src/lib/rpc-query";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
+import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
 
 const catalog: ExtensionCatalog = {
   entities: [],
@@ -124,10 +125,15 @@ function renderPanel({
   store.set(autosaveDelayAtom, 0);
   store.set(workflowApiAtom, { update: async () => savedWorkflow("wf_1") });
   store.set(loadWorkflowGraphAtom, { nodes, edges });
-  store.set(selectedNodeAtom, selected);
   store.set(currentWorkflowIdAtom, "wf_1");
   store.set(currentWorkflowNameAtom, "Appointment reminders");
-  store.set(workflowWorkspaceViewAtom, workspaceView);
+  showWorkspaceRoute(
+    store,
+    workspaceView === "draft" ? {} : { view: workspaceView }
+  );
+  if (selected !== null) {
+    store.set(selectOnlyNodeAtom, selected);
+  }
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
@@ -239,9 +245,10 @@ describe("NodeConfigPanel config scoping", () => {
 
     const label = await view.findByLabelText("Label");
     const description = view.getByLabelText("Description");
-    const startEvents = view.getByRole("heading", {
+    // The policy summary and the Start Events editor both carry the heading.
+    const startEvents = view.getAllByRole("heading", {
       name: "Start Events",
-    });
+    })[0];
 
     expect(view.queryByText("Node Metadata")).toBeNull();
     expect(view.queryByText("Lifecycle Rules")).toBeNull();
@@ -271,7 +278,7 @@ describe("NodeConfigPanel config scoping", () => {
     expect((picker as HTMLInputElement).value).toBe("appoint");
 
     await act(async () => {
-      store.set(selectedNodeAtom, "lifecycle_2");
+      store.set(selectOnlyNodeAtom, "lifecycle_2");
     });
 
     // Unkeyed, the same component instance carries the search term over and the
@@ -284,25 +291,105 @@ describe("NodeConfigPanel config scoping", () => {
 
 describe("NodeConfigPanel multiple selection", () => {
   it("counts steps and connections together in the selection summary", async () => {
-    const first = lifecycleNode("lifecycle_1");
-    first.selected = true;
-    const second = lifecycleNode("lifecycle_2");
-    second.selected = true;
     const connection: WorkflowEdge = {
       id: "edge_1",
       source: "lifecycle_1",
       target: "lifecycle_2",
-      selected: true,
     };
 
-    const { view } = renderPanel({
-      nodes: [first, second],
+    const { view, store } = renderPanel({
+      nodes: [lifecycleNode("lifecycle_1"), lifecycleNode("lifecycle_2")],
       edges: [connection],
     });
+    act(() =>
+      store.set(activeSelectionAtom, {
+        nodeIds: ["lifecycle_1", "lifecycle_2"],
+        edgeIds: ["edge_1"],
+      })
+    );
 
     expect(
       await view.findByText("2 steps and 1 connection selected")
     ).toBeTruthy();
+  });
+
+  it("counts a selected frame as a Group the delete ungroups", async () => {
+    installAuthorizationGrantsForTests([WfGraphOperations.workflowUpdate.id]);
+    const member = (id: string): WorkflowNode => ({
+      id,
+      type: "action",
+      parentId: "group_1",
+      extent: "parent",
+      position: { x: 0, y: 0 },
+      data: {
+        label: id,
+        type: "action",
+        config: { actionType: "fountain/get-user" },
+      },
+    });
+
+    const { view, store, confirmed } = renderPanel({
+      nodes: [groupNode(), member("a"), member("b")],
+    });
+    act(() =>
+      store.set(activeSelectionAtom, {
+        nodeIds: ["group_1", "a"],
+        edgeIds: [],
+      })
+    );
+
+    expect(await view.findByText("1 step and 1 Group selected")).toBeTruthy();
+    fireEvent.click(view.getByRole("button", { name: /Delete/ }));
+
+    expect(confirmed.map((request) => request.message)).toEqual([
+      "Are you sure you want to delete 1 step? The selected Group is ungrouped, and the steps inside that are not selected stay in the workflow.",
+    ]);
+  });
+});
+
+describe("NodeConfigPanel on a Group frame", () => {
+  it("asks for the destructive Delete Group and Steps confirmation", async () => {
+    installAuthorizationGrantsForTests([WfGraphOperations.workflowUpdate.id]);
+    const member = (id: string): WorkflowNode => ({
+      id,
+      type: "action",
+      parentId: "group_1",
+      extent: "parent",
+      position: { x: 0, y: 0 },
+      data: {
+        label: id,
+        type: "action",
+        config: { actionType: "fountain/get-user" },
+      },
+    });
+    const { view, confirmed } = renderPanel({
+      nodes: [groupNode(), member("a"), member("b")],
+      selected: "group_1",
+    });
+
+    fireEvent.click(
+      await view.findByRole("button", { name: "Delete Group and Steps" })
+    );
+
+    expect(confirmed).toMatchObject([
+      {
+        title: "Delete Group and Steps",
+        confirmLabel: "Delete Group and Steps",
+        confirmVariant: "destructive",
+      },
+    ]);
+  });
+});
+
+describe("NodeConfigPanel on the Lifecycle Node", () => {
+  // The Lifecycle Node is the workflow's entry and the graph refuses to delete
+  // it, so its form offers no Delete that would do nothing.
+  it("offers no Delete to a person who may update the workflow", async () => {
+    installAuthorizationGrantsForTests([WfGraphOperations.workflowUpdate.id]);
+    const { view } = renderPanel({ selected: "lifecycle_1" });
+
+    await view.findByLabelText("Label");
+    expect(view.queryByRole("button", { name: /Delete/ })).toBeNull();
   });
 });
 
@@ -316,30 +403,21 @@ describe("NodeConfigPanel workspace inspector", () => {
     expect(view.queryByRole("tab", { name: "Changes" })).toBeNull();
   });
 
-  it("follows the active workspace view", async () => {
+  it("follows the active workspace view, and leaves Changes to its own inspector", async () => {
     const { view, store } = renderPanel({ hasPublishedVersion: true });
+    await view.findByText("Select a step on the canvas to configure it.");
 
-    act(() => store.set(workflowWorkspaceViewAtom, "changes"));
+    act(() => showWorkspaceRoute(store, { view: "changes" }));
+    expect(view.getByTestId("properties-panel").textContent).toBe("");
 
+    act(() => showWorkspaceRoute(store, {}));
     expect(
-      await view.findByText(
-        "Open a comparison of this draft and its published version."
-      )
+      await view.findByText("Select a step on the canvas to configure it.")
     ).toBeTruthy();
   });
 });
 
 describe("NodeConfigPanel authorization", () => {
-  it("does not offer Clear All to a run reader", async () => {
-    installAuthorizationGrantsForTests([
-      WfGraphOperations.workflowGetExecutions.id,
-    ]);
-    const { view } = renderPanel({ workspaceView: "runs" });
-
-    await view.findByText("No runs yet");
-    expect(view.queryByRole("button", { name: "Clear All" })).toBeNull();
-  });
-
   it("does not add a read-only access badge when workflow updates are denied", async () => {
     resetAuthorizationGrantsForTests();
     const { view } = renderPanel({ selected: "lifecycle_1" });

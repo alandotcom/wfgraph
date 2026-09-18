@@ -1,16 +1,21 @@
 import { useRef } from "react";
-import { useSetAtom } from "jotai";
 import { cn } from "@wfgraph/shared/utils";
 import { useAfterCommit } from "#src/hooks/effects";
 import { type ExecutionLog } from "#src/lib/execution-logs";
-import { selectedNodeAtom } from "#src/lib/workflow-graph-store";
 import {
   formatDuration,
-  getStatusDotClass,
-  getStatusLabel,
-  getStatusTextClass,
+  nodeStatusLabel,
+  nodeStatusTone,
+  statusToneDotClass,
+  statusToneTextClass,
 } from "./workflow-run-shared";
 
+/**
+ * A run's node journey: one entry per recorded node execution, in start order,
+ * and the Entity eligibility exit when the run exited. Choosing an entry calls
+ * `onSelect`. `focusLogId` names an entry to focus once it renders; focusing
+ * keeps the scroll the journey already has, and `onFocusRestored` follows.
+ */
 export function WorkflowRunNodeIndex({
   logs,
   exit,
@@ -20,18 +25,17 @@ export function WorkflowRunNodeIndex({
 }: {
   logs: ExecutionLog[];
   exit?: { nodeLabel: string } | undefined;
-  focusLogId?: string | null;
-  onFocusRestored?: () => void;
-  onSelect?: (log: ExecutionLog) => void;
+  focusLogId?: string | null | undefined;
+  onFocusRestored?: (() => void) | undefined;
+  onSelect: (log: ExecutionLog) => void;
 }) {
-  const setSelectedNode = useSetAtom(selectedNodeAtom);
   const rowRefs = useRef(new Map<string, HTMLButtonElement>());
 
   useAfterCommit(focusLogId, () => {
     if (!focusLogId) {
       return;
     }
-    rowRefs.current.get(focusLogId)?.focus();
+    rowRefs.current.get(focusLogId)?.focus({ preventScroll: true });
     onFocusRestored?.();
   });
 
@@ -42,11 +46,6 @@ export function WorkflowRunNodeIndex({
       </p>
     );
   }
-
-  const selectLog = (log: ExecutionLog) => {
-    onSelect?.(log);
-    setSelectedNode(log.nodeId);
-  };
 
   return (
     <section>
@@ -66,15 +65,15 @@ export function WorkflowRunNodeIndex({
                 "absolute top-[1.125rem] left-1 size-2 rounded-full ring-2 ring-background",
                 log.status === "running" &&
                   "ring-info/20 motion-safe:animate-pulse",
-                getStatusDotClass(log.status)
+                statusToneDotClass(nodeStatusTone(log.status))
               )}
             />
             <button
-              aria-label={`${log.nodeName || log.nodeType}, ${getStatusLabel(log.status)}`}
+              aria-label={`${log.nodeName || log.nodeType}, ${nodeStatusLabel(log.status)}`}
               className="grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 rounded-sm px-2 py-1.5 text-left transition-colors duration-100 hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
               data-run-node-id={log.nodeId}
               data-run-log-id={log.id}
-              onClick={() => selectLog(log)}
+              onClick={() => onSelect(log)}
               ref={(element) => {
                 if (element) {
                   rowRefs.current.set(log.id, element);
@@ -97,8 +96,13 @@ export function WorkflowRunNodeIndex({
                 ) : null}
               </span>
               <span className="flex shrink-0 items-baseline gap-2">
-                <span className={cn("text-xs", getStatusTextClass(log.status))}>
-                  {getStatusLabel(log.status)}
+                <span
+                  className={cn(
+                    "text-xs",
+                    statusToneTextClass(nodeStatusTone(log.status))
+                  )}
+                >
+                  {nodeStatusLabel(log.status)}
                 </span>
                 {log.duration ? (
                   <span className="font-mono text-muted-foreground text-xs tabular-nums">

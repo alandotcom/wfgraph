@@ -134,7 +134,11 @@ jobs:
 
   reliability:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # A CI-like local run (both backends, WFGRAPH_RELIABILITY_RUNS=5,
+    # WFGRAPH_RELIABILITY_GROUP_RUNS=3) took about 3.6 minutes on a laptop. The
+    # limit leaves room for a slower runner, setup, and one failing property
+    # shrinking and replaying.
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:17-alpine
@@ -168,8 +172,12 @@ jobs:
           WFGRAPH_TEST_DATABASE_URL: postgresql://workflow:workflow@localhost:5432/workflow_builder
           WFGRAPH_RELIABILITY_BACKEND: all
           WFGRAPH_RELIABILITY_RUNS: "5"
+          WFGRAPH_RELIABILITY_GROUP_RUNS: "3"
+      # A job stopped at `timeout-minutes` ends with the cancelled status, which
+      # `failure()` does not match. The artifacts of a property that failed
+      # before the stop then still upload.
       - name: Upload reliability failure evidence
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@v7
         with:
           name: reliability-failures

@@ -45,6 +45,7 @@ import {
 } from "@wfgraph/shared/lifecycle/event-split";
 import { useEventSplitOutlets } from "#src/lib/event-split-outlets";
 import {
+  CONDITION_OUTLET_FRACTION,
   eventSplitCardWidth,
   NODE_ICON_CLASS,
   NODE_ICON_PX,
@@ -53,6 +54,11 @@ import {
 } from "#src/lib/workflow-node-dimensions";
 import { useAfterPaint, useNowMs } from "#src/hooks/effects";
 import { useExecutionLogsByNode } from "#src/hooks/use-execution-logs";
+import {
+  alongOutletSide,
+  BranchOutletLabel,
+  OutletLabel,
+} from "#src/components/workflow/nodes/outlet-label";
 import {
   readConfigString,
   readConfigStringOr,
@@ -424,45 +430,15 @@ type ActionNodeProps = NodeProps & {
   id: string;
 };
 
-const CONDITION_TRUE_HANDLE_LEFT = "38%";
-const CONDITION_FALSE_HANDLE_LEFT = "62%";
-
-/** Where one outlet's handle sits, as a percentage of the card's own width. */
-function eventSplitOutletLeft(index: number, count: number): string {
-  return `${((index + 0.5) / count) * 100}%`;
-}
+const CONDITION_TRUE_OUTLET_OFFSET = `${CONDITION_OUTLET_FRACTION.true * 100}%`;
+const CONDITION_FALSE_OUTLET_OFFSET = `${CONDITION_OUTLET_FRACTION.false * 100}%`;
 
 /**
- * A nested card's handles anchor the interior edges the frame draws between its
- * members; the frame owns the dots a person can drag from, so these render
- * invisible and take no pointer events.
+ * Where one Event Split outlet's handle sits along the outlet side, as a
+ * percentage of the card's length on that side.
  */
-const GROUPED_HANDLE_CLASS = "group-child-handle";
-
-const GROUPED_TARGET_HANDLES = [
-  {
-    position: Position.Top,
-    className: GROUPED_HANDLE_CLASS,
-    label: "Input handle",
-  },
-];
-const GROUPED_SOURCE_HANDLES = [
-  {
-    position: Position.Bottom,
-    className: GROUPED_HANDLE_CLASS,
-    label: "Output handle",
-  },
-];
-
-export function groupedActionNodeClassName(
-  comparison: WorkflowNodeData[typeof COMPARISON_NODE_ANNOTATION] | undefined,
-  enabled: boolean | undefined
-): string {
-  return cn(
-    comparison?.kind !== "removed" && "nodrag",
-    "flex h-14 w-[188px] flex-row items-center shadow-none",
-    enabled === false && "opacity-50"
-  );
+function eventSplitOutletOffset(index: number, count: number): string {
+  return `${((index + 0.5) / count) * 100}%`;
 }
 
 /** Comparison cards share the accessible graph name's safe action fallback. */
@@ -481,90 +457,12 @@ export function actionNodeDisplayTitle(
     "Action"
   );
 }
-// A Condition reached by the group's own steps still branches on two handles,
-// and an interior edge names the branch it left by. They sit apart on the same
-// offsets a standalone Condition uses, so the two branches paint as two paths
-// rather than one line leaving a single point.
-const GROUPED_CONDITION_SOURCE_HANDLES = [
-  {
-    id: "true",
-    label: "True outlet",
-    position: Position.Bottom,
-    className: GROUPED_HANDLE_CLASS,
-    style: { left: CONDITION_TRUE_HANDLE_LEFT },
-  },
-  {
-    id: "false",
-    label: "False outlet",
-    position: Position.Bottom,
-    className: GROUPED_HANDLE_CLASS,
-    style: { left: CONDITION_FALSE_HANDLE_LEFT },
-  },
-];
 
-function GroupedActionNode({ data, selected, id }: ActionNodeProps) {
-  const catalog = useExtensionCatalog();
-  const updateNodeInternals = useUpdateNodeInternals();
-  const actionType = readConfigString(data?.config, "actionType");
-  const isConditionAction = isConditionActionType(actionType);
-
-  // Same reason as the standalone card below: a Condition renders two source
-  // handles where every other member renders one, and React Flow measures
-  // handles on its own schedule. A member's action stays editable, so this
-  // count changes under it.
-  useAfterPaint(isConditionAction, () => {
-    updateNodeInternals(id);
-  });
-
-  if (!data) {
-    return null;
-  }
-
-  const comparison = data[COMPARISON_NODE_ANNOTATION];
-  const displayTitle = actionNodeDisplayTitle(data, catalog);
-
-  return (
-    <Node
-      className={cn(groupedActionNodeClassName(comparison, data.enabled))}
-      data-testid={`action-node-${id}`}
-      handles={{
-        target: GROUPED_TARGET_HANDLES,
-        source: isConditionAction
-          ? GROUPED_CONDITION_SOURCE_HANDLES
-          : GROUPED_SOURCE_HANDLES,
-      }}
-      selected={selected}
-      status={data.status}
-    >
-      <ComparisonMarker comparison={data[COMPARISON_NODE_ANNOTATION]} />
-      <div className="flex min-w-0 flex-1 items-center gap-2 px-3">
-        {actionType ? (
-          <ProviderLogo
-            actionType={actionType}
-            catalog={catalog}
-            className={cn(NODE_ICON_CLASS, "shrink-0")}
-          />
-        ) : (
-          <Zap
-            className={cn(NODE_ICON_CLASS, "shrink-0 text-muted-foreground")}
-            strokeWidth={1.5}
-          />
-        )}
-        <NodeTitle className="text-sm" singleLine>
-          {displayTitle}
-        </NodeTitle>
-        {/* A member is validated like any other node, so it has to be able to
-            say so. Inline at the end of the row, because this card is 56px tall
-            and a floated corner badge would sit on the icon. */}
-        {data.enabled !== false && (
-          <NodeIssueBadge issues={data.issues} placement="inline" />
-        )}
-      </div>
-    </Node>
-  );
-}
-
-const StandaloneActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
+export const ActionNode = memo((props: ActionNodeProps) => {
+  const { data, selected, id, targetPosition, isConnectable } = props;
+  // The side the outlets sit on: the bottom on the overview, the right in a
+  // Left to right Group.
+  const outlet = props.sourcePosition ?? Position.Bottom;
   const catalog = useExtensionCatalog();
   const updateNodeInternals = useUpdateNodeInternals();
   const selectedExecutionId = useAtomValue(selectedExecutionIdAtom);
@@ -624,9 +522,12 @@ const StandaloneActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
         className={cn(isDisabled && "opacity-50")}
         data-testid={`action-node-${id}`}
         handles={{ target: true, source: true }}
+        isConnectable={isConnectable}
         selected={selected}
+        sourcePosition={outlet}
         status={status}
         style={workflowNodeSize()}
+        targetPosition={targetPosition}
       >
         <ComparisonMarker comparison={data[COMPARISON_NODE_ANNOTATION]} />
         {isDisabled && (
@@ -675,6 +576,7 @@ const StandaloneActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
     <Node
       className={cn(isDisabled && "opacity-50")}
       data-testid={`action-node-${id}`}
+      isConnectable={isConnectable}
       handles={{
         target: true,
         source: isConditionAction
@@ -682,9 +584,9 @@ const StandaloneActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
               {
                 id: "true",
                 label: "True outlet",
-                position: Position.Bottom,
+                position: outlet,
                 style: {
-                  left: CONDITION_TRUE_HANDLE_LEFT,
+                  ...alongOutletSide(outlet, CONDITION_TRUE_OUTLET_OFFSET),
                   width: 12,
                   height: 12,
                 },
@@ -692,9 +594,9 @@ const StandaloneActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
               {
                 id: "false",
                 label: "False outlet",
-                position: Position.Bottom,
+                position: outlet,
                 style: {
-                  left: CONDITION_FALSE_HANDLE_LEFT,
+                  ...alongOutletSide(outlet, CONDITION_FALSE_OUTLET_OFFSET),
                   width: 12,
                   height: 12,
                 },
@@ -704,9 +606,12 @@ const StandaloneActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
             ? splitOutlets.map((event, index) => ({
                 id: eventSplitOutlet(event.name),
                 label: `${event.label} outlet`,
-                position: Position.Bottom,
+                position: outlet,
                 style: {
-                  left: eventSplitOutletLeft(index, splitOutlets.length),
+                  ...alongOutletSide(
+                    outlet,
+                    eventSplitOutletOffset(index, splitOutlets.length)
+                  ),
                   width: 12,
                   height: 12,
                 },
@@ -715,12 +620,14 @@ const StandaloneActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
       }}
       // A split is as wide as its outlets. Every other node keeps the default.
       selected={selected}
+      sourcePosition={outlet}
       status={status}
       style={workflowNodeSize(
         isEventSplitAction
           ? eventSplitCardWidth(splitOutlets.length)
           : WORKFLOW_NODE_WIDTH
       )}
+      targetPosition={targetPosition}
     >
       <ComparisonMarker comparison={data[COMPARISON_NODE_ANNOTATION]} />
       {/* Disabled badge in top left */}
@@ -737,27 +644,36 @@ const StandaloneActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
 
       {isConditionAction && (
         <>
-          <div className="pointer-events-none absolute -bottom-8 left-[38%] -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-xs text-muted-foreground leading-none">
+          <BranchOutletLabel
+            nodeId={id}
+            handleId="true"
+            offset={CONDITION_TRUE_OUTLET_OFFSET}
+            outlet={outlet}
+          >
             True
-          </div>
-          <div className="pointer-events-none absolute -bottom-8 left-[62%] -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-xs text-muted-foreground leading-none">
+          </BranchOutletLabel>
+          <BranchOutletLabel
+            nodeId={id}
+            handleId="false"
+            offset={CONDITION_FALSE_OUTLET_OFFSET}
+            outlet={outlet}
+          >
             False
-          </div>
+          </BranchOutletLabel>
         </>
       )}
 
       {isEventSplitAction &&
         splitOutlets.map((event, index) => (
-          <div
-            className="pointer-events-none absolute -bottom-8 max-w-28 -translate-x-1/2 truncate rounded-sm border bg-card px-1.5 py-0.5 text-xs text-muted-foreground leading-none"
+          <OutletLabel
+            className="max-w-28 truncate"
             key={event.name}
-            style={{
-              left: eventSplitOutletLeft(index, splitOutlets.length),
-            }}
+            offset={eventSplitOutletOffset(index, splitOutlets.length)}
+            outlet={outlet}
             title={event.name}
           >
             {event.label}
-          </div>
+          </OutletLabel>
         ))}
 
       <NodeBody>
@@ -777,15 +693,6 @@ const StandaloneActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
       </NodeBody>
     </Node>
   );
-});
-
-StandaloneActionNode.displayName = "StandaloneActionNode";
-
-export const ActionNode = memo((props: ActionNodeProps) => {
-  if (props.parentId) {
-    return <GroupedActionNode {...props} />;
-  }
-  return <StandaloneActionNode {...props} />;
 });
 
 ActionNode.displayName = "ActionNode";

@@ -168,4 +168,29 @@ describe("buildSystemPrompt", () => {
     );
     expect(prompt).toContain("fan both paths out independently");
   });
+
+  it("describes Groups as organizational frames the agent keeps valid", () => {
+    const prompt = unwrapped(buildSystemPrompt());
+
+    expect(prompt).toContain("A Group is an organizational frame");
+    expect(prompt).toContain("no effect on how a run executes");
+    expect(prompt).toContain("You cannot create a Group or ungroup one");
+    expect(prompt).toContain("A Group has no configurable layout direction");
+    expect(prompt).toContain(
+      "The person does these in the editor, where removing a Group's frame ungroups its steps"
+    );
+    expect(prompt).toContain(
+      "When a tool result says a Group was removed, name that Group in your reply"
+    );
+    expect(prompt).toContain(
+      "A Group continues outside from one outlet inside it, which may be one branch of a Condition whose other branch ends inside the Group, or from several outlets inside it that all connect to the same step outside it, which runs once after all of them"
+    );
+    expect(prompt).toContain("add_node creates a step in no Group");
+    expect(prompt).toContain(
+      "insert_node_on_edge puts the new step in a Group when both ends of the edge are in that Group"
+    );
+    expect(prompt).toContain(
+      "When delete_node leaves a Group with fewer than two steps, the Group is removed"
+    );
+  });
 });

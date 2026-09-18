@@ -6,6 +6,7 @@ import {
 } from "#src/components/workflow/publish-review-dialog";
 import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 
 const comparison: WorkflowComparisonPayload = {
   baseVersion: {
@@ -29,7 +30,127 @@ const comparison: WorkflowComparisonPayload = {
   ],
 };
 
+function renderDialog(review: WorkflowComparisonPayload) {
+  return render(
+    <PublishReviewDialog
+      review={publicationReviewFromComparison(review)}
+      isPublishing={false}
+      mode="test"
+      onConfirm={vi.fn()}
+      onOpenChange={vi.fn()}
+      open
+    />
+  );
+}
+
+/** Each label and value row of one summary section, as text. */
+function summaryRows(view: ReturnType<typeof render>, name: string) {
+  const section = view.getByRole("region", { name });
+  return [...section.querySelectorAll("dl > div")].map((row) => [
+    row.querySelector("dt")?.textContent,
+    row.querySelector("dd")?.textContent,
+  ]);
+}
+
+const groupFrame = (label: string): WorkflowNode => ({
+  id: "group",
+  type: "group",
+  position: { x: 0, y: 0 },
+  data: { label, type: "group" },
+});
+
+const step = (id: string): WorkflowNode => ({
+  id,
+  type: "action",
+  position: { x: 0, y: 0 },
+  data: { label: id, type: "action" },
+});
+
+const inGroup = (node: WorkflowNode): WorkflowNode => ({
+  ...node,
+  parentId: "group",
+});
+
+/** Version 7 against a draft that renames a Group and moves "moved" into it. */
+const organizationOnly: WorkflowComparisonPayload = {
+  ...comparison,
+  baseGraph: createSerializedWorkflowGraph({
+    nodes: [groupFrame("Reminders"), inGroup(step("inner")), step("moved")],
+    edges: [],
+  }),
+  draftGraph: createSerializedWorkflowGraph({
+    nodes: [
+      groupFrame("Follow-ups"),
+      inGroup(step("inner")),
+      inGroup(step("moved")),
+    ],
+    edges: [],
+  }),
+  nodeChanges: [
+    {
+      nodeId: "group",
+      kind: "modified",
+      fields: [
+        {
+          path: ["data", "label"],
+          kind: "modified",
+          before: "Reminders",
+          after: "Follow-ups",
+        },
+      ],
+    },
+    {
+      nodeId: "moved",
+      kind: "modified",
+      fields: [{ path: ["parentId"], kind: "added", after: "group" }],
+    },
+  ],
+  edgeChanges: [],
+};
+
 describe("PublishReviewDialog", () => {
+  it("says an Organization-only publish leaves execution behavior unchanged", () => {
+    const view = renderDialog(organizationOnly);
+
+    const behavior = view.getByRole("region", { name: "Behavior changes" });
+    expect(behavior.textContent).toContain(
+      "Execution behavior is unchanged. Only how steps are organized in Groups differs."
+    );
+    expect(behavior.querySelector("dl")).toBeNull();
+    expect(summaryRows(view, "Organization changes")).toEqual([
+      ["Groups", "1 modified"],
+      ["Group membership", "1 step changed"],
+    ]);
+  });
+
+  it("counts Behavior and Organization apart in a mixed publish", () => {
+    const view = renderDialog({
+      ...organizationOnly,
+      nodeChanges: [
+        ...organizationOnly.nodeChanges.slice(0, 1),
+        {
+          nodeId: "moved",
+          kind: "modified",
+          fields: [
+            { path: ["parentId"], kind: "added", after: "group" },
+            { path: ["data", "enabled"], kind: "added", after: false },
+          ],
+        },
+      ],
+      edgeChanges: [{ edgeId: "inner-moved", kind: "added" }],
+    });
+
+    expect(summaryRows(view, "Behavior changes")).toEqual([
+      ["Steps", "1 modified"],
+      ["Connections", "1 added"],
+    ]);
+    expect(summaryRows(view, "Organization changes")).toEqual([
+      ["Groups", "1 modified"],
+      ["Group membership", "1 step changed"],
+    ]);
+    expect(view.queryByText(/behavior is unchanged/i)).toBeNull();
+  });
+
   it("presents deterministic structural facts and the Published mode consequence", () => {
     const view = render(
       <PublishReviewDialog
@@ -45,15 +166,13 @@ describe("PublishReviewDialog", () => {
     expect(view.getByRole("dialog", { name: "Publish v8?" })).toBeTruthy();
     expect(view.getByText("Based on v7")).toBeTruthy();
     expect(view.getByText("Proposed v8")).toBeTruthy();
-    expect(view.getByText("Added nodes").nextSibling?.textContent).toBe("1");
-    expect(view.getByText("Modified nodes").nextSibling?.textContent).toBe("1");
-    expect(view.getByText("Removed nodes").nextSibling?.textContent).toBe("1");
-    expect(view.getByText("Added connections").nextSibling?.textContent).toBe(
-      "1"
-    );
-    expect(view.getByText("Removed connections").nextSibling?.textContent).toBe(
-      "1"
-    );
+    expect(summaryRows(view, "Behavior changes")).toEqual([
+      ["Steps", "1 added, 1 modified, 1 removed"],
+      ["Connections", "1 added, 1 removed"],
+    ]);
+    expect(
+      view.queryByRole("region", { name: "Organization changes" })
+    ).toBeNull();
     const note = view.getByText(
       "Published mode is Test. v8 sends to test recipients until you switch to Live."
     );

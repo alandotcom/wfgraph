@@ -4,9 +4,34 @@ import {
   WORKFLOW_CANVAS_MIN_ZOOM,
   initialWorkflowViewport,
   presentationViewport,
+  revealViewport,
+  viewportFromWorldCamera,
   workflowFitViewOptions,
   workflowZoomPresentation,
+  worldCameraFromViewport,
 } from "#src/components/workflow/workflow-viewport";
+
+describe("workspace camera", () => {
+  it("restores the same world-space center on a canvas of another size", () => {
+    const desktopCanvas = { width: 1200, height: 800 };
+    const camera = worldCameraFromViewport(
+      { x: -300, y: 40, zoom: 0.5 },
+      desktopCanvas
+    );
+
+    expect(camera).toEqual({ centerX: 1800, centerY: 720, zoom: 0.5 });
+    expect(viewportFromWorldCamera(camera, desktopCanvas)).toEqual({
+      x: -300,
+      y: 40,
+      zoom: 0.5,
+    });
+
+    // A phone-width canvas keeps the same flow point in its middle.
+    const phoneCanvas = { width: 390, height: 640 };
+    const phoneViewport = viewportFromWorldCamera(camera, phoneCanvas);
+    expect(worldCameraFromViewport(phoneViewport, phoneCanvas)).toEqual(camera);
+  });
+});
 
 describe("workflow viewport policy", () => {
   it("fits supported large workflow bounds into the shortest canvas with padding", () => {
@@ -182,5 +207,92 @@ describe("workflow viewport policy", () => {
   it("uses one discrete overview presentation for zoomed-out graphs", () => {
     expect(workflowZoomPresentation(0.5)).toBe("overview");
     expect(workflowZoomPresentation(0.51)).toBe("detail");
+  });
+});
+
+describe("revealViewport", () => {
+  const usable = { x: 0, y: 0, width: 812, height: 800 };
+  const step = { x: 0, y: 0, width: 192, height: 112 };
+
+  it("keeps the viewport when the step already sits inside the usable part", () => {
+    const viewport = { x: 200, y: 200, zoom: 1 };
+    expect(revealViewport({ viewport, usable, bounds: step })).toBe(viewport);
+  });
+
+  it("moves the least distance along one axis and keeps the zoom", () => {
+    // The step sits under Reveal, 900 to 1092 px across a 1200 px canvas.
+    const viewport = { x: 900, y: 300, zoom: 1 };
+    const next = revealViewport({ viewport, usable, bounds: step });
+    // Right edge plus 64 px of context lands on the padded edge at 788.
+    expect(next).toEqual({ x: 788 - 64 - 192, y: 300, zoom: 1 });
+  });
+
+  it("decreases the zoom only enough to fit, about the step's center", () => {
+    const wide = { x: 0, y: 0, width: 1600, height: 112 };
+    const viewport = { x: 0, y: 300, zoom: 1 };
+    const next = revealViewport({ viewport, usable, bounds: wide });
+    expect(next.zoom).toBeCloseTo((812 - 48) / 1600, 6);
+    expect(next.x).toBeCloseTo(24, 6);
+    expect(next.zoom).toBeLessThan(viewport.zoom);
+  });
+
+  it("never zooms in on a step smaller than the usable part", () => {
+    const viewport = { x: 900, y: 300, zoom: 0.4 };
+    expect(revealViewport({ viewport, usable, bounds: step }).zoom).toBe(0.4);
+  });
+
+  it("keeps a long horizontal workflow's direction and neighbors", () => {
+    // A step deep in a left-to-right chain, hidden by Reveal: the chain moves
+    // left, the zoom holds, and the 64 px left of the step stays on screen.
+    const deep = { x: 4000, y: 0, width: 192, height: 112 };
+    const viewport = { x: -3200, y: 300, zoom: 1 };
+    const next = revealViewport({ viewport, usable, bounds: deep });
+    expect(next.y).toBe(300);
+    expect(next.zoom).toBe(1);
+    const left = next.x + deep.x;
+    expect(left).toBe(788 - 64 - 192);
+    expect(left - 64).toBeGreaterThan(24);
+  });
+
+  it("keeps a long vertical workflow's direction and neighbors", () => {
+    const low = { x: 0, y: 5000, width: 192, height: 112 };
+    const viewport = { x: 200, y: -4400, zoom: 1 };
+    const next = revealViewport({ viewport, usable, bounds: low });
+    expect(next.x).toBe(200);
+    expect(next.y + low.y + low.height + 64).toBe(800 - 24);
+  });
+
+  it("drops the context padding when the context would not fit", () => {
+    const tall = { x: 0, y: 0, width: 192, height: 700 };
+    const viewport = { x: 900, y: 50, zoom: 1 };
+    const next = revealViewport({ viewport, usable, bounds: tall });
+    expect(next).toEqual({ x: 788 - 192, y: 50, zoom: 1 });
+  });
+
+  it("places an optional box with the step when the two fit together", () => {
+    // The label below the step ends 524 px down, 724 px on screen. With 64 px
+    // of context that passes the padded bottom edge at 776 by 12 px.
+    const label = { x: 0, y: 500, width: 56, height: 24 };
+    const viewport = { x: 200, y: 200, zoom: 1 };
+    const next = revealViewport({
+      viewport,
+      usable,
+      bounds: step,
+      optionalBounds: [label],
+    });
+    expect(next).toEqual({ x: 200, y: 188, zoom: 1 });
+  });
+
+  it("leaves out an optional box that would not fit at the step's zoom", () => {
+    const farLabel = { x: 0, y: 5000, width: 56, height: 24 };
+    const viewport = { x: 200, y: 200, zoom: 1 };
+    expect(
+      revealViewport({
+        viewport,
+        usable,
+        bounds: step,
+        optionalBounds: [farLabel],
+      })
+    ).toBe(viewport);
   });
 });

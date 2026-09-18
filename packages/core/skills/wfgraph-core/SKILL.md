@@ -74,6 +74,12 @@ the editor.
   available workflow IDs. Existing-draft authoring calls take a `workflowId`;
   writes also take the latest `expectedDraftRevision`. After a
   `workflow_draft_stale` result, read the workflow again before editing.
+- MCP tools and the build agent keep existing Groups valid and cannot create a
+  Group or ungroup one. A write that leaves a Group with
+  fewer than two steps ungroups it, and the tool result names that Group.
+- Grouping never changes what a run executes. A draft save refuses Group
+  membership errors and edges that touch a Group frame. The remaining Group rules block Publish, and a draft run
+  ignores them.
 
 ## Persistence
 
@@ -152,6 +158,16 @@ Correct: disable query caching; Workflow Graph's writes would otherwise be
 invisible to later reads.
 
 Source: alandotcom/wfgraph:docs/embedding.md (Cloudflare Workers and Hyperdrive)
+
+### HIGH Upgrade with legacy Group config keys
+
+Wrong: Upgrade while a stored draft or published version has keys in a Group's
+config, including `direction`, `entryNodeIds`, `exitNodeIds`, or `outletHandle`.
+
+Correct: Before upgrading, empty each stored Group config. Graph decoding
+refuses every Group config key, and no migration ships for the removed keys.
+
+Source: alandotcom/wfgraph:docs/embedding.md (Groups)
 
 ### HIGH Repeat a stale MCP write
 
