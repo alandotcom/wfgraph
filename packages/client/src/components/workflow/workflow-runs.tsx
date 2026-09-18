@@ -8,6 +8,7 @@ import { clearRunNodeInspectionAtom } from "#src/lib/workflow-workspace-navigati
 import {
   useChooseRunExecution,
   useInspectRunLog,
+  useActiveRunTarget,
   useRunNodeEvidence,
 } from "./use-run-node-evidence";
 import { WorkflowCancellationFailures } from "./workflow-cancellation-failures";
@@ -181,7 +182,11 @@ function SheetRun({
   pinnedGraph: PinnedGraphState;
   onBack: () => void;
 }) {
-  const evidence = useRunNodeEvidence({ ...run, pinnedGraph });
+  const target = useActiveRunTarget();
+  const evidence = useRunNodeEvidence(
+    { ...run, pinnedGraph },
+    target?.kind === "node" ? target.nodeId : null
+  );
   const headingRef = useRef<HTMLHeadingElement>(null);
   const inspectLog = useInspectRunLog();
   const chooseExecution = useChooseRunExecution();

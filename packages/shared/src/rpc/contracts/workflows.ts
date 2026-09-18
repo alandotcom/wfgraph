@@ -741,6 +741,12 @@ export const workflowContract = {
               ]),
             })
           ),
+          /**
+           * The nodes holding an open wait, which a node status alone reads
+           * as running. The editor shows each of them as Waiting while the
+           * run is in progress.
+           */
+          openWaitNodeIds: listOf(Schema.String),
         })
       )
     ),

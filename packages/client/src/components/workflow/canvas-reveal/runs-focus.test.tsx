@@ -452,10 +452,10 @@ describe("Runs Focus node evidence", () => {
     await waitFor(() => expect(store.get(selectedNodeAtom)).toBe("grp"));
     await afterPaint();
     expect(aside()?.dataset.level).toBe("browse");
-    expect(title()).toBe("Run #1");
+    expect(title()).toBe("Reminders");
     expect(view.queryByTestId("run-node-evidence")).toBeNull();
     expect(view.queryByRole("button", { name: "Show evidence" })).toBeNull();
-    expect(view.getByText("Node journey")).toBeTruthy();
+    expect(view.getByTestId("runs-group-summary")).toBeTruthy();
   });
 
   it("explains a removed node and a node that never ran", async () => {

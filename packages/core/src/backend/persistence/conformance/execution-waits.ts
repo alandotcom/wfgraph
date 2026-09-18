@@ -564,6 +564,77 @@ export function describeExecutionWaitConformance({
       });
     });
 
+    // The run status read marks each node holding an open wait as Waiting, so
+    // it names the nodes of this run's waiting rows and no closed row's node.
+    it("lists the node ids of one run's open waits", async () => {
+      const database = await openConnection();
+      await seedPublishedWorkflow(database);
+
+      const result = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const startRun = Effect.gen(function* () {
+            const started = yield* executions.startForEntity({
+              execution: {
+                workflowId: "wf_1",
+                workflowVersionId: "ver_1",
+                startSource: "manual",
+                runMode: "live",
+                input: {},
+              },
+              concurrency: "unlimited",
+              supersededReason: "newer start",
+            });
+            if (started.status !== "started") {
+              throw new Error("Start was refused");
+            }
+            return started.execution.id;
+          });
+          const park = (executionId: string, nodeId: string) =>
+            Effect.gen(function* () {
+              const wait = yield* executions.startWait({
+                side: "started",
+                executionId,
+                workflowId: "wf_1",
+                runId: `run_${executionId}`,
+                nodeId,
+                nodeName: nodeId,
+                workflowVersionId: "ver_1",
+                waitType: "delay",
+                subscribedEvents: [],
+              });
+              if (!wait) throw new Error(`Wait on ${nodeId} was refused`);
+              return wait.waitStateId;
+            });
+
+          const executionId = yield* startRun;
+          const otherExecutionId = yield* startRun;
+          yield* park(executionId, "wait_1");
+          const closing = yield* park(executionId, "wait_2");
+          yield* park(otherExecutionId, "wait_3");
+          const beforeClose =
+            yield* executions.listOpenWaitNodeIds(executionId);
+          yield* executions.markWaitStatus({
+            waitStateId: closing,
+            status: "cancelled",
+          });
+          return {
+            beforeClose: beforeClose.toSorted(),
+            afterClose: yield* executions.listOpenWaitNodeIds(executionId),
+            otherRun: yield* executions.listOpenWaitNodeIds(otherExecutionId),
+            unknownRun: yield* executions.listOpenWaitNodeIds("exec_missing"),
+          };
+        })
+      );
+
+      expect(result).toEqual({
+        beforeClose: ["wait_1", "wait_2"],
+        afterClose: ["wait_1"],
+        otherRun: ["wait_3"],
+        unknownRun: [],
+      });
+    });
+
     // A resume producer can hold a row in `resuming` when the Exit claim lands.
     // The Exit wake still has to find that row, and a release of the claim after
     // the Exit must not reopen a row the woken Wait has already closed.

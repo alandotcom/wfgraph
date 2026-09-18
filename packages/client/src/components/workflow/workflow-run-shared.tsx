@@ -11,6 +11,10 @@ import {
   type ActionMetadata,
   findAction,
 } from "@wfgraph/shared/extensions/catalog";
+import type {
+  GroupRunStatus,
+  RunNodeEvidenceStatus,
+} from "@wfgraph/shared/graph/group-run-status";
 import type { WorkflowExecutionStatus } from "@wfgraph/shared/lifecycle/execution-contracts";
 import { type JsonValue, readJsonValue } from "@wfgraph/shared/types/json";
 import { readAs } from "@wfgraph/shared/types/schema";
@@ -141,6 +145,38 @@ export function getStatusTextClass(status: string): string {
 
 export function statusToneTextClass(tone: StatusTone): string {
   return TEXT_CLASSES[tone];
+}
+
+const GROUP_RUN_STATUS_TONES = {
+  idle: "muted",
+  reached: "muted",
+  running: "info",
+  waiting: "warning",
+  canceled: "cancelled",
+  failed: "destructive",
+  successful: "success",
+} satisfies Record<GroupRunStatus, StatusTone>;
+
+/** The tone of a Group's run status. Reached claims no outcome, so it is muted. */
+export function groupRunStatusTone(status: GroupRunStatus): StatusTone {
+  return GROUP_RUN_STATUS_TONES[status];
+}
+
+/**
+ * How a node's run evidence reads: "Not run" for a node the run has not
+ * reached, "Waiting" for one it is parked on, and the node status otherwise.
+ */
+export function runNodeEvidenceLabel(status: RunNodeEvidenceStatus): {
+  text: string;
+  tone: StatusTone;
+} {
+  if (status === "none") {
+    return { text: "Not run", tone: "muted" };
+  }
+  if (status === "waiting") {
+    return { text: "Waiting", tone: "warning" };
+  }
+  return { text: getStatusLabel(status), tone: statusTone(status) };
 }
 
 export function nodeKindLabel(nodeType: string): string {

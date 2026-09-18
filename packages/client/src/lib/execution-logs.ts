@@ -228,7 +228,8 @@ export function toWorkflowExecutionFromSummary(
   };
 }
 
-function toExecutionStatus(status: string): WorkflowExecutionStatus {
+/** A run status read off the wire, with an unknown status read as failed. */
+export function toExecutionStatus(status: string): WorkflowExecutionStatus {
   for (const known of WORKFLOW_EXECUTION_STATUSES) {
     if (known === status) {
       return known;

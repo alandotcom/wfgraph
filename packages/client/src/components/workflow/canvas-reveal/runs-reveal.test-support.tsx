@@ -28,6 +28,7 @@ import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import { CanvasReveal } from "#src/components/workflow/canvas-reveal/canvas-reveal";
 import { ExecutionOverlaySync } from "#src/components/workflow/execution-overlay-sync";
+import { RunStatusProjection } from "#src/components/workflow/run-status-projection";
 import {
   useClearWorkflowNodeInspection,
   useWorkflowNodeInspection,
@@ -114,11 +115,13 @@ export function log(input: {
 
 /**
  * A pinned graph holding labelled steps, with an optional Group frame that
- * holds the steps named in `members`.
+ * holds the steps named in `members`, and `edges` between steps, each given as
+ * its source and target ids.
  */
 export function labelledGraph(
   steps: Array<{ id: string; label: string }>,
-  group?: { id: string; label: string; members: string[] }
+  group?: { id: string; label: string; members: string[] },
+  edges: ReadonlyArray<readonly [string, string]> = []
 ): SerializedWorkflowGraph {
   return createSerializedWorkflowGraph({
     nodes: [
@@ -144,7 +147,11 @@ export function labelledGraph(
         },
       })),
     ],
-    edges: [],
+    edges: edges.map(([source, target]) => ({
+      id: `${source}-${target}`,
+      source,
+      target,
+    })),
   });
 }
 
@@ -278,6 +285,7 @@ export async function renderRunsReveal(search: WorkflowRouteSearch) {
         </div>
         <ExecutionOverlaySync />
         <WorkspaceRouteSync />
+        <RunStatusProjection />
         <CanvasReveal />
       </div>
     ),

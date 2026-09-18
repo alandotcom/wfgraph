@@ -23,6 +23,7 @@ import {
 import {
   COMPARISON_GROUP_ANNOTATION,
   COMPARISON_NODE_ANNOTATION,
+  groupLabel,
   type WorkflowNodeData,
 } from "#src/lib/workflow-graph-types";
 import { NODE_ICON_CLASS } from "#src/lib/workflow-node-dimensions";
@@ -30,6 +31,15 @@ import { ComparisonMarker } from "#src/components/flow-elements/comparison-marke
 import { NodeIssueBadge } from "#src/components/flow-elements/node-issue-badge";
 import { Button } from "#src/components/ui/button";
 import { useGroupScopeNavigation } from "#src/components/workflow/use-group-scope-navigation";
+import { useRunGroupSummary } from "#src/components/workflow/use-run-node-evidence";
+import {
+  groupRunStatusTone,
+  statusToneTextClass,
+} from "#src/components/workflow/workflow-run-shared";
+import {
+  groupRunCountsText,
+  groupRunStatusLabel,
+} from "@wfgraph/shared/graph/group-run-status";
 
 /** What a collapsed Group card hands the control for its changed steps. */
 export type GroupChangedStepsControlProps = {
@@ -53,9 +63,10 @@ type GroupNodeProps = NodeProps & {
 
 /**
  * A Group on the overview: one collapsed card naming the Group and how many
- * steps it holds. Its members show only on the focused Group canvas, which the
- * card's Enter group button opens. On a comparison canvas the card also counts
- * its changed steps and leads to the first one.
+ * steps it holds, or on a run's canvas its run status and member counts. Its
+ * members show only on the focused Group canvas, which the card's Enter group
+ * button opens. On a comparison canvas the card also counts its changed steps
+ * and leads to the first one.
  */
 export const GroupNode = memo(({ data, selected, id }: GroupNodeProps) => {
   const updateNodeInternals = useUpdateNodeInternals();
@@ -71,6 +82,9 @@ export const GroupNode = memo(({ data, selected, id }: GroupNodeProps) => {
   const memberCount = useAtomValue(
     useMemo(() => groupMemberCountAtom(id), [id])
   );
+  // Null outside a run. A Group records nothing in a run, so its status and
+  // counts are read from its members' evidence.
+  const runSummary = useRunGroupSummary(id);
   // React Flow records handle ids when it measures a node, so a changed set of
   // ids has to be measured again before an edge can attach to a new one.
   useAfterPaint(outletHandles, () => {
@@ -80,7 +94,7 @@ export const GroupNode = memo(({ data, selected, id }: GroupNodeProps) => {
   if (!data || !isGroupNode({ data })) {
     return null;
   }
-  const label = data.label || "Group";
+  const label = groupLabel(data.label);
   const changedMemberIds = data[COMPARISON_GROUP_ANNOTATION]?.changedMemberIds;
 
   return (
@@ -90,6 +104,11 @@ export const GroupNode = memo(({ data, selected, id }: GroupNodeProps) => {
         // on the canvas, and the rule under the title separates its chrome
         // from the summary below.
         "relative flex h-full w-full flex-col rounded-md border-[1.5px] border-canvas-line bg-muted shadow-none",
+        // On a run's canvas the border carries an outcome the way a step's
+        // does, and only for a status that claims one.
+        runSummary?.status === "successful" && "border-2 border-success",
+        runSummary?.status === "failed" && "border-2 border-destructive",
+        runSummary?.status === "canceled" && "border-2 border-cancelled",
         "group-node-container"
       )}
       data-selected={selected}
@@ -128,17 +147,36 @@ export const GroupNode = memo(({ data, selected, id }: GroupNodeProps) => {
           <ArrowRight />
         </Button>
       </div>
-      <div className="flex flex-1 items-center gap-2 px-3 text-xs">
-        <dl className="flex flex-1 items-center justify-between gap-2">
-          <dt className="text-muted-foreground">Steps</dt>
-          <dd className="font-medium tabular-nums">{memberCount}</dd>
-        </dl>
-        {/* On a comparison canvas the card counts the changed steps inside
-            the Group, which show only once the Group is entered. */}
-        {changedMemberIds && renderChangedSteps
-          ? renderChangedSteps({ changedMemberIds, groupLabel: label })
-          : null}
-      </div>
+      {runSummary ? (
+        <div
+          className="flex min-w-0 flex-1 flex-col justify-center gap-0.5 px-3 text-xs"
+          data-testid={`group-run-summary-${id}`}
+        >
+          <span
+            className={cn(
+              "font-medium",
+              statusToneTextClass(groupRunStatusTone(runSummary.status))
+            )}
+          >
+            {groupRunStatusLabel(runSummary.status)}
+          </span>
+          <span className="truncate text-muted-foreground tabular-nums">
+            {groupRunCountsText(runSummary)}
+          </span>
+        </div>
+      ) : (
+        <div className="flex flex-1 items-center gap-2 px-3 text-xs">
+          <dl className="flex flex-1 items-center justify-between gap-2">
+            <dt className="text-muted-foreground">Steps</dt>
+            <dd className="font-medium tabular-nums">{memberCount}</dd>
+          </dl>
+          {/* On a comparison canvas the card counts the changed steps inside
+              the Group, which show only once the Group is entered. */}
+          {changedMemberIds && renderChangedSteps
+            ? renderChangedSteps({ changedMemberIds, groupLabel: label })
+            : null}
+        </div>
+      )}
       {outletHandles.map((handle, index) => (
         <Handle
           aria-label="Group output"

@@ -7,6 +7,7 @@ export type ConditionBranch = "true" | "false";
 export type NodeRunStatus =
   | "idle"
   | "running"
+  | "waiting"
   | "success"
   | "error"
   | "cancelled";

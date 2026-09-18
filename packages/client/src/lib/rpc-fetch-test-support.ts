@@ -179,6 +179,45 @@ export async function answerWorkflowRunRpc(
       });
     }
 
+    case "workflow/getExecutionStatus": {
+      const executionId =
+        typeof input.executionId === "string" ? input.executionId : "";
+      const status =
+        served.items.find((item) => item.id === executionId)?.status ??
+        "completed";
+      const stopped = status === "canceled" || status === "superseded";
+      const logs = (served.logsByExecutionId[executionId] ?? []).flatMap(
+        (entry) => {
+          const row = readJsonObject(entry);
+          return row &&
+            typeof row.nodeId === "string" &&
+            typeof row.status === "string"
+            ? [{ nodeId: row.nodeId, status: row.status }]
+            : [];
+        }
+      );
+      return rpcJsonResponse({
+        status,
+        // A stopped run reports its unfinished nodes as cancelled, as the
+        // server's status read does.
+        nodeStatuses: logs.map((log) => ({
+          nodeId: log.nodeId,
+          status:
+            stopped && (log.status === "pending" || log.status === "running")
+              ? "cancelled"
+              : log.status,
+        })),
+        // The open waits the logs read serves, as the server reads both from
+        // the same wait rows.
+        openWaitNodeIds: (served.waitsByExecutionId[executionId] ?? []).flatMap(
+          (entry) => {
+            const nodeId = readJsonObject(entry)?.nodeId;
+            return typeof nodeId === "string" ? [nodeId] : [];
+          }
+        ),
+      });
+    }
+
     case "workflow/getVersionGraph": {
       const versionId =
         typeof input.versionId === "string" ? input.versionId : "";

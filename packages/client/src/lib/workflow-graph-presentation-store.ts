@@ -43,6 +43,8 @@ import {
   isGeneratingAtom,
   workflowWorkspaceViewAtom,
 } from "#src/lib/workflow-ui-store";
+import type { RunNodeEvidenceStatus } from "@wfgraph/shared/graph/group-run-status";
+import type { WorkflowExecutionStatus } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type {
   NodeIssueSummary,
   NodeRunStatus,
@@ -50,8 +52,35 @@ import type {
   WorkflowNode,
 } from "#src/lib/workflow-graph-types";
 
-/** Run status by node id, separate from every persisted graph. */
-const statusByNodeIdAtom = atom<ReadonlyMap<string, NodeRunStatus>>(new Map());
+/**
+ * Run evidence status by node id, separate from every persisted graph. Step
+ * cards paint from it and a Group's run summary is counted from it, so both
+ * read one value per node.
+ */
+const statusByNodeIdAtom = atom<ReadonlyMap<string, RunNodeEvidenceStatus>>(
+  new Map()
+);
+
+/** The open run's own status, written with its node statuses. */
+const runExecutionStatusAtom = atom<WorkflowExecutionStatus | null>(null);
+
+/** The run evidence status of each node the open run's progress names. */
+export const runNodeEvidenceStatusesAtom = atom((get) =>
+  get(statusByNodeIdAtom)
+);
+
+/** The status of the run whose progress is projected, or null before one is. */
+export const projectedRunStatusAtom = atom((get) =>
+  get(runExecutionStatusAtom)
+);
+
+/**
+ * What a step card paints for a node's evidence. A node the run has not reached
+ * and a node it reached with no further progress both paint as idle.
+ */
+function paintedRunStatus(evidence: RunNodeEvidenceStatus): NodeRunStatus {
+  return evidence === "none" || evidence === "pending" ? "idle" : evidence;
+}
 
 /** Whether the canvas is showing a run's pinned graph instead of the draft. */
 export const isExecutionOverlayActiveAtom = atom(
@@ -242,7 +271,7 @@ export const displayNodesAtom = atom((get) => {
     }
 
     const status = paintingRun
-      ? (statusByNodeId.get(node.id) ?? "idle")
+      ? paintedRunStatus(statusByNodeId.get(node.id) ?? "none")
       : undefined;
     const cached = paintedNodes.get(node);
     if (
@@ -387,17 +416,23 @@ export function groupMemberCountAtom(groupId: string) {
 export const clearNodeStatusesAtom = atom(null, (_get, set) => {
   set(executionOverlayGraphAtom, null);
   set(statusByNodeIdAtom, new Map());
+  set(runExecutionStatusAtom, null);
 });
 
 /** Reset run badges while retaining the pinned graph for the next run. */
 export const resetNodeStatusesAtom = atom(null, (_get, set) => {
   set(statusByNodeIdAtom, new Map());
+  set(runExecutionStatusAtom, null);
 });
 
 /** Merge a run's progress onto whichever graph the workspace presents. */
 export const setNodeStatusesAtom = atom(
   null,
-  (get, set, statuses: Array<{ nodeId: string; status: NodeRunStatus }>) => {
+  (
+    get,
+    set,
+    statuses: Array<{ nodeId: string; status: RunNodeEvidenceStatus }>
+  ) => {
     if (statuses.length === 0) {
       return;
     }
@@ -415,5 +450,30 @@ export const setNodeStatusesAtom = atom(
     if (hasUpdates) {
       set(statusByNodeIdAtom, next);
     }
+  }
+);
+
+/**
+ * Replace the projected run progress with one status read: the run's own
+ * status and every node status the read names. Null projects no run, which
+ * clears every node status.
+ */
+export const projectRunProgressAtom = atom(
+  null,
+  (
+    _get,
+    set,
+    snapshot: {
+      executionStatus: WorkflowExecutionStatus;
+      statuses: Array<{ nodeId: string; status: RunNodeEvidenceStatus }>;
+    } | null
+  ) => {
+    set(runExecutionStatusAtom, snapshot?.executionStatus ?? null);
+    set(
+      statusByNodeIdAtom,
+      new Map(
+        (snapshot?.statuses ?? []).map(({ nodeId, status }) => [nodeId, status])
+      )
+    );
   }
 );

@@ -112,6 +112,7 @@ describe("matchConditionSubject", () => {
       nodeId: "condition",
       placement: { kind: "node-outlets", nodeId: "condition" },
       levels: ["browse", "focus"],
+      runsTarget: null,
     });
   });
 
@@ -135,6 +136,7 @@ describe("matchGroupSubject", () => {
       nodeId: "group",
       placement: { kind: "nodes", nodeIds: ["group"] },
       levels: ["browse", "focus"],
+      runsTarget: null,
     });
   });
 
@@ -154,6 +156,7 @@ describe("matchLifecycleSubject", () => {
       nodeId: "lifecycle",
       placement: { kind: "nodes", nodeIds: ["lifecycle"] },
       levels: ["browse", "focus"],
+      runsTarget: null,
     });
   });
 
@@ -175,6 +178,7 @@ describe("matchEventSplitSubject", () => {
       nodeId: "split",
       placement: { kind: "node-outlets", nodeId: "split" },
       levels: ["browse"],
+      runsTarget: null,
     });
   });
 
@@ -219,12 +223,14 @@ describe("matchRunsSubject", () => {
       nodeId: null,
       placement: { kind: "graph" },
       levels: ["browse"],
+      runsTarget: null,
     });
     expect(matchRunsSubject(runsInput("runs", ["send"]))).toMatchObject({
       kind: "runs",
       key: "node:send",
       nodeId: "send",
       placement: { kind: "nodes", nodeIds: ["send"] },
+      runsTarget: { kind: "node", nodeId: "send" },
     });
   });
 
@@ -237,6 +243,7 @@ describe("matchRunsSubject", () => {
       key: "node:group",
       nodeId: "group",
       levels: ["browse"],
+      runsTarget: { kind: "group", groupId: "group" },
     });
     expect(
       matchRunsSubject(runsInput("runs", ["send", "wait"]))?.levels

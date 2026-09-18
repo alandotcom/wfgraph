@@ -260,9 +260,9 @@ All primitives are shadcn/ui on Base UI, refined and restrained: quiet at rest, 
 
 The reason the product exists. A 192×112px rectangular card at 8px radius sitting on the React Flow canvas: a 16px integration icon, a 14px semibold title that wraps to two lines, and a one-line description at detail zoom. The overview presentation hides descriptions while retaining card geometry. Event Split is wider at 264px on purpose, because it carries two labelled outlets. A collapsed Group draws at the same 192×112. The card is flat; elevation on the canvas would compete with the status border.
 
-At rest the border is 1.5px of Canvas Line. Status is worn on that same border, stepping up to 2px: Signal Green for success, Signal Red for failure, Signal Slate for cancelled, and an animated Signal Blue sweep while running. Every status also renders its word in a chip, so the border is never the only carrier. Focus shifts the border to Graphite Ink rather than the ring color, because the resting border already sits at the ring's lightness and the shift would otherwise read as nothing.
+At rest the border is 1.5px of Canvas Line. Status is worn on that same border, stepping up to 2px: Signal Green for success, Signal Red for failure, Signal Slate for cancelled, and an animated Signal Blue sweep while running. A step the run is parked on keeps the resting border and shows a Waiting chip. Every status also renders its word in a chip, so the border is never the only carrier. Focus shifts the border to Graphite Ink rather than the ring color, because the resting border already sits at the ring's lightness and the shift would otherwise read as nothing.
 
-The workflow overview draws each Group as one collapsed card: solid Graphite Wash behind a 1.5px Canvas Line border, a title band holding the Group icon, the label, the issue badge, and an **Enter group** arrow, and the number of steps below a rule. The Wash is what separates a Group from a step, and it inverts on its own in dark. Its members never expand in place. Edges entering and leaving the Group attach to the card's top and bottom handles. An outlet entering the Group at several steps draws one edge onto the card, and deleting that edge deletes the connection to each of those steps.
+The workflow overview draws each Group as one collapsed card: solid Graphite Wash behind a 1.5px Canvas Line border, a title band holding the Group icon, the label, the issue badge, and an **Enter group** arrow, and below a rule the number of steps, or on a run's canvas the Group's run status and step counts. The Wash is what separates a Group from a step, and it inverts on its own in dark. Its members never expand in place. Edges entering and leaving the Group attach to the card's top and bottom handles. An outlet entering the Group at several steps draws one edge onto the card, and deleting that edge deletes the connection to each of those steps.
 
 The focused Group canvas shows only the Group's members, as standard cards laid out in rows from the Group's interior edges, with those edges between them. Each Group stores a layout direction, **Top to bottom** or **Left to right**. Top to bottom stacks the rows downward with handles on the cards' top and bottom; Left to right runs the rows across with handles on the cards' left and right. The layout depends on the Group's steps, edges and direction alone, so moving the collapsed card never moves a member or the camera a person left on the Group. The Group card itself is not drawn. Each outside step that enters the Group is a dashed stub before the members reading "Incoming from" and the step's name, one per outlet it enters by, so a Condition entering by both branches draws two stubs with True and False on their edges. Each step the Group continues to is a dashed stub after them reading "Continues to" and the step's name. An outlet that enters the Group at several steps draws one stub with an edge to each of them. An edge between two members can be selected and deleted, and dragging from one member's outlet to another member adds one. An edge from an "Incoming from" stub can be selected and deleted on its own, and dragging from that stub onto another member adds one more edge from the same outside outlet. A Group is entered from one outside outlet, so a connection that would enter it from a second outlet is refused with a notice. Stubs cannot be selected or dragged, "Continues to" stubs and their edges cannot be selected or connected, members cannot be dragged, and **Add Step**, **Paste**, **Duplicate**, and **Tidy layout** are not offered, so entering, leaving, or inspecting a Group never writes a coordinate. **Ungroup** places the steps in the same rows along the Group's direction, centred on the collapsed card, with the first row where the card was. A bar at the canvas's top left holds a **Workflow** button that returns to the overview, the workflow and Group names, and the step count.
 
@@ -416,11 +416,27 @@ now**, the node's activity such as parking and resuming, its result, input and
 output, and the node's configuration in the graph the run pinned. Notices say
 when the node is no longer in that graph, when the graph is loading or could not
 be loaded, when an execution never finished, and when the run is still in
-progress and refreshing. A Group card has no evidence and keeps Browse. **Back**
-and Escape return to the run's Browse at the journey position it was left at,
-with focus on the journey entry or canvas node that opened Focus. A canvas click
-that opened Focus from a closed Reveal returns straight to Closed, and that
-opening and closing leave the saved open or closed preference as it was. A click
+progress and refreshing. A Group records nothing in a run, so a Group card has
+no evidence. On a run's canvas the card shows the Group's run status and counts
+of its steps, such as "3 of 5 steps reached, 1 failed", and never a percentage.
+The status is Failed, Canceled, Waiting, or Running when any step is, in that
+order. With no step reached it is Idle. A Group is Successful once a step it
+continues to has evidence, or once the run completed with evidence at one of its
+steps where a path ends inside it, such as a Condition branch with no step after
+it. A Group with no step after it is also Successful once the run completed.
+Otherwise it is Reached, and its border carries only Successful, Failed, and
+Canceled. The card, its summary, and the step cards read one status per step,
+so a step's chip and the Group's counts always agree. Selecting the card opens
+its summary in Browse, titled by the Group, with the same status and counts and
+each step with its own status. Choosing a step there enters the Group and opens
+that step's evidence in Focus. **Back** and Escape from that evidence return to
+Browse in the Group, then to the overview with the Group card selected and its
+summary shown, then to the run with focus on the card, and then to the run
+list. From evidence Focus opened on the overview they return to the run's
+Browse at the journey position it was left at, with focus on the journey entry
+or canvas node that opened Focus. A canvas click that opened Focus or a Group
+summary from a closed Reveal returns straight to Closed, and that opening and
+closing leave the saved open or closed preference as it was. A click
 on the empty canvas clears the evidence. Selecting another node replaces the
 evidence and shows its latest execution. The chosen execution is remembered for
 each run. On a phone the evidence replaces the run overview in the sheet, and

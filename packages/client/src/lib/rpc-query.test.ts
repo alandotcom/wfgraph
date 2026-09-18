@@ -116,6 +116,7 @@ beforeEach(() => {
   queryClient.setQueryData(executionStatusKey("exec_a"), {
     status: "waiting",
     nodeStatuses: [],
+    openWaitNodeIds: [],
   });
   queryClient.setQueryData(workflowVersionHistoryKey("a"), {
     pages: [{ items: [], nextCursor: null }],

@@ -19,6 +19,7 @@ import {
 } from "@wfgraph/shared/extensions/catalog";
 import type { GroupPort } from "@wfgraph/shared/graph/group-boundary";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
+import { isBlank } from "@wfgraph/shared/types/string";
 
 export type { NodeRunStatus, PersistedNodeData };
 export type {
@@ -122,6 +123,11 @@ export function comparisonChangeLabel(
   kind: ComparisonNodeAnnotation["kind"] | ComparisonEdgeAnnotation["kind"]
 ): string {
   return `${COMPARISON_CHANGE_KIND_LABEL[kind]} in comparison`;
+}
+
+/** The name a Group shows: its label, or "Group" when the label is blank. */
+export function groupLabel(label: string | undefined): string {
+  return label === undefined || isBlank(label) ? "Group" : label;
 }
 
 /** A comparison names an unavailable action safely rather than exposing its id. */

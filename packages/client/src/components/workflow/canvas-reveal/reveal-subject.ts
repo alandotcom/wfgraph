@@ -9,7 +9,7 @@ import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { isConditionNode } from "@wfgraph/shared/graph/node-config";
 import { isEventSplitNode } from "@wfgraph/shared/lifecycle/event-split";
-import { runEvidenceNodeId } from "#src/lib/run-node-evidence";
+import { type RunTarget, runTarget } from "#src/lib/run-node-evidence";
 import type {
   CanvasSelection,
   OpenRevealLevel,
@@ -49,6 +49,11 @@ export type RevealSubject = {
   placement: RevealPlacement;
   /** The open levels the subject offers, Browse first. */
   levels: readonly OpenRevealLevel[];
+  /**
+   * What a Runs subject inspects: a node's evidence or a Group's run summary.
+   * Null for the run list, the run overview, and every other kind.
+   */
+  runsTarget: RunTarget | null;
 };
 
 export type RevealMatchInput = {
@@ -116,6 +121,7 @@ export function matchStepSubject(
       typeof onlyNode.data.config?.actionType === "string"
         ? ["browse", "focus"]
         : ["browse"],
+    runsTarget: null,
   };
 }
 
@@ -141,6 +147,7 @@ export function matchConditionSubject(
     nodeId: onlyNode.id,
     placement: { kind: "node-outlets", nodeId: onlyNode.id },
     levels: ["browse", "focus"],
+    runsTarget: null,
   };
 }
 
@@ -167,6 +174,7 @@ export function matchGroupSubject(
     nodeId: onlyNode.id,
     placement: { kind: "nodes", nodeIds: [onlyNode.id] },
     levels: ["browse", "focus"],
+    runsTarget: null,
   };
 }
 
@@ -193,6 +201,7 @@ export function matchEventSplitSubject(
     nodeId: onlyNode.id,
     placement: { kind: "node-outlets", nodeId: onlyNode.id },
     levels: ["browse"],
+    runsTarget: null,
   };
 }
 
@@ -222,6 +231,7 @@ export function matchLifecycleSubject(
     nodeId: onlyNode.id,
     placement: { kind: "nodes", nodeIds: [onlyNode.id] },
     levels: ["browse", "focus"],
+    runsTarget: null,
   };
 }
 
@@ -235,9 +245,10 @@ export type RunsMatchInput = RevealMatchInput & {
 
 /**
  * Runs: the run list, or the run the route opens. It always shows, placing the
- * one selected node or else the whole graph. It offers Focus while it has a
- * node's evidence to show, which a Group frame never has; a chosen execution of
- * a node the canvas cannot select is placed as the whole graph.
+ * one selected node or else the whole graph. Its target is the node or Group
+ * frame it inspects, and it offers Focus while that target is a node, since a
+ * Group frame has no evidence; a chosen execution of a node the canvas cannot
+ * select is placed as the whole graph.
  */
 export function matchRunsSubject(input: RunsMatchInput): RevealSubject | null {
   if (input.workspace !== "runs") {
@@ -246,10 +257,15 @@ export function matchRunsSubject(input: RunsMatchInput): RevealSubject | null {
   const { nodes, edges } = selectedGraph(input);
   const onlyNodeId =
     nodes.length === 1 && edges.length === 0 ? nodes[0].id : null;
-  const evidenceNodeId = runEvidenceNodeId(input);
+  const target = runTarget(input);
   const levels: readonly OpenRevealLevel[] =
-    evidenceNodeId === null ? ["browse"] : ["browse", "focus"];
-  const base = { kind: "runs" as const, workspace: input.workspace, levels };
+    target?.kind === "node" ? ["browse", "focus"] : ["browse"];
+  const base = {
+    kind: "runs" as const,
+    workspace: input.workspace,
+    levels,
+    runsTarget: target,
+  };
   if (onlyNodeId !== null) {
     return {
       ...base,
@@ -258,11 +274,11 @@ export function matchRunsSubject(input: RunsMatchInput): RevealSubject | null {
       placement: { kind: "nodes", nodeIds: [onlyNodeId] },
     };
   }
-  if (evidenceNodeId !== null) {
+  if (target?.kind === "node") {
     return {
       ...base,
-      key: `execution-node:${evidenceNodeId}`,
-      nodeId: evidenceNodeId,
+      key: `execution-node:${target.nodeId}`,
+      nodeId: target.nodeId,
       placement: { kind: "graph" },
     };
   }
@@ -286,6 +302,7 @@ export function matchChangesSubject(
     kind: "changes" as const,
     workspace: input.workspace,
     levels: ["browse", "focus"] as const,
+    runsTarget: null,
   };
   if (nodes.length === 1 && edges.length === 0) {
     return {
@@ -344,6 +361,7 @@ export function matchPanelSubject(
       ]),
     },
     levels: ["browse"],
+    runsTarget: null,
   };
 }
 
