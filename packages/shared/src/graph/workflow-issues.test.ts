@@ -166,6 +166,148 @@ describe("collectWorkflowIssues", () => {
     expect(hasBlockingWorkflowIssues(issues)).toBe(false);
   });
 
+  it("blocks Publish for Entity references when Eligibility is unavailable", () => {
+    const entityCatalog: ExtensionCatalog = {
+      ...catalog,
+      entities: [
+        {
+          type: "patient",
+          label: "Patient",
+          stateFields: [{ path: "name", type: "string" }],
+          stateSchemaDigest: "patient-state",
+        },
+      ],
+    };
+    const lifecycle: WorkflowNode = {
+      id: "lifecycle",
+      type: "lifecycle",
+      position: { x: 0, y: 0 },
+      data: {
+        type: "lifecycle",
+        label: "Lifecycle",
+        config: {
+          lifecycleRules: {
+            startEvents: [],
+            cancelEvents: [],
+            concurrency: "unlimited",
+            trackedEntity: { type: "patient", bindings: {} },
+          },
+        },
+      },
+    };
+    const issues = collectWorkflowIssues({
+      nodes: [
+        lifecycle,
+        actionNode(
+          "a1",
+          {
+            actionType: "custom/send",
+            channel: "#general",
+            integrationId: "int_1",
+            message: "Hi {{@$entity:patient|Patient.name}}",
+          },
+          "Notify"
+        ),
+      ],
+      edges: [],
+      catalog: entityCatalog,
+      integrations: [{ id: "int_1", type: "slack" }],
+    });
+
+    const entityIssues = issues.filter(
+      (issue) =>
+        issue.kind === "broken_reference" &&
+        issue.referencedNodeId === "$entity"
+    );
+    expect(entityIssues).toEqual([
+      expect.objectContaining({
+        kind: "broken_reference",
+        severity: "blocking",
+        referencedNodeId: "$entity",
+        displayText: "Patient.name",
+      }),
+    ]);
+    expect(hasBlockingWorkflowIssues(entityIssues)).toBe(true);
+    expect(hasDraftRunBlockingIssues(entityIssues)).toBe(false);
+  });
+
+  it("ignores Entity references in inactive Wait fields", () => {
+    const issues = collectWorkflowIssues({
+      nodes: [
+        actionNode("wait", {
+          actionType: "Wait",
+          waitMode: "delay",
+          waitDuration: "1h",
+          waitTimeout: "{{@$entity:patient|Patient.gone}}",
+        }),
+      ],
+      edges: [],
+      catalog,
+      integrations: [],
+    });
+
+    expect(issues.filter((issue) => issue.kind === "broken_reference")).toEqual(
+      []
+    );
+  });
+
+  it("accepts Entity references declared by the eligible tracked Entity", () => {
+    const entityCatalog: ExtensionCatalog = {
+      ...catalog,
+      entities: [
+        {
+          type: "patient",
+          label: "Patient",
+          stateFields: [{ path: "name", type: "string" }],
+          stateSchemaDigest: "patient-state",
+        },
+      ],
+    };
+    const lifecycle: WorkflowNode = {
+      id: "lifecycle",
+      type: "lifecycle",
+      position: { x: 0, y: 0 },
+      data: {
+        type: "lifecycle",
+        label: "Lifecycle",
+        config: {
+          lifecycleRules: {
+            startEvents: [],
+            cancelEvents: [],
+            concurrency: "unlimited",
+            trackedEntity: { type: "patient", bindings: {} },
+            entityEligibility: {
+              condition: "condition",
+              checkpoints: ["before-node"],
+            },
+          },
+        },
+      },
+    };
+    const issues = collectWorkflowIssues({
+      nodes: [
+        lifecycle,
+        actionNode(
+          "a1",
+          {
+            actionType: "custom/send",
+            channel: "#general",
+            integrationId: "int_1",
+            message: "Hi {{@$entity:patient|Patient.name}}",
+          },
+          "Notify"
+        ),
+      ],
+      edges: [],
+      catalog: entityCatalog,
+      integrations: [{ id: "int_1", type: "slack" }],
+    });
+
+    expect(issues.filter((issue) => issue.kind === "broken_reference")).toEqual(
+      []
+    );
+  });
+
   it("groups issues for the overlay", () => {
     const issues = collectWorkflowIssues({
       nodes: [

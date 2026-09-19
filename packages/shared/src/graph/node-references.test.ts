@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   appendOutputPathKey,
   displayTemplateText,
+  ENTITY_STATE_SOURCE_ID,
   extractAllTemplateReferences,
   fieldsVisibleForConfig,
   findTemplateTokens,
@@ -11,6 +12,8 @@ import {
   matchTemplateToken,
   parseOutputPath,
   parseTemplate,
+  referenceFieldForPath,
+  resolveJsonPath,
   resolveOutputPath,
 } from "./node-references";
 import type { WorkflowSchemaField } from "./schema-codec";
@@ -524,6 +527,50 @@ describe("formatTemplateToken", () => {
   });
 });
 
+describe("referenceFieldForPath", () => {
+  it("finds declared fields and one key beneath an open record", () => {
+    const fields = [
+      { path: "name", type: "string" as const },
+      {
+        path: "attributes",
+        type: "object" as const,
+        valueType: "string" as const,
+      },
+    ];
+
+    expect(referenceFieldForPath(fields, "name")).toBe(fields[0]);
+    expect(referenceFieldForPath(fields, "attributes.segment")).toEqual({
+      path: "attributes.segment",
+      type: "string",
+      nullable: true,
+    });
+    expect(
+      referenceFieldForPath(fields, "attributes.segment.name")
+    ).toBeUndefined();
+  });
+});
+
+describe("Entity State template source", () => {
+  it("round-trips the reserved virtual source through the existing grammar", () => {
+    const raw = formatTemplateToken({
+      nodeId: ENTITY_STATE_SOURCE_ID,
+      sourceType: "crm/patient.v2",
+      nodeLabel: "Patient.Profile {Current}",
+      fieldPath: "journey.status",
+    });
+
+    expect(raw).toBe(
+      "{{@$entity:crm%2Fpatient%2Ev2|Patient%2EProfile%20%7BCurrent%7D.journey.status}}"
+    );
+    expect(matchTemplateToken(raw)).toMatchObject({
+      nodeId: ENTITY_STATE_SOURCE_ID,
+      sourceType: "crm/patient.v2",
+      nodeLabel: "Patient.Profile {Current}",
+      fieldPath: "journey.status",
+    });
+  });
+});
+
 describe("displayTemplateText", () => {
   it("drops the node id from a token so a person reads the label and path", () => {
     expect(
@@ -544,6 +591,16 @@ describe("displayTemplateText", () => {
     });
 
     expect(displayTemplateText(`id is ${token}`)).toBe("id is Send Email");
+  });
+});
+
+describe("resolveJsonPath", () => {
+  it("does not unwrap Entity State that happens to look like a step result", () => {
+    const state = { success: true, data: { id: "patient_1" } };
+
+    expect(resolveJsonPath(state, "success")).toBe(true);
+    expect(resolveJsonPath(state, "data.id")).toBe("patient_1");
+    expect(resolveJsonPath(state, "id")).toBeUndefined();
   });
 });
 
@@ -767,12 +824,14 @@ describe("extractAllTemplateReferences", () => {
       {
         field: "subject",
         nodeId: "n1",
+        nodeLabel: "Fetch",
         fieldPath: "name",
         displayText: "Fetch.name",
       },
       {
         field: "body.text",
         nodeId: "n2",
+        nodeLabel: "Order",
         fieldPath: "id",
         displayText: "Order.id",
       },
@@ -793,18 +852,21 @@ describe("extractAllTemplateReferences", () => {
       {
         field: "tags.1",
         nodeId: "n1",
+        nodeLabel: "Fetch",
         fieldPath: "tag",
         displayText: "Fetch.tag",
       },
       {
         field: "headers.0.value",
         nodeId: "n2",
+        nodeLabel: "Order",
         fieldPath: "id",
         displayText: "Order.id",
       },
       {
         field: "waitFor.0.match",
         nodeId: "n3",
+        nodeLabel: "Order",
         fieldPath: "total",
         displayText: "Order.total",
       },
@@ -813,7 +875,13 @@ describe("extractAllTemplateReferences", () => {
 
   it("carries an empty field path for a token naming a whole output", () => {
     expect(extractAllTemplateReferences({ subject: "{{@n1:Fetch}}" })).toEqual([
-      { field: "subject", nodeId: "n1", fieldPath: "", displayText: "Fetch" },
+      {
+        field: "subject",
+        nodeId: "n1",
+        nodeLabel: "Fetch",
+        fieldPath: "",
+        displayText: "Fetch",
+      },
     ]);
   });
 });

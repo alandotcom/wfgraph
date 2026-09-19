@@ -24,6 +24,7 @@ import { upstreamNodeIds } from "@wfgraph/shared/graph/upstream-nodes";
 import {
   extractAllTemplateReferences,
   findTemplateTokens,
+  isEntityStateSourceId,
   resolveOutputPath,
   type TemplateToken,
 } from "@wfgraph/shared/graph/node-references";
@@ -530,17 +531,23 @@ const classifyOne = Effect.fn("classifyOne")(function* (input: {
 
   // Every reference the target graph alone cannot answer, in one list: the
   // parked Waits' own timeout tokens first, then the templates below them that
-  // graph order does not already cover.
+  // graph order does not already cover. Entity references strictly below the
+  // Wait are node-local reads and resolve fresh when their consumer runs, so
+  // they need no recorded output. References on the parked Wait itself remain:
+  // migration cannot reproduce or extend that durable snapshot safely, so the
+  // result is unresolved.
   const pending = [
     ...parked.flatMap(timeoutReferences),
-    ...parked
-      .flatMap((entry) => entry.scan.references)
-      .filter(
+    ...parked.flatMap((entry) =>
+      entry.scan.references.filter(
         (reference) =>
+          (!isEntityStateSourceId(reference.referencedNodeId) ||
+            reference.nodeId === entry.waitState.nodeId) &&
           !upstreamNodeIds(reference.nodeId, target.edges).has(
             reference.referencedNodeId
           )
-      ),
+      )
+    ),
   ];
 
   // One read answers the whole list, and a run whose target graph asks nothing

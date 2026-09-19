@@ -1,11 +1,17 @@
-import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import type {
+  EntityMetadata,
+  ExtensionCatalog,
+} from "@wfgraph/shared/extensions/catalog";
 import { getNodeDisplayName } from "@wfgraph/shared/graph/node-display";
 import {
+  isEntityStateSourceId,
   parseTemplate,
   templateTokenDisplayText,
   type TemplateToken,
 } from "@wfgraph/shared/graph/node-references";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import { findEntityTemplateSource } from "@wfgraph/shared/lifecycle/entity-eligibility";
+import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 
 /**
  * The contentEditable behind the template fields, as plain DOM.
@@ -103,8 +109,20 @@ const BROKEN_BADGE_CLASS = `${BADGE_BASE_CLASS} bg-destructive/10 text-destructi
 function getDisplayTextForToken(
   token: TemplateToken,
   nodes: WorkflowNode[],
-  catalog: ExtensionCatalog
+  catalog: ExtensionCatalog,
+  entitySource: EntityMetadata | undefined
 ): string {
+  if (
+    isEntityStateSourceId(token.nodeId) &&
+    entitySource &&
+    entitySource.type === token.sourceType
+  ) {
+    return templateTokenDisplayText({
+      nodeLabel: entitySource.label,
+      fieldPath: token.fieldPath,
+    });
+  }
+
   const node = nodes.find((candidate) => candidate.id === token.nodeId);
   if (!node) {
     return templateTokenDisplayText(token);
@@ -399,6 +417,14 @@ export function createBadgeEditor(
       return;
     }
 
+    const lifecycle = renderOptions.nodes.find(
+      (node) => node.data.type === "lifecycle"
+    );
+    const entitySource = findEntityTemplateSource({
+      rules: readLifecycleRules(lifecycle?.data.config),
+      catalog,
+    });
+
     for (const segment of parseTemplate(text)) {
       if (segment.kind === "literal") {
         appendLiteral(segment.text);
@@ -406,17 +432,18 @@ export function createBadgeEditor(
       }
 
       const badge = document.createElement("span");
-      const nodeExists = renderOptions.nodes.some(
-        (node) => node.id === segment.token.nodeId
-      );
-      badge.className = nodeExists ? LIVE_BADGE_CLASS : BROKEN_BADGE_CLASS;
+      const sourceExists = isEntityStateSourceId(segment.token.nodeId)
+        ? entitySource?.type === segment.token.sourceType
+        : renderOptions.nodes.some((node) => node.id === segment.token.nodeId);
+      badge.className = sourceExists ? LIVE_BADGE_CLASS : BROKEN_BADGE_CLASS;
       badge.contentEditable = "false";
       // The raw token is what `readText` reads back out of the DOM.
       badge.setAttribute("data-template", segment.token.raw);
       badge.textContent = getDisplayTextForToken(
         segment.token,
         renderOptions.nodes,
-        catalog
+        catalog,
+        entitySource
       );
       appendCaretStop();
       container.appendChild(badge);

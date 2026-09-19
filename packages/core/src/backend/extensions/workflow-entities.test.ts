@@ -31,13 +31,19 @@ function eligibleWhenActive(): string {
 function surface(
   resolve: (input: {
     entityId: string;
-  }) => { active: boolean } | null | Promise<{ active: boolean } | null>,
+  }) =>
+    | { active: boolean; name?: string }
+    | null
+    | Promise<{ active: boolean; name?: string } | null>,
   options?: { entityResolverTimeoutMs?: number }
 ) {
   const entity = defineEntity({
     type: "appointment",
     label: "Appointment",
-    state: Schema.Struct({ active: Schema.Boolean }),
+    state: Schema.Struct({
+      active: Schema.Boolean,
+      name: Schema.optional(Schema.String),
+    }),
     resolve,
   });
   const event = defineEvent({
@@ -65,12 +71,49 @@ const input = {
   nodeId: "send-reminder",
   condition: eligibleWhenActive(),
   eventName: "appointment.started",
+  paths: [] as const,
 };
 
 describe("Workflow Entity Eligibility port", () => {
+  it("returns referenced values from the same snapshot Eligibility evaluated", async () => {
+    let calls = 0;
+    const result = await Effect.runPromise(
+      surface(() => {
+        calls += 1;
+        return { active: true, name: "Ada" };
+      }).resolveNode({ ...input, paths: ["name"] })
+    );
+
+    expect(calls).toBe(1);
+    expect(result).toEqual({
+      decision: { outcome: "eligible" },
+      values: { name: "Ada" },
+    });
+  });
+
+  it("fails data-only resolution when the Entity no longer exists", async () => {
+    const exit = await Effect.runPromiseExit(
+      surface(() => null).resolveNode({
+        entityType: "appointment",
+        entityId: "appt_1",
+        nodeId: "send-reminder",
+        eventName: "appointment.started",
+        paths: ["name"],
+      })
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      expect(Option.getOrUndefined(Cause.findErrorOption(exit.cause))).toEqual({
+        kind: "failure",
+        message: 'Entity "appointment" was not found for node data',
+      });
+    }
+  });
+
   it("fails a run whose Entity type the surface no longer declares", async () => {
     const exit = await Effect.runPromiseExit(
-      surface(() => ({ active: true })).evaluateEligibility({
+      surface(() => ({ active: true })).resolveNode({
         ...input,
         entityType: "missing",
       })
@@ -87,12 +130,12 @@ describe("Workflow Entity Eligibility port", () => {
 
   it("maps a resolver failure to a retryable failure and every other cause to a defect", async () => {
     const resolverFailure = await Effect.runPromiseExit(
-      surface(() =>
-        Promise.reject(new Error("host unavailable"))
-      ).evaluateEligibility(input)
+      surface(() => Promise.reject(new Error("host unavailable"))).resolveNode(
+        input
+      )
     );
     const schemaRefused = await Effect.runPromiseExit(
-      surface(() => ({ active: true })).evaluateEligibility({
+      surface(() => ({ active: true })).resolveNode({
         ...input,
         condition: JSON.stringify({
           version: 2,
@@ -146,7 +189,7 @@ describe("Workflow Entity Eligibility port", () => {
             surface(
               () => new Promise<{ active: boolean } | null>(() => undefined),
               { entityResolverTimeoutMs: 50 }
-            ).evaluateEligibility(input)
+            ).resolveNode(input)
           )
         );
         yield* settle;

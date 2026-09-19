@@ -37,6 +37,7 @@ const surface: MutableCatalog = {
 
 beforeEach(() => {
   surface.events = [];
+  surface.entities = [];
   surface.actions = [];
 });
 
@@ -301,6 +302,68 @@ function ControlledTemplateBadgeTextarea({
 describe("Template badge autocomplete", () => {
   beforeEach(async () => {
     await seedTemplateContext();
+  });
+
+  it("offers the tracked Entity as a virtual source only with Eligibility", async () => {
+    surface.entities = [
+      {
+        type: "patient",
+        label: "Patient",
+        stateFields: [
+          {
+            path: "journey.journeyStatus",
+            description: "Current journey status",
+            type: "string",
+          },
+        ],
+        stateSchemaDigest: "patient-state",
+      },
+    ];
+    act(() => {
+      getDefaultStore().set(updateNodeDataAtom, {
+        id: "lifecycle_1",
+        data: {
+          config: {
+            lifecycleRules: {
+              startEvents: [APPOINTMENT_CREATED.name],
+              cancelEvents: [],
+              concurrency: "unlimited",
+              trackedEntity: { type: "patient", bindings: {} },
+              entityEligibility: {
+                condition: "condition",
+                checkpoints: ["before-node"],
+              },
+            },
+          },
+        },
+      });
+    });
+
+    let latestValue = "";
+    const view = renderWithCatalog(
+      <ControlledTemplateBadgeInputWithNodeContext
+        currentNodeId="wait_1"
+        onValueChange={(value) => {
+          latestValue = value;
+        }}
+      />
+    );
+    const textbox = view.getByRole("textbox");
+    typeAtSymbol(textbox);
+
+    const option = await waitFor(() =>
+      findAutocompleteOptionByText("Patient.journey.journeyStatus")
+    );
+    fireEvent.mouseDown(option);
+
+    await waitFor(() => {
+      expect(latestValue).toBe(
+        "{{@$entity:patient|Patient.journey.journeyStatus}}"
+      );
+      const badge = textbox.querySelector("[data-template]");
+      expect(badge?.textContent).toBe("Patient.journey.journeyStatus");
+      expect(badge?.className).not.toContain("destructive");
+    });
   });
 
   it("renders a pill immediately after mouse selection in TemplateBadgeInput", async () => {

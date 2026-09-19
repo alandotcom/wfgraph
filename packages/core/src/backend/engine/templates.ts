@@ -4,6 +4,7 @@
  */
 
 import {
+  isEntityStateSourceId,
   parseTemplate,
   resolveOutputPath,
   type TemplateToken,
@@ -13,6 +14,7 @@ import type { TemplateJsonShape } from "@wfgraph/shared/plugins/action-fields";
 import { readKeyValueRows } from "@wfgraph/shared/plugins/key-value-rows";
 import { readProviderFieldValues } from "@wfgraph/shared/plugins/provider-field-values";
 import type { NodeOutputs } from "#src/backend/engine/contracts";
+import type { EntityTemplateContext } from "#src/backend/engine/entities";
 import { outputKey } from "#src/backend/engine/traversal";
 
 /**
@@ -46,8 +48,16 @@ function stringifyTemplateValue(value: unknown): string {
 
 function resolveTemplateToken(
   token: TemplateToken,
-  outputs: NodeOutputs
+  outputs: NodeOutputs,
+  entityContext?: EntityTemplateContext
 ): string {
+  if (isEntityStateSourceId(token.nodeId)) {
+    return entityContext?.sourceId === token.nodeId &&
+      entityContext.entityType === token.sourceType
+      ? stringifyTemplateValue(entityContext.values[token.fieldPath])
+      : token.raw;
+  }
+
   const output = outputs[outputKey(token.nodeId)];
   if (!output) {
     // The token names a node that has not run, so the authored text stays put.
@@ -84,7 +94,8 @@ export function processTemplates(
   config: Record<string, unknown>,
   outputs: NodeOutputs,
   literalKeys: ReadonlySet<string>,
-  jsonShapes: ReadonlyMap<string, TemplateJsonShape> = new Map()
+  jsonShapes: ReadonlyMap<string, TemplateJsonShape> = new Map(),
+  entityContext?: EntityTemplateContext
 ): Record<string, unknown> {
   const processed: Array<[string, unknown]> = [];
 
@@ -100,6 +111,7 @@ export function processTemplates(
         outputs,
         literal: literalKeys.has(key),
         jsonShape: jsonShapes.get(key),
+        entityContext,
       }),
     ]);
   }
@@ -112,19 +124,20 @@ function resolveConfigValue(input: {
   outputs: NodeOutputs;
   literal: boolean;
   jsonShape: TemplateJsonShape | undefined;
+  entityContext?: EntityTemplateContext | undefined;
 }): unknown {
-  const { value, outputs, literal, jsonShape } = input;
+  const { value, outputs, literal, jsonShape, entityContext } = input;
   if (typeof value !== "string" || literal) {
     return value;
   }
 
   if (!jsonShape) {
-    return resolveTemplateString(value, outputs);
+    return resolveTemplateString(value, outputs, entityContext);
   }
 
   return jsonShape === "key-value"
-    ? resolveKeyValueRows(value, outputs)
-    : resolveProviderFields(value, outputs);
+    ? resolveKeyValueRows(value, outputs, entityContext)
+    : resolveProviderFields(value, outputs, entityContext);
 }
 
 /**
@@ -141,10 +154,14 @@ function resolveConfigValue(input: {
  * escape hatch a builder gets when the widget cannot draw: what they typed by
  * hand keeps behaving as it always did.
  */
-function resolveKeyValueRows(value: string, outputs: NodeOutputs): string {
+function resolveKeyValueRows(
+  value: string,
+  outputs: NodeOutputs,
+  entityContext?: EntityTemplateContext
+): string {
   const rows = readKeyValueRows(value);
   if (!rows) {
-    return resolveTemplateString(value, outputs);
+    return resolveTemplateString(value, outputs, entityContext);
   }
 
   // `JSON.stringify` is what escapes a resolved quotation mark or newline, and
@@ -152,7 +169,7 @@ function resolveKeyValueRows(value: string, outputs: NodeOutputs): string {
   return JSON.stringify(
     rows.map((row) => ({
       name: row.name,
-      value: resolveTemplateString(row.value, outputs),
+      value: resolveTemplateString(row.value, outputs, entityContext),
     }))
   );
 }
@@ -164,14 +181,20 @@ function resolveKeyValueRows(value: string, outputs: NodeOutputs): string {
  * the panel stores a variable the provider declared numeric as a JSON number,
  * and only the strings hold templates.
  */
-function resolveProviderFields(value: string, outputs: NodeOutputs): string {
+function resolveProviderFields(
+  value: string,
+  outputs: NodeOutputs,
+  entityContext?: EntityTemplateContext
+): string {
   const entries = readProviderFieldValues(value);
   if (!entries) {
-    return resolveTemplateString(value, outputs);
+    return resolveTemplateString(value, outputs, entityContext);
   }
 
   const resolved = mapValues(entries, (entry) =>
-    typeof entry === "string" ? resolveTemplateString(entry, outputs) : entry
+    typeof entry === "string"
+      ? resolveTemplateString(entry, outputs, entityContext)
+      : entry
   );
 
   return JSON.stringify(resolved);
@@ -180,13 +203,14 @@ function resolveProviderFields(value: string, outputs: NodeOutputs): string {
 /** One authored string with its references replaced. */
 export function resolveTemplateString(
   value: string,
-  outputs: NodeOutputs
+  outputs: NodeOutputs,
+  entityContext?: EntityTemplateContext
 ): string {
   return parseTemplate(value)
     .map((segment) =>
       segment.kind === "literal"
         ? segment.text
-        : resolveTemplateToken(segment.token, outputs)
+        : resolveTemplateToken(segment.token, outputs, entityContext)
     )
     .join("");
 }

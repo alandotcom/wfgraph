@@ -34,6 +34,38 @@ import {
 const WORKFLOW_ID = "wf_1";
 const TARGET_VERSION_ID = "ver_2";
 const OLD_VERSION_ID = "ver_1";
+const ENTITY_ELIGIBILITY_CONDITION = JSON.stringify({
+  version: 2,
+  groupLogic: "and",
+  groups: [
+    {
+      id: "group",
+      logic: "and",
+      conditions: [
+        {
+          id: "active",
+          field: "active",
+          fieldType: "boolean",
+          operator: "is_true",
+        },
+      ],
+    },
+  ],
+});
+const APPOINTMENT_CATALOG: ExtensionCatalog = {
+  ...emptyExtensionCatalog,
+  entities: [
+    {
+      type: "appointment",
+      label: "Appointment",
+      stateFields: [
+        { path: "active", type: "boolean" },
+        { path: "name", type: "string" },
+      ],
+      stateSchemaDigest: "appointment-state",
+    },
+  ],
+};
 
 /** A park that happened a minute ago, so no timeout of any length has run out. */
 const PARKED_AT = new Date(Date.now() - 60_000);
@@ -50,6 +82,7 @@ function targetGraph(
     waitConfig?: Record<string, unknown>;
     withAddedNodeAboveWait?: boolean;
     trackedEntityType?: string;
+    afterSubject?: string;
   } = {}
 ): SerializedWorkflowGraph {
   const withWaitNode = options.withWaitNode ?? true;
@@ -91,7 +124,7 @@ function targetGraph(
                       },
                     },
                     entityEligibility: {
-                      condition: "condition",
+                      condition: ENTITY_ELIGIBILITY_CONDITION,
                       checkpoints: ["before-node" as const],
                     },
                   },
@@ -131,7 +164,7 @@ function targetGraph(
           type: "action" as const,
           config: {
             actionType: "http.request",
-            subject: "{{@before_1:Before.value}}",
+            subject: options.afterSubject ?? "{{@before_1:Before.value}}",
           },
         },
       },
@@ -817,6 +850,84 @@ describe("previewMigration", () => {
             fromVersionNumber: 1,
             reason: "unresolved_reference",
             detail: "after_1.subject",
+          },
+        ]);
+      })
+    );
+
+    it.effect(
+      "accepts Entity references that a node below the Wait will resolve fresh",
+      () =>
+        Effect.gen(function* () {
+          const seams = makeMigrationSeams({
+            graph: targetGraph({
+              trackedEntityType: "appointment",
+              afterSubject: "{{@$entity:appointment|Appointment.name}}",
+            }),
+            catalog: APPOINTMENT_CATALOG,
+            executions: [
+              inFlightRow({
+                id: "exec_1",
+                entityType: "appointment",
+                entityId: "appointment_1",
+              }),
+            ],
+            waitStates: [waitRow({ id: "wait_row_1", executionId: "exec_1" })],
+            nodeOutputs: {},
+          });
+
+          const report = yield* previewMigration({
+            workflowId: WORKFLOW_ID,
+          }).pipe(Effect.provide(seams.layer));
+
+          assert.deepStrictEqual(report.refused, []);
+          assert.strictEqual(report.eligible.length, 1);
+          assert.deepStrictEqual(seams.calls.outputReads, []);
+        })
+    );
+
+    it.effect("refuses a new Entity reference on the parked Wait itself", () =>
+      Effect.gen(function* () {
+        const seams = makeMigrationSeams({
+          graph: targetGraph({
+            trackedEntityType: "appointment",
+            waitConfig: {
+              waitMode: "event",
+              waitFor: [
+                {
+                  event: "approval/granted",
+                  match: "{{@$entity:appointment|Appointment.name}}",
+                },
+              ],
+            },
+          }),
+          catalog: APPOINTMENT_CATALOG,
+          executions: [
+            inFlightRow({
+              id: "exec_1",
+              entityType: "appointment",
+              entityId: "appointment_1",
+            }),
+          ],
+          waitStates: [
+            waitRow({
+              id: "wait_row_1",
+              executionId: "exec_1",
+              waitType: "event",
+            }),
+          ],
+        });
+
+        const report = yield* previewMigration({
+          workflowId: WORKFLOW_ID,
+        }).pipe(Effect.provide(seams.layer));
+
+        assert.deepStrictEqual(report.refused, [
+          {
+            executionId: "exec_1",
+            fromVersionNumber: 1,
+            reason: "unresolved_reference",
+            detail: "wait_1.waitFor.0.match",
           },
         ]);
       })

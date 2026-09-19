@@ -65,11 +65,14 @@ ID as the Execution's immutable typed identity.
 
 **Entity State**:
 The current JSON-object state a host Entity resolver returns for one Entity ID.
-The host remains its system of record. Workflow Graph validates Entity State
-and may evaluate Entity Eligibility against it, but never persists it or makes
-it available to templates, node outputs, logs, or audit metadata. A `null`
-resolver result means that the Entity no longer exists; a timeout, thrown error,
-or schema-invalid result is an operational failure.
+The host remains its system of record. When Entity Eligibility is configured,
+declared fields are a virtual template source resolved immediately before each
+consuming node on either Lifecycle side. A before-node Eligibility check and
+that node's templates share one snapshot. Workflow Graph retains only referenced
+values at the durable node boundary for replay; Entity State is never a Lifecycle
+payload or node output and stays out of logs and audit metadata. A `null` result
+means that the Entity no longer exists; a timeout, thrown error, or schema-invalid
+result is an operational failure.
 
 ### Lifecycle
 

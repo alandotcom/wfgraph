@@ -11,6 +11,7 @@ import type {
   WorkflowNode,
 } from "@wfgraph/shared/graph/types";
 import { workflowTopologyRefusalReason } from "@wfgraph/shared/graph/workflow-topology";
+import { ENTITY_STATE_SOURCE_ID } from "@wfgraph/shared/graph/node-references";
 
 function hasDuplicates(values: string[]): boolean {
   return new Set(values).size !== values.length;
@@ -63,6 +64,12 @@ export function validateWorkflowGraph(
     return {
       valid: false,
       error: "Graph contains duplicate node IDs",
+    };
+  }
+  if (nodeKeys.includes(ENTITY_STATE_SOURCE_ID)) {
+    return {
+      valid: false,
+      error: `Graph node ID "${ENTITY_STATE_SOURCE_ID}" is reserved`,
     };
   }
 

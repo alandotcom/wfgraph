@@ -8,19 +8,32 @@
  * cancellation routes the run is `CancelBoundary`'s.
  */
 
+import {
+  ENTITY_STATE_SOURCE_ID,
+  extractAllTemplateReferences,
+} from "@wfgraph/shared/graph/node-references";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import type { ExecutionSide } from "@wfgraph/shared/lifecycle/execution-contracts";
+import { waitTemplateKeysIn } from "@wfgraph/shared/lifecycle/wait-subscription";
 import {
   actionTypeOf,
   isConditionNode,
   isWaitNode,
   readConfigString,
 } from "@wfgraph/shared/graph/node-config";
-import { type JsonObject, readJsonValue } from "@wfgraph/shared/types/json";
+import {
+  type JsonObject,
+  readJsonObjectLeniently,
+  readJsonValue,
+} from "@wfgraph/shared/types/json";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { Cause, Effect } from "effect";
+import { uniq } from "es-toolkit/array";
 import type { WorkflowActions } from "#src/backend/engine/actions";
-import type { WorkflowEntities } from "#src/backend/engine/entities";
+import type {
+  EntityTemplateContext,
+  WorkflowEntities,
+} from "#src/backend/engine/entities";
 import type { CancelBoundary } from "#src/backend/engine/cancel-boundary";
 import {
   executionData,
@@ -92,6 +105,13 @@ export type NodeSchedulerInput = {
    * catalog when an action resolves.
    */
   catalogFingerprint: string;
+  /** Immutable tracked Entity identity, exposed only while Eligibility exists. */
+  trackedEntity?:
+    | {
+        entityType: string;
+        entityId: string;
+      }
+    | undefined;
   /** Immutable identity and authored rule for per-node Entity Eligibility. */
   entityEligibility?:
     | {
@@ -108,6 +128,58 @@ export type NodeSchedulerInput = {
    */
   branchEntryNodeId?: string | undefined;
 };
+
+type NodeAdmission =
+  | { admitted: false }
+  | {
+      admitted: true;
+      entityContext?: EntityTemplateContext | undefined;
+    };
+
+function topLevelConfigKey(path: string): string {
+  const separator = path.indexOf(".");
+  return separator === -1 ? path : path.slice(0, separator);
+}
+
+/** Entity State paths this node will actually interpolate at run time. */
+function entityReferencePaths(
+  node: WorkflowNode,
+  actions: WorkflowActions,
+  sourceId: string,
+  entityType: string
+): string[] {
+  if (node.data.type !== "action") {
+    return [];
+  }
+  const config = readJsonObjectLeniently(node.data.config);
+  if (!config) {
+    return [];
+  }
+
+  const actionType = actionTypeOf(node);
+  const activeWaitKeys = isWaitNode(node)
+    ? new Set<string>(waitTemplateKeysIn(config))
+    : undefined;
+  const literalKeys = new Set(
+    actionType ? (actions.metadataFor(actionType)?.literalConfigKeys ?? []) : []
+  );
+  literalKeys.add("actionType");
+  literalKeys.add("condition");
+  literalKeys.add("conditionModel");
+
+  return uniq(
+    extractAllTemplateReferences(config)
+      .filter(
+        (reference) =>
+          reference.nodeId === sourceId &&
+          reference.sourceType === entityType &&
+          reference.fieldPath.length > 0 &&
+          !literalKeys.has(topLevelConfigKey(reference.field)) &&
+          (activeWaitKeys?.has(topLevelConfigKey(reference.field)) ?? true)
+      )
+      .map((reference) => reference.fieldPath)
+  );
+}
 
 export class NodeScheduler {
   private readonly input: NodeSchedulerInput;
@@ -180,62 +252,90 @@ export class NodeScheduler {
   }
 
   /**
-   * Resolves one durable Eligibility verdict and linearizes this node's
+   * Resolves one durable Entity snapshot for this node, then linearizes its
    * admission against execution-wide Cancel and Exit claims.
    *
-   * Only enabled action nodes on the Started side are checkpoints. The action
-   * node shape also represents Conditions, Event Splits, and Waits; Lifecycle,
-   * Group, add-placeholder, disabled, and Canceled-side nodes resolve nothing.
-   * Durable ids follow node identity across Migration, so replay keeps a verdict
-   * already taken while the first newly reached node reads the target rule.
+   * Started-side Eligibility and template references share the snapshot. A
+   * Canceled-side node can read referenced fields but does not run Eligibility.
+   * Durable ids follow node identity across Migration, so replay reuses values
+   * already observed while the first newly reached node reads current State.
    */
   private admitExecutableNode(
     node: WorkflowNode,
     nodeName: string
-  ): Effect.Effect<boolean, EngineFailure> {
-    const eligibility = this.input.entityEligibility;
+  ): Effect.Effect<NodeAdmission, EngineFailure> {
     if (
-      !eligibility ||
       node.data.enabled === false ||
       node.data.type !== "action" ||
-      this.input.cancelBoundary.isOnCanceledBranch(node.id) ||
       (isWaitNode(node) && !this.entersInPlace(node.id))
     ) {
-      return Effect.succeed(true);
+      return Effect.succeed({ admitted: true });
+    }
+
+    const onCanceledSide = this.input.cancelBoundary.isOnCanceledBranch(
+      node.id
+    );
+    const eligibility = onCanceledSide
+      ? undefined
+      : this.input.entityEligibility;
+    const entity = this.input.trackedEntity ?? eligibility;
+    if (!entity) {
+      return Effect.succeed({ admitted: true });
+    }
+    const sourceId = ENTITY_STATE_SOURCE_ID;
+    const paths = entityReferencePaths(
+      node,
+      this.input.actions,
+      sourceId,
+      entity.entityType
+    );
+    if (!eligibility && paths.length === 0) {
+      return Effect.succeed({ admitted: true });
     }
 
     const { runtime, store, entities, executionId } = this.input;
 
     return Effect.gen(
       function* (this: NodeScheduler) {
-        const boundaryOpen = yield* runDurable(
-          runtime,
-          {
-            id: `node-boundary:${node.id}`,
-            name: `${nodeName} (boundary)`,
-          },
-          store.admitNode(executionId)
-        );
-        if (!boundaryOpen) {
-          return false;
+        // Started-side host reads sit between two claim checks, so a Cancel that
+        // wins while the Entity resolver is in flight stops the action itself.
+        if (!onCanceledSide) {
+          const boundaryOpen = yield* runDurable(
+            runtime,
+            {
+              id: `node-boundary:${node.id}`,
+              name: `${nodeName} (boundary)`,
+            },
+            store.admitNode(executionId)
+          );
+          if (!boundaryOpen) {
+            return { admitted: false } as const;
+          }
         }
 
-        const decision = yield* runDurable(
+        const resolution = yield* runDurable(
           runtime,
           {
-            id: `entity-eligibility:${node.id}`,
-            name: `${nodeName} (Eligibility)`,
+            id:
+              paths.length > 0
+                ? `entity-context:${node.id}`
+                : `entity-eligibility:${node.id}`,
+            name: `${nodeName} (Entity)`,
           },
-          entities.evaluateEligibility({
-            entityType: eligibility.entityType,
-            entityId: eligibility.entityId,
-            nodeId: node.id,
-            condition: eligibility.condition,
-            eventName: this.currentEventName(),
-          })
+          entities.resolveNode(
+            omitUndefined({
+              entityType: entity.entityType,
+              entityId: entity.entityId,
+              nodeId: node.id,
+              condition: eligibility?.condition,
+              eventName: this.currentEventName(),
+              paths,
+            })
+          )
         );
 
-        if (decision.outcome === "exit") {
+        if (resolution.decision.outcome === "exit") {
+          const decision = resolution.decision;
           const claimed = yield* runDurable(
             runtime,
             {
@@ -275,10 +375,21 @@ export class NodeScheduler {
               )
             );
           }
-          return false;
+          return { admitted: false } as const;
         }
 
-        return yield* runDurable(
+        if (onCanceledSide) {
+          return {
+            admitted: true,
+            entityContext: {
+              sourceId,
+              entityType: entity.entityType,
+              values: resolution.values,
+            },
+          } as const;
+        }
+
+        const admitted = yield* runDurable(
           runtime,
           {
             id: `node-admission:${node.id}`,
@@ -286,6 +397,16 @@ export class NodeScheduler {
           },
           store.admitNode(executionId)
         );
+        return admitted
+          ? ({
+              admitted: true,
+              entityContext: {
+                sourceId,
+                entityType: entity.entityType,
+                values: resolution.values,
+              },
+            } as const)
+          : ({ admitted: false } as const);
       }.bind(this)
     );
   }
@@ -355,8 +476,8 @@ export class NodeScheduler {
         const nodeName = getNodeName(node, actions);
         const actionType = actionTypeOf(node);
 
-        const admitted = yield* this.admitExecutableNode(node, nodeName);
-        if (!admitted) {
+        const admission = yield* this.admitExecutableNode(node, nodeName);
+        if (!admission.admitted) {
           const cancel = yield* this.input.cancelBoundary.settle(nodeId);
           if (cancel.entered) {
             yield* this.runAll(cancel.nextNodes);
@@ -367,7 +488,8 @@ export class NodeScheduler {
         const nodeExecution = this.executeNodeInner(
           nodeId,
           node,
-          nodeName
+          nodeName,
+          admission.entityContext
         ).pipe(
           Effect.withSpan("wfgraph.workflow.node.execute", {
             // A span attribute set to `undefined` is recorded as the string
@@ -421,7 +543,8 @@ export class NodeScheduler {
    */
   private runNodeWork(
     node: WorkflowNode,
-    nodeName: string
+    nodeName: string,
+    entityContext?: EntityTemplateContext
   ): Effect.Effect<NodeWorkOutcome, EngineFailure> {
     return Effect.gen(
       function* (this: NodeScheduler) {
@@ -463,6 +586,7 @@ export class NodeScheduler {
           workflowRunId,
           runMode,
           startPayload,
+          entityContext,
           eventName: this.currentEventName(),
           catalogFingerprint: this.input.catalogFingerprint,
           workflowVersionId: this.input.workflowVersionId,
@@ -585,7 +709,8 @@ export class NodeScheduler {
   private executeNodeInner(
     nodeId: string,
     node: WorkflowNode,
-    nodeName: string
+    nodeName: string,
+    entityContext?: EntityTemplateContext
   ): Effect.Effect<void, EngineFailure> {
     const actionType = actionTypeOf(node);
     const kind = actionType ?? node.data.type;
@@ -629,7 +754,7 @@ export class NodeScheduler {
       function* (this: NodeScheduler) {
         const { traversal, cancelBoundary } = this.input;
         const startedAt = Date.now();
-        const outcome = yield* this.runNodeWork(node, nodeName);
+        const outcome = yield* this.runNodeWork(node, nodeName, entityContext);
         const { result } = outcome;
 
         if (outcome.executionExited) {

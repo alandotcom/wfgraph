@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import { useAfterCommit, useDomEvent } from "#src/hooks/effects";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import {
+  getEntityTemplateSource,
   getNodeDisplayName,
   getNodeOutputFields,
   getUpstreamNodes,
@@ -206,29 +207,55 @@ export function useTemplateAutocompleteRows(input: {
 
     const nextOptions: TemplateOption[] = [];
     const graphKeys = collectOpenRecordKeys(nodes, catalog);
+    const entitySource = getEntityTemplateSource({ nodes, catalog });
+    const sources = [
+      ...upstreamNodes.map((node) => ({
+        nodeId: node.id,
+        nodeName: getNodeDisplayName(catalog, node),
+        fields: getNodeOutputFields(node, {
+          targetNodeId: currentNodeId,
+          nodes,
+          edges,
+          catalog,
+        }),
+        sourceType: undefined as string | undefined,
+        offersWholeOutput: node.data.type !== "lifecycle",
+      })),
+      ...(entitySource
+        ? [
+            {
+              nodeId: entitySource.sourceId,
+              nodeName: entitySource.sourceName,
+              fields: entitySource.fields,
+              sourceType: entitySource.sourceType,
+              offersWholeOutput: false,
+            },
+          ]
+        : []),
+    ];
 
-    for (const node of upstreamNodes) {
-      const nodeName = getNodeDisplayName(catalog, node);
-      const outputFields = getNodeOutputFields(node, {
-        targetNodeId: currentNodeId,
-        nodes,
-        edges,
-        catalog,
-      });
+    for (const source of sources) {
+      const {
+        nodeId,
+        nodeName,
+        fields: outputFields,
+        sourceType,
+        offersWholeOutput,
+      } = source;
 
-      // A whole node's output, for dropping a JSON blob into a text field. Only
-      // where the node produces something: Condition and Event Split route a run
-      // and declare no output, so the row would stand for the bookkeeping the
-      // engine logged rather than for anything a builder wrote the node to get.
-      if (!fieldType && node.data.type !== "lifecycle" && outputFields.length) {
+      // A whole node's output, for dropping a JSON blob into a text field. A
+      // virtual Entity source offers declared fields only, and the Lifecycle
+      // node's whole payload remains unavailable.
+      if (!fieldType && offersWholeOutput && outputFields.length) {
         nextOptions.push({
           type: "node",
           rank: 0,
-          nodeId: node.id,
+          nodeId,
           nodeName,
           template: formatTemplateToken({
-            nodeId: node.id,
+            nodeId,
             nodeLabel: nodeName,
+            sourceType,
           }),
         });
       }
@@ -239,13 +266,14 @@ export function useTemplateAutocompleteRows(input: {
           nextOptions.push({
             type: "field",
             rank: fieldRank(field, fieldType, unusable),
-            nodeId: node.id,
+            nodeId,
             nodeName,
             field: field.path,
             description: field.description,
             template: formatTemplateToken({
-              nodeId: node.id,
+              nodeId,
               nodeLabel: nodeName,
+              sourceType,
               fieldPath: field.path,
             }),
             unusable,
@@ -272,12 +300,13 @@ export function useTemplateAutocompleteRows(input: {
         nextOptions.push({
           type: "field",
           rank: fieldRank({ type: valueType }, fieldType, undefined),
-          nodeId: node.id,
+          nodeId,
           nodeName,
           field: field.path,
           template: formatTemplateToken({
-            nodeId: node.id,
+            nodeId,
             nodeLabel: nodeName,
+            sourceType,
             fieldPath: field.path,
           }),
           recordOnly: true,
@@ -296,12 +325,13 @@ export function useTemplateAutocompleteRows(input: {
           nextOptions.push({
             type: "field",
             rank: fieldRank({ type: valueType }, fieldType, undefined),
-            nodeId: node.id,
+            nodeId,
             nodeName,
             field: fieldPath,
             template: formatTemplateToken({
-              nodeId: node.id,
+              nodeId,
               nodeLabel: nodeName,
+              sourceType,
               fieldPath,
             }),
           });

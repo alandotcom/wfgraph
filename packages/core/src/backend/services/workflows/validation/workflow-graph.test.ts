@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { validateWorkflowGraph } from "#src/backend/services/workflows/validation/workflow-graph";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import { ENTITY_STATE_SOURCE_ID } from "@wfgraph/shared/graph/node-references";
 import type {
   SerializedWorkflowGraph,
   WorkflowEdge,
@@ -93,6 +94,21 @@ describe("validateWorkflowGraph", () => {
     const result = validateWorkflowGraph(graph);
 
     expect(result.valid).toBe(true);
+  });
+
+  it("rejects a real node using the virtual Entity source ID", () => {
+    const graph = createSerializedWorkflowGraph({
+      nodes: [
+        createBaseLifecycleNode(),
+        createActionNode(ENTITY_STATE_SOURCE_ID),
+      ],
+      edges: [],
+    });
+
+    expect(validateWorkflowGraph(graph)).toEqual({
+      valid: false,
+      error: 'Graph node ID "$entity" is reserved',
+    });
   });
 
   it("requires exactly one Lifecycle Node", () => {

@@ -41,10 +41,14 @@ Entity no longer exists. The resolver has 10 seconds to settle by default;
 deadline. A timeout, rejection, or schema-invalid result is an
 operational failure.
 
-Workflow Graph validates current state only to decide Eligibility. The state
-stays out of persistence, templates, node outputs, logs, and audit metadata.
-Keep the resolver read-only. Node checkpoints may call it concurrently across
-fan-out.
+Workflow Graph validates current state for Eligibility and for Entity template
+references. Entity fields appear as a virtual template source only when the
+Lifecycle has both tracking and Eligibility. Each consuming node resolves fresh
+state immediately before it runs; a before-node check and that node's templates
+share one snapshot. The durable boundary retains only referenced values for
+replay. Full state stays out of Workflow Graph persistence and node outputs, and
+all Entity State stays out of logs and audit metadata. Keep the resolver
+read-only. Nodes may call it concurrently across fan-out.
 
 ### Typed Event bindings
 
@@ -105,13 +109,14 @@ is intake. Publish requires a Connection. Host Events have no Connection.
 
 ## Common Mistakes
 
-### CRITICAL Persist or expose resolved Entity State
+### CRITICAL Persist or expose full resolved Entity State
 
-Wrong: return Entity State as node output, put it in audit metadata, or copy it
-into a Workflow Graph table.
+Wrong: return full Entity State as a node output, put it in audit metadata, or
+copy it into a Workflow Graph table.
 
-Correct: let `defineEntity.resolve` return state to the Eligibility adapter only.
-Persist typed Entity identity and the non-sensitive decision metadata.
+Correct: let the virtual Entity template source project only authored field
+references. Its durable node step retains those projected values for replay.
+Persist typed Entity identity and non-sensitive decision metadata separately.
 
 Source: alandotcom/wfgraph:docs/events.md (Current Entity State)
 

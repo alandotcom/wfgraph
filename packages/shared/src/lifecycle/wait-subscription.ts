@@ -181,6 +181,14 @@ export function waitValueKeysIn(
   });
 }
 
+/** Config keys whose authored templates the current Wait shape consumes. */
+export function waitTemplateKeysIn(
+  config: Record<string, unknown>
+): Array<WaitValueTargetKey | "waitFor"> {
+  const valueKeys = waitValueKeysIn(config);
+  return config.waitMode === "event" ? [...valueKeys, "waitFor"] : valueKeys;
+}
+
 /** Those same keys with what each expects, for a reader that needs the target. */
 export function waitValueTargetsFor(
   config: Record<string, unknown>

@@ -17,6 +17,7 @@ import {
 import { eventsReaching } from "@wfgraph/shared/graph/events-reaching";
 import {
   appendOutputPathKey,
+  ENTITY_STATE_SOURCE_ID,
   fieldsVisibleForConfig,
 } from "@wfgraph/shared/graph/node-references";
 import type { ReferenceField } from "@wfgraph/shared/graph/node-references";
@@ -31,6 +32,8 @@ import {
 } from "#src/lib/open-record-keys";
 import { upstreamNodeIds } from "@wfgraph/shared/graph/upstream-nodes";
 import { readConfigString } from "@wfgraph/shared/graph/node-config";
+import { findEntityTemplateSource } from "@wfgraph/shared/lifecycle/entity-eligibility";
+import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { getNodeDisplayName } from "@wfgraph/shared/graph/node-display";
 import { conditionTypeOf } from "@wfgraph/shared/conditions/condition-field-type";
 import { compareText } from "@wfgraph/shared/types/string";
@@ -337,6 +340,39 @@ function schemaFieldFlags(
     // oxlint-disable-next-line wfgraph/no-conditional-spread -- an unset flag leaves the key absent, so two rows compare equal only when both carry the same flags.
     ...(field.enumValues ? { enumValues: field.enumValues } : {}),
   };
+}
+
+export type EntityTemplateSource = {
+  sourceId: string;
+  sourceName: string;
+  sourceType: string;
+  fields: readonly SourcedField[];
+};
+
+/**
+ * The tracked Entity source a node may read at execution time.
+ *
+ * Entity State is offered only while Eligibility is configured. It is a virtual
+ * per-node source rather than output from the Lifecycle node, whose output stays
+ * the arriving Event payload.
+ */
+export function getEntityTemplateSource(input: {
+  nodes: readonly WorkflowNode[];
+  catalog: ExtensionCatalog;
+}): EntityTemplateSource | undefined {
+  const lifecycle = input.nodes.find((node) => node.data.type === "lifecycle");
+  const entity = findEntityTemplateSource({
+    rules: readLifecycleRules(lifecycle?.data.config),
+    catalog: input.catalog,
+  });
+  return entity
+    ? {
+        sourceId: ENTITY_STATE_SOURCE_ID,
+        sourceName: entity.label,
+        sourceType: entity.type,
+        fields: entity.stateFields.map((field) => ({ ...field })),
+      }
+    : undefined;
 }
 
 /** The current-state fields a Lifecycle Entity Eligibility rule may read. */

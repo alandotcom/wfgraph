@@ -4,6 +4,7 @@ import { executeWorkflow } from "#src/backend/engine/core";
 import { TracerBridgeLayer } from "#src/backend/lib/effect/tracer";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
+import type { JsonObject } from "@wfgraph/shared/types/json";
 import { LIFECYCLE_CANCELED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import type { WorkflowActions } from "#src/backend/engine/actions";
 import type {
@@ -79,7 +80,8 @@ function lifecycleNode(
 function actionNode(
   id: string,
   enabled = true,
-  actionType = "test/action"
+  actionType = "test/action",
+  config: Record<string, unknown> = {}
 ): WorkflowNode {
   return {
     id,
@@ -89,7 +91,7 @@ function actionNode(
       type: "action",
       label: id,
       enabled,
-      config: { actionType },
+      config: { actionType, ...config },
     },
   };
 }
@@ -115,6 +117,30 @@ function graph(
       },
       { id: "first-second", source: "first", target: "second" },
     ],
+  });
+}
+
+const entityNameToken = "{{@$entity:appointment|Appointment.name}}";
+
+function entityDataGraph(
+  checkpoints: Array<"before-execution" | "before-node">,
+  nodeIds: string[] = ["first"]
+) {
+  return createSerializedWorkflowGraph({
+    nodes: [
+      lifecycleNode(checkpoints),
+      ...nodeIds.map((id) =>
+        actionNode(id, true, "test/action", {
+          message: entityNameToken,
+        })
+      ),
+    ],
+    edges: nodeIds.map((id, index) => ({
+      id: `edge-${id}`,
+      source: index === 0 ? "lifecycle" : (nodeIds[index - 1] ?? "lifecycle"),
+      sourceHandle: index === 0 ? "started" : undefined,
+      target: id,
+    })),
   });
 }
 
@@ -152,7 +178,7 @@ function migrationGraph(eligibilityCondition: string) {
   });
 }
 
-const runAction = vi.fn(() =>
+const runAction = vi.fn((_input: Record<string, unknown>, _steps?: unknown) =>
   Effect.succeed({ success: true as const, data: {} })
 );
 const actions: WorkflowActions = {
@@ -166,17 +192,18 @@ const actions: WorkflowActions = {
 };
 
 function entityPort(
-  decisions: EntityEligibilityDecision[]
+  decisions: EntityEligibilityDecision[],
+  values: JsonObject[] = []
 ): WorkflowEntities & { inputs: Array<Record<string, unknown>> } {
   const inputs: Array<Record<string, unknown>> = [];
   return {
     inputs,
-    evaluateEligibility: (input) =>
+    resolveNode: (input) =>
       Effect.sync(() => {
         inputs.push({ ...input });
         const decision = decisions.shift();
         if (!decision) throw new Error("No test Eligibility decision remains");
-        return decision;
+        return { decision, values: values.shift() ?? {} };
       }),
   };
 }
@@ -220,6 +247,7 @@ describe("per-node Entity Eligibility", () => {
         nodeId: "first",
         condition,
         eventName: "appointment.started",
+        paths: [],
       },
       {
         entityType: "appointment",
@@ -227,9 +255,140 @@ describe("per-node Entity Eligibility", () => {
         nodeId: "second",
         condition,
         eventName: "appointment.started",
+        paths: [],
       },
     ]);
     expect(store.callsOf("admitNode")).toHaveLength(4);
+  });
+
+  it("shares one current-state snapshot between Eligibility and templates", async () => {
+    const entities = entityPort([{ outcome: "eligible" }], [{ name: "Ada" }]);
+
+    const result = await executeTestWorkflow(
+      { ...executionInput, graph: entityDataGraph(["before-node"]) },
+      createInMemoryWorkflowRuntime(),
+      createRecordingWorkflowStore(),
+      actions,
+      entities
+    );
+
+    expect(result.status).toBe("completed");
+    expect(entities.inputs).toEqual([
+      {
+        entityType: "appointment",
+        entityId: "appt_secret",
+        nodeId: "first",
+        condition,
+        eventName: "appointment.started",
+        paths: ["name"],
+      },
+    ]);
+    expect(runAction).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "Ada" }),
+      expect.anything()
+    );
+    expect(JSON.stringify(result.outputs)).not.toContain("Ada");
+  });
+
+  it("does not retarget a stale Entity reference during a Draft run", async () => {
+    const staleToken = "{{@$entity:patient|Appointment.name}}";
+    const staleGraph = createSerializedWorkflowGraph({
+      nodes: [
+        lifecycleNode(["before-node"]),
+        actionNode("first", true, "test/action", { message: staleToken }),
+      ],
+      edges: [
+        {
+          id: "edge-first",
+          source: "lifecycle",
+          sourceHandle: "started",
+          target: "first",
+        },
+      ],
+    });
+    const entities = entityPort(
+      [{ outcome: "eligible" }],
+      [{ name: "Wrong Entity" }]
+    );
+
+    await executeTestWorkflow(
+      { ...executionInput, graph: staleGraph },
+      createInMemoryWorkflowRuntime(),
+      createRecordingWorkflowStore(),
+      actions,
+      entities
+    );
+
+    expect(entities.inputs).toEqual([
+      expect.objectContaining({ nodeId: "first", paths: [] }),
+    ]);
+    expect(runAction).toHaveBeenCalledWith(
+      expect.objectContaining({ message: staleToken }),
+      expect.anything()
+    );
+  });
+
+  it("resolves fresh Entity State before each consuming node", async () => {
+    const entities = entityPort(
+      [{ outcome: "eligible" }, { outcome: "eligible" }],
+      [{ name: "Ada" }, { name: "Grace" }]
+    );
+
+    const result = await executeTestWorkflow(
+      {
+        ...executionInput,
+        graph: entityDataGraph(["before-execution"], ["first", "second"]),
+      },
+      createInMemoryWorkflowRuntime(),
+      createRecordingWorkflowStore(),
+      actions,
+      entities
+    );
+
+    expect(result.status).toBe("completed");
+    expect(entities.inputs).toHaveLength(2);
+    expect(entities.inputs).toEqual([
+      expect.objectContaining({ nodeId: "first", paths: ["name"] }),
+      expect.objectContaining({ nodeId: "second", paths: ["name"] }),
+    ]);
+    expect(runAction.mock.calls.map(([config]) => config.message)).toEqual([
+      "Ada",
+      "Grace",
+    ]);
+  });
+
+  it("does not resolve Entity references in inactive Wait fields", async () => {
+    const inactiveToken = "{{@$entity:appointment|Appointment.gone}}";
+    const waitGraph = createSerializedWorkflowGraph({
+      nodes: [
+        lifecycleNode(["before-execution"]),
+        actionNode("wait", true, "Wait", {
+          waitMode: "delay",
+          waitDuration: "1ms",
+          waitTimeout: inactiveToken,
+        }),
+      ],
+      edges: [
+        {
+          id: "edge-wait",
+          source: "lifecycle",
+          sourceHandle: "started",
+          target: "wait",
+        },
+      ],
+    });
+    const entities = entityPort([]);
+
+    const result = await executeTestWorkflow(
+      { ...executionInput, graph: waitGraph },
+      createInMemoryWorkflowRuntime(),
+      createRecordingWorkflowStore(),
+      actions,
+      entities
+    );
+
+    expect(result.status).toBe("completed");
+    expect(entities.inputs).toEqual([]);
   });
 
   it("claims exit before an ineligible node and admits no later work", async () => {
@@ -526,18 +685,21 @@ describe("per-node Entity Eligibility", () => {
       );
     const checkedNodes: string[] = [];
     const entities: WorkflowEntities = {
-      evaluateEligibility: (input) =>
+      resolveNode: (input) =>
         Effect.promise(async () => {
           checkedNodes.push(input.nodeId);
           if (input.nodeId === "exit_sibling") {
             await actionStarted;
             return {
-              outcome: "exit" as const,
-              reason: "entity_not_found" as const,
-              checkedAt: "2026-10-19T15:00:00.000Z",
+              decision: {
+                outcome: "exit" as const,
+                reason: "entity_not_found" as const,
+                checkedAt: "2026-10-19T15:00:00.000Z",
+              },
+              values: {},
             };
           }
-          return { outcome: "eligible" as const };
+          return { decision: { outcome: "eligible" as const }, values: {} };
         }),
     };
     const parallelGraph = createSerializedWorkflowGraph({
@@ -628,6 +790,58 @@ describe("per-node Entity Eligibility", () => {
     expect(runAction).toHaveBeenCalledTimes(1);
   });
 
+  it("resolves referenced Entity data on the Canceled side without Eligibility", async () => {
+    const store = createRecordingWorkflowStore();
+    store.readPendingCancel = () =>
+      Effect.succeed({
+        eventName: "appointment.canceled",
+        payload: { reason: "host request" },
+      });
+    const entities = entityPort(
+      [{ outcome: "eligible" }],
+      [{ name: "Canceled appointment" }]
+    );
+    const canceledGraph = createSerializedWorkflowGraph({
+      nodes: [
+        lifecycleNode(["before-node"], ["appointment.canceled"]),
+        actionNode("canceled_action", true, "test/action", {
+          message: entityNameToken,
+        }),
+      ],
+      edges: [
+        {
+          id: "canceled-edge",
+          source: "lifecycle",
+          sourceHandle: LIFECYCLE_CANCELED_HANDLE,
+          target: "canceled_action",
+        },
+      ],
+    });
+
+    const result = await executeTestWorkflow(
+      { ...executionInput, graph: canceledGraph },
+      createInMemoryWorkflowRuntime(),
+      store,
+      actions,
+      entities
+    );
+
+    expect(result.status).toBe("canceled");
+    expect(entities.inputs).toEqual([
+      {
+        entityType: "appointment",
+        entityId: "appt_secret",
+        nodeId: "canceled_action",
+        eventName: "appointment.canceled",
+        paths: ["name"],
+      },
+    ]);
+    expect(runAction).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "Canceled appointment" }),
+      expect.anything()
+    );
+  });
+
   it("does not recheck an admission-only rule inside the engine", async () => {
     const entities = entityPort([]);
 
@@ -649,7 +863,7 @@ describe("per-node Entity Eligibility", () => {
 
   it("turns an operational resolver failure into a failed node and run", async () => {
     const entities: WorkflowEntities = {
-      evaluateEligibility: () =>
+      resolveNode: () =>
         Effect.fail({ kind: "failure", message: "Entity host unavailable" }),
     };
 
@@ -711,6 +925,33 @@ describe("per-node Entity Eligibility", () => {
         condition: migratedCondition,
       }),
     ]);
+  });
+
+  it("memoizes only referenced Entity values for deterministic replay", async () => {
+    const memo = new Map<string, unknown>();
+    const entities = entityPort([{ outcome: "eligible" }], [{ name: "Ada" }]);
+    const input = {
+      ...executionInput,
+      graph: entityDataGraph(["before-execution"]),
+    };
+
+    await executeTestWorkflow(
+      input,
+      createInMemoryWorkflowRuntime({ memo }),
+      createRecordingWorkflowStore(),
+      actions,
+      entities
+    );
+    await executeTestWorkflow(
+      input,
+      createInMemoryWorkflowRuntime({ memo }),
+      createRecordingWorkflowStore(),
+      actions,
+      entities
+    );
+
+    expect(entities.inputs).toHaveLength(1);
+    expect(JSON.stringify([...memo.values()])).toContain("Ada");
   });
 
   it("memoizes the decision without persisting Entity State", async () => {

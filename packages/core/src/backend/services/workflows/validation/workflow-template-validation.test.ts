@@ -35,7 +35,10 @@ const catalog: ExtensionCatalog = {
   integrations: [],
 };
 
-function entryNode(startEvents: string[]): WorkflowNode {
+function entryNode(
+  startEvents: string[],
+  entity?: { eligibility: boolean; type?: string }
+): WorkflowNode {
   return {
     id: "lifecycle-1",
     type: "lifecycle",
@@ -48,6 +51,22 @@ function entryNode(startEvents: string[]): WorkflowNode {
           startEvents,
           cancelEvents: [],
           concurrency: "unlimited",
+          ...(entity
+            ? {
+                trackedEntity: {
+                  type: entity.type ?? "patient",
+                  bindings: {},
+                },
+                ...(entity.eligibility
+                  ? {
+                      entityEligibility: {
+                        condition: "condition",
+                        checkpoints: ["before-node"],
+                      },
+                    }
+                  : {}),
+              }
+            : {}),
         },
       },
     },
@@ -79,9 +98,135 @@ const startedEdge: WorkflowEdge = {
   target: "wait-1",
 };
 
-function check(nodes: WorkflowNode[], edges: WorkflowEdge[]) {
-  return validateWorkflowTemplates({ nodes, edges, catalog });
+function check(
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
+  extensionCatalog = catalog
+) {
+  return validateWorkflowTemplates({
+    nodes,
+    edges,
+    catalog: extensionCatalog,
+  });
 }
+
+const entityCatalog: ExtensionCatalog = {
+  ...catalog,
+  entities: [
+    {
+      type: "patient",
+      label: "Patient",
+      stateFields: [
+        { path: "name", type: "string" },
+        { path: "delay", type: "duration" },
+      ],
+      stateSchemaDigest: "patient-state",
+    },
+    {
+      type: "customer",
+      label: "Patient",
+      stateFields: [
+        { path: "name", type: "string" },
+        { path: "delay", type: "duration" },
+      ],
+      stateSchemaDigest: "customer-state",
+    },
+  ],
+};
+
+function entityToken(path: string): string {
+  return `{{@$entity:patient|Patient.${path}}}`;
+}
+
+describe("validateWorkflowTemplates Entity State", () => {
+  it("accepts a field from the eligible tracked Entity", () => {
+    expect(
+      check(
+        [
+          entryNode([CREATED], { eligibility: true }),
+          waitNode({ waitDuration: entityToken("delay") }),
+        ],
+        [startedEdge],
+        entityCatalog
+      )
+    ).toEqual({ valid: true });
+  });
+
+  it("refuses Entity data when Eligibility is absent", () => {
+    const result = check(
+      [
+        entryNode([CREATED], { eligibility: false }),
+        waitNode({ waitDuration: entityToken("delay") }),
+      ],
+      [startedEdge],
+      entityCatalog
+    );
+
+    expect(result.valid).toBe(false);
+    expect(errorOf(result)).toContain(
+      "available only while Entity Eligibility is configured"
+    );
+  });
+
+  it("refuses a reference after the tracked Entity type changes", () => {
+    const result = check(
+      [
+        entryNode([CREATED], { eligibility: true, type: "customer" }),
+        waitNode({ waitDuration: entityToken("delay") }),
+      ],
+      [startedEdge],
+      entityCatalog
+    );
+
+    expect(result.valid).toBe(false);
+    expect(errorOf(result)).toContain('Entity "customer" does not declare');
+  });
+
+  it("refuses a field the tracked Entity no longer declares", () => {
+    const result = check(
+      [
+        entryNode([CREATED], { eligibility: true }),
+        waitNode({ waitDuration: entityToken("gone") }),
+      ],
+      [startedEdge],
+      entityCatalog
+    );
+
+    expect(result.valid).toBe(false);
+    expect(errorOf(result)).toContain('Entity "patient" does not declare');
+  });
+
+  it("ignores Entity references in Wait fields the current mode does not read", () => {
+    expect(
+      check(
+        [
+          entryNode([CREATED], { eligibility: true }),
+          waitNode({
+            waitMode: "delay",
+            waitDuration: "1h",
+            waitTimeout: entityToken("gone"),
+          }),
+        ],
+        [startedEdge],
+        entityCatalog
+      )
+    ).toEqual({ valid: true });
+  });
+
+  it("checks the Entity field type against a typed target", () => {
+    const result = check(
+      [
+        entryNode([CREATED], { eligibility: true }),
+        waitNode({ waitDuration: entityToken("name") }),
+      ],
+      [startedEdge],
+      entityCatalog
+    );
+
+    expect(result.valid).toBe(false);
+    expect(errorOf(result)).toContain("takes a duration");
+  });
+});
 
 describe("validateWorkflowTemplates", () => {
   it("accepts a duration target reading a duration", () => {

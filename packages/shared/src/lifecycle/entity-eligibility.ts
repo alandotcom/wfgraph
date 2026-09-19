@@ -47,6 +47,20 @@ export const entityEligibilitySchema = Schema.Struct({
   checkpoints: Schema.Array(entityEligibilityCheckpointSchema),
 });
 
+/**
+ * The current-state source templates may read, when the Lifecycle explicitly
+ * opts into Entity Eligibility.
+ */
+export function findEntityTemplateSource(input: {
+  rules: LifecycleRules | undefined;
+  catalog: ExtensionCatalog;
+}): EntityMetadata | undefined {
+  const tracked = input.rules?.trackedEntity;
+  return tracked && input.rules?.entityEligibility
+    ? findEntity(input.catalog, tracked.type)
+    : undefined;
+}
+
 const valid: LifecycleRulesCheck = { valid: true };
 
 function refuse(error: string): LifecycleRulesCheck {

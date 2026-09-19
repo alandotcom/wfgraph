@@ -1,12 +1,13 @@
 /**
  * Host-owned Entity Eligibility as the workflow engine may use it.
  *
- * The port returns only a decision. Entity State stays behind the adapter and
- * never crosses the durable runtime, store, node-output, or logging boundaries.
+ * The port returns an optional Eligibility decision and only the Entity State
+ * paths the current node references. The full State stays behind the adapter.
  */
 
 import type { EntityEligibilityReason } from "@wfgraph/shared/lifecycle/execution-contracts";
 import { Effect } from "effect";
+import type { JsonObject } from "@wfgraph/shared/types/json";
 import {
   type EngineFailure,
   engineFailure,
@@ -20,26 +21,41 @@ export type EntityEligibilityDecision =
       checkedAt: string;
     };
 
-export type EvaluateEntityEligibilityInput = {
+export type ResolveEntityNodeInput = {
   entityType: string;
   entityId: string;
   nodeId: string;
-  condition: string;
+  /** Present when this node is also an Entity Eligibility checkpoint. */
+  condition?: string | undefined;
   eventName: string | null;
+  /** Entity State paths this node's templates reference. */
+  paths: readonly string[];
+};
+
+export type EntityTemplateContext = {
+  sourceId: string;
+  entityType: string;
+  values: JsonObject;
+};
+
+export type EntityNodeResolution = {
+  decision: EntityEligibilityDecision;
+  /** Only explicitly referenced paths, keyed by their authored path. */
+  values: JsonObject;
 };
 
 export type WorkflowEntities = {
-  /** Resolves current state and evaluates one authored Eligibility condition. */
-  evaluateEligibility(
-    input: EvaluateEntityEligibilityInput
-  ): Effect.Effect<EntityEligibilityDecision, EngineFailure>;
+  /** Resolves one current-state snapshot for node data and optional Eligibility. */
+  resolveNode(
+    input: ResolveEntityNodeInput
+  ): Effect.Effect<EntityNodeResolution, EngineFailure>;
 };
 
 /** Empty surface for unguarded engine tests and runs. */
 export const noWorkflowEntities: WorkflowEntities = {
   // A guarded run reaching this surface is a deployment/configuration defect.
   // Unguarded runs never call it.
-  evaluateEligibility: () =>
+  resolveNode: () =>
     Effect.fail(
       engineFailure(
         "defect",

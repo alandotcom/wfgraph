@@ -10,12 +10,18 @@
  */
 
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
 import {
   type ExtensionCatalog,
   findAction,
 } from "@wfgraph/shared/extensions/catalog";
 import { eventsReaching } from "@wfgraph/shared/graph/events-reaching";
-import { findTemplateTokens } from "@wfgraph/shared/graph/node-references";
+import {
+  extractAllTemplateReferences,
+  findTemplateTokens,
+  isEntityStateSourceId,
+  referenceFieldForPath,
+} from "@wfgraph/shared/graph/node-references";
 import {
   absentOn,
   reachableEventFields,
@@ -26,7 +32,13 @@ import {
 } from "@wfgraph/shared/graph/value-targets";
 import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
 import { flattenConfigFields } from "@wfgraph/shared/plugins/action-fields";
-import { waitValueTargetsFor } from "@wfgraph/shared/lifecycle/wait-subscription";
+import {
+  waitTemplateKeysIn,
+  waitValueTargetsFor,
+} from "@wfgraph/shared/lifecycle/wait-subscription";
+import { findEntityTemplateSource } from "@wfgraph/shared/lifecycle/entity-eligibility";
+import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
+import { readJsonObjectLeniently } from "@wfgraph/shared/types/json";
 import { getNodeLabel } from "#src/backend/services/workflows/validation/workflow-graph";
 
 export type WorkflowTemplateValidationResult =
@@ -88,13 +100,6 @@ function valueTargets(
   return targets;
 }
 
-/** Whether any of this config's own values could carry a token at all. */
-function holdsTemplate(config: Record<string, unknown>): boolean {
-  return Object.values(config).some(
-    (value) => typeof value === "string" && value.includes("{{")
-  );
-}
-
 export function validateWorkflowTemplates(input: {
   nodes: readonly WorkflowNode[];
   edges: readonly WorkflowEdge[];
@@ -105,16 +110,74 @@ export function validateWorkflowTemplates(input: {
   // operator typed inside a template token, and a plain object would answer a
   // token named `constructor` or `toString` with a prototype member.
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const lifecycleRules = nodes
+    .filter((node) => node.data.type === "lifecycle")
+    .map((node) => readLifecycleRules(node.data.config))
+    .find((rules) => rules !== undefined);
+  const entitySource = findEntityTemplateSource({
+    rules: lifecycleRules,
+    catalog,
+  });
 
   for (const node of nodes) {
     const config = node.data.config;
-    // Reconciling costs a walk up to the entry node, and this runs on every
-    // autosave, so a node with nothing to interpolate is passed over before it.
-    if (node.data.type !== "action" || !config || !holdsTemplate(config)) {
+    const jsonConfig = readJsonObjectLeniently(config);
+    if (node.data.type !== "action" || !config || !jsonConfig) {
+      continue;
+    }
+
+    const references = extractAllTemplateReferences(jsonConfig);
+    if (references.length === 0) {
       continue;
     }
 
     const targets = valueTargets(node, catalog);
+    const activeWaitKeys =
+      actionTypeOf(node) === BUILT_IN_ACTION_IDS.wait
+        ? new Set<string>(waitTemplateKeysIn(config))
+        : undefined;
+    for (const reference of references) {
+      const topLevelKey = reference.field.split(".", 1)[0] ?? reference.field;
+      const target = targets.get(topLevelKey);
+      if (
+        !isEntityStateSourceId(reference.nodeId) ||
+        target?.literal ||
+        topLevelKey === "actionType" ||
+        topLevelKey === "condition" ||
+        topLevelKey === "conditionModel" ||
+        (activeWaitKeys !== undefined && !activeWaitKeys.has(topLevelKey))
+      ) {
+        continue;
+      }
+
+      const field =
+        entitySource && reference.sourceType === entitySource.type
+          ? referenceFieldForPath(entitySource.stateFields, reference.fieldPath)
+          : undefined;
+      const where = `Node "${getNodeLabel(node)}" reads ${reference.displayText}`;
+      if (!entitySource) {
+        return {
+          valid: false,
+          error: `${where}, but Entity data is available only while Entity Eligibility is configured.`,
+        };
+      }
+      if (!reference.fieldPath || !field) {
+        return {
+          valid: false,
+          error: `${where}, which Entity "${entitySource.type}" does not declare.`,
+        };
+      }
+
+      if (
+        target?.type &&
+        !targetAccepts(field, target.type, { allowNumber: true })
+      ) {
+        return {
+          valid: false,
+          error: `${where} into ${topLevelKey}, which takes a ${target.type}. That path is a ${field.type}.`,
+        };
+      }
+    }
     // The entry node's output is the payload of whichever Event put the run
     // here, and several Events can. An action's output has one shape, so only a
     // reference to the entry node needs reconciling.

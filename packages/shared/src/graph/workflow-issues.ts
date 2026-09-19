@@ -19,9 +19,12 @@ import {
   type GroupContractRule,
   groupContractViolations,
 } from "#src/graph/group-contract";
-import { readConfigTrimmedString } from "#src/graph/node-config";
+import { isWaitNode, readConfigTrimmedString } from "#src/graph/node-config";
 import { checkCancelFilters } from "#src/lifecycle/cancel-filters";
-import { checkEntityEligibility } from "#src/lifecycle/entity-eligibility";
+import {
+  checkEntityEligibility,
+  findEntityTemplateSource,
+} from "#src/lifecycle/entity-eligibility";
 import {
   checkLifecycleRules,
   type LifecycleRules,
@@ -29,7 +32,12 @@ import {
   readLifecycleRules,
 } from "#src/lifecycle/lifecycle-rules";
 import { checkStartFilters } from "#src/lifecycle/start-filters";
-import { extractAllTemplateReferences } from "#src/graph/node-references";
+import { waitTemplateKeysIn } from "#src/lifecycle/wait-subscription";
+import {
+  extractAllTemplateReferences,
+  isEntityStateSourceId,
+  referenceFieldForPath,
+} from "#src/graph/node-references";
 import type { WorkflowEdge, WorkflowNode } from "#src/graph/types";
 import { flattenConfigFields } from "#src/plugins/action-fields";
 import { readJsonObjectLeniently } from "#src/types/json";
@@ -77,7 +85,7 @@ export type UnverifiedProviderFieldIssue = {
 
 export type BrokenReferenceIssue = {
   kind: "broken_reference";
-  severity: "warning";
+  severity: "warning" | "blocking";
   nodeId: string;
   nodeLabel: string;
   fieldKey: string;
@@ -391,6 +399,14 @@ function collectBrokenReferenceIssues(input: {
   catalog: ExtensionCatalog;
 }): BrokenReferenceIssue[] {
   const nodeIds = new Set(input.nodes.map((node) => node.id));
+  const lifecycleRules = input.nodes
+    .filter((node) => node.data.type === "lifecycle")
+    .map((node) => readLifecycleRules(node.data.config))
+    .find((rules) => rules !== undefined);
+  const entitySource = findEntityTemplateSource({
+    rules: lifecycleRules,
+    catalog: input.catalog,
+  });
   const issues: BrokenReferenceIssue[] = [];
 
   for (const node of input.nodes) {
@@ -405,18 +421,42 @@ function collectBrokenReferenceIssues(input: {
       continue;
     }
 
-    const brokenRefs = extractAllTemplateReferences(config).filter(
-      (ref) => !nodeIds.has(ref.nodeId)
-    );
-    if (brokenRefs.length === 0) {
-      continue;
-    }
-
     const actionType = readConfigTrimmedString(config, "actionType");
     const action = actionType
       ? findAction(input.catalog, actionType)
       : undefined;
     const flatFields = action ? flattenConfigFields(action.configFields) : [];
+    const activeWaitKeys = isWaitNode(node)
+      ? new Set<string>(waitTemplateKeysIn(config))
+      : undefined;
+    const brokenRefs = extractAllTemplateReferences(config).filter((ref) => {
+      const topLevelKey = ref.field.split(".", 1)[0] ?? ref.field;
+      const field = flatFields.find(
+        (candidate) => candidate.key === topLevelKey
+      );
+      if (
+        field?.literal ||
+        topLevelKey === "actionType" ||
+        topLevelKey === "condition" ||
+        topLevelKey === "conditionModel" ||
+        (activeWaitKeys !== undefined && !activeWaitKeys.has(topLevelKey))
+      ) {
+        return false;
+      }
+      if (isEntityStateSourceId(ref.nodeId)) {
+        return !(
+          entitySource &&
+          ref.sourceType === entitySource.type &&
+          ref.fieldPath &&
+          referenceFieldForPath(entitySource.stateFields, ref.fieldPath)
+        );
+      }
+      return !nodeIds.has(ref.nodeId);
+    });
+    if (brokenRefs.length === 0) {
+      continue;
+    }
+
     const nodeLabel = workflowNodeLabel({
       node,
       actionLabel: action?.label,
@@ -426,16 +466,19 @@ function collectBrokenReferenceIssues(input: {
     for (const ref of brokenRefs) {
       const fieldLabel =
         flatFields.find((field) => field.key === ref.field)?.label ?? ref.field;
+      const entityReference = isEntityStateSourceId(ref.nodeId);
       issues.push({
         kind: "broken_reference",
-        severity: "warning",
+        severity: entityReference ? "blocking" : "warning",
         nodeId: node.id,
         nodeLabel,
         fieldKey: ref.field,
         fieldLabel,
         referencedNodeId: ref.nodeId,
         displayText: ref.displayText,
-        message: `Node "${nodeLabel}" references missing step in ${fieldLabel}`,
+        message: entityReference
+          ? `Node "${nodeLabel}" references unavailable Entity data in ${fieldLabel}`
+          : `Node "${nodeLabel}" references missing step in ${fieldLabel}`,
       });
     }
   }
@@ -534,6 +577,11 @@ function blocksDraftRun(issue: WorkflowIssue): boolean {
       return false;
     case "invalid_lifecycle_rules":
       return issue.check === "rules";
+    case "broken_reference":
+      return (
+        issue.severity === "blocking" &&
+        !isEntityStateSourceId(issue.referencedNodeId)
+      );
     default:
       return issue.severity === "blocking";
   }

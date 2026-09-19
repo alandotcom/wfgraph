@@ -6,6 +6,7 @@
  */
 
 import type { WorkflowActions } from "#src/backend/engine/actions";
+import type { EntityTemplateContext } from "#src/backend/engine/entities";
 import type {
   ExecutionResult,
   NodeOutputs,
@@ -62,6 +63,8 @@ export type NodeWorkContext = {
   workflowRunId: string;
   runMode: "live" | "test";
   startPayload: JsonObject;
+  /** Current Entity values referenced by this node, keyed by field path. */
+  entityContext?: EntityTemplateContext | undefined;
   /** Event the nodes running now arrived on. */
   eventName: string | null;
   /** Published catalog fingerprint. */

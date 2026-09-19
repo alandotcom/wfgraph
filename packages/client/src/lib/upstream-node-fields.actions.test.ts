@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  getEntityTemplateSource,
   getUpstreamConditionFields,
   getUpstreamFields,
 } from "#src/lib/upstream-node-fields";
@@ -14,6 +15,73 @@ import {
   type MutableCatalog,
 } from "#src/lib/upstream-node-fields-test-support";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
+
+describe("Entity template source", () => {
+  let surface: MutableCatalog;
+  beforeEach(() => {
+    surface = createSurface();
+    surface.entities = [
+      {
+        type: "patient",
+        label: "Patient",
+        stateFields: [
+          { path: "name", type: "string" },
+          { path: "journey.status", type: "string" },
+        ],
+        stateSchemaDigest: "patient-state",
+      },
+    ];
+  });
+
+  function lifecycle(input: { tracked: boolean; eligible: boolean }) {
+    return createNode({
+      id: "lifecycle-1",
+      type: "lifecycle",
+      label: "Lifecycle",
+      config: {
+        lifecycleRules: {
+          startEvents: [],
+          cancelEvents: [],
+          concurrency: "unlimited",
+          ...(input.tracked
+            ? { trackedEntity: { type: "patient", bindings: {} } }
+            : {}),
+          ...(input.eligible
+            ? {
+                entityEligibility: {
+                  condition: "condition",
+                  checkpoints: ["before-node"],
+                },
+              }
+            : {}),
+        },
+      },
+    });
+  }
+
+  it("offers current Entity fields when tracking and Eligibility are configured", () => {
+    expect(
+      getEntityTemplateSource({
+        nodes: [lifecycle({ tracked: true, eligible: true })],
+        catalog: surface,
+      })
+    ).toEqual({
+      sourceId: "$entity",
+      sourceName: "Patient",
+      sourceType: "patient",
+      fields: surface.entities[0]?.stateFields,
+    });
+  });
+
+  it("does not offer Entity fields when Eligibility is absent", () => {
+    expect(
+      getEntityTemplateSource({
+        nodes: [lifecycle({ tracked: true, eligible: false })],
+        catalog: surface,
+      })
+    ).toBeUndefined();
+  });
+});
 
 describe("upstream-node-fields actions", () => {
   // A catalog of its own per case: nothing here outlives the `it` that

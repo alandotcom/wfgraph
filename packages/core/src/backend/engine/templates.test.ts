@@ -26,6 +26,25 @@ describe("resolveTemplateString", () => {
     );
   });
 
+  it("resolves Entity references from node-local values instead of outputs", () => {
+    expect(
+      resolveTemplateString(
+        "Hello {{@$entity:patient|Patient.profile.name}}",
+        {},
+        {
+          sourceId: "$entity",
+          entityType: "patient",
+          values: { "profile.name": "Ada" },
+        }
+      )
+    ).toBe("Hello Ada");
+  });
+
+  it("leaves an Entity reference authored when no Entity snapshot is present", () => {
+    const template = "Hello {{@$entity:patient|Patient.name}}";
+    expect(resolveTemplateString(template, {})).toBe(template);
+  });
+
   it("stores a prototype-shaped node id as an ordinary output key", () => {
     const traversal = new Traversal([], []);
     const result = { success: true as const, data: { value: "safe" } };
