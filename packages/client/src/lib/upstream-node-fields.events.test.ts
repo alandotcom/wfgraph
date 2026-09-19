@@ -646,12 +646,14 @@ describe("upstream-node-fields events", () => {
         name: "billing/payment.settled",
         schema: Schema.Struct({
           amount: Schema.String.annotate({ description: "Amount" }),
+          passed: Schema.Boolean,
         }),
       }),
       anEvent({
         name: "billing/payment.failed",
         schema: Schema.Struct({
           reason: Schema.String.annotate({ description: "Why" }),
+          passed: Schema.Boolean,
         }),
       }),
     ];
@@ -669,6 +671,7 @@ describe("upstream-node-fields events", () => {
             { event: "billing/payment.settled" },
             { event: "billing/payment.failed" },
           ],
+          waitTimeoutBehavior: "continue",
         },
       }),
       createNode({
@@ -698,11 +701,59 @@ describe("upstream-node-fields events", () => {
             field.path !== EVENT_NAME_FIELD_PATH
         )
         .map((field) => field.path)
-    ).toEqual(["amount", "reason"]);
+    ).toEqual(["amount", "passed", "reason"]);
+    expect(fields.find((field) => field.path === "passed")).toMatchObject({
+      nullable: true,
+    });
     expect(
       fields.find((field) => field.path === EVENT_NAME_FIELD_PATH)
     ).toMatchObject({
       enumValues: ["billing/payment.settled", "billing/payment.failed"],
+      nullable: true,
     });
+  });
+
+  it("keeps an Event field required when the Wait stops on timeout", () => {
+    surface.events = [
+      anEvent({
+        name: "billing/payment.settled",
+        schema: Schema.Struct({ passed: Schema.Boolean }),
+      }),
+    ];
+
+    const nodes: WorkflowNode[] = [
+      anEntryNode({ startEvents: [] }),
+      createNode({
+        id: "wait-1",
+        type: "action",
+        label: "Wait",
+        config: {
+          actionType: "Wait",
+          waitMode: "event",
+          waitFor: [{ event: "billing/payment.settled" }],
+          waitTimeoutBehavior: "skip",
+        },
+      }),
+      createNode({
+        id: "after-wait",
+        type: "action",
+        label: "Decide",
+        config: { actionType: "Condition" },
+      }),
+    ];
+
+    const fields = getUpstreamConditionFields({
+      catalog: surface,
+      currentNodeId: "after-wait",
+      nodes,
+      edges: [
+        startedEdge("wait-1"),
+        createEdge({ id: "e2", source: "wait-1", target: "after-wait" }),
+      ],
+    });
+
+    expect(
+      fields.find((field) => field.path === "passed")?.nullable
+    ).toBeUndefined();
   });
 });

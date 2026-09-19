@@ -14,7 +14,10 @@ import {
   createDefaultConditionModel,
   EVENT_NAME_FIELD_PATH,
 } from "@wfgraph/shared/conditions/conditions";
-import { eventsReaching } from "@wfgraph/shared/graph/events-reaching";
+import {
+  arrivingEventCanBeAbsent,
+  eventsReaching,
+} from "@wfgraph/shared/graph/events-reaching";
 import {
   appendOutputPathKey,
   ENTITY_STATE_SOURCE_ID,
@@ -244,7 +247,14 @@ export function getNodeOutputFields(
   // so what it offers is every path the Events that still could have declare,
   // each carrying what they agree on.
   if (node.data.type === "lifecycle") {
-    return entryPayloadFields(eventsReachingTarget(request));
+    const fields = entryPayloadFields(eventsReachingTarget(request));
+    return arrivingEventCanBeAbsent({
+      targetNodeId: request.targetNodeId,
+      nodes: request.nodes,
+      edges: request.edges,
+    })
+      ? fields.map((field) => ({ ...field, nullable: true }))
+      : fields;
   }
 
   // An action type the catalog cannot find -- a stale graph naming a plugin
@@ -487,7 +497,7 @@ function eventNameConditionField(input: {
     return [];
   }
 
-  return eventNameFieldFor({
+  const fields = eventNameFieldFor({
     sourceNodeId: entryNode.id,
     events: eventsReachingTarget({
       targetNodeId: currentNodeId,
@@ -496,6 +506,14 @@ function eventNameConditionField(input: {
       catalog,
     }),
   });
+
+  return arrivingEventCanBeAbsent({
+    targetNodeId: currentNodeId,
+    nodes,
+    edges,
+  })
+    ? fields.map((field) => ({ ...field, nullable: true }))
+    : fields;
 }
 
 /**
