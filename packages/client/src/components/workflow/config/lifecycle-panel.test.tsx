@@ -287,15 +287,22 @@ describe("LifecyclePanel", () => {
   });
 
   it("closes the Start Event picker after a selection", async () => {
+    let latest: Record<string, unknown> = {};
     const view = renderWithCatalog(
-      <ControlledPanel onConfigChange={() => undefined} />
+      <ControlledPanel
+        onConfigChange={(config) => {
+          latest = config;
+        }}
+      />
     );
     const input = view.getByLabelText("Start Events");
 
     fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(input.getAttribute("aria-expanded")).toBe("true");
     fireEvent.keyDown(input, { key: "Enter" });
 
     await waitFor(() => {
+      expect(rulesOf(latest).startEvents).toEqual(["app/appointment.created"]);
       expect(input.getAttribute("aria-expanded")).toBe("false");
     });
   });
