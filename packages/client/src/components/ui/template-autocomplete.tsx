@@ -351,11 +351,12 @@ export function useTemplateAutocompleteRows(input: {
       return visibleOptions;
     }
 
-    const matched = visibleOptions.filter(
-      (opt) =>
-        opt.nodeName.toLowerCase().includes(trimmedFilter) ||
-        (opt.field && opt.field.toLowerCase().includes(trimmedFilter))
-    );
+    const matched = visibleOptions.filter((option) => {
+      const displayedPath = option.field
+        ? `${option.nodeName}.${option.field}`
+        : option.nodeName;
+      return displayedPath.toLowerCase().includes(trimmedFilter);
+    });
 
     // Matched case-sensitively, because a record key is compared as written: a
     // tag named `orderId` is a different key from `orderid`. A key the graph

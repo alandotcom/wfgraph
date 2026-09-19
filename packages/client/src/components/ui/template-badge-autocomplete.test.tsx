@@ -611,6 +611,22 @@ describe("Template badge autocomplete", () => {
     });
   });
 
+  it("keeps matching a node's fields after its name and a period are typed", async () => {
+    const view = renderWithCatalog(
+      <PlaceholderTemplateBadgeInput onValueChange={() => {}} />
+    );
+
+    typeTemplateFilter(view.getByRole("textbox"), "Webhook.");
+
+    await waitFor(() => {
+      expect(menuRows()).toEqual([
+        "Webhook.patientNamePatient name",
+        "Webhook.occurredAtWhen it happened",
+        "Webhook.amountCentsAmount in cents",
+      ]);
+    });
+  });
+
   it("stays closed for the @ inside a badge already placed", async () => {
     const view = renderWithCatalog(
       <ControlledTemplateBadgeInput onValueChange={() => {}} />
