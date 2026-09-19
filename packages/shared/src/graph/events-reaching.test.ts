@@ -841,6 +841,54 @@ describe("arrivingEventCanBeAbsent", () => {
     ).toBe(false);
   });
 
+  it("follows the Condition branch an absent Event can take", () => {
+    const nodes = [
+      entryNode({ startEvents: [CREATED] }),
+      waitWithTimeout("wait-1", "continue"),
+      conditionNode("condition-1", [eventNameRule("equals", CANCELED)]),
+      actionNode("on-true"),
+      actionNode("on-false"),
+    ];
+    const edges = [
+      edge("e1", "lifecycle-1", "wait-1", LIFECYCLE_STARTED_HANDLE),
+      edge("e2", "wait-1", "condition-1"),
+      edge("e3", "condition-1", "on-true", "true"),
+      edge("e4", "condition-1", "on-false", "false"),
+    ];
+
+    expect(
+      arrivingEventCanBeAbsent({ targetNodeId: "on-true", nodes, edges })
+    ).toBe(false);
+    expect(
+      arrivingEventCanBeAbsent({ targetNodeId: "on-false", nodes, edges })
+    ).toBe(true);
+  });
+
+  it("does not pass an absent Event through an is-set Condition", () => {
+    const nodes = [
+      entryNode({ startEvents: [CREATED] }),
+      waitWithTimeout("wait-1", "continue"),
+      conditionNode("condition-1", [
+        {
+          id: "rule-event",
+          field: EVENT_NAME_FIELD_PATH,
+          fieldType: "string",
+          operator: "is_set",
+        },
+      ]),
+      actionNode("on-true"),
+    ];
+    const edges = [
+      edge("e1", "lifecycle-1", "wait-1", LIFECYCLE_STARTED_HANDLE),
+      edge("e2", "wait-1", "condition-1"),
+      edge("e3", "condition-1", "on-true", "true"),
+    ];
+
+    expect(
+      arrivingEventCanBeAbsent({ targetNodeId: "on-true", nodes, edges })
+    ).toBe(false);
+  });
+
   it("answers false for a delay Wait, which is not an Event source", () => {
     const nodes = [
       entryNode({ startEvents: [CREATED] }),

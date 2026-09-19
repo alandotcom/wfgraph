@@ -188,6 +188,59 @@ function modelCouldFail(input: ModelQuestion): boolean {
     : answers.every(Boolean);
 }
 
+/** The answer a rule can determine from an absent Arriving Event alone. */
+function ruleAnswerWithoutEvent(rule: ConditionRule): boolean | undefined {
+  if (rule.field.trim() !== EVENT_NAME_FIELD_PATH) {
+    return undefined;
+  }
+
+  if (isNullCheckConditionRule(rule)) {
+    return rule.operator === "is_not_set";
+  }
+
+  if (rule.operator === "equals" || rule.operator === "contains") {
+    return false;
+  }
+  if (rule.operator === "not_equals") {
+    return true;
+  }
+  if (isStringSetConditionRule(rule)) {
+    return rule.operator === "is_not_one_of";
+  }
+
+  return undefined;
+}
+
+/** Whether components with these possible answers can compose to `expected`. */
+function canComposeAnswer(
+  possible: readonly boolean[],
+  logic: "and" | "or",
+  expected: boolean
+): boolean {
+  if (logic === "and") {
+    return expected ? possible.every(Boolean) : possible.some(Boolean);
+  }
+  return expected ? possible.some(Boolean) : possible.every(Boolean);
+}
+
+/** Whether unknown payload values could let an Event-less run take this branch. */
+function modelCouldAnswerWithoutEvent(
+  model: ConditionModel,
+  expected: boolean
+): boolean {
+  const groups = model.groups.map((group) =>
+    canComposeAnswer(
+      group.conditions.map((rule) => {
+        const answer = ruleAnswerWithoutEvent(rule);
+        return answer === undefined || answer === expected;
+      }),
+      group.logic,
+      expected
+    )
+  );
+  return canComposeAnswer(groups, model.groupLogic, expected);
+}
+
 /**
  * The Events still possible past one line out of a Condition node.
  *
@@ -580,6 +633,17 @@ export function arrivingEventCanBeAbsent(input: {
       // naming the Event on one of its outlets, so an absent Event stops there.
       if (isLifecycleNode(parent) || isEventSplitNode(parent)) {
         return false;
+      }
+      if (isConditionActionNode(parent)) {
+        const branch = normalizeConditionBranch(edge.sourceHandle);
+        const parsed = parseConditionModel(parent.data.config?.conditionModel);
+        if (
+          branch &&
+          parsed.valid &&
+          !modelCouldAnswerWithoutEvent(parsed.model, branch === "true")
+        ) {
+          return false;
+        }
       }
       return absentAt(parent.id, nextSeen);
     });
