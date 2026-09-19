@@ -24,7 +24,7 @@ import {
   redoAtom,
   selectedNodeAtom,
   selectOnlyNodeAtom,
-  snapshotHistoryAtom,
+  deleteCanvasSelectionAtom,
   undoAtom,
   ungroupNodeAtom,
 } from "#src/lib/workflow-graph-store";
@@ -104,17 +104,12 @@ describe("Group mutations on the canvas", () => {
     expect(membersOf(store, frameId)).toEqual(["b", "c"]);
   });
 
-  it("ungroups when the Delete key removes members through React Flow", async () => {
+  it("ungroups when the canvas deletion removes members", async () => {
     const { store } = groupedStore();
     const before = graphOf(store);
 
-    // React Flow's own order: the undo snapshot, then the node pass. The
-    // members' interior edges are locked, so React Flow offers no edge pass.
-    store.set(snapshotHistoryAtom);
-    store.set(onNodesChangeAtom, [
-      { type: "remove", id: "a" },
-      { type: "remove", id: "b" },
-    ]);
+    boxSelect(store, ["a", "b"]);
+    store.set(deleteCanvasSelectionAtom);
     await tick();
 
     expect(store.get(nodesAtom).map((node) => node.id)).toEqual([

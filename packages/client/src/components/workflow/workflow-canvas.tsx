@@ -6,7 +6,6 @@ import {
   useReactFlow,
   useStoreApi,
   useUpdateNodeInternals,
-  type Edge as XYFlowEdge,
 } from "@xyflow/react";
 import { useAtom, useAtomValue, useAtomValueRawSync, useSetAtom } from "jotai";
 import {
@@ -33,14 +32,13 @@ import {
   displayNodesAtom,
   edgesAtom,
   canvasEditingLockedAtom,
-  deleteSelectedItemsAtom,
   executionOverlayGraphAtom,
   isExecutionOverlayActiveAtom,
   onEdgesChangeAtom,
   onNodesChangeAtom,
   redoAtom,
   canvasSelectionAtom,
-  snapshotHistoryAtom,
+  deleteCanvasSelectionAtom,
   undoAtom,
 } from "#src/lib/workflow-graph-store";
 import {
@@ -56,7 +54,6 @@ import {
 } from "#src/lib/workflow-ui-store";
 import { WORKFLOW_EDGE_TYPE } from "#src/lib/workflow-graph-types";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
-import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { ActionNode } from "./nodes/action-node";
 import { AddNode } from "./nodes/add-node";
 import {
@@ -170,8 +167,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const onEdgesChange = useSetAtom(onEdgesChangeAtom);
   const selection = useAtomValue(canvasSelectionAtom);
   const clearSelection = useClearWorkflowNodeInspection();
-  const snapshotHistory = useSetAtom(snapshotHistoryAtom);
-  const deleteSelectedItems = useSetAtom(deleteSelectedItemsAtom);
+  const deleteCanvasSelection = useSetAtom(deleteCanvasSelectionAtom);
   const undo = useSetAtom(undoAtom);
   const redo = useSetAtom(redoAtom);
   const inspectNode = useWorkflowNodeInspection();
@@ -477,51 +473,14 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
 
   useDomEvent(window, "keydown", handleFitViewShortcut);
 
-  /**
-   * Record the undo step for a deletion before React Flow starts removing.
-   *
-   * React Flow deletes in two passes, edges first and then nodes, so neither
-   * change handler ever sees the whole graph. Snapshotting there recorded two
-   * undo steps for one delete, and undoing once brought the node back without
-   * its edges.
-   */
-  const onBeforeDelete = useCallback(
-    ({
-      nodes: nodesToDelete,
-      edges: edgesToDelete,
-    }: {
-      nodes: WorkflowNode[];
-      edges: XYFlowEdge[];
-    }) => {
-      if (graphEditingLocked) {
-        return Promise.resolve(false);
-      }
-      // The Lifecycle Node cannot be deleted, so a selection holding only it
-      // deletes nothing. Cancelling keeps its edges and skips the undo step.
-      const deletesAnything =
-        nodesToDelete.some((node) => node.data.type !== "lifecycle") ||
-        edgesToDelete.length > 0;
-
-      if (!deletesAnything) {
-        return Promise.resolve(false);
-      }
-
-      // Removing a frame ungroups it. React Flow would instead take every
-      // member and the painted edges on the frame's handles, which stand for
-      // stored edges on the members. A batch holding a frame is therefore
-      // handed to the store's selection delete, which removes only the selected
-      // members and records its own undo step. The delete key only ever deletes
-      // the selection, so both name one batch.
-      if (nodesToDelete.some((node) => isGroupNode(node))) {
-        deleteSelectedItems();
-        return Promise.resolve(false);
-      }
-
-      snapshotHistory();
-      return Promise.resolve(true);
-    },
-    [deleteSelectedItems, graphEditingLocked, snapshotHistory]
-  );
+  // The store deletes the selection as one operation. Stop React Flow from
+  // following it with partial edge/node removals or implied Group descendants.
+  const onBeforeDelete = useCallback(() => {
+    if (!graphEditingLocked) {
+      deleteCanvasSelection();
+    }
+    return Promise.resolve(false);
+  }, [deleteCanvasSelection, graphEditingLocked]);
 
   // React Flow writes the selection itself through `select` changes wherever
   // it receives the node change handler for the Draft; everywhere else a click

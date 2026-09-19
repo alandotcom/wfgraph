@@ -24,8 +24,6 @@ import {
 } from "@wfgraph/shared/graph/node-references";
 import { layoutWorkflowNodes } from "#src/components/workflow/workflow-layout";
 import {
-  expandEdgeRemovals,
-  removeNodes,
   repairCanvasGroups,
   storedEdgeIdsForPaintedEdge,
 } from "#src/lib/node-group";
@@ -90,8 +88,11 @@ export {
 } from "#src/lib/workflow-graph-cells";
 export {
   connectNodesAtom,
+  deleteCanvasSelectionAtom,
   deleteEdgeAtom,
   deleteGroupWithMembersAtom,
+  deleteNodeAtom,
+  deleteSelectedItemsAtom,
   groupSelectionAtom,
   ungroupNodeAtom,
 } from "#src/lib/workflow-group-store";
@@ -186,20 +187,6 @@ export const repairIntegrationsAtom = atom(
 );
 
 /**
- * Record one undo step for a change the canvas is about to make itself.
- *
- * React Flow deletes in two passes, edges then nodes, so by the time either
- * change handler runs the graph is already half gone. The canvas calls this
- * from `onBeforeDelete`, which is the last moment the graph is still whole.
- */
-export const snapshotHistoryAtom = atom(null, (get, set) => {
-  if (!draftEditable(get)) {
-    return;
-  }
-  pushHistory(get, set);
-});
-
-/**
  * The selected nodes and edges of the active workspace address, whichever
  * graph it presents. Write through `selectOnlyNodeAtom`, `clearSelectionAtom`,
  * or the React Flow change handlers.
@@ -259,21 +246,9 @@ export const onNodesChangeAtom = atom(
 
     const currentNodes = get(nodesStateAtom);
 
-    // Lifecycle Nodes are the workflow's entrypoint; the graph is invalid
-    // without one, so drop any attempt to remove them.
-    const filteredChanges = changes.filter((change) => {
-      if (change.type === "select") {
-        return false;
-      }
-      if (change.type === "remove") {
-        const nodeToRemove = currentNodes.find((n) => n.id === change.id);
-        return nodeToRemove?.data.type !== "lifecycle";
-      }
-      return true;
-    });
-
-    const hasRemoval = filteredChanges.some(
-      (change) => change.type === "remove"
+    // Deletion is a complete operation, never a partial React Flow change batch.
+    const filteredChanges = changes.filter(
+      (change) => change.type !== "select" && change.type !== "remove"
     );
     const isDragFrame = filteredChanges.some(
       (change) => change.type === "position" && change.dragging === true
@@ -282,10 +257,6 @@ export const onNodesChangeAtom = atom(
       (change) => change.type === "position" && change.dragging === false
     );
 
-    // Removals are snapshotted by `snapshotHistoryAtom` before React Flow
-    // starts emitting changes, because it splits one deletion into an edge
-    // batch and a node batch. Snapshotting here would record two undo steps
-    // for one delete, and a single undo would restore only half of it.
     if (isDragFrame && !get(workflowDragActiveAtom)) {
       // A drag arrives as a stream of frames. Only the first still has the
       // pre-drag positions worth snapshotting.
@@ -298,35 +269,10 @@ export const onNodesChangeAtom = atom(
     }
 
     if (filteredChanges.length > 0) {
-      const changedNodes = applyNodeChanges<WorkflowNode>(
-        filteredChanges.filter((change) => change.type !== "remove"),
-        currentNodes
+      set(
+        nodesStateAtom,
+        applyNodeChanges<WorkflowNode>(filteredChanges, currentNodes)
       );
-      // Removals go through `removeNodes`, which every delete path shares. It
-      // removes the stored edges React Flow never offered to delete, such as a
-      // member's locked interior edges, ungroups a removed frame, and ungroups
-      // a frame the removal leaves holding fewer than two steps, all inside the
-      // undo step `snapshotHistoryAtom` recorded. A drag removes nothing and
-      // skips it.
-      const removal = hasRemoval
-        ? removeNodes({
-            nodes: changedNodes,
-            edges: get(edgesStateAtom),
-            nodeIds: new Set(
-              filteredChanges.flatMap((change) =>
-                change.type === "remove" ? [change.id] : []
-              )
-            ),
-          })
-        : undefined;
-      set(nodesStateAtom, removal?.nodes ?? changedNodes);
-
-      // `removeNodes` answers the same edge array when it removed no edge, and
-      // jotai skips a write of the value it already holds.
-      if (removal) {
-        set(edgesStateAtom, removal.edges);
-        keepSelectionInDraft(get, set);
-      }
     }
 
     // The config panel focuses a new node only while it is the one selection.
@@ -335,9 +281,7 @@ export const onNodesChangeAtom = atom(
       set(newlyCreatedNodeIdAtom, null);
     }
 
-    if (hasRemoval) {
-      requestGraphSave(get, set, { immediate: true });
-    } else if (isDragSettled) {
+    if (isDragSettled) {
       // Only a settled drag is worth saving; saving mid-drag would fire per frame.
       requestGraphSave(get, set);
     }
@@ -358,25 +302,14 @@ export const onEdgesChangeAtom = atom(
       return;
     }
 
-    // No history push here; see the note in onNodesChangeAtom.
-    const graphChanges = changes.filter((change) => change.type !== "select");
+    // Deletion goes through the complete graph operation instead.
+    const graphChanges = changes.filter(
+      (change) => change.type !== "select" && change.type !== "remove"
+    );
     if (graphChanges.length === 0) {
       return;
     }
-    const hasRemoval = graphChanges.some((change) => change.type === "remove");
-    const currentEdges = get(edgesStateAtom);
-    const expandedChanges = expandEdgeRemovals(
-      get(nodesStateAtom),
-      currentEdges,
-      graphChanges,
-      get(activeWorkspaceAddressAtom).scope
-    );
-    set(edgesStateAtom, applyEdgeChanges(expandedChanges, currentEdges));
-
-    if (hasRemoval) {
-      keepSelectionInDraft(get, set);
-      requestGraphSave(get, set, { immediate: true });
-    }
+    set(edgesStateAtom, applyEdgeChanges(graphChanges, get(edgesStateAtom)));
   }
 );
 
@@ -1155,87 +1088,6 @@ function updateTemplatesInConfig(
     });
   });
 }
-
-export const deleteNodeAtom = atom(null, (get, set, nodeId: string) => {
-  if (!draftEditable(get)) {
-    return;
-  }
-
-  const currentNodes = get(nodesStateAtom);
-  const currentEdges = get(edgesStateAtom);
-
-  // A frame is ungrouped and keeps its members, a step goes with its stored
-  // edges, and a frame left holding fewer than two steps is ungrouped.
-  const next = removeNodes({
-    nodes: currentNodes,
-    edges: currentEdges,
-    nodeIds: new Set([nodeId]),
-  });
-  if (next.nodes === currentNodes && next.edges === currentEdges) {
-    return;
-  }
-
-  pushHistory(get, set);
-  set(nodesStateAtom, next.nodes);
-  set(edgesStateAtom, next.edges);
-
-  // The selection can name the deleted step, a frame the delete ungrouped, or
-  // a frame dissolved because the delete left it too small.
-  keepSelectionInDraft(get, set);
-
-  requestGraphSave(get, set, { immediate: true });
-});
-
-export const deleteSelectedItemsAtom = atom(null, (get, set) => {
-  if (!draftEditable(get)) {
-    return;
-  }
-
-  const currentNodes = get(nodesStateAtom);
-  const currentEdges = get(edgesStateAtom);
-  const selection = get(activeSelectionAtom);
-  const { scope } = get(activeWorkspaceAddressAtom);
-
-  // `removeNodes` keeps the Lifecycle Node, which the graph needs as its
-  // entrypoint, removes the selected steps, ungroups a selected frame, and
-  // ungroups a frame the removal leaves holding fewer than two steps.
-  const selectedFanOut = new Set(
-    selection.edgeIds.flatMap((edgeId) =>
-      storedEdgeIdsForPaintedEdge({
-        nodes: currentNodes,
-        edges: currentEdges,
-        edgeId,
-        scope,
-      })
-    )
-  );
-  const removal = removeNodes({
-    nodes: currentNodes,
-    edges: currentEdges,
-    nodeIds: new Set(selection.nodeIds),
-  });
-  const remainingNodes = removal.nodes;
-  const remainingEdges =
-    selectedFanOut.size === 0
-      ? removal.edges
-      : removal.edges.filter((edge) => !selectedFanOut.has(edge.id));
-
-  // Selecting only the Lifecycle Node and pressing delete removes nothing, and
-  // an undo step for a change that did not happen is worse than no undo step.
-  if (
-    remainingNodes === currentNodes &&
-    remainingEdges.length === currentEdges.length
-  ) {
-    return;
-  }
-
-  pushHistory(get, set);
-  set(nodesStateAtom, remainingNodes);
-  set(edgesStateAtom, remainingEdges);
-  set(activeSelectionAtom, EMPTY_SELECTION);
-
-  requestGraphSave(get, set, { immediate: true });
-});
 
 /**
  * Strip the workflow back to its Lifecycle Node.

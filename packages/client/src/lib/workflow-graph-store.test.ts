@@ -41,7 +41,7 @@ import {
   recordObservedRemoteDraftRevisionAtom,
   remoteDraftChangeAtom,
   setNodeStatusesAtom,
-  snapshotHistoryAtom,
+  deleteCanvasSelectionAtom,
   redoAtom,
   undoAtom,
   updateNodeDataAtom,
@@ -233,18 +233,10 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-/**
- * What React Flow does when the Delete key removes node "a".
- *
- * Mirrors `deleteElements` in @xyflow/react 12.10: `onBeforeDelete` runs while
- * the graph is still whole, then edges are removed, then nodes — three separate
- * calls into the store for one user action. The canvas wires the first of those
- * to `snapshotHistoryAtom`.
- */
-function deleteNodeViaReactFlow(store: Store) {
-  store.set(snapshotHistoryAtom);
-  store.set(onEdgesChangeAtom, [{ type: "remove", id: "e1" }]);
-  store.set(onNodesChangeAtom, [{ type: "remove", id: "a" }]);
+/** Delete a selected node through the complete canvas operation. */
+function deleteCanvasNode(store: Store) {
+  store.set(activeSelectionAtom, { nodeIds: ["a"], edgeIds: [] });
+  store.set(deleteCanvasSelectionAtom);
 }
 
 /**
@@ -278,12 +270,12 @@ describe("graph mutations are undoable and persisted", () => {
           data: { label: "Renamed action" },
         }),
     ],
-    ["node deleted with the Delete key", deleteNodeViaReactFlow],
+    ["canvas node deletion", deleteCanvasNode],
     [
       "edge deleted with the Delete key",
       (store) => {
-        store.set(snapshotHistoryAtom);
-        store.set(onEdgesChangeAtom, [{ type: "remove", id: "e1" }]);
+        store.set(activeSelectionAtom, { nodeIds: [], edgeIds: ["e1"] });
+        store.set(deleteCanvasSelectionAtom);
       },
     ],
     [
@@ -352,6 +344,50 @@ describe("graph mutations are undoable and persisted", () => {
   }
 });
 
+describe("complete canvas deletion", () => {
+  it("keeps a surviving Lifecycle selection and saves only the final graph", async () => {
+    const store = createGraphStore(...standardGraph());
+    const before = { nodes: store.get(nodesAtom), edges: store.get(edgesAtom) };
+    const lifecycleId = before.nodes.find(
+      (node) => node.data.type === "lifecycle"
+    )?.id;
+    if (!lifecycleId) throw new Error("expected a Lifecycle fixture");
+    store.set(activeSelectionAtom, {
+      nodeIds: [lifecycleId, "a"],
+      edgeIds: ["e1"],
+    });
+    store.set(deleteCanvasSelectionAtom);
+    await tick();
+    expect(updateMock).toHaveBeenCalledOnce();
+    expect(store.get(activeSelectionAtom)).toEqual({
+      nodeIds: [lifecycleId],
+      edgeIds: [],
+    });
+    expect(
+      store
+        .get(edgesAtom)
+        .every((item) => item.source !== "a" && item.target !== "a")
+    ).toBe(true);
+    store.set(undoAtom);
+    expect(store.get(nodesAtom)).toEqual(before.nodes);
+    expect(store.get(edgesAtom)).toEqual(before.edges);
+    expect(store.get(canUndoAtom)).toBe(false);
+  });
+
+  it("ignores partial React Flow removals", async () => {
+    const store = createGraphStore(...standardGraph());
+    const nodes = store.get(nodesAtom);
+    const edges = store.get(edgesAtom);
+    store.set(onEdgesChangeAtom, [{ type: "remove", id: "e1" }]);
+    store.set(onNodesChangeAtom, [{ type: "remove", id: "a" }]);
+    await tick();
+    expect(store.get(nodesAtom)).toBe(nodes);
+    expect(store.get(edgesAtom)).toBe(edges);
+    expect(store.get(canUndoAtom)).toBe(false);
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+});
+
 describe("selection", () => {
   it("records no undo step, no dirty flag, and no save", async () => {
     const store = createGraphStore(...standardGraph());
@@ -413,7 +449,7 @@ describe("graph history", () => {
   it("undoes a deleted node and its edges in one step", () => {
     const store = createGraphStore(...standardGraph());
 
-    deleteNodeViaReactFlow(store);
+    deleteCanvasNode(store);
     expect(store.get(nodesAtom).map((node) => node.id)).toEqual(["t", "b"]);
     expect(store.get(edgesAtom)).toEqual([]);
 
@@ -1914,11 +1950,11 @@ describe("groupSelectionAtom", () => {
     const frameId = store.get(nodesAtom).find((node) => isGroupNode(node))?.id;
     expect(frameId).toBeDefined();
 
-    store.set(snapshotHistoryAtom);
-    store.set(onNodesChangeAtom, [
-      { type: "remove", id: frameId ?? "" },
-      { type: "remove", id: "a" },
-    ]);
+    store.set(activeSelectionAtom, {
+      nodeIds: [frameId ?? "", "a"],
+      edgeIds: [],
+    });
+    store.set(deleteCanvasSelectionAtom);
 
     const nodes = store.get(nodesAtom);
     expect(nodes.map((node) => node.id)).toEqual(["life", "b", "c"]);

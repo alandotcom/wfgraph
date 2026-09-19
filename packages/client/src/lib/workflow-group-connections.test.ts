@@ -21,9 +21,8 @@ import {
   edgesAtom,
   groupSelectionAtom,
   nodesAtom,
-  onEdgesChangeAtom,
+  deleteEdgeAtom,
   redoAtom,
-  snapshotHistoryAtom,
   undoAtom,
 } from "#src/lib/workflow-graph-store";
 import {
@@ -222,8 +221,7 @@ describe("parallel ingress fan-out", () => {
   it("deletes the painted inlet with every edge it stands for, and reconnects the same fan-out", async () => {
     const { store, frameId, grouped } = groupedFanOut();
 
-    store.set(snapshotHistoryAtom);
-    store.set(onEdgesChangeAtom, [{ type: "remove", id: "qualify-read" }]);
+    store.set(deleteEdgeAtom, "qualify-read");
     await tick();
     const withoutIngress = graphOf(store);
     expect(edgeIds(store)).toEqual([
@@ -304,8 +302,7 @@ describe("parallel ingress fan-out", () => {
 
     // The focused canvas paints each ingress edge under its stored id, so the
     // removal takes that edge and leaves its sibling.
-    store.set(snapshotHistoryAtom);
-    store.set(onEdgesChangeAtom, [{ type: "remove", id: "qualify-profile" }]);
+    store.set(deleteEdgeAtom, "qualify-profile");
     await tick();
     expect(edgeIds(store)).toEqual([
       "start-qualify",
@@ -444,7 +441,7 @@ describe("connection planning", () => {
 
   it("stores exactly the additions the preview planned against the same graph", async () => {
     const { store, frameId } = groupedFanOut();
-    store.set(onEdgesChangeAtom, [{ type: "remove", id: "qualify-read" }]);
+    store.set(deleteEdgeAtom, "qualify-read");
     await tick();
     const connection = { source: "other", target: frameId };
     const preview = planConnection({

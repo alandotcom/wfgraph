@@ -1,19 +1,19 @@
 /**
- * Group mutations on the canvas graph: wrap a selection, lift it back out,
- * delete a Group with its steps, connect through a frame (fan-out onto its
- * derived entries), and delete a painted edge and the stored edges it stands for.
- *
- * Graph cells stay in workflow-graph-cells; this file is the operations.
+ * Group-aware graph mutations: grouping, connections, and complete deletions.
+ * Every deletion resolves its targets before writing graph cells, records one
+ * undo step, repairs selection, and requests one save of the resulting graph.
  */
 
-import { atom } from "jotai";
+import { atom, type Getter, type Setter } from "jotai";
 import {
   groupSelection,
   removeGroupWithMembers,
+  removeNodes,
   storedEdgeIdsForPaintedEdge,
   ungroupNode,
 } from "#src/lib/node-group";
 import { generateId } from "@wfgraph/shared/utils/id";
+import type { WorkflowNode, WorkflowEdge } from "#src/lib/workflow-graph-types";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import {
@@ -117,18 +117,102 @@ export const deleteGroupWithMembersAtom = atom(
       edges: get(edgesStateAtom),
       groupId,
     });
-    if (next.nodes === nodes) {
-      return false;
-    }
-
-    pushHistory(get, set);
-    set(nodesStateAtom, next.nodes);
-    set(edgesStateAtom, next.edges);
-    set(activeSelectionAtom, EMPTY_SELECTION);
-    requestGraphSave(get, set, { immediate: true });
-    return true;
+    return commitDeletion(get, set, next, "clear");
   }
 );
+
+/** Commit one complete deletion; callers resolve targets before changing cells. */
+function commitDeletion(
+  get: Getter,
+  set: Setter,
+  input: { nodes: WorkflowNode[]; edges: WorkflowEdge[] },
+  selection: "clear" | "retain"
+): boolean {
+  if (
+    input.nodes === get(nodesStateAtom) &&
+    input.edges.length === get(edgesStateAtom).length
+  ) {
+    return false;
+  }
+  pushHistory(get, set);
+  set(nodesStateAtom, input.nodes);
+  set(edgesStateAtom, input.edges);
+  set(
+    activeSelectionAtom,
+    selection === "clear"
+      ? EMPTY_SELECTION
+      : selectionInGraph(get(activeSelectionAtom), input)
+  );
+  requestGraphSave(get, set, { immediate: true });
+  return true;
+}
+
+/** Resolve painted edges against the intact graph, then remove all targets together. */
+function deleteItems(
+  get: Getter,
+  set: Setter,
+  input: {
+    nodeIds: readonly string[];
+    edgeIds: readonly string[];
+    selection: "clear" | "retain";
+  }
+): void {
+  if (!draftEditable(get)) {
+    return;
+  }
+  const nodes = get(nodesStateAtom);
+  const edges = get(edgesStateAtom);
+  const scope = get(activeWorkspaceAddressAtom).scope;
+  const removedEdges = new Set(
+    input.edgeIds.flatMap((edgeId) =>
+      storedEdgeIdsForPaintedEdge({ nodes, edges, edgeId, scope })
+    )
+  );
+  const next =
+    input.nodeIds.length === 0
+      ? { nodes, edges }
+      : removeNodes({ nodes, edges, nodeIds: new Set(input.nodeIds) });
+  commitDeletion(
+    get,
+    set,
+    {
+      nodes: next.nodes,
+      edges:
+        removedEdges.size === 0
+          ? next.edges
+          : next.edges.filter((edge) => !removedEdges.has(edge.id)),
+    },
+    input.selection
+  );
+}
+
+export const deleteNodeAtom = atom(null, (get, set, nodeId: string) => {
+  deleteItems(get, set, {
+    nodeIds: [nodeId],
+    edgeIds: [],
+    selection: "retain",
+  });
+});
+
+export const deleteSelectedItemsAtom = atom(null, (get, set) => {
+  deleteItems(get, set, { ...get(activeSelectionAtom), selection: "clear" });
+});
+
+/**
+ * Delete the canvas selection, not React Flow's implied descendants or edges.
+ * A selected frame is ungrouped; ordinary deletion retains surviving selection.
+ */
+export const deleteCanvasSelectionAtom = atom(null, (get, set) => {
+  const selection = get(activeSelectionAtom);
+  const selectedIds = new Set(selection.nodeIds);
+  const includesFrame = get(nodesStateAtom).some(
+    (node) => selectedIds.has(node.id) && isGroupNode(node)
+  );
+  deleteItems(get, set, {
+    ...selection,
+    selection: includesFrame ? "clear" : "retain",
+  });
+});
 
 /**
  * Connect two nodes, recorded as an undo step like every graph mutation.
@@ -180,37 +264,9 @@ export const connectNodesAtom = atom(
 );
 
 export const deleteEdgeAtom = atom(null, (get, set, edgeId: string) => {
-  if (!draftEditable(get)) {
-    return;
-  }
-
-  const currentEdges = get(edgesStateAtom);
-  const removedIds = new Set(
-    storedEdgeIdsForPaintedEdge({
-      nodes: get(nodesStateAtom),
-      edges: currentEdges,
-      edgeId,
-      scope: get(activeWorkspaceAddressAtom).scope,
-    })
-  );
-  if (removedIds.size === 0) {
-    return;
-  }
-  const remaining = currentEdges.filter((edge) => !removedIds.has(edge.id));
-  if (remaining.length === currentEdges.length) {
-    return;
-  }
-
-  pushHistory(get, set);
-  set(edgesStateAtom, remaining);
-
-  set(
-    activeSelectionAtom,
-    selectionInGraph(get(activeSelectionAtom), {
-      nodes: get(nodesStateAtom),
-      edges: remaining,
-    })
-  );
-
-  requestGraphSave(get, set, { immediate: true });
+  deleteItems(get, set, {
+    nodeIds: [],
+    edgeIds: [edgeId],
+    selection: "retain",
+  });
 });
