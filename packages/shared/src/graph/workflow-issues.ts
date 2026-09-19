@@ -32,14 +32,21 @@ import {
   readLifecycleRules,
 } from "#src/lifecycle/lifecycle-rules";
 import { checkStartFilters } from "#src/lifecycle/start-filters";
-import { waitTemplateKeysIn } from "#src/lifecycle/wait-subscription";
 import {
-  extractAllTemplateReferences,
+  waitMatchTemplateStringsIn,
+  waitTemplateKeysIn,
+} from "#src/lifecycle/wait-subscription";
+import {
   isEntityStateSourceId,
   referenceFieldForPath,
 } from "#src/graph/node-references";
 import type { WorkflowEdge, WorkflowNode } from "#src/graph/types";
-import { flattenConfigFields } from "#src/plugins/action-fields";
+import {
+  flattenConfigFields,
+  literalFieldKeys,
+  templateJsonFieldShapes,
+} from "#src/plugins/action-fields";
+import { extractConsumedTemplateReferences } from "#src/plugins/template-config";
 import { readJsonObjectLeniently } from "#src/types/json";
 import { asNonEmptyString } from "#src/types/string";
 
@@ -426,23 +433,22 @@ function collectBrokenReferenceIssues(input: {
       ? findAction(input.catalog, actionType)
       : undefined;
     const flatFields = action ? flattenConfigFields(action.configFields) : [];
-    const activeWaitKeys = isWaitNode(node)
+    const waitNode = isWaitNode(node);
+    const activeWaitKeys = waitNode
       ? new Set<string>(waitTemplateKeysIn(config))
       : undefined;
-    const brokenRefs = extractAllTemplateReferences(config).filter((ref) => {
-      const topLevelKey = ref.field.split(".", 1)[0] ?? ref.field;
-      const field = flatFields.find(
-        (candidate) => candidate.key === topLevelKey
-      );
-      if (
-        field?.literal ||
-        topLevelKey === "actionType" ||
-        topLevelKey === "condition" ||
-        topLevelKey === "conditionModel" ||
-        (activeWaitKeys !== undefined && !activeWaitKeys.has(topLevelKey))
-      ) {
-        return false;
-      }
+    const literalKeys = new Set(literalFieldKeys(action?.configFields ?? []));
+    const brokenRefs = extractConsumedTemplateReferences(
+      config,
+      {
+        literalKeys,
+        jsonShapes: new Map(
+          templateJsonFieldShapes(action?.configFields ?? [])
+        ),
+        activeKeys: activeWaitKeys,
+      },
+      waitNode ? waitMatchTemplateStringsIn(config) : []
+    ).filter((ref) => {
       if (isEntityStateSourceId(ref.nodeId)) {
         return !(
           entitySource &&
@@ -464,8 +470,10 @@ function collectBrokenReferenceIssues(input: {
     });
 
     for (const ref of brokenRefs) {
+      const topLevelKey = ref.field.split(".", 1)[0] ?? ref.field;
       const fieldLabel =
-        flatFields.find((field) => field.key === ref.field)?.label ?? ref.field;
+        flatFields.find((field) => field.key === topLevelKey)?.label ??
+        ref.field;
       const entityReference = isEntityStateSourceId(ref.nodeId);
       issues.push({
         kind: "broken_reference",

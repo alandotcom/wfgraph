@@ -9,10 +9,8 @@ import {
   resolveOutputPath,
   type TemplateToken,
 } from "@wfgraph/shared/graph/node-references";
-import { mapValues } from "es-toolkit/object";
 import type { TemplateJsonShape } from "@wfgraph/shared/plugins/action-fields";
-import { readKeyValueRows } from "@wfgraph/shared/plugins/key-value-rows";
-import { readProviderFieldValues } from "@wfgraph/shared/plugins/provider-field-values";
+import { mapTemplateConfigStrings } from "@wfgraph/shared/plugins/template-config";
 import type { NodeOutputs } from "#src/backend/engine/contracts";
 import type { EntityTemplateContext } from "#src/backend/engine/entities";
 import { outputKey } from "#src/backend/engine/traversal";
@@ -97,107 +95,11 @@ export function processTemplates(
   jsonShapes: ReadonlyMap<string, TemplateJsonShape> = new Map(),
   entityContext?: EntityTemplateContext
 ): Record<string, unknown> {
-  const processed: Array<[string, unknown]> = [];
-
-  for (const [key, value] of Object.entries(config)) {
-    if (value === undefined) {
-      continue;
-    }
-
-    processed.push([
-      key,
-      resolveConfigValue({
-        value,
-        outputs,
-        literal: literalKeys.has(key),
-        jsonShape: jsonShapes.get(key),
-        entityContext,
-      }),
-    ]);
-  }
-
-  return Object.fromEntries(processed);
-}
-
-function resolveConfigValue(input: {
-  value: unknown;
-  outputs: NodeOutputs;
-  literal: boolean;
-  jsonShape: TemplateJsonShape | undefined;
-  entityContext?: EntityTemplateContext | undefined;
-}): unknown {
-  const { value, outputs, literal, jsonShape, entityContext } = input;
-  if (typeof value !== "string" || literal) {
-    return value;
-  }
-
-  if (!jsonShape) {
-    return resolveTemplateString(value, outputs, entityContext);
-  }
-
-  return jsonShape === "key-value"
-    ? resolveKeyValueRows(value, outputs, entityContext)
-    : resolveProviderFields(value, outputs, entityContext);
-}
-
-/**
- * Resolve each row's value in a `key-value` field, and re-serialise.
- *
- * A row list stays a list because a row is a row: two rows may carry the same
- * name, and the order is the one they were added in.
- *
- * A row's name is left as authored. It is the key of whatever the step is
- * building, and the systems that take one hold it to a short constrained
- * alphabet, so a reference resolved into it would name a key nobody could match.
- *
- * Text this cannot read falls back to resolving the whole string, which is the
- * escape hatch a builder gets when the widget cannot draw: what they typed by
- * hand keeps behaving as it always did.
- */
-function resolveKeyValueRows(
-  value: string,
-  outputs: NodeOutputs,
-  entityContext?: EntityTemplateContext
-): string {
-  const rows = readKeyValueRows(value);
-  if (!rows) {
-    return resolveTemplateString(value, outputs, entityContext);
-  }
-
-  // `JSON.stringify` is what escapes a resolved quotation mark or newline, and
-  // doing it here rather than in the step is what keeps the boundary a string.
-  return JSON.stringify(
-    rows.map((row) => ({
-      name: row.name,
-      value: resolveTemplateString(row.value, outputs, entityContext),
-    }))
+  return mapTemplateConfigStrings(
+    config,
+    { literalKeys, jsonShapes },
+    ({ value }) => resolveTemplateString(value, outputs, entityContext)
   );
-}
-
-/**
- * Resolve each value of a `provider-fields` object, and re-serialise.
- *
- * One object keyed by the variable each value fills. A number stays a number:
- * the panel stores a variable the provider declared numeric as a JSON number,
- * and only the strings hold templates.
- */
-function resolveProviderFields(
-  value: string,
-  outputs: NodeOutputs,
-  entityContext?: EntityTemplateContext
-): string {
-  const entries = readProviderFieldValues(value);
-  if (!entries) {
-    return resolveTemplateString(value, outputs, entityContext);
-  }
-
-  const resolved = mapValues(entries, (entry) =>
-    typeof entry === "string"
-      ? resolveTemplateString(entry, outputs, entityContext)
-      : entry
-  );
-
-  return JSON.stringify(resolved);
 }
 
 /** One authored string with its references replaced. */

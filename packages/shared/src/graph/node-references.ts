@@ -374,16 +374,7 @@ function templateReferencesIn(
   field: string
 ): ConfigTemplateReference[] {
   if (typeof value === "string") {
-    return findTemplateTokens(value).map((token) =>
-      omitUndefined({
-        field,
-        nodeId: token.nodeId,
-        sourceType: token.sourceType,
-        nodeLabel: token.nodeLabel,
-        fieldPath: token.fieldPath,
-        displayText: templateTokenDisplayText(token),
-      })
-    );
+    return templateReferencesInString(value, field);
   }
 
   if (Array.isArray(value)) {
@@ -397,6 +388,23 @@ function templateReferencesIn(
   }
 
   return [];
+}
+
+/** Template references inside one consumed config string. */
+export function templateReferencesInString(
+  value: string,
+  field: string
+): ConfigTemplateReference[] {
+  return findTemplateTokens(value).map((token) =>
+    omitUndefined({
+      field,
+      nodeId: token.nodeId,
+      sourceType: token.sourceType,
+      nodeLabel: token.nodeLabel,
+      fieldPath: token.fieldPath,
+      displayText: templateTokenDisplayText(token),
+    })
+  );
 }
 
 /**

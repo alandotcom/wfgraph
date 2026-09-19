@@ -328,6 +328,67 @@ describe("per-node Entity Eligibility", () => {
     );
   });
 
+  it("projects only Entity references from JSON values execution consumes", async () => {
+    const recordToken = '{{@$entity:appointment|Appointment.tags["order.id"]}}';
+    const jsonGraph = createSerializedWorkflowGraph({
+      nodes: [
+        lifecycleNode(),
+        actionNode("first", true, "test/action", {
+          variables: JSON.stringify({
+            [recordToken]: "literal key",
+            SEGMENT: recordToken,
+          }),
+          nested: { value: recordToken },
+        }),
+      ],
+      edges: [
+        {
+          id: "edge-first",
+          source: "lifecycle",
+          sourceHandle: "started",
+          target: "first",
+        },
+      ],
+    });
+    const jsonActions: WorkflowActions = {
+      ...actions,
+      metadataFor: () => ({
+        label: "Test action",
+        literalConfigKeys: [],
+        templateJsonConfigShapes: [["variables", "provider-fields"]],
+      }),
+    };
+    const entities = entityPort(
+      [{ outcome: "eligible" }],
+      [{ 'tags["order.id"]': "priority" }]
+    );
+
+    await executeTestWorkflow(
+      { ...executionInput, graph: jsonGraph },
+      createInMemoryWorkflowRuntime(),
+      createRecordingWorkflowStore(),
+      jsonActions,
+      entities
+    );
+
+    expect(entities.inputs).toEqual([
+      expect.objectContaining({
+        nodeId: "first",
+        paths: ['tags["order.id"]'],
+      }),
+    ]);
+    expect(runAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        variables: JSON.stringify({
+          [recordToken]: "literal key",
+          SEGMENT: "priority",
+        }),
+        nested: { value: recordToken },
+      }),
+      expect.anything()
+    );
+  });
+
   it("resolves fresh Entity State before each consuming node", async () => {
     const entities = entityPort(
       [{ outcome: "eligible" }, { outcome: "eligible" }],

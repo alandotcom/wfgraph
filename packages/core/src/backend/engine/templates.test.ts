@@ -105,6 +105,28 @@ describe("processTemplates over a JSON object of authored values", () => {
     expect(() => JSON.parse(String(processed.vars))).toThrow();
   });
 
+  it("resolves an Entity record key after decoding a JSON-backed field", () => {
+    const processed = processTemplates(
+      {
+        vars: JSON.stringify({
+          SEGMENT: '{{@$entity:patient|Patient.tags["order.id"]}}',
+        }),
+      },
+      {},
+      new Set(),
+      new Map([["vars", "provider-fields" as const]]),
+      {
+        sourceId: "$entity",
+        entityType: "patient",
+        values: { 'tags["order.id"]': "priority" },
+      }
+    );
+
+    expect(JSON.parse(String(processed.vars))).toEqual({
+      SEGMENT: "priority",
+    });
+  });
+
   it("leaves a number as a number and resolves only the strings", () => {
     const outputs = outputsWith({ name: "Ada" });
 

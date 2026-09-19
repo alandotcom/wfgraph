@@ -294,6 +294,7 @@ describe("collectWorkflowIssues", () => {
             channel: "#general",
             integrationId: "int_1",
             message: "Hi {{@$entity:patient|Patient.name}}",
+            nested: { value: "{{@$entity:patient|Patient.gone}}" },
           },
           "Notify"
         ),

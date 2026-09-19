@@ -9,6 +9,9 @@
  */
 
 import { Result, Schema } from "effect";
+import { readConditionRuleOperands } from "#src/conditions/condition-model";
+import { parseConditionModel } from "#src/conditions/condition-schema";
+import type { ConsumedTemplateString } from "#src/plugins/template-config";
 import { pickBy } from "es-toolkit/object";
 import type { ValueTargetType } from "#src/graph/value-targets";
 import { NonEmptyTrimmedString, readAs } from "#src/types/schema";
@@ -263,4 +266,32 @@ export function readWaitSubscriptions(
   config: Record<string, unknown> | undefined
 ): EventSubscription[] {
   return readSubscriptions(config?.waitFor) ?? [];
+}
+
+/** Template operands the active Event Wait resolves inside its match models. */
+export function waitMatchTemplateStringsIn(
+  config: Record<string, unknown>
+): ConsumedTemplateString[] {
+  if (config.waitMode !== "event") {
+    return [];
+  }
+
+  return readWaitSubscriptions(config).flatMap((subscription, index) => {
+    if (!subscription.match) {
+      return [];
+    }
+    const parsed = parseConditionModel(subscription.match);
+    if (!parsed.valid) {
+      return [];
+    }
+
+    return parsed.model.groups.flatMap((group) =>
+      group.conditions.flatMap((rule) =>
+        readConditionRuleOperands(rule).map((value) => ({
+          field: `waitFor.${index}.match`,
+          value,
+        }))
+      )
+    );
+  });
 }

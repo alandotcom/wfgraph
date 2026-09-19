@@ -17,7 +17,6 @@ import {
 } from "@wfgraph/shared/extensions/catalog";
 import { eventsReaching } from "@wfgraph/shared/graph/events-reaching";
 import {
-  extractAllTemplateReferences,
   findTemplateTokens,
   isEntityStateSourceId,
   referenceFieldForPath,
@@ -31,8 +30,14 @@ import {
   type ValueTargetType,
 } from "@wfgraph/shared/graph/value-targets";
 import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
-import { flattenConfigFields } from "@wfgraph/shared/plugins/action-fields";
 import {
+  flattenConfigFields,
+  literalFieldKeys,
+  templateJsonFieldShapes,
+} from "@wfgraph/shared/plugins/action-fields";
+import { extractConsumedTemplateReferences } from "@wfgraph/shared/plugins/template-config";
+import {
+  waitMatchTemplateStringsIn,
   waitTemplateKeysIn,
   waitValueTargetsFor,
 } from "@wfgraph/shared/lifecycle/wait-subscription";
@@ -126,27 +131,35 @@ export function validateWorkflowTemplates(input: {
       continue;
     }
 
-    const references = extractAllTemplateReferences(jsonConfig);
+    const actionType = actionTypeOf(node);
+    const action = actionType ? findAction(catalog, actionType) : undefined;
+    const activeWaitKeys =
+      actionType === BUILT_IN_ACTION_IDS.wait
+        ? new Set<string>(waitTemplateKeysIn(config))
+        : undefined;
+    const literalKeys = new Set(literalFieldKeys(action?.configFields ?? []));
+    const references = extractConsumedTemplateReferences(
+      jsonConfig,
+      {
+        literalKeys,
+        jsonShapes: new Map(
+          templateJsonFieldShapes(action?.configFields ?? [])
+        ),
+        activeKeys: activeWaitKeys,
+      },
+      actionType === BUILT_IN_ACTION_IDS.wait
+        ? waitMatchTemplateStringsIn(config)
+        : []
+    );
     if (references.length === 0) {
       continue;
     }
 
     const targets = valueTargets(node, catalog);
-    const activeWaitKeys =
-      actionTypeOf(node) === BUILT_IN_ACTION_IDS.wait
-        ? new Set<string>(waitTemplateKeysIn(config))
-        : undefined;
     for (const reference of references) {
       const topLevelKey = reference.field.split(".", 1)[0] ?? reference.field;
       const target = targets.get(topLevelKey);
-      if (
-        !isEntityStateSourceId(reference.nodeId) ||
-        target?.literal ||
-        topLevelKey === "actionType" ||
-        topLevelKey === "condition" ||
-        topLevelKey === "conditionModel" ||
-        (activeWaitKeys !== undefined && !activeWaitKeys.has(topLevelKey))
-      ) {
+      if (!isEntityStateSourceId(reference.nodeId)) {
         continue;
       }
 

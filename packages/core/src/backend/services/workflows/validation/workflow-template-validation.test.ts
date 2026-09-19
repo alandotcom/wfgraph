@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { errorOf } from "#src/backend/services/workflows/validation/validation-test-support";
 import { validateWorkflowTemplates } from "#src/backend/services/workflows/validation/workflow-template-validation";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import { serializeConditionModel } from "@wfgraph/shared/conditions/conditions";
 import type {
   EventMetadata,
   ExtensionCatalog,
@@ -119,6 +120,7 @@ const entityCatalog: ExtensionCatalog = {
       stateFields: [
         { path: "name", type: "string" },
         { path: "delay", type: "duration" },
+        { path: "tags", type: "object", valueType: "string" },
       ],
       stateSchemaDigest: "patient-state",
     },
@@ -145,6 +147,95 @@ describe("validateWorkflowTemplates Entity State", () => {
         [
           entryNode([CREATED], { eligibility: true }),
           waitNode({ waitDuration: entityToken("delay") }),
+        ],
+        [startedEdge],
+        entityCatalog
+      )
+    ).toEqual({ valid: true });
+  });
+
+  it("validates only Entity references inside consumed JSON values", () => {
+    const recordToken = entityToken('tags["order.id"]');
+    const providerCatalog: ExtensionCatalog = {
+      ...entityCatalog,
+      actions: [
+        {
+          id: "custom/send",
+          label: "Send",
+          description: "",
+          category: "Custom",
+          configFields: [
+            {
+              key: "variables",
+              label: "Variables",
+              type: "provider-fields",
+              optionsSource: { provider: "variables" },
+            },
+          ],
+          outputFields: [],
+        },
+      ],
+    };
+
+    expect(
+      check(
+        [
+          entryNode([CREATED], { eligibility: true }),
+          {
+            id: "wait-1",
+            type: "action",
+            position: { x: 0, y: 100 },
+            data: {
+              label: "Send",
+              type: "action",
+              config: {
+                actionType: "custom/send",
+                variables: JSON.stringify({
+                  [entityToken("gone")]: "literal key",
+                  CUSTOMER: recordToken,
+                }),
+                nested: { value: entityToken("gone") },
+              },
+            },
+          },
+        ],
+        [startedEdge],
+        providerCatalog
+      )
+    ).toEqual({ valid: true });
+  });
+
+  it("decodes Wait match models before validating Entity paths", () => {
+    const recordToken = entityToken('tags["order.id"]');
+    const match = serializeConditionModel({
+      version: 2,
+      groupLogic: "and",
+      groups: [
+        {
+          id: "group",
+          logic: "and",
+          conditions: [
+            {
+              id: "rule",
+              field: "status",
+              fieldType: "string",
+              operator: "equals",
+              value: recordToken,
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(
+      check(
+        [
+          entryNode([CREATED], { eligibility: true }),
+          waitNode({
+            waitMode: "event",
+            waitFor: [{ event: CREATED, match }],
+            waitTimeout: "1h",
+          }),
         ],
         [startedEdge],
         entityCatalog

@@ -8,13 +8,14 @@
  * cancellation routes the run is `CancelBoundary`'s.
  */
 
-import {
-  ENTITY_STATE_SOURCE_ID,
-  extractAllTemplateReferences,
-} from "@wfgraph/shared/graph/node-references";
+import { ENTITY_STATE_SOURCE_ID } from "@wfgraph/shared/graph/node-references";
+import { extractConsumedTemplateReferences } from "@wfgraph/shared/plugins/template-config";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import type { ExecutionSide } from "@wfgraph/shared/lifecycle/execution-contracts";
-import { waitTemplateKeysIn } from "@wfgraph/shared/lifecycle/wait-subscription";
+import {
+  waitMatchTemplateStringsIn,
+  waitTemplateKeysIn,
+} from "@wfgraph/shared/lifecycle/wait-subscription";
 import {
   actionTypeOf,
   isConditionNode,
@@ -136,11 +137,6 @@ type NodeAdmission =
       entityContext?: EntityTemplateContext | undefined;
     };
 
-function topLevelConfigKey(path: string): string {
-  const separator = path.indexOf(".");
-  return separator === -1 ? path : path.slice(0, separator);
-}
-
 /** Entity State paths this node will actually interpolate at run time. */
 function entityReferencePaths(
   node: WorkflowNode,
@@ -157,25 +153,27 @@ function entityReferencePaths(
   }
 
   const actionType = actionTypeOf(node);
+  const metadata = actionType ? actions.metadataFor(actionType) : undefined;
   const activeWaitKeys = isWaitNode(node)
     ? new Set<string>(waitTemplateKeysIn(config))
     : undefined;
-  const literalKeys = new Set(
-    actionType ? (actions.metadataFor(actionType)?.literalConfigKeys ?? []) : []
-  );
-  literalKeys.add("actionType");
-  literalKeys.add("condition");
-  literalKeys.add("conditionModel");
+  const literalKeys = new Set(metadata?.literalConfigKeys ?? []);
 
   return uniq(
-    extractAllTemplateReferences(config)
+    extractConsumedTemplateReferences(
+      config,
+      {
+        literalKeys,
+        jsonShapes: new Map(metadata?.templateJsonConfigShapes ?? []),
+        activeKeys: activeWaitKeys,
+      },
+      isWaitNode(node) ? waitMatchTemplateStringsIn(config) : []
+    )
       .filter(
         (reference) =>
           reference.nodeId === sourceId &&
           reference.sourceType === entityType &&
-          reference.fieldPath.length > 0 &&
-          !literalKeys.has(topLevelConfigKey(reference.field)) &&
-          (activeWaitKeys?.has(topLevelConfigKey(reference.field)) ?? true)
+          reference.fieldPath.length > 0
       )
       .map((reference) => reference.fieldPath)
   );
