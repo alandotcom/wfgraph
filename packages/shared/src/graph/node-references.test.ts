@@ -13,31 +13,64 @@ import {
   parseOutputPath,
   parseTemplate,
   referenceFieldForPath,
+  referenceFieldLabel,
   resolveJsonPath,
   resolveOutputPath,
 } from "./node-references";
 import type { WorkflowSchemaField } from "./schema-codec";
 
+describe("referenceFieldLabel", () => {
+  it("prefers an authored label and derives a fallback from the final key", () => {
+    expect(
+      referenceFieldLabel({ path: "appointment.id", label: "Appointment ID" })
+    ).toBe("Appointment ID");
+    expect(referenceFieldLabel({ path: "appointment.appointmentId" })).toBe(
+      "Appointment ID"
+    );
+    expect(referenceFieldLabel({ path: "appointment.startsAt" })).toBe(
+      "Starts at"
+    );
+    expect(referenceFieldLabel({ path: 'tags["campaign.name"]' })).toBe(
+      "Campaign name"
+    );
+  });
+});
+
 describe("flattenSchemaToReferenceFields", () => {
-  it("gives every primitive its own reference path", () => {
+  it("gives every primitive its own reference path and annotations", () => {
     const fields = flattenSchemaToReferenceFields([
-      { name: "email", type: "string", description: "Contact email" },
+      {
+        name: "email",
+        label: "Email address",
+        type: "string",
+        description: "Contact email",
+      },
       { name: "age", type: "number" },
     ]);
 
     expect(fields).toEqual([
-      { path: "email", description: "Contact email", type: "string" },
+      {
+        path: "email",
+        label: "Email address",
+        description: "Contact email",
+        type: "string",
+      },
       { path: "age", type: "number" },
     ]);
   });
 
-  it("leaves a field described in whitespace alone carrying no description", () => {
+  it("drops label and description annotations containing only whitespace", () => {
     const fields = flattenSchemaToReferenceFields([
-      { name: "email", type: "string", description: "   " },
+      {
+        name: "email",
+        label: "   ",
+        type: "string",
+        description: "   ",
+      },
     ]);
 
-    // toStrictEqual, because an empty-string description reads as a written one
-    // to a renderer that only checks whether the key is there.
+    // toStrictEqual, because an empty-string annotation reads as authored to a
+    // renderer that only checks whether the key is there.
     expect(fields).toStrictEqual([{ path: "email", type: "string" }]);
   });
 

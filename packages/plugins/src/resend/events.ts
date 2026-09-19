@@ -62,23 +62,19 @@ const createdAt = isoTimestampString("When Resend created this Event");
  * The rest are on every documented example and non-optional in `resend-node`.
  */
 const emailFields = {
-  email_id: Schema.String.annotate({ description: "Email ID" }),
+  email_id: Schema.String,
   created_at: isoTimestampString("When the email was created"),
-  from: Schema.String.annotate({ description: "Sender" }),
+  from: Schema.String.annotate({ title: "Sender" }),
   to: Schema.mutable(Schema.Array(Schema.String)).annotate({
-    description: "Recipients",
+    title: "Recipients",
   }),
-  subject: Schema.String.annotate({ description: "Subject" }),
-  message_id: Schema.String.annotate({ description: "RFC Message-ID" }),
-  broadcast_id: Schema.optionalKey(
-    Schema.String.annotate({ description: "Broadcast ID" })
-  ),
-  template_id: Schema.optionalKey(
-    Schema.String.annotate({ description: "Template ID" })
-  ),
+  subject: Schema.String,
+  message_id: Schema.String.annotate({ title: "RFC Message-ID" }),
+  broadcast_id: Schema.optionalKey(Schema.String),
+  template_id: Schema.optionalKey(Schema.String),
   tags: Schema.optionalKey(
     Schema.Record(Schema.String, Schema.String).annotate({
-      description: "Email tags",
+      title: "Email tags",
     })
   ),
 };
@@ -96,19 +92,19 @@ const emailData = Schema.Struct(emailFields);
 const emailClickedData = Schema.Struct({
   ...emailFields,
   click: Schema.Struct({
-    ipAddress: Schema.String.annotate({ description: "Clicker IP address" }),
-    link: Schema.String.annotate({ description: "Clicked URL" }),
+    ipAddress: Schema.String.annotate({ title: "Clicker IP address" }),
+    link: Schema.String.annotate({ title: "Clicked URL" }),
     timestamp: isoTimestampString("When the link was clicked"),
-    userAgent: Schema.String.annotate({ description: "Clicker user agent" }),
-  }).annotate({ description: "Click tracking details" }),
+    userAgent: Schema.String.annotate({ title: "Clicker user agent" }),
+  }).annotate({ title: "Click tracking details" }),
 });
 
 const emailBouncedData = Schema.Struct({
   ...emailFields,
   bounce: Schema.Struct({
-    message: Schema.String.annotate({ description: "Bounce message" }),
-    subType: Schema.String.annotate({ description: "Bounce sub-type" }),
-    type: Schema.String.annotate({ description: "Bounce type" }),
+    message: Schema.String.annotate({ title: "Bounce message" }),
+    subType: Schema.String.annotate({ title: "Bounce sub-type" }),
+    type: Schema.String.annotate({ title: "Bounce type" }),
     // On the docs page and absent from `resend-node`'s bounce type, so the two
     // sources disagree and the looser reading wins.
     diagnosticCode: Schema.optionalKey(
@@ -116,22 +112,24 @@ const emailBouncedData = Schema.Struct({
         description: "Raw SMTP responses from the receiving server",
       })
     ),
-  }).annotate({ description: "Bounce details" }),
+  }).annotate({ title: "Bounce details" }),
 });
 
 const emailFailedData = Schema.Struct({
   ...emailFields,
   failed: Schema.Struct({
-    reason: Schema.String.annotate({ description: "Why sending failed" }),
-  }).annotate({ description: "Failure details" }),
+    reason: Schema.String.annotate({
+      description: "Why sending failed",
+    }),
+  }).annotate({ title: "Failure details" }),
 });
 
 const emailSuppressedData = Schema.Struct({
   ...emailFields,
   suppressed: Schema.Struct({
-    message: Schema.String.annotate({ description: "Suppression message" }),
-    type: Schema.String.annotate({ description: "Suppression type" }),
-  }).annotate({ description: "Suppression details" }),
+    message: Schema.String.annotate({ title: "Suppression message" }),
+    type: Schema.String.annotate({ title: "Suppression type" }),
+  }).annotate({ title: "Suppression details" }),
 });
 
 /**
@@ -154,108 +152,92 @@ const emailSuppressedData = Schema.Struct({
  * Resend's Received emails and Attachments APIs are where those are read.
  */
 const emailReceivedData = Schema.Struct({
-  email_id: Schema.String.annotate({ description: "Email ID" }),
+  email_id: Schema.String,
   created_at: isoTimestampString("When the email was received"),
   from: Schema.String.annotate({
-    description: "Sender, as a bare address with no display name",
+    title: "Sender",
+    description: "The sender as a bare address with no display name.",
   }),
   to: Schema.mutable(Schema.Array(Schema.String)).annotate({
-    description: "Recipients",
+    title: "Recipients",
   }),
   cc: Schema.mutable(Schema.Array(Schema.String)).annotate({
-    description: "CC recipients",
+    title: "CC recipients",
   }),
   bcc: Schema.mutable(Schema.Array(Schema.String)).annotate({
-    description: "BCC recipients",
+    title: "BCC recipients",
   }),
   received_for: Schema.mutable(Schema.Array(Schema.String)).annotate({
-    description: "Addresses the email was received for",
+    title: "Received for",
+    description: "Addresses the email was received for.",
   }),
-  message_id: Schema.String.annotate({ description: "RFC Message-ID" }),
-  subject: Schema.String.annotate({ description: "Subject" }),
+  message_id: Schema.String.annotate({ title: "RFC Message-ID" }),
+  subject: Schema.String,
   attachments: Schema.mutable(
     Schema.Array(
       Schema.Struct({
-        id: Schema.String.annotate({ description: "Attachment ID" }),
-        filename: Schema.NullOr(Schema.String).annotate({
-          description: "Filename",
-        }),
-        content_type: Schema.String.annotate({ description: "Content type" }),
-        content_disposition: Schema.NullOr(Schema.String).annotate({
-          description: "Content disposition",
-        }),
-        content_id: Schema.NullOr(Schema.String).annotate({
-          description: "Content ID",
-        }),
+        id: Schema.String.annotate({ title: "Attachment ID" }),
+        filename: Schema.NullOr(Schema.String),
+        content_type: Schema.String,
+        content_disposition: Schema.NullOr(Schema.String),
+        content_id: Schema.NullOr(Schema.String),
       })
     )
-  ).annotate({ description: "Attachment metadata" }),
+  ).annotate({ title: "Attachment metadata" }),
 });
 
 const domainData = Schema.Struct({
-  id: Schema.String.annotate({ description: "Domain ID" }),
-  name: Schema.String.annotate({ description: "Domain name" }),
-  status: Schema.String.annotate({ description: "Verification status" }),
+  id: Schema.String.annotate({ title: "Domain ID" }),
+  name: Schema.String.annotate({ title: "Domain name" }),
+  status: Schema.String.annotate({ title: "Verification status" }),
   created_at: isoTimestampString("When the domain was created"),
-  region: Schema.String.annotate({ description: "AWS region" }),
+  region: Schema.String.annotate({ title: "AWS region" }),
   // On the domain pages and absent from `resend-node`'s own domain payload
   // type, so the two sources disagree about whether it is always sent.
   capabilities: Schema.optionalKey(
     Schema.Struct({
-      sending: Schema.String.annotate({ description: "Sending capability" }),
-      receiving: Schema.String.annotate({
-        description: "Receiving capability",
-      }),
-    }).annotate({ description: "Domain capabilities" })
+      sending: Schema.String.annotate({ title: "Sending capability" }),
+      receiving: Schema.String.annotate({ title: "Receiving capability" }),
+    }).annotate({ title: "Domain capabilities" })
   ),
   records: Schema.mutable(
     Schema.Array(
       Schema.Struct({
-        record: Schema.String.annotate({ description: "Record purpose" }),
-        name: Schema.String.annotate({ description: "DNS name" }),
-        type: Schema.String.annotate({ description: "DNS type" }),
-        value: Schema.String.annotate({ description: "DNS value" }),
-        ttl: Schema.String.annotate({ description: "TTL" }),
-        status: Schema.String.annotate({ description: "Record status" }),
+        record: Schema.String.annotate({ title: "Record purpose" }),
+        name: Schema.String.annotate({ title: "DNS name" }),
+        type: Schema.String.annotate({ title: "DNS type" }),
+        value: Schema.String.annotate({ title: "DNS value" }),
+        ttl: Schema.String,
+        status: Schema.String.annotate({ title: "Record status" }),
         // Carried by an MX record alone, which the docs call optional.
         priority: Schema.optionalKey(
-          Schema.Number.annotate({ description: "MX priority" })
+          Schema.Number.annotate({ title: "MX priority" })
         ),
       })
     )
-  ).annotate({ description: "DNS records" }),
+  ).annotate({ title: "DNS records" }),
 });
 
 const contactData = Schema.Struct({
-  id: Schema.String.annotate({ description: "Contact ID" }),
+  id: Schema.String.annotate({ title: "Contact ID" }),
   // Not required per the docs and non-optional per `resend-node`.
-  audience_id: Schema.optionalKey(
-    Schema.String.annotate({ description: "Audience ID" })
-  ),
-  segment_ids: Schema.optionalKey(
-    Schema.mutable(Schema.Array(Schema.String)).annotate({
-      description: "Segment IDs",
-    })
-  ),
+  audience_id: Schema.optionalKey(Schema.String),
+  segment_ids: Schema.optionalKey(Schema.mutable(Schema.Array(Schema.String))),
   created_at: isoTimestampString("When the contact was created"),
   updated_at: isoTimestampString("When the contact was last updated"),
-  email: Schema.String.annotate({ description: "Contact email" }),
+  email: Schema.String.annotate({ title: "Contact email" }),
   // "May be absent from the payload" per the docs, and `string | null` in both
   // sources, so each field can go missing either way.
-  first_name: Schema.optionalKey(
-    Schema.NullOr(Schema.String).annotate({ description: "First name" })
-  ),
-  last_name: Schema.optionalKey(
-    Schema.NullOr(Schema.String).annotate({ description: "Last name" })
-  ),
+  first_name: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  last_name: Schema.optionalKey(Schema.NullOr(Schema.String)),
   unsubscribed: Schema.Boolean.annotate({
-    description: "Unsubscribed from all emails",
+    title: "Unsubscribed from all emails",
   }),
 });
 
 const suppressionData = Schema.Struct({
-  id: Schema.String.annotate({ description: "Suppression ID" }),
-  email: Schema.String.annotate({ description: "Suppressed address" }),
+  id: Schema.String.annotate({ title: "Suppression ID" }),
+  email: Schema.String.annotate({ title: "Suppressed address" }),
   origin: Schema.Literals(["bounce", "complaint", "manual"]).annotate({
     description: "How the address was suppressed",
   }),
@@ -271,7 +253,7 @@ function resendEnvelope<D extends Schema.Struct<Schema.Struct.Fields>>(
   data: D
 ) {
   return Schema.Struct({
-    type: Schema.String.annotate({ description: "Resend event type" }),
+    type: Schema.String.annotate({ title: "Resend event type" }),
     created_at: createdAt,
     data,
   });

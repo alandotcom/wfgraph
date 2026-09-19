@@ -27,6 +27,7 @@ import { getNodeDisplayName } from "@wfgraph/shared/graph/node-display";
 import {
   fieldsVisibleForConfig,
   formatTemplateToken,
+  referenceFieldLabel,
   type ReferenceField,
 } from "@wfgraph/shared/graph/node-references";
 import { reachableEventFields } from "@wfgraph/shared/graph/reachable-fields";
@@ -47,6 +48,7 @@ const referenceSchema = Schema.Struct({
   sourceNodeId: Schema.String,
   sourceNodeLabel: Schema.String,
   path: Schema.String,
+  label: Schema.String,
   type: Schema.optionalKey(Schema.String),
   description: Schema.optionalKey(Schema.String),
   /** True when a run may reach this node without the value being set. */
@@ -141,7 +143,7 @@ export const ListReferences = Tool.make("list_references", {
     }),
     query: Schema.optionalKey(Schema.String).annotate({
       description:
-        "Case-insensitive text matched against the source node, path, type, description, and token.",
+        "Case-insensitive text matched against the source node, field label, path, type, description, and token.",
     }),
     sourceNodeId: Schema.optionalKey(Schema.String).annotate({
       description: "Return references from this exact upstream node only.",
@@ -203,6 +205,7 @@ export function referencesForNode(input: {
           sourceNodeId: node.id,
           sourceNodeLabel,
           path: field.path,
+          label: referenceFieldLabel(field),
           type: field.type,
           description: field.description,
           nullable: field.nullable,
@@ -250,6 +253,7 @@ export const referenceToolHandlers = Effect.gen(function* () {
                 reference.token,
                 reference.sourceNodeLabel,
                 reference.path,
+                reference.label ?? "",
                 reference.type ?? "",
                 reference.description ?? "",
               ].some((value) => value.toLowerCase().includes(needle)))

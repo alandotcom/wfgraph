@@ -22,7 +22,10 @@ import type {
   ActionMetadata,
   ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
-import type { ReferenceField } from "@wfgraph/shared/graph/node-references";
+import {
+  referenceFieldLabel,
+  type ReferenceField,
+} from "@wfgraph/shared/graph/node-references";
 import { flattenConfigFields } from "@wfgraph/shared/plugins/action-fields";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { WorkflowDraft } from "#src/document";
@@ -45,6 +48,7 @@ const actionSummarySchema = Schema.Struct({
 const configFieldSchema = Schema.Struct({
   key: Schema.String,
   label: Schema.String,
+  description: Schema.optionalKey(Schema.String),
   type: Schema.String,
   required: Schema.optionalKey(Schema.Boolean),
   placeholder: Schema.optionalKey(Schema.String),
@@ -57,6 +61,7 @@ const configFieldSchema = Schema.Struct({
 
 const referenceFieldSchema = Schema.Struct({
   path: Schema.String,
+  label: Schema.String,
   type: Schema.optionalKey(Schema.String),
   /** The value type for an open-record field whose keys are chosen at runtime. */
   valueType: Schema.optionalKey(Schema.String),
@@ -128,6 +133,7 @@ function toActionSummary(action: ActionMetadata) {
 function toReferenceField(field: ReferenceField) {
   return omitUndefined({
     path: field.path,
+    label: referenceFieldLabel(field),
     type: field.type,
     valueType: field.valueType,
     description: field.description,
@@ -359,6 +365,7 @@ export const catalogToolHandlers = Effect.gen(function* () {
               omitUndefined({
                 key: field.key,
                 label: field.label,
+                description: field.description,
                 type: field.type,
                 required: field.required,
                 placeholder: field.placeholder,

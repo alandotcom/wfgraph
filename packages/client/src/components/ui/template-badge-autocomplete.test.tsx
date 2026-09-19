@@ -58,6 +58,7 @@ const APPOINTMENT_CREATED: EventMetadata = {
     { path: "patientName", description: "Patient name", type: "string" },
     {
       path: "occurredAt",
+      label: "Settlement time",
       description: "When it happened",
       type: "timestamp",
     },
@@ -494,7 +495,9 @@ describe("Template badge autocomplete", () => {
     typeAtSymbol(view.getByRole("textbox"));
 
     await waitFor(() => {
-      expect(menuRows()).toEqual(["Webhook.leadTimeHow long before"]);
+      expect(menuRows()).toEqual([
+        "Lead timeWebhook.leadTimeHow long before",
+      ]);
     });
   });
 
@@ -517,12 +520,14 @@ describe("Template badge autocomplete", () => {
     typeAtSymbol(view.getByRole("textbox"));
 
     await waitFor(() => {
-      expect(menuRows()).toEqual(["Webhook.occurredAtWhen it happened"]);
+      expect(menuRows()).toEqual([
+        "Settlement timeWebhook.occurredAtWhen it happened",
+      ]);
     });
   });
 
   it("leaves the second line off a field its author never described", async () => {
-    // The path is already the row's first line, so a title-cased echo of the key
+    // The path is already the row's first line, so a readable echo of the key
     // below it would be a line saying nothing twice.
     surface.events = [
       {
@@ -542,8 +547,8 @@ describe("Template badge autocomplete", () => {
 
     await waitFor(() => {
       expect(menuRows()).toEqual([
-        "Webhook.leadTimeHow long before",
-        "Webhook.grace",
+        "Lead timeWebhook.leadTimeHow long before",
+        "GraceWebhook.grace",
       ]);
     });
   });
@@ -651,9 +656,23 @@ describe("Template badge autocomplete", () => {
 
     await waitFor(() => {
       expect(menuRows()).toEqual([
-        "Webhook.patientNamePatient name",
-        "Webhook.occurredAtWhen it happened",
-        "Webhook.amountCentsAmount in cents",
+        "Patient nameWebhook.patientNamePatient name",
+        "Settlement timeWebhook.occurredAtWhen it happened",
+        "Amount centsWebhook.amountCentsAmount in cents",
+      ]);
+    });
+  });
+
+  it("matches fields by their human-readable label", async () => {
+    const view = renderWithCatalog(
+      <PlaceholderTemplateBadgeInput onValueChange={() => {}} />
+    );
+
+    typeTemplateFilter(view.getByRole("textbox"), "Settlement");
+
+    await waitFor(() => {
+      expect(menuRows()).toEqual([
+        "Settlement timeWebhook.occurredAtWhen it happened",
       ]);
     });
   });
@@ -1059,8 +1078,8 @@ describe("Template badge autocomplete node rows", () => {
 
     await waitFor(() => {
       expect(menuRows()).toEqual([
-        'Tag First.tags["order.id"]',
-        'Tag Second.tags["order.id"]',
+        'Order IDTag First.tags["order.id"]',
+        'Order IDTag Second.tags["order.id"]',
       ]);
     });
 
@@ -1159,8 +1178,10 @@ describe("Template badge autocomplete node rows", () => {
     typeAtSymbol(view.getByRole("textbox"));
 
     await waitFor(() => {
-      expect(menuRows()).toContain('Tag First.tags["campaign.name"]');
-      expect(menuRows()).toContain('Tag First.tags["items[0]"]');
+      expect(menuRows()).toContain(
+        'Campaign nameTag First.tags["campaign.name"]'
+      );
+      expect(menuRows()).toContain('Items 0Tag First.tags["items[0]"]');
     });
   });
 });

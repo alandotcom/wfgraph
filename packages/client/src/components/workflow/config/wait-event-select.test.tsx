@@ -19,9 +19,14 @@ const testCatalog: ExtensionCatalog = {
     {
       name: "billing/payment.settled",
       label: "Payment settled",
+      description: "Raised after a payment clears.",
       correlationPath: "appointmentId",
       payloadFields: [
-        { path: "appointmentId", description: "The appointment" },
+        {
+          path: "appointmentId",
+          label: "Appointment ID",
+          description: "The appointment",
+        },
         {
           path: "settledAt",
           description: "When it settled",
@@ -175,9 +180,17 @@ describe("WaitEventSelect", () => {
     expect(
       view.getAllByRole("option").map((option) => option.textContent)
     ).toEqual([
-      "Payment settledbilling/payment.settled",
+      "Payment settledRaised after a payment clears.billing/payment.settled",
       "Nightly sweepops/nightly.swept",
     ]);
+  });
+
+  it("finds an Event by its description", () => {
+    const { view, lastWaitFor } = renderSelect({ waitFor: [] });
+
+    chooseEvent(view, "payment clears");
+
+    expect(lastWaitFor()).toEqual([{ event: "billing/payment.settled" }]);
   });
 
   it("adds a subscription with no match when an Event is chosen", () => {
@@ -186,6 +199,7 @@ describe("WaitEventSelect", () => {
     chooseEvent(view, "Payment settled");
 
     expect(lastWaitFor()).toEqual([{ event: "billing/payment.settled" }]);
+    expect(view.getByText("Raised after a payment clears.")).toBeTruthy();
   });
 
   // The raw name is what a sender posts, so a builder who knows only that half
@@ -385,7 +399,12 @@ describe("WaitEventSelect seeded match", () => {
 
     fireEvent.click(view.getByRole("button", { name: "Add a match" }));
 
-    expect(view.getByLabelText("Select field")).toBeTruthy();
+    const fieldInput = view.getByLabelText("Select field");
+    fireEvent.keyDown(fieldInput, { key: "ArrowDown" });
+
+    expect(view.getByText("Appointment ID")).toBeTruthy();
+    expect(view.getByText("appointmentId")).toBeTruthy();
+    expect(view.getByText("The appointment")).toBeTruthy();
   });
 
   // A match loaded with the workflow is a rule already made, so it reads as one.

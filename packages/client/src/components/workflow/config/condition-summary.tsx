@@ -21,6 +21,7 @@ import {
   TIMESTAMP_OPERATOR_OPTIONS,
 } from "@wfgraph/shared/conditions/conditions";
 import {
+  appendOutputPathKey,
   displayTemplateText,
   matchTemplateToken,
 } from "@wfgraph/shared/graph/node-references";
@@ -123,6 +124,13 @@ function ruleFieldLabel(
   return condition.recordKey ? `${label}.${condition.recordKey}` : label;
 }
 
+/** The complete machine path one rule reads, including an open-record key. */
+function ruleFieldPath(condition: ConditionRule): string {
+  return condition.recordKey
+    ? appendOutputPathKey(condition.field, condition.recordKey)
+    : condition.field;
+}
+
 /** One rule, and whatever stands between it and being a rule that runs. */
 function RuleLine({
   condition,
@@ -138,6 +146,8 @@ function RuleLine({
   const refusal = ruleRefusal(condition, field, {
     setOperatorsRequireEnumValues,
   });
+  const fieldLabel = ruleFieldLabel(condition, field);
+  const fieldPath = ruleFieldPath(condition);
 
   return (
     <li>
@@ -145,7 +155,12 @@ function RuleLine({
         <p className="text-muted-foreground text-xs">{joiner}</p>
       ) : null}
       <p className="text-sm">
-        <span className="font-medium">{ruleFieldLabel(condition, field)}</span>
+        <span className="font-medium">{fieldLabel}</span>
+        {fieldLabel === fieldPath ? null : (
+          <span className="ml-1 font-mono text-muted-foreground text-xs">
+            {fieldPath}
+          </span>
+        )}
         <span className="mx-1.5 text-muted-foreground">
           {operatorLabel(condition)}
         </span>

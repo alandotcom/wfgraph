@@ -138,8 +138,8 @@ export type DefineActionInput<TInput extends Record<string, unknown>> =
      * is passed as it is, with no wrapping.
      *
      * `configFields` are auto-derived from the schema's JSON Schema
-     * representation. A field's human-readable label comes from its
-     * `description`: an annotation in Effect Schema, `.describe()` in Zod.
+     * representation. A readable label is derived from each property key.
+     * `title` overrides that label, and `description` supplies help text.
      */
     input: InputSchema<TInput>;
 
@@ -227,9 +227,9 @@ function normalizeActionIdentity(
  *   description: "Cancels an appointment and records the reason.",
  *   category: "Appointments",
  *   input: Schema.Struct({
- *     appointmentId: Schema.String.annotate({ description: "Appointment ID" }),
+ *     appointmentId: Schema.String,
  *     reason: Schema.String.annotate({
- *       description: "Cancellation reason",
+ *       description: "Why the appointment should be canceled.",
  *     }).check(Schema.isMinLength(1)),
  *   }),
  *   output: Schema.Struct({

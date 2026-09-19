@@ -35,6 +35,7 @@ export type ProviderFieldProps = {
   placeholder: string | undefined;
   onChange: (value: unknown) => void;
   disabled?: boolean | undefined;
+  descriptionId?: string | undefined;
 };
 
 export function ProviderSelectField({
@@ -44,6 +45,7 @@ export function ProviderSelectField({
   placeholder,
   onChange,
   disabled,
+  descriptionId,
 }: ProviderFieldProps) {
   const stored = typeof value === "string" ? value : "";
   const state = useConfigOptions({ source: field.optionsSource, config });
@@ -62,6 +64,7 @@ export function ProviderSelectField({
 
   const templateInput = (
     <TemplateBadgeInput
+      describedBy={descriptionId}
       disabled={disabled}
       id={field.key}
       labelledBy={field.label ? `${field.key}-label` : undefined}
@@ -137,7 +140,11 @@ export function ProviderSelectField({
         onValueChange={onChange}
         value={stored}
       >
-        <SelectTrigger className="w-full" id={field.key}>
+        <SelectTrigger
+          aria-describedby={descriptionId}
+          className="w-full"
+          id={field.key}
+        >
           <SelectValue placeholder={placeholder ?? "Choose one"} />
         </SelectTrigger>
         <SelectContent>

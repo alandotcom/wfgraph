@@ -11,7 +11,10 @@ import { defineEntity } from "#src/backend/extensions/define-entity";
 import { isoTimestampToDate } from "@wfgraph/shared/types/timestamp";
 
 const appointment = Schema.Struct({
-  id: Schema.String.annotate({ description: "Appointment ID" }),
+  id: Schema.String.annotate({
+    title: "Appointment ID",
+    description: "The appointment's stable identifier",
+  }),
   priority: Schema.String.annotate({ description: "Appointment priority" }),
 }).annotate({ description: "The appointment this event is about" });
 
@@ -259,7 +262,12 @@ describe("defineEvent payload fields", () => {
         description: "The appointment this event is about",
         type: "object",
       },
-      { path: "appointment.id", description: "Appointment ID", type: "string" },
+      {
+        path: "appointment.id",
+        label: "Appointment ID",
+        description: "The appointment's stable identifier",
+        type: "string",
+      },
       {
         path: "appointment.priority",
         description: "Appointment priority",
@@ -268,9 +276,9 @@ describe("defineEvent payload fields", () => {
     ]);
   });
 
-  it("carries no description for a field its author never described", () => {
+  it("carries no presentation metadata for a field its author never annotated", () => {
     // A host's payload schema is written for validation, so most paths arrive
-    // bare, and the editor renders each one as the path alone.
+    // bare, and the editor derives a label from the final key.
     const event = defineEvent({
       name: "app/fields.bare",
       schema: Schema.Struct({ appointmentId: Schema.String }),

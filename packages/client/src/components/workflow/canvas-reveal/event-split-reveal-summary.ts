@@ -12,6 +12,7 @@ import {
 } from "@wfgraph/shared/extensions/catalog";
 import type { ArrivingEventSource } from "@wfgraph/shared/graph/events-reaching";
 import { getNodeDisplayName } from "@wfgraph/shared/graph/node-display";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 
 /** A step one Event Split connection leads to, through the edge `edgeId`. */
@@ -31,6 +32,7 @@ export type EventSplitOutletTarget = {
 export type EventSplitOutletRow = {
   eventName: string;
   label: string | null;
+  description?: string | undefined;
   reachable: boolean;
   targets: readonly EventSplitOutletTarget[];
 };
@@ -99,12 +101,16 @@ export function eventSplitConnections(input: {
       eventName !== null && !reachable.has(eventName)
   );
   const rows = [...input.reachableEventNames, ...staleEventNames].map(
-    (eventName) => ({
-      eventName,
-      label: findEvent(input.catalog, eventName)?.label ?? null,
-      reachable: reachable.has(eventName),
-      targets: targetsOf(eventName),
-    })
+    (eventName) => {
+      const event = findEvent(input.catalog, eventName);
+      return omitUndefined({
+        eventName,
+        label: event?.label ?? null,
+        description: event?.description,
+        reachable: reachable.has(eventName),
+        targets: targetsOf(eventName),
+      });
+    }
   );
   return { rows, withoutOutlet };
 }

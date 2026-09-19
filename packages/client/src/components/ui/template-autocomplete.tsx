@@ -22,6 +22,7 @@ import type { WorkflowSchemaItemType } from "@wfgraph/shared/graph/schema-codec"
 import {
   appendOutputPathKey,
   formatTemplateToken,
+  referenceFieldLabel,
   type ReferenceField,
 } from "@wfgraph/shared/graph/node-references";
 import {
@@ -94,6 +95,7 @@ type TemplateOption = {
   /** Stable identity carried by a virtual source such as tracked Entity State. */
   sourceType?: string | undefined;
   field?: string | undefined;
+  label?: string | undefined;
   description?: string | undefined;
   template: string;
   /** Why this row cannot be chosen, absent where it can. */
@@ -275,6 +277,7 @@ export function useTemplateAutocompleteRows(input: {
             nodeName,
             sourceType,
             field: field.path,
+            label: referenceFieldLabel(field),
             description: field.description,
             template: formatTemplateToken({
               nodeId,
@@ -363,7 +366,9 @@ export function useTemplateAutocompleteRows(input: {
       const displayedPath = option.field
         ? `${option.nodeName}.${option.field}`
         : option.nodeName;
-      return displayedPath.toLowerCase().includes(trimmedFilter);
+      return [displayedPath, option.label, option.description].some(
+        (text) => text?.toLowerCase().includes(trimmedFilter) === true
+      );
     });
 
     // Matched case-sensitively, because a record key is compared as written: a
@@ -518,17 +523,18 @@ export function TemplateAutocomplete({
           >
             <div className="flex-1">
               <div className="font-medium">
-                {option.type === "node" ? (
-                  option.nodeName
-                ) : (
-                  <>
-                    <span className="text-muted-foreground">
-                      {option.nodeName}.
-                    </span>
-                    {option.field}
-                  </>
-                )}
+                {option.type === "node"
+                  ? option.nodeName
+                  : referenceFieldLabel({
+                      path: option.field ?? "",
+                      label: option.label,
+                    })}
               </div>
+              {option.type === "field" ? (
+                <div className="truncate font-mono text-muted-foreground text-xs">
+                  {option.nodeName}.{option.field}
+                </div>
+              ) : null}
               {option.description && (
                 <div className="text-muted-foreground text-xs">
                   {option.description}

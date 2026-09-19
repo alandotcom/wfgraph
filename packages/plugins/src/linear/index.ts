@@ -60,9 +60,9 @@ const createTicketInput = Schema.Struct({
 });
 
 const createTicketOutput = Schema.Struct({
-  id: Schema.String.annotate({ description: "Ticket ID" }),
-  url: Schema.String.annotate({ description: "Ticket URL" }),
-  title: Schema.String.annotate({ description: "Ticket title" }),
+  id: Schema.String.annotate({ title: "Ticket ID" }),
+  url: Schema.String.annotate({ title: "Ticket URL" }),
+  title: Schema.String.annotate({ title: "Ticket title" }),
 });
 
 const linearStatusValues = [
@@ -101,10 +101,10 @@ const linearStateType = {
  * as a field beside it does.
  */
 const linearIssueSchema = Schema.Struct({
-  id: Schema.String.annotate({ description: "Issue ID" }),
-  title: Schema.String.annotate({ description: "Issue title" }),
-  url: Schema.String.annotate({ description: "Issue URL" }),
-  state: Schema.String.annotate({ description: "Workflow state name" }),
+  id: Schema.String.annotate({ title: "Issue ID" }),
+  title: Schema.String.annotate({ title: "Issue title" }),
+  url: Schema.String.annotate({ title: "Issue URL" }),
+  state: Schema.String.annotate({ title: "Workflow state name" }),
   // A bare `Schema.Number` describes itself as a number or one of the strings
   // "Infinity", "-Infinity" and "NaN", which the field reader cannot use, so
   // the field would drop out of the derived list. The check is what keeps it.
@@ -112,15 +112,16 @@ const linearIssueSchema = Schema.Struct({
     description: "Priority, 0 (none) through 4 (low)",
   }).check(Schema.isFinite()),
   assigneeId: Schema.optionalKey(
-    Schema.NullOr(Schema.String.annotate({ description: "Assigned user ID" }))
+    Schema.NullOr(Schema.String.annotate({ title: "Assigned user ID" }))
   ),
 });
 
 const findIssuesOutput = Schema.Struct({
   issues: Schema.Array(linearIssueSchema).annotate({
-    description: "Array of issues found",
+    title: "Issues",
+    description: "The issues that matched the search.",
   }),
-  count: Schema.Number.annotate({ description: "Number of issues" }).check(
+  count: Schema.Number.annotate({ title: "Number of issues" }).check(
     Schema.isFinite()
   ),
 });

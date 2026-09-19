@@ -94,6 +94,7 @@ function matchesField(field: ConditionSelectableField, query: string): boolean {
   const haystack = [
     field.path,
     field.label,
+    ...(field.description ? [field.description] : []),
     ...field.sourceNodeLabels,
     ...(field.nullable ? ["nullable"] : []),
   ];
@@ -156,7 +157,7 @@ export function ConditionFieldCombobox({
         placeholder="Select field"
         triggerLabel="Show the fields"
       />
-      <ComboboxContent className="w-max min-w-(--anchor-width)">
+      <ComboboxContent className="w-96 min-w-(--anchor-width)">
         <ComboboxEmpty>No field matches that.</ComboboxEmpty>
         <ComboboxList>
           {(group: ConditionFieldGroup) => (
@@ -170,15 +171,25 @@ export function ConditionFieldCombobox({
                       key={field.path}
                       value={field}
                     >
-                      <span className="flex w-full flex-col items-start">
+                      <span className="flex min-w-0 w-full flex-col items-start">
                         <span className="flex items-center gap-1.5">
-                          {field.label}
-                          {field.nullable && (
+                          <span className="font-medium">{field.label}</span>
+                          {field.nullable ? (
                             <span className="rounded bg-muted px-1 py-0.5 font-normal text-xs text-muted-foreground leading-none">
                               nullable
                             </span>
-                          )}
+                          ) : null}
                         </span>
+                        {field.label === field.path ? null : (
+                          <span className="max-w-full truncate font-mono text-muted-foreground text-xs">
+                            {field.path}
+                          </span>
+                        )}
+                        {field.description ? (
+                          <span className="line-clamp-2 text-muted-foreground text-xs">
+                            {field.description}
+                          </span>
+                        ) : null}
                         {field.openRecord && (
                           <span className="text-muted-foreground text-xs">
                             One key of this record, named beside it

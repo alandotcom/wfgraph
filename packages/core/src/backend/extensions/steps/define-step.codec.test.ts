@@ -182,7 +182,10 @@ describe("defineStep and a schema from another library", () => {
   const step = defineStep({
     ...METADATA,
     input: z.object({
-      to: z.string().describe("Recipient"),
+      to: z.string().meta({
+        title: "Recipient",
+        description: "Where the message is sent.",
+      }),
       note: z.string().optional(),
     }),
     output: z.object({ id: z.string().describe("Id") }),
@@ -193,7 +196,13 @@ describe("defineStep and a schema from another library", () => {
 
   it("derives the form from the schema it was given", () => {
     expect(step.configFields).toEqual([
-      { key: "to", label: "Recipient", type: "template-input", required: true },
+      {
+        key: "to",
+        label: "Recipient",
+        description: "Where the message is sent.",
+        type: "template-input",
+        required: true,
+      },
       { key: "note", label: "Note", type: "template-input" },
     ]);
   });

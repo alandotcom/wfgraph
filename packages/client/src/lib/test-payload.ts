@@ -12,7 +12,10 @@
  */
 
 import type { EventMetadata } from "@wfgraph/shared/extensions/catalog";
-import type { ReferenceField } from "@wfgraph/shared/graph/node-references";
+import {
+  referenceFieldLabel,
+  type ReferenceField,
+} from "@wfgraph/shared/graph/node-references";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import {
   type LifecycleRules,
@@ -33,6 +36,7 @@ import {
   getValueByPath,
   setValueByPath,
 } from "@wfgraph/shared/utils/object-path";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 /** Which control draws a field, decided by the type the Event declared. */
 export type TestPayloadControl =
@@ -44,6 +48,7 @@ export type TestPayloadControl =
 
 export type TestPayloadField = {
   path: string;
+  label: string;
   description?: string | undefined;
   control: TestPayloadControl;
   /** The values a select offers, present only for `control: "select"`. */
@@ -97,13 +102,16 @@ export function testPayloadFields(
     return [];
   }
 
-  return event.payloadFields.filter(isFormAddressable).map((field) => ({
-    path: field.path,
-    description: field.description,
-    control: controlFor(field),
-    options: field.enumValues ? [...field.enumValues] : undefined,
-    optional: field.nullable === true,
-  }));
+  return event.payloadFields.filter(isFormAddressable).map((field) =>
+    omitUndefined({
+      path: field.path,
+      label: referenceFieldLabel(field),
+      description: field.description,
+      control: controlFor(field),
+      options: field.enumValues ? [...field.enumValues] : undefined,
+      optional: field.nullable === true,
+    })
+  );
 }
 
 /**

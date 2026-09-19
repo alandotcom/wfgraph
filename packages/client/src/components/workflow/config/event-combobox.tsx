@@ -41,7 +41,8 @@ function matchesQuery(choice: EventChoice, query: string): boolean {
 
   return (
     choice.label.toLowerCase().includes(needle) ||
-    choice.name.toLowerCase().includes(needle)
+    choice.name.toLowerCase().includes(needle) ||
+    choice.description?.toLowerCase().includes(needle) === true
   );
 }
 
@@ -52,13 +53,20 @@ function sameEvent(a: EventChoice, b: EventChoice): boolean {
 
 function EventItem({ choice }: { choice: EventChoice }) {
   return (
-    <ComboboxItem key={choice.name} value={choice}>
-      <span className="block truncate">{choice.label}</span>
-      {choice.label === choice.name ? null : (
-        <span className="block truncate font-mono text-xs text-muted-foreground">
-          {choice.name}
-        </span>
-      )}
+    <ComboboxItem className="items-start" key={choice.name} value={choice}>
+      <span className="flex min-w-0 flex-col">
+        <span className="truncate font-medium">{choice.label}</span>
+        {choice.description ? (
+          <span className="line-clamp-2 text-muted-foreground">
+            {choice.description}
+          </span>
+        ) : null}
+        {choice.label === choice.name ? null : (
+          <span className="truncate font-mono text-muted-foreground">
+            {choice.name}
+          </span>
+        )}
+      </span>
     </ComboboxItem>
   );
 }

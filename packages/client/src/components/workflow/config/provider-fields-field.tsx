@@ -19,6 +19,7 @@
  * that says it was kept.
  */
 
+import { compact } from "es-toolkit/array";
 import { isBlank } from "@wfgraph/shared/types/string";
 import { TemplateBadgeInput } from "#src/components/ui/template-badge-input";
 import { TemplateBadgeTextarea } from "#src/components/ui/template-badge-textarea";
@@ -75,12 +76,14 @@ export function ProviderFieldsField({
   onChange,
   disabled,
   placeholder,
+  descriptionId,
 }: ProviderFieldProps) {
   const state = useConfigOptions({ source: field.optionsSource, config });
   const stored = readStoredObject(value);
 
   const rawTextarea = (
     <TemplateBadgeTextarea
+      describedBy={descriptionId}
       disabled={disabled}
       id={field.key}
       labelledBy={field.label ? `${field.key}-label` : undefined}
@@ -151,6 +154,7 @@ export function ProviderFieldsField({
           entry={entry}
           key={entry.key}
           onChange={(next) => write(entry.key, next)}
+          parentDescriptionId={descriptionId}
           parentKey={field.key}
           value={String(storedValue(entry.key) ?? entry.defaultValue ?? "")}
         />
@@ -178,18 +182,31 @@ export function ProviderFieldsField({
 function ProviderSubField({
   entry,
   parentKey,
+  parentDescriptionId,
   value,
   onChange,
   disabled,
 }: {
   entry: ConfigOptionField;
   parentKey: string;
+  parentDescriptionId?: string | undefined;
   value: string;
   onChange: (value: string) => void;
   disabled?: boolean | undefined;
 }) {
   const id = `${parentKey}.${entry.key}`;
   const missing = entry.required === true && isBlank(value);
+  const entryDescriptionId = entry.description
+    ? `${id}-description`
+    : undefined;
+  const errorId = missing ? `${id}-error` : undefined;
+  const descriptionIds = compact([
+    parentDescriptionId,
+    entryDescriptionId,
+    errorId,
+  ]);
+  const describedBy =
+    descriptionIds.length > 0 ? descriptionIds.join(" ") : undefined;
 
   return (
     <div className="flex flex-col gap-2">
@@ -202,6 +219,7 @@ function ProviderSubField({
         )}
       </Label>
       <TemplateBadgeInput
+        describedBy={describedBy}
         disabled={disabled}
         id={id}
         invalid={missing}
@@ -211,13 +229,16 @@ function ProviderSubField({
         value={value}
       />
       {missing && (
-        <p className="ml-1 text-destructive text-xs">
+        <p className="ml-1 text-destructive text-xs" id={errorId}>
           This template has no default for {entry.label}, so the send needs a
           value here.
         </p>
       )}
       {entry.description && (
-        <p className="ml-1 text-muted-foreground text-xs">
+        <p
+          className="ml-1 text-muted-foreground text-xs"
+          id={entryDescriptionId}
+        >
           {entry.description}
         </p>
       )}

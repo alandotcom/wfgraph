@@ -44,6 +44,9 @@ function OutletIdentity({
   return (
     <div className="space-y-0.5">
       <p className="text-sm">{row.label ?? row.eventName}</p>
+      {row.description ? (
+        <p className="text-muted-foreground text-xs">{row.description}</p>
+      ) : null}
       <p className="font-mono text-muted-foreground text-xs">{row.eventName}</p>
       {row.label === null ? (
         <p className="text-warning text-xs">Not declared by this app</p>

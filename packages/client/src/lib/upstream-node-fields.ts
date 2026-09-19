@@ -19,8 +19,9 @@ import {
   appendOutputPathKey,
   ENTITY_STATE_SOURCE_ID,
   fieldsVisibleForConfig,
+  referenceFieldLabel,
+  type ReferenceField,
 } from "@wfgraph/shared/graph/node-references";
-import type { ReferenceField } from "@wfgraph/shared/graph/node-references";
 import {
   type ReachableField,
   reachableEventFields,
@@ -44,6 +45,7 @@ export type ConditionSelectableField = ConditionFieldDefinition & {
   sourceNodeId: string;
   sourceNodeLabel: string;
   sourceNodeLabels: string[];
+  description?: string | undefined;
   nullable?: boolean;
   enumValues?: string[];
   /** Human labels for `enumValues`, keyed by the stored comparison value. */
@@ -314,14 +316,17 @@ function keyFieldsUnderRecord(
   record: ConditionSelectableField,
   keys: readonly string[]
 ): ConditionSelectableField[] {
-  return keys.map((key) => ({
-    ...omit(record, ["openRecord"]),
-    path: appendOutputPathKey(record.path, key),
-    label: appendOutputPathKey(record.path, key),
-    recordPath: record.path,
-    recordKey: key,
-    nullable: true,
-  }));
+  return keys.map((key) => {
+    const path = appendOutputPathKey(record.path, key);
+    return {
+      ...omit(record, ["openRecord", "description"]),
+      path,
+      label: referenceFieldLabel({ path }),
+      recordPath: record.path,
+      recordKey: key,
+      nullable: true,
+    };
+  });
 }
 
 /**
@@ -395,7 +400,8 @@ export function getEntityConditionFields(
 
       return {
         path,
-        label: path,
+        label: referenceFieldLabel(field),
+        description: field.description,
         type,
         sourceNodeId: `entity:${entity.type}`,
         sourceNodeLabel: `${entity.label} State`,
@@ -442,7 +448,8 @@ export function getEventConditionFields(
 
       const entry: ConditionSelectableField = {
         path,
-        label: path,
+        label: referenceFieldLabel(field),
+        description: field.description,
         type,
         sourceNodeId: eventName,
         sourceNodeLabel: event.label,
@@ -684,7 +691,8 @@ export function getUpstreamConditionFields(input: {
 
     const entry: ConditionSelectableField = {
       path,
-      label: path,
+      label: referenceFieldLabel(field),
+      description: field.description,
       type: conditionFieldType,
       sourceNodeId: field.sourceNodeId,
       sourceNodeLabel: field.sourceNodeName,

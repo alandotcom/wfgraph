@@ -53,7 +53,7 @@ describe("Resend webhook Events", () => {
         event.payloadFields.find((field) => field.path === "data.tags")
       ).toEqual({
         path: "data.tags",
-        description: "Email tags",
+        label: "Email tags",
         type: "object",
         valueType: "string",
         nullable: true,

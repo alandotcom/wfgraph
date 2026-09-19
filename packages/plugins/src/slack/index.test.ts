@@ -31,8 +31,8 @@ describe("the slack integration", () => {
         sendMessage.output
       )
     ).toEqual([
-      { path: "ts", description: "Message timestamp", type: "string" },
-      { path: "channel", description: "Channel ID", type: "string" },
+      { path: "ts", label: "Message timestamp", type: "string" },
+      { path: "channel", label: "Channel ID", type: "string" },
       {
         path: "reasonCode",
         description: "Why a test run did not send",
@@ -49,11 +49,11 @@ describe("the slack integration", () => {
         replyToThread.output
       )
     ).toEqual([
-      { path: "ts", description: "Message timestamp", type: "string" },
-      { path: "channel", description: "Channel ID", type: "string" },
+      { path: "ts", label: "Message timestamp", type: "string" },
+      { path: "channel", label: "Channel ID", type: "string" },
       {
         path: "threadTs",
-        description: "Parent message timestamp",
+        label: "Parent message timestamp",
         type: "string",
       },
       {

@@ -1139,11 +1139,16 @@ describe("LifecyclePanel Entity eligibility", () => {
       .getAllByRole("option")
       .map((option) => option.textContent);
     expect(choices).toEqual(
-      expect.arrayContaining(["remindersEnabled", "status"])
+      expect.arrayContaining([
+        "Reminders enabledremindersEnabled",
+        "Statusstatus",
+      ])
     );
-    expect(choices).not.toEqual(
-      expect.arrayContaining(["patient.id", "tenantId", "sweep.id"])
+    expect(choices.every((choice) => !choice?.includes("patient.id"))).toBe(
+      true
     );
+    expect(choices.every((choice) => !choice?.includes("tenantId"))).toBe(true);
+    expect(choices.every((choice) => !choice?.includes("sweep.id"))).toBe(true);
   });
 
   /**
@@ -1162,11 +1167,13 @@ describe("LifecyclePanel Entity eligibility", () => {
     const fieldInput = view.getByLabelText("Select field");
     fireEvent.keyDown(fieldInput, { key: "ArrowDown" });
     fireEvent.change(fieldInput, { target: { value: fieldPath } });
-    fireEvent.click(view.getByRole("option", { name: fieldPath }));
-
     fireEvent.click(
-      view.getByRole("combobox", { name: `${fieldPath} operator` })
+      view.getByRole("option", {
+        name: new RegExp(`${fieldPath}$`, "i"),
+      })
     );
+
+    fireEvent.click(view.getByRole("combobox", { name: / operator$/ }));
     return view
       .getAllByRole("option")
       .map((option) => option.textContent ?? "");

@@ -19,10 +19,11 @@ import { isSafeRecordKey } from "#src/types/record-key";
 import { matchesShowWhen, type ShowWhen } from "#src/types/show-when";
 import { mapOrSame, mapValuesOrSame } from "#src/utils/map-or-same";
 import { omitUndefined } from "#src/utils/omit-undefined";
-import type {
-  WorkflowSchemaField,
-  WorkflowSchemaFieldType,
-  WorkflowSchemaItemType,
+import {
+  labelFromKey,
+  type WorkflowSchemaField,
+  type WorkflowSchemaFieldType,
+  type WorkflowSchemaItemType,
 } from "./schema-codec";
 
 /**
@@ -53,7 +54,9 @@ import type {
  */
 export type ReferenceField = {
   path: string;
-  /** The author's own words for the field, absent when they wrote none. */
+  /** A short human-readable name, absent when the schema declares none. */
+  label?: string | undefined;
+  /** Explanatory help text, absent when the schema declares none. */
   description?: string | undefined;
   type?: WorkflowSchemaFieldType | undefined;
   valueType?: WorkflowSchemaItemType | undefined;
@@ -61,6 +64,15 @@ export type ReferenceField = {
   enumValues?: string[] | undefined;
   showWhen?: ShowWhen | undefined;
 };
+
+/** The authored label, or a readable fallback derived from the final path key. */
+export function referenceFieldLabel(
+  field: Pick<ReferenceField, "path" | "label">
+): string {
+  const steps = parseOutputPath(field.path);
+  const key = steps?.findLast((step) => step.kind === "key")?.key ?? field.path;
+  return labelFromKey(key, field.label);
+}
 
 /**
  * Catalog output fields this config currently makes addressable.
@@ -134,12 +146,14 @@ function schemaFieldToReferenceField(
   path: string,
   nullable: boolean
 ): ReferenceField {
+  const label = field.label?.trim();
   const description = field.description?.trim();
 
   return omitUndefined({
     path,
-    // A description of nothing but whitespace says no more than a missing one,
-    // so the key is dropped rather than emitted as an empty string.
+    // Whitespace-only annotations say no more than missing ones, so the keys
+    // are dropped rather than emitted as empty strings.
+    label: label || undefined,
     description: description || undefined,
     type: field.type,
     valueType: field.valueType,

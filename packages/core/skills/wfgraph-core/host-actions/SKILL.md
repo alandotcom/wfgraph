@@ -21,8 +21,11 @@ wfgraph-core/integrations instead. Copy-paste the host action from
 
 `defineAction` is the host vocabulary. An adopter needs no Effect. Fail by
 throwing; durable work is `step.run(id, () => promise)`. Pass the value in
-`extensions.actions`. The input schema draws the config form. A field label is
-the key in title case unless `description` replaces it.
+`extensions.actions`. The input schema draws the config form. The editor derives
+a readable label from each property key and preserves common initialisms
+(`appointmentId` becomes "Appointment ID"). JSON Schema `description` supplies
+separate help text. Use `title` only when the intended label cannot be derived
+from the key.
 
 ## Core Patterns
 
@@ -66,11 +69,15 @@ whatever the handler answers next.
 
 Source: alandotcom/wfgraph:docs/integrations.md
 
-### MEDIUM Missing output field descriptions
+### MEDIUM Redundant or missing field title
 
-Wrong: `output: z.object({ id: z.string() })`.
+Wrong: annotate `appointmentId` with `title: "Appointment ID"`; the editor already
+derives that label. Also wrong: leave `id` unannotated when the intended label is
+"Item ID".
 
-Correct: `id: z.string().describe("Item ID")`. Template autocomplete and the
-Runs view derive labels from descriptions.
+Correct: use `appointmentId: z.string()` for the derived label and
+`id: z.string().meta({ title: "Item ID" })` for the override. Add `description`
+only when the field needs explanatory help text. Template autocomplete and the
+Runs view retain the raw path.
 
 Source: alandotcom/wfgraph:docs/embedding.md

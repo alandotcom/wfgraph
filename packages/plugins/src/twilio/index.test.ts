@@ -44,18 +44,18 @@ describe("the twilio integration", () => {
     expect(
       requireOutputFieldsFromSchema('Action "twilio/send-sms"', sendSms.output)
     ).toEqual([
-      { path: "sid", description: "Message SID", type: "string" },
-      { path: "status", description: "Delivery status", type: "string" },
-      { path: "to", description: "Recipient phone number", type: "string" },
+      { path: "sid", label: "Message SID", type: "string" },
+      { path: "status", label: "Delivery status", type: "string" },
+      { path: "to", label: "Recipient phone number", type: "string" },
       {
         path: "from",
-        description: "Sender phone number",
+        label: "Sender phone number",
         type: "string",
         nullable: true,
       },
       {
         path: "messagingServiceSid",
-        description: "Messaging Service SID",
+        label: "Messaging Service SID",
         type: "string",
         nullable: true,
       },

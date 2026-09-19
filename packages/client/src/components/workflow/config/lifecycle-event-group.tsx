@@ -213,7 +213,6 @@ export function LifecycleEventGroup(props: LifecycleEventGroupProps) {
                 : undefined
             }
             key={eventName}
-            label={findEvent(catalog, eventName)?.label}
             onCommitPath={onCorrelationPathChange}
             onRemove={() =>
               onEventNamesChange(
@@ -316,7 +315,6 @@ type ChosenEventFilter = {
 
 function ChosenEvent({
   eventName,
-  label,
   role,
   request,
   catalog,
@@ -326,7 +324,6 @@ function ChosenEvent({
   disabled,
 }: {
   eventName: string;
-  label: string | undefined;
   role: "start" | "cancel";
   request: CorrelationPathRequest | undefined;
   catalog: ExtensionCatalog;
@@ -335,20 +332,28 @@ function ChosenEvent({
   onRemove: () => void;
   disabled: boolean;
 }) {
-  const displayName = label ?? eventName;
+  const event = findEvent(catalog, eventName);
+  const displayName = event?.label ?? eventName;
   // This Event alone, held stable because `LifecycleFilterEditor` memoizes a walk of
   // every node in the graph on it.
   const scope = useMemo(() => [eventName], [eventName]);
 
   return (
     <div className="rounded-md border">
-      <div className="flex min-h-9 items-center justify-between gap-2 px-3 py-1.5">
-        <h5
-          className="min-w-0 truncate font-semibold text-base"
-          title={displayName}
-        >
-          {displayName}
-        </h5>
+      <div className="flex min-h-9 items-start justify-between gap-2 px-3 py-1.5">
+        <div className="min-w-0 space-y-0.5">
+          <h5 className="truncate font-semibold text-base" title={displayName}>
+            {displayName}
+          </h5>
+          {event?.description ? (
+            <p className="text-muted-foreground text-xs">{event.description}</p>
+          ) : null}
+          {displayName === eventName ? null : (
+            <p className="truncate font-mono text-muted-foreground text-xs">
+              {eventName}
+            </p>
+          )}
+        </div>
         <Button
           aria-label={`Remove ${eventName}`}
           className="shrink-0"

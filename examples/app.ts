@@ -62,13 +62,13 @@ const demoAuth = createDemoAuth({
 });
 
 // Workflow Graph reads a schema through Standard Schema and asks nothing else of it. The
-// editor labels a path from its key ("Patient Name" from `patientName`), and
-// `z.iso.datetime()` emits `format: "date-time"`, which is what gives the field
-// before/after operators in the condition builder and admits it to the Wait
-// node's date field. A `.describe()` replaces the derived label, so it earns its
-// place only where the key reads badly alone.
-const appointmentIdSchema = z.string().describe("Appointment ID");
-const patientIdSchema = z.string().describe("Patient ID");
+// editor derives a readable label from each key and uses JSON Schema `description`
+// as separate help text. Add a JSON Schema `title` only when the intended label
+// cannot be derived from the key. `z.iso.datetime()` emits `format: "date-time"`,
+// which gives the field before/after operators in the condition builder and admits
+// it to the Wait node's date field.
+const appointmentIdSchema = z.string();
+const patientIdSchema = z.string();
 
 const appointmentSchema = z.object({
   id: appointmentIdSchema,
@@ -183,7 +183,10 @@ const paymentSettled = defineEvent({
   description: "Raised by the billing service when a charge clears.",
   schema: z.object({
     appointmentId: appointmentIdSchema,
-    amountCents: z.number().describe("Amount settled, in cents"),
+    amountCents: z.number().meta({
+      title: "Amount",
+      description: "The settled amount in cents.",
+    }),
     settledAt: z.iso.datetime(),
   }),
   correlationPath: "appointmentId",

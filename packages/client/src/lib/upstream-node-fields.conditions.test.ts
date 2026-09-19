@@ -232,7 +232,7 @@ describe("upstream-node-fields conditions", () => {
       // The whole point: a rule can be built on this without anybody typing it.
       expect(fields.find((field) => field.path === "tags.name")).toMatchObject({
         path: "tags.name",
-        label: "tags.name",
+        label: "Name",
         type: "string",
         nullable: true,
       });

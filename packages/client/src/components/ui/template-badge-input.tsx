@@ -22,6 +22,8 @@ export interface TemplateBadgeInputProps {
    * the field reaches the accessibility tree as an unnamed textbox.
    */
   labelledBy?: string | undefined;
+  /** Id of the element that explains this field. */
+  describedBy?: string | undefined;
   /** Direct name, for a field with no visible label element to point at. */
   ariaLabel?: string | undefined;
   required?: boolean | undefined;
@@ -45,6 +47,7 @@ export function TemplateBadgeInput({
   fieldType,
   currentNodeId,
   labelledBy,
+  describedBy,
   ariaLabel,
   required,
   invalid,
@@ -90,6 +93,7 @@ export function TemplateBadgeInput({
         ref={chromeRef}
       >
         <div
+          aria-describedby={describedBy}
           aria-invalid={invalid || undefined}
           aria-label={ariaLabel}
           aria-labelledby={labelledBy}

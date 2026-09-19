@@ -12,7 +12,12 @@ const catalog = {
   entities: [],
   integrations: [],
   events: [
-    { name: "app/created", label: "Created", payloadFields: [] },
+    {
+      name: "app/created",
+      label: "Created",
+      description: "Raised when the record is created.",
+      payloadFields: [],
+    },
     { name: "app/canceled", label: "Canceled", payloadFields: [] },
   ],
 } as const;
@@ -48,6 +53,7 @@ describe("eventSplitConnections", () => {
       {
         eventName: "app/created",
         label: "Created",
+        description: "Raised when the record is created.",
         reachable: true,
         targets: [{ edgeId: "e1", nodeId: "a", label: "Send" }],
       },
@@ -67,6 +73,7 @@ describe("eventSplitConnections", () => {
       {
         eventName: "app/created",
         label: "Created",
+        description: "Raised when the record is created.",
         reachable: true,
         targets: [],
       },
@@ -108,6 +115,7 @@ describe("eventSplitConnections", () => {
       {
         eventName: "app/created",
         label: "Created",
+        description: "Raised when the record is created.",
         reachable: true,
         targets: [],
       },
@@ -143,6 +151,7 @@ describe("eventSplitConnections", () => {
         {
           eventName: "app/created",
           label: "Created",
+          description: "Raised when the record is created.",
           reachable: true,
           targets: [],
         },

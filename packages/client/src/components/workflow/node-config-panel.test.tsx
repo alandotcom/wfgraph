@@ -40,6 +40,7 @@ import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import { LIFECYCLE_STARTED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
 import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
 
@@ -49,6 +50,7 @@ const catalog: ExtensionCatalog = {
     {
       name: "app/appointment.created",
       label: "Appointment created",
+      description: "Raised when an appointment is created.",
       correlationPath: "appointment.id",
       payloadFields: [{ path: "appointment.id", type: "string" }],
     },
@@ -89,6 +91,19 @@ function waitNode(config: Record<string, unknown>): WorkflowNode {
       label: "Wait",
       type: "action",
       config: { actionType: BUILT_IN_ACTION_IDS.wait, ...config },
+    },
+  };
+}
+
+function eventSplitNode(): WorkflowNode {
+  return {
+    id: "split_1",
+    type: "action",
+    position: { x: 0, y: 100 },
+    data: {
+      label: "Event Split",
+      type: "action",
+      config: { actionType: BUILT_IN_ACTION_IDS.eventSplit },
     },
   };
 }
@@ -267,6 +282,28 @@ describe("NodeConfigPanel config scoping", () => {
   // key, so the case the key answers for is one entry node replaced by another
   // in the same slot, which is what opening a second workflow does. Two of them
   // in one graph is the fixture for that; a real workflow has one.
+  it("shows an Event's description and raw name in Event Split config", async () => {
+    const split = eventSplitNode();
+    const { view } = renderPanel({
+      nodes: [lifecycleNode(), split],
+      edges: [
+        {
+          id: "lifecycle-split",
+          source: "lifecycle_1",
+          sourceHandle: LIFECYCLE_STARTED_HANDLE,
+          target: split.id,
+        },
+      ],
+      selected: split.id,
+    });
+
+    expect(await view.findByText("Appointment created")).toBeTruthy();
+    expect(
+      view.getByText("Raised when an appointment is created.")
+    ).toBeTruthy();
+    expect(view.getByText("app/appointment.created")).toBeTruthy();
+  });
+
   it("starts another entry node's pickers clean", async () => {
     const { view, store } = renderPanel({
       nodes: [lifecycleNode(), lifecycleNode("lifecycle_2")],

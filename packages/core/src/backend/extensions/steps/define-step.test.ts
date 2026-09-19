@@ -355,15 +355,17 @@ describe("defineStep and the config form", () => {
     ).toEqual([{ key: "mode", label: "Mode", type: "text", required: true }]);
   });
 
-  // The whole point of writing a field down is to say the one thing the schema
-  // cannot. Everything else, the label and the required flag here, still comes
-  // from the schema.
-  it("takes the schema's label for an author who states only a placeholder", () => {
+  // The author states only what the schema cannot: the placeholder. The label,
+  // help text, and required flag still come from the schema.
+  it("takes the schema's metadata for an author who states only a placeholder", () => {
     expect(
       defineStep({
         ...METADATA,
         input: Schema.Struct({
-          to: Schema.String.annotate({ description: "Recipient" }),
+          to: Schema.String.annotate({
+            title: "Recipient",
+            description: "Where the message is sent.",
+          }),
         }),
         output: anOutput,
         configFields: [{ key: "to", placeholder: "+15551234567" }],
@@ -373,6 +375,7 @@ describe("defineStep and the config form", () => {
       {
         key: "to",
         label: "Recipient",
+        description: "Where the message is sent.",
         type: "template-input",
         required: true,
         placeholder: "+15551234567",

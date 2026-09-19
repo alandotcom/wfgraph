@@ -233,11 +233,16 @@ function EventSplitFields() {
         <>
           <ul className="space-y-1">
             {outlets.map((event) => (
-              <li className="text-sm" key={event.name}>
-                {event.label}
-                <span className="ml-2 text-muted-foreground text-xs">
+              <li className="space-y-0.5" key={event.name}>
+                <p className="text-sm">{event.label}</p>
+                {event.description ? (
+                  <p className="text-muted-foreground text-xs">
+                    {event.description}
+                  </p>
+                ) : null}
+                <p className="font-mono text-muted-foreground text-xs">
                   {event.name}
-                </span>
+                </p>
               </li>
             ))}
           </ul>

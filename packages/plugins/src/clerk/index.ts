@@ -52,18 +52,10 @@ export type ClerkCredentials = CredentialsOf<typeof clerkCredentialFields>;
  * right question about a missing name.
  */
 const clerkUserOutput = {
-  id: Schema.String.annotate({ description: "User ID" }),
-  firstName: Schema.optionalKey(
-    Schema.NullOr(Schema.String.annotate({ description: "First name" }))
-  ),
-  lastName: Schema.optionalKey(
-    Schema.NullOr(Schema.String.annotate({ description: "Last name" }))
-  ),
-  primaryEmailAddress: Schema.optionalKey(
-    Schema.NullOr(
-      Schema.String.annotate({ description: "Primary email address" })
-    )
-  ),
+  id: Schema.String.annotate({ title: "User ID" }),
+  firstName: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  lastName: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  primaryEmailAddress: Schema.optionalKey(Schema.NullOr(Schema.String)),
   // A bare `Schema.Number` describes itself as a number or one of the strings
   // "Infinity", "-Infinity" and "NaN", which the field reader cannot use, so
   // the field would drop out of the derived list. The check is what keeps it.
@@ -109,7 +101,7 @@ const deleteUserInput = Schema.Struct({
 });
 
 const deleteUserOutput = Schema.Struct({
-  deleted: Schema.Boolean.annotate({ description: "Deletion success" }),
+  deleted: Schema.Boolean.annotate({ title: "Deletion success" }),
 });
 
 export const clerk = defineIntegration({

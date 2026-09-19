@@ -111,6 +111,23 @@ describe("a provider-backed picker", () => {
     ).toContain("text-base");
   });
 
+  it("associates help text with its template fallback", () => {
+    renderFields({
+      config: {},
+      fields: [
+        {
+          ...templateField,
+          description: "Choose the template to send.",
+        },
+      ],
+    });
+
+    const description = screen.getByText("Choose the template to send.");
+    expect(
+      screen.getByLabelText("Template").getAttribute("aria-describedby")
+    ).toBe(description.id);
+  });
+
   it("lists what the connection answered", () => {
     renderFields({
       config: { integrationId: "int_1" },
@@ -130,6 +147,32 @@ describe("a provider-backed picker", () => {
     });
 
     expect(screen.getByRole("combobox")).toBeTruthy();
+  });
+
+  it("associates help text with its provider picker", () => {
+    renderFields({
+      config: { integrationId: "int_1" },
+      fields: [
+        {
+          ...templateField,
+          description: "Choose the template to send.",
+        },
+      ],
+      seed: [
+        {
+          provider: "templates",
+          answer: {
+            status: "options",
+            options: [{ value: "tpl_1", label: "Welcome" }],
+          },
+        },
+      ],
+    });
+
+    const description = screen.getByText("Choose the template to send.");
+    expect(screen.getByRole("combobox").getAttribute("aria-describedby")).toBe(
+      description.id
+    );
   });
 
   it("still shows a stored value the connection no longer lists", () => {
@@ -377,6 +420,25 @@ describe("a provider-backed field set", () => {
     },
   ];
 
+  it("associates help text with its raw template fallback", () => {
+    renderFields({
+      config: {},
+      fields: [
+        {
+          ...variablesField,
+          description: "Fill the template variables.",
+        },
+      ],
+    });
+
+    const description = screen.getByText("Fill the template variables.");
+    expect(
+      screen
+        .getByLabelText("Template Variables")
+        .getAttribute("aria-describedby")
+    ).toBe(description.id);
+  });
+
   it("draws one input per declared value, prefilled with its default", () => {
     renderFields({
       config: withTemplate,
@@ -386,6 +448,40 @@ describe("a provider-backed field set", () => {
 
     expect(screen.getByLabelText("FIRST_NAME")).toBeTruthy();
     expect(screen.getByText("Burbank, CA")).toBeTruthy();
+  });
+
+  it("associates parent and provider help text with each declared input", () => {
+    renderFields({
+      config: withTemplate,
+      fields: [
+        {
+          ...variablesField,
+          description: "Fill the template variables.",
+        },
+      ],
+      seed: [
+        {
+          provider: "template-variables",
+          parameters: { emailTemplateId: "tpl_1" },
+          answer: {
+            status: "fields",
+            fields: [
+              {
+                key: "FIRST_NAME",
+                label: "FIRST_NAME",
+                description: "The recipient's first name.",
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    const parentDescription = screen.getByText("Fill the template variables.");
+    const providerDescription = screen.getByText("The recipient's first name.");
+    expect(
+      screen.getByLabelText("FIRST_NAME").getAttribute("aria-describedby")
+    ).toBe(`${parentDescription.id} ${providerDescription.id}`);
   });
 
   it("writes one JSON object under the one config key", () => {

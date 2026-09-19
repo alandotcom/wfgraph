@@ -16,9 +16,15 @@ const testCatalog: ExtensionCatalog = {
     {
       name: "app/appointment.created",
       label: "Appointment created",
+      description: "Raised when an appointment is created.",
       correlationPath: "appointment.id",
       payloadFields: [
-        { path: "appointment.id", type: "string" },
+        {
+          path: "appointment.id",
+          label: "Appointment ID",
+          description: "The appointment's stable identifier.",
+          type: "string",
+        },
         {
           path: "appointment.startsAt",
           type: "timestamp",
@@ -156,8 +162,18 @@ describe("RunOverlay", () => {
     renderOverlay();
 
     expect(screen.getByText("Appointment created")).toBeTruthy();
-    expect(screen.getByLabelText(/appointment\.id/)).toBeTruthy();
-    expect(screen.getByLabelText(/appointment\.startsAt/)).toBeTruthy();
+    expect(screen.getByText("app/appointment.created")).toBeTruthy();
+    expect(
+      screen.getByText("Raised when an appointment is created.")
+    ).toBeTruthy();
+    const appointmentId = screen.getByLabelText("Appointment ID");
+    const description = screen.getByText(
+      "The appointment's stable identifier."
+    );
+    expect(appointmentId.getAttribute("aria-describedby")).toBe(description.id);
+    expect(screen.getByLabelText("Starts at")).toBeTruthy();
+    expect(screen.getByText("appointment.id")).toBeTruthy();
+    expect(screen.getByText("appointment.startsAt")).toBeTruthy();
   });
 
   // A run sent without a payload resolves every downstream template to empty
@@ -165,7 +181,7 @@ describe("RunOverlay", () => {
   it("sends the Event and the payload the form holds", () => {
     const { onRun } = renderOverlay();
 
-    fireEvent.change(screen.getByLabelText(/appointment\.id/), {
+    fireEvent.change(screen.getByLabelText("Appointment ID"), {
       target: { value: "appt_1" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Run draft" }));
@@ -186,7 +202,7 @@ describe("RunOverlay", () => {
     });
 
     expect(
-      screen.getByLabelText<HTMLInputElement>(/appointment\.id/).value
+      screen.getByLabelText<HTMLInputElement>("Appointment ID").value
     ).toBe("appt_saved");
   });
 

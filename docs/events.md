@@ -10,8 +10,13 @@ const paymentSettled = defineEvent({
   label: "Payment settled",
   description: "The billing service raises this Event when a charge clears.",
   schema: z.object({
-    appointmentId: z.string().describe("Appointment ID"),
-    amountCents: z.number().describe("Amount settled, in cents"),
+    appointmentId: z
+      .string()
+      .describe("The appointment this payment belongs to."),
+    amountCents: z.number().meta({
+      title: "Amount",
+      description: "The settled amount in cents.",
+    }),
     settledAt: z.iso.datetime(),
   }),
   correlationPath: "appointmentId",
@@ -127,8 +132,11 @@ arktype and pass it as it is. Workflow Graph needs both halves of Standard Schem
 - the JSON Schema half draws the field list in the editor.
 
 An Event therefore requires a library that publishes both halves. A schema whose root is
-another type than an object throws at definition and names the Event. A `description` on a
-path replaces the label that the editor derives from the key ("Starts At").
+another type than an object throws at definition and names the Event. The editor derives a readable label from the final property key, including common
+initialisms (`appointmentId` becomes "Appointment ID" and `startsAt` becomes "Starts at").
+Most fields need no title. JSON Schema `description` supplies separate help text. In Zod 4,
+`.describe(...)` sets that help text. Use `.meta({ title, description })` only when the
+intended label cannot be derived from the key.
 
 **`correlationPath` names where the Entity Value sits.** It is typed against the payload
 and admits a path that resolves to a string.
@@ -166,8 +174,8 @@ const invoicePaid = defineEvent({
   name: "billing/invoice.paid",
   label: "Invoice paid",
   schema: Schema.Struct({
-    type: Schema.String.annotate({ description: "Subtype" }),
-    invoiceId: Schema.String.annotate({ description: "Invoice ID" }),
+    type: Schema.String.annotate({ title: "Subtype" }),
+    invoiceId: Schema.String,
   }),
   correlationPath: "invoiceId",
   source: { event: "billing/webhook", when: { path: "type", equals: "paid" } },

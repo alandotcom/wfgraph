@@ -101,16 +101,25 @@ function EventName({
   catalog: ExtensionCatalog;
   eventName: string;
 }) {
+  const event = findEvent(catalog, eventName);
   return (
-    <p className="text-sm">
-      {eventLabel(catalog, eventName)}
-      {findEvent(catalog, eventName) ? null : (
-        <span className="text-warning text-xs">
-          {" "}
-          · Not declared by this app
-        </span>
-      )}
-    </p>
+    <div className="space-y-0.5">
+      <p className="text-sm">
+        {eventLabel(catalog, eventName)}
+        {event ? null : (
+          <span className="text-warning text-xs">
+            {" "}
+            · Not declared by this app
+          </span>
+        )}
+      </p>
+      {event?.description ? (
+        <p className="text-muted-foreground text-xs">{event.description}</p>
+      ) : null}
+      {event && event.label !== event.name ? (
+        <p className="font-mono text-muted-foreground text-xs">{event.name}</p>
+      ) : null}
+    </div>
   );
 }
 
