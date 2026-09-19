@@ -24,7 +24,5 @@ export function useRevealOccupiedWidth(): number {
   const { level } = useAtomValue(canvasRevealAtom);
   const remembered = useAtomValue(rememberedRevealWidthAtom);
   const canvasWidth = useRevealCanvasWidth();
-  return isMobile
-    ? 0
-    : revealOccupiedWidth(level, canvasWidth, remembered);
+  return isMobile ? 0 : revealOccupiedWidth(level, canvasWidth, remembered);
 }

@@ -310,7 +310,7 @@ describe("useRevealCamera", () => {
     await camera.settle();
     await camera.run(() => camera.store.set(selectOnlyNodeAtom, "far"));
 
-    // Standard Reveal on a 1200px canvas takes 640px and the 8px inset. The
+    // Reveal on a 1200px canvas takes 640px and the 8px inset. The
     // step's right edge and 64px of context end at 1364px, and the usable edge
     // less 24px of padding is at 528px.
     expect(camera.moves).toHaveLength(1);
@@ -524,9 +524,7 @@ describe("useRevealCamera", () => {
     // The step spans 100px to 300px. Reveal widened to 900px leaves
     // 292px of usable canvas, so the step no longer fits until the resize ends.
     for (const width of [500, 700, 900]) {
-      await camera.run(() =>
-        camera.store.set(resizeRevealWidthAtom, width)
-      );
+      await camera.run(() => camera.store.set(resizeRevealWidthAtom, width));
     }
     expect(camera.moves).toEqual([]);
 
@@ -565,9 +563,7 @@ describe("useRevealCamera", () => {
     const burst = renderCamera();
     await resizeOnce(burst, async () => {
       for (const width of [500, 700]) {
-        await burst.run(() =>
-          burst.store.set(resizeRevealWidthAtom, width)
-        );
+        await burst.run(() => burst.store.set(resizeRevealWidthAtom, width));
       }
       await burst.pan({ x: -140, y: 30, zoom: 1 });
     });

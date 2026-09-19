@@ -60,18 +60,12 @@ describe("revealWidth with a remembered width", () => {
   it("uses one remembered width for every open level", () => {
     expect(revealWidth("browse", 1440, 600)).toBe(600);
     expect(revealWidth("focus", 1440, 600)).toBe(600);
-    expect(revealOccupiedWidth("focus", 1440, 600)).toBe(
-      600 + REVEAL_INSET
-    );
+    expect(revealOccupiedWidth("focus", 1440, 600)).toBe(600 + REVEAL_INSET);
   });
 
   it("clamps a remembered width to the current canvas each time it is read", () => {
-    expect(revealWidth("browse", 1440, 1400)).toBe(
-      1440 - 256 - REVEAL_INSET
-    );
-    expect(revealWidth("browse", 1100, 1400)).toBe(
-      1100 - 256 - REVEAL_INSET
-    );
+    expect(revealWidth("browse", 1440, 1400)).toBe(1440 - 256 - REVEAL_INSET);
+    expect(revealWidth("browse", 1100, 1400)).toBe(1100 - 256 - REVEAL_INSET);
     expect(revealWidth("focus", 1440, 200)).toBe(480);
     expect(revealWidth("closed", 1440, 200)).toBe(0);
   });

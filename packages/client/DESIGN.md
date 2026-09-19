@@ -301,38 +301,33 @@ Closing the inspector doesn't change the active view.
 
 Canvas Reveal has three levels: Closed, Browse, and Focus. It floats 8px inside
 the canvas box's top, right, and bottom edges with a hairline border and
-shadow-sm, and it never resizes the canvas. Each subject uses one width for both
-Browse and Focus, so moving between its summary and editor never changes the
-panel's size. Browse-only inspectors stay compact.
+shadow-sm, and it never resizes the canvas. Every subject uses the same width,
+so selecting another object or moving between Browse and Focus never changes
+the panel's size.
 
-| Canvas width     | Compact | Standard    | Wide                 |
-| ---------------- | ------- | ----------- | -------------------- |
-| Under 1024px     | 320px   | Up to 640px | The canvas less 16px |
-| 1024px to 1279px | 360px   | 640px       | Up to 840px          |
-| 1280px to 1535px | 380px   | 720px       | 920px                |
-| 1536px and wider | 400px   | 800px       | 1000px               |
+| Canvas width     | Reveal width |
+| ---------------- | ------------ |
+| Under 1024px     | Up to 640px  |
+| 1024px to 1279px | 640px        |
+| 1280px to 1535px | 720px        |
+| 1536px and wider | 800px        |
 
-Standard is the width for a subject with a one-column editor. Wide adds room
-for a section list or side-by-side comparison, including Lifecycle and Changes.
-Under 1024px the widths in the table are fixed. Standard is 640px or the canvas
-less 16px, whichever is narrower. From 1024px up, every width and its 8px inset
-leave at least 256px of canvas, so Wide on a canvas narrower than 1104px is
-narrower than 840px.
+Under 1024px, Reveal is 640px or the canvas less 16px, whichever is narrower.
+From 1024px up, Reveal and its 8px inset leave at least 256px of canvas.
 
 From a 1024px canvas, a resize handle runs down Reveal's left edge. Dragging it
-resizes the subject's shared width. Compact is at least 320px wide; Standard and
-Wide are at least 480px. Every width is at most the size that leaves 256px of
-canvas beside Reveal and its 8px inset. The handle is a focusable separator
-named "Resize inspector": Left Arrow widens Reveal by 16px, Right Arrow narrows
-it by 16px, Home goes to the minimum, and End goes to the maximum.
-Double-clicking the handle returns the width to its default. The handle draws
-nothing at rest, a 2px Ring line on hover, and the line with the 2px
-`ring-ring/30` halo on keyboard focus. A viewer's Compact, Standard, and Wide
-widths are remembered separately across reloads, and a remembered width is
-narrowed to fit a smaller canvas when it is shown. The camera holds still while
-the handle is dragged. When a drag or a key press ends, the camera places the
-subject beside the new width once, the way opening Reveal places it. Resizing
-never moves a step, changes the draft, or adds an undo step.
+resizes the shared width for every subject. Reveal is at least 480px wide and at
+most the size that leaves 256px of canvas beside it and its 8px inset. The
+handle is a focusable separator named "Resize inspector": Left Arrow widens
+Reveal by 16px, Right Arrow narrows it by 16px, Home goes to the minimum, and
+End goes to the maximum. Double-clicking the handle returns the shared width to
+its default. The handle draws nothing at rest, a 2px Ring line on hover, and the
+line with the 2px `ring-ring/30` halo on keyboard focus. A viewer's chosen width
+is remembered across subjects, workflows, and reloads, and is narrowed to fit a
+smaller canvas when shown. The camera holds still while the handle is dragged.
+When a drag or key press ends, the camera places the subject beside the new
+width once, the way opening Reveal places it. Resizing never moves a step,
+changes the draft, or adds an undo step.
 
 The Draft canvas rests with Reveal closed. Selecting an ordinary step, which is
 any Action or Wait, opens Browse. A context header names the workspace, the step,
@@ -357,7 +352,7 @@ issues with the Group's own. Double-clicking the card or its arrow also enters i
 Entering and leaving a Group each add a browser history entry, so Back leaves a
 Group and Forward enters it again. On a focused Group canvas, selecting a step
 opens that step's own inspector. A connection and a multiple selection show
-their panel at Compact width, under a header holding the panel's title and
+their panel at the shared width, under a header holding the panel's title and
 **Close**. **Runs** and **Changes** each have a Browse of their own, and
 **Changes** is described under Publication review.
 
@@ -371,7 +366,7 @@ or the Entity's current state from the host. Each section's edit button opens
 Focus on the matching section, and each issue opens the section that edits what
 it names. Every Lifecycle Rules problem Publish refuses, including a Start or
 Cancel Filter reading a path its Event does not declare, is a blocking issue.
-Lifecycle Focus is wider: a section list beside one section at a time, for
+Lifecycle Focus shows a section list beside one section at a time, for
 Start Events, Overlapping runs, Cancel Events, Entity eligibility, Entity
 Lookup, Connections, and Validation. The list counts Start Events, Cancel
 Events, and issues. While the workflow tracks an Entity, its Start and Cancel
@@ -492,8 +487,8 @@ keeps its direction. **Runs** and **Changes** place their selected node the same
 way, or the whole graph when no single node is selected. The MiniMap sits beside
 open Reveal. The camera moves once per change and only when Reveal would cover
 the step or its 64px of neighbors: a step already in the usable canvas stays
-where it is. Opening Reveal, selecting another step, and widening Browse to
-Focus can each move it. Closing Reveal by any path (Close, Escape, Back,
+where it is. Opening Reveal and selecting another step can each move it. Closing Reveal by
+any path (Close, Escape, Back,
 clicking empty canvas, or clearing the selection) and returning from Focus to
 Browse never move the camera.
 
@@ -647,7 +642,7 @@ closes Reveal. **Reset comparison layout** also hands focus to **Version
 history**.
 
 With one changed step or connection selected, on the canvas or from the list,
-**Compare fields** opens a wide Focus for that object. Its path ends with the
+**Compare fields** opens Focus for that object. Its path ends with the
 object's title. A table lists each setting under readable names, with a column
 for the published version ("Version N") and one for **Current draft**: both
 columns for a modified step, the draft column alone for an added one, and the

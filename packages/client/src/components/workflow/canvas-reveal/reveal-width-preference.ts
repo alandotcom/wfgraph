@@ -51,10 +51,10 @@ export function readRememberedRevealWidth(
 }
 
 /** The cookie value holding `width`, or an empty preference when absent. */
-export function rememberedRevealWidthCookie(
-  width: number | undefined
-): string {
-  return encodeURIComponent(JSON.stringify(width === undefined ? {} : { width }));
+export function rememberedRevealWidthCookie(width: number | undefined): string {
+  return encodeURIComponent(
+    JSON.stringify(width === undefined ? {} : { width })
+  );
 }
 
 const rememberedRevealWidthStateAtom = atom<number | undefined>(
@@ -70,12 +70,9 @@ export const rememberedRevealWidthAtom = atom((get) =>
  * Show `width` while a drag or key resize is in progress. It writes no cookie
  * and moves no camera; `finishRevealResizeAtom` does both.
  */
-export const resizeRevealWidthAtom = atom(
-  null,
-  (_get, set, width: number) => {
-    set(rememberedRevealWidthStateAtom, width);
-  }
-);
+export const resizeRevealWidthAtom = atom(null, (_get, set, width: number) => {
+  set(rememberedRevealWidthStateAtom, width);
+});
 
 /**
  * Begin a keyboard resize, so the camera records where it stands before any

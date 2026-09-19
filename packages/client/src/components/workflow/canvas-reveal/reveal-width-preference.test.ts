@@ -12,9 +12,9 @@ describe("readRememberedRevealWidth", () => {
   });
 
   it("round-trips the value the preference writes", () => {
-    expect(
-      readRememberedRevealWidth(rememberedRevealWidthCookie(844))
-    ).toBe(844);
+    expect(readRememberedRevealWidth(rememberedRevealWidthCookie(844))).toBe(
+      844
+    );
     expect(
       readRememberedRevealWidth(rememberedRevealWidthCookie(undefined))
     ).toBeUndefined();
