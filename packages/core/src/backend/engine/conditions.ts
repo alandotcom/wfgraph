@@ -88,7 +88,7 @@ export function evaluateConditionExpression(
   /** The Event that put the run on the branch this node sits on. */
   eventName: string | null,
   /** Current tracked Entity State projected for this Condition node. */
-  entity?: JsonObject | undefined
+  entity?: JsonObject
 ): Effect.Effect<ConditionEvalResult> {
   return Effect.gen(function* () {
     yield* Effect.logDebug("Evaluating condition expression").pipe(
