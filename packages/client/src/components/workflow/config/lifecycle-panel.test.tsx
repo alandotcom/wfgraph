@@ -286,6 +286,20 @@ describe("LifecyclePanel", () => {
     ).toBeTruthy();
   });
 
+  it("closes the Start Event picker after a selection", async () => {
+    const view = renderWithCatalog(
+      <ControlledPanel onConfigChange={() => undefined} />
+    );
+    const input = view.getByLabelText("Start Events");
+
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(input.getAttribute("aria-expanded")).toBe("false");
+    });
+  });
+
   // The raw name is what a sender posts and what a builder coming from that side
   // knows the Event by, so it is searchable beside the label.
   it("finds an Event by the name a sender posts", async () => {
