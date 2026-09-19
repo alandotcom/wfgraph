@@ -401,41 +401,46 @@ function walkEventsReaching(input: {
       return REACHES_NOTHING;
     }
 
-    const nextSeen = new Set(seen);
-    nextSeen.add(nodeId);
+    // This is the active recursion stack, not every node ever visited. Sharing
+    // it across synchronous calls avoids copying an increasingly large Set at
+    // every level; `finally` removes the node before a sibling branch runs.
+    seen.add(nodeId);
+    try {
+      let acc: Reaching | null = null;
+      for (const edge of incoming) {
+        const parent = nodeById.get(edge.source);
+        if (!parent) {
+          continue;
+        }
 
-    let acc: Reaching | null = null;
-    for (const edge of incoming) {
-      const parent = nodeById.get(edge.source);
-      if (!parent) {
-        continue;
+        const fromParent = reachingFromParent({
+          parent,
+          handle: edge.sourceHandle,
+          catalog,
+          above: reachingAt(parent.id, seen),
+          declaredElsewhere: outputPathsAt(parent.id),
+        });
+
+        acc =
+          acc === null
+            ? fromParent
+            : {
+                events: intersectEventsByName(acc.events, fromParent.events),
+                eventCanBeAbsent:
+                  acc.eventCanBeAbsent && fromParent.eventCanBeAbsent,
+                sources: uniqBy(
+                  [...acc.sources, ...fromParent.sources],
+                  sourceKey
+                ),
+              };
       }
 
-      const fromParent = reachingFromParent({
-        parent,
-        handle: edge.sourceHandle,
-        catalog,
-        above: reachingAt(parent.id, nextSeen),
-        declaredElsewhere: outputPathsAt(parent.id),
-      });
-
-      acc =
-        acc === null
-          ? fromParent
-          : {
-              events: intersectEventsByName(acc.events, fromParent.events),
-              eventCanBeAbsent:
-                acc.eventCanBeAbsent && fromParent.eventCanBeAbsent,
-              sources: uniqBy(
-                [...acc.sources, ...fromParent.sources],
-                sourceKey
-              ),
-            };
+      const result = acc ?? REACHES_NOTHING;
+      memo.set(nodeId, result);
+      return result;
+    } finally {
+      seen.delete(nodeId);
     }
-
-    const result = acc ?? REACHES_NOTHING;
-    memo.set(nodeId, result);
-    return result;
   };
 
   return reachingAt(input.targetNodeId, new Set());
