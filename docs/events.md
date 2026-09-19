@@ -60,12 +60,12 @@ longer exists. The resolver has 10 seconds to settle by default. A host can set
 `entityResolverTimeoutMs` on `createWfGraphApp` or `wfWorker` to use another positive
 whole-number deadline. A timeout, rejection, or schema-invalid state is an operational failure.
 Workflow Graph validates the result and keeps the host as the system of record. When a
-workflow configures Entity Eligibility, the editor exposes the Entity's declared fields as
-a virtual template source. It does not add an Entity lookup node or merge state into the
-Lifecycle payload. Immediately before a consuming node runs, Workflow Graph resolves current
-state and supplies only the referenced values to that node's templates. Those projected
-values are retained at the durable node boundary so replay uses the same input. Full Entity
-State stays out of Workflow Graph persistence, node outputs, logs, and audit metadata.
+workflow tracks an Entity, the editor exposes the Entity's declared fields to text templates
+and Condition nodes. It does not add an Entity lookup node or merge state into the Lifecycle
+payload. Immediately before a consuming node runs, Workflow Graph resolves current state and
+supplies only the fields that node reads. Those projected values are retained at the durable
+node boundary so replay uses the same input. Full Entity State stays out of Workflow Graph
+persistence, node outputs, logs, and audit metadata.
 
 Give an Event one or more named bindings to reusable Entity definitions:
 
@@ -109,12 +109,12 @@ Selecting both checks admission and reads fresh host state again at each new nod
 is checked before it parks; a state change while parked is observed before the next node
 only. A host that needs immediate interruption sends a Cancel Event.
 
-Entity template fields appear only while both a tracked Entity and Entity Eligibility are
-configured. Each consuming node resolves current state immediately before it runs, including
-a node on the Canceled side. When a Started-side node is also a before-node checkpoint, one
-resolver snapshot serves both Eligibility and template resolution. Separate nodes resolve
-separate snapshots. Removing Eligibility or a referenced schema field keeps the draft intact
-but blocks Publish until the reference is repaired.
+Entity State fields appear while an Entity is tracked, whether or not Eligibility is
+configured. Text templates and Condition nodes can read them on both Lifecycle sides. When a
+Started-side node is also a before-node checkpoint, one resolver snapshot serves Eligibility,
+templates, and the Condition. Separate nodes resolve separate snapshots. Removing tracking,
+changing the tracked Entity type, or removing a referenced schema field keeps the draft
+intact but blocks Publish until the reference is repaired.
 
 A tracked manual or Draft run names a Start Event and supplies a payload so its selected
 binding can establish typed Entity identity. Schedule-only tracked workflows cannot start.

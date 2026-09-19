@@ -303,7 +303,7 @@ describe("conditions", () => {
       'attributes["journey.status"]'
     );
     expect(field).toBe(
-      '$entity["crm/patient.v2"].attributes["journey.status"]'
+      "$entity:crm%2Fpatient%2Ev2.attributes[\"journey.status\"]"
     );
     expect(parseEntityStateConditionPath(field ?? "")).toEqual({
       entityType: "crm/patient.v2",

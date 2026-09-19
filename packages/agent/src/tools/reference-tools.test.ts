@@ -123,12 +123,12 @@ describe("list_references", () => {
         expect.objectContaining({
           token: "{{@$entity:applicant|Applicant.status}}",
           sourceNodeId: "$entity",
-          path: "$entity.applicant.status",
+          path: "$entity:applicant.status",
           conditionFieldType: "string",
         }),
         expect.objectContaining({
           token: "{{@$entity:applicant|Applicant.metadata}}",
-          path: "$entity.applicant.metadata",
+          path: "$entity:applicant.metadata",
           openRecord: true,
         }),
       ]);

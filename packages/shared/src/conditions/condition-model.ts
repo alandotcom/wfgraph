@@ -55,40 +55,58 @@ export type EntityStateConditionReference = EntityStateConditionPath & {
  * cannot silently retarget an existing rule. The compiler removes the virtual
  * source segments before emitting the separate `entity` CEL root.
  */
+const ENTITY_STATE_CONDITION_PREFIX = `${ENTITY_STATE_SOURCE_ID}:`;
+
+function encodeEntityType(entityType: string): string {
+  return encodeURIComponent(entityType).replaceAll(".", "%2E");
+}
+
 export function entityStateConditionPath(
   entityType: string,
   fieldPath: string
 ): string | null {
   const fieldSteps = parseOutputPath(fieldPath);
-  if (!entityType.trim() || !fieldSteps?.length) {
+  const trimmedType = entityType.trim();
+  if (!trimmedType || !fieldSteps?.length) {
     return null;
   }
 
-  const source = appendOutputPathKey(ENTITY_STATE_SOURCE_ID, entityType);
   const field = formatOutputPath(fieldSteps);
-  return field.startsWith("[") ? `${source}${field}` : `${source}.${field}`;
+  const separator = field.startsWith("[") ? "" : ".";
+  return `${ENTITY_STATE_CONDITION_PREFIX}${encodeEntityType(trimmedType)}${separator}${field}`;
 }
 
 /** Read the Entity type and raw State path from a qualified Condition field. */
 export function parseEntityStateConditionPath(
   path: string
 ): EntityStateConditionPath | null {
-  const steps = parseOutputPath(path);
-  const [source, type, ...fieldSteps] = steps ?? [];
-  if (
-    source?.kind !== "key" ||
-    source.key !== ENTITY_STATE_SOURCE_ID ||
-    type?.kind !== "key" ||
-    !type.key ||
-    fieldSteps.length === 0
-  ) {
+  if (!path.startsWith(ENTITY_STATE_CONDITION_PREFIX)) {
     return null;
   }
 
-  return {
-    entityType: type.key,
-    fieldPath: formatOutputPath(fieldSteps),
-  };
+  const remainder = path.slice(ENTITY_STATE_CONDITION_PREFIX.length);
+  const dot = remainder.indexOf(".");
+  const bracket = remainder.indexOf("[");
+  const boundary =
+    dot < 0 ? bracket : bracket < 0 ? dot : Math.min(dot, bracket);
+  if (boundary <= 0) {
+    return null;
+  }
+
+  const encodedType = remainder.slice(0, boundary);
+  const fieldPath = remainder[boundary] === "."
+    ? remainder.slice(boundary + 1)
+    : remainder.slice(boundary);
+  if (!parseOutputPath(fieldPath)?.length) {
+    return null;
+  }
+
+  try {
+    const entityType = decodeURIComponent(encodedType);
+    return entityType ? { entityType, fieldPath } : null;
+  } catch {
+    return null;
+  }
 }
 
 export type ConditionFieldType = "timestamp" | "string" | "number" | "boolean";

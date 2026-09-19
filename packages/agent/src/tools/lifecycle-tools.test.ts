@@ -1308,7 +1308,7 @@ describe("set_condition", () => {
           {
             rules: [
               {
-                field: "$entity.applicant.status",
+                field: "$entity:applicant.status",
                 fieldType: "string",
                 operator: "equals",
                 value: "active",
@@ -1327,7 +1327,7 @@ describe("set_condition", () => {
       expect(parsed.valid).toBe(true);
       if (parsed.valid) {
         expect(parsed.model.groups[0]?.conditions[0]).toMatchObject({
-          field: "$entity.applicant.status",
+          field: "$entity:applicant.status",
           fieldType: "string",
         });
       }

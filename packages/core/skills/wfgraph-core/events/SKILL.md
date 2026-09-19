@@ -49,14 +49,14 @@ Entity no longer exists. The resolver has 10 seconds to settle by default;
 deadline. A timeout, rejection, or schema-invalid result is an
 operational failure.
 
-Workflow Graph validates current state for Eligibility and for Entity template
-references. Entity fields appear as a virtual template source only when the
-Lifecycle has both tracking and Eligibility. Each consuming node resolves fresh
-state immediately before it runs; a before-node check and that node's templates
-share one snapshot. The durable boundary retains only referenced values for
-replay. Full state stays out of Workflow Graph persistence and node outputs, and
-all Entity State stays out of logs and audit metadata. Keep the resolver
-read-only. Nodes may call it concurrently across fan-out.
+Workflow Graph validates current state for Eligibility and node-local Entity
+references. Tracking makes Entity fields available to text templates and
+Condition nodes without requiring Eligibility. Each consuming node resolves
+fresh state immediately before it runs; a before-node check, templates, and the
+Condition share one snapshot. The durable boundary retains only referenced
+values for replay. Full state stays out of Workflow Graph persistence and node
+outputs, and all Entity State stays out of logs and audit metadata. Keep the
+resolver read-only. Nodes may call it concurrently across fan-out.
 
 ### Typed Event bindings
 

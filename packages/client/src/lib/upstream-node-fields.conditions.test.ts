@@ -171,7 +171,7 @@ describe("upstream-node-fields conditions", () => {
     expect(fields).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          path: "$entity.patient.status",
+          path: "$entity:patient.status",
           label: "Status",
           type: "string",
           sourceNodeId: "$entity",
@@ -179,7 +179,7 @@ describe("upstream-node-fields conditions", () => {
         }),
         expect.objectContaining({ path: "status", type: "number" }),
         expect.objectContaining({
-          path: "$entity.patient.attributes",
+          path: "$entity:patient.attributes",
           openRecord: true,
         }),
       ])
