@@ -14,6 +14,7 @@ import type {
 } from "#src/extensions/catalog";
 import {
   arrivingEventCanBeAbsent,
+  arrivingEventReachability,
   arrivingEventSources,
   eventsReaching,
 } from "#src/graph/events-reaching";
@@ -133,13 +134,17 @@ function conditionModelNode(id: string, model: ConditionModel): WorkflowNode {
   };
 }
 
-/** A Condition node carrying the model these rules make, ANDed in one group. */
-function conditionNode(id: string, conditions: ConditionRule[]): WorkflowNode {
-  return conditionModelNode(id, {
+/** A Condition model carrying these rules, ANDed in one group. */
+function conditionModel(conditions: ConditionRule[]): ConditionModel {
+  return {
     version: 2,
     groupLogic: "and",
     groups: [{ id: "group-1", logic: "and", conditions }],
-  });
+  };
+}
+
+function conditionNode(id: string, conditions: ConditionRule[]): WorkflowNode {
+  return conditionModelNode(id, conditionModel(conditions));
 }
 
 function edge(
@@ -716,15 +721,56 @@ describe("arrivingEventCanBeAbsent", () => {
     };
   }
 
+  function reachabilityAt(
+    targetNodeId: string,
+    nodes: readonly WorkflowNode[],
+    edges: readonly WorkflowEdge[]
+  ) {
+    return arrivingEventReachability({ targetNodeId, nodes, edges, catalog });
+  }
+
+  function eventCanBeAbsent(
+    targetNodeId: string,
+    nodes: readonly WorkflowNode[],
+    edges: readonly WorkflowEdge[]
+  ): boolean {
+    return arrivingEventCanBeAbsent({ targetNodeId, nodes, edges, catalog });
+  }
+
+  function conditionAfterContinuingWait(
+    model: ConditionModel,
+    intermediate?: WorkflowNode
+  ): {
+    nodes: WorkflowNode[];
+    edges: WorkflowEdge[];
+  } {
+    const conditionSource = intermediate?.id ?? "wait-1";
+    return {
+      nodes: [
+        entryNode({ startEvents: [CREATED] }),
+        waitWithTimeout("wait-1", "continue"),
+        ...(intermediate ? [intermediate] : []),
+        conditionModelNode("condition-1", model),
+        actionNode("on-true"),
+        actionNode("on-false"),
+      ],
+      edges: [
+        edge("e1", "lifecycle-1", "wait-1", LIFECYCLE_STARTED_HANDLE),
+        ...(intermediate ? [edge("e2", "wait-1", intermediate.id)] : []),
+        edge("e3", conditionSource, "condition-1"),
+        edge("e4", "condition-1", "on-true", "true"),
+        edge("e5", "condition-1", "on-false", "false"),
+      ],
+    };
+  }
+
   it("answers false where only the Lifecycle Node is above", () => {
     const nodes = [entryNode({ startEvents: [CREATED] }), actionNode("notify")];
     const edges = [
       edge("e1", "lifecycle-1", "notify", LIFECYCLE_STARTED_HANDLE),
     ];
 
-    expect(
-      arrivingEventCanBeAbsent({ targetNodeId: "notify", nodes, edges })
-    ).toBe(false);
+    expect(eventCanBeAbsent("notify", nodes, edges)).toBe(false);
   });
 
   it("answers true below a Wait that continues past its timeout", () => {
@@ -738,9 +784,7 @@ describe("arrivingEventCanBeAbsent", () => {
       edge("e2", "wait-1", "notify"),
     ];
 
-    expect(
-      arrivingEventCanBeAbsent({ targetNodeId: "notify", nodes, edges })
-    ).toBe(true);
+    expect(eventCanBeAbsent("notify", nodes, edges)).toBe(true);
   });
 
   it("treats an unset timeout behavior as continue, which is the default", () => {
@@ -754,9 +798,7 @@ describe("arrivingEventCanBeAbsent", () => {
       edge("e2", "wait-1", "notify"),
     ];
 
-    expect(
-      arrivingEventCanBeAbsent({ targetNodeId: "notify", nodes, edges })
-    ).toBe(true);
+    expect(eventCanBeAbsent("notify", nodes, edges)).toBe(true);
   });
 
   it("answers false below a Wait that skips on timeout", () => {
@@ -770,9 +812,7 @@ describe("arrivingEventCanBeAbsent", () => {
       edge("e2", "wait-1", "notify"),
     ];
 
-    expect(
-      arrivingEventCanBeAbsent({ targetNodeId: "notify", nodes, edges })
-    ).toBe(false);
+    expect(eventCanBeAbsent("notify", nodes, edges)).toBe(false);
   });
 
   it("answers false at the Wait itself, which the run reaches carrying its Event", () => {
@@ -784,9 +824,7 @@ describe("arrivingEventCanBeAbsent", () => {
       edge("e1", "lifecycle-1", "wait-1", LIFECYCLE_STARTED_HANDLE),
     ];
 
-    expect(
-      arrivingEventCanBeAbsent({ targetNodeId: "wait-1", nodes, edges })
-    ).toBe(false);
+    expect(eventCanBeAbsent("wait-1", nodes, edges)).toBe(false);
   });
 
   it("carries the answer down through the steps below the Wait", () => {
@@ -802,28 +840,48 @@ describe("arrivingEventCanBeAbsent", () => {
       edge("e3", "first", "second"),
     ];
 
-    expect(
-      arrivingEventCanBeAbsent({ targetNodeId: "second", nodes, edges })
-    ).toBe(true);
+    expect(eventCanBeAbsent("second", nodes, edges)).toBe(true);
   });
 
-  it("answers true when one of two paths loses the Event", () => {
+  it("answers true at a join when every arm can carry no Event", () => {
     const nodes = [
       entryNode({ startEvents: [CREATED] }),
       waitWithTimeout("wait-1", "continue"),
-      actionNode("direct"),
+      actionNode("left"),
+      actionNode("right"),
       actionNode("join"),
     ];
     const edges = [
       edge("e1", "lifecycle-1", "wait-1", LIFECYCLE_STARTED_HANDLE),
-      edge("e2", "lifecycle-1", "direct", LIFECYCLE_STARTED_HANDLE),
-      edge("e3", "wait-1", "join"),
-      edge("e4", "direct", "join"),
+      edge("e2", "wait-1", "left"),
+      edge("e3", "wait-1", "right"),
+      edge("e4", "left", "join"),
+      edge("e5", "right", "join"),
     ];
 
-    expect(
-      arrivingEventCanBeAbsent({ targetNodeId: "join", nodes, edges })
-    ).toBe(true);
+    expect(eventCanBeAbsent("join", nodes, edges)).toBe(true);
+  });
+
+  it("answers false at a join when one arm requires a named Event", () => {
+    const graph = conditionAfterContinuingWait(
+      conditionModel([
+        {
+          id: "rule-event",
+          field: EVENT_NAME_FIELD_PATH,
+          fieldType: "string",
+          operator: "is_set",
+        },
+      ])
+    );
+    const nodes = [...graph.nodes, actionNode("direct"), actionNode("join")];
+    const edges = [
+      ...graph.edges,
+      edge("direct", "wait-1", "direct"),
+      edge("join-direct", "direct", "join"),
+      edge("join-condition", "on-true", "join"),
+    ];
+
+    expect(eventCanBeAbsent("join", nodes, edges)).toBe(false);
   });
 
   it("answers false below an Event Split after a continuing Wait", () => {
@@ -839,80 +897,62 @@ describe("arrivingEventCanBeAbsent", () => {
       edge("e3", "split-1", "notify", eventSplitOutlet(CANCELED)),
     ];
 
-    expect(
-      arrivingEventCanBeAbsent({ targetNodeId: "notify", nodes, edges })
-    ).toBe(false);
+    expect(eventCanBeAbsent("notify", nodes, edges)).toBe(false);
   });
 
   it("follows the Condition branch an absent Event can take", () => {
-    const nodes = [
-      entryNode({ startEvents: [CREATED] }),
-      waitWithTimeout("wait-1", "continue"),
-      conditionNode("condition-1", [eventNameRule("equals", CANCELED)]),
-      actionNode("on-true"),
-      actionNode("on-false"),
-    ];
-    const edges = [
-      edge("e1", "lifecycle-1", "wait-1", LIFECYCLE_STARTED_HANDLE),
-      edge("e2", "wait-1", "condition-1"),
-      edge("e3", "condition-1", "on-true", "true"),
-      edge("e4", "condition-1", "on-false", "false"),
-    ];
+    const { nodes, edges } = conditionAfterContinuingWait(
+      conditionModel([eventNameRule("equals", CANCELED)])
+    );
 
-    expect(
-      arrivingEventCanBeAbsent({ targetNodeId: "on-true", nodes, edges })
-    ).toBe(false);
-    expect(
-      arrivingEventCanBeAbsent({ targetNodeId: "on-false", nodes, edges })
-    ).toBe(true);
+    expect(eventCanBeAbsent("on-true", nodes, edges)).toBe(false);
+    expect(eventCanBeAbsent("on-false", nodes, edges)).toBe(true);
   });
 
-  it("does not pass an absent Event through an is-set Condition", () => {
-    const nodes = [
-      entryNode({ startEvents: [CREATED] }),
-      waitWithTimeout("wait-1", "continue"),
-      conditionNode("condition-1", [
-        {
-          id: "rule-event",
-          field: EVENT_NAME_FIELD_PATH,
-          fieldType: "string",
-          operator: "is_set",
-        },
-      ]),
-      actionNode("on-true"),
-    ];
-    const edges = [
-      edge("e1", "lifecycle-1", "wait-1", LIFECYCLE_STARTED_HANDLE),
-      edge("e2", "wait-1", "condition-1"),
-      edge("e3", "condition-1", "on-true", "true"),
-    ];
+  it.each([
+    { operator: "is_set", absentBranch: "false", namedBranch: "true" },
+    { operator: "is_not_set", absentBranch: "true", namedBranch: "false" },
+  ] as const)(
+    "separates named and absent Events for $operator",
+    ({ operator, absentBranch, namedBranch }) => {
+      const { nodes, edges } = conditionAfterContinuingWait(
+        conditionModel([
+          {
+            id: "rule-event",
+            field: EVENT_NAME_FIELD_PATH,
+            fieldType: "string",
+            operator,
+          },
+        ])
+      );
 
-    expect(
-      arrivingEventCanBeAbsent({ targetNodeId: "on-true", nodes, edges })
-    ).toBe(false);
-  });
+      const absent = reachabilityAt(`on-${absentBranch}`, nodes, edges);
+      expect(absent.events).toEqual([]);
+      expect(absent.eventCanBeAbsent).toBe(true);
+
+      const named = reachabilityAt(`on-${namedBranch}`, nodes, edges);
+      expect(named.events.map((event) => event.name)).toEqual([CANCELED]);
+      expect(named.eventCanBeAbsent).toBe(false);
+    }
+  );
 
   it("keeps both branches possible for an incomplete Condition", () => {
-    const nodes = [
-      entryNode({ startEvents: [CREATED] }),
-      waitWithTimeout("wait-1", "continue"),
-      conditionNode("condition-1", [eventNameRule("not_equals", "")]),
-      actionNode("on-true"),
-      actionNode("on-false"),
-    ];
-    const edges = [
-      edge("e1", "lifecycle-1", "wait-1", LIFECYCLE_STARTED_HANDLE),
-      edge("e2", "wait-1", "condition-1"),
-      edge("e3", "condition-1", "on-true", "true"),
-      edge("e4", "condition-1", "on-false", "false"),
-    ];
+    const { nodes, edges } = conditionAfterContinuingWait(
+      conditionModel([eventNameRule("not_equals", "")])
+    );
 
-    expect(
-      arrivingEventCanBeAbsent({ targetNodeId: "on-true", nodes, edges })
-    ).toBe(true);
-    expect(
-      arrivingEventCanBeAbsent({ targetNodeId: "on-false", nodes, edges })
-    ).toBe(true);
+    expect(eventCanBeAbsent("on-true", nodes, edges)).toBe(true);
+    expect(eventCanBeAbsent("on-false", nodes, edges)).toBe(true);
+  });
+
+  it("keeps both branches possible for a field an action also declares", () => {
+    const { nodes, edges } = conditionAfterContinuingWait(
+      conditionModel([fieldRule("reason")]),
+      actionNode("lookup", "custom/lookup")
+    );
+
+    expect(eventCanBeAbsent("on-true", nodes, edges)).toBe(true);
+    expect(eventCanBeAbsent("on-false", nodes, edges)).toBe(true);
   });
 
   it.each([
@@ -965,33 +1005,15 @@ describe("arrivingEventCanBeAbsent", () => {
   ] as const)(
     "routes an absent Event through $name",
     ({ model, absentBranch }) => {
-      const nodes = [
-        entryNode({ startEvents: [CREATED] }),
-        waitWithTimeout("wait-1", "continue"),
-        conditionModelNode("condition-1", model),
-        actionNode("on-true"),
-        actionNode("on-false"),
-      ];
-      const edges = [
-        edge("e1", "lifecycle-1", "wait-1", LIFECYCLE_STARTED_HANDLE),
-        edge("e2", "wait-1", "condition-1"),
-        edge("e3", "condition-1", "on-true", "true"),
-        edge("e4", "condition-1", "on-false", "false"),
-      ];
+      const { nodes, edges } = conditionAfterContinuingWait(model);
 
+      expect(eventCanBeAbsent(`on-${absentBranch}`, nodes, edges)).toBe(true);
       expect(
-        arrivingEventCanBeAbsent({
-          targetNodeId: `on-${absentBranch}`,
+        eventCanBeAbsent(
+          absentBranch === "true" ? "on-false" : "on-true",
           nodes,
-          edges,
-        })
-      ).toBe(true);
-      expect(
-        arrivingEventCanBeAbsent({
-          targetNodeId: absentBranch === "true" ? "on-false" : "on-true",
-          nodes,
-          edges,
-        })
+          edges
+        )
       ).toBe(false);
     }
   );
@@ -1007,8 +1029,6 @@ describe("arrivingEventCanBeAbsent", () => {
       edge("e2", "wait-1", "notify"),
     ];
 
-    expect(
-      arrivingEventCanBeAbsent({ targetNodeId: "notify", nodes, edges })
-    ).toBe(false);
+    expect(eventCanBeAbsent("notify", nodes, edges)).toBe(false);
   });
 });

@@ -20,8 +20,8 @@ import { conditionTypeOf } from "@wfgraph/shared/conditions/condition-field-type
 import { findAction } from "@wfgraph/shared/extensions/catalog";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import {
-  arrivingEventCanBeAbsent,
-  eventsReaching,
+  type ArrivingEventReachability,
+  arrivingEventReachability,
 } from "@wfgraph/shared/graph/events-reaching";
 import { getNodeDisplayName } from "@wfgraph/shared/graph/node-display";
 import {
@@ -30,7 +30,7 @@ import {
   type ReferenceField,
 } from "@wfgraph/shared/graph/node-references";
 import { reachableEventFields } from "@wfgraph/shared/graph/reachable-fields";
-import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
+import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import { readConfigString } from "@wfgraph/shared/graph/node-config";
 import { upstreamNodeIds } from "@wfgraph/shared/graph/upstream-nodes";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
@@ -95,10 +95,7 @@ function conditionFieldTypeOf(
  */
 function outputFieldsOf(input: {
   readonly node: WorkflowNode;
-  readonly targetNodeId: string;
-  readonly arrivingEventCanBeAbsent: boolean;
-  readonly nodes: readonly WorkflowNode[];
-  readonly edges: readonly WorkflowEdge[];
+  readonly eventReachability: ArrivingEventReachability;
   readonly catalog: ExtensionCatalog;
 }): readonly AgentReferenceField[] {
   const actionType = readConfigString(input.node.data.config, "actionType");
@@ -110,19 +107,12 @@ function outputFieldsOf(input: {
   }
 
   if (input.node.data.type === "lifecycle") {
-    const fields = reachableEventFields(
-      eventsReaching({
-        targetNodeId: input.targetNodeId,
-        nodes: input.nodes,
-        edges: input.edges,
-        catalog: input.catalog,
-      })
-    );
+    const fields = reachableEventFields(input.eventReachability.events);
 
     // A run that leaves an event-mode Wait on its timeout carries no Arriving
     // Event, and the entry node's payload is empty for the rest of that run. So
     // every path here is one a run can reach this node without.
-    return input.arrivingEventCanBeAbsent
+    return input.eventReachability.eventCanBeAbsent
       ? fields.map((field) => ({ ...field, nullable: true }))
       : fields;
   }
@@ -174,10 +164,11 @@ export function referencesForNode(input: {
   }
 
   const upstream = upstreamNodeIds(input.nodeId, input.document.edges);
-  const eventCanBeAbsent = arrivingEventCanBeAbsent({
+  const eventReachability = arrivingEventReachability({
     targetNodeId: input.nodeId,
     nodes: input.document.nodes,
     edges: input.document.edges,
+    catalog: input.catalog,
   });
 
   return input.document.nodes
@@ -187,10 +178,7 @@ export function referencesForNode(input: {
 
       return outputFieldsOf({
         node,
-        targetNodeId: input.nodeId,
-        arrivingEventCanBeAbsent: eventCanBeAbsent,
-        nodes: input.document.nodes,
-        edges: input.document.edges,
+        eventReachability,
         catalog: input.catalog,
       }).map((field) => {
         const conditionFieldType = conditionFieldTypeOf(field);
