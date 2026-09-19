@@ -113,14 +113,8 @@ function waitNode(
   };
 }
 
-/** A Condition node carrying the model these rules make, ANDed in one group. */
-function conditionNode(id: string, conditions: ConditionRule[]): WorkflowNode {
-  const model: ConditionModel = {
-    version: 2,
-    groupLogic: "and",
-    groups: [{ id: "group-1", logic: "and", conditions }],
-  };
-
+/** A Condition node carrying this complete model. */
+function conditionModelNode(id: string, model: ConditionModel): WorkflowNode {
   const compiled = compileConditionModel(model);
 
   return {
@@ -137,6 +131,15 @@ function conditionNode(id: string, conditions: ConditionRule[]): WorkflowNode {
       },
     },
   };
+}
+
+/** A Condition node carrying the model these rules make, ANDed in one group. */
+function conditionNode(id: string, conditions: ConditionRule[]): WorkflowNode {
+  return conditionModelNode(id, {
+    version: 2,
+    groupLogic: "and",
+    groups: [{ id: "group-1", logic: "and", conditions }],
+  });
 }
 
 function edge(
@@ -911,6 +914,87 @@ describe("arrivingEventCanBeAbsent", () => {
       arrivingEventCanBeAbsent({ targetNodeId: "on-false", nodes, edges })
     ).toBe(true);
   });
+
+  it.each([
+    {
+      name: "an AND of groups containing an always-false OR group",
+      model: {
+        version: 2,
+        groupLogic: "and",
+        groups: [
+          {
+            id: "event-group",
+            logic: "or",
+            conditions: [
+              eventNameRule("equals", CANCELED),
+              eventNameRule("equals", RESCHEDULED),
+            ],
+          },
+          {
+            id: "payload-group",
+            logic: "and",
+            conditions: [fieldRule("appointmentId")],
+          },
+        ],
+      } satisfies ConditionModel,
+      absentBranch: "false",
+    },
+    {
+      name: "an OR of groups containing an always-true AND group",
+      model: {
+        version: 2,
+        groupLogic: "or",
+        groups: [
+          {
+            id: "event-group",
+            logic: "and",
+            conditions: [
+              eventNameRule("not_equals", CANCELED),
+              eventNameRule("not_equals", RESCHEDULED),
+            ],
+          },
+          {
+            id: "payload-group",
+            logic: "or",
+            conditions: [fieldRule("appointmentId")],
+          },
+        ],
+      } satisfies ConditionModel,
+      absentBranch: "true",
+    },
+  ] as const)(
+    "routes an absent Event through $name",
+    ({ model, absentBranch }) => {
+      const nodes = [
+        entryNode({ startEvents: [CREATED] }),
+        waitWithTimeout("wait-1", "continue"),
+        conditionModelNode("condition-1", model),
+        actionNode("on-true"),
+        actionNode("on-false"),
+      ];
+      const edges = [
+        edge("e1", "lifecycle-1", "wait-1", LIFECYCLE_STARTED_HANDLE),
+        edge("e2", "wait-1", "condition-1"),
+        edge("e3", "condition-1", "on-true", "true"),
+        edge("e4", "condition-1", "on-false", "false"),
+      ];
+
+      expect(
+        arrivingEventCanBeAbsent({
+          targetNodeId: `on-${absentBranch}`,
+          nodes,
+          edges,
+        })
+      ).toBe(true);
+      expect(
+        arrivingEventCanBeAbsent({
+          targetNodeId: absentBranch === "true" ? "on-false" : "on-true",
+          nodes,
+          edges,
+        })
+      ).toBe(false);
+    }
+  );
 
   it("answers false for a delay Wait, which is not an Event source", () => {
     const nodes = [
