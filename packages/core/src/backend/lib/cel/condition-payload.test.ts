@@ -77,6 +77,29 @@ describe("a compiled condition against a payload", () => {
     expect(evaluation).toEqual({ ok: true, value: true });
   });
 
+  it("reads a punctuated Entity field without changing its declared path", () => {
+    const field = entityStateConditionPath("patient", "profile.first-name");
+    const evaluation = evaluate(
+      [
+        [
+          {
+            id: "rule-1",
+            field: field ?? "",
+            fieldType: "string",
+            operator: "equals",
+            value: "Ada",
+          },
+        ],
+      ],
+      {},
+      null,
+      [],
+      { patient: { profile: { "first-name": "Ada" } } }
+    );
+
+    expect(evaluation).toEqual({ ok: true, value: true });
+  });
+
   it("reads a rule about an absent field as false without deciding the rest", () => {
     const evaluation = evaluate(
       [

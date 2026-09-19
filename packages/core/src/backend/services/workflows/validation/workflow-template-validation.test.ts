@@ -79,6 +79,26 @@ function entryNode(
   };
 }
 
+function entityConditionNodeWithRules(rules: ConditionRule[]): WorkflowNode {
+  return {
+    id: "condition-1",
+    type: "action",
+    position: { x: 0, y: 100 },
+    data: {
+      label: "Condition",
+      type: "action",
+      config: {
+        actionType: BUILT_IN_ACTION_IDS.condition,
+        conditionModel: serializeConditionModel({
+          version: 2,
+          groupLogic: "and",
+          groups: [{ id: "entity-group", logic: "and", conditions: rules }],
+        }),
+      },
+    },
+  };
+}
+
 function entityConditionNode(
   input: {
     entityType?: string;
@@ -111,23 +131,7 @@ function entityConditionNode(
             }
           : { ...base, fieldType, operator: "equals", value: "active" };
 
-  return {
-    id: "condition-1",
-    type: "action",
-    position: { x: 0, y: 100 },
-    data: {
-      label: "Condition",
-      type: "action",
-      config: {
-        actionType: BUILT_IN_ACTION_IDS.condition,
-        conditionModel: serializeConditionModel({
-          version: 2,
-          groupLogic: "and",
-          groups: [{ id: "entity-group", logic: "and", conditions: [rule] }],
-        }),
-      },
-    },
-  };
+  return entityConditionNodeWithRules([rule]);
 }
 
 function waitNode(config: Record<string, unknown>): WorkflowNode {
@@ -175,6 +179,8 @@ const entityCatalog: ExtensionCatalog = {
       label: "Patient",
       stateFields: [
         { path: "name", type: "string" },
+        { path: "first-name", type: "string" },
+        { path: "profile.first-name", type: "string" },
         { path: "delay", type: "duration" },
         { path: "tags", type: "object", valueType: "string" },
       ],
@@ -207,6 +213,22 @@ describe("validateWorkflowTemplates Entity State", () => {
     ).toEqual({ valid: true });
   });
 
+  it.each(["first-name", "profile.first-name"])(
+    "accepts the declared Entity field path %s without rewriting its spelling",
+    (field) => {
+      expect(
+        check(
+          [
+            entryNode([CREATED], { eligibility: false }),
+            entityConditionNode({ field }),
+          ],
+          [],
+          entityCatalog
+        )
+      ).toEqual({ valid: true });
+    }
+  );
+
   it("refuses an Entity Condition field without tracking", () => {
     const result = check(
       [entryNode([CREATED]), entityConditionNode()],
@@ -218,6 +240,41 @@ describe("validateWorkflowTemplates Entity State", () => {
     expect(errorOf(result)).toContain(
       "available only while this workflow tracks an Entity"
     );
+  });
+
+  it("validates every field type when rules share one Entity path", () => {
+    const field = entityStateConditionPath("patient", "name") ?? "";
+    const wrongType: ConditionRule = {
+      id: "wrong-type",
+      field,
+      fieldType: "number",
+      operator: "greater_than",
+      value: 1,
+    };
+    const validType: ConditionRule = {
+      id: "valid-type",
+      field,
+      fieldType: "string",
+      operator: "equals",
+      value: "Ada",
+    };
+
+    for (const rules of [
+      [wrongType, validType],
+      [validType, wrongType],
+    ]) {
+      const result = check(
+        [
+          entryNode([CREATED], { eligibility: false }),
+          entityConditionNodeWithRules(rules),
+        ],
+        [],
+        entityCatalog
+      );
+      expect(errorOf(result)).toContain(
+        'reads Entity State field "name" as number'
+      );
+    }
   });
 
   it("refuses stale Entity type, field, and condition type references", () => {

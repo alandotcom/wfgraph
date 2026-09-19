@@ -107,15 +107,8 @@ export function referenceFieldForPath(
   }
 
   for (const field of fields) {
-    if (!field.valueType) {
-      continue;
-    }
     const fieldSteps = parseOutputPath(field.path);
-    if (
-      !fieldSteps ||
-      pathSteps.length !== fieldSteps.length + 1 ||
-      pathSteps[pathSteps.length - 1]?.kind !== "key"
-    ) {
+    if (!fieldSteps) {
       continue;
     }
     const samePrefix = fieldSteps.every((step, index) => {
@@ -124,6 +117,16 @@ export function referenceFieldForPath(
         ? candidate?.kind === "key" && candidate.key === step.key
         : candidate?.kind === "index" && candidate.index === step.index;
     });
+    if (pathSteps.length === fieldSteps.length && samePrefix) {
+      return field;
+    }
+    if (
+      !field.valueType ||
+      pathSteps.length !== fieldSteps.length + 1 ||
+      pathSteps[pathSteps.length - 1]?.kind !== "key"
+    ) {
+      continue;
+    }
     if (samePrefix) {
       return {
         ...omitUndefined({

@@ -266,11 +266,25 @@ describe("collectWorkflowIssues", () => {
           logic: "and",
           conditions: [
             {
-              id: "rule",
+              id: "missing-field",
               field: entityStateConditionPath("patient", "gone") ?? "",
               fieldType: "string",
               operator: "equals",
               value: "active",
+            },
+            {
+              id: "wrong-type",
+              field: entityStateConditionPath("patient", "name") ?? "",
+              fieldType: "number",
+              operator: "greater_than",
+              value: 1,
+            },
+            {
+              id: "valid-type",
+              field: entityStateConditionPath("patient", "name") ?? "",
+              fieldType: "string",
+              operator: "equals",
+              value: "Ada",
             },
           ],
         },
@@ -302,6 +316,11 @@ describe("collectWorkflowIssues", () => {
         fieldKey: "conditionModel",
         fieldLabel: "Continue when",
         displayText: "patient.gone",
+        severity: "blocking",
+      }),
+      expect.objectContaining({
+        nodeId: "condition",
+        displayText: "patient.name",
         severity: "blocking",
       }),
     ]);

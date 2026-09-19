@@ -1,7 +1,6 @@
 import {
   appendOutputPathKey,
   ENTITY_STATE_SOURCE_ID,
-  formatOutputPath,
   parseOutputPath,
 } from "#src/graph/node-references";
 import { mapOrSame } from "#src/utils/map-or-same";
@@ -65,13 +64,12 @@ export function entityStateConditionPath(
   entityType: string,
   fieldPath: string
 ): string | null {
-  const fieldSteps = parseOutputPath(fieldPath);
+  const field = fieldPath.trim();
   const trimmedType = entityType.trim();
-  if (!trimmedType || !fieldSteps?.length) {
+  if (!trimmedType || !parseOutputPath(field)?.length) {
     return null;
   }
 
-  const field = formatOutputPath(fieldSteps);
   const separator = field.startsWith("[") ? "" : ".";
   return `${ENTITY_STATE_CONDITION_PREFIX}${encodeEntityType(trimmedType)}${separator}${field}`;
 }
@@ -344,10 +342,13 @@ export function collectEntityStateConditionReferences(
           : appendOutputPathKey(rule.field.trim(), rule.recordKey.trim());
       const reference = parseEntityStateConditionPath(path);
       if (reference) {
-        references.set(`${reference.entityType}\u0000${reference.fieldPath}`, {
-          ...reference,
-          fieldType: rule.fieldType,
-        });
+        references.set(
+          `${reference.entityType}\u0000${reference.fieldPath}\u0000${rule.fieldType}`,
+          {
+            ...reference,
+            fieldType: rule.fieldType,
+          }
+        );
       }
     }
   }
