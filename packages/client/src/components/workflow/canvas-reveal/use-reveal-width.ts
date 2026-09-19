@@ -3,7 +3,7 @@ import { useAtomValue } from "jotai";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import { canvasRevealAtom } from "./canvas-reveal-state";
 import { revealOccupiedWidth } from "./reveal-geometry";
-import { rememberedRevealWidthsAtom } from "./reveal-width-preference";
+import { rememberedRevealWidthAtom } from "./reveal-width-preference";
 
 /** The canvas width assumed before React Flow has measured its container. */
 const UNMEASURED_CANVAS_WIDTH = 1280;
@@ -21,10 +21,10 @@ export function useRevealCanvasWidth(): number {
  */
 export function useRevealOccupiedWidth(): number {
   const isMobile = useIsMobile();
-  const { level, widthKey } = useAtomValue(canvasRevealAtom);
-  const remembered = useAtomValue(rememberedRevealWidthsAtom);
+  const { level } = useAtomValue(canvasRevealAtom);
+  const remembered = useAtomValue(rememberedRevealWidthAtom);
   const canvasWidth = useRevealCanvasWidth();
   return isMobile
     ? 0
-    : revealOccupiedWidth(level, canvasWidth, widthKey, remembered);
+    : revealOccupiedWidth(level, canvasWidth, remembered);
 }

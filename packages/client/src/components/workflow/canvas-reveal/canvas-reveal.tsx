@@ -29,7 +29,7 @@ import { REVEAL_INSET, revealWidth } from "./reveal-geometry";
 import { revealKind } from "./reveal-kinds";
 import { revealFieldRequestAtom } from "./reveal-requests";
 import { RevealResizeHandle } from "./reveal-resize-handle";
-import { rememberedRevealWidthsAtom } from "./reveal-width-preference";
+import { rememberedRevealWidthAtom } from "./reveal-width-preference";
 import { useInspectorScroll } from "./use-inspector-scroll";
 import { useRevealFocusReturn } from "./use-reveal-focus-return";
 import { useRevealKeyboard } from "./use-reveal-keyboard";
@@ -38,9 +38,9 @@ import { useRevealCanvasWidth } from "./use-reveal-width";
 
 /**
  * Canvas Reveal: the desktop inspector floating over the right of the canvas
- * box. Browse and Focus share the subject's width, while Browse-only inspectors
- * stay compact. From a 1024px canvas a handle on its left edge resizes that
- * shared width. The subject's kind supplies the header and bodies. Escape,
+ * box. Every subject and open level shares one width. From a 1024px canvas a
+ * handle on its left edge resizes that shared width. The subject's kind supplies
+ * the header and bodies. Escape,
  * Back, and Close unwind one level
  * at a time and hand focus back to what opened it. Below `md` the mobile Reveal
  * sequence replaces it.
@@ -63,7 +63,7 @@ export function CanvasReveal() {
   const { hasOverlays } = useOverlay();
   const navigation = useRevealNavigation();
   const canvasWidth = useRevealCanvasWidth();
-  const rememberedWidths = useAtomValue(rememberedRevealWidthsAtom);
+  const rememberedWidth = useAtomValue(rememberedRevealWidthAtom);
   const [request, setRequest] = useState<ConfirmRequest | null>(null);
   const frame = useMemo<NodeConfigFrame>(() => ({ confirm: setRequest }), []);
   const asideRef = useRef<HTMLElement>(null);
@@ -277,12 +277,7 @@ export function CanvasReveal() {
           top: REVEAL_INSET,
           right: REVEAL_INSET,
           bottom: REVEAL_INSET,
-          width: revealWidth(
-            displayedLevel,
-            canvasWidth,
-            reveal.widthKey,
-            rememberedWidths
-          ),
+          width: revealWidth(displayedLevel, canvasWidth, rememberedWidth),
           transform:
             level === "closed"
               ? `translateX(calc(100% + ${REVEAL_INSET}px))`
@@ -290,11 +285,7 @@ export function CanvasReveal() {
         }}
       >
         {level === "closed" ? null : (
-          <RevealResizeHandle
-            canvasWidth={canvasWidth}
-            level={level}
-            widthKey={reveal.widthKey}
-          />
+          <RevealResizeHandle canvasWidth={canvasWidth} level={level} />
         )}
         {header}
         {/* The body paints `bg-card`, the tone the config form's sticky

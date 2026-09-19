@@ -31,8 +31,7 @@ import {
   chooseDesktopRevealLevelAtom,
   setWorkspaceRevealLevelAtom,
 } from "#src/lib/workflow-workspace-navigation";
-import type { RevealWidthKey } from "./reveal-geometry";
-import { revealKind, revealSubject } from "./reveal-kinds";
+import { revealSubject } from "./reveal-kinds";
 import { effectiveRevealLevel, type RevealSubject } from "./reveal-subject";
 
 export type CanvasRevealState = {
@@ -41,8 +40,6 @@ export type CanvasRevealState = {
   subject: RevealSubject | null;
   /** The level on screen, after the subject's levels apply. */
   level: RevealLevel;
-  /** The width shared by Browse and Focus for this subject. */
-  widthKey: RevealWidthKey;
   presentation: DesktopScopePresentation;
 };
 
@@ -63,10 +60,6 @@ export const canvasRevealAtom = atom((get): CanvasRevealState => {
     addressId: workspaceAddressId(address),
     subject,
     level: effectiveRevealLevel(get(activeDesktopRevealLevelAtom), subject),
-    widthKey:
-      subject?.levels.includes("focus") === true
-        ? revealKind(subject).focusWidth
-        : "compact",
     presentation: get(activeRevealPresentationAtom),
   };
 });

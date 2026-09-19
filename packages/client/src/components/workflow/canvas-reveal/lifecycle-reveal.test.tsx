@@ -411,15 +411,15 @@ describe("Lifecycle Browse", () => {
 });
 
 describe("Lifecycle Focus", () => {
-  it("keeps a wide width while opening Focus for each policy concept", async () => {
+  it("keeps the shared width while opening Focus for each policy concept", async () => {
     const { view, aside } = await renderLifecycle(CONFIGURED);
-    // An unmeasured canvas counts as 1280px wide, where wide Reveal is 920px.
-    expect(aside()?.style.width).toBe("920px");
+    // An unmeasured canvas counts as 1280px wide, where Reveal is 720px.
+    expect(aside()?.style.width).toBe("720px");
 
     fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
 
     expect(aside()?.dataset.level).toBe("focus");
-    expect(aside()?.style.width).toBe("920px");
+    expect(aside()?.style.width).toBe("720px");
     const nav = view.getByRole("navigation", { name: "Lifecycle policy" });
     expect(
       within(nav)

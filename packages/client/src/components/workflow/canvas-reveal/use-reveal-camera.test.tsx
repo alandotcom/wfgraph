@@ -49,7 +49,7 @@ import {
 import { revealOccupiedWidth } from "./reveal-geometry";
 import {
   finishRevealResizeAtom,
-  rememberedRevealWidthsAtom,
+  rememberedRevealWidthAtom,
   resizeRevealWidthAtom,
   startRevealKeyResizeAtom,
 } from "./reveal-width-preference";
@@ -375,7 +375,7 @@ describe("useRevealCamera", () => {
     expect(camera.viewport()).toEqual({ x: 0, y: 0, zoom: 1 });
   });
 
-  it("places a subject when it gains Focus and needs more width", async () => {
+  it("keeps the camera when a subject gains Focus at the shared width", async () => {
     const unconfigured: WorkflowNode = {
       ...step("unconfigured", 500, 300),
       data: { label: "unconfigured", type: "action", config: {} },
@@ -388,7 +388,7 @@ describe("useRevealCamera", () => {
     await camera.run(() =>
       camera.store.set(selectOnlyNodeAtom, "unconfigured")
     );
-    expect(camera.moves).toEqual([]);
+    expect(camera.moves).toHaveLength(1);
 
     await camera.run(() =>
       camera.store.set(updateNodeDataAtom, {
@@ -485,13 +485,13 @@ describe("useRevealCamera", () => {
     await camera.run(() =>
       camera.store.set(showCanvasRevealLevelAtom, "browse")
     );
-    // The graph spans 1200px and the usable width less padding is 784px, so the
+    // The graph spans 1200px and the usable width less padding is 504px, so the
     // zoom decreases to fit it.
     expect(camera.moves).toHaveLength(1);
-    expect(camera.moves[0]?.zoom).toBeCloseTo(784 / 1200);
+    expect(camera.moves[0]?.zoom).toBeCloseTo(504 / 1200);
   });
 
-  it("keeps the Lifecycle Node beside its shared wide Reveal", async () => {
+  it("keeps the Lifecycle Node beside shared Reveal", async () => {
     const lifecycle: WorkflowNode = {
       id: "lifecycle",
       type: "lifecycle",
@@ -503,11 +503,11 @@ describe("useRevealCamera", () => {
     const camera = renderCamera({ nodes: [lifecycle], edges: [] });
     await camera.settle();
     await camera.run(() => camera.store.set(selectOnlyNodeAtom, "lifecycle"));
-    // Wide Reveal on a 1200px canvas is 840px, so the usable canvas ends at
-    // 352px. The node moves when Browse opens, then stays put for Focus.
+    // Reveal on a 1200px canvas is 640px, so the usable canvas ends at
+    // 552px. The node moves when Browse opens, then stays put for Focus.
     expect(camera.moves).toHaveLength(1);
     expect(camera.moves[0]).toMatchObject({ zoom: 1 });
-    expect(600 + (camera.moves[0]?.x ?? 0)).toBeCloseTo(352 - 24);
+    expect(600 + (camera.moves[0]?.x ?? 0)).toBeCloseTo(552 - 64 - 24);
 
     await camera.run(() =>
       camera.store.set(showCanvasRevealLevelAtom, "focus")
@@ -521,11 +521,11 @@ describe("useRevealCamera", () => {
     await camera.run(() => camera.store.set(selectOnlyNodeAtom, "near"));
     expect(camera.moves).toEqual([]);
 
-    // The step spans 100px to 300px. Standard Reveal widened to 900px leaves
+    // The step spans 100px to 300px. Reveal widened to 900px leaves
     // 292px of usable canvas, so the step no longer fits until the resize ends.
     for (const width of [500, 700, 900]) {
       await camera.run(() =>
-        camera.store.set(resizeRevealWidthAtom, { key: "standard", width })
+        camera.store.set(resizeRevealWidthAtom, width)
       );
     }
     expect(camera.moves).toEqual([]);
@@ -552,12 +552,7 @@ describe("useRevealCamera", () => {
       await camera.run(() => camera.store.set(selectOnlyNodeAtom, "near"));
       await camera.run(() => camera.store.set(startRevealKeyResizeAtom));
       await during();
-      await camera.run(() =>
-        camera.store.set(resizeRevealWidthAtom, {
-          key: "standard",
-          width: 900,
-        })
-      );
+      await camera.run(() => camera.store.set(resizeRevealWidthAtom, 900));
       await camera.run(() => camera.store.set(finishRevealResizeAtom));
     };
 
@@ -571,7 +566,7 @@ describe("useRevealCamera", () => {
     await resizeOnce(burst, async () => {
       for (const width of [500, 700]) {
         await burst.run(() =>
-          burst.store.set(resizeRevealWidthAtom, { key: "standard", width })
+          burst.store.set(resizeRevealWidthAtom, width)
         );
       }
       await burst.pan({ x: -140, y: 30, zoom: 1 });
@@ -753,8 +748,7 @@ describe("useRevealCamera", () => {
           revealOccupiedWidth(
             camera.store.get(canvasRevealAtom).level,
             CANVAS.width,
-            camera.store.get(canvasRevealAtom).widthKey,
-            camera.store.get(rememberedRevealWidthsAtom)
+            camera.store.get(rememberedRevealWidthAtom)
           );
         expect(right).toBeLessThanOrEqual(revealLeft);
       }

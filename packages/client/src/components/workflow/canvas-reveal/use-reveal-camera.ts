@@ -32,7 +32,7 @@ import {
   revealPlacementRequestAtom,
   revealResizeSequenceAtom,
 } from "./reveal-requests";
-import { rememberedRevealWidthsAtom } from "./reveal-width-preference";
+import { rememberedRevealWidthAtom } from "./reveal-width-preference";
 
 /**
  * Moves the desktop camera the least it must when Canvas Reveal opens, changes
@@ -84,7 +84,6 @@ export function useRevealCamera(input: {
     reveal.addressId,
     reveal.subject?.key ?? "",
     reveal.level,
-    reveal.widthKey,
     request?.sequence ?? 0,
     resizeSequence,
     isKeyResizing,
@@ -119,8 +118,7 @@ export function useRevealCamera(input: {
     const occupiedWidth = revealOccupiedWidth(
       state.level,
       width,
-      state.widthKey,
-      store.get(rememberedRevealWidthsAtom)
+      store.get(rememberedRevealWidthAtom)
     );
     const next: RevealCameraSlot = {
       addressId: state.addressId,
