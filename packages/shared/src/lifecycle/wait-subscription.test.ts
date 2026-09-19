@@ -157,7 +157,9 @@ describe("waitMatchTemplateStringsIn", () => {
         waitMode: "event",
         waitFor: [{ event: "patient.updated", match }],
       })
-    ).toEqual([{ field: "waitFor.0.match", value: token }]);
+    ).toEqual([
+      { configKey: "waitFor", field: "waitFor.0.match", value: token },
+    ]);
     expect(
       waitMatchTemplateStringsIn({
         waitMode: "delay",

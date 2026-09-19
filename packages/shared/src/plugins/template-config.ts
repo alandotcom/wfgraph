@@ -9,7 +9,9 @@ import { readProviderFieldValues } from "#src/plugins/provider-field-values";
 
 /** One config string the action runtime actually interpolates. */
 export type ConsumedTemplateString = {
-  /** The dotted config location used in validation messages. */
+  /** Exact top-level config key whose value holds this string. */
+  configKey: string;
+  /** Dotted config location used in validation messages. */
   field: string;
   value: string;
 };
@@ -50,6 +52,7 @@ export function mapTemplateConfigStrings(
     processed.push([
       key,
       mapConfigValue({
+        configKey: key,
         field: key,
         value,
         active: rules.activeKeys?.has(key) ?? true,
@@ -64,6 +67,7 @@ export function mapTemplateConfigStrings(
 }
 
 function mapConfigValue(input: {
+  configKey: string;
   field: string;
   value: unknown;
   active: boolean;
@@ -71,7 +75,8 @@ function mapConfigValue(input: {
   jsonShape: TemplateJsonShape | undefined;
   transform: (input: ConsumedTemplateString) => string;
 }): unknown {
-  const { field, value, active, literal, jsonShape, transform } = input;
+  const { configKey, field, value, active, literal, jsonShape, transform } =
+    input;
   if (!active || literal || typeof value !== "string") {
     return value;
   }
@@ -83,12 +88,13 @@ function mapConfigValue(input: {
           rows.map((row, index) => ({
             name: row.name,
             value: transform({
+              configKey,
               field: `${field}.${index}.value`,
               value: row.value,
             }),
           }))
         )
-      : transform({ field, value });
+      : transform({ configKey, field, value });
   }
 
   if (jsonShape === "provider-fields") {
@@ -97,14 +103,18 @@ function mapConfigValue(input: {
       ? JSON.stringify(
           mapValues(entries, (entry, key) =>
             typeof entry === "string"
-              ? transform({ field: `${field}.${key}`, value: entry })
+              ? transform({
+                  configKey,
+                  field: `${field}.${key}`,
+                  value: entry,
+                })
               : entry
           )
         )
-      : transform({ field, value });
+      : transform({ configKey, field, value });
   }
 
-  return transform({ field, value });
+  return transform({ configKey, field, value });
 }
 
 /** Every string the action runtime consumes as a template, before resolution. */
@@ -129,5 +139,7 @@ export function extractConsumedTemplateReferences(
   return [
     ...templateStringsInConfig(config, rules),
     ...additionalStrings,
-  ].flatMap(({ field, value }) => templateReferencesInString(value, field));
+  ].flatMap(({ configKey, field, value }) =>
+    templateReferencesInString(value, field, configKey)
+  );
 }

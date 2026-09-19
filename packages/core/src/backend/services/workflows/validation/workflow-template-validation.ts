@@ -156,8 +156,7 @@ export function validateWorkflowTemplates(input: {
 
     const targets = valueTargets(node, catalog);
     for (const reference of references) {
-      const topLevelKey = reference.field.split(".", 1)[0] ?? reference.field;
-      const target = targets.get(topLevelKey);
+      const target = targets.get(reference.configKey);
       if (!isEntityStateSourceId(reference.nodeId)) {
         continue;
       }
@@ -186,7 +185,7 @@ export function validateWorkflowTemplates(input: {
       ) {
         return {
           valid: false,
-          error: `${where} into ${topLevelKey}, which takes a ${target.type}. That path is a ${field.type}.`,
+          error: `${where} into ${reference.configKey}, which takes a ${target.type}. That path is a ${field.type}.`,
         };
       }
     }
@@ -208,8 +207,7 @@ export function validateWorkflowTemplates(input: {
         continue;
       }
 
-      const key = reference.field.split(".", 1)[0] ?? reference.field;
-      const target = targets.get(key);
+      const target = targets.get(reference.configKey);
       const field = entryFields.get(reference.fieldPath);
       if (!field) {
         continue;
@@ -230,7 +228,7 @@ export function validateWorkflowTemplates(input: {
       ) {
         return {
           valid: false,
-          error: `${where} into ${key}, which takes a ${target.type}. That path is a ${field.type}.`,
+          error: `${where} into ${reference.configKey}, which takes a ${target.type}. That path is a ${field.type}.`,
         };
       }
 
@@ -238,7 +236,7 @@ export function validateWorkflowTemplates(input: {
       if (absent.length > 0) {
         return {
           valid: false,
-          error: `${where} into ${key}, which ${absent.join(" and ")} does not carry. Add an Event Split above it, so this branch only runs for the Events that do.`,
+          error: `${where} into ${reference.configKey}, which ${absent.join(" and ")} does not carry. Add an Event Split above it, so this branch only runs for the Events that do.`,
         };
       }
     }

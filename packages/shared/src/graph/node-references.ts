@@ -328,7 +328,9 @@ export function findTemplateTokens(value: string): TemplateToken[] {
 
 /** One template reference, with the config key it was written into. */
 export type ConfigTemplateReference = {
-  /** The dotted config key holding the reference. */
+  /** Exact top-level config key whose value holds the reference. */
+  configKey: string;
+  /** Dotted config location used in diagnostics. */
   field: string;
   nodeId: string;
   /** Stable Entity type carried by a virtual Entity reference. */
@@ -362,29 +364,36 @@ export function extractAllTemplateReferences(
 
 function configReferences(
   config: JsonObject,
-  prefix: string
+  prefix: string,
+  parentConfigKey?: string
 ): ConfigTemplateReference[] {
-  return Object.entries(config).flatMap(([key, value]) =>
-    templateReferencesIn(value, prefix ? `${prefix}.${key}` : key)
-  );
+  return Object.entries(config).flatMap(([key, value]) => {
+    const configKey = parentConfigKey ?? key;
+    return templateReferencesIn(
+      value,
+      prefix ? `${prefix}.${key}` : key,
+      configKey
+    );
+  });
 }
 
 function templateReferencesIn(
   value: JsonValue,
-  field: string
+  field: string,
+  configKey: string
 ): ConfigTemplateReference[] {
   if (typeof value === "string") {
-    return templateReferencesInString(value, field);
+    return templateReferencesInString(value, field, configKey);
   }
 
   if (Array.isArray(value)) {
     return value.flatMap((item, index) =>
-      templateReferencesIn(item, `${field}.${index}`)
+      templateReferencesIn(item, `${field}.${index}`, configKey)
     );
   }
 
   if (isJsonObject(value)) {
-    return configReferences(value, field);
+    return configReferences(value, field, configKey);
   }
 
   return [];
@@ -393,10 +402,12 @@ function templateReferencesIn(
 /** Template references inside one consumed config string. */
 export function templateReferencesInString(
   value: string,
-  field: string
+  field: string,
+  configKey = field
 ): ConfigTemplateReference[] {
   return findTemplateTokens(value).map((token) =>
     omitUndefined({
+      configKey,
       field,
       nodeId: token.nodeId,
       sourceType: token.sourceType,

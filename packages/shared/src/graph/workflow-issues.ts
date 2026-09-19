@@ -470,9 +470,8 @@ function collectBrokenReferenceIssues(input: {
     });
 
     for (const ref of brokenRefs) {
-      const topLevelKey = ref.field.split(".", 1)[0] ?? ref.field;
       const fieldLabel =
-        flatFields.find((field) => field.key === topLevelKey)?.label ??
+        flatFields.find((field) => field.key === ref.configKey)?.label ??
         ref.field;
       const entityReference = isEntityStateSourceId(ref.nodeId);
       issues.push({

@@ -22,12 +22,28 @@ describe("extractConsumedTemplateReferences", () => {
 
     expect(references).toEqual([
       expect.objectContaining({
+        configKey: "headers",
         field: "headers.0.value",
         fieldPath: 'tags["order.id"]',
       }),
       expect.objectContaining({
+        configKey: "variables",
         field: "variables.CUSTOMER",
         fieldPath: 'tags["order.id"]',
+      }),
+    ]);
+  });
+
+  it("keeps a dotted top-level config key separate from its display location", () => {
+    expect(
+      extractConsumedTemplateReferences(
+        { "delivery.message": entityToken },
+        { literalKeys: new Set(), jsonShapes: new Map() }
+      )
+    ).toEqual([
+      expect.objectContaining({
+        configKey: "delivery.message",
+        field: "delivery.message",
       }),
     ]);
   });

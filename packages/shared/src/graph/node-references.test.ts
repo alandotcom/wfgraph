@@ -822,6 +822,7 @@ describe("extractAllTemplateReferences", () => {
       })
     ).toEqual([
       {
+        configKey: "subject",
         field: "subject",
         nodeId: "n1",
         nodeLabel: "Fetch",
@@ -829,6 +830,7 @@ describe("extractAllTemplateReferences", () => {
         displayText: "Fetch.name",
       },
       {
+        configKey: "body",
         field: "body.text",
         nodeId: "n2",
         nodeLabel: "Order",
@@ -850,6 +852,7 @@ describe("extractAllTemplateReferences", () => {
       })
     ).toEqual([
       {
+        configKey: "tags",
         field: "tags.1",
         nodeId: "n1",
         nodeLabel: "Fetch",
@@ -857,6 +860,7 @@ describe("extractAllTemplateReferences", () => {
         displayText: "Fetch.tag",
       },
       {
+        configKey: "headers",
         field: "headers.0.value",
         nodeId: "n2",
         nodeLabel: "Order",
@@ -864,6 +868,7 @@ describe("extractAllTemplateReferences", () => {
         displayText: "Order.id",
       },
       {
+        configKey: "waitFor",
         field: "waitFor.0.match",
         nodeId: "n3",
         nodeLabel: "Order",
@@ -876,6 +881,7 @@ describe("extractAllTemplateReferences", () => {
   it("carries an empty field path for a token naming a whole output", () => {
     expect(extractAllTemplateReferences({ subject: "{{@n1:Fetch}}" })).toEqual([
       {
+        configKey: "subject",
         field: "subject",
         nodeId: "n1",
         nodeLabel: "Fetch",

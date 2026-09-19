@@ -288,6 +288,7 @@ export function waitMatchTemplateStringsIn(
     return parsed.model.groups.flatMap((group) =>
       group.conditions.flatMap((rule) =>
         readConditionRuleOperands(rule).map((value) => ({
+          configKey: "waitFor",
           field: `waitFor.${index}.match`,
           value,
         }))

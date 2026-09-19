@@ -573,6 +573,53 @@ describe("validateWorkflowTemplates - keys the engine never resolves", () => {
     ).toEqual({ valid: true });
   });
 
+  it("keeps dotted top-level config keys exact during validation", () => {
+    const dottedKeyCatalog: ExtensionCatalog = {
+      ...catalog,
+      actions: [
+        {
+          id: "custom/send",
+          label: "Send",
+          description: "",
+          category: "Custom",
+          configFields: [
+            {
+              key: "delivery.message",
+              label: "Delivery message",
+              type: "template-input",
+              required: true,
+            },
+          ],
+          outputFields: [],
+        },
+      ],
+    };
+    const result = validateWorkflowTemplates({
+      nodes: [
+        entryNode([CREATED, RESCHEDULED]),
+        {
+          id: "wait-1",
+          type: "action",
+          position: { x: 0, y: 100 },
+          data: {
+            label: "Send",
+            type: "action",
+            config: {
+              actionType: "custom/send",
+              "delivery.message": token("leadTime"),
+            },
+          },
+        },
+      ],
+      edges: [startedEdge],
+      catalog: dottedKeyCatalog,
+    });
+
+    expect(result.valid).toBe(false);
+    expect(errorOf(result)).toContain("delivery.message");
+    expect(errorOf(result)).toContain("does not carry");
+  });
+
   it("validates key-value row values without reading row names", () => {
     const keyValueCatalog: ExtensionCatalog = {
       ...catalog,
