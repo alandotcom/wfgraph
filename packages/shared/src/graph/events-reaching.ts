@@ -576,8 +576,9 @@ export function arrivingEventCanBeAbsent(input: {
         return continuesPastTimeout(parent);
       }
       // The Lifecycle Node is the other Event source, and a run entering there
-      // carries the Event that opened it.
-      if (isLifecycleNode(parent)) {
+      // carries the Event that opened it. An Event Split releases only a run
+      // naming the Event on one of its outlets, so an absent Event stops there.
+      if (isLifecycleNode(parent) || isEventSplitNode(parent)) {
         return false;
       }
       return absentAt(parent.id, nextSeen);

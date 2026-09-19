@@ -823,6 +823,24 @@ describe("arrivingEventCanBeAbsent", () => {
     ).toBe(true);
   });
 
+  it("answers false below an Event Split after a continuing Wait", () => {
+    const nodes = [
+      entryNode({ startEvents: [CREATED] }),
+      waitWithTimeout("wait-1", "continue"),
+      actionNode("split-1", BUILT_IN_ACTION_IDS.eventSplit),
+      actionNode("notify"),
+    ];
+    const edges = [
+      edge("e1", "lifecycle-1", "wait-1", LIFECYCLE_STARTED_HANDLE),
+      edge("e2", "wait-1", "split-1"),
+      edge("e3", "split-1", "notify", eventSplitOutlet(CANCELED)),
+    ];
+
+    expect(
+      arrivingEventCanBeAbsent({ targetNodeId: "notify", nodes, edges })
+    ).toBe(false);
+  });
+
   it("answers false for a delay Wait, which is not an Event source", () => {
     const nodes = [
       entryNode({ startEvents: [CREATED] }),
