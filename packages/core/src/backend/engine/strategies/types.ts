@@ -101,6 +101,8 @@ export type ActionStepInput = {
   actions: WorkflowActions;
   runtime: WorkflowExecutionRuntime;
   eventName: string | null;
+  /** Current tracked Entity values referenced by this action node. */
+  entityContext?: EntityTemplateContext | undefined;
   /** Published catalog fingerprint. */
   catalogFingerprint: string;
 };

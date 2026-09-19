@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
-  getEntityTemplateSource,
+  getTrackedEntityStateSource,
   getUpstreamConditionFields,
   getUpstreamFields,
 } from "#src/lib/upstream-node-fields";
@@ -61,7 +61,7 @@ describe("Entity template source", () => {
 
   it("offers current Entity fields when tracking is configured", () => {
     expect(
-      getEntityTemplateSource({
+      getTrackedEntityStateSource({
         nodes: [lifecycle({ tracked: true, eligible: true })],
         catalog: surface,
       })
@@ -75,7 +75,7 @@ describe("Entity template source", () => {
 
   it("offers Entity fields without Eligibility", () => {
     expect(
-      getEntityTemplateSource({
+      getTrackedEntityStateSource({
         nodes: [lifecycle({ tracked: true, eligible: false })],
         catalog: surface,
       })
@@ -87,7 +87,7 @@ describe("Entity template source", () => {
 
   it("does not offer Entity fields without tracking", () => {
     expect(
-      getEntityTemplateSource({
+      getTrackedEntityStateSource({
         nodes: [lifecycle({ tracked: false, eligible: false })],
         catalog: surface,
       })

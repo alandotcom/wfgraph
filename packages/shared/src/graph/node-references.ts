@@ -574,6 +574,18 @@ export type OutputPathStep =
   | { kind: "key"; key: string }
   | { kind: "index"; index: number };
 
+/** Serialize parsed path steps with unsafe keys kept in bracket notation. */
+export function formatOutputPath(steps: readonly OutputPathStep[]): string {
+  let path = "";
+  for (const step of steps) {
+    path =
+      step.kind === "key"
+        ? appendOutputPathKey(path, step.key)
+        : `${path}[${step.index}]`;
+  }
+  return path;
+}
+
 /** Append one record key while preserving punctuation as part of that key. */
 export function appendOutputPathKey(path: string, key: string): string {
   if (SIMPLE_PATH_KEY_PATTERN.test(key) && isSafeRecordKey(key)) {

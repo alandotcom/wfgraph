@@ -48,7 +48,7 @@ export const entityEligibilitySchema = Schema.Struct({
 });
 
 /** The current-state source a Lifecycle's tracked Entity makes available. */
-export function findEntityTemplateSource(input: {
+export function findTrackedEntityStateSource(input: {
   rules: LifecycleRules | undefined;
   catalog: ExtensionCatalog;
 }): EntityMetadata | undefined {

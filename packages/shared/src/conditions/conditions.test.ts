@@ -2,13 +2,16 @@ import { describe, expect, it } from "vitest";
 import {
   type ConditionFieldDefinition,
   type ConditionModel,
+  collectEntityStateConditionReferences,
   collectTimestampFieldPaths,
   compileConditionModel,
   compileConditionRule,
+  entityStateConditionPath,
   EVENT_NAME_FIELD_PATH,
   createDefaultConditionModel,
   createDefaultConditionRule,
   parseConditionModel,
+  parseEntityStateConditionPath,
   reconcileModelWithFields,
   serializeConditionModel,
 } from "#src/conditions/conditions";
@@ -290,6 +293,55 @@ describe("conditions", () => {
     if (compiled.valid) {
       expect(compiled.expression).toBe(
         "((!(has(payload.appointment) && has(payload.appointment.reason))))"
+      );
+    }
+  });
+
+  it("qualifies and compiles tracked Entity State outside the payload namespace", () => {
+    const field = entityStateConditionPath(
+      "crm/patient.v2",
+      'attributes["journey.status"]'
+    );
+    expect(field).toBe(
+      '$entity["crm/patient.v2"].attributes["journey.status"]'
+    );
+    expect(parseEntityStateConditionPath(field ?? "")).toEqual({
+      entityType: "crm/patient.v2",
+      fieldPath: 'attributes["journey.status"]',
+    });
+
+    const model: ConditionModel = {
+      version: 2,
+      groupLogic: "and",
+      groups: [
+        {
+          id: "group-1",
+          logic: "and",
+          conditions: [
+            {
+              id: "condition-1",
+              field: field ?? "",
+              fieldType: "string",
+              operator: "equals",
+              value: "active",
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(collectEntityStateConditionReferences(model)).toEqual([
+      {
+        entityType: "crm/patient.v2",
+        fieldPath: 'attributes["journey.status"]',
+        fieldType: "string",
+      },
+    ]);
+    const compiled = compileConditionModel(model);
+    expect(compiled.valid).toBe(true);
+    if (compiled.valid) {
+      expect(compiled.expression).toBe(
+        '(("attributes" in entity && "journey.status" in entity["attributes"] && (entity["attributes"]["journey.status"] == "active")))'
       );
     }
   });

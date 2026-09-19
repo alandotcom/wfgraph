@@ -176,9 +176,9 @@ export function ConditionFields({
     <ConditionBuilderRow
       currentNodeId={nodeId}
       defaultEditing={defaultEditing}
-      description="Build a condition from the Lifecycle Node and upstream action output fields. Timestamp fields support relative and absolute time filters."
+      description="Build a condition from tracked Entity State, the Lifecycle Node, and upstream action output fields. Timestamp fields support relative and absolute time filters."
       disabled={disabled}
-      emptyFieldsMessage="No upstream fields available. Connect this node to the Lifecycle Node or an action with typed outputs first."
+      emptyFieldsMessage="No fields available. Track an Entity, or connect this node to the Lifecycle Node or an action with typed outputs first."
       // The heading is a clause, so the Edit and Done buttons name the thing
       // instead: "Edit Continue when" is not a sentence anybody would say.
       editActionName="condition"

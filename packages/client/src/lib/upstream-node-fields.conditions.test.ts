@@ -110,6 +110,82 @@ describe("upstream-node-fields conditions", () => {
     expect(fields.some((field) => field.path === "status")).toBe(true);
   });
 
+  it("offers tracked Entity State without Eligibility in its own namespace", () => {
+    surface.entities = [
+      {
+        type: "patient",
+        label: "Patient",
+        stateFields: [
+          { path: "status", type: "string" },
+          { path: "startsAt", type: "timestamp" },
+          { path: "attributes", type: "object", valueType: "string" },
+        ],
+        stateSchemaDigest: "patient-state",
+      },
+    ];
+    surface.actions = [
+      anAction({
+        id: "custom/load",
+        outputFields: [{ path: "status", type: "number" }],
+      }),
+    ];
+    const nodes: WorkflowNode[] = [
+      createNode({
+        id: "lifecycle-1",
+        type: "lifecycle",
+        label: "Lifecycle",
+        config: {
+          lifecycleRules: {
+            startEvents: [],
+            cancelEvents: [],
+            concurrency: "unlimited",
+            trackedEntity: { type: "patient", bindings: {} },
+          },
+        },
+      }),
+      createNode({
+        id: "load-1",
+        type: "action",
+        label: "Load",
+        config: { actionType: "custom/load" },
+      }),
+      createNode({
+        id: "condition-1",
+        type: "action",
+        label: "Condition",
+        config: { actionType: "Condition" },
+      }),
+    ];
+    const edges = [
+      createEdge({ id: "e1", source: "lifecycle-1", target: "load-1" }),
+      createEdge({ id: "e2", source: "load-1", target: "condition-1" }),
+    ];
+
+    const fields = getUpstreamConditionFields({
+      catalog: surface,
+      currentNodeId: "condition-1",
+      nodes,
+      edges,
+    });
+
+    expect(fields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: "$entity.patient.status",
+          label: "Status",
+          type: "string",
+          sourceNodeId: "$entity",
+          sourceNodeLabel: "Patient State",
+        }),
+        expect.objectContaining({ path: "status", type: "number" }),
+        expect.objectContaining({
+          path: "$entity.patient.attributes",
+          openRecord: true,
+        }),
+      ])
+    );
+  });
+
   it("includes only condition-compatible primitive fields", () => {
     surface.actions = [
       anAction({

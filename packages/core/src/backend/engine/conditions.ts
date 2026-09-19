@@ -86,7 +86,9 @@ export function evaluateConditionExpression(
   outputs: NodeOutputs,
   conditionModel: unknown,
   /** The Event that put the run on the branch this node sits on. */
-  eventName: string | null
+  eventName: string | null,
+  /** Current tracked Entity State projected for this Condition node. */
+  entity?: JsonObject | undefined
 ): Effect.Effect<ConditionEvalResult> {
   return Effect.gen(function* () {
     yield* Effect.logDebug("Evaluating condition expression").pipe(
@@ -119,6 +121,7 @@ export function evaluateConditionExpression(
       timestampPaths: yield* readConditionTimestampPaths(conditionModel),
       payload: merged,
       eventName,
+      entity,
     });
 
     if (!evaluation.ok) {

@@ -1,4 +1,9 @@
-import { appendOutputPathKey } from "#src/graph/node-references";
+import {
+  appendOutputPathKey,
+  ENTITY_STATE_SOURCE_ID,
+  formatOutputPath,
+  parseOutputPath,
+} from "#src/graph/node-references";
 import { mapOrSame } from "#src/utils/map-or-same";
 import { omitUndefined } from "#src/utils/omit-undefined";
 
@@ -12,6 +17,9 @@ import { omitUndefined } from "#src/utils/omit-undefined";
  * Nothing a user can name is a root, so nothing a user can name can collide.
  */
 export const CONDITION_CONTEXT_ROOT = "payload";
+
+/** The CEL root holding current tracked Entity State for a Condition node. */
+export const ENTITY_CONTEXT_ROOT = "entity";
 
 /**
  * The CEL root holding the Event a run arrived on, beside `payload` and `now`.
@@ -30,6 +38,58 @@ export const EVENT_CONTEXT_ROOT = "event";
  * Event author declares payload paths, and none of them can open with one.
  */
 export const EVENT_NAME_FIELD_PATH = "$event.name";
+
+export type EntityStateConditionPath = {
+  entityType: string;
+  fieldPath: string;
+};
+
+export type EntityStateConditionReference = EntityStateConditionPath & {
+  fieldType: ConditionFieldType;
+};
+
+/**
+ * Qualify an Entity State field for storage in a Condition model.
+ *
+ * The Entity type stays in the authored path so changing the tracked Entity
+ * cannot silently retarget an existing rule. The compiler removes the virtual
+ * source segments before emitting the separate `entity` CEL root.
+ */
+export function entityStateConditionPath(
+  entityType: string,
+  fieldPath: string
+): string | null {
+  const fieldSteps = parseOutputPath(fieldPath);
+  if (!entityType.trim() || !fieldSteps?.length) {
+    return null;
+  }
+
+  const source = appendOutputPathKey(ENTITY_STATE_SOURCE_ID, entityType);
+  const field = formatOutputPath(fieldSteps);
+  return field.startsWith("[") ? `${source}${field}` : `${source}.${field}`;
+}
+
+/** Read the Entity type and raw State path from a qualified Condition field. */
+export function parseEntityStateConditionPath(
+  path: string
+): EntityStateConditionPath | null {
+  const steps = parseOutputPath(path);
+  const [source, type, ...fieldSteps] = steps ?? [];
+  if (
+    source?.kind !== "key" ||
+    source.key !== ENTITY_STATE_SOURCE_ID ||
+    type?.kind !== "key" ||
+    !type.key ||
+    fieldSteps.length === 0
+  ) {
+    return null;
+  }
+
+  return {
+    entityType: type.key,
+    fieldPath: formatOutputPath(fieldSteps),
+  };
+}
 
 export type ConditionFieldType = "timestamp" | "string" | "number" | "boolean";
 
@@ -249,6 +309,31 @@ export function collectTimestampFieldPaths(model: ConditionModel): string[] {
   }
 
   return [...paths];
+}
+
+/** The distinct tracked Entity State paths a Condition model reads. */
+export function collectEntityStateConditionReferences(
+  model: ConditionModel
+): EntityStateConditionReference[] {
+  const references = new Map<string, EntityStateConditionReference>();
+
+  for (const group of model.groups) {
+    for (const rule of group.conditions) {
+      const path =
+        rule.recordKey === undefined
+          ? rule.field.trim()
+          : appendOutputPathKey(rule.field.trim(), rule.recordKey.trim());
+      const reference = parseEntityStateConditionPath(path);
+      if (reference) {
+        references.set(
+          `${reference.entityType}\u0000${reference.fieldPath}`,
+          { ...reference, fieldType: rule.fieldType }
+        );
+      }
+    }
+  }
+
+  return [...references.values()];
 }
 
 /** The authored text operands a rule compares against. */

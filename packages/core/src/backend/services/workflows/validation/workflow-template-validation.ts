@@ -10,6 +10,11 @@
  */
 
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import {
+  collectEntityStateConditionReferences,
+  parseConditionModel,
+} from "@wfgraph/shared/conditions/conditions";
+import { conditionTypeOf } from "@wfgraph/shared/conditions/condition-field-type";
 import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
 import {
   type ExtensionCatalog,
@@ -40,7 +45,7 @@ import {
   waitTemplateKeysIn,
   waitValueTargetsFor,
 } from "@wfgraph/shared/lifecycle/wait-subscription";
-import { findEntityTemplateSource } from "@wfgraph/shared/lifecycle/entity-eligibility";
+import { findTrackedEntityStateSource } from "@wfgraph/shared/lifecycle/entity-eligibility";
 import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { readJsonObjectLeniently } from "@wfgraph/shared/types/json";
 import { getNodeLabel } from "#src/backend/services/workflows/validation/workflow-graph";
@@ -118,7 +123,7 @@ export function validateWorkflowTemplates(input: {
     .filter((node) => node.data.type === "lifecycle")
     .map((node) => readLifecycleRules(node.data.config))
     .find((rules) => rules !== undefined);
-  const entitySource = findEntityTemplateSource({
+  const entitySource = findTrackedEntityStateSource({
     rules: lifecycleRules,
     catalog,
   });
@@ -150,8 +155,50 @@ export function validateWorkflowTemplates(input: {
         ? waitMatchTemplateStringsIn(config)
         : []
     );
-    if (references.length === 0) {
+    const parsedCondition =
+      actionType === BUILT_IN_ACTION_IDS.condition
+        ? parseConditionModel(config.conditionModel)
+        : undefined;
+    const entityConditionReferences =
+      parsedCondition?.valid === true
+        ? collectEntityStateConditionReferences(parsedCondition.model)
+        : [];
+    if (references.length === 0 && entityConditionReferences.length === 0) {
       continue;
+    }
+
+    for (const reference of entityConditionReferences) {
+      const where = `Node "${getNodeLabel(node)}" reads Entity State field "${reference.fieldPath}"`;
+      if (!entitySource) {
+        return {
+          valid: false,
+          error: `${where}, but Entity data is available only while this workflow tracks an Entity.`,
+        };
+      }
+      if (reference.entityType !== entitySource.type) {
+        return {
+          valid: false,
+          error: `${where} from Entity "${reference.entityType}", but this workflow tracks Entity "${entitySource.type}".`,
+        };
+      }
+
+      const field = referenceFieldForPath(
+        entitySource.stateFields,
+        reference.fieldPath
+      );
+      if (!field) {
+        return {
+          valid: false,
+          error: `${where}, which Entity "${entitySource.type}" does not declare.`,
+        };
+      }
+      const fieldType = conditionTypeOf(field);
+      if (fieldType !== reference.fieldType) {
+        return {
+          valid: false,
+          error: `${where} as ${reference.fieldType}, but Entity "${entitySource.type}" declares it as ${fieldType ?? "a shape no rule can compare"}.`,
+        };
+      }
     }
 
     const targets = valueTargets(node, catalog);

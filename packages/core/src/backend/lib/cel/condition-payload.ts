@@ -15,8 +15,10 @@ import {
   collectTimestampFieldPaths,
   compileConditionModel,
   CONDITION_CONTEXT_ROOT,
+  ENTITY_CONTEXT_ROOT,
   EVENT_CONTEXT_ROOT,
   parseConditionModel,
+  parseEntityStateConditionPath,
 } from "@wfgraph/shared/conditions/conditions";
 import { parseOutputPath } from "@wfgraph/shared/graph/node-references";
 
@@ -92,11 +94,16 @@ function readContextPath(
  * write lands inside whatever object holds the path.
  */
 function decodeConditionTimestamps(
-  context: JsonObject,
+  payload: JsonObject,
+  entity: JsonObject,
   paths: readonly string[]
 ) {
   for (const path of paths) {
-    const located = readContextPath(context, path);
+    const entityReference = parseEntityStateConditionPath(path);
+    const located = readContextPath(
+      entityReference ? entity : payload,
+      entityReference?.fieldPath ?? path
+    );
     if (!located || typeof located.value !== "string") {
       continue;
     }
@@ -122,6 +129,8 @@ export function evaluateCompiledCondition(input: {
   /** Field paths the model compiled these against as timestamps. */
   timestampPaths: readonly string[];
   payload: JsonObject;
+  /** Current tracked Entity State projected for this Condition node. */
+  entity?: JsonObject | undefined;
   /**
    * The Event this payload arrived on, null where nothing named one. The key is
    * written either way, because an absent CEL root raises where a null value
@@ -130,7 +139,8 @@ export function evaluateCompiledCondition(input: {
   eventName: string | null;
 }) {
   const payload = structuredClone(input.payload);
-  decodeConditionTimestamps(payload, input.timestampPaths);
+  const entity = structuredClone(input.entity ?? {});
+  decodeConditionTimestamps(payload, entity, input.timestampPaths);
 
   return evaluateCelBooleanExpression({
     expression: input.expression,
@@ -140,6 +150,7 @@ export function evaluateCompiledCondition(input: {
         name: input.eventName,
       },
       [CONDITION_CONTEXT_ROOT]: payload,
+      [ENTITY_CONTEXT_ROOT]: entity,
     },
   });
 }

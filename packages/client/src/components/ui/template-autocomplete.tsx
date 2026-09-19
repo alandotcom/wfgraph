@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 import { useAfterCommit, useDomEvent } from "#src/hooks/effects";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import {
-  getEntityTemplateSource,
+  getTrackedEntityStateSource,
   getNodeDisplayName,
   getNodeOutputFields,
   getUpstreamNodes,
@@ -213,7 +213,7 @@ export function useTemplateAutocompleteRows(input: {
 
     const nextOptions: TemplateOption[] = [];
     const graphKeys = collectOpenRecordKeys(nodes, catalog);
-    const entitySource = getEntityTemplateSource({ nodes, catalog });
+    const entitySource = getTrackedEntityStateSource({ nodes, catalog });
     const sources = [
       ...upstreamNodes.map((node) => ({
         nodeId: node.id,

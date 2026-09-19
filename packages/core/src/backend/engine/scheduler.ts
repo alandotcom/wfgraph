@@ -8,6 +8,10 @@
  * cancellation routes the run is `CancelBoundary`'s.
  */
 
+import {
+  collectEntityStateConditionReferences,
+  parseConditionModel,
+} from "@wfgraph/shared/conditions/conditions";
 import { ENTITY_STATE_SOURCE_ID } from "@wfgraph/shared/graph/node-references";
 import { extractConsumedTemplateReferences } from "@wfgraph/shared/plugins/template-config";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
@@ -137,7 +141,7 @@ type NodeAdmission =
       entityContext?: EntityTemplateContext | undefined;
     };
 
-/** Entity State paths this node will actually interpolate at run time. */
+/** Entity State paths this node will actually consume at run time. */
 function entityReferencePaths(
   node: WorkflowNode,
   actions: WorkflowActions,
@@ -159,24 +163,34 @@ function entityReferencePaths(
     : undefined;
   const literalKeys = new Set(metadata?.literalConfigKeys ?? []);
 
-  return uniq(
-    extractConsumedTemplateReferences(
-      config,
-      {
-        literalKeys,
-        jsonShapes: new Map(metadata?.templateJsonConfigShapes ?? []),
-        activeKeys: activeWaitKeys,
-      },
-      isWaitNode(node) ? waitMatchTemplateStringsIn(config) : []
+  const templatePaths = extractConsumedTemplateReferences(
+    config,
+    {
+      literalKeys,
+      jsonShapes: new Map(metadata?.templateJsonConfigShapes ?? []),
+      activeKeys: activeWaitKeys,
+    },
+    isWaitNode(node) ? waitMatchTemplateStringsIn(config) : []
+  )
+    .filter(
+      (reference) =>
+        reference.nodeId === sourceId &&
+        reference.sourceType === entityType &&
+        reference.fieldPath.length > 0
     )
-      .filter(
-        (reference) =>
-          reference.nodeId === sourceId &&
-          reference.sourceType === entityType &&
-          reference.fieldPath.length > 0
-      )
-      .map((reference) => reference.fieldPath)
-  );
+    .map((reference) => reference.fieldPath);
+
+  const parsedCondition = isConditionNode(node)
+    ? parseConditionModel(config.conditionModel)
+    : undefined;
+  const conditionPaths =
+    parsedCondition?.valid === true
+      ? collectEntityStateConditionReferences(parsedCondition.model)
+          .filter((reference) => reference.entityType === entityType)
+          .map((reference) => reference.fieldPath)
+      : [];
+
+  return uniq([...templatePaths, ...conditionPaths]);
 }
 
 export class NodeScheduler {
