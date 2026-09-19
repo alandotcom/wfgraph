@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { groupBy } from "es-toolkit/array";
 import {
   Combobox,
@@ -129,6 +130,7 @@ export function EventMultiCombobox({
   disabled,
   inputId,
   placeholder = "Search Events",
+  closeAfterSelection = false,
 }: {
   choices: readonly EventChoice[];
   value: readonly string[];
@@ -136,7 +138,9 @@ export function EventMultiCombobox({
   disabled: boolean;
   inputId: string;
   placeholder?: string;
+  closeAfterSelection?: boolean;
 }) {
+  const [open, setOpen] = useState(false);
   const selected = value.flatMap(
     (name) => choices.find((choice) => choice.name === name) ?? []
   );
@@ -151,7 +155,14 @@ export function EventMultiCombobox({
       items={items}
       itemToStringLabel={(choice) => choice.label}
       multiple
-      onValueChange={(next) => onValueChange(next.map((choice) => choice.name))}
+      onOpenChange={setOpen}
+      onValueChange={(next) => {
+        onValueChange(next.map((choice) => choice.name));
+        if (closeAfterSelection) {
+          setOpen(false);
+        }
+      }}
+      open={open}
       value={selected}
     >
       <EventComboboxBody

@@ -286,6 +286,27 @@ describe("LifecyclePanel", () => {
     ).toBeTruthy();
   });
 
+  it("closes the Start Event picker after a selection", async () => {
+    let latest: Record<string, unknown> = {};
+    const view = renderWithCatalog(
+      <ControlledPanel
+        onConfigChange={(config) => {
+          latest = config;
+        }}
+      />
+    );
+    const input = view.getByLabelText("Start Events");
+
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(input.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(rulesOf(latest).startEvents).toEqual(["app/appointment.created"]);
+      expect(input.getAttribute("aria-expanded")).toBe("false");
+    });
+  });
+
   // The raw name is what a sender posts and what a builder coming from that side
   // knows the Event by, so it is searchable beside the label.
   it("finds an Event by the name a sender posts", async () => {
