@@ -36,8 +36,8 @@ export const CANVAS_OBSTACLE_SLOTS = {
 /** The canvas width Reveal and its inset leave beside them at 1024px and wider. */
 const REVEAL_CANVAS_MARGIN = 256;
 
-/** Standard Reveal's widest size on a canvas narrower than 1024px. */
-const NARROW_STANDARD_WIDTH = 640;
+/** Reveal's widest size on a canvas narrower than 1024px. */
+const NARROW_REVEAL_WIDTH = 640;
 
 /** The smallest rectangle worth placing a selected step in. */
 export const MIN_USABLE_SIZE = { width: 240, height: 160 } as const;
@@ -45,49 +45,24 @@ export const MIN_USABLE_SIZE = { width: 240, height: 160 } as const;
 /** The smallest rectangle above a mobile summary sheet worth placing a step in. */
 const MOBILE_MIN_USABLE_SIZE = { width: 200, height: 120 } as const;
 
-/**
- * How wide a subject kind with Focus is. Standard fits one form column. Wide
- * adds 200px for a section list beside its form, such as Lifecycle policy.
- */
-export type RevealFocusWidth = "standard" | "wide";
+/** The narrowest width a person can resize Canvas Reveal to. */
+export const REVEAL_MIN_WIDTH = 480;
 
-/**
- * The width family an inspector uses at every level. Subjects with Focus use
- * standard or wide for both Browse and Focus; Browse-only subjects stay compact.
- */
-export type RevealWidthKey = "compact" | RevealFocusWidth;
-
-/**
- * The widths a person chose by resizing Canvas Reveal, in CSS pixels. A missing
- * key uses the default width for the canvas.
- */
-export type RememberedRevealWidths = {
-  readonly [Key in RevealWidthKey]?: number | undefined;
-};
-
-/** The narrowest width a person can resize each width family to. */
-export const REVEAL_MIN_WIDTH: Readonly<Record<RevealWidthKey, number>> = {
-  compact: 320,
-  standard: 480,
-  wide: 480,
-};
-
-/** The default widths at 1024px, 1280px, and 1536px canvas widths. */
+/** The default Reveal widths at 1024px, 1280px, and 1536px canvas widths. */
 const WIDTH_STEPS = [
-  { minCanvas: 1536, compact: 400, standard: 800, wide: 1000 },
-  { minCanvas: 1280, compact: 380, standard: 720, wide: 920 },
-  { minCanvas: 1024, compact: 360, standard: 640, wide: 840 },
+  { minCanvas: 1536, width: 800 },
+  { minCanvas: 1280, width: 720 },
+  { minCanvas: 1024, width: 640 },
 ] as const;
 
 /**
- * The range a person can resize one width key through on a canvas box of
+ * The range a person can resize Canvas Reveal through on a canvas box of
  * `canvasWidth`, and the width it has before any resize. The maximum leaves
  * 256px of canvas beside Reveal and its inset, and the default is the table
- * width, narrowed to that maximum. Null below 1024px, where Reveal keeps fixed
- * widths and shows no resize handle.
+ * width, narrowed to that maximum. Null below 1024px, where Reveal keeps a fixed
+ * width and shows no resize handle.
  */
 export function revealWidthRange(
-  key: RevealWidthKey,
   canvasWidth: number
 ): { min: number; max: number; defaultWidth: number } | null {
   // The last step starts at 1024px, so every resizable canvas finds one.
@@ -95,9 +70,15 @@ export function revealWidthRange(
   if (!step) {
     return null;
   }
-  const min = REVEAL_MIN_WIDTH[key];
-  const max = Math.max(min, canvasWidth - REVEAL_CANVAS_MARGIN - REVEAL_INSET);
-  return { min, max, defaultWidth: Math.min(step[key], max) };
+  const max = Math.max(
+    REVEAL_MIN_WIDTH,
+    canvasWidth - REVEAL_CANVAS_MARGIN - REVEAL_INSET
+  );
+  return {
+    min: REVEAL_MIN_WIDTH,
+    max,
+    defaultWidth: Math.min(step.width, max),
+  };
 }
 
 /** `width` held inside `range`, rounded to a whole pixel. */
@@ -110,31 +91,26 @@ export function clampRevealWidth(
 
 /**
  * The width of Canvas Reveal at one level on a canvas box of `canvasWidth`.
- * Browse and Focus share the subject's width key, so changing levels never
- * changes width. Below 1024px compact is 320px, standard is at most 640px, and
- * wide covers the available canvas; remembered widths do not apply. From
- * 1024px the remembered or default width is held inside its range.
+ * Every subject and open level uses the same remembered width. Below 1024px
+ * Reveal is at most 640px and remembered widths do not apply. From 1024px the
+ * remembered or default width is held inside its range.
  */
 export function revealWidth(
   level: RevealLevel,
   canvasWidth: number,
-  key: RevealWidthKey,
-  remembered: RememberedRevealWidths
+  remembered: number | undefined
 ): number {
   if (level === "closed") {
     return 0;
   }
-  const range = revealWidthRange(key, canvasWidth);
+  const range = revealWidthRange(canvasWidth);
   if (!range) {
-    const available = Math.max(0, canvasWidth - 2 * REVEAL_INSET);
-    if (key === "compact") {
-      return Math.min(320, available);
-    }
-    return key === "wide"
-      ? available
-      : Math.min(NARROW_STANDARD_WIDTH, available);
+    return Math.min(
+      NARROW_REVEAL_WIDTH,
+      Math.max(0, canvasWidth - 2 * REVEAL_INSET)
+    );
   }
-  return clampRevealWidth(remembered[key] ?? range.defaultWidth, range);
+  return clampRevealWidth(remembered ?? range.defaultWidth, range);
 }
 
 /**
@@ -144,10 +120,9 @@ export function revealWidth(
 export function revealOccupiedWidth(
   level: RevealLevel,
   canvasWidth: number,
-  key: RevealWidthKey,
-  remembered: RememberedRevealWidths
+  remembered: number | undefined
 ): number {
-  const width = revealWidth(level, canvasWidth, key, remembered);
+  const width = revealWidth(level, canvasWidth, remembered);
   return width > 0 ? width + REVEAL_INSET : 0;
 }
 

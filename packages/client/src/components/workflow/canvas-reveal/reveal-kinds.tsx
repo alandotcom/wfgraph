@@ -46,7 +46,6 @@ import { LifecycleBrowse } from "./lifecycle-browse";
 import { LifecycleFocus } from "./lifecycle-focus";
 import type { MobileRevealState } from "./canvas-reveal-state";
 import type { MobileSheetControls } from "./mobile-sheet-header";
-import type { RevealFocusWidth } from "./reveal-geometry";
 import {
   RevealHeader,
   type RevealHeaderControls,
@@ -202,8 +201,6 @@ export type RevealKind = {
    * A kind that sets it false scrolls inside its own body.
    */
   shellOwnsScroll: boolean;
-  /** How wide Focus is. */
-  focusWidth: RevealFocusWidth;
 };
 
 /** The React Flow node element of `nodeId` inside the canvas area. */
@@ -392,7 +389,6 @@ const STEP_KIND: RevealKind = {
   unwind: unwindToInspectedOrigin,
   focusReturnTarget: canvasNodeElement,
   shellOwnsScroll: true,
-  focusWidth: "standard",
 };
 
 /**
@@ -408,7 +404,6 @@ const CONDITION_KIND: RevealKind = {
   Focus: ConditionFocus,
   focusReturnTarget: canvasNodeElement,
   shellOwnsScroll: true,
-  focusWidth: "standard",
 };
 
 /**
@@ -424,12 +419,11 @@ const GROUP_KIND: RevealKind = {
   Focus: GroupFocus,
   focusReturnTarget: canvasNodeElement,
   shellOwnsScroll: true,
-  focusWidth: "standard",
 };
 
 /**
  * The Draft Lifecycle Node: its policy summary in Browse and the sectioned
- * policy editor in a wide Focus, which still leaves room to place the node.
+ * policy editor in Focus.
  */
 const LIFECYCLE_KIND: RevealKind = {
   id: "lifecycle",
@@ -441,7 +435,6 @@ const LIFECYCLE_KIND: RevealKind = {
   unwind: unwindToInspectedOrigin,
   focusReturnTarget: canvasNodeElement,
   shellOwnsScroll: true,
-  focusWidth: "wide",
 };
 
 /**
@@ -459,7 +452,6 @@ const EVENT_SPLIT_KIND: RevealKind = {
   Focus: null,
   focusReturnTarget: canvasNodeElement,
   shellOwnsScroll: true,
-  focusWidth: "standard",
 };
 
 /**
@@ -486,13 +478,12 @@ const RUNS_KIND: RevealKind = {
   mobile: { Header: RunsMobileHeader, unwind: unwindMobileRuns },
   focusReturnTarget: canvasNodeElement,
   shellOwnsScroll: false,
-  focusWidth: "standard",
 };
 
 /**
  * The Changes workspace: the comparison summary, the changed-object list, and
  * version history in Browse, and the selected object's before-and-after
- * properties side by side in a wide Focus, under a header naming the
+ * properties side by side in Focus, under a header naming the
  * comparison. Each body keeps its own scroll. On mobile the summary and the
  * change list are address sheets, version history an address inspector, and
  * the field differences the inspector of one object, each scrolled by the
@@ -519,7 +510,6 @@ const CHANGES_KIND: RevealKind = {
   },
   focusReturnTarget: canvasNodeElement,
   shellOwnsScroll: false,
-  focusWidth: "wide",
 };
 
 /**
@@ -535,7 +525,6 @@ const PANEL_KIND: RevealKind = {
   Focus: null,
   focusReturnTarget: canvasNodeElement,
   shellOwnsScroll: false,
-  focusWidth: "standard",
 };
 
 /** Every kind, in the order a selection is matched against them. */

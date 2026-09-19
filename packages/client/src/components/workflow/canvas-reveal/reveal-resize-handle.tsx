@@ -5,11 +5,10 @@ import {
   clampRevealWidth,
   revealWidth,
   revealWidthRange,
-  type RevealWidthKey,
 } from "./reveal-geometry";
 import {
   finishRevealResizeAtom,
-  rememberedRevealWidthsAtom,
+  rememberedRevealWidthAtom,
   resetRevealWidthAtom,
   resizeRevealWidthAtom,
   startRevealKeyResizeAtom,
@@ -39,10 +38,9 @@ type DragStart = { clientX: number; width: number; changed: boolean };
  */
 export function RevealResizeHandle(input: {
   level: "browse" | "focus";
-  widthKey: RevealWidthKey;
   canvasWidth: number;
 }) {
-  const remembered = useAtomValue(rememberedRevealWidthsAtom);
+  const remembered = useAtomValue(rememberedRevealWidthAtom);
   const resize = useSetAtom(resizeRevealWidthAtom);
   const finish = useSetAtom(finishRevealResizeAtom);
   const reset = useSetAtom(resetRevealWidthAtom);
@@ -71,23 +69,18 @@ export function RevealResizeHandle(input: {
   // Reveal can close in the middle of a keyboard resize.
   useUnmountCleanup(finishKeyResize);
 
-  const range = revealWidthRange(input.widthKey, input.canvasWidth);
+  const range = revealWidthRange(input.canvasWidth);
   if (!range) {
     return null;
   }
-  const width = revealWidth(
-    input.level,
-    input.canvasWidth,
-    input.widthKey,
-    remembered
-  );
+  const width = revealWidth(input.level, input.canvasWidth, remembered);
 
   const showWidth = (next: number): boolean => {
     const clamped = clampRevealWidth(next, range);
     if (clamped === width) {
       return false;
     }
-    resize({ key: input.widthKey, width: clamped });
+    resize(clamped);
     return true;
   };
 
@@ -139,7 +132,7 @@ export function RevealResizeHandle(input: {
       onDoubleClick={() => {
         // The reset finishes any keyboard resize in progress along with itself.
         keyResizePendingRef.current = false;
-        reset(input.widthKey);
+        reset();
       }}
       onKeyDown={onKeyDown}
       onKeyUp={onKeyUp}

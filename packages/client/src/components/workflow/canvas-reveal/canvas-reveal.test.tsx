@@ -32,7 +32,7 @@ import {
 } from "#src/components/workflow/canvas-reveal/reveal-kinds";
 import { revealResizeSequenceAtom } from "#src/components/workflow/canvas-reveal/reveal-requests";
 import { KEYBOARD_RESIZE_SETTLE_MS } from "#src/components/workflow/canvas-reveal/reveal-resize-handle";
-import { rememberedRevealWidthsAtom } from "#src/components/workflow/canvas-reveal/reveal-width-preference";
+import { rememberedRevealWidthAtom } from "#src/components/workflow/canvas-reveal/reveal-width-preference";
 import { useRevealOccupiedWidth } from "#src/components/workflow/canvas-reveal/use-reveal-width";
 import { WorkflowContextMenu } from "#src/components/workflow/workflow-context-menu";
 import {
@@ -570,9 +570,7 @@ describe("Canvas Reveal resizing", () => {
     });
     await settleKeyResize();
     expect(store.get(revealResizeSequenceAtom)).toBe(1);
-    expect(store.get(rememberedRevealWidthsAtom)).toEqual({
-      standard: 720 + 19 * 16,
-    });
+    expect(store.get(rememberedRevealWidthAtom)).toBe(720 + 19 * 16);
   });
 
   it("finishes a keyboard resize once when focus leaves the handle", async () => {
@@ -612,7 +610,25 @@ describe("Canvas Reveal resizing", () => {
       fireEvent.keyDown(handle(view), { key: "Home" });
       fireEvent.keyUp(handle(view), { key: "Home" });
     });
-    expect(store.get(rememberedRevealWidthsAtom)).toEqual({ standard: 480 });
+    expect(store.get(rememberedRevealWidthAtom)).toBe(480);
+  });
+
+  it("shares a manually chosen width across selected nodes", async () => {
+    const { view, aside, select } = await renderReveal(
+      {},
+      { canvasWidth: 1440 }
+    );
+    await select("send");
+    await press(handle(view), "ArrowLeft");
+    expect(shownWidth(aside())).toBe(736);
+
+    await select("lifecycle");
+    expect(shownWidth(aside())).toBe(736);
+
+    await press(handle(view), "ArrowLeft");
+    expect(shownWidth(aside())).toBe(752);
+    await select("wait");
+    expect(shownWidth(aside())).toBe(752);
   });
 
   it("follows a drag and places the subject once when it ends", async () => {
@@ -644,7 +660,7 @@ describe("Canvas Reveal resizing", () => {
       fireEvent.pointerUp(separator, { clientX: 500, pointerId: 1 });
     });
     expect(store.get(revealResizeSequenceAtom)).toBe(1);
-    expect(store.get(rememberedRevealWidthsAtom)).toEqual({ standard: 820 });
+    expect(store.get(rememberedRevealWidthAtom)).toBe(820);
     await settleKeyResize();
     expect(store.get(revealResizeSequenceAtom)).toBe(1);
   });
@@ -665,7 +681,7 @@ describe("Canvas Reveal resizing", () => {
       fireEvent.doubleClick(handle(view));
     });
     expect(shownWidth(aside())).toBe(720);
-    expect(store.get(rememberedRevealWidthsAtom)).toEqual({});
+    expect(store.get(rememberedRevealWidthAtom)).toBeUndefined();
     expect(store.get(revealResizeSequenceAtom)).toBe(1);
     await settleKeyResize();
     expect(store.get(revealResizeSequenceAtom)).toBe(1);

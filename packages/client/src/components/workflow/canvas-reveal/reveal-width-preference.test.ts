@@ -1,31 +1,23 @@
 import { describe, expect, it } from "vitest";
 import {
-  readRememberedRevealWidths,
-  rememberedRevealWidthsCookie,
+  readRememberedRevealWidth,
+  rememberedRevealWidthCookie,
 } from "./reveal-width-preference";
 
 const cookie = (value: unknown) => encodeURIComponent(JSON.stringify(value));
 
-describe("readRememberedRevealWidths", () => {
-  it("reads the three widths a valid cookie holds", () => {
-    expect(
-      readRememberedRevealWidths(
-        cookie({ compact: 420, standard: 700, wide: 960 })
-      )
-    ).toEqual({ compact: 420, standard: 700, wide: 960 });
-  });
-
-  it("migrates the legacy Browse width to Compact", () => {
-    expect(readRememberedRevealWidths(cookie({ browse: 420 }))).toEqual({
-      compact: 420,
-    });
+describe("readRememberedRevealWidth", () => {
+  it("reads a valid shared width", () => {
+    expect(readRememberedRevealWidth(cookie({ width: 700 }))).toBe(700);
   });
 
   it("round-trips the value the preference writes", () => {
-    const widths = { compact: 344, wide: 1012 };
+    expect(readRememberedRevealWidth(rememberedRevealWidthCookie(844))).toBe(
+      844
+    );
     expect(
-      readRememberedRevealWidths(rememberedRevealWidthsCookie(widths))
-    ).toEqual(widths);
+      readRememberedRevealWidth(rememberedRevealWidthCookie(undefined))
+    ).toBeUndefined();
   });
 
   it.each([
@@ -34,36 +26,32 @@ describe("readRememberedRevealWidths", () => {
     { name: "text that is not JSON", value: "wide" },
     { name: "a malformed escape", value: "%E0%A4%A" },
     { name: "a JSON array", value: cookie([420, 700]) },
-    { name: "a JSON number", value: cookie(420) },
-  ])("reads $name as no remembered widths", ({ value }) => {
-    expect(readRememberedRevealWidths(value)).toEqual({});
+    { name: "a JSON number", value: cookie(700) },
+  ])("reads $name as no remembered width", ({ value }) => {
+    expect(readRememberedRevealWidth(value)).toBeUndefined();
   });
 
-  it("drops each width that is not a whole number and keeps the rest", () => {
-    expect(
-      readRememberedRevealWidths(
-        cookie({ compact: "420", standard: 700.5, wide: null })
-      )
-    ).toEqual({});
-    expect(
-      readRememberedRevealWidths(cookie({ compact: true, standard: 700 }))
-    ).toEqual({ standard: 700 });
+  it.each([
+    { width: "700", reason: "text" },
+    { width: 700.5, reason: "a fractional pixel" },
+    { width: null, reason: "null" },
+    { width: true, reason: "a boolean" },
+    { width: 479, reason: "a value below the minimum" },
+  ])("drops $reason", ({ width }) => {
+    expect(readRememberedRevealWidth(cookie({ width }))).toBeUndefined();
   });
 
-  it("drops each width below its key's minimum", () => {
+  it("does not reuse legacy family widths", () => {
     expect(
-      readRememberedRevealWidths(
-        cookie({ compact: 319, standard: 479, wide: -900 })
+      readRememberedRevealWidth(
+        cookie({ browse: 420, compact: 420, standard: 700, wide: 960 })
       )
-    ).toEqual({});
-    expect(
-      readRememberedRevealWidths(cookie({ compact: 320, standard: 480 }))
-    ).toEqual({ compact: 320, standard: 480 });
+    ).toBeUndefined();
   });
 
   it("ignores keys it does not know", () => {
     expect(
-      readRememberedRevealWidths(cookie({ compact: 400, sidebar: 300 }))
-    ).toEqual({ compact: 400 });
+      readRememberedRevealWidth(cookie({ width: 700, sidebar: 300 }))
+    ).toBe(700);
   });
 });
