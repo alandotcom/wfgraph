@@ -15,8 +15,6 @@ export {
   type ConditionFieldType,
   type ConditionModel,
   type ConditionRule,
-  type EntityStateConditionPath,
-  type EntityStateConditionReference,
   type TimeUnit,
   type TimestampAbsoluteOperator,
   type TimestampRelativeOperator,
