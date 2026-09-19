@@ -5,7 +5,6 @@
  */
 
 import { generateId } from "@wfgraph/shared/utils/id";
-import type { EdgeChange } from "@xyflow/react";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import {
   dissolveGroups,
@@ -217,39 +216,6 @@ export function storedEdgeIdsForPaintedEdge(input: {
       : [];
   }
   return fanOutStoreEdgeIds(input.nodes, input.edges, input.edgeId);
-}
-
-/**
- * `changes` with each removal replaced by removals of the stored edges
- * `storedEdgeIdsForPaintedEdge` says it stands for in `scope`.
- */
-export function expandEdgeRemovals(
-  nodes: WorkflowNode[],
-  edges: WorkflowEdge[],
-  changes: EdgeChange[],
-  scope: WorkspaceScope
-): EdgeChange[] {
-  const removedIds = new Set<string>();
-  for (const change of changes) {
-    if (change.type !== "remove") {
-      continue;
-    }
-    for (const id of storedEdgeIdsForPaintedEdge({
-      nodes,
-      edges,
-      edgeId: change.id,
-      scope,
-    })) {
-      removedIds.add(id);
-    }
-  }
-  if (removedIds.size === 0) {
-    return changes;
-  }
-  return [
-    ...changes.filter((change) => change.type !== "remove"),
-    ...[...removedIds].map((id) => ({ type: "remove" as const, id })),
-  ];
 }
 
 /**

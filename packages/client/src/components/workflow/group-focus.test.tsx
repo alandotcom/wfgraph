@@ -48,6 +48,7 @@ import {
   nodesAtom,
   selectedNodeAtom,
   selectOnlyNodeAtom,
+  undoAtom,
 } from "#src/lib/workflow-graph-store";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import type { WorkflowRouteSearch } from "#src/lib/workflow-navigation-state";
@@ -180,7 +181,7 @@ async function renderEditor(
     nodes: NODES,
     edges: EDGES,
   },
-  options: { reveal?: boolean } = {}
+  options: { reveal?: boolean; canEdit?: boolean } = {}
 ) {
   const store = createStore();
   store.set(workflowApiAtom, {
@@ -207,7 +208,7 @@ async function renderEditor(
       >
         <WorkspaceRouteSync />
         <RunStatusProjection />
-        <WorkflowCanvas canEdit />
+        <WorkflowCanvas canEdit={options.canEdit ?? true} />
         {options.reveal === false ? null : <CanvasReveal />}
         <Probe />
       </div>
@@ -273,6 +274,116 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   resetAuthorizationGrantsForTests();
+});
+
+describe("canvas Delete gesture", () => {
+  const cases = [
+    {
+      name: "ordinary step",
+      nodeIds: ["qualify"],
+      edgeIds: [],
+      remainingNodes: ["life", "outreach", "welcome", "case_study", "route"],
+      remainingEdges: ["welcome-case", "case-route"],
+    },
+    {
+      name: "Group frame without its implied descendants",
+      nodeIds: ["outreach"],
+      edgeIds: [],
+      remainingNodes: ["life", "qualify", "welcome", "case_study", "route"],
+      remainingEdges: EDGES.map((edge) => edge.id),
+    },
+    {
+      name: "painted Group edge",
+      nodeIds: ["life"],
+      edgeIds: ["qualify-welcome"],
+      remainingNodes: NODES.map((node) => node.id),
+      remainingEdges: ["life-qualify", "welcome-case", "case-route"],
+    },
+  ];
+  for (const entry of cases) {
+    it(`deletes ${entry.name} with one complete save and undo step`, async () => {
+      const { store, view } = await renderEditor("", undefined, {
+        reveal: false,
+      });
+      const before = {
+        nodes: store.get(nodesAtom),
+        edges: store.get(edgesAtom),
+      };
+      const update = vi.mocked(store.get(workflowApiAtom).update);
+      await act(async () => {
+        store.set(activeSelectionAtom, {
+          nodeIds: entry.nodeIds,
+          edgeIds: entry.edgeIds,
+        });
+      });
+      await waitFor(() =>
+        expect(
+          view.container.querySelector(
+            ".react-flow__node.selected, .react-flow__edge.selected"
+          )
+        ).not.toBeNull()
+      );
+      const history = store.get(historyAtom).length;
+      await act(async () => {
+        fireEvent.keyDown(document, { key: "Delete", code: "Delete" });
+      });
+      await waitFor(() => expect(update).toHaveBeenCalledOnce());
+      fireEvent.keyUp(document, { key: "Delete", code: "Delete" });
+      expect(
+        store
+          .get(nodesAtom)
+          .map((node) => node.id)
+          .sort()
+      ).toEqual([...entry.remainingNodes].sort());
+      expect(store.get(edgesAtom).map((edge) => edge.id)).toEqual(
+        entry.remainingEdges
+      );
+      expect(store.get(historyAtom)).toHaveLength(history + 1);
+      const payload = update.mock.calls[0]?.[1];
+      expect(payload?.nodes?.map((node) => node.id).sort()).toEqual(
+        [...entry.remainingNodes].sort()
+      );
+      expect(payload?.edges?.map((edge) => edge.id)).toEqual(
+        entry.remainingEdges
+      );
+      await act(async () => {
+        store.set(undoAtom);
+      });
+      expect(store.get(nodesAtom)).toEqual(before.nodes);
+      expect(store.get(edgesAtom)).toEqual(before.edges);
+    });
+  }
+
+  it.each([
+    { name: "Lifecycle-only selection", nodeId: "life", canEdit: true },
+    { name: "read-only canvas", nodeId: "qualify", canEdit: false },
+  ])("leaves $name unchanged", async ({ nodeId, canEdit }) => {
+    const { store, view } = await renderEditor("", undefined, {
+      reveal: false,
+      canEdit,
+    });
+    const before = {
+      nodes: store.get(nodesAtom),
+      edges: store.get(edgesAtom),
+      history: store.get(historyAtom),
+    };
+    await act(async () => {
+      store.set(selectOnlyNodeAtom, nodeId);
+    });
+    await waitFor(() =>
+      expect(
+        view.container.querySelector(".react-flow__node.selected")
+      ).not.toBeNull()
+    );
+    await act(async () => {
+      fireEvent.keyDown(document, { key: "Delete", code: "Delete" });
+      fireEvent.keyUp(document, { key: "Delete", code: "Delete" });
+    });
+    expect(store.get(nodesAtom)).toBe(before.nodes);
+    expect(store.get(edgesAtom)).toBe(before.edges);
+    expect(store.get(historyAtom)).toBe(before.history);
+    expect(store.get(workflowApiAtom).update).not.toHaveBeenCalled();
+  });
 });
 
 /** Run-log rows for `statuses`, one per node, in the order given. */
