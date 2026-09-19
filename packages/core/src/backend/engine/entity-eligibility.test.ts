@@ -156,6 +156,49 @@ if (!compiledEntityCondition.valid) {
   throw new Error(compiledEntityCondition.error);
 }
 
+const structuredEntityConditionModel: ConditionModel = {
+  version: 2,
+  groupLogic: "and",
+  groups: [
+    {
+      id: "structured-entity-group",
+      logic: "and",
+      conditions: [
+        {
+          id: "nested-string",
+          field:
+            entityStateConditionPath("appointment", "profile.status") ?? "",
+          fieldType: "string",
+          operator: "equals",
+          value: "ready",
+        },
+        {
+          id: "record-key",
+          field: entityStateConditionPath("appointment", "attributes") ?? "",
+          recordKey: "journey.status",
+          fieldType: "string",
+          operator: "equals",
+          value: "priority",
+        },
+        {
+          id: "nested-timestamp",
+          field:
+            entityStateConditionPath("appointment", "profile.updatedAt") ?? "",
+          fieldType: "timestamp",
+          operator: "before",
+          dateTime: "2030-01-01T00:00:00.000Z",
+        },
+      ],
+    },
+  ],
+};
+const compiledStructuredEntityCondition = compileConditionModel(
+  structuredEntityConditionModel
+);
+if (!compiledStructuredEntityCondition.valid) {
+  throw new Error(compiledStructuredEntityCondition.error);
+}
+
 function entityDataGraph(
   checkpoints: Array<"before-execution" | "before-node">,
   nodeIds: string[] = ["first"],
@@ -395,6 +438,62 @@ describe("per-node Entity Eligibility", () => {
         eventName: "appointment.started",
         paths: ["status"],
       },
+    ]);
+    expect(executionData(result.results.condition)).toEqual({
+      success: true,
+      data: { condition: true },
+    });
+  });
+
+  it("evaluates nested, open-record, and timestamp Entity fields from the projected snapshot", async () => {
+    const entities = entityPort(
+      [{ outcome: "eligible" }],
+      [
+        {
+          "profile.status": "ready",
+          'attributes["journey.status"]': "priority",
+          "profile.updatedAt": "2029-01-01T00:00:00.000Z",
+        },
+      ]
+    );
+    const conditionGraph = createSerializedWorkflowGraph({
+      nodes: [
+        lifecycleNode(["before-node"], [], null),
+        actionNode("condition", true, "Condition", {
+          condition: compiledStructuredEntityCondition.expression,
+          conditionModel: serializeConditionModel(
+            structuredEntityConditionModel
+          ),
+        }),
+      ],
+      edges: [
+        {
+          id: "entity-condition",
+          source: "lifecycle",
+          sourceHandle: "started",
+          target: "condition",
+        },
+      ],
+    });
+
+    const result = await executeTestWorkflow(
+      { ...executionInput, graph: conditionGraph },
+      createInMemoryWorkflowRuntime(),
+      createRecordingWorkflowStore(),
+      actions,
+      entities
+    );
+
+    expect(result.status).toBe("completed");
+    expect(entities.inputs).toEqual([
+      expect.objectContaining({
+        nodeId: "condition",
+        paths: [
+          "profile.status",
+          'attributes["journey.status"]',
+          "profile.updatedAt",
+        ],
+      }),
     ]);
     expect(executionData(result.results.condition)).toEqual({
       success: true,

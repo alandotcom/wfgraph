@@ -28,13 +28,16 @@ function eligibleWhenActive(): string {
   });
 }
 
+type TestEntityState = {
+  active: boolean;
+  name?: string;
+  profile?: { status: string };
+};
+
 function surface(
   resolve: (input: {
     entityId: string;
-  }) =>
-    | { active: boolean; name?: string }
-    | null
-    | Promise<{ active: boolean; name?: string } | null>,
+  }) => TestEntityState | null | Promise<TestEntityState | null>,
   options?: { entityResolverTimeoutMs?: number }
 ) {
   const entity = defineEntity({
@@ -43,6 +46,11 @@ function surface(
     state: Schema.Struct({
       active: Schema.Boolean,
       name: Schema.optional(Schema.String),
+      profile: Schema.optional(
+        Schema.Struct({
+          status: Schema.String,
+        })
+      ),
     }),
     resolve,
   });
@@ -89,6 +97,23 @@ describe("Workflow Entity Eligibility port", () => {
       decision: { outcome: "eligible" },
       values: { name: "Ada" },
     });
+  });
+
+  it("keys a nested projection by its complete authored path", async () => {
+    const result = await Effect.runPromise(
+      surface(() => ({
+        active: true,
+        profile: { status: "ready" },
+      })).resolveNode({
+        entityType: "appointment",
+        entityId: "appt_1",
+        nodeId: "send-reminder",
+        eventName: "appointment.started",
+        paths: ["profile.status"],
+      })
+    );
+
+    expect(result.values).toEqual({ "profile.status": "ready" });
   });
 
   it("fails data-only resolution when the Entity no longer exists", async () => {

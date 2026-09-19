@@ -5,10 +5,14 @@
 
 import { evaluateCompiledCondition } from "#src/backend/lib/cel/condition-payload";
 import {
+  collectEntityStateConditionReferences,
   collectTimestampFieldPaths,
   parseConditionModel,
 } from "@wfgraph/shared/conditions/conditions";
-import { unwrapStepOutput } from "@wfgraph/shared/graph/node-references";
+import {
+  parseOutputPath,
+  unwrapStepOutput,
+} from "@wfgraph/shared/graph/node-references";
 import type { JsonObject, JsonValue } from "@wfgraph/shared/types/json";
 import type { NodeOutputs } from "#src/backend/engine/contracts";
 import { Effect } from "effect";
@@ -65,20 +69,86 @@ function mergeConditionContextValue(context: JsonObject, value: JsonValue) {
  * belongs to a node that never should have run; the condition still evaluates,
  * against a context where timestamps stay strings.
  */
-function readConditionTimestampPaths(
-  conditionModel: unknown
-): Effect.Effect<string[]> {
+function readConditionContextShape(conditionModel: unknown): Effect.Effect<{
+  timestampPaths: string[];
+  entityPaths: string[];
+}> {
   const parsed = parseConditionModel(conditionModel);
   if (!parsed.valid) {
     return Effect.as(
       Effect.logWarning("Condition model did not parse").pipe(
         Effect.annotateLogs({ error: parsed.error })
       ),
-      []
+      { timestampPaths: [], entityPaths: [] }
     );
   }
 
-  return Effect.succeed(collectTimestampFieldPaths(parsed.model));
+  return Effect.succeed({
+    timestampPaths: collectTimestampFieldPaths(parsed.model),
+    entityPaths: collectEntityStateConditionReferences(parsed.model).map(
+      (reference) => reference.fieldPath
+    ),
+  });
+}
+
+function setConditionContextValue(
+  context: JsonObject,
+  path: string,
+  value: JsonValue
+): void {
+  const steps = parseOutputPath(path);
+  if (!steps?.length) {
+    return;
+  }
+
+  let current: JsonObject | JsonValue[] = context;
+  for (const [index, step] of steps.entries()) {
+    const key = step.kind === "key" ? step.key : step.index;
+    if (index === steps.length - 1) {
+      Reflect.set(current, key, structuredClone(value));
+      return;
+    }
+
+    const nextStep = steps[index + 1];
+    const existing: JsonValue | undefined =
+      step.kind === "key" && !Array.isArray(current)
+        ? current[step.key]
+        : step.kind === "index" && Array.isArray(current)
+          ? current[step.index]
+          : undefined;
+    if (nextStep?.kind === "index" && Array.isArray(existing)) {
+      current = existing;
+      continue;
+    }
+    if (
+      nextStep?.kind === "key" &&
+      typeof existing === "object" &&
+      existing !== null &&
+      !Array.isArray(existing)
+    ) {
+      current = existing;
+      continue;
+    }
+
+    const child: JsonObject | JsonValue[] =
+      nextStep?.kind === "index" ? [] : {};
+    Reflect.set(current, key, child);
+    current = child;
+  }
+}
+
+/** Build CEL's nested Entity root from the path-keyed durable projection. */
+function entityConditionContext(
+  values: JsonObject,
+  paths: readonly string[]
+): JsonObject {
+  const context: JsonObject = {};
+  for (const path of paths) {
+    if (Object.hasOwn(values, path)) {
+      setConditionContextValue(context, path, Reflect.get(values, path));
+    }
+  }
+  return context;
 }
 
 export function evaluateConditionExpression(
@@ -116,12 +186,16 @@ export function evaluateConditionExpression(
       mergeConditionContextValue(merged, output.data);
     }
 
+    const conditionContext = yield* readConditionContextShape(conditionModel);
     const evaluation = evaluateCompiledCondition({
       expression,
-      timestampPaths: yield* readConditionTimestampPaths(conditionModel),
+      timestampPaths: conditionContext.timestampPaths,
       payload: merged,
       eventName,
-      entity,
+      entity: entityConditionContext(
+        entity ?? {},
+        conditionContext.entityPaths
+      ),
     });
 
     if (!evaluation.ok) {
