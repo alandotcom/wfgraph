@@ -305,7 +305,7 @@ describe("Template badge autocomplete", () => {
     await seedTemplateContext();
   });
 
-  it("offers the tracked Entity as a virtual source only with Eligibility", async () => {
+  it("offers the tracked Entity as a virtual source without Eligibility", async () => {
     surface.entities = [
       {
         type: "patient",
@@ -335,10 +335,6 @@ describe("Template badge autocomplete", () => {
               cancelEvents: [],
               concurrency: "unlimited",
               trackedEntity: { type: "patient", bindings: {} },
-              entityEligibility: {
-                condition: "condition",
-                checkpoints: ["before-node"],
-              },
             },
           },
         },

@@ -166,7 +166,7 @@ describe("collectWorkflowIssues", () => {
     expect(hasBlockingWorkflowIssues(issues)).toBe(false);
   });
 
-  it("blocks Publish for Entity references when Eligibility is unavailable", () => {
+  it("accepts Entity references when tracking has no Eligibility", () => {
     const entityCatalog: ExtensionCatalog = {
       ...catalog,
       entities: [
@@ -219,15 +219,8 @@ describe("collectWorkflowIssues", () => {
         issue.kind === "broken_reference" &&
         issue.referencedNodeId === "$entity"
     );
-    expect(entityIssues).toEqual([
-      expect.objectContaining({
-        kind: "broken_reference",
-        severity: "blocking",
-        referencedNodeId: "$entity",
-        displayText: "Patient.name",
-      }),
-    ]);
-    expect(hasBlockingWorkflowIssues(entityIssues)).toBe(true);
+    expect(entityIssues).toEqual([]);
+    expect(hasBlockingWorkflowIssues(entityIssues)).toBe(false);
     expect(hasDraftRunBlockingIssues(entityIssues)).toBe(false);
   });
 

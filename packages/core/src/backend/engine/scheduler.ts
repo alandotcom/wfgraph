@@ -106,7 +106,7 @@ export type NodeSchedulerInput = {
    * catalog when an action resolves.
    */
   catalogFingerprint: string;
-  /** Immutable tracked Entity identity, exposed only while Eligibility exists. */
+  /** Immutable tracked Entity identity available to node-local State reads. */
   trackedEntity?:
     | {
         entityType: string;

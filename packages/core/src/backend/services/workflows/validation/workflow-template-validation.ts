@@ -169,7 +169,7 @@ export function validateWorkflowTemplates(input: {
       if (!entitySource) {
         return {
           valid: false,
-          error: `${where}, but Entity data is available only while Entity Eligibility is configured.`,
+          error: `${where}, but Entity data is available only while this workflow tracks an Entity.`,
         };
       }
       if (!reference.fieldPath || !field) {

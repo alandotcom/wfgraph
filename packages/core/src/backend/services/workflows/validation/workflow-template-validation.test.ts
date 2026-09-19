@@ -243,19 +243,29 @@ describe("validateWorkflowTemplates Entity State", () => {
     ).toEqual({ valid: true });
   });
 
-  it("refuses Entity data when Eligibility is absent", () => {
+  it("accepts Entity data when tracking has no Eligibility", () => {
+    expect(
+      check(
+        [
+          entryNode([CREATED], { eligibility: false }),
+          waitNode({ waitDuration: entityToken("delay") }),
+        ],
+        [startedEdge],
+        entityCatalog
+      )
+    ).toEqual({ valid: true });
+  });
+
+  it("refuses Entity data when tracking is absent", () => {
     const result = check(
-      [
-        entryNode([CREATED], { eligibility: false }),
-        waitNode({ waitDuration: entityToken("delay") }),
-      ],
+      [entryNode([CREATED]), waitNode({ waitDuration: entityToken("delay") })],
       [startedEdge],
       entityCatalog
     );
 
     expect(result.valid).toBe(false);
     expect(errorOf(result)).toContain(
-      "available only while Entity Eligibility is configured"
+      "available only while this workflow tracks an Entity"
     );
   });
 

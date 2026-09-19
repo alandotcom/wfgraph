@@ -397,9 +397,9 @@ export type EntityTemplateSource = {
 /**
  * The tracked Entity source a node may read at execution time.
  *
- * Entity State is offered only while Eligibility is configured. It is a virtual
- * per-node source rather than output from the Lifecycle node, whose output stays
- * the arriving Event payload.
+ * Tracking is enough to offer Entity State. It is a virtual per-node source
+ * rather than output from the Lifecycle node, whose output stays the arriving
+ * Event payload.
  */
 export function getEntityTemplateSource(input: {
   nodes: readonly WorkflowNode[];

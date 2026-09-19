@@ -59,7 +59,7 @@ describe("Entity template source", () => {
     });
   }
 
-  it("offers current Entity fields when tracking and Eligibility are configured", () => {
+  it("offers current Entity fields when tracking is configured", () => {
     expect(
       getEntityTemplateSource({
         nodes: [lifecycle({ tracked: true, eligible: true })],
@@ -73,10 +73,22 @@ describe("Entity template source", () => {
     });
   });
 
-  it("does not offer Entity fields when Eligibility is absent", () => {
+  it("offers Entity fields without Eligibility", () => {
     expect(
       getEntityTemplateSource({
         nodes: [lifecycle({ tracked: true, eligible: false })],
+        catalog: surface,
+      })
+    ).toMatchObject({
+      sourceId: "$entity",
+      sourceType: "patient",
+    });
+  });
+
+  it("does not offer Entity fields without tracking", () => {
+    expect(
+      getEntityTemplateSource({
+        nodes: [lifecycle({ tracked: false, eligible: false })],
         catalog: surface,
       })
     ).toBeUndefined();

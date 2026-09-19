@@ -43,7 +43,7 @@ const condition = JSON.stringify({
 function lifecycleNode(
   checkpoints: Array<"before-execution" | "before-node"> = ["before-node"],
   cancelEvents: string[] = [],
-  eligibilityCondition = condition
+  eligibilityCondition: string | null = condition
 ): WorkflowNode {
   return {
     id: "lifecycle",
@@ -67,10 +67,14 @@ function lifecycleNode(
               ])
             ),
           },
-          entityEligibility: {
-            condition: eligibilityCondition,
-            checkpoints,
-          },
+          ...(eligibilityCondition
+            ? {
+                entityEligibility: {
+                  condition: eligibilityCondition,
+                  checkpoints,
+                },
+              }
+            : {}),
         },
       },
     },
@@ -124,11 +128,12 @@ const entityNameToken = "{{@$entity:appointment|Appointment.name}}";
 
 function entityDataGraph(
   checkpoints: Array<"before-execution" | "before-node">,
-  nodeIds: string[] = ["first"]
+  nodeIds: string[] = ["first"],
+  eligibilityCondition: string | null = condition
 ) {
   return createSerializedWorkflowGraph({
     nodes: [
-      lifecycleNode(checkpoints),
+      lifecycleNode(checkpoints, [], eligibilityCondition),
       ...nodeIds.map((id) =>
         actionNode(id, true, "test/action", {
           message: entityNameToken,
@@ -288,6 +293,39 @@ describe("per-node Entity Eligibility", () => {
       expect.anything()
     );
     expect(JSON.stringify(result.outputs)).not.toContain("Ada");
+  });
+
+  it("resolves referenced Entity data when tracking has no Eligibility", async () => {
+    const entities = entityPort(
+      [{ outcome: "eligible" }],
+      [{ name: "Ada" }]
+    );
+
+    const result = await executeTestWorkflow(
+      {
+        ...executionInput,
+        graph: entityDataGraph(["before-node"], ["first"], null),
+      },
+      createInMemoryWorkflowRuntime(),
+      createRecordingWorkflowStore(),
+      actions,
+      entities
+    );
+
+    expect(result.status).toBe("completed");
+    expect(entities.inputs).toEqual([
+      {
+        entityType: "appointment",
+        entityId: "appt_secret",
+        nodeId: "first",
+        eventName: "appointment.started",
+        paths: ["name"],
+      },
+    ]);
+    expect(runAction).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "Ada" }),
+      expect.anything()
+    );
   });
 
   it("does not retarget a stale Entity reference during a Draft run", async () => {
