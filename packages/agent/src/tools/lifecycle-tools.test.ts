@@ -1331,9 +1331,7 @@ describe("set_condition", () => {
           fieldType: "string",
         });
       }
-      expect(readConfigString(config, "condition")).toContain(
-        "entity.status"
-      );
+      expect(readConfigString(config, "condition")).toContain("entity.status");
     })
   );
 

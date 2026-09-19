@@ -326,10 +326,7 @@ describe("per-node Entity Eligibility", () => {
   });
 
   it("resolves referenced Entity data when tracking has no Eligibility", async () => {
-    const entities = entityPort(
-      [{ outcome: "eligible" }],
-      [{ name: "Ada" }]
-    );
+    const entities = entityPort([{ outcome: "eligible" }], [{ name: "Ada" }]);
 
     const result = await executeTestWorkflow(
       {

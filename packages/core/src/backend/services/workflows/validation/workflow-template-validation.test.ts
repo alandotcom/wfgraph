@@ -79,11 +79,13 @@ function entryNode(
   };
 }
 
-function entityConditionNode(input: {
-  entityType?: string;
-  field?: string;
-  fieldType?: ConditionFieldType;
-} = {}): WorkflowNode {
+function entityConditionNode(
+  input: {
+    entityType?: string;
+    field?: string;
+    fieldType?: ConditionFieldType;
+  } = {}
+): WorkflowNode {
   const fieldType = input.fieldType ?? "string";
   const base = {
     id: "entity-rule",
@@ -198,10 +200,7 @@ describe("validateWorkflowTemplates Entity State", () => {
   it("accepts a Condition field from a tracked Entity without Eligibility", () => {
     expect(
       check(
-        [
-          entryNode([CREATED], { eligibility: false }),
-          entityConditionNode(),
-        ],
+        [entryNode([CREATED], { eligibility: false }), entityConditionNode()],
         [],
         entityCatalog
       )
@@ -242,9 +241,7 @@ describe("validateWorkflowTemplates Entity State", () => {
       [],
       entityCatalog
     );
-    expect(errorOf(staleField)).toContain(
-      'Entity "patient" does not declare'
-    );
+    expect(errorOf(staleField)).toContain('Entity "patient" does not declare');
 
     const staleFieldType = check(
       [
@@ -255,7 +252,7 @@ describe("validateWorkflowTemplates Entity State", () => {
       entityCatalog
     );
     expect(errorOf(staleFieldType)).toContain(
-      "reads Entity State field \"name\" as number"
+      'reads Entity State field "name" as number'
     );
   });
 

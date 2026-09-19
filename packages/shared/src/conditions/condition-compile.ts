@@ -256,10 +256,7 @@ function compileContextPath(
     return {
       field: `${root}.${keys.join(".")}`,
       presence: keys
-        .map(
-          (_, index) =>
-            `has(${root}.${keys.slice(0, index + 1).join(".")})`
-        )
+        .map((_, index) => `has(${root}.${keys.slice(0, index + 1).join(".")})`)
         .join(" && "),
     };
   }

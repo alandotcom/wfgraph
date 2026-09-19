@@ -94,9 +94,10 @@ export function parseEntityStateConditionPath(
   }
 
   const encodedType = remainder.slice(0, boundary);
-  const fieldPath = remainder[boundary] === "."
-    ? remainder.slice(boundary + 1)
-    : remainder.slice(boundary);
+  const fieldPath =
+    remainder[boundary] === "."
+      ? remainder.slice(boundary + 1)
+      : remainder.slice(boundary);
   if (!parseOutputPath(fieldPath)?.length) {
     return null;
   }
@@ -343,10 +344,10 @@ export function collectEntityStateConditionReferences(
           : appendOutputPathKey(rule.field.trim(), rule.recordKey.trim());
       const reference = parseEntityStateConditionPath(path);
       if (reference) {
-        references.set(
-          `${reference.entityType}\u0000${reference.fieldPath}`,
-          { ...reference, fieldType: rule.fieldType }
-        );
+        references.set(`${reference.entityType}\u0000${reference.fieldPath}`, {
+          ...reference,
+          fieldType: rule.fieldType,
+        });
       }
     }
   }
