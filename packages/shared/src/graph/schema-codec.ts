@@ -46,6 +46,8 @@ export type WorkflowSchemaItemType =
 export type WorkflowSchemaField = {
   name: string;
   type: WorkflowSchemaFieldType;
+  /** A human-readable name from the JSON Schema `title` annotation. */
+  label?: string | undefined;
   itemType?: WorkflowSchemaItemType | undefined;
   /**
    * The type every value under an open record carries, the mirror of `itemType`
@@ -71,6 +73,7 @@ type JsonSchemaType = WorkflowSchemaFieldType | WorkflowSchemaItemType;
 interface JsonSchemaNode {
   type?: string | string[] | undefined;
   format?: string | undefined;
+  title?: string | undefined;
   description?: string | undefined;
   enum?: unknown[] | undefined;
   const?: unknown;
@@ -106,6 +109,7 @@ interface WorkflowFieldRecord {
   type?: string | string[] | undefined;
   itemType?: string | string[] | undefined;
   format?: string | undefined;
+  label?: string | undefined;
   description?: string | undefined;
   enumValues?: unknown[] | undefined;
   fields?: WorkflowFieldRecords | undefined;
@@ -208,6 +212,7 @@ function readJsonSchemaNode(
   return {
     type: readTypeName(node.type),
     format: readString(node.format),
+    title: readString(node.title),
     description: readString(node.description),
     enum: readUnknownArray(node.enum),
     // oxlint-disable-next-line wfgraph/no-conditional-spread -- a closed-set collapse asks whether a branch declared `const` at all, and `{ const: null }` is a legal branch, so the key is carried over only when the document had it.
@@ -254,6 +259,7 @@ function readWorkflowFieldRecord(
     type: readTypeName(record.type),
     itemType: readTypeName(record.itemType),
     format: readString(record.format),
+    label: readString(record.label),
     description: readString(record.description),
     enumValues: readUnknownArray(record.enumValues),
     fields: readWorkflowFieldRecords(record.fields),
@@ -498,9 +504,10 @@ function resolvePrimitiveWorkflowSchemaType(input: {
 function arrayWorkflowSchemaFieldFromRecord(input: {
   name: string;
   record: WorkflowFieldRecord;
+  label?: string | undefined;
   description?: string | undefined;
 }): WorkflowSchemaField {
-  const { name, record, description } = input;
+  const { name, record, label, description } = input;
   const normalizedItemType = normalizeJsonSchemaType(record.itemType);
   const normalizedFormat = normalizeSchemaFormat(record.format);
   let itemType: WorkflowSchemaItemType = "string";
@@ -514,6 +521,7 @@ function arrayWorkflowSchemaFieldFromRecord(input: {
   return {
     name,
     type: "array",
+    label,
     itemType,
     fields:
       itemType === "object"
@@ -531,6 +539,7 @@ function workflowSchemaFieldFromRecord(
     return null;
   }
 
+  const label = record.label;
   const description = record.description;
   const normalizedType =
     normalizeJsonSchemaType(record.type) ||
@@ -542,6 +551,7 @@ function workflowSchemaFieldFromRecord(
     return arrayWorkflowSchemaFieldFromRecord({
       name,
       record,
+      label,
       description,
     });
   }
@@ -550,6 +560,7 @@ function workflowSchemaFieldFromRecord(
     return {
       name,
       type: "object",
+      label,
       fields: workflowSchemaFieldsFromRecords(record.fields),
       description,
     };
@@ -563,6 +574,7 @@ function workflowSchemaFieldFromRecord(
       type: normalizedType,
       format: record.format,
     }),
+    label,
     description,
     enumValues,
   };
@@ -586,6 +598,9 @@ function withInheritedAnnotations(
   parent: JsonSchemaNode
 ): JsonSchemaNode {
   const result: JsonSchemaNode = { ...branch };
+  if (parent.title !== undefined && !result.title) {
+    result.title = parent.title;
+  }
   if (parent.description !== undefined && !result.description) {
     result.description = parent.description;
   }
@@ -775,6 +790,7 @@ function parseNonNullableJsonSchemaProperty(
     return null;
   }
 
+  const label = value.title;
   const description = value.description;
 
   if (
@@ -792,6 +808,7 @@ function parseNonNullableJsonSchemaProperty(
         normalizedType === "string"
           ? (stringSubtype(value) ?? normalizedType)
           : normalizedType,
+      label,
       description,
       enumValues,
     };
@@ -801,6 +818,7 @@ function parseNonNullableJsonSchemaProperty(
     return {
       name,
       type: "object",
+      label,
       fields: parseJsonSchemaProperties(value.properties, value.required),
       description,
       valueType: openRecordValueType(value.additionalProperties),
@@ -830,6 +848,7 @@ function parseNonNullableJsonSchemaProperty(
   return {
     name,
     type: "array",
+    label,
     itemType: normalizedItemType,
     fields:
       normalizedItemType === "object"
@@ -937,6 +956,10 @@ function workflowSchemaFieldToJsonSchemaNode(
   field: WorkflowSchemaField
 ): Record<string, unknown> {
   const base: Record<string, unknown> = {};
+
+  if (field.label?.trim()) {
+    base.title = field.label.trim();
+  }
 
   if (field.description?.trim()) {
     base.description = field.description.trim();
@@ -1066,16 +1089,9 @@ function deriveConfigFieldType(
   }
 }
 
-/**
- * What a key is called on screen: the author's description, or the key itself
- * title-cased when they wrote none.
- *
- * A surface that has to name every key derives its label here. A surface with
- * room for silence, such as the template picker's second line, reads the
- * author's description straight off the field instead.
- */
-export function labelFromKey(key: string, description?: string): string {
-  return description?.trim() ? description.trim() : startCase(key);
+/** What a key is called on screen: its JSON Schema title or a readable key. */
+export function labelFromKey(key: string, title?: string): string {
+  return title?.trim() ? title.trim() : startCase(key);
 }
 
 function deriveSelectOptions(
@@ -1117,9 +1133,13 @@ function jsonSchemaPropertyToConfigField(
 
   const field: ActionConfigFieldBase = {
     key,
-    label: labelFromKey(key, property.description),
+    label: labelFromKey(key, resolvedProperty.title),
     type: fieldType,
   };
+
+  if (resolvedProperty.description?.trim()) {
+    field.description = resolvedProperty.description.trim();
+  }
 
   if (required) {
     field.required = true;

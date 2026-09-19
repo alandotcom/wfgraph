@@ -77,7 +77,7 @@ describe("the resend integration", () => {
         integration.actions["send-email"].output
       )
     ).toEqual([
-      { path: "id", description: "Email ID", type: "string" },
+      { path: "id", label: "Email ID", type: "string" },
       {
         path: "reasonCode",
         description: "Why a test run did not send",
@@ -92,7 +92,7 @@ describe("the resend integration", () => {
       // which is what offers a downstream rule `is set` on the record.
       {
         path: "tags",
-        description: "Email tags",
+        label: "Email tags",
         type: "object",
         valueType: "string",
         nullable: true,
@@ -107,56 +107,56 @@ describe("the resend integration", () => {
         integration.actions["find-email"].output
       )
     ).toEqual([
-      { path: "id", description: "Email ID", type: "string" },
-      { path: "messageId", description: "Provider message ID", type: "string" },
-      { path: "from", description: "Sender", type: "string" },
-      { path: "to", description: "Recipients", type: "array" },
+      { path: "id", label: "Email ID", type: "string" },
+      { path: "messageId", label: "Provider message ID", type: "string" },
+      { path: "from", label: "Sender", type: "string" },
+      { path: "to", label: "Recipients", type: "array" },
       {
         path: "cc",
-        description: "CC recipients",
+        label: "CC recipients",
         type: "array",
         nullable: true,
       },
       {
         path: "bcc",
-        description: "BCC recipients",
+        label: "BCC recipients",
         type: "array",
         nullable: true,
       },
       {
         path: "replyTo",
-        description: "Reply-to addresses",
+        label: "Reply-to addresses",
         type: "array",
         nullable: true,
       },
-      { path: "subject", description: "Email subject", type: "string" },
+      { path: "subject", label: "Email subject", type: "string" },
       {
         path: "html",
-        description: "HTML body",
+        label: "HTML body",
         type: "string",
         nullable: true,
       },
       {
         path: "text",
-        description: "Plain-text body",
+        label: "Plain-text body",
         type: "string",
         nullable: true,
       },
       {
         path: "createdAt",
-        description: "Creation timestamp",
+        description: "When the email was created",
         type: "timestamp",
       },
-      { path: "lastEvent", description: "Latest email event", type: "string" },
+      { path: "lastEvent", label: "Latest email event", type: "string" },
       {
         path: "scheduledAt",
-        description: "Scheduled send timestamp",
+        description: "When the email was scheduled to send",
         type: "timestamp",
         nullable: true,
       },
       {
         path: "tags",
-        description: "Email tags",
+        label: "Email tags",
         type: "object",
         valueType: "string",
         nullable: true,

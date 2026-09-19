@@ -12,7 +12,10 @@
  */
 
 import type { EventMetadata } from "@wfgraph/shared/extensions/catalog";
-import type { ReferenceField } from "@wfgraph/shared/graph/node-references";
+import {
+  referenceFieldLabel,
+  type ReferenceField,
+} from "@wfgraph/shared/graph/node-references";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import {
   type LifecycleRules,
@@ -44,6 +47,7 @@ export type TestPayloadControl =
 
 export type TestPayloadField = {
   path: string;
+  label: string;
   description?: string | undefined;
   control: TestPayloadControl;
   /** The values a select offers, present only for `control: "select"`. */
@@ -99,6 +103,7 @@ export function testPayloadFields(
 
   return event.payloadFields.filter(isFormAddressable).map((field) => ({
     path: field.path,
+    label: referenceFieldLabel(field),
     description: field.description,
     control: controlFor(field),
     options: field.enumValues ? [...field.enumValues] : undefined,

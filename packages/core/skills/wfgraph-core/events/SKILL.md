@@ -27,9 +27,16 @@ objects are discovered transitively.
 
 ### Identity and schema
 
-`name` is the identity. `schema` must publish both Standard Schema halves
-(validate + JSON Schema) from one object. Zod, arktype, and Effect Schema all
-work. A non-object root throws at definition.
+`name` is the stable Event identity and transport name by default. `label` is
+the human-readable Event name, and `description` is its explanatory text in the
+editor. `schema` must publish both Standard Schema halves (validate + JSON
+Schema) from one object. Zod, arktype, and Effect Schema all work. A non-object
+root throws at definition.
+
+For each payload property, JSON Schema `title` supplies the short editor label
+and `description` supplies separate help text. Without a title, the editor
+derives a label from the final property key. In Zod 4, use
+`.meta({ title, description })`; `.describe(...)` sets only the description.
 
 ### Current Entity State
 

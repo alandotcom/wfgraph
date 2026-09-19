@@ -44,6 +44,7 @@ type FieldProps = {
   placeholder: string | undefined;
   onChange: (value: unknown) => void;
   disabled?: boolean | undefined;
+  descriptionId?: string | undefined;
 };
 
 function TemplateInputField({
@@ -52,9 +53,11 @@ function TemplateInputField({
   onChange,
   disabled,
   placeholder,
+  descriptionId,
 }: FieldProps) {
   return (
     <TemplateBadgeInput
+      describedBy={descriptionId}
       disabled={disabled}
       id={field.key}
       labelledBy={field.label ? `${field.key}-label` : undefined}
@@ -72,9 +75,11 @@ function TemplateTextareaField({
   onChange,
   disabled,
   placeholder,
+  descriptionId,
 }: FieldProps) {
   return (
     <TemplateBadgeTextarea
+      describedBy={descriptionId}
       disabled={disabled}
       id={field.key}
       labelledBy={field.label ? `${field.key}-label` : undefined}
@@ -93,9 +98,11 @@ function TextInputField({
   onChange,
   disabled,
   placeholder,
+  descriptionId,
 }: FieldProps) {
   return (
     <Input
+      aria-describedby={descriptionId}
       disabled={disabled}
       id={field.key}
       onChange={(e) => onChange(e.target.value)}
@@ -111,12 +118,14 @@ function NumberInputField({
   onChange,
   disabled,
   placeholder,
+  descriptionId,
 }: FieldProps) {
   const displayValue =
     typeof value === "number" || typeof value === "string" ? `${value}` : "";
 
   return (
     <Input
+      aria-describedby={descriptionId}
       disabled={disabled}
       id={field.key}
       min={field.min}
@@ -147,6 +156,7 @@ function SelectField({
   onChange,
   disabled,
   placeholder,
+  descriptionId,
 }: FieldProps) {
   if (!field.options) {
     return null;
@@ -159,7 +169,11 @@ function SelectField({
       onValueChange={onChange}
       value={typeof value === "string" ? value : ""}
     >
-      <SelectTrigger className="w-full" id={field.key}>
+      <SelectTrigger
+        aria-describedby={descriptionId}
+        className="w-full"
+        id={field.key}
+      >
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>
@@ -310,23 +324,41 @@ function renderField(
     : field.placeholder;
   const FieldRenderer = FIELD_RENDERERS[field.type];
 
+  const descriptionId = field.description
+    ? `${field.key}-description`
+    : undefined;
+
   return (
-    <div className="flex flex-col gap-2" key={field.key}>
-      {field.label && (
+    <div
+      aria-describedby={descriptionId}
+      aria-label={
+        descriptionId ? `${field.label ?? field.key} field details` : undefined
+      }
+      className="flex flex-col gap-2"
+      key={field.key}
+      role={descriptionId ? "group" : undefined}
+    >
+      {field.label ? (
         // The id is what names the template fields, whose editor is a
         // contenteditable div that `htmlFor` cannot reach. The asterisk is
         // decorative once `required` reaches the control as `aria-required`.
         <Label className="ml-1" htmlFor={field.key} id={`${field.key}-label`}>
           {field.label}
-          {field.required && (
+          {field.required ? (
             <span aria-hidden="true" className="text-destructive">
               *
             </span>
-          )}
+          ) : null}
         </Label>
-      )}
+      ) : null}
+      {field.description ? (
+        <p className="ml-1 text-muted-foreground text-xs" id={descriptionId}>
+          {field.description}
+        </p>
+      ) : null}
       <FieldRenderer
         config={config}
+        descriptionId={descriptionId}
         disabled={disabled}
         field={field}
         onChange={(val) => onUpdateConfig({ [field.key]: val })}

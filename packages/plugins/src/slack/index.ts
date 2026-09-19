@@ -70,8 +70,8 @@ const sendSlackMessageInput = Schema.Struct({
  * nothing.
  */
 const sendSlackMessageOutput = Schema.Struct({
-  ts: Schema.String.annotate({ description: "Message timestamp" }),
-  channel: Schema.String.annotate({ description: "Channel ID" }),
+  ts: Schema.String.annotate({ title: "Message timestamp" }),
+  channel: Schema.String.annotate({ title: "Channel ID" }),
   /** Absent on a real send: this is why a test run did not make one. */
   reasonCode: Schema.optionalKey(
     Schema.NullOr(
@@ -88,11 +88,9 @@ const replyToThreadInput = Schema.Struct({
 });
 
 const replyToThreadOutput = Schema.Struct({
-  ts: Schema.String.annotate({ description: "Message timestamp" }),
-  channel: Schema.String.annotate({ description: "Channel ID" }),
-  threadTs: Schema.String.annotate({
-    description: "Parent message timestamp",
-  }),
+  ts: Schema.String.annotate({ title: "Message timestamp" }),
+  channel: Schema.String.annotate({ title: "Channel ID" }),
+  threadTs: Schema.String.annotate({ title: "Parent message timestamp" }),
   reasonCode: Schema.optionalKey(
     Schema.NullOr(
       Schema.String.annotate({ description: "Why a test run did not send" })

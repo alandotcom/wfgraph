@@ -77,6 +77,7 @@ const fieldOptionsSourceSchema: Schema.Codec<FieldOptionsSource> =
 const actionConfigFieldBaseSchema = Schema.Struct({
   key: safeRecordKey,
   label: Schema.String,
+  description: Schema.optionalKey(Schema.String),
   type: Schema.Literals([
     "template-input",
     "template-textarea",
@@ -123,6 +124,7 @@ const actionConfigFieldWireSchema: Schema.Codec<ActionConfigField> =
 // round-trip case in `catalog-wire.test.ts` is what holds the two in step.
 const referenceFieldWireSchema: Schema.Codec<ReferenceField> = Schema.Struct({
   path: safeRecordPath,
+  label: Schema.optionalKey(Schema.String),
   description: Schema.optionalKey(Schema.String),
   type: Schema.optionalKey(
     Schema.Literals([

@@ -108,7 +108,7 @@ const sendEmailInput = Schema.Struct({
  * nothing.
  */
 const sendEmailOutput = Schema.Struct({
-  id: Schema.String.annotate({ description: "Email ID" }),
+  id: Schema.String.annotate({ title: "Email ID" }),
   /** Absent on a real send: this is why a test run did not make one. */
   reasonCode: Schema.optionalKey(
     Schema.NullOr(
@@ -124,7 +124,7 @@ const sendEmailOutput = Schema.Struct({
    */
   tags: Schema.optionalKey(
     Schema.Record(Schema.String, Schema.String).annotate({
-      description: "Email tags",
+      title: "Email tags",
     })
   ),
 });
@@ -134,32 +134,30 @@ const findEmailInput = Schema.Struct({
 });
 
 const findEmailOutput = Schema.Struct({
-  id: Schema.String.annotate({ description: "Email ID" }),
-  messageId: Schema.String.annotate({ description: "Provider message ID" }),
-  from: Schema.String.annotate({ description: "Sender" }),
-  to: Schema.Array(Schema.String).annotate({ description: "Recipients" }),
+  id: Schema.String.annotate({ title: "Email ID" }),
+  messageId: Schema.String.annotate({ title: "Provider message ID" }),
+  from: Schema.String.annotate({ title: "Sender" }),
+  to: Schema.Array(Schema.String).annotate({ title: "Recipients" }),
   cc: Schema.NullOr(
-    Schema.Array(Schema.String).annotate({ description: "CC recipients" })
+    Schema.Array(Schema.String).annotate({ title: "CC recipients" })
   ),
   bcc: Schema.NullOr(
-    Schema.Array(Schema.String).annotate({ description: "BCC recipients" })
+    Schema.Array(Schema.String).annotate({ title: "BCC recipients" })
   ),
   replyTo: Schema.NullOr(
-    Schema.Array(Schema.String).annotate({
-      description: "Reply-to addresses",
-    })
+    Schema.Array(Schema.String).annotate({ title: "Reply-to addresses" })
   ),
-  subject: Schema.String.annotate({ description: "Email subject" }),
-  html: Schema.NullOr(Schema.String.annotate({ description: "HTML body" })),
-  text: Schema.NullOr(
-    Schema.String.annotate({ description: "Plain-text body" })
+  subject: Schema.String.annotate({ title: "Email subject" }),
+  html: Schema.NullOr(Schema.String.annotate({ title: "HTML body" })),
+  text: Schema.NullOr(Schema.String.annotate({ title: "Plain-text body" })),
+  createdAt: isoTimestampString("When the email was created"),
+  lastEvent: Schema.String.annotate({ title: "Latest email event" }),
+  scheduledAt: Schema.NullOr(
+    isoTimestampString("When the email was scheduled to send")
   ),
-  createdAt: isoTimestampString("Creation timestamp"),
-  lastEvent: Schema.String.annotate({ description: "Latest email event" }),
-  scheduledAt: Schema.NullOr(isoTimestampString("Scheduled send timestamp")),
   tags: Schema.optionalKey(
     Schema.Record(Schema.String, Schema.String).annotate({
-      description: "Email tags",
+      title: "Email tags",
     })
   ),
 });

@@ -18,7 +18,12 @@ export const fixtureCatalog: ExtensionCatalog = {
       correlationPath: "applicantId",
       payloadFields: [
         { path: "applicantId", type: "string" },
-        { path: "email", type: "string", description: "Contact address." },
+        {
+          path: "email",
+          label: "Contact email",
+          type: "string",
+          description: "Contact address.",
+        },
         { path: "score", type: "number", nullable: true },
       ],
     },
@@ -50,6 +55,7 @@ export const fixtureCatalog: ExtensionCatalog = {
             {
               key: "text",
               label: "Text",
+              description: "The message body to post.",
               type: "template-textarea",
               required: true,
             },
@@ -66,7 +72,12 @@ export const fixtureCatalog: ExtensionCatalog = {
         },
       ],
       outputFields: [
-        { path: "ts", type: "string", description: "Slack message timestamp." },
+        {
+          path: "ts",
+          label: "Message timestamp",
+          type: "string",
+          description: "Slack message timestamp.",
+        },
         { path: "channelId", type: "string" },
       ],
     },

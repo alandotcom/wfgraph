@@ -106,18 +106,14 @@ const sendSmsInput = Schema.Struct({
  * holds `undefined`, which is why the handler writes the null.
  */
 const sendSmsOutput = Schema.Struct({
-  sid: Schema.String.annotate({ description: "Message SID" }),
-  status: Schema.String.annotate({ description: "Delivery status" }),
-  to: Schema.String.annotate({ description: "Recipient phone number" }),
+  sid: Schema.String.annotate({ title: "Message SID" }),
+  status: Schema.String.annotate({ title: "Delivery status" }),
+  to: Schema.String.annotate({ title: "Recipient phone number" }),
   from: Schema.optionalKey(
-    Schema.NullOr(
-      Schema.String.annotate({ description: "Sender phone number" })
-    )
+    Schema.NullOr(Schema.String.annotate({ title: "Sender phone number" }))
   ),
   messagingServiceSid: Schema.optionalKey(
-    Schema.NullOr(
-      Schema.String.annotate({ description: "Messaging Service SID" })
-    )
+    Schema.NullOr(Schema.String.annotate({ title: "Messaging Service SID" }))
   ),
   /** Absent on a real send: this is why a test run did not make one. */
   reasonCode: Schema.optionalKey(

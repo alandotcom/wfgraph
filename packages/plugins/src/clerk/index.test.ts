@@ -14,27 +14,27 @@ function outputFieldsOf(slug: keyof typeof integration.actions) {
 /**
  * What a node downstream of a Clerk node can reference.
  *
- * The four paths the hand-written lists carried keep their exact descriptions,
- * and `createdAt` and `updatedAt` -- which the three user-returning steps have
+ * The four paths the hand-written lists carried keep their exact labels, and
+ * `createdAt` and `updatedAt` -- which the three user-returning steps have
  * always answered with and never offered -- are here too.
  */
 const USER_FIELDS = [
-  { path: "id", description: "User ID", type: "string" },
+  { path: "id", label: "User ID", type: "string" },
   {
     path: "firstName",
-    description: "First name",
+    label: "First name",
     type: "string",
     nullable: true,
   },
   {
     path: "lastName",
-    description: "Last name",
+    label: "Last name",
     type: "string",
     nullable: true,
   },
   {
     path: "primaryEmailAddress",
-    description: "Primary email address",
+    label: "Primary email address",
     type: "string",
     nullable: true,
   },
@@ -72,7 +72,7 @@ describe("the clerk integration", () => {
 
   it("offers the deletion flag for delete-user", () => {
     expect(outputFieldsOf("delete-user")).toEqual([
-      { path: "deleted", description: "Deletion success", type: "boolean" },
+      { path: "deleted", label: "Deletion success", type: "boolean" },
     ]);
   });
 });

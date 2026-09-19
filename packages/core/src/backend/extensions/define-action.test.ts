@@ -150,9 +150,12 @@ describe("defineAction", () => {
       label: "Derive Fields",
       description: "Tests configFields derivation",
       input: z.object({
-        name: z.string().describe("Full Name"),
-        count: z.number().min(0).describe("Item Count"),
-        status: z.enum(["active", "inactive"]).describe("Status"),
+        name: z.string().meta({
+          title: "Full Name",
+          description: "The person's full name.",
+        }),
+        count: z.number().min(0).meta({ title: "Item Count" }),
+        status: z.enum(["active", "inactive"]).meta({ title: "Status" }),
       }),
       handler() {
         return {};
@@ -170,6 +173,11 @@ describe("defineAction", () => {
     expect(
       nameField && "label" in nameField ? nameField.label : undefined
     ).toBe("Full Name");
+    expect(
+      nameField && "description" in nameField
+        ? nameField.description
+        : undefined
+    ).toBe("The person's full name.");
 
     const countField = fields.find((f) => "key" in f && f.key === "count");
     expect(
@@ -188,13 +196,16 @@ describe("defineAction", () => {
     ]);
   });
 
-  it("uses .describe() labels for derived configFields", () => {
+  it("keeps schema titles and descriptions separate in derived configFields", () => {
     const action = defineAction({
-      id: "custom/describe-labels",
-      label: "Describe Labels",
-      description: "Tests describe labels",
+      id: "custom/field-metadata",
+      label: "Field Metadata",
+      description: "Tests field metadata",
       input: z.object({
-        appointmentId: z.string().describe("Appointment ID"),
+        appointmentId: z.string().meta({
+          title: "Appointment ID",
+          description: "The appointment to update.",
+        }),
       }),
       handler() {
         return {};
@@ -206,6 +217,11 @@ describe("defineAction", () => {
     expect(
       fields[0] && "label" in fields[0] ? fields[0].label : undefined
     ).toBe("Appointment ID");
+    expect(
+      fields[0] && "description" in fields[0]
+        ? fields[0].description
+        : undefined
+    ).toBe("The appointment to update.");
   });
 
   it("produces no configFields for an empty input schema", () => {
@@ -572,7 +588,10 @@ describe("defineAction with Effect schemas", () => {
       label: "Effect Input Test",
       description: "Tests Effect input schema derivation",
       input: Schema.Struct({
-        name: Schema.String.annotate({ description: "Full name" }),
+        name: Schema.String.annotate({
+          title: "Full name",
+          description: "The person's full name.",
+        }),
         // `Schema.Finite`, not `Schema.Number`: Effect renders an unbounded
         // number as an `anyOf` that also admits "Infinity" and "NaN" strings,
         // and the field reader sees no single type in that.
@@ -589,6 +608,7 @@ describe("defineAction with Effect schemas", () => {
       {
         key: "name",
         label: "Full name",
+        description: "The person's full name.",
         type: "template-input",
         required: true,
       },
@@ -718,6 +738,7 @@ describe("defineAction with Arktype schemas", () => {
       {
         key: "choice",
         label: "Choice",
+        description: "Choice",
         type: "select",
         options: [
           { value: "alpha", label: "alpha" },

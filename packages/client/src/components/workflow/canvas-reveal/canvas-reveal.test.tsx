@@ -81,7 +81,14 @@ import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 
 const catalog: ExtensionCatalog = {
   entities: [],
-  events: [],
+  events: [
+    {
+      name: "app/reply.received",
+      label: "Reply received",
+      description: "Raised when the customer replies.",
+      payloadFields: [],
+    },
+  ],
   integrations: [
     {
       type: "mailer",
@@ -135,6 +142,11 @@ const NODES: WorkflowNode[] = [
     actionType: BUILT_IN_ACTION_IDS.wait,
     waitMode: "delay",
     waitDuration: "24h",
+  }),
+  node("wait-event", "Wait for reply", {
+    actionType: BUILT_IN_ACTION_IDS.wait,
+    waitMode: "event",
+    waitFor: [{ event: "app/reply.received" }],
   }),
   node("condition", "Eligible?", { actionType: BUILT_IN_ACTION_IDS.condition }),
 ];
@@ -403,6 +415,16 @@ describe("Canvas Reveal presentation states", () => {
     expect(region.textContent).toContain("Wait for time");
     expect(region.textContent).toContain("24h");
     expect(view.getByRole("button", { name: "Focus editor" })).toBeTruthy();
+  });
+
+  it("shows Event identity and description for an event-mode Wait", async () => {
+    const { view, select } = await renderReveal();
+    await select("wait-event");
+
+    const region = view.getByRole("complementary", { name: "Step inspector" });
+    expect(region.textContent).toContain("Reply received");
+    expect(region.textContent).toContain("Raised when the customer replies.");
+    expect(region.textContent).toContain("app/reply.received");
   });
 
   it("opens the Condition inspector at Browse for a Condition, with Focus", async () => {

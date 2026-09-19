@@ -56,9 +56,14 @@ export const myService = defineIntegration({
     "do-something": {
       label: "Do Something",
       description: "What this action does",
-      input: Schema.Struct({ text: Schema.String }),
+      input: Schema.Struct({
+        text: Schema.String.annotate({
+          title: "Message",
+          description: "The text to send to My Service.",
+        }),
+      }),
       output: Schema.Struct({
-        id: Schema.String.annotate({ description: "Item ID" }),
+        id: Schema.String.annotate({ title: "Item ID" }),
       }),
       // Optional. `input` draws the form, so this states what a schema cannot.
       // Workflow Graph checks each `key` against the schema.
@@ -216,8 +221,10 @@ catches around the await turns that into whatever it answers next, so catch narr
 
 ## The config form
 
-`input` draws it. Each key the schema declares becomes a field, labelled from its
-`description` and required where the schema requires it.
+`input` draws it. JSON Schema `title` supplies the short field label, and `description`
+supplies explanatory help text. Workflow Graph derives a readable label from the property
+key when `title` is absent. In Effect Schema, add both with
+`.annotate({ title, description })`. A field is required where the schema requires it.
 
 `configFields` states what a schema cannot: a placeholder, a `template-textarea` row count,
 a friendly `select` label, a `showWhen`, a group. An entry merges into the derived field of

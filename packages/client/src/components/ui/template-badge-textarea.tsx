@@ -22,6 +22,8 @@ export interface TemplateBadgeTextareaProps {
    * the field reaches the accessibility tree as an unnamed textbox.
    */
   labelledBy?: string | undefined;
+  /** Id of the element that explains this field. */
+  describedBy?: string | undefined;
   required?: boolean | undefined;
   invalid?: boolean | undefined;
 }
@@ -42,6 +44,7 @@ export function TemplateBadgeTextarea({
   rows = 3,
   fieldType,
   labelledBy,
+  describedBy,
   required,
   invalid,
 }: TemplateBadgeTextareaProps) {
@@ -90,6 +93,7 @@ export function TemplateBadgeTextarea({
         style={{ minHeight: `${rows * 1.5}rem` }}
       >
         <div
+          aria-describedby={describedBy}
           aria-invalid={invalid || undefined}
           aria-labelledby={labelledBy}
           aria-required={required || undefined}

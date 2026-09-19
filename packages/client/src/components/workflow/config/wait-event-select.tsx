@@ -258,8 +258,11 @@ function WaitSubscriptionRow({
   return (
     <div className="space-y-2 rounded-md border p-2">
       <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0" title={subscription.event}>
+        <div className="min-w-0 space-y-0.5" title={subscription.event}>
           {event ? <p className="truncate text-xs">{event.label}</p> : null}
+          {event?.description ? (
+            <p className="text-muted-foreground text-xs">{event.description}</p>
+          ) : null}
           <p className="truncate font-mono text-xs text-muted-foreground">
             {subscription.event}
           </p>

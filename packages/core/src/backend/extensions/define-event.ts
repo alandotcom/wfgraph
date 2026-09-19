@@ -297,8 +297,9 @@ export type DefineEventInput<
    * lifecycle model's rules are stated over Event names.
    */
   readonly name: string;
-  /** Defaults to the name. */
+  /** Human-readable Event name shown in the editor. Defaults to `name`. */
   readonly label?: string | undefined;
+  /** Explanatory text shown with the Event in the editor. */
   readonly description?: string | undefined;
   readonly schema: PayloadSchema<TPayload, TValidated>;
   /** Named Entity identities this Event can establish for a workflow. */
@@ -347,9 +348,9 @@ export type DefineEventInput<
  * is derived from it on the spot: an Event's field list is fixed the moment it is
  * defined, so nothing later derives it again or holds a hand-written copy.
  *
- * A description annotation is decoration: the editor shows that text beside the
- * path and falls back to the title-cased key. A schema the derivation cannot
- * read at all throws here naming the Event.
+ * A title annotation names a field in the editor, and a description supplies
+ * its help text. A schema the derivation cannot read at all throws here naming
+ * the Event.
  */
 export function defineEvent<TPayload extends JsonObject, TValidated = TPayload>(
   input: DefineEventInput<TPayload, TValidated>

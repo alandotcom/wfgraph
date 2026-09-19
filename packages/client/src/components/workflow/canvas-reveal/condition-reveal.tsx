@@ -128,12 +128,17 @@ function BranchTargets({
   );
 }
 
-/** One available value: its field label, its type, and the steps that produce it. */
+/** One available value: its field label, raw path, type, and producers. */
 function ValueRow({ field }: { field: ConditionSelectableField }) {
   return (
     <li className="flex items-baseline justify-between gap-3">
-      <span className="min-w-0 truncate text-xs" title={field.label}>
-        {field.label}
+      <span className="min-w-0 text-xs" title={field.label}>
+        <span className="block truncate">{field.label}</span>
+        {field.label === field.path ? null : (
+          <span className="block truncate font-mono text-muted-foreground">
+            {field.path}
+          </span>
+        )}
       </span>
       <span className="shrink-0 text-muted-foreground text-xs">
         {[field.type, ...field.sourceNodeLabels].join(" · ")}

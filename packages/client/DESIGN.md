@@ -391,7 +391,7 @@ A selected Event Split opens the same header, with Browse only. Browse names the
 Event source its outlets come from: the Lifecycle node's Start Events for a
 split on the Started side, its Cancel Events for a split on the Canceled side,
 or the Wait Subscriptions of the nearest event-mode Wait above it. It lists each
-outlet with the Event's label, the raw Event name on a second line, and the step
+outlet with the Event's label, optional description, raw Event name, and the step
 its stored connection leads to, or a line saying a disconnected outlet ends the
 run there. The primary action opens the source: **Open Lifecycle Start Events**
 or **Open Lifecycle Cancel Events** selects the Lifecycle node and opens Focus

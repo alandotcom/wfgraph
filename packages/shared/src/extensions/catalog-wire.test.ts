@@ -43,9 +43,14 @@ describe("readExtensionCatalog", () => {
     );
   });
 
-  it("carries both string formats across the wire", () => {
+  it("carries field labels, descriptions, and string formats across the wire", () => {
     const payloadFields: ReferenceField[] = [
-      { path: "startsAt", type: "timestamp" },
+      {
+        path: "startsAt",
+        label: "Starts at",
+        description: "When the appointment starts",
+        type: "timestamp",
+      },
       { path: "leadTime", type: "duration" },
     ];
 
@@ -200,6 +205,7 @@ describe("readExtensionCatalog", () => {
             {
               key: "emailTemplateId",
               label: "Template",
+              description: "Choose the template to send.",
               type: "provider-select",
               optionsSource: { provider: "templates" },
             },

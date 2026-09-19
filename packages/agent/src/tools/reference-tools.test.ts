@@ -188,10 +188,19 @@ describe("list_references", () => {
         "{{@entry:Lifecycle.email}}",
         "{{@entry:Lifecycle.score}}",
       ]);
-      expect(
-        result.references.find((reference) => reference.path === "email")
-          ?.description
-      ).toBe("Contact address.");
+      const email = result.references.find(
+        (reference) => reference.path === "email"
+      );
+      expect(email?.label).toBe("Contact email");
+      expect(email?.description).toBe("Contact address.");
+
+      const byLabel = yield* tools.list_references({
+        nodeId: "score",
+        query: "contact email",
+      });
+      expect(byLabel.references.map((reference) => reference.path)).toEqual([
+        "email",
+      ]);
     })
   );
 

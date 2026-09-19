@@ -204,6 +204,9 @@ describe("describe_action", () => {
         "text",
         "tone",
       ]);
+      expect(
+        result.configFields.find((field) => field.key === "text")?.description
+      ).toBe("The message body to post.");
       expect(result.needsIntegration).toBe(true);
     })
   );
@@ -249,7 +252,12 @@ describe("describe_action", () => {
       });
 
       expect(result.outputFields).toEqual([
-        { path: "ts", type: "string", description: "Slack message timestamp." },
+        {
+          path: "ts",
+          label: "Message timestamp",
+          type: "string",
+          description: "Slack message timestamp.",
+        },
         { path: "channelId", type: "string" },
       ]);
     })
@@ -375,6 +383,9 @@ describe("describe_event", () => {
         "email",
         "score",
       ]);
+      expect(
+        result.payloadFields.find((field) => field.path === "email")?.label
+      ).toBe("Contact email");
     })
   );
 

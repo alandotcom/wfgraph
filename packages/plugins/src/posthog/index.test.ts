@@ -40,10 +40,10 @@ describe("the posthog integration", () => {
         posthog.actions["capture-event"].output
       )
     ).toEqual([
-      { path: "eventName", description: "Event name", type: "string" },
-      { path: "distinctId", description: "Person distinct ID", type: "string" },
-      { path: "eventUuid", description: "Event UUID", type: "string" },
-      { path: "timestamp", description: "Event timestamp", type: "string" },
+      { path: "eventName", label: "Event name", type: "string" },
+      { path: "distinctId", label: "Person distinct ID", type: "string" },
+      { path: "eventUuid", label: "Event UUID", type: "string" },
+      { path: "timestamp", label: "Event timestamp", type: "string" },
       {
         path: "reasonCode",
         description: "Why a test run did not capture",
@@ -60,9 +60,9 @@ describe("the posthog integration", () => {
         posthog.actions["identify-person"].output
       )
     ).toEqual([
-      { path: "distinctId", description: "Person distinct ID", type: "string" },
-      { path: "eventUuid", description: "Event UUID", type: "string" },
-      { path: "timestamp", description: "Event timestamp", type: "string" },
+      { path: "distinctId", label: "Person distinct ID", type: "string" },
+      { path: "eventUuid", label: "Event UUID", type: "string" },
+      { path: "timestamp", label: "Event timestamp", type: "string" },
       {
         path: "reasonCode",
         description: "Why a test run did not identify",

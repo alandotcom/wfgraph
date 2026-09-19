@@ -59,6 +59,9 @@ export type ActionConfigFieldBase = {
   // Human-readable label
   label: string;
 
+  // Explanatory help text
+  description?: string | undefined;
+
   // Field type
   type:
     | "template-input" // TemplateBadgeInput - supports {{variable}}

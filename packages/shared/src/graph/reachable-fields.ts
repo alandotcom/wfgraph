@@ -62,6 +62,11 @@ function reconcileType(declarations: Declaration[]): {
   };
 }
 
+function reconcileLabel(declarations: Declaration[]): string | undefined {
+  return declarations.find((declaration) => declaration.field.label)?.field
+    .label;
+}
+
 function reconcileDescription(declarations: Declaration[]): string | undefined {
   return declarations.find((declaration) => declaration.field.description)
     ?.field.description;
@@ -146,6 +151,7 @@ export function reachableEventFields(
   return Array.from(declarationsByPath.entries()).map(
     ([path, declarations]) => {
       const { type, typeClash } = reconcileType(declarations);
+      const label = reconcileLabel(declarations);
       const description = reconcileDescription(declarations);
       const enumValues = reconcileEnumValues(declarations);
       const valueType = reconcileValueType(declarations);
@@ -156,6 +162,7 @@ export function reachableEventFields(
 
       return omitUndefined({
         path,
+        label,
         description,
         type,
         valueType,

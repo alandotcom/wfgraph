@@ -13,12 +13,14 @@ describe("parseWorkflowSchemaField", () => {
       name: " createdAt ",
       type: "string",
       format: "date-time",
+      label: "Created at",
       description: "Created timestamp",
     });
 
     expect(field).toEqual({
       name: "createdAt",
       type: "timestamp",
+      label: "Created at",
       description: "Created timestamp",
     });
   });
@@ -778,6 +780,7 @@ describe("workflowSchemaFieldsToJsonSchemaDocument", () => {
       {
         name: "createdAt",
         type: "timestamp",
+        label: "Created at",
         description: "Event creation time",
       },
       {
@@ -799,6 +802,7 @@ describe("workflowSchemaFieldsToJsonSchemaDocument", () => {
         createdAt: {
           type: "string",
           format: "date-time",
+          title: "Created at",
           description: "Event creation time",
         },
         items: {
@@ -962,12 +966,21 @@ describe("configFieldsFromJsonSchema", () => {
     const fields = configFieldsFromJsonSchema({
       type: "object",
       properties: {
-        name: { type: "string", description: "Full Name" },
+        name: {
+          type: "string",
+          title: "Full Name",
+          description: "The person's full name.",
+        },
       },
     });
 
     expect(fields).toEqual([
-      { key: "name", label: "Full Name", type: "template-input" },
+      {
+        key: "name",
+        label: "Full Name",
+        description: "The person's full name.",
+        type: "template-input",
+      },
     ]);
   });
 
@@ -975,7 +988,7 @@ describe("configFieldsFromJsonSchema", () => {
     const fields = configFieldsFromJsonSchema({
       type: "object",
       properties: {
-        count: { type: "number", description: "Item Count", minimum: 0 },
+        count: { type: "number", title: "Item Count", minimum: 0 },
       },
     });
 
@@ -988,7 +1001,7 @@ describe("configFieldsFromJsonSchema", () => {
     const fields = configFieldsFromJsonSchema({
       type: "object",
       properties: {
-        retries: { type: "integer", description: "Retry Count" },
+        retries: { type: "integer", title: "Retry Count" },
       },
     });
 
@@ -1001,7 +1014,7 @@ describe("configFieldsFromJsonSchema", () => {
     const fields = configFieldsFromJsonSchema({
       type: "object",
       properties: {
-        active: { type: "boolean", description: "Is Active" },
+        active: { type: "boolean", title: "Is Active" },
       },
     });
 
@@ -1025,7 +1038,7 @@ describe("configFieldsFromJsonSchema", () => {
         status: {
           type: "string",
           enum: ["active", "inactive"],
-          description: "Status",
+          title: "Status",
         },
       },
     });
@@ -1050,7 +1063,7 @@ describe("configFieldsFromJsonSchema", () => {
       properties: {
         choice: {
           anyOf: [{ const: "alpha" }, { const: "beta" }],
-          description: "Choice",
+          title: "Choice",
         },
       },
     });
@@ -1083,7 +1096,7 @@ describe("configFieldsFromJsonSchema", () => {
             },
             { type: "null" },
           ],
-          description: "Choice",
+          title: "Choice",
         },
       },
     });
@@ -1097,6 +1110,33 @@ describe("configFieldsFromJsonSchema", () => {
           { value: "alpha", label: "alpha" },
           { value: "beta", label: "beta" },
         ],
+      },
+    ]);
+  });
+
+  it("keeps metadata declared inside a nullable union branch", () => {
+    const fields = configFieldsFromJsonSchema({
+      type: "object",
+      properties: {
+        choice: {
+          anyOf: [
+            {
+              type: "string",
+              title: "Inner title",
+              description: "Inner help",
+            },
+            { type: "null" },
+          ],
+        },
+      },
+    });
+
+    expect(fields).toEqual([
+      {
+        key: "choice",
+        label: "Inner title",
+        description: "Inner help",
+        type: "template-input",
       },
     ]);
   });
@@ -1124,7 +1164,7 @@ describe("configFieldsFromJsonSchema", () => {
     const fields = configFieldsFromJsonSchema({
       type: "object",
       properties: {
-        headers: { type: "object", description: "HTTP Headers" },
+        headers: { type: "object", title: "HTTP Headers" },
       },
     });
 
@@ -1133,7 +1173,7 @@ describe("configFieldsFromJsonSchema", () => {
     ]);
   });
 
-  it("uses startCase(key) as label when description is missing", () => {
+  it("uses startCase(key) as label when title is missing", () => {
     const fields = configFieldsFromJsonSchema({
       type: "object",
       properties: {
@@ -1149,8 +1189,8 @@ describe("configFieldsFromJsonSchema", () => {
       type: "object",
       required: ["email"],
       properties: {
-        email: { type: "string", description: "Email" },
-        phone: { type: "string", description: "Phone" },
+        email: { type: "string", title: "Email" },
+        phone: { type: "string", title: "Phone" },
       },
     });
 
@@ -1177,7 +1217,7 @@ describe("configFieldsFromJsonSchema", () => {
     const fields = configFieldsFromJsonSchema({
       type: "object",
       properties: {
-        retries: { type: "number", description: "Retries", default: 3 },
+        retries: { type: "number", title: "Retries", default: 3 },
       },
     });
 
@@ -1190,7 +1230,7 @@ describe("configFieldsFromJsonSchema", () => {
       properties: {
         url: {
           type: "string",
-          description: "Webhook URL",
+          title: "Webhook URL",
           examples: ["https://example.com/webhook"],
         },
       },
@@ -1205,7 +1245,7 @@ describe("configFieldsFromJsonSchema", () => {
       properties: {
         payload: {
           type: "string",
-          description: "Payload",
+          title: "Payload",
           examples: [{ deep: 1 }],
         },
       },

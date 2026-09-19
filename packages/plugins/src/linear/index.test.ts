@@ -35,36 +35,41 @@ describe("the linear integration", () => {
 
   it("offers what create-ticket returns", () => {
     expect(outputFieldsOf("create-ticket")).toEqual([
-      { path: "id", description: "Ticket ID", type: "string" },
-      { path: "url", description: "Ticket URL", type: "string" },
-      { path: "title", description: "Ticket title", type: "string" },
+      { path: "id", label: "Ticket ID", type: "string" },
+      { path: "url", label: "Ticket URL", type: "string" },
+      { path: "title", label: "Ticket title", type: "string" },
     ]);
   });
 
   it("offers the fields inside find-issues' list", () => {
     expect(outputFieldsOf("find-issues")).toEqual([
-      { path: "issues", description: "Array of issues found", type: "array" },
+      {
+        path: "issues",
+        label: "Issues",
+        description: "The issues that matched the search.",
+        type: "array",
+      },
       {
         path: "issues[0].id",
-        description: "Issue ID",
+        label: "Issue ID",
         type: "string",
         nullable: true,
       },
       {
         path: "issues[0].title",
-        description: "Issue title",
+        label: "Issue title",
         type: "string",
         nullable: true,
       },
       {
         path: "issues[0].url",
-        description: "Issue URL",
+        label: "Issue URL",
         type: "string",
         nullable: true,
       },
       {
         path: "issues[0].state",
-        description: "Workflow state name",
+        label: "Workflow state name",
         type: "string",
         nullable: true,
       },
@@ -76,11 +81,11 @@ describe("the linear integration", () => {
       },
       {
         path: "issues[0].assigneeId",
-        description: "Assigned user ID",
+        label: "Assigned user ID",
         type: "string",
         nullable: true,
       },
-      { path: "count", description: "Number of issues", type: "number" },
+      { path: "count", label: "Number of issues", type: "number" },
     ]);
   });
 });

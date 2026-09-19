@@ -27,10 +27,7 @@ import {
   runSendsLabel,
   type WorkflowRunTarget,
 } from "#src/lib/workflow-run-labels";
-import {
-  findEvent,
-  type ExtensionCatalog,
-} from "@wfgraph/shared/extensions/catalog";
+import { findEvent } from "@wfgraph/shared/extensions/catalog";
 import {
   type TestPayloads,
   testPayloadFor,
@@ -78,23 +75,21 @@ type RunOverlayProps = OverlayComponentProps<{
   onRun: (request: RunRequest) => void;
 }>;
 
-/** What the Event select shows for one Start Event: its label, then its name. */
-function eventLabel(catalog: ExtensionCatalog, eventName: string): string {
-  return findEvent(catalog, eventName)?.label ?? eventName;
-}
-
 function FieldControl({
   field,
   value,
   onChange,
+  descriptionId,
 }: {
   field: TestPayloadField;
   value: string;
   onChange: (next: string) => void;
+  descriptionId?: string | undefined;
 }) {
   if (field.control === "checkbox") {
     return (
       <Checkbox
+        aria-describedby={descriptionId}
         checked={value === "true"}
         id={field.path}
         onCheckedChange={(checked) => onChange(checked ? "true" : "false")}
@@ -109,7 +104,11 @@ function FieldControl({
     }));
     return (
       <Select items={items} onValueChange={whenChosen(onChange)} value={value}>
-        <SelectTrigger className="w-full" id={field.path}>
+        <SelectTrigger
+          aria-describedby={descriptionId}
+          className="w-full"
+          id={field.path}
+        >
           <SelectValue placeholder="Choose a value" />
         </SelectTrigger>
         <SelectContent>
@@ -125,6 +124,7 @@ function FieldControl({
 
   return (
     <Input
+      aria-describedby={descriptionId}
       id={field.path}
       onChange={(event) => onChange(event.target.value)}
       type={
@@ -164,26 +164,40 @@ function PayloadForm({
 
   return (
     <div className="space-y-4">
-      {fields.map((field) => (
-        <div className="space-y-2" key={field.path}>
-          <Label className="font-mono text-xs" htmlFor={field.path}>
-            {field.path}
-            {field.optional && (
-              <span className="ml-2 font-sans text-muted-foreground">
-                optional
-              </span>
-            )}
-          </Label>
-          <FieldControl
-            field={field}
-            onChange={(next) => onChange(field.path, next)}
-            value={values[field.path] ?? ""}
-          />
-          {field.description && (
-            <p className="text-muted-foreground text-xs">{field.description}</p>
-          )}
-        </div>
-      ))}
+      {fields.map((field) => {
+        const descriptionId = field.description
+          ? `${field.path}-description`
+          : undefined;
+
+        return (
+          <div className="space-y-2" key={field.path}>
+            <div className="space-y-0.5">
+              <Label htmlFor={field.path}>
+                {field.label}
+                {field.optional ? (
+                  <span className="ml-2 font-normal text-muted-foreground text-xs">
+                    optional
+                  </span>
+                ) : null}
+              </Label>
+              <p className="font-mono text-muted-foreground text-xs">
+                {field.path}
+              </p>
+            </div>
+            <FieldControl
+              descriptionId={descriptionId}
+              field={field}
+              onChange={(next) => onChange(field.path, next)}
+              value={values[field.path] ?? ""}
+            />
+            {field.description ? (
+              <p className="text-muted-foreground text-xs" id={descriptionId}>
+                {field.description}
+              </p>
+            ) : null}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -227,9 +241,10 @@ export function RunOverlay({
   const eventName = selectedEvent === NO_EVENT ? undefined : selectedEvent;
   const savedPayload = testPayloadFor(savedPayloads, eventName);
 
-  const fields = testPayloadFields(
-    eventName ? findEvent(catalog, eventName) : undefined
-  );
+  const selectedEventDefinition = eventName
+    ? findEvent(catalog, eventName)
+    : undefined;
+  const fields = testPayloadFields(selectedEventDefinition);
 
   const [values, setValues] = useState<TestPayloadFormValues>(() =>
     formValuesFromPayload(fields, savedPayload)
@@ -308,11 +323,16 @@ export function RunOverlay({
   const showEventSelect =
     startEvents.length > 0 || !allowManualStart || hasEventSplit;
 
-  const eventItems = [
-    ...startEvents.map((name) => ({
-      label: eventLabel(catalog, name),
+  const startEventChoices = startEvents.map((name) => {
+    const event = findEvent(catalog, name);
+    return {
+      label: event?.label ?? name,
+      description: event?.description,
       value: name,
-    })),
+    };
+  });
+  const eventItems = [
+    ...startEventChoices,
     ...(allowManualStart
       ? [{ label: "None (manual start)", value: NO_EVENT }]
       : []),
@@ -355,9 +375,21 @@ export function RunOverlay({
                 <SelectValue placeholder="Choose an Event" />
               </SelectTrigger>
               <SelectContent>
-                {startEvents.map((name) => (
-                  <SelectItem key={name} value={name}>
-                    {eventLabel(catalog, name)}
+                {startEventChoices.map((event) => (
+                  <SelectItem key={event.value} value={event.value}>
+                    <span className="flex min-w-0 flex-col items-start">
+                      <span className="font-medium">{event.label}</span>
+                      {event.description ? (
+                        <span className="line-clamp-2 text-muted-foreground text-xs">
+                          {event.description}
+                        </span>
+                      ) : null}
+                      {event.label === event.value ? null : (
+                        <span className="font-mono text-muted-foreground text-xs">
+                          {event.value}
+                        </span>
+                      )}
+                    </span>
                   </SelectItem>
                 ))}
                 {allowManualStart && (
@@ -367,11 +399,22 @@ export function RunOverlay({
                 )}
               </SelectContent>
             </Select>
-            {eventIsRequired && (
+            {selectedEventDefinition ? (
+              <div className="space-y-0.5 text-muted-foreground text-xs">
+                {selectedEventDefinition.label ===
+                selectedEventDefinition.name ? null : (
+                  <p className="font-mono">{selectedEventDefinition.name}</p>
+                )}
+                {selectedEventDefinition.description ? (
+                  <p>{selectedEventDefinition.description}</p>
+                ) : null}
+              </div>
+            ) : null}
+            {eventIsRequired ? (
               <p className="text-muted-foreground text-xs">
                 This workflow has an Event Split, so the run must name an Event.
               </p>
-            )}
+            ) : null}
           </div>
         ) : null}
 

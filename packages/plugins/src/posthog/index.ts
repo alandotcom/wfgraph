@@ -95,10 +95,10 @@ const identifyPersonInput = Schema.Struct({
  * survives both a key the handler leaves out and a null it writes.
  */
 const captureEventOutput = Schema.Struct({
-  eventName: Schema.String.annotate({ description: "Event name" }),
-  distinctId: Schema.String.annotate({ description: "Person distinct ID" }),
-  eventUuid: Schema.String.annotate({ description: "Event UUID" }),
-  timestamp: Schema.String.annotate({ description: "Event timestamp" }),
+  eventName: Schema.String.annotate({ title: "Event name" }),
+  distinctId: Schema.String.annotate({ title: "Person distinct ID" }),
+  eventUuid: Schema.String.annotate({ title: "Event UUID" }),
+  timestamp: Schema.String.annotate({ title: "Event timestamp" }),
   /** Absent on a real capture: this is why a test run made none. */
   reasonCode: Schema.optionalKey(
     Schema.NullOr(
@@ -108,9 +108,9 @@ const captureEventOutput = Schema.Struct({
 });
 
 const identifyPersonOutput = Schema.Struct({
-  distinctId: Schema.String.annotate({ description: "Person distinct ID" }),
-  eventUuid: Schema.String.annotate({ description: "Event UUID" }),
-  timestamp: Schema.String.annotate({ description: "Event timestamp" }),
+  distinctId: Schema.String.annotate({ title: "Person distinct ID" }),
+  eventUuid: Schema.String.annotate({ title: "Event UUID" }),
+  timestamp: Schema.String.annotate({ title: "Event timestamp" }),
   reasonCode: Schema.optionalKey(
     Schema.NullOr(
       Schema.String.annotate({ description: "Why a test run did not identify" })

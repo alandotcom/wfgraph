@@ -13,7 +13,7 @@ const appointmentCreated: EventMetadata = {
   label: "Appointment created",
   correlationPath: "appointment.id",
   payloadFields: [
-    { path: "appointment.id", type: "string" },
+    { path: "appointment.id", label: "Appointment ID", type: "string" },
     { path: "appointment.startsAt", type: "timestamp" },
     { path: "appointment.seats", type: "number" },
     { path: "appointment.confirmed", type: "boolean", nullable: true },
@@ -30,12 +30,33 @@ const appointmentCreated: EventMetadata = {
 describe("testPayloadFields", () => {
   it("draws one control per declared type", () => {
     expect(testPayloadFields(appointmentCreated)).toEqual([
-      { path: "appointment.id", control: "text", optional: false },
-      { path: "appointment.startsAt", control: "datetime", optional: false },
-      { path: "appointment.seats", control: "number", optional: false },
-      { path: "appointment.confirmed", control: "checkbox", optional: true },
+      {
+        path: "appointment.id",
+        label: "Appointment ID",
+        control: "text",
+        optional: false,
+      },
+      {
+        path: "appointment.startsAt",
+        label: "Starts At",
+        control: "datetime",
+        optional: false,
+      },
+      {
+        path: "appointment.seats",
+        label: "Seats",
+        control: "number",
+        optional: false,
+      },
+      {
+        path: "appointment.confirmed",
+        label: "Confirmed",
+        control: "checkbox",
+        optional: true,
+      },
       {
         path: "appointment.channel",
+        label: "Channel",
         control: "select",
         options: ["sms", "email"],
         optional: false,

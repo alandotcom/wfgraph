@@ -72,15 +72,25 @@ function WaitEventsSummary({ node }: { node: WorkflowNode }) {
   return (
     <ul className="space-y-2">
       {subscriptions.map((subscription) => {
+        const event = findEvent(catalog, subscription.event);
         const parsed = subscription.match
           ? parseConditionModel(subscription.match)
           : null;
         return (
           <li className="space-y-1" key={subscription.event}>
-            <p className="text-sm">
-              {findEvent(catalog, subscription.event)?.label ??
-                subscription.event}
-            </p>
+            <div className="space-y-0.5">
+              <p className="text-sm">{event?.label ?? subscription.event}</p>
+              {event?.description ? (
+                <p className="text-muted-foreground text-xs">
+                  {event.description}
+                </p>
+              ) : null}
+              {event && event.label !== event.name ? (
+                <p className="font-mono text-muted-foreground text-xs">
+                  {event.name}
+                </p>
+              ) : null}
+            </div>
             {parsed?.valid ? (
               <div className="border-l pl-3">
                 <ConditionSummary

@@ -10,7 +10,7 @@
  * the plain text field, whose placeholder is a DOM attribute.
  */
 
-import { render } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { ActionConfigRenderer } from "#src/components/workflow/config/action-config-renderer";
@@ -40,6 +40,7 @@ const textFrom: ActionConfigField = {
 const subject: ActionConfigField = {
   key: "emailSubject",
   label: "Subject",
+  description: "The subject line recipients will see.",
   type: "template-input",
   placeholder: "Subject or {{NodeName.title}}",
 };
@@ -88,7 +89,25 @@ function renderFields(input: {
   };
 }
 
-describe("a config field that falls back to a Connection value", () => {
+describe("ActionConfigRenderer", () => {
+  it("associates a field description with its control group", () => {
+    renderFields({ fields: [subject] });
+
+    const description = screen.getByText(
+      "The subject line recipients will see."
+    );
+    expect(
+      screen
+        .getByRole("group", { name: "Subject field details" })
+        .getAttribute("aria-describedby")
+    ).toBe(description.id);
+    expect(
+      screen
+        .getByRole("textbox", { name: "Subject" })
+        .getAttribute("aria-describedby")
+    ).toBe(description.id);
+  });
+
   it("draws the Connection's stored value in a template field", () => {
     expect(
       renderFields({

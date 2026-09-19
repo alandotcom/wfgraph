@@ -113,6 +113,24 @@ describe("jsonSchemaLibraryOptions with Zod", () => {
     expect((props.name as Record<string, unknown>).type).toBe("string");
     expect((props.age as Record<string, unknown>).type).toBe("number");
   });
+
+  it("carries separate field labels and descriptions through JSON Schema metadata", () => {
+    const schema = z.object({
+      paymentId: z.string().meta({
+        title: "Payment ID",
+        description: "The payment provider's transaction ID",
+      }),
+    });
+
+    expect(requireOutputFieldsFromSchema("Payment", schema)).toEqual([
+      {
+        path: "paymentId",
+        label: "Payment ID",
+        description: "The payment provider's transaction ID",
+        type: "string",
+      },
+    ]);
+  });
 });
 
 /**
