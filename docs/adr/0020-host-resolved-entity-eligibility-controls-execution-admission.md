@@ -302,3 +302,25 @@ A missing Entity at a data-only resolution fails the consuming node. When the
 same snapshot also serves Eligibility, the existing `entity_not_found` Exit
 outcome applies before the node executes. Resolver rejection, timeout, and
 schema-invalid state keep their existing operational-failure behavior.
+
+## Amendment: Tracking exposes node-local Entity State
+
+Date: 2026-09-19
+
+A tracked Entity exposes its declared State fields to text templates and
+Condition nodes without requiring Entity Eligibility. Tracking already persists
+the Execution's immutable Entity type and ID, so Eligibility is not needed to
+identify the resolver input. The engine still resolves State only for a node that
+reads it.
+
+A Condition rule stores Entity State as a virtual source qualified by Entity
+type. The compiler evaluates that source in a separate CEL context from the flat
+namespace of Lifecycle payload and upstream action fields. An Entity field and
+an upstream field with the same path therefore remain distinct, and changing the
+tracked Entity type leaves the old rule stale instead of silently retargeting it.
+
+Immediately before a consuming node runs, one resolver call projects the union
+of paths read by its templates and Condition. When the node is also a
+before-node Eligibility checkpoint, that same State snapshot serves all three
+uses. The existing durability, privacy, Canceled-side, replay, missing-Entity,
+and operational-failure rules continue to apply.

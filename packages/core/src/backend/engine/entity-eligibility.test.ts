@@ -2,6 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Effect, Layer, Logger, References } from "effect";
 import { executeWorkflow } from "#src/backend/engine/core";
 import { TracerBridgeLayer } from "#src/backend/lib/effect/tracer";
+import {
+  compileConditionModel,
+  entityStateConditionPath,
+  serializeConditionModel,
+  type ConditionModel,
+} from "@wfgraph/shared/conditions/conditions";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import type { JsonObject } from "@wfgraph/shared/types/json";
@@ -11,6 +17,7 @@ import type {
   EntityEligibilityDecision,
   WorkflowEntities,
 } from "#src/backend/engine/entities";
+import { executionData } from "#src/backend/engine/contracts";
 import { createRecordingWorkflowStore } from "#src/backend/engine/recording-store";
 import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
 import { executeTestWorkflow } from "#src/backend/engine/test-execution";
@@ -43,7 +50,7 @@ const condition = JSON.stringify({
 function lifecycleNode(
   checkpoints: Array<"before-execution" | "before-node"> = ["before-node"],
   cancelEvents: string[] = [],
-  eligibilityCondition = condition
+  eligibilityCondition: string | null = condition
 ): WorkflowNode {
   return {
     id: "lifecycle",
@@ -67,10 +74,14 @@ function lifecycleNode(
               ])
             ),
           },
-          entityEligibility: {
-            condition: eligibilityCondition,
-            checkpoints,
-          },
+          ...(eligibilityCondition
+            ? {
+                entityEligibility: {
+                  condition: eligibilityCondition,
+                  checkpoints,
+                },
+              }
+            : {}),
         },
       },
     },
@@ -121,14 +132,81 @@ function graph(
 }
 
 const entityNameToken = "{{@$entity:appointment|Appointment.name}}";
+const entityConditionModel: ConditionModel = {
+  version: 2,
+  groupLogic: "and",
+  groups: [
+    {
+      id: "entity-group",
+      logic: "and",
+      conditions: [
+        {
+          id: "entity-rule",
+          field: entityStateConditionPath("appointment", "status") ?? "",
+          fieldType: "string",
+          operator: "equals",
+          value: "ready",
+        },
+      ],
+    },
+  ],
+};
+const compiledEntityCondition = compileConditionModel(entityConditionModel);
+if (!compiledEntityCondition.valid) {
+  throw new Error(compiledEntityCondition.error);
+}
+
+const structuredEntityConditionModel: ConditionModel = {
+  version: 2,
+  groupLogic: "and",
+  groups: [
+    {
+      id: "structured-entity-group",
+      logic: "and",
+      conditions: [
+        {
+          id: "nested-string",
+          field:
+            entityStateConditionPath("appointment", "profile.status") ?? "",
+          fieldType: "string",
+          operator: "equals",
+          value: "ready",
+        },
+        {
+          id: "record-key",
+          field: entityStateConditionPath("appointment", "attributes") ?? "",
+          recordKey: "journey.status",
+          fieldType: "string",
+          operator: "equals",
+          value: "priority",
+        },
+        {
+          id: "nested-timestamp",
+          field:
+            entityStateConditionPath("appointment", "profile.updatedAt") ?? "",
+          fieldType: "timestamp",
+          operator: "before",
+          dateTime: "2030-01-01T00:00:00.000Z",
+        },
+      ],
+    },
+  ],
+};
+const compiledStructuredEntityCondition = compileConditionModel(
+  structuredEntityConditionModel
+);
+if (!compiledStructuredEntityCondition.valid) {
+  throw new Error(compiledStructuredEntityCondition.error);
+}
 
 function entityDataGraph(
   checkpoints: Array<"before-execution" | "before-node">,
-  nodeIds: string[] = ["first"]
+  nodeIds: string[] = ["first"],
+  eligibilityCondition: string | null = condition
 ) {
   return createSerializedWorkflowGraph({
     nodes: [
-      lifecycleNode(checkpoints),
+      lifecycleNode(checkpoints, [], eligibilityCondition),
       ...nodeIds.map((id) =>
         actionNode(id, true, "test/action", {
           message: entityNameToken,
@@ -288,6 +366,209 @@ describe("per-node Entity Eligibility", () => {
       expect.anything()
     );
     expect(JSON.stringify(result.outputs)).not.toContain("Ada");
+  });
+
+  it("resolves referenced Entity data when tracking has no Eligibility", async () => {
+    const entities = entityPort([{ outcome: "eligible" }], [{ name: "Ada" }]);
+
+    const result = await executeTestWorkflow(
+      {
+        ...executionInput,
+        graph: entityDataGraph(["before-node"], ["first"], null),
+      },
+      createInMemoryWorkflowRuntime(),
+      createRecordingWorkflowStore(),
+      actions,
+      entities
+    );
+
+    expect(result.status).toBe("completed");
+    expect(entities.inputs).toEqual([
+      {
+        entityType: "appointment",
+        entityId: "appt_secret",
+        nodeId: "first",
+        eventName: "appointment.started",
+        paths: ["name"],
+      },
+    ]);
+    expect(runAction).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "Ada" }),
+      expect.anything()
+    );
+  });
+
+  it("evaluates a Condition node against tracked Entity State without Eligibility", async () => {
+    const entities = entityPort(
+      [{ outcome: "eligible" }],
+      [{ status: "ready" }]
+    );
+    const conditionGraph = createSerializedWorkflowGraph({
+      nodes: [
+        lifecycleNode(["before-node"], [], null),
+        actionNode("condition", true, "Condition", {
+          condition: compiledEntityCondition.expression,
+          conditionModel: serializeConditionModel(entityConditionModel),
+        }),
+      ],
+      edges: [
+        {
+          id: "entity-condition",
+          source: "lifecycle",
+          sourceHandle: "started",
+          target: "condition",
+        },
+      ],
+    });
+
+    const result = await executeTestWorkflow(
+      { ...executionInput, graph: conditionGraph },
+      createInMemoryWorkflowRuntime(),
+      createRecordingWorkflowStore(),
+      actions,
+      entities
+    );
+
+    expect(result.status).toBe("completed");
+    expect(entities.inputs).toEqual([
+      {
+        entityType: "appointment",
+        entityId: "appt_secret",
+        nodeId: "condition",
+        eventName: "appointment.started",
+        paths: ["status"],
+      },
+    ]);
+    expect(executionData(result.results.condition)).toEqual({
+      success: true,
+      data: { condition: true },
+    });
+  });
+
+  it("evaluates nested, open-record, and timestamp Entity fields from the projected snapshot", async () => {
+    const entities = entityPort(
+      [{ outcome: "eligible" }],
+      [
+        {
+          "profile.status": "ready",
+          'attributes["journey.status"]': "priority",
+          "profile.updatedAt": "2029-01-01T00:00:00.000Z",
+        },
+      ]
+    );
+    const conditionGraph = createSerializedWorkflowGraph({
+      nodes: [
+        lifecycleNode(["before-node"], [], null),
+        actionNode("condition", true, "Condition", {
+          condition: compiledStructuredEntityCondition.expression,
+          conditionModel: serializeConditionModel(
+            structuredEntityConditionModel
+          ),
+        }),
+      ],
+      edges: [
+        {
+          id: "entity-condition",
+          source: "lifecycle",
+          sourceHandle: "started",
+          target: "condition",
+        },
+      ],
+    });
+
+    const result = await executeTestWorkflow(
+      { ...executionInput, graph: conditionGraph },
+      createInMemoryWorkflowRuntime(),
+      createRecordingWorkflowStore(),
+      actions,
+      entities
+    );
+
+    expect(result.status).toBe("completed");
+    expect(entities.inputs).toEqual([
+      expect.objectContaining({
+        nodeId: "condition",
+        paths: [
+          "profile.status",
+          'attributes["journey.status"]',
+          "profile.updatedAt",
+        ],
+      }),
+    ]);
+    expect(executionData(result.results.condition)).toEqual({
+      success: true,
+      data: { condition: true },
+    });
+  });
+
+  it("does not retarget a stale Entity Condition reference when the current type reads the same path", async () => {
+    const mixedModel: ConditionModel = {
+      version: 2,
+      groupLogic: "and",
+      groups: [
+        {
+          id: "mixed-entity-types",
+          logic: "and",
+          conditions: [
+            {
+              id: "current",
+              field: entityStateConditionPath("appointment", "status") ?? "",
+              fieldType: "string",
+              operator: "equals",
+              value: "ready",
+            },
+            {
+              id: "stale",
+              field: entityStateConditionPath("patient", "status") ?? "",
+              fieldType: "string",
+              operator: "equals",
+              value: "ready",
+            },
+          ],
+        },
+      ],
+    };
+    const compiled = compileConditionModel(mixedModel);
+    if (!compiled.valid) {
+      throw new Error(compiled.error);
+    }
+    const entities = entityPort(
+      [{ outcome: "eligible" }],
+      [{ status: "ready" }]
+    );
+    const conditionGraph = createSerializedWorkflowGraph({
+      nodes: [
+        lifecycleNode(["before-node"], [], null),
+        actionNode("condition", true, "Condition", {
+          condition: compiled.expression,
+          conditionModel: serializeConditionModel(mixedModel),
+        }),
+      ],
+      edges: [
+        {
+          id: "entity-condition",
+          source: "lifecycle",
+          sourceHandle: "started",
+          target: "condition",
+        },
+      ],
+    });
+
+    const result = await executeTestWorkflow(
+      { ...executionInput, graph: conditionGraph },
+      createInMemoryWorkflowRuntime(),
+      createRecordingWorkflowStore(),
+      actions,
+      entities
+    );
+
+    expect(entities.inputs).toEqual([
+      expect.objectContaining({ paths: ["status"] }),
+    ]);
+    expect(executionData(result.results.condition)).toEqual({
+      success: true,
+      data: { condition: false },
+    });
   });
 
   it("does not retarget a stale Entity reference during a Draft run", async () => {

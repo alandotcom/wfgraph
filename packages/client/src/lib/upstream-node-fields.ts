@@ -12,6 +12,7 @@ import {
   type ConditionFieldDefinition,
   type ConditionModel,
   createDefaultConditionModel,
+  entityStateConditionPath,
   EVENT_NAME_FIELD_PATH,
 } from "@wfgraph/shared/conditions/conditions";
 import {
@@ -37,7 +38,7 @@ import {
 } from "#src/lib/open-record-keys";
 import { upstreamNodeIds } from "@wfgraph/shared/graph/upstream-nodes";
 import { readConfigString } from "@wfgraph/shared/graph/node-config";
-import { findEntityTemplateSource } from "@wfgraph/shared/lifecycle/entity-eligibility";
+import { findTrackedEntityStateSource } from "@wfgraph/shared/lifecycle/entity-eligibility";
 import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { getNodeDisplayName } from "@wfgraph/shared/graph/node-display";
 import { conditionTypeOf } from "@wfgraph/shared/conditions/condition-field-type";
@@ -397,16 +398,16 @@ export type EntityTemplateSource = {
 /**
  * The tracked Entity source a node may read at execution time.
  *
- * Entity State is offered only while Eligibility is configured. It is a virtual
- * per-node source rather than output from the Lifecycle node, whose output stays
- * the arriving Event payload.
+ * Tracking is enough to offer Entity State. It is a virtual per-node source
+ * rather than output from the Lifecycle node, whose output stays the arriving
+ * Event payload.
  */
-export function getEntityTemplateSource(input: {
+export function getTrackedEntityStateSource(input: {
   nodes: readonly WorkflowNode[];
   catalog: ExtensionCatalog;
 }): EntityTemplateSource | undefined {
   const lifecycle = input.nodes.find((node) => node.data.type === "lifecycle");
-  const entity = findEntityTemplateSource({
+  const entity = findTrackedEntityStateSource({
     rules: readLifecycleRules(lifecycle?.data.config),
     catalog: input.catalog,
   });
@@ -450,6 +451,32 @@ export function getEntityConditionFields(
       } satisfies ConditionSelectableField;
     })
   ).toSorted((a, b) => compareText(a.path, b.path));
+}
+
+/** Current tracked Entity State as source-qualified Condition-node fields. */
+function getTrackedEntityConditionFields(input: {
+  nodes: readonly WorkflowNode[];
+  catalog: ExtensionCatalog;
+}): ConditionSelectableField[] {
+  const source = getTrackedEntityStateSource(input);
+  if (!source) {
+    return [];
+  }
+
+  return compact(
+    getEntityConditionFields(input.catalog, source.sourceType).map((field) => {
+      const path = entityStateConditionPath(source.sourceType, field.path);
+      if (!path) {
+        return null;
+      }
+
+      return {
+        ...field,
+        path,
+        sourceNodeId: source.sourceId,
+      };
+    })
+  );
 }
 
 /**
@@ -709,10 +736,10 @@ export function getUpstreamConditionFields(input: {
     catalog: input.catalog,
   });
   const fieldsByPath = new Map<string, ConditionSelectableField>(
-    eventNameConditionField(input, reachability).map((field) => [
-      field.path,
-      field,
-    ])
+    [
+      ...eventNameConditionField(input, reachability),
+      ...getTrackedEntityConditionFields(input),
+    ].map((field) => [field.path, field])
   );
   const graphKeys = collectOpenRecordKeys(input.nodes, input.catalog);
 

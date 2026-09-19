@@ -1,4 +1,8 @@
 import { describe, expect, it } from "vitest";
+import {
+  entityStateConditionPath,
+  serializeConditionModel,
+} from "#src/conditions/conditions";
 import type { ExtensionCatalog } from "#src/extensions/catalog";
 import { groupContractMatrix } from "#src/graph/group-contract-test-support";
 import type { WorkflowNode } from "#src/graph/types";
@@ -166,7 +170,7 @@ describe("collectWorkflowIssues", () => {
     expect(hasBlockingWorkflowIssues(issues)).toBe(false);
   });
 
-  it("blocks Publish for Entity references when Eligibility is unavailable", () => {
+  it("accepts Entity references when tracking has no Eligibility", () => {
     const entityCatalog: ExtensionCatalog = {
       ...catalog,
       entities: [
@@ -219,12 +223,105 @@ describe("collectWorkflowIssues", () => {
         issue.kind === "broken_reference" &&
         issue.referencedNodeId === "$entity"
     );
+    expect(entityIssues).toEqual([]);
+    expect(hasBlockingWorkflowIssues(entityIssues)).toBe(false);
+    expect(hasDraftRunBlockingIssues(entityIssues)).toBe(false);
+  });
+
+  it("reports a stale Entity Condition field as a Publish-only blocker", () => {
+    const entityCatalog: ExtensionCatalog = {
+      ...catalog,
+      entities: [
+        {
+          type: "patient",
+          label: "Patient",
+          stateFields: [{ path: "name", type: "string" }],
+          stateSchemaDigest: "patient-state",
+        },
+      ],
+    };
+    const lifecycle: WorkflowNode = {
+      id: "lifecycle",
+      type: "lifecycle",
+      position: { x: 0, y: 0 },
+      data: {
+        type: "lifecycle",
+        label: "Lifecycle",
+        config: {
+          lifecycleRules: {
+            startEvents: [],
+            cancelEvents: [],
+            concurrency: "unlimited",
+            trackedEntity: { type: "patient", bindings: {} },
+          },
+        },
+      },
+    };
+    const model = serializeConditionModel({
+      version: 2,
+      groupLogic: "and",
+      groups: [
+        {
+          id: "group",
+          logic: "and",
+          conditions: [
+            {
+              id: "missing-field",
+              field: entityStateConditionPath("patient", "gone") ?? "",
+              fieldType: "string",
+              operator: "equals",
+              value: "active",
+            },
+            {
+              id: "wrong-type",
+              field: entityStateConditionPath("patient", "name") ?? "",
+              fieldType: "number",
+              operator: "greater_than",
+              value: 1,
+            },
+            {
+              id: "valid-type",
+              field: entityStateConditionPath("patient", "name") ?? "",
+              fieldType: "string",
+              operator: "equals",
+              value: "Ada",
+            },
+          ],
+        },
+      ],
+    });
+
+    const issues = collectWorkflowIssues({
+      nodes: [
+        lifecycle,
+        actionNode(
+          "condition",
+          { actionType: "Condition", conditionModel: model },
+          "Check patient"
+        ),
+      ],
+      edges: [],
+      catalog: entityCatalog,
+      integrations: [],
+    });
+    const entityIssues = issues.filter(
+      (issue) =>
+        issue.kind === "broken_reference" &&
+        issue.referencedNodeId === "$entity"
+    );
+
     expect(entityIssues).toEqual([
       expect.objectContaining({
-        kind: "broken_reference",
+        nodeId: "condition",
+        fieldKey: "conditionModel",
+        fieldLabel: "Continue when",
+        displayText: "patient.gone",
         severity: "blocking",
-        referencedNodeId: "$entity",
-        displayText: "Patient.name",
+      }),
+      expect.objectContaining({
+        nodeId: "condition",
+        displayText: "patient.name",
+        severity: "blocking",
       }),
     ]);
     expect(hasBlockingWorkflowIssues(entityIssues)).toBe(true);

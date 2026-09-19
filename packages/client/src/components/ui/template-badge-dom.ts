@@ -10,7 +10,7 @@ import {
   type TemplateToken,
 } from "@wfgraph/shared/graph/node-references";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
-import { findEntityTemplateSource } from "@wfgraph/shared/lifecycle/entity-eligibility";
+import { findTrackedEntityStateSource } from "@wfgraph/shared/lifecycle/entity-eligibility";
 import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 
 /**
@@ -420,7 +420,7 @@ export function createBadgeEditor(
     const lifecycle = renderOptions.nodes.find(
       (node) => node.data.type === "lifecycle"
     );
-    const entitySource = findEntityTemplateSource({
+    const entitySource = findTrackedEntityStateSource({
       rules: readLifecycleRules(lifecycle?.data.config),
       catalog,
     });

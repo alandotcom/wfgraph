@@ -4,6 +4,7 @@ import {
   type ConditionModel,
   type ConditionRule,
   compileConditionModel,
+  entityStateConditionPath,
   EVENT_NAME_FIELD_PATH,
 } from "@wfgraph/shared/conditions/conditions";
 import type { JsonObject } from "@wfgraph/shared/types/json";
@@ -17,7 +18,8 @@ function evaluate(
   groups: ConditionRule[][],
   payload: JsonObject,
   eventName: string | null = null,
-  timestampPaths: string[] = []
+  timestampPaths: string[] = [],
+  entity: JsonObject = {}
 ) {
   const model: ConditionModel = {
     version: 2,
@@ -39,6 +41,7 @@ function evaluate(
     timestampPaths,
     payload,
     eventName,
+    entity,
   });
 }
 
@@ -51,6 +54,52 @@ describe("a compiled condition against a payload", () => {
   // The Events reaching one node declare different payloads, so a rule may name
   // a field this run never carried. That rule answers for itself; the condition
   // is still decided by the rules whose fields did arrive.
+  it("reads tracked Entity State outside the payload namespace", () => {
+    const field = entityStateConditionPath("patient", "status");
+    const evaluation = evaluate(
+      [
+        [
+          {
+            id: "rule-1",
+            field: field ?? "",
+            fieldType: "string",
+            operator: "equals",
+            value: "active",
+          },
+        ],
+      ],
+      { status: "payload value" },
+      null,
+      [],
+      { patient: { status: "active" } }
+    );
+
+    expect(evaluation).toEqual({ ok: true, value: true });
+  });
+
+  it("reads a punctuated Entity field without changing its declared path", () => {
+    const field = entityStateConditionPath("patient", "profile.first-name");
+    const evaluation = evaluate(
+      [
+        [
+          {
+            id: "rule-1",
+            field: field ?? "",
+            fieldType: "string",
+            operator: "equals",
+            value: "Ada",
+          },
+        ],
+      ],
+      {},
+      null,
+      [],
+      { patient: { profile: { "first-name": "Ada" } } }
+    );
+
+    expect(evaluation).toEqual({ ok: true, value: true });
+  });
+
   it("reads a rule about an absent field as false without deciding the rest", () => {
     const evaluation = evaluate(
       [

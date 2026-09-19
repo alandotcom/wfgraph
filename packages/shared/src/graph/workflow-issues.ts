@@ -6,10 +6,16 @@
  */
 
 import { groupBy, uniq, uniqBy } from "es-toolkit/array";
+import { BUILT_IN_ACTION_IDS } from "#src/actions/built-in-actions";
 import {
   getMissingRequiredFieldsForNodes,
   type ResolveActionByType,
 } from "#src/actions/action-config-validation";
+import {
+  collectEntityStateConditionReferences,
+  parseConditionModel,
+} from "#src/conditions/conditions";
+import { conditionTypeOf } from "#src/conditions/condition-field-type";
 import {
   type ExtensionCatalog,
   findAction,
@@ -23,7 +29,7 @@ import { isWaitNode, readConfigTrimmedString } from "#src/graph/node-config";
 import { checkCancelFilters } from "#src/lifecycle/cancel-filters";
 import {
   checkEntityEligibility,
-  findEntityTemplateSource,
+  findTrackedEntityStateSource,
 } from "#src/lifecycle/entity-eligibility";
 import {
   checkLifecycleRules,
@@ -410,7 +416,7 @@ function collectBrokenReferenceIssues(input: {
     .filter((node) => node.data.type === "lifecycle")
     .map((node) => readLifecycleRules(node.data.config))
     .find((rules) => rules !== undefined);
-  const entitySource = findEntityTemplateSource({
+  const entitySource = findTrackedEntityStateSource({
     rules: lifecycleRules,
     catalog: input.catalog,
   });
@@ -438,6 +444,25 @@ function collectBrokenReferenceIssues(input: {
       ? new Set<string>(waitTemplateKeysIn(config))
       : undefined;
     const literalKeys = new Set(literalFieldKeys(action?.configFields ?? []));
+    const parsedCondition =
+      actionType === BUILT_IN_ACTION_IDS.condition
+        ? parseConditionModel(config.conditionModel)
+        : undefined;
+    const brokenEntityConditionRefs =
+      parsedCondition?.valid === true
+        ? collectEntityStateConditionReferences(parsedCondition.model).filter(
+            (reference) => {
+              if (!entitySource || reference.entityType !== entitySource.type) {
+                return true;
+              }
+              const field = referenceFieldForPath(
+                entitySource.stateFields,
+                reference.fieldPath
+              );
+              return !field || conditionTypeOf(field) !== reference.fieldType;
+            }
+          )
+        : [];
     const brokenRefs = extractConsumedTemplateReferences(
       config,
       {
@@ -459,7 +484,7 @@ function collectBrokenReferenceIssues(input: {
       }
       return !nodeIds.has(ref.nodeId);
     });
-    if (brokenRefs.length === 0) {
+    if (brokenRefs.length === 0 && brokenEntityConditionRefs.length === 0) {
       continue;
     }
 
@@ -468,6 +493,20 @@ function collectBrokenReferenceIssues(input: {
       actionLabel: action?.label,
       actionType,
     });
+
+    for (const reference of brokenEntityConditionRefs) {
+      issues.push({
+        kind: "broken_reference",
+        severity: "blocking",
+        nodeId: node.id,
+        nodeLabel,
+        fieldKey: "conditionModel",
+        fieldLabel: "Continue when",
+        referencedNodeId: "$entity",
+        displayText: `${reference.entityType}.${reference.fieldPath}`,
+        message: `Node "${nodeLabel}" references unavailable Entity data in Continue when`,
+      });
+    }
 
     for (const ref of brokenRefs) {
       const fieldLabel =

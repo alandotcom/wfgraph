@@ -1,6 +1,7 @@
 import { celStringLiteral } from "#src/conditions/cel-string-literal";
 import {
   CONDITION_CONTEXT_ROOT,
+  ENTITY_CONTEXT_ROOT,
   EVENT_CONTEXT_ROOT,
   EVENT_NAME_FIELD_PATH,
   type BooleanConditionRule,
@@ -19,6 +20,7 @@ import {
   isNullCheckConditionRule,
   isStringSetConditionRule,
   isTimestampRelativeConditionRule,
+  parseEntityStateConditionPath,
 } from "#src/conditions/condition-model";
 import { parseConditionModel } from "#src/conditions/condition-schema";
 import { decodeIsoTimestamp } from "#src/types/timestamp";
@@ -235,7 +237,8 @@ function isCelIdentifier(key: string): boolean {
   return /^[A-Za-z_][A-Za-z0-9_]*$/.test(key);
 }
 
-function compilePayloadPath(
+function compileContextPath(
+  root: string,
   path: string
 ): { field: string; presence: string } | null {
   const steps = parseOutputPath(path);
@@ -244,6 +247,7 @@ function compilePayloadPath(
   }
 
   if (
+    isCelIdentifier(root) &&
     steps.every(
       (step): step is Extract<OutputPathStep, { kind: "key" }> =>
         step.kind === "key" && isCelIdentifier(step.key)
@@ -251,17 +255,14 @@ function compilePayloadPath(
   ) {
     const keys = steps.map((step) => step.key);
     return {
-      field: `${CONDITION_CONTEXT_ROOT}.${keys.join(".")}`,
+      field: `${root}.${keys.join(".")}`,
       presence: keys
-        .map(
-          (_, index) =>
-            `has(${CONDITION_CONTEXT_ROOT}.${keys.slice(0, index + 1).join(".")})`
-        )
+        .map((_, index) => `has(${root}.${keys.slice(0, index + 1).join(".")})`)
         .join(" && "),
     };
   }
 
-  let field = CONDITION_CONTEXT_ROOT;
+  let field = root;
   const guards: string[] = [];
   for (const step of steps) {
     if (step.kind === "key") {
@@ -275,6 +276,23 @@ function compilePayloadPath(
   }
 
   return { field, presence: guards.join(" && ") };
+}
+
+function compileEntityContextPath(
+  entityType: string,
+  fieldPath: string
+): { field: string; presence: string } | null {
+  const type = celStringLiteral(entityType);
+  const compiled = compileContextPath(
+    `${ENTITY_CONTEXT_ROOT}[${type}]`,
+    fieldPath
+  );
+  return compiled
+    ? {
+        field: compiled.field,
+        presence: `${type} in ${ENTITY_CONTEXT_ROOT} && ${compiled.presence}`,
+      }
+    : null;
 }
 
 /**
@@ -367,11 +385,17 @@ export function compileConditionRule(
 
   // A rule stores the path as the field picker offered it, relative to the node
   // output. The root belongs to the expression, not the model.
-  const compiledPath = compilePayloadPath(
+  const authoredPath =
     rule.recordKey === undefined
       ? path
-      : appendOutputPathKey(path, rule.recordKey.trim())
-  );
+      : appendOutputPathKey(path, rule.recordKey.trim());
+  const entityReference = parseEntityStateConditionPath(authoredPath);
+  const compiledPath = entityReference
+    ? compileEntityContextPath(
+        entityReference.entityType,
+        entityReference.fieldPath
+      )
+    : compileContextPath(CONDITION_CONTEXT_ROOT, authoredPath);
   if (!compiledPath) {
     return { valid: false, error: "Condition field path is invalid" };
   }

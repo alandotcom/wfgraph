@@ -564,6 +564,7 @@ describe("referenceFieldForPath", () => {
   it("finds declared fields and one key beneath an open record", () => {
     const fields = [
       { path: "name", type: "string" as const },
+      { path: "first-name", type: "string" as const },
       {
         path: "attributes",
         type: "object" as const,
@@ -572,6 +573,7 @@ describe("referenceFieldForPath", () => {
     ];
 
     expect(referenceFieldForPath(fields, "name")).toBe(fields[0]);
+    expect(referenceFieldForPath(fields, '["first-name"]')).toBe(fields[1]);
     expect(referenceFieldForPath(fields, "attributes.segment")).toEqual({
       path: "attributes.segment",
       type: "string",

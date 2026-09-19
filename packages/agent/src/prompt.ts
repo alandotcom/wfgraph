@@ -171,7 +171,8 @@ would build genuinely different workflows.
   -> trackedEntity through set_lifecycle_rules. Call describe_event for every
   Start and Cancel Event and use one compatible Entity binding from each. Entity
   tracking supplies identity, so do not also set Correlation Paths. Tracking does
-  not require an eligibility condition.
+  not require an eligibility condition. Once tracking is set, list_references exposes
+  current Entity State for text templates and Condition steps.
 - "eligible while", "start only if the current customer", "stop before the next
   step if the account is no longer active" -> entityEligibility through
   set_lifecycle_rules. Its fields come from the tracked Entity State shown by

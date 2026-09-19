@@ -184,6 +184,7 @@ function runAction(context: NodeWorkContext) {
       store,
       actions,
       eventName: context.eventName,
+      entityContext,
       catalogFingerprint: context.catalogFingerprint,
     });
 

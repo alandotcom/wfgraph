@@ -1,4 +1,8 @@
-import { appendOutputPathKey } from "#src/graph/node-references";
+import {
+  appendOutputPathKey,
+  ENTITY_STATE_SOURCE_ID,
+  parseOutputPath,
+} from "#src/graph/node-references";
 import { mapOrSame } from "#src/utils/map-or-same";
 import { omitUndefined } from "#src/utils/omit-undefined";
 
@@ -12,6 +16,9 @@ import { omitUndefined } from "#src/utils/omit-undefined";
  * Nothing a user can name is a root, so nothing a user can name can collide.
  */
 export const CONDITION_CONTEXT_ROOT = "payload";
+
+/** The CEL root holding current tracked Entity State for a Condition node. */
+export const ENTITY_CONTEXT_ROOT = "entity";
 
 /**
  * The CEL root holding the Event a run arrived on, beside `payload` and `now`.
@@ -30,6 +37,76 @@ export const EVENT_CONTEXT_ROOT = "event";
  * Event author declares payload paths, and none of them can open with one.
  */
 export const EVENT_NAME_FIELD_PATH = "$event.name";
+
+export type EntityStateConditionPath = {
+  entityType: string;
+  fieldPath: string;
+};
+
+export type EntityStateConditionReference = EntityStateConditionPath & {
+  fieldType: ConditionFieldType;
+};
+
+/**
+ * Qualify an Entity State field for storage in a Condition model.
+ *
+ * The Entity type stays in the authored path so changing the tracked Entity
+ * cannot silently retarget an existing rule. The compiler removes the virtual
+ * source segments before emitting the separate `entity` CEL root.
+ */
+const ENTITY_STATE_CONDITION_PREFIX = `${ENTITY_STATE_SOURCE_ID}:`;
+
+function encodeEntityType(entityType: string): string {
+  return encodeURIComponent(entityType).replaceAll(".", "%2E");
+}
+
+export function entityStateConditionPath(
+  entityType: string,
+  fieldPath: string
+): string | null {
+  const field = fieldPath.trim();
+  const trimmedType = entityType.trim();
+  if (!trimmedType || !parseOutputPath(field)?.length) {
+    return null;
+  }
+
+  const separator = field.startsWith("[") ? "" : ".";
+  return `${ENTITY_STATE_CONDITION_PREFIX}${encodeEntityType(trimmedType)}${separator}${field}`;
+}
+
+/** Read the Entity type and raw State path from a qualified Condition field. */
+export function parseEntityStateConditionPath(
+  path: string
+): EntityStateConditionPath | null {
+  if (!path.startsWith(ENTITY_STATE_CONDITION_PREFIX)) {
+    return null;
+  }
+
+  const remainder = path.slice(ENTITY_STATE_CONDITION_PREFIX.length);
+  const dot = remainder.indexOf(".");
+  const bracket = remainder.indexOf("[");
+  const boundary =
+    dot < 0 ? bracket : bracket < 0 ? dot : Math.min(dot, bracket);
+  if (boundary <= 0) {
+    return null;
+  }
+
+  const encodedType = remainder.slice(0, boundary);
+  const fieldPath =
+    remainder[boundary] === "."
+      ? remainder.slice(boundary + 1)
+      : remainder.slice(boundary);
+  if (!parseOutputPath(fieldPath)?.length) {
+    return null;
+  }
+
+  try {
+    const entityType = decodeURIComponent(encodedType);
+    return entityType ? { entityType, fieldPath } : null;
+  } catch {
+    return null;
+  }
+}
 
 export type ConditionFieldType = "timestamp" | "string" | "number" | "boolean";
 
@@ -249,6 +326,34 @@ export function collectTimestampFieldPaths(model: ConditionModel): string[] {
   }
 
   return [...paths];
+}
+
+/** The distinct tracked Entity State paths a Condition model reads. */
+export function collectEntityStateConditionReferences(
+  model: ConditionModel
+): EntityStateConditionReference[] {
+  const references = new Map<string, EntityStateConditionReference>();
+
+  for (const group of model.groups) {
+    for (const rule of group.conditions) {
+      const path =
+        rule.recordKey === undefined
+          ? rule.field.trim()
+          : appendOutputPathKey(rule.field.trim(), rule.recordKey.trim());
+      const reference = parseEntityStateConditionPath(path);
+      if (reference) {
+        references.set(
+          `${reference.entityType}\u0000${reference.fieldPath}\u0000${rule.fieldType}`,
+          {
+            ...reference,
+            fieldType: rule.fieldType,
+          }
+        );
+      }
+    }
+  }
+
+  return [...references.values()];
 }
 
 /** The authored text operands a rule compares against. */

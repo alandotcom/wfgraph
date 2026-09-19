@@ -8,6 +8,7 @@
 
 export {
   CONDITION_CONTEXT_ROOT,
+  ENTITY_CONTEXT_ROOT,
   EVENT_CONTEXT_ROOT,
   EVENT_NAME_FIELD_PATH,
   type ConditionFieldDefinition,
@@ -17,6 +18,7 @@ export {
   type TimeUnit,
   type TimestampAbsoluteOperator,
   type TimestampRelativeOperator,
+  collectEntityStateConditionReferences,
   collectTimestampFieldPaths,
   createDefaultConditionModel,
   createDefaultConditionRule,
@@ -24,6 +26,8 @@ export {
   isStringSetConditionRule,
   isTimestampAbsoluteConditionRule,
   isTimestampRelativeConditionRule,
+  entityStateConditionPath,
+  parseEntityStateConditionPath,
   readConditionRuleOperands,
   reconcileModelWithFields,
 } from "#src/conditions/condition-model";

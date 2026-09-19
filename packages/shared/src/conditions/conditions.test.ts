@@ -2,13 +2,16 @@ import { describe, expect, it } from "vitest";
 import {
   type ConditionFieldDefinition,
   type ConditionModel,
+  collectEntityStateConditionReferences,
   collectTimestampFieldPaths,
   compileConditionModel,
   compileConditionRule,
+  entityStateConditionPath,
   EVENT_NAME_FIELD_PATH,
   createDefaultConditionModel,
   createDefaultConditionRule,
   parseConditionModel,
+  parseEntityStateConditionPath,
   reconcileModelWithFields,
   serializeConditionModel,
 } from "#src/conditions/conditions";
@@ -292,6 +295,101 @@ describe("conditions", () => {
         "((!(has(payload.appointment) && has(payload.appointment.reason))))"
       );
     }
+  });
+
+  it("qualifies and compiles tracked Entity State outside the payload namespace", () => {
+    const field = entityStateConditionPath(
+      "crm/patient.v2",
+      'attributes["journey.status"]'
+    );
+    expect(field).toBe(
+      '$entity:crm%2Fpatient%2Ev2.attributes["journey.status"]'
+    );
+    expect(parseEntityStateConditionPath(field ?? "")).toEqual({
+      entityType: "crm/patient.v2",
+      fieldPath: 'attributes["journey.status"]',
+    });
+    const punctuatedField = entityStateConditionPath(
+      "crm/patient.v2",
+      "profile.first-name"
+    );
+    expect(punctuatedField).toBe(
+      "$entity:crm%2Fpatient%2Ev2.profile.first-name"
+    );
+    expect(parseEntityStateConditionPath(punctuatedField ?? "")).toEqual({
+      entityType: "crm/patient.v2",
+      fieldPath: "profile.first-name",
+    });
+
+    const model: ConditionModel = {
+      version: 2,
+      groupLogic: "and",
+      groups: [
+        {
+          id: "group-1",
+          logic: "and",
+          conditions: [
+            {
+              id: "condition-1",
+              field: field ?? "",
+              fieldType: "string",
+              operator: "equals",
+              value: "active",
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(collectEntityStateConditionReferences(model)).toEqual([
+      {
+        entityType: "crm/patient.v2",
+        fieldPath: 'attributes["journey.status"]',
+        fieldType: "string",
+      },
+    ]);
+    const compiled = compileConditionModel(model);
+    expect(compiled.valid).toBe(true);
+    if (compiled.valid) {
+      expect(compiled.expression).toBe(
+        '(("crm/patient.v2" in entity && "attributes" in entity["crm/patient.v2"] && "journey.status" in entity["crm/patient.v2"]["attributes"] && (entity["crm/patient.v2"]["attributes"]["journey.status"] == "active")))'
+      );
+    }
+  });
+
+  it("keeps distinct field types when rules read the same Entity path", () => {
+    const field = entityStateConditionPath("patient", "status") ?? "";
+    const model: ConditionModel = {
+      version: 2,
+      groupLogic: "and",
+      groups: [
+        {
+          id: "group-1",
+          logic: "and",
+          conditions: [
+            {
+              id: "number-rule",
+              field,
+              fieldType: "number",
+              operator: "greater_than",
+              value: 1,
+            },
+            {
+              id: "string-rule",
+              field,
+              fieldType: "string",
+              operator: "equals",
+              value: "active",
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(collectEntityStateConditionReferences(model)).toEqual([
+      { entityType: "patient", fieldPath: "status", fieldType: "number" },
+      { entityType: "patient", fieldPath: "status", fieldType: "string" },
+    ]);
   });
 
   // The Event a run arrived on is a fact about the run, so it compiles to its

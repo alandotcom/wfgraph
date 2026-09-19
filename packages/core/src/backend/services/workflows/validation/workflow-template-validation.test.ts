@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 import { errorOf } from "#src/backend/services/workflows/validation/validation-test-support";
 import { validateWorkflowTemplates } from "#src/backend/services/workflows/validation/workflow-template-validation";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
-import { serializeConditionModel } from "@wfgraph/shared/conditions/conditions";
+import {
+  entityStateConditionPath,
+  serializeConditionModel,
+  type ConditionFieldType,
+  type ConditionRule,
+} from "@wfgraph/shared/conditions/conditions";
 import type {
   EventMetadata,
   ExtensionCatalog,
@@ -74,6 +79,61 @@ function entryNode(
   };
 }
 
+function entityConditionNodeWithRules(rules: ConditionRule[]): WorkflowNode {
+  return {
+    id: "condition-1",
+    type: "action",
+    position: { x: 0, y: 100 },
+    data: {
+      label: "Condition",
+      type: "action",
+      config: {
+        actionType: BUILT_IN_ACTION_IDS.condition,
+        conditionModel: serializeConditionModel({
+          version: 2,
+          groupLogic: "and",
+          groups: [{ id: "entity-group", logic: "and", conditions: rules }],
+        }),
+      },
+    },
+  };
+}
+
+function entityConditionNode(
+  input: {
+    entityType?: string;
+    field?: string;
+    fieldType?: ConditionFieldType;
+  } = {}
+): WorkflowNode {
+  const fieldType = input.fieldType ?? "string";
+  const base = {
+    id: "entity-rule",
+    field:
+      entityStateConditionPath(
+        input.entityType ?? "patient",
+        input.field ?? "name"
+      ) ?? "",
+    fieldType,
+  };
+  const rule: ConditionRule =
+    fieldType === "number"
+      ? { ...base, fieldType, operator: "equals", value: 1 }
+      : fieldType === "boolean"
+        ? { ...base, fieldType, operator: "is_true" }
+        : fieldType === "timestamp"
+          ? {
+              ...base,
+              fieldType,
+              operator: "within_next",
+              amount: 1,
+              unit: "days",
+            }
+          : { ...base, fieldType, operator: "equals", value: "active" };
+
+  return entityConditionNodeWithRules([rule]);
+}
+
 function waitNode(config: Record<string, unknown>): WorkflowNode {
   return {
     id: "wait-1",
@@ -119,6 +179,8 @@ const entityCatalog: ExtensionCatalog = {
       label: "Patient",
       stateFields: [
         { path: "name", type: "string" },
+        { path: "first-name", type: "string" },
+        { path: "profile.first-name", type: "string" },
         { path: "delay", type: "duration" },
         { path: "tags", type: "object", valueType: "string" },
       ],
@@ -141,6 +203,116 @@ function entityToken(path: string): string {
 }
 
 describe("validateWorkflowTemplates Entity State", () => {
+  it("accepts a Condition field from a tracked Entity without Eligibility", () => {
+    expect(
+      check(
+        [entryNode([CREATED], { eligibility: false }), entityConditionNode()],
+        [],
+        entityCatalog
+      )
+    ).toEqual({ valid: true });
+  });
+
+  it.each(["first-name", "profile.first-name"])(
+    "accepts the declared Entity field path %s without rewriting its spelling",
+    (field) => {
+      expect(
+        check(
+          [
+            entryNode([CREATED], { eligibility: false }),
+            entityConditionNode({ field }),
+          ],
+          [],
+          entityCatalog
+        )
+      ).toEqual({ valid: true });
+    }
+  );
+
+  it("refuses an Entity Condition field without tracking", () => {
+    const result = check(
+      [entryNode([CREATED]), entityConditionNode()],
+      [],
+      entityCatalog
+    );
+
+    expect(result.valid).toBe(false);
+    expect(errorOf(result)).toContain(
+      "available only while this workflow tracks an Entity"
+    );
+  });
+
+  it("validates every field type when rules share one Entity path", () => {
+    const field = entityStateConditionPath("patient", "name") ?? "";
+    const wrongType: ConditionRule = {
+      id: "wrong-type",
+      field,
+      fieldType: "number",
+      operator: "greater_than",
+      value: 1,
+    };
+    const validType: ConditionRule = {
+      id: "valid-type",
+      field,
+      fieldType: "string",
+      operator: "equals",
+      value: "Ada",
+    };
+
+    for (const rules of [
+      [wrongType, validType],
+      [validType, wrongType],
+    ]) {
+      const result = check(
+        [
+          entryNode([CREATED], { eligibility: false }),
+          entityConditionNodeWithRules(rules),
+        ],
+        [],
+        entityCatalog
+      );
+      expect(errorOf(result)).toContain(
+        'reads Entity State field "name" as number'
+      );
+    }
+  });
+
+  it("refuses stale Entity type, field, and condition type references", () => {
+    const staleType = check(
+      [
+        entryNode([CREATED], { eligibility: false, type: "customer" }),
+        entityConditionNode(),
+      ],
+      [],
+      entityCatalog
+    );
+    expect(errorOf(staleType)).toContain(
+      'reads Entity State field "name" from Entity "patient", but this workflow tracks Entity "customer"'
+    );
+
+    const staleField = check(
+      [
+        entryNode([CREATED], { eligibility: false }),
+        entityConditionNode({ field: "gone" }),
+      ],
+      [],
+      entityCatalog
+    );
+    expect(errorOf(staleField)).toContain('Entity "patient" does not declare');
+
+    const staleFieldType = check(
+      [
+        entryNode([CREATED], { eligibility: false }),
+        entityConditionNode({ fieldType: "number" }),
+      ],
+      [],
+      entityCatalog
+    );
+    expect(errorOf(staleFieldType)).toContain(
+      'reads Entity State field "name" as number'
+    );
+  });
+
   it("accepts a field from the eligible tracked Entity", () => {
     expect(
       check(
@@ -243,19 +415,29 @@ describe("validateWorkflowTemplates Entity State", () => {
     ).toEqual({ valid: true });
   });
 
-  it("refuses Entity data when Eligibility is absent", () => {
+  it("accepts Entity data when tracking has no Eligibility", () => {
+    expect(
+      check(
+        [
+          entryNode([CREATED], { eligibility: false }),
+          waitNode({ waitDuration: entityToken("delay") }),
+        ],
+        [startedEdge],
+        entityCatalog
+      )
+    ).toEqual({ valid: true });
+  });
+
+  it("refuses Entity data when tracking is absent", () => {
     const result = check(
-      [
-        entryNode([CREATED], { eligibility: false }),
-        waitNode({ waitDuration: entityToken("delay") }),
-      ],
+      [entryNode([CREATED]), waitNode({ waitDuration: entityToken("delay") })],
       [startedEdge],
       entityCatalog
     );
 
     expect(result.valid).toBe(false);
     expect(errorOf(result)).toContain(
-      "available only while Entity Eligibility is configured"
+      "available only while this workflow tracks an Entity"
     );
   });
 

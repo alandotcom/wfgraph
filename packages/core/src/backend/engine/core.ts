@@ -183,13 +183,12 @@ function prepareRun(
   const lifecycleNodes = traversal.lifecycleNodes;
   const lifecycleRules = readLifecycleRules(lifecycleNodes[0]?.data.config);
   const eligibility = lifecycleRules?.entityEligibility;
-  const trackedEntity =
-    lifecycleRules?.trackedEntity && eligibility
-      ? {
-          entityType: input.entityType ?? "",
-          entityId: input.entityId ?? "",
-        }
-      : undefined;
+  const trackedEntity = lifecycleRules?.trackedEntity
+    ? {
+        entityType: input.entityType ?? "",
+        entityId: input.entityId ?? "",
+      }
+    : undefined;
   const entityEligibility = eligibility?.checkpoints.includes("before-node")
     ? {
         entityType: input.entityType ?? "",
