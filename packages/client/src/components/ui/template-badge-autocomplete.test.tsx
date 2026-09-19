@@ -37,6 +37,7 @@ const surface: MutableCatalog = {
 
 beforeEach(() => {
   surface.events = [];
+  surface.entities = [];
   surface.actions = [];
 });
 
@@ -303,6 +304,99 @@ describe("Template badge autocomplete", () => {
     await seedTemplateContext();
   });
 
+  it("offers the tracked Entity as a virtual source only with Eligibility", async () => {
+    surface.entities = [
+      {
+        type: "patient",
+        label: "Patient",
+        stateFields: [
+          {
+            path: "journey.journeyStatus",
+            description: "Current journey status",
+            type: "string",
+          },
+          {
+            path: "attributes",
+            type: "object",
+            valueType: "string",
+          },
+        ],
+        stateSchemaDigest: "patient-state",
+      },
+    ];
+    act(() => {
+      getDefaultStore().set(updateNodeDataAtom, {
+        id: "lifecycle_1",
+        data: {
+          config: {
+            lifecycleRules: {
+              startEvents: [APPOINTMENT_CREATED.name],
+              cancelEvents: [],
+              concurrency: "unlimited",
+              trackedEntity: { type: "patient", bindings: {} },
+              entityEligibility: {
+                condition: "condition",
+                checkpoints: ["before-node"],
+              },
+            },
+          },
+        },
+      });
+    });
+
+    let latestValue = "";
+    const view = renderWithCatalog(
+      <ControlledTemplateBadgeInputWithNodeContext
+        currentNodeId="wait_1"
+        onValueChange={(value) => {
+          latestValue = value;
+        }}
+      />
+    );
+    const textbox = view.getByRole("textbox");
+    typeAtSymbol(textbox);
+
+    const option = await waitFor(() =>
+      findAutocompleteOptionByText("Patient.journey.journeyStatus")
+    );
+    fireEvent.mouseDown(option);
+
+    await waitFor(() => {
+      expect(latestValue).toBe(
+        "{{@$entity:patient|Patient.journey.journeyStatus}}"
+      );
+      const badge = textbox.querySelector("[data-template]");
+      expect(badge?.textContent).toBe("Patient.journey.journeyStatus");
+      expect(badge?.className).not.toContain("destructive");
+    });
+
+    view.unmount();
+    let recordValue = "";
+    const recordView = renderWithCatalog(
+      <ControlledTemplateBadgeInputWithNodeContext
+        currentNodeId="wait_1"
+        onValueChange={(value) => {
+          recordValue = value;
+        }}
+      />
+    );
+    typeTemplateFilter(
+      recordView.getByRole("textbox"),
+      "attributes.segment"
+    );
+    fireEvent.mouseDown(
+      await waitFor(() =>
+        findAutocompleteOptionByText("Patient.attributes.segment")
+      )
+    );
+
+    await waitFor(() => {
+      expect(recordValue).toBe(
+        "{{@$entity:patient|Patient.attributes.segment}}"
+      );
+    });
+  });
+
   it("renders a pill immediately after mouse selection in TemplateBadgeInput", async () => {
     let latestValue = "";
     const view = renderWithCatalog(
@@ -545,6 +639,22 @@ describe("Template badge autocomplete", () => {
       const badge = textbox.querySelector("[data-template]");
       expect(badge).toBeTruthy();
       expect(badge?.textContent).toBe("Send Message.status");
+    });
+  });
+
+  it("keeps matching a node's fields after its name and a period are typed", async () => {
+    const view = renderWithCatalog(
+      <PlaceholderTemplateBadgeInput onValueChange={() => {}} />
+    );
+
+    typeTemplateFilter(view.getByRole("textbox"), "Webhook.");
+
+    await waitFor(() => {
+      expect(menuRows()).toEqual([
+        "Webhook.patientNamePatient name",
+        "Webhook.occurredAtWhen it happened",
+        "Webhook.amountCentsAmount in cents",
+      ]);
     });
   });
 

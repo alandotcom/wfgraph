@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { serializeConditionModel } from "#src/conditions/condition-schema";
 import {
   DEFAULT_WAIT_TIMEOUT,
   readWaitConfig,
   readWaitSubscriptions,
+  waitMatchTemplateStringsIn,
   waitValueKeysNotIn,
   waitValueTargetsFor,
 } from "./wait-subscription";
@@ -124,6 +126,46 @@ describe("readWaitSubscriptions", () => {
     expect(readWaitSubscriptions(waitConfig({}))).toEqual([]);
     expect(readWaitSubscriptions(undefined)).toEqual([]);
     expect(readWaitSubscriptions(waitConfig({ waitFor: "a,b" }))).toEqual([]);
+  });
+});
+
+describe("waitMatchTemplateStringsIn", () => {
+  it("returns only operands the active Event Wait resolves", () => {
+    const token = '{{@$entity:patient|Patient.tags["order.id"]}}';
+    const match = serializeConditionModel({
+      version: 2,
+      groupLogic: "and",
+      groups: [
+        {
+          id: "group",
+          logic: "and",
+          conditions: [
+            {
+              id: "rule",
+              field: "status",
+              fieldType: "string",
+              operator: "equals",
+              value: token,
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(
+      waitMatchTemplateStringsIn({
+        waitMode: "event",
+        waitFor: [{ event: "patient.updated", match }],
+      })
+    ).toEqual([
+      { configKey: "waitFor", field: "waitFor.0.match", value: token },
+    ]);
+    expect(
+      waitMatchTemplateStringsIn({
+        waitMode: "delay",
+        waitFor: [{ event: "patient.updated", match }],
+      })
+    ).toEqual([]);
   });
 });
 

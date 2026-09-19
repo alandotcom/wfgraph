@@ -16,6 +16,7 @@ import { resolveEntityState } from "#src/backend/extensions/entity-resolution";
 import { toEntityMetadata } from "#src/backend/extensions/extension-set";
 import { evaluateSerializedCondition } from "#src/backend/lib/cel/condition-payload";
 import type { EntityEligibilityDecision } from "#src/backend/engine/entities";
+import type { JsonObject } from "@wfgraph/shared/types/json";
 
 /**
  * Why the resolver was never reached, or why it was reached and still left no
@@ -38,13 +39,19 @@ export type EntityEligibilityCause =
  * current schema refuses can still evaluate, with a different meaning, so it
  * fails here, before the host resolver is called.
  */
-export function decideEntityEligibility(input: {
+export type ResolvedEntityEligibility = {
+  decision: EntityEligibilityDecision;
+  state?: JsonObject | undefined;
+};
+
+/** Resolve one current-state snapshot and decide Eligibility against it. */
+export function resolveEntityEligibility(input: {
   definition: AnyEntityDefinition;
   entityId: string;
   condition: string;
   eventName: string | null;
   timeoutMs: number;
-}): Effect.Effect<EntityEligibilityDecision, EntityEligibilityCause> {
+}): Effect.Effect<ResolvedEntityEligibility, EntityEligibilityCause> {
   return Effect.gen(function* () {
     const check = checkEntityEligibilityCondition(
       toEntityMetadata(input.definition),
@@ -78,9 +85,11 @@ export function decideEntityEligibility(input: {
     const checkedAt = new Date().toISOString();
     if (state === null) {
       return {
-        outcome: "exit",
-        reason: "entity_not_found",
-        checkedAt,
+        decision: {
+          outcome: "exit",
+          reason: "entity_not_found",
+          checkedAt,
+        },
       } as const;
     }
 
@@ -97,11 +106,29 @@ export function decideEntityEligibility(input: {
     }
 
     return evaluated.value
-      ? ({ outcome: "eligible" } as const)
+      ? ({
+          decision: { outcome: "eligible" },
+          state,
+        } as const)
       : ({
-          outcome: "exit",
-          reason: "entity_condition_not_met",
-          checkedAt,
+          decision: {
+            outcome: "exit",
+            reason: "entity_condition_not_met",
+            checkedAt,
+          },
         } as const);
   });
+}
+
+/** Resolve current Entity State and return only its Eligibility verdict. */
+export function decideEntityEligibility(input: {
+  definition: AnyEntityDefinition;
+  entityId: string;
+  condition: string;
+  eventName: string | null;
+  timeoutMs: number;
+}): Effect.Effect<EntityEligibilityDecision, EntityEligibilityCause> {
+  return resolveEntityEligibility(input).pipe(
+    Effect.map((resolved) => resolved.decision)
+  );
 }

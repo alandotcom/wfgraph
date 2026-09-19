@@ -339,16 +339,18 @@ describe("a wait node beside another branch", () => {
     const store = createRecordingWorkflowStore();
     const checkedNodes: string[] = [];
     const entities: WorkflowEntities = {
-      evaluateEligibility: (input) =>
+      resolveNode: (input) =>
         Effect.sync(() => {
           checkedNodes.push(input.nodeId);
-          return input.nodeId === "after_short"
-            ? {
-                outcome: "exit" as const,
-                reason: "entity_condition_not_met" as const,
-                checkedAt: "2026-10-19T15:00:00.000Z",
-              }
-            : { outcome: "eligible" as const };
+          const decision =
+            input.nodeId === "after_short"
+              ? {
+                  outcome: "exit" as const,
+                  reason: "entity_condition_not_met" as const,
+                  checkedAt: "2026-10-19T15:00:00.000Z",
+                }
+              : { outcome: "eligible" as const };
+          return { decision, values: {} };
         }),
     };
 

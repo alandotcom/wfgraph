@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import { useAfterCommit, useDomEvent } from "#src/hooks/effects";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import {
+  getEntityTemplateSource,
   getNodeDisplayName,
   getNodeOutputFields,
   getUpstreamNodes,
@@ -90,6 +91,8 @@ type TemplateOption = {
   rank: number;
   nodeId: string;
   nodeName: string;
+  /** Stable identity carried by a virtual source such as tracked Entity State. */
+  sourceType?: string | undefined;
   field?: string | undefined;
   description?: string | undefined;
   template: string;
@@ -153,10 +156,12 @@ function keyUnderOpenRecordOptions(
         rank: fieldRank({ type: record.valueType }, targetType, undefined),
         nodeId: record.nodeId,
         nodeName: record.nodeName,
+        sourceType: record.sourceType,
         field: fieldPath,
         template: formatTemplateToken({
           nodeId: record.nodeId,
           nodeLabel: record.nodeName,
+          sourceType: record.sourceType,
           fieldPath,
         }),
       };
@@ -206,29 +211,56 @@ export function useTemplateAutocompleteRows(input: {
 
     const nextOptions: TemplateOption[] = [];
     const graphKeys = collectOpenRecordKeys(nodes, catalog);
+    const entitySource = getEntityTemplateSource({ nodes, catalog });
+    const sources = [
+      ...upstreamNodes.map((node) => ({
+        nodeId: node.id,
+        nodeName: getNodeDisplayName(catalog, node),
+        fields: getNodeOutputFields(node, {
+          targetNodeId: currentNodeId,
+          nodes,
+          edges,
+          catalog,
+        }),
+        sourceType: undefined as string | undefined,
+        offersWholeOutput: node.data.type !== "lifecycle",
+      })),
+      ...(entitySource
+        ? [
+            {
+              nodeId: entitySource.sourceId,
+              nodeName: entitySource.sourceName,
+              fields: entitySource.fields,
+              sourceType: entitySource.sourceType,
+              offersWholeOutput: false,
+            },
+          ]
+        : []),
+    ];
 
-    for (const node of upstreamNodes) {
-      const nodeName = getNodeDisplayName(catalog, node);
-      const outputFields = getNodeOutputFields(node, {
-        targetNodeId: currentNodeId,
-        nodes,
-        edges,
-        catalog,
-      });
+    for (const source of sources) {
+      const {
+        nodeId,
+        nodeName,
+        fields: outputFields,
+        sourceType,
+        offersWholeOutput,
+      } = source;
 
-      // A whole node's output, for dropping a JSON blob into a text field. Only
-      // where the node produces something: Condition and Event Split route a run
-      // and declare no output, so the row would stand for the bookkeeping the
-      // engine logged rather than for anything a builder wrote the node to get.
-      if (!fieldType && node.data.type !== "lifecycle" && outputFields.length) {
+      // A whole node's output, for dropping a JSON blob into a text field. A
+      // virtual Entity source offers declared fields only, and the Lifecycle
+      // node's whole payload remains unavailable.
+      if (!fieldType && offersWholeOutput && outputFields.length) {
         nextOptions.push({
           type: "node",
           rank: 0,
-          nodeId: node.id,
+          nodeId,
           nodeName,
+          sourceType,
           template: formatTemplateToken({
-            nodeId: node.id,
+            nodeId,
             nodeLabel: nodeName,
+            sourceType,
           }),
         });
       }
@@ -239,13 +271,15 @@ export function useTemplateAutocompleteRows(input: {
           nextOptions.push({
             type: "field",
             rank: fieldRank(field, fieldType, unusable),
-            nodeId: node.id,
+            nodeId,
             nodeName,
+            sourceType,
             field: field.path,
             description: field.description,
             template: formatTemplateToken({
-              nodeId: node.id,
+              nodeId,
               nodeLabel: nodeName,
+              sourceType,
               fieldPath: field.path,
             }),
             unusable,
@@ -272,12 +306,14 @@ export function useTemplateAutocompleteRows(input: {
         nextOptions.push({
           type: "field",
           rank: fieldRank({ type: valueType }, fieldType, undefined),
-          nodeId: node.id,
+          nodeId,
           nodeName,
+          sourceType,
           field: field.path,
           template: formatTemplateToken({
-            nodeId: node.id,
+            nodeId,
             nodeLabel: nodeName,
+            sourceType,
             fieldPath: field.path,
           }),
           recordOnly: true,
@@ -296,12 +332,14 @@ export function useTemplateAutocompleteRows(input: {
           nextOptions.push({
             type: "field",
             rank: fieldRank({ type: valueType }, fieldType, undefined),
-            nodeId: node.id,
+            nodeId,
             nodeName,
+            sourceType,
             field: fieldPath,
             template: formatTemplateToken({
-              nodeId: node.id,
+              nodeId,
               nodeLabel: nodeName,
+              sourceType,
               fieldPath,
             }),
           });
@@ -321,11 +359,12 @@ export function useTemplateAutocompleteRows(input: {
       return visibleOptions;
     }
 
-    const matched = visibleOptions.filter(
-      (opt) =>
-        opt.nodeName.toLowerCase().includes(trimmedFilter) ||
-        (opt.field && opt.field.toLowerCase().includes(trimmedFilter))
-    );
+    const matched = visibleOptions.filter((option) => {
+      const displayedPath = option.field
+        ? `${option.nodeName}.${option.field}`
+        : option.nodeName;
+      return displayedPath.toLowerCase().includes(trimmedFilter);
+    });
 
     // Matched case-sensitively, because a record key is compared as written: a
     // tag named `orderId` is a different key from `orderid`. A key the graph

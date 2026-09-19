@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { errorOf } from "#src/backend/services/workflows/validation/validation-test-support";
 import { validateWorkflowTemplates } from "#src/backend/services/workflows/validation/workflow-template-validation";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import { serializeConditionModel } from "@wfgraph/shared/conditions/conditions";
 import type {
   EventMetadata,
   ExtensionCatalog,
@@ -35,7 +36,10 @@ const catalog: ExtensionCatalog = {
   integrations: [],
 };
 
-function entryNode(startEvents: string[]): WorkflowNode {
+function entryNode(
+  startEvents: string[],
+  entity?: { eligibility: boolean; type?: string }
+): WorkflowNode {
   return {
     id: "lifecycle-1",
     type: "lifecycle",
@@ -48,6 +52,22 @@ function entryNode(startEvents: string[]): WorkflowNode {
           startEvents,
           cancelEvents: [],
           concurrency: "unlimited",
+          ...(entity
+            ? {
+                trackedEntity: {
+                  type: entity.type ?? "patient",
+                  bindings: {},
+                },
+                ...(entity.eligibility
+                  ? {
+                      entityEligibility: {
+                        condition: "condition",
+                        checkpoints: ["before-node"],
+                      },
+                    }
+                  : {}),
+              }
+            : {}),
         },
       },
     },
@@ -79,9 +99,225 @@ const startedEdge: WorkflowEdge = {
   target: "wait-1",
 };
 
-function check(nodes: WorkflowNode[], edges: WorkflowEdge[]) {
-  return validateWorkflowTemplates({ nodes, edges, catalog });
+function check(
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
+  extensionCatalog = catalog
+) {
+  return validateWorkflowTemplates({
+    nodes,
+    edges,
+    catalog: extensionCatalog,
+  });
 }
+
+const entityCatalog: ExtensionCatalog = {
+  ...catalog,
+  entities: [
+    {
+      type: "patient",
+      label: "Patient",
+      stateFields: [
+        { path: "name", type: "string" },
+        { path: "delay", type: "duration" },
+        { path: "tags", type: "object", valueType: "string" },
+      ],
+      stateSchemaDigest: "patient-state",
+    },
+    {
+      type: "customer",
+      label: "Patient",
+      stateFields: [
+        { path: "name", type: "string" },
+        { path: "delay", type: "duration" },
+      ],
+      stateSchemaDigest: "customer-state",
+    },
+  ],
+};
+
+function entityToken(path: string): string {
+  return `{{@$entity:patient|Patient.${path}}}`;
+}
+
+describe("validateWorkflowTemplates Entity State", () => {
+  it("accepts a field from the eligible tracked Entity", () => {
+    expect(
+      check(
+        [
+          entryNode([CREATED], { eligibility: true }),
+          waitNode({ waitDuration: entityToken("delay") }),
+        ],
+        [startedEdge],
+        entityCatalog
+      )
+    ).toEqual({ valid: true });
+  });
+
+  it("validates only Entity references inside consumed JSON values", () => {
+    const recordToken = entityToken('tags["order.id"]');
+    const providerCatalog: ExtensionCatalog = {
+      ...entityCatalog,
+      actions: [
+        {
+          id: "custom/send",
+          label: "Send",
+          description: "",
+          category: "Custom",
+          configFields: [
+            {
+              key: "variables",
+              label: "Variables",
+              type: "provider-fields",
+              optionsSource: { provider: "variables" },
+            },
+          ],
+          outputFields: [],
+        },
+      ],
+    };
+
+    expect(
+      check(
+        [
+          entryNode([CREATED], { eligibility: true }),
+          {
+            id: "wait-1",
+            type: "action",
+            position: { x: 0, y: 100 },
+            data: {
+              label: "Send",
+              type: "action",
+              config: {
+                actionType: "custom/send",
+                variables: JSON.stringify({
+                  [entityToken("gone")]: "literal key",
+                  CUSTOMER: recordToken,
+                }),
+                nested: { value: entityToken("gone") },
+              },
+            },
+          },
+        ],
+        [startedEdge],
+        providerCatalog
+      )
+    ).toEqual({ valid: true });
+  });
+
+  it("decodes Wait match models before validating Entity paths", () => {
+    const recordToken = entityToken('tags["order.id"]');
+    const match = serializeConditionModel({
+      version: 2,
+      groupLogic: "and",
+      groups: [
+        {
+          id: "group",
+          logic: "and",
+          conditions: [
+            {
+              id: "rule",
+              field: "status",
+              fieldType: "string",
+              operator: "equals",
+              value: recordToken,
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(
+      check(
+        [
+          entryNode([CREATED], { eligibility: true }),
+          waitNode({
+            waitMode: "event",
+            waitFor: [{ event: CREATED, match }],
+            waitTimeout: "1h",
+          }),
+        ],
+        [startedEdge],
+        entityCatalog
+      )
+    ).toEqual({ valid: true });
+  });
+
+  it("refuses Entity data when Eligibility is absent", () => {
+    const result = check(
+      [
+        entryNode([CREATED], { eligibility: false }),
+        waitNode({ waitDuration: entityToken("delay") }),
+      ],
+      [startedEdge],
+      entityCatalog
+    );
+
+    expect(result.valid).toBe(false);
+    expect(errorOf(result)).toContain(
+      "available only while Entity Eligibility is configured"
+    );
+  });
+
+  it("refuses a reference after the tracked Entity type changes", () => {
+    const result = check(
+      [
+        entryNode([CREATED], { eligibility: true, type: "customer" }),
+        waitNode({ waitDuration: entityToken("delay") }),
+      ],
+      [startedEdge],
+      entityCatalog
+    );
+
+    expect(result.valid).toBe(false);
+    expect(errorOf(result)).toContain('Entity "customer" does not declare');
+  });
+
+  it("refuses a field the tracked Entity no longer declares", () => {
+    const result = check(
+      [
+        entryNode([CREATED], { eligibility: true }),
+        waitNode({ waitDuration: entityToken("gone") }),
+      ],
+      [startedEdge],
+      entityCatalog
+    );
+
+    expect(result.valid).toBe(false);
+    expect(errorOf(result)).toContain('Entity "patient" does not declare');
+  });
+
+  it("ignores Entity references in Wait fields the current mode does not read", () => {
+    expect(
+      check(
+        [
+          entryNode([CREATED], { eligibility: true }),
+          waitNode({
+            waitMode: "delay",
+            waitDuration: "1h",
+            waitTimeout: entityToken("gone"),
+          }),
+        ],
+        [startedEdge],
+        entityCatalog
+      )
+    ).toEqual({ valid: true });
+  });
+
+  it("checks the Entity field type against a typed target", () => {
+    const result = check(
+      [
+        entryNode([CREATED], { eligibility: true }),
+        waitNode({ waitDuration: entityToken("name") }),
+      ],
+      [startedEdge],
+      entityCatalog
+    );
+
+    expect(result.valid).toBe(false);
+    expect(errorOf(result)).toContain("takes a duration");
+  });
+});
 
 describe("validateWorkflowTemplates", () => {
   it("accepts a duration target reading a duration", () => {
@@ -336,6 +572,105 @@ describe("validateWorkflowTemplates - keys the engine never resolves", () => {
       })
     ).toEqual({ valid: true });
   });
+
+  it("keeps dotted top-level config keys exact during validation", () => {
+    const dottedKeyCatalog: ExtensionCatalog = {
+      ...catalog,
+      actions: [
+        {
+          id: "custom/send",
+          label: "Send",
+          description: "",
+          category: "Custom",
+          configFields: [
+            {
+              key: "delivery.message",
+              label: "Delivery message",
+              type: "template-input",
+              required: true,
+            },
+          ],
+          outputFields: [],
+        },
+      ],
+    };
+    const result = validateWorkflowTemplates({
+      nodes: [
+        entryNode([CREATED, RESCHEDULED]),
+        {
+          id: "wait-1",
+          type: "action",
+          position: { x: 0, y: 100 },
+          data: {
+            label: "Send",
+            type: "action",
+            config: {
+              actionType: "custom/send",
+              "delivery.message": token("leadTime"),
+            },
+          },
+        },
+      ],
+      edges: [startedEdge],
+      catalog: dottedKeyCatalog,
+    });
+
+    expect(result.valid).toBe(false);
+    expect(errorOf(result)).toContain("delivery.message");
+    expect(errorOf(result)).toContain("does not carry");
+  });
+
+  it("validates key-value row values without reading row names", () => {
+    const keyValueCatalog: ExtensionCatalog = {
+      ...catalog,
+      actions: [
+        {
+          id: "custom/send",
+          label: "Send",
+          description: "",
+          category: "Custom",
+          configFields: [
+            {
+              key: "headers",
+              label: "Headers",
+              type: "key-value",
+              required: true,
+            },
+          ],
+          outputFields: [],
+        },
+      ],
+    };
+    const actionWith = (value: string): WorkflowNode => ({
+      id: "wait-1",
+      type: "action",
+      position: { x: 0, y: 100 },
+      data: {
+        label: "Send",
+        type: "action",
+        config: {
+          actionType: "custom/send",
+          headers: JSON.stringify([{ name: token("startsAt"), value }]),
+        },
+      },
+    });
+
+    expect(
+      validateWorkflowTemplates({
+        nodes: [entryNode([CREATED, RESCHEDULED]), actionWith("fixed")],
+        edges: [startedEdge],
+        catalog: keyValueCatalog,
+      })
+    ).toEqual({ valid: true });
+
+    const result = validateWorkflowTemplates({
+      nodes: [entryNode([CREATED, RESCHEDULED]), actionWith(token("leadTime"))],
+      edges: [startedEdge],
+      catalog: keyValueCatalog,
+    });
+    expect(result.valid).toBe(false);
+    expect(errorOf(result)).toContain("leadTime");
+  });
 });
 
 describe("validateWorkflowTemplates - keys the node's shape does not read", () => {
@@ -352,7 +687,7 @@ describe("validateWorkflowTemplates - keys the node's shape does not read", () =
             waitMode: "delay",
             waitDelayTimingMode: "duration",
             waitDuration: "24h",
-            waitTimeout: token("leadTime"),
+            waitTimeout: token("startsAt"),
           }),
         ],
         edges: [startedEdge],

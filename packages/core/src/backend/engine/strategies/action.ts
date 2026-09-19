@@ -93,6 +93,7 @@ function runAction(context: NodeWorkContext) {
       workflowVersionId,
       workflowRunId,
       runMode,
+      entityContext,
     } = context;
 
     if (!actionType) {
@@ -121,7 +122,8 @@ function runAction(context: NodeWorkContext) {
       configWithoutCondition,
       traversal.outputs,
       new Set(resolutionRules?.literalConfigKeys ?? []),
-      new Map(resolutionRules?.templateJsonConfigShapes ?? [])
+      new Map(resolutionRules?.templateJsonConfigShapes ?? []),
+      entityContext
     );
 
     if (originalCondition !== undefined) {
@@ -151,7 +153,7 @@ function runAction(context: NodeWorkContext) {
         side: context.side,
         workflowRunId,
         resolveTemplates: (value) =>
-          resolveTemplateString(value, traversal.outputs),
+          resolveTemplateString(value, traversal.outputs, entityContext),
       });
 
       const waitResult = waitOutcome.result;

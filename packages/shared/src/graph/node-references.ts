@@ -74,6 +74,60 @@ export function fieldsVisibleForConfig(
   return fields.filter((field) => matchesShowWhen(config, field.showWhen));
 }
 
+/**
+ * Find the declaration that makes a template path addressable.
+ *
+ * A declared field matches exactly. An open record also declares one arbitrary
+ * key immediately beneath its own path, matching the key autocomplete offers.
+ */
+export function referenceFieldForPath(
+  fields: readonly ReferenceField[],
+  path: string
+): ReferenceField | undefined {
+  const exact = fields.find((field) => field.path === path);
+  if (exact) {
+    return exact;
+  }
+
+  const pathSteps = parseOutputPath(path);
+  if (!pathSteps) {
+    return undefined;
+  }
+
+  for (const field of fields) {
+    if (!field.valueType) {
+      continue;
+    }
+    const fieldSteps = parseOutputPath(field.path);
+    if (
+      !fieldSteps ||
+      pathSteps.length !== fieldSteps.length + 1 ||
+      pathSteps[pathSteps.length - 1]?.kind !== "key"
+    ) {
+      continue;
+    }
+    const samePrefix = fieldSteps.every((step, index) => {
+      const candidate = pathSteps[index];
+      return step.kind === "key"
+        ? candidate?.kind === "key" && candidate.key === step.key
+        : candidate?.kind === "index" && candidate.index === step.index;
+    });
+    if (samePrefix) {
+      return {
+        ...omitUndefined({
+          ...field,
+          path,
+          type: field.valueType,
+          valueType: undefined,
+          nullable: true,
+        }),
+      };
+    }
+  }
+
+  return undefined;
+}
+
 /** Turn one schema-tree node into the flat reference field that addresses it. */
 function schemaFieldToReferenceField(
   field: WorkflowSchemaField,
@@ -188,7 +242,9 @@ function collectReferenceFields(
  *
  * A token is `{{@nodeId:NodeLabel}}` or `{{@nodeId:NodeLabel.field.path}}`. The
  * node id is what actually resolves at run time; the label is carried along so
- * the editor can show something readable and detect a renamed node.
+ * the editor can show something readable and detect a renamed node. The virtual
+ * Entity source prefixes its label with an encoded stable type and `|`; parsing
+ * keeps that identity separate so the display remains the human label.
  *
  * Neither the id nor the body may contain a brace, so a malformed token cannot
  * swallow the text that follows it. The label may not contain a dot, because
@@ -196,11 +252,21 @@ function collectReferenceFields(
  */
 const TEMPLATE_TOKEN_PATTERN = /\{\{@([^:{}]+):([^{}]+)\}\}/g;
 
+/** Reserved template source for the tracked Entity's state at one node boundary. */
+export const ENTITY_STATE_SOURCE_ID = "$entity";
+
+/** Whether a template token reads node-local tracked Entity State. */
+export function isEntityStateSourceId(sourceId: string): boolean {
+  return sourceId === ENTITY_STATE_SOURCE_ID;
+}
+
 /** A single `{{@nodeId:Label.field}}` reference located inside a larger string. */
 export type TemplateToken = {
   /** The exact source text of the token, braces included. */
   raw: string;
   nodeId: string;
+  /** Stable Entity type carried by a virtual Entity reference. */
+  sourceType?: string | undefined;
   nodeLabel: string;
   /** Dotted path into the node's output; empty when the token names the whole output. */
   fieldPath: string;
@@ -218,15 +284,30 @@ export type TemplateSegment =
 function toTemplateToken(match: RegExpExecArray): TemplateToken {
   const [raw, nodeId, body] = match;
   const dotIndex = body.indexOf(".");
+  const sourceLabel = dotIndex === -1 ? body : body.slice(0, dotIndex);
+  const entitySeparator = isEntityStateSourceId(nodeId)
+    ? sourceLabel.indexOf("|")
+    : -1;
+  let sourceType: string | undefined;
+  let nodeLabel = sourceLabel;
+  if (entitySeparator > 0) {
+    try {
+      sourceType = decodeURIComponent(sourceLabel.slice(0, entitySeparator));
+      nodeLabel = decodeURIComponent(sourceLabel.slice(entitySeparator + 1));
+    } catch {
+      sourceType = undefined;
+    }
+  }
 
-  return {
+  return omitUndefined({
     raw,
     nodeId,
-    nodeLabel: dotIndex === -1 ? body : body.slice(0, dotIndex),
+    sourceType,
+    nodeLabel,
     fieldPath: dotIndex === -1 ? "" : body.slice(dotIndex + 1),
     start: match.index,
     end: match.index + raw.length,
-  };
+  });
 }
 
 /** Every node reference in the string, in the order they appear. */
@@ -247,9 +328,15 @@ export function findTemplateTokens(value: string): TemplateToken[] {
 
 /** One template reference, with the config key it was written into. */
 export type ConfigTemplateReference = {
-  /** The dotted config key holding the reference. */
+  /** Exact top-level config key whose value holds the reference. */
+  configKey: string;
+  /** Dotted config location used in diagnostics. */
   field: string;
   nodeId: string;
+  /** Stable Entity type carried by a virtual Entity reference. */
+  sourceType?: string | undefined;
+  /** The source label stored for display in the token. */
+  nodeLabel: string;
   /** Dotted path into that node's output; empty when the token names the whole output. */
   fieldPath: string;
   /** The label and field path a builder sees, for a message about the reference. */
@@ -277,37 +364,58 @@ export function extractAllTemplateReferences(
 
 function configReferences(
   config: JsonObject,
-  prefix: string
+  prefix: string,
+  parentConfigKey?: string
 ): ConfigTemplateReference[] {
-  return Object.entries(config).flatMap(([key, value]) =>
-    templateReferencesIn(value, prefix ? `${prefix}.${key}` : key)
-  );
+  return Object.entries(config).flatMap(([key, value]) => {
+    const configKey = parentConfigKey ?? key;
+    return templateReferencesIn(
+      value,
+      prefix ? `${prefix}.${key}` : key,
+      configKey
+    );
+  });
 }
 
 function templateReferencesIn(
   value: JsonValue,
-  field: string
+  field: string,
+  configKey: string
 ): ConfigTemplateReference[] {
   if (typeof value === "string") {
-    return findTemplateTokens(value).map((token) => ({
-      field,
-      nodeId: token.nodeId,
-      fieldPath: token.fieldPath,
-      displayText: templateTokenDisplayText(token),
-    }));
+    return templateReferencesInString(value, field, configKey);
   }
 
   if (Array.isArray(value)) {
     return value.flatMap((item, index) =>
-      templateReferencesIn(item, `${field}.${index}`)
+      templateReferencesIn(item, `${field}.${index}`, configKey)
     );
   }
 
   if (isJsonObject(value)) {
-    return configReferences(value, field);
+    return configReferences(value, field, configKey);
   }
 
   return [];
+}
+
+/** Template references inside one consumed config string. */
+export function templateReferencesInString(
+  value: string,
+  field: string,
+  configKey = field
+): ConfigTemplateReference[] {
+  return findTemplateTokens(value).map((token) =>
+    omitUndefined({
+      configKey,
+      field,
+      nodeId: token.nodeId,
+      sourceType: token.sourceType,
+      nodeLabel: token.nodeLabel,
+      fieldPath: token.fieldPath,
+      displayText: templateTokenDisplayText(token),
+    })
+  );
 }
 
 /**
@@ -350,10 +458,15 @@ export function parseTemplate(value: string): TemplateSegment[] {
 export function formatTemplateToken(input: {
   nodeId: string;
   nodeLabel: string;
+  sourceType?: string | undefined;
   fieldPath?: string;
 }): string {
   const suffix = input.fieldPath ? `.${input.fieldPath}` : "";
-  return `{{@${input.nodeId}:${input.nodeLabel}${suffix}}}`;
+  const entityMetadata =
+    isEntityStateSourceId(input.nodeId) && input.sourceType
+      ? `${encodeURIComponent(input.sourceType).replaceAll(".", "%2E")}|${encodeURIComponent(input.nodeLabel).replaceAll(".", "%2E")}`
+      : input.nodeLabel;
+  return `{{@${input.nodeId}:${entityMetadata}${suffix}}}`;
 }
 
 /**
@@ -622,6 +735,38 @@ function readIndex(
  * Returns `undefined` when the path does not resolve, so a caller can tell a
  * missing key apart from a stored `null`.
  */
+function resolveJsonPathSteps(
+  value: JsonValue,
+  steps: readonly OutputPathStep[]
+): JsonValue | undefined {
+  let current: JsonValue | undefined = value;
+
+  for (const step of steps) {
+    if (current === null || current === undefined) {
+      return undefined;
+    }
+
+    current =
+      step.kind === "key"
+        ? readKey(current, step.key)
+        : readIndex(current, step.index);
+  }
+
+  return current;
+}
+
+/** Resolve a dotted path against raw JSON without interpreting step wrappers. */
+export function resolveJsonPath(
+  value: JsonValue,
+  path: string
+): JsonValue | undefined {
+  if (!path.trim()) {
+    return value;
+  }
+  const steps = parseOutputPath(path);
+  return steps ? resolveJsonPathSteps(value, steps) : undefined;
+}
+
 export function resolveOutputPath(
   output: JsonValue,
   path: string
@@ -638,21 +783,7 @@ export function resolveOutputPath(
   const firstKey = first.kind === "key" ? first.key : "";
   const namesWrapperKey =
     firstKey === "success" || firstKey === "data" || firstKey === "error";
+  const value = namesWrapperKey ? output : unwrapStepOutput(output);
 
-  let current: JsonValue | undefined = namesWrapperKey
-    ? output
-    : unwrapStepOutput(output);
-
-  for (const step of steps) {
-    if (current === null || current === undefined) {
-      return undefined;
-    }
-
-    current =
-      step.kind === "key"
-        ? readKey(current, step.key)
-        : readIndex(current, step.index);
-  }
-
-  return current;
+  return resolveJsonPathSteps(value, steps);
 }

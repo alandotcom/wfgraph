@@ -272,3 +272,33 @@ Canceled-side work runs beside any run a later Event opens for the same Entity.
 The in-flight probe inside `startForEntity` still requires an unclaimed row, which
 is what the rule was before this change, when a claimed run reached its terminal
 row at once and freed the slot there.
+
+## Amendment: Referenced Entity State is node-local template context
+
+Date: 2026-09-18
+
+A Lifecycle with both a tracked Entity and Entity Eligibility exposes the
+Entity's declared state fields as a virtual template source. The source is not a
+canvas node, does not change the Lifecycle payload, and never enters node outputs.
+Removing Eligibility, changing the tracked Entity, or removing a referenced field
+leaves the draft intact and makes Publish refuse the stale reference.
+
+Immediately before each consuming node executes, the engine resolves current
+Entity State and projects only the referenced paths. Nodes on both Started and
+Canceled sides may consume those values. A Started-side node that is also a
+before-node Eligibility checkpoint uses the same resolver snapshot for its
+Eligibility decision and template values. Different nodes resolve independently,
+including nodes reached after a Wait.
+
+Projected values cross the durable node boundary so replay supplies the action
+with the values used by the original attempt instead of rereading changed host
+state. This narrows the earlier rule that no resolved state enters a durable
+decision: the full Entity State still stays inside the resolver adapter, while
+only deduplicated authored paths and their JSON values enter the durable result.
+Those values remain absent from Workflow Graph database persistence, Lifecycle
+payloads, node outputs, logs, and audit metadata.
+
+A missing Entity at a data-only resolution fails the consuming node. When the
+same snapshot also serves Eligibility, the existing `entity_not_found` Exit
+outcome applies before the node executes. Resolver rejection, timeout, and
+schema-invalid state keep their existing operational-failure behavior.

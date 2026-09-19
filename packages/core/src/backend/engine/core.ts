@@ -181,9 +181,15 @@ function prepareRun(
 
   const traversal = new Traversal(nodes, edges);
   const lifecycleNodes = traversal.lifecycleNodes;
-  const eligibility = readLifecycleRules(
-    lifecycleNodes[0]?.data.config
-  )?.entityEligibility;
+  const lifecycleRules = readLifecycleRules(lifecycleNodes[0]?.data.config);
+  const eligibility = lifecycleRules?.entityEligibility;
+  const trackedEntity =
+    lifecycleRules?.trackedEntity && eligibility
+      ? {
+          entityType: input.entityType ?? "",
+          entityId: input.entityId ?? "",
+        }
+      : undefined;
   const entityEligibility = eligibility?.checkpoints.includes("before-node")
     ? {
         entityType: input.entityType ?? "",
@@ -220,6 +226,7 @@ function prepareRun(
     startEventName,
     catalogFingerprint: input.catalogFingerprint,
     workflowVersionId: input.workflowVersionId,
+    trackedEntity,
     entityEligibility,
     branchEntryNodeId,
   });
