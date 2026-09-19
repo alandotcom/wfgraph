@@ -13,6 +13,7 @@ import {
 import {
   type ConditionModel,
   type ConditionRule,
+  compileConditionModel,
   EVENT_NAME_FIELD_PATH,
   isNullCheckConditionRule,
   isStringSetConditionRule,
@@ -637,12 +638,14 @@ export function arrivingEventCanBeAbsent(input: {
       if (isConditionActionNode(parent)) {
         const branch = normalizeConditionBranch(edge.sourceHandle);
         const parsed = parseConditionModel(parent.data.config?.conditionModel);
-        if (
-          branch &&
-          parsed.valid &&
-          !modelCouldAnswerWithoutEvent(parsed.model, branch === "true")
-        ) {
-          return false;
+        if (branch && parsed.valid) {
+          const compiled = compileConditionModel(parsed.model);
+          if (
+            compiled.valid &&
+            !modelCouldAnswerWithoutEvent(parsed.model, branch === "true")
+          ) {
+            return false;
+          }
         }
       }
       return absentAt(parent.id, nextSeen);

@@ -889,6 +889,29 @@ describe("arrivingEventCanBeAbsent", () => {
     ).toBe(false);
   });
 
+  it("keeps both branches possible for an incomplete Condition", () => {
+    const nodes = [
+      entryNode({ startEvents: [CREATED] }),
+      waitWithTimeout("wait-1", "continue"),
+      conditionNode("condition-1", [eventNameRule("not_equals", "")]),
+      actionNode("on-true"),
+      actionNode("on-false"),
+    ];
+    const edges = [
+      edge("e1", "lifecycle-1", "wait-1", LIFECYCLE_STARTED_HANDLE),
+      edge("e2", "wait-1", "condition-1"),
+      edge("e3", "condition-1", "on-true", "true"),
+      edge("e4", "condition-1", "on-false", "false"),
+    ];
+
+    expect(
+      arrivingEventCanBeAbsent({ targetNodeId: "on-true", nodes, edges })
+    ).toBe(true);
+    expect(
+      arrivingEventCanBeAbsent({ targetNodeId: "on-false", nodes, edges })
+    ).toBe(true);
+  });
+
   it("answers false for a delay Wait, which is not an Event source", () => {
     const nodes = [
       entryNode({ startEvents: [CREATED] }),
