@@ -14,7 +14,11 @@ import {
   createDefaultConditionModel,
   EVENT_NAME_FIELD_PATH,
 } from "@wfgraph/shared/conditions/conditions";
-import { eventsReaching } from "@wfgraph/shared/graph/events-reaching";
+import {
+  type ArrivingEventReachability,
+  arrivingEventReachability,
+  eventsReaching,
+} from "@wfgraph/shared/graph/events-reaching";
 import {
   appendOutputPathKey,
   ENTITY_STATE_SOURCE_ID,
@@ -188,12 +192,7 @@ function entryPayloadFields(events: readonly EventMetadata[]): SourcedField[] {
 
 /** The Events that could have put a run at this node, as the editor asks it. */
 export function eventsReachingTarget(request: FieldRequest): EventMetadata[] {
-  return eventsReaching({
-    targetNodeId: request.targetNodeId,
-    nodes: request.nodes,
-    edges: request.edges,
-    catalog: request.catalog,
-  });
+  return eventsReaching(request);
 }
 
 function getPluginActionOutputFields(
@@ -226,9 +225,19 @@ export type FieldRequest = {
   catalog: ExtensionCatalog;
 };
 
-export function getNodeOutputFields(
+function markNullableWhenEventCanBeAbsent<T extends ReferenceField>(
+  fields: readonly T[],
+  eventCanBeAbsent: boolean
+): T[] {
+  return eventCanBeAbsent
+    ? fields.map((field) => ({ ...field, nullable: true }))
+    : [...fields];
+}
+
+function nodeOutputFields(
   node: WorkflowNode,
-  request: FieldRequest
+  request: FieldRequest,
+  eventReachability?: ArrivingEventReachability
 ): SourcedField[] {
   const actionType = readConfigString(node.data.config, "actionType");
 
@@ -246,13 +255,25 @@ export function getNodeOutputFields(
   // so what it offers is every path the Events that still could have declare,
   // each carrying what they agree on.
   if (node.data.type === "lifecycle") {
-    return entryPayloadFields(eventsReachingTarget(request));
+    const reachability =
+      eventReachability ?? arrivingEventReachability(request);
+    return markNullableWhenEventCanBeAbsent(
+      entryPayloadFields(reachability.events),
+      reachability.eventCanBeAbsent
+    );
   }
 
   // An action type the catalog cannot find -- a stale graph naming a plugin
   // action this build no longer ships -- has no declared schema to read fields
   // from, so there is nothing addressable to offer.
   return [];
+}
+
+export function getNodeOutputFields(
+  node: WorkflowNode,
+  request: FieldRequest
+): SourcedField[] {
+  return nodeOutputFields(node, request);
 }
 
 /** The nodes a run passed through before this one, in canvas order. */
@@ -270,12 +291,17 @@ export function getUpstreamNodes(input: {
   return nodes.filter((node) => upstreamIds.has(node.id));
 }
 
-export function getUpstreamFields(input: {
+type UpstreamFieldsInput = {
   currentNodeId?: string | undefined;
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
   catalog: ExtensionCatalog;
-}): SelectableUpstreamField[] {
+};
+
+function upstreamFields(
+  input: UpstreamFieldsInput,
+  eventReachability?: ArrivingEventReachability
+): SelectableUpstreamField[] {
   // The one narrowing: an entry node's answer names the node asking, so the id has
   // to be a string by the time the fields are read.
   const { currentNodeId, nodes, edges, catalog } = input;
@@ -283,20 +309,34 @@ export function getUpstreamFields(input: {
     return [];
   }
 
-  return getUpstreamNodes(input).flatMap((node) => {
-    const sourceNodeName = getNodeDisplayName(catalog, node);
-
-    return getNodeOutputFields(node, {
+  const reachability =
+    eventReachability ??
+    arrivingEventReachability({
       targetNodeId: currentNodeId,
       nodes,
       edges,
       catalog,
-    }).map(({ sourceLabel, ...field }) => ({
+    });
+
+  return getUpstreamNodes(input).flatMap((node) => {
+    const sourceNodeName = getNodeDisplayName(catalog, node);
+
+    return nodeOutputFields(
+      node,
+      { targetNodeId: currentNodeId, nodes, edges, catalog },
+      reachability
+    ).map(({ sourceLabel, ...field }) => ({
       ...field,
       sourceNodeId: node.id,
       sourceNodeName: sourceLabel ?? sourceNodeName,
     }));
   });
+}
+
+export function getUpstreamFields(
+  input: UpstreamFieldsInput
+): SelectableUpstreamField[] {
+  return upstreamFields(input);
 }
 
 /**
@@ -480,29 +520,29 @@ export function getEventConditionFields(
  * node's output, and the Event's name is a fact about the run rather than
  * anything the entry node hands on.
  */
-function eventNameConditionField(input: {
-  currentNodeId?: string | undefined;
-  nodes: WorkflowNode[];
-  edges: WorkflowEdge[];
-  catalog: ExtensionCatalog;
-}): ConditionSelectableField[] {
-  const { currentNodeId, nodes, edges, catalog } = input;
+function eventNameConditionField(
+  input: {
+    currentNodeId?: string | undefined;
+    nodes: WorkflowNode[];
+    edges: WorkflowEdge[];
+    catalog: ExtensionCatalog;
+  },
+  reachability: ArrivingEventReachability
+): ConditionSelectableField[] {
   const entryNode = getUpstreamNodes(input).find(
     (node) => node.data.type === "lifecycle"
   );
-  if (!(entryNode && currentNodeId)) {
+  if (!entryNode) {
     return [];
   }
 
-  return eventNameFieldFor({
-    sourceNodeId: entryNode.id,
-    events: eventsReachingTarget({
-      targetNodeId: currentNodeId,
-      nodes,
-      edges,
-      catalog,
+  return markNullableWhenEventCanBeAbsent(
+    eventNameFieldFor({
+      sourceNodeId: entryNode.id,
+      events: reachability.events,
     }),
-  });
+    reachability.eventCanBeAbsent
+  );
 }
 
 /**
@@ -662,12 +702,21 @@ export function getUpstreamConditionFields(input: {
   edges: WorkflowEdge[];
   catalog: ExtensionCatalog;
 }): ConditionSelectableField[] {
+  const reachability = arrivingEventReachability({
+    targetNodeId: input.currentNodeId ?? "",
+    nodes: input.nodes,
+    edges: input.edges,
+    catalog: input.catalog,
+  });
   const fieldsByPath = new Map<string, ConditionSelectableField>(
-    eventNameConditionField(input).map((field) => [field.path, field])
+    eventNameConditionField(input, reachability).map((field) => [
+      field.path,
+      field,
+    ])
   );
   const graphKeys = collectOpenRecordKeys(input.nodes, input.catalog);
 
-  for (const field of getUpstreamFields(input)) {
+  for (const field of upstreamFields(input, reachability)) {
     const path = field.path.trim();
     // A path the reaching Events type differently has no type to build a rule
     // over. Splitting on `$event.name` is what leaves one Event, and one type.
