@@ -33,10 +33,11 @@ editor. `schema` must publish both Standard Schema halves (validate + JSON
 Schema) from one object. Zod, arktype, and Effect Schema all work. A non-object
 root throws at definition.
 
-For each payload property, JSON Schema `title` supplies the short editor label
-and `description` supplies separate help text. Without a title, the editor
-derives a label from the final property key. In Zod 4, use
-`.meta({ title, description })`; `.describe(...)` sets only the description.
+For each payload property, the editor derives a readable label from the final
+property key and preserves common initialisms (`appointmentId` becomes
+"Appointment ID"). JSON Schema `description` supplies separate help text. In
+Zod 4, `.describe(...)` sets that help text. Use JSON Schema `title` only when
+the intended label cannot be derived from the key.
 
 ### Current Entity State
 

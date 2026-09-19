@@ -36,6 +36,7 @@ import {
   getValueByPath,
   setValueByPath,
 } from "@wfgraph/shared/utils/object-path";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 /** Which control draws a field, decided by the type the Event declared. */
 export type TestPayloadControl =
@@ -101,14 +102,16 @@ export function testPayloadFields(
     return [];
   }
 
-  return event.payloadFields.filter(isFormAddressable).map((field) => ({
-    path: field.path,
-    label: referenceFieldLabel(field),
-    description: field.description,
-    control: controlFor(field),
-    options: field.enumValues ? [...field.enumValues] : undefined,
-    optional: field.nullable === true,
-  }));
+  return event.payloadFields.filter(isFormAddressable).map((field) =>
+    omitUndefined({
+      path: field.path,
+      label: referenceFieldLabel(field),
+      description: field.description,
+      control: controlFor(field),
+      options: field.enumValues ? [...field.enumValues] : undefined,
+      optional: field.nullable === true,
+    })
+  );
 }
 
 /**

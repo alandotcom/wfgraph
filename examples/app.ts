@@ -62,12 +62,13 @@ const demoAuth = createDemoAuth({
 });
 
 // Workflow Graph reads a schema through Standard Schema and asks nothing else of it. The
-// editor labels a path from JSON Schema `title`, falling back to its key, while
-// `description` supplies separate help text. `z.iso.datetime()` emits
-// `format: "date-time"`, which gives the field before/after operators in the
-// condition builder and admits it to the Wait node's date field.
-const appointmentIdSchema = z.string().meta({ title: "Appointment ID" });
-const patientIdSchema = z.string().meta({ title: "Patient ID" });
+// editor derives a readable label from each key and uses JSON Schema `description`
+// as separate help text. Add a JSON Schema `title` only when the intended label
+// cannot be derived from the key. `z.iso.datetime()` emits `format: "date-time"`,
+// which gives the field before/after operators in the condition builder and admits
+// it to the Wait node's date field.
+const appointmentIdSchema = z.string();
+const patientIdSchema = z.string();
 
 const appointmentSchema = z.object({
   id: appointmentIdSchema,

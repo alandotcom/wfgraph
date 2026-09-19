@@ -171,7 +171,7 @@ describe("RunOverlay", () => {
       "The appointment's stable identifier."
     );
     expect(appointmentId.getAttribute("aria-describedby")).toBe(description.id);
-    expect(screen.getByLabelText("Starts At")).toBeTruthy();
+    expect(screen.getByLabelText("Starts at")).toBeTruthy();
     expect(screen.getByText("appointment.id")).toBeTruthy();
     expect(screen.getByText("appointment.startsAt")).toBeTruthy();
   });

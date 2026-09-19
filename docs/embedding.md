@@ -32,8 +32,8 @@ const appointmentCreated = defineEvent({
   description: "The app raises this Event for each new appointment.",
   schema: z.object({
     appointment: z.object({
-      id: z.string().meta({ title: "Appointment ID" }),
-      startsAt: z.iso.datetime().meta({ title: "Starts at" }),
+      id: z.string(),
+      startsAt: z.iso.datetime(),
     }),
   }),
   correlationPath: "appointment.id",
@@ -45,16 +45,16 @@ const cancelAppointment = defineAction({
   label: "Cancel Appointment",
   description: "Cancels an appointment and records the reason.",
   category: "Appointments",
-  // This schema draws the config form. JSON Schema `title` is the short field
-  // label; `description` is separate help text. Without a title, the editor
-  // derives a label from the key ("appointmentId" becomes "Appointment Id").
+  // This schema draws the config form. The editor derives readable labels from
+  // property keys ("appointmentId" becomes "Appointment ID"). JSON Schema
+  // `description` adds help text; `title` overrides a label when needed.
   input: z.object({
-    appointmentId: z.string().meta({ title: "Appointment ID" }),
+    appointmentId: z.string(),
     reason: z.string().min(1),
   }),
   // What `handler` returns. This schema also drives template autocomplete.
   output: z.object({
-    appointmentId: z.string().meta({ title: "Appointment ID" }),
+    appointmentId: z.string(),
     status: z.string(),
     cancelledAt: z.iso.datetime(),
   }),

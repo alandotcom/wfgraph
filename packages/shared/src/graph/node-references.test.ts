@@ -24,11 +24,14 @@ describe("referenceFieldLabel", () => {
     expect(
       referenceFieldLabel({ path: "appointment.id", label: "Appointment ID" })
     ).toBe("Appointment ID");
+    expect(referenceFieldLabel({ path: "appointment.appointmentId" })).toBe(
+      "Appointment ID"
+    );
     expect(referenceFieldLabel({ path: "appointment.startsAt" })).toBe(
-      "Starts At"
+      "Starts at"
     );
     expect(referenceFieldLabel({ path: 'tags["campaign.name"]' })).toBe(
-      "Campaign Name"
+      "Campaign name"
     );
   });
 });

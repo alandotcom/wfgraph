@@ -62,7 +62,7 @@ const createdAt = isoTimestampString("When Resend created this Event");
  * The rest are on every documented example and non-optional in `resend-node`.
  */
 const emailFields = {
-  email_id: Schema.String.annotate({ title: "Email ID" }),
+  email_id: Schema.String,
   created_at: isoTimestampString("When the email was created"),
   from: Schema.String.annotate({ title: "Sender" }),
   to: Schema.mutable(Schema.Array(Schema.String)).annotate({
@@ -70,12 +70,8 @@ const emailFields = {
   }),
   subject: Schema.String,
   message_id: Schema.String.annotate({ title: "RFC Message-ID" }),
-  broadcast_id: Schema.optionalKey(
-    Schema.String.annotate({ title: "Broadcast ID" })
-  ),
-  template_id: Schema.optionalKey(
-    Schema.String.annotate({ title: "Template ID" })
-  ),
+  broadcast_id: Schema.optionalKey(Schema.String),
+  template_id: Schema.optionalKey(Schema.String),
   tags: Schema.optionalKey(
     Schema.Record(Schema.String, Schema.String).annotate({
       title: "Email tags",
@@ -156,7 +152,7 @@ const emailSuppressedData = Schema.Struct({
  * Resend's Received emails and Attachments APIs are where those are read.
  */
 const emailReceivedData = Schema.Struct({
-  email_id: Schema.String.annotate({ title: "Email ID" }),
+  email_id: Schema.String,
   created_at: isoTimestampString("When the email was received"),
   from: Schema.String.annotate({
     title: "Sender",
@@ -182,13 +178,9 @@ const emailReceivedData = Schema.Struct({
       Schema.Struct({
         id: Schema.String.annotate({ title: "Attachment ID" }),
         filename: Schema.NullOr(Schema.String),
-        content_type: Schema.String.annotate({ title: "Content type" }),
-        content_disposition: Schema.NullOr(Schema.String).annotate({
-          title: "Content disposition",
-        }),
-        content_id: Schema.NullOr(Schema.String).annotate({
-          title: "Content ID",
-        }),
+        content_type: Schema.String,
+        content_disposition: Schema.NullOr(Schema.String),
+        content_id: Schema.NullOr(Schema.String),
       })
     )
   ).annotate({ title: "Attachment metadata" }),
@@ -215,7 +207,7 @@ const domainData = Schema.Struct({
         name: Schema.String.annotate({ title: "DNS name" }),
         type: Schema.String.annotate({ title: "DNS type" }),
         value: Schema.String.annotate({ title: "DNS value" }),
-        ttl: Schema.String.annotate({ title: "TTL" }),
+        ttl: Schema.String,
         status: Schema.String.annotate({ title: "Record status" }),
         // Carried by an MX record alone, which the docs call optional.
         priority: Schema.optionalKey(
@@ -229,25 +221,15 @@ const domainData = Schema.Struct({
 const contactData = Schema.Struct({
   id: Schema.String.annotate({ title: "Contact ID" }),
   // Not required per the docs and non-optional per `resend-node`.
-  audience_id: Schema.optionalKey(
-    Schema.String.annotate({ title: "Audience ID" })
-  ),
-  segment_ids: Schema.optionalKey(
-    Schema.mutable(Schema.Array(Schema.String)).annotate({
-      title: "Segment IDs",
-    })
-  ),
+  audience_id: Schema.optionalKey(Schema.String),
+  segment_ids: Schema.optionalKey(Schema.mutable(Schema.Array(Schema.String))),
   created_at: isoTimestampString("When the contact was created"),
   updated_at: isoTimestampString("When the contact was last updated"),
   email: Schema.String.annotate({ title: "Contact email" }),
   // "May be absent from the payload" per the docs, and `string | null` in both
   // sources, so each field can go missing either way.
-  first_name: Schema.optionalKey(
-    Schema.NullOr(Schema.String).annotate({ title: "First name" })
-  ),
-  last_name: Schema.optionalKey(
-    Schema.NullOr(Schema.String).annotate({ title: "Last name" })
-  ),
+  first_name: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  last_name: Schema.optionalKey(Schema.NullOr(Schema.String)),
   unsubscribed: Schema.Boolean.annotate({
     title: "Unsubscribed from all emails",
   }),

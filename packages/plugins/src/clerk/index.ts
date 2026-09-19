@@ -53,15 +53,9 @@ export type ClerkCredentials = CredentialsOf<typeof clerkCredentialFields>;
  */
 const clerkUserOutput = {
   id: Schema.String.annotate({ title: "User ID" }),
-  firstName: Schema.optionalKey(
-    Schema.NullOr(Schema.String.annotate({ title: "First name" }))
-  ),
-  lastName: Schema.optionalKey(
-    Schema.NullOr(Schema.String.annotate({ title: "Last name" }))
-  ),
-  primaryEmailAddress: Schema.optionalKey(
-    Schema.NullOr(Schema.String.annotate({ title: "Primary email address" }))
-  ),
+  firstName: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  lastName: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  primaryEmailAddress: Schema.optionalKey(Schema.NullOr(Schema.String)),
   // A bare `Schema.Number` describes itself as a number or one of the strings
   // "Infinity", "-Infinity" and "NaN", which the field reader cannot use, so
   // the field would drop out of the derived list. The check is what keeps it.

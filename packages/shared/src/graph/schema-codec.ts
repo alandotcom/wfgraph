@@ -1089,9 +1089,53 @@ function deriveConfigFieldType(
   }
 }
 
+const FIELD_LABEL_INITIALISMS: ReadonlyMap<string, string> = new Map([
+  ["api", "API"],
+  ["apis", "APIs"],
+  ["aws", "AWS"],
+  ["bcc", "BCC"],
+  ["cc", "CC"],
+  ["csv", "CSV"],
+  ["dns", "DNS"],
+  ["html", "HTML"],
+  ["http", "HTTP"],
+  ["https", "HTTPS"],
+  ["id", "ID"],
+  ["ids", "IDs"],
+  ["ip", "IP"],
+  ["json", "JSON"],
+  ["mx", "MX"],
+  ["oauth", "OAuth"],
+  ["pdf", "PDF"],
+  ["rfc", "RFC"],
+  ["sid", "SID"],
+  ["sms", "SMS"],
+  ["smtp", "SMTP"],
+  ["sql", "SQL"],
+  ["ttl", "TTL"],
+  ["ui", "UI"],
+  ["url", "URL"],
+  ["urls", "URLs"],
+  ["utc", "UTC"],
+  ["uuid", "UUID"],
+  ["uuids", "UUIDs"],
+  ["xml", "XML"],
+]);
+
+/** A property key as a sentence-case label, preserving common initialisms. */
+function labelFromPropertyKey(key: string): string {
+  return startCase(key)
+    .split(" ")
+    .map((word, index) => {
+      const initialism = FIELD_LABEL_INITIALISMS.get(word.toLowerCase());
+      return initialism ?? (index === 0 ? word : word.toLowerCase());
+    })
+    .join(" ");
+}
+
 /** What a key is called on screen: its JSON Schema title or a readable key. */
 export function labelFromKey(key: string, title?: string): string {
-  return title?.trim() ? title.trim() : startCase(key);
+  return title?.trim() || labelFromPropertyKey(key);
 }
 
 function deriveSelectOptions(

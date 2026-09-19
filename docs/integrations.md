@@ -221,10 +221,11 @@ catches around the await turns that into whatever it answers next, so catch narr
 
 ## The config form
 
-`input` draws it. JSON Schema `title` supplies the short field label, and `description`
-supplies explanatory help text. Workflow Graph derives a readable label from the property
-key when `title` is absent. In Effect Schema, add both with
-`.annotate({ title, description })`. A field is required where the schema requires it.
+`input` draws it. Workflow Graph derives a readable label from each property key and
+preserves common initialisms (`messageId` becomes "Message ID"). JSON Schema `description`
+supplies explanatory help text. Use `title` only when the intended label cannot be derived
+from the key. In Effect Schema, add either with `.annotate(...)`. A field is required where
+the schema requires it.
 
 `configFields` states what a schema cannot: a placeholder, a `template-textarea` row count,
 a friendly `select` label, a `showWhen`, a group. An entry merges into the derived field of

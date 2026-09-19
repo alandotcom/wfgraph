@@ -1,11 +1,27 @@
 import { describe, expect, it } from "vitest";
 import {
   configFieldsFromJsonSchema,
+  labelFromKey,
   parseWorkflowSchemaField,
   parseWorkflowSchemaFieldsOrJsonSchema,
   type WorkflowSchemaField,
   workflowSchemaFieldsToJsonSchemaDocument,
 } from "./schema-codec";
+
+describe("labelFromKey", () => {
+  it("derives sentence-case labels and preserves common initialisms", () => {
+    expect(labelFromKey("appointmentId")).toBe("Appointment ID");
+    expect(labelFromKey("callbackUrl")).toBe("Callback URL");
+    expect(labelFromKey("apiKey")).toBe("API key");
+    expect(labelFromKey("eventUuid")).toBe("Event UUID");
+    expect(labelFromKey("constructor")).toBe("Constructor");
+  });
+
+  it("prefers a non-blank authored title", () => {
+    expect(labelFromKey("id", "Item ID")).toBe("Item ID");
+    expect(labelFromKey("appointmentId", "  ")).toBe("Appointment ID");
+  });
+});
 
 describe("parseWorkflowSchemaField", () => {
   it("normalizes primitive timestamp fields", () => {
@@ -1156,7 +1172,7 @@ describe("configFieldsFromJsonSchema", () => {
     });
 
     expect(fields).toEqual([
-      { key: "id", label: "Id", type: "template-input" },
+      { key: "id", label: "ID", type: "template-input" },
     ]);
   });
 
@@ -1173,7 +1189,7 @@ describe("configFieldsFromJsonSchema", () => {
     ]);
   });
 
-  it("uses startCase(key) as label when title is missing", () => {
+  it("derives a sentence-case label with common initialisms", () => {
     const fields = configFieldsFromJsonSchema({
       type: "object",
       properties: {
@@ -1181,7 +1197,7 @@ describe("configFieldsFromJsonSchema", () => {
       },
     });
 
-    expect(fields[0]?.label).toBe("Appointment Id");
+    expect(fields[0]?.label).toBe("Appointment ID");
   });
 
   it("sets required on fields listed in the required array", () => {

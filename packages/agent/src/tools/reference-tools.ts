@@ -27,6 +27,7 @@ import { getNodeDisplayName } from "@wfgraph/shared/graph/node-display";
 import {
   fieldsVisibleForConfig,
   formatTemplateToken,
+  referenceFieldLabel,
   type ReferenceField,
 } from "@wfgraph/shared/graph/node-references";
 import { reachableEventFields } from "@wfgraph/shared/graph/reachable-fields";
@@ -47,7 +48,7 @@ const referenceSchema = Schema.Struct({
   sourceNodeId: Schema.String,
   sourceNodeLabel: Schema.String,
   path: Schema.String,
-  label: Schema.optionalKey(Schema.String),
+  label: Schema.String,
   type: Schema.optionalKey(Schema.String),
   description: Schema.optionalKey(Schema.String),
   /** True when a run may reach this node without the value being set. */
@@ -204,7 +205,7 @@ export function referencesForNode(input: {
           sourceNodeId: node.id,
           sourceNodeLabel,
           path: field.path,
-          label: field.label,
+          label: referenceFieldLabel(field),
           type: field.type,
           description: field.description,
           nullable: field.nullable,

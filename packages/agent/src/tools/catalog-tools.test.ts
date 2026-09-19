@@ -258,7 +258,7 @@ describe("describe_action", () => {
           type: "string",
           description: "Slack message timestamp.",
         },
-        { path: "channelId", type: "string" },
+        { path: "channelId", label: "Channel ID", type: "string" },
       ]);
     })
   );
@@ -432,6 +432,7 @@ describe("describe_event", () => {
           stateFields: [
             {
               path: "status",
+              label: "Status",
               type: "string",
               enumValues: ["active", "paused", "closed"],
             },

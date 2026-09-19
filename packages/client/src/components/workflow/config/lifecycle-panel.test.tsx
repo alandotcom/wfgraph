@@ -1140,7 +1140,7 @@ describe("LifecyclePanel Entity eligibility", () => {
       .map((option) => option.textContent);
     expect(choices).toEqual(
       expect.arrayContaining([
-        "Reminders EnabledremindersEnabled",
+        "Reminders enabledremindersEnabled",
         "Statusstatus",
       ])
     );

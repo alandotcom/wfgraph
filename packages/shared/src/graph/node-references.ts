@@ -14,16 +14,16 @@
  */
 
 import { isPlainObject } from "es-toolkit/predicate";
-import { startCase } from "es-toolkit/string";
 import { isJsonObject, type JsonObject, type JsonValue } from "#src/types/json";
 import { isSafeRecordKey } from "#src/types/record-key";
 import { matchesShowWhen, type ShowWhen } from "#src/types/show-when";
 import { mapOrSame, mapValuesOrSame } from "#src/utils/map-or-same";
 import { omitUndefined } from "#src/utils/omit-undefined";
-import type {
-  WorkflowSchemaField,
-  WorkflowSchemaFieldType,
-  WorkflowSchemaItemType,
+import {
+  labelFromKey,
+  type WorkflowSchemaField,
+  type WorkflowSchemaFieldType,
+  type WorkflowSchemaItemType,
 } from "./schema-codec";
 
 /**
@@ -71,7 +71,7 @@ export function referenceFieldLabel(
 ): string {
   const steps = parseOutputPath(field.path);
   const key = steps?.findLast((step) => step.kind === "key")?.key ?? field.path;
-  return field.label?.trim() || startCase(key);
+  return labelFromKey(key, field.label);
 }
 
 /**

@@ -40,9 +40,9 @@ describe("the posthog integration", () => {
         posthog.actions["capture-event"].output
       )
     ).toEqual([
-      { path: "eventName", label: "Event name", type: "string" },
+      { path: "eventName", type: "string" },
       { path: "distinctId", label: "Person distinct ID", type: "string" },
-      { path: "eventUuid", label: "Event UUID", type: "string" },
+      { path: "eventUuid", type: "string" },
       { path: "timestamp", label: "Event timestamp", type: "string" },
       {
         path: "reasonCode",
@@ -61,7 +61,7 @@ describe("the posthog integration", () => {
       )
     ).toEqual([
       { path: "distinctId", label: "Person distinct ID", type: "string" },
-      { path: "eventUuid", label: "Event UUID", type: "string" },
+      { path: "eventUuid", type: "string" },
       { path: "timestamp", label: "Event timestamp", type: "string" },
       {
         path: "reasonCode",

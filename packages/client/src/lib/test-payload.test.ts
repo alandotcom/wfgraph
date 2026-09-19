@@ -38,7 +38,7 @@ describe("testPayloadFields", () => {
       },
       {
         path: "appointment.startsAt",
-        label: "Starts At",
+        label: "Starts at",
         control: "datetime",
         optional: false,
       },

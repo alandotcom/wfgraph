@@ -20,24 +20,9 @@ function outputFieldsOf(slug: keyof typeof integration.actions) {
  */
 const USER_FIELDS = [
   { path: "id", label: "User ID", type: "string" },
-  {
-    path: "firstName",
-    label: "First name",
-    type: "string",
-    nullable: true,
-  },
-  {
-    path: "lastName",
-    label: "Last name",
-    type: "string",
-    nullable: true,
-  },
-  {
-    path: "primaryEmailAddress",
-    label: "Primary email address",
-    type: "string",
-    nullable: true,
-  },
+  { path: "firstName", type: "string", nullable: true },
+  { path: "lastName", type: "string", nullable: true },
+  { path: "primaryEmailAddress", type: "string", nullable: true },
   {
     path: "createdAt",
     description: "When the user was created, epoch milliseconds",

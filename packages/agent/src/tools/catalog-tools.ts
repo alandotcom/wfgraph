@@ -22,7 +22,10 @@ import type {
   ActionMetadata,
   ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
-import type { ReferenceField } from "@wfgraph/shared/graph/node-references";
+import {
+  referenceFieldLabel,
+  type ReferenceField,
+} from "@wfgraph/shared/graph/node-references";
 import { flattenConfigFields } from "@wfgraph/shared/plugins/action-fields";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { WorkflowDraft } from "#src/document";
@@ -58,7 +61,7 @@ const configFieldSchema = Schema.Struct({
 
 const referenceFieldSchema = Schema.Struct({
   path: Schema.String,
-  label: Schema.optionalKey(Schema.String),
+  label: Schema.String,
   type: Schema.optionalKey(Schema.String),
   /** The value type for an open-record field whose keys are chosen at runtime. */
   valueType: Schema.optionalKey(Schema.String),
@@ -130,7 +133,7 @@ function toActionSummary(action: ActionMetadata) {
 function toReferenceField(field: ReferenceField) {
   return omitUndefined({
     path: field.path,
-    label: field.label,
+    label: referenceFieldLabel(field),
     type: field.type,
     valueType: field.valueType,
     description: field.description,

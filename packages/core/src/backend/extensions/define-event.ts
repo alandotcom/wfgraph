@@ -348,9 +348,9 @@ export type DefineEventInput<
  * is derived from it on the spot: an Event's field list is fixed the moment it is
  * defined, so nothing later derives it again or holds a hand-written copy.
  *
- * A title annotation names a field in the editor, and a description supplies
- * its help text. A schema the derivation cannot read at all throws here naming
- * the Event.
+ * The editor derives a readable label from each property key. A title overrides
+ * that label, and a description supplies help text. A schema the derivation
+ * cannot read at all throws here naming the Event.
  */
 export function defineEvent<TPayload extends JsonObject, TValidated = TPayload>(
   input: DefineEventInput<TPayload, TValidated>

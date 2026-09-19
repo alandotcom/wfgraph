@@ -10,15 +10,14 @@ const paymentSettled = defineEvent({
   label: "Payment settled",
   description: "The billing service raises this Event when a charge clears.",
   schema: z.object({
-    appointmentId: z.string().meta({
-      title: "Appointment ID",
-      description: "The appointment this payment belongs to.",
-    }),
+    appointmentId: z
+      .string()
+      .describe("The appointment this payment belongs to."),
     amountCents: z.number().meta({
       title: "Amount",
       description: "The settled amount in cents.",
     }),
-    settledAt: z.iso.datetime().meta({ title: "Settled at" }),
+    settledAt: z.iso.datetime(),
   }),
   correlationPath: "appointmentId",
 });
@@ -133,11 +132,11 @@ arktype and pass it as it is. Workflow Graph needs both halves of Standard Schem
 - the JSON Schema half draws the field list in the editor.
 
 An Event therefore requires a library that publishes both halves. A schema whose root is
-another type than an object throws at definition and names the Event. A field's JSON Schema `title` is its short label in the editor. Without one, the
-editor derives a label from the final key (`startsAt` becomes "Starts At"). The
-JSON Schema `description` is separate help text shown below that label. In Zod 4,
-set both with `.meta({ title, description })`; `.describe(...)` sets only the
-description.
+another type than an object throws at definition and names the Event. The editor derives a readable label from the final property key, including common
+initialisms (`appointmentId` becomes "Appointment ID" and `startsAt` becomes "Starts at").
+Most fields need no title. JSON Schema `description` supplies separate help text. In Zod 4,
+`.describe(...)` sets that help text. Use `.meta({ title, description })` only when the
+intended label cannot be derived from the key.
 
 **`correlationPath` names where the Entity Value sits.** It is typed against the payload
 and admits a path that resolves to a string.
@@ -176,7 +175,7 @@ const invoicePaid = defineEvent({
   label: "Invoice paid",
   schema: Schema.Struct({
     type: Schema.String.annotate({ title: "Subtype" }),
-    invoiceId: Schema.String.annotate({ title: "Invoice ID" }),
+    invoiceId: Schema.String,
   }),
   correlationPath: "invoiceId",
   source: { event: "billing/webhook", when: { path: "type", equals: "paid" } },

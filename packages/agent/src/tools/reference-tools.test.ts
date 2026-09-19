@@ -188,6 +188,11 @@ describe("list_references", () => {
         "{{@entry:Lifecycle.email}}",
         "{{@entry:Lifecycle.score}}",
       ]);
+      const applicantId = result.references.find(
+        (reference) => reference.path === "applicantId"
+      );
+      expect(applicantId?.label).toBe("Applicant ID");
+
       const email = result.references.find(
         (reference) => reference.path === "email"
       );
