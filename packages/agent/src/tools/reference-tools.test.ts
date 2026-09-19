@@ -79,6 +79,62 @@ describe("list_references", () => {
     })
   );
 
+  it.effect("offers tracked Entity State without Eligibility", () =>
+    Effect.gen(function* () {
+      const trackedLifecycle: WorkflowNode = {
+        ...lifecycleNode(["applicant.created"]),
+        data: {
+          ...lifecycleNode(["applicant.created"]).data,
+          config: {
+            lifecycleRules: {
+              ...emptyLifecycleRules,
+              startEvents: ["applicant.created"],
+              trackedEntity: { type: "applicant", bindings: {} },
+            },
+          },
+        },
+      };
+      const entityCatalog: ExtensionCatalog = {
+        ...catalog,
+        entities: [
+          {
+            type: "applicant",
+            label: "Applicant",
+            stateFields: [
+              { path: "status", type: "string" },
+              { path: "metadata", type: "object", valueType: "string" },
+            ],
+            stateSchemaDigest: "applicant-state",
+          },
+        ],
+      };
+      const { tools } = yield* agentToolsFor({
+        nodes: [trackedLifecycle, slackNode],
+        edges: [],
+        catalog: entityCatalog,
+      });
+
+      const result = yield* tools.list_references({
+        nodeId: "notify",
+        sourceNodeId: "$entity",
+      });
+
+      expect(result.references).toEqual([
+        expect.objectContaining({
+          token: "{{@$entity:applicant|Applicant.status}}",
+          sourceNodeId: "$entity",
+          path: "$entity.applicant.status",
+          conditionFieldType: "string",
+        }),
+        expect.objectContaining({
+          token: "{{@$entity:applicant|Applicant.metadata}}",
+          path: "$entity.applicant.metadata",
+          openRecord: true,
+        }),
+      ]);
+    })
+  );
+
   it.effect("filters and limits reference results", () =>
     Effect.gen(function* () {
       const manyFields = Array.from({ length: 12 }, (_, index) => ({

@@ -15,7 +15,10 @@
 
 import { Effect, Schema } from "effect";
 import { Tool } from "effect/unstable/ai";
-import type { ConditionFieldType } from "@wfgraph/shared/conditions/condition-model";
+import {
+  entityStateConditionPath,
+  type ConditionFieldType,
+} from "@wfgraph/shared/conditions/condition-model";
 import { conditionTypeOf } from "@wfgraph/shared/conditions/condition-field-type";
 import { findAction } from "@wfgraph/shared/extensions/catalog";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
@@ -25,6 +28,7 @@ import {
 } from "@wfgraph/shared/graph/events-reaching";
 import { getNodeDisplayName } from "@wfgraph/shared/graph/node-display";
 import {
+  ENTITY_STATE_SOURCE_ID,
   fieldsVisibleForConfig,
   formatTemplateToken,
   referenceFieldLabel,
@@ -33,6 +37,8 @@ import {
 import { reachableEventFields } from "@wfgraph/shared/graph/reachable-fields";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import { readConfigString } from "@wfgraph/shared/graph/node-config";
+import { findTrackedEntityStateSource } from "@wfgraph/shared/lifecycle/entity-eligibility";
+import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { upstreamNodeIds } from "@wfgraph/shared/graph/upstream-nodes";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { type AgentDocument, WorkflowDraft } from "#src/document";
@@ -126,7 +132,7 @@ function outputFieldsOf(input: {
 
 export const ListReferences = Tool.make("list_references", {
   description:
-    "Every value a given node's config may refer to, each as a finished {{@nodeId:Label.path}} token. Only nodes above this one in the graph can be referenced, so connect a node before filling in a config that reads from upstream. The Lifecycle Node offers the payload of the Arriving Event, which an event-mode Wait above this node replaces with the Events that Wait parks on: read declaredBy to see which Events a path came from, and expect the Start Event payload to be unavailable below such a Wait. Re-read this list after configuring any Wait above this node, because that edit changes what is addressable here.",
+    "Every value a given node's config may refer to, each as a finished {{@nodeId:Label.path}} token. Only nodes above this one in the graph can be referenced, so connect a node before filling in a config that reads from upstream. A tracked Entity is also available through the virtual $entity source, even without Entity Eligibility; use its token in text config and its path in set_condition. The Lifecycle Node offers the payload of the Arriving Event, which an event-mode Wait above this node replaces with the Events that Wait parks on: read declaredBy to see which Events a path came from, and expect the Start Event payload to be unavailable below such a Wait. Re-read this list after configuring any Wait above this node, because that edit changes what is addressable here.",
   parameters: Schema.Struct({
     nodeId: Schema.String.annotate({
       description: "The node whose config is being filled in.",
@@ -173,7 +179,7 @@ export function referencesForNode(input: {
     catalog: input.catalog,
   });
 
-  return input.document.nodes
+  const upstreamReferences = input.document.nodes
     .filter((node) => upstream.has(node.id))
     .flatMap((node) => {
       const sourceNodeLabel = getNodeDisplayName(input.catalog, node);
@@ -204,6 +210,45 @@ export function referencesForNode(input: {
         });
       });
     });
+
+  const lifecycle = input.document.nodes.find(
+    (node) => node.data.type === "lifecycle"
+  );
+  const entity = findTrackedEntityStateSource({
+    rules: readLifecycleRules(lifecycle?.data.config),
+    catalog: input.catalog,
+  });
+  const entityReferences = entity
+    ? entity.stateFields.flatMap((field) => {
+        const path = entityStateConditionPath(entity.type, field.path);
+        if (!path) {
+          return [];
+        }
+        const conditionFieldType = conditionFieldTypeOf(field);
+        return [
+          omitUndefined({
+            token: formatTemplateToken({
+              nodeId: ENTITY_STATE_SOURCE_ID,
+              nodeLabel: entity.label,
+              sourceType: entity.type,
+              fieldPath: field.path,
+            }),
+            sourceNodeId: ENTITY_STATE_SOURCE_ID,
+            sourceNodeLabel: entity.label,
+            path,
+            label: referenceFieldLabel(field),
+            type: field.type,
+            description: field.description,
+            nullable: field.nullable,
+            enumValues: field.enumValues,
+            conditionFieldType: conditionFieldType ?? undefined,
+            openRecord: field.valueType ? true : undefined,
+          }),
+        ];
+      })
+    : [];
+
+  return [...upstreamReferences, ...entityReferences];
 }
 
 export const referenceToolHandlers = Effect.gen(function* () {

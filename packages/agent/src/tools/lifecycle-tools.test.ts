@@ -1269,6 +1269,74 @@ describe("set_condition", () => {
     })
   );
 
+  it.effect("writes a Condition rule against tracked Entity State", () =>
+    Effect.gen(function* () {
+      const trackedLifecycle: WorkflowNode = {
+        ...conditionLifecycle,
+        data: {
+          ...conditionLifecycle.data,
+          config: {
+            lifecycleRules: {
+              startEvents: ["applicant.created"],
+              cancelEvents: [],
+              concurrency: "unlimited",
+              allowManualStart: false,
+              trackedEntity: {
+                type: "applicant",
+                bindings: { "applicant.created": "applicant" },
+              },
+            },
+          },
+        },
+      };
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [trackedLifecycle, condition],
+        edges: [
+          {
+            id: "entry-condition",
+            source: "entry",
+            target: "branch",
+            sourceHandle: LIFECYCLE_STARTED_HANDLE,
+          },
+        ],
+        catalog: catalogWithEntity,
+      });
+
+      yield* tools.set_condition({
+        nodeId: "branch",
+        groups: [
+          {
+            rules: [
+              {
+                field: "$entity.applicant.status",
+                fieldType: "string",
+                operator: "equals",
+                value: "active",
+              },
+            ],
+          },
+        ],
+      });
+
+      const config = (yield* draft.current).nodes.find(
+        (node) => node.id === "branch"
+      )?.data.config;
+      const parsed = parseConditionModel(
+        readConfigString(config, "conditionModel") ?? ""
+      );
+      expect(parsed.valid).toBe(true);
+      if (parsed.valid) {
+        expect(parsed.model.groups[0]?.conditions[0]).toMatchObject({
+          field: "$entity.applicant.status",
+          fieldType: "string",
+        });
+      }
+      expect(readConfigString(config, "condition")).toContain(
+        "entity.status"
+      );
+    })
+  );
+
   it.effect("writes a string set rule", () =>
     Effect.gen(function* () {
       const { tools, draft } = yield* agentToolsFor({
