@@ -572,6 +572,58 @@ describe("validateWorkflowTemplates - keys the engine never resolves", () => {
       })
     ).toEqual({ valid: true });
   });
+
+  it("validates key-value row values without reading row names", () => {
+    const keyValueCatalog: ExtensionCatalog = {
+      ...catalog,
+      actions: [
+        {
+          id: "custom/send",
+          label: "Send",
+          description: "",
+          category: "Custom",
+          configFields: [
+            {
+              key: "headers",
+              label: "Headers",
+              type: "key-value",
+              required: true,
+            },
+          ],
+          outputFields: [],
+        },
+      ],
+    };
+    const actionWith = (value: string): WorkflowNode => ({
+      id: "wait-1",
+      type: "action",
+      position: { x: 0, y: 100 },
+      data: {
+        label: "Send",
+        type: "action",
+        config: {
+          actionType: "custom/send",
+          headers: JSON.stringify([{ name: token("startsAt"), value }]),
+        },
+      },
+    });
+
+    expect(
+      validateWorkflowTemplates({
+        nodes: [entryNode([CREATED, RESCHEDULED]), actionWith("fixed")],
+        edges: [startedEdge],
+        catalog: keyValueCatalog,
+      })
+    ).toEqual({ valid: true });
+
+    const result = validateWorkflowTemplates({
+      nodes: [entryNode([CREATED, RESCHEDULED]), actionWith(token("leadTime"))],
+      edges: [startedEdge],
+      catalog: keyValueCatalog,
+    });
+    expect(result.valid).toBe(false);
+    expect(errorOf(result)).toContain("leadTime");
+  });
 });
 
 describe("validateWorkflowTemplates - keys the node's shape does not read", () => {
@@ -588,7 +640,7 @@ describe("validateWorkflowTemplates - keys the node's shape does not read", () =
             waitMode: "delay",
             waitDelayTimingMode: "duration",
             waitDuration: "24h",
-            waitTimeout: token("leadTime"),
+            waitTimeout: token("startsAt"),
           }),
         ],
         edges: [startedEdge],

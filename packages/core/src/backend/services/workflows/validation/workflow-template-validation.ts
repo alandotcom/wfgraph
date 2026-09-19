@@ -17,7 +17,6 @@ import {
 } from "@wfgraph/shared/extensions/catalog";
 import { eventsReaching } from "@wfgraph/shared/graph/events-reaching";
 import {
-  findTemplateTokens,
   isEntityStateSourceId,
   referenceFieldForPath,
 } from "@wfgraph/shared/graph/node-references";
@@ -204,52 +203,43 @@ export function validateWorkflowTemplates(input: {
       reachableEventFields(reaching).map((field) => [field.path, field])
     );
 
-    for (const [key, value] of Object.entries(config)) {
-      if (typeof value !== "string") {
+    for (const reference of references) {
+      if (nodeById.get(reference.nodeId)?.data.type !== "lifecycle") {
         continue;
       }
 
+      const key = reference.field.split(".", 1)[0] ?? reference.field;
       const target = targets.get(key);
-      if (target?.literal) {
+      const field = entryFields.get(reference.fieldPath);
+      if (!field) {
         continue;
       }
 
-      for (const token of findTemplateTokens(value)) {
-        if (nodeById.get(token.nodeId)?.data.type !== "lifecycle") {
-          continue;
-        }
+      const where = `Node "${getNodeLabel(node)}" reads ${reference.fieldPath}`;
 
-        const field = entryFields.get(token.fieldPath);
-        if (!field) {
-          continue;
-        }
+      if (field.typeClash) {
+        return {
+          valid: false,
+          error: `${where}, which ${field.typeClash.events.join(" and ")} type differently. Add an Event Split above it, or read a path they agree on.`,
+        };
+      }
 
-        const where = `Node "${getNodeLabel(node)}" reads ${token.fieldPath}`;
+      if (
+        target?.type &&
+        !targetAccepts(field, target.type, { allowNumber: true })
+      ) {
+        return {
+          valid: false,
+          error: `${where} into ${key}, which takes a ${target.type}. That path is a ${field.type}.`,
+        };
+      }
 
-        if (field.typeClash) {
-          return {
-            valid: false,
-            error: `${where}, which ${field.typeClash.events.join(" and ")} type differently. Add an Event Split above it, or read a path they agree on.`,
-          };
-        }
-
-        if (
-          target?.type &&
-          !targetAccepts(field, target.type, { allowNumber: true })
-        ) {
-          return {
-            valid: false,
-            error: `${where} into ${key}, which takes a ${target.type}. That path is a ${field.type}.`,
-          };
-        }
-
-        const absent = target?.required ? absentOn(field, reaching) : [];
-        if (absent.length > 0) {
-          return {
-            valid: false,
-            error: `${where} into ${key}, which ${absent.join(" and ")} does not carry. Add an Event Split above it, so this branch only runs for the Events that do.`,
-          };
-        }
+      const absent = target?.required ? absentOn(field, reaching) : [];
+      if (absent.length > 0) {
+        return {
+          valid: false,
+          error: `${where} into ${key}, which ${absent.join(" and ")} does not carry. Add an Event Split above it, so this branch only runs for the Events that do.`,
+        };
       }
     }
   }
