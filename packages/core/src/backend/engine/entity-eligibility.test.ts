@@ -501,6 +501,76 @@ describe("per-node Entity Eligibility", () => {
     });
   });
 
+  it("does not retarget a stale Entity Condition reference when the current type reads the same path", async () => {
+    const mixedModel: ConditionModel = {
+      version: 2,
+      groupLogic: "and",
+      groups: [
+        {
+          id: "mixed-entity-types",
+          logic: "and",
+          conditions: [
+            {
+              id: "current",
+              field: entityStateConditionPath("appointment", "status") ?? "",
+              fieldType: "string",
+              operator: "equals",
+              value: "ready",
+            },
+            {
+              id: "stale",
+              field: entityStateConditionPath("patient", "status") ?? "",
+              fieldType: "string",
+              operator: "equals",
+              value: "ready",
+            },
+          ],
+        },
+      ],
+    };
+    const compiled = compileConditionModel(mixedModel);
+    if (!compiled.valid) {
+      throw new Error(compiled.error);
+    }
+    const entities = entityPort(
+      [{ outcome: "eligible" }],
+      [{ status: "ready" }]
+    );
+    const conditionGraph = createSerializedWorkflowGraph({
+      nodes: [
+        lifecycleNode(["before-node"], [], null),
+        actionNode("condition", true, "Condition", {
+          condition: compiled.expression,
+          conditionModel: serializeConditionModel(mixedModel),
+        }),
+      ],
+      edges: [
+        {
+          id: "entity-condition",
+          source: "lifecycle",
+          sourceHandle: "started",
+          target: "condition",
+        },
+      ],
+    });
+
+    const result = await executeTestWorkflow(
+      { ...executionInput, graph: conditionGraph },
+      createInMemoryWorkflowRuntime(),
+      createRecordingWorkflowStore(),
+      actions,
+      entities
+    );
+
+    expect(entities.inputs).toEqual([
+      expect.objectContaining({ paths: ["status"] }),
+    ]);
+    expect(executionData(result.results.condition)).toEqual({
+      success: true,
+      data: { condition: false },
+    });
+  });
+
   it("does not retarget a stale Entity reference during a Draft run", async () => {
     const staleToken = "{{@$entity:patient|Appointment.name}}";
     const staleGraph = createSerializedWorkflowGraph({

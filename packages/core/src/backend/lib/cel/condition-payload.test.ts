@@ -71,7 +71,7 @@ describe("a compiled condition against a payload", () => {
       { status: "payload value" },
       null,
       [],
-      { status: "active" }
+      { patient: { status: "active" } }
     );
 
     expect(evaluation).toEqual({ ok: true, value: true });

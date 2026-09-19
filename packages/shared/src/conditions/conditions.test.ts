@@ -341,7 +341,7 @@ describe("conditions", () => {
     expect(compiled.valid).toBe(true);
     if (compiled.valid) {
       expect(compiled.expression).toBe(
-        '(("attributes" in entity && "journey.status" in entity["attributes"] && (entity["attributes"]["journey.status"] == "active")))'
+        '(("crm/patient.v2" in entity && "attributes" in entity["crm/patient.v2"] && "journey.status" in entity["crm/patient.v2"]["attributes"] && (entity["crm/patient.v2"]["attributes"]["journey.status"] == "active")))'
       );
     }
   });

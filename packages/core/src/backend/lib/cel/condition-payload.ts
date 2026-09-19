@@ -9,7 +9,7 @@ import {
   type CelEvaluationResult,
   evaluateCelBooleanExpression,
 } from "#src/backend/lib/cel/environment";
-import type { JsonObject } from "@wfgraph/shared/types/json";
+import { isJsonObject, type JsonObject } from "@wfgraph/shared/types/json";
 import { decodeIsoTimestamp } from "@wfgraph/shared/types/timestamp";
 import {
   collectTimestampFieldPaths,
@@ -100,10 +100,17 @@ function decodeConditionTimestamps(
 ) {
   for (const path of paths) {
     const entityReference = parseEntityStateConditionPath(path);
-    const located = readContextPath(
-      entityReference ? entity : payload,
-      entityReference?.fieldPath ?? path
-    );
+    const entityTypeContext = entityReference
+      ? Reflect.get(entity, entityReference.entityType)
+      : undefined;
+    const context = entityReference
+      ? isJsonObject(entityTypeContext)
+        ? entityTypeContext
+        : undefined
+      : payload;
+    const located = context
+      ? readContextPath(context, entityReference?.fieldPath ?? path)
+      : null;
     if (!located || typeof located.value !== "string") {
       continue;
     }

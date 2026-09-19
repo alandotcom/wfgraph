@@ -247,6 +247,7 @@ function compileContextPath(
   }
 
   if (
+    isCelIdentifier(root) &&
     steps.every(
       (step): step is Extract<OutputPathStep, { kind: "key" }> =>
         step.kind === "key" && isCelIdentifier(step.key)
@@ -275,6 +276,23 @@ function compileContextPath(
   }
 
   return { field, presence: guards.join(" && ") };
+}
+
+function compileEntityContextPath(
+  entityType: string,
+  fieldPath: string
+): { field: string; presence: string } | null {
+  const type = celStringLiteral(entityType);
+  const compiled = compileContextPath(
+    `${ENTITY_CONTEXT_ROOT}[${type}]`,
+    fieldPath
+  );
+  return compiled
+    ? {
+        field: compiled.field,
+        presence: `${type} in ${ENTITY_CONTEXT_ROOT} && ${compiled.presence}`,
+      }
+    : null;
 }
 
 /**
@@ -372,10 +390,12 @@ export function compileConditionRule(
       ? path
       : appendOutputPathKey(path, rule.recordKey.trim());
   const entityReference = parseEntityStateConditionPath(authoredPath);
-  const compiledPath = compileContextPath(
-    entityReference ? ENTITY_CONTEXT_ROOT : CONDITION_CONTEXT_ROOT,
-    entityReference?.fieldPath ?? authoredPath
-  );
+  const compiledPath = entityReference
+    ? compileEntityContextPath(
+        entityReference.entityType,
+        entityReference.fieldPath
+      )
+    : compileContextPath(CONDITION_CONTEXT_ROOT, authoredPath);
   if (!compiledPath) {
     return { valid: false, error: "Condition field path is invalid" };
   }

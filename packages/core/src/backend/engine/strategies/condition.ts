@@ -19,7 +19,7 @@ export function runConditionStep(input: ActionStepInput) {
       outputs,
       config.conditionModel,
       input.eventName,
-      input.entityContext?.values
+      input.entityContext
     );
     const result = yield* runWithStepLog(
       {
