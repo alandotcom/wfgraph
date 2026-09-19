@@ -91,6 +91,8 @@ type TemplateOption = {
   rank: number;
   nodeId: string;
   nodeName: string;
+  /** Stable identity carried by a virtual source such as tracked Entity State. */
+  sourceType?: string | undefined;
   field?: string | undefined;
   description?: string | undefined;
   template: string;
@@ -154,10 +156,12 @@ function keyUnderOpenRecordOptions(
         rank: fieldRank({ type: record.valueType }, targetType, undefined),
         nodeId: record.nodeId,
         nodeName: record.nodeName,
+        sourceType: record.sourceType,
         field: fieldPath,
         template: formatTemplateToken({
           nodeId: record.nodeId,
           nodeLabel: record.nodeName,
+          sourceType: record.sourceType,
           fieldPath,
         }),
       };
@@ -252,6 +256,7 @@ export function useTemplateAutocompleteRows(input: {
           rank: 0,
           nodeId,
           nodeName,
+          sourceType,
           template: formatTemplateToken({
             nodeId,
             nodeLabel: nodeName,
@@ -268,6 +273,7 @@ export function useTemplateAutocompleteRows(input: {
             rank: fieldRank(field, fieldType, unusable),
             nodeId,
             nodeName,
+            sourceType,
             field: field.path,
             description: field.description,
             template: formatTemplateToken({
@@ -302,6 +308,7 @@ export function useTemplateAutocompleteRows(input: {
           rank: fieldRank({ type: valueType }, fieldType, undefined),
           nodeId,
           nodeName,
+          sourceType,
           field: field.path,
           template: formatTemplateToken({
             nodeId,
@@ -327,6 +334,7 @@ export function useTemplateAutocompleteRows(input: {
             rank: fieldRank({ type: valueType }, fieldType, undefined),
             nodeId,
             nodeName,
+            sourceType,
             field: fieldPath,
             template: formatTemplateToken({
               nodeId,

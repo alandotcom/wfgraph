@@ -315,6 +315,11 @@ describe("Template badge autocomplete", () => {
             description: "Current journey status",
             type: "string",
           },
+          {
+            path: "attributes",
+            type: "object",
+            valueType: "string",
+          },
         ],
         stateSchemaDigest: "patient-state",
       },
@@ -363,6 +368,32 @@ describe("Template badge autocomplete", () => {
       const badge = textbox.querySelector("[data-template]");
       expect(badge?.textContent).toBe("Patient.journey.journeyStatus");
       expect(badge?.className).not.toContain("destructive");
+    });
+
+    view.unmount();
+    let recordValue = "";
+    const recordView = renderWithCatalog(
+      <ControlledTemplateBadgeInputWithNodeContext
+        currentNodeId="wait_1"
+        onValueChange={(value) => {
+          recordValue = value;
+        }}
+      />
+    );
+    typeTemplateFilter(
+      recordView.getByRole("textbox"),
+      "attributes.segment"
+    );
+    fireEvent.mouseDown(
+      await waitFor(() =>
+        findAutocompleteOptionByText("Patient.attributes.segment")
+      )
+    );
+
+    await waitFor(() => {
+      expect(recordValue).toBe(
+        "{{@$entity:patient|Patient.attributes.segment}}"
+      );
     });
   });
 
