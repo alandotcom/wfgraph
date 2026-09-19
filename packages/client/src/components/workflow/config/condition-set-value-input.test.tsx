@@ -74,6 +74,23 @@ function TextSetValueHarness({
 }
 
 describe("TextSetValueInput", () => {
+  it("keeps the value control at the standard field width", () => {
+    const view = render(
+      <TextSetValueHarness
+        initialValues={["a@example.com", "b@example.com"]}
+        name="email"
+        onValueChange={vi.fn()}
+      />
+    );
+
+    const chips = view
+      .getByLabelText("Add email values")
+      .closest('[data-slot="combobox-chips"]');
+    const classes = chips?.className.split(/\s+/) ?? [];
+    expect(classes).toContain("w-[240px]");
+    expect(classes).toContain("max-w-full");
+  });
+
   it("shows every stored value and edits the list by typing", () => {
     const onValueChange = vi.fn();
     const view = render(
@@ -171,6 +188,24 @@ describe("TextSetValueInput", () => {
 describe("EnumMultiValueInput", () => {
   const STATUS_FIELD = field("status", "Lifecycle", {
     enumValues: ["active", "paused"],
+  });
+
+  it("keeps the value control at the standard field width", () => {
+    const view = render(
+      <EnumMultiValueHarness
+        field={STATUS_FIELD}
+        initialValues={["active", "paused"]}
+        name="status"
+        onValueChange={vi.fn()}
+      />
+    );
+
+    const chips = view
+      .getByLabelText("Select status values")
+      .closest('[data-slot="combobox-chips"]');
+    const classes = chips?.className.split(/\s+/) ?? [];
+    expect(classes).toContain("w-[240px]");
+    expect(classes).toContain("max-w-full");
   });
 
   it("labels a chip with the field's enum label", () => {
