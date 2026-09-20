@@ -529,10 +529,10 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema", () => {
       required: ["status"],
       properties: {
         status: {
-          title: "Donation status",
+          title: "Task status",
           oneOf: [
-            { const: "ClearedToDonate", title: "Cleared to donate" },
-            { const: "TemporarilyDeferred", title: "Temporarily deferred" },
+            { const: "InProgress", title: "In progress" },
+            { const: "NeedsReview", title: "Needs review" },
             { const: "Unknown", title: "Unknown" },
           ],
         },
@@ -543,12 +543,12 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema", () => {
       {
         name: "status",
         type: "string",
-        label: "Donation status",
+        label: "Task status",
         description: undefined,
-        enumValues: ["ClearedToDonate", "TemporarilyDeferred", "Unknown"],
+        enumValues: ["InProgress", "NeedsReview", "Unknown"],
         enumLabels: {
-          ClearedToDonate: "Cleared to donate",
-          TemporarilyDeferred: "Temporarily deferred",
+          InProgress: "In progress",
+          NeedsReview: "Needs review",
         },
       },
     ]);

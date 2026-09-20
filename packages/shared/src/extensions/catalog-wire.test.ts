@@ -54,10 +54,10 @@ describe("readExtensionCatalog", () => {
       {
         path: "status",
         type: "string",
-        enumValues: ["ClearedToDonate", "TemporarilyDeferred"],
+        enumValues: ["InProgress", "NeedsReview"],
         enumLabels: {
-          ClearedToDonate: "Cleared to donate",
-          TemporarilyDeferred: "Temporarily deferred",
+          InProgress: "In progress",
+          NeedsReview: "Needs review",
         },
       },
       { path: "leadTime", type: "duration" },

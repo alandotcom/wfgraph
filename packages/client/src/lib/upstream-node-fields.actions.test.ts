@@ -30,10 +30,10 @@ describe("Entity template source", () => {
           {
             path: "journey.status",
             type: "string",
-            enumValues: ["ClearedToDonate", "TemporarilyDeferred"],
+            enumValues: ["InProgress", "NeedsReview"],
             enumLabels: {
-              ClearedToDonate: "Cleared to donate",
-              TemporarilyDeferred: "Temporarily deferred",
+              InProgress: "In progress",
+              NeedsReview: "Needs review",
             },
           },
         ],
@@ -100,10 +100,10 @@ describe("Entity template source", () => {
         (field) => field.path === "journey.status"
       )
     ).toMatchObject({
-      enumValues: ["ClearedToDonate", "TemporarilyDeferred"],
+      enumValues: ["InProgress", "NeedsReview"],
       enumLabels: {
-        ClearedToDonate: "Cleared to donate",
-        TemporarilyDeferred: "Temporarily deferred",
+        InProgress: "In progress",
+        NeedsReview: "Needs review",
       },
     });
   });

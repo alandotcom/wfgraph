@@ -572,20 +572,20 @@ describe("the field derivation over Effect schemas", () => {
         'Event "x/y"',
         Schema.Struct({
           status: Schema.Enum({
-            "Cleared to donate": "ClearedToDonate",
-            "Temporarily deferred": "TemporarilyDeferred",
-          }).annotate({ title: "Donation status" }),
+            "In progress": "InProgress",
+            "Needs review": "NeedsReview",
+          }).annotate({ title: "Task status" }),
         })
       )
     ).toEqual([
       {
         path: "status",
-        label: "Donation status",
+        label: "Task status",
         type: "string",
-        enumValues: ["ClearedToDonate", "TemporarilyDeferred"],
+        enumValues: ["InProgress", "NeedsReview"],
         enumLabels: {
-          ClearedToDonate: "Cleared to donate",
-          TemporarilyDeferred: "Temporarily deferred",
+          InProgress: "In progress",
+          NeedsReview: "Needs review",
         },
       },
     ]);

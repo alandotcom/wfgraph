@@ -145,13 +145,13 @@ from `Schema.Enum`, whose object keys become titles:
 
 ```ts
 const zodStatus = z.union([
-  z.literal("ClearedToDonate").meta({ title: "Cleared to donate" }),
-  z.literal("TemporarilyDeferred").meta({ title: "Temporarily deferred" }),
+  z.literal("InProgress").meta({ title: "In progress" }),
+  z.literal("NeedsReview").meta({ title: "Needs review" }),
 ]);
 
 const effectStatus = Schema.Enum({
-  "Cleared to donate": "ClearedToDonate",
-  "Temporarily deferred": "TemporarilyDeferred",
+  "In progress": "InProgress",
+  "Needs review": "NeedsReview",
 });
 ```
 
