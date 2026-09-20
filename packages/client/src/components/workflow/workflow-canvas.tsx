@@ -482,14 +482,20 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
     return Promise.resolve(false);
   }, [deleteCanvasSelection, graphEditingLocked]);
 
-  // React Flow writes the selection itself through `select` changes wherever
-  // it receives the node change handler for the Draft; everywhere else a click
-  // selects the node here.
+  // A plain click always makes this node the sole selection. React Flow also
+  // sends selection changes, but its controlled graph can briefly hold the
+  // previous flags while the inspector opens; treating that partial batch as
+  // authoritative makes two ordinary clicks look like a multi-selection.
+  // Modifier clicks still use React Flow's additive selection changes.
   const canvasWritesSelection =
     !graphEditingLocked && !interaction.comparisonVisible;
   const onNodeClick: NodeMouseHandler = useCallback(
-    (_event, node) =>
-      inspectNode(node.id, { selectionApplied: canvasWritesSelection }),
+    (event, node) =>
+      inspectNode(node.id, {
+        selectionApplied:
+          canvasWritesSelection &&
+          (event.metaKey || event.ctrlKey || event.shiftKey),
+      }),
     [canvasWritesSelection, inspectNode]
   );
 

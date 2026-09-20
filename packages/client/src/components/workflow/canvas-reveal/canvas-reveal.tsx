@@ -259,11 +259,12 @@ export function CanvasReveal() {
       ) : null}
       <aside
         aria-label={kind?.regionLabel ?? "Inspector"}
-        // `nokey` keeps React Flow's Backspace and Delete handling away from
-        // the selected step while focus is on a control inside Reveal.
+        // React Flow already leaves input, textarea, select, and content-editable
+        // fields alone. Other focused controls keep the selected step's canvas
+        // shortcuts, including Delete and Backspace.
         // `overflow-clip` clips the contents and leaves the panel a box that is
         // not a scroll container, so focusing a control inside cannot scroll it.
-        className="canvas-reveal nokey absolute z-20 flex flex-col overflow-clip rounded-xl border bg-sidebar shadow-sm transition-transform duration-150 ease-out"
+        className="canvas-reveal absolute z-20 flex flex-col overflow-clip rounded-xl border bg-sidebar shadow-sm transition-transform duration-150 ease-out"
         data-level={level}
         data-slot="canvas-reveal"
         // Closed keeps the surface mounted, so Runs keeps its state, and inert,

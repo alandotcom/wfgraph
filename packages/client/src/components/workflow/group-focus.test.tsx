@@ -276,6 +276,41 @@ afterEach(() => {
   resetAuthorizationGrantsForTests();
 });
 
+describe("canvas selection", () => {
+  it("replaces an existing selection when another node is clicked", async () => {
+    const { store, view } = await renderEditor();
+
+    await act(async () => {
+      fireEvent.click(view.getByTestId("action-node-qualify"));
+      fireEvent.click(view.getByTestId("action-node-route"));
+    });
+
+    expect(store.get(activeSelectionAtom)).toEqual({
+      nodeIds: ["route"],
+      edgeIds: [],
+    });
+  });
+
+  it("keeps modifier-click additive", async () => {
+    const { store, view } = await renderEditor();
+
+    fireEvent.click(view.getByTestId("action-node-qualify"));
+    await waitFor(() =>
+      expect(store.get(activeSelectionAtom).nodeIds).toEqual(["qualify"])
+    );
+    fireEvent.keyDown(window, { key: "Shift", code: "ShiftLeft" });
+    fireEvent.click(view.getByTestId("action-node-route"), { shiftKey: true });
+    fireEvent.keyUp(window, { key: "Shift", code: "ShiftLeft" });
+
+    await waitFor(() =>
+      expect(store.get(activeSelectionAtom)).toEqual({
+        nodeIds: ["qualify", "route"],
+        edgeIds: [],
+      })
+    );
+  });
+});
+
 describe("canvas Delete gesture", () => {
   const cases = [
     {
@@ -353,6 +388,54 @@ describe("canvas Delete gesture", () => {
       expect(store.get(edgesAtom)).toEqual(before.edges);
     });
   }
+
+  it("deletes the selected node while its editor is open", async () => {
+    const { store, view, reveal } = await renderEditor();
+
+    fireEvent.click(view.getByTestId("action-node-qualify"));
+    await waitFor(() =>
+      expect(store.get(activeSelectionAtom).nodeIds).toEqual(["qualify"])
+    );
+    fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
+    await waitFor(() => expect(reveal()?.dataset.level).toBe("focus"));
+
+    const focusedControl = document.activeElement;
+    expect(reveal()?.contains(focusedControl)).toBe(true);
+    fireEvent.keyDown(focusedControl ?? document, {
+      key: "Delete",
+      code: "Delete",
+    });
+    fireEvent.keyUp(focusedControl ?? document, {
+      key: "Delete",
+      code: "Delete",
+    });
+
+    await waitFor(() =>
+      expect(store.get(nodesAtom).some((node) => node.id === "qualify")).toBe(
+        false
+      )
+    );
+  });
+
+  it("leaves the node in place while typing in its editor", async () => {
+    const { store, view, reveal } = await renderEditor();
+
+    fireEvent.click(view.getByTestId("action-node-qualify"));
+    await waitFor(() =>
+      expect(store.get(activeSelectionAtom).nodeIds).toEqual(["qualify"])
+    );
+    fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
+    await waitFor(() => expect(reveal()?.dataset.level).toBe("focus"));
+    const label = view.getByRole("textbox", { name: "Label" });
+    label.focus();
+
+    fireEvent.keyDown(label, { key: "Delete", code: "Delete" });
+    fireEvent.keyUp(label, { key: "Delete", code: "Delete" });
+
+    expect(store.get(nodesAtom).some((node) => node.id === "qualify")).toBe(
+      true
+    );
+  });
 
   it.each([
     { name: "Lifecycle-only selection", nodeId: "life", canEdit: true },
