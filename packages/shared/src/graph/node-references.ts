@@ -2,7 +2,7 @@
  * Everything about "a field a workflow node can offer another node".
  *
  * Three things live here because they are the same idea seen from three sides:
- *  - the flat reference field: one leaf a user can drop into a template;
+ *  - the flat reference field: one addressable leaf in a node output;
  *  - the template grammar: how that leaf is written down inside a config string;
  *  - the path walker: how that written-down leaf is turned back into a value at run time.
  *
@@ -27,7 +27,7 @@ import {
 } from "./schema-codec";
 
 /**
- * One leaf that a user can reference from a template, addressed by a dotted path.
+ * One addressable output leaf, addressed by a dotted path.
  *
  * `path` uses dots for nested objects and a `[0]` suffix for array elements,
  * for example `order.items[0].sku`. It is the exact string that goes after the
@@ -63,6 +63,8 @@ export type ReferenceField = {
   nullable?: boolean | undefined;
   enumValues?: string[] | undefined;
   showWhen?: ShowWhen | undefined;
+  /** Keep the path valid for existing references but omit it from authoring choices. */
+  hidden?: boolean | undefined;
 };
 
 /** The authored label, or a readable fallback derived from the final path key. */
@@ -84,6 +86,16 @@ export function fieldsVisibleForConfig(
   fields: readonly ReferenceField[]
 ): readonly ReferenceField[] {
   return fields.filter((field) => matchesShowWhen(config, field.showWhen));
+}
+
+/** Catalog output fields that a builder may choose for a new reference. */
+export function fieldsOfferedForConfig(
+  config: Record<string, unknown> | undefined,
+  fields: readonly ReferenceField[]
+): readonly ReferenceField[] {
+  return fieldsVisibleForConfig(config, fields).filter(
+    (field) => field.hidden !== true
+  );
 }
 
 /**

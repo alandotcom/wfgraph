@@ -142,6 +142,11 @@ function toReferenceField(field: ReferenceField) {
   });
 }
 
+/** Reference fields offered when authoring something new. */
+function offeredReferenceFields(fields: readonly ReferenceField[]) {
+  return fields.filter((field) => field.hidden !== true).map(toReferenceField);
+}
+
 /** Case-insensitive substring match over the text a person would search by. */
 function matchesQuery(action: ActionMetadata, query: string): boolean {
   const needle = query.trim().toLowerCase();
@@ -375,7 +380,7 @@ export const catalogToolHandlers = Effect.gen(function* () {
                 literal: field.literal,
               })
           ),
-          outputFields: (action?.outputFields ?? []).map(toReferenceField),
+          outputFields: offeredReferenceFields(action?.outputFields ?? []),
           needsIntegration: action?.integration !== undefined,
           authoringInstructions: builtIn?.instructions,
         })
@@ -417,14 +422,14 @@ export const catalogToolHandlers = Effect.gen(function* () {
         omitUndefined({
           ...toEventSummary(event),
           correlationPath: event.correlationPath,
-          payloadFields: event.payloadFields.map(toReferenceField),
+          payloadFields: offeredReferenceFields(event.payloadFields),
           entityBindings: (event.entityBindings ?? []).map((binding) => {
             const entity = findEntity(catalog, binding.entityType);
             return omitUndefined({
               name: binding.name,
               entityType: binding.entityType,
               entityLabel: entity?.label,
-              stateFields: (entity?.stateFields ?? []).map(toReferenceField),
+              stateFields: offeredReferenceFields(entity?.stateFields ?? []),
             });
           }),
         })

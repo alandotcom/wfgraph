@@ -160,7 +160,7 @@ export const ListReferences = Tool.make("list_references", {
   failureMode: "return",
 });
 
-/** The same reference entries the tool returns, for write tools that validate one. */
+/** Every addressable reference, including hidden fields kept for compatibility. */
 export function referencesForNode(input: {
   readonly nodeId: string;
   readonly document: AgentDocument;
@@ -207,6 +207,7 @@ export function referencesForNode(input: {
           enumValues: field.enumValues,
           conditionFieldType: conditionFieldType ?? undefined,
           openRecord: field.valueType ? true : undefined,
+          hidden: field.hidden,
         });
       });
     });
@@ -243,6 +244,7 @@ export function referencesForNode(input: {
             enumValues: field.enumValues,
             conditionFieldType: conditionFieldType ?? undefined,
             openRecord: field.valueType ? true : undefined,
+            hidden: field.hidden,
           }),
         ];
       })
@@ -278,6 +280,7 @@ export const referenceToolHandlers = Effect.gen(function* () {
         const needle = input.query?.trim().toLowerCase() ?? "";
         const matches = references.filter(
           (reference) =>
+            reference.hidden !== true &&
             (input.sourceNodeId === undefined ||
               reference.sourceNodeId === input.sourceNodeId) &&
             (input.type === undefined || reference.type === input.type) &&

@@ -14,7 +14,10 @@ import { whenChosen } from "#src/lib/select-choice";
 import { TemplateBadgeInput } from "#src/components/ui/template-badge-input";
 import type { ConditionSelectableField } from "#src/lib/upstream-node-fields";
 import { ConditionFieldCombobox } from "./condition-field-combobox";
-import { enumOptionLabel } from "./condition-field-label";
+import {
+  enumOptionLabel,
+  unavailableFieldLabel,
+} from "./condition-field-label";
 import {
   EnumMultiValueInput,
   TextSetValueInput,
@@ -40,10 +43,7 @@ import {
   TIME_UNIT_OPTIONS,
   type TimeUnit,
 } from "@wfgraph/shared/conditions/conditions";
-import {
-  appendOutputPathKey,
-  displayTemplateText,
-} from "@wfgraph/shared/graph/node-references";
+import { appendOutputPathKey } from "@wfgraph/shared/graph/node-references";
 import { generateId } from "@wfgraph/shared/utils/id";
 import {
   applyOperatorValueToCondition,
@@ -254,7 +254,7 @@ function ConditionValueInput(input: {
         return (
           <TextSetValueInput
             disabled={disabled}
-            name={field?.label ?? condition.field}
+            name={field?.label ?? unavailableFieldLabel()}
             onValueChange={(values) =>
               onConditionChange({ ...condition, values })
             }
@@ -267,7 +267,7 @@ function ConditionValueInput(input: {
         <EnumMultiValueInput
           disabled={disabled}
           field={field}
-          name={field?.label ?? condition.field}
+          name={field?.label ?? unavailableFieldLabel()}
           onValueChange={(values) =>
             onConditionChange({ ...condition, values })
           }
@@ -673,7 +673,8 @@ export function ConditionBuilderRow({
                   // Names the row's delete button. Several rows can sit in one
                   // group, and a list of buttons all called "Remove" says
                   // nothing about which rule each one drops.
-                  const conditionName = selectedFieldDef?.label ?? pickedPath;
+                  const conditionName =
+                    selectedFieldDef?.label ?? unavailableFieldLabel();
 
                   return (
                     <div key={condition.id}>
@@ -855,14 +856,9 @@ export function ConditionBuilderRow({
             </Button>
           </div>
 
-          {compiled?.valid === false && (
+          {compiled?.valid === false ? (
             <p className="text-destructive text-xs">{compiled.error}</p>
-          )}
-          {compiled?.valid && (
-            <p className="text-muted-foreground text-xs">
-              Compiled CEL: {displayTemplateText(compiled.expression)}
-            </p>
-          )}
+          ) : null}
         </>
       ) : null}
     </ConfigSection>

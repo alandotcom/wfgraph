@@ -71,12 +71,13 @@ describe("readExtensionCatalog", () => {
     );
   });
 
-  it("carries showWhen on a reference field across the wire", () => {
+  it("carries authoring visibility on a reference field across the wire", () => {
     const payloadFields: ReferenceField[] = [
       {
         path: "event",
         type: "string",
         showWhen: { field: "waitMode", equals: "event" },
+        hidden: true,
       },
     ];
 

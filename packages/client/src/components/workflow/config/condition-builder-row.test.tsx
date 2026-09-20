@@ -248,6 +248,21 @@ describe("ConditionBuilderRow field picker", () => {
     ).toEqual(["emailnullable"]);
   });
 
+  it("shows field labels without exposing stored paths", () => {
+    const path = "$entity:donor.journey.journeyStatus";
+    const fields = [field(path, "Donor State", { label: "Journey status" })];
+    const view = renderRow(fields, storedModel(path));
+
+    expect(view.getByText(/Journey status/)).toBeTruthy();
+    expect(view.queryByText(/\$entity:donor/)).toBeNull();
+
+    enterEdit(view);
+    openFieldPicker(view);
+
+    expect(view.getByRole("option").textContent).toBe("Journey status");
+    expect(view.queryByText(/\$entity:donor/)).toBeNull();
+  });
+
   it("finds a field by the node that produced it", () => {
     const view = renderRow(
       [...DONOR_FIELDS, ...APPOINTMENT_FIELDS],
@@ -500,13 +515,24 @@ describe("ConditionBuilderRow field picker", () => {
     enterEdit(view);
     expect(
       (view.getByLabelText("Select field") as HTMLInputElement).value
-    ).toBe("gone.path (Unavailable)");
+    ).toBe("Unavailable field");
+
+    expect(
+      view.getByRole("combobox", { name: "Unavailable field operator" })
+    ).toBeTruthy();
+    expect(
+      view.getByRole("button", {
+        name: "Remove condition on Unavailable field",
+      })
+    ).toBeTruthy();
+    expect(view.queryByLabelText(/gone\.path/)).toBeNull();
 
     openFieldPicker(view);
 
     expect(
-      view.getByRole("option", { name: /gone\.path \(Unavailable\)/ })
+      view.getByRole("option", { name: "Unavailable field" })
     ).toBeTruthy();
+    expect(view.queryByText("gone.path")).toBeNull();
   });
 });
 
@@ -665,7 +691,7 @@ describe("ConditionBuilderRow view mode names what a rule still owes", () => {
     expect(view.queryByText(/\{\{@/)).toBeNull();
   });
 
-  it("keeps the node id out of Compiled CEL while editing a template value", () => {
+  it("does not expose the compiled expression while editing", () => {
     const token = formatTemplateToken({
       nodeId: "V1StGXR8_Z5jdHi6B-myT",
       nodeLabel: "Lifecycle",
@@ -675,12 +701,8 @@ describe("ConditionBuilderRow view mode names what a rule still owes", () => {
 
     fireEvent.click(view.getByRole("button", { name: "Edit condition" }));
 
-    expect(view.getByText(/Compiled CEL/).textContent).toContain(
-      "Lifecycle.data.email_id"
-    );
-    expect(view.getByText(/Compiled CEL/).textContent).not.toContain(
-      "V1StGXR8_Z5jdHi6B-myT"
-    );
+    expect(view.queryByText(/Compiled CEL/)).toBeNull();
+    expect(view.queryByText(/payload\.email/)).toBeNull();
   });
 
   // The picker deliberately selects nothing when the stored value is no longer
@@ -788,11 +810,12 @@ describe("ConditionBuilderRow view mode names what a rule still owes", () => {
   });
 
   // The field picker marks a path the graph no longer offers; the summary marks
-  // it the same way, out of the same helper.
+  // it the same way, out of the same helper, without exposing the stored path.
   it("marks a field the graph no longer offers", () => {
     const view = renderRow(DONOR_FIELDS, stringRule("gone.path", "x"));
 
-    expect(view.getByText("gone.path (Unavailable)")).toBeTruthy();
+    expect(view.getByText("Unavailable field")).toBeTruthy();
+    expect(view.queryByText("gone.path")).toBeNull();
   });
 
   it("reads a template value as the node label, not the node id", () => {
@@ -824,20 +847,6 @@ describe("ConditionBuilderRow view mode names what a rule still owes", () => {
 
     expect(view.getByText("Email sent")).toBeTruthy();
     expect(view.queryByText("resend/email.sent")).toBeNull();
-  });
-
-  it("does not print a node id in the compiled CEL preview", () => {
-    const token = "{{@V1StGXR8_Z5jdHi6B-myT:Lifecycle.data.email_id}}";
-    const view = renderRow(
-      APPOINTMENT_FIELDS,
-      stringRule("appointment.id", token)
-    );
-
-    enterEdit(view);
-
-    const compiled = view.getByText(/Compiled CEL/);
-    expect(compiled.textContent).toContain("Lifecycle.data.email_id");
-    expect(compiled.textContent).not.toContain("V1StGXR8_Z5jdHi6B-myT");
   });
 });
 

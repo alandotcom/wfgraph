@@ -320,13 +320,10 @@ describe("WaitEventSelect match editor", () => {
       ],
     });
 
-    // The compiled expression is a detail of the editor rather than of the
-    // rule, so it sits behind Edit with the controls it describes.
     fireEvent.click(view.getByRole("button", { name: "Edit Match" }));
 
-    expect(view.getByText(/Compiled CEL/).textContent).toContain(
-      'payload.settledAt < date("2026-07-01T00:00:00.000Z")'
-    );
+    expect(view.queryByText(/Compiled CEL/)).toBeNull();
+    expect(view.queryByText(/payload\.settledAt/)).toBeNull();
   });
 
   it("clears a match back to resuming on any occurrence", () => {
@@ -403,7 +400,7 @@ describe("WaitEventSelect seeded match", () => {
     fireEvent.keyDown(fieldInput, { key: "ArrowDown" });
 
     expect(view.getByText("Appointment ID")).toBeTruthy();
-    expect(view.getByText("appointmentId")).toBeTruthy();
+    expect(view.queryByText("appointmentId")).toBeNull();
     expect(view.getByText("The appointment")).toBeTruthy();
   });
 

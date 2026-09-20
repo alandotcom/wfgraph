@@ -248,7 +248,8 @@ describe("upstream-node-fields actions", () => {
 
   // Output fields declare showWhen the same way config fields do. A delay Wait
   // leaves waitMode unset or "delay", so event-only paths stay out of the picker.
-  it("offers only delay Wait outputs when the upstream Wait is on a clock", () => {
+  // Internal fields stay declared for existing references but are not offered.
+  it("offers only authorable delay Wait outputs", () => {
     const eventOnly = { field: "waitMode", equals: "event" } as const;
     surface.actions = [
       anAction({
@@ -258,6 +259,7 @@ describe("upstream-node-fields actions", () => {
           { path: "waitType", type: "string" },
           { path: "timedOut", type: "boolean", showWhen: eventOnly },
           { path: "resumedAt", type: "timestamp" },
+          { path: "hops", type: "number", hidden: true },
           { path: "event", type: "string", showWhen: eventOnly },
           { path: "payload", type: "object", showWhen: eventOnly },
         ],
@@ -294,7 +296,7 @@ describe("upstream-node-fields actions", () => {
     expect(paths).toEqual(["resumedAt", "waitType"]);
   });
 
-  it("offers event Wait outputs when the upstream Wait parks on an Event", () => {
+  it("offers authorable event Wait outputs", () => {
     const eventOnly = { field: "waitMode", equals: "event" } as const;
     surface.actions = [
       anAction({
@@ -304,6 +306,7 @@ describe("upstream-node-fields actions", () => {
           { path: "waitType", type: "string" },
           { path: "timedOut", type: "boolean", showWhen: eventOnly },
           { path: "resumedAt", type: "timestamp" },
+          { path: "hops", type: "number", hidden: true },
           { path: "event", type: "string", showWhen: eventOnly },
           { path: "payload", type: "object", showWhen: eventOnly },
         ],
