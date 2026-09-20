@@ -153,6 +153,28 @@ describe("the field derivation over Effect schemas", () => {
     ]);
   });
 
+  it("keeps a nullable singleton literal's checked timestamp format", () => {
+    expect(
+      requireOutputFieldsFromSchema(
+        'Event "x/y"',
+        Schema.Struct({
+          at: Schema.NullOr(
+            Schema.Literal("2026-01-01T00:00:00Z")
+              .check(Schema.isPattern(/Z$/))
+              .annotate({ format: "date-time" })
+          ),
+        })
+      )
+    ).toEqual([
+      {
+        path: "at",
+        type: "timestamp",
+        enumValues: ["2026-01-01T00:00:00Z"],
+        nullable: true,
+      },
+    ]);
+  });
+
   it("keeps a described Schema.Enum non-nullable", () => {
     expect(
       requireOutputFieldsFromSchema(

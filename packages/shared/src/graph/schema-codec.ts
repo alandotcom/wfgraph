@@ -664,17 +664,22 @@ function resolveClosedSetBranches(
     return null;
   }
 
-  const resolved: JsonSchemaNode = { type: jsonType, enum: uniq(values) };
+  // A nullable singleton still has two union branches. Preserve the complete
+  // non-null branch, but move its title onto the choice before the parent title
+  // becomes the field label.
+  const [onlyBranch] = nonNullBranches;
+  const resolved: JsonSchemaNode =
+    nonNullBranches.length === 1 && onlyBranch
+      ? {
+          ...onlyBranch,
+          type: jsonType,
+          enum: uniq(values),
+          const: undefined,
+          title: undefined,
+        }
+      : { type: jsonType, enum: uniq(values) };
   if (enumLabels.size > 0) {
     resolved.enumLabels = Object.fromEntries(enumLabels);
-  }
-
-  // A nullable singleton still has two union branches. Its one non-null branch
-  // owns the choice title while its other annotations still describe the field.
-  const [onlyBranch] = nonNullBranches;
-  if (nonNullBranches.length === 1 && onlyBranch) {
-    resolved.description = onlyBranch.description;
-    resolved.format = onlyBranch.format;
   }
 
   return withInheritedAnnotations(resolved, parent);
