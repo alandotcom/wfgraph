@@ -24,7 +24,10 @@ import {
   displayTemplateText,
   matchTemplateToken,
 } from "@wfgraph/shared/graph/node-references";
-import { unavailableFieldLabel } from "./condition-field-label";
+import {
+  enumOptionLabel,
+  unavailableFieldLabel,
+} from "./condition-field-label";
 
 /**
  * A condition model read as sentences rather than filled in as controls.
@@ -298,12 +301,10 @@ function valueLabel(
   if (rule.fieldType === "string") {
     if (isStringSetConditionRule(rule)) {
       return rule.values
-        .map((value) =>
-          displayTemplateText(field?.enumLabels?.[value] ?? value)
-        )
+        .map((value) => displayTemplateText(enumOptionLabel(field, value)))
         .join(", ");
     }
-    return displayTemplateText(field?.enumLabels?.[rule.value] ?? rule.value);
+    return displayTemplateText(enumOptionLabel(field, rule.value));
   }
 
   if (rule.fieldType === "number") {

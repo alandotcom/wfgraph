@@ -26,7 +26,10 @@ import {
   referenceFieldLabel,
   type ReferenceField,
 } from "@wfgraph/shared/graph/node-references";
-import { flattenConfigFields } from "@wfgraph/shared/plugins/action-fields";
+import {
+  flattenConfigFields,
+  type SelectOption,
+} from "@wfgraph/shared/plugins/action-fields";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { WorkflowDraft } from "#src/document";
 import {
@@ -54,7 +57,10 @@ const configFieldSchema = Schema.Struct({
   placeholder: Schema.optionalKey(Schema.String),
   example: Schema.optionalKey(Schema.String),
   defaultValue: Schema.optionalKey(Schema.String),
+  /** Exact values the action config may store. */
   options: Schema.optionalKey(Schema.Array(Schema.String)),
+  /** Human labels for `options`, keyed by the stored value. */
+  optionLabels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   /** Set when the field takes a plain value and never a `{{...}}` reference. */
   literal: Schema.optionalKey(Schema.Boolean),
 });
@@ -142,6 +148,15 @@ function toReferenceField(field: ReferenceField) {
     enumValues: field.enumValues,
     enumLabels: field.enumLabels,
   });
+}
+
+function optionLabels(
+  options: readonly SelectOption[] | undefined
+): Readonly<Record<string, string>> | undefined {
+  const entries = (options ?? []).flatMap((option): [string, string][] =>
+    option.label === option.value ? [] : [[option.value, option.label]]
+  );
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
 /** Reference fields offered when authoring something new. */
@@ -379,6 +394,7 @@ export const catalogToolHandlers = Effect.gen(function* () {
                 example: field.example,
                 defaultValue: field.defaultValue,
                 options: field.options?.map((option) => option.value),
+                optionLabels: optionLabels(field.options),
                 literal: field.literal,
               })
           ),

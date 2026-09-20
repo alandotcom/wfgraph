@@ -211,7 +211,7 @@ describe("describe_action", () => {
     })
   );
 
-  it.effect("reduces a select's options to the values a config may hold", () =>
+  it.effect("returns a select's stored values and human labels", () =>
     Effect.gen(function* () {
       const { tools } = yield* agentToolsFor({ catalog });
       const result = yield* tools.describe_action({
@@ -220,6 +220,7 @@ describe("describe_action", () => {
 
       const tone = result.configFields.find((field) => field.key === "tone");
       expect(tone?.options).toEqual(["plain", "alert"]);
+      expect(tone?.optionLabels).toEqual({ plain: "Plain", alert: "Alert" });
     })
   );
 

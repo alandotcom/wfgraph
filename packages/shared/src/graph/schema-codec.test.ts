@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   configFieldsFromJsonSchema,
+  enumLabelForValue,
   labelFromKey,
   parseWorkflowSchemaField,
   parseWorkflowSchemaFieldsOrJsonSchema,
@@ -20,6 +21,22 @@ describe("labelFromKey", () => {
   it("prefers a non-blank authored title", () => {
     expect(labelFromKey("id", "Item ID")).toBe("Item ID");
     expect(labelFromKey("appointmentId", "  ")).toBe("Appointment ID");
+  });
+});
+
+describe("enumLabelForValue", () => {
+  it("does not read labels inherited from the object prototype", () => {
+    const labels = { active: "Active" };
+
+    expect(enumLabelForValue(labels, "toString")).toBeUndefined();
+    expect(enumLabelForValue(labels, "constructor")).toBeUndefined();
+    expect(enumLabelForValue(labels, "__proto__")).toBeUndefined();
+  });
+
+  it("reads an own label for a reserved object key", () => {
+    const labels = Object.fromEntries([["__proto__", "Prototype"]]);
+
+    expect(enumLabelForValue(labels, "__proto__")).toBe("Prototype");
   });
 });
 
@@ -1161,6 +1178,29 @@ describe("configFieldsFromJsonSchema", () => {
         ],
         required: true,
       },
+    ]);
+  });
+
+  it("falls back to raw prototype-key values missing from a partial label map", () => {
+    const fields = configFieldsFromJsonSchema({
+      type: "object",
+      properties: {
+        kind: {
+          anyOf: [
+            { const: "active", title: "Active" },
+            { const: "toString" },
+            { const: "constructor" },
+            { const: "__proto__" },
+          ],
+        },
+      },
+    });
+
+    expect(fields[0]?.options).toEqual([
+      { value: "active", label: "Active" },
+      { value: "toString", label: "toString" },
+      { value: "constructor", label: "constructor" },
+      { value: "__proto__", label: "__proto__" },
     ]);
   });
 

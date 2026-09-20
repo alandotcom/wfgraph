@@ -12,9 +12,10 @@
 import { compact, uniq } from "es-toolkit/array";
 import type { EventMetadata } from "#src/extensions/catalog";
 import type { ReferenceField } from "#src/graph/node-references";
-import type {
-  WorkflowSchemaFieldType,
-  WorkflowSchemaItemType,
+import {
+  enumLabelForValue,
+  type WorkflowSchemaFieldType,
+  type WorkflowSchemaItemType,
 } from "#src/graph/schema-codec";
 import { omitUndefined } from "#src/utils/omit-undefined";
 
@@ -101,7 +102,9 @@ function reconcileEnumLabels(
 
   const entries = enumValues.flatMap((value): [string, string][] => {
     const labels = uniq(
-      declarations.map((declaration) => declaration.field.enumLabels?.[value])
+      declarations.map((declaration) =>
+        enumLabelForValue(declaration.field.enumLabels, value)
+      )
     );
     const [label] = labels;
     return labels.length === 1 && label ? [[value, label]] : [];

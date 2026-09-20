@@ -42,6 +42,7 @@ import { findTrackedEntityStateSource } from "@wfgraph/shared/lifecycle/entity-e
 import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { getNodeDisplayName } from "@wfgraph/shared/graph/node-display";
 import { conditionTypeOf } from "@wfgraph/shared/conditions/condition-field-type";
+import { enumLabelForValue } from "@wfgraph/shared/graph/schema-codec";
 import { compareText } from "@wfgraph/shared/types/string";
 
 export { getNodeDisplayName };
@@ -741,7 +742,9 @@ function sharedEnumLabels(
   enumValues: readonly string[]
 ): Readonly<Record<string, string>> | undefined {
   const entries = enumValues.flatMap((value): [string, string][] => {
-    const labels = uniq(fields.map((field) => field.enumLabels?.[value]));
+    const labels = uniq(
+      fields.map((field) => enumLabelForValue(field.enumLabels, value))
+    );
     const [label] = labels;
     return labels.length === 1 && label ? [[value, label]] : [];
   });

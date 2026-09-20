@@ -17,6 +17,7 @@ import {
   type ReferenceField,
 } from "@wfgraph/shared/graph/node-references";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import { enumLabelForValue } from "@wfgraph/shared/graph/schema-codec";
 import {
   type LifecycleRules,
   readLifecycleRules,
@@ -110,7 +111,7 @@ export function testPayloadFields(
       control: controlFor(field),
       options: field.enumValues?.map((value) => ({
         value,
-        label: field.enumLabels?.[value] ?? value,
+        label: enumLabelForValue(field.enumLabels, value) ?? value,
       })),
       optional: field.nullable === true,
     })

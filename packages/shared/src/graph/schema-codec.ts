@@ -297,6 +297,14 @@ export function isWorkflowSchemaItemType(
   );
 }
 
+/** An authored enum label, excluding inherited object prototype properties. */
+export function enumLabelForValue(
+  labels: Readonly<Record<string, string>> | undefined,
+  value: string
+): string | undefined {
+  return labels && Object.hasOwn(labels, value) ? labels[value] : undefined;
+}
+
 /** Enum members that can be shown as choices: strings and numbers. */
 function toEnumValues(values: unknown[] | undefined): string[] | undefined {
   if (!values) {
@@ -1167,7 +1175,7 @@ function deriveSelectOptions(
       const serialized = String(value);
       return {
         value: serialized,
-        label: property.enumLabels?.[serialized] ?? serialized,
+        label: enumLabelForValue(property.enumLabels, serialized) ?? serialized,
       };
     });
   }
