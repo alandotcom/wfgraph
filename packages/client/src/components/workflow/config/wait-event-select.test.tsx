@@ -1,5 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, type RenderResult } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  type RenderResult,
+  waitFor,
+} from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { type ReactNode, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -200,6 +205,42 @@ describe("WaitEventSelect", () => {
 
     expect(lastWaitFor()).toEqual([{ event: "billing/payment.settled" }]);
     expect(view.getByText("Raised after a payment clears.")).toBeTruthy();
+  });
+
+  it("closes the Event picker after a selection", async () => {
+    const view = renderControlledSelect({ waitFor: [] });
+    const input = view.getByLabelText("Resume when the event is");
+
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(input.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(input.getAttribute("aria-expanded")).toBe("false");
+      expect(
+        view.getByRole("button", { name: "Remove billing/payment.settled" })
+      ).toBeTruthy();
+    });
+  });
+
+  it("closes the Event picker after a deselection", async () => {
+    const view = renderControlledSelect({
+      waitFor: [{ event: "billing/payment.settled" }],
+    });
+    const input = view.getByLabelText("Resume when the event is");
+
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(input.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(input.getAttribute("aria-expanded")).toBe("false");
+      expect(
+        view.queryByRole("button", {
+          name: "Remove billing/payment.settled",
+        })
+      ).toBeNull();
+    });
   });
 
   // The raw name is what a sender posts, so a builder who knows only that half
