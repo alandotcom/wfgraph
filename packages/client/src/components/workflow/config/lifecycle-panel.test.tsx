@@ -1160,10 +1160,7 @@ describe("LifecyclePanel Entity eligibility", () => {
       .getAllByRole("option")
       .map((option) => option.textContent);
     expect(choices).toEqual(
-      expect.arrayContaining([
-        "Reminders enabledremindersEnabled",
-        "Statusstatus",
-      ])
+      expect.arrayContaining(["Reminders enabled", "Status"])
     );
     expect(choices.every((choice) => !choice?.includes("patient.id"))).toBe(
       true

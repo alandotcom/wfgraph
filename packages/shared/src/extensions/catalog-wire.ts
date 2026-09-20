@@ -150,6 +150,7 @@ const referenceFieldWireSchema: Schema.Codec<ReferenceField> = Schema.Struct({
   nullable: Schema.optionalKey(Schema.Boolean),
   enumValues: Schema.optionalKey(Schema.mutable(Schema.Array(Schema.String))),
   showWhen: Schema.optionalKey(showWhenWireSchema),
+  hidden: Schema.optionalKey(Schema.Boolean),
 });
 
 const eventEntityBindingMetadataSchema = Schema.Struct({

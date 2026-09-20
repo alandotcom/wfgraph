@@ -176,9 +176,9 @@ describe("assembleExtensions", () => {
   });
 
   // The Wait node is the only node with no output schema behind it, so this
-  // list is the whole of what the template picker and the condition builder can
-  // offer for it. It has to name what `executeEventWait` writes.
-  it("offers the Wait node's own output paths", () => {
+  // list declares what `executeEventWait` writes. Internal fields remain in the
+  // contract for existing references while authoring surfaces omit them.
+  it("declares the Wait node's output paths", () => {
     const { catalog } = assembleExtensions({});
     const wait = catalog.actions.find((action) => action.id === "Wait");
 
@@ -190,6 +190,9 @@ describe("assembleExtensions", () => {
       "event",
       "payload",
     ]);
+    expect(
+      wait?.outputFields.find((field) => field.path === "hops")
+    ).toMatchObject({ hidden: true });
   });
 
   it("has no step for either built-in, since the engine dispatches to them itself", () => {

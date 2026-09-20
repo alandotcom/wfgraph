@@ -263,6 +263,35 @@ describe("describe_action", () => {
     })
   );
 
+  it.effect("omits hidden output fields", () =>
+    Effect.gen(function* () {
+      const catalogWithHiddenOutput: ExtensionCatalog = {
+        ...catalog,
+        actions: catalog.actions.map((action) =>
+          action.id === "slack/send-message"
+            ? {
+                ...action,
+                outputFields: [
+                  ...action.outputFields,
+                  { path: "hops", type: "number", hidden: true },
+                ],
+              }
+            : action
+        ),
+      };
+      const { tools } = yield* agentToolsFor({
+        catalog: catalogWithHiddenOutput,
+      });
+      const result = yield* tools.describe_action({
+        actionId: "slack/send-message",
+      });
+
+      expect(result.outputFields.some((field) => field.path === "hops")).toBe(
+        false
+      );
+    })
+  );
+
   it.effect("returns a failure the model can read for an unknown id", () =>
     Effect.gen(function* () {
       const { tools } = yield* agentToolsFor({ catalog });

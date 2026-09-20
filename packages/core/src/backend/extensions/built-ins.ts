@@ -47,12 +47,12 @@ export const builtInActions: readonly ActionMetadata[] = [
     category: "System",
     configFields: [],
     // What both modes leave behind, plus the arriving Event's name and payload
-    // for an event wait. Event-only paths declare `showWhen` so any reader of
-    // `fieldsVisibleForConfig` drops them on a delay Wait. `payload` is one
-    // object rather than leaves, because each Event the node parks on carries
-    // its own shape and the catalog has one field list for the node. A builder
-    // writes `payload.<field>` themselves, and reads `event` to learn which
-    // Event arrived.
+    // for an event wait. Event-only paths declare `showWhen` so a delay Wait
+    // does not offer them. `payload` is one object rather than leaves, because
+    // each Event the node parks on carries its own shape and the catalog has one
+    // field list for the node. A builder writes `payload.<field>` themselves,
+    // and reads `event` to learn which Event arrived. Migration bookkeeping
+    // remains declared for existing references but is hidden from authoring.
     outputFields: [
       {
         path: "waitType",
@@ -75,6 +75,7 @@ export const builtInActions: readonly ActionMetadata[] = [
         description:
           "How many times the run parked here; more than one means it was migrated to a newer version while waiting",
         type: "number",
+        hidden: true,
       },
       {
         path: "event",

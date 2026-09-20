@@ -5,6 +5,7 @@ import { LIFECYCLE_STARTED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-ou
 import { emptyLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
 import { fixtureCatalog } from "#src/tools/catalog-fixture";
+import { referencesForNode } from "#src/tools/reference-tools";
 import { agentToolsFor } from "#src/testing";
 
 const catalog = fixtureCatalog;
@@ -76,6 +77,49 @@ describe("list_references", () => {
           type: "number",
         })
       );
+    })
+  );
+
+  it.effect("omits hidden output fields from new references", () =>
+    Effect.gen(function* () {
+      const catalogWithHiddenOutput: ExtensionCatalog = {
+        ...catalog,
+        actions: catalog.actions.map((action) =>
+          action.id === "score-applicant"
+            ? {
+                ...action,
+                outputFields: [
+                  ...action.outputFields,
+                  { path: "hops", type: "number", hidden: true },
+                ],
+              }
+            : action
+        ),
+      };
+      const nodes = [
+        lifecycleNode(["applicant.created"]),
+        scoreNode,
+        slackNode,
+      ];
+      const edges = [entryToScore, scoreToSlack];
+      const { tools } = yield* agentToolsFor({
+        nodes,
+        edges,
+        catalog: catalogWithHiddenOutput,
+      });
+
+      const result = yield* tools.list_references({ nodeId: "notify" });
+
+      expect(
+        result.references.some((reference) => reference.path === "hops")
+      ).toBe(false);
+      expect(
+        referencesForNode({
+          nodeId: "notify",
+          document: { nodes, edges },
+          catalog: catalogWithHiddenOutput,
+        })?.some((reference) => reference.path === "hops")
+      ).toBe(true);
     })
   );
 

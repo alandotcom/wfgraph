@@ -244,7 +244,8 @@ describe("WorkflowRunDetail", () => {
       )
     ).toBeTruthy();
     expect(view.getByText("Eligible when")).toBeTruthy();
-    expect(view.getByText("appointmentRemindersEnabled")).toBeTruthy();
+    expect(view.getByText("Appointment reminders enabled")).toBeTruthy();
+    expect(view.queryByText("appointmentRemindersEnabled")).toBeNull();
     expect(view.getByText("is true")).toBeTruthy();
     expect(view.getByText("Eligibility rule did not match")).toBeTruthy();
     expect(view.getByText("Prevented Send reminder")).toBeTruthy();

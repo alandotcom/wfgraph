@@ -30,7 +30,7 @@ type ConditionFieldGroup = {
 function unavailableField(path: string): ConditionSelectableField {
   return {
     path,
-    label: unavailableFieldLabel(path),
+    label: unavailableFieldLabel(),
     type: "string",
     sourceNodeId: "",
     sourceNodeLabel: "Unavailable",
@@ -80,10 +80,9 @@ function pickerItems(
 }
 
 /**
- * A search reads the path, the node it came from, and "nullable" alike.
- *
- * A builder meeting a long list remembers a field as a path, as the step that
- * produced it, or as the badge that says a run can arrive without it.
+ * A search reads the field's label, description, stored path, source, and
+ * "nullable" badge. The stored path remains searchable for builders who know
+ * it, but it is not rendered in the picker.
  */
 function matchesField(field: ConditionSelectableField, query: string): boolean {
   const needle = query.trim().toLowerCase();
@@ -180,11 +179,6 @@ export function ConditionFieldCombobox({
                             </span>
                           ) : null}
                         </span>
-                        {field.label === field.path ? null : (
-                          <span className="max-w-full truncate font-mono text-muted-foreground text-xs">
-                            {field.path}
-                          </span>
-                        )}
                         {field.description ? (
                           <span className="line-clamp-2 text-muted-foreground text-xs">
                             {field.description}

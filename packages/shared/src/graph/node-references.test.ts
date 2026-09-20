@@ -4,6 +4,7 @@ import {
   displayTemplateText,
   ENTITY_STATE_SOURCE_ID,
   extractAllTemplateReferences,
+  fieldsOfferedForConfig,
   fieldsVisibleForConfig,
   findTemplateTokens,
   flattenSchemaToReferenceFields,
@@ -844,6 +845,20 @@ describe("fieldsVisibleForConfig", () => {
     expect(
       fieldsVisibleForConfig({ waitMode: "event" }, fields).map((f) => f.path)
     ).toEqual(["always", "onEvent"]);
+  });
+});
+
+describe("fieldsOfferedForConfig", () => {
+  it("omits hidden fields while leaving them addressable", () => {
+    const fields = [
+      { path: "public", type: "string" as const },
+      { path: "internal", type: "number" as const, hidden: true },
+    ];
+
+    expect(
+      fieldsOfferedForConfig({}, fields).map((field) => field.path)
+    ).toEqual(["public"]);
+    expect(referenceFieldForPath(fields, "internal")).toBe(fields[1]);
   });
 });
 

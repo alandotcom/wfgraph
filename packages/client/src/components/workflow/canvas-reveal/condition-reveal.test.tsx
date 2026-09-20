@@ -338,7 +338,7 @@ describe("Condition Browse", () => {
 
     const rules = section("Continue when").textContent;
     expect(rules).toContain("True when the rule matches, and False otherwise.");
-    expect(rules).toContain("status");
+    expect(rules).toContain("Status");
     expect(rules).toContain("active");
     const branches = section("Branches").textContent;
     expect(branches).toContain("Continues to Send reminder");
@@ -520,8 +520,17 @@ describe("Condition Focus", () => {
       view.getByRole("button", { name: /Remove condition on/ })
     ).toBeTruthy();
     const inputs = section("Available inputs");
-    for (const path of ["status", "plan", "region", "clinic", "reminders"]) {
-      expect(inputs.textContent).toContain(path);
+    for (const label of ["Status", "Plan", "Region", "Clinic", "Reminders"]) {
+      expect(inputs.textContent).toContain(label);
+    }
+    for (const storedPath of [
+      "status",
+      "plan",
+      "region",
+      "clinic",
+      "reminders",
+    ]) {
+      expect(inputs.textContent).not.toContain(storedPath);
     }
     expect(section("Branches").textContent).toContain(
       "Continues to Send reminder"

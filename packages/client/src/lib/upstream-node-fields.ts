@@ -23,7 +23,7 @@ import {
 import {
   appendOutputPathKey,
   ENTITY_STATE_SOURCE_ID,
-  fieldsVisibleForConfig,
+  fieldsOfferedForConfig,
   referenceFieldLabel,
   type ReferenceField,
 } from "@wfgraph/shared/graph/node-references";
@@ -248,7 +248,7 @@ function nodeOutputFields(
       actionType
     );
     if (pluginFields.length > 0) {
-      return [...fieldsVisibleForConfig(node.data.config, pluginFields)];
+      return [...fieldsOfferedForConfig(node.data.config, pluginFields)];
     }
   }
 
