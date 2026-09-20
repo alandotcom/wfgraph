@@ -64,6 +64,21 @@ const timestampCatalog: ExtensionCatalog = {
   ],
 };
 
+const durationCatalog: ExtensionCatalog = {
+  ...fixtureCatalog,
+  events: fixtureCatalog.events.map((event) =>
+    event.name === "applicant.created"
+      ? {
+          ...event,
+          payloadFields: [
+            ...event.payloadFields,
+            { path: "maximumLateness", type: "duration" as const },
+          ],
+        }
+      : event
+  ),
+};
+
 const integrationEventCatalog: ExtensionCatalog = {
   ...fixtureCatalog,
   events: [
@@ -809,6 +824,70 @@ describe("set_wait", () => {
         waitAllowedEndTime: "17:00",
         waitTimezone: "America/New_York",
       });
+    })
+  );
+
+  it.effect("writes and preserves a referenced maximum lateness", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({
+        ...documentInput,
+        nodes: [eventLifecycle, wait],
+        catalog: durationCatalog,
+      });
+      const maximumLateness = formatTemplateToken({
+        nodeId: "entry",
+        nodeLabel: "Lifecycle",
+        fieldPath: "maximumLateness",
+      });
+
+      yield* tools.set_wait({
+        nodeId: "wait",
+        wait: {
+          mode: "duration",
+          duration: "1d",
+          gateMode: "max_lateness",
+          maxLateness: maximumLateness,
+        },
+      });
+      yield* tools.set_wait({
+        nodeId: "wait",
+        wait: { mode: "duration", duration: "2d" },
+      });
+
+      expect((yield* draft.current).nodes[1]?.data.config).toMatchObject({
+        waitDuration: "2d",
+        waitGateMode: "max_lateness",
+        waitMaxLateness: maximumLateness,
+      });
+    })
+  );
+
+  it.effect("refuses a maximum-lateness reference of the wrong type", () =>
+    Effect.gen(function* () {
+      const { tools } = yield* agentToolsFor({
+        ...documentInput,
+        nodes: [eventLifecycle, wait],
+        catalog: durationCatalog,
+      });
+      const applicantId = formatTemplateToken({
+        nodeId: "entry",
+        nodeLabel: "Lifecycle",
+        fieldPath: "applicantId",
+      });
+
+      const failure = yield* Effect.flip(
+        tools.set_wait({
+          nodeId: "wait",
+          wait: {
+            mode: "duration",
+            duration: "1d",
+            gateMode: "max_lateness",
+            maxLateness: applicantId,
+          },
+        })
+      );
+
+      expect(failure.reason).toContain("duration token");
     })
   );
 

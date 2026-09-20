@@ -245,6 +245,25 @@ describe("wait node - delay mode", () => {
     ]);
   });
 
+  it("normalizes timezone whitespace before applying allowed hours", async () => {
+    const { runtime, execution } = runWait({
+      config: {
+        waitMode: "delay",
+        waitDuration: "1h",
+        waitGateMode: "require_actual_wait",
+        waitAllowedHoursMode: "daily_window",
+        waitAllowedStartTime: "09:00",
+        waitAllowedEndTime: "17:00",
+        waitTimezone: " UTC ",
+      },
+      store,
+    });
+    const result = await execution;
+
+    expect(result.results.wait_1?.success).toBe(true);
+    expect(runtime.waits).toHaveLength(1);
+  });
+
   it("halts the branch instead of waiting when a gated target has already passed", async () => {
     const { runtime, execution } = runWait({
       config: {

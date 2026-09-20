@@ -47,6 +47,7 @@ const prepareDelayWait = Effect.fn("prepareDelayWait")(function* (
   const { config, context, store, startLog } = branch;
 
   const waitTimezone = config.waitTimezone;
+  const normalizedWaitTimezone = waitTimezone?.trim() || undefined;
   const waitGateMode = readWaitGateMode(config);
   const anchorAt = attempt.anchorAt ?? new Date();
 
@@ -55,7 +56,7 @@ const prepareDelayWait = Effect.fn("prepareDelayWait")(function* (
     waitDuration: config.waitDuration,
     waitUntil: config.waitUntil,
     waitOffset: config.waitOffset,
-    waitTimezone,
+    waitTimezone: normalizedWaitTimezone,
   });
 
   if (!target.waitUntil) {
@@ -124,7 +125,7 @@ const prepareDelayWait = Effect.fn("prepareDelayWait")(function* (
 
   const windowResult = applyWaitAllowedHours({
     candidate: target.waitUntil,
-    timeZone: waitTimezone,
+    timeZone: normalizedWaitTimezone,
     ...readAllowedHoursConfig(config),
   });
   if (windowResult.error) {

@@ -103,7 +103,7 @@ const delayPolicyFields = {
   }),
   maxLateness: Schema.optionalKey(Schema.String).annotate({
     description:
-      'The positive duration accepted after the target when gateMode is "max_lateness", such as "6h". Omit to preserve it while that gate remains active.',
+      'The positive duration accepted after the target when gateMode is "max_lateness", such as "6h", or one exact duration token from list_references. Omit to preserve it while that gate remains active.',
   }),
   allowedHoursMode: Schema.optionalKey(
     Schema.Literals(["off", "daily_window"])
@@ -309,9 +309,38 @@ function validTimeZone(timeZone: string): boolean {
 
 type DelayWaitInput = Exclude<SetWaitInput["wait"], { readonly mode: "event" }>;
 
+function validateMaxLateness(input: {
+  value: string | undefined;
+  nodeId: string;
+  document: AgentDocument;
+  catalog: ExtensionCatalog;
+}): string | undefined {
+  if (input.value === undefined) {
+    return "Maximum lateness must be a positive duration such as 30m, 6h, or P1D.";
+  }
+
+  if (findTemplateTokens(input.value).length === 0) {
+    return parsePositiveDurationMs(input.value) === null
+      ? "Maximum lateness must be a positive duration such as 30m, 6h, or P1D."
+      : undefined;
+  }
+
+  const reference = referencesForNode({
+    nodeId: input.nodeId,
+    document: input.document,
+    catalog: input.catalog,
+  })?.find((candidate) => candidate.token === input.value);
+  return reference?.type === "duration"
+    ? undefined
+    : "Maximum lateness needs one exact duration token this step can read. Call list_references for this step before writing again.";
+}
+
 function readDelayPolicy(input: {
   wait: DelayWaitInput;
   stored: Record<string, unknown>;
+  nodeId: string;
+  document: AgentDocument;
+  catalog: ExtensionCatalog;
 }):
   | { readonly ok: true; readonly config: Record<string, unknown> }
   | { readonly ok: false; readonly reason: string } {
@@ -334,13 +363,14 @@ function readDelayPolicy(input: {
     };
   }
   if (gateMode === "max_lateness") {
-    const maxLatenessMs = parsePositiveDurationMs(maxLateness);
-    if (maxLatenessMs === null) {
-      return {
-        ok: false,
-        reason:
-          "Maximum lateness must be a positive duration such as 30m, 6h, or P1D.",
-      };
+    const reason = validateMaxLateness({
+      value: maxLateness,
+      nodeId: input.nodeId,
+      document: input.document,
+      catalog: input.catalog,
+    });
+    if (reason) {
+      return { ok: false, reason };
     }
   }
   const allowedHoursMode =
@@ -435,7 +465,13 @@ export const waitToolHandlers = Effect.gen(function* () {
               reason: "A Wait needs a valid duration such as 2d or 48h.",
             });
           }
-          const policy = readDelayPolicy({ wait, stored: storedConfig });
+          const policy = readDelayPolicy({
+            wait,
+            stored: storedConfig,
+            nodeId: input.nodeId,
+            document,
+            catalog: draft.catalog,
+          });
           if (!policy.ok) {
             return Effect.fail({ reason: policy.reason });
           }
@@ -452,7 +488,13 @@ export const waitToolHandlers = Effect.gen(function* () {
             });
           }
 
-          const policy = readDelayPolicy({ wait, stored: storedConfig });
+          const policy = readDelayPolicy({
+            wait,
+            stored: storedConfig,
+            nodeId: input.nodeId,
+            document,
+            catalog: draft.catalog,
+          });
           if (!policy.ok) {
             return Effect.fail({ reason: policy.reason });
           }
