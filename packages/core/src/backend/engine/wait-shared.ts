@@ -109,11 +109,12 @@ export function fromStore<A>(
   return Effect.mapError(effect, failureFromUnknown);
 }
 
-export function readWaitGateMode(
-  config: WaitConfig
-): "require_actual_wait" | "off" {
-  return config.waitGateMode === "require_actual_wait"
-    ? "require_actual_wait"
+export type WaitGateMode = "off" | "require_actual_wait" | "max_lateness";
+
+export function readWaitGateMode(config: WaitConfig): WaitGateMode {
+  return config.waitGateMode === "require_actual_wait" ||
+    config.waitGateMode === "max_lateness"
+    ? config.waitGateMode
     : "off";
 }
 

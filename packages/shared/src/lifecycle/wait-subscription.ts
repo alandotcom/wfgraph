@@ -80,8 +80,9 @@ export const waitConfigSchema = Schema.Struct({
   waitUntil: Schema.optional(Schema.String),
   waitOffset: Schema.optional(Schema.String),
   waitGateMode: Schema.optional(
-    Schema.Literals(["off", "require_actual_wait"])
+    Schema.Literals(["off", "require_actual_wait", "max_lateness"])
   ),
+  waitMaxLateness: Schema.optional(Schema.String),
   waitAllowedHoursMode: Schema.optional(Schema.String),
   waitAllowedStartTime: Schema.optional(Schema.String),
   waitAllowedEndTime: Schema.optional(Schema.String),
@@ -90,10 +91,14 @@ export const waitConfigSchema = Schema.Struct({
 
 export type WaitConfig = typeof waitConfigSchema.Type;
 
-/** Which of the node's shapes reads a key: one mode, and for delay one timing. */
+/** Which of the node's mode, timing, and gate shapes reads a value key. */
 type WaitValueOwner =
   | { mode: "event" }
-  | { mode: "delay"; timing: "duration" | "until" };
+  | {
+      mode: "delay";
+      timing?: "duration" | "until";
+      gate?: "max_lateness";
+    };
 
 /**
  * What each of the Wait node's time keys is read as, who reads it, and whether a
@@ -123,6 +128,11 @@ export const WAIT_VALUE_TARGETS = {
     required: false,
     owner: { mode: "delay", timing: "until" },
   },
+  waitMaxLateness: {
+    type: "duration",
+    required: true,
+    owner: { mode: "delay", gate: "max_lateness" },
+  },
   waitTimeout: {
     type: "duration",
     required: true,
@@ -144,6 +154,7 @@ const WAIT_VALUE_TARGET_KEYS: readonly WaitValueTargetKey[] = [
   "waitDuration",
   "waitUntil",
   "waitOffset",
+  "waitMaxLateness",
   "waitTimeout",
 ];
 
@@ -175,12 +186,15 @@ export function waitValueKeysIn(
 ): WaitValueTargetKey[] {
   const mode = config.waitMode === "event" ? "event" : "delay";
   const timing = readWaitDelayTiming(config);
+  const gate = config.waitGateMode === "max_lateness" ? "max_lateness" : "off";
 
   return WAIT_VALUE_TARGET_KEYS.filter((key) => {
     const { owner } = WAIT_VALUE_TARGETS[key];
     return owner.mode === "event"
       ? mode === "event"
-      : mode === "delay" && owner.timing === timing;
+      : mode === "delay" &&
+          (!("timing" in owner) || owner.timing === timing) &&
+          (!("gate" in owner) || owner.gate === gate);
   });
 }
 

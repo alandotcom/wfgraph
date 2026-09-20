@@ -14,7 +14,11 @@
  */
 
 import { encodeIsoTimestamp } from "@wfgraph/shared/types/timestamp";
-import { resolveWaitUntil } from "@wfgraph/shared/utils/wait-time";
+import {
+  applyWaitAllowedHours,
+  parsePositiveDurationMs,
+  resolveWaitTarget,
+} from "@wfgraph/shared/utils/wait-time";
 import { Effect } from "effect";
 import { closeStepLog } from "#src/backend/engine/step-log";
 import {
@@ -46,18 +50,17 @@ const prepareDelayWait = Effect.fn("prepareDelayWait")(function* (
   const waitGateMode = readWaitGateMode(config);
   const anchorAt = attempt.anchorAt ?? new Date();
 
-  const resolved = resolveWaitUntil({
+  const target = resolveWaitTarget({
     now: anchorAt,
     waitDuration: config.waitDuration,
     waitUntil: config.waitUntil,
     waitOffset: config.waitOffset,
     waitTimezone,
-    ...readAllowedHoursConfig(config),
   });
 
-  if (!resolved.waitUntil) {
+  if (!target.waitUntil) {
     const errorMessage =
-      resolved.error ||
+      target.error ||
       "Wait could not determine a target timestamp from waitUntil/waitDuration.";
     yield* closeStepLog(store, startLog, {
       status: "error",
@@ -66,14 +69,79 @@ const prepareDelayWait = Effect.fn("prepareDelayWait")(function* (
     return { status: "error" as const, error: errorMessage };
   }
 
-  const waitUntilIso = encodeIsoTimestamp(resolved.waitUntil);
-  const plannedWaitMs = resolved.waitUntil.getTime() - Date.now();
+  const targetIso = encodeIsoTimestamp(target.waitUntil);
+  const targetWaitMs = target.waitUntil.getTime() - anchorAt.getTime();
+  if (waitGateMode === "max_lateness") {
+    const maxLatenessMs = parsePositiveDurationMs(config.waitMaxLateness);
+    if (maxLatenessMs === null) {
+      const errorMessage =
+        "Maximum lateness must be a positive duration such as 30m, 6h, or P1D.";
+      yield* closeStepLog(store, startLog, {
+        status: "error",
+        error: errorMessage,
+      });
+      return { status: "error" as const, error: errorMessage };
+    }
+
+    // Maximum lateness measures the authored target plus its offset. The
+    // allowed-hours window has not shifted that target yet.
+    if (attempt.anchorAt === undefined && targetWaitMs < -maxLatenessMs) {
+      const output = {
+        waitType: "delay",
+        waitUntil: targetIso,
+        waitGateMode,
+        waitMaxLateness: config.waitMaxLateness,
+        skipped: true,
+        skippedReason: "past_due_beyond_max_lateness",
+        plannedWaitMs: targetWaitMs,
+        didActuallyWait: false,
+        hops: 0,
+        resumedAt: encodeIsoTimestamp(new Date()),
+      };
+
+      yield* fromStore(
+        store.recordAuditEvent({
+          workflowId: branch.workflowId,
+          executionId: context.executionId,
+          eventType: "run_skipped",
+          message: `Skipped delay branch in node '${context.nodeName}' (target exceeded maximum lateness)`,
+          metadata: {
+            nodeId: context.nodeId,
+            waitType: "delay",
+            waitUntil: targetIso,
+            plannedWaitMs: targetWaitMs,
+            maxLatenessMs,
+            reason: "past_due_beyond_max_lateness",
+          },
+        })
+      );
+
+      yield* closeStepLog(store, startLog, { status: "success", output });
+
+      return { status: "skipped" as const, output };
+    }
+  }
+
+  const windowResult = applyWaitAllowedHours({
+    candidate: target.waitUntil,
+    timeZone: waitTimezone,
+    ...readAllowedHoursConfig(config),
+  });
+  if (windowResult.error) {
+    yield* closeStepLog(store, startLog, {
+      status: "error",
+      error: windowResult.error,
+    });
+    return { status: "error" as const, error: windowResult.error };
+  }
+
+  const waitUntilIso = encodeIsoTimestamp(windowResult.date);
+  const plannedWaitMs = windowResult.date.getTime() - Date.now();
   const didActuallyWait = plannedWaitMs > 0;
 
-  // Gate mode treats an already-passed target as "nothing to wait for" and
-  // stops the branch instead of falling through to a zero-length park. It
-  // asks whether this Wait ever waited, so only the first attempt can answer
-  // no: a later attempt is reached from a park that was still counting down.
+  // This gate asks whether the Wait actually parks after allowed hours are
+  // applied. Only the first attempt can answer no: a later attempt is reached
+  // from a park that was still counting down.
   if (
     attempt.anchorAt === undefined &&
     waitGateMode === "require_actual_wait" &&
@@ -121,7 +189,11 @@ const prepareDelayWait = Effect.fn("prepareDelayWait")(function* (
       subscribedEvents: [],
       resumeToken: null,
       // Everything a later attempt needs beside the columns the row already has.
-      metadata: { waitGateMode, waitTimezone: waitTimezone ?? null },
+      metadata: {
+        waitGateMode,
+        waitMaxLateness: config.waitMaxLateness ?? null,
+        waitTimezone: waitTimezone ?? null,
+      },
       timeoutMs: plannedWaitMs,
       signalTypes: ["version-migrate", "lifecycle-exit"],
     },

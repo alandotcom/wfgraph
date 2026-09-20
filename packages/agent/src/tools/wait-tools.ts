@@ -34,6 +34,7 @@ import { isBlank } from "@wfgraph/shared/types/string";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
   parseDurationMs,
+  parsePositiveDurationMs,
   parseTimestampWithTimezone,
 } from "@wfgraph/shared/utils/wait-time";
 import { validateWaitAllowedHoursConfig } from "@wfgraph/shared/utils/wait-allowed-hours";
@@ -95,10 +96,14 @@ const waitForSchema = Schema.Array(
 
 const delayPolicyFields = {
   gateMode: Schema.optionalKey(
-    Schema.Literals(["off", "require_actual_wait"])
+    Schema.Literals(["off", "require_actual_wait", "max_lateness"])
   ).annotate({
     description:
-      "Whether an already-due target continues immediately or skips the branch. Omit to preserve it while changing delay timing.",
+      "How to handle an already-due target: continue immediately, require actual waiting, or allow limited lateness. Omit to preserve it while changing delay timing.",
+  }),
+  maxLateness: Schema.optionalKey(Schema.String).annotate({
+    description:
+      'The positive duration accepted after the target when gateMode is "max_lateness", such as "6h". Omit to preserve it while that gate remains active.',
   }),
   allowedHoursMode: Schema.optionalKey(
     Schema.Literals(["off", "daily_window"])
@@ -277,6 +282,7 @@ const WAIT_OWNED_KEYS = new Set([
   "waitOffset",
   "waitDelayTimingMode",
   "waitGateMode",
+  "waitMaxLateness",
   "waitAllowedHoursMode",
   "waitAllowedStartTime",
   "waitAllowedEndTime",
@@ -310,9 +316,33 @@ function readDelayPolicy(input: {
   | { readonly ok: true; readonly config: Record<string, unknown> }
   | { readonly ok: false; readonly reason: string } {
   const preserve = input.stored.waitMode !== "event";
-  const gateMode =
-    input.wait.gateMode ??
-    (preserve ? readConfigString(input.stored, "waitGateMode") : undefined);
+  const storedGateMode = preserve
+    ? readConfigString(input.stored, "waitGateMode")
+    : undefined;
+  const gateMode = input.wait.gateMode ?? storedGateMode;
+  const maxLateness =
+    gateMode === "max_lateness"
+      ? (input.wait.maxLateness ??
+        (storedGateMode === "max_lateness"
+          ? readConfigString(input.stored, "waitMaxLateness")
+          : undefined))
+      : undefined;
+  if (input.wait.maxLateness !== undefined && gateMode !== "max_lateness") {
+    return {
+      ok: false,
+      reason: 'maxLateness requires gateMode "max_lateness".',
+    };
+  }
+  if (gateMode === "max_lateness") {
+    const maxLatenessMs = parsePositiveDurationMs(maxLateness);
+    if (maxLatenessMs === null) {
+      return {
+        ok: false,
+        reason:
+          "Maximum lateness must be a positive duration such as 30m, 6h, or P1D.",
+      };
+    }
+  }
   const allowedHoursMode =
     input.wait.allowedHoursMode ??
     (preserve
@@ -366,6 +396,7 @@ function readDelayPolicy(input: {
     ok: true,
     config: omitUndefined({
       waitGateMode: gateMode,
+      waitMaxLateness: maxLateness,
       waitAllowedHoursMode: allowedHoursMode,
       waitAllowedStartTime: windowStart,
       waitAllowedEndTime: windowEnd,

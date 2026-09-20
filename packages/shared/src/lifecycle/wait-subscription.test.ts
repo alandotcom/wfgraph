@@ -27,6 +27,23 @@ describe("readWaitConfig", () => {
     }
   });
 
+  it("reads the maximum-lateness gate", () => {
+    const read = readWaitConfig(
+      waitConfig({
+        waitMode: "delay",
+        waitDuration: "1h",
+        waitGateMode: "max_lateness",
+        waitMaxLateness: "6h",
+      })
+    );
+
+    expect(read.valid).toBe(true);
+    if (read.valid) {
+      expect(read.config.waitGateMode).toBe("max_lateness");
+      expect(read.config.waitMaxLateness).toBe("6h");
+    }
+  });
+
   it("reads the subscriptions an event wait names", () => {
     const read = readWaitConfig(
       waitConfig({
@@ -193,6 +210,18 @@ describe("waitValueTargetsFor", () => {
     ).toEqual(["waitDuration"]);
   });
 
+  it("also reads maximum lateness when that delay gate is active", () => {
+    expect(
+      Object.keys(
+        waitValueTargetsFor({
+          waitMode: "delay",
+          waitDelayTimingMode: "duration",
+          waitGateMode: "max_lateness",
+        })
+      )
+    ).toEqual(["waitDuration", "waitMaxLateness"]);
+  });
+
   it("reads the target date and its offset when the timing is a date", () => {
     expect(
       Object.keys(
@@ -217,6 +246,7 @@ describe("waitValueTargetsFor", () => {
       "waitDuration",
       "waitUntil",
       "waitOffset",
+      "waitMaxLateness",
     ]);
   });
 });

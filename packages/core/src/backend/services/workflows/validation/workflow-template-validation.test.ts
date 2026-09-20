@@ -514,6 +514,38 @@ describe("validateWorkflowTemplates", () => {
     ).toEqual({ valid: true });
   });
 
+  it("accepts a duration reference for active maximum lateness", () => {
+    expect(
+      check(
+        [
+          entryNode([RESCHEDULED]),
+          waitNode({
+            waitDuration: "1h",
+            waitGateMode: "max_lateness",
+            waitMaxLateness: token("leadTime"),
+          }),
+        ],
+        [startedEdge]
+      )
+    ).toEqual({ valid: true });
+  });
+
+  it("ignores maximum lateness when its gate is inactive", () => {
+    expect(
+      check(
+        [
+          entryNode([CREATED]),
+          waitNode({
+            waitDuration: "1h",
+            waitGateMode: "off",
+            waitMaxLateness: token("appointmentId"),
+          }),
+        ],
+        [startedEdge]
+      )
+    ).toEqual({ valid: true });
+  });
+
   it("refuses a duration target reading a name", () => {
     // The failure this replaces is a run: the engine renders the path to text
     // and `parseDurationMs` answers null on it.

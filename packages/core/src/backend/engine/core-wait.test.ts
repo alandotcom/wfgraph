@@ -8,7 +8,7 @@
  * persistence segments around those boundaries. That is what these tests pin.
  */
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import { resolveOutputPath } from "@wfgraph/shared/graph/node-references";
 import { executeTestWorkflow as executeWorkflow } from "#src/backend/engine/test-execution";
@@ -265,6 +265,133 @@ describe("wait node - delay mode", () => {
     expect(store.callsOf("createWaitState")).toHaveLength(0);
     expect(runtime.waits).toHaveLength(0);
     expect(store.callsOf("recordAuditEvent")[0]?.eventType).toBe("run_skipped");
+  });
+
+  it("continues when a target is late but within its maximum lateness", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-03-10T12:00:00Z"));
+
+    try {
+      const { execution } = runWait({
+        config: {
+          waitMode: "delay",
+          waitUntil: "2026-03-10T10:00:00Z",
+          waitGateMode: "max_lateness",
+          waitMaxLateness: "6h",
+        },
+        store,
+      });
+      const result = await execution;
+
+      expect(result.results.after_wait?.success).toBe(true);
+      expect(waitOutput(result)).not.toHaveProperty("skipped");
+      expect(store.callsOf("createWaitState")).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("parks normally when a maximum-lateness target is still in the future", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-03-10T12:00:00Z"));
+
+    try {
+      const { runtime, execution } = runWait({
+        config: {
+          waitMode: "delay",
+          waitUntil: "2026-03-10T13:00:00Z",
+          waitGateMode: "max_lateness",
+          waitMaxLateness: "6h",
+        },
+        store,
+      });
+      const result = await execution;
+
+      expect(result.results.after_wait?.success).toBe(true);
+      expect(waitOutput(result)).not.toHaveProperty("skipped");
+      expect(runtime.waits).toHaveLength(1);
+      expect(store.callsOf("createWaitState")).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("continues at the exact maximum-lateness boundary", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const now = new Date("2026-03-10T12:00:00Z");
+    vi.setSystemTime(now);
+    // A later clock read has advanced, but the gate evaluates against the
+    // attempt's captured instant so the exact boundary remains inclusive.
+    vi.spyOn(Date, "now").mockReturnValue(now.getTime() + 1);
+
+    try {
+      const { execution } = runWait({
+        config: {
+          waitMode: "delay",
+          waitDuration: "-6h",
+          waitGateMode: "max_lateness",
+          waitMaxLateness: "6h",
+        },
+        store,
+      });
+      const result = await execution;
+
+      expect(result.results.after_wait?.success).toBe(true);
+      expect(waitOutput(result)).not.toHaveProperty("skipped");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("checks maximum lateness before moving the target into allowed hours", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-03-10T08:00:00Z"));
+
+    try {
+      const { runtime, execution } = runWait({
+        config: {
+          waitMode: "delay",
+          waitUntil: "2026-03-10T01:00:00Z",
+          waitGateMode: "max_lateness",
+          waitMaxLateness: "6h",
+          waitAllowedHoursMode: "daily_window",
+          waitAllowedStartTime: "09:00",
+          waitAllowedEndTime: "17:00",
+          waitTimezone: "UTC",
+        },
+        store,
+      });
+      const result = await execution;
+
+      expect(result.results.after_wait).toBeUndefined();
+      expect(waitOutput(result)).toMatchObject({
+        waitUntil: "2026-03-10T01:00:00.000Z",
+        waitMaxLateness: "6h",
+        skipped: true,
+        skippedReason: "past_due_beyond_max_lateness",
+      });
+      expect(store.callsOf("createWaitState")).toHaveLength(0);
+      expect(runtime.waits).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("fails the node when maximum lateness is zero or invalid", async () => {
+    const { execution } = runWait({
+      config: {
+        waitMode: "delay",
+        waitDuration: "1h",
+        waitGateMode: "max_lateness",
+        waitMaxLateness: "0h",
+      },
+      store,
+    });
+    const result = await execution;
+
+    expect(result.results.wait_1?.success).toBe(false);
+    expect(store.callsOf("createWaitState")).toHaveLength(0);
+    expect(waitStepLogs(store).closed[0]).toMatchObject({ status: "error" });
   });
 
   it("fails the node when no target timestamp can be resolved", async () => {

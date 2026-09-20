@@ -103,6 +103,7 @@ const waitActionConfigSchema = Schema.StructWithRest(
     waitUntil: Schema.optional(Schema.String),
     waitOffset: Schema.optional(Schema.String),
     waitGateMode: Schema.optional(Schema.String),
+    waitMaxLateness: Schema.optional(Schema.String),
     waitAllowedHoursMode: Schema.optional(Schema.String),
     waitAllowedStartTime: Schema.optional(Schema.String),
     waitAllowedEndTime: Schema.optional(Schema.String),

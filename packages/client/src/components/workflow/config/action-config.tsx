@@ -266,6 +266,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
   const waitGateMode = readConfigStringOr(config, "waitGateMode", "off");
   const configuredWaitUntil = readConfigString(config, "waitUntil");
   const configuredWaitDuration = readConfigString(config, "waitDuration");
+  const configuredWaitMaxLateness = readConfigString(config, "waitMaxLateness");
   const delayTimingMode = readWaitDelayTiming(config);
   const isWindowEnabled =
     readConfigString(config, "waitAllowedHoursMode") === "daily_window";
@@ -279,6 +280,15 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
     );
 
     onUpdateConfig({ ...cleared, waitDelayTimingMode: value });
+  };
+
+  const handleGateModeChange = (value: string) => {
+    const next = { ...config, waitGateMode: value };
+    const cleared = Object.fromEntries(
+      waitValueKeysNotIn(next).map((key) => [key, ""])
+    );
+
+    onUpdateConfig({ ...cleared, waitGateMode: value });
   };
 
   return (
@@ -366,7 +376,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
         <Select
           disabled={disabled}
           items={WAIT_GATE_OPTIONS}
-          onValueChange={(value) => onUpdateConfig({ waitGateMode: value })}
+          onValueChange={whenChosen(handleGateModeChange)}
           value={waitGateMode}
         >
           <SelectTrigger className="w-full" id="waitGateMode">
@@ -381,10 +391,31 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
           </SelectContent>
         </Select>
         <p className="text-muted-foreground text-xs">
-          Prevents immediate sends when the computed time is now or in the past
-          after an update/reschedule.
+          Choose whether an already-due target continues, skips, or remains
+          eligible for a limited time.
         </p>
       </div>
+
+      {waitGateMode === "max_lateness" ? (
+        <div className="space-y-2">
+          <Label htmlFor="waitMaxLateness" id="waitMaxLateness-label">
+            {WAIT_FIELD_LABELS.waitMaxLateness}
+          </Label>
+          <TemplateBadgeInput
+            disabled={disabled}
+            fieldType={WAIT_VALUE_TARGETS.waitMaxLateness.type}
+            id="waitMaxLateness"
+            labelledBy="waitMaxLateness-label"
+            onChange={(value) => onUpdateConfig({ waitMaxLateness: value })}
+            placeholder="30m, 6h, or P1D"
+            value={configuredWaitMaxLateness}
+          />
+          <p className="text-muted-foreground text-xs">
+            Lateness is measured from the target plus offset before the allowed
+            send window is applied.
+          </p>
+        </div>
+      ) : null}
 
       <div className="space-y-2">
         <Label htmlFor="waitAllowedHoursMode">

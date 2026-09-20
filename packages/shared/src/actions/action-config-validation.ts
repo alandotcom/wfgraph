@@ -1,12 +1,14 @@
 import { asNonEmptyString, isBlank } from "#src/types/string";
 import { BUILT_IN_ACTION_IDS } from "#src/actions/built-in-actions";
 import { compileSerializedConditionModel } from "#src/conditions/conditions";
+import { findTemplateTokens } from "#src/graph/node-references";
 import {
   readWaitDelayTiming,
   readWaitSubscriptions,
 } from "#src/lifecycle/wait-subscription";
 import { matchesShowWhen, type ShowWhen } from "#src/types/show-when";
 import { parseTimeOfDayMinutes } from "#src/utils/wait-allowed-hours";
+import { parsePositiveDurationMs } from "#src/utils/wait-time";
 import type { WorkflowNode } from "#src/graph/types";
 
 export type MissingRequiredField = {
@@ -171,6 +173,20 @@ function getWaitMissingRequiredFields(
       fieldKey: "waitDuration",
       fieldLabel: "Wait for (duration)",
     });
+  }
+
+  if (asNonEmptyString(config.waitGateMode) === "max_lateness") {
+    const maxLateness = asNonEmptyString(config.waitMaxLateness);
+    if (
+      !maxLateness ||
+      (findTemplateTokens(maxLateness).length === 0 &&
+        parsePositiveDurationMs(maxLateness) === null)
+    ) {
+      missing.push({
+        fieldKey: "waitMaxLateness",
+        fieldLabel: "Maximum lateness (positive duration)",
+      });
+    }
   }
 
   if (asNonEmptyString(config.waitAllowedHoursMode) === "daily_window") {
