@@ -68,6 +68,7 @@ const referenceFieldSchema = Schema.Struct({
   description: Schema.optionalKey(Schema.String),
   nullable: Schema.optionalKey(Schema.Boolean),
   enumValues: Schema.optionalKey(Schema.Array(Schema.String)),
+  enumLabels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
 });
 
 const eventSummarySchema = Schema.Struct({
@@ -139,6 +140,7 @@ function toReferenceField(field: ReferenceField) {
     description: field.description,
     nullable: field.nullable,
     enumValues: field.enumValues,
+    enumLabels: field.enumLabels,
   });
 }
 

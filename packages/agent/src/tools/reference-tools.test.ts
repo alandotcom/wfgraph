@@ -145,7 +145,12 @@ describe("list_references", () => {
             type: "applicant",
             label: "Applicant",
             stateFields: [
-              { path: "status", type: "string" },
+              {
+                path: "status",
+                type: "string",
+                enumValues: ["active", "paused"],
+                enumLabels: { active: "Active", paused: "Paused" },
+              },
               { path: "metadata", type: "object", valueType: "string" },
             ],
             stateSchemaDigest: "applicant-state",
@@ -168,6 +173,8 @@ describe("list_references", () => {
           token: "{{@$entity:applicant|Applicant.status}}",
           sourceNodeId: "$entity",
           path: "$entity:applicant.status",
+          enumValues: ["active", "paused"],
+          enumLabels: { active: "Active", paused: "Paused" },
           conditionFieldType: "string",
         }),
         expect.objectContaining({
