@@ -37,7 +37,11 @@ For each payload property, the editor derives a readable label from the final
 property key and preserves common initialisms (`appointmentId` becomes
 "Appointment ID"). JSON Schema `description` supplies separate help text. In
 Zod 4, `.describe(...)` sets that help text. Use JSON Schema `title` only when
-the intended label cannot be derived from the key.
+the intended label cannot be derived from the key. For a closed string set,
+`title` on each singleton `const` or `enum` branch under `anyOf` or `oneOf`
+labels that choice while conditions and Test Runs keep its original value. Use
+an annotated Zod literal union or an Effect `Schema.Enum` with human-readable
+object keys; unlabelled choices display their values.
 
 ### Current Entity State
 

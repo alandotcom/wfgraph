@@ -5,6 +5,7 @@
  */
 
 import type { ConditionSelectableField } from "#src/lib/upstream-node-fields";
+import { enumLabelForValue } from "@wfgraph/shared/graph/enum-metadata";
 
 export function unavailableFieldLabel(): string {
   return "Unavailable field";
@@ -14,5 +15,5 @@ export function enumOptionLabel(
   field: ConditionSelectableField | undefined,
   value: string
 ): string {
-  return field?.enumLabels?.[value] ?? value;
+  return enumLabelForValue(field?.enumLabels, value) ?? value;
 }

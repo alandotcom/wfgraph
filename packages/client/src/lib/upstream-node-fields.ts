@@ -1,5 +1,4 @@
 import { compact, groupBy, partition, uniq } from "es-toolkit/array";
-import { isEqual } from "es-toolkit/predicate";
 import { omit } from "es-toolkit/object";
 import {
   type EventMetadata,
@@ -42,6 +41,7 @@ import { findTrackedEntityStateSource } from "@wfgraph/shared/lifecycle/entity-e
 import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { getNodeDisplayName } from "@wfgraph/shared/graph/node-display";
 import { conditionTypeOf } from "@wfgraph/shared/conditions/condition-field-type";
+import { reconcileEnumMetadata } from "@wfgraph/shared/graph/enum-metadata";
 import { compareText } from "@wfgraph/shared/types/string";
 
 export { getNodeDisplayName };
@@ -373,11 +373,17 @@ function keyFieldsUnderRecord(
 /**
  * The optional flags a schema field puts on a picker row: `openRecord` for a
  * record whose keys the payload invents, `nullable` for a field a run can
- * arrive without, and `enumValues` for a closed set of values.
+ * arrive without, and the enum metadata for a closed set of values.
  */
 function schemaFieldFlags(
-  field: Pick<ReferenceField, "valueType" | "nullable" | "enumValues">
-): Pick<ConditionSelectableField, "openRecord" | "nullable" | "enumValues"> {
+  field: Pick<
+    ReferenceField,
+    "valueType" | "nullable" | "enumValues" | "enumLabels"
+  >
+): Pick<
+  ConditionSelectableField,
+  "openRecord" | "nullable" | "enumValues" | "enumLabels"
+> {
   return {
     // oxlint-disable-next-line wfgraph/no-conditional-spread -- an unset flag leaves the key absent, so two rows compare equal only when both carry the same flags.
     ...(field.valueType ? { openRecord: true as const } : {}),
@@ -385,6 +391,8 @@ function schemaFieldFlags(
     ...(field.nullable ? { nullable: true } : {}),
     // oxlint-disable-next-line wfgraph/no-conditional-spread -- an unset flag leaves the key absent, so two rows compare equal only when both carry the same flags.
     ...(field.enumValues ? { enumValues: field.enumValues } : {}),
+    // oxlint-disable-next-line wfgraph/no-conditional-spread -- labels are optional metadata on the closed set.
+    ...(field.enumLabels ? { enumLabels: field.enumLabels } : {}),
   };
 }
 
@@ -698,29 +706,10 @@ function mergeDeclarations(
   // Both enum keys go rather than being blanked where the Events disagree: the
   // picker reads an absent `enumValues` as "any value of this type", and a key
   // present but empty would have to be told apart from one nothing wrote.
-  return sharedEnumValues(declarations)
-    ? merged
-    : omit(merged, ["enumValues", "enumLabels"]);
-}
-
-/** The enum values every Event offers for one field, absent where they differ. */
-function sharedEnumValues(
-  fields: readonly ConditionSelectableField[]
-): string[] | undefined {
-  const [first, ...rest] = fields;
-  if (!first?.enumValues) {
-    return undefined;
-  }
-
-  // Sorted before comparing, because the same closed set is the same promise
-  // whatever order each Event's schema happened to list it in.
-  const expected = first.enumValues.toSorted();
-  const agrees = rest.every(
-    (field) =>
-      field.enumValues && isEqual(field.enumValues.toSorted(), expected)
-  );
-
-  return agrees ? first.enumValues : undefined;
+  return {
+    ...omit(merged, ["enumValues", "enumLabels"]),
+    ...reconcileEnumMetadata(declarations),
+  };
 }
 
 export function getUpstreamConditionFields(input: {

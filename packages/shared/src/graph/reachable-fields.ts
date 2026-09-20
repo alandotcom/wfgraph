@@ -11,6 +11,7 @@
 
 import { compact, uniq } from "es-toolkit/array";
 import type { EventMetadata } from "#src/extensions/catalog";
+import { reconcileEnumMetadata } from "#src/graph/enum-metadata";
 import type { ReferenceField } from "#src/graph/node-references";
 import type {
   WorkflowSchemaFieldType,
@@ -70,24 +71,6 @@ function reconcileLabel(declarations: Declaration[]): string | undefined {
 function reconcileDescription(declarations: Declaration[]): string | undefined {
   return declarations.find((declaration) => declaration.field.description)
     ?.field.description;
-}
-
-/**
- * The enum values, kept only where every Event declares the same set. A value
- * one Event allows and another does not is not a value the path is held to.
- */
-function reconcileEnumValues(
-  declarations: Declaration[]
-): string[] | undefined {
-  const sets = uniq(
-    declarations.map((declaration) =>
-      (declaration.field.enumValues ?? []).toSorted().join(" ")
-    )
-  );
-
-  return sets.length === 1 && declarations[0]?.field.enumValues
-    ? [...declarations[0].field.enumValues]
-    : undefined;
 }
 
 /**
@@ -153,7 +136,9 @@ export function reachableEventFields(
       const { type, typeClash } = reconcileType(declarations);
       const label = reconcileLabel(declarations);
       const description = reconcileDescription(declarations);
-      const enumValues = reconcileEnumValues(declarations);
+      const enumMetadata = reconcileEnumMetadata(
+        declarations.map((declaration) => declaration.field)
+      );
       const valueType = reconcileValueType(declarations);
 
       const nullable =
@@ -166,7 +151,7 @@ export function reachableEventFields(
         description,
         type,
         valueType,
-        enumValues,
+        ...enumMetadata,
         typeClash,
         nullable: nullable ? true : undefined,
         declaredBy: declarations.map((declaration) => declaration.event.name),

@@ -62,6 +62,8 @@ export type ReferenceField = {
   valueType?: WorkflowSchemaItemType | undefined;
   nullable?: boolean | undefined;
   enumValues?: string[] | undefined;
+  /** Human labels for `enumValues`, keyed by the stored value. */
+  enumLabels?: Readonly<Record<string, string>> | undefined;
   showWhen?: ShowWhen | undefined;
   /** Keep the path valid for existing references but omit it from authoring choices. */
   hidden?: boolean | undefined;
@@ -174,6 +176,7 @@ function schemaFieldToReferenceField(
     valueType: field.valueType,
     nullable: nullable ? true : undefined,
     enumValues: field.enumValues,
+    enumLabels: field.enumLabels,
   });
 }
 

@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  getEntityConditionFields,
   getTrackedEntityStateSource,
   getUpstreamConditionFields,
   getUpstreamFields,
@@ -26,7 +27,15 @@ describe("Entity template source", () => {
         label: "Patient",
         stateFields: [
           { path: "name", type: "string" },
-          { path: "journey.status", type: "string" },
+          {
+            path: "journey.status",
+            type: "string",
+            enumValues: ["InProgress", "NeedsReview"],
+            enumLabels: {
+              InProgress: "In progress",
+              NeedsReview: "Needs review",
+            },
+          },
         ],
         stateSchemaDigest: "patient-state",
       },
@@ -82,6 +91,20 @@ describe("Entity template source", () => {
     ).toMatchObject({
       sourceId: "$entity",
       sourceType: "patient",
+    });
+  });
+
+  it("carries enum labels into Entity condition fields", () => {
+    expect(
+      getEntityConditionFields(surface, "patient").find(
+        (field) => field.path === "journey.status"
+      )
+    ).toMatchObject({
+      enumValues: ["InProgress", "NeedsReview"],
+      enumLabels: {
+        InProgress: "In progress",
+        NeedsReview: "Needs review",
+      },
     });
   });
 

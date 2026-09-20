@@ -66,6 +66,7 @@ const referenceSchema = Schema.Struct({
    */
   declaredBy: Schema.optionalKey(Schema.Array(Schema.String)),
   enumValues: Schema.optionalKey(Schema.Array(Schema.String)),
+  enumLabels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   /** Pass this exact value to set_condition; absence means the field cannot be tested. */
   conditionFieldType: Schema.optionalKey(
     Schema.Literals(["string", "number", "boolean", "timestamp"])
@@ -205,6 +206,7 @@ export function referencesForNode(input: {
           nullable: field.nullable,
           declaredBy: field.declaredBy ? [...field.declaredBy] : undefined,
           enumValues: field.enumValues,
+          enumLabels: field.enumLabels,
           conditionFieldType: conditionFieldType ?? undefined,
           openRecord: field.valueType ? true : undefined,
           hidden: field.hidden,
@@ -242,6 +244,7 @@ export function referencesForNode(input: {
             description: field.description,
             nullable: field.nullable,
             enumValues: field.enumValues,
+            enumLabels: field.enumLabels,
             conditionFieldType: conditionFieldType ?? undefined,
             openRecord: field.valueType ? true : undefined,
             hidden: field.hidden,

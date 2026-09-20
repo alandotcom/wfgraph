@@ -17,6 +17,7 @@ import {
   type ReferenceField,
 } from "@wfgraph/shared/graph/node-references";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import { enumLabelForValue } from "@wfgraph/shared/graph/enum-metadata";
 import {
   type LifecycleRules,
   readLifecycleRules,
@@ -51,8 +52,8 @@ export type TestPayloadField = {
   label: string;
   description?: string | undefined;
   control: TestPayloadControl;
-  /** The values a select offers, present only for `control: "select"`. */
-  options?: string[] | undefined;
+  /** The labelled values a select offers, present only for `control: "select"`. */
+  options?: { value: string; label: string }[] | undefined;
   optional: boolean;
 };
 
@@ -108,7 +109,10 @@ export function testPayloadFields(
       label: referenceFieldLabel(field),
       description: field.description,
       control: controlFor(field),
-      options: field.enumValues ? [...field.enumValues] : undefined,
+      options: field.enumValues?.map((value) => ({
+        value,
+        label: enumLabelForValue(field.enumLabels, value) ?? value,
+      })),
       optional: field.nullable === true,
     })
   );

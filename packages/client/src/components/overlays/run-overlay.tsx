@@ -98,12 +98,13 @@ function FieldControl({
   }
 
   if (field.control === "select") {
-    const items = (field.options ?? []).map((option) => ({
-      label: option,
-      value: option,
-    }));
+    const options = field.options ?? [];
     return (
-      <Select items={items} onValueChange={whenChosen(onChange)} value={value}>
+      <Select
+        items={options}
+        onValueChange={whenChosen(onChange)}
+        value={value}
+      >
         <SelectTrigger
           aria-describedby={descriptionId}
           className="w-full"
@@ -112,9 +113,9 @@ function FieldControl({
           <SelectValue placeholder="Choose a value" />
         </SelectTrigger>
         <SelectContent>
-          {(field.options ?? []).map((option) => (
-            <SelectItem key={option} value={option}>
-              {option}
+          {options.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
             </SelectItem>
           ))}
         </SelectContent>

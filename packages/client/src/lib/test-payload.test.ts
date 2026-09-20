@@ -21,6 +21,7 @@ const appointmentCreated: EventMetadata = {
       path: "appointment.channel",
       type: "string",
       enumValues: ["sms", "email"],
+      enumLabels: { sms: "Text message" },
     },
     { path: "appointment", type: "object" },
     { path: "attendees[0].name", type: "string" },
@@ -58,7 +59,10 @@ describe("testPayloadFields", () => {
         path: "appointment.channel",
         label: "Channel",
         control: "select",
-        options: ["sms", "email"],
+        options: [
+          { value: "sms", label: "Text message" },
+          { value: "email", label: "email" },
+        ],
         optional: false,
       },
     ]);

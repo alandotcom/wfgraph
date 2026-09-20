@@ -225,7 +225,9 @@ catches around the await turns that into whatever it answers next, so catch narr
 preserves common initialisms (`messageId` becomes "Message ID"). JSON Schema `description`
 supplies explanatory help text. Use `title` only when the intended label cannot be derived
 from the key. In Effect Schema, add either with `.annotate(...)`. A field is required where
-the schema requires it.
+the schema requires it. For a closed string set, a `title` on each singleton `const` or
+`enum` branch under `anyOf` or `oneOf` labels that dropdown choice while its original value
+is stored. The Zod and Effect authoring forms are shown in [Events](events.md).
 
 `configFields` states what a schema cannot: a placeholder, a `template-textarea` row count,
 a friendly `select` label, a `showWhen`, a group. An entry merges into the derived field of

@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 import { compact, uniq } from "es-toolkit/array";
 import { startCase } from "es-toolkit/string";
+import { enumLabelForValue } from "#src/graph/enum-metadata";
 import type { ActionConfigFieldBase } from "#src/plugins/action-fields";
 import { readAs } from "#src/types/schema";
 import { omitUndefined } from "#src/utils/omit-undefined";
@@ -59,6 +60,8 @@ export type WorkflowSchemaField = {
   description?: string | undefined;
   nullable?: boolean | undefined;
   enumValues?: string[] | undefined;
+  /** Human labels for enum values, keyed by the serialized value. */
+  enumLabels?: Readonly<Record<string, string>> | undefined;
   minItems?: number | undefined;
 };
 
@@ -77,6 +80,8 @@ interface JsonSchemaNode {
   description?: string | undefined;
   enum?: unknown[] | undefined;
   const?: unknown;
+  /** Derived from titles on singleton enum/const union branches. */
+  enumLabels?: Readonly<Record<string, string>> | undefined;
   required?: string[] | undefined;
   default?: unknown;
   examples?: unknown[] | undefined;
@@ -620,6 +625,7 @@ function resolveClosedSetBranches(
   parent: JsonSchemaNode
 ): JsonSchemaNode | null {
   const values: unknown[] = [];
+  const enumLabels = new Map<string, string>();
   let jsonType: "string" | "number" | "boolean" | null = null;
 
   for (const branch of nonNullBranches) {
@@ -639,16 +645,44 @@ function resolveClosedSetBranches(
     }
     jsonType = memberType;
     values.push(...declared);
+
+    // A branch title labels its one choice. A title on a multi-value enum
+    // describes the branch as a whole and cannot name its members separately.
+    const [onlyValue] = declared;
+    const title = branch.title?.trim();
+    if (
+      declared.length === 1 &&
+      (typeof onlyValue === "string" || typeof onlyValue === "number") &&
+      title &&
+      title !== String(onlyValue)
+    ) {
+      enumLabels.set(String(onlyValue), title);
+    }
   }
 
   if (!jsonType) {
     return null;
   }
 
-  return withInheritedAnnotations(
-    { type: jsonType, enum: uniq(values) },
-    parent
-  );
+  // A nullable singleton still has two union branches. Preserve the complete
+  // non-null branch, but move its title onto the choice before the parent title
+  // becomes the field label.
+  const [onlyBranch] = nonNullBranches;
+  const resolved: JsonSchemaNode =
+    nonNullBranches.length === 1 && onlyBranch
+      ? {
+          ...onlyBranch,
+          type: jsonType,
+          enum: uniq(values),
+          const: undefined,
+          title: undefined,
+        }
+      : { type: jsonType, enum: uniq(values) };
+  if (enumLabels.size > 0) {
+    resolved.enumLabels = Object.fromEntries(enumLabels);
+  }
+
+  return withInheritedAnnotations(resolved, parent);
 }
 
 /**
@@ -727,6 +761,15 @@ function resolveJsonSchemaUnion(
     if (!branch) {
       return null;
     }
+
+    const declared = declaredEnumOrConstValues(branch);
+    if (declared?.length === 1) {
+      const fromClosed = resolveClosedSetBranches(nonNullBranches, value);
+      if (fromClosed) {
+        return { node: fromClosed, nullable };
+      }
+    }
+
     return { node: withInheritedAnnotations(branch, value), nullable };
   }
 
@@ -811,6 +854,7 @@ function parseNonNullableJsonSchemaProperty(
       label,
       description,
       enumValues,
+      enumLabels: enumValues ? value.enumLabels : undefined,
     };
   }
 
@@ -1142,10 +1186,13 @@ function deriveSelectOptions(
   property: JsonSchemaNode
 ): NonNullable<ActionConfigFieldBase["options"]> {
   if (property.enum) {
-    return property.enum.map((v: unknown) => ({
-      value: String(v),
-      label: String(v),
-    }));
+    return property.enum.map((value: unknown) => {
+      const serialized = String(value);
+      return {
+        value: serialized,
+        label: enumLabelForValue(property.enumLabels, serialized) ?? serialized,
+      };
+    });
   }
   return [
     { value: "true", label: "Yes" },

@@ -506,6 +506,70 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema", () => {
     ]);
   });
 
+  it("reads branch titles as enum labels without confusing the field title", () => {
+    const schema = parseWorkflowSchemaFieldsOrJsonSchema({
+      type: "object",
+      required: ["status"],
+      properties: {
+        status: {
+          title: "Task status",
+          oneOf: [
+            { const: "InProgress", title: "In progress" },
+            { const: "NeedsReview", title: "Needs review" },
+            { const: "Unknown", title: "Unknown" },
+          ],
+        },
+      },
+    });
+
+    expect(schema).toEqual([
+      {
+        name: "status",
+        type: "string",
+        label: "Task status",
+        description: undefined,
+        enumValues: ["InProgress", "NeedsReview", "Unknown"],
+        enumLabels: {
+          InProgress: "In progress",
+          NeedsReview: "Needs review",
+        },
+      },
+    ]);
+  });
+
+  it("keeps a nullable singleton branch title as its option label", () => {
+    const schema = parseWorkflowSchemaFieldsOrJsonSchema({
+      type: "object",
+      required: ["status"],
+      properties: {
+        status: {
+          title: "Task status",
+          anyOf: [
+            {
+              type: "string",
+              enum: ["InProgress"],
+              title: "In progress",
+              description: "The task is being worked on.",
+            },
+            { type: "null" },
+          ],
+        },
+      },
+    });
+
+    expect(schema).toEqual([
+      {
+        name: "status",
+        type: "string",
+        label: "Task status",
+        description: "The task is being worked on.",
+        enumValues: ["InProgress"],
+        enumLabels: { InProgress: "In progress" },
+        nullable: true,
+      },
+    ]);
+  });
+
   it("joins anyOf of one-value string enums into a closed set", () => {
     // Effect's `Schema.Enum`: one `{ type, enum: [member] }` branch per value.
     const schema = parseWorkflowSchemaFieldsOrJsonSchema({
@@ -1095,6 +1159,64 @@ describe("configFieldsFromJsonSchema", () => {
         ],
         required: true,
       },
+    ]);
+  });
+
+  it("maps branch titles to select option labels", () => {
+    const fields = configFieldsFromJsonSchema({
+      type: "object",
+      required: ["kind"],
+      properties: {
+        kind: {
+          title: "Kind",
+          oneOf: [
+            {
+              const: "appointmentReminders",
+              title: "Appointment reminders",
+            },
+            { const: "followUp", title: "Follow-up" },
+          ],
+        },
+      },
+    });
+
+    expect(fields).toEqual([
+      {
+        key: "kind",
+        label: "Kind",
+        type: "select",
+        options: [
+          {
+            value: "appointmentReminders",
+            label: "Appointment reminders",
+          },
+          { value: "followUp", label: "Follow-up" },
+        ],
+        required: true,
+      },
+    ]);
+  });
+
+  it("falls back to raw prototype-key values missing from a partial label map", () => {
+    const fields = configFieldsFromJsonSchema({
+      type: "object",
+      properties: {
+        kind: {
+          anyOf: [
+            { const: "active", title: "Active" },
+            { const: "toString" },
+            { const: "constructor" },
+            { const: "__proto__" },
+          ],
+        },
+      },
+    });
+
+    expect(fields[0]?.options).toEqual([
+      { value: "active", label: "Active" },
+      { value: "toString", label: "toString" },
+      { value: "constructor", label: "constructor" },
+      { value: "__proto__", label: "__proto__" },
     ]);
   });
 

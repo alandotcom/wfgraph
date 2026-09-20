@@ -29,6 +29,15 @@ const testCatalog: ExtensionCatalog = {
           path: "appointment.startsAt",
           type: "timestamp",
         },
+        {
+          path: "appointment.kind",
+          type: "string",
+          enumValues: ["appointmentReminders", "followUp"],
+          enumLabels: {
+            appointmentReminders: "Appointment reminders",
+            followUp: "Follow-up",
+          },
+        },
       ],
     },
     {
@@ -174,6 +183,23 @@ describe("RunOverlay", () => {
     expect(screen.getByLabelText("Starts at")).toBeTruthy();
     expect(screen.getByText("appointment.id")).toBeTruthy();
     expect(screen.getByText("appointment.startsAt")).toBeTruthy();
+  });
+
+  it("shows an enum label and sends its stored value", () => {
+    const { onRun } = renderOverlay();
+
+    fireEvent.click(screen.getByLabelText("Kind"));
+    const option = screen.getByRole("option", {
+      name: "Appointment reminders",
+    });
+    fireEvent.pointerDown(option);
+    fireEvent.click(option);
+    fireEvent.click(screen.getByRole("button", { name: "Run draft" }));
+
+    expect(onRun).toHaveBeenCalledWith({
+      eventName: "app/appointment.created",
+      input: { appointment: { kind: "appointmentReminders" } },
+    });
   });
 
   // A run sent without a payload resolves every downstream template to empty
