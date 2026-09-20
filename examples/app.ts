@@ -79,7 +79,10 @@ const appointmentSchema = z.object({
 });
 
 const patientStateSchema = z.object({
-  status: z.enum(["active", "inactive"]),
+  status: z.union([
+    z.literal("active").meta({ title: "Active" }),
+    z.literal("inactive").meta({ title: "Inactive" }),
+  ]),
   appointmentRemindersEnabled: z.boolean(),
 });
 
