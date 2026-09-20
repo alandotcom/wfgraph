@@ -1,5 +1,4 @@
 import { compact, groupBy, partition, uniq } from "es-toolkit/array";
-import { isEqual } from "es-toolkit/predicate";
 import { omit } from "es-toolkit/object";
 import {
   type EventMetadata,
@@ -42,7 +41,7 @@ import { findTrackedEntityStateSource } from "@wfgraph/shared/lifecycle/entity-e
 import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { getNodeDisplayName } from "@wfgraph/shared/graph/node-display";
 import { conditionTypeOf } from "@wfgraph/shared/conditions/condition-field-type";
-import { enumLabelForValue } from "@wfgraph/shared/graph/schema-codec";
+import { reconcileEnumMetadata } from "@wfgraph/shared/graph/enum-metadata";
 import { compareText } from "@wfgraph/shared/types/string";
 
 export { getNodeDisplayName };
@@ -707,49 +706,10 @@ function mergeDeclarations(
   // Both enum keys go rather than being blanked where the Events disagree: the
   // picker reads an absent `enumValues` as "any value of this type", and a key
   // present but empty would have to be told apart from one nothing wrote.
-  const enumValues = sharedEnumValues(declarations);
-  if (!enumValues) {
-    return omit(merged, ["enumValues", "enumLabels"]);
-  }
-
-  const enumLabels = sharedEnumLabels(declarations, enumValues);
-  return enumLabels ? { ...merged, enumLabels } : omit(merged, ["enumLabels"]);
-}
-
-/** The enum values every Event offers for one field, absent where they differ. */
-function sharedEnumValues(
-  fields: readonly ConditionSelectableField[]
-): string[] | undefined {
-  const [first, ...rest] = fields;
-  if (!first?.enumValues) {
-    return undefined;
-  }
-
-  // Sorted before comparing, because the same closed set is the same promise
-  // whatever order each Event's schema happened to list it in.
-  const expected = first.enumValues.toSorted();
-  const agrees = rest.every(
-    (field) =>
-      field.enumValues && isEqual(field.enumValues.toSorted(), expected)
-  );
-
-  return agrees ? first.enumValues : undefined;
-}
-
-/** Labels every declaration gives the same enum value the same way. */
-function sharedEnumLabels(
-  fields: readonly ConditionSelectableField[],
-  enumValues: readonly string[]
-): Readonly<Record<string, string>> | undefined {
-  const entries = enumValues.flatMap((value): [string, string][] => {
-    const labels = uniq(
-      fields.map((field) => enumLabelForValue(field.enumLabels, value))
-    );
-    const [label] = labels;
-    return labels.length === 1 && label ? [[value, label]] : [];
-  });
-
-  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+  return {
+    ...omit(merged, ["enumValues", "enumLabels"]),
+    ...reconcileEnumMetadata(declarations),
+  };
 }
 
 export function getUpstreamConditionFields(input: {

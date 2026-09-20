@@ -11,11 +11,11 @@
 
 import { compact, uniq } from "es-toolkit/array";
 import type { EventMetadata } from "#src/extensions/catalog";
+import { reconcileEnumMetadata } from "#src/graph/enum-metadata";
 import type { ReferenceField } from "#src/graph/node-references";
-import {
-  enumLabelForValue,
-  type WorkflowSchemaFieldType,
-  type WorkflowSchemaItemType,
+import type {
+  WorkflowSchemaFieldType,
+  WorkflowSchemaItemType,
 } from "#src/graph/schema-codec";
 import { omitUndefined } from "#src/utils/omit-undefined";
 
@@ -71,46 +71,6 @@ function reconcileLabel(declarations: Declaration[]): string | undefined {
 function reconcileDescription(declarations: Declaration[]): string | undefined {
   return declarations.find((declaration) => declaration.field.description)
     ?.field.description;
-}
-
-/**
- * The enum values, kept only where every Event declares the same set. A value
- * one Event allows and another does not is not a value the path is held to.
- */
-function reconcileEnumValues(
-  declarations: Declaration[]
-): string[] | undefined {
-  const sets = uniq(
-    declarations.map((declaration) =>
-      (declaration.field.enumValues ?? []).toSorted().join(" ")
-    )
-  );
-
-  return sets.length === 1 && declarations[0]?.field.enumValues
-    ? [...declarations[0].field.enumValues]
-    : undefined;
-}
-
-/** Human labels the declarations agree on, with raw values as the fallback. */
-function reconcileEnumLabels(
-  declarations: Declaration[],
-  enumValues: readonly string[] | undefined
-): Readonly<Record<string, string>> | undefined {
-  if (!enumValues) {
-    return undefined;
-  }
-
-  const entries = enumValues.flatMap((value): [string, string][] => {
-    const labels = uniq(
-      declarations.map((declaration) =>
-        enumLabelForValue(declaration.field.enumLabels, value)
-      )
-    );
-    const [label] = labels;
-    return labels.length === 1 && label ? [[value, label]] : [];
-  });
-
-  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
 /**
@@ -176,8 +136,9 @@ export function reachableEventFields(
       const { type, typeClash } = reconcileType(declarations);
       const label = reconcileLabel(declarations);
       const description = reconcileDescription(declarations);
-      const enumValues = reconcileEnumValues(declarations);
-      const enumLabels = reconcileEnumLabels(declarations, enumValues);
+      const enumMetadata = reconcileEnumMetadata(
+        declarations.map((declaration) => declaration.field)
+      );
       const valueType = reconcileValueType(declarations);
 
       const nullable =
@@ -190,8 +151,7 @@ export function reachableEventFields(
         description,
         type,
         valueType,
-        enumValues,
-        enumLabels,
+        ...enumMetadata,
         typeClash,
         nullable: nullable ? true : undefined,
         declaredBy: declarations.map((declaration) => declaration.event.name),

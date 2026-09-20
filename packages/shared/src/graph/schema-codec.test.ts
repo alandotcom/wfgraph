@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   configFieldsFromJsonSchema,
-  enumLabelForValue,
   labelFromKey,
   parseWorkflowSchemaField,
   parseWorkflowSchemaFieldsOrJsonSchema,
@@ -21,22 +20,6 @@ describe("labelFromKey", () => {
   it("prefers a non-blank authored title", () => {
     expect(labelFromKey("id", "Item ID")).toBe("Item ID");
     expect(labelFromKey("appointmentId", "  ")).toBe("Appointment ID");
-  });
-});
-
-describe("enumLabelForValue", () => {
-  it("does not read labels inherited from the object prototype", () => {
-    const labels = { active: "Active" };
-
-    expect(enumLabelForValue(labels, "toString")).toBeUndefined();
-    expect(enumLabelForValue(labels, "constructor")).toBeUndefined();
-    expect(enumLabelForValue(labels, "__proto__")).toBeUndefined();
-  });
-
-  it("reads an own label for a reserved object key", () => {
-    const labels = Object.fromEntries([["__proto__", "Prototype"]]);
-
-    expect(enumLabelForValue(labels, "__proto__")).toBe("Prototype");
   });
 });
 

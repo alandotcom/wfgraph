@@ -17,7 +17,7 @@ import {
   type ReferenceField,
 } from "@wfgraph/shared/graph/node-references";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
-import { enumLabelForValue } from "@wfgraph/shared/graph/schema-codec";
+import { enumLabelForValue } from "@wfgraph/shared/graph/enum-metadata";
 import {
   type LifecycleRules,
   readLifecycleRules,

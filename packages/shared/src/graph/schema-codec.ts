@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 import { compact, uniq } from "es-toolkit/array";
 import { startCase } from "es-toolkit/string";
+import { enumLabelForValue } from "#src/graph/enum-metadata";
 import type { ActionConfigFieldBase } from "#src/plugins/action-fields";
 import { readAs } from "#src/types/schema";
 import { omitUndefined } from "#src/utils/omit-undefined";
@@ -295,14 +296,6 @@ export function isWorkflowSchemaItemType(
     value === "duration" ||
     value === "object"
   );
-}
-
-/** An authored enum label, excluding inherited object prototype properties. */
-export function enumLabelForValue(
-  labels: Readonly<Record<string, string>> | undefined,
-  value: string
-): string | undefined {
-  return labels && Object.hasOwn(labels, value) ? labels[value] : undefined;
 }
 
 /** Enum members that can be shown as choices: strings and numbers. */
