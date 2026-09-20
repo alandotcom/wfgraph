@@ -130,7 +130,7 @@ export function EventMultiCombobox({
   disabled,
   inputId,
   placeholder = "Search Events",
-  closeAfterSelection = false,
+  closeAfterSelection = true,
 }: {
   choices: readonly EventChoice[];
   value: readonly string[];

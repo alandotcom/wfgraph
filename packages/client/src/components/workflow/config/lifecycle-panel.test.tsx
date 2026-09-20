@@ -286,26 +286,40 @@ describe("LifecyclePanel", () => {
     ).toBeTruthy();
   });
 
-  it("closes the Start Event picker after a selection", async () => {
-    let latest: Record<string, unknown> = {};
-    const view = renderWithCatalog(
-      <ControlledPanel
-        onConfigChange={(config) => {
-          latest = config;
-        }}
-      />
-    );
-    const input = view.getByLabelText("Start Events");
+  it.each([
+    {
+      name: "Start Event",
+      label: "Start Events",
+      field: "startEvents",
+    },
+    {
+      name: "Cancel Event",
+      label: "Cancel Events",
+      field: "cancelEvents",
+    },
+  ] as const)(
+    "closes the $name picker after a selection",
+    async ({ label, field }) => {
+      let latest: Record<string, unknown> = {};
+      const view = renderWithCatalog(
+        <ControlledPanel
+          onConfigChange={(config) => {
+            latest = config;
+          }}
+        />
+      );
+      const input = view.getByLabelText(label);
 
-    fireEvent.keyDown(input, { key: "ArrowDown" });
-    expect(input.getAttribute("aria-expanded")).toBe("true");
-    fireEvent.keyDown(input, { key: "Enter" });
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+      expect(input.getAttribute("aria-expanded")).toBe("true");
+      fireEvent.keyDown(input, { key: "Enter" });
 
-    await waitFor(() => {
-      expect(rulesOf(latest).startEvents).toEqual(["app/appointment.created"]);
-      expect(input.getAttribute("aria-expanded")).toBe("false");
-    });
-  });
+      await waitFor(() => {
+        expect(rulesOf(latest)[field]).toEqual(["app/appointment.created"]);
+        expect(input.getAttribute("aria-expanded")).toBe("false");
+      });
+    }
+  );
 
   // The raw name is what a sender posts and what a builder coming from that side
   // knows the Event by, so it is searchable beside the label.

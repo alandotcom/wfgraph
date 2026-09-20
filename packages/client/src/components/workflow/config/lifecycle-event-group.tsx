@@ -187,7 +187,6 @@ export function LifecycleEventGroup(props: LifecycleEventGroupProps) {
           </Label>
           <EventMultiCombobox
             choices={catalogEventChoices(catalog)}
-            closeAfterSelection={role === "start"}
             disabled={disabled}
             inputId={inputId}
             onValueChange={onEventNamesChange}
