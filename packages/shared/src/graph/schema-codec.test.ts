@@ -506,6 +506,37 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema", () => {
     ]);
   });
 
+  it("reads branch titles as enum labels without confusing the field title", () => {
+    const schema = parseWorkflowSchemaFieldsOrJsonSchema({
+      type: "object",
+      required: ["status"],
+      properties: {
+        status: {
+          title: "Donation status",
+          oneOf: [
+            { const: "ClearedToDonate", title: "Cleared to donate" },
+            { const: "TemporarilyDeferred", title: "Temporarily deferred" },
+            { const: "Unknown", title: "Unknown" },
+          ],
+        },
+      },
+    });
+
+    expect(schema).toEqual([
+      {
+        name: "status",
+        type: "string",
+        label: "Donation status",
+        description: undefined,
+        enumValues: ["ClearedToDonate", "TemporarilyDeferred", "Unknown"],
+        enumLabels: {
+          ClearedToDonate: "Cleared to donate",
+          TemporarilyDeferred: "Temporarily deferred",
+        },
+      },
+    ]);
+  });
+
   it("joins anyOf of one-value string enums into a closed set", () => {
     // Effect's `Schema.Enum`: one `{ type, enum: [member] }` branch per value.
     const schema = parseWorkflowSchemaFieldsOrJsonSchema({
@@ -1092,6 +1123,41 @@ describe("configFieldsFromJsonSchema", () => {
         options: [
           { value: "alpha", label: "alpha" },
           { value: "beta", label: "beta" },
+        ],
+        required: true,
+      },
+    ]);
+  });
+
+  it("maps branch titles to select option labels", () => {
+    const fields = configFieldsFromJsonSchema({
+      type: "object",
+      required: ["kind"],
+      properties: {
+        kind: {
+          title: "Kind",
+          oneOf: [
+            {
+              const: "appointmentReminders",
+              title: "Appointment reminders",
+            },
+            { const: "followUp", title: "Follow-up" },
+          ],
+        },
+      },
+    });
+
+    expect(fields).toEqual([
+      {
+        key: "kind",
+        label: "Kind",
+        type: "select",
+        options: [
+          {
+            value: "appointmentReminders",
+            label: "Appointment reminders",
+          },
+          { value: "followUp", label: "Follow-up" },
         ],
         required: true,
       },

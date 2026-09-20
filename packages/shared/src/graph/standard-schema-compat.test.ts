@@ -566,6 +566,31 @@ describe("the field derivation over Effect schemas", () => {
     ).toEqual([{ path: "a", type: "string", enumValues: ["X", "Y"] }]);
   });
 
+  it("derives Effect enum member titles as labels", () => {
+    expect(
+      requireOutputFieldsFromSchema(
+        'Event "x/y"',
+        Schema.Struct({
+          status: Schema.Enum({
+            "Cleared to donate": "ClearedToDonate",
+            "Temporarily deferred": "TemporarilyDeferred",
+          }).annotate({ title: "Donation status" }),
+        })
+      )
+    ).toEqual([
+      {
+        path: "status",
+        label: "Donation status",
+        type: "string",
+        enumValues: ["ClearedToDonate", "TemporarilyDeferred"],
+        enumLabels: {
+          ClearedToDonate: "Cleared to donate",
+          TemporarilyDeferred: "Temporarily deferred",
+        },
+      },
+    ]);
+  });
+
   it("keeps a described Schema.Enum non-nullable", () => {
     expect(
       requireOutputFieldsFromSchema(
@@ -940,6 +965,35 @@ describe("the field derivation over Zod schemas", () => {
         z.object({ a: z.union([z.literal("X"), z.literal("Y")]) })
       )
     ).toEqual([{ path: "a", type: "string", enumValues: ["X", "Y"] }]);
+  });
+
+  it("derives Zod literal titles as enum labels", () => {
+    expect(
+      requireOutputFieldsFromSchema(
+        'Event "x/y"',
+        z.object({
+          kind: z
+            .union([
+              z
+                .literal("appointmentReminders")
+                .meta({ title: "Appointment reminders" }),
+              z.literal("followUp").meta({ title: "Follow-up" }),
+            ])
+            .meta({ title: "Kind" }),
+        })
+      )
+    ).toEqual([
+      {
+        path: "kind",
+        label: "Kind",
+        type: "string",
+        enumValues: ["appointmentReminders", "followUp"],
+        enumLabels: {
+          appointmentReminders: "Appointment reminders",
+          followUp: "Follow-up",
+        },
+      },
+    ]);
   });
 
   it("keeps a described enum non-nullable", () => {

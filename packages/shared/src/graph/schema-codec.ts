@@ -59,6 +59,8 @@ export type WorkflowSchemaField = {
   description?: string | undefined;
   nullable?: boolean | undefined;
   enumValues?: string[] | undefined;
+  /** Human labels for enum values, keyed by the serialized value. */
+  enumLabels?: Readonly<Record<string, string>> | undefined;
   minItems?: number | undefined;
 };
 
@@ -77,6 +79,8 @@ interface JsonSchemaNode {
   description?: string | undefined;
   enum?: unknown[] | undefined;
   const?: unknown;
+  /** Derived from titles on singleton enum/const union branches. */
+  enumLabels?: Readonly<Record<string, string>> | undefined;
   required?: string[] | undefined;
   default?: unknown;
   examples?: unknown[] | undefined;
@@ -620,6 +624,7 @@ function resolveClosedSetBranches(
   parent: JsonSchemaNode
 ): JsonSchemaNode | null {
   const values: unknown[] = [];
+  const enumLabels = new Map<string, string>();
   let jsonType: "string" | "number" | "boolean" | null = null;
 
   for (const branch of nonNullBranches) {
@@ -639,16 +644,31 @@ function resolveClosedSetBranches(
     }
     jsonType = memberType;
     values.push(...declared);
+
+    // A branch title labels its one choice. A title on a multi-value enum
+    // describes the branch as a whole and cannot name its members separately.
+    const [onlyValue] = declared;
+    const title = branch.title?.trim();
+    if (
+      declared.length === 1 &&
+      (typeof onlyValue === "string" || typeof onlyValue === "number") &&
+      title &&
+      title !== String(onlyValue)
+    ) {
+      enumLabels.set(String(onlyValue), title);
+    }
   }
 
   if (!jsonType) {
     return null;
   }
 
-  return withInheritedAnnotations(
-    { type: jsonType, enum: uniq(values) },
-    parent
-  );
+  const resolved: JsonSchemaNode = { type: jsonType, enum: uniq(values) };
+  if (enumLabels.size > 0) {
+    resolved.enumLabels = Object.fromEntries(enumLabels);
+  }
+
+  return withInheritedAnnotations(resolved, parent);
 }
 
 /**
@@ -811,6 +831,7 @@ function parseNonNullableJsonSchemaProperty(
       label,
       description,
       enumValues,
+      enumLabels: enumValues ? value.enumLabels : undefined,
     };
   }
 
@@ -1142,10 +1163,13 @@ function deriveSelectOptions(
   property: JsonSchemaNode
 ): NonNullable<ActionConfigFieldBase["options"]> {
   if (property.enum) {
-    return property.enum.map((v: unknown) => ({
-      value: String(v),
-      label: String(v),
-    }));
+    return property.enum.map((value: unknown) => {
+      const serialized = String(value);
+      return {
+        value: serialized,
+        label: property.enumLabels?.[serialized] ?? serialized,
+      };
+    });
   }
   return [
     { value: "true", label: "Yes" },
