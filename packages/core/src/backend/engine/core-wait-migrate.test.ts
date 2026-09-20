@@ -270,6 +270,28 @@ describe("wait node - migration to a later workflow version", () => {
       "wait-resume-wait_1-1"
     );
   });
+  it("does not apply maximum lateness after the Wait has already parked", async () => {
+    const run = await runMigratedWait({
+      store,
+      parked: {
+        waitMode: "delay",
+        waitDuration: "1h",
+        waitGateMode: "off",
+      },
+      migrated: {
+        waitMode: "delay",
+        waitDuration: "-7h",
+        waitGateMode: "max_lateness",
+        waitMaxLateness: "6h",
+      },
+      events: { "wait-park-wait_1-0": waitMigrateSignal() },
+    });
+
+    expect(run.value.results.after_wait).toBeDefined();
+    expect(waitOutput(run.value).skipped).toBeUndefined();
+    expect(waitOutput(run.value).hops).toBe(1);
+  });
+
   // Between a Migration's wake and the next park the row is still `waiting`, so
   // a resume claim can take it and send a signal nothing is parked on. The claim
   // writes its arrival onto the row, and the refused re-park is what sends the

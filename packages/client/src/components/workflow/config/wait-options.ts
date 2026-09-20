@@ -13,7 +13,8 @@ export const WAIT_FIELD_LABELS = {
   waitDuration: "Wait for (duration)",
   waitUntil: "Wait until this date/time",
   waitOffset: "Send before/after that time (optional)",
-  waitGateMode: "Continue only if time actually elapsed",
+  waitGateMode: "Past target behavior",
+  waitMaxLateness: "Maximum lateness",
   waitAllowedHoursMode: "Allowed send window",
   waitAllowedStartTime: "Window start",
   waitAllowedEndTime: "Window end",
@@ -27,8 +28,9 @@ export const WAIT_DELAY_TIMING_OPTIONS: WaitOption[] = [
   { value: "until", label: "Wait until date/time" },
 ];
 export const WAIT_GATE_OPTIONS: WaitOption[] = [
-  { value: "off", label: "Off (continue immediately)" },
-  { value: "require_actual_wait", label: "Skip branch when already due" },
+  { value: "off", label: "Continue immediately" },
+  { value: "require_actual_wait", label: "Skip if no wait remains" },
+  { value: "max_lateness", label: "Allow limited lateness" },
 ];
 export const WAIT_WINDOW_OPTIONS: WaitOption[] = [
   { value: "off", label: "Off (allow any time)" },

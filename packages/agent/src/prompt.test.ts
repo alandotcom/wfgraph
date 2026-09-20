@@ -157,6 +157,7 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("Event wait needs a timeout");
     expect(prompt).toContain("same run");
     expect(prompt).toContain("Connection ID");
+    expect(prompt).toContain('gateMode "max_lateness"');
     expect(prompt).toContain("preserves its gate, allowed-hours, and timezone");
   });
 

@@ -18,6 +18,14 @@ type WaitTimeResolution = {
   error?: string;
 };
 
+type WaitTargetInput = {
+  now?: Date;
+  waitUntil?: unknown;
+  waitDuration?: unknown;
+  waitOffset?: unknown;
+  waitTimezone?: string | undefined;
+};
+
 function unitToMs(unit: string): number {
   switch (unit) {
     case "ms":
@@ -100,6 +108,13 @@ export function parseDurationMs(value: unknown): number | null {
   }
 
   return matched ? total : null;
+}
+
+export function parsePositiveDurationMs(value: unknown): number | null {
+  const durationMs = parseDurationMs(value);
+  return durationMs !== null && Number.isFinite(durationMs) && durationMs > 0
+    ? durationMs
+    : null;
 }
 
 function parseNaiveDateTime(value: string): {
@@ -349,23 +364,13 @@ export function applyWaitAllowedHours(input: {
   };
 }
 
-export function resolveWaitUntil(input: {
-  now?: Date;
-  waitUntil?: unknown;
-  waitDuration?: unknown;
-  waitOffset?: unknown;
-  waitTimezone?: string | undefined;
-  waitAllowedHoursMode?: unknown;
-  waitAllowedStartTime?: unknown;
-  waitAllowedEndTime?: unknown;
-}): WaitTimeResolution {
+/** Resolve the authored target and offset before allowed-hours adjustment. */
+export function resolveWaitTarget(input: WaitTargetInput): WaitTimeResolution {
   const now = input.now ?? new Date();
   const waitTimezone =
     typeof input.waitTimezone === "string" && input.waitTimezone.trim()
       ? input.waitTimezone.trim()
       : undefined;
-
-  let candidate: Date;
 
   if (input.waitUntil !== undefined && input.waitUntil !== "") {
     const parsed = parseTimestampWithTimezone(input.waitUntil, waitTimezone);
@@ -387,22 +392,38 @@ export function resolveWaitUntil(input: {
       };
     }
 
-    candidate = new Date(parsed.getTime() + (offsetMs ?? 0));
-  } else {
-    const durationMs = parseDurationMs(input.waitDuration);
-    if (durationMs === null) {
-      return {
-        error:
-          "Invalid waitDuration value. Use milliseconds, duration tokens (e.g. 24h), or ISO duration.",
-      };
-    }
-
-    candidate = new Date(now.getTime() + durationMs);
+    return { waitUntil: new Date(parsed.getTime() + (offsetMs ?? 0)) };
   }
 
-  // Apply allowed-hours window enforcement
+  const durationMs = parseDurationMs(input.waitDuration);
+  if (durationMs === null) {
+    return {
+      error:
+        "Invalid waitDuration value. Use milliseconds, duration tokens (e.g. 24h), or ISO duration.",
+    };
+  }
+
+  return { waitUntil: new Date(now.getTime() + durationMs) };
+}
+
+export function resolveWaitUntil(
+  input: WaitTargetInput & {
+    waitAllowedHoursMode?: unknown;
+    waitAllowedStartTime?: unknown;
+    waitAllowedEndTime?: unknown;
+  }
+): WaitTimeResolution {
+  const target = resolveWaitTarget(input);
+  if (!target.waitUntil) {
+    return target;
+  }
+
+  const waitTimezone =
+    typeof input.waitTimezone === "string" && input.waitTimezone.trim()
+      ? input.waitTimezone.trim()
+      : undefined;
   const windowResult = applyWaitAllowedHours({
-    candidate,
+    candidate: target.waitUntil,
     waitAllowedHoursMode: input.waitAllowedHoursMode,
     waitAllowedStartTime: input.waitAllowedStartTime,
     waitAllowedEndTime: input.waitAllowedEndTime,

@@ -112,6 +112,7 @@ export function summarizeWait(config: Record<string, unknown>): SummaryRow[] {
     ];
   }
   const timing = readWaitDelayTiming(config);
+  const gateMode = readConfigStringOr(config, "waitGateMode", "off");
   const windowMode = readConfigStringOr(config, "waitAllowedHoursMode", "off");
   const start = setString(config, "waitAllowedStartTime");
   const end = setString(config, "waitAllowedEndTime");
@@ -132,13 +133,10 @@ export function summarizeWait(config: Record<string, unknown>): SummaryRow[] {
       waitOptionLabel(WAIT_DELAY_TIMING_OPTIONS, timing)
     ),
     ...timingRows,
-    waitRow(
-      "waitGateMode",
-      waitOptionLabel(
-        WAIT_GATE_OPTIONS,
-        readConfigStringOr(config, "waitGateMode", "off")
-      )
-    ),
+    waitRow("waitGateMode", waitOptionLabel(WAIT_GATE_OPTIONS, gateMode)),
+    ...(gateMode === "max_lateness"
+      ? [waitRow("waitMaxLateness", textOf(config, "waitMaxLateness"))]
+      : []),
     waitRow(
       "waitAllowedHoursMode",
       windowMode === "daily_window"

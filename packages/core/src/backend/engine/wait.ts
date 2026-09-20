@@ -157,6 +157,7 @@ function executeWaitActionInner(
           waitOffset: config.waitOffset,
           waitTimezone: config.waitTimezone,
           waitGateMode: readWaitGateMode(config),
+          waitMaxLateness: config.waitMaxLateness,
           ...readAllowedHoursConfig(config),
           waitFor: config.waitFor?.map((subscription) => subscription.event),
           waitTimeout: config.waitTimeout,

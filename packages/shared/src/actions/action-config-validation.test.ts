@@ -126,6 +126,75 @@ describe("getNodeMissingRequiredFields", () => {
     ]);
   });
 
+  it("requires a maximum lateness duration for that delay gate", () => {
+    const result = getNodeMissingRequiredFields({
+      node: createActionNode({
+        actionType: "Wait",
+        waitMode: "delay",
+        waitDuration: "1h",
+        waitGateMode: "max_lateness",
+      }),
+      resolveActionByType,
+    });
+
+    expect(result?.missingFields).toEqual([
+      {
+        fieldKey: "waitMaxLateness",
+        fieldLabel: "Maximum lateness (positive duration)",
+      },
+    ]);
+  });
+
+  it.each(["0h", "-1h", "later"])(
+    "refuses invalid literal maximum lateness %s",
+    (waitMaxLateness) => {
+      const result = getNodeMissingRequiredFields({
+        node: createActionNode({
+          actionType: "Wait",
+          waitMode: "delay",
+          waitDuration: "1h",
+          waitGateMode: "max_lateness",
+          waitMaxLateness,
+        }),
+        resolveActionByType,
+      });
+
+      expect(result?.missingFields).toEqual([
+        expect.objectContaining({ fieldKey: "waitMaxLateness" }),
+      ]);
+    }
+  );
+
+  it("allows a maximum-lateness duration resolved from a template", () => {
+    const result = getNodeMissingRequiredFields({
+      node: createActionNode({
+        actionType: "Wait",
+        waitMode: "delay",
+        waitDuration: "1h",
+        waitGateMode: "max_lateness",
+        waitMaxLateness:
+          "{{@lifecycle_1:Lifecycle.appointment.maximumLateness}}",
+      }),
+      resolveActionByType,
+    });
+
+    expect(result).toBeNull();
+  });
+
+  it("does not require maximum lateness for the other delay gates", () => {
+    const result = getNodeMissingRequiredFields({
+      node: createActionNode({
+        actionType: "Wait",
+        waitMode: "delay",
+        waitDuration: "1h",
+        waitGateMode: "require_actual_wait",
+      }),
+      resolveActionByType,
+    });
+
+    expect(result).toBeNull();
+  });
+
   it("accepts wait nodes configured with waitUntil even without timing mode", () => {
     const result = getNodeMissingRequiredFields({
       node: createActionNode({

@@ -60,9 +60,27 @@ describe("summarizeWait", () => {
       ["How should this step wait?", "Wait for time"],
       ["Time input mode", "Wait for duration"],
       ["Wait for (duration)", "24h"],
-      ["Continue only if time actually elapsed", "Off (continue immediately)"],
+      ["Past target behavior", "Continue immediately"],
       ["Allowed send window", "09:00 to Not set"],
       ["Timezone", "America/New_York"],
+    ]);
+  });
+
+  it("summarizes a maximum-lateness gate", () => {
+    const rows = summarizeWait({
+      waitMode: "delay",
+      waitDuration: "24h",
+      waitGateMode: "max_lateness",
+      waitMaxLateness: "6h",
+    });
+
+    expect(rows.map((row) => [row.label, row.value])).toContainEqual([
+      "Past target behavior",
+      "Allow limited lateness",
+    ]);
+    expect(rows.map((row) => [row.label, row.value])).toContainEqual([
+      "Maximum lateness",
+      "6h",
     ]);
   });
 

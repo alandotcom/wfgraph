@@ -110,7 +110,7 @@ const BUILT_IN_AUTHORING = new Map<
       description:
         "Wait for a duration, until a date/time, or until an Event arrives.",
       instructions:
-        "Add and connect the node, then call set_wait. Use duration timing for a relative delay. Use until timing with a timestamp from list_references and an optional negative or positive offset. Use list_events before Event mode. Match a Wait Event to the current run with an exact list_references token. Integration-owned Events take a Connection ID from list_integrations. Event waits also need a timeout.",
+        'Add and connect the node, then call set_wait. Use duration timing for a relative delay. Use until timing with a timestamp from list_references and an optional negative or positive offset. Use gateMode "max_lateness" with maxLateness such as "6h" when a past target may continue only within a limit. Use list_events before Event mode. Match a Wait Event to the current run with an exact list_references token. Integration-owned Events take a Connection ID from list_integrations. Event waits also need a timeout.',
     },
   ],
 ]);

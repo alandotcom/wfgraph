@@ -34,6 +34,7 @@ import { isBlank } from "@wfgraph/shared/types/string";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
   parseDurationMs,
+  parsePositiveDurationMs,
   parseTimestampWithTimezone,
 } from "@wfgraph/shared/utils/wait-time";
 import { validateWaitAllowedHoursConfig } from "@wfgraph/shared/utils/wait-allowed-hours";
@@ -95,10 +96,14 @@ const waitForSchema = Schema.Array(
 
 const delayPolicyFields = {
   gateMode: Schema.optionalKey(
-    Schema.Literals(["off", "require_actual_wait"])
+    Schema.Literals(["off", "require_actual_wait", "max_lateness"])
   ).annotate({
     description:
-      "Whether an already-due target continues immediately or skips the branch. Omit to preserve it while changing delay timing.",
+      "How to handle an already-due target: continue immediately, require actual waiting, or allow limited lateness. Omit to preserve it while changing delay timing.",
+  }),
+  maxLateness: Schema.optionalKey(Schema.String).annotate({
+    description:
+      'The positive duration accepted after the target when gateMode is "max_lateness", such as "6h", or one exact duration token from list_references. Omit to preserve it while that gate remains active.',
   }),
   allowedHoursMode: Schema.optionalKey(
     Schema.Literals(["off", "daily_window"])
@@ -277,6 +282,7 @@ const WAIT_OWNED_KEYS = new Set([
   "waitOffset",
   "waitDelayTimingMode",
   "waitGateMode",
+  "waitMaxLateness",
   "waitAllowedHoursMode",
   "waitAllowedStartTime",
   "waitAllowedEndTime",
@@ -303,16 +309,70 @@ function validTimeZone(timeZone: string): boolean {
 
 type DelayWaitInput = Exclude<SetWaitInput["wait"], { readonly mode: "event" }>;
 
+function validateMaxLateness(input: {
+  value: string | undefined;
+  nodeId: string;
+  document: AgentDocument;
+  catalog: ExtensionCatalog;
+}): string | undefined {
+  if (input.value === undefined) {
+    return "Maximum lateness must be a positive duration such as 30m, 6h, or P1D.";
+  }
+
+  if (findTemplateTokens(input.value).length === 0) {
+    return parsePositiveDurationMs(input.value) === null
+      ? "Maximum lateness must be a positive duration such as 30m, 6h, or P1D."
+      : undefined;
+  }
+
+  const reference = referencesForNode({
+    nodeId: input.nodeId,
+    document: input.document,
+    catalog: input.catalog,
+  })?.find((candidate) => candidate.token === input.value);
+  return reference?.type === "duration"
+    ? undefined
+    : "Maximum lateness needs one exact duration token this step can read. Call list_references for this step before writing again.";
+}
+
 function readDelayPolicy(input: {
   wait: DelayWaitInput;
   stored: Record<string, unknown>;
+  nodeId: string;
+  document: AgentDocument;
+  catalog: ExtensionCatalog;
 }):
   | { readonly ok: true; readonly config: Record<string, unknown> }
   | { readonly ok: false; readonly reason: string } {
   const preserve = input.stored.waitMode !== "event";
-  const gateMode =
-    input.wait.gateMode ??
-    (preserve ? readConfigString(input.stored, "waitGateMode") : undefined);
+  const storedGateMode = preserve
+    ? readConfigString(input.stored, "waitGateMode")
+    : undefined;
+  const gateMode = input.wait.gateMode ?? storedGateMode;
+  const maxLateness =
+    gateMode === "max_lateness"
+      ? (input.wait.maxLateness ??
+        (storedGateMode === "max_lateness"
+          ? readConfigString(input.stored, "waitMaxLateness")
+          : undefined))
+      : undefined;
+  if (input.wait.maxLateness !== undefined && gateMode !== "max_lateness") {
+    return {
+      ok: false,
+      reason: 'maxLateness requires gateMode "max_lateness".',
+    };
+  }
+  if (gateMode === "max_lateness") {
+    const reason = validateMaxLateness({
+      value: maxLateness,
+      nodeId: input.nodeId,
+      document: input.document,
+      catalog: input.catalog,
+    });
+    if (reason) {
+      return { ok: false, reason };
+    }
+  }
   const allowedHoursMode =
     input.wait.allowedHoursMode ??
     (preserve
@@ -366,6 +426,7 @@ function readDelayPolicy(input: {
     ok: true,
     config: omitUndefined({
       waitGateMode: gateMode,
+      waitMaxLateness: maxLateness,
       waitAllowedHoursMode: allowedHoursMode,
       waitAllowedStartTime: windowStart,
       waitAllowedEndTime: windowEnd,
@@ -404,7 +465,13 @@ export const waitToolHandlers = Effect.gen(function* () {
               reason: "A Wait needs a valid duration such as 2d or 48h.",
             });
           }
-          const policy = readDelayPolicy({ wait, stored: storedConfig });
+          const policy = readDelayPolicy({
+            wait,
+            stored: storedConfig,
+            nodeId: input.nodeId,
+            document,
+            catalog: draft.catalog,
+          });
           if (!policy.ok) {
             return Effect.fail({ reason: policy.reason });
           }
@@ -421,7 +488,13 @@ export const waitToolHandlers = Effect.gen(function* () {
             });
           }
 
-          const policy = readDelayPolicy({ wait, stored: storedConfig });
+          const policy = readDelayPolicy({
+            wait,
+            stored: storedConfig,
+            nodeId: input.nodeId,
+            document,
+            catalog: draft.catalog,
+          });
           if (!policy.ok) {
             return Effect.fail({ reason: policy.reason });
           }

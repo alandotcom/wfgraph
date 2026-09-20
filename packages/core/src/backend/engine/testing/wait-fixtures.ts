@@ -1,21 +1,25 @@
 /**
  * The graph and the signal envelopes the Wait node's own suites run against.
  *
- * Two files drive the same one-Wait graph: `core-wait.test.ts` covers what each
- * mode does with a park, and `core-wait-migrate.test.ts` covers what a Migration
- * does to one. The node ids and the execution id are part of the fixture,
+ * Three files drive the same one-Wait graph: the delay and Event suites cover
+ * what each mode does with a park, and `core-wait-migrate.test.ts` covers what a
+ * Migration does to one. The node ids and the execution id are part of the fixture,
  * because a wait signal addresses a run and a node by id.
  */
 
 import { Effect } from "effect";
+import { expect } from "vitest";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import { type JsonObject, readJsonObject } from "@wfgraph/shared/types/json";
+import { noWorkflowActions } from "#src/backend/engine/actions";
 import {
   type ExecutionResult,
   executionData,
 } from "#src/backend/engine/contracts";
 import type { RecordingWorkflowStore } from "#src/backend/engine/recording-store";
+import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
+import { executeTestWorkflow } from "#src/backend/engine/test-execution";
 import type {
   ExecutionTerminationState,
   WorkflowStore,
@@ -90,6 +94,122 @@ export function createWaitGraph(config: Record<string, unknown>) {
       { id: "edge_2", source: WAIT_NODE_ID, target: "after_wait" },
     ],
   });
+}
+
+type RunWaitOptions = {
+  config: Record<string, unknown>;
+  store: RecordingWorkflowStore;
+  resumeEvent?: unknown;
+  startPayload?: JsonObject | undefined;
+  memo?: Map<string, unknown> | undefined;
+  /** An execution-wide claim that lands once the run has parked. */
+  claimOnPark?: ExecutionTerminationState | undefined;
+};
+
+export function runWait(options: RunWaitOptions) {
+  const runtime = createInMemoryWorkflowRuntime({
+    resumeEvent: options.resumeEvent ?? null,
+    memo: options.memo,
+  });
+  const execution = executeTestWorkflow(
+    {
+      graph: createWaitGraph(options.config),
+      executionId: WAIT_EXECUTION_ID,
+      workflowId: "workflow_wait",
+      startPayload: options.startPayload,
+    },
+    runtime,
+    options.claimOnPark
+      ? claimOnceParked(options.store, options.claimOnPark)
+      : options.store,
+    noWorkflowActions
+  );
+
+  return { runtime, execution };
+}
+
+/** The Wait node's own run-log rows. */
+export function waitStepLogs(store: RecordingWorkflowStore) {
+  const opened = store
+    .callsOf("startStepLog")
+    .filter((call) => call.nodeType === "Wait");
+  const waitLogIds = new Set(
+    store
+      .callsOf("startStepLog")
+      .map((call, index) => ({ call, logId: `log_${index + 1}` }))
+      .filter(({ call }) => call.nodeType === "Wait")
+      .map(({ logId }) => logId)
+  );
+
+  return {
+    opened,
+    closed: store
+      .callsOf("completeStepLog")
+      .filter((call) => waitLogIds.has(call.logId)),
+  };
+}
+
+/** A run still in flight that holds an execution-wide claim. */
+export function claimedRun(kind: "cancel" | "exit"): ExecutionTerminationState {
+  return {
+    status: "running",
+    claim:
+      kind === "exit"
+        ? {
+            kind: "exit",
+            requestedAt: "2026-10-19T15:00:00.000Z",
+            reason: "entity_condition_not_met",
+            nodeId: "other_branch",
+          }
+        : {
+            kind: "cancel",
+            requestedAt: "2026-10-19T15:00:00.000Z",
+            eventName: "appointment.cancelled",
+            payload: null,
+          },
+    didWrite: false,
+  };
+}
+
+const CLAIM_WAKE_MESSAGE = {
+  cancel: "Run woken by a cancel request in node 'Wait'",
+  exit: "Run woken by an Exit in node 'Wait'",
+} as const;
+
+/** Assert the complete result of a resume refused by an execution-wide claim. */
+export function expectHaltedByClaim(
+  store: RecordingWorkflowStore,
+  result: Awaited<ReturnType<typeof runWait>["execution"]>,
+  kind: "cancel" | "exit"
+) {
+  expect(result.results.wait_1?.success).toBe(true);
+  expect(result.results.after_wait).toBeUndefined();
+  expect(waitOutput(result)).not.toHaveProperty("payload");
+  expect(waitOutput(result)).not.toHaveProperty("event");
+  expect(store.callsOf("markExecutionRunning")).toEqual([
+    {
+      executionId: WAIT_EXECUTION_ID,
+      workflowVersionId: "ver_test",
+      side: "started",
+    },
+  ]);
+  expect(store.callsOf("markWaitStateStatus")).toEqual([
+    { waitStateId: "wait_state_1", status: "cancelled" },
+  ]);
+  expect(
+    store
+      .callsOf("recordAuditEvent")
+      .filter((event) => event.eventType === "run_resumed")
+  ).toEqual([
+    expect.objectContaining({
+      message: CLAIM_WAKE_MESSAGE[kind],
+      metadata: { nodeId: WAIT_NODE_ID, hops: 1 },
+    }),
+  ]);
+  expect(store.callsOf("startStepLog").map((open) => open.nodeId)).toEqual([
+    "lifecycle_1",
+    WAIT_NODE_ID,
+  ]);
 }
 
 /**

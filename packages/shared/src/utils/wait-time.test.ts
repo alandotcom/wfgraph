@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   applyDailyWindow,
   applyWaitAllowedHours,
+  parsePositiveDurationMs,
+  resolveWaitTarget,
   resolveWaitUntil,
 } from "./wait-time";
 
@@ -61,6 +63,30 @@ describe("applyDailyWindow", () => {
     const result = applyDailyWindow(candidate, START, END, TZ);
     // 08:00 PST is before 09:00 window start -> shift to 09:00 PST = 17:00 UTC
     expect(result.toISOString()).toBe("2026-11-01T17:00:00.000Z");
+  });
+});
+
+describe("parsePositiveDurationMs", () => {
+  it("accepts positive durations and rejects missing, invalid, zero, or negative values", () => {
+    expect(parsePositiveDurationMs("6h")).toBe(21_600_000);
+    expect(parsePositiveDurationMs("P1D")).toBe(86_400_000);
+    expect(parsePositiveDurationMs(undefined)).toBeNull();
+    expect(parsePositiveDurationMs("later")).toBeNull();
+    expect(parsePositiveDurationMs("0h")).toBeNull();
+    expect(parsePositiveDurationMs("-1h")).toBeNull();
+  });
+});
+
+describe("resolveWaitTarget", () => {
+  it("returns the target with its offset before allowed hours are applied", () => {
+    const target = resolveWaitTarget({
+      waitUntil: "2026-03-10T02:00:00-07:00",
+      waitOffset: "-1h",
+      waitTimezone: "America/Los_Angeles",
+    });
+
+    expect(target.error).toBeUndefined();
+    expect(target.waitUntil?.toISOString()).toBe("2026-03-10T08:00:00.000Z");
   });
 });
 

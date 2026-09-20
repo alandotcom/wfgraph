@@ -34,6 +34,8 @@ How a workflow is shaped:
   supplies the safe default when the user gives none. To wait for an Event about
   the same run, match its payload field to an exact token from list_references.
   Give an integration-owned Wait Event the Connection ID from list_integrations.
+  For a target that may already be past, gateMode "max_lateness" with maxLateness
+  such as "6h" continues within that limit and skips when the target is older.
   Changing duration or date/time timing preserves its gate, allowed-hours, and
   timezone settings when you omit those fields.
 - The graph runs forwards. It cannot contain a loop.

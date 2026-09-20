@@ -64,6 +64,21 @@ const timestampCatalog: ExtensionCatalog = {
   ],
 };
 
+const durationCatalog: ExtensionCatalog = {
+  ...fixtureCatalog,
+  events: fixtureCatalog.events.map((event) =>
+    event.name === "applicant.created"
+      ? {
+          ...event,
+          payloadFields: [
+            ...event.payloadFields,
+            { path: "maximumLateness", type: "duration" as const },
+          ],
+        }
+      : event
+  ),
+};
+
 const integrationEventCatalog: ExtensionCatalog = {
   ...fixtureCatalog,
   events: [
@@ -778,7 +793,8 @@ describe("set_wait", () => {
             waitDelayTimingMode: "until",
             waitUntil: "2027-01-01T09:00:00-05:00",
             waitOffset: "-1d",
-            waitGateMode: "require_actual_wait",
+            waitGateMode: "max_lateness",
+            waitMaxLateness: "6h",
             waitAllowedHoursMode: "daily_window",
             waitAllowedStartTime: "09:00",
             waitAllowedEndTime: "17:00",
@@ -801,12 +817,77 @@ describe("set_wait", () => {
         custom: "kept",
         waitMode: "delay",
         waitDuration: "2d",
-        waitGateMode: "require_actual_wait",
+        waitGateMode: "max_lateness",
+        waitMaxLateness: "6h",
         waitAllowedHoursMode: "daily_window",
         waitAllowedStartTime: "09:00",
         waitAllowedEndTime: "17:00",
         waitTimezone: "America/New_York",
       });
+    })
+  );
+
+  it.effect("writes and preserves a referenced maximum lateness", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({
+        ...documentInput,
+        nodes: [eventLifecycle, wait],
+        catalog: durationCatalog,
+      });
+      const maximumLateness = formatTemplateToken({
+        nodeId: "entry",
+        nodeLabel: "Lifecycle",
+        fieldPath: "maximumLateness",
+      });
+
+      yield* tools.set_wait({
+        nodeId: "wait",
+        wait: {
+          mode: "duration",
+          duration: "1d",
+          gateMode: "max_lateness",
+          maxLateness: maximumLateness,
+        },
+      });
+      yield* tools.set_wait({
+        nodeId: "wait",
+        wait: { mode: "duration", duration: "2d" },
+      });
+
+      expect((yield* draft.current).nodes[1]?.data.config).toMatchObject({
+        waitDuration: "2d",
+        waitGateMode: "max_lateness",
+        waitMaxLateness: maximumLateness,
+      });
+    })
+  );
+
+  it.effect("refuses a maximum-lateness reference of the wrong type", () =>
+    Effect.gen(function* () {
+      const { tools } = yield* agentToolsFor({
+        ...documentInput,
+        nodes: [eventLifecycle, wait],
+        catalog: durationCatalog,
+      });
+      const applicantId = formatTemplateToken({
+        nodeId: "entry",
+        nodeLabel: "Lifecycle",
+        fieldPath: "applicantId",
+      });
+
+      const failure = yield* Effect.flip(
+        tools.set_wait({
+          nodeId: "wait",
+          wait: {
+            mode: "duration",
+            duration: "1d",
+            gateMode: "max_lateness",
+            maxLateness: applicantId,
+          },
+        })
+      );
+
+      expect(failure.reason).toContain("duration token");
     })
   );
 
@@ -820,7 +901,8 @@ describe("set_wait", () => {
             ...wait.data.config,
             waitMode: "delay",
             waitDuration: "1d",
-            waitGateMode: "require_actual_wait",
+            waitGateMode: "max_lateness",
+            waitMaxLateness: "6h",
             waitAllowedHoursMode: "daily_window",
             waitAllowedStartTime: "09:00",
             waitAllowedEndTime: "17:00",
@@ -852,6 +934,97 @@ describe("set_wait", () => {
         waitAllowedHoursMode: "off",
         waitTimezone: "America/New_York",
       });
+    })
+  );
+
+  it.effect("writes a maximum-lateness gate", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor(documentInput);
+
+      yield* tools.set_wait({
+        nodeId: "wait",
+        wait: {
+          mode: "duration",
+          duration: "2d",
+          gateMode: "max_lateness",
+          maxLateness: "6h",
+        },
+      });
+
+      expect((yield* draft.current).nodes[1]?.data.config).toMatchObject({
+        waitGateMode: "max_lateness",
+        waitMaxLateness: "6h",
+      });
+    })
+  );
+
+  it.effect("refuses invalid maximum-lateness policies", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor(documentInput);
+
+      const missing = yield* Effect.flip(
+        tools.set_wait({
+          nodeId: "wait",
+          wait: {
+            mode: "duration",
+            duration: "2d",
+            gateMode: "max_lateness",
+          },
+        })
+      );
+      const zero = yield* Effect.flip(
+        tools.set_wait({
+          nodeId: "wait",
+          wait: {
+            mode: "duration",
+            duration: "2d",
+            gateMode: "max_lateness",
+            maxLateness: "0h",
+          },
+        })
+      );
+      const negative = yield* Effect.flip(
+        tools.set_wait({
+          nodeId: "wait",
+          wait: {
+            mode: "duration",
+            duration: "2d",
+            gateMode: "max_lateness",
+            maxLateness: "-1h",
+          },
+        })
+      );
+      const invalid = yield* Effect.flip(
+        tools.set_wait({
+          nodeId: "wait",
+          wait: {
+            mode: "duration",
+            duration: "2d",
+            gateMode: "max_lateness",
+            maxLateness: "later",
+          },
+        })
+      );
+      const mismatched = yield* Effect.flip(
+        tools.set_wait({
+          nodeId: "wait",
+          wait: {
+            mode: "duration",
+            duration: "2d",
+            gateMode: "off",
+            maxLateness: "6h",
+          },
+        })
+      );
+
+      expect(missing.reason).toContain("positive duration");
+      expect(zero.reason).toContain("positive duration");
+      expect(negative.reason).toContain("positive duration");
+      expect(invalid.reason).toContain("positive duration");
+      expect(mismatched.reason).toContain('requires gateMode "max_lateness"');
+      expect((yield* draft.current).nodes[1]?.data.config).toEqual(
+        wait.data.config
+      );
     })
   );
 

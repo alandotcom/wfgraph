@@ -473,6 +473,40 @@ describe("NodeConfigPanel authorization", () => {
  * reads a duration or a timeout the node is no longer in the shape for.
  */
 describe("NodeConfigPanel Wait mode", () => {
+  it("shows maximum lateness only for its gate and clears it when leaving", async () => {
+    installAuthorizationGrantsForTests([WfGraphOperations.workflowUpdate.id]);
+    const { view, store } = renderPanel({
+      nodes: [
+        lifecycleNode(),
+        waitNode({
+          waitMode: "delay",
+          waitDuration: "1h",
+          waitGateMode: "max_lateness",
+          waitMaxLateness: "6h",
+        }),
+      ],
+      selected: "wait_1",
+    });
+
+    expect(
+      await view.findByRole("textbox", { name: "Maximum lateness" })
+    ).toBeTruthy();
+    const picker = view.getByRole("combobox", {
+      name: "Past target behavior",
+    });
+    fireEvent.click(picker);
+    const choice = view.getByRole("option", { name: "Continue immediately" });
+    fireEvent.pointerDown(choice);
+    fireEvent.click(choice);
+
+    expect(
+      view.queryByRole("textbox", { name: "Maximum lateness" })
+    ).toBeNull();
+    const stored = store.get(nodesAtom).find((node) => node.id === "wait_1");
+    expect(stored?.data.config?.waitGateMode).toBe("off");
+    expect(stored?.data.config?.waitMaxLateness).toBe("");
+  });
+
   it("clears the timeout when the step leaves event mode", async () => {
     installAuthorizationGrantsForTests([WfGraphOperations.workflowUpdate.id]);
     const { view, store } = renderPanel({

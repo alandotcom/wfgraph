@@ -14,7 +14,12 @@
  */
 
 import { encodeIsoTimestamp } from "@wfgraph/shared/types/timestamp";
-import { resolveWaitUntil } from "@wfgraph/shared/utils/wait-time";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
+import {
+  applyWaitAllowedHours,
+  parsePositiveDurationMs,
+  resolveWaitTarget,
+} from "@wfgraph/shared/utils/wait-time";
 import { Effect } from "effect";
 import { closeStepLog } from "#src/backend/engine/step-log";
 import {
@@ -23,6 +28,7 @@ import {
   readAllowedHoursConfig,
   readWaitGateMode,
   type WaitAttempt,
+  type WaitGateMode,
   type WaitBranchContext,
   type WaitMode,
   type WaitOutcome,
@@ -36,96 +42,190 @@ type DelayPrepared = { waitUntilIso: string };
 /** What a delay attempt's resume step writes into the memo. */
 type DelayResumed = { output: Record<string, unknown>; canceled: boolean };
 
-const prepareDelayWait = Effect.fn("prepareDelayWait")(function* (
-  branch: WaitBranchContext,
-  attempt: WaitAttempt
-) {
-  const { config, context, store, startLog } = branch;
+type DelayPlan =
+  | { status: "error"; error: string }
+  | {
+      status: "skipped";
+      waitUntilIso: string;
+      waitGateMode: WaitGateMode;
+      waitMaxLateness?: string | undefined;
+      reason: "past_due_beyond_max_lateness" | "past_due_no_wait";
+      auditMessage: string;
+      plannedWaitMs: number;
+      maxLatenessMs?: number | undefined;
+    }
+  | {
+      status: "ready";
+      anchorAt: Date;
+      waitUntilIso: string;
+      waitGateMode: WaitGateMode;
+      waitMaxLateness?: string | undefined;
+      waitTimezone?: string | undefined;
+      plannedWaitMs: number;
+    };
 
+function planDelayWait(
+  config: WaitBranchContext["config"],
+  attempt: WaitAttempt
+): DelayPlan {
   const waitTimezone = config.waitTimezone;
+  const normalizedWaitTimezone = waitTimezone?.trim() || undefined;
   const waitGateMode = readWaitGateMode(config);
   const anchorAt = attempt.anchorAt ?? new Date();
-
-  const resolved = resolveWaitUntil({
+  const target = resolveWaitTarget({
     now: anchorAt,
     waitDuration: config.waitDuration,
     waitUntil: config.waitUntil,
     waitOffset: config.waitOffset,
-    waitTimezone,
-    ...readAllowedHoursConfig(config),
+    waitTimezone: normalizedWaitTimezone,
   });
 
-  if (!resolved.waitUntil) {
-    const errorMessage =
-      resolved.error ||
-      "Wait could not determine a target timestamp from waitUntil/waitDuration.";
-    yield* closeStepLog(store, startLog, {
+  if (!target.waitUntil) {
+    return {
       status: "error",
-      error: errorMessage,
-    });
-    return { status: "error" as const, error: errorMessage };
+      error:
+        target.error ||
+        "Wait could not determine a target timestamp from waitUntil/waitDuration.",
+    };
   }
 
-  const waitUntilIso = encodeIsoTimestamp(resolved.waitUntil);
-  const plannedWaitMs = resolved.waitUntil.getTime() - Date.now();
-  const didActuallyWait = plannedWaitMs > 0;
+  const targetIso = encodeIsoTimestamp(target.waitUntil);
+  const targetWaitMs = target.waitUntil.getTime() - anchorAt.getTime();
+  if (waitGateMode === "max_lateness") {
+    const maxLatenessMs = parsePositiveDurationMs(config.waitMaxLateness);
+    if (maxLatenessMs === null) {
+      return {
+        status: "error",
+        error:
+          "Maximum lateness must be a positive duration such as 30m, 6h, or P1D.",
+      };
+    }
 
-  // Gate mode treats an already-passed target as "nothing to wait for" and
-  // stops the branch instead of falling through to a zero-length park. It
-  // asks whether this Wait ever waited, so only the first attempt can answer
-  // no: a later attempt is reached from a park that was still counting down.
+    // Maximum lateness measures the authored target plus its offset. The
+    // allowed-hours window has not shifted that target yet.
+    if (attempt.anchorAt === undefined && targetWaitMs < -maxLatenessMs) {
+      return {
+        status: "skipped",
+        waitUntilIso: targetIso,
+        waitGateMode,
+        waitMaxLateness: config.waitMaxLateness,
+        reason: "past_due_beyond_max_lateness",
+        auditMessage: "target exceeded maximum lateness",
+        plannedWaitMs: targetWaitMs,
+        maxLatenessMs,
+      };
+    }
+  }
+
+  const windowResult = applyWaitAllowedHours({
+    candidate: target.waitUntil,
+    timeZone: normalizedWaitTimezone,
+    ...readAllowedHoursConfig(config),
+  });
+  if (windowResult.error) {
+    return { status: "error", error: windowResult.error };
+  }
+
+  const waitUntilIso = encodeIsoTimestamp(windowResult.date);
+  const plannedWaitMs = windowResult.date.getTime() - Date.now();
+
+  // This gate asks whether the Wait actually parks after allowed hours are
+  // applied. Only the first attempt can answer no: a later attempt is reached
+  // from a park that was still counting down.
   if (
     attempt.anchorAt === undefined &&
     waitGateMode === "require_actual_wait" &&
-    !didActuallyWait
+    plannedWaitMs <= 0
   ) {
-    const output = {
-      waitType: "delay",
-      waitUntil: waitUntilIso,
+    return {
+      status: "skipped",
+      waitUntilIso,
       waitGateMode,
-      skipped: true,
-      skippedReason: "past_due_no_wait",
+      reason: "past_due_no_wait",
+      auditMessage: "target already passed",
       plannedWaitMs,
-      didActuallyWait,
+    };
+  }
+
+  return {
+    status: "ready",
+    anchorAt,
+    waitUntilIso,
+    waitGateMode,
+    waitMaxLateness: config.waitMaxLateness,
+    waitTimezone,
+    plannedWaitMs,
+  };
+}
+
+const prepareDelayWait = Effect.fn("prepareDelayWait")(function* (
+  branch: WaitBranchContext,
+  attempt: WaitAttempt
+) {
+  const { context, store, startLog } = branch;
+  const plan = planDelayWait(branch.config, attempt);
+
+  if (plan.status === "error") {
+    yield* closeStepLog(store, startLog, {
+      status: "error",
+      error: plan.error,
+    });
+    return plan;
+  }
+
+  if (plan.status === "skipped") {
+    const output = omitUndefined({
+      waitType: "delay",
+      waitUntil: plan.waitUntilIso,
+      waitGateMode: plan.waitGateMode,
+      waitMaxLateness: plan.waitMaxLateness,
+      skipped: true,
+      skippedReason: plan.reason,
+      plannedWaitMs: plan.plannedWaitMs,
+      didActuallyWait: false,
       hops: 0,
       resumedAt: encodeIsoTimestamp(new Date()),
-    };
+    });
 
     yield* fromStore(
       store.recordAuditEvent({
         workflowId: branch.workflowId,
         executionId: context.executionId,
         eventType: "run_skipped",
-        message: `Skipped delay branch in node '${context.nodeName}' (target already passed)`,
-        metadata: {
+        message: `Skipped delay branch in node '${context.nodeName}' (${plan.auditMessage})`,
+        metadata: omitUndefined({
           nodeId: context.nodeId,
           waitType: "delay",
-          waitUntil: waitUntilIso,
-          plannedWaitMs,
-          reason: "past_due_no_wait",
-        },
+          waitUntil: plan.waitUntilIso,
+          plannedWaitMs: plan.plannedWaitMs,
+          maxLatenessMs: plan.maxLatenessMs,
+          reason: plan.reason,
+        }),
       })
     );
 
     yield* closeStepLog(store, startLog, { status: "success", output });
-
     return { status: "skipped" as const, output };
   }
 
   const preparation: WaitPreparation<DelayPrepared> = {
     status: "ready",
-    anchorAtIso: encodeIsoTimestamp(anchorAt),
+    anchorAtIso: encodeIsoTimestamp(plan.anchorAt),
     park: {
       waitType: "delay",
-      waitUntilIso,
+      waitUntilIso: plan.waitUntilIso,
       subscribedEvents: [],
       resumeToken: null,
       // Everything a later attempt needs beside the columns the row already has.
-      metadata: { waitGateMode, waitTimezone: waitTimezone ?? null },
-      timeoutMs: plannedWaitMs,
+      metadata: {
+        waitGateMode: plan.waitGateMode,
+        waitMaxLateness: plan.waitMaxLateness ?? null,
+        waitTimezone: plan.waitTimezone ?? null,
+      },
+      timeoutMs: plan.plannedWaitMs,
       signalTypes: ["version-migrate", "lifecycle-exit"],
     },
-    prepared: { waitUntilIso },
+    prepared: { waitUntilIso: plan.waitUntilIso },
   };
   return preparation;
 });

@@ -885,6 +885,66 @@ export const focusedScenarios: Array<{
     }),
   },
   {
+    name: "allows a target to be up to six hours late",
+    input: scenario({
+      messages: [
+        {
+          role: "user",
+          content:
+            "When an appointment is created, wait until appointment.startsAt. Continue if that target is no more than six hours late, but skip the branch if it is older.",
+        },
+      ],
+      document: emptyDocument,
+      integrations: [],
+      expected: {
+        exactActions: { [BUILT_IN_ACTION_IDS.wait]: 1 },
+        exactEvents: { start: ["app/appointment.created"], cancel: [] },
+        requiredFlows: [
+          {
+            source: { kind: "lifecycle" },
+            target: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            sourceHandle: "started",
+          },
+        ],
+        requiredConfigs: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            values: {
+              waitMode: "delay",
+              waitDelayTimingMode: "until",
+              waitGateMode: "max_lateness",
+            },
+          },
+        ],
+        requiredDurations: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            key: "waitMaxLateness",
+            duration: "6h",
+          },
+        ],
+        forbiddenConfigKeys: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            keys: ["waitDuration"],
+          },
+        ],
+        requiredReferences: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            key: "waitUntil",
+            path: "appointment.startsAt",
+          },
+        ],
+      },
+      expectedCompletion: { outcome: "ready" },
+      intentCriteria: [
+        "The Wait uses the appointment start timestamp as its target.",
+        "The Wait continues when the target is no more than six hours late and skips only when it is older.",
+      ],
+    }),
+  },
+  {
     name: "waits for a production Event with a timeout",
     input: scenario({
       messages: [
