@@ -108,6 +108,32 @@ describe("reachableEventFields", () => {
     });
   });
 
+  it("keeps enum labels only where every declaration agrees", () => {
+    const fields = reachableEventFields([
+      anEvent("a", [
+        {
+          path: "status",
+          type: "string",
+          enumValues: ["cleared", "deferred"],
+          enumLabels: { cleared: "Cleared", deferred: "Deferred" },
+        },
+      ]),
+      anEvent("b", [
+        {
+          path: "status",
+          type: "string",
+          enumValues: ["deferred", "cleared"],
+          enumLabels: { cleared: "Cleared", deferred: "Not eligible" },
+        },
+      ]),
+    ]);
+
+    expect(fieldAt(fields, "status")).toMatchObject({
+      enumValues: ["cleared", "deferred"],
+      enumLabels: { cleared: "Cleared" },
+    });
+  });
+
   it("answers nothing where no Event can reach the node", () => {
     expect(reachableEventFields([])).toEqual([]);
   });

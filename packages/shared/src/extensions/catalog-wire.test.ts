@@ -43,13 +43,22 @@ describe("readExtensionCatalog", () => {
     );
   });
 
-  it("carries field labels, descriptions, and string formats across the wire", () => {
+  it("carries field labels, descriptions, enums, and string formats across the wire", () => {
     const payloadFields: ReferenceField[] = [
       {
         path: "startsAt",
         label: "Starts at",
         description: "When the appointment starts",
         type: "timestamp",
+      },
+      {
+        path: "status",
+        type: "string",
+        enumValues: ["ClearedToDonate", "TemporarilyDeferred"],
+        enumLabels: {
+          ClearedToDonate: "Cleared to donate",
+          TemporarilyDeferred: "Temporarily deferred",
+        },
       },
       { path: "leadTime", type: "duration" },
     ];

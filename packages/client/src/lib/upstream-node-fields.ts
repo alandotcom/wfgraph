@@ -373,11 +373,17 @@ function keyFieldsUnderRecord(
 /**
  * The optional flags a schema field puts on a picker row: `openRecord` for a
  * record whose keys the payload invents, `nullable` for a field a run can
- * arrive without, and `enumValues` for a closed set of values.
+ * arrive without, and the enum metadata for a closed set of values.
  */
 function schemaFieldFlags(
-  field: Pick<ReferenceField, "valueType" | "nullable" | "enumValues">
-): Pick<ConditionSelectableField, "openRecord" | "nullable" | "enumValues"> {
+  field: Pick<
+    ReferenceField,
+    "valueType" | "nullable" | "enumValues" | "enumLabels"
+  >
+): Pick<
+  ConditionSelectableField,
+  "openRecord" | "nullable" | "enumValues" | "enumLabels"
+> {
   return {
     // oxlint-disable-next-line wfgraph/no-conditional-spread -- an unset flag leaves the key absent, so two rows compare equal only when both carry the same flags.
     ...(field.valueType ? { openRecord: true as const } : {}),
@@ -385,6 +391,8 @@ function schemaFieldFlags(
     ...(field.nullable ? { nullable: true } : {}),
     // oxlint-disable-next-line wfgraph/no-conditional-spread -- an unset flag leaves the key absent, so two rows compare equal only when both carry the same flags.
     ...(field.enumValues ? { enumValues: field.enumValues } : {}),
+    // oxlint-disable-next-line wfgraph/no-conditional-spread -- labels are optional metadata on the closed set.
+    ...(field.enumLabels ? { enumLabels: field.enumLabels } : {}),
   };
 }
 
@@ -698,9 +706,13 @@ function mergeDeclarations(
   // Both enum keys go rather than being blanked where the Events disagree: the
   // picker reads an absent `enumValues` as "any value of this type", and a key
   // present but empty would have to be told apart from one nothing wrote.
-  return sharedEnumValues(declarations)
-    ? merged
-    : omit(merged, ["enumValues", "enumLabels"]);
+  const enumValues = sharedEnumValues(declarations);
+  if (!enumValues) {
+    return omit(merged, ["enumValues", "enumLabels"]);
+  }
+
+  const enumLabels = sharedEnumLabels(declarations, enumValues);
+  return enumLabels ? { ...merged, enumLabels } : omit(merged, ["enumLabels"]);
 }
 
 /** The enum values every Event offers for one field, absent where they differ. */
@@ -721,6 +733,20 @@ function sharedEnumValues(
   );
 
   return agrees ? first.enumValues : undefined;
+}
+
+/** Labels every declaration gives the same enum value the same way. */
+function sharedEnumLabels(
+  fields: readonly ConditionSelectableField[],
+  enumValues: readonly string[]
+): Readonly<Record<string, string>> | undefined {
+  const entries = enumValues.flatMap((value): [string, string][] => {
+    const labels = uniq(fields.map((field) => field.enumLabels?.[value]));
+    const [label] = labels;
+    return labels.length === 1 && label ? [[value, label]] : [];
+  });
+
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
 export function getUpstreamConditionFields(input: {

@@ -221,13 +221,14 @@ describe("flattenSchemaToReferenceFields", () => {
     expect(fields).toEqual([{ path: "tags", type: "array" }]);
   });
 
-  it("carries nullable and enum values through to the flat field", () => {
+  it("carries nullable and enum metadata through to the flat field", () => {
     const fields = flattenSchemaToReferenceFields([
       {
         name: "status",
         type: "string",
         nullable: true,
         enumValues: ["open", "closed"],
+        enumLabels: { open: "Open", closed: "Closed" },
       },
     ]);
 
@@ -237,6 +238,7 @@ describe("flattenSchemaToReferenceFields", () => {
         type: "string",
         nullable: true,
         enumValues: ["open", "closed"],
+        enumLabels: { open: "Open", closed: "Closed" },
       },
     ]);
   });
