@@ -11,7 +11,11 @@ import {
 } from "@wfgraph/shared/types/timestamp";
 
 const appointmentState = Schema.Struct({
-  status: Schema.Literals(["scheduled", "completed", "cancelled"]).annotate({
+  status: Schema.Enum({
+    Scheduled: "scheduled",
+    Completed: "completed",
+    Cancelled: "cancelled",
+  }).annotate({
     description: "Current appointment status",
   }),
   startsAt: isoTimestampString("Appointment start time"),
@@ -38,6 +42,11 @@ describe("defineEntity identity and state", () => {
         description: "Current appointment status",
         type: "string",
         enumValues: ["scheduled", "completed", "cancelled"],
+        enumLabels: {
+          scheduled: "Scheduled",
+          completed: "Completed",
+          cancelled: "Cancelled",
+        },
       },
       {
         path: "startsAt",

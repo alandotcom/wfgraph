@@ -32,8 +32,11 @@ The host passes it in `extensions.integrations`. Build against
 - `test` is a loader so the vendor call stays behind a dynamic import until
   "Test connection".
 - `input` draws fields. `configFields` adds what a schema cannot (placeholder,
-  `showWhen`, `provider-select`). `configOptions` load choices from the
-  connection; never leak exception text (it can hold a key in a URL).
+  `showWhen`, `provider-select`). A closed string set labels its choices from
+  `title` on singleton `const` or `enum` branches under `anyOf` or `oneOf`; an
+  Effect `Schema.Enum` object key becomes that title while its value stays stored.
+  `configOptions` load choices from the connection; never leak exception text
+  (it can hold a key in a URL).
 - `connectionDefaultKey` names the credential a blank field falls back to, and
   the editor draws that stored value as the placeholder. It must name a
   declared credential and never a `password` one: the browser holds a mask in

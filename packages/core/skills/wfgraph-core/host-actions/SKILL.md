@@ -25,7 +25,10 @@ throwing; durable work is `step.run(id, () => promise)`. Pass the value in
 a readable label from each property key and preserves common initialisms
 (`appointmentId` becomes "Appointment ID"). JSON Schema `description` supplies
 separate help text. Use `title` only when the intended label cannot be derived
-from the key.
+from the key. A closed string set can label each choice with `title` on its
+singleton `const` or `enum` branch under JSON Schema `anyOf` or `oneOf`. Use an
+annotated Zod literal union; the editor displays each title and stores its raw
+literal value.
 
 ## Core Patterns
 

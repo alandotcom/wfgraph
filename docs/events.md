@@ -138,6 +138,26 @@ Most fields need no title. JSON Schema `description` supplies separate help text
 `.describe(...)` sets that help text. Use `.meta({ title, description })` only when the
 intended label cannot be derived from the key.
 
+A closed string set can label each choice separately while keeping its stored values stable.
+Workflow Graph reads `title` from each singleton `const` or `enum` branch under JSON Schema
+`anyOf` or `oneOf`. Zod emits that shape from an annotated literal union; Effect emits it
+from `Schema.Enum`, whose object keys become titles:
+
+```ts
+const zodStatus = z.union([
+  z.literal("ClearedToDonate").meta({ title: "Cleared to donate" }),
+  z.literal("TemporarilyDeferred").meta({ title: "Temporarily deferred" }),
+]);
+
+const effectStatus = Schema.Enum({
+  "Cleared to donate": "ClearedToDonate",
+  "Temporarily deferred": "TemporarilyDeferred",
+});
+```
+
+Conditions and Test Run payload fields show the titles and store the original values. An
+unlabelled choice falls back to its stored value.
+
 **`correlationPath` names where the Entity Value sits.** It is typed against the payload
 and admits a path that resolves to a string.
 

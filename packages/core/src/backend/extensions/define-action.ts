@@ -139,7 +139,8 @@ export type DefineActionInput<TInput extends Record<string, unknown>> =
      *
      * `configFields` are auto-derived from the schema's JSON Schema
      * representation. A readable label is derived from each property key.
-     * `title` overrides that label, and `description` supplies help text.
+     * `title` overrides that label, `description` supplies help text, and a
+     * title on a singleton union branch labels that enum choice.
      */
     input: InputSchema<TInput>;
 

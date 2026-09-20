@@ -155,7 +155,12 @@ describe("defineAction", () => {
           description: "The person's full name.",
         }),
         count: z.number().min(0).meta({ title: "Item Count" }),
-        status: z.enum(["active", "inactive"]).meta({ title: "Status" }),
+        status: z
+          .union([
+            z.literal("active").meta({ title: "Active" }),
+            z.literal("inactive").meta({ title: "Inactive" }),
+          ])
+          .meta({ title: "Status" }),
       }),
       handler() {
         return {};
@@ -191,8 +196,8 @@ describe("defineAction", () => {
     expect(
       statusField && "options" in statusField ? statusField.options : undefined
     ).toEqual([
-      { value: "active", label: "active" },
-      { value: "inactive", label: "inactive" },
+      { value: "active", label: "Active" },
+      { value: "inactive", label: "Inactive" },
     ]);
   });
 
