@@ -676,6 +676,14 @@ function resolveClosedSetBranches(
     resolved.enumLabels = Object.fromEntries(enumLabels);
   }
 
+  // A nullable singleton still has two union branches. Its one non-null branch
+  // owns the choice title while its other annotations still describe the field.
+  const [onlyBranch] = nonNullBranches;
+  if (nonNullBranches.length === 1 && onlyBranch) {
+    resolved.description = onlyBranch.description;
+    resolved.format = onlyBranch.format;
+  }
+
   return withInheritedAnnotations(resolved, parent);
 }
 
@@ -755,6 +763,15 @@ function resolveJsonSchemaUnion(
     if (!branch) {
       return null;
     }
+
+    const declared = declaredEnumOrConstValues(branch);
+    if (declared?.length === 1) {
+      const fromClosed = resolveClosedSetBranches(nonNullBranches, value);
+      if (fromClosed) {
+        return { node: fromClosed, nullable };
+      }
+    }
+
     return { node: withInheritedAnnotations(branch, value), nullable };
   }
 

@@ -554,6 +554,39 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema", () => {
     ]);
   });
 
+  it("keeps a nullable singleton branch title as its option label", () => {
+    const schema = parseWorkflowSchemaFieldsOrJsonSchema({
+      type: "object",
+      required: ["status"],
+      properties: {
+        status: {
+          title: "Task status",
+          anyOf: [
+            {
+              type: "string",
+              enum: ["InProgress"],
+              title: "In progress",
+              description: "The task is being worked on.",
+            },
+            { type: "null" },
+          ],
+        },
+      },
+    });
+
+    expect(schema).toEqual([
+      {
+        name: "status",
+        type: "string",
+        label: "Task status",
+        description: "The task is being worked on.",
+        enumValues: ["InProgress"],
+        enumLabels: { InProgress: "In progress" },
+        nullable: true,
+      },
+    ]);
+  });
+
   it("joins anyOf of one-value string enums into a closed set", () => {
     // Effect's `Schema.Enum`: one `{ type, enum: [member] }` branch per value.
     const schema = parseWorkflowSchemaFieldsOrJsonSchema({
