@@ -255,12 +255,12 @@ describe("WorkflowIssuesOverlay", () => {
     ).toBeNull();
     // Every repair wears the same outline weight, whether it is the first row
     // or the fifth.
-    expect(getByRole("button", { name: "Add" }).className).toContain(
-      "border-border"
-    );
-    expect(getByRole("button", { name: "Add" }).className).not.toContain(
-      "bg-primary"
-    );
+    expect(
+      getByRole("button", { name: "Add Connection for Linear" }).className
+    ).toContain("border-border");
+    expect(
+      getByRole("button", { name: "Add Connection for Linear" }).className
+    ).not.toContain("bg-primary");
   });
 
   // Publish refused by an issue that also stops a draft run names Publish, the
@@ -282,9 +282,7 @@ describe("WorkflowIssuesOverlay", () => {
       { trigger: "publish" }
     );
 
-    expect(
-      getByText("Resolve blocking issues before publishing.")
-    ).toBeTruthy();
+    expect(getByText("Fix these issues before publishing.")).toBeTruthy();
     expect(
       queryByText("Resolve blocking issues before running the draft.")
     ).toBeNull();
@@ -323,7 +321,7 @@ describe("WorkflowIssuesOverlay", () => {
     expect(
       queryByText("Resolve blocking issues before running the draft.")
     ).toBeNull();
-    expect(getByRole("button", { name: "Show" })).toBeTruthy();
+    expect(getByRole("button", { name: "Open Lookups" })).toBeTruthy();
   });
 
   it("lists a Lifecycle Node's Publish problems and opens the node", () => {
@@ -350,7 +348,37 @@ describe("WorkflowIssuesOverlay", () => {
 
     expect(getByText("Lifecycle Problems")).toBeTruthy();
     expect(getByText("Start Filter reads an undeclared path")).toBeTruthy();
-    fireEvent.click(getByRole("button", { name: "Show" }));
+    fireEvent.click(getByRole("button", { name: "Open Lifecycle" }));
     expect(onGoToStep).toHaveBeenCalledWith("lifecycle", undefined);
+  });
+
+  it("gives direct recovery actions for fields that were not verified", () => {
+    const onGoToStep = vi.fn();
+    const { getByRole, getByText } = renderIssues(
+      issuesModel({
+        totalIssues: 1,
+        unverifiedProviderFields: [
+          {
+            nodeId: "create",
+            nodeLabel: "Create issue",
+            fields: [{ fieldKey: "fields", fieldLabel: "Fields" }],
+          },
+        ],
+      }),
+      { onGoToStep }
+    );
+
+    expect(
+      getByText(
+        "The Connection did not respond, so these fields were not verified."
+      )
+    ).toBeTruthy();
+    expect(
+      getByText("Reconnect the Connection in Settings to verify them again.")
+    ).toBeTruthy();
+    fireEvent.click(
+      getByRole("button", { name: "Review Fields in Create issue" })
+    );
+    expect(onGoToStep).toHaveBeenCalledWith("create", "fields");
   });
 });

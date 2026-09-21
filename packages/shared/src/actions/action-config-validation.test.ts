@@ -121,7 +121,7 @@ describe("getNodeMissingRequiredFields", () => {
     expect(result?.missingFields).toEqual([
       {
         fieldKey: "waitUntil",
-        fieldLabel: "Wait until this date/time",
+        fieldLabel: "Date and time",
       },
     ]);
   });
@@ -140,7 +140,7 @@ describe("getNodeMissingRequiredFields", () => {
     expect(result?.missingFields).toEqual([
       {
         fieldKey: "waitMaxLateness",
-        fieldLabel: "Maximum lateness (positive duration)",
+        fieldLabel: "Continue if late by up to",
       },
     ]);
   });

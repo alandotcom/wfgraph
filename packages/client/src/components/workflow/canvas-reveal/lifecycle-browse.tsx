@@ -8,6 +8,7 @@ import { Label } from "#src/components/ui/label";
 import { ConditionSummary } from "#src/components/workflow/config/condition-summary";
 import {
   concurrencySummary,
+  describeRelatedRuns,
   eligibilityTiming,
   entityBindingRows,
   eventLabel,
@@ -88,7 +89,7 @@ function ConditionText({
     </div>
   ) : (
     <p className="text-warning text-xs">
-      The rule can't be read. Open the editor to fix it.
+      This rule is invalid. Open its section and rebuild it.
     </p>
   );
 }
@@ -131,7 +132,7 @@ const ROLE_SUMMARY = {
     readLayout: readStartFilterLayout,
     filterNoun: "Start Filter",
     noEventsText: "No Start Events.",
-    noFilterText: "No Start Filter. Every arrival starts a run.",
+    noFilterText: () => "No Start Filter. Every arrival starts a run.",
   },
   cancel: {
     eventNames: (rules: LifecycleRules) => rules.cancelEvents,
@@ -139,8 +140,13 @@ const ROLE_SUMMARY = {
     readLayout: readCancelFilterLayout,
     filterNoun: "Cancel Filter",
     noEventsText: "No Cancel Events.",
-    noFilterText:
-      "No Cancel Filter. Every arrival routes matching runs to the Canceled outlet.",
+    noFilterText: (rules: LifecycleRules, catalog: ExtensionCatalog) => {
+      const entityLabel = trackedEntityLabel(rules, catalog);
+      const identity = entityLabel
+        ? `${entityLabel} ID`
+        : "Correlation Path value";
+      return `No Cancel Filter. Every arrival cancels active runs for the ${identity} it provides.`;
+    },
   },
 } as const;
 
@@ -182,7 +188,7 @@ function RoleEvents({
           One {summary.filterNoun} for every Event
         </p>
         <ConditionText
-          emptyText={summary.noFilterText}
+          emptyText={summary.noFilterText(rules, catalog)}
           fields={getSharedEventConditionFields(catalog, eventNames, nodes)}
           model={layout.model}
         />
@@ -195,7 +201,7 @@ function RoleEvents({
         <li className="space-y-1" key={eventName}>
           <EventName catalog={catalog} eventName={eventName} />
           <ConditionText
-            emptyText={summary.noFilterText}
+            emptyText={summary.noFilterText(rules, catalog)}
             fields={getEventConditionFields(catalog, eventName, nodes)}
             model={summary.readFilter(rules, eventName)}
           />
@@ -218,7 +224,7 @@ function EntityEligibilitySummary({
   if (!tracked || entityLabel === null) {
     return (
       <p className="text-muted-foreground text-xs">
-        Not tracked. Runs are matched by Correlation Path.
+        No Entity is tracked. {describeRelatedRuns(rules, catalog)}
       </p>
     );
   }
@@ -226,8 +232,8 @@ function EntityEligibilitySummary({
   return (
     <div className="space-y-3">
       <dl className="space-y-1.5">
-        <Row label="Tracked Entity">{entityLabel}</Row>
-        <Row label="Checked">{eligibilityTiming(rules)}</Row>
+        <Row label="Each run tracks">{entityLabel} ID</Row>
+        <Row label="Eligibility checked">{eligibilityTiming(rules)}</Row>
       </dl>
       {findEntity(catalog, tracked.type) ? null : (
         <p className="text-warning text-xs">
@@ -236,11 +242,15 @@ function EntityEligibilitySummary({
       )}
       {bindings.length > 0 ? (
         <div className="space-y-1">
-          <h4 className="font-medium text-xs">{entityLabel} in each Event</h4>
+          <h4 className="font-medium text-xs">
+            How each Event provides the {entityLabel} ID
+          </h4>
           <dl className="space-y-1">
             {bindings.map((row) => (
               <Row key={row.eventName} label={row.eventLabel}>
-                {row.binding ?? (
+                {row.binding ? (
+                  `${row.binding} binding`
+                ) : (
                   <span className="text-warning">No binding</span>
                 )}
               </Row>
@@ -301,7 +311,7 @@ export function LifecyclePolicySections({
         title="Start Events"
       >
         <p className="text-muted-foreground text-xs">
-          A Start Filter reads the arriving Event's payload before a run opens.
+          A Start Filter can limit which arrivals start runs.
         </p>
         <RoleEvents
           catalog={catalog}
@@ -341,8 +351,8 @@ export function LifecyclePolicySections({
       </Section>
 
       <Section
-        action={editAction("Entity eligibility", "entity-eligibility")}
-        title="Entity eligibility"
+        action={editAction("Entity", "entity-eligibility")}
+        title="Entity"
       >
         <EntityEligibilitySummary catalog={catalog} rules={rules} />
       </Section>

@@ -71,6 +71,11 @@ describe("LifecyclePanel display", () => {
       view.getByRole("heading", { name: "Appointment created" })
     ).toBeTruthy();
     expect(view.getByRole("heading", { name: "Nightly sweep" })).toBeTruthy();
+    expect(
+      view.getByText(
+        "Lifecycle Events use their Correlation Path values to identify related runs."
+      )
+    ).toBeTruthy();
   });
 
   it("offers no button that switches the panel's mode", () => {
@@ -111,13 +116,9 @@ describe("LifecyclePanel display", () => {
   it("opens a section's help on a click", () => {
     const view = renderPanel();
 
-    expect(
-      view.queryByText(/A run starts when one of these events/)
-    ).toBeNull();
+    expect(view.queryByText(/A selected Start Event starts a run/)).toBeNull();
     fireEvent.click(view.getByRole("button", { name: "About Start Events" }));
-    expect(
-      view.getByText(/A run starts when one of these events/)
-    ).toBeTruthy();
+    expect(view.getByText(/A selected Start Event starts a run/)).toBeTruthy();
   });
 
   it("puts the concurrency setting in force at the top of its help", () => {
@@ -128,12 +129,35 @@ describe("LifecyclePanel display", () => {
     );
     const described = view
       .getAllByText(
-        /End matching active runs, then start the new run|Each event starts a separate run/
+        /End related active runs, then start the new run|Each arrival starts a separate run/
       )
       .map((node) => node.textContent ?? "");
     expect(described.at(0)).toContain(
-      "End matching active runs, then start the new run"
+      "End related active runs, then start the new run"
     );
+  });
+
+  it("explains how overlap rules relate manual-only runs", () => {
+    const view = renderPanel(
+      <LifecyclePanel
+        config={{
+          lifecycleRules: {
+            startEvents: [],
+            cancelEvents: [],
+            concurrency: "first-wins",
+            allowManualStart: true,
+          },
+        }}
+        disabled={false}
+        onUpdateConfig={vi.fn()}
+      />
+    );
+
+    expect(
+      view.getByText(
+        "With no Lifecycle Events, the overlapping-run rule treats all manual runs as related."
+      )
+    ).toBeTruthy();
   });
 
   it("shows the selected overlap outcome and keeps alternatives and manual-run details in help", () => {
@@ -141,19 +165,24 @@ describe("LifecyclePanel display", () => {
 
     // The policy summary above the editor states the same outcome.
     expect(
-      view.getAllByText(/End matching active runs, then start the new run/)
+      view.getAllByText(/End related active runs, then start the new run/)
     ).toHaveLength(2);
-    expect(view.queryByText(/Each event starts a separate run/)).toBeNull();
-    expect(view.queryByText(/The editor and execute API/)).toBeNull();
+    expect(view.queryByText(/Each arrival starts a separate run/)).toBeNull();
+    expect(view.queryByText(/The editor and API/)).toBeNull();
 
     fireEvent.click(
       view.getByRole("button", { name: "About Overlapping runs" })
     );
-    expect(view.getByText(/Each event starts a separate run/)).toBeTruthy();
+    expect(view.getByText(/Each arrival starts a separate run/)).toBeTruthy();
 
     fireEvent.click(
       view.getByRole("button", { name: "About Allow manual runs" })
     );
-    expect(view.getByText(/The editor and execute API/)).toBeTruthy();
+    expect(
+      view.getByText(/The editor and API can start runs manually/)
+    ).toBeTruthy();
+    expect(
+      view.getByText(/Entity tracking and Event Splits require selecting/)
+    ).toBeTruthy();
   });
 });

@@ -1,5 +1,6 @@
 import { asNonEmptyString, isBlank } from "#src/types/string";
 import { BUILT_IN_ACTION_IDS } from "#src/actions/built-in-actions";
+import { WAIT_FIELD_LABELS } from "#src/actions/wait-field-labels";
 import { compileSerializedConditionModel } from "#src/conditions/conditions";
 import { findTemplateTokens } from "#src/graph/node-references";
 import {
@@ -152,7 +153,7 @@ function getWaitMissingRequiredFields(
     if (isFieldEmpty(config.waitTimeout)) {
       eventMissing.push({
         fieldKey: "waitTimeout",
-        fieldLabel: "Stop waiting after",
+        fieldLabel: WAIT_FIELD_LABELS.waitTimeout,
       });
     }
 
@@ -165,13 +166,13 @@ function getWaitMissingRequiredFields(
     if (isFieldEmpty(config.waitUntil)) {
       missing.push({
         fieldKey: "waitUntil",
-        fieldLabel: "Wait until this date/time",
+        fieldLabel: WAIT_FIELD_LABELS.waitUntil,
       });
     }
   } else if (isFieldEmpty(config.waitDuration)) {
     missing.push({
       fieldKey: "waitDuration",
-      fieldLabel: "Wait for (duration)",
+      fieldLabel: WAIT_FIELD_LABELS.waitDuration,
     });
   }
 
@@ -184,7 +185,7 @@ function getWaitMissingRequiredFields(
     ) {
       missing.push({
         fieldKey: "waitMaxLateness",
-        fieldLabel: "Maximum lateness (positive duration)",
+        fieldLabel: WAIT_FIELD_LABELS.waitMaxLateness,
       });
     }
   }
@@ -194,7 +195,7 @@ function getWaitMissingRequiredFields(
     if (!startStr || parseTimeOfDayMinutes(startStr) === null) {
       missing.push({
         fieldKey: "waitAllowedStartTime",
-        fieldLabel: "Window start (HH:MM)",
+        fieldLabel: WAIT_FIELD_LABELS.waitAllowedStartTime,
       });
     }
 
@@ -202,14 +203,14 @@ function getWaitMissingRequiredFields(
     if (!endStr || parseTimeOfDayMinutes(endStr) === null) {
       missing.push({
         fieldKey: "waitAllowedEndTime",
-        fieldLabel: "Window end (HH:MM)",
+        fieldLabel: WAIT_FIELD_LABELS.waitAllowedEndTime,
       });
     }
 
     if (isFieldEmpty(config.waitTimezone)) {
       missing.push({
         fieldKey: "waitTimezone",
-        fieldLabel: "Timezone",
+        fieldLabel: WAIT_FIELD_LABELS.waitTimezone,
       });
     }
   }

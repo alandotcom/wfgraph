@@ -124,7 +124,7 @@ function EventBindingRow({
       <div className="space-y-0.5 text-xs">
         <p className="break-words font-medium">{label}</p>
         <p className="break-words text-muted-foreground">
-          Uses {choices[0]?.name} automatically
+          Uses the {choices[0]?.name} binding to get the {entityLabel} ID.
         </p>
       </div>
     );
@@ -133,7 +133,7 @@ function EventBindingRow({
   return (
     <div className="grid gap-1.5">
       <Label htmlFor={`entity-binding-${eventName}`}>
-        {entityLabel} in {label}
+        {entityLabel} ID in {label}
       </Label>
       <Select
         disabled={disabled}
@@ -145,11 +145,11 @@ function EventBindingRow({
         value={selectedBinding ?? null}
       >
         <SelectTrigger
-          aria-label={`${entityLabel} in ${label}`}
+          aria-label={`${entityLabel} ID in ${label}`}
           className="w-full"
           id={`entity-binding-${eventName}`}
         >
-          <SelectValue placeholder="Choose binding" />
+          <SelectValue placeholder="Choose ID binding" />
         </SelectTrigger>
         <SelectContent>
           {choices.map((choice) => (
@@ -212,7 +212,7 @@ function UnavailableEntityNote({
  * When Entity Eligibility is checked: before a run starts, before each step, or
  * both. Renders nothing while the rules hold no eligibility rule.
  */
-export function LifecycleEligibilityCheckpoints({
+function LifecycleEligibilityCheckpoints({
   rules,
   catalog,
   disabled,
@@ -276,23 +276,19 @@ export function LifecycleEligibilityCheckpoints({
 }
 
 /**
- * Tracking one Entity, its binding in each Lifecycle Event, and the eligibility
- * rule over its current state, with its checkpoints. Given
- * `onGoToCheckpoints`, the caller places `LifecycleEligibilityCheckpoints`
- * elsewhere, and an empty checkpoint set offers a way to reach them.
+ * Tracking one Entity, its binding in each Lifecycle Event, the eligibility
+ * rule over its current state, and when that rule is checked.
  */
 export function LifecycleEntityEligibilityGroup({
   rules,
   catalog,
   disabled,
   onChange,
-  onGoToCheckpoints,
 }: {
   rules: LifecycleRules;
   catalog: ExtensionCatalog;
   disabled: boolean;
   onChange: (rules: LifecycleRules) => void;
-  onGoToCheckpoints?: (() => void) | undefined;
 }) {
   const tracked = rules.trackedEntity;
   const eligibility = rules.entityEligibility;
@@ -375,15 +371,12 @@ export function LifecycleEntityEligibilityGroup({
       className="py-3 first:pt-0 last:pb-0"
       help={
         <>
+          <p>Lifecycle Events provide the Entity ID that relates runs.</p>
           <p>
-            Tracking identifies which Entity a lifecycle event belongs to.
-            Overlapping runs and cancellation use this identity.
-          </p>
-          <p>
-            Eligibility can check the latest Entity data before a run starts or
+            Eligibility can check current Entity data before a run starts or
             before each step.
           </p>
-          <p>Resolved data is not stored or available to steps.</p>
+          <p>Steps cannot use this Entity data.</p>
         </>
       }
       label={
@@ -444,7 +437,9 @@ export function LifecycleEntityEligibilityGroup({
 
           {events.length > 0 ? (
             <div className="space-y-2 rounded-md border px-3 py-2">
-              <p className="font-medium text-xs">{entityLabel} in each event</p>
+              <p className="font-medium text-xs">
+                {entityLabel} ID in each Event
+              </p>
               {events.map((eventName) => (
                 <EventBindingRow
                   catalog={catalog}
@@ -467,7 +462,7 @@ export function LifecycleEntityEligibilityGroup({
           )}
 
           <ConditionBuilderRow
-            description={`Workflow Graph checks the ${entityLabel}'s latest data from your app. This data is used only for eligibility. It is not stored or available to steps.`}
+            description={`Checks current ${entityLabel} data from your app. Steps cannot use this data.`}
             disabled={disabled}
             editActionName="Eligibility rule"
             emptyFieldsMessage={`The ${entityLabel} has no fields available for an eligibility rule.`}
@@ -496,38 +491,24 @@ export function LifecycleEntityEligibilityGroup({
           />
 
           {entity && !configurationCheck.valid ? (
-            <div className="space-y-2">
-              <p className="text-warning text-xs" role="alert">
-                {configurationCheck.error}
-              </p>
-              {onGoToCheckpoints && eligibility?.checkpoints.length === 0 ? (
-                <Button
-                  onClick={onGoToCheckpoints}
-                  size="sm"
-                  type="button"
-                  variant="outline"
-                >
-                  Go to Entity Lookup
-                </Button>
-              ) : null}
-            </div>
+            <p className="text-warning text-xs" role="alert">
+              {configurationCheck.error}
+            </p>
           ) : null}
 
-          {onGoToCheckpoints ? null : (
-            <LifecycleEligibilityCheckpoints
-              catalog={catalog}
-              disabled={disabled}
-              onChange={onChange}
-              rules={rules}
-            />
-          )}
+          <LifecycleEligibilityCheckpoints
+            catalog={catalog}
+            disabled={disabled}
+            onChange={onChange}
+            rules={rules}
+          />
 
           <Button
             disabled={disabled}
             onClick={removeTracking}
             size="sm"
             type="button"
-            variant="ghost"
+            variant="outline"
           >
             Remove tracking and eligibility
           </Button>
@@ -555,7 +536,8 @@ export function LifecycleEntityEligibilityGroup({
             </SelectContent>
           </Select>
           <p className="text-muted-foreground text-xs">
-            Optional. Use an Entity to match overlapping runs and cancel events.
+            Optional. Track an Entity to match related runs by Entity ID. Add an
+            eligibility rule to require current Entity data.
           </p>
           <UnavailableEntityNote
             catalog={catalog}

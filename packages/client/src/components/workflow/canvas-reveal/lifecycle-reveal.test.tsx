@@ -250,7 +250,7 @@ afterEach(() => {
 });
 
 describe("Lifecycle Browse", () => {
-  it("summarizes a configured policy with payload filters apart from Entity eligibility", async () => {
+  it("summarizes a configured policy with Event filters apart from run matching", async () => {
     const { view, aside, region } = await renderLifecycle(CONFIGURED);
 
     expect(aside()?.dataset.level).toBe("browse");
@@ -262,7 +262,7 @@ describe("Lifecycle Browse", () => {
     const starts = region("Start Events");
     expect(starts.textContent).toContain("Appointment created");
     expect(starts.textContent).toContain(
-      "A Start Filter reads the arriving Event's payload"
+      "A Start Filter can limit which arrivals start runs."
     );
     expect(starts.textContent).toContain("t_1");
     expect(starts.textContent).not.toContain("Manual runs");
@@ -274,15 +274,21 @@ describe("Lifecycle Browse", () => {
     const cancels = region("Cancel Events");
     expect(cancels.textContent).toContain("Appointment canceled");
     expect(cancels.textContent).toContain(
-      "No Cancel Filter. Every arrival routes matching runs to the Canceled outlet."
+      "No Cancel Filter. Every arrival cancels active runs for the Patient ID it provides."
     );
 
-    const eligibility = region("Entity eligibility");
-    expect(eligibility.textContent).toContain("Tracked EntityPatient");
+    const eligibility = region("Entity");
+    expect(eligibility.textContent).toContain("Each run tracksPatient ID");
     expect(eligibility.textContent).toContain("Before starting and each step");
-    expect(eligibility.textContent).toContain("Patient in each Event");
-    expect(eligibility.textContent).toContain("Appointment createdpatient");
-    expect(eligibility.textContent).toContain("Appointment canceledpatient");
+    expect(eligibility.textContent).toContain(
+      "How each Event provides the Patient ID"
+    );
+    expect(eligibility.textContent).toContain(
+      "Appointment createdpatient binding"
+    );
+    expect(eligibility.textContent).toContain(
+      "Appointment canceledpatient binding"
+    );
     expect(eligibility.textContent).toContain(
       "Reads the Patient's current state from your app"
     );
@@ -307,7 +313,7 @@ describe("Lifecycle Browse", () => {
       "No Start Filter. Every arrival starts a run."
     );
     expect(region("Cancel Events").textContent).toContain("No Cancel Events.");
-    const eligibility = region("Entity eligibility");
+    const eligibility = region("Entity");
     expect(eligibility.textContent).toContain("No eligibility rule.");
     expect(eligibility.textContent).toContain("None (optional)");
   });
@@ -336,7 +342,25 @@ describe("Lifecycle Browse", () => {
     expect(region("Overlapping runs").textContent).toContain(
       "Manual runsAllowed"
     );
-    expect(region("Entity eligibility").textContent).toContain("Not tracked");
+    expect(region("Entity").textContent).toContain(
+      "No Entity is tracked. Every manual start creates a separate run."
+    );
+  });
+
+  it("explains Correlation Path matching when an untracked workflow needs it", async () => {
+    const { region } = await renderLifecycle({
+      startEvents: ["app/appointment.created"],
+      cancelEvents: ["app/appointment.canceled"],
+      concurrency: "unlimited",
+      correlationPaths: {
+        "app/appointment.created": "appointment.id",
+        "app/appointment.canceled": "appointment.id",
+      },
+    });
+
+    expect(region("Entity").textContent).toContain(
+      "No Entity is tracked. Lifecycle Events use their Correlation Path values to identify related runs."
+    );
   });
 
   it("reports invalid rules in the header and Validation", async () => {
@@ -354,7 +378,7 @@ describe("Lifecycle Browse", () => {
       "cannot both start and cancel runs"
     );
     expect(region("Start Events").textContent).toContain(
-      "The rule can't be read."
+      "This rule is invalid."
     );
   });
 
@@ -403,7 +427,7 @@ describe("Lifecycle Browse", () => {
     expect(region("Start Events").textContent).toContain(
       "app/retired.event · Not declared by this app"
     );
-    expect(region("Entity eligibility").textContent).toContain(
+    expect(region("Entity").textContent).toContain(
       "retired-entity is no longer available in this app."
     );
     expect(region("Validation").textContent).toContain("app/retired.event");
@@ -429,9 +453,8 @@ describe("Lifecycle Focus", () => {
       "Start Events1",
       "Overlapping runs",
       "Cancel Events1",
-      "Entity eligibility",
-      "Entity Lookup",
-      "Connections",
+      "Entity",
+      "Event Connections",
       "Validation",
     ]);
     expect(
@@ -441,27 +464,28 @@ describe("Lifecycle Focus", () => {
     ).toBe("true");
   });
 
-  it("shows Event bindings and Entity Lookup in separate sections", async () => {
+  it("keeps Event bindings and eligibility timing in the Entity section", async () => {
     const { view } = await renderLifecycle(CONFIGURED);
-    fireEvent.click(
-      view.getByRole("button", { name: "Edit Entity eligibility" })
+    fireEvent.click(view.getByRole("button", { name: "Edit Entity" }));
+
+    const entity = view.getByRole("region", { name: "Entity" });
+    expect(entity.textContent).toContain("Patient ID in each Event");
+    expect(entity.textContent).toContain("Appointment created");
+    expect(entity.textContent).toContain(
+      "Uses the patient binding to get the Patient ID."
     );
-
-    const eligibility = view.getByRole("region", {
-      name: "Entity eligibility",
-    });
-    expect(eligibility.textContent).toContain("Patient in each event");
-    expect(eligibility.textContent).toContain("Appointment created");
-    expect(eligibility.textContent).toContain("Uses patient automatically");
-    expect(within(eligibility).queryByText("When to check")).toBeNull();
-
-    fireEvent.click(view.getByRole("button", { name: "Entity Lookup" }));
-    const checkpoints = view.getByRole("region", {
-      name: "Entity Lookup",
-    });
+    expect(within(entity).getByText("When to check")).toBeTruthy();
     expect(
-      within(checkpoints).getByRole("checkbox", { name: "Before each step" })
+      within(entity).getByRole("checkbox", { name: "Before each step" })
     ).toBeTruthy();
+    expect(
+      within(entity)
+        .getByRole("button", { name: "Remove tracking and eligibility" })
+        .className.includes("border-border")
+    ).toBe(true);
+    expect(
+      view.queryByRole("button", { name: "Eligibility checks" })
+    ).toBeNull();
   });
 
   it("explains why tracked Entity Events have no Correlation Path", async () => {
@@ -471,7 +495,7 @@ describe("Lifecycle Focus", () => {
 
     const cancelEvents = view.getByRole("region", { name: "Cancel Events" });
     expect(cancelEvents.textContent).toContain(
-      "Each Event's Patient binding identifies matching active runs. Correlation Paths are not used."
+      "Each Event's Patient binding provides its Patient ID. A Cancel Event only affects active runs with the same ID. Correlation Paths are not used."
     );
     expect(within(cancelEvents).queryByText("Correlation Path")).toBeNull();
   });
@@ -588,7 +612,7 @@ describe("Lifecycle Focus", () => {
   it("restores the section and scroll after closing and reopening", async () => {
     const { view, store, aside, scroller } = await renderLifecycle(CONFIGURED);
     fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
-    fireEvent.click(view.getByRole("button", { name: "Entity eligibility" }));
+    fireEvent.click(view.getByRole("button", { name: "Entity" }));
 
     const body = scroller();
     if (!body) {
@@ -605,9 +629,7 @@ describe("Lifecycle Focus", () => {
 
     expect(aside()?.dataset.level).toBe("focus");
     expect(
-      view
-        .getByRole("button", { name: "Entity eligibility" })
-        .getAttribute("aria-current")
+      view.getByRole("button", { name: "Entity" }).getAttribute("aria-current")
     ).toBe("true");
     await waitFor(() => expect(scroller()?.scrollTop).toBe(180));
 
@@ -618,9 +640,7 @@ describe("Lifecycle Focus", () => {
       showWorkspaceRoute(store, {});
     });
     expect(
-      view
-        .getByRole("button", { name: "Entity eligibility" })
-        .getAttribute("aria-current")
+      view.getByRole("button", { name: "Entity" }).getAttribute("aria-current")
     ).toBe("true");
     await waitFor(() => expect(scroller()?.scrollTop).toBe(180));
 
@@ -657,7 +677,7 @@ describe("Lifecycle Focus", () => {
     ).toContain("No issues.");
   });
 
-  it("explains the checkpoints and Connections of a policy that needs neither", async () => {
+  it("explains the Entity and Event Connections of a policy that needs neither", async () => {
     const { view } = await renderLifecycle({
       startEvents: ["app/appointment.created"],
       cancelEvents: [],
@@ -665,23 +685,20 @@ describe("Lifecycle Focus", () => {
     });
     fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
 
-    fireEvent.click(view.getByRole("button", { name: "Connections" }));
+    fireEvent.click(view.getByRole("button", { name: "Event Connections" }));
     expect(
-      view.getByRole("region", { name: "Connections" }).textContent
-    ).toContain("needs no Connection");
+      view.getByRole("region", { name: "Event Connections" }).textContent
+    ).toContain("need a Connection");
 
-    fireEvent.click(view.getByRole("button", { name: "Entity Lookup" }));
-    fireEvent.click(
-      view.getByRole("button", { name: "Go to Entity eligibility" })
+    fireEvent.click(view.getByRole("button", { name: "Entity" }));
+    const entity = view.getByRole("region", { name: "Entity" });
+    expect(entity.textContent).toContain(
+      "Optional. Track an Entity to match related runs by Entity ID."
     );
-    const eligibilityEntry = view.getByRole("button", {
-      name: "Entity eligibility",
-    });
-    expect(eligibilityEntry.getAttribute("aria-current")).toBe("true");
-    expect(document.activeElement).toBe(eligibilityEntry);
+    expect(within(entity).queryByText("When to check")).toBeNull();
   });
 
-  it("offers the checkpoints from an empty checkpoint error in Entity eligibility", async () => {
+  it("shows timing controls beside an empty eligibility checkpoint error", async () => {
     const { view } = await renderLifecycle({
       ...CONFIGURED,
       entityEligibility: {
@@ -689,27 +706,20 @@ describe("Lifecycle Focus", () => {
         checkpoints: [],
       },
     });
-    fireEvent.click(
-      view.getByRole("button", { name: "Edit Entity eligibility" })
-    );
+    fireEvent.click(view.getByRole("button", { name: "Edit Entity" }));
 
     const eligibility = view.getByRole("region", {
-      name: "Entity eligibility",
+      name: "Entity",
     });
     expect(within(eligibility).getByRole("alert").textContent).toContain(
       "has no checkpoint"
     );
-    fireEvent.click(
-      within(eligibility).getByRole("button", {
-        name: "Go to Entity Lookup",
+    expect(within(eligibility).getByText("When to check")).toBeTruthy();
+    expect(
+      within(eligibility).getByRole("checkbox", {
+        name: "Before starting a run",
       })
-    );
-
-    const checkpointsEntry = view.getByRole("button", {
-      name: "Entity Lookup",
-    });
-    expect(checkpointsEntry.getAttribute("aria-current")).toBe("true");
-    expect(document.activeElement).toBe(checkpointsEntry);
+    ).toBeTruthy();
   });
 
   it("shows the unavailable Entity warning from the reused editor", async () => {
@@ -722,14 +732,11 @@ describe("Lifecycle Focus", () => {
         bindings: { "app/appointment.created": "patient" },
       },
     });
-    fireEvent.click(
-      view.getByRole("button", { name: "Edit Entity eligibility" })
-    );
+    fireEvent.click(view.getByRole("button", { name: "Edit Entity" }));
 
     expect(
-      within(
-        view.getByRole("region", { name: "Entity eligibility" })
-      ).getByRole("alert").textContent
+      within(view.getByRole("region", { name: "Entity" })).getByRole("alert")
+        .textContent
     ).toContain("retired-entity is no longer available");
   });
 });

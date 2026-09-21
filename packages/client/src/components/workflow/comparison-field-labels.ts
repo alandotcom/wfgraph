@@ -20,8 +20,10 @@ import type { WorkflowFieldChange } from "@wfgraph/shared/graph/publication-cont
 import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { flattenConfigFields } from "@wfgraph/shared/plugins/action-fields";
 import { isBlank } from "@wfgraph/shared/types/string";
-import { eventLabel } from "#src/components/workflow/config/lifecycle-policy-summary";
-import { CONCURRENCY_OPTIONS } from "#src/components/workflow/config/lifecycle-concurrency-group";
+import {
+  CONCURRENCY_OPTIONS,
+  eventLabel,
+} from "#src/components/workflow/config/lifecycle-policy-summary";
 import {
   type ConditionSelectableField,
   getEntityConditionFields,

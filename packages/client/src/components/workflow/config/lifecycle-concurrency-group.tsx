@@ -1,3 +1,4 @@
+import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { Checkbox } from "#src/components/ui/checkbox";
 import { Label } from "#src/components/ui/label";
 import {
@@ -13,9 +14,10 @@ import {
   type LifecycleRules,
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { ConfigGroup, ConfigHelp } from "./config-section";
-
-const MANUAL_RUNS_HELP =
-  "The editor and execute API can start runs manually. When this is off, only start events can start runs.";
+import {
+  CONCURRENCY_OPTIONS,
+  describeRelatedRuns,
+} from "./lifecycle-policy-summary";
 
 export function LifecycleConcurrencyGroup({
   rules,
@@ -30,6 +32,9 @@ export function LifecycleConcurrencyGroup({
   onConcurrencyChange: (value: Concurrency) => void;
   onManualStartChange: (allowed: boolean) => void;
 }) {
+  const catalog = useExtensionCatalog();
+  const relatedRunsDescription = describeRelatedRuns(rules, catalog);
+
   return (
     <ConfigGroup
       className="py-3 first:pt-0 last:pb-0"
@@ -38,6 +43,9 @@ export function LifecycleConcurrencyGroup({
       prominent
     >
       <div className="space-y-2">
+        <p className="text-muted-foreground text-xs">
+          {relatedRunsDescription}
+        </p>
         {/* A dropdown rather than a stack of radio cards, which is what every
             other one-of-three setting in the panel uses. The three
             descriptions live in this group's help popover, so the closed
@@ -75,21 +83,31 @@ export function LifecycleConcurrencyGroup({
           }
         </p>
 
-        <div className="flex items-center gap-2">
-          <Checkbox
-            checked={rules.allowManualStart === true}
-            disabled={disabled}
-            id={manualStartId}
-            onCheckedChange={onManualStartChange}
-          />
-          <div className="flex items-center gap-1">
-            <Label htmlFor={manualStartId}>Allow manual runs</Label>
-            <ConfigHelp label="Allow manual runs">
-              {MANUAL_RUNS_HELP}
-            </ConfigHelp>
+        <div className="space-y-2 border-t pt-3">
+          <p className="font-medium text-sm">Manual starts</p>
+          <div className="flex items-center gap-2">
+            <Checkbox
+              checked={rules.allowManualStart === true}
+              disabled={disabled}
+              id={manualStartId}
+              onCheckedChange={onManualStartChange}
+            />
+            <div className="flex items-center gap-1">
+              <Label htmlFor={manualStartId}>Allow manual runs</Label>
+              <ConfigHelp label="Allow manual runs">
+                <ul className="list-disc space-y-1 pl-4">
+                  <li>The editor and API can start runs manually.</li>
+                  <li>When this is off, only Start Events can start runs.</li>
+                  <li>
+                    Entity tracking and Event Splits require selecting a Start
+                    Event.
+                  </li>
+                </ul>
+              </ConfigHelp>
+            </div>
           </div>
+          <ManualRunPayloadNotice rules={rules} />
         </div>
-        <ManualRunPayloadNotice rules={rules} />
       </div>
     </ConfigGroup>
   );
@@ -129,30 +147,8 @@ function ManualRunPayloadNotice({ rules }: { rules: LifecycleRules }) {
 
   return (
     <p className="text-muted-foreground text-xs">
-      Manual runs provide no payload fields to downstream nodes. Add a Start
-      Event to provide them.
+      Manual runs do not include Event data. Add a Start Event if later steps
+      need fields from an Event.
     </p>
   );
 }
-
-export const CONCURRENCY_OPTIONS: ReadonlyArray<{
-  value: Concurrency;
-  label: string;
-  description: string;
-}> = [
-  {
-    value: "unlimited",
-    label: "Start every run",
-    description: "Each event starts a separate run.",
-  },
-  {
-    value: "newest-wins",
-    label: "Start the newest run",
-    description: "End matching active runs, then start the new run.",
-  },
-  {
-    value: "first-wins",
-    label: "Keep the active run",
-    description: "Keep matching active runs and do not start the new run.",
-  },
-];

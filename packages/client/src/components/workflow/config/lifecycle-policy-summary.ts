@@ -11,8 +11,32 @@ import {
   findEntity,
   findEvent,
 } from "@wfgraph/shared/extensions/catalog";
-import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
-import { CONCURRENCY_OPTIONS } from "./lifecycle-concurrency-group";
+import type {
+  Concurrency,
+  LifecycleRules,
+} from "@wfgraph/shared/lifecycle/lifecycle-rules";
+
+export const CONCURRENCY_OPTIONS: ReadonlyArray<{
+  value: Concurrency;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: "unlimited",
+    label: "Start every run",
+    description: "Each arrival starts a separate run.",
+  },
+  {
+    value: "newest-wins",
+    label: "Start the newest run",
+    description: "End related active runs, then start the new run.",
+  },
+  {
+    value: "first-wins",
+    label: "Keep the active run",
+    description: "Keep related active runs and do not start the new run.",
+  },
+];
 
 export function eventLabel(catalog: ExtensionCatalog, eventName: string) {
   return findEvent(catalog, eventName)?.label ?? eventName;
@@ -41,6 +65,31 @@ export function trackedEntityLabel(
   return tracked
     ? (findEntity(catalog, tracked.type)?.label ?? tracked.type)
     : null;
+}
+
+/** How this policy decides which runs overlap or match a Cancel Event. */
+export function describeRelatedRuns(
+  rules: LifecycleRules,
+  catalog: ExtensionCatalog
+): string {
+  const entityLabel = trackedEntityLabel(rules, catalog);
+  if (entityLabel) {
+    return `Each run tracks a ${entityLabel} ID. Runs with the same ID are related.`;
+  }
+
+  const hasLifecycleEvents =
+    rules.startEvents.length > 0 || rules.cancelEvents.length > 0;
+  if (!hasLifecycleEvents) {
+    return rules.concurrency === "unlimited"
+      ? "Every manual start creates a separate run."
+      : "With no Lifecycle Events, the overlapping-run rule treats all manual runs as related.";
+  }
+
+  if (rules.concurrency !== "unlimited" || rules.cancelEvents.length > 0) {
+    return "Lifecycle Events use their Correlation Path values to identify related runs.";
+  }
+
+  return "Runs are not matched while every arrival starts a separate run and no Cancel Event is configured.";
 }
 
 /** When Entity Eligibility is checked, or what it still needs before it can be. */

@@ -1129,7 +1129,7 @@ describe("ConditionBuilderRow removal", () => {
     const view = renderRow(APPOINTMENT_FIELDS, twoGroups(), onChange);
 
     enterEdit(view);
-    fireEvent.click(view.getByRole("button", { name: "Remove group 1" }));
+    fireEvent.click(view.getByRole("button", { name: "Remove rule set 1" }));
 
     const written = parseConditionModel(onChange.mock.calls.at(-1)?.[0].model);
     expect(written.valid).toBe(true);

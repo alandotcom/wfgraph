@@ -143,12 +143,13 @@ export function WorkflowIssuesOverlay(props: WorkflowIssuesOverlayProps) {
                   </span>
                 </p>
                 <Button
+                  aria-label={`Add Connection for ${missing.integrationLabel}`}
                   className="shrink-0"
                   onClick={() => handleAddIntegration(missing.integrationType)}
                   size="sm"
                   variant="outline"
                 >
-                  Add
+                  Add Connection
                 </Button>
               </div>
             ))}
@@ -177,12 +178,13 @@ export function WorkflowIssuesOverlay(props: WorkflowIssuesOverlayProps) {
                   </ul>
                 </div>
                 <Button
+                  aria-label={`Open ${group.nodeLabel}`}
                   className="shrink-0"
                   onClick={() => handleGoToStep(group.nodeId)}
                   size="sm"
                   variant="outline"
                 >
-                  Show
+                  Open
                 </Button>
               </div>
             ))}
@@ -210,12 +212,13 @@ export function WorkflowIssuesOverlay(props: WorkflowIssuesOverlayProps) {
                   </ul>
                 </div>
                 <Button
+                  aria-label={`Open ${lifecycle.nodeLabel}`}
                   className="shrink-0"
                   onClick={() => handleGoToStep(lifecycle.nodeId)}
                   size="sm"
                   variant="outline"
                 >
-                  Show
+                  Open
                 </Button>
               </div>
             ))}
@@ -243,6 +246,7 @@ export function WorkflowIssuesOverlay(props: WorkflowIssuesOverlayProps) {
                         {ref.fieldLabel}
                       </p>
                       <Button
+                        aria-label={`Edit ${ref.fieldLabel} in ${broken.nodeLabel}`}
                         className="shrink-0"
                         onClick={() =>
                           handleGoToStep(broken.nodeId, ref.fieldKey)
@@ -250,7 +254,7 @@ export function WorkflowIssuesOverlay(props: WorkflowIssuesOverlayProps) {
                         size="sm"
                         variant="outline"
                       >
-                        Fix
+                        Edit
                       </Button>
                     </div>
                   ))}
@@ -264,12 +268,15 @@ export function WorkflowIssuesOverlay(props: WorkflowIssuesOverlayProps) {
         {unverifiedProviderFields.length > 0 && (
           <div className="space-y-2">
             <h4 className="font-medium text-muted-foreground text-sm">
-              Unchecked Fields
+              Fields Not Verified
             </h4>
-            <p className="text-muted-foreground text-xs">
-              The connection did not answer, so these fields went unchecked.
-              Reconnect it to see what they still need.
-            </p>
+            <div className="space-y-1 text-muted-foreground text-xs">
+              <p>
+                The Connection did not respond, so these fields were not
+                verified.
+              </p>
+              <p>Reconnect the Connection in Settings to verify them again.</p>
+            </div>
             {unverifiedProviderFields.map((node) => (
               <div key={node.nodeId}>
                 <p className="font-medium text-sm">{node.nodeLabel}</p>
@@ -283,6 +290,7 @@ export function WorkflowIssuesOverlay(props: WorkflowIssuesOverlayProps) {
                         {field.fieldLabel}
                       </p>
                       <Button
+                        aria-label={`Review ${field.fieldLabel} in ${node.nodeLabel}`}
                         className="shrink-0"
                         onClick={() =>
                           handleGoToStep(node.nodeId, field.fieldKey)
@@ -290,7 +298,7 @@ export function WorkflowIssuesOverlay(props: WorkflowIssuesOverlayProps) {
                         size="sm"
                         variant="outline"
                       >
-                        Fix
+                        Review
                       </Button>
                     </div>
                   ))}
@@ -319,6 +327,7 @@ export function WorkflowIssuesOverlay(props: WorkflowIssuesOverlayProps) {
                         {field.fieldLabel}
                       </p>
                       <Button
+                        aria-label={`Edit ${field.fieldLabel} in ${node.nodeLabel}`}
                         className="shrink-0"
                         onClick={() =>
                           handleGoToStep(node.nodeId, field.fieldKey)
@@ -326,7 +335,7 @@ export function WorkflowIssuesOverlay(props: WorkflowIssuesOverlayProps) {
                         size="sm"
                         variant="outline"
                       >
-                        Fix
+                        Edit
                       </Button>
                     </div>
                   ))}
@@ -351,7 +360,7 @@ function IssuesHeadline({
   if (trigger === "publish" && publishBlockingCount > 0) {
     return (
       <IssuesSentence tone="destructive">
-        Resolve blocking issues before publishing.
+        Fix these issues before publishing.
       </IssuesSentence>
     );
   }

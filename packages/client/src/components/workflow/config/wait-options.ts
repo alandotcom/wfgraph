@@ -4,46 +4,59 @@
  * and a choice read the same in both places.
  */
 
-export type WaitOption = { value: string; label: string };
+import { WAIT_FIELD_LABELS } from "@wfgraph/shared/actions/wait-field-labels";
+import type { WaitConfig } from "@wfgraph/shared/lifecycle/wait-subscription";
 
-/** The label of each Wait config key, as its form field shows it. */
-export const WAIT_FIELD_LABELS = {
-  waitMode: "How should this step wait?",
-  waitDelayTimingMode: "Time input mode",
-  waitDuration: "Wait for (duration)",
-  waitUntil: "Wait until this date/time",
-  waitOffset: "Send before/after that time (optional)",
-  waitGateMode: "Past target behavior",
-  waitMaxLateness: "Maximum lateness",
-  waitAllowedHoursMode: "Allowed send window",
-  waitAllowedStartTime: "Window start",
-  waitAllowedEndTime: "Window end",
-  waitTimezone: "Timezone",
-  waitTimeout: "Stop waiting after",
-  waitTimeoutBehavior: "On timeout",
-} as const;
+export { WAIT_FIELD_LABELS };
 
-export const WAIT_DELAY_TIMING_OPTIONS: WaitOption[] = [
-  { value: "duration", label: "Wait for duration" },
-  { value: "until", label: "Wait until date/time" },
-];
-export const WAIT_GATE_OPTIONS: WaitOption[] = [
-  { value: "off", label: "Continue immediately" },
-  { value: "require_actual_wait", label: "Skip if no wait remains" },
-  { value: "max_lateness", label: "Allow limited lateness" },
-];
-export const WAIT_WINDOW_OPTIONS: WaitOption[] = [
-  { value: "off", label: "Off (allow any time)" },
-  { value: "daily_window", label: "Daily window" },
-];
-export const WAIT_TIMEOUT_OPTIONS: WaitOption[] = [
-  { value: "continue", label: "Continue workflow" },
-  { value: "skip", label: "Skip remaining branch" },
-];
-export const WAIT_MODE_OPTIONS: WaitOption[] = [
+export type WaitOption<Value extends string = string> = {
+  value: Value;
+  label: string;
+};
+
+type DescribedWaitOption<Value extends string> = WaitOption<Value> & {
+  description: string;
+};
+
+export const WAIT_DELAY_TIMING_OPTIONS = [
+  { value: "duration", label: WAIT_FIELD_LABELS.waitDuration },
+  { value: "until", label: WAIT_FIELD_LABELS.waitUntil },
+] as const satisfies readonly WaitOption<"duration" | "until">[];
+export const WAIT_GATE_OPTIONS = [
+  {
+    value: "off",
+    label: "Continue immediately",
+    description: "If the scheduled time has passed, continue immediately.",
+  },
+  {
+    value: "require_actual_wait",
+    label: "End this branch",
+    description:
+      "If the scheduled time has passed and no wait remains, end this branch.",
+  },
+  {
+    value: "max_lateness",
+    label: "Continue within a limit",
+    description:
+      "Continue only when the scheduled time is within the allowed lateness. Otherwise, end this branch.",
+  },
+] as const satisfies readonly DescribedWaitOption<
+  NonNullable<WaitConfig["waitGateMode"]>
+>[];
+export const WAIT_WINDOW_OPTIONS = [
+  { value: "off", label: "Any time" },
+  { value: "daily_window", label: "Only during set hours" },
+] as const satisfies readonly WaitOption<"off" | "daily_window">[];
+export const WAIT_TIMEOUT_OPTIONS = [
+  { value: "continue", label: "Continue to the next step" },
+  { value: "skip", label: "End this branch" },
+] as const satisfies readonly WaitOption<
+  NonNullable<WaitConfig["waitTimeoutBehavior"]>
+>[];
+export const WAIT_MODE_OPTIONS = [
   { value: "delay", label: "Wait for time" },
   { value: "event", label: "Wait for an event" },
-];
+] as const satisfies readonly WaitOption<NonNullable<WaitConfig["waitMode"]>>[];
 
 /** The label of `value` among `options`, or null when none matches. */
 export function waitOptionLabel(

@@ -16,7 +16,7 @@ import {
   useLifecycleRulesEditor,
 } from "./use-lifecycle-rules-editor";
 
-export { CONCURRENCY_OPTIONS } from "./lifecycle-concurrency-group";
+export { CONCURRENCY_OPTIONS } from "./lifecycle-policy-summary";
 
 /**
  * The Lifecycle Node's panel: what starts a run and what happens to runs already
