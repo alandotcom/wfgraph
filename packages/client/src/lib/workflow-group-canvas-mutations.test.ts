@@ -30,6 +30,10 @@ import {
 } from "#src/lib/workflow-graph-store";
 import { historyAtom, nodesStateAtom } from "#src/lib/workflow-graph-cells";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import {
+  RANK_SPACING,
+  WORKFLOW_NODE_HEIGHT,
+} from "#src/lib/workflow-node-dimensions";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
 import {
   updateMock,
@@ -455,6 +459,67 @@ describe("Authoring inside a focused Group", () => {
     expect(
       store.get(edgesAtom).find((item) => item.id === "a-after-a")
     ).toMatchObject({ source: "a", target: "after-a" });
+    store.set(undoAtom);
+    expect(graphOf(store)).toEqual(before);
+  });
+
+  it("opens a member row and reprojects its continuation stub", () => {
+    const rowHeight = WORKFLOW_NODE_HEIGHT + RANK_SPACING;
+    const store = createGraphStore({
+      nodes: [
+        lifecycle(),
+        {
+          id: "g",
+          type: "group",
+          position: { x: 0, y: 200 },
+          data: { label: "Group", type: "group" },
+        },
+        { ...lookup("a"), parentId: "g", position: { x: 0, y: 0 } },
+        { ...lookup("b"), parentId: "g", position: { x: 0, y: rowHeight } },
+        { ...lookup("after"), position: { x: 0, y: 600 } },
+      ],
+      edges: [
+        edge("life-a", "life", "a", "started"),
+        edge("a-b", "a", "b"),
+        edge("b-after", "b", "after"),
+      ],
+    });
+    showWorkspaceRoute(store, { group: "g" });
+    const continuationId = boundaryStubId("continuation", {
+      nodeId: "after",
+      handle: null,
+    });
+    const continuationBefore = store
+      .get(canvasNodesAtom)
+      .find((node) => node.id === continuationId)?.position;
+    const before = graphOf(store);
+
+    expect(
+      store.set(insertStepOnEdgeAtom, {
+        node: newStep("between"),
+        edgeId: "a-b",
+        catalog,
+      })
+    ).toEqual({ inserted: true });
+
+    const nodes = store.get(nodesAtom);
+    expect(nodes.find((node) => node.id === "between")).toMatchObject({
+      parentId: "g",
+      position: { x: 0, y: rowHeight },
+    });
+    expect(nodes.find((node) => node.id === "b")?.position).toEqual({
+      x: 0,
+      y: rowHeight * 2,
+    });
+    expect(nodes.find((node) => node.id === "after")?.position).toEqual({
+      x: 0,
+      y: 600,
+    });
+    expect(
+      store.get(canvasNodesAtom).find((node) => node.id === continuationId)
+        ?.position.y
+    ).toBe((continuationBefore?.y ?? 0) + rowHeight);
+
     store.set(undoAtom);
     expect(graphOf(store)).toEqual(before);
   });
@@ -889,6 +954,52 @@ describe("Authoring inside a focused Group", () => {
 
       store.set(undoAtom);
       expect(links(store)).toEqual(["a>b", "life>a"]);
+    });
+
+    it("opens space only in the target branch", () => {
+      const targetY = 400;
+      const rowHeight = WORKFLOW_NODE_HEIGHT + RANK_SPACING;
+      const store = createGraphStore({
+        nodes: [
+          lifecycle(),
+          lookup("a"),
+          { ...lookup("b", 120), position: { x: 120, y: targetY } },
+          { ...lookup("peer", -220), position: { x: -220, y: targetY } },
+          { ...lookup("child", 120), position: { x: 120, y: 600 } },
+          { ...lookup("lower", -220), position: { x: -220, y: 600 } },
+        ],
+        edges: [
+          edge("start-a", "life", "a", "started"),
+          edge("a-b", "a", "b"),
+          edge("a-peer", "a", "peer"),
+          edge("b-child", "b", "child"),
+        ],
+      });
+      const before = graphOf(store);
+
+      expect(
+        store.set(insertStepOnEdgeAtom, {
+          node: newStep("between"),
+          edgeId: "a-b",
+          catalog,
+        })
+      ).toEqual({ inserted: true });
+
+      const positions = new Map(
+        store.get(nodesAtom).map((node) => [node.id, node.position])
+      );
+      expect(positions.get("a")).toEqual({ x: 0, y: 200 });
+      expect(positions.get("between")).toEqual({ x: 120, y: targetY });
+      expect(positions.get("b")).toEqual({ x: 120, y: targetY + rowHeight });
+      expect(positions.get("child")).toEqual({
+        x: 120,
+        y: 600 + rowHeight,
+      });
+      expect(positions.get("peer")).toEqual({ x: -220, y: targetY });
+      expect(positions.get("lower")).toEqual({ x: -220, y: 600 });
+
+      store.set(undoAtom);
+      expect(graphOf(store)).toEqual(before);
     });
 
     it("inserts after an Incoming from stub without leaving a parallel ingress", () => {

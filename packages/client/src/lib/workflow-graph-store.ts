@@ -12,6 +12,7 @@ import {
   type CopiedSelection,
 } from "#src/lib/copy-selection";
 import { repairNodeIntegrations } from "#src/lib/node-integration";
+import { insertionRowPlan } from "#src/lib/workflow-node-placement";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
@@ -426,13 +427,21 @@ function insertClonedSubgraph(
     | {
         connections: readonly PlannedConnection[];
         catalog: ExtensionCatalog;
-      }
+      },
+  movedNodes?: ReadonlyMap<string, { x: number; y: number }>
 ): InsertOutcome {
   const { nodes, edges } = subgraphForActiveScope(get, subgraph);
+  const currentNodes = get(nodesStateAtom);
+  const positionedNodes = movedNodes
+    ? mapOrSame(currentNodes, (node) => {
+        const position = movedNodes.get(node.id);
+        return position ? { ...node, position } : node;
+      })
+    : currentNodes;
 
   // Sorted like the other two writers: a cloned frame appended after the
   // members already on the canvas costs `displayNodesAtom` its fast path.
-  const nextNodes = orderGroupParentsFirst([...get(nodesStateAtom), ...nodes]);
+  const nextNodes = orderGroupParentsFirst([...positionedNodes, ...nodes]);
   const removed = new Set(
     options && "removeEdgeIds" in options ? options.removeEdgeIds : []
   );
@@ -765,17 +774,27 @@ export const insertStepOnEdgeAtom = atom(
     if (!painted || removeEdgeIds.length === 0) {
       return { refusal: "Insert a step into a connection the draft holds." };
     }
+    const rowPlan = insertionRowPlan(
+      get(paintedNodesAtom),
+      get(paintedEdgesAtom),
+      painted.source,
+      painted.target
+    );
+    const node = rowPlan
+      ? { ...input.node, position: rowPlan.position }
+      : input.node;
     return insertClonedSubgraph(
       get,
       set,
-      { nodes: [input.node], edges: [] },
+      { nodes: [node], edges: [] },
       replacementPlan({
         nodes: get(nodesStateAtom),
         edges: get(edgesStateAtom),
         edgeIds: removeEdgeIds,
-        node: input.node,
+        node,
         catalog: input.catalog,
-      })
+      }),
+      rowPlan?.movedNodes
     );
   }
 );

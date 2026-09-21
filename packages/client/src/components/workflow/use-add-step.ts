@@ -4,7 +4,8 @@
  * One home for the two decisions a new step needs -- where it goes, and what a
  * just-chosen action leaves on its config -- so the toolbar, the canvas's
  * context menu and the command palette cannot answer either of them
- * differently. Placement is `positionClearOfNodes`; the config rule is
+ * differently. Open-canvas placement is `positionClearOfNodes`; inserting on
+ * a connection opens its row inside `insertStepOnEdgeAtom`. The config rule is
  * `repairNodeIntegration`, which `use-node-config-writer.ts` runs for the same
  * reason when an action is chosen on a node that already exists.
  */

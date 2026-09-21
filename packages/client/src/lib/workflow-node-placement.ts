@@ -1,17 +1,22 @@
 /**
- * Where a new step goes when the person adding it did not point at a spot.
+ * Placement rules for steps created without an explicit canvas position.
  *
- * The canvas centre is the obvious place and is also where the last step
- * landed, so a candidate that overlaps something already on the graph steps
- * down and to the right until it is clear, by `offsetClearOfRectangles`.
+ * An open-canvas addition moves down and right until it is clear. An insertion
+ * on a downward connection moves the target branch down to open a slot.
  * Positions are canvas coordinates naming a node's top-left corner.
  */
 
 import {
+  RANK_SPACING,
   WORKFLOW_NODE_HEIGHT,
   WORKFLOW_NODE_WIDTH,
 } from "#src/lib/workflow-node-dimensions";
-import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import {
+  GROUP_BOUNDARY_STUB_PORT,
+  type WorkflowEdge,
+  type WorkflowNode,
+} from "#src/lib/workflow-graph-types";
+import { descendantsOf } from "@wfgraph/shared/graph/descendants";
 import {
   offsetClearOfRectangles,
   type NodeRectangle,
@@ -79,4 +84,49 @@ export function positionClearOfNodes(
     nodes
   );
   return { x: position.x + offset.x, y: position.y + offset.y };
+}
+
+export type InsertionRowPlan = {
+  position: { x: number; y: number };
+  movedNodes: ReadonlyMap<string, { x: number; y: number }>;
+};
+
+/**
+ * Open one row where a downward connection reaches its target. The inserted
+ * step takes the target's old position, while the target and its downstream
+ * cards move together. Sibling branches and horizontal positions stay fixed.
+ * Derived boundary stubs follow their anchors when the canvas is projected
+ * again. Non-downward connections keep their caller-provided placement.
+ */
+export function insertionRowPlan(
+  nodes: readonly WorkflowNode[],
+  edges: readonly WorkflowEdge[],
+  sourceId: string,
+  targetId: string
+): InsertionRowPlan | null {
+  const source = nodes.find((node) => node.id === sourceId);
+  const target = nodes.find((node) => node.id === targetId);
+  if (!source || !target || target.position.y <= source.position.y) {
+    return null;
+  }
+
+  const rowHeight = WORKFLOW_NODE_HEIGHT + RANK_SPACING;
+  const movedNodeIds = descendantsOf({ startIds: [targetId], edges });
+  movedNodeIds.add(targetId);
+  return {
+    position: { ...target.position },
+    movedNodes: new Map(
+      nodes
+        .filter(
+          (node) =>
+            node.type !== "add" &&
+            node.data[GROUP_BOUNDARY_STUB_PORT] === undefined &&
+            movedNodeIds.has(node.id)
+        )
+        .map((node) => [
+          node.id,
+          { x: node.position.x, y: node.position.y + rowHeight },
+        ])
+    ),
+  };
 }
