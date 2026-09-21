@@ -168,7 +168,7 @@ const GROUP_NODE: WorkflowNode = {
 
 /**
  * Opens the workflow issues overlay through the same hook the toolbar's issues
- * chip uses, so a test can drive an issue's own "Fix" button rather than call
+ * chip uses, so a test can drive an issue's own "Edit" button rather than call
  * `onGoToStep` directly.
  */
 function ShowIssuesButton() {
@@ -443,7 +443,7 @@ describe("Condition Browse", () => {
     await waitFor(() => expect(document.activeElement?.id).toBe("condition"));
   });
 
-  // The workflow issues overlay's own "Fix" button reaches the rule builder
+  // The workflow issues overlay's own "Edit" button reaches the rule builder
   // through the same `revealFocusTarget` mapping Reveal's own issue list uses
   // above, rather than opening Browse with the raw `conditionModel` key.
   it("opens Focus on the rule builder from a conditionModel issue in the workflow issues overlay", async () => {
@@ -465,7 +465,9 @@ describe("Condition Browse", () => {
     });
 
     fireEvent.click(view.getByRole("button", { name: "Show issues" }));
-    fireEvent.click(view.getByRole("button", { name: "Fix" }));
+    fireEvent.click(
+      view.getByRole("button", { name: "Edit Condition in Patient eligible?" })
+    );
 
     expect(level()).toBe("focus");
     await waitFor(() => expect(document.activeElement?.id).toBe("condition"));
@@ -515,7 +517,7 @@ describe("Condition Focus", () => {
     });
     fireEvent.click(view.getByRole("button", { name: "Edit rules" }));
 
-    expect(view.getByRole("button", { name: "Add group" })).toBeTruthy();
+    expect(view.getByRole("button", { name: "Add rule set" })).toBeTruthy();
     expect(
       view.getByRole("button", { name: /Remove condition on/ })
     ).toBeTruthy();

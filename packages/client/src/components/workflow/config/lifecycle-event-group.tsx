@@ -53,23 +53,21 @@ const ROLE_COPY = {
     label: "Start Events",
     pickerPlaceholder: "Add start event",
     help: [
-      "A run starts when one of these events occurs.",
-      "A correlation path identifies related runs when this workflow does not track an Entity.",
-      "A start filter limits which events can start a run.",
+      "A selected Start Event starts a run.",
+      "A Start Filter limits which arrivals can start runs.",
     ],
     entityIdentity: (label: string) =>
-      `Each Event's ${label} binding identifies the run's Entity.`,
+      `Each Event's ${label} binding provides the ${label} ID tracked by the run.`,
   },
   cancel: {
     label: "Cancel Events",
     pickerPlaceholder: "Add cancel event",
     help: [
-      "A cancel event stops matching active runs and sends them down the Canceled branch.",
-      "A cancel filter limits which events can stop a run.",
-      "Matching uses the tracked Entity, or the correlation path when no Entity is tracked.",
+      "A Cancel Event sends active runs down the Canceled branch.",
+      "A Cancel Filter limits which arrivals can cancel runs.",
     ],
     entityIdentity: (label: string) =>
-      `Each Event's ${label} binding identifies matching active runs.`,
+      `Each Event's ${label} binding provides its ${label} ID. A Cancel Event only affects active runs with the same ID.`,
   },
 } as const;
 
@@ -435,9 +433,6 @@ function LifecycleFilterEditor({
   const catalog = useExtensionCatalog();
   const nodes = useAtomValue(nodesAtom);
   const shared = eventNames.length > 1;
-  const eventLabels = eventNames.map(
-    (eventName) => findEvent(catalog, eventName)?.label ?? eventName
-  );
 
   const fields: ConditionSelectableField[] = useMemo(
     () => getSharedEventConditionFields(catalog, eventNames, nodes),
@@ -494,11 +489,11 @@ function LifecycleFilterEditor({
         <p className="text-muted-foreground text-xs">
           {shared
             ? role === "start"
-              ? "Any selected event starts a run. No filter is set."
-              : "Any selected event stops matching active runs. No filter is set."
+              ? "No filter is set. Every selected event starts a run."
+              : "No filter is set. Every selected event can cancel matching active runs."
             : role === "start"
-              ? `${eventLabels[0]} starts a run. No filter is set.`
-              : `${eventLabels[0]} stops matching active runs. No filter is set.`}
+              ? "No filter is set. Every arrival starts a run."
+              : "No filter is set. Every arrival can cancel matching active runs."}
         </p>
         <Button
           disabled={disabled || payloadFields.length === 0}
@@ -596,6 +591,9 @@ function CorrelationPathInput({
           ))}
         </SelectContent>
       </Select>
+      <p className="text-muted-foreground text-xs">
+        Workflow Graph uses this field to identify which runs belong together.
+      </p>
     </div>
   );
 }

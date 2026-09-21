@@ -449,7 +449,7 @@ describe("LifecyclePanel", () => {
       />
     );
 
-    expect(view.queryByText(/provide no payload fields/)).toBeNull();
+    expect(view.queryByText(/do not include Event data/)).toBeNull();
 
     fireEvent.click(
       view.getByRole("button", { name: "Remove app/appointment.created" })
@@ -459,7 +459,7 @@ describe("LifecyclePanel", () => {
     // control, so it stays in the column rather than moving into the help
     // popover the Concurrency heading offers.
     await waitFor(() => {
-      expect(view.getByText(/provide no payload fields/)).toBeTruthy();
+      expect(view.getByText(/do not include Event data/)).toBeTruthy();
     });
   });
 });
@@ -945,6 +945,11 @@ describe("LifecyclePanel Entity eligibility", () => {
       />
     );
 
+    expect(
+      view.getByText(
+        "Optional. Track an Entity to match related runs by Entity ID. Add an eligibility rule to require current Entity data."
+      )
+    ).toBeTruthy();
     chooseSelect(view, "Track runs by", "Appointment");
 
     await waitFor(() => {
@@ -958,7 +963,7 @@ describe("LifecyclePanel Entity eligibility", () => {
     expect(rulesOf(latest).entityEligibility).toBeUndefined();
     expect(
       view.getByRole("combobox", {
-        name: "Appointment in Appointment created",
+        name: "Appointment ID in Appointment created",
       })
     ).toBeTruthy();
     expect(
@@ -1113,7 +1118,9 @@ describe("LifecyclePanel Entity eligibility", () => {
         "ops/nightly.swept": "appointment",
       });
     });
-    expect(view.getByText("Uses appointment automatically")).toBeTruthy();
+    expect(
+      view.getByText("Uses the appointment binding to get the Appointment ID.")
+    ).toBeTruthy();
   });
 
   it("repairs bindings when Lifecycle Events are added or removed", async () => {
@@ -1710,7 +1717,7 @@ describe("LifecyclePanel cancel filters", () => {
     } satisfies Record<string, unknown>;
   }
 
-  it("explains the Cancel Filter decision before correlation and cancellation", () => {
+  it("keeps Cancel Event help focused on qualification and outcome", () => {
     const view = renderWithCatalog(
       <ControlledPanel
         initialConfig={withCancelEvents(["app/appointment.created"])}
@@ -1721,15 +1728,18 @@ describe("LifecyclePanel cancel filters", () => {
 
     expect(
       view.getByText(
-        "A cancel event stops matching active runs and sends them down the Canceled branch."
+        "A Cancel Event sends active runs down the Canceled branch."
       )
     ).toBeTruthy();
     expect(
-      view.getByText("A cancel filter limits which events can stop a run.")
+      view.getByText("A Cancel Filter limits which arrivals can cancel runs.")
     ).toBeTruthy();
     expect(
+      view.queryByText(/Only runs with the same tracked Entity ID/)
+    ).toBeNull();
+    expect(
       view.getByText(
-        "Matching uses the tracked Entity, or the correlation path when no Entity is tracked."
+        "Workflow Graph uses this field to identify which runs belong together."
       )
     ).toBeTruthy();
   });

@@ -55,6 +55,7 @@ import {
 } from "@wfgraph/shared/lifecycle/wait-subscription";
 import { ActionConfigRenderer } from "./action-config-renderer";
 import { ConditionBuilderRow } from "./condition-builder-row";
+import { ConfigHelp } from "./config-section";
 import type { UpdateNodeConfig } from "./node-config-patch";
 import { WaitEventSelect } from "./wait-event-select";
 import {
@@ -176,9 +177,9 @@ export function ConditionFields({
     <ConditionBuilderRow
       currentNodeId={nodeId}
       defaultEditing={defaultEditing}
-      description="Build a condition from tracked Entity State, the Lifecycle Node, and upstream action output fields. Timestamp fields support relative and absolute time filters."
+      description="Build a condition from Entity fields, the arriving Event, and results from earlier steps. Timestamp fields support relative and absolute time filters."
       disabled={disabled}
-      emptyFieldsMessage="No fields available. Track an Entity, or connect this node to the Lifecycle Node or an action with typed outputs first."
+      emptyFieldsMessage="No fields are available. Track an Entity or connect this step after the Lifecycle or a step with typed results."
       // The heading is a clause, so the Edit and Done buttons name the thing
       // instead: "Edit Continue when" is not a sentence anybody would say.
       editActionName="condition"
@@ -262,14 +263,42 @@ type WaitFieldProps = {
   disabled: boolean;
 };
 
+function WaitFieldLabel({
+  children,
+  htmlFor,
+  id,
+  label,
+}: {
+  children: ReactNode;
+  htmlFor: string;
+  id?: string | undefined;
+  label: string;
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      <Label htmlFor={htmlFor} id={id}>
+        {label}
+      </Label>
+      <ConfigHelp label={label}>{children}</ConfigHelp>
+    </div>
+  );
+}
+
 function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
   const waitGateMode = readConfigStringOr(config, "waitGateMode", "off");
   const configuredWaitUntil = readConfigString(config, "waitUntil");
   const configuredWaitDuration = readConfigString(config, "waitDuration");
   const configuredWaitMaxLateness = readConfigString(config, "waitMaxLateness");
   const delayTimingMode = readWaitDelayTiming(config);
-  const isWindowEnabled =
-    readConfigString(config, "waitAllowedHoursMode") === "daily_window";
+  const waitGateHelp =
+    WAIT_GATE_OPTIONS.find((option) => option.value === waitGateMode)
+      ?.description ?? WAIT_GATE_OPTIONS[0].description;
+  const allowedHoursMode = readConfigStringOr(
+    config,
+    "waitAllowedHoursMode",
+    "off"
+  );
+  const isWindowEnabled = allowedHoursMode === "daily_window";
 
   // Switching timing drops the fields the timing being left owned, so a run
   // never reads a stale duration next to a freshly chosen target date.
@@ -293,12 +322,22 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
 
   return (
     <div className="space-y-3 rounded-md border bg-muted/30 p-3">
-      <p className="font-medium text-sm">Time-Based Wait</p>
+      <div className="flex items-center gap-1">
+        <p className="font-medium text-sm">Time-based wait</p>
+        <ConfigHelp label="Time-based waits">
+          Choose how this step gets its scheduled time. Changing the Time source
+          clears settings used only by the previous source.
+        </ConfigHelp>
+      </div>
 
       <div className="space-y-2">
-        <Label htmlFor="waitDelayTimingMode">
-          {WAIT_FIELD_LABELS.waitDelayTimingMode}
-        </Label>
+        <WaitFieldLabel
+          htmlFor="waitDelayTimingMode"
+          label={WAIT_FIELD_LABELS.waitDelayTimingMode}
+        >
+          Choose a duration from when the run reaches this step, or a specific
+          date and time.
+        </WaitFieldLabel>
         <Select
           disabled={disabled}
           items={WAIT_DELAY_TIMING_OPTIONS}
@@ -306,7 +345,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
           value={delayTimingMode}
         >
           <SelectTrigger className="w-full" id="waitDelayTimingMode">
-            <SelectValue placeholder="Select time input mode" />
+            <SelectValue placeholder="Choose a time source" />
           </SelectTrigger>
           <SelectContent>
             {WAIT_DELAY_TIMING_OPTIONS.map((option) => (
@@ -316,14 +355,17 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
             ))}
           </SelectContent>
         </Select>
-        <p className="text-muted-foreground text-xs">
-          Pick one mode. Switching modes clears fields that do not apply.
-        </p>
       </div>
 
       {delayTimingMode === "duration" ? (
         <div className="space-y-2">
-          <Label htmlFor="waitDuration">{WAIT_FIELD_LABELS.waitDuration}</Label>
+          <WaitFieldLabel
+            htmlFor="waitDuration"
+            label={WAIT_FIELD_LABELS.waitDuration}
+          >
+            Enter 24h, 90m, milliseconds, or an ISO 8601 duration such as P1D.
+            Counting starts when the run reaches this step.
+          </WaitFieldLabel>
           <TemplateBadgeInput
             disabled={disabled}
             fieldType={WAIT_VALUE_TARGETS.waitDuration.type}
@@ -332,14 +374,17 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
             placeholder="24h, 90m, 3600000, or P1D"
             value={configuredWaitDuration}
           />
-          <p className="text-muted-foreground text-xs">
-            Example: use <code>24h</code> to continue one day later.
-          </p>
         </div>
       ) : (
         <>
           <div className="space-y-2">
-            <Label htmlFor="waitUntil">{WAIT_FIELD_LABELS.waitUntil}</Label>
+            <WaitFieldLabel
+              htmlFor="waitUntil"
+              label={WAIT_FIELD_LABELS.waitUntil}
+            >
+              Enter a specific date and time, or choose a value from Event or
+              step data. Times without an offset use the selected Timezone.
+            </WaitFieldLabel>
             <TemplateBadgeInput
               disabled={disabled}
               fieldType={WAIT_VALUE_TARGETS.waitUntil.type}
@@ -348,14 +393,16 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
               placeholder="2026-03-10T09:00:00-05:00 or {{@lifecycle_1:Lifecycle.appointment.startsAt}}"
               value={configuredWaitUntil}
             />
-            <p className="text-muted-foreground text-xs">
-              Use this when timing comes from payload data, like an appointment
-              start time.
-            </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="waitOffset">{WAIT_FIELD_LABELS.waitOffset}</Label>
+            <WaitFieldLabel
+              htmlFor="waitOffset"
+              label={WAIT_FIELD_LABELS.waitOffset}
+            >
+              Move the scheduled time earlier or later. Use values such as -1d,
+              6h, or 30m.
+            </WaitFieldLabel>
             <TemplateBadgeInput
               disabled={disabled}
               fieldType={WAIT_VALUE_TARGETS.waitOffset.type}
@@ -364,15 +411,17 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
               placeholder="-1d, 6h, 30m"
               value={readConfigString(config, "waitOffset")}
             />
-            <p className="text-muted-foreground text-xs">
-              Example: <code>-1d</code> sends one day before the target time.
-            </p>
           </div>
         </>
       )}
 
       <div className="space-y-2">
-        <Label htmlFor="waitGateMode">{WAIT_FIELD_LABELS.waitGateMode}</Label>
+        <WaitFieldLabel
+          htmlFor="waitGateMode"
+          label={WAIT_FIELD_LABELS.waitGateMode}
+        >
+          {waitGateHelp}
+        </WaitFieldLabel>
         <Select
           disabled={disabled}
           items={WAIT_GATE_OPTIONS}
@@ -390,17 +439,18 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
             ))}
           </SelectContent>
         </Select>
-        <p className="text-muted-foreground text-xs">
-          Choose whether an already-due target continues, skips, or remains
-          eligible for a limited time.
-        </p>
       </div>
 
       {waitGateMode === "max_lateness" ? (
         <div className="space-y-2">
-          <Label htmlFor="waitMaxLateness" id="waitMaxLateness-label">
-            {WAIT_FIELD_LABELS.waitMaxLateness}
-          </Label>
+          <WaitFieldLabel
+            htmlFor="waitMaxLateness"
+            id="waitMaxLateness-label"
+            label={WAIT_FIELD_LABELS.waitMaxLateness}
+          >
+            Enter the maximum delay, such as 30m or 6h. This limit is checked
+            before Allowed hours adjust the scheduled time.
+          </WaitFieldLabel>
           <TemplateBadgeInput
             disabled={disabled}
             fieldType={WAIT_VALUE_TARGETS.waitMaxLateness.type}
@@ -410,27 +460,28 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
             placeholder="30m, 6h, or P1D"
             value={configuredWaitMaxLateness}
           />
-          <p className="text-muted-foreground text-xs">
-            Lateness is measured from the target plus offset before the allowed
-            send window is applied.
-          </p>
         </div>
       ) : null}
 
       <div className="space-y-2">
-        <Label htmlFor="waitAllowedHoursMode">
-          {WAIT_FIELD_LABELS.waitAllowedHoursMode}
-        </Label>
+        <WaitFieldLabel
+          htmlFor="waitAllowedHoursMode"
+          label={WAIT_FIELD_LABELS.waitAllowedHoursMode}
+        >
+          {isWindowEnabled
+            ? "A time outside the set hours moves to the next Start time. Use 24-hour times, with Start time before End time."
+            : "Any time adds no time-of-day restriction."}
+        </WaitFieldLabel>
         <Select
           disabled={disabled}
           items={WAIT_WINDOW_OPTIONS}
           onValueChange={(value) =>
             onUpdateConfig({ waitAllowedHoursMode: value })
           }
-          value={readConfigStringOr(config, "waitAllowedHoursMode", "off")}
+          value={allowedHoursMode}
         >
           <SelectTrigger className="w-full" id="waitAllowedHoursMode">
-            <SelectValue placeholder="Select window mode" />
+            <SelectValue placeholder="Choose allowed hours" />
           </SelectTrigger>
           <SelectContent>
             {WAIT_WINDOW_OPTIONS.map((option) => (
@@ -440,10 +491,6 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
             ))}
           </SelectContent>
         </Select>
-        <p className="text-muted-foreground text-xs">
-          When enabled, times outside the window shift to the next allowed
-          start.
-        </p>
       </div>
 
       {isWindowEnabled && (
@@ -476,29 +523,25 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
               value={readConfigString(config, "waitAllowedEndTime")}
             />
           </div>
-          <p className="col-span-2 text-muted-foreground text-xs">
-            Use 24-hour format (HH:MM). Start must be before end. Requires
-            timezone below.
-          </p>
         </div>
       )}
 
       <div className="space-y-2">
-        <Label htmlFor="waitTimezone">
-          {WAIT_FIELD_LABELS.waitTimezone}
-          {isWindowEnabled ? " (required for send window)" : " (optional)"}
-        </Label>
+        <WaitFieldLabel
+          htmlFor="waitTimezone"
+          label={`${WAIT_FIELD_LABELS.waitTimezone}${
+            isWindowEnabled ? " (required for allowed hours)" : " (optional)"
+          }`}
+        >
+          Sets the clock for Allowed hours and for dates and times without an
+          offset.
+        </WaitFieldLabel>
         <TimezoneSelect
           disabled={disabled}
           id="waitTimezone"
           onValueChange={(value) => onUpdateConfig({ waitTimezone: value })}
           value={readConfigStringOr(config, "waitTimezone", "UTC")}
         />
-        <p className="text-muted-foreground text-xs">
-          Used when the target date/time does not include an offset.
-          {isWindowEnabled &&
-            " Also determines when the daily send window applies."}
-        </p>
       </div>
     </div>
   );
@@ -507,7 +550,20 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
 function EventWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
   return (
     <div className="space-y-3 rounded-md border bg-muted/30 p-3">
-      <p className="font-medium text-sm">Wait for Event</p>
+      <div className="flex items-center gap-1">
+        <p className="font-medium text-sm">Wait for Event</p>
+        <ConfigHelp label="Waiting for Events">
+          <p>
+            The run resumes when a selected Event arrives. With no match, any
+            arrival of that Event resumes the run. Add a match to limit which
+            Event data qualifies.
+          </p>
+          <p>
+            A timeout is required so the run cannot wait forever. When time runs
+            out, continue to the next step or end this branch.
+          </p>
+        </ConfigHelp>
+      </div>
       <WaitEventSelect
         config={config}
         disabled={disabled}
@@ -524,10 +580,6 @@ function EventWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
           placeholder={DEFAULT_WAIT_TIMEOUT}
           value={readConfigString(config, "waitTimeout")}
         />
-        <p className="text-muted-foreground text-xs">
-          Required. A wait with no end holds a run, and a place in the run list,
-          until somebody notices.
-        </p>
       </div>
 
       <div className="space-y-2">
@@ -553,10 +605,6 @@ function EventWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
             ))}
           </SelectContent>
         </Select>
-        <p className="text-muted-foreground text-xs">
-          Choose whether to continue downstream nodes or halt the branch when
-          the timeout expires.
-        </p>
       </div>
     </div>
   );
@@ -619,10 +667,6 @@ function WaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
             ))}
           </SelectContent>
         </Select>
-        <p className="text-muted-foreground text-xs">
-          Resume on a clock, or when an event arrives that this step's match
-          accepts.
-        </p>
       </div>
 
       {waitMode === "delay" && (

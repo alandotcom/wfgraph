@@ -128,7 +128,7 @@ describe("validateWorkflowActionConfigs", () => {
     expect(result.valid).toBe(false);
     if (!result.valid) {
       expect(result.error).toContain("missing required fields");
-      expect(result.error).toContain("Wait for (duration)");
+      expect(result.error).toContain("Duration");
     }
   });
 

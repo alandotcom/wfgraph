@@ -18,9 +18,8 @@ export const LIFECYCLE_SECTIONS = [
   { id: "start-events", label: "Start Events" },
   { id: "overlapping-runs", label: "Overlapping runs" },
   { id: "cancel-events", label: "Cancel Events" },
-  { id: "entity-eligibility", label: "Entity eligibility" },
-  { id: "evaluation-checkpoints", label: "Entity Lookup" },
-  { id: "connections", label: "Connections" },
+  { id: "entity-eligibility", label: "Entity" },
+  { id: "connections", label: "Event Connections" },
   { id: "validation", label: "Validation" },
 ] as const;
 

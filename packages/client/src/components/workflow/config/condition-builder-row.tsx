@@ -480,7 +480,7 @@ export function ConditionBuilderRow({
     }
 
     persistModel({ ...parsedModel, groups: kept });
-    toast("Condition group removed", {
+    toast("Rule set removed", {
       description: "Use Actions > Undo to restore it.",
     });
   };
@@ -613,7 +613,7 @@ export function ConditionBuilderRow({
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <span className="rounded-md bg-muted px-1.5 py-0.5 font-medium text-xs">
-                    {groupIndex + 1}
+                    Rule set {groupIndex + 1}
                   </span>
                   <span className="text-muted-foreground text-xs">
                     {group.conditions.length}{" "}
@@ -621,7 +621,7 @@ export function ConditionBuilderRow({
                   </span>
                 </div>
                 <Button
-                  aria-label={`Remove group ${groupIndex + 1}`}
+                  aria-label={`Remove rule set ${groupIndex + 1}`}
                   disabled={disabled}
                   onClick={() => removeGroup(group.id)}
                   size="icon-sm"
@@ -852,7 +852,7 @@ export function ConditionBuilderRow({
               variant="outline"
             >
               <Plus className="size-4" />
-              Add group
+              Add rule set
             </Button>
           </div>
 

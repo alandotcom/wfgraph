@@ -301,7 +301,7 @@ function WaitSubscriptionRow({
       ) : (
         <div className="space-y-1">
           <p className="text-muted-foreground text-xs">
-            Any {subscription.event} resumes this run, whatever it carries.
+            No match is set. Every arrival of this Event resumes the run.
           </p>
           <Button
             disabled={disabled || fields.length === 0}

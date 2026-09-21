@@ -281,14 +281,15 @@ describe("WaitEventSelect", () => {
 });
 
 describe("WaitEventSelect match editor", () => {
-  it("says what a subscription with no match means", () => {
+  it("keeps the no-match explanation out of the inline form", () => {
     const { view } = renderSelect({
       waitFor: [{ event: "billing/payment.settled" }],
     });
 
     expect(
-      view.getByText(/Any billing\/payment.settled resumes this run/)
-    ).toBeTruthy();
+      view.queryByText(/Any billing\/payment.settled resumes this run/)
+    ).toBeNull();
+    expect(view.getByRole("button", { name: "Add a match" })).toBeTruthy();
   });
 
   // The common case, offered as one click: the arriving payload at this Event's

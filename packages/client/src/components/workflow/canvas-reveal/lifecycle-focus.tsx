@@ -1,13 +1,9 @@
 import { useAtomValue } from "jotai";
 import { type ReactNode, useId } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
-import { Button } from "#src/components/ui/button";
 import { ConfigGroup } from "#src/components/workflow/config/config-section";
 import { LifecycleConcurrencyGroup } from "#src/components/workflow/config/lifecycle-concurrency-group";
-import {
-  LifecycleEligibilityCheckpoints,
-  LifecycleEntityEligibilityGroup,
-} from "#src/components/workflow/config/lifecycle-entity-eligibility-group";
+import { LifecycleEntityEligibilityGroup } from "#src/components/workflow/config/lifecycle-entity-eligibility-group";
 import {
   LifecycleEventConnections,
   LifecycleRoleEventGroup,
@@ -30,10 +26,6 @@ import {
 } from "./lifecycle-reveal-model";
 import type { RevealBodyProps } from "./reveal-kinds";
 import { NodeIssueList } from "./reveal-sections";
-
-function Intro({ children }: { children: ReactNode }) {
-  return <p className="pb-3 text-muted-foreground text-xs">{children}</p>;
-}
 
 /**
  * The Lifecycle policy editor for one node: a section list beside the one
@@ -83,17 +75,11 @@ function LifecyclePolicyEditor({
 
   const bodies: Record<LifecycleSectionId, ReactNode> = {
     "start-events": (
-      <>
-        <Intro>
-          A run starts when one of these Events arrives. A Start Filter reads
-          the arriving Event's payload and refuses the run before it opens.
-        </Intro>
-        <LifecycleRoleEventGroup
-          disabled={disabled}
-          editor={editor}
-          role="start"
-        />
-      </>
+      <LifecycleRoleEventGroup
+        disabled={disabled}
+        editor={editor}
+        role="start"
+      />
     ),
     "overlapping-runs": (
       <LifecycleConcurrencyGroup
@@ -112,56 +98,22 @@ function LifecyclePolicyEditor({
       />
     ),
     "entity-eligibility": (
-      <>
-        <Intro>
-          Eligibility reads the tracked Entity's current state from your app. It
-          is checked after the payload Start Filters and never reads an Event
-          payload.
-        </Intro>
-        <LifecycleEntityEligibilityGroup
-          catalog={catalog}
-          disabled={disabled}
-          onChange={editor.setRules}
-          onGoToCheckpoints={() => goTo("evaluation-checkpoints")}
-          rules={rules}
-        />
-      </>
-    ),
-    "evaluation-checkpoints": (
-      <ConfigGroup label="Entity Lookup" prominent>
-        {rules.entityEligibility ? (
-          <LifecycleEligibilityCheckpoints
-            catalog={catalog}
-            disabled={disabled}
-            onChange={editor.setRules}
-            rules={rules}
-          />
-        ) : (
-          <div className="space-y-2">
-            <p className="text-muted-foreground text-xs">
-              Add an eligibility rule to choose when it is checked.
-            </p>
-            <Button
-              onClick={() => goTo("entity-eligibility")}
-              size="sm"
-              type="button"
-              variant="outline"
-            >
-              Go to Entity eligibility
-            </Button>
-          </div>
-        )}
-      </ConfigGroup>
+      <LifecycleEntityEligibilityGroup
+        catalog={catalog}
+        disabled={disabled}
+        onChange={editor.setRules}
+        rules={rules}
+      />
     ),
     connections: (
-      <ConfigGroup label="Connections" prominent>
+      <ConfigGroup label="Event Connections" prominent>
         {uniqueIntegrationsOfEvents(catalog, [
           ...rules.startEvents,
           ...rules.cancelEvents,
         ]).length === 0 ? (
           <p className="text-muted-foreground text-xs">
-            No Lifecycle Event arrives through an integration, so this workflow
-            needs no Connection.
+            This workflow uses no integration Events, so it does not need a
+            Connection.
           </p>
         ) : (
           <div className="space-y-3">

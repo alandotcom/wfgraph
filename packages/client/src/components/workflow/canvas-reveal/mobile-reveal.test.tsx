@@ -447,7 +447,7 @@ describe("mobile Reveal for complex nodes", () => {
       "cancel-events"
     );
 
-    fireEvent.click(view.getByRole("button", { name: /^Connections/ }));
+    fireEvent.click(view.getByRole("button", { name: /^Event Connections/ }));
     expect(store.get(activeMobileSheetsAtom).at(-1)?.section).toBe(
       "connections"
     );

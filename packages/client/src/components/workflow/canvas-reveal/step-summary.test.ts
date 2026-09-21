@@ -58,10 +58,10 @@ describe("summarizeWait", () => {
     });
     expect(rows.map((row) => [row.label, row.value])).toEqual([
       ["How should this step wait?", "Wait for time"],
-      ["Time input mode", "Wait for duration"],
-      ["Wait for (duration)", "24h"],
-      ["Past target behavior", "Continue immediately"],
-      ["Allowed send window", "09:00 to Not set"],
+      ["Time source", "Duration"],
+      ["Duration", "24h"],
+      ["If the scheduled time has passed", "Continue immediately"],
+      ["Allowed hours", "09:00 to Not set"],
       ["Timezone", "America/New_York"],
     ]);
   });
@@ -75,11 +75,11 @@ describe("summarizeWait", () => {
     });
 
     expect(rows.map((row) => [row.label, row.value])).toContainEqual([
-      "Past target behavior",
-      "Allow limited lateness",
+      "If the scheduled time has passed",
+      "Continue within a limit",
     ]);
     expect(rows.map((row) => [row.label, row.value])).toContainEqual([
-      "Maximum lateness",
+      "Continue if late by up to",
       "6h",
     ]);
   });
@@ -89,7 +89,7 @@ describe("summarizeWait", () => {
     expect(rows.map((row) => [row.label, row.value])).toEqual([
       ["How should this step wait?", "Wait for an event"],
       ["Stop waiting after", "7d"],
-      ["On timeout", "Continue workflow"],
+      ["When time runs out", "Continue to the next step"],
     ]);
   });
 });

@@ -473,26 +473,155 @@ describe("NodeConfigPanel authorization", () => {
  * reads a duration or a timeout the node is no longer in the shape for.
  */
 describe("NodeConfigPanel Wait mode", () => {
-  it("shows maximum lateness only for its gate and clears it when leaving", async () => {
+  function renderWaitPanel(config: Record<string, unknown>) {
     installAuthorizationGrantsForTests([WfGraphOperations.workflowUpdate.id]);
-    const { view, store } = renderPanel({
-      nodes: [
-        lifecycleNode(),
-        waitNode({
-          waitMode: "delay",
-          waitDuration: "1h",
-          waitGateMode: "max_lateness",
-          waitMaxLateness: "6h",
-        }),
-      ],
+    return renderPanel({
+      nodes: [lifecycleNode(), waitNode(config)],
       selected: "wait_1",
+    });
+  }
+
+  it("puts time-based wait guidance beside the control it explains", async () => {
+    const { view } = renderWaitPanel({
+      waitMode: "delay",
+      waitDuration: "1h",
     });
 
     expect(
-      await view.findByRole("textbox", { name: "Maximum lateness" })
+      view.queryByText(/starts counting when the run reaches this step/i)
+    ).toBeNull();
+
+    fireEvent.click(
+      await view.findByRole("button", { name: "About Time-based waits" })
+    );
+    expect(
+      await view.findByText(/Changing the Time source clears settings/)
     ).toBeTruthy();
+
+    fireEvent.click(view.getByRole("button", { name: "About Duration" }));
+    expect(
+      await view.findByText(/Counting starts when the run reaches this step/i)
+    ).toBeTruthy();
+
+    fireEvent.click(
+      view.getByRole("button", {
+        name: "About If the scheduled time has passed",
+      })
+    );
+    expect(
+      await view.findByText(/scheduled time has passed, continue immediately/i)
+    ).toBeTruthy();
+
+    fireEvent.click(
+      view.getByRole("button", { name: "About Timezone (optional)" })
+    );
+    expect(
+      await view.findByText(/Sets the clock for Allowed hours/i)
+    ).toBeTruthy();
+  });
+
+  it("uses the default past-time help for an unknown stored option", async () => {
+    const { view } = renderWaitPanel({
+      waitMode: "delay",
+      waitDuration: "1h",
+      waitGateMode: "future-option",
+    });
+
+    fireEvent.click(
+      await view.findByRole("button", {
+        name: "About If the scheduled time has passed",
+      })
+    );
+    expect(
+      await view.findByText(/scheduled time has passed, continue immediately/i)
+    ).toBeTruthy();
+  });
+
+  it("puts scheduled-time and allowed-hours help beside those controls", async () => {
+    const { view } = renderWaitPanel({
+      waitMode: "delay",
+      waitDelayTimingMode: "until",
+      waitUntil: "2026-03-10T09:00:00-05:00",
+      waitOffset: "-1d",
+      waitAllowedHoursMode: "daily_window",
+      waitAllowedStartTime: "09:00",
+      waitAllowedEndTime: "17:00",
+      waitTimezone: "America/New_York",
+    });
+
+    fireEvent.click(
+      await view.findByRole("button", { name: "About Date and time" })
+    );
+    expect(
+      await view.findByText(/choose a value from Event or step data/i)
+    ).toBeTruthy();
+
+    fireEvent.click(
+      view.getByRole("button", { name: "About Adjust time (optional)" })
+    );
+    expect(
+      await view.findByText(/Move the scheduled time earlier/)
+    ).toBeTruthy();
+
+    fireEvent.click(view.getByRole("button", { name: "About Allowed hours" }));
+    expect(await view.findByText(/moves to the next Start time/)).toBeTruthy();
+
+    fireEvent.click(
+      view.getByRole("button", {
+        name: "About Timezone (required for allowed hours)",
+      })
+    );
+    expect(
+      await view.findByText(/Sets the clock for Allowed hours/i)
+    ).toBeTruthy();
+  });
+
+  it("keeps Event wait behavior in contextual help", async () => {
+    const { view } = renderWaitPanel({
+      waitMode: "event",
+      waitFor: [],
+      waitTimeout: "1h",
+    });
+
+    const helpButton = await view.findByRole("button", {
+      name: "About Waiting for Events",
+    });
+    expect(view.queryByText(/With no match, any arrival/)).toBeNull();
+
+    fireEvent.click(helpButton);
+
+    await waitFor(() => {
+      expect(view.getByText(/With no match, any arrival/)).toBeTruthy();
+    });
+    expect(view.getByText(/cannot wait forever/)).toBeTruthy();
+  });
+
+  it("shows maximum lateness only for its gate and clears it when leaving", async () => {
+    const { view, store } = renderWaitPanel({
+      waitMode: "delay",
+      waitDuration: "1h",
+      waitGateMode: "max_lateness",
+      waitMaxLateness: "6h",
+    });
+
+    expect(
+      await view.findByRole("textbox", { name: "Continue if late by up to" })
+    ).toBeTruthy();
+    fireEvent.click(
+      view.getByRole("button", {
+        name: "About If the scheduled time has passed",
+      })
+    );
+    expect(await view.findByText(/within the allowed lateness/i)).toBeTruthy();
+    fireEvent.click(
+      view.getByRole("button", { name: "About Continue if late by up to" })
+    );
+    expect(
+      await view.findByText(/checked before Allowed hours adjust/i)
+    ).toBeTruthy();
+
     const picker = view.getByRole("combobox", {
-      name: "Past target behavior",
+      name: "If the scheduled time has passed",
     });
     fireEvent.click(picker);
     const choice = view.getByRole("option", { name: "Continue immediately" });
@@ -500,7 +629,7 @@ describe("NodeConfigPanel Wait mode", () => {
     fireEvent.click(choice);
 
     expect(
-      view.queryByRole("textbox", { name: "Maximum lateness" })
+      view.queryByRole("textbox", { name: "Continue if late by up to" })
     ).toBeNull();
     const stored = store.get(nodesAtom).find((node) => node.id === "wait_1");
     expect(stored?.data.config?.waitGateMode).toBe("off");
@@ -508,13 +637,9 @@ describe("NodeConfigPanel Wait mode", () => {
   });
 
   it("clears the timeout when the step leaves event mode", async () => {
-    installAuthorizationGrantsForTests([WfGraphOperations.workflowUpdate.id]);
-    const { view, store } = renderPanel({
-      nodes: [
-        lifecycleNode(),
-        waitNode({ waitMode: "event", waitTimeout: "1h" }),
-      ],
-      selected: "wait_1",
+    const { view, store } = renderWaitPanel({
+      waitMode: "event",
+      waitTimeout: "1h",
     });
 
     const picker = await view.findByRole("combobox", {
