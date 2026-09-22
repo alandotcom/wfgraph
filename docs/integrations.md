@@ -234,6 +234,13 @@ a friendly `select` label, a `showWhen`, a group. An entry merges into the deriv
 the same key, property by property. `configFields` is optional, and a schema that already
 says everything stands on its own.
 
+A field's `showWhen` chooses one operator: `{ field: "template", equals: "a" }` for one
+value, or `{ field: "template", in: ["a", "b"] }` for any listed value. Matching uses
+exact strings, without coercion or template resolution. A missing value or an empty list
+never matches. The same condition controls which output reference fields the editor offers.
+Visibility preserves stored values and leaves the action's input schema unchanged. Groups
+do not accept `showWhen`; put conditions on their fields.
+
 Order follows your entries, and Workflow Graph draws each key you left out after them, in schema
 order. A group takes its position from your list, because its placement is a decision you
 make.

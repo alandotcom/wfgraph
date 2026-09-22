@@ -325,9 +325,7 @@ type ConfigFieldFor<
    */
   connectionDefaultKey?: TConnectionKey | undefined;
   /** The sibling field whose value decides whether this field is shown. */
-  showWhen?:
-    | (Omit<ShowWhen, "field"> & { field: InputKey<TInput> })
-    | undefined;
+  showWhen?: ShowWhen<InputKey<TInput>> | undefined;
 } & (TAllowsOptionsSource extends true
     ? {
         /**

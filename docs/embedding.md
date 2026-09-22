@@ -133,6 +133,19 @@ const sendAppointmentMessage = defineAction({
 });
 ```
 
+For a variable shared by several template variants, declare the variable once in `input`
+and add a list condition to its presentation:
+
+```ts
+configFields: [
+  { key: "name", showWhen: { field: "template", in: ["a", "b"] } },
+],
+```
+
+Here `input` declares both `template` and `name`. The editor offers `name` for templates
+`a` and `b`, and hides it for `c`. Single-value `equals` conditions still work. See
+[The config form](integrations.md#the-config-form) for matching and stored-value behavior.
+
 Each callback receives the current draft as optional strings keyed by the input schema.
 These are raw editor values, before schema decoding. Empty values and unresolved template
 references are omitted. Return an array of `{ value, label }` choices directly or through a

@@ -54,10 +54,18 @@ const selectOptionSchema = Schema.Struct({
   label: Schema.String,
 });
 
-const showWhenWireSchema: Schema.Codec<ShowWhen> = Schema.Struct({
-  field: safeRecordKey,
-  equals: Schema.String,
-});
+const showWhenWireSchema: Schema.Codec<ShowWhen> = Schema.Union([
+  Schema.Struct({
+    field: safeRecordKey,
+    equals: Schema.String,
+    in: Schema.optionalKey(Schema.Never),
+  }),
+  Schema.Struct({
+    field: safeRecordKey,
+    in: Schema.Array(Schema.String),
+    equals: Schema.optionalKey(Schema.Never),
+  }),
+]);
 
 /**
  * One declarative config field, matching `ActionConfigFieldBase` in

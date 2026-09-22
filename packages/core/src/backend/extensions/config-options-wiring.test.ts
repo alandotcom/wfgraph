@@ -315,6 +315,36 @@ describe("provider-backed config fields", () => {
     ).toBeUndefined();
   });
 
+  it.each(["missing", ...RESERVED_RECORD_KEYS])(
+    "refuses a list condition naming the unknown or unsafe key %s",
+    (field) => {
+      const action = defineAction({
+        id: "host/variants",
+        label: "Variants",
+        description: "Shared variant inputs",
+        input: Schema.Struct({ template: Schema.String, name: Schema.String }),
+        handler: () => undefined,
+      });
+      expect(() =>
+        assembleExtensions({
+          actions: [
+            {
+              ...action,
+              configFields: [
+                {
+                  key: "name",
+                  label: "Name",
+                  type: "text",
+                  showWhen: { field, in: ["a", "b"] },
+                },
+              ],
+            },
+          ],
+        })
+      ).toThrow(/conditional field reference|not a config field/u);
+    }
+  );
+
   it("allows host option callbacks to receive more than eight schema fields", () => {
     const hostAction = defineAction({
       id: "host/thing",

@@ -295,6 +295,48 @@ describe("defineAction", () => {
     expect(build).toBeTypeOf("function");
   });
 
+  it("preserves list conditions and types their sibling references", () => {
+    const action = defineAction({
+      id: "host/variants",
+      label: "Variants",
+      description: "Shared variant inputs",
+      input: z.object({
+        template: z.enum(["a", "b", "c"]),
+        name: z.string().optional(),
+      }),
+      configFields: [
+        { key: "name", showWhen: { field: "template", in: ["a", "b"] } },
+      ],
+      handler: () => undefined,
+    });
+    expect(action.configFields[0]).toMatchObject({
+      key: "name",
+      showWhen: { field: "template", in: ["a", "b"] },
+    });
+
+    const invalid = () =>
+      defineAction({
+        id: "host/invalid",
+        label: "Invalid",
+        description: "Type checks",
+        input: z.object({ template: z.string(), name: z.string() }),
+        configFields: [
+          {
+            key: "name",
+            // @ts-expect-error list conditions must reference an input schema key
+            showWhen: { field: "missing", in: ["a", "b"] },
+          },
+          {
+            key: "name",
+            // @ts-expect-error a condition must choose exactly one operator
+            showWhen: { field: "template", equals: "a", in: ["a", "b"] },
+          },
+        ],
+        handler: () => undefined,
+      });
+    expect(invalid).toBeTypeOf("function");
+  });
+
   it("does not expose the old host provider wiring API", () => {
     const definition = {
       id: "custom/old-options",

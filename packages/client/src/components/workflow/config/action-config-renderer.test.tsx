@@ -93,6 +93,34 @@ function renderFields(input: {
 }
 
 describe("ActionConfigRenderer", () => {
+  it("shows a shared input for any listed variant without deleting its value", () => {
+    const fields: ActionConfigField[] = [
+      {
+        key: "name",
+        label: "Name",
+        type: "text",
+        showWhen: { field: "template", in: ["a", "b"] },
+      },
+    ];
+    const tree = (template: string) =>
+      fieldsTree({
+        fields,
+        config: { template, name: "Ada" },
+      });
+    const view = render(tree("a"));
+    expect(
+      screen.getByRole("textbox", { name: "Name" }).getAttribute("value")
+    ).toBe("Ada");
+    view.rerender(tree("b"));
+    expect(screen.getByRole("textbox", { name: "Name" })).toBeTruthy();
+    view.rerender(tree("c"));
+    expect(screen.queryByRole("textbox", { name: "Name" })).toBeNull();
+    view.rerender(tree("a"));
+    expect(
+      screen.getByRole("textbox", { name: "Name" }).getAttribute("value")
+    ).toBe("Ada");
+  });
+
   it("associates a field description with its control group", () => {
     renderFields({ fields: [subject] });
 
