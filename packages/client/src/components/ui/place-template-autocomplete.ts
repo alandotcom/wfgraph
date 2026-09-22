@@ -7,9 +7,6 @@
 
 import { clamp } from "es-toolkit/math";
 
-/** Matches the menu's `w-80`. */
-export const TEMPLATE_AUTOCOMPLETE_WIDTH = 320;
-
 /** Cap on the scrolling option list. */
 export const TEMPLATE_AUTOCOMPLETE_MAX_HEIGHT = 240;
 
@@ -22,6 +19,7 @@ export type TemplateAutocompleteAnchor = {
   top: number;
   bottom: number;
   left: number;
+  width: number;
 };
 
 type TemplateAutocompletePlacement =
@@ -29,12 +27,14 @@ type TemplateAutocompletePlacement =
       side: "bottom";
       top: number;
       left: number;
+      width: number;
       maxHeight: number;
     }
   | {
       side: "top";
       bottom: number;
       left: number;
+      width: number;
       maxHeight: number;
     };
 
@@ -56,13 +56,12 @@ export function placeTemplateAutocomplete(
   const openBelow =
     spaceBelow >= TEMPLATE_AUTOCOMPLETE_MAX_HEIGHT || spaceBelow >= spaceAbove;
 
+  const availableWidth = Math.max(0, viewport.width - VIEWPORT_PADDING * 2);
+  const width = clamp(anchor.width, 0, availableWidth);
   const left = clamp(
     anchor.left,
     VIEWPORT_PADDING,
-    Math.max(
-      VIEWPORT_PADDING,
-      viewport.width - TEMPLATE_AUTOCOMPLETE_WIDTH - VIEWPORT_PADDING
-    )
+    Math.max(VIEWPORT_PADDING, viewport.width - width - VIEWPORT_PADDING)
   );
 
   if (openBelow) {
@@ -70,6 +69,7 @@ export function placeTemplateAutocomplete(
       side: "bottom",
       top: anchor.bottom + TEMPLATE_AUTOCOMPLETE_GAP,
       left,
+      width,
       maxHeight: clamp(spaceBelow, 0, TEMPLATE_AUTOCOMPLETE_MAX_HEIGHT),
     };
   }
@@ -78,6 +78,7 @@ export function placeTemplateAutocomplete(
     side: "top",
     bottom: viewport.height - anchor.top + TEMPLATE_AUTOCOMPLETE_GAP,
     left,
+    width,
     maxHeight: clamp(spaceAbove, 0, TEMPLATE_AUTOCOMPLETE_MAX_HEIGHT),
   };
 }

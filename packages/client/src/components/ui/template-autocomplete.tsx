@@ -86,15 +86,16 @@ function unusableReason(
   return `${clash.events.join(" and ")} type this differently. Add an Event Split above this node to use it.`;
 }
 
-/** One row of the menu: a whole node's output, or one path inside it. */
+/** One row of the menu: a path inside a source's output. */
 type TemplateOption = {
-  type: "node" | "field";
   rank: number;
+  /** Stable group identity. Labels are display text and can collide or change. */
+  sourceKey: string;
   nodeId: string;
   nodeName: string;
   /** Stable identity carried by a virtual source such as tracked Entity State. */
   sourceType?: string | undefined;
-  field?: string | undefined;
+  field: string;
   label?: string | undefined;
   description?: string | undefined;
   template: string;
@@ -111,9 +112,24 @@ type TemplateOption = {
   valueType?: WorkflowSchemaItemType | undefined;
 };
 
+type TemplateOptionSource = {
+  sourceKey: string;
+  nodeName: string;
+  options: TemplateOption[];
+};
+
+type TemplateOptionGroup = TemplateOptionSource & {
+  /** Index of the first option in the menu's keyboard selection sequence. */
+  startIndex: number;
+};
+
+function sourceKey(input: Pick<TemplateOption, "nodeId" | "sourceType">): string {
+  return JSON.stringify([input.nodeId, input.sourceType ?? null]);
+}
+
 /**
  * Whether `query` names a key under this record's own path, and whether that
- * key is offered for `targetType`. Narrows `field` and `valueType` to defined
+ * key is offered for `targetType`. Narrows `valueType` to defined
  * so the caller can read them without checking again.
  */
 function namesKeyUnderOpenRecord(
@@ -121,12 +137,10 @@ function namesKeyUnderOpenRecord(
   query: string,
   targetType: ValueTargetType | undefined
 ): record is TemplateOption & {
-  field: string;
   valueType: WorkflowSchemaItemType;
 } {
   return (
     record.valueType !== undefined &&
-    record.field !== undefined &&
     query.startsWith(`${record.field}.`) &&
     offeredFor({ type: record.valueType }, targetType) &&
     query.slice(record.field.length + 1).length > 0
@@ -154,8 +168,8 @@ function keyUnderOpenRecordOptions(
       const key = query.slice(record.field.length + 1);
       const fieldPath = appendOutputPathKey(record.field, key);
       return {
-        type: "field",
         rank: fieldRank({ type: record.valueType }, targetType, undefined),
+        sourceKey: record.sourceKey,
         nodeId: record.nodeId,
         nodeName: record.nodeName,
         sourceType: record.sourceType,
@@ -172,6 +186,7 @@ function keyUnderOpenRecordOptions(
 
 /** The rows a template field's autocomplete menu offers, and whether it shows. */
 export type TemplateAutocompleteRows = {
+  groups: TemplateOptionGroup[];
   filteredOptions: TemplateOption[];
   emptyMessage: string | null;
   /**
@@ -203,7 +218,7 @@ export function useTemplateAutocompleteRows(input: {
     });
   }, [currentNodeId, edges, nodes]);
 
-  const options = useMemo<TemplateOption[]>(() => {
+  const optionSources = useMemo<TemplateOptionSource[]>(() => {
     // Nothing is upstream of nowhere: `getUpstreamNodes` already answers with an
     // empty list, and this is where the id becomes a string for the entry node's
     // answer, which names the node asking.
@@ -225,7 +240,6 @@ export function useTemplateAutocompleteRows(input: {
           catalog,
         }),
         sourceType: undefined as string | undefined,
-        offersWholeOutput: node.data.type !== "lifecycle",
       })),
       ...(entitySource
         ? [
@@ -234,45 +248,20 @@ export function useTemplateAutocompleteRows(input: {
               nodeName: entitySource.sourceName,
               fields: entitySource.fields,
               sourceType: entitySource.sourceType,
-              offersWholeOutput: false,
             },
           ]
         : []),
     ];
 
     for (const source of sources) {
-      const {
-        nodeId,
-        nodeName,
-        fields: outputFields,
-        sourceType,
-        offersWholeOutput,
-      } = source;
-
-      // A whole node's output, for dropping a JSON blob into a text field. A
-      // virtual Entity source offers declared fields only, and the Lifecycle
-      // node's whole payload remains unavailable.
-      if (!fieldType && offersWholeOutput && outputFields.length) {
-        nextOptions.push({
-          type: "node",
-          rank: 0,
-          nodeId,
-          nodeName,
-          sourceType,
-          template: formatTemplateToken({
-            nodeId,
-            nodeLabel: nodeName,
-            sourceType,
-          }),
-        });
-      }
+      const { nodeId, nodeName, fields: outputFields, sourceType } = source;
 
       for (const field of outputFields) {
         const unusable = unusableReason(field, fieldType);
         if (unusable || offeredFor(field, fieldType)) {
           nextOptions.push({
-            type: "field",
             rank: fieldRank(field, fieldType, unusable),
+            sourceKey: sourceKey(source),
             nodeId,
             nodeName,
             sourceType,
@@ -307,8 +296,8 @@ export function useTemplateAutocompleteRows(input: {
         // remains in the option set as metadata so a key typed under this record
         // can produce one option for every upstream node that owns the record.
         nextOptions.push({
-          type: "field",
           rank: fieldRank({ type: valueType }, fieldType, undefined),
+          sourceKey: sourceKey(source),
           nodeId,
           nodeName,
           sourceType,
@@ -333,8 +322,8 @@ export function useTemplateAutocompleteRows(input: {
         )) {
           const fieldPath = appendOutputPathKey(field.path, key);
           nextOptions.push({
-            type: "field",
             rank: fieldRank({ type: valueType }, fieldType, undefined),
+            sourceKey: sourceKey(source),
             nodeId,
             nodeName,
             sourceType,
@@ -350,51 +339,83 @@ export function useTemplateAutocompleteRows(input: {
       }
     }
 
-    // A stable sort, so the fields a typed target actually wants come first while
-    // each node's own fields stay in schema order behind them.
-    return sortBy(nextOptions, [(option) => option.rank]);
+    // Keep sources in graph order. A stable sort inside each source puts
+    // compatible fields first without disturbing their schema order.
+    return [
+      ...Map.groupBy(nextOptions, (option) => option.sourceKey),
+    ].map(([groupSourceKey, groupOptions]) => ({
+      sourceKey: groupSourceKey,
+      nodeName: groupOptions[0]?.nodeName ?? "",
+      options: sortBy(groupOptions, [(option) => option.rank]),
+    }));
   }, [upstreamNodes, fieldType, currentNodeId, nodes, edges, catalog]);
 
-  const filteredOptions = useMemo(() => {
-    const visibleOptions = options.filter((option) => !option.recordOnly);
-    const trimmedFilter = filter.trim().toLowerCase();
-    if (!trimmedFilter) {
-      return visibleOptions;
-    }
+  const groups = useMemo(() => {
+    const trimmedFilter = filter.trim();
+    const normalizedFilter = trimmedFilter.toLowerCase();
+    let startIndex = 0;
 
-    const matched = visibleOptions.filter((option) => {
-      const displayedPath = option.field
-        ? `${option.nodeName}.${option.field}`
-        : option.nodeName;
-      return [displayedPath, option.label, option.description].some(
-        (text) => text?.toLowerCase().includes(trimmedFilter) === true
-      );
-    });
+    return optionSources.flatMap(
+      ({ sourceKey: groupSourceKey, nodeName, options }): TemplateOptionGroup[] => {
+        const visibleOptions = options.filter((option) => !option.recordOnly);
+        const matched = normalizedFilter
+          ? visibleOptions.filter((option) => {
+              const fullPath = `${option.nodeName}.${option.field}`;
+              return [
+                option.nodeName,
+                fullPath,
+                option.label,
+                option.description,
+              ].some(
+                (text) =>
+                  text?.toLowerCase().includes(normalizedFilter) === true
+              );
+            })
+          : visibleOptions;
 
-    // Matched case-sensitively, because a record key is compared as written: a
-    // tag named `orderId` is a different key from `orderid`. A key the graph
-    // already named is in `matched`, and offering it twice would render two rows
-    // under one React key.
-    const typedKeys = keyUnderOpenRecordOptions(
-      options,
-      filter.trim(),
-      fieldType
-    ).filter(
-      (typedKey) =>
-        !matched.some(
-          (row) =>
-            row.nodeId === typedKey.nodeId && row.field === typedKey.field
-        )
+        // Matched case-sensitively, because a record key is compared as written:
+        // a tag named `orderId` is a different key from `orderid`. A key the
+        // graph already named is in `matched`, and offering it twice would draw
+        // two rows in the same source group.
+        const typedKeys = normalizedFilter
+          ? keyUnderOpenRecordOptions(options, trimmedFilter, fieldType).filter(
+              (typedKey) =>
+                !matched.some(
+                  (row) =>
+                    row.nodeId === typedKey.nodeId &&
+                    row.field === typedKey.field
+                )
+            )
+          : [];
+        const filtered = normalizedFilter
+          ? sortBy([...typedKeys, ...matched], [(option) => option.rank])
+          : matched;
+        if (filtered.length === 0) {
+          return [];
+        }
+
+        const group = {
+          sourceKey: groupSourceKey,
+          nodeName,
+          options: filtered,
+          startIndex,
+        };
+        startIndex += filtered.length;
+        return [group];
+      }
     );
-    return [...typedKeys, ...matched];
-  }, [filter, options, fieldType]);
+  }, [filter, optionSources, fieldType]);
 
+  const filteredOptions = useMemo(
+    () => groups.flatMap((group) => group.options),
+    [groups]
+  );
 
   // A typed target whose menu is empty says so, because the reason is a fact
   // about the payloads rather than about what was typed: nothing upstream is a
   // length of time, or an instant. A menu with nothing to say stays closed.
   const emptyMessage =
-    fieldType && options.length === 0
+    fieldType && optionSources.length === 0
       ? fieldType === "duration"
         ? "No field upstream is a duration. Type a value like 24h."
         : "No field upstream is a date and time. Type one, like 2026-03-10T09:00:00Z."
@@ -402,7 +423,7 @@ export function useTemplateAutocompleteRows(input: {
 
   const hasRowsToShow = filteredOptions.length > 0 || emptyMessage !== null;
 
-  return { filteredOptions, emptyMessage, hasRowsToShow };
+  return { groups, filteredOptions, emptyMessage, hasRowsToShow };
 }
 
 export function TemplateAutocomplete({
@@ -412,10 +433,10 @@ export function TemplateAutocomplete({
   onClose,
   rows,
 }: TemplateAutocompleteProps) {
-  const { filteredOptions, emptyMessage, hasRowsToShow } = rows;
+  const { groups, filteredOptions, emptyMessage, hasRowsToShow } = rows;
   const [selectedIndex, setSelectedIndex] = useState(0);
-  // The scroll box, not the positioned wrapper around it: the rows are its
-  // children, and indexing them is how a highlight below the fold is found.
+  // The scroll box, not the positioned wrapper around it. Group headings sit
+  // between its options, so each option carries its flattened selection index.
   const optionListRef = useRef<HTMLDivElement>(null);
 
   const selectedOptionIndex =
@@ -462,8 +483,9 @@ export function TemplateAutocomplete({
   // Keyboard navigation can walk the highlight past the edge of the scroll box,
   // and only the DOM knows where that edge is.
   useAfterCommit(selectedOptionIndex, () => {
-    const selectedElement =
-      optionListRef.current?.children.item(selectedOptionIndex);
+    const selectedElement = optionListRef.current?.querySelector(
+      `[data-option-index="${selectedOptionIndex}"]`
+    );
     if (selectedElement instanceof HTMLElement) {
       selectedElement.scrollIntoView({ block: "nearest" });
     }
@@ -480,11 +502,12 @@ export function TemplateAutocomplete({
 
   const menuContent = (
     <div
-      className="fixed z-50 w-80 rounded-lg border bg-popover p-1 text-popover-foreground shadow-md"
+      className="fixed z-50 overflow-hidden rounded-lg border bg-popover p-1 text-popover-foreground shadow-md"
       data-side={placement.side}
       data-slot="template-autocomplete"
       style={{
         left: placement.left,
+        width: placement.width,
         ...(placement.side === "bottom"
           ? { top: placement.top }
           : { bottom: placement.bottom }),
@@ -500,60 +523,79 @@ export function TemplateAutocomplete({
             {emptyMessage}
           </div>
         )}
-        {filteredOptions.map((option, index) => (
+        {groups.map((group) => (
           <div
-            className={cn(
-              "flex items-center justify-between rounded px-2 py-1.5 text-sm transition-colors",
-              option.unusable
-                ? "cursor-not-allowed opacity-60"
-                : "cursor-pointer",
-              index === selectedOptionIndex
-                ? "bg-accent text-accent-foreground"
-                : !option.unusable && "hover:bg-accent/50"
-            )}
-            key={`${option.nodeId}-${option.field || "root"}`}
-            onMouseDown={(event) => {
-              // Select on pointer down so contentEditable inputs don't blur first.
-              event.preventDefault();
-              if (!option.unusable) {
-                onSelect(option.template);
-              }
-            }}
-            onMouseEnter={() => setSelectedIndex(index)}
+            data-slot="template-autocomplete-group"
+            data-source-key={group.sourceKey}
+            key={group.sourceKey}
           >
-            <div className="flex-1">
-              <div className="font-medium">
-                {option.type === "node"
-                  ? option.nodeName
-                  : referenceFieldLabel({
-                      path: option.field ?? "",
-                      label: option.label,
-                    })}
-              </div>
-              {option.type === "field" ? (
-                <div className="truncate font-mono text-muted-foreground text-xs">
-                  {option.nodeName}.{option.field}
-                </div>
-              ) : null}
-              {option.description && (
-                <div className="text-muted-foreground text-xs">
-                  {option.description}
-                </div>
-              )}
-              {option.absentOn && (
-                <div className="text-warning text-xs dark:text-warning">
-                  Absent on {option.absentOn.join(", ")}
-                </div>
-              )}
-              {option.unusable && (
-                <div className="text-muted-foreground text-xs">
-                  {option.unusable}
-                </div>
-              )}
+            <div
+              className="truncate px-2 pt-2 pb-1 font-medium text-muted-foreground text-xs"
+              data-slot="template-autocomplete-heading"
+              title={group.nodeName}
+            >
+              {group.nodeName}
             </div>
-            {index === selectedOptionIndex && !option.unusable && (
-              <Check className="size-4" />
-            )}
+            {group.options.map((option, groupIndex) => {
+              const index = group.startIndex + groupIndex;
+              return (
+                <div
+                  className={cn(
+                    "flex min-w-0 items-center justify-between gap-2 overflow-hidden rounded px-2 py-1.5 text-sm transition-colors",
+                    option.unusable
+                      ? "cursor-not-allowed opacity-60"
+                      : "cursor-pointer",
+                    index === selectedOptionIndex
+                      ? "bg-accent text-accent-foreground"
+                      : !option.unusable && "hover:bg-accent/50"
+                  )}
+                  data-option-index={index}
+                  data-slot="template-autocomplete-option"
+                  key={`${option.sourceKey}-${option.field}`}
+                  onMouseDown={(event) => {
+                    // Select on pointer down so contentEditable inputs don't blur first.
+                    event.preventDefault();
+                    if (!option.unusable) {
+                      onSelect(option.template);
+                    }
+                  }}
+                  onMouseEnter={() => setSelectedIndex(index)}
+                >
+                  <div className="min-w-0 flex-1 overflow-hidden">
+                    <div className="truncate font-medium">
+                      {referenceFieldLabel({
+                        path: option.field,
+                        label: option.label,
+                      })}
+                    </div>
+                    <div
+                      className="truncate font-mono text-muted-foreground text-xs"
+                      title={option.field}
+                    >
+                      {option.field}
+                    </div>
+                    {option.description && (
+                      <div className="break-words text-muted-foreground text-xs">
+                        {option.description}
+                      </div>
+                    )}
+                    {option.absentOn && (
+                      <div className="break-words text-warning text-xs dark:text-warning">
+                        Absent on {option.absentOn.join(", ")}
+                      </div>
+                    )}
+                    {option.unusable && (
+                      <div className="break-words text-muted-foreground text-xs">
+                        {option.unusable}
+                      </div>
+                    )}
+                  </div>
+                  {index === selectedOptionIndex && !option.unusable && (
+                    <Check className="size-4 shrink-0" />
+                  )}
+                </div>
+              );
+            })}
           </div>
         ))}
       </div>

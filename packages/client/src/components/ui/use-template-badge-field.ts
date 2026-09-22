@@ -52,6 +52,7 @@ export function useTemplateBadgeField(input: {
       top: 0,
       bottom: 0,
       left: 0,
+      width: 0,
     });
   const [autocompleteFilter, setAutocompleteFilter] = useState("");
   const [atSignPosition, setAtSignPosition] = useState<number | null>(null);
@@ -134,6 +135,7 @@ export function useTemplateBadgeField(input: {
         top: rect.top,
         bottom: rect.bottom,
         left: rect.left,
+        width: rect.width,
       });
     }
     setShowAutocomplete(true);
