@@ -140,14 +140,20 @@ function findTimestampOption(): HTMLElement {
 
 /** The menu as it reads, top to bottom. */
 function menuRows(): string[] {
-  return Array.from(document.body.querySelectorAll(".cursor-pointer")).map(
-    (option) => option.textContent ?? ""
-  );
+  return Array.from(
+    document.body.querySelectorAll("[data-slot='template-autocomplete-option']")
+  ).map((option) => option.textContent ?? "");
+}
+
+function menuHeadings(): string[] {
+  return Array.from(
+    document.body.querySelectorAll("[data-slot='template-autocomplete-heading']")
+  ).map((heading) => heading.textContent ?? "");
 }
 
 function findAutocompleteOptionByText(text: string): HTMLElement {
   const options = Array.from(
-    document.body.querySelectorAll(".cursor-pointer")
+    document.body.querySelectorAll("[data-slot='template-autocomplete-option']")
   ).filter((option): option is HTMLElement => option instanceof HTMLElement);
   const match = options.find((option) => option.textContent?.includes(text));
 
@@ -156,6 +162,32 @@ function findAutocompleteOptionByText(text: string): HTMLElement {
   }
 
   return match;
+}
+
+function findAutocompleteOptionInGroup(
+  groupName: string,
+  optionText: string
+): HTMLElement {
+  const groups = Array.from(
+    document.body.querySelectorAll("[data-slot='template-autocomplete-group']")
+  );
+  const group = groups.find(
+    (candidate) =>
+      candidate.querySelector("[data-slot='template-autocomplete-heading']")
+        ?.textContent === groupName
+  );
+  const option = Array.from(
+    group?.querySelectorAll("[data-slot='template-autocomplete-option']") ?? []
+  ).find(
+    (candidate): candidate is HTMLElement =>
+      candidate instanceof HTMLElement &&
+      candidate.textContent?.includes(optionText)
+  );
+
+  if (!option) {
+    throw new Error(`Failed to find ${optionText} under ${groupName}`);
+  }
+  return option;
 }
 
 function typeAtSymbol(textbox: HTMLElement) {
@@ -172,7 +204,7 @@ function typeTemplateFilter(textbox: HTMLElement, filter: string) {
 
 function mockFieldChromeRect(
   textbox: HTMLElement,
-  rect: { top: number; bottom: number; left: number }
+  rect: { top: number; bottom: number; left: number; width?: number }
 ) {
   const fieldChrome = textbox.parentElement;
   if (!(fieldChrome instanceof HTMLElement)) {
@@ -181,10 +213,10 @@ function mockFieldChromeRect(
   vi.spyOn(fieldChrome, "getBoundingClientRect").mockReturnValue({
     x: rect.left,
     y: rect.top,
-    width: 260,
+    width: rect.width ?? 260,
     height: rect.bottom - rect.top,
     top: rect.top,
-    right: rect.left + 260,
+    right: rect.left + (rect.width ?? 260),
     bottom: rect.bottom,
     left: rect.left,
     toJSON: () => ({}),
@@ -195,6 +227,7 @@ async function openMenuAt(rect: {
   top: number;
   bottom: number;
   left: number;
+  width?: number;
 }): Promise<HTMLElement> {
   const view = renderWithCatalog(
     <ControlledTemplateBadgeInput onValueChange={() => {}} />
@@ -354,7 +387,7 @@ describe("Template badge autocomplete", () => {
     typeAtSymbol(textbox);
 
     const option = await waitFor(() =>
-      findAutocompleteOptionByText("Patient.journey.journeyStatus")
+      findAutocompleteOptionByText("journey.journeyStatus")
     );
     fireEvent.mouseDown(option);
 
@@ -383,7 +416,7 @@ describe("Template badge autocomplete", () => {
     );
     fireEvent.mouseDown(
       await waitFor(() =>
-        findAutocompleteOptionByText("Patient.attributes.segment")
+        findAutocompleteOptionByText("attributes.segment")
       )
     );
 
@@ -491,9 +524,7 @@ describe("Template badge autocomplete", () => {
     typeAtSymbol(view.getByRole("textbox"));
 
     await waitFor(() => {
-      expect(menuRows()).toEqual([
-        "Lead timeWebhook.leadTimeHow long before",
-      ]);
+      expect(menuRows()).toEqual(["Lead timeleadTimeHow long before"]);
     });
   });
 
@@ -517,7 +548,7 @@ describe("Template badge autocomplete", () => {
 
     await waitFor(() => {
       expect(menuRows()).toEqual([
-        "Settlement timeWebhook.occurredAtWhen it happened",
+        "Settlement timeoccurredAtWhen it happened",
       ]);
     });
   });
@@ -543,8 +574,8 @@ describe("Template badge autocomplete", () => {
 
     await waitFor(() => {
       expect(menuRows()).toEqual([
-        "Lead timeWebhook.leadTimeHow long before",
-        "GraceWebhook.grace",
+        "Lead timeleadTimeHow long before",
+        "Gracegrace",
       ]);
     });
   });
@@ -572,7 +603,7 @@ describe("Template badge autocomplete", () => {
       const scrolled = scrollIntoView.mock.instances.at(-1);
       expect(scrolled).toBeInstanceOf(HTMLElement);
       expect((scrolled as HTMLElement).textContent).toContain(
-        "Webhook.amountCents"
+        "amountCents"
       );
     });
 
@@ -631,7 +662,7 @@ describe("Template badge autocomplete", () => {
     typeAtSymbol(textbox);
 
     const option = await waitFor(() =>
-      findAutocompleteOptionByText("Send Message.status")
+      findAutocompleteOptionByText("status")
     );
     fireEvent.mouseDown(option);
 
@@ -652,9 +683,9 @@ describe("Template badge autocomplete", () => {
 
     await waitFor(() => {
       expect(menuRows()).toEqual([
-        "Patient nameWebhook.patientNamePatient name",
-        "Settlement timeWebhook.occurredAtWhen it happened",
-        "Amount centsWebhook.amountCentsAmount in cents",
+        "Patient namepatientNamePatient name",
+        "Settlement timeoccurredAtWhen it happened",
+        "Amount centsamountCentsAmount in cents",
       ]);
     });
   });
@@ -668,7 +699,7 @@ describe("Template badge autocomplete", () => {
 
     await waitFor(() => {
       expect(menuRows()).toEqual([
-        "Settlement timeWebhook.occurredAtWhen it happened",
+        "Settlement timeoccurredAtWhen it happened",
       ]);
     });
   });
@@ -727,14 +758,21 @@ describe("Template autocomplete placement", () => {
     // CSS `bottom` keeps the menu growing up, so it cannot cover the caret.
     expect(menu.style.bottom).toBe("84px");
     expect(menu.style.top).toBe("");
+    expect(menu.style.width).toBe("260px");
   });
 
   it("opens below a field that has room under it", async () => {
-    const menu = await openMenuAt({ top: 120, bottom: 156, left: 40 });
+    const menu = await openMenuAt({
+      top: 120,
+      bottom: 156,
+      left: 40,
+      width: 412,
+    });
 
     expect(menu.dataset.side).toBe("bottom");
     expect(menu.style.top).toBe("160px");
     expect(menu.style.bottom).toBe("");
+    expect(menu.style.width).toBe("412px");
   });
 });
 
@@ -965,9 +1003,10 @@ describe("Template badge autocomplete node rows", () => {
 
     await waitFor(() => {
       // The node that does produce something keeps its whole-output row.
-      expect(menuRows()).toContain("Send Message");
+      expect(menuRows()).toContain("Entire output");
+      expect(menuHeadings()).toContain("Send Message");
     });
-    expect(menuRows()).not.toContain("Event Split");
+    expect(menuHeadings()).not.toContain("Event Split");
   });
 
   it("offers a typed open-record key for every upstream record", async () => {
@@ -1073,14 +1112,15 @@ describe("Template badge autocomplete node rows", () => {
     typeTemplateFilter(textbox, "tags.order.id");
 
     await waitFor(() => {
+      expect(menuHeadings()).toEqual(["Tag First", "Tag Second"]);
       expect(menuRows()).toEqual([
-        'Order IDTag First.tags["order.id"]',
-        'Order IDTag Second.tags["order.id"]',
+        'Order IDtags["order.id"]',
+        'Order IDtags["order.id"]',
       ]);
     });
 
     fireEvent.mouseDown(
-      findAutocompleteOptionByText('Tag First.tags["order.id"]')
+      findAutocompleteOptionInGroup("Tag First", 'tags["order.id"]')
     );
     await waitFor(() => {
       expect(latestValue).toBe('{{@send_1:Tag First.tags["order.id"]}}');
@@ -1174,10 +1214,8 @@ describe("Template badge autocomplete node rows", () => {
     typeAtSymbol(view.getByRole("textbox"));
 
     await waitFor(() => {
-      expect(menuRows()).toContain(
-        'Campaign nameTag First.tags["campaign.name"]'
-      );
-      expect(menuRows()).toContain('Items 0Tag First.tags["items[0]"]');
+      expect(menuRows()).toContain('Campaign nametags["campaign.name"]');
+      expect(menuRows()).toContain('Items 0tags["items[0]"]');
     });
   });
 });
