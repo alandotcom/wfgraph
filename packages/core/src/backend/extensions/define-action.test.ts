@@ -201,6 +201,100 @@ describe("defineAction", () => {
     ]);
   });
 
+  it("merges authored form metadata over schema-derived fields", () => {
+    const action = defineAction({
+      id: "custom/template-email",
+      label: "Template Email",
+      description: "Builds an email from an application template",
+      input: z.object({
+        templateId: z.string().optional(),
+        variables: z.string().optional(),
+      }),
+      configFields: [
+        {
+          key: "templateId",
+          label: "Template",
+          type: "provider-select",
+          optionsSource: { provider: "templates" },
+        },
+        {
+          key: "variables",
+          label: "Variables",
+          type: "provider-fields",
+          optionsSource: {
+            provider: "template-variables",
+            parameters: ["templateId"],
+          },
+          showWhen: { field: "templateId", equals: "welcome" },
+        },
+      ],
+      configOptions: {
+        templates: {
+          answers: "options",
+          load: async () => async () => ({ status: "options", options: [] }),
+        },
+        "template-variables": {
+          answers: "fields",
+          load: async () => async () => ({ status: "fields", fields: [] }),
+        },
+      },
+      handler() {
+        return {};
+      },
+    });
+
+    expect(action.configFields).toEqual([
+      expect.objectContaining({
+        key: "templateId",
+        label: "Template",
+        type: "provider-select",
+        optionsSource: { provider: "templates" },
+      }),
+      expect.objectContaining({
+        key: "variables",
+        label: "Variables",
+        type: "provider-fields",
+        optionsSource: {
+          provider: "template-variables",
+          parameters: ["templateId"],
+        },
+        showWhen: { field: "templateId", equals: "welcome" },
+      }),
+    ]);
+    expect(action.configOptions).toHaveProperty("templates");
+  });
+
+  it("holds authored field and sibling references to input keys", () => {
+    const build = () =>
+      defineAction({
+        id: "custom/typed-form",
+        label: "Typed Form",
+        description: "Checks authored form keys",
+        input: z.object({ templateId: z.string().optional() }),
+        configFields: [
+          {
+            // @ts-expect-error the input schema declares no `missing` key
+            key: "missing",
+            type: "text",
+          },
+          {
+            key: "templateId",
+            type: "provider-select",
+            optionsSource: {
+              provider: "templates",
+              // @ts-expect-error provider parameters name sibling input keys
+              parameters: ["missing"],
+            },
+          },
+        ],
+        handler() {
+          return {};
+        },
+      });
+
+    expect(build).toBeTypeOf("function");
+  });
+
   it("keeps schema titles and descriptions separate in derived configFields", () => {
     const action = defineAction({
       id: "custom/field-metadata",

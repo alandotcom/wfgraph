@@ -17,6 +17,7 @@ function assertNever(value: never): never {
 
 function returnKnownOperationId(id: WfGraphOperationId): WfGraphOperationId {
   switch (id) {
+    case "action.configOptions":
     case "agent.chat":
     case "integration.getAll":
     case "integration.get":
@@ -80,6 +81,7 @@ describe("Workflow Graph authorization operations", () => {
   it("gives every protected operation a stable unique id", () => {
     expect(WfGraphOperationIds).toEqual(
       expect.arrayContaining([
+        "action.configOptions",
         "agent.chat",
         "integration.getAll",
         "workflow.getAll",
@@ -91,6 +93,9 @@ describe("Workflow Graph authorization operations", () => {
       ])
     );
     expect(new Set(WfGraphOperationIds).size).toBe(WfGraphOperationIds.length);
+    expect(WfGraphOperations.actionConfigOptions.permission).toBe(
+      "workflow.write"
+    );
     expect(WfGraphOperations.workflowExecute.permission).toBe("run.manage");
     // The preview names run ids and reports what each run is parked on, so it
     // is a read of runs rather than a read of the workflow.

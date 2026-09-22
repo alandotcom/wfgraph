@@ -77,14 +77,12 @@ export type MissingIntegrationIssue = {
 };
 
 /**
- * A provider-backed field whose requirements could not be read at all.
+ * Guidance for a provider-backed field that cannot block a run.
  *
- * Only the operator's own connection can say what such a field still needs, so
- * a refused answer -- an expired grant, a connection deleted since the node was
- * wired, a provider that is down -- leaves that one field unjudged. It is a
- * warning rather than a blocker because nothing here says the field is wrong,
- * only that it went unchecked; the reader gets the node's name and a way into
- * it, and "Run draft anyway" stays available.
+ * An integration provider can leave a field unchecked when its Connection
+ * refuses or cannot answer. Application-scoped host fields are editor guidance,
+ * so an unfilled value they declare stays a warning too. The reader gets the
+ * node's name and a way into it, and "Run draft anyway" stays available.
  */
 export type UnverifiedProviderFieldIssue = {
   kind: "unverified_provider_field";

@@ -73,12 +73,17 @@ export function ProviderFieldsField({
   field,
   value,
   config,
+  owner,
   onChange,
   disabled,
   placeholder,
   descriptionId,
 }: ProviderFieldProps) {
-  const state = useConfigOptions({ source: field.optionsSource, config });
+  const state = useConfigOptions({
+    owner,
+    source: field.optionsSource,
+    config,
+  });
   const stored = readStoredObject(value);
 
   const rawTextarea = (

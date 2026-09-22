@@ -25,9 +25,11 @@ import {
   attemptVendorStep,
   describeUnavailableIntegration,
 } from "#src/backend/services/integrations/vendor-call";
-import type { ConfigOptionsAnswer } from "#src/backend/extensions/config-options";
 import {
-  type ExtensionCatalog,
+  acceptedConfigOptionsParameters,
+  type ConfigOptionsAnswer,
+} from "#src/backend/extensions/config-options";
+import {
   fieldsForIntegration,
   findIntegration,
 } from "@wfgraph/shared/extensions/catalog";
@@ -85,12 +87,11 @@ export const postIntegrationConfigOptions = Effect.fn(
     return yield* new InvalidInput({ error });
   }
 
-  const accepted = acceptedParameters(
-    extensions.catalog,
-    integration.type,
+  const accepted = acceptedConfigOptionsParameters({
+    fields: fieldsForIntegration(extensions.catalog, integration.type),
     provider,
-    parameters
-  );
+    parameters,
+  });
 
   const resolved = yield* resolveIntegrationCredentials(integrationId);
   const answerFn = yield* attempt(() => entry.load());
@@ -142,39 +143,6 @@ export const postIntegrationConfigOptions = Effect.fn(
     ? { status: answer.status, fields: answer.fields.map(omitUndefined) }
     : answer;
 });
-
-/**
- * The parameters this provider is allowed to be asked with.
- *
- * Every value here lands in a request the connection's credentials pay for, so
- * the map is intersected against what a field actually declared rather than
- * forwarded as the browser sent it. The declaration is the allowlist; a count
- * would only be a proxy for it.
- */
-function acceptedParameters(
-  catalog: ExtensionCatalog,
-  integrationType: string,
-  provider: string,
-  parameters: Record<string, string>
-): Record<string, string> {
-  const declared = new Set<string>();
-  for (const field of fieldsForIntegration(catalog, integrationType)) {
-    if (field.optionsSource?.provider === provider) {
-      for (const key of field.optionsSource.parameters ?? []) {
-        declared.add(key);
-      }
-    }
-  }
-
-  const accepted: Array<[string, string]> = [];
-  for (const key of declared) {
-    const value = Object.hasOwn(parameters, key) ? parameters[key] : undefined;
-    if (value !== undefined) {
-      accepted.push([key, value]);
-    }
-  }
-  return Object.fromEntries(accepted);
-}
 
 /** An `unavailable` answer is valid whatever the provider declared it answers. */
 function answerKindMatches(

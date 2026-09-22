@@ -2,8 +2,9 @@
 name: host-actions
 description: >
   defineAction for host-owned steps: Promise handlers, Standard Schema input and
-  output, step.run, readCredentials, sideEffect. Load when adding application
-  actions beside integrations. Not for defineIntegration (Effect plugin path).
+  output, authored config forms, application-scoped option loaders, step.run,
+  readCredentials, sideEffect. Load when adding application actions beside
+  integrations. Not for defineIntegration (Effect plugin path).
 metadata:
   type: sub-skill
   library: wfgraph
@@ -28,7 +29,17 @@ separate help text. Use `title` only when the intended label cannot be derived
 from the key. A closed string set can label each choice with `title` on its
 singleton `const` or `enum` branch under JSON Schema `anyOf` or `oneOf`. Use an
 annotated Zod literal union; the editor displays each title and stores its raw
-literal value.
+literal value. Use `configFields` for presentation the schema cannot express,
+including grouping, ordering, placeholders, conditional visibility, and
+provider-backed controls.
+
+A provider-backed host field reads application-scoped choices through the
+action's `configOptions`. Its loader receives only the sibling config values
+named by `optionsSource.parameters`; it receives no Connection or credentials.
+Loaders guide the editor and editor-side workflow issue checks. Their unfilled
+fields and failures remain warnings. Draft persistence, the publication service,
+and action execution do not call them. Copy the complete host loader form from
+`docs/embedding.md` ("Dynamic host action fields").
 
 ## Core Patterns
 

@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 import { WfGraphOperations } from "#src/authorization/operations";
 import { OAUTH_GRANT_CONFIG_KEY } from "#src/types/integration";
-import { hasOnlySafeRecordKeys, isSafeRecordKey } from "#src/types/record-key";
+import { hasOnlySafeRecordKeys } from "#src/types/record-key";
 import { NonEmptyTrimmedString, listOf } from "#src/types/schema";
 import { isoTimestampString } from "#src/types/timestamp";
 import {
@@ -10,6 +10,11 @@ import {
   idSchema,
   route,
 } from "#src/rpc/contracts/contract-support";
+import {
+  configOptionsAnswerSchema,
+  configOptionsParametersSchema,
+  configOptionsProviderNameSchema,
+} from "#src/rpc/contracts/config-options";
 
 /**
  * Which integration a connection is for.
@@ -20,13 +25,6 @@ import {
  * here could only be a second, staler copy of that answer.
  */
 const integrationTypeSchema = NonEmptyTrimmedString;
-
-const safeNonEmptyRecordKeySchema = NonEmptyTrimmedString.check(
-  Schema.makeFilter(isSafeRecordKey, {
-    expected:
-      "a non-empty record key that is not reserved by JavaScript objects",
-  })
-);
 
 const integrationConfigSchema = Schema.Record(
   Schema.String,
@@ -83,63 +81,6 @@ const integrationWithConfigSchema = Schema.Struct({
   ...integrationFields,
   config: integrationConfigSchema,
 });
-
-/**
- * What a provider-backed config field is filled with.
- *
- * Three arms, because a provider refusing is an answer rather than a failure:
- * the sentence it wrote is what a builder acts on, and an error response would
- * lose it. `not_permitted` is the one arm reconnecting can fix.
- */
-const configOptionsAnswerSchema = Schema.Union([
-  Schema.Struct({
-    status: Schema.Literal("options"),
-    options: Schema.Array(
-      Schema.Struct({
-        value: NonEmptyTrimmedString,
-        label: Schema.String,
-      })
-    ),
-  }),
-  Schema.Struct({
-    status: Schema.Literal("fields"),
-    fields: Schema.Array(
-      Schema.Struct({
-        key: safeNonEmptyRecordKeySchema,
-        label: Schema.String,
-        defaultValue: Schema.optionalKey(Schema.String),
-        description: Schema.optionalKey(Schema.String),
-        type: Schema.optionalKey(Schema.Literals(["string", "number"])),
-        required: Schema.optionalKey(Schema.Boolean),
-      })
-    ),
-  }),
-  Schema.Struct({
-    status: Schema.Literal("unavailable"),
-    reason: Schema.Literals(["not_permitted", "unreachable", "refused"]),
-    message: Schema.String,
-  }),
-]);
-
-/**
- * The sibling config values named by a field's `optionsSource`.
- *
- * The real allowlist is server-side: the service intersects this against what a
- * field actually declared for the provider being asked, so an undeclared key
- * never reaches the integration. This bound is only what keeps an oversized body
- * from being decoded at all.
- */
-const configOptionsParametersSchema = Schema.Record(
-  Schema.String,
-  Schema.String.check(Schema.isMaxLength(2048))
-).check(
-  Schema.makeFilter(hasOnlySafeRecordKeys, {
-    expected: "provider parameter keys not reserved by JavaScript objects",
-  }),
-  Schema.makeFilter((values) => Object.keys(values).length <= 8, {
-    expected: "at most eight provider parameters",
-  })
-);
 
 const integrationTestResultSchema = Schema.Struct({
   status: Schema.Literals(["success", "error"]),
@@ -241,12 +182,12 @@ export const integrationContract = {
       contractSchema(
         Schema.Struct({
           integrationId: idSchema,
-          provider: safeNonEmptyRecordKeySchema,
-          parameters: Schema.optionalKey(configOptionsParametersSchema),
+          provider: configOptionsProviderNameSchema(),
+          parameters: Schema.optionalKey(configOptionsParametersSchema()),
         })
       )
     )
-    .output(contractSchema(configOptionsAnswerSchema)),
+    .output(contractSchema(configOptionsAnswerSchema())),
   testCredentials: route(
     "POST",
     "/integrations/test",

@@ -24,7 +24,7 @@ export type SelectOption = {
 };
 
 /**
- * The field types whose shape the node's connection answers.
+ * The field types whose shape a server-side provider answers.
  *
  * A closed union is matched against this rather than by name prefix, so adding a
  * type is one edit and a rename cannot quietly stop matching.
@@ -33,6 +33,9 @@ export const PROVIDER_FIELD_TYPES = new Set<ActionConfigFieldBase["type"]>([
   "provider-select",
   "provider-fields",
 ]);
+
+/** Maximum distinct sibling values one provider-backed field can send. */
+export const MAX_CONFIG_OPTIONS_PARAMETERS = 8;
 
 /**
  * Where a field's options or sub-fields come from, when the answer depends on

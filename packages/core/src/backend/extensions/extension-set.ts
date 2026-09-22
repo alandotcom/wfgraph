@@ -40,7 +40,12 @@ import {
 } from "#src/backend/extensions/define-integration";
 import type { IntegrationTestLoader } from "#src/backend/extensions/integration-test";
 import type { IntegrationOAuth } from "#src/backend/extensions/oauth";
-import type { ConfigOptionsProvider } from "#src/backend/extensions/config-options";
+import {
+  assertConfigOptionsProviders,
+  assertConfigOptionsWiring,
+  type ActionConfigOptionsProvider,
+  type ConfigOptionsProvider,
+} from "#src/backend/extensions/config-options";
 import type { IntegrationWebhook } from "#src/backend/extensions/integration-webhook";
 import {
   isSafeRecordKey,
@@ -96,6 +101,11 @@ export type ExtensionSet = {
     type: string,
     provider: string
   ) => ConfigOptionsProvider | undefined;
+  /** Application-scoped config behavior owned by one host action. */
+  readonly actionConfigOptionsFor: (
+    actionId: string,
+    provider: string
+  ) => ActionConfigOptionsProvider | undefined;
   /** Provider behavior for OAuth routes; none of this map crosses the catalog. */
   readonly oauthFor: (type: string) => IntegrationOAuth | undefined;
   /**
@@ -353,6 +363,8 @@ type Assembly = {
   tests: Map<string, IntegrationTestLoader>;
   /** Keyed first by integration type, then by the provider it declares. */
   configOptions: Map<string, Map<string, ConfigOptionsProvider>>;
+  /** Keyed first by host action id, then by the provider it declares. */
+  actionConfigOptions: Map<string, Map<string, ActionConfigOptionsProvider>>;
   oauth: Map<string, IntegrationOAuth>;
   webhooks: Map<string, IntegrationWebhook>;
 };
@@ -428,29 +440,6 @@ function readIntegration(
 }
 
 /**
- * A provider-backed field needs an integration behind it.
- *
- * `checkIntegration` holds an integration's own fields to a declared provider,
- * but a host's `defineAction` has no integration and no connection, so a field
- * asking one there would draw a control nothing can ever answer.
- */
-function assertProviderFieldsBelongToAnIntegration(
-  action: ActionMetadata
-): void {
-  if (action.integration) {
-    return;
-  }
-
-  for (const field of flattenConfigFields(action.configFields)) {
-    if (field.optionsSource || PROVIDER_FIELD_TYPES.has(field.type)) {
-      throw new Error(
-        `Action "${action.id}" is a host action, so its "${field.key}" field has no connection to ask. Provider-backed fields belong to an integration.`
-      );
-    }
-  }
-}
-
-/**
  * A host's own action, in both halves the same way an integration's is.
  *
  * `defineAction` has already derived the config fields and the output fields from
@@ -460,6 +449,18 @@ function assertProviderFieldsBelongToAnIntegration(
  * one kind of thing to find.
  */
 function readHostAction(action: ActionDefinition, into: Assembly): void {
+  assertConfigOptionsProviders({
+    subject: `Action "${action.id}"`,
+    providers: action.configOptions,
+  });
+  assertConfigOptionsWiring({
+    actionId: action.id,
+    fields: action.configFields,
+    providers: action.configOptions,
+    owner: `host action "${action.id}"`,
+    requireEveryProviderReferenced: true,
+  });
+
   into.actions.push(
     omitUndefined({
       id: action.id,
@@ -475,6 +476,15 @@ function readHostAction(action: ActionDefinition, into: Assembly): void {
     })
   );
   into.steps.set(action.id, action.implement);
+
+  for (const [provider, entry] of Object.entries(action.configOptions ?? {})) {
+    let providers = into.actionConfigOptions.get(action.id);
+    if (!providers) {
+      providers = new Map();
+      into.actionConfigOptions.set(action.id, providers);
+    }
+    providers.set(provider, entry);
+  }
 }
 
 export function assembleExtensions(
@@ -530,6 +540,7 @@ export function assembleExtensions(
     steps: new Map(),
     tests: new Map(),
     configOptions: new Map(),
+    actionConfigOptions: new Map(),
     oauth: new Map(),
     webhooks: new Map(),
   };
@@ -548,7 +559,6 @@ export function assembleExtensions(
     assertSafeConfigFieldKeys(action);
     assertSafeReferencePaths(`Action "${action.id}"`, action.outputFields);
     assertLiteralFieldsRenderNoTemplatePicker(action);
-    assertProviderFieldsBelongToAnIntegration(action);
   }
 
   return {
@@ -564,6 +574,8 @@ export function assembleExtensions(
     connectionTestFor: (type) => into.tests.get(type),
     configOptionsFor: (type, provider) =>
       into.configOptions.get(type)?.get(provider),
+    actionConfigOptionsFor: (actionId, provider) =>
+      into.actionConfigOptions.get(actionId)?.get(provider),
     oauthFor: (type) => into.oauth.get(type),
     webhookFor: (type) => into.webhooks.get(type),
     eventByName: (name) => eventsByName.get(name),

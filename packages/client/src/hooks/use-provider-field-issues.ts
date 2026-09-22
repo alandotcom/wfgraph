@@ -3,14 +3,14 @@
  *
  * A `provider-fields` field draws one input per value the chosen resource
  * declares, and which of those the provider has no default for is the
- * connection's answer rather than anything the catalog knows. So the shared
+ * source's answer rather than anything the catalog knows. So the shared
  * collector cannot raise these, and this asks the same question the config panel
  * asks, for every node rather than only the open one.
  *
  * An unanswered question raises nothing. Absence of an answer is not evidence a
  * value is missing, and accusing a node while its query is in flight would flag
  * the whole canvas on every load. That is the same rule the collector already
- * applies to the connection list. A refused answer is left silent here for the
+ * applies to the Connection list. A refused answer is left silent here for the
  * same reason: a provider that blinks would badge the canvas. The click-time
  * recheck behind Run and Publish is where a refusal is worth saying out loud,
  * and `fetchProviderFieldIssues` raises it there.
@@ -18,21 +18,25 @@
 
 import { useQueries } from "@tanstack/react-query";
 import { useMemo } from "react";
-import { configOptionsQueryOptions } from "#src/lib/rpc-query";
-import { can } from "#src/lib/authorization";
+import {
+  canQueryConfigOptions,
+  providerConfigOptionsQueryOptions,
+} from "#src/lib/config-options-query";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
-import type { MissingRequiredFieldIssue } from "@wfgraph/shared/graph/workflow-issues";
+import type {
+  MissingRequiredFieldIssue,
+  UnverifiedProviderFieldIssue,
+} from "@wfgraph/shared/graph/workflow-issues";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import {
   providerFieldIssuesFor,
   providerFieldQuestions,
 } from "#src/lib/provider-field-issues";
-import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 
 export function useProviderFieldIssues(
   nodes: readonly WorkflowNode[],
   catalog: ExtensionCatalog
-): MissingRequiredFieldIssue[] {
+): Array<MissingRequiredFieldIssue | UnverifiedProviderFieldIssue> {
   const questions = useMemo(
     () => providerFieldQuestions(nodes, catalog),
     [nodes, catalog]
@@ -40,12 +44,8 @@ export function useProviderFieldIssues(
 
   const answers = useQueries({
     queries: questions.map((question) => ({
-      ...configOptionsQueryOptions({
-        integrationId: question.integrationId,
-        provider: question.provider,
-        parameters: question.parameters,
-      }),
-      enabled: can(WfGraphOperations.integrationConfigOptions.id),
+      ...providerConfigOptionsQueryOptions(question),
+      enabled: canQueryConfigOptions(question.owner),
     })),
   });
 

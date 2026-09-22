@@ -25,6 +25,7 @@ import { matchesShowWhen } from "@wfgraph/shared/types/show-when";
 import type { UpdateNodeConfig } from "./node-config-patch";
 import { ProviderFieldsField } from "./provider-fields-field";
 import { ProviderSelectField } from "./provider-select-field";
+import type { ConfigOptionsOwner } from "#src/lib/config-options-query";
 
 type FieldProps = {
   field: ActionConfigFieldBase;
@@ -36,6 +37,8 @@ type FieldProps = {
    * own keys.
    */
   config: Record<string, unknown>;
+  /** Which server-side adapter answers provider-backed fields. */
+  owner: ConfigOptionsOwner;
   /**
    * What to show while the field is empty. Resolved by `renderField` rather
    * than read off `field`, because a field that falls back to a Connection
@@ -306,6 +309,7 @@ function renderField(
   field: ActionConfigFieldBase,
   config: Record<string, unknown>,
   onUpdateConfig: UpdateNodeConfig,
+  owner: ConfigOptionsOwner,
   connectionDefaults: Record<string, string>,
   disabled?: boolean
 ) {
@@ -362,6 +366,7 @@ function renderField(
         disabled={disabled}
         field={field}
         onChange={(val) => onUpdateConfig({ [field.key]: val })}
+        owner={owner}
         placeholder={placeholder}
         value={value}
       />
@@ -377,6 +382,7 @@ function FieldGroup({
   fields,
   config,
   onUpdateConfig,
+  owner,
   connectionDefaults,
   disabled,
   defaultExpanded = false,
@@ -385,6 +391,7 @@ function FieldGroup({
   fields: readonly ActionConfigFieldBase[];
   config: Record<string, unknown>;
   onUpdateConfig: UpdateNodeConfig;
+  owner: ConfigOptionsOwner;
   connectionDefaults: Record<string, string>;
   disabled?: boolean | undefined;
   defaultExpanded?: boolean | undefined;
@@ -412,6 +419,7 @@ function FieldGroup({
               field,
               config,
               onUpdateConfig,
+              owner,
               connectionDefaults,
               disabled
             )
@@ -427,6 +435,7 @@ const NO_CONNECTION_DEFAULTS: Record<string, string> = {};
 
 type ActionConfigRendererProps = {
   fields: readonly ActionConfigField[];
+  owner: ConfigOptionsOwner;
   config: Record<string, unknown>;
   onUpdateConfig: UpdateNodeConfig;
   /**
@@ -444,6 +453,7 @@ type ActionConfigRendererProps = {
  */
 export function ActionConfigRenderer({
   fields,
+  owner,
   config,
   onUpdateConfig,
   connectionDefaults = NO_CONNECTION_DEFAULTS,
@@ -463,6 +473,7 @@ export function ActionConfigRenderer({
               key={`group-${field.label}`}
               label={field.label}
               onUpdateConfig={onUpdateConfig}
+              owner={owner}
             />
           );
         }
@@ -471,6 +482,7 @@ export function ActionConfigRenderer({
           field,
           config,
           onUpdateConfig,
+          owner,
           connectionDefaults,
           disabled
         );

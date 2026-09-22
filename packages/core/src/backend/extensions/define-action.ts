@@ -13,10 +13,13 @@
  */
 
 import {
+  type ActionConfigFieldFor,
   buildStep,
   type HandlerAnswer,
   type StepBag,
 } from "#src/backend/extensions/steps/define-step";
+import { buildConfigForm } from "#src/backend/extensions/steps/config-form";
+import type { ActionConfigOptionsProvider } from "#src/backend/extensions/config-options";
 import type { StepFactory } from "#src/backend/extensions/steps/step-runner";
 import type { ActionConfigField } from "@wfgraph/shared/plugins/action-fields";
 import {
@@ -99,6 +102,15 @@ export type ActionDefinition = ActionIdentity & {
   readonly configFields: ActionConfigField[];
 
   /**
+   * Application code that answers provider-backed fields in this action's
+   * configuration form. The implementations stay on the server; only each
+   * field's `optionsSource` crosses in the extension catalog.
+   */
+  readonly configOptions?:
+    | Readonly<Record<string, ActionConfigOptionsProvider>>
+    | undefined;
+
+  /**
    * Describes the fields available in this action's output for downstream
    * template autocomplete (e.g. `{{ @NodeLabel.appointmentId }}`), derived from
    * `output`. Field paths should not include the `data.` prefix -- they are
@@ -130,47 +142,66 @@ type ActionHandler<TInput, TOutput> = (
   bag: ActionBag<TInput>
 ) => HandlerAnswer<TOutput>;
 
-export type DefineActionInput<TInput extends Record<string, unknown>> =
-  ActionIdentity & {
-    /**
-     * The schema that validates the resolved config values before they reach
-     * your handler. Write it in Effect Schema, Zod, or arktype -- whichever, it
-     * is passed as it is, with no wrapping.
-     *
-     * `configFields` are auto-derived from the schema's JSON Schema
-     * representation. A readable label is derived from each property key.
-     * `title` overrides that label, `description` supplies help text, and a
-     * title on a singleton union branch labels that enum choice.
-     */
-    input: InputSchema<TInput>;
+type ActionFormInput<TInput extends Record<string, unknown>> = {
+  /**
+   * The schema that validates the resolved config values before they reach
+   * your handler. Write it in Effect Schema, Zod, or arktype -- whichever, it
+   * is passed as it is, with no wrapping.
+   *
+   * `configFields` are auto-derived from the schema's JSON Schema
+   * representation. A readable label is derived from each property key.
+   * `title` overrides that label, `description` supplies help text, and a
+   * title on a singleton union branch labels that enum choice.
+   */
+  input: InputSchema<TInput>;
 
-    /**
-     * Where the work is. An action with no `output` is addressable by node and
-     * not by field, so what this answers is passed on untyped and unencoded.
-     */
-    handler: ActionHandler<TInput, unknown>;
-  };
+  /**
+   * What the input schema cannot say about the form: control choice, ordering,
+   * grouping, placeholders, and conditional visibility. Keys and sibling
+   * references are held to the input type. Host actions have no Connection
+   * defaults.
+   */
+  configFields?: readonly ActionConfigFieldFor<TInput>[] | undefined;
+
+  /**
+   * Application-scoped loaders named by provider-backed `configFields`.
+   * A loader receives only the sibling config values its field declared.
+   */
+  configOptions?:
+    | Readonly<Record<string, ActionConfigOptionsProvider>>
+    | undefined;
+};
+
+export type DefineActionInput<TInput extends Record<string, unknown>> =
+  ActionIdentity &
+    ActionFormInput<TInput> & {
+      /**
+       * Where the work is. An action with no `output` is addressable by node and
+       * not by field, so what this answers is passed on untyped and unencoded.
+       */
+      handler: ActionHandler<TInput, unknown>;
+    };
 
 export type DefineActionInputWithOutput<
   TInput extends Record<string, unknown>,
   TOutput extends Record<string, unknown>,
-> = ActionIdentity & {
-  input: InputSchema<TInput>;
-  /**
-   * The schema describing what the handler answers with. Auto-derives
-   * `outputFields` via `~standard.jsonSchema.output()` and types the return.
-   */
-  output: OutputSchema<TOutput>;
-  /**
-   * Where the work is.
-   *
-   * `NoInfer` is what keeps the schemas the source of truth. Without it the
-   * handler's own return is an inference site too, so an action answering with
-   * fewer fields than `output` declares makes the schema answer to the handler
-   * and the editor then offers a field no run produces.
-   */
-  handler: ActionHandler<NoInfer<TInput>, NoInfer<TOutput>>;
-};
+> = ActionIdentity &
+  ActionFormInput<TInput> & {
+    /**
+     * The schema describing what the handler answers with. Auto-derives
+     * `outputFields` via `~standard.jsonSchema.output()` and types the return.
+     */
+    output: OutputSchema<TOutput>;
+    /**
+     * Where the work is.
+     *
+     * `NoInfer` is what keeps the schemas the source of truth. Without it the
+     * handler's own return is an inference site too, so an action answering with
+     * fewer fields than `output` declares makes the schema answer to the handler
+     * and the editor then offers a field no run produces.
+     */
+    handler: ActionHandler<NoInfer<TInput>, NoInfer<TOutput>>;
+  };
 
 function normalizeActionIdentity(
   definition: ActionIdentity
@@ -278,7 +309,11 @@ export function defineAction<TInput extends Record<string, unknown>>(
 
   return {
     ...normalized,
-    configFields: configFieldsFromInputSchema(schema),
+    configFields: buildConfigForm(
+      configFieldsFromInputSchema(schema),
+      definition.configFields ?? []
+    ),
+    configOptions: definition.configOptions,
     outputFields: outputSchema
       ? outputFieldsFromSchema(outputSchema)
       : undefined,

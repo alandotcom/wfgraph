@@ -11,7 +11,14 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ActionConfigRenderer } from "#src/components/workflow/config/action-config-renderer";
 import type { ConfigOptionsAnswer } from "#src/lib/rpc-client";
-import { configOptionsQueryOptions } from "#src/lib/rpc-query";
+import {
+  type ConfigOptionsOwner,
+  providerConfigOptionsQueryOptions,
+} from "#src/lib/config-options-query";
+import {
+  parseRpcRequestInput,
+  rpcJsonResponse,
+} from "#src/lib/rpc-fetch-test-support";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { ActionConfigField } from "@wfgraph/shared/plugins/action-fields";
@@ -23,6 +30,7 @@ import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 
 beforeEach(() => {
   installAuthorizationGrantsForTests([
+    WfGraphOperations.actionConfigOptions.id,
     WfGraphOperations.integrationConfigOptions.id,
   ]);
 });
@@ -53,6 +61,7 @@ const variablesField: ActionConfigField = {
 function renderFields(options: {
   fields: readonly ActionConfigField[];
   config: Record<string, unknown>;
+  owner?: ConfigOptionsOwner;
   seed?: Array<{
     provider: string;
     parameters?: Record<string, string>;
@@ -60,6 +69,13 @@ function renderFields(options: {
   }>;
 }) {
   const onUpdateConfig = vi.fn();
+  const owner: ConfigOptionsOwner = options.owner ?? {
+    kind: "integration",
+    integrationId:
+      typeof options.config.integrationId === "string"
+        ? options.config.integrationId
+        : undefined,
+  };
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
@@ -67,14 +83,12 @@ function renderFields(options: {
   });
 
   for (const entry of options.seed ?? []) {
-    queryClient.setQueryData(
-      configOptionsQueryOptions({
-        integrationId: String(options.config.integrationId),
-        provider: entry.provider,
-        parameters: entry.parameters ?? {},
-      }).queryKey,
-      entry.answer
-    );
+    const queryOptions = providerConfigOptionsQueryOptions({
+      owner,
+      provider: entry.provider,
+      parameters: entry.parameters ?? {},
+    });
+    queryClient.setQueryData(queryOptions.queryKey, entry.answer);
   }
 
   const tree = (config: Record<string, unknown>) => (
@@ -84,6 +98,7 @@ function renderFields(options: {
           config={config}
           fields={options.fields}
           onUpdateConfig={onUpdateConfig}
+          owner={owner}
         />
       </QueryClientProvider>
     </ExtensionCatalogProvider>
@@ -99,6 +114,34 @@ function renderFields(options: {
 }
 
 describe("a provider-backed picker", () => {
+  it("loads application-scoped options only through the action endpoint", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async () =>
+        rpcJsonResponse({
+          status: "options",
+          options: [{ value: "welcome", label: "Welcome" }],
+        })
+      );
+
+    renderFields({
+      config: {},
+      fields: [templateField],
+      owner: { kind: "action", actionId: "host/template-email" },
+    });
+
+    expect(await screen.findByRole("combobox")).toBeTruthy();
+    expect(String(fetchSpy.mock.calls[0]?.[0])).toContain(
+      "/action/configOptions"
+    );
+    await expect(
+      parseRpcRequestInput(fetchSpy.mock.calls[0]?.[1])
+    ).resolves.toMatchObject({
+      actionId: "host/template-email",
+      provider: "templates",
+    });
+  });
+
   it("falls back to a typed value when the node names no connection", () => {
     renderFields({ config: {}, fields: [templateField] });
 
@@ -126,6 +169,33 @@ describe("a provider-backed picker", () => {
     expect(
       screen.getByLabelText("Template").getAttribute("aria-describedby")
     ).toBe(description.id);
+  });
+
+  it("loads Connection options only through the integration endpoint", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async () =>
+        rpcJsonResponse({
+          status: "options",
+          options: [{ value: "tpl_1", label: "Welcome" }],
+        })
+      );
+
+    renderFields({
+      config: { integrationId: "int_1" },
+      fields: [templateField],
+    });
+
+    expect(await screen.findByRole("combobox")).toBeTruthy();
+    expect(String(fetchSpy.mock.calls[0]?.[0])).toContain(
+      "/integration/configOptions"
+    );
+    await expect(
+      parseRpcRequestInput(fetchSpy.mock.calls[0]?.[1])
+    ).resolves.toMatchObject({
+      integrationId: "int_1",
+      provider: "templates",
+    });
   });
 
   it("lists what the connection answered", () => {
@@ -215,7 +285,7 @@ describe("a provider-backed picker", () => {
     // time it is pressed.
     const rowClass = (): string | undefined =>
       screen.getByRole("button", {
-        name: /upstream value|Choose from the connection/u,
+        name: /upstream value|Choose from available values/u,
       }).parentElement?.className;
 
     const { unmount } = renderFields({
@@ -266,13 +336,13 @@ describe("a provider-backed picker", () => {
     expect(onUpdateConfig).not.toHaveBeenCalled();
 
     fireEvent.click(
-      screen.getByRole("button", { name: /Choose from the connection/u })
+      screen.getByRole("button", { name: /Choose from available values/u })
     );
     expect(screen.getByRole("combobox")).toBeTruthy();
     expect(onUpdateConfig).not.toHaveBeenCalled();
   });
 
-  it("switches a stored template back to the connection picker without clearing it", () => {
+  it("switches a stored template back to the available-values picker without clearing it", () => {
     const stored = "{{@n1:Lead.templateId}}";
     const { onUpdateConfig } = renderFields({
       config: { integrationId: "int_1", emailTemplateId: stored },
@@ -290,7 +360,7 @@ describe("a provider-backed picker", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Choose from the connection for Template",
+        name: "Choose from available values for Template",
       })
     );
 
@@ -316,7 +386,7 @@ describe("a provider-backed picker", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Choose from the connection for Template",
+        name: "Choose from available values for Template",
       })
     );
     rerenderConfig({ integrationId: "int_1", emailTemplateId: "tpl_1" });
@@ -384,7 +454,7 @@ describe("a provider-backed picker", () => {
 
     await waitFor(() =>
       expect(
-        screen.getByText("Could not read this from the connection.")
+        screen.getByText("Could not load the available values.")
       ).toBeTruthy()
     );
     // The only string available is the vendor's exception, which nobody audited

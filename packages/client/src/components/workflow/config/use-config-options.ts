@@ -9,14 +9,13 @@
 
 import { useQuery } from "@tanstack/react-query";
 import type { ConfigOptionsAnswer } from "#src/lib/rpc-client";
-import { configOptionsQueryOptions } from "#src/lib/rpc-query";
-import { can } from "#src/lib/authorization";
 import {
-  readProviderParameters,
-  settledProviderParameter,
-} from "#src/lib/provider-parameters";
+  canQueryConfigOptions,
+  type ConfigOptionsOwner,
+  providerConfigOptionsQueryOptions,
+} from "#src/lib/config-options-query";
+import { readProviderParameters } from "#src/lib/provider-parameters";
 import type { FieldOptionsSource } from "@wfgraph/shared/plugins/action-fields";
-import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 
 export type ConfigOptionsState =
   /** Nothing to ask yet: no connection, or a parameter still to fill in. */
@@ -40,30 +39,27 @@ export type ConfigOptionsState =
   | { state: "failed"; retry: () => void };
 
 export function useConfigOptions(input: {
+  owner: ConfigOptionsOwner;
   source: FieldOptionsSource | undefined;
   config: Record<string, unknown>;
 }): ConfigOptionsState {
-  const { source, config } = input;
-  const integrationId = settledProviderParameter(config.integrationId);
+  const { owner, source, config } = input;
   const { parameters, missing } = readProviderParameters(source, config);
-
+  const hasQuestion = source !== undefined && missing.length === 0;
   const enabled =
-    source !== undefined &&
-    integrationId !== undefined &&
-    missing.length === 0 &&
-    can(WfGraphOperations.integrationConfigOptions.id);
-
+    hasQuestion &&
+    (owner.kind === "action" || owner.integrationId !== undefined) &&
+    canQueryConfigOptions(owner);
   const query = useQuery({
-    ...configOptionsQueryOptions({
-      // The query is disabled without these, so the placeholders are never sent.
-      integrationId: integrationId ?? "",
+    ...providerConfigOptionsQueryOptions({
+      owner,
       provider: source?.provider ?? "",
       parameters,
     }),
     enabled,
   });
 
-  if (!source || integrationId === undefined || missing.length > 0) {
+  if (!enabled) {
     return { state: "waiting" };
   }
   if (query.isPending) {

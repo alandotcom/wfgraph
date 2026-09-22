@@ -19,7 +19,10 @@ import {
   assertDistinctListenerIds,
   assertSourcesAreDistinguishable,
 } from "#src/backend/extensions/event-uniqueness";
-import type { ConfigOptionsProvider } from "#src/backend/extensions/config-options";
+import {
+  assertConfigOptionsWiring,
+  type ConfigOptionsProvider,
+} from "#src/backend/extensions/config-options";
 import {
   type ActionConfigFieldFor,
   type ActionStep,
@@ -29,10 +32,7 @@ import {
   type StepBag,
 } from "#src/backend/extensions/steps/define-step";
 import type { InputSchema } from "#src/backend/extensions/schema-io";
-import {
-  flattenConfigFields,
-  PROVIDER_FIELD_TYPES,
-} from "@wfgraph/shared/plugins/action-fields";
+import { flattenConfigFields } from "@wfgraph/shared/plugins/action-fields";
 import type { IntegrationOAuth } from "#src/backend/extensions/oauth";
 import {
   type CredentialFields,
@@ -384,7 +384,13 @@ export function checkIntegration(
       step.output
     );
 
-    checkProviderBackedFields(id, integration, step);
+    assertConfigOptionsWiring({
+      actionId: id,
+      fields: step.configFields,
+      providers: integration.configOptions,
+      owner: `integration "${integration.type}"`,
+      requireEveryProviderReferenced: false,
+    });
     checkConnectionDefaultKeys(id, integration, step);
 
     return { id, step, outputFields };
@@ -473,92 +479,6 @@ function assertSafeIntegrationKey(
     throw new Error(
       `Integration "${integrationType}" declares a ${role} with a key reserved by JavaScript objects.`
     );
-  }
-}
-
-/**
- * Hold a provider-backed field to a provider that can answer it.
- *
- * Every one of these is a wiring mistake nothing else would catch until a
- * builder opened the panel and met a control with no data behind it, so they are
- * checked where the definition is written rather than where it is drawn.
- */
-function checkProviderBackedFields(
-  actionId: string,
-  integration: IntegrationDefinition,
-  step: ActionStep
-): void {
-  const fields = flattenConfigFields(step.configFields ?? []);
-  const declaredKeys = new Set(fields.map((field) => field.key));
-
-  for (const field of fields) {
-    const where = `Action "${actionId}" field "${field.key}"`;
-    const source = field.optionsSource;
-
-    if (!isSafeRecordKey(field.key)) {
-      throw new Error(
-        `Action "${actionId}" declares a config field with a key reserved by JavaScript objects.`
-      );
-    }
-    if (field.showWhen && !isSafeRecordKey(field.showWhen.field)) {
-      throw new Error(
-        `Action "${actionId}" declares a conditional field reference with a key reserved by JavaScript objects.`
-      );
-    }
-
-    if (!source) {
-      if (PROVIDER_FIELD_TYPES.has(field.type)) {
-        throw new Error(
-          `${where} is a ${field.type} field with no optionsSource, so nothing says which provider data to draw.`
-        );
-      }
-      continue;
-    }
-
-    if (!isSafeRecordKey(source.provider)) {
-      throw new Error(
-        `Action "${actionId}" declares a config options provider with a key reserved by JavaScript objects.`
-      );
-    }
-
-    // The field type is checked before the provider, so a field that draws no
-    // provider data is told that rather than being told its provider is
-    // undeclared, which would send the author looking in the wrong place.
-    if (!PROVIDER_FIELD_TYPES.has(field.type)) {
-      throw new Error(
-        `${where} declares an optionsSource on a "${field.type}" field, which draws no provider data.`
-      );
-    }
-
-    const wants = field.type === "provider-select" ? "options" : "fields";
-    const providers = integration.configOptions;
-    const provider =
-      providers && Object.hasOwn(providers, source.provider)
-        ? providers[source.provider]
-        : undefined;
-    if (!provider) {
-      throw new Error(
-        `${where} names the config options provider "${source.provider}", which integration "${integration.type}" does not declare.`
-      );
-    }
-    if (provider.answers !== wants) {
-      throw new Error(
-        `${where} needs a provider answering "${wants}", but "${source.provider}" answers "${provider.answers}".`
-      );
-    }
-
-    for (const parameter of source.parameters ?? []) {
-      if (!isSafeRecordKey(parameter)) {
-        throw new Error(
-          `Action "${actionId}" declares a provider parameter with a key reserved by JavaScript objects.`
-        );
-      }
-      if (!declaredKeys.has(parameter)) {
-        throw new Error(
-          `${where} names the parameter "${parameter}", which is not a config field of this action.`
-        );
-      }
-    }
   }
 }
 

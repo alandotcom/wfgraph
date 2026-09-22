@@ -104,6 +104,87 @@ createServer(createRequestListener(wfgraph)).listen(3000);
 `examples/app.ts` is the same call with four Events and one custom action. That file is
 correct. If this file disagrees with it, this file is wrong.
 
+## Dynamic host action fields
+
+A host action can ask application code for configuration choices that cannot live in the
+catalog. `configOptions` holds the server-side loaders, and `configFields` connects a field
+to one by name. A loader belongs to its action and receives only the sibling values named by
+`optionsSource.parameters`.
+
+```ts
+const sendAppointmentMessage = defineAction({
+  id: "appointments/send-message",
+  label: "Send Appointment Message",
+  description: "Sends a message using an application template.",
+  category: "Appointments",
+  input: z.object({
+    templateId: z.string(),
+    templateVariables: z.string().optional(),
+  }),
+  configFields: [
+    {
+      key: "templateId",
+      label: "Template",
+      type: "provider-select",
+      optionsSource: { provider: "templates" },
+    },
+    {
+      key: "templateVariables",
+      label: "Template Variables",
+      type: "provider-fields",
+      optionsSource: {
+        provider: "template-variables",
+        parameters: ["templateId"],
+      },
+    },
+  ],
+  configOptions: {
+    templates: {
+      answers: "options",
+      load: async () => async () => ({
+        status: "options",
+        options: (await applicationTemplates()).map((template) => ({
+          value: template.id,
+          label: template.name,
+        })),
+      }),
+    },
+    "template-variables": {
+      answers: "fields",
+      load:
+        async () =>
+        async ({ parameters }) => {
+          const templateId = parameters.templateId;
+          if (!templateId) {
+            return {
+              status: "unavailable",
+              reason: "refused",
+              message: "Choose a template first.",
+            };
+          }
+          return {
+            status: "fields",
+            fields: await applicationTemplateFields(templateId),
+          };
+        },
+    },
+  },
+  handler: async ({ input }) => sendAppointmentMessageFromTemplate(input),
+});
+```
+
+A provider with `answers: "options"` serves a `provider-select`; one with
+`answers: "fields"` serves a `provider-fields`. The latter stores its values as one JSON
+string under the field's fixed config key, so the action input shape stays stable.
+
+Host loaders are application-scoped. They receive no Connection or credentials, and their
+implementation never enters the JSON extension catalog. Workflow Graph calls them only for
+editor guidance and editor-side workflow issue checks. Unfilled dynamic fields and loader
+failures stay warnings, so they do not block Publish. Draft persistence, the publication
+service, and action execution do not call a loader. A loader can answer `unavailable` with a
+builder-facing message; an exception produces a generic fallback without exposing the
+exception text.
+
 ## Mounting on Node
 
 A fetch-native Node runtime takes `wfgraph.fetch` as it is:

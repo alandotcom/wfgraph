@@ -1,3 +1,4 @@
+import { actionContract } from "#src/rpc/contracts/actions";
 import {
   agentChatInputSchema,
   agentContract,
@@ -26,6 +27,7 @@ export {
 };
 
 export const rpcContract = {
+  action: actionContract,
   agent: agentContract,
   integration: integrationContract,
   workflow: workflowContract,

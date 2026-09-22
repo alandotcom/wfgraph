@@ -161,6 +161,7 @@ export function stubExtensions(
     stepFor: () => undefined,
     connectionTestFor: () => undefined,
     configOptionsFor: () => undefined,
+    actionConfigOptionsFor: () => undefined,
     oauthFor: () => undefined,
     webhookFor: () => undefined,
     eventByName: () => undefined,

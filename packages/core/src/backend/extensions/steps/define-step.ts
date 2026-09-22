@@ -52,7 +52,9 @@ import type {
   ActionConfigField,
   ActionConfigFieldBase,
   ActionConfigFieldGroup,
+  FieldOptionsSource,
 } from "@wfgraph/shared/plugins/action-fields";
+import type { ShowWhen } from "@wfgraph/shared/types/show-when";
 import type {
   NodeSteps,
   StepResult,
@@ -303,19 +305,37 @@ export type HandlerAnswer<TOutput> =
  * An author writing `{ key: "body", type: "template-textarea", rows: 4 }` keeps
  * the label and the required flag the schema already stated.
  */
-type ConfigFieldFor<TInput, TConnectionKey extends string = string> = Partial<
-  Omit<ActionConfigFieldBase, "key" | "connectionDefaultKey">
+type InputKey<TInput> = Extract<keyof TInput, string>;
+
+type ConfigFieldFor<TInput, TConnectionKey extends string = never> = Partial<
+  Omit<
+    ActionConfigFieldBase,
+    "key" | "connectionDefaultKey" | "optionsSource" | "showWhen"
+  >
 > & {
-  key: Extract<keyof TInput, string>;
+  key: InputKey<TInput>;
   /**
    * Held to the Connection fields the owning integration declares, which is
-   * what `defineIntegration` passes in. A host calling `defineStep` outside an
-   * integration has no such record, and the default admits any string.
+   * what `defineIntegration` passes in. A host action passes `never`, because
+   * it has no Connection value to display.
    */
   connectionDefaultKey?: TConnectionKey | undefined;
+  /** The sibling field whose value decides whether this field is shown. */
+  showWhen?:
+    | (Omit<ShowWhen, "field"> & { field: InputKey<TInput> })
+    | undefined;
+  /**
+   * The server-side provider and the sibling config keys it may read. Provider
+   * ownership is checked when the action is assembled.
+   */
+  optionsSource?:
+    | (Omit<FieldOptionsSource, "parameters"> & {
+        parameters?: InputKey<TInput>[] | undefined;
+      })
+    | undefined;
 };
 
-type ConfigFieldGroupFor<TInput, TConnectionKey extends string = string> = Omit<
+type ConfigFieldGroupFor<TInput, TConnectionKey extends string = never> = Omit<
   ActionConfigFieldGroup,
   "fields"
 > & {
@@ -332,7 +352,7 @@ type ConfigFieldGroupFor<TInput, TConnectionKey extends string = string> = Omit<
  */
 export type ActionConfigFieldFor<
   TInput,
-  TConnectionKey extends string = string,
+  TConnectionKey extends string = never,
 > =
   | ConfigFieldFor<TInput, TConnectionKey>
   | ConfigFieldGroupFor<TInput, TConnectionKey>;

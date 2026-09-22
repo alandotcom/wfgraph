@@ -30,6 +30,7 @@ function renderRow() {
         }}
         fields={[propertiesField]}
         onUpdateConfig={vi.fn()}
+        owner={{ kind: "action", actionId: "host/test" }}
       />
     </ExtensionCatalogProvider>
   );

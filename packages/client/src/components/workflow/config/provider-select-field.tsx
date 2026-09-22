@@ -25,12 +25,14 @@ import { TemplateBadgeInput } from "#src/components/ui/template-badge-input";
 import { findTemplateTokens } from "@wfgraph/shared/graph/node-references";
 import type { ActionConfigFieldBase } from "@wfgraph/shared/plugins/action-fields";
 import { ProviderFieldNotice } from "./provider-fallback";
+import type { ConfigOptionsOwner } from "#src/lib/config-options-query";
 import { useConfigOptions } from "./use-config-options";
 
 export type ProviderFieldProps = {
   field: ActionConfigFieldBase;
   value: unknown;
   config: Record<string, unknown>;
+  owner: ConfigOptionsOwner;
   /** Resolved by `renderField`; see `FieldProps` in the renderer. */
   placeholder: string | undefined;
   onChange: (value: unknown) => void;
@@ -42,13 +44,18 @@ export function ProviderSelectField({
   field,
   value,
   config,
+  owner,
   placeholder,
   onChange,
   disabled,
   descriptionId,
 }: ProviderFieldProps) {
   const stored = typeof value === "string" ? value : "";
-  const state = useConfigOptions({ source: field.optionsSource, config });
+  const state = useConfigOptions({
+    owner,
+    source: field.optionsSource,
+    config,
+  });
   const inferredMode =
     findTemplateTokens(stored).length > 0 ? "template" : "picker";
   const [modeState, setModeState] = useState({
@@ -87,12 +94,12 @@ export function ProviderSelectField({
       }
       aria-label={
         asTemplate
-          ? `Choose from the connection for ${fieldName}`
+          ? `Choose from available values for ${fieldName}`
           : `Use an upstream value for ${fieldName}`
       }
       size="sm"
       title={
-        asTemplate ? "Choose from the connection" : "Use an upstream value"
+        asTemplate ? "Choose from available values" : "Use an upstream value"
       }
       type="button"
       variant="ghost"

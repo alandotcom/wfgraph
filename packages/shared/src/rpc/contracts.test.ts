@@ -52,6 +52,21 @@ function getOutputDecoder(contract: {
   return async (value) => await schema["~standard"].validate(value);
 }
 
+describe("action RPC input contracts", () => {
+  it.each(RESERVED_RECORD_KEYS)(
+    "rejects the reserved config-options parameter key %s",
+    async (key) => {
+      const result = await validateInput(rpcContract.action.configOptions, {
+        actionId: "host/template-email",
+        provider: "templates",
+        parameters: Object.fromEntries([[key, "forged"]]),
+      });
+
+      expect(result).toHaveProperty("issues");
+    }
+  );
+});
+
 describe("integration RPC input contracts", () => {
   it.each(RESERVED_RECORD_KEYS)(
     "rejects the reserved create config key %s",

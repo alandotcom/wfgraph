@@ -9,6 +9,7 @@ import type { ServiceFailure } from "#src/backend/lib/effect/failures";
 import { getAppLogger } from "#src/backend/lib/logger";
 import type { WfGraphServices } from "#src/backend/runtime";
 import { postAgentChat } from "#src/backend/services/agent/chat";
+import { postActionConfigOptions } from "#src/backend/services/actions/config-options";
 import {
   deleteIntegration,
   getIntegration,
@@ -415,6 +416,17 @@ const rpc = implement(rpcContract)
   });
 
 export const rpcRouter = rpc.router({
+  action: {
+    configOptions: rpc.action.configOptions.handler(
+      rpcEffectHandler(({ input }) =>
+        postActionConfigOptions(
+          input.actionId,
+          input.provider,
+          input.parameters ?? {}
+        )
+      )
+    ),
+  },
   agent: {
     chat: rpc.agent.chat.handler(
       rpcStreamHandler(({ input }) =>

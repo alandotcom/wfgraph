@@ -46,6 +46,13 @@ export const configOptionsQueryOptions = (input: {
   parameters?: Record<string, string>;
 }) => orpcQuery.integration.configOptions.queryOptions({ input });
 
+/** Application-scoped config data owned by one host action. */
+export const actionConfigOptionsQueryOptions = (input: {
+  actionId: string;
+  provider: string;
+  parameters?: Record<string, string>;
+}) => orpcQuery.action.configOptions.queryOptions({ input });
+
 /**
  * The workflow list, for the dashboard and the toolbar's switcher.
  *

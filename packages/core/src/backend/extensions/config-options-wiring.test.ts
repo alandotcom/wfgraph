@@ -15,7 +15,10 @@ import {
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
 import { defineAction } from "#src/backend/extensions/define-action";
 import type { ActionConfigFieldFor } from "#src/backend/extensions/steps/define-step";
-import type { ConfigOptionsProvider } from "#src/backend/extensions/config-options";
+import type {
+  ActionConfigOptionsProvider,
+  ConfigOptionsProvider,
+} from "#src/backend/extensions/config-options";
 import { RESERVED_RECORD_KEYS } from "@wfgraph/shared/types/record-key";
 
 const templates: ConfigOptionsProvider = {
@@ -34,10 +37,10 @@ type ExampleInput = {
   readonly variables?: string | undefined;
 };
 
-// `never` for the connection-default key, because this harness declares no
-// credentials and a field may only name one the integration has.
+// This harness declares no credentials, so a field cannot name a Connection
+// default key.
 function integrationWith(input: {
-  configFields: readonly ActionConfigFieldFor<ExampleInput, never>[];
+  configFields: readonly ActionConfigFieldFor<ExampleInput>[];
   configOptions?: Record<string, ConfigOptionsProvider> | undefined;
 }) {
   return defineIntegration({
@@ -64,14 +67,12 @@ function integrationWith(input: {
   });
 }
 
-function unsafeFieldKey(
-  key: string
-): ActionConfigFieldFor<ExampleInput, never> {
+function unsafeFieldKey(key: string): ActionConfigFieldFor<ExampleInput> {
   return {
     key,
     label: "Unsafe",
     type: "text",
-  } as unknown as ActionConfigFieldFor<ExampleInput, never>;
+  } as unknown as ActionConfigFieldFor<ExampleInput>;
 }
 
 function unsafeParameterKey(key: string): (keyof ExampleInput)[] {
@@ -209,7 +210,10 @@ describe("provider-backed config fields", () => {
               key: "templateId",
               label: "Template",
               type: "provider-select",
-              optionsSource: { provider: "templates", parameters: ["nope"] },
+              optionsSource: {
+                provider: "templates",
+                parameters: unsafeParameterKey("nope"),
+              },
             },
           ],
         })
@@ -284,10 +288,11 @@ describe("provider-backed config fields", () => {
     expect(JSON.stringify(set.catalog)).not.toContain("answers");
   });
 
-  it("refuses a provider-backed field on a host action, which has no connection", () => {
-    // `defineAction` derives its fields from the input schema and so cannot
-    // produce one of these. `ActionDefinition.configFields` is a public field
-    // though, and assembly takes any definition, which is the hole this closes.
+  it("hands back a host action's provider without putting it in the catalog", () => {
+    const hostTemplates: ActionConfigOptionsProvider = {
+      answers: "options",
+      load: async () => async () => ({ status: "options", options: [] }),
+    };
     const hostAction = defineAction({
       id: "host/thing",
       label: "Thing",
@@ -296,25 +301,111 @@ describe("provider-backed config fields", () => {
       output: Schema.Struct({
         ok: Schema.Boolean.annotate({ description: "Ok" }),
       }),
+      configOptions: { templates: hostTemplates },
+      configFields: [
+        {
+          key: "templateId",
+          label: "Template",
+          type: "provider-select",
+          optionsSource: { provider: "templates" },
+        },
+      ],
       handler: () => ({ ok: true }),
     });
 
-    expect(() =>
-      assembleExtensions({
-        actions: [
-          {
-            ...hostAction,
-            configFields: [
-              {
-                key: "templateId",
-                label: "Template",
-                type: "provider-select",
-                optionsSource: { provider: "templates" },
-              },
-            ],
+    const set = assembleExtensions({ actions: [hostAction] });
+
+    expect(set.actionConfigOptionsFor("host/thing", "templates")).toBe(
+      hostTemplates
+    );
+    expect(set.actionConfigOptionsFor("host/thing", "absent")).toBeUndefined();
+    expect(JSON.stringify(set.catalog)).not.toContain("answers");
+
+    const withoutAction = assembleExtensions({ actions: [] });
+    expect(
+      withoutAction.actionConfigOptionsFor("host/thing", "templates")
+    ).toBeUndefined();
+  });
+
+  it("refuses a host provider after its last field reference is removed", () => {
+    const hostAction = defineAction({
+      id: "host/thing",
+      label: "Thing",
+      description: "A host action",
+      input: Schema.Struct({ templateId: Schema.optionalKey(Schema.String) }),
+      configOptions: {
+        templates: {
+          answers: "options",
+          load: async () => async () => ({ status: "options", options: [] }),
+        },
+      },
+      handler: () => undefined,
+    });
+
+    expect(() => assembleExtensions({ actions: [hostAction] })).toThrow(
+      /no config field references/u
+    );
+  });
+
+  it("refuses more provider parameters than one request can carry", () => {
+    const hostAction = defineAction({
+      id: "host/thing",
+      label: "Thing",
+      description: "A host action",
+      input: Schema.Struct({
+        variables: Schema.optionalKey(Schema.String),
+        p1: Schema.optionalKey(Schema.String),
+        p2: Schema.optionalKey(Schema.String),
+        p3: Schema.optionalKey(Schema.String),
+        p4: Schema.optionalKey(Schema.String),
+        p5: Schema.optionalKey(Schema.String),
+        p6: Schema.optionalKey(Schema.String),
+        p7: Schema.optionalKey(Schema.String),
+        p8: Schema.optionalKey(Schema.String),
+        p9: Schema.optionalKey(Schema.String),
+      }),
+      configOptions: {
+        variables: {
+          answers: "fields",
+          load: async () => async () => ({ status: "fields", fields: [] }),
+        },
+      },
+      configFields: [
+        {
+          key: "variables",
+          type: "provider-fields",
+          optionsSource: {
+            provider: "variables",
+            parameters: ["p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8", "p9"],
           },
-        ],
-      })
-    ).toThrow(/has no connection to ask/u);
+        },
+      ],
+      handler: () => undefined,
+    });
+
+    expect(() => assembleExtensions({ actions: [hostAction] })).toThrow(
+      /more than 8 distinct provider parameters/u
+    );
+  });
+
+  it("refuses a host field naming a provider its action does not declare", () => {
+    const hostAction = defineAction({
+      id: "host/thing",
+      label: "Thing",
+      description: "A host action",
+      input: Schema.Struct({ templateId: Schema.optionalKey(Schema.String) }),
+      configFields: [
+        {
+          key: "templateId",
+          type: "provider-select",
+          optionsSource: { provider: "templates" },
+        },
+      ],
+      handler: () => undefined,
+    });
+
+    expect(() => assembleExtensions({ actions: [hostAction] })).toThrow(
+      /host action "host\/thing" does not declare/u
+    );
   });
 });

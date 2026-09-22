@@ -19,6 +19,7 @@ import type { ActionConfigField } from "@wfgraph/shared/plugins/action-fields";
 
 const EXAMPLE = "Your Name <noreply@example.com>";
 const STORED = "Support <support@example.com>";
+const HOST_OWNER = { kind: "action", actionId: "host/test" } as const;
 
 const templateFrom: ActionConfigField = {
   key: "emailFrom",
@@ -57,6 +58,7 @@ function fieldsTree(input: {
         connectionDefaults={input.connectionDefaults}
         fields={input.fields}
         onUpdateConfig={() => undefined}
+        owner={HOST_OWNER}
       />
     </ExtensionCatalogProvider>
   );
@@ -74,6 +76,7 @@ function renderFields(input: {
         connectionDefaults={input.connectionDefaults}
         fields={input.fields}
         onUpdateConfig={() => undefined}
+        owner={HOST_OWNER}
       />
     </ExtensionCatalogProvider>
   );

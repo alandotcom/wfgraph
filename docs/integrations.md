@@ -246,6 +246,12 @@ the key of whatever you build from it.
 
 ### Fields the connection fills in
 
+This section describes integration providers, which resolve a Connection and its
+credentials. A host action can declare application-scoped providers without a Connection;
+see "Dynamic host action fields" in [Embedding Workflow Graph](embedding.md). A host
+provider belongs to one action and must be referenced by one of that action's fields. In
+either path, one field can send at most eight distinct sibling parameters.
+
 A field whose choices live in the operator's own account names a provider instead of a
 static `options` list. `provider-select` draws a dropdown over what that provider lists;
 `provider-fields` draws one input per value it declares, stored as one JSON object under the
