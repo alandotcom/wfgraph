@@ -477,7 +477,7 @@ describe("Template badge autocomplete", () => {
     });
   });
 
-  it("renders a pill immediately after mouse selection in TemplateBadgeTextarea", async () => {
+  it.each(["mouse", "keyboard"])("selects a multiword field search with the %s in TemplateBadgeTextarea", async (method) => {
     let latestValue = "";
     const view = renderWithCatalog(
       <ControlledTemplateBadgeTextarea
@@ -488,10 +488,14 @@ describe("Template badge autocomplete", () => {
     );
 
     const textbox = view.getByRole("textbox");
-    typeAtSymbol(textbox);
+    typeTemplateFilter(textbox, "Settlement time");
 
     const option = await waitFor(() => findTimestampOption());
-    fireEvent.mouseDown(option);
+    if (method === "keyboard") {
+      fireEvent.keyDown(textbox, { key: "Enter" });
+    } else {
+      fireEvent.mouseDown(option);
+    }
 
     await waitFor(() => {
       expect(latestValue).toBe(LIFECYCLE_TEMPLATE);
@@ -524,7 +528,7 @@ describe("Template badge autocomplete", () => {
     typeAtSymbol(view.getByRole("textbox"));
 
     await waitFor(() => {
-      expect(menuRows()).toEqual(["Lead timeleadTimeHow long before"]);
+      expect(menuRows()).toEqual(["Lead timeWebhook.leadTimeHow long before"]);
     });
   });
 
@@ -548,14 +552,12 @@ describe("Template badge autocomplete", () => {
 
     await waitFor(() => {
       expect(menuRows()).toEqual([
-        "Settlement timeoccurredAtWhen it happened",
+        "Settlement timeWebhook.occurredAtWhen it happened",
       ]);
     });
   });
 
-  it("leaves the second line off a field its author never described", async () => {
-    // The path is already the row's first line, so a readable echo of the key
-    // below it would be a line saying nothing twice.
+  it("omits the description when the field's author provided none", async () => {
     surface.events = [
       {
         ...APPOINTMENT_CREATED,
@@ -574,8 +576,8 @@ describe("Template badge autocomplete", () => {
 
     await waitFor(() => {
       expect(menuRows()).toEqual([
-        "Lead timeleadTimeHow long before",
-        "Gracegrace",
+        "Lead timeWebhook.leadTimeHow long before",
+        "GraceWebhook.grace",
       ]);
     });
   });
@@ -683,9 +685,9 @@ describe("Template badge autocomplete", () => {
 
     await waitFor(() => {
       expect(menuRows()).toEqual([
-        "Patient namepatientNamePatient name",
-        "Settlement timeoccurredAtWhen it happened",
-        "Amount centsamountCentsAmount in cents",
+        "Patient nameWebhook.patientNamePatient name",
+        "Settlement timeWebhook.occurredAtWhen it happened",
+        "Amount centsWebhook.amountCentsAmount in cents",
       ]);
     });
   });
@@ -695,11 +697,11 @@ describe("Template badge autocomplete", () => {
       <PlaceholderTemplateBadgeInput onValueChange={() => {}} />
     );
 
-    typeTemplateFilter(view.getByRole("textbox"), "Settlement");
+    typeTemplateFilter(view.getByRole("textbox"), "Settlement time");
 
     await waitFor(() => {
       expect(menuRows()).toEqual([
-        "Settlement timeoccurredAtWhen it happened",
+        "Settlement timeWebhook.occurredAtWhen it happened",
       ]);
     });
   });
@@ -1114,8 +1116,8 @@ describe("Template badge autocomplete node rows", () => {
     await waitFor(() => {
       expect(menuHeadings()).toEqual(["Tag First", "Tag Second"]);
       expect(menuRows()).toEqual([
-        'Order IDtags["order.id"]',
-        'Order IDtags["order.id"]',
+        'Order IDTag First.tags["order.id"]',
+        'Order IDTag Second.tags["order.id"]',
       ]);
     });
 
@@ -1214,8 +1216,8 @@ describe("Template badge autocomplete node rows", () => {
     typeAtSymbol(view.getByRole("textbox"));
 
     await waitFor(() => {
-      expect(menuRows()).toContain('Campaign nametags["campaign.name"]');
-      expect(menuRows()).toContain('Items 0tags["items[0]"]');
+      expect(menuRows()).toContain('Campaign nameTag First.tags["campaign.name"]');
+      expect(menuRows()).toContain('Items 0Tag First.tags["items[0]"]');
     });
   });
 });

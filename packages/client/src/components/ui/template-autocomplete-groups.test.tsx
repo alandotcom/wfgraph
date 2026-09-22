@@ -3,7 +3,7 @@ import { fireEvent, render, waitFor } from "@testing-library/react";
 import { getDefaultStore } from "jotai";
 import { type ReactElement, useState } from "react";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
-import { loadWorkflowGraphAtom } from "#src/lib/workflow-graph-store";
+import { loadWorkflowGraphAtom, updateNodeDataAtom } from "#src/lib/workflow-graph-store";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import type {
   ActionMetadata,
@@ -208,14 +208,14 @@ describe("Template autocomplete groups", () => {
     expect(shownGroups.map((group) => rows(group).map((row) => row.textContent))).toEqual(
       [
         [
-          "FallbackfallbackFirst fallback",
-          "Shared timefirstAtFirst source time",
+          "FallbackPatient.fallbackFirst fallback",
+          "Shared timePatient.firstAtFirst source time",
         ],
         [
-          "Fallback twofallbackTwoSecond fallback",
-          "Shared timesecondAtSecond source time",
+          "Fallback twoPatient.fallbackTwoSecond fallback",
+          "Shared timePatient.secondAtSecond source time",
         ],
-        ["Current timestate.currentAtCurrent Entity State time"],
+        ["Current timePatient.state.currentAtCurrent Entity State time"],
       ]
     );
   });
@@ -229,14 +229,14 @@ describe("Template autocomplete groups", () => {
     expect(groups().map((group) => rows(group).map((row) => row.textContent))).toEqual(
       [
         [
-          "Shared timefirstAtFirst source time",
-          "FallbackfallbackFirst fallback",
+          "Shared timePatient.firstAtFirst source time",
+          "FallbackPatient.fallbackFirst fallback",
         ],
         [
-          "Shared timesecondAtSecond source time",
-          "Fallback twofallbackTwoSecond fallback",
+          "Shared timePatient.secondAtSecond source time",
+          "Fallback twoPatient.fallbackTwoSecond fallback",
         ],
-        ["Current timestate.currentAtCurrent Entity State time"],
+        ["Current timePatient.state.currentAtCurrent Entity State time"],
       ]
     );
   });
@@ -252,18 +252,47 @@ describe("Template autocomplete groups", () => {
     await waitFor(() => {
       expect(groups()).toHaveLength(1);
       expect(rows(groups()[0]!).map((row) => row.textContent)).toEqual([
-        "Shared timesecondAtSecond source time",
+        "Shared timePatient.secondAtSecond source time",
       ]);
     });
 
-    typeFilter(textbox, "Shared");
+    typeFilter(textbox, "shared TIME");
     await waitFor(() => expect(groups()).toHaveLength(2));
 
-    typeFilter(textbox, "Entity");
+    typeFilter(textbox, "Entity State");
     await waitFor(() => {
       expect(groups()).toHaveLength(1);
       expect(rows(groups()[0]!)[0]?.textContent).toContain("state.currentAt");
     });
+  });
+
+  it.each(["keyboard", "mouse"])("selects a multiword node search with the %s", async (method) => {
+    getDefaultStore().set(updateNodeDataAtom, {
+      id: "source_2",
+      data: { label: "Second patient" },
+    });
+    const onValueChange = vi.fn();
+    const view = renderWithCatalog(<ControlledInput onValueChange={onValueChange} />);
+    const textbox = view.getByRole("textbox");
+    typeFilter(textbox, "Second patient.secondAt");
+    await waitFor(() => expect(groups()).toHaveLength(1));
+    const option = rows(groups()[0]!)[0]!;
+    expect(option.querySelector("[title='Second patient.secondAt']")?.textContent).toBe("Second patient.secondAt");
+    if (method === "keyboard") {
+      fireEvent.keyDown(window, { key: "Enter" });
+    } else {
+      fireEvent.mouseDown(option);
+    }
+    await waitFor(() => expect(onValueChange).toHaveBeenLastCalledWith("{{@source_2:Second patient.secondAt}}"));
+  });
+
+  it.each(["\n", "\r\n", "\r"])("ends a search at a line break %j", async (lineBreak) => {
+    const view = renderWithCatalog(<ControlledInput />);
+    const textbox = view.getByRole("textbox");
+    typeFilter(textbox, "Shared time");
+    await waitFor(() => expect(groups()).toHaveLength(2));
+    typeFilter(textbox, `Shared time${lineBreak}`);
+    await waitFor(() => expect(groups()).toHaveLength(0));
   });
 
   it("uses one option sequence for keyboard scrolling and selection across headings", async () => {

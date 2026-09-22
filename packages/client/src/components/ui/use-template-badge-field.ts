@@ -106,7 +106,7 @@ export function useTemplateBadgeField(input: {
     }
   });
 
-  /** Show or hide the autocomplete based on the `@word` being typed. */
+  /** Search after `@` through spaces, up to the current line's end. */
   const syncAutocomplete = useCallback((text: string, caretOffset: number) => {
     const typed = text.slice(0, caretOffset);
     const lastAtSign = typed.lastIndexOf("@");
@@ -119,7 +119,7 @@ export function useTemplateBadgeField(input: {
       (token) => lastAtSign >= token.start && lastAtSign < token.end
     );
 
-    if (filter === null || insideToken || filter.includes(" ")) {
+    if (filter === null || insideToken || /[\r\n]/.test(filter)) {
       setShowAutocomplete(false);
       return;
     }
