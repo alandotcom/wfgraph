@@ -86,9 +86,8 @@ function unusableReason(
   return `${clash.events.join(" and ")} type this differently. Add an Event Split above this node to use it.`;
 }
 
-/** One row of the menu: a whole node's output, or one path inside it. */
+/** One row of the menu: a path inside a source's output. */
 type TemplateOption = {
-  type: "node" | "field";
   rank: number;
   /** Stable group identity. Labels are display text and can collide or change. */
   sourceKey: string;
@@ -96,7 +95,7 @@ type TemplateOption = {
   nodeName: string;
   /** Stable identity carried by a virtual source such as tracked Entity State. */
   sourceType?: string | undefined;
-  field?: string | undefined;
+  field: string;
   label?: string | undefined;
   description?: string | undefined;
   template: string;
@@ -130,7 +129,7 @@ function sourceKey(input: Pick<TemplateOption, "nodeId" | "sourceType">): string
 
 /**
  * Whether `query` names a key under this record's own path, and whether that
- * key is offered for `targetType`. Narrows `field` and `valueType` to defined
+ * key is offered for `targetType`. Narrows `valueType` to defined
  * so the caller can read them without checking again.
  */
 function namesKeyUnderOpenRecord(
@@ -138,12 +137,10 @@ function namesKeyUnderOpenRecord(
   query: string,
   targetType: ValueTargetType | undefined
 ): record is TemplateOption & {
-  field: string;
   valueType: WorkflowSchemaItemType;
 } {
   return (
     record.valueType !== undefined &&
-    record.field !== undefined &&
     query.startsWith(`${record.field}.`) &&
     offeredFor({ type: record.valueType }, targetType) &&
     query.slice(record.field.length + 1).length > 0
@@ -171,7 +168,6 @@ function keyUnderOpenRecordOptions(
       const key = query.slice(record.field.length + 1);
       const fieldPath = appendOutputPathKey(record.field, key);
       return {
-        type: "field",
         rank: fieldRank({ type: record.valueType }, targetType, undefined),
         sourceKey: record.sourceKey,
         nodeId: record.nodeId,
@@ -244,7 +240,6 @@ export function useTemplateAutocompleteRows(input: {
           catalog,
         }),
         sourceType: undefined as string | undefined,
-        offersWholeOutput: node.data.type !== "lifecycle",
       })),
       ...(entitySource
         ? [
@@ -253,45 +248,18 @@ export function useTemplateAutocompleteRows(input: {
               nodeName: entitySource.sourceName,
               fields: entitySource.fields,
               sourceType: entitySource.sourceType,
-              offersWholeOutput: false,
             },
           ]
         : []),
     ];
 
     for (const source of sources) {
-      const {
-        nodeId,
-        nodeName,
-        fields: outputFields,
-        sourceType,
-        offersWholeOutput,
-      } = source;
-
-      // A whole node's output, for dropping a JSON blob into a text field. A
-      // virtual Entity source offers declared fields only, and the Lifecycle
-      // node's whole payload remains unavailable.
-      if (!fieldType && offersWholeOutput && outputFields.length) {
-        nextOptions.push({
-          type: "node",
-          rank: 0,
-          sourceKey: sourceKey(source),
-          nodeId,
-          nodeName,
-          sourceType,
-          template: formatTemplateToken({
-            nodeId,
-            nodeLabel: nodeName,
-            sourceType,
-          }),
-        });
-      }
+      const { nodeId, nodeName, fields: outputFields, sourceType } = source;
 
       for (const field of outputFields) {
         const unusable = unusableReason(field, fieldType);
         if (unusable || offeredFor(field, fieldType)) {
           nextOptions.push({
-            type: "field",
             rank: fieldRank(field, fieldType, unusable),
             sourceKey: sourceKey(source),
             nodeId,
@@ -328,7 +296,6 @@ export function useTemplateAutocompleteRows(input: {
         // remains in the option set as metadata so a key typed under this record
         // can produce one option for every upstream node that owns the record.
         nextOptions.push({
-          type: "field",
           rank: fieldRank({ type: valueType }, fieldType, undefined),
           sourceKey: sourceKey(source),
           nodeId,
@@ -355,7 +322,6 @@ export function useTemplateAutocompleteRows(input: {
         )) {
           const fieldPath = appendOutputPathKey(field.path, key);
           nextOptions.push({
-            type: "field",
             rank: fieldRank({ type: valueType }, fieldType, undefined),
             sourceKey: sourceKey(source),
             nodeId,
@@ -394,9 +360,7 @@ export function useTemplateAutocompleteRows(input: {
         const visibleOptions = options.filter((option) => !option.recordOnly);
         const matched = normalizedFilter
           ? visibleOptions.filter((option) => {
-              const fullPath = option.field
-                ? `${option.nodeName}.${option.field}`
-                : option.nodeName;
+              const fullPath = `${option.nodeName}.${option.field}`;
               return [
                 option.nodeName,
                 fullPath,
@@ -587,7 +551,7 @@ export function TemplateAutocomplete({
                   )}
                   data-option-index={index}
                   data-slot="template-autocomplete-option"
-                  key={`${option.sourceKey}-${option.field || "root"}`}
+                  key={`${option.sourceKey}-${option.field}`}
                   onMouseDown={(event) => {
                     // Select on pointer down so contentEditable inputs don't blur first.
                     event.preventDefault();
@@ -599,21 +563,17 @@ export function TemplateAutocomplete({
                 >
                   <div className="min-w-0 flex-1 overflow-hidden">
                     <div className="truncate font-medium">
-                      {option.type === "node"
-                        ? "Entire output"
-                        : referenceFieldLabel({
-                            path: option.field ?? "",
-                            label: option.label,
-                          })}
+                      {referenceFieldLabel({
+                        path: option.field,
+                        label: option.label,
+                      })}
                     </div>
-                    {option.type === "field" ? (
-                      <div
-                        className="truncate font-mono text-muted-foreground text-xs"
-                        title={option.field}
-                      >
-                        {option.field}
-                      </div>
-                    ) : null}
+                    <div
+                      className="truncate font-mono text-muted-foreground text-xs"
+                      title={option.field}
+                    >
+                      {option.field}
+                    </div>
                     {option.description && (
                       <div className="break-words text-muted-foreground text-xs">
                         {option.description}

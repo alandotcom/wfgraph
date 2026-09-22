@@ -1002,9 +1002,9 @@ describe("Template badge autocomplete node rows", () => {
     typeAtSymbol(view.getByRole("textbox"));
 
     await waitFor(() => {
-      // The node that does produce something keeps its whole-output row.
-      expect(menuRows()).toContain("Entire output");
       expect(menuHeadings()).toContain("Send Message");
+      expect(menuRows().length).toBeGreaterThan(0);
+      expect(menuRows()).not.toContain("Entire output");
     });
     expect(menuHeadings()).not.toContain("Event Split");
   });

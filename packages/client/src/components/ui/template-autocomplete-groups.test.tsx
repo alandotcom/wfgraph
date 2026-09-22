@@ -201,18 +201,17 @@ describe("Template autocomplete groups", () => {
 
     const shownGroups = groups();
     expect(shownGroups.map(heading)).toEqual(["Patient", "Patient", "Patient"]);
+    expect(document.body.textContent).not.toContain("Entire output");
     expect(new Set(shownGroups.map((group) => group.dataset.sourceKey)).size).toBe(
       3
     );
     expect(shownGroups.map((group) => rows(group).map((row) => row.textContent))).toEqual(
       [
         [
-          "Entire output",
           "FallbackfallbackFirst fallback",
           "Shared timefirstAtFirst source time",
         ],
         [
-          "Entire output",
           "Fallback twofallbackTwoSecond fallback",
           "Shared timesecondAtSecond source time",
         ],
