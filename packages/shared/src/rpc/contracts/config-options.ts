@@ -12,20 +12,23 @@ export const configOptionsProviderNameSchema = () =>
     })
   );
 
-/**
- * The sibling config values named by a field's `optionsSource`.
- *
- * The server intersects this record with the field declarations for the action
- * being asked. The bounds here keep an oversized body from being decoded.
- */
-export const configOptionsParametersSchema = () =>
+const configOptionsParametersRecord = () =>
   Schema.Record(
     Schema.String,
     Schema.String.check(Schema.isMaxLength(2048))
   ).check(
     Schema.makeFilter(hasOnlySafeRecordKeys, {
       expected: "provider parameter keys not reserved by JavaScript objects",
-    }),
+    })
+  );
+
+/**
+ * The bounded sibling values an integration field explicitly names.
+ *
+ * The server intersects this record with the field declaration being asked.
+ */
+export const configOptionsParametersSchema = () =>
+  configOptionsParametersRecord().check(
     Schema.makeFilter(
       (values) => Object.keys(values).length <= MAX_CONFIG_OPTIONS_PARAMETERS,
       {
@@ -33,6 +36,9 @@ export const configOptionsParametersSchema = () =>
       }
     )
   );
+
+/** Every current literal schema field sent to a host action option callback. */
+export const actionOptionsConfigSchema = configOptionsParametersRecord;
 
 /**
  * What either application code or an integration provider returns for one

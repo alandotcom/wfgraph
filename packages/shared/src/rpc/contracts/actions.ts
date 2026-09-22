@@ -1,8 +1,8 @@
 import { Schema } from "effect";
 import { WfGraphOperations } from "#src/authorization/operations";
 import {
+  actionOptionsConfigSchema,
   configOptionsAnswerSchema,
-  configOptionsParametersSchema,
   configOptionsProviderNameSchema,
 } from "#src/rpc/contracts/config-options";
 import { contractSchema, route } from "#src/rpc/contracts/contract-support";
@@ -20,7 +20,7 @@ export const actionContract = {
         Schema.Struct({
           actionId: NonEmptyTrimmedString,
           provider: configOptionsProviderNameSchema(),
-          parameters: Schema.optionalKey(configOptionsParametersSchema()),
+          parameters: Schema.optionalKey(actionOptionsConfigSchema()),
         })
       )
     )

@@ -7,12 +7,14 @@
  * reference yet: that intent has no representation in the value, so it is the
  * one thing here that is state.
  *
- * A stored id the provider no longer lists is still shown selected, rather than
- * leaving the trigger looking empty about a value the node really does send.
+ * An integration keeps a stored id its provider no longer lists. A host option
+ * callback owns the current valid literals, so a successful current answer
+ * clears a selected literal it excludes. Unavailable and stale answers do not.
  */
 
 import { Braces, List } from "lucide-react";
 import { useState } from "react";
+import { useAfterCommit } from "#src/hooks/effects";
 import { Button } from "#src/components/ui/button";
 import {
   Select,
@@ -68,6 +70,23 @@ export function ProviderSelectField({
   const mode = modeState.stored === stored ? modeState.mode : inferredMode;
   const asTemplate = mode === "template";
   const fieldName = field.label || field.key;
+  const shouldClearHostSelection =
+    owner.kind === "action" &&
+    stored.length > 0 &&
+    findTemplateTokens(stored).length === 0 &&
+    state.state === "ready" &&
+    state.answer.status === "options" &&
+    !state.answer.options.some((option) => option.value === stored);
+  const currentHostAnswer =
+    shouldClearHostSelection && state.state === "ready"
+      ? state.answer
+      : undefined;
+
+  useAfterCommit(currentHostAnswer, () => {
+    if (shouldClearHostSelection) {
+      onChange("");
+    }
+  });
 
   const templateInput = (
     <TemplateBadgeInput
@@ -128,9 +147,9 @@ export function ProviderSelectField({
   }
 
   if (state.state === "ready" && state.answer.status === "options") {
-    // A stored value the provider no longer lists still names itself, so the
-    // trigger reads as what the node actually sends rather than as empty. It
-    // goes in `items` too, which is what the trigger renders the label from.
+    // Before a host's post-commit clear, and permanently for an integration, a
+    // stored value the answer no longer lists still names itself. Putting it in
+    // `items` keeps the trigger truthful instead of briefly rendering empty.
     const listed = state.answer.options.map((option) => ({
       value: option.value,
       label: option.label,

@@ -43,8 +43,8 @@ import type { IntegrationOAuth } from "#src/backend/extensions/oauth";
 import {
   assertConfigOptionsProviders,
   assertConfigOptionsWiring,
-  type ActionConfigOptionsProvider,
   type ConfigOptionsProvider,
+  type HostActionOptionsCallback,
 } from "#src/backend/extensions/config-options";
 import type { IntegrationWebhook } from "#src/backend/extensions/integration-webhook";
 import {
@@ -105,7 +105,7 @@ export type ExtensionSet = {
   readonly actionConfigOptionsFor: (
     actionId: string,
     provider: string
-  ) => ActionConfigOptionsProvider | undefined;
+  ) => HostActionOptionsCallback | undefined;
   /** Provider behavior for OAuth routes; none of this map crosses the catalog. */
   readonly oauthFor: (type: string) => IntegrationOAuth | undefined;
   /**
@@ -363,8 +363,8 @@ type Assembly = {
   tests: Map<string, IntegrationTestLoader>;
   /** Keyed first by integration type, then by the provider it declares. */
   configOptions: Map<string, Map<string, ConfigOptionsProvider>>;
-  /** Keyed first by host action id, then by the provider it declares. */
-  actionConfigOptions: Map<string, Map<string, ActionConfigOptionsProvider>>;
+  /** Keyed first by host action id, then by its inferred picker field. */
+  actionConfigOptions: Map<string, Map<string, HostActionOptionsCallback>>;
   oauth: Map<string, IntegrationOAuth>;
   webhooks: Map<string, IntegrationWebhook>;
 };
@@ -450,15 +450,23 @@ function readIntegration(
  */
 function readHostAction(action: ActionDefinition, into: Assembly): void {
   assertConfigOptionsProviders({
-    subject: `Action "${action.id}"`,
-    providers: action.configOptions,
+    subject: `Action "${action.id}" options`,
+    providers: action.options,
   });
+  const optionDeclarations: Record<string, { readonly answers: "options" }> =
+    Object.fromEntries(
+      Object.keys(action.options ?? {}).map((key) => [
+        key,
+        { answers: "options" },
+      ])
+    );
   assertConfigOptionsWiring({
     actionId: action.id,
     fields: action.configFields,
-    providers: action.configOptions,
+    providers: optionDeclarations,
     owner: `host action "${action.id}"`,
     requireEveryProviderReferenced: true,
+    enforceParameterLimit: false,
   });
 
   into.actions.push(
@@ -477,7 +485,10 @@ function readHostAction(action: ActionDefinition, into: Assembly): void {
   );
   into.steps.set(action.id, action.implement);
 
-  for (const [provider, entry] of Object.entries(action.configOptions ?? {})) {
+  for (const [provider, entry] of Object.entries(action.options ?? {})) {
+    if (!entry) {
+      continue;
+    }
     let providers = into.actionConfigOptions.get(action.id);
     if (!providers) {
       providers = new Map();

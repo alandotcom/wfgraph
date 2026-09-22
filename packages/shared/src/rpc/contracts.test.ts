@@ -53,6 +53,19 @@ function getOutputDecoder(contract: {
 }
 
 describe("action RPC input contracts", () => {
+  it("accepts every schema field in a host option draft", async () => {
+    const parameters = Object.fromEntries(
+      Array.from({ length: 9 }, (_, index) => [`field${index}`, `${index}`])
+    );
+    const result = await validateInput(rpcContract.action.configOptions, {
+      actionId: "host/template-email",
+      provider: "templates",
+      parameters,
+    });
+
+    expect(result).toHaveProperty("value");
+  });
+
   it.each(RESERVED_RECORD_KEYS)(
     "rejects the reserved config-options parameter key %s",
     async (key) => {
@@ -68,6 +81,19 @@ describe("action RPC input contracts", () => {
 });
 
 describe("integration RPC input contracts", () => {
+  it("keeps the eight-dependency cap for integration providers", async () => {
+    const parameters = Object.fromEntries(
+      Array.from({ length: 9 }, (_, index) => [`field${index}`, `${index}`])
+    );
+    const result = await validateInput(rpcContract.integration.configOptions, {
+      integrationId: "int_1",
+      provider: "templates",
+      parameters,
+    });
+
+    expect(result).toHaveProperty("issues");
+  });
+
   it.each(RESERVED_RECORD_KEYS)(
     "rejects the reserved create config key %s",
     async (key) => {

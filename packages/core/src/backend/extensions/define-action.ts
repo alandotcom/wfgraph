@@ -19,9 +19,16 @@ import {
   type StepBag,
 } from "#src/backend/extensions/steps/define-step";
 import { buildConfigForm } from "#src/backend/extensions/steps/config-form";
-import type { ActionConfigOptionsProvider } from "#src/backend/extensions/config-options";
+import type {
+  ActionOptions,
+  HostActionOptionsCallback,
+} from "#src/backend/extensions/config-options";
 import type { StepFactory } from "#src/backend/extensions/steps/step-runner";
-import type { ActionConfigField } from "@wfgraph/shared/plugins/action-fields";
+import {
+  flattenConfigFields,
+  isFieldGroup,
+  type ActionConfigField,
+} from "@wfgraph/shared/plugins/action-fields";
 import {
   configFieldsFromInputSchema,
   type InputSchema,
@@ -101,13 +108,9 @@ export type ActionDefinition = ActionIdentity & {
    */
   readonly configFields: ActionConfigField[];
 
-  /**
-   * Application code that answers provider-backed fields in this action's
-   * configuration form. The implementations stay on the server; only each
-   * field's `optionsSource` crosses in the extension catalog.
-   */
-  readonly configOptions?:
-    | Readonly<Record<string, ActionConfigOptionsProvider>>
+  /** Application callbacks retained on the server for inferred picker fields. */
+  readonly options?:
+    | Readonly<Record<string, HostActionOptionsCallback | undefined>>
     | undefined;
 
   /**
@@ -161,15 +164,16 @@ type ActionFormInput<TInput extends Record<string, unknown>> = {
    * references are held to the input type. Host actions have no Connection
    * defaults.
    */
-  configFields?: readonly ActionConfigFieldFor<TInput>[] | undefined;
+  configFields?:
+    | readonly ActionConfigFieldFor<TInput, never, false>[]
+    | undefined;
 
   /**
-   * Application-scoped loaders named by provider-backed `configFields`.
-   * A loader receives only the sibling config values its field declared.
+   * Application-scoped choices for picker fields. Each key names an input
+   * field, and each callback receives the action's current literal draft
+   * strings when the editor asks for choices.
    */
-  configOptions?:
-    | Readonly<Record<string, ActionConfigOptionsProvider>>
-    | undefined;
+  options?: ActionOptions<TInput> | undefined;
 };
 
 export type DefineActionInput<TInput extends Record<string, unknown>> =
@@ -202,6 +206,45 @@ export type DefineActionInputWithOutput<
      */
     handler: ActionHandler<NoInfer<TInput>, NoInfer<TOutput>>;
   };
+
+function inferOptionFields(
+  fields: readonly ActionConfigField[],
+  options:
+    | Readonly<Record<string, HostActionOptionsCallback | undefined>>
+    | undefined
+): ActionConfigField[] {
+  if (!options) {
+    return [...fields];
+  }
+
+  const optionKeys = new Set(Object.keys(options));
+  const parameters = flattenConfigFields(fields).map((field) => field.key);
+
+  return fields.map((field) => {
+    if (isFieldGroup(field)) {
+      return {
+        ...field,
+        fields: field.fields.map((nested) =>
+          optionKeys.has(nested.key)
+            ? {
+                ...nested,
+                type: "provider-select",
+                optionsSource: { provider: nested.key, parameters },
+              }
+            : nested
+        ),
+      };
+    }
+
+    return optionKeys.has(field.key)
+      ? {
+          ...field,
+          type: "provider-select",
+          optionsSource: { provider: field.key, parameters },
+        }
+      : field;
+  });
+}
 
 function normalizeActionIdentity(
   definition: ActionIdentity
@@ -307,13 +350,15 @@ export function defineAction<TInput extends Record<string, unknown>>(
     hidden: definition.hidden,
   });
 
+  const configFields = buildConfigForm(
+    configFieldsFromInputSchema(schema),
+    definition.configFields ?? []
+  );
+
   return {
     ...normalized,
-    configFields: buildConfigForm(
-      configFieldsFromInputSchema(schema),
-      definition.configFields ?? []
-    ),
-    configOptions: definition.configOptions,
+    configFields: inferOptionFields(configFields, definition.options),
+    options: definition.options,
     outputFields: outputSchema
       ? outputFieldsFromSchema(outputSchema)
       : undefined,

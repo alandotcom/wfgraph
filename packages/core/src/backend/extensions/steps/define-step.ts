@@ -307,7 +307,11 @@ export type HandlerAnswer<TOutput> =
  */
 type InputKey<TInput> = Extract<keyof TInput, string>;
 
-type ConfigFieldFor<TInput, TConnectionKey extends string = never> = Partial<
+type ConfigFieldFor<
+  TInput,
+  TConnectionKey extends string = never,
+  TAllowsOptionsSource extends boolean = true,
+> = Partial<
   Omit<
     ActionConfigFieldBase,
     "key" | "connectionDefaultKey" | "optionsSource" | "showWhen"
@@ -324,22 +328,34 @@ type ConfigFieldFor<TInput, TConnectionKey extends string = never> = Partial<
   showWhen?:
     | (Omit<ShowWhen, "field"> & { field: InputKey<TInput> })
     | undefined;
-  /**
-   * The server-side provider and the sibling config keys it may read. Provider
-   * ownership is checked when the action is assembled.
-   */
-  optionsSource?:
-    | (Omit<FieldOptionsSource, "parameters"> & {
-        parameters?: InputKey<TInput>[] | undefined;
-      })
-    | undefined;
-};
+} & (TAllowsOptionsSource extends true
+    ? {
+        /**
+         * The server-side provider and the sibling config keys it may read.
+         * Provider ownership is checked when the action is assembled.
+         */
+        optionsSource?:
+          | (Omit<FieldOptionsSource, "parameters"> & {
+              parameters?: InputKey<TInput>[] | undefined;
+            })
+          | undefined;
+      }
+    : {
+        optionsSource?: never;
+        type?:
+          | Exclude<
+              ActionConfigFieldBase["type"],
+              "provider-select" | "provider-fields"
+            >
+          | undefined;
+      });
 
-type ConfigFieldGroupFor<TInput, TConnectionKey extends string = never> = Omit<
-  ActionConfigFieldGroup,
-  "fields"
-> & {
-  fields: ConfigFieldFor<TInput, TConnectionKey>[];
+type ConfigFieldGroupFor<
+  TInput,
+  TConnectionKey extends string = never,
+  TAllowsOptionsSource extends boolean = true,
+> = Omit<ActionConfigFieldGroup, "fields"> & {
+  fields: ConfigFieldFor<TInput, TConnectionKey, TAllowsOptionsSource>[];
 };
 
 /**
@@ -353,9 +369,10 @@ type ConfigFieldGroupFor<TInput, TConnectionKey extends string = never> = Omit<
 export type ActionConfigFieldFor<
   TInput,
   TConnectionKey extends string = never,
+  TAllowsOptionsSource extends boolean = true,
 > =
-  | ConfigFieldFor<TInput, TConnectionKey>
-  | ConfigFieldGroupFor<TInput, TConnectionKey>;
+  | ConfigFieldFor<TInput, TConnectionKey, TAllowsOptionsSource>
+  | ConfigFieldGroupFor<TInput, TConnectionKey, TAllowsOptionsSource>;
 
 /**
  * A step's schemas and metadata, before an integration names it.

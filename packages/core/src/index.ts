@@ -25,14 +25,11 @@ export {
   defineAction,
 } from "#src/backend/extensions/define-action";
 export type {
-  ActionConfigOptionsFunction,
-  ActionConfigOptionsLoader,
-  ActionConfigOptionsProvider,
+  ActionOptionsCallback,
+  ActionOptionsConfig,
+  ActionOptionsResult,
+  ActionOptionsUnavailable,
   ConfigOptionChoice,
-  ConfigOptionField,
-  ConfigOptionsAnswer,
-  ConfigOptionsRequest,
-  ConfigOptionsUnavailableReason,
 } from "#src/backend/extensions/config-options";
 export type { ActionConfigFieldFor } from "#src/backend/extensions/steps/define-step";
 /**

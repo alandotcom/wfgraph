@@ -14,11 +14,14 @@ import {
   type ConfigOptionsOwner,
   providerConfigOptionsQueryOptions,
 } from "#src/lib/config-options-query";
-import { readProviderParameters } from "#src/lib/provider-parameters";
+import {
+  readActionOptionConfig,
+  readProviderParameters,
+} from "#src/lib/provider-parameters";
 import type { FieldOptionsSource } from "@wfgraph/shared/plugins/action-fields";
 
 export type ConfigOptionsState =
-  /** Nothing to ask yet: no connection, or a parameter still to fill in. */
+  /** Nothing to ask yet: no Connection, or an integration dependency is blank. */
   | { state: "waiting" }
   | { state: "loading" }
   | { state: "ready"; answer: ConfigOptionsAnswer }
@@ -44,8 +47,14 @@ export function useConfigOptions(input: {
   config: Record<string, unknown>;
 }): ConfigOptionsState {
   const { owner, source, config } = input;
-  const { parameters, missing } = readProviderParameters(source, config);
-  const hasQuestion = source !== undefined && missing.length === 0;
+  const integrationQuestion = readProviderParameters(source, config);
+  const parameters =
+    owner.kind === "action"
+      ? readActionOptionConfig(source, config)
+      : integrationQuestion.parameters;
+  const hasQuestion =
+    source !== undefined &&
+    (owner.kind === "action" || integrationQuestion.missing.length === 0);
   const enabled =
     hasQuestion &&
     (owner.kind === "action" || owner.integrationId !== undefined) &&
@@ -62,7 +71,12 @@ export function useConfigOptions(input: {
   if (!enabled) {
     return { state: "waiting" };
   }
-  if (query.isPending) {
+  // Cached host choices cannot invalidate a selection until its refresh ends,
+  // including a request paused while offline.
+  if (
+    query.isPending ||
+    (owner.kind === "action" && query.fetchStatus !== "idle")
+  ) {
     return { state: "loading" };
   }
   if (query.error) {

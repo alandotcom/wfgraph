@@ -3,8 +3,8 @@
  *
  * A field the catalog cannot describe on its own -- a picker over available
  * resources, or one input per variable a chosen resource declares -- names a
- * provider here instead. An integration provider receives Connection
- * credentials; a host action provider receives only its declared parameters.
+ * provider here instead. Integration authors wire these providers explicitly.
+ * Host action picker wiring is generated from `defineAction({ options })`.
  * Only the answer below crosses to the editor.
  */
 
@@ -72,7 +72,7 @@ export type ConfigOptionsAnswer =
       readonly message: string;
     };
 
-/** The sibling config values the field's `optionsSource` named, already read. */
+/** The sibling config values an integration field explicitly named. */
 export type ConfigOptionsRequest = {
   readonly parameters: Readonly<Record<string, string>>;
 };
@@ -105,20 +105,36 @@ export type ConfigOptionsProvider<
   readonly load: ConfigOptionsLoader<TCredentials>;
 };
 
-/** What a host action's provider calls once the editor asks its question. */
-export type ActionConfigOptionsFunction = (
-  request: ConfigOptionsRequest
-) => Promise<ConfigOptionsAnswer>;
+/** A host picker can explain why its choices are temporarily unavailable. */
+export type ActionOptionsUnavailable = Extract<
+  ConfigOptionsAnswer,
+  { status: "unavailable" }
+>;
 
-/** Deferred so application code and its dependencies load only when asked. */
-export type ActionConfigOptionsLoader =
-  () => Promise<ActionConfigOptionsFunction>;
+/** What a host action's `options` callback may answer. */
+export type ActionOptionsResult =
+  | readonly ConfigOptionChoice[]
+  | ActionOptionsUnavailable;
 
-/** One application-scoped provider owned by one host action. */
-export type ActionConfigOptionsProvider = {
-  readonly answers: "options" | "fields";
-  readonly load: ActionConfigOptionsLoader;
+/** Raw draft strings visible to a host action's `options` callback. */
+export type ActionOptionsConfig<TInput> = {
+  readonly [K in Extract<keyof TInput, string>]?: string | undefined;
 };
+
+/** One host picker callback, called directly when the editor asks. */
+export type ActionOptionsCallback<TInput> = (
+  config: ActionOptionsConfig<TInput>
+) => ActionOptionsResult | Promise<ActionOptionsResult>;
+
+/** Host picker callbacks keyed by fields in the action's input schema. */
+export type ActionOptions<TInput> = {
+  readonly [K in Extract<keyof TInput, string>]?: ActionOptionsCallback<TInput>;
+};
+
+/** Type-erased callback retained by extension assembly. */
+export type HostActionOptionsCallback = (
+  config: Readonly<Record<string, string | undefined>>
+) => ActionOptionsResult | Promise<ActionOptionsResult>;
 
 type ConfigOptionsProviderDeclaration = {
   readonly answers: "options" | "fields";
@@ -129,9 +145,7 @@ type ConfigOptionsProviderDeclaration = {
  */
 export function assertConfigOptionsProviders(input: {
   subject: string;
-  providers:
-    | Readonly<Record<string, ConfigOptionsProviderDeclaration>>
-    | undefined;
+  providers: Readonly<Record<string, unknown>> | undefined;
 }): void {
   if (!input.providers) {
     return;
@@ -155,8 +169,8 @@ export function assertConfigOptionsProviders(input: {
 /**
  * Hold provider-backed fields to providers their owner actually declares.
  *
- * This is shared by host actions and integration actions. The two authoring
- * paths differ in how a provider runs, while the form wiring is the same.
+ * Integration fields declare the keys themselves. Host action picker wiring is
+ * generated with every schema key so its callback can inspect the whole draft.
  */
 export function acceptedConfigOptionsParameters(input: {
   fields: readonly ActionConfigField[];
@@ -190,6 +204,7 @@ export function assertConfigOptionsWiring(input: {
     | undefined;
   owner: string;
   requireEveryProviderReferenced: boolean;
+  enforceParameterLimit?: boolean;
 }): void {
   const fields = flattenConfigFields(input.fields);
   const declaredKeys = new Set(fields.map((field) => field.key));
@@ -254,7 +269,10 @@ export function assertConfigOptionsWiring(input: {
     }
 
     const parameters = source.parameters ?? [];
-    if (new Set(parameters).size > MAX_CONFIG_OPTIONS_PARAMETERS) {
+    if (
+      input.enforceParameterLimit !== false &&
+      new Set(parameters).size > MAX_CONFIG_OPTIONS_PARAMETERS
+    ) {
       throw new Error(
         `${where} declares more than ${MAX_CONFIG_OPTIONS_PARAMETERS} distinct provider parameters, which one editor request cannot carry.`
       );

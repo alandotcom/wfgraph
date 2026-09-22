@@ -106,10 +106,9 @@ correct. If this file disagrees with it, this file is wrong.
 
 ## Dynamic host action fields
 
-A host action can ask application code for configuration choices that cannot live in the
-catalog. `configOptions` holds the server-side loaders, and `configFields` connects a field
-to one by name. A loader belongs to its action and receives only the sibling values named by
-`optionsSource.parameters`.
+Use `options` to supply application-owned choices for an input field. Each key must belong
+to the input schema. A callback makes that field a picker; `configFields` remains available
+for labels, ordering, and other presentation overrides.
 
 ```ts
 const sendAppointmentMessage = defineAction({
@@ -119,71 +118,41 @@ const sendAppointmentMessage = defineAction({
   category: "Appointments",
   input: z.object({
     templateId: z.string(),
-    templateVariables: z.string().optional(),
+    senderId: z.string(),
   }),
-  configFields: [
-    {
-      key: "templateId",
-      label: "Template",
-      type: "provider-select",
-      optionsSource: { provider: "templates" },
-    },
-    {
-      key: "templateVariables",
-      label: "Template Variables",
-      type: "provider-fields",
-      optionsSource: {
-        provider: "template-variables",
-        parameters: ["templateId"],
-      },
-    },
-  ],
-  configOptions: {
-    templates: {
-      answers: "options",
-      load: async () => async () => ({
-        status: "options",
-        options: (await applicationTemplates()).map((template) => ({
-          value: template.id,
-          label: template.name,
-        })),
-      }),
-    },
-    "template-variables": {
-      answers: "fields",
-      load:
-        async () =>
-        async ({ parameters }) => {
-          const templateId = parameters.templateId;
-          if (!templateId) {
-            return {
-              status: "unavailable",
-              reason: "refused",
-              message: "Choose a template first.",
-            };
-          }
-          return {
-            status: "fields",
-            fields: await applicationTemplateFields(templateId),
-          };
-        },
-    },
+  options: {
+    templateId: async () =>
+      (await applicationTemplates()).map((template) => ({
+        value: template.id,
+        label: template.name,
+      })),
+    senderId: async ({ templateId }) =>
+      templateId ? applicationSenderChoices(templateId) : [],
   },
   handler: async ({ input }) => sendAppointmentMessageFromTemplate(input),
 });
 ```
 
-A provider with `answers: "options"` serves a `provider-select`; one with
-`answers: "fields"` serves a `provider-fields`. The latter stores its values as one JSON
-string under the field's fixed config key, so the action input shape stays stable.
+Each callback receives the current draft as optional strings keyed by the input schema.
+These are raw editor values, before schema decoding. Empty values and unresolved template
+references are omitted. Return an array of `{ value, label }` choices directly or through a
+Promise; an empty array means there are no choices for the current draft.
 
-Host loaders are application-scoped. They receive no Connection or credentials, and their
-implementation never enters the JSON extension catalog. Workflow Graph calls them only for
-editor guidance and editor-side workflow issue checks. Unfilled dynamic fields and loader
-failures stay warnings, so they do not block Publish. Draft persistence, the publication
-service, and action execution do not call a loader. A loader can answer `unavailable` with a
-builder-facing message; an exception produces a generic fallback without exposing the
-exception text.
+Workflow Graph refreshes choices when the draft changes and ignores responses for older
+selections. A successful response clears a selected literal value that is no longer among
+the choices. Loading, failed requests, and unavailable answers leave selections intact, as
+do template references.
+
+Callbacks are application-scoped and receive no Connection or credentials. Their
+implementation stays on the server. Workflow Graph calls them for picker guidance only.
+Callback failures show an inline fallback and do not themselves block Publish. Fields marked
+required by the input schema retain normal blocking validation when empty. Draft
+persistence, Run and Publish preflight, and action execution do not call these callbacks.
+
+For an expected refusal, a callback can return
+`{ status: "unavailable", reason: "not_permitted", message: "Ask an administrator for access to templates." }`.
+The other reasons are `"unreachable"` and `"refused"`. An exception produces a generic
+fallback without exposing the exception text.
 
 ## Mounting on Node
 

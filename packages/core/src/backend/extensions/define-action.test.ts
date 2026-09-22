@@ -8,7 +8,7 @@
  */
 
 import { Effect, Schema, SchemaTransformation } from "effect";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, expectTypeOf, it, vi } from "vitest";
 import { type } from "arktype";
 import { z } from "zod";
 import type {
@@ -20,6 +20,7 @@ import { stubStepEnvironment } from "#src/backend/lib/effect/test-layers";
 import {
   type ActionDefinition,
   type ActionBag,
+  type DefineActionInput,
   defineAction,
 } from "#src/backend/extensions/define-action";
 import { StepFailure } from "#src/backend/extensions/steps/define-step";
@@ -201,42 +202,35 @@ describe("defineAction", () => {
     ]);
   });
 
-  it("merges authored form metadata over schema-derived fields", () => {
+  it("infers picker fields while preserving authored presentation", () => {
     const action = defineAction({
       id: "custom/template-email",
       label: "Template Email",
       description: "Builds an email from an application template",
       input: z.object({
         templateId: z.string().optional(),
-        variables: z.string().optional(),
+        senderId: z.string().optional(),
       }),
       configFields: [
         {
           key: "templateId",
-          label: "Template",
-          type: "provider-select",
-          optionsSource: { provider: "templates" },
+          label: "Email template",
+          placeholder: "Choose a template",
         },
         {
-          key: "variables",
-          label: "Variables",
-          type: "provider-fields",
-          optionsSource: {
-            provider: "template-variables",
-            parameters: ["templateId"],
-          },
+          key: "senderId",
           showWhen: { field: "templateId", equals: "welcome" },
         },
       ],
-      configOptions: {
-        templates: {
-          answers: "options",
-          load: async () => async () => ({ status: "options", options: [] }),
+      options: {
+        templateId: async (config) => {
+          expectTypeOf(config).toEqualTypeOf<{
+            readonly templateId?: string | undefined;
+            readonly senderId?: string | undefined;
+          }>();
+          return [];
         },
-        "template-variables": {
-          answers: "fields",
-          load: async () => async () => ({ status: "fields", fields: [] }),
-        },
+        senderId: async () => [],
       },
       handler() {
         return {};
@@ -246,53 +240,73 @@ describe("defineAction", () => {
     expect(action.configFields).toEqual([
       expect.objectContaining({
         key: "templateId",
-        label: "Template",
+        label: "Email template",
+        placeholder: "Choose a template",
         type: "provider-select",
-        optionsSource: { provider: "templates" },
+        optionsSource: {
+          provider: "templateId",
+          parameters: ["templateId", "senderId"],
+        },
       }),
       expect.objectContaining({
-        key: "variables",
-        label: "Variables",
-        type: "provider-fields",
+        key: "senderId",
+        type: "provider-select",
         optionsSource: {
-          provider: "template-variables",
-          parameters: ["templateId"],
+          provider: "senderId",
+          parameters: ["templateId", "senderId"],
         },
         showWhen: { field: "templateId", equals: "welcome" },
       }),
     ]);
-    expect(action.configOptions).toHaveProperty("templates");
   });
 
-  it("holds authored field and sibling references to input keys", () => {
+  it("types option keys and raw draft values from the input schema", () => {
     const build = () =>
       defineAction({
         id: "custom/typed-form",
         label: "Typed Form",
         description: "Checks authored form keys",
-        input: z.object({ templateId: z.string().optional() }),
+        input: z.object({
+          templateId: z.string().optional(),
+          senderId: z.string().optional(),
+        }),
         configFields: [
           {
             // @ts-expect-error the input schema declares no `missing` key
             key: "missing",
             type: "text",
           },
-          {
-            key: "templateId",
-            type: "provider-select",
-            optionsSource: {
-              provider: "templates",
-              // @ts-expect-error provider parameters name sibling input keys
-              parameters: ["missing"],
-            },
-          },
         ],
+        options: {
+          senderId: async (config) => {
+            expectTypeOf(config.templateId).toEqualTypeOf<string | undefined>();
+            // @ts-expect-error option callbacks see schema keys only
+            void config.missing;
+            return [];
+          },
+          // @ts-expect-error option keys must name an input schema field
+          missing: async () => [],
+        },
         handler() {
           return {};
         },
       });
 
     expect(build).toBeTypeOf("function");
+  });
+
+  it("does not expose the old host provider wiring API", () => {
+    const definition = {
+      id: "custom/old-options",
+      label: "Old Options",
+      description: "Checks removed host provider wiring",
+      input: z.object({ templateId: z.string().optional() }),
+      // @ts-expect-error host actions now declare direct callbacks under `options`
+      configOptions: {},
+      handler: () => ({}),
+    } satisfies DefineActionInput<{ templateId?: string | undefined }>;
+
+    expect(definition).toBeDefined();
   });
 
   it("keeps schema titles and descriptions separate in derived configFields", () => {

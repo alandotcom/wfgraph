@@ -2,11 +2,12 @@
  * What a host action's provider-backed field is filled with.
  *
  * The action id selects application code retained by extension assembly. No
- * Connection or credential lookup belongs here. The field declaration is the
- * allowlist for sibling config values the provider receives.
+ * Connection or credential lookup belongs here. Generated field metadata is
+ * the allowlist for schema config values the callback receives.
  */
 
 import { Effect, Result, Schema } from "effect";
+import { pickBy } from "es-toolkit/object";
 import {
   acceptedConfigOptionsParameters,
   type ConfigOptionsAnswer,
@@ -23,7 +24,8 @@ import {
 } from "@wfgraph/shared/extensions/catalog";
 import { rejectUnknownKeys } from "@wfgraph/shared/types/schema";
 import { flattenConfigFields } from "@wfgraph/shared/plugins/action-fields";
-import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
+import { findTemplateTokens } from "@wfgraph/shared/graph/node-references";
+import { isBlank } from "@wfgraph/shared/types/string";
 
 const decodeAnswer = Schema.decodeUnknownResult(configOptionsAnswerSchema(), {
   ...rejectUnknownKeys,
@@ -40,6 +42,15 @@ function actionFields(
     provider,
     parameters,
   });
+}
+
+function literalDraftValues(
+  parameters: Readonly<Record<string, string>>
+): Readonly<Record<string, string | undefined>> {
+  return pickBy(
+    parameters,
+    (value) => !isBlank(value) && findTemplateTokens(value).length === 0
+  );
 }
 
 function internalFailure(): InternalFailure {
@@ -79,10 +90,9 @@ export const postActionConfigOptions = Effect.fn("postActionConfigOptions")(
     const accepted = actionFields(action, provider, parameters);
     const answer = yield* Effect.tryPromise({
       try: async () => {
-        const answerFn = await entry.load();
-        const loaded = await answerFn({ parameters: accepted });
-        return loaded.status === "fields"
-          ? { ...loaded, fields: loaded.fields.map(omitUndefined) }
+        const loaded = await entry(literalDraftValues(accepted));
+        return Array.isArray(loaded)
+          ? { status: "options" as const, options: loaded }
           : loaded;
       },
       catch: internalFailure,
@@ -92,10 +102,7 @@ export const postActionConfigOptions = Effect.fn("postActionConfigOptions")(
     if (Result.isFailure(decoded)) {
       return yield* internalFailure();
     }
-    if (
-      decoded.success.status !== "unavailable" &&
-      decoded.success.status !== entry.answers
-    ) {
+    if (decoded.success.status === "fields") {
       return yield* internalFailure();
     }
 
