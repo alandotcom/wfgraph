@@ -95,6 +95,66 @@ describe("readExtensionCatalog", () => {
     );
   });
 
+  it("carries list visibility on config and output fields across JSON", () => {
+    const showWhen = { field: "template", in: ["a", "b"] as const };
+    const catalog: ExtensionCatalog = {
+      ...aCatalog([]),
+      actions: [
+        {
+          id: "host/template",
+          label: "Template",
+          description: "Uses a template",
+          category: "Custom",
+          configFields: [
+            { key: "name", label: "Name", type: "text", showWhen },
+          ],
+          outputFields: [{ path: "name", type: "string", showWhen }],
+        },
+      ],
+    };
+
+    expect(readExtensionCatalog(JSON.parse(JSON.stringify(catalog)))).toEqual(
+      catalog
+    );
+  });
+
+  it.each([
+    { field: "template", equals: "a", in: ["a", "b"] },
+    { field: "template" },
+    { field: "template", in: "a" },
+    { field: "template", in: [1] },
+    { field: "constructor", in: ["a"] },
+  ])("refuses an invalid visibility condition %j", (showWhen) => {
+    const catalog = {
+      ...aCatalog([]),
+      actions: [
+        {
+          id: "host/template",
+          label: "Template",
+          description: "Uses a template",
+          category: "Custom",
+          configFields: [
+            { key: "name", label: "Name", type: "text", showWhen },
+          ],
+          outputFields: [],
+        },
+      ],
+    };
+    expect(readExtensionCatalog(catalog)).toBeUndefined();
+    expect(
+      readExtensionCatalog({
+        ...aCatalog([]),
+        events: [
+          {
+            name: "app/thing.happened",
+            label: "Thing",
+            payloadFields: [{ path: "name", type: "string", showWhen }],
+          },
+        ],
+      })
+    ).toBeUndefined();
+  });
+
   // The editor keeps a send outside a Group frame, and this flag is the only
   // thing that tells it which action is one. Dropped on the wire, every send
   // would look like a lookup to the browser.

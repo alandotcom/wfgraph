@@ -104,6 +104,69 @@ createServer(createRequestListener(wfgraph)).listen(3000);
 `examples/app.ts` is the same call with four Events and one custom action. That file is
 correct. If this file disagrees with it, this file is wrong.
 
+## Dynamic host action fields
+
+Use `options` to supply application-owned choices for an input field. Each key must belong
+to the input schema. A callback makes that field a picker; `configFields` remains available
+for labels, ordering, and other presentation overrides.
+
+```ts
+const sendAppointmentMessage = defineAction({
+  id: "appointments/send-message",
+  label: "Send Appointment Message",
+  description: "Sends a message using an application template.",
+  category: "Appointments",
+  input: z.object({
+    templateId: z.string(),
+    senderId: z.string(),
+  }),
+  options: {
+    templateId: async () =>
+      (await applicationTemplates()).map((template) => ({
+        value: template.id,
+        label: template.name,
+      })),
+    senderId: async ({ templateId }) =>
+      templateId ? applicationSenderChoices(templateId) : [],
+  },
+  handler: async ({ input }) => sendAppointmentMessageFromTemplate(input),
+});
+```
+
+For a variable shared by several template variants, declare the variable once in `input`
+and add a list condition to its presentation:
+
+```ts
+configFields: [
+  { key: "name", showWhen: { field: "template", in: ["a", "b"] } },
+],
+```
+
+Here `input` declares both `template` and `name`. The editor offers `name` for templates
+`a` and `b`, and hides it for `c`. Single-value `equals` conditions still work. See
+[The config form](integrations.md#the-config-form) for matching and stored-value behavior.
+
+Each callback receives the current draft as optional strings keyed by the input schema.
+These are raw editor values, before schema decoding. Empty values and unresolved template
+references are omitted. Return an array of `{ value, label }` choices directly or through a
+Promise; an empty array means there are no choices for the current draft.
+
+Workflow Graph refreshes choices when the draft changes and ignores responses for older
+selections. A successful response clears a selected literal value that is no longer among
+the choices. Loading, failed requests, and unavailable answers leave selections intact, as
+do template references.
+
+Callbacks are application-scoped and receive no Connection or credentials. Their
+implementation stays on the server. Workflow Graph calls them for picker guidance only.
+Callback failures show an inline fallback and do not themselves block Publish. Fields marked
+required by the input schema retain normal blocking validation when empty. Draft
+persistence, Run and Publish preflight, and action execution do not call these callbacks.
+
+For an expected refusal, a callback can return
+`{ status: "unavailable", reason: "not_permitted", message: "Ask an administrator for access to templates." }`.
+The other reasons are `"unreachable"` and `"refused"`. An exception produces a generic
+fallback without exposing the exception text.
+
 ## Mounting on Node
 
 A fetch-native Node runtime takes `wfgraph.fetch` as it is:

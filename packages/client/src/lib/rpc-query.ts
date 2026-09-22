@@ -46,6 +46,16 @@ export const configOptionsQueryOptions = (input: {
   parameters?: Record<string, string>;
 }) => orpcQuery.integration.configOptions.queryOptions({ input });
 
+/** Host choices must refresh even when the editor returns to a cached draft. */
+export const actionConfigOptionsQueryOptions = (input: {
+  actionId: string;
+  provider: string;
+  parameters?: Record<string, string>;
+}) => ({
+  ...orpcQuery.action.configOptions.queryOptions({ input }),
+  staleTime: 0,
+});
+
 /**
  * The workflow list, for the dashboard and the toolbar's switcher.
  *

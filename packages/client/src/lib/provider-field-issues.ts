@@ -1,6 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query";
 import type { ConfigOptionsAnswer } from "#src/lib/rpc-client";
 import { configOptionsQueryOptions } from "#src/lib/rpc-query";
+import { canQueryConfigOptions } from "#src/lib/config-options-query";
 import {
   readProviderParameters,
   settledProviderParameter,
@@ -32,7 +33,10 @@ type ProviderFieldQuestion = {
   readonly nodeId: string;
   readonly nodeLabel: string;
   readonly field: ActionConfigFieldBase;
-  readonly integrationId: string;
+  readonly owner: {
+    readonly kind: "integration";
+    readonly integrationId: string;
+  };
   readonly provider: string;
   readonly parameters: Record<string, string>;
   readonly stored: string;
@@ -55,7 +59,7 @@ export function providerFieldQuestions(
     }
     const action = findAction(catalog, actionType);
     const integrationId = settledProviderParameter(config.integrationId);
-    if (!action || !integrationId) {
+    if (!action?.integration || !integrationId) {
       continue;
     }
 
@@ -78,7 +82,7 @@ export function providerFieldQuestions(
           actionType,
         }),
         field,
-        integrationId,
+        owner: { kind: "integration", integrationId },
         provider: source.provider,
         parameters,
         stored: readConfigTrimmedString(config, field.key) ?? "",
@@ -115,15 +119,18 @@ export function providerFieldIssuesFor(
       (entry) =>
         entry.required === true && !hasProviderFieldValue(values, entry.key)
     )
-    .map((entry) => ({
-      kind: "missing_required_field" as const,
-      severity: "blocking" as const,
-      nodeId: question.nodeId,
-      nodeLabel: question.nodeLabel,
-      fieldKey: `${question.field.key}.${entry.key}`,
-      fieldLabel: `${question.field.label} · ${entry.label}`,
-      message: `Node "${question.nodeLabel}" is missing required field "${question.field.label} · ${entry.label}"`,
-    }));
+    .map((entry) => {
+      const fieldLabel = `${question.field.label} · ${entry.label}`;
+      return {
+        kind: "missing_required_field" as const,
+        severity: "blocking" as const,
+        nodeId: question.nodeId,
+        nodeLabel: question.nodeLabel,
+        fieldKey: `${question.field.key}.${entry.key}`,
+        fieldLabel,
+        message: `Node "${question.nodeLabel}" is missing required field "${fieldLabel}"`,
+      };
+    });
 }
 
 /** The one field this question asked about, named as the reader sees it. */
@@ -137,7 +144,7 @@ function unverifiedIssue(
     nodeLabel: question.nodeLabel,
     fieldKey: question.field.key,
     fieldLabel: question.field.label,
-    message: `Node "${question.nodeLabel}" could not check "${question.field.label}" against its connection`,
+    message: `Node "${question.nodeLabel}" could not check "${question.field.label}" against its Connection`,
   };
 }
 
@@ -152,22 +159,31 @@ function unverifiedIssue(
  * Each refusal now travels back as its own warning, so the rest of the list
  * still reaches the reader.
  */
+function queryConnectionProviderField(
+  queryClient: QueryClient,
+  question: ProviderFieldQuestion
+): Promise<ConfigOptionsAnswer> {
+  return queryClient.query({
+    ...configOptionsQueryOptions({
+      integrationId: question.owner.integrationId,
+      provider: question.provider,
+      parameters: question.parameters,
+    }),
+    staleTime: 0,
+  });
+}
+
 export async function fetchProviderFieldIssues(
   queryClient: QueryClient,
   nodes: readonly WorkflowNode[],
   catalog: ExtensionCatalog
 ): Promise<Array<MissingRequiredFieldIssue | UnverifiedProviderFieldIssue>> {
-  const questions = providerFieldQuestions(nodes, catalog);
+  const questions = providerFieldQuestions(nodes, catalog).filter((question) =>
+    canQueryConfigOptions(question.owner)
+  );
   const answers = await Promise.allSettled(
     questions.map((question) =>
-      queryClient.query({
-        ...configOptionsQueryOptions({
-          integrationId: question.integrationId,
-          provider: question.provider,
-          parameters: question.parameters,
-        }),
-        staleTime: 0,
-      })
+      queryConnectionProviderField(queryClient, question)
     )
   );
 

@@ -6,7 +6,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useProviderFieldIssues } from "#src/hooks/use-provider-field-issues";
 import {
   fetchProviderFieldIssues,
@@ -20,11 +20,28 @@ import {
 } from "#src/lib/rpc-fetch-test-support";
 import { configOptionsQueryOptions } from "#src/lib/rpc-query";
 import {
+  installAuthorizationGrantsForTests,
+  resetAuthorizationGrantsForTests,
+} from "#src/lib/authorization-test-support";
+import {
   emptyExtensionCatalog,
   type ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
 import { hasBlockingWorkflowIssues } from "@wfgraph/shared/graph/workflow-issues";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
+
+beforeEach(() => {
+  installAuthorizationGrantsForTests([
+    WfGraphOperations.actionConfigOptions.id,
+    WfGraphOperations.integrationConfigOptions.id,
+  ]);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  resetAuthorizationGrantsForTests();
+});
 
 const catalog: ExtensionCatalog = {
   ...emptyExtensionCatalog,
@@ -69,6 +86,45 @@ function node(config: Record<string, unknown>): WorkflowNode {
       config: {
         actionType: "resend/send-email",
         integrationId: "int_1",
+        ...config,
+      },
+    },
+  } as WorkflowNode;
+}
+
+const hostCatalog: ExtensionCatalog = {
+  ...emptyExtensionCatalog,
+  actions: [
+    {
+      id: "host/send-email",
+      label: "Send Email",
+      description: "Sends an email",
+      category: "Application",
+      sideEffect: true,
+      configFields: [
+        {
+          key: "emailTemplateId",
+          label: "Template",
+          type: "provider-select",
+          optionsSource: {
+            provider: "emailTemplateId",
+            parameters: ["emailTemplateId"],
+          },
+        },
+      ],
+      outputFields: [],
+    },
+  ],
+};
+
+function hostNode(config: Record<string, unknown>): WorkflowNode {
+  const value = node(config);
+  return {
+    ...value,
+    data: {
+      ...value.data,
+      config: {
+        actionType: "host/send-email",
         ...config,
       },
     },
@@ -125,6 +181,22 @@ function collect(options: {
 }
 
 describe("issues a provider-backed field raises", () => {
+  it("excludes host pickers from Connection field issue collection", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
+      },
+    });
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const nodes = [hostNode({ emailTemplateId: "tpl_1" })];
+
+    expect(providerFieldQuestions(nodes, hostCatalog)).toEqual([]);
+    await expect(
+      fetchProviderFieldIssues(queryClient, nodes, hostCatalog)
+    ).resolves.toEqual([]);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it("refetches a fresh cached answer before returning blocking issues", async () => {
     const queryClient = new QueryClient({
       defaultOptions: {
@@ -380,8 +452,4 @@ describe("issues a provider-backed field raises", () => {
 
     expect(issues).toEqual([]);
   });
-});
-
-afterEach(() => {
-  vi.restoreAllMocks();
 });

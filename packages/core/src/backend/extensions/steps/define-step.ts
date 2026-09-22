@@ -52,7 +52,9 @@ import type {
   ActionConfigField,
   ActionConfigFieldBase,
   ActionConfigFieldGroup,
+  FieldOptionsSource,
 } from "@wfgraph/shared/plugins/action-fields";
+import type { ShowWhen } from "@wfgraph/shared/types/show-when";
 import type {
   NodeSteps,
   StepResult,
@@ -303,23 +305,55 @@ export type HandlerAnswer<TOutput> =
  * An author writing `{ key: "body", type: "template-textarea", rows: 4 }` keeps
  * the label and the required flag the schema already stated.
  */
-type ConfigFieldFor<TInput, TConnectionKey extends string = string> = Partial<
-  Omit<ActionConfigFieldBase, "key" | "connectionDefaultKey">
+type InputKey<TInput> = Extract<keyof TInput, string>;
+
+type ConfigFieldFor<
+  TInput,
+  TConnectionKey extends string = never,
+  TAllowsOptionsSource extends boolean = true,
+> = Partial<
+  Omit<
+    ActionConfigFieldBase,
+    "key" | "connectionDefaultKey" | "optionsSource" | "showWhen"
+  >
 > & {
-  key: Extract<keyof TInput, string>;
+  key: InputKey<TInput>;
   /**
    * Held to the Connection fields the owning integration declares, which is
-   * what `defineIntegration` passes in. A host calling `defineStep` outside an
-   * integration has no such record, and the default admits any string.
+   * what `defineIntegration` passes in. A host action passes `never`, because
+   * it has no Connection value to display.
    */
   connectionDefaultKey?: TConnectionKey | undefined;
-};
+  /** The sibling field whose value decides whether this field is shown. */
+  showWhen?: ShowWhen<InputKey<TInput>> | undefined;
+} & (TAllowsOptionsSource extends true
+    ? {
+        /**
+         * The server-side provider and the sibling config keys it may read.
+         * Provider ownership is checked when the action is assembled.
+         */
+        optionsSource?:
+          | (Omit<FieldOptionsSource, "parameters"> & {
+              parameters?: InputKey<TInput>[] | undefined;
+            })
+          | undefined;
+      }
+    : {
+        optionsSource?: never;
+        type?:
+          | Exclude<
+              ActionConfigFieldBase["type"],
+              "provider-select" | "provider-fields"
+            >
+          | undefined;
+      });
 
-type ConfigFieldGroupFor<TInput, TConnectionKey extends string = string> = Omit<
-  ActionConfigFieldGroup,
-  "fields"
-> & {
-  fields: ConfigFieldFor<TInput, TConnectionKey>[];
+type ConfigFieldGroupFor<
+  TInput,
+  TConnectionKey extends string = never,
+  TAllowsOptionsSource extends boolean = true,
+> = Omit<ActionConfigFieldGroup, "fields"> & {
+  fields: ConfigFieldFor<TInput, TConnectionKey, TAllowsOptionsSource>[];
 };
 
 /**
@@ -332,10 +366,11 @@ type ConfigFieldGroupFor<TInput, TConnectionKey extends string = string> = Omit<
  */
 export type ActionConfigFieldFor<
   TInput,
-  TConnectionKey extends string = string,
+  TConnectionKey extends string = never,
+  TAllowsOptionsSource extends boolean = true,
 > =
-  | ConfigFieldFor<TInput, TConnectionKey>
-  | ConfigFieldGroupFor<TInput, TConnectionKey>;
+  | ConfigFieldFor<TInput, TConnectionKey, TAllowsOptionsSource>
+  | ConfigFieldGroupFor<TInput, TConnectionKey, TAllowsOptionsSource>;
 
 /**
  * A step's schemas and metadata, before an integration names it.

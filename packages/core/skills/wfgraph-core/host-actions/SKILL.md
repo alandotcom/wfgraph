@@ -2,8 +2,9 @@
 name: host-actions
 description: >
   defineAction for host-owned steps: Promise handlers, Standard Schema input and
-  output, step.run, readCredentials, sideEffect. Load when adding application
-  actions beside integrations. Not for defineIntegration (Effect plugin path).
+  output, authored config forms, dependent option callbacks, step.run,
+  readCredentials, sideEffect. Load when adding application actions beside
+  integrations. Not for defineIntegration (Effect plugin path).
 metadata:
   type: sub-skill
   library: wfgraph
@@ -28,7 +29,19 @@ separate help text. Use `title` only when the intended label cannot be derived
 from the key. A closed string set can label each choice with `title` on its
 singleton `const` or `enum` branch under JSON Schema `anyOf` or `oneOf`. Use an
 annotated Zod literal union; the editor displays each title and stores its raw
-literal value.
+literal value. Use `configFields` for presentation the schema cannot express,
+including grouping, ordering, placeholders, and conditional visibility. For an input
+shared by several variants, keep one schema key and use `showWhen.in`; use
+`showWhen.equals` for one variant. Both forms constrain `field` to an input-schema key.
+Read the matching contract in `docs/integrations.md` ("The config form").
+
+Use `options` keyed by input-schema fields for application-owned pickers. Each
+callback receives current draft selections as optional raw strings, without
+Connection credentials. Return choices directly, or an `unavailable` result for
+an expected refusal. Handle missing selections when choices depend on another
+field. These callbacks guide the editor; validate execution requirements in the
+action itself. Copy the dependent-picker example and read the refresh and failure
+contract in `docs/embedding.md` ("Dynamic host action fields").
 
 ## Core Patterns
 

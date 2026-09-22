@@ -851,6 +851,24 @@ describe("fieldsVisibleForConfig", () => {
 });
 
 describe("fieldsOfferedForConfig", () => {
+  it.each(["a", "b", "c"])(
+    "offers shared output paths for template %s",
+    (template) => {
+      const fields = [
+        { path: "always", type: "string" as const },
+        {
+          path: "name",
+          type: "string" as const,
+          showWhen: { field: "template", in: ["a", "b"] },
+        },
+      ];
+
+      expect(
+        fieldsOfferedForConfig({ template }, fields).map((field) => field.path)
+      ).toEqual(template === "c" ? ["always"] : ["always", "name"]);
+    }
+  );
+
   it("omits hidden fields while leaving them addressable", () => {
     const fields = [
       { path: "public", type: "string" as const },

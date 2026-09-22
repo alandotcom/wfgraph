@@ -9,17 +9,19 @@
 
 import { useQuery } from "@tanstack/react-query";
 import type { ConfigOptionsAnswer } from "#src/lib/rpc-client";
-import { configOptionsQueryOptions } from "#src/lib/rpc-query";
-import { can } from "#src/lib/authorization";
 import {
+  canQueryConfigOptions,
+  type ConfigOptionsOwner,
+  providerConfigOptionsQueryOptions,
+} from "#src/lib/config-options-query";
+import {
+  readActionOptionConfig,
   readProviderParameters,
-  settledProviderParameter,
 } from "#src/lib/provider-parameters";
 import type { FieldOptionsSource } from "@wfgraph/shared/plugins/action-fields";
-import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 
 export type ConfigOptionsState =
-  /** Nothing to ask yet: no connection, or a parameter still to fill in. */
+  /** Nothing to ask yet: no Connection, or an integration dependency is blank. */
   | { state: "waiting" }
   | { state: "loading" }
   | { state: "ready"; answer: ConfigOptionsAnswer }
@@ -40,33 +42,41 @@ export type ConfigOptionsState =
   | { state: "failed"; retry: () => void };
 
 export function useConfigOptions(input: {
+  owner: ConfigOptionsOwner;
   source: FieldOptionsSource | undefined;
   config: Record<string, unknown>;
 }): ConfigOptionsState {
-  const { source, config } = input;
-  const integrationId = settledProviderParameter(config.integrationId);
-  const { parameters, missing } = readProviderParameters(source, config);
-
-  const enabled =
+  const { owner, source, config } = input;
+  const integrationQuestion = readProviderParameters(source, config);
+  const parameters =
+    owner.kind === "action"
+      ? readActionOptionConfig(source, config)
+      : integrationQuestion.parameters;
+  const hasQuestion =
     source !== undefined &&
-    integrationId !== undefined &&
-    missing.length === 0 &&
-    can(WfGraphOperations.integrationConfigOptions.id);
-
+    (owner.kind === "action" || integrationQuestion.missing.length === 0);
+  const enabled =
+    hasQuestion &&
+    (owner.kind === "action" || owner.integrationId !== undefined) &&
+    canQueryConfigOptions(owner);
   const query = useQuery({
-    ...configOptionsQueryOptions({
-      // The query is disabled without these, so the placeholders are never sent.
-      integrationId: integrationId ?? "",
+    ...providerConfigOptionsQueryOptions({
+      owner,
       provider: source?.provider ?? "",
       parameters,
     }),
     enabled,
   });
 
-  if (!source || integrationId === undefined || missing.length > 0) {
+  if (!enabled) {
     return { state: "waiting" };
   }
-  if (query.isPending) {
+  // Cached host choices cannot invalidate a selection until its refresh ends,
+  // including a request paused while offline.
+  if (
+    query.isPending ||
+    (owner.kind === "action" && query.fetchStatus !== "idle")
+  ) {
     return { state: "loading" };
   }
   if (query.error) {

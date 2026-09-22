@@ -24,6 +24,14 @@ export {
   type ActionDefinition,
   defineAction,
 } from "#src/backend/extensions/define-action";
+export type {
+  ActionOptionsCallback,
+  ActionOptionsConfig,
+  ActionOptionsResult,
+  ActionOptionsUnavailable,
+  ConfigOptionChoice,
+} from "#src/backend/extensions/config-options";
+export type { ActionConfigFieldFor } from "#src/backend/extensions/steps/define-step";
 /**
  * How a handler written as an `Effect` fails its node, with the message the run
  * log shows. A handler written as a plain function throws instead.

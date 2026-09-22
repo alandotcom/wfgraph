@@ -24,7 +24,7 @@ export function ProviderFieldNotice({ state }: { state: ConfigOptionsState }) {
     // carry a request URL holding a credential.
     return (
       <WarningCallout className="text-xs">
-        <span className="block">Could not read this from the connection.</span>
+        <span className="block">Could not load the available values.</span>
         <Button
           className="mt-1 h-7 px-2"
           onClick={state.retry}

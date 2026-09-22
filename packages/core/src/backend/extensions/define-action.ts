@@ -13,12 +13,22 @@
  */
 
 import {
+  type ActionConfigFieldFor,
   buildStep,
   type HandlerAnswer,
   type StepBag,
 } from "#src/backend/extensions/steps/define-step";
+import { buildConfigForm } from "#src/backend/extensions/steps/config-form";
+import type {
+  ActionOptions,
+  HostActionOptionsCallback,
+} from "#src/backend/extensions/config-options";
 import type { StepFactory } from "#src/backend/extensions/steps/step-runner";
-import type { ActionConfigField } from "@wfgraph/shared/plugins/action-fields";
+import {
+  flattenConfigFields,
+  isFieldGroup,
+  type ActionConfigField,
+} from "@wfgraph/shared/plugins/action-fields";
 import {
   configFieldsFromInputSchema,
   type InputSchema,
@@ -98,6 +108,11 @@ export type ActionDefinition = ActionIdentity & {
    */
   readonly configFields: ActionConfigField[];
 
+  /** Application callbacks retained on the server for inferred picker fields. */
+  readonly options?:
+    | Readonly<Record<string, HostActionOptionsCallback | undefined>>
+    | undefined;
+
   /**
    * Describes the fields available in this action's output for downstream
    * template autocomplete (e.g. `{{ @NodeLabel.appointmentId }}`), derived from
@@ -130,47 +145,106 @@ type ActionHandler<TInput, TOutput> = (
   bag: ActionBag<TInput>
 ) => HandlerAnswer<TOutput>;
 
-export type DefineActionInput<TInput extends Record<string, unknown>> =
-  ActionIdentity & {
-    /**
-     * The schema that validates the resolved config values before they reach
-     * your handler. Write it in Effect Schema, Zod, or arktype -- whichever, it
-     * is passed as it is, with no wrapping.
-     *
-     * `configFields` are auto-derived from the schema's JSON Schema
-     * representation. A readable label is derived from each property key.
-     * `title` overrides that label, `description` supplies help text, and a
-     * title on a singleton union branch labels that enum choice.
-     */
-    input: InputSchema<TInput>;
+type ActionFormInput<TInput extends Record<string, unknown>> = {
+  /**
+   * The schema that validates the resolved config values before they reach
+   * your handler. Write it in Effect Schema, Zod, or arktype -- whichever, it
+   * is passed as it is, with no wrapping.
+   *
+   * `configFields` are auto-derived from the schema's JSON Schema
+   * representation. A readable label is derived from each property key.
+   * `title` overrides that label, `description` supplies help text, and a
+   * title on a singleton union branch labels that enum choice.
+   */
+  input: InputSchema<TInput>;
 
-    /**
-     * Where the work is. An action with no `output` is addressable by node and
-     * not by field, so what this answers is passed on untyped and unencoded.
-     */
-    handler: ActionHandler<TInput, unknown>;
-  };
+  /**
+   * What the input schema cannot say about the form: control choice, ordering,
+   * grouping, placeholders, and conditional visibility. Keys and sibling
+   * references are held to the input type. Host actions have no Connection
+   * defaults.
+   */
+  configFields?:
+    | readonly ActionConfigFieldFor<TInput, never, false>[]
+    | undefined;
+
+  /**
+   * Application-scoped choices for picker fields. Each key names an input
+   * field, and each callback receives the action's current literal draft
+   * strings when the editor asks for choices.
+   */
+  options?: ActionOptions<TInput> | undefined;
+};
+
+export type DefineActionInput<TInput extends Record<string, unknown>> =
+  ActionIdentity &
+    ActionFormInput<TInput> & {
+      /**
+       * Where the work is. An action with no `output` is addressable by node and
+       * not by field, so what this answers is passed on untyped and unencoded.
+       */
+      handler: ActionHandler<TInput, unknown>;
+    };
 
 export type DefineActionInputWithOutput<
   TInput extends Record<string, unknown>,
   TOutput extends Record<string, unknown>,
-> = ActionIdentity & {
-  input: InputSchema<TInput>;
-  /**
-   * The schema describing what the handler answers with. Auto-derives
-   * `outputFields` via `~standard.jsonSchema.output()` and types the return.
-   */
-  output: OutputSchema<TOutput>;
-  /**
-   * Where the work is.
-   *
-   * `NoInfer` is what keeps the schemas the source of truth. Without it the
-   * handler's own return is an inference site too, so an action answering with
-   * fewer fields than `output` declares makes the schema answer to the handler
-   * and the editor then offers a field no run produces.
-   */
-  handler: ActionHandler<NoInfer<TInput>, NoInfer<TOutput>>;
-};
+> = ActionIdentity &
+  ActionFormInput<TInput> & {
+    /**
+     * The schema describing what the handler answers with. Auto-derives
+     * `outputFields` via `~standard.jsonSchema.output()` and types the return.
+     */
+    output: OutputSchema<TOutput>;
+    /**
+     * Where the work is.
+     *
+     * `NoInfer` is what keeps the schemas the source of truth. Without it the
+     * handler's own return is an inference site too, so an action answering with
+     * fewer fields than `output` declares makes the schema answer to the handler
+     * and the editor then offers a field no run produces.
+     */
+    handler: ActionHandler<NoInfer<TInput>, NoInfer<TOutput>>;
+  };
+
+function inferOptionFields(
+  fields: readonly ActionConfigField[],
+  options:
+    | Readonly<Record<string, HostActionOptionsCallback | undefined>>
+    | undefined
+): ActionConfigField[] {
+  if (!options) {
+    return [...fields];
+  }
+
+  const optionKeys = new Set(Object.keys(options));
+  const parameters = flattenConfigFields(fields).map((field) => field.key);
+
+  return fields.map((field) => {
+    if (isFieldGroup(field)) {
+      return {
+        ...field,
+        fields: field.fields.map((nested) =>
+          optionKeys.has(nested.key)
+            ? {
+                ...nested,
+                type: "provider-select",
+                optionsSource: { provider: nested.key, parameters },
+              }
+            : nested
+        ),
+      };
+    }
+
+    return optionKeys.has(field.key)
+      ? {
+          ...field,
+          type: "provider-select",
+          optionsSource: { provider: field.key, parameters },
+        }
+      : field;
+  });
+}
 
 function normalizeActionIdentity(
   definition: ActionIdentity
@@ -276,9 +350,15 @@ export function defineAction<TInput extends Record<string, unknown>>(
     hidden: definition.hidden,
   });
 
+  const configFields = buildConfigForm(
+    configFieldsFromInputSchema(schema),
+    definition.configFields ?? []
+  );
+
   return {
     ...normalized,
-    configFields: configFieldsFromInputSchema(schema),
+    configFields: inferOptionFields(configFields, definition.options),
+    options: definition.options,
     outputFields: outputSchema
       ? outputFieldsFromSchema(outputSchema)
       : undefined,

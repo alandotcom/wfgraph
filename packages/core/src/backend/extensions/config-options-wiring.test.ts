@@ -34,10 +34,10 @@ type ExampleInput = {
   readonly variables?: string | undefined;
 };
 
-// `never` for the connection-default key, because this harness declares no
-// credentials and a field may only name one the integration has.
+// This harness declares no credentials, so a field cannot name a Connection
+// default key.
 function integrationWith(input: {
-  configFields: readonly ActionConfigFieldFor<ExampleInput, never>[];
+  configFields: readonly ActionConfigFieldFor<ExampleInput>[];
   configOptions?: Record<string, ConfigOptionsProvider> | undefined;
 }) {
   return defineIntegration({
@@ -64,14 +64,12 @@ function integrationWith(input: {
   });
 }
 
-function unsafeFieldKey(
-  key: string
-): ActionConfigFieldFor<ExampleInput, never> {
+function unsafeFieldKey(key: string): ActionConfigFieldFor<ExampleInput> {
   return {
     key,
     label: "Unsafe",
     type: "text",
-  } as unknown as ActionConfigFieldFor<ExampleInput, never>;
+  } as unknown as ActionConfigFieldFor<ExampleInput>;
 }
 
 function unsafeParameterKey(key: string): (keyof ExampleInput)[] {
@@ -209,7 +207,10 @@ describe("provider-backed config fields", () => {
               key: "templateId",
               label: "Template",
               type: "provider-select",
-              optionsSource: { provider: "templates", parameters: ["nope"] },
+              optionsSource: {
+                provider: "templates",
+                parameters: unsafeParameterKey("nope"),
+              },
             },
           ],
         })
@@ -284,10 +285,8 @@ describe("provider-backed config fields", () => {
     expect(JSON.stringify(set.catalog)).not.toContain("answers");
   });
 
-  it("refuses a provider-backed field on a host action, which has no connection", () => {
-    // `defineAction` derives its fields from the input schema and so cannot
-    // produce one of these. `ActionDefinition.configFields` is a public field
-    // though, and assembly takes any definition, which is the hole this closes.
+  it("retains a host option callback without putting it in the catalog", () => {
+    const templateOptions = async () => [];
     const hostAction = defineAction({
       id: "host/thing",
       label: "Thing",
@@ -296,25 +295,77 @@ describe("provider-backed config fields", () => {
       output: Schema.Struct({
         ok: Schema.Boolean.annotate({ description: "Ok" }),
       }),
+      options: { templateId: templateOptions },
       handler: () => ({ ok: true }),
     });
 
-    expect(() =>
-      assembleExtensions({
-        actions: [
-          {
-            ...hostAction,
-            configFields: [
-              {
-                key: "templateId",
-                label: "Template",
-                type: "provider-select",
-                optionsSource: { provider: "templates" },
-              },
-            ],
-          },
-        ],
-      })
-    ).toThrow(/has no connection to ask/u);
+    const set = assembleExtensions({ actions: [hostAction] });
+
+    expect(set.actionConfigOptionsFor("host/thing", "templateId")).toBe(
+      templateOptions
+    );
+    expect(set.actionConfigOptionsFor("host/thing", "absent")).toBeUndefined();
+    expect(
+      set.catalog.actions.find((action) => action.id === "host/thing")
+    ).not.toHaveProperty("options");
+
+    const withoutAction = assembleExtensions({ actions: [] });
+    expect(
+      withoutAction.actionConfigOptionsFor("host/thing", "templateId")
+    ).toBeUndefined();
+  });
+
+  it.each(["missing", ...RESERVED_RECORD_KEYS])(
+    "refuses a list condition naming the unknown or unsafe key %s",
+    (field) => {
+      const action = defineAction({
+        id: "host/variants",
+        label: "Variants",
+        description: "Shared variant inputs",
+        input: Schema.Struct({ template: Schema.String, name: Schema.String }),
+        handler: () => undefined,
+      });
+      expect(() =>
+        assembleExtensions({
+          actions: [
+            {
+              ...action,
+              configFields: [
+                {
+                  key: "name",
+                  label: "Name",
+                  type: "text",
+                  showWhen: { field, in: ["a", "b"] },
+                },
+              ],
+            },
+          ],
+        })
+      ).toThrow(/conditional field reference|not a config field/u);
+    }
+  );
+
+  it("allows host option callbacks to receive more than eight schema fields", () => {
+    const hostAction = defineAction({
+      id: "host/thing",
+      label: "Thing",
+      description: "A host action",
+      input: Schema.Struct({
+        choice: Schema.optionalKey(Schema.String),
+        p1: Schema.optionalKey(Schema.String),
+        p2: Schema.optionalKey(Schema.String),
+        p3: Schema.optionalKey(Schema.String),
+        p4: Schema.optionalKey(Schema.String),
+        p5: Schema.optionalKey(Schema.String),
+        p6: Schema.optionalKey(Schema.String),
+        p7: Schema.optionalKey(Schema.String),
+        p8: Schema.optionalKey(Schema.String),
+        p9: Schema.optionalKey(Schema.String),
+      }),
+      options: { choice: async () => [] },
+      handler: () => undefined,
+    });
+
+    expect(() => assembleExtensions({ actions: [hostAction] })).not.toThrow();
   });
 });

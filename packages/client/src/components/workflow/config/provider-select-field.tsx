@@ -7,12 +7,14 @@
  * reference yet: that intent has no representation in the value, so it is the
  * one thing here that is state.
  *
- * A stored id the provider no longer lists is still shown selected, rather than
- * leaving the trigger looking empty about a value the node really does send.
+ * An integration keeps a stored id its provider no longer lists. A host option
+ * callback owns the current valid literals, so a successful current answer
+ * clears a selected literal it excludes. Unavailable and stale answers do not.
  */
 
 import { Braces, List } from "lucide-react";
 import { useState } from "react";
+import { useAfterCommit } from "#src/hooks/effects";
 import { Button } from "#src/components/ui/button";
 import {
   Select,
@@ -25,12 +27,14 @@ import { TemplateBadgeInput } from "#src/components/ui/template-badge-input";
 import { findTemplateTokens } from "@wfgraph/shared/graph/node-references";
 import type { ActionConfigFieldBase } from "@wfgraph/shared/plugins/action-fields";
 import { ProviderFieldNotice } from "./provider-fallback";
+import type { ConfigOptionsOwner } from "#src/lib/config-options-query";
 import { useConfigOptions } from "./use-config-options";
 
 export type ProviderFieldProps = {
   field: ActionConfigFieldBase;
   value: unknown;
   config: Record<string, unknown>;
+  owner: ConfigOptionsOwner;
   /** Resolved by `renderField`; see `FieldProps` in the renderer. */
   placeholder: string | undefined;
   onChange: (value: unknown) => void;
@@ -42,13 +46,18 @@ export function ProviderSelectField({
   field,
   value,
   config,
+  owner,
   placeholder,
   onChange,
   disabled,
   descriptionId,
 }: ProviderFieldProps) {
   const stored = typeof value === "string" ? value : "";
-  const state = useConfigOptions({ source: field.optionsSource, config });
+  const state = useConfigOptions({
+    owner,
+    source: field.optionsSource,
+    config,
+  });
   const inferredMode =
     findTemplateTokens(stored).length > 0 ? "template" : "picker";
   const [modeState, setModeState] = useState({
@@ -61,6 +70,24 @@ export function ProviderSelectField({
   const mode = modeState.stored === stored ? modeState.mode : inferredMode;
   const asTemplate = mode === "template";
   const fieldName = field.label || field.key;
+  const shouldClearHostSelection =
+    disabled !== true &&
+    owner.kind === "action" &&
+    stored.length > 0 &&
+    findTemplateTokens(stored).length === 0 &&
+    state.state === "ready" &&
+    state.answer.status === "options" &&
+    !state.answer.options.some((option) => option.value === stored);
+  const currentHostAnswer =
+    shouldClearHostSelection && state.state === "ready"
+      ? state.answer
+      : undefined;
+
+  useAfterCommit(currentHostAnswer, () => {
+    if (shouldClearHostSelection) {
+      onChange("");
+    }
+  });
 
   const templateInput = (
     <TemplateBadgeInput
@@ -87,12 +114,12 @@ export function ProviderSelectField({
       }
       aria-label={
         asTemplate
-          ? `Choose from the connection for ${fieldName}`
+          ? `Choose from available values for ${fieldName}`
           : `Use an upstream value for ${fieldName}`
       }
       size="sm"
       title={
-        asTemplate ? "Choose from the connection" : "Use an upstream value"
+        asTemplate ? "Choose from available values" : "Use an upstream value"
       }
       type="button"
       variant="ghost"
@@ -121,9 +148,9 @@ export function ProviderSelectField({
   }
 
   if (state.state === "ready" && state.answer.status === "options") {
-    // A stored value the provider no longer lists still names itself, so the
-    // trigger reads as what the node actually sends rather than as empty. It
-    // goes in `items` too, which is what the trigger renders the label from.
+    // Before a host's post-commit clear, and permanently for an integration, a
+    // stored value the answer no longer lists still names itself. Putting it in
+    // `items` keeps the trigger truthful instead of briefly rendering empty.
     const listed = state.answer.options.map((option) => ({
       value: option.value,
       label: option.label,

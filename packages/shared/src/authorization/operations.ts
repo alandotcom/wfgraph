@@ -39,6 +39,11 @@ function operation<
 const operationDefinitions = {
   agentChat: operation("agent.chat", WfGraphPermissions.agentUse),
 
+  actionConfigOptions: operation(
+    "action.configOptions",
+    WfGraphPermissions.workflowWrite
+  ),
+
   integrationGetAll: operation(
     "integration.getAll",
     WfGraphPermissions.connectionRead

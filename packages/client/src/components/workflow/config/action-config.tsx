@@ -54,6 +54,7 @@ import {
   waitValueKeysNotIn,
 } from "@wfgraph/shared/lifecycle/wait-subscription";
 import { ActionConfigRenderer } from "./action-config-renderer";
+import type { ConfigOptionsOwner } from "#src/lib/config-options-query";
 import { ConditionBuilderRow } from "./condition-builder-row";
 import { ConfigHelp } from "./config-section";
 import type { UpdateNodeConfig } from "./node-config-patch";
@@ -88,6 +89,18 @@ type CategoryActionOption = {
   logoUrl?: string | undefined;
   integration?: string | undefined;
 };
+
+function configOptionsOwner(
+  action: CategoryActionOption,
+  config: Record<string, unknown>
+): ConfigOptionsOwner {
+  return action.integration
+    ? {
+        kind: "integration",
+        integrationId: settledProviderParameter(config.integrationId),
+      }
+    : { kind: "action", actionId: action.id };
+}
 
 function OptionLogo({
   logoUrl,
@@ -974,6 +987,7 @@ export function ActionConfig({
           disabled={disabled}
           fields={catalogAction.configFields}
           onUpdateConfig={onUpdateConfig}
+          owner={configOptionsOwner(catalogAction, config)}
         />
       )}
     </>
