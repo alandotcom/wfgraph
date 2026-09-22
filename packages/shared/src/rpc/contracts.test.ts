@@ -66,6 +66,19 @@ describe("action RPC input contracts", () => {
     expect(result).toHaveProperty("value");
   });
 
+  it("accepts long sibling values in a host option draft", async () => {
+    const result = await validateInput(rpcContract.action.configOptions, {
+      actionId: "host/template-email",
+      provider: "templates",
+      parameters: {
+        messageBody: "x".repeat(2049),
+        templateId: "welcome",
+      },
+    });
+
+    expect(result).toHaveProperty("value");
+  });
+
   it.each(RESERVED_RECORD_KEYS)(
     "rejects the reserved config-options parameter key %s",
     async (key) => {

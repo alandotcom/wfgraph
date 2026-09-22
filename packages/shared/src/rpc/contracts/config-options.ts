@@ -38,7 +38,12 @@ export const configOptionsParametersSchema = () =>
   );
 
 /** Every current literal schema field sent to a host action option callback. */
-export const actionOptionsConfigSchema = configOptionsParametersRecord;
+export const actionOptionsConfigSchema = () =>
+  Schema.Record(Schema.String, Schema.String).check(
+    Schema.makeFilter(hasOnlySafeRecordKeys, {
+      expected: "config keys not reserved by JavaScript objects",
+    })
+  );
 
 /**
  * What either application code or an integration provider returns for one

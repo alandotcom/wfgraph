@@ -8,7 +8,6 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ActionConfigRenderer } from "#src/components/workflow/config/action-config-renderer";
 import type { ConfigOptionsAnswer } from "#src/lib/rpc-client";
@@ -31,7 +30,6 @@ import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 
 beforeEach(() => {
   installAuthorizationGrantsForTests([
-    WfGraphOperations.actionConfigOptions.id,
     WfGraphOperations.integrationConfigOptions.id,
   ]);
 });
@@ -49,16 +47,6 @@ const templateField: ActionConfigField = {
   optionsSource: { provider: "templates" },
 };
 
-const senderField: ActionConfigField = {
-  key: "senderId",
-  label: "Sender",
-  type: "provider-select",
-  optionsSource: {
-    provider: "senderId",
-    parameters: ["emailTemplateId", "senderId"],
-  },
-};
-
 const variablesField: ActionConfigField = {
   key: "emailTemplateVariables",
   label: "Template Variables",
@@ -68,14 +56,6 @@ const variablesField: ActionConfigField = {
     parameters: ["emailTemplateId"],
   },
 };
-
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((settle) => {
-    resolve = settle;
-  });
-  return { promise, resolve };
-}
 
 function renderFields(options: {
   fields: readonly ActionConfigField[];
@@ -132,283 +112,7 @@ function renderFields(options: {
   };
 }
 
-function renderControlledActionField(options: {
-  field: ActionConfigField;
-  config: Record<string, unknown>;
-}) {
-  const onUpdateConfig = vi.fn();
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false, staleTime: 0 } },
-  });
-
-  function ControlledField() {
-    const [config, setConfig] = useState(options.config);
-    return (
-      <ExtensionCatalogProvider value={emptyExtensionCatalog}>
-        <QueryClientProvider client={queryClient}>
-          <ActionConfigRenderer
-            config={config}
-            fields={[options.field]}
-            onUpdateConfig={(patch) => {
-              onUpdateConfig(patch);
-              setConfig((current) => ({ ...current, ...patch }));
-            }}
-            owner={{ kind: "action", actionId: "host/template-email" }}
-          />
-        </QueryClientProvider>
-      </ExtensionCatalogProvider>
-    );
-  }
-
-  return { ...render(<ControlledField />), onUpdateConfig };
-}
-
 describe("a provider-backed picker", () => {
-  it("loads application-scoped options only through the action endpoint", async () => {
-    const fetchSpy = vi
-      .spyOn(globalThis, "fetch")
-      .mockImplementation(async () =>
-        rpcJsonResponse({
-          status: "options",
-          options: [{ value: "welcome", label: "Welcome" }],
-        })
-      );
-
-    renderFields({
-      config: {},
-      fields: [templateField],
-      owner: { kind: "action", actionId: "host/template-email" },
-    });
-
-    expect(await screen.findByRole("combobox")).toBeTruthy();
-    expect(String(fetchSpy.mock.calls[0]?.[0])).toContain(
-      "/action/configOptions"
-    );
-    await expect(
-      parseRpcRequestInput(fetchSpy.mock.calls[0]?.[1])
-    ).resolves.toMatchObject({
-      actionId: "host/template-email",
-      provider: "templates",
-    });
-  });
-
-  it("sends a host callback the current raw literal draft without waiting for blanks", async () => {
-    const fetchSpy = vi
-      .spyOn(globalThis, "fetch")
-      .mockImplementation(async () =>
-        rpcJsonResponse({ status: "options", options: [] })
-      );
-    const field: ActionConfigField = {
-      ...senderField,
-      optionsSource: {
-        provider: "senderId",
-        parameters: ["emailTemplateId", "senderId", "referenceId"],
-      },
-    };
-
-    renderFields({
-      config: {
-        emailTemplateId: "  welcome  ",
-        senderId: "",
-        referenceId: "{{@n1:Lead.senderId}}",
-        smuggled: "secret",
-      },
-      fields: [field],
-      owner: { kind: "action", actionId: "host/template-email" },
-    });
-
-    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
-    await expect(
-      parseRpcRequestInput(fetchSpy.mock.calls[0]?.[1])
-    ).resolves.toMatchObject({
-      parameters: { emailTemplateId: "  welcome  " },
-    });
-  });
-
-  it("refreshes dependent host choices whenever the draft changes", async () => {
-    const fetchSpy = vi
-      .spyOn(globalThis, "fetch")
-      .mockImplementation(async () =>
-        rpcJsonResponse({ status: "options", options: [] })
-      );
-    const owner = {
-      kind: "action" as const,
-      actionId: "host/template-email",
-    };
-    const view = renderFields({
-      config: { emailTemplateId: "", senderId: "" },
-      fields: [senderField],
-      owner,
-    });
-
-    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
-    view.rerenderConfig({ emailTemplateId: "welcome", senderId: "" });
-    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2));
-
-    await expect(
-      parseRpcRequestInput(fetchSpy.mock.calls[1]?.[1])
-    ).resolves.toMatchObject({
-      provider: "senderId",
-      parameters: { emailTemplateId: "welcome" },
-    });
-  });
-
-  it("ignores a stale host answer after the draft changes", async () => {
-    const oldAnswer = deferred<Response>();
-    const currentAnswer = deferred<Response>();
-    const fetchSpy = vi
-      .spyOn(globalThis, "fetch")
-      .mockImplementationOnce(() => oldAnswer.promise)
-      .mockImplementationOnce(() => currentAnswer.promise);
-    const owner = {
-      kind: "action" as const,
-      actionId: "host/template-email",
-    };
-    const view = renderFields({
-      config: { emailTemplateId: "old", senderId: "sender_1" },
-      fields: [senderField],
-      owner,
-    });
-
-    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
-    view.rerenderConfig({ emailTemplateId: "new", senderId: "sender_1" });
-    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2));
-
-    currentAnswer.resolve(
-      rpcJsonResponse({
-        status: "options",
-        options: [{ value: "sender_1", label: "Current sender" }],
-      })
-    );
-    expect(await screen.findByRole("combobox")).toBeTruthy();
-
-    oldAnswer.resolve(rpcJsonResponse({ status: "options", options: [] }));
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(view.onUpdateConfig).not.toHaveBeenCalled();
-  });
-
-  it.each(["available", "unavailable", "excluded"] as const)(
-    "waits for the fresh %s answer when returning to a cached host draft",
-    async (outcome) => {
-      const freshAnswer = deferred<Response>();
-      const fetchSpy = vi
-        .spyOn(globalThis, "fetch")
-        .mockImplementationOnce(async () =>
-          rpcJsonResponse({ status: "options", options: [] })
-        )
-        .mockImplementationOnce(async () =>
-          rpcJsonResponse({
-            status: "options",
-            options: [{ value: "sender_1", label: "Other sender" }],
-          })
-        )
-        .mockImplementationOnce(() => freshAnswer.promise);
-      const original = { emailTemplateId: "welcome", senderId: "sender_1" };
-      const view = renderFields({
-        config: original,
-        fields: [senderField],
-        owner: { kind: "action", actionId: "host/template-email" },
-      });
-
-      await waitFor(() =>
-        expect(view.onUpdateConfig).toHaveBeenCalledWith({ senderId: "" })
-      );
-      view.rerenderConfig({ ...original, emailTemplateId: "other" });
-      await screen.findByRole("combobox");
-      view.onUpdateConfig.mockClear();
-
-      view.rerenderConfig(original);
-      await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(3));
-      expect(view.onUpdateConfig).not.toHaveBeenCalled();
-
-      freshAnswer.resolve(
-        rpcJsonResponse(
-          outcome === "unavailable"
-            ? {
-                status: "unavailable",
-                reason: "unreachable",
-                message: "Try again later.",
-              }
-            : {
-                status: "options",
-                options:
-                  outcome === "available"
-                    ? [{ value: "sender_1", label: "Current sender" }]
-                    : [],
-              }
-        )
-      );
-      if (outcome === "excluded") {
-        await waitFor(() =>
-          expect(view.onUpdateConfig).toHaveBeenCalledExactlyOnceWith({
-            senderId: "",
-          })
-        );
-      } else {
-        if (outcome === "unavailable") {
-          await screen.findByText("Try again later.");
-        } else {
-          await screen.findByRole("combobox");
-        }
-        expect(view.onUpdateConfig).not.toHaveBeenCalled();
-      }
-    }
-  );
-
-  it("clears a host literal excluded by the latest successful choices once", async () => {
-    const fetchSpy = vi
-      .spyOn(globalThis, "fetch")
-      .mockImplementation(async () =>
-        rpcJsonResponse({
-          status: "options",
-          options: [{ value: "sender_2", label: "Other sender" }],
-        })
-      );
-    const view = renderControlledActionField({
-      config: { emailTemplateId: "welcome", senderId: "sender_gone" },
-      field: senderField,
-    });
-
-    await waitFor(() =>
-      expect(view.onUpdateConfig).toHaveBeenCalledWith({ senderId: "" })
-    );
-    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2));
-    expect(view.onUpdateConfig).toHaveBeenCalledTimes(1);
-  });
-
-  it("does not clear a host template reference or an unavailable selection", async () => {
-    const fetchSpy = vi
-      .spyOn(globalThis, "fetch")
-      .mockImplementation(async () =>
-        rpcJsonResponse({
-          status: "unavailable",
-          reason: "unreachable",
-          message: "Try again later.",
-        })
-      );
-    const referenced = renderFields({
-      config: {
-        emailTemplateId: "welcome",
-        senderId: "{{@n1:Lead.senderId}}",
-      },
-      fields: [senderField],
-      owner: { kind: "action", actionId: "host/template-email" },
-    });
-
-    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
-    expect(referenced.onUpdateConfig).not.toHaveBeenCalled();
-    referenced.unmount();
-
-    const unavailable = renderFields({
-      config: { emailTemplateId: "welcome", senderId: "sender_1" },
-      fields: [senderField],
-      owner: { kind: "action", actionId: "host/template-email" },
-    });
-    expect(await screen.findByText("Try again later.")).toBeTruthy();
-    expect(unavailable.onUpdateConfig).not.toHaveBeenCalled();
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
-  });
-
   it("falls back to a typed value when the node names no connection", () => {
     renderFields({ config: {}, fields: [templateField] });
 

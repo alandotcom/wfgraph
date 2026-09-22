@@ -1,10 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query";
 import type { ConfigOptionsAnswer } from "#src/lib/rpc-client";
 import { configOptionsQueryOptions } from "#src/lib/rpc-query";
-import {
-  canQueryConfigOptions,
-  type ConfigOptionsOwner,
-} from "#src/lib/config-options-query";
+import { canQueryConfigOptions } from "#src/lib/config-options-query";
 import {
   readProviderParameters,
   settledProviderParameter,
@@ -36,7 +33,10 @@ type ProviderFieldQuestion = {
   readonly nodeId: string;
   readonly nodeLabel: string;
   readonly field: ActionConfigFieldBase;
-  readonly owner: ConfigOptionsOwner;
+  readonly owner: {
+    readonly kind: "integration";
+    readonly integrationId: string;
+  };
   readonly provider: string;
   readonly parameters: Record<string, string>;
   readonly stored: string;
@@ -58,16 +58,10 @@ export function providerFieldQuestions(
       continue;
     }
     const action = findAction(catalog, actionType);
-    if (!action) {
-      continue;
-    }
     const integrationId = settledProviderParameter(config.integrationId);
-    if (action.integration && !integrationId) {
+    if (!action?.integration || !integrationId) {
       continue;
     }
-    const owner: ConfigOptionsOwner = action.integration
-      ? { kind: "integration", integrationId }
-      : { kind: "action", actionId: action.id };
 
     for (const field of flattenConfigFields(action.configFields)) {
       const source = field.optionsSource;
@@ -88,7 +82,7 @@ export function providerFieldQuestions(
           actionType,
         }),
         field,
-        owner,
+        owner: { kind: "integration", integrationId },
         provider: source.provider,
         parameters,
         stored: readConfigTrimmedString(config, field.key) ?? "",
@@ -110,7 +104,7 @@ function storedValues(text: string): ProviderFieldValues | null {
 export function providerFieldIssuesFor(
   question: ProviderFieldQuestion,
   answer: ConfigOptionsAnswer | undefined
-): Array<MissingRequiredFieldIssue | UnverifiedProviderFieldIssue> {
+): MissingRequiredFieldIssue[] {
   if (!answer || answer.status !== "fields") {
     return [];
   }
@@ -120,41 +114,23 @@ export function providerFieldIssuesFor(
     return [];
   }
 
-  return answer.fields.flatMap<
-    MissingRequiredFieldIssue | UnverifiedProviderFieldIssue
-  >((entry) => {
-    if (entry.required !== true || hasProviderFieldValue(values, entry.key)) {
-      return [];
-    }
-
-    const fieldKey = `${question.field.key}.${entry.key}`;
-    const fieldLabel = `${question.field.label} · ${entry.label}`;
-    if (question.owner.kind === "action") {
-      return [
-        {
-          kind: "unverified_provider_field" as const,
-          severity: "warning" as const,
-          nodeId: question.nodeId,
-          nodeLabel: question.nodeLabel,
-          fieldKey,
-          fieldLabel,
-          message: `Node "${question.nodeLabel}" has not filled application-provided field "${fieldLabel}"`,
-        },
-      ];
-    }
-
-    return [
-      {
+  return answer.fields
+    .filter(
+      (entry) =>
+        entry.required === true && !hasProviderFieldValue(values, entry.key)
+    )
+    .map((entry) => {
+      const fieldLabel = `${question.field.label} · ${entry.label}`;
+      return {
         kind: "missing_required_field" as const,
         severity: "blocking" as const,
         nodeId: question.nodeId,
         nodeLabel: question.nodeLabel,
-        fieldKey,
+        fieldKey: `${question.field.key}.${entry.key}`,
         fieldLabel,
         message: `Node "${question.nodeLabel}" is missing required field "${fieldLabel}"`,
-      },
-    ];
-  });
+      };
+    });
 }
 
 /** The one field this question asked about, named as the reader sees it. */
@@ -168,7 +144,7 @@ function unverifiedIssue(
     nodeLabel: question.nodeLabel,
     fieldKey: question.field.key,
     fieldLabel: question.field.label,
-    message: `Node "${question.nodeLabel}" could not check "${question.field.label}" against its configuration source`,
+    message: `Node "${question.nodeLabel}" could not check "${question.field.label}" against its Connection`,
   };
 }
 
@@ -183,25 +159,9 @@ function unverifiedIssue(
  * Each refusal now travels back as its own warning, so the rest of the list
  * still reaches the reader.
  */
-type ConnectionProviderFieldQuestion = Omit<ProviderFieldQuestion, "owner"> & {
-  readonly owner: {
-    readonly kind: "integration";
-    readonly integrationId: string;
-  };
-};
-
-function isConnectionProviderFieldQuestion(
-  question: ProviderFieldQuestion
-): question is ConnectionProviderFieldQuestion {
-  return (
-    question.owner.kind === "integration" &&
-    question.owner.integrationId !== undefined
-  );
-}
-
 function queryConnectionProviderField(
   queryClient: QueryClient,
-  question: ConnectionProviderFieldQuestion
+  question: ProviderFieldQuestion
 ): Promise<ConfigOptionsAnswer> {
   return queryClient.query({
     ...configOptionsQueryOptions({
@@ -218,12 +178,9 @@ export async function fetchProviderFieldIssues(
   nodes: readonly WorkflowNode[],
   catalog: ExtensionCatalog
 ): Promise<Array<MissingRequiredFieldIssue | UnverifiedProviderFieldIssue>> {
-  // Application-scoped loaders are editor guidance. Run and Publish preflight
-  // must not invoke application code, so only Connection-backed questions are
-  // refreshed here.
-  const questions = providerFieldQuestions(nodes, catalog)
-    .filter(isConnectionProviderFieldQuestion)
-    .filter((question) => canQueryConfigOptions(question.owner));
+  const questions = providerFieldQuestions(nodes, catalog).filter((question) =>
+    canQueryConfigOptions(question.owner)
+  );
   const answers = await Promise.allSettled(
     questions.map((question) =>
       queryConnectionProviderField(queryClient, question)

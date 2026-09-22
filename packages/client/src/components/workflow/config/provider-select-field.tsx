@@ -71,6 +71,7 @@ export function ProviderSelectField({
   const asTemplate = mode === "template";
   const fieldName = field.label || field.key;
   const shouldClearHostSelection =
+    disabled !== true &&
     owner.kind === "action" &&
     stored.length > 0 &&
     findTemplateTokens(stored).length === 0 &&

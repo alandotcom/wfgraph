@@ -5,7 +5,6 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { omit } from "es-toolkit/object";
 import { renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useProviderFieldIssues } from "#src/hooks/use-provider-field-issues";
@@ -94,12 +93,26 @@ function node(config: Record<string, unknown>): WorkflowNode {
 }
 
 const hostCatalog: ExtensionCatalog = {
-  ...catalog,
+  ...emptyExtensionCatalog,
   actions: [
     {
-      ...omit(catalog.actions[0]!, ["integration"]),
       id: "host/send-email",
+      label: "Send Email",
+      description: "Sends an email",
       category: "Application",
+      sideEffect: true,
+      configFields: [
+        {
+          key: "emailTemplateId",
+          label: "Template",
+          type: "provider-select",
+          optionsSource: {
+            provider: "emailTemplateId",
+            parameters: ["emailTemplateId"],
+          },
+        },
+      ],
+      outputFields: [],
     },
   ],
 };
@@ -168,38 +181,18 @@ function collect(options: {
 }
 
 describe("issues a provider-backed field raises", () => {
-  it("keeps host guidance non-blocking and out of Run and Publish preflight", async () => {
+  it("excludes host pickers from Connection field issue collection", async () => {
     const queryClient = new QueryClient({
       defaultOptions: {
         queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
       },
     });
     const fetchSpy = vi.spyOn(globalThis, "fetch");
-    const [question] = providerFieldQuestions(
-      [hostNode({ emailTemplateId: "tpl_1" })],
-      hostCatalog
-    );
-    const editorIssues = providerFieldIssuesFor(question!, variablesAnswer);
+    const nodes = [hostNode({ emailTemplateId: "tpl_1" })];
 
-    expect(question?.owner).toEqual({
-      kind: "action",
-      actionId: "host/send-email",
-    });
-    expect(editorIssues).toMatchObject([
-      {
-        kind: "unverified_provider_field",
-        fieldKey: "emailTemplateVariables.DONOR_FIRST_NAME",
-        severity: "warning",
-      },
-    ]);
-    expect(hasBlockingWorkflowIssues(editorIssues)).toBe(false);
-
+    expect(providerFieldQuestions(nodes, hostCatalog)).toEqual([]);
     await expect(
-      fetchProviderFieldIssues(
-        queryClient,
-        [hostNode({ emailTemplateId: "tpl_1" })],
-        hostCatalog
-      )
+      fetchProviderFieldIssues(queryClient, nodes, hostCatalog)
     ).resolves.toEqual([]);
     expect(fetchSpy).not.toHaveBeenCalled();
   });

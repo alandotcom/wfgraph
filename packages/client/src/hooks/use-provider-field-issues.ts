@@ -3,7 +3,7 @@
  *
  * A `provider-fields` field draws one input per value the chosen resource
  * declares, and which of those the provider has no default for is the
- * source's answer rather than anything the catalog knows. So the shared
+ * Connection's answer rather than anything the catalog knows. So the shared
  * collector cannot raise these, and this asks the same question the config panel
  * asks, for every node rather than only the open one.
  *
@@ -23,10 +23,7 @@ import {
   providerConfigOptionsQueryOptions,
 } from "#src/lib/config-options-query";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
-import type {
-  MissingRequiredFieldIssue,
-  UnverifiedProviderFieldIssue,
-} from "@wfgraph/shared/graph/workflow-issues";
+import type { MissingRequiredFieldIssue } from "@wfgraph/shared/graph/workflow-issues";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import {
   providerFieldIssuesFor,
@@ -36,7 +33,7 @@ import {
 export function useProviderFieldIssues(
   nodes: readonly WorkflowNode[],
   catalog: ExtensionCatalog
-): Array<MissingRequiredFieldIssue | UnverifiedProviderFieldIssue> {
+): MissingRequiredFieldIssue[] {
   const questions = useMemo(
     () => providerFieldQuestions(nodes, catalog),
     [nodes, catalog]
