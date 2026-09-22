@@ -105,7 +105,17 @@ export function TemplateBadgeTextarea({
           onBlur={handleBlur}
           onFocus={handleFocus}
           onInput={handleInput}
-          onKeyDown={handleKeyDown}
+          onKeyDown={(event) => {
+            if (
+              event.key === "Enter" &&
+              isMenuShown &&
+              autocompleteRows.filteredOptions.length > 0
+            ) {
+              // Let the menu select before the multiline editor inserts a break.
+              return;
+            }
+            handleKeyDown(event);
+          }}
           onPaste={handlePaste}
           ref={attachEditor}
           role="textbox"

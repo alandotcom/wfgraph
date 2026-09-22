@@ -570,9 +570,9 @@ export function TemplateAutocomplete({
                     </div>
                     <div
                       className="truncate font-mono text-muted-foreground text-xs"
-                      title={option.field}
+                      title={`${option.nodeName}.${option.field}`}
                     >
-                      {option.field}
+                      {option.nodeName}.{option.field}
                     </div>
                     {option.description && (
                       <div className="break-words text-muted-foreground text-xs">
