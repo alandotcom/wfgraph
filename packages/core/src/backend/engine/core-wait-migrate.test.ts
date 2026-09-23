@@ -44,10 +44,13 @@ function runMigratedWait(options: {
   /** An execution-wide claim that lands once the run has parked. */
   claimOnPark?: ExecutionTerminationState | undefined;
 }) {
+  const afterMigration = options.store.waitState;
+  options.store.waitState = null;
   return driveWithReplay(
     (runtime) => {
       const migrated = options.store.callsOf("createWaitState").length > 0;
       const workflowVersionId = migrated ? "ver_2" : "ver_1";
+      if (migrated) options.store.waitState = afterMigration;
 
       return executeWorkflow(
         {
@@ -200,6 +203,38 @@ describe("wait node - migration to a later workflow version", () => {
     });
   });
 
+  it("rotates the park token when migration changes only the subscription connection", async () => {
+    await runMigratedWait({
+      store,
+      parked: {
+        waitMode: "event",
+        waitFor: [
+          { event: "billing/payment.settled", connectionId: "old_connection" },
+        ],
+        waitTimeout: "7d",
+      },
+      migrated: {
+        waitMode: "event",
+        waitFor: [
+          { event: "billing/payment.settled", connectionId: "new_connection" },
+        ],
+        waitTimeout: "7d",
+      },
+      events: {
+        "wait-park-wait_1-0": waitMigrateSignal(),
+        "wait-park-wait_1-1": waitResumeSignal({ approved: true }),
+      },
+    });
+    const created = store.callsOf("createWaitState")[0]!;
+    const reparked = store.callsOf("reparkWaitState")[0]!;
+    expect(reparked.subscribedEvents).toEqual(created.subscribedEvents);
+    expect(reparked.resumeToken).toEqual(expect.any(String));
+    expect(reparked.resumeToken).not.toBe(created.resumeToken);
+    expect(reparked.metadata.waitFor).toMatchObject([
+      { connectionId: "new_connection" },
+    ]);
+  });
+
   it("recompiles an event wait's subscriptions and timeout on the next attempt", async () => {
     const run = await runMigratedWait({
       store,
@@ -227,8 +262,9 @@ describe("wait node - migration to a later workflow version", () => {
     expect(created[0]?.subscribedEvents).toEqual(["billing/payment.settled"]);
     expect(reparked).toHaveLength(1);
     expect(reparked[0]?.subscribedEvents).toEqual(["billing/payment.failed"]);
-    // The token the row already carries addresses the new park too.
-    expect(reparked[0]?.resumeToken).toBe(created[0]?.resumeToken);
+    // A saved candidate for the previous park must not claim this new attempt.
+    expect(reparked[0]?.resumeToken).toEqual(expect.any(String));
+    expect(reparked[0]?.resumeToken).not.toBe(created[0]?.resumeToken);
 
     // The timeout still runs out where the first park put it.
     expect(reparked[0]?.waitUntilIso).toBe(created[0]?.waitUntilIso);
@@ -323,6 +359,7 @@ describe("wait node - migration to a later workflow version", () => {
     });
 
     expect(store.callsOf("readWaitState")).toEqual([
+      { waitStateId: "wait_state_1" },
       { waitStateId: "wait_state_1" },
     ]);
     expect(waitOutput(run.value)).toMatchObject({
@@ -558,7 +595,7 @@ describe("wait node - migration to a later workflow version", () => {
     await expect(run).rejects.toMatchObject({
       message: expect.stringContaining("moved off workflow version"),
     });
-    expect(store.callsOf("readWaitState")).toHaveLength(0);
+    expect(store.callsOf("readWaitState")).toHaveLength(1);
   });
 
   // A `version-migrate` wake that keeps arriving without the target ever moving

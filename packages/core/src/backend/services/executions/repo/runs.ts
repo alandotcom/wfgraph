@@ -8,6 +8,7 @@
 
 import {
   and,
+  asc,
   count,
   desc,
   eq,
@@ -321,14 +322,14 @@ export type RunsRepoMethods = {
   /**
    * Move a parked run's pinned version pointer, answering whether a row moved.
    *
-   * The guard is the whole of the safety: only a row still `waiting` and still
-   * on `fromVersionId` is written, so a run that woke, ended, or was already
-   * moved by another caller keeps the version it is executing against.
+   * The version, status, and exact parked Wait set must still match the
+   * classification. A wake, repark, or newly parked branch invalidates it.
    */
   readonly repinVersion: (input: {
     executionId: string;
     fromVersionId: string;
     toVersionId: string;
+    expectedWaitStates: readonly { id: string; resumeToken: string | null }[];
   }) => Effect.Effect<boolean, DatabaseError>;
   /**
    * Move a run back from "waiting" to "running" under the version the caller
@@ -655,22 +656,62 @@ export function makeRunsMethods(
       }),
 
     repinVersion: (input) =>
-      database.query(async (db) => {
-        const moved = await db
-          .update(workflowExecutions)
-          .set({ workflowVersionId: input.toVersionId })
-          .where(
-            and(
-              eq(workflowExecutions.id, input.executionId),
-              eq(workflowExecutions.status, "waiting"),
-              eq(workflowExecutions.workflowVersionId, input.fromVersionId),
-              isNull(workflowExecutions.terminationKind)
+      database.query((db) =>
+        db.transaction(async (tx) => {
+          // startWait takes this lock before inserting a row. Lock Wait rows
+          // next so delivery cannot change the classified set during the move.
+          const [execution] = await tx
+            .select({ id: workflowExecutions.id })
+            .from(workflowExecutions)
+            .where(
+              and(
+                eq(workflowExecutions.id, input.executionId),
+                eq(workflowExecutions.status, "waiting"),
+                eq(workflowExecutions.workflowVersionId, input.fromVersionId),
+                isNull(workflowExecutions.terminationKind)
+              )
             )
-          )
-          .returning({ id: workflowExecutions.id });
+            .for("update");
+          if (!execution) return false;
 
-        return moved.length > 0;
-      }),
+          const parked = await tx
+            .select({
+              id: workflowWaitStates.id,
+              resumeToken: workflowWaitStates.resumeToken,
+              status: workflowWaitStates.status,
+            })
+            .from(workflowWaitStates)
+            .where(
+              and(
+                eq(workflowWaitStates.executionId, input.executionId),
+                inArray(workflowWaitStates.status, ["waiting", "resuming"])
+              )
+            )
+            .orderBy(asc(workflowWaitStates.id))
+            .for("update");
+          const expected = new Map(
+            input.expectedWaitStates.map((wait) => [wait.id, wait.resumeToken])
+          );
+          if (
+            expected.size !== input.expectedWaitStates.length ||
+            parked.length !== expected.size ||
+            parked.some(
+              (wait) =>
+                wait.status !== "waiting" ||
+                !expected.has(wait.id) ||
+                expected.get(wait.id) !== wait.resumeToken
+            )
+          ) {
+            return false;
+          }
+
+          await tx
+            .update(workflowExecutions)
+            .set({ workflowVersionId: input.toVersionId })
+            .where(eq(workflowExecutions.id, input.executionId));
+          return true;
+        })
+      ),
 
     markRunning: (input) =>
       database.query(async (db) => {

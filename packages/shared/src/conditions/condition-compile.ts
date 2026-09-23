@@ -267,10 +267,18 @@ function compileContextPath(
   for (const step of steps) {
     if (step.kind === "key") {
       const key = celStringLiteral(step.key);
-      guards.push(`${key} in ${field}`);
+      // `in` has string and list overloads as well as maps. A path segment in
+      // brackets is always a record key, so establish the runtime shape before
+      // asking whether the key exists. Without the guard, a nullable or
+      // malformed parent raises a CEL error, which also prevents an enclosing
+      // `is_not_set` from answering true.
+      guards.push(`type(${field}) == map && ${key} in ${field}`);
       field = `${field}[${key}]`;
     } else {
-      guards.push(`size(${field}) > ${step.index}`);
+      // The path walker indexes arrays only. CEL's size() also accepts strings
+      // and maps, so size alone can say that an index exists on a value the
+      // resolver would not index.
+      guards.push(`type(${field}) == list && size(${field}) > ${step.index}`);
       field = `${field}[${step.index}]`;
     }
   }

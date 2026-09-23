@@ -146,7 +146,7 @@ function useWaitPreview(
   const waitTimezone =
     typeof config?.waitTimezone === "string" && config.waitTimezone.trim()
       ? config.waitTimezone.trim()
-      : undefined;
+      : "UTC";
 
   const hasDynamicValue =
     hasTemplateExpression(waitDuration) ||
@@ -241,7 +241,7 @@ function useRuntimeWaitPreview(
   }
 
   const waitMode = runtimeInput.waitMode || "delay";
-  const waitTimezone = runtimeInput.waitTimezone || undefined;
+  const waitTimezone = runtimeInput.waitTimezone || "UTC";
 
   if (waitMode === "event") {
     const timeoutResolution = resolveWaitUntil({

@@ -12,6 +12,7 @@ import {
   type EventListenerDeliverPorts,
   runEventListener,
 } from "#src/backend/lib/inngest/event-listener-function";
+import type { WaitCandidatePage } from "#src/backend/services/workflows/lifecycle/deliver-event";
 import type { WfGraphRuntime } from "#src/backend/runtime";
 import type { EventSubscriber } from "#src/backend/services/workflows/repo";
 
@@ -51,6 +52,31 @@ function recordingStep() {
   };
 }
 
+/** A small stand-in for Inngest's successful step memoization on retry. */
+function memoizedStep() {
+  const ids: string[] = [];
+  const outputs = new Map<string, unknown>();
+  return {
+    ids,
+    step: {
+      run: async <T>(id: string, fn: () => Promise<T>): Promise<T> => {
+        ids.push(id);
+        if (outputs.has(id)) {
+          return outputs.get(id) as T;
+        }
+        try {
+          const output = await fn();
+          outputs.set(id, output);
+          return output;
+        } catch (error) {
+          outputs.delete(id);
+          throw error;
+        }
+      },
+    },
+  };
+}
+
 /**
  * The runtime the handler runs its services on, which is the seam this stands on:
  * `createWfGraphApp` hands the real one in, and here it provides the logger plus
@@ -82,22 +108,35 @@ function subscriber(overrides: Partial<EventSubscriber> = {}): EventSubscriber {
  */
 function fakeDeliver(): EventListenerDeliverPorts & {
   applyLifecycle: ReturnType<typeof vi.fn>;
-  deliverWaits: ReturnType<typeof vi.fn>;
+  listWaitCandidates: ReturnType<typeof vi.fn>;
+  deliverWaitCandidates: ReturnType<typeof vi.fn>;
   listSubscribers: ReturnType<typeof vi.fn>;
 } {
   const listSubscribers = vi.fn(() => Effect.succeed([] as EventSubscriber[]));
   const applyLifecycle = vi.fn(() =>
     Effect.succeed({ kind: "waits_only" as const, workflowId: "wf_1" })
   );
-  const deliverWaits = vi.fn(() =>
+  const listWaitCandidates = vi.fn(() =>
+    Effect.succeed({
+      candidates: [],
+      afterId: null,
+      hasMore: false,
+    } satisfies WaitCandidatePage)
+  );
+  const deliverWaitCandidates = vi.fn(() =>
     Effect.succeed({ workflowId: "wf_1", resumedWaits: 0 })
   );
-  return { listSubscribers, applyLifecycle, deliverWaits };
+  return {
+    listSubscribers,
+    applyLifecycle,
+    listWaitCandidates,
+    deliverWaitCandidates,
+  };
 }
 
 describe("runEventListener", () => {
-  // Sibling steps, in this order: a wait delivery that fails retries on its own,
-  // and replaying the start above it would open a second run for one arrival.
+  // Candidate pages finish before their sibling delivery steps, and replaying
+  // the lifecycle step after a wait failure would open a second run.
   it("runs the lifecycle and the waits as siblings per workflow", async () => {
     const deliver = fakeDeliver();
     deliver.listSubscribers.mockReturnValue(
@@ -129,18 +168,19 @@ describe("runEventListener", () => {
     expect(recorder.ids).toEqual([
       "subscribers-app/appointment.created",
       "lifecycle-wf_1",
-      "waits-wf_1",
+      "wait-candidates-wf_1-0",
+      "waits-wf_1-0",
       "lifecycle-wf_2",
-      "waits-wf_2",
+      "wait-candidates-wf_2-0",
+      "waits-wf_2-0",
     ]);
     expect(result.workflows).toHaveLength(2);
 
     // The run just started and the run it displaced both take no wait: one is
     // ending, and the other has parked nothing yet.
-    expect(deliver.deliverWaits.mock.calls[0]?.[0].excluding).toEqual([
-      "exec_new",
-      "exec_old",
-    ]);
+    expect(
+      deliver.listWaitCandidates.mock.calls[0]?.[0].excludingExecutionIds
+    ).toEqual(["exec_new", "exec_old"]);
   });
 
   it("passes the decoded payload to Entity bindings without rewriting workflow input", async () => {
@@ -166,7 +206,7 @@ describe("runEventListener", () => {
     expect(deliver.applyLifecycle.mock.calls[0]?.[0].payload).toEqual(
       wirePayload
     );
-    expect(deliver.deliverWaits.mock.calls[0]?.[0].payload).toEqual(
+    expect(deliver.deliverWaitCandidates.mock.calls[0]?.[0].payload).toEqual(
       wirePayload
     );
   });
@@ -199,12 +239,12 @@ describe("runEventListener", () => {
     expect(recorder.ids).toEqual([
       "subscribers-app/appointment.created",
       "lifecycle-wf_1",
-      "waits-wf_1",
+      "wait-candidates-wf_1-0",
+      "waits-wf_1-0",
     ]);
-    expect(deliver.deliverWaits.mock.calls[0]?.[0].excluding).toEqual([
-      "exec_running",
-      "exec_parked",
-    ]);
+    expect(
+      deliver.listWaitCandidates.mock.calls[0]?.[0].excludingExecutionIds
+    ).toEqual(["exec_running", "exec_parked"]);
   });
 
   // A workflow holding no start role is not worth a lifecycle step: preflight
@@ -228,7 +268,8 @@ describe("runEventListener", () => {
 
     expect(recorder.ids).toEqual([
       "subscribers-app/appointment.created",
-      "waits-wf_1",
+      "wait-candidates-wf_1-0",
+      "waits-wf_1-0",
     ]);
     expect(deliver.applyLifecycle.mock.calls).toHaveLength(0);
   });
@@ -256,7 +297,7 @@ describe("runEventListener", () => {
       "subscribers-app/appointment.created",
       "lifecycle-wf_1",
     ]);
-    expect(deliver.deliverWaits.mock.calls).toHaveLength(0);
+    expect(deliver.deliverWaitCandidates.mock.calls).toHaveLength(0);
     expect(result.workflows[0]?.resumedWaits).toBe(0);
   });
 
@@ -274,7 +315,7 @@ describe("runEventListener", () => {
       reason: "concurrency_first_wins",
     };
     deliver.applyLifecycle.mockReturnValue(Effect.succeed(refused));
-    deliver.deliverWaits.mockReturnValue(
+    deliver.deliverWaitCandidates.mockReturnValue(
       Effect.succeed({ workflowId: "wf_1", resumedWaits: 1 })
     );
     const recorder = recordingStep();
@@ -291,14 +332,123 @@ describe("runEventListener", () => {
     expect(recorder.ids).toEqual([
       "subscribers-app/appointment.created",
       "lifecycle-wf_1",
-      "waits-wf_1",
+      "wait-candidates-wf_1-0",
+      "waits-wf_1-0",
     ]);
-    expect(deliver.deliverWaits.mock.calls[0]?.[0].excluding).toEqual([]);
+    expect(
+      deliver.listWaitCandidates.mock.calls[0]?.[0].excludingExecutionIds
+    ).toEqual([]);
     expect(result.workflows).toEqual([{ lifecycle: refused, resumedWaits: 1 }]);
 
     // The arrival travels with the delivery, so the audit row a start or a
     // refusal writes names the arrival it answered.
     expect(deliver.applyLifecycle.mock.calls[0]?.[0].deliveryId).toBe("dlv_9");
+  });
+
+  it("retries a failed delivery against saved candidates only", async () => {
+    const deliver = fakeDeliver();
+    deliver.listSubscribers.mockReturnValue(
+      Effect.succeed([subscriber({ roles: ["wait"] })])
+    );
+    const originalCandidate = {
+      id: "wait_original",
+      executionId: "exec_original",
+      nodeId: "wait_node",
+      resumeToken: "token_original",
+      subscribedEvents: [appointmentCreated.name],
+      metadata: { waitFor: [{ event: appointmentCreated.name }] },
+    };
+    const laterCandidate = {
+      ...originalCandidate,
+      id: "wait_sequential",
+      executionId: "exec_original",
+      resumeToken: "token_sequential",
+    };
+    const otherOriginalCandidate = {
+      ...originalCandidate,
+      id: "wait_other",
+      executionId: "exec_other",
+      resumeToken: "token_other",
+    };
+    const currentSnapshotPages: WaitCandidatePage[] = [
+      {
+        candidates: [originalCandidate],
+        afterId: originalCandidate.id,
+        hasMore: true,
+      },
+      {
+        candidates: [otherOriginalCandidate],
+        afterId: null,
+        hasMore: false,
+      },
+    ];
+    deliver.listWaitCandidates.mockImplementation(
+      ({ afterId }: { afterId?: string }) =>
+        Effect.succeed(currentSnapshotPages[afterId ? 1 : 0]!)
+    );
+    const deliveredCandidateIds: string[][] = [];
+    let candidatePagesBeforeFirstDelivery = 0;
+    deliver.deliverWaitCandidates.mockImplementation(
+      ({ candidates }: { candidates: (typeof originalCandidate)[] }) => {
+        candidatePagesBeforeFirstDelivery ||=
+          deliver.listWaitCandidates.mock.calls.length;
+        deliveredCandidateIds.push(candidates.map((candidate) => candidate.id));
+        return deliveredCandidateIds.length === 1
+          ? Effect.fail(
+              new DatabaseError({
+                cause: new Error("connection reset during wait claim"),
+              })
+            )
+          : Effect.succeed({ workflowId: "wf_1", resumedWaits: 1 });
+      }
+    );
+    const recorder = memoizedStep();
+    const input = {
+      event: appointmentCreated,
+      payload,
+      arrival: { eventId: "evt_early" },
+      runtime: testRuntime(),
+      step: recorder.step,
+      deliver,
+    };
+
+    await expect(runEventListener(input)).rejects.toBeInstanceOf(DatabaseError);
+
+    // The original Wait's action parks a second Wait before Inngest retries
+    // this delivery step. The saved step result keeps the later row outside
+    // this Event's candidate set.
+    currentSnapshotPages[1] = {
+      candidates: [otherOriginalCandidate, laterCandidate],
+      afterId: null,
+      hasMore: false,
+    };
+
+    const result = await runEventListener(input);
+
+    expect(candidatePagesBeforeFirstDelivery).toBe(2);
+    expect(deliver.listWaitCandidates).toHaveBeenCalledTimes(2);
+    expect(deliveredCandidateIds).toEqual([
+      ["wait_original"],
+      ["wait_original"],
+      ["wait_other"],
+    ]);
+    expect(recorder.ids).toEqual([
+      "subscribers-app/appointment.created",
+      "wait-candidates-wf_1-0",
+      "wait-candidates-wf_1-1",
+      "waits-wf_1-0",
+      "subscribers-app/appointment.created",
+      "wait-candidates-wf_1-0",
+      "wait-candidates-wf_1-1",
+      "waits-wf_1-0",
+      "waits-wf_1-1",
+    ]);
+    expect(result.workflows).toEqual([
+      {
+        lifecycle: { kind: "waits_only", workflowId: "wf_1" },
+        resumedWaits: 2,
+      },
+    ]);
   });
 
   it("delivers no waits to a workflow that is gone", async () => {
@@ -326,7 +476,7 @@ describe("runEventListener", () => {
       "subscribers-app/appointment.created",
       "lifecycle-wf_1",
     ]);
-    expect(deliver.deliverWaits.mock.calls).toHaveLength(0);
+    expect(deliver.listWaitCandidates.mock.calls).toHaveLength(0);
   });
 
   // A payload that is not this Event will not become one on a second attempt, so

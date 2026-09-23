@@ -23,7 +23,17 @@ import {
 import {
   sharedPostgresTestDatabase,
   describePostgres,
+  mintTestSchemaName,
+  requirePostgresTestUrl,
+  withAdminClient,
 } from "#src/backend/persistence/postgres-test-database";
+
+import { migrateWfGraphDatabase } from "#src/migrate";
+import { wfPostgres } from "#src/backend/persistence/postgres";
+import {
+  connect,
+  conformanceCipher,
+} from "#src/backend/persistence/conformance/support";
 
 const emptyGraph = createSerializedWorkflowGraph({ nodes: [], edges: [] });
 
@@ -51,6 +61,123 @@ describePostgres("PostgreSQL concurrency", () => {
     }
     return [first, ...rest];
   };
+
+  it("rechecks a repark version after waiting for migration locks", async () => {
+    const schema = mintTestSchemaName();
+    const url = requirePostgresTestUrl();
+    await migrateWfGraphDatabase({ url, schema });
+    const connection = connect(
+      await wfPostgres({ url, schema }).open(conformanceCipher)
+    );
+    try {
+      await seedPublishedWorkflow(connection);
+      const { executionId, waitStateId } = await connection.run(
+        Effect.gen(function* () {
+          const workflows = yield* WorkflowRepo;
+          const executions = yield* ExecutionRepo;
+          const draft = yield* workflows.findDraftRevisionById("wf_1");
+          yield* workflows.insertPublishedVersion({
+            workflowId: "wf_1",
+            versionId: "ver_2",
+            version: 2,
+            expectedPublishedVersionId: "ver_1",
+            expectedDraftRevision: draft?.draftRevision ?? 1,
+            graph: emptyGraph,
+            draftGraph: emptyGraph,
+            catalogFingerprint: "catalog",
+            graphDigest: "digest-2",
+            eventSubscriptions: [],
+          });
+          const started = yield* executions.startForEntity({
+            execution: {
+              workflowId: "wf_1",
+              workflowVersionId: "ver_1",
+              startSource: "manual",
+              runMode: "live",
+              input: {},
+            },
+            concurrency: "unlimited",
+            supersededReason: "newer start",
+          });
+          if (started.status !== "started") throw new Error("Start refused");
+          const startedExecutionId = started.execution.id;
+          const wait = yield* executions.startWait({
+            executionId: startedExecutionId,
+            workflowId: "wf_1",
+            workflowVersionId: "ver_1",
+            runId: "run_1",
+            nodeId: "wait_1",
+            nodeName: "Approval",
+            side: "started",
+            waitType: "event",
+            resumeToken: "original",
+            subscribedEvents: ["approved"],
+          });
+          if (!wait) throw new Error("Wait refused");
+          return {
+            executionId: startedExecutionId,
+            waitStateId: wait.waitStateId,
+          };
+        })
+      );
+      await withAdminClient(async (client) => {
+        await client.unsafe("begin");
+        let repark: Promise<unknown> | undefined;
+        try {
+          const [backend] = await client.unsafe<{ pid: number }[]>(
+            "select pg_backend_pid() as pid"
+          );
+          if (!backend) throw new Error("Backend not found");
+          await client.unsafe(
+            `select id from "${schema}".workflow_executions where id = $1 for update`,
+            [executionId]
+          );
+          await client.unsafe(
+            `select id from "${schema}".workflow_wait_states where id = $1 for update`,
+            [waitStateId]
+          );
+          repark = connection.run(
+            Effect.gen(function* () {
+              const executions = yield* ExecutionRepo;
+              return yield* executions.reparkWait({
+                waitStateId,
+                workflowVersionId: "ver_1",
+                side: "started",
+                waitType: "event",
+                resumeToken: "stale-repark",
+                waitUntil: null,
+                subscribedEvents: ["approved"],
+                metadata: {},
+              });
+            })
+          );
+          await vi.waitFor(async () => {
+            const blocked = await withAdminClient((observer) =>
+              observer.unsafe(
+                "select pid from pg_stat_activity where $1::integer = any(pg_blocking_pids(pid))",
+                [backend.pid]
+              )
+            );
+            expect(blocked.length).toBeGreaterThan(0);
+          });
+          await client.unsafe(
+            `update "${schema}".workflow_executions set workflow_version_id = 'ver_2' where id = $1`,
+            [executionId]
+          );
+          await client.unsafe("commit");
+          expect(await repark).toEqual({ ok: false, reason: "version_moved" });
+        } finally {
+          await client.unsafe("rollback");
+          await repark;
+        }
+      });
+    } finally {
+      await connection.close();
+      await withAdminClient((client) =>
+        client.unsafe(`drop schema "${schema}" cascade`)
+      );
+    }
+  });
 
   it("allows only one graph write for a shared draft revision", async () => {
     const racers = await openRacers(2);

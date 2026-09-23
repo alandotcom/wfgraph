@@ -16,6 +16,7 @@ import {
   getColumns,
   gt,
   inArray,
+  isNull,
   lte,
   notInArray,
   or,
@@ -28,17 +29,23 @@ import {
   workflowWaitStates,
 } from "#src/backend/lib/db/schema";
 import type { WfGraphDatabase } from "#src/backend/lib/db/index";
-import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
+import {
+  serializableTransaction,
+  type Database,
+  type DatabaseError,
+} from "#src/backend/lib/effect/database";
 import {
   IN_FLIGHT_EXECUTION_STATUSES,
   type ExecutionSide,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
 import {
+  readJsonObject,
   type JsonObject,
   type JsonObjectDraft,
   toJsonObject,
 } from "@wfgraph/shared/types/json";
 import {
+  isWaitSignalType,
   WAIT_ARRIVAL_METADATA_KEY,
   type WaitArrival,
 } from "@wfgraph/shared/lifecycle/wait-signal";
@@ -64,6 +71,18 @@ function arrivalMetadata(arrival: WaitArrival): JsonObject {
   return { [WAIT_ARRIVAL_METADATA_KEY]: { ...arrival } };
 }
 
+function readWaitArrival(metadata: JsonObject | null): WaitArrival | null {
+  const arrival = readJsonObject(metadata?.[WAIT_ARRIVAL_METADATA_KEY]);
+  if (!arrival || !isWaitSignalType(arrival.signalType)) {
+    return null;
+  }
+  return {
+    signalType: arrival.signalType,
+    eventName: typeof arrival.eventName === "string" ? arrival.eventName : null,
+    payload: readJsonObject(arrival.payload) ?? {},
+  };
+}
+
 /**
  * Why a re-park wrote no row.
  *
@@ -82,14 +101,15 @@ export type ReparkWaitOutcome =
 /** The `workflow_wait_states` slice of `ExecutionRepo`. */
 export type WaitsRepoMethods = {
   /**
-   * Park a run on a wait, answering the new row's id.
+   * Park a run, reusing its execution/run/node row on retry.
    *
    * The status flip runs first, behind the claim guard for this Wait's side and
    * the pinned version: a policy cancel can land between the run's last step and
    * this park, and a cancelled execution must not gain a live wait row that
    * resume matching would later hit, while a Migration landing in the same
    * window would leave the row holding a park resolved from a graph the run has
-   * left. Undefined is either race lost.
+   * left. Undefined is either race lost. Existing non-waiting rows retain
+   * their wake and are never reopened.
    */
   readonly startWait: (input: {
     executionId: string;
@@ -147,6 +167,14 @@ export type WaitsRepoMethods = {
     waitStateId: string;
     status: SettledWaitStatus;
   }) => Effect.Effect<boolean, DatabaseError>;
+  /**
+   * Resolve the timeout against the row's persisted arrival in one fenced
+   * transition. A valid arrival wins whether its claim is still `resuming`,
+   * already `resumed`, or was released back to `waiting` after a refused send.
+   */
+  readonly settleWaitTimeout: (
+    waitStateId: string
+  ) => Effect.Effect<WaitArrival | null, DatabaseError>;
   /** Cancel whichever rows are waiting or being resumed, answering which. */
   readonly cancelWaits: (
     waitStateIds: string[]
@@ -209,12 +237,15 @@ export type WaitsRepoMethods = {
    * Claim one candidate previously found by event delivery. The execution may
    * already be running because a sibling wait resumed first.
    *
-   * The claim repeats the two facts the candidate was selected on, because a
-   * Migration can re-park the row between the selection and this write: the row
-   * must still be an event wait, and must still be subscribed to `eventName`.
+   * The claim repeats the candidate's event name and park token because a
+   * Migration can re-park the row between selection and this write. The row
+   * must still be an event wait, hold the selected token and subscribe to
+   * `eventName`.
    */
   readonly claimWaitingStateById: (input: {
     waitStateId: string;
+    /** The token on the candidate row, fencing a candidate from an earlier park. */
+    resumeToken: string | null;
     /** The Event being delivered, which the row must still subscribe to. */
     eventName: string;
     arrival: WaitArrival;
@@ -292,6 +323,38 @@ export function makeWaitsMethods(
             return undefined;
           }
 
+          // The execution update serializes competing prepares for this run.
+          const [existing] = await tx
+            .select()
+            .from(workflowWaitStates)
+            .where(
+              and(
+                eq(workflowWaitStates.executionId, input.executionId),
+                eq(workflowWaitStates.runId, input.runId),
+                eq(workflowWaitStates.nodeId, input.nodeId)
+              )
+            )
+            .limit(1)
+            .for("update");
+          if (existing) {
+            if (existing.status === "waiting") {
+              await tx
+                .update(workflowWaitStates)
+                .set({
+                  waitType: input.waitType,
+                  resumeToken: input.resumeToken ?? null,
+                  waitUntil: input.waitUntil ?? null,
+                  subscribedEvents: input.subscribedEvents ?? [],
+                  metadata: {
+                    ...existing.metadata,
+                    ...toJsonObject(input.metadata),
+                  },
+                })
+                .where(eq(workflowWaitStates.id, existing.id));
+            }
+            return { waitStateId: existing.id };
+          }
+
           const [waitState] = await tx
             .insert(workflowWaitStates)
             .values({
@@ -316,6 +379,26 @@ export function makeWaitsMethods(
     reparkWait: (input) =>
       database.query((db) =>
         db.transaction(async (tx): Promise<ReparkWaitOutcome> => {
+          // Migration and startWait lock the execution before its Wait rows.
+          // A version subquery alone can retain a pre-migration snapshot while
+          // this update waits for a Wait-row lock.
+          await tx
+            .select({ id: workflowExecutions.id })
+            .from(workflowExecutions)
+            .where(
+              exists(
+                tx
+                  .select({ id: workflowWaitStates.id })
+                  .from(workflowWaitStates)
+                  .where(
+                    and(
+                      eq(workflowWaitStates.id, input.waitStateId),
+                      eq(workflowWaitStates.executionId, workflowExecutions.id)
+                    )
+                  )
+              )
+            )
+            .for("update");
           const reparked = await tx
             .update(workflowWaitStates)
             .set({
@@ -323,7 +406,7 @@ export function makeWaitsMethods(
               waitUntil: input.waitUntil,
               subscribedEvents: input.subscribedEvents,
               resumeToken: input.resumeToken,
-              metadata: input.metadata,
+              metadata: sql`coalesce(${workflowWaitStates.metadata}, '{}'::jsonb) || ${JSON.stringify(input.metadata)}::jsonb`,
             })
             .where(
               and(
@@ -390,6 +473,40 @@ export function makeWaitsMethods(
           .returning({ id: workflowWaitStates.id });
 
         return settled.length > 0;
+      }),
+
+    settleWaitTimeout: (waitStateId) =>
+      serializableTransaction(database, async (tx) => {
+        const [row] = await tx
+          .select({
+            status: workflowWaitStates.status,
+            metadata: workflowWaitStates.metadata,
+          })
+          .from(workflowWaitStates)
+          .where(eq(workflowWaitStates.id, waitStateId))
+          .limit(1);
+
+        if (!row) return null;
+
+        const arrival = readWaitArrival(row.metadata);
+        if (row.status === "resumed") return arrival;
+        if (row.status !== "waiting" && row.status !== "resuming") return null;
+
+        const settled = await tx
+          .update(workflowWaitStates)
+          .set({
+            status: arrival ? "resumed" : "timed_out",
+            resumedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(workflowWaitStates.id, waitStateId),
+              eq(workflowWaitStates.status, row.status)
+            )
+          )
+          .returning({ id: workflowWaitStates.id });
+
+        return settled.length > 0 ? arrival : null;
       }),
 
     cancelWaits: (waitStateIds) =>
@@ -482,6 +599,9 @@ export function makeWaitsMethods(
           and(
             eq(workflowWaitStates.id, input.waitStateId),
             eq(workflowWaitStates.waitType, "event"),
+            input.resumeToken === null
+              ? isNull(workflowWaitStates.resumeToken)
+              : eq(workflowWaitStates.resumeToken, input.resumeToken),
             arrayContains(workflowWaitStates.subscribedEvents, [
               input.eventName,
             ])

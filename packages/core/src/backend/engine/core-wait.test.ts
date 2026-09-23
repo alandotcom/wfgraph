@@ -1,6 +1,7 @@
 /** Event-mode Wait coverage through the engine's runtime and store ports. */
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { Effect } from "effect";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveOutputPath } from "@wfgraph/shared/graph/node-references";
 import { executionError } from "#src/backend/engine/contracts";
 import {
@@ -41,6 +42,118 @@ describe("wait node - event mode", () => {
 
   beforeEach(() => {
     store = createRecordingWorkflowStore();
+  });
+
+  it.each([
+    { elapsedMs: 30_000, remainingMs: 270_000 },
+    { elapsedMs: 360_000, remainingMs: 1 },
+  ])(
+    "preserves preparation after a lost response and $elapsedMs ms retry",
+    async ({ elapsedMs, remainingMs }) => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      const startedAt = new Date("2026-09-22T12:00:00Z");
+      vi.setSystemTime(startedAt);
+      try {
+        const memo = new Map<string, unknown>();
+        const config = {
+          waitMode: "event",
+          waitFor: [{ event: "billing/payment.settled" }],
+          waitTimeout: "5m",
+        };
+        const originalCreate = store.createWaitState.bind(store);
+        store.createWaitState = (input) =>
+          originalCreate(input).pipe(
+            Effect.flatMap(() => Effect.die("lost preparation response"))
+          );
+        expect(
+          (await runWait({ store, config, memo }).execution).results.wait_1
+        ).toMatchObject({
+          success: false,
+          error: { message: "lost preparation response" },
+        });
+        const first = store.callsOf("createWaitState")[0];
+        vi.setSystemTime(startedAt.getTime() + elapsedMs);
+        store.createWaitState = originalCreate;
+        const { runtime, execution } = runWait({ store, config, memo });
+        await execution;
+        expect(store.callsOf("createWaitState")).toEqual([first, first]);
+        expect(runtime.waits[0]?.options.timeoutMs).toBe(remainingMs);
+      } finally {
+        vi.useRealTimers();
+      }
+    }
+  );
+
+  it.each(["waiting", "resuming", "resumed"] as const)(
+    "consumes a persisted arrival from a %s row before registration",
+    async (status) => {
+      store.waitState = {
+        status,
+        arrival: {
+          signalType: "wait-resume",
+          eventName: "billing/payment.settled",
+          payload: { approved: true },
+        },
+      };
+      const { runtime, execution } = runWait({
+        store,
+        config: {
+          waitMode: "event",
+          waitFor: [{ event: "billing/payment.settled" }],
+          waitTimeout: "7d",
+        },
+      });
+      const result = await execution;
+      expect(runtime.waits).toHaveLength(0);
+      expect(waitOutput(result)).toMatchObject({
+        timedOut: false,
+        hops: 0,
+        payload: { approved: true },
+      });
+      expect(result.results.after_wait?.success).toBe(true);
+    }
+  );
+
+  it("uses the atomic timeout result when the signal was lost after preparation", async () => {
+    const arrival = {
+      signalType: "wait-resume" as const,
+      eventName: "billing/payment.settled",
+      payload: { approved: true },
+    };
+    const recovering = {
+      ...store,
+      settleWaitTimeout: () => Effect.succeed(arrival),
+    };
+    const memo = new Map<string, unknown>();
+    const config = {
+      waitMode: "event",
+      waitFor: [{ event: "billing/payment.settled" }],
+      waitTimeout: "7d",
+    };
+    const { runtime, execution } = runWait({ store: recovering, config, memo });
+    const result = await execution;
+    expect(runtime.waits).toHaveLength(1);
+    expect(waitOutput(result)).toMatchObject({
+      timedOut: false,
+      hops: 1,
+      payload: { approved: true },
+    });
+    expect(result.results.after_wait?.success).toBe(true);
+    expect(
+      store
+        .callsOf("recordAuditEvent")
+        .some((event) => event.eventType === "run_timed_out")
+    ).toBe(false);
+    const replay = await runWait({
+      store: {
+        ...store,
+        settleWaitTimeout: () =>
+          Effect.die("memoized timeout resolution must not repeat"),
+      },
+      config,
+      memo,
+    }).execution;
+    expect(waitOutput(replay)).toEqual(waitOutput(result));
   });
 
   it("waits on the signal event scoped to this run, node, and token", async () => {
@@ -403,7 +516,9 @@ describe("wait node - event mode", () => {
     const result = await execution;
 
     expect(waitOutput(result)).toMatchObject({ timedOut: true });
-    expect(store.callsOf("markWaitStateStatus")[0]?.status).toBe("timed_out");
+    expect(store.callsOf("settleWaitTimeout")).toEqual([
+      { waitStateId: "wait_state_1" },
+    ]);
     expect(store.callsOf("recordAuditEvent").map((c) => c.eventType)).toEqual([
       "run_waiting",
       "run_timed_out",

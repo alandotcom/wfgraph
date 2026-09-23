@@ -37,15 +37,16 @@ export function outputKey(nodeId: string): string {
   return nodeId;
 }
 
-function writeOutput(
-  outputs: NodeOutputs,
+function writeNodeValue<T>(
+  values: Record<string, T>,
   nodeId: string,
-  output: NodeOutputs[string]
+  value: T
 ) {
-  Object.defineProperty(outputs, outputKey(nodeId), {
+  // Keep every id as an enumerable own key, including `__proto__`.
+  Object.defineProperty(values, outputKey(nodeId), {
     configurable: true,
     enumerable: true,
-    value: output,
+    value,
     writable: true,
   });
 }
@@ -140,7 +141,7 @@ export class Traversal {
 
   /**
    * Runs `work` with the node marked as running, and answers `false` for a node
-   * already running, so a node scheduled twice executes once. The mark comes
+   * already running or completed, so a node scheduled twice executes once. The mark comes
    * off however the work ends, because a node whose work threw is no longer
    * running.
    */
@@ -149,7 +150,7 @@ export class Traversal {
     work: () => Effect.Effect<void, E, R>
   ): Effect.Effect<boolean, E, R> {
     const acquire = Effect.sync(() => {
-      if (this.inProgressNodes.has(nodeId)) {
+      if (this.completedNodes.has(nodeId) || this.inProgressNodes.has(nodeId)) {
         return false;
       }
 
@@ -223,7 +224,7 @@ export class Traversal {
    * counts it without downstream templates being able to address it.
    */
   recordResult(nodeId: string, result: ExecutionResult) {
-    this.nodeResults[nodeId] = result;
+    writeNodeValue(this.nodeResults, nodeId, result);
   }
 
   /**
@@ -235,16 +236,16 @@ export class Traversal {
     result: ExecutionResult,
     output?: NodeOutputs[string]
   ) {
-    this.nodeResults[nodeId] = result;
+    writeNodeValue(this.nodeResults, nodeId, result);
     if (output) {
-      writeOutput(this.nodeOutputs, nodeId, output);
+      writeNodeValue(this.nodeOutputs, nodeId, output);
     }
     this.completedNodes.add(nodeId);
   }
 
   /** Writes a node's output without closing the node. */
   setOutput(nodeId: string, output: NodeOutputs[string]) {
-    writeOutput(this.nodeOutputs, nodeId, output);
+    writeNodeValue(this.nodeOutputs, nodeId, output);
   }
 
   /**
@@ -256,7 +257,7 @@ export class Traversal {
    * would keep the payload it already has.
    */
   setOwnOutput(nodeId: string, output: NodeOutputs[string]) {
-    writeOutput(this.nodeOutputs, nodeId, output);
+    writeNodeValue(this.nodeOutputs, nodeId, output);
     this.inheritedOutputKeys.delete(outputKey(nodeId));
   }
 
@@ -282,7 +283,7 @@ export class Traversal {
    */
   inheritCompleted(nodeId: string, output: NodeOutputs[string]) {
     const key = outputKey(nodeId);
-    writeOutput(this.nodeOutputs, nodeId, output);
+    writeNodeValue(this.nodeOutputs, nodeId, output);
     this.inheritedOutputKeys.add(key);
     this.completedNodes.add(nodeId);
   }
@@ -308,10 +309,10 @@ export class Traversal {
    */
   absorbBranch(branch: BranchRunResult) {
     for (const [nodeId, result] of Object.entries(branch.results)) {
-      this.nodeResults[nodeId] = result;
+      writeNodeValue(this.nodeResults, nodeId, result);
     }
     for (const [nodeId, output] of Object.entries(branch.outputs)) {
-      writeOutput(this.nodeOutputs, nodeId, output);
+      writeNodeValue(this.nodeOutputs, nodeId, output);
     }
   }
 

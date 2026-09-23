@@ -16,13 +16,14 @@ import { wakeWait } from "#src/backend/services/workflows/lifecycle/wake-wait";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import { connectionMatches } from "@wfgraph/shared/lifecycle/event-connections";
 
-type CandidateWaitState = {
+/** The JSON-safe portion of a wait row needed to match and wake one Event. */
+export type WaitDeliveryCandidate = {
   id: string;
   executionId: string;
   nodeId: string;
   resumeToken: string | null;
   subscribedEvents: string[] | null;
-  metadata: Record<string, unknown> | null;
+  metadata: JsonObject | null;
 };
 
 /** Whether the row matched, and the error from every subscription that could not be evaluated. */
@@ -43,7 +44,7 @@ type WaitMatchResult = { matched: boolean; unevaluated: string[] };
  * logger of its own; `resumeOneWait` narrates it.
  */
 function waitStateMatches(input: {
-  waitState: CandidateWaitState;
+  waitState: WaitDeliveryCandidate;
   eventType: string;
   payload: JsonObject;
   connectionId?: string | undefined;
@@ -88,7 +89,7 @@ export const resumeWaitsMatchingEvent = Effect.fn("resumeWaitsMatchingEvent")(
     workflowId: string;
     eventType?: string | undefined;
     payload: JsonObject;
-    waitStates: CandidateWaitState[];
+    waitStates: WaitDeliveryCandidate[];
     connectionId?: string | undefined;
   }) {
     const { eventType } = input;
@@ -99,7 +100,10 @@ export const resumeWaitsMatchingEvent = Effect.fn("resumeWaitsMatchingEvent")(
     // Bounded because each woken run costs a send and three writes, and the
     // parked population this walks is not bounded by anything: an event wait
     // defaults to a 7-day timeout, so one arrival can find a week's runs.
-    const resumed = yield* Effect.forEach(
+    // Finish every candidate in the saved page before failing the durable
+    // delivery step. Successful sends remain fenced by their wait claims; a
+    // refused send releases its claim so Inngest can retry this same page.
+    const results = yield* Effect.forEach(
       input.waitStates,
       (waitState) =>
         resumeOneWait({
@@ -108,26 +112,38 @@ export const resumeWaitsMatchingEvent = Effect.fn("resumeWaitsMatchingEvent")(
           payload: input.payload,
           waitState,
           connectionId: input.connectionId,
-        }),
+        }).pipe(
+          Effect.match({
+            onFailure: (error) => ({ _tag: "Failure" as const, error }),
+            onSuccess: (count) => ({ _tag: "Success" as const, count }),
+          })
+        ),
       { concurrency: DEFAULT_QUERY_CONNECTIONS }
     );
 
-    return resumed.reduce<number>((total, count) => total + count, 0);
+    const failure = results.find((result) => result._tag === "Failure");
+    if (failure?._tag === "Failure") {
+      return yield* failure.error;
+    }
+
+    return results.reduce<number>(
+      (total, result) => total + (result._tag === "Success" ? result.count : 0),
+      0
+    );
   }
 );
 
 /**
  * One wait, woken or left alone, answering 1 or 0 so the caller can add them up.
  *
- * Every failure is contained here: a send Inngest refused, a row another
- * delivery already moved, or an audit write that would not land must not stop
- * the other runs parked on the same Event from waking.
+ * A missing row is an ordinary race. Database and Inngest failures escape to
+ * the durable page step so the same saved candidates can be retried.
  */
 const resumeOneWait = Effect.fn("resumeOneWait")(function* (input: {
   workflowId: string;
   eventType: string;
   payload: JsonObject;
-  waitState: CandidateWaitState;
+  waitState: WaitDeliveryCandidate;
   connectionId?: string | undefined;
 }) {
   const { waitState, eventType } = input;
@@ -194,17 +210,15 @@ const resumeOneWait = Effect.fn("resumeOneWait")(function* (input: {
     // woken run closing the row it consumed.
     (outcome) => (outcome.status === "resumed" ? 1 : 0)
   ).pipe(
-    Effect.catch((error) =>
-      logger
-        .error("Failed to resume wait", {
-          workflowId: input.workflowId,
-          eventType,
-          waitStateId: waitState.id,
-          executionId: waitState.executionId,
-          nodeId: waitState.nodeId,
-          error,
-        })
-        .pipe(Effect.as(0))
+    Effect.tapError((error) =>
+      logger.error("Failed to resume wait", {
+        workflowId: input.workflowId,
+        eventType,
+        waitStateId: waitState.id,
+        executionId: waitState.executionId,
+        nodeId: waitState.nodeId,
+        error,
+      })
     )
   );
 });

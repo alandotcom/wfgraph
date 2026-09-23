@@ -495,20 +495,51 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
       ),
     repinVersion: (input) =>
       store.write((database) =>
-        database
-          .update(workflowExecutions)
-          .set({ workflowVersionId: input.toVersionId })
-          .where(
-            and(
-              eq(workflowExecutions.id, input.executionId),
-              eq(workflowExecutions.status, "waiting"),
-              eq(workflowExecutions.workflowVersionId, input.fromVersionId),
-              isNull(workflowExecutions.terminationKind)
+        Effect.gen(function* () {
+          const parked = yield* database
+            .select({
+              id: workflowWaitStates.id,
+              resumeToken: workflowWaitStates.resumeToken,
+              status: workflowWaitStates.status,
+            })
+            .from(workflowWaitStates)
+            .where(
+              and(
+                eq(workflowWaitStates.executionId, input.executionId),
+                inArray(workflowWaitStates.status, ["waiting", "resuming"])
+              )
+            );
+          const expected = new Map(
+            input.expectedWaitStates.map((wait) => [wait.id, wait.resumeToken])
+          );
+          if (
+            expected.size !== input.expectedWaitStates.length ||
+            parked.length !== expected.size ||
+            parked.some(
+              (wait) =>
+                wait.status !== "waiting" ||
+                !expected.has(wait.id) ||
+                expected.get(wait.id) !== wait.resumeToken
             )
-          )
-          .returning({ id: workflowExecutions.id })
-          .pipe(Effect.map((rows) => rows.length > 0))
+          ) {
+            return false;
+          }
+          const moved = yield* database
+            .update(workflowExecutions)
+            .set({ workflowVersionId: input.toVersionId })
+            .where(
+              and(
+                eq(workflowExecutions.id, input.executionId),
+                eq(workflowExecutions.status, "waiting"),
+                eq(workflowExecutions.workflowVersionId, input.fromVersionId),
+                isNull(workflowExecutions.terminationKind)
+              )
+            )
+            .returning({ id: workflowExecutions.id });
+          return moved.length > 0;
+        })
       ),
+
     markRunning: (input) =>
       store.write((database) =>
         database

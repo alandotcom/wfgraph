@@ -256,6 +256,13 @@ export type WorkflowStore = {
     input: MarkWaitStateStatusInput
   ): Effect.Effect<void, DatabaseError>;
   /**
+   * Atomically closes a timed-out wait or returns the arrival a concurrent
+   * producer already persisted, which takes precedence over the timeout.
+   */
+  settleWaitTimeout(
+    waitStateId: string
+  ): Effect.Effect<WaitArrival | null, DatabaseError>;
+  /**
    * Moves an execution back to "running" after a wait, answering whether a row
    * moved.
    *
@@ -348,6 +355,7 @@ export const noopWorkflowStore: WorkflowStore = {
   reparkWaitState: () => Effect.succeed({ ok: true }),
   readWaitState: () => Effect.succeed(null),
   markWaitStateStatus: () => Effect.void,
+  settleWaitTimeout: () => Effect.succeed(null),
   markExecutionRunning: () => Effect.succeed(true),
   markExecutionWaitingIfParked: () => Effect.succeed(false),
   admitNode: () => Effect.succeed(true),

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   applyDailyWindow,
   applyWaitAllowedHours,
@@ -56,6 +56,22 @@ describe("applyDailyWindow", () => {
     expect(result.toISOString()).toBe("2026-03-08T16:00:00.000Z");
   });
 
+  it("moves a nonexistent window start to the first valid local time", () => {
+    const candidate = new Date("2026-03-08T09:00:00Z");
+    const result = applyDailyWindow(candidate, 2 * 60 + 30, 4 * 60, TZ);
+
+    // 02:30 does not exist on this date, so the window starts at 03:00 PDT.
+    expect(result.toISOString()).toBe("2026-03-08T10:00:00.000Z");
+  });
+
+  it("skips a day when the allowed window is entirely inside a DST gap", () => {
+    const candidate = new Date("2026-03-08T09:00:00Z");
+    const result = applyDailyWindow(candidate, 2 * 60 + 15, 2 * 60 + 45, TZ);
+
+    // 03:00 is already past the 02:45 end, so use Monday's valid 02:15 PDT.
+    expect(result.toISOString()).toBe("2026-03-09T09:15:00.000Z");
+  });
+
   it("handles DST fall-back transition", () => {
     // 2026 fall back in America/Los_Angeles is November 1
     // After DST (back to PST = UTC-8): 08:00 PST on Nov 1 = 16:00 UTC
@@ -63,6 +79,23 @@ describe("applyDailyWindow", () => {
     const result = applyDailyWindow(candidate, START, END, TZ);
     // 08:00 PST is before 09:00 window start -> shift to 09:00 PST = 17:00 UTC
     expect(result.toISOString()).toBe("2026-11-01T17:00:00.000Z");
+  });
+
+  it("keeps the candidate's fold offset when resolving an allowed window", () => {
+    const candidates = [
+      "2026-10-24T12:00:00Z",
+      "2026-10-24T23:00:00Z",
+      "2026-10-25T00:00:00Z",
+    ];
+    const results = candidates.map((value) =>
+      applyDailyWindow(new Date(value), 2 * 60 + 30, 4 * 60, "Europe/Berlin")
+    );
+
+    expect(results.map((result) => result.toISOString())).toEqual([
+      "2026-10-25T00:30:00.000Z",
+      "2026-10-25T00:30:00.000Z",
+      "2026-10-25T00:30:00.000Z",
+    ]);
   });
 });
 
@@ -78,6 +111,18 @@ describe("parsePositiveDurationMs", () => {
 });
 
 describe("resolveWaitTarget", () => {
+  it("resolves a naive timestamp in UTC when the timezone is omitted", () => {
+    vi.stubEnv("TZ", "America/Los_Angeles");
+
+    try {
+      const target = resolveWaitTarget({ waitUntil: "2026-01-15T09:00" });
+
+      expect(target.waitUntil?.toISOString()).toBe("2026-01-15T09:00:00.000Z");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("returns the target with its offset before allowed hours are applied", () => {
     const target = resolveWaitTarget({
       waitUntil: "2026-03-10T02:00:00-07:00",
@@ -87,6 +132,49 @@ describe("resolveWaitTarget", () => {
 
     expect(target.error).toBeUndefined();
     expect(target.waitUntil?.toISOString()).toBe("2026-03-10T08:00:00.000Z");
+  });
+
+  it("resolves a nonexistent local target to the first valid local time", () => {
+    const target = resolveWaitTarget({
+      waitUntil: "2026-03-08T02:30",
+      waitTimezone: "America/Los_Angeles",
+    });
+
+    expect(target.waitUntil?.toISOString()).toBe("2026-03-08T10:00:00.000Z");
+  });
+
+  it("resolves a gap in a timezone east of UTC to its first valid local time", () => {
+    const target = resolveWaitTarget({
+      waitUntil: "2026-03-29T02:30",
+      waitTimezone: "Europe/Berlin",
+    });
+    const windowStart = applyDailyWindow(
+      new Date("2026-03-29T00:00:00Z"),
+      2 * 60 + 30,
+      4 * 60,
+      "Europe/Berlin"
+    );
+
+    expect(target.waitUntil?.toISOString()).toBe("2026-03-29T01:00:00.000Z");
+    expect(windowStart.toISOString()).toBe("2026-03-29T01:00:00.000Z");
+  });
+
+  it("keeps the earlier fold choice and preserves explicit offsets", () => {
+    const naiveTarget = resolveWaitTarget({
+      waitUntil: "2026-11-01T01:30",
+      waitTimezone: "America/Los_Angeles",
+    });
+    const explicitTarget = resolveWaitTarget({
+      waitUntil: "2026-11-01T01:30:00-08:00",
+      waitTimezone: "America/Los_Angeles",
+    });
+
+    expect(naiveTarget.waitUntil?.toISOString()).toBe(
+      "2026-11-01T08:30:00.000Z"
+    );
+    expect(explicitTarget.waitUntil?.toISOString()).toBe(
+      "2026-11-01T09:30:00.000Z"
+    );
   });
 });
 

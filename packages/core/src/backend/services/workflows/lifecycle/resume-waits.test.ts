@@ -15,6 +15,7 @@ import {
 import { getAppLogger } from "#src/backend/lib/logger";
 import type { ExecutionRepo } from "#src/backend/services/executions/repo";
 import { resumeWaitsMatchingEvent } from "#src/backend/services/workflows/lifecycle/resume-waits";
+import type { JsonObject } from "@wfgraph/shared/types/json";
 
 const { loggerErrorMock } = vi.hoisted(() => ({
   loggerErrorMock: vi.fn(),
@@ -96,7 +97,7 @@ function createWaitState(
     resumeToken:
       options?.resumeToken === undefined ? `token_${id}` : options.resumeToken,
     subscribedEvents: subscriptions.map((subscription) => subscription.event),
-    metadata: { waitFor: subscriptions } as Record<string, unknown> | null,
+    metadata: { waitFor: subscriptions } as JsonObject,
   };
 }
 
@@ -360,7 +361,29 @@ describe("resumeWaitsMatchingEvent", () => {
     expect(settleWaitingStateClaimMock).not.toHaveBeenCalled();
   });
 
-  it("counts 0 for failed resumes and continues processing others", async () => {
+  it("propagates a transient database failure while claiming a wait", async () => {
+    claimWaitingStateByIdMock.mockImplementationOnce(() =>
+      Effect.fail(new DatabaseError({ cause: new Error("connection reset") }))
+    );
+
+    const failure = await resumeWaits(
+      {
+        workflowId: "workflow_1",
+        eventType: "event.update",
+        payload: {},
+        waitStates: [createWaitState("1", "exec_1")],
+      },
+      SilentAppLoggerLayer
+    ).then(
+      () => undefined,
+      (error: unknown) => error
+    );
+
+    expect(failure).toBeInstanceOf(DatabaseError);
+    expect(sendWaitSignalMock).not.toHaveBeenCalled();
+  });
+
+  it("propagates failed resumes after attempting every candidate", async () => {
     sendWaitSignalMock
       .mockImplementationOnce(() => Effect.void)
       .mockImplementationOnce(() =>
@@ -368,18 +391,23 @@ describe("resumeWaitsMatchingEvent", () => {
       )
       .mockImplementationOnce(() => Effect.void);
 
-    const result = await resumeWaits({
-      workflowId: "workflow_1",
-      eventType: "event.update",
-      payload: {},
-      waitStates: [
-        createWaitState("1", "exec_1"),
-        createWaitState("2", "exec_2"),
-        createWaitState("3", "exec_3"),
-      ],
-    });
+    const failure = await Effect.runPromise(
+      resumeWaitsMatchingEvent({
+        workflowId: "workflow_1",
+        eventType: "event.update",
+        payload: {},
+        waitStates: [
+          createWaitState("1", "exec_1"),
+          createWaitState("2", "exec_2"),
+          createWaitState("3", "exec_3"),
+        ],
+      }).pipe(Effect.provide(Layer.mergeAll(services, SilentAppLoggerLayer)))
+    ).then(
+      () => undefined,
+      (error: unknown) => error
+    );
 
-    expect(result).toBe(2);
+    expect(failure).toBeInstanceOf(InngestError);
     expect(sendWaitSignalMock).toHaveBeenCalledTimes(3);
     expect(releaseWaitingStateClaimMock).toHaveBeenCalledTimes(1);
   });
