@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   applyDailyWindow,
   applyWaitAllowedHours,
@@ -78,6 +78,18 @@ describe("parsePositiveDurationMs", () => {
 });
 
 describe("resolveWaitTarget", () => {
+  it("resolves a naive timestamp in UTC when the timezone is omitted", () => {
+    vi.stubEnv("TZ", "America/Los_Angeles");
+
+    try {
+      const target = resolveWaitTarget({ waitUntil: "2026-01-15T09:00" });
+
+      expect(target.waitUntil?.toISOString()).toBe("2026-01-15T09:00:00.000Z");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("returns the target with its offset before allowed hours are applied", () => {
     const target = resolveWaitTarget({
       waitUntil: "2026-03-10T02:00:00-07:00",

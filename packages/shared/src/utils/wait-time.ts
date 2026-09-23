@@ -367,10 +367,11 @@ export function applyWaitAllowedHours(input: {
 /** Resolve the authored target and offset before allowed-hours adjustment. */
 export function resolveWaitTarget(input: WaitTargetInput): WaitTimeResolution {
   const now = input.now ?? new Date();
+  // Match the editor's visible default when a naive timestamp has no zone key.
   const waitTimezone =
     typeof input.waitTimezone === "string" && input.waitTimezone.trim()
       ? input.waitTimezone.trim()
-      : undefined;
+      : "UTC";
 
   if (input.waitUntil !== undefined && input.waitUntil !== "") {
     const parsed = parseTimestampWithTimezone(input.waitUntil, waitTimezone);
