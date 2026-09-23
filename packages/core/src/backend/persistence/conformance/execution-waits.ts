@@ -49,6 +49,43 @@ const publishSecondVersion = Effect.gen(function* () {
   });
 });
 
+function startEventWait(
+  connection: ConformanceConnection,
+  resumeToken: string
+) {
+  return connection.run(
+    Effect.gen(function* () {
+      const executions = yield* ExecutionRepo;
+      const started = yield* executions.startForEntity({
+        execution: {
+          workflowId: "wf_1",
+          workflowVersionId: "ver_1",
+          startSource: "manual",
+          runMode: "live",
+          input: {},
+        },
+        concurrency: "unlimited",
+        supersededReason: "newer start",
+      });
+      if (started.status !== "started") throw new Error("start refused");
+      const wait = yield* executions.startWait({
+        side: "started",
+        executionId: started.execution.id,
+        workflowId: "wf_1",
+        runId: "run_1",
+        nodeId: "wait_1",
+        nodeName: "Approval",
+        workflowVersionId: "ver_1",
+        waitType: "event",
+        resumeToken,
+        subscribedEvents: [EVENT_ARRIVAL.eventName],
+      });
+      if (!wait) throw new Error("wait refused");
+      return wait.waitStateId;
+    })
+  );
+}
+
 export function describeExecutionWaitConformance({
   openConnection,
   openDatabase,
@@ -115,6 +152,7 @@ export function describeExecutionWaitConformance({
             const executions = yield* ExecutionRepo;
             return yield* executions.claimWaitingStateById({
               waitStateId: waitStateIds.first,
+              resumeToken: "resume_1",
               eventName: EVENT_ARRIVAL.eventName,
               arrival: EVENT_ARRIVAL,
             });
@@ -144,6 +182,7 @@ export function describeExecutionWaitConformance({
           });
           return yield* executions.claimWaitingStateById({
             waitStateId: waitStateIds.sibling,
+            resumeToken: "resume_2",
             eventName: EVENT_ARRIVAL.eventName,
             arrival: EVENT_ARRIVAL,
           });
@@ -151,6 +190,154 @@ export function describeExecutionWaitConformance({
       );
 
       expect(siblingClaim).not.toBeNull();
+    });
+
+    it("resolves the timeout and event claim at one atomic boundary", async () => {
+      const store = await openDatabase();
+      const database = await store.open();
+      const otherConnection = await store.open();
+      await seedPublishedWorkflow(database);
+      const waitStateId = await startEventWait(database, "resume_race");
+
+      const claim = database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          return yield* executions.claimWaitingStateById({
+            waitStateId,
+            resumeToken: "resume_race",
+            eventName: EVENT_ARRIVAL.eventName,
+            arrival: EVENT_ARRIVAL,
+          });
+        })
+      );
+      const timeout = otherConnection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          return yield* executions.settleWaitTimeout(waitStateId);
+        })
+      );
+      const [claimResult, timeoutArrival] = await Promise.all([claim, timeout]);
+
+      const row = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          return yield* executions.findWaitStateById(waitStateId);
+        })
+      );
+      expect(row).not.toBeNull();
+
+      if (claimResult) {
+        expect(timeoutArrival).toEqual(EVENT_ARRIVAL);
+        expect(row?.status).toBe("resumed");
+        const release = await database.run(
+          Effect.gen(function* () {
+            const executions = yield* ExecutionRepo;
+            return yield* executions.releaseWaitingStateClaim({
+              waitStateId,
+              claimedAt: claimResult.claimedAt,
+            });
+          })
+        );
+        expect(release).toBe(false);
+      } else {
+        expect(timeoutArrival).toBeNull();
+        expect(row?.status).toBe("timed_out");
+      }
+    });
+
+    it("recovers an arrival after a refused sender releases its claim", async () => {
+      const database = await openConnection();
+      await seedPublishedWorkflow(database);
+      const waitStateId = await startEventWait(database, "resume_released");
+
+      const result = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const claim = yield* executions.claimWaitingStateById({
+            waitStateId,
+            resumeToken: "resume_released",
+            eventName: EVENT_ARRIVAL.eventName,
+            arrival: EVENT_ARRIVAL,
+          });
+          if (!claim) throw new Error("wait claim refused");
+          const released = yield* executions.releaseWaitingStateClaim({
+            waitStateId,
+            claimedAt: claim.claimedAt,
+          });
+          const arrival = yield* executions.settleWaitTimeout(waitStateId);
+          const retriedArrival =
+            yield* executions.settleWaitTimeout(waitStateId);
+          const row = yield* executions.findWaitStateById(waitStateId);
+          return { released, arrival, retriedArrival, status: row?.status };
+        })
+      );
+
+      expect(result).toEqual({
+        released: true,
+        arrival: EVENT_ARRIVAL,
+        retriedArrival: EVENT_ARRIVAL,
+        status: "resumed",
+      });
+    });
+
+    it("fences a stale candidate token and closes a wait with no arrival", async () => {
+      const database = await openConnection();
+      await seedPublishedWorkflow(database);
+      const waitStateId = await startEventWait(database, "resume_previous");
+
+      const result = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          yield* executions.reparkWait({
+            waitStateId,
+            workflowVersionId: "ver_1",
+            side: "started",
+            waitType: "event",
+            waitUntil: null,
+            subscribedEvents: [EVENT_ARRIVAL.eventName],
+            resumeToken: "resume_current",
+            metadata: {
+              waitFor: [
+                {
+                  event: EVENT_ARRIVAL.eventName,
+                  connectionId: "new_connection",
+                },
+              ],
+            },
+          });
+          const staleClaim = yield* executions.claimWaitingStateById({
+            waitStateId,
+            resumeToken: "resume_previous",
+            eventName: EVENT_ARRIVAL.eventName,
+            arrival: EVENT_ARRIVAL,
+          });
+          const timedOutArrival =
+            yield* executions.settleWaitTimeout(waitStateId);
+          const retryArrival = yield* executions.settleWaitTimeout(waitStateId);
+          const claimAfterTimeout = yield* executions.claimWaitingStateById({
+            waitStateId,
+            resumeToken: "resume_current",
+            eventName: EVENT_ARRIVAL.eventName,
+            arrival: EVENT_ARRIVAL,
+          });
+          const row = yield* executions.findWaitStateById(waitStateId);
+          return {
+            staleClaim,
+            timedOutArrival,
+            retryArrival,
+            claimAfterTimeout,
+            status: row?.status,
+          };
+        })
+      );
+
+      expect(result).toEqual({
+        staleClaim: null,
+        timedOutArrival: null,
+        retryArrival: null,
+        claimAfterTimeout: null,
+        status: "timed_out",
+      });
     });
 
     it("does not park, re-park, list, or resume waits after an Exit claim", async () => {
@@ -202,6 +389,7 @@ export function describeExecutionWaitConformance({
             }),
             claimed: yield* executions.claimWaitingStateById({
               waitStateId: firstWait.waitStateId,
+              resumeToken: "resume_exit",
               eventName: EVENT_ARRIVAL.eventName,
               arrival: EVENT_ARRIVAL,
             }),
@@ -334,6 +522,7 @@ export function describeExecutionWaitConformance({
 
           const claim = yield* executions.claimWaitingStateById({
             waitStateId,
+            resumeToken: "resume_canceled_side",
             eventName: EVENT_ARRIVAL.eventName,
             arrival: EVENT_ARRIVAL,
           });
@@ -479,6 +668,7 @@ export function describeExecutionWaitConformance({
             listedIds: listed.map((row) => row.id),
             claimed: yield* executions.claimWaitingStateById({
               waitStateId: parked.waitStateId,
+              resumeToken: "resume_after_exit",
               eventName: EVENT_ARRIVAL.eventName,
               arrival: EVENT_ARRIVAL,
             }),
@@ -798,6 +988,7 @@ export function describeExecutionWaitConformance({
           if (!wait) throw new Error("Wait was refused");
           const claim = yield* executions.claimWaitingStateById({
             waitStateId: wait.waitStateId,
+            resumeToken: "resume_a",
             eventName: EVENT_ARRIVAL.eventName,
             arrival: EVENT_ARRIVAL,
           });
@@ -814,6 +1005,7 @@ export function describeExecutionWaitConformance({
               ?.status,
             reclaimedById: yield* executions.claimWaitingStateById({
               waitStateId: wait.waitStateId,
+              resumeToken: "resume_a",
               eventName: EVENT_ARRIVAL.eventName,
               arrival: EVENT_ARRIVAL,
             }),
@@ -1595,6 +1787,7 @@ export function describeExecutionWaitConformance({
           return {
             byId: yield* executions.claimWaitingStateById({
               waitStateId: wait.waitStateId,
+              resumeToken: "resume_1",
               eventName: "appointment/approved",
               arrival: EVENT_ARRIVAL,
             }),
@@ -1662,11 +1855,13 @@ export function describeExecutionWaitConformance({
           return {
             onTheDroppedEvent: yield* executions.claimWaitingStateById({
               waitStateId: wait.waitStateId,
+              resumeToken: "resume_1",
               eventName: "appointment/approved",
               arrival: EVENT_ARRIVAL,
             }),
             onTheEventItNowNames: yield* executions.claimWaitingStateById({
               waitStateId: wait.waitStateId,
+              resumeToken: "resume_1",
               eventName: "appointment/rescheduled",
               arrival: EVENT_ARRIVAL,
             }),

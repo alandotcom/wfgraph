@@ -16,6 +16,7 @@ import {
   getColumns,
   gt,
   inArray,
+  isNull,
   lte,
   notInArray,
   or,
@@ -28,17 +29,23 @@ import {
   workflowWaitStates,
 } from "#src/backend/lib/db/schema";
 import type { WfGraphDatabase } from "#src/backend/lib/db/index";
-import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
+import {
+  serializableTransaction,
+  type Database,
+  type DatabaseError,
+} from "#src/backend/lib/effect/database";
 import {
   IN_FLIGHT_EXECUTION_STATUSES,
   type ExecutionSide,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
 import {
+  readJsonObject,
   type JsonObject,
   type JsonObjectDraft,
   toJsonObject,
 } from "@wfgraph/shared/types/json";
 import {
+  isWaitSignalType,
   WAIT_ARRIVAL_METADATA_KEY,
   type WaitArrival,
 } from "@wfgraph/shared/lifecycle/wait-signal";
@@ -62,6 +69,18 @@ export type WaitResumeClaim = {
 /** The claim's wake as it is stored, under one key of the row's metadata. */
 function arrivalMetadata(arrival: WaitArrival): JsonObject {
   return { [WAIT_ARRIVAL_METADATA_KEY]: { ...arrival } };
+}
+
+function readWaitArrival(metadata: JsonObject | null): WaitArrival | null {
+  const arrival = readJsonObject(metadata?.[WAIT_ARRIVAL_METADATA_KEY]);
+  if (!arrival || !isWaitSignalType(arrival.signalType)) {
+    return null;
+  }
+  return {
+    signalType: arrival.signalType,
+    eventName: typeof arrival.eventName === "string" ? arrival.eventName : null,
+    payload: readJsonObject(arrival.payload) ?? {},
+  };
 }
 
 /**
@@ -147,6 +166,14 @@ export type WaitsRepoMethods = {
     waitStateId: string;
     status: SettledWaitStatus;
   }) => Effect.Effect<boolean, DatabaseError>;
+  /**
+   * Resolve the timeout against the row's persisted arrival in one fenced
+   * transition. A valid arrival wins whether its claim is still `resuming`,
+   * already `resumed`, or was released back to `waiting` after a refused send.
+   */
+  readonly settleWaitTimeout: (
+    waitStateId: string
+  ) => Effect.Effect<WaitArrival | null, DatabaseError>;
   /** Cancel whichever rows are waiting or being resumed, answering which. */
   readonly cancelWaits: (
     waitStateIds: string[]
@@ -209,12 +236,15 @@ export type WaitsRepoMethods = {
    * Claim one candidate previously found by event delivery. The execution may
    * already be running because a sibling wait resumed first.
    *
-   * The claim repeats the two facts the candidate was selected on, because a
-   * Migration can re-park the row between the selection and this write: the row
-   * must still be an event wait, and must still be subscribed to `eventName`.
+   * The claim repeats the candidate's event name and park token because a
+   * Migration can re-park the row between selection and this write. The row
+   * must still be an event wait, hold the selected token and subscribe to
+   * `eventName`.
    */
   readonly claimWaitingStateById: (input: {
     waitStateId: string;
+    /** The token on the candidate row, fencing a candidate from an earlier park. */
+    resumeToken: string | null;
     /** The Event being delivered, which the row must still subscribe to. */
     eventName: string;
     arrival: WaitArrival;
@@ -392,6 +422,40 @@ export function makeWaitsMethods(
         return settled.length > 0;
       }),
 
+    settleWaitTimeout: (waitStateId) =>
+      serializableTransaction(database, async (tx) => {
+        const [row] = await tx
+          .select({
+            status: workflowWaitStates.status,
+            metadata: workflowWaitStates.metadata,
+          })
+          .from(workflowWaitStates)
+          .where(eq(workflowWaitStates.id, waitStateId))
+          .limit(1);
+
+        if (!row) return null;
+
+        const arrival = readWaitArrival(row.metadata);
+        if (row.status === "resumed") return arrival;
+        if (row.status !== "waiting" && row.status !== "resuming") return null;
+
+        const settled = await tx
+          .update(workflowWaitStates)
+          .set({
+            status: arrival ? "resumed" : "timed_out",
+            resumedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(workflowWaitStates.id, waitStateId),
+              eq(workflowWaitStates.status, row.status)
+            )
+          )
+          .returning({ id: workflowWaitStates.id });
+
+        return settled.length > 0 ? arrival : null;
+      }),
+
     cancelWaits: (waitStateIds) =>
       database.query(async (db) => {
         if (waitStateIds.length === 0) {
@@ -482,6 +546,9 @@ export function makeWaitsMethods(
           and(
             eq(workflowWaitStates.id, input.waitStateId),
             eq(workflowWaitStates.waitType, "event"),
+            input.resumeToken === null
+              ? isNull(workflowWaitStates.resumeToken)
+              : eq(workflowWaitStates.resumeToken, input.resumeToken),
             arrayContains(workflowWaitStates.subscribedEvents, [
               input.eventName,
             ])

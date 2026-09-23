@@ -1,5 +1,6 @@
 /** Event-mode Wait coverage through the engine's runtime and store ports. */
 
+import { Effect } from "effect";
 import { beforeEach, describe, expect, it } from "vitest";
 import { resolveOutputPath } from "@wfgraph/shared/graph/node-references";
 import { executionError } from "#src/backend/engine/contracts";
@@ -41,6 +42,75 @@ describe("wait node - event mode", () => {
 
   beforeEach(() => {
     store = createRecordingWorkflowStore();
+  });
+
+  it("consumes an arrival committed before listener registration", async () => {
+    store.waitState = {
+      status: "resumed",
+      arrival: {
+        signalType: "wait-resume",
+        eventName: "billing/payment.settled",
+        payload: { approved: true },
+      },
+    };
+    const { runtime, execution } = runWait({
+      store,
+      config: {
+        waitMode: "event",
+        waitFor: [{ event: "billing/payment.settled" }],
+        waitTimeout: "7d",
+      },
+    });
+    const result = await execution;
+    expect(runtime.waits).toHaveLength(0);
+    expect(waitOutput(result)).toMatchObject({
+      timedOut: false,
+      hops: 0,
+      payload: { approved: true },
+    });
+    expect(result.results.after_wait?.success).toBe(true);
+  });
+
+  it("uses the atomic timeout result when the signal was lost after preparation", async () => {
+    const arrival = {
+      signalType: "wait-resume" as const,
+      eventName: "billing/payment.settled",
+      payload: { approved: true },
+    };
+    const recovering = {
+      ...store,
+      settleWaitTimeout: () => Effect.succeed(arrival),
+    };
+    const memo = new Map<string, unknown>();
+    const config = {
+      waitMode: "event",
+      waitFor: [{ event: "billing/payment.settled" }],
+      waitTimeout: "7d",
+    };
+    const { runtime, execution } = runWait({ store: recovering, config, memo });
+    const result = await execution;
+    expect(runtime.waits).toHaveLength(1);
+    expect(waitOutput(result)).toMatchObject({
+      timedOut: false,
+      hops: 1,
+      payload: { approved: true },
+    });
+    expect(result.results.after_wait?.success).toBe(true);
+    expect(
+      store
+        .callsOf("recordAuditEvent")
+        .some((event) => event.eventType === "run_timed_out")
+    ).toBe(false);
+    const replay = await runWait({
+      store: {
+        ...store,
+        settleWaitTimeout: () =>
+          Effect.die("memoized timeout resolution must not repeat"),
+      },
+      config,
+      memo,
+    }).execution;
+    expect(waitOutput(replay)).toEqual(waitOutput(result));
   });
 
   it("waits on the signal event scoped to this run, node, and token", async () => {
@@ -403,7 +473,9 @@ describe("wait node - event mode", () => {
     const result = await execution;
 
     expect(waitOutput(result)).toMatchObject({ timedOut: true });
-    expect(store.callsOf("markWaitStateStatus")[0]?.status).toBe("timed_out");
+    expect(store.callsOf("settleWaitTimeout")).toEqual([
+      { waitStateId: "wait_state_1" },
+    ]);
     expect(store.callsOf("recordAuditEvent").map((c) => c.eventType)).toEqual([
       "run_waiting",
       "run_timed_out",

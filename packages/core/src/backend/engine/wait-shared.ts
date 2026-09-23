@@ -281,8 +281,6 @@ export type WaitAttempt = {
    * without restarting its clock.
    */
   anchorAt?: Date | undefined;
-  /** The token the row already carries, absent until an attempt mints one. */
-  resumeToken?: string | undefined;
 };
 
 /**

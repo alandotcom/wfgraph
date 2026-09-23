@@ -846,6 +846,7 @@ export function describeExecutionConformance({
           });
           const secondClaim = yield* executions.claimWaitingStateById({
             waitStateId: wait.waitStateId,
+            resumeToken: "resume_1",
             eventName: EVENT_ARRIVAL.eventName,
             arrival: EVENT_ARRIVAL,
           });

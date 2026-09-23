@@ -69,6 +69,7 @@ export const wakeWait = Effect.fn("wakeWait")(function* (input: {
       })
     : repo.claimWaitingStateById({
         waitStateId: target.waitStateId,
+        resumeToken: target.token,
         eventName: target.eventName,
         arrival,
       });

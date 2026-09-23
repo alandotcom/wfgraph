@@ -13,6 +13,7 @@ import {
   type ExecutionSide,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
 import { Effect } from "effect";
+import type { WaitArrival } from "@wfgraph/shared/lifecycle/wait-signal";
 import type {
   CompleteRunInput,
   CompleteStepLogInput,
@@ -36,6 +37,7 @@ type StoreCallInputs = {
   createWaitState: CreateWaitStateInput;
   reparkWaitState: ReparkWaitStateInput;
   markWaitStateStatus: MarkWaitStateStatusInput;
+  settleWaitTimeout: { waitStateId: string };
   readWaitState: { waitStateId: string };
   markExecutionRunning: {
     executionId: string;
@@ -77,6 +79,8 @@ export type RecordingWorkflowStore = WorkflowStore & {
   reparkAnswer: ReparkWaitStateOutcome;
   /** What `readWaitState` answers, for the case a re-park was refused. */
   waitState: WaitStateSnapshot | null;
+  /** What `settleWaitTimeout` finds already persisted on the row. */
+  settleWaitTimeoutAnswer: WaitArrival | null;
   /**
    * What `markExecutionRunning` answers, subject to the claim on
    * `terminationState`. False models a Migration landing between a Wait's wake
@@ -117,6 +121,7 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
     createWaitState: [],
     reparkWaitState: [],
     markWaitStateStatus: [],
+    settleWaitTimeout: [],
     readWaitState: [],
     markExecutionRunning: [],
     markExecutionWaitingIfParked: [],
@@ -137,6 +142,7 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
     createWaitStateAnswer: "open",
     reparkAnswer: { ok: true },
     waitState: null,
+    settleWaitTimeoutAnswer: null,
     markRunningAnswer: true,
     waitingIfParkedAnswer: false,
     terminationState: null,
@@ -210,6 +216,15 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
       return Effect.sync(() => {
         calls.push({ method: "markWaitStateStatus", input });
         byMethod.markWaitStateStatus.push(input);
+      });
+    },
+
+    settleWaitTimeout(waitStateId) {
+      return Effect.sync(() => {
+        const input = { waitStateId };
+        calls.push({ method: "settleWaitTimeout", input });
+        byMethod.settleWaitTimeout.push(input);
+        return store.settleWaitTimeoutAnswer;
       });
     },
 

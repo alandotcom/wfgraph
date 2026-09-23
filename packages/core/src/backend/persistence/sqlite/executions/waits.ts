@@ -5,6 +5,7 @@ import {
   eq,
   gt,
   inArray,
+  isNull,
   lte,
   notInArray,
   or,
@@ -12,7 +13,11 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { generateId } from "@wfgraph/shared/utils/id";
-import { toJsonObject } from "@wfgraph/shared/types/json";
+import {
+  readJsonObject,
+  toJsonObject,
+  type JsonObject,
+} from "@wfgraph/shared/types/json";
 import {
   claimKindAdmits,
   IN_FLIGHT_EXECUTION_STATUSES,
@@ -22,6 +27,7 @@ import {
   notExitClaimed,
 } from "#src/backend/persistence/sqlite/executions/runs";
 import {
+  isWaitSignalType,
   WAIT_ARRIVAL_METADATA_KEY,
   type WaitArrival,
 } from "@wfgraph/shared/lifecycle/wait-signal";
@@ -62,6 +68,18 @@ function subscribedTo(eventName: string): SQL {
 /** A re-park the row's status or the run's pinned version refused. */
 function refusedRepark(reason: ReparkWaitRefusal): ReparkWaitOutcome {
   return { ok: false, reason };
+}
+
+function readWaitArrival(metadata: JsonObject | null): WaitArrival | null {
+  const arrival = readJsonObject(metadata?.[WAIT_ARRIVAL_METADATA_KEY]);
+  if (!arrival || !isWaitSignalType(arrival.signalType)) {
+    return null;
+  }
+  return {
+    signalType: arrival.signalType,
+    eventName: typeof arrival.eventName === "string" ? arrival.eventName : null,
+    payload: readJsonObject(arrival.payload) ?? {},
+  };
 }
 
 const waitStateSelection = {
@@ -264,6 +282,44 @@ export function makeSqliteWaitsMethods(
           .returning({ id: workflowWaitStates.id })
           .pipe(Effect.map((rows) => rows.length > 0));
       }),
+    settleWaitTimeout: (waitStateId) =>
+      store.write((database) =>
+        Effect.gen(function* () {
+          const [row] = yield* database
+            .select({
+              status: workflowWaitStates.status,
+              metadata: workflowWaitStates.metadata,
+            })
+            .from(workflowWaitStates)
+            .where(eq(workflowWaitStates.id, waitStateId))
+            .limit(1);
+
+          if (!row) return null;
+
+          const arrival = readWaitArrival(
+            optionalJsonObject(row.metadata, "metadata")
+          );
+          if (row.status === "resumed") return arrival;
+          if (row.status !== "waiting" && row.status !== "resuming")
+            return null;
+
+          const settled = yield* database
+            .update(workflowWaitStates)
+            .set({
+              status: arrival ? "resumed" : "timed_out",
+              resumedAt: Date.now(),
+            })
+            .where(
+              and(
+                eq(workflowWaitStates.id, waitStateId),
+                eq(workflowWaitStates.status, row.status)
+              )
+            )
+            .returning({ id: workflowWaitStates.id });
+
+          return settled.length > 0 ? arrival : null;
+        })
+      ),
     cancelWaits: (waitStateIds) =>
       store.write((database) => {
         if (waitStateIds.length === 0) return Effect.succeed<string[]>([]);
@@ -345,6 +401,9 @@ export function makeSqliteWaitsMethods(
           and(
             eq(workflowWaitStates.id, input.waitStateId),
             eq(workflowWaitStates.waitType, "event"),
+            input.resumeToken === null
+              ? isNull(workflowWaitStates.resumeToken)
+              : eq(workflowWaitStates.resumeToken, input.resumeToken),
             subscribedTo(input.eventName)
           ),
           input.arrival

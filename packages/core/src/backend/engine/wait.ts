@@ -187,15 +187,13 @@ function executeWaitActionInner(
  *
  * It crosses the prepare step's memo boundary, so every field is JSON-safe, and
  * it says nothing about which mode wrote it: a later attempt in the other mode
- * re-parks the same row from the same anchor. A delay park carries no resume
- * token, so `resumeToken` is null after one and the event mode mints a fresh
- * token when it takes the row over.
+ * re-parks the same row from the same anchor. Each event park gets a fresh
+ * token, so a saved candidate cannot address a later attempt.
  */
 type WaitCarry = {
   waitStateId: string;
   /** The instant the first attempt resolved against, as an ISO string. */
   anchorAtIso: string;
-  resumeToken: string | null;
 };
 
 /** The loop's own state, which outlives one attempt but not the node. */
@@ -307,7 +305,6 @@ function runWaitAttempt<Prepared, Resumed>(
         attempt: {
           index: attempt,
           anchorAt,
-          resumeToken: carry?.resumeToken ?? undefined,
         },
         waitStateId: carry?.waitStateId,
       })
@@ -434,17 +431,34 @@ function prepareWaitAttempt<Prepared, Resumed>(
     // A first park learns its row id from the row it just created, and a
     // re-park already holds one. The rest of the preparation is the same
     // either way.
-    const parked = (waitStateId: string): WaitAttemptPreparation<Prepared> => ({
-      status: "parked",
-      workflowVersionId: branch.workflowVersionId,
-      carry: {
-        waitStateId,
-        anchorAtIso,
-        resumeToken: park.resumeToken,
-      },
-      park,
-      prepared,
-    });
+    const parked = (
+      waitStateId: string
+    ): Effect.Effect<WaitAttemptPreparation<Prepared>, EngineFailure> =>
+      Effect.gen(function* () {
+        const carry = {
+          waitStateId,
+          anchorAtIso,
+        };
+        // The row is visible before Inngest registers the listener. A wake that
+        // already claimed it is durable input, even if its signal was missed.
+        const missed = yield* readMissedWake(branch, waitStateId);
+        if (missed !== null) {
+          return {
+            status: "woken",
+            workflowVersionId: branch.workflowVersionId,
+            carry,
+            prepared,
+            wake: missed,
+          };
+        }
+        return {
+          status: "parked",
+          workflowVersionId: branch.workflowVersionId,
+          carry,
+          park,
+          prepared,
+        };
+      });
 
     if (input.waitStateId === undefined) {
       const created = yield* fromStore(
@@ -502,7 +516,7 @@ function prepareWaitAttempt<Prepared, Resumed>(
       }
 
       yield* recordWaiting(branch, { attempt: input.attempt.index, park });
-      return parked(created.waitStateId);
+      return yield* parked(created.waitStateId);
     }
 
     const reparked = yield* fromStore(
@@ -549,7 +563,6 @@ function prepareWaitAttempt<Prepared, Resumed>(
         carry: {
           waitStateId: input.waitStateId,
           anchorAtIso,
-          resumeToken: park.resumeToken,
         },
         prepared,
         wake: missed,
@@ -558,7 +571,7 @@ function prepareWaitAttempt<Prepared, Resumed>(
     }
 
     yield* recordWaiting(branch, { attempt: input.attempt.index, park });
-    return parked(input.waitStateId);
+    return yield* parked(input.waitStateId);
   });
 }
 
@@ -665,19 +678,29 @@ function openResume(
       wake = claim;
     }
 
-    const claimed = isClaimWake(wake);
-    // A delay park ends on its own clock, so reaching the target is that Wait
-    // resuming. Only an event park that ran out of time timed out.
-    yield* fromStore(
-      store.markWaitStateStatus({
-        waitStateId: input.waitStateId,
-        status: claimed
-          ? "cancelled"
-          : wake.kind === "timeout" && mode === "event"
-            ? "timed_out"
-            : "resumed",
-      })
-    );
+    if (wake.kind === "timeout" && mode === "event") {
+      // Checking only before parking leaves a read-to-registration window.
+      // Atomically resolve the timeout against any stored arrival so a sender
+      // cannot claim the row between the last read and a timeout write.
+      const arrival = yield* fromStore(
+        store.settleWaitTimeout(input.waitStateId)
+      );
+      if (arrival !== null) {
+        wake = {
+          kind: "resume",
+          eventName: arrival.eventName,
+          payload: arrival.payload,
+        };
+      }
+    } else {
+      // A delay ends on its clock; only an event Wait can time out.
+      yield* fromStore(
+        store.markWaitStateStatus({
+          waitStateId: input.waitStateId,
+          status: isClaimWake(wake) ? "cancelled" : "resumed",
+        })
+      );
+    }
 
     yield* fromStore(
       store.recordAuditEvent({
@@ -776,8 +799,8 @@ function failPreparation<Prepared>(
 }
 
 /**
- * Why the row this attempt meant to re-park has left `waiting`, or null when it
- * does not say.
+ * The durable arrival that moved a park out of `waiting`, or null when the row
+ * does not record one. This also covers the first preparation before registration.
  *
  * Between a Migration's wake and the next park the row is still `waiting`, so a
  * resume claim can take it and send a signal nothing is parked on. The claim

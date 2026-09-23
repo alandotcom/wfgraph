@@ -148,6 +148,8 @@ export function createDbWorkflowStore(
 
     markWaitStateStatus: (input) => repo.markWaitStatus(input),
 
+    settleWaitTimeout: (waitStateId) => repo.settleWaitTimeout(waitStateId),
+
     markExecutionRunning: (input) => repo.markRunning(input),
 
     markExecutionWaitingIfParked: (input) => repo.markWaitingIfParked(input),

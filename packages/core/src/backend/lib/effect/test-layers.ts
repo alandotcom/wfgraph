@@ -360,6 +360,7 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
   reparkWait: refuse("reparkWait"),
   findWaitStateById: refuse("findWaitStateById"),
   markWaitStatus: refuse("markWaitStatus"),
+  settleWaitTimeout: refuse("settleWaitTimeout"),
   cancelWaits: refuse("cancelWaits"),
   cancelWaitsForExecution: refuse("cancelWaitsForExecution"),
   listWaitsForEvent: refuse("listWaitsForEvent"),
