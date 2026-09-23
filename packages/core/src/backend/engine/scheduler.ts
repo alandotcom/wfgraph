@@ -488,34 +488,42 @@ export class NodeScheduler {
         const nodeName = getNodeName(node, actions);
         const actionType = actionTypeOf(node);
 
-        const admission = yield* this.admitExecutableNode(node, nodeName);
-        if (!admission.admitted) {
-          const cancel = yield* this.input.cancelBoundary.settle(nodeId);
-          if (cancel.entered) {
-            yield* this.runAll(cancel.nextNodes);
-          }
-          return;
-        }
+        // Admission can suspend. Own the node before those reads so another
+        // predecessor cannot admit and execute the same join concurrently.
+        yield* traversal.withNodeInProgress(nodeId, () =>
+          Effect.gen(
+            function* (this: NodeScheduler) {
+              const admission = yield* this.admitExecutableNode(node, nodeName);
+              if (!admission.admitted) {
+                const cancel = yield* this.input.cancelBoundary.settle(nodeId);
+                if (cancel.entered) {
+                  yield* this.runAll(cancel.nextNodes);
+                }
+                return;
+              }
 
-        const nodeExecution = this.executeNodeInner(
-          nodeId,
-          node,
-          nodeName,
-          admission.entityContext
-        ).pipe(
-          Effect.withSpan("wfgraph.workflow.node.execute", {
-            // A span attribute set to `undefined` is recorded as the string
-            // `"undefined"`, so an unconfigured node's missing action type has
-            // to be an absent key.
-            attributes: omitUndefined({
-              "wfgraph.node.id": nodeId,
-              "wfgraph.node.name": nodeName,
-              "wfgraph.node.type": node.data.type,
-              "wfgraph.action.type": actionType,
-            }),
-          })
+              const nodeExecution = this.executeNodeInner(
+                nodeId,
+                node,
+                nodeName,
+                admission.entityContext
+              ).pipe(
+                Effect.withSpan("wfgraph.workflow.node.execute", {
+                  // A span attribute set to `undefined` is recorded as the string
+                  // `"undefined"`, so an unconfigured node's missing action type has
+                  // to be an absent key.
+                  attributes: omitUndefined({
+                    "wfgraph.node.id": nodeId,
+                    "wfgraph.node.name": nodeName,
+                    "wfgraph.node.type": node.data.type,
+                    "wfgraph.action.type": actionType,
+                  }),
+                })
+              );
+              yield* nodeExecution;
+            }.bind(this)
+          )
         );
-        yield* traversal.withNodeInProgress(nodeId, () => nodeExecution);
       }.bind(this)
     );
 

@@ -140,7 +140,7 @@ export class Traversal {
 
   /**
    * Runs `work` with the node marked as running, and answers `false` for a node
-   * already running, so a node scheduled twice executes once. The mark comes
+   * already running or completed, so a node scheduled twice executes once. The mark comes
    * off however the work ends, because a node whose work threw is no longer
    * running.
    */
@@ -149,7 +149,7 @@ export class Traversal {
     work: () => Effect.Effect<void, E, R>
   ): Effect.Effect<boolean, E, R> {
     const acquire = Effect.sync(() => {
-      if (this.inProgressNodes.has(nodeId)) {
+      if (this.completedNodes.has(nodeId) || this.inProgressNodes.has(nodeId)) {
         return false;
       }
 

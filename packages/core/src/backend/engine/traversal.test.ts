@@ -4,6 +4,18 @@ import { Deferred, Effect, Fiber } from "effect";
 import { Traversal } from "#src/backend/engine/traversal";
 
 describe("Traversal.withNodeInProgress", () => {
+  it.effect(
+    "refuses a node completed while its scheduler was awaiting admission",
+    () =>
+      Effect.gen(function* () {
+        const traversal = new Traversal([], []);
+        traversal.markCompleted("join", { success: true, data: {} });
+        const ran = yield* traversal.withNodeInProgress("join", () =>
+          Effect.die("completed node ran again")
+        );
+        assert.isFalse(ran);
+      })
+  );
   it.effect("admits one caller and releases the latch when work ends", () =>
     Effect.gen(function* () {
       const traversal = new Traversal([], []);
