@@ -199,6 +199,30 @@ describe("andJoinRefusalReason", () => {
     ).toContain("cannot join mutually exclusive branches");
   });
 
+  it.each(["app/created", "true", "started", "event:nested"])(
+    "allows joining equivalent outlets for Event %s",
+    (eventName) => {
+      expect(
+        andJoinRefusalReason({
+          nodes: [
+            lifecycle(),
+            eventSplit("split"),
+            action("a"),
+            action("b"),
+            action("join"),
+          ],
+          edges: [
+            edge("e1", "lifecycle_1", "split", LIFECYCLE_STARTED_HANDLE),
+            edge("e2", "split", "a", eventSplitOutlet(eventName)),
+            edge("e3", "split", "b", eventSplitOutlet(` ${eventName}`)),
+            edge("e4", "a", "join"),
+            edge("e5", "b", "join"),
+          ],
+        })
+      ).toBeNull();
+    }
+  );
+
   it("refuses joining Event Split outlets", () => {
     expect(
       andJoinRefusalReason({

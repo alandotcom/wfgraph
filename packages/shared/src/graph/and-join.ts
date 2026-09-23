@@ -13,7 +13,10 @@ import {
 import { isWaitNode } from "#src/graph/node-config";
 import type { WorkflowNode } from "#src/graph/types";
 import { upstreamNodeIdsOver } from "#src/graph/upstream-nodes";
-import { isEventSplitNode } from "#src/lifecycle/event-split";
+import {
+  eventSplitOutletEvent,
+  isEventSplitNode,
+} from "#src/lifecycle/event-split";
 
 /** The fields join policy reads off an edge. Editor and persisted edges both fit. */
 export type JoinGraphEdge = {
@@ -42,9 +45,11 @@ function isExclusiveSplit(node: WorkflowNode): boolean {
 }
 
 function exclusiveHandleKey(edge: JoinGraphEdge): string {
-  const branch = normalizeConditionBranch(edge.sourceHandle);
-  if (branch) {
-    return branch;
+  const outlet =
+    normalizeConditionBranch(edge.sourceHandle) ??
+    eventSplitOutletEvent(edge.sourceHandle);
+  if (outlet) {
+    return outlet;
   }
   return typeof edge.sourceHandle === "string" && edge.sourceHandle.length > 0
     ? edge.sourceHandle
