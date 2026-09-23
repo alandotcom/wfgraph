@@ -12,6 +12,7 @@
  */
 
 import type { BranchHandoff } from "#src/backend/engine/branch";
+import type { ReleasedEdge } from "#src/backend/engine/contracts";
 import type { ExecutionSide } from "@wfgraph/shared/lifecycle/execution-contracts";
 
 export type WaitForEventOptions = {
@@ -60,8 +61,8 @@ export type WorkflowExecutionRuntime = {
    * Hands the branch below one node to a durable run of its own (ADR-0011), and
    * parks the caller until that run ends.
    *
-   * `releasedNodeIds` are the nodes this run has already let its downstream
-   * follow, which is what tells the branch it may enter its entry node at all.
+   * `releasedEdges` are the outgoing edges this run selected, so a child inherits
+   * the same join readiness without releasing an unselected outlet.
    * `side` is which side of the Lifecycle Node the entry node sits on, which the
    * branch cannot work out for itself: it routes no cancellation, so it has no
    * boundary of its own to ask. A runtime that starts no durable runs leaves
@@ -72,7 +73,7 @@ export type WorkflowExecutionRuntime = {
         step: DurableStepRef,
         input: {
           entryNodeId: string;
-          releasedNodeIds: readonly string[];
+          releasedEdges: readonly ReleasedEdge[];
           side: ExecutionSide;
         }
       ) => Promise<BranchHandoff>)

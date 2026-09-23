@@ -44,6 +44,7 @@ import {
   type JsonObjectDraft,
   toJsonObject,
 } from "@wfgraph/shared/types/json";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
   isWaitSignalType,
   WAIT_ARRIVAL_METADATA_KEY,
@@ -68,7 +69,7 @@ export type WaitResumeClaim = {
 
 /** The claim's wake as it is stored, under one key of the row's metadata. */
 function arrivalMetadata(arrival: WaitArrival): JsonObject {
-  return { [WAIT_ARRIVAL_METADATA_KEY]: { ...arrival } };
+  return { [WAIT_ARRIVAL_METADATA_KEY]: omitUndefined(arrival) };
 }
 
 function readWaitArrival(metadata: JsonObject | null): WaitArrival | null {
@@ -80,6 +81,8 @@ function readWaitArrival(metadata: JsonObject | null): WaitArrival | null {
     signalType: arrival.signalType,
     eventName: typeof arrival.eventName === "string" ? arrival.eventName : null,
     payload: readJsonObject(arrival.payload) ?? {},
+    deliveryId:
+      typeof arrival.deliveryId === "string" ? arrival.deliveryId : undefined,
   };
 }
 
@@ -248,6 +251,8 @@ export type WaitsRepoMethods = {
     resumeToken: string | null;
     /** The Event being delivered, which the row must still subscribe to. */
     eventName: string;
+    /** Permit an empty arrival slot or replay of this arrival's delivery id. */
+    allowSameDeliveryRetry?: boolean | undefined;
     arrival: WaitArrival;
   }) => Effect.Effect<WaitResumeClaim | null, DatabaseError>;
   /** Settle only the exact claim that delivered the wake signal. */
@@ -604,7 +609,20 @@ export function makeWaitsMethods(
               : eq(workflowWaitStates.resumeToken, input.resumeToken),
             arrayContains(workflowWaitStates.subscribedEvents, [
               input.eventName,
-            ])
+            ]),
+            input.allowSameDeliveryRetry
+              ? or(
+                  isNull(
+                    sql`${workflowWaitStates.metadata} -> ${WAIT_ARRIVAL_METADATA_KEY}::text`
+                  ),
+                  input.arrival.deliveryId === undefined
+                    ? undefined
+                    : eq(
+                        sql`${workflowWaitStates.metadata} -> ${WAIT_ARRIVAL_METADATA_KEY}::text ->> 'deliveryId'`,
+                        input.arrival.deliveryId
+                      )
+                )
+              : undefined
           ),
           input.arrival
         )

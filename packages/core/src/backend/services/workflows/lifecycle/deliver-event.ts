@@ -54,6 +54,7 @@ import {
 import { connectionMatches } from "@wfgraph/shared/lifecycle/event-connections";
 import {
   emptyLifecycleRules,
+  resolveCorrelationPath,
   type LifecycleRules,
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { readCancelFilter } from "@wfgraph/shared/lifecycle/cancel-filters";
@@ -140,19 +141,19 @@ const WAIT_CANDIDATE_PAGE_SIZE = 200;
 /**
  * Where this workflow reads the Event's Entity Value.
  *
- * The builder's per-workflow path wins over the Event Author's declaration --
- * the same precedence `resolveCorrelationPath` states over the two paths a graph
- * carries -- and it comes off the subscription row rather than off the graph:
- * the row is written in the same transaction as the graph it was derived from,
- * which is what lets the index answer a delivery on its own.
+ * The subscription index discovers candidate workflows. Its Correlation Path
+ * can be stale by the time the delivered Event is handled, so use the path
+ * resolved from the currently published version's Lifecycle Rules instead.
  */
 function correlationPathFor(input: {
   event: DeliveredEvent;
-  subscriber: EventSubscriber;
+  rules: LifecycleRules;
 }): string | undefined {
-  return (
-    input.subscriber.correlationPath ?? input.event.correlationPath ?? undefined
-  );
+  return resolveCorrelationPath({
+    rules: input.rules,
+    eventName: input.event.name,
+    declaredPath: input.event.correlationPath,
+  });
 }
 
 /**
@@ -164,7 +165,7 @@ function correlationPathFor(input: {
  */
 function readEntityValue(input: {
   event: DeliveredEvent;
-  subscriber: EventSubscriber;
+  rules: LifecycleRules;
   payload: JsonObject;
 }): string | undefined {
   const path = correlationPathFor(input);
@@ -208,18 +209,6 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
     const logger = (yield* AppLogger)
       .get("deliver-event")
       .with({ eventName: input.event.name, workflowId: input.subscriber.id });
-
-    // The index already named this workflow as a start or cancel. Connection is
-    // on that row, so a wrong-Connection arrival is waits_only without opening
-    // the published graph or running preflight.
-    if (
-      !connectionMatches(
-        input.subscriber.connectionId ?? undefined,
-        input.event.connectionId
-      )
-    ) {
-      return { kind: "waits_only" as const, workflowId: input.subscriber.id };
-    }
 
     const loaded = yield* repo.findByIdWithPublishedVersionForRun(
       input.subscriber.id
@@ -292,6 +281,18 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
     // (ADR-0012, 2026-08-29).
     const rules = preflight.lifecycleRules ?? emptyLifecycleRules;
 
+    // The index selected this workflow for consideration, but its Connection
+    // can describe an older publication. Re-derive it from the graph whose
+    // published version the Execution below will pin.
+    if (
+      !connectionMatches(
+        rules.connectionIds?.[input.event.name],
+        input.event.connectionId
+      )
+    ) {
+      return { kind: "waits_only" as const, workflowId: workflow.id };
+    }
+
     if (rules.cancelEvents.includes(input.event.name)) {
       // The filter decides whether this arrival carries the cancel role before
       // the Correlation Path is required. A payload the builder excluded does
@@ -323,7 +324,7 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
       } else {
         const entityValue = readEntityValue({
           event: input.event,
-          subscriber: input.subscriber,
+          rules,
           payload: input.payload,
         });
 
@@ -338,7 +339,10 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
             metadata: {
               reason: "entity_value_missing",
               eventName: input.event.name,
-              correlationPath: correlationPathFor(input),
+              correlationPath: correlationPathFor({
+                event: input.event,
+                rules,
+              }),
               deliveryId: input.deliveryId,
               runMode: workflow.mode,
             },
@@ -389,7 +393,7 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
       ? undefined
       : readEntityValue({
           event: input.event,
-          subscriber: input.subscriber,
+          rules,
           payload: input.payload,
         });
 
@@ -668,6 +672,7 @@ export const deliverWaitCandidates = Effect.fn("deliverWaitCandidates")(
     event: DeliveredEvent;
     payload: JsonObject;
     candidates: WaitDeliveryCandidate[];
+    deliveryId?: string | undefined;
   }) {
     const resumedWaits = yield* resumeWaitsMatchingEvent({
       workflowId: input.workflowId,
@@ -675,6 +680,7 @@ export const deliverWaitCandidates = Effect.fn("deliverWaitCandidates")(
       payload: input.payload,
       waitStates: input.candidates,
       connectionId: input.event.connectionId,
+      deliveryId: input.deliveryId,
     });
 
     return { workflowId: input.workflowId, resumedWaits };

@@ -240,9 +240,8 @@ export class CancelBoundary {
         for (const lifecycleNode of lifecycleNodes) {
           // The entry node may not have scheduled anything yet, and the branch's
           // first node waits on it the way any node waits on its source.
-          traversal.markReadyForDownstream(lifecycleNode.id);
           nextNodes.push(
-            ...traversal.nextNodes(lifecycleNode.id, {
+            ...traversal.markReadyForDownstream(lifecycleNode.id, {
               kind: "outlet",
               outlet: LIFECYCLE_CANCELED_HANDLE,
             })

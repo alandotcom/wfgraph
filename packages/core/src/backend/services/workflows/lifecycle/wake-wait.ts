@@ -20,6 +20,9 @@ type WaitWakeTarget =
       waitStateId: string;
       token: string;
       eventName: string;
+      deliveryId?: string | undefined;
+      /** Whether the claim may accept an empty slot or this delivery's arrival. */
+      allowSameDeliveryRetry?: boolean | undefined;
     };
 
 /**
@@ -61,6 +64,7 @@ export const wakeWait = Effect.fn("wakeWait")(function* (input: {
     signalType: "wait-resume" as const,
     eventName,
     payload,
+    deliveryId: target.kind === "wait_state" ? target.deliveryId : undefined,
   };
   const claim = yield* target.kind === "resume_token"
     ? repo.claimWaitingStateByToken({
@@ -72,6 +76,7 @@ export const wakeWait = Effect.fn("wakeWait")(function* (input: {
         resumeToken: target.token,
         eventName: target.eventName,
         arrival,
+        allowSameDeliveryRetry: target.allowSameDeliveryRetry,
       });
 
   if (!claim) {

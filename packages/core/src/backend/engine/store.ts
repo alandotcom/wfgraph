@@ -66,6 +66,15 @@ export type CompleteStepLogInput = {
   error?: string | undefined;
 };
 
+/** A completed node attempt the run can recover after a child branch is killed. */
+export type CompletedNodeProgress = {
+  nodeId: string;
+  nodeName: string;
+  status: "success" | "error";
+  output: JsonValue;
+  error: string | null;
+};
+
 export type RecordAuditEventInput = {
   workflowId: string;
   executionId: string;
@@ -333,6 +342,16 @@ export type WorkflowStore = {
     executionId: string
   ): Effect.Effect<Record<string, JsonValue>, DatabaseError>;
   /**
+   * The newest completed node attempt per node, in newest-first order.
+   *
+   * A killed child cannot return its partial traversal. The surviving run reads
+   * these existing log rows to recover completed outputs and errors before it
+   * enters the Canceled outlet.
+   */
+  readCompletedNodeProgress(
+    executionId: string
+  ): Effect.Effect<CompletedNodeProgress[], DatabaseError>;
+  /**
    * Closes every node row still open and every wait still waiting, as cancelled.
    *
    * The caller states when this is safe: nothing may still be writing to those
@@ -365,5 +384,6 @@ export const noopWorkflowStore: WorkflowStore = {
   completeRun: (input) =>
     Effect.succeed({ status: input.status, claim: null, didWrite: true }),
   readNodeOutputs: () => Effect.succeed({}),
+  readCompletedNodeProgress: () => Effect.succeed([]),
   cancelOpenWork: () => Effect.void,
 };

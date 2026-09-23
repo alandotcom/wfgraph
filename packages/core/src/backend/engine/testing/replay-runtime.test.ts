@@ -164,12 +164,12 @@ describe("driveWithReplay", () => {
         await Promise.all([
           runtime.startBranch?.(stepRef("branch-short"), {
             entryNodeId: "short",
-            releasedNodeIds: [],
+            releasedEdges: [],
             side: "started",
           }),
           runtime.startBranch?.(stepRef("branch-long"), {
             entryNodeId: "long",
-            releasedNodeIds: [],
+            releasedEdges: [],
             side: "started",
           }),
         ]);
@@ -204,12 +204,12 @@ describe("driveWithReplay", () => {
         await Promise.all([
           runtime.startBranch?.(stepRef("branch-short"), {
             entryNodeId: "short",
-            releasedNodeIds: [],
+            releasedEdges: [],
             side: "started",
           }),
           runtime.startBranch?.(stepRef("branch-long"), {
             entryNodeId: "long",
-            releasedNodeIds: [],
+            releasedEdges: [],
             side: "started",
           }),
         ]);
@@ -253,7 +253,7 @@ describe("driveWithReplay", () => {
       async (runtime) =>
         await runtime.startBranch?.(stepRef("branch-wait"), {
           entryNodeId: "wait",
-          releasedNodeIds: [],
+          releasedEdges: [],
           side: "started",
         }),
       { branch: () => Promise.resolve(answered) }
@@ -268,7 +268,7 @@ describe("driveWithReplay", () => {
         async (runtime) =>
           await runtime.startBranch?.(stepRef("branch-wait"), {
             entryNodeId: "wait",
-            releasedNodeIds: [],
+            releasedEdges: [],
             side: "started",
           }),
         { branch: () => Promise.reject(new Error("the branch died")) }
@@ -281,7 +281,7 @@ describe("driveWithReplay", () => {
       async (runtime) =>
         await runtime.startBranch?.(stepRef("branch-wait"), {
           entryNodeId: "wait",
-          releasedNodeIds: [],
+          releasedEdges: [],
           side: "started",
         }),
       {
@@ -310,12 +310,12 @@ describe("driveWithReplay", () => {
         await Promise.all([
           runtime.startBranch?.(stepRef("branch-exit"), {
             entryNodeId: "exit",
-            releasedNodeIds: [],
+            releasedEdges: [],
             side: "started",
           }),
           runtime.startBranch?.(stepRef("branch-sibling"), {
             entryNodeId: "sibling",
-            releasedNodeIds: [],
+            releasedEdges: [],
             side: "started",
           }),
         ]),

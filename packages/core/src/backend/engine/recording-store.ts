@@ -15,6 +15,7 @@ import {
 import { Effect } from "effect";
 import type { WaitArrival } from "@wfgraph/shared/lifecycle/wait-signal";
 import type {
+  CompletedNodeProgress,
   CompleteRunInput,
   CompleteStepLogInput,
   CreateWaitStateInput,
@@ -51,6 +52,7 @@ type StoreCallInputs = {
   readPendingCancel: { executionId: string };
   completeRun: CompleteRunInput;
   readNodeOutputs: { executionId: string };
+  readCompletedNodeProgress: { executionId: string };
   cancelOpenWork: { executionId: string };
 };
 
@@ -112,8 +114,11 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
   const calls: RecordedStoreCall[] = [];
   /** Which node each open row belongs to, so a close can be attributed. */
   const nodeOfLog = new Map<string, string>();
+  const nodeNameOfLog = new Map<string, string>();
   /** What each node that succeeded left, which is what a branch run reads back. */
   const nodeOutputs: Record<string, JsonValue> = {};
+  /** Latest completed row per node, as a canceled parent recovers it. */
+  const completedNodeProgress = new Map<string, CompletedNodeProgress>();
   const byMethod: { [M in StoreMethod]: StoreCallInputs[M][] } = {
     startStepLog: [],
     completeStepLog: [],
@@ -131,6 +136,7 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
     readPendingCancel: [],
     completeRun: [],
     readNodeOutputs: [],
+    readCompletedNodeProgress: [],
     cancelOpenWork: [],
   };
 
@@ -160,6 +166,7 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
         byMethod.startStepLog.push(input);
         const logId = `log_${byMethod.startStepLog.length}`;
         nodeOfLog.set(logId, input.nodeId);
+        nodeNameOfLog.set(logId, input.nodeName);
         return { logId, startTime: Date.now() };
       });
     },
@@ -169,8 +176,24 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
         calls.push({ method: "completeStepLog", input });
         byMethod.completeStepLog.push(input);
         const nodeId = nodeOfLog.get(input.logId);
-        if (nodeId && input.status === "success") {
-          nodeOutputs[nodeId] = readJsonValue(input.output);
+        if (nodeId) {
+          const output = readJsonValue(input.output);
+          completedNodeProgress.delete(nodeId);
+          completedNodeProgress.set(nodeId, {
+            nodeId,
+            nodeName: nodeNameOfLog.get(input.logId) ?? nodeId,
+            status: input.status,
+            output,
+            error: input.error ?? null,
+          });
+          if (input.status === "success") {
+            Object.defineProperty(nodeOutputs, nodeId, {
+              configurable: true,
+              enumerable: true,
+              value: output,
+              writable: true,
+            });
+          }
         }
       });
     },
@@ -336,6 +359,15 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
         calls.push({ method: "readNodeOutputs", input });
         byMethod.readNodeOutputs.push(input);
         return { ...nodeOutputs };
+      });
+    },
+
+    readCompletedNodeProgress(executionId) {
+      return Effect.sync(() => {
+        const input = { executionId };
+        calls.push({ method: "readCompletedNodeProgress", input });
+        byMethod.readCompletedNodeProgress.push(input);
+        return [...completedNodeProgress.values()].toReversed();
       });
     },
 

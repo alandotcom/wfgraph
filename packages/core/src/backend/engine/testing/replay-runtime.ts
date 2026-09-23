@@ -19,6 +19,7 @@
  * itself is stated at `endTimersDueNow`.
  */
 
+import type { ReleasedEdge } from "#src/backend/engine/contracts";
 import type {
   BranchHandoff,
   BranchRunResult,
@@ -58,7 +59,7 @@ export type ReplayRunOptions = {
     runtime: WorkflowExecutionRuntime,
     input: {
       entryNodeId: string;
-      releasedNodeIds: readonly string[];
+      releasedEdges: readonly ReleasedEdge[];
       side: ExecutionSide;
     }
   ) => Promise<unknown>;
@@ -421,7 +422,7 @@ async function driveWithReplayInstalled<T>(
             { id: stepId }: DurableStepRef,
             input: {
               entryNodeId: string;
-              releasedNodeIds: readonly string[];
+              releasedEdges: readonly ReleasedEdge[];
               side: ExecutionSide;
             }
           ) =>

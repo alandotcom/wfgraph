@@ -176,14 +176,14 @@ function createDurableRuntime(input: {
     // Memoization boundary: Inngest stores the result under the step's id, so
     // work already done in an earlier attempt is replayed instead of repeated.
     run: (durableStep, fn) => step.run(durableStep, fn),
-    startBranch: async (durableStep, { entryNodeId, releasedNodeIds, side }) =>
+    startBranch: async (durableStep, { entryNodeId, releasedEdges, side }) =>
       readBranchHandoff(
         await step.invoke(durableStep, {
           function: workflowBranchTarget,
           data: {
             executionId: data.executionId,
             entryNodeId,
-            releasedNodeIds: [...releasedNodeIds],
+            releasedEdges: [...releasedEdges],
             side,
           },
         })
@@ -493,7 +493,7 @@ async function workflowBranchRequestedHandler({
   const data: WorkflowBranchInput = {
     ...persisted,
     entryNodeId: event.data.entryNodeId,
-    releasedNodeIds: event.data.releasedNodeIds,
+    releasedEdges: event.data.releasedEdges,
     side: event.data.side,
   };
 
