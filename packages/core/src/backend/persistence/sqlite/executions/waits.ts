@@ -13,6 +13,7 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { generateId } from "@wfgraph/shared/utils/id";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
   readJsonObject,
   toJsonObject,
@@ -65,6 +66,23 @@ function subscribedTo(eventName: string): SQL {
   )`;
 }
 
+/** An arrival is absent, or belongs to the delivery this claim is retrying. */
+function arrivalAbsentOrSameDelivery(arrival: WaitArrival): SQL {
+  const arrivalPath = `$.${WAIT_ARRIVAL_METADATA_KEY}`;
+  const absent = sql`json_type(${workflowWaitStates.metadata}, ${arrivalPath}) is null`;
+  if (arrival.deliveryId === undefined) return absent;
+  const deliveryIdPath = `${arrivalPath}.deliveryId`;
+  return (
+    or(
+      absent,
+      eq(
+        sql`json_extract(${workflowWaitStates.metadata}, ${deliveryIdPath})`,
+        arrival.deliveryId
+      )
+    ) ?? absent
+  );
+}
+
 /** A re-park the row's status or the run's pinned version refused. */
 function refusedRepark(reason: ReparkWaitRefusal): ReparkWaitOutcome {
   return { ok: false, reason };
@@ -79,6 +97,8 @@ function readWaitArrival(metadata: JsonObject | null): WaitArrival | null {
     signalType: arrival.signalType,
     eventName: typeof arrival.eventName === "string" ? arrival.eventName : null,
     payload: readJsonObject(arrival.payload) ?? {},
+    deliveryId:
+      typeof arrival.deliveryId === "string" ? arrival.deliveryId : undefined,
   };
 }
 
@@ -147,10 +167,10 @@ function claimWait(
         resumedAt: claimedAtMs,
         metadata: encodeJson({
           ...optionalJsonObject(candidate.metadata, "metadata"),
-          [WAIT_ARRIVAL_METADATA_KEY]: { ...arrival },
+          [WAIT_ARRIVAL_METADATA_KEY]: omitUndefined(arrival),
         }),
       })
-      .where(and(eq(workflowWaitStates.id, candidate.id), claimable))
+      .where(and(eq(workflowWaitStates.id, candidate.id), identity, claimable))
       .returning();
     if (!claimed) return null;
     return { waitState: sqliteWaitState(claimed), claimedAt };
@@ -439,7 +459,10 @@ export function makeSqliteWaitsMethods(
             input.resumeToken === null
               ? isNull(workflowWaitStates.resumeToken)
               : eq(workflowWaitStates.resumeToken, input.resumeToken),
-            subscribedTo(input.eventName)
+            subscribedTo(input.eventName),
+            input.allowSameDeliveryRetry
+              ? arrivalAbsentOrSameDelivery(input.arrival)
+              : undefined
           ),
           input.arrival
         )

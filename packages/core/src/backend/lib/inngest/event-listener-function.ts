@@ -118,6 +118,14 @@ export async function runEventListener(input: {
   deliver: EventListenerDeliverPorts;
 }): Promise<{ eventName: string; workflows: WorkflowDelivery[] }> {
   const { event, payload, runtime, step, deliver } = input;
+  // The SDK always supplies runId, even when its optional Event id is absent.
+  // Separate namespaces keep a host-chosen Event id from colliding with a run.
+  const waitDeliveryId =
+    input.arrival.eventId !== undefined
+      ? `event:${input.arrival.eventId}`
+      : input.arrival.runId !== undefined
+        ? `run:${input.arrival.runId}`
+        : undefined;
   const arrivalLogger = logger.with({
     eventName: event.name,
     ...input.arrival,
@@ -242,6 +250,7 @@ export async function runEventListener(input: {
                 event: deliveredEvent,
                 payload,
                 candidates: page.candidates,
+                deliveryId: waitDeliveryId,
               })
             )
         );

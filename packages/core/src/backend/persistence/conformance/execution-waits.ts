@@ -415,6 +415,116 @@ export function describeExecutionWaitConformance({
       });
     });
 
+    it("preserves another delivery's arrival between the refresh read and claim", async () => {
+      const database = await openConnection();
+      await seedPublishedWorkflow(database);
+      const waitStateId = await startEventWait(database, "resume_claim_race");
+      const firstArrival = { ...EVENT_ARRIVAL, deliveryId: "delivery_first" };
+      const competingArrival = {
+        ...EVENT_ARRIVAL,
+        deliveryId: "delivery_competing",
+      };
+
+      const result = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const refreshedRead =
+            yield* executions.findWaitStateById(waitStateId);
+          const competingClaim = yield* executions.claimWaitingStateById({
+            waitStateId,
+            resumeToken: "resume_claim_race",
+            eventName: EVENT_ARRIVAL.eventName,
+            arrival: competingArrival,
+          });
+          if (!competingClaim) throw new Error("competing claim refused");
+          const released = yield* executions.releaseWaitingStateClaim({
+            waitStateId,
+            claimedAt: competingClaim.claimedAt,
+          });
+          const refreshedClaim = yield* executions.claimWaitingStateById({
+            waitStateId,
+            resumeToken: "resume_claim_race",
+            eventName: EVENT_ARRIVAL.eventName,
+            arrival: firstArrival,
+            allowSameDeliveryRetry: true,
+          });
+          const current = yield* executions.findWaitStateById(waitStateId);
+          return {
+            arrivalAtRefreshRead: refreshedRead?.metadata?.arrival ?? null,
+            released,
+            refreshedClaim,
+            arrivalAfterClaim: current?.metadata?.arrival,
+          };
+        })
+      );
+
+      expect(result).toEqual({
+        arrivalAtRefreshRead: null,
+        released: true,
+        refreshedClaim: null,
+        arrivalAfterClaim: competingArrival,
+      });
+    });
+
+    it("retries only the same Event delivery after a refreshed claim is released", async () => {
+      const database = await openConnection();
+      await seedPublishedWorkflow(database);
+      const waitStateId = await startEventWait(database, "resume_delivery_id");
+      const firstArrival = { ...EVENT_ARRIVAL, deliveryId: "delivery_first" };
+      const differentArrival = {
+        ...EVENT_ARRIVAL,
+        deliveryId: "delivery_different",
+      };
+
+      const result = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const firstClaim = yield* executions.claimWaitingStateById({
+            waitStateId,
+            resumeToken: "resume_delivery_id",
+            eventName: EVENT_ARRIVAL.eventName,
+            arrival: firstArrival,
+          });
+          if (!firstClaim) throw new Error("initial claim refused");
+          const released = yield* executions.releaseWaitingStateClaim({
+            waitStateId,
+            claimedAt: firstClaim.claimedAt,
+          });
+          const differentDeliveryClaim =
+            yield* executions.claimWaitingStateById({
+              waitStateId,
+              resumeToken: "resume_delivery_id",
+              eventName: EVENT_ARRIVAL.eventName,
+              arrival: differentArrival,
+              allowSameDeliveryRetry: true,
+            });
+          const rowAfterDifferentDelivery =
+            yield* executions.findWaitStateById(waitStateId);
+          const sameDeliveryClaim = yield* executions.claimWaitingStateById({
+            waitStateId,
+            resumeToken: "resume_delivery_id",
+            eventName: EVENT_ARRIVAL.eventName,
+            arrival: firstArrival,
+            allowSameDeliveryRetry: true,
+          });
+          return {
+            released,
+            differentDeliveryClaim,
+            arrivalAfterDifferentDelivery:
+              rowAfterDifferentDelivery?.metadata?.arrival,
+            sameDeliveryClaim: sameDeliveryClaim?.waitState.metadata?.arrival,
+          };
+        })
+      );
+
+      expect(result).toEqual({
+        released: true,
+        differentDeliveryClaim: null,
+        arrivalAfterDifferentDelivery: firstArrival,
+        sameDeliveryClaim: firstArrival,
+      });
+    });
+
     it("fences a stale candidate token and closes a wait with no arrival", async () => {
       const database = await openConnection();
       await seedPublishedWorkflow(database);

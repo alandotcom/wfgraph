@@ -12,9 +12,12 @@ import { evaluateCompiledCondition } from "#src/backend/lib/cel/condition-payloa
 import { DEFAULT_QUERY_CONNECTIONS } from "#src/backend/lib/db/config";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { readCompiledWaitSubscriptions } from "#src/backend/engine/wait-match";
+import { ExecutionRepo } from "#src/backend/services/executions/repo";
+import type { WorkflowWaitState } from "#src/backend/services/executions/repo/contracts";
 import { wakeWait } from "#src/backend/services/workflows/lifecycle/wake-wait";
-import type { JsonObject } from "@wfgraph/shared/types/json";
+import { isJsonObject, type JsonObject } from "@wfgraph/shared/types/json";
 import { connectionMatches } from "@wfgraph/shared/lifecycle/event-connections";
+import { WAIT_ARRIVAL_METADATA_KEY } from "@wfgraph/shared/lifecycle/wait-signal";
 
 /** The JSON-safe portion of a wait row needed to match and wake one Event. */
 export type WaitDeliveryCandidate = {
@@ -28,6 +31,37 @@ export type WaitDeliveryCandidate = {
 
 /** Whether the row matched, and the error from every subscription that could not be evaluated. */
 type WaitMatchResult = { matched: boolean; unevaluated: string[] };
+
+/** Whether a reread still names the same open Event Wait and current park. */
+function canRefreshWaitCandidate(input: {
+  candidate: WaitDeliveryCandidate;
+  current: WorkflowWaitState;
+  workflowId: string;
+  eventType: string;
+  deliveryId?: string | undefined;
+}): boolean {
+  const { candidate, current } = input;
+  const recordedArrival = current.metadata?.[WAIT_ARRIVAL_METADATA_KEY];
+  const arrivalIsAbsent = recordedArrival === undefined;
+  const arrivalIsThisDelivery =
+    input.deliveryId !== undefined &&
+    isJsonObject(recordedArrival) &&
+    recordedArrival.signalType === "wait-resume" &&
+    recordedArrival.eventName === input.eventType &&
+    recordedArrival.deliveryId === input.deliveryId;
+  return (
+    current.id === candidate.id &&
+    current.workflowId === input.workflowId &&
+    current.executionId === candidate.executionId &&
+    current.nodeId === candidate.nodeId &&
+    current.waitType === "event" &&
+    current.status === "waiting" &&
+    current.resumeToken !== null &&
+    current.resumeToken !== candidate.resumeToken &&
+    current.subscribedEvents?.includes(input.eventType) === true &&
+    (arrivalIsAbsent || arrivalIsThisDelivery)
+  );
+}
 
 /**
  * Whether this arrival is one this row parked for.
@@ -91,6 +125,7 @@ export const resumeWaitsMatchingEvent = Effect.fn("resumeWaitsMatchingEvent")(
     payload: JsonObject;
     waitStates: WaitDeliveryCandidate[];
     connectionId?: string | undefined;
+    deliveryId?: string | undefined;
   }) {
     const { eventType } = input;
     if (!eventType) {
@@ -112,6 +147,7 @@ export const resumeWaitsMatchingEvent = Effect.fn("resumeWaitsMatchingEvent")(
           payload: input.payload,
           waitState,
           connectionId: input.connectionId,
+          deliveryId: input.deliveryId,
         }).pipe(
           Effect.match({
             onFailure: (error) => ({ _tag: "Failure" as const, error }),
@@ -145,8 +181,10 @@ const resumeOneWait = Effect.fn("resumeOneWait")(function* (input: {
   payload: JsonObject;
   waitState: WaitDeliveryCandidate;
   connectionId?: string | undefined;
+  deliveryId?: string | undefined;
 }) {
   const { waitState, eventType } = input;
+  const repo = yield* ExecutionRepo;
   const logger = (yield* AppLogger).get("wait-resume");
   const resumeToken = waitState.resumeToken;
   if (!resumeToken) {
@@ -195,30 +233,95 @@ const resumeOneWait = Effect.fn("resumeOneWait")(function* (input: {
     return 0;
   }
 
-  return yield* Effect.map(
+  const wakeCandidate = (candidate: WaitDeliveryCandidate, token: string) =>
     wakeWait({
       target: {
         kind: "wait_state",
-        waitStateId: waitState.id,
-        token: resumeToken,
+        waitStateId: candidate.id,
+        token,
         eventName: eventType,
+        deliveryId: input.deliveryId,
+        allowSameDeliveryRetry: true,
       },
       payload: input.payload,
-    }),
-    // A raced settle counts as none here: the run did wake, but another writer
-    // took the row first, which is either a second wake counting it or the
-    // woken run closing the row it consumed.
-    (outcome) => (outcome.status === "resumed" ? 1 : 0)
-  ).pipe(
-    Effect.tapError((error) =>
-      logger.error("Failed to resume wait", {
+    }).pipe(
+      Effect.tapError((error) =>
+        logger.error("Failed to resume wait", {
+          workflowId: input.workflowId,
+          eventType,
+          waitStateId: candidate.id,
+          executionId: candidate.executionId,
+          nodeId: candidate.nodeId,
+          error,
+        })
+      )
+    );
+
+  const firstOutcome = yield* wakeCandidate(waitState, resumeToken);
+  if (firstOutcome.status !== "unclaimed") {
+    // A raced settle is not counted here; that is either a second wake counting
+    // it or the woken run closing the row it consumed.
+    return firstOutcome.status === "resumed" ? 1 : 0;
+  }
+
+  // The durable candidate page stays fixed for this delivery. A migration can
+  // re-park the same row and rotate its token after that page was selected, so
+  // refresh only that row and only while its current Event rule still matches.
+  let previousCandidate = waitState;
+  while (true) {
+    const current = yield* repo.findWaitStateById(waitState.id);
+    if (
+      current === null ||
+      current.resumeToken === null ||
+      !canRefreshWaitCandidate({
+        candidate: previousCandidate,
+        current,
         workflowId: input.workflowId,
         eventType,
-        waitStateId: waitState.id,
-        executionId: waitState.executionId,
-        nodeId: waitState.nodeId,
-        error,
+        deliveryId: input.deliveryId,
       })
-    )
-  );
+    ) {
+      return 0;
+    }
+
+    const currentCandidate: WaitDeliveryCandidate = current;
+    const currentMatch = waitStateMatches({
+      waitState: currentCandidate,
+      eventType,
+      payload: input.payload,
+      connectionId: input.connectionId,
+    });
+
+    for (const error of currentMatch.unevaluated) {
+      yield* logger.warn("Wait match did not evaluate", {
+        workflowId: input.workflowId,
+        eventType,
+        waitStateId: current.id,
+        executionId: current.executionId,
+        nodeId: current.nodeId,
+        error,
+      });
+    }
+
+    if (!currentMatch.matched) {
+      yield* logger.debug("Wait match rejected an arrival", {
+        workflowId: input.workflowId,
+        eventType,
+        waitStateId: current.id,
+        executionId: current.executionId,
+        nodeId: current.nodeId,
+        subscribedEvents: current.subscribedEvents,
+      });
+      return 0;
+    }
+
+    const refreshedOutcome = yield* wakeCandidate(
+      currentCandidate,
+      current.resumeToken
+    );
+    if (refreshedOutcome.status !== "unclaimed") {
+      return refreshedOutcome.status === "resumed" ? 1 : 0;
+    }
+    previousCandidate = currentCandidate;
+  }
 });

@@ -86,6 +86,8 @@ function readWaitArrival(metadata: JsonObject | null): WaitArrival | null {
     signalType: arrival.signalType,
     eventName: typeof arrival.eventName === "string" ? arrival.eventName : null,
     payload: readJsonObject(arrival.payload) ?? {},
+    deliveryId:
+      typeof arrival.deliveryId === "string" ? arrival.deliveryId : undefined,
   };
 }
 

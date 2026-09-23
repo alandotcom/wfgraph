@@ -672,6 +672,7 @@ export const deliverWaitCandidates = Effect.fn("deliverWaitCandidates")(
     event: DeliveredEvent;
     payload: JsonObject;
     candidates: WaitDeliveryCandidate[];
+    deliveryId?: string | undefined;
   }) {
     const resumedWaits = yield* resumeWaitsMatchingEvent({
       workflowId: input.workflowId,
@@ -679,6 +680,7 @@ export const deliverWaitCandidates = Effect.fn("deliverWaitCandidates")(
       payload: input.payload,
       waitStates: input.candidates,
       connectionId: input.event.connectionId,
+      deliveryId: input.deliveryId,
     });
 
     return { workflowId: input.workflowId, resumedWaits };

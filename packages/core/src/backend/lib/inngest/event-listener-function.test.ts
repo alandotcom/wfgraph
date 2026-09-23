@@ -338,12 +338,42 @@ describe("runEventListener", () => {
     expect(
       deliver.listWaitCandidates.mock.calls[0]?.[0].excludingExecutionIds
     ).toEqual([]);
+    expect(deliver.deliverWaitCandidates.mock.calls[0]?.[0].deliveryId).toBe(
+      "event:dlv_9"
+    );
     expect(result.workflows).toEqual([{ lifecycle: refused, resumedWaits: 1 }]);
 
     // The arrival travels with the delivery, so the audit row a start or a
     // refusal writes names the arrival it answered.
     expect(deliver.applyLifecycle.mock.calls[0]?.[0].deliveryId).toBe("dlv_9");
   });
+
+  it.each([
+    { arrival: { runId: "run_9" }, deliveryId: "run:run_9" },
+    {
+      arrival: { eventId: "run:run_9", runId: "run_9" },
+      deliveryId: "event:run:run_9",
+    },
+  ])(
+    "identifies Wait delivery as $deliveryId",
+    async ({ arrival, deliveryId }) => {
+      const deliver = fakeDeliver();
+      deliver.listSubscribers.mockReturnValue(
+        Effect.succeed([subscriber({ roles: ["wait"] })])
+      );
+      await runEventListener({
+        event: appointmentCreated,
+        payload,
+        arrival,
+        runtime: testRuntime(),
+        step: recordingStep().step,
+        deliver,
+      });
+      expect(deliver.deliverWaitCandidates.mock.calls[0]?.[0].deliveryId).toBe(
+        deliveryId
+      );
+    }
+  );
 
   it("retries a failed delivery against saved candidates only", async () => {
     const deliver = fakeDeliver();

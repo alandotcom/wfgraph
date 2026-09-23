@@ -56,6 +56,8 @@ export type WaitArrival = {
   /** The Event that arrived, and null for a resume that named none. */
   eventName: string | null;
   payload: JsonObject;
+  /** The Inngest delivery id, which identifies a retried Event arrival. */
+  deliveryId?: string | undefined;
 };
 
 const waitSignalTypeSchema = Schema.Literals([...WAIT_SIGNAL_TYPES]);

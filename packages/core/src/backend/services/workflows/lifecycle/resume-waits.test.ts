@@ -14,6 +14,7 @@ import {
 } from "#src/backend/lib/effect/test-layers";
 import { getAppLogger } from "#src/backend/lib/logger";
 import type { ExecutionRepo } from "#src/backend/services/executions/repo";
+import type { WorkflowWaitState } from "#src/backend/services/executions/repo/contracts";
 import { resumeWaitsMatchingEvent } from "#src/backend/services/workflows/lifecycle/resume-waits";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 
@@ -50,6 +51,9 @@ const claimWaitingStateByIdMock = vi.fn<Repo["claimWaitingStateById"]>(
       },
     })
 );
+const findWaitStateByIdMock = vi.fn<Repo["findWaitStateById"]>(() =>
+  Effect.succeed(null)
+);
 const settleWaitingStateClaimMock = vi.fn<Repo["settleWaitingStateClaim"]>(() =>
   Effect.succeed(true)
 );
@@ -60,6 +64,7 @@ const releaseWaitingStateClaimMock = vi.fn<Repo["releaseWaitingStateClaim"]>(
 const services = Layer.mergeAll(
   stubExecutionRepo({
     claimWaitingStateById: claimWaitingStateByIdMock,
+    findWaitStateById: findWaitStateByIdMock,
     settleWaitingStateClaim: settleWaitingStateClaimMock,
     releaseWaitingStateClaim: releaseWaitingStateClaimMock,
   }),
@@ -101,6 +106,46 @@ function createWaitState(
   };
 }
 
+function createPersistedWaitState(
+  id: string,
+  executionId: string,
+  options?: {
+    resumeToken?: string | null | undefined;
+    subscriptions?: Subscription[] | undefined;
+    subscribedEvents?: string[] | null | undefined;
+    metadata?: JsonObject | null | undefined;
+    status?: WorkflowWaitState["status"] | undefined;
+  }
+): WorkflowWaitState {
+  const subscriptions = options?.subscriptions ?? [{ event: "event.update" }];
+  return {
+    id,
+    executionId,
+    workflowId: "workflow_1",
+    runId: `run_${id}`,
+    nodeId: `node_${id}`,
+    nodeName: `Wait ${id}`,
+    waitType: "event",
+    status: options?.status ?? "waiting",
+    resumeToken:
+      options?.resumeToken === undefined
+        ? `token_${id}_current`
+        : options.resumeToken,
+    waitUntil: null,
+    subscribedEvents:
+      options?.subscribedEvents === undefined
+        ? subscriptions.map((subscription) => subscription.event)
+        : options.subscribedEvents,
+    metadata:
+      options?.metadata === undefined
+        ? ({ waitFor: subscriptions } as JsonObject)
+        : options.metadata,
+    createdAt: new Date("2026-03-01T00:00:00.000Z"),
+    resumedAt: null,
+    cancelledAt: null,
+  };
+}
+
 /**
  * The subject on its stub services.
  *
@@ -124,6 +169,7 @@ describe("resumeWaitsMatchingEvent", () => {
     loggerErrorMock.mockReset();
     sendWaitSignalMock.mockReset();
     claimWaitingStateByIdMock.mockReset();
+    findWaitStateByIdMock.mockReset();
     settleWaitingStateClaimMock.mockReset();
     releaseWaitingStateClaimMock.mockReset();
 
@@ -160,6 +206,7 @@ describe("resumeWaitsMatchingEvent", () => {
         },
       })
     );
+    findWaitStateByIdMock.mockImplementation(() => Effect.succeed(null));
     settleWaitingStateClaimMock.mockImplementation(() => Effect.succeed(true));
     releaseWaitingStateClaimMock.mockImplementation(() => Effect.succeed(true));
   });
@@ -359,6 +406,358 @@ describe("resumeWaitsMatchingEvent", () => {
     expect(result).toBe(0);
     expect(sendWaitSignalMock).not.toHaveBeenCalled();
     expect(settleWaitingStateClaimMock).not.toHaveBeenCalled();
+  });
+
+  it("re-reads and resumes the same still-matching Wait after its token rotates", async () => {
+    claimWaitingStateByIdMock.mockImplementationOnce(() =>
+      Effect.succeed(null)
+    );
+    findWaitStateByIdMock.mockImplementationOnce(() =>
+      Effect.succeed(
+        createPersistedWaitState("1", "exec_1", {
+          resumeToken: "token_1_v2",
+        })
+      )
+    );
+
+    const result = await resumeWaits({
+      workflowId: "workflow_1",
+      eventType: "event.update",
+      payload: { key: "value" },
+      waitStates: [
+        createWaitState("1", "exec_1", { resumeToken: "token_1_v1" }),
+      ],
+    });
+
+    expect(result).toBe(1);
+    expect(findWaitStateByIdMock).toHaveBeenCalledExactlyOnceWith("1");
+    expect(
+      claimWaitingStateByIdMock.mock.calls.map(([claim]) => claim.resumeToken)
+    ).toEqual(["token_1_v1", "token_1_v2"]);
+    expect(sendWaitSignalMock).toHaveBeenCalledExactlyOnceWith({
+      executionId: "exec_1",
+      nodeId: "node_1",
+      token: "token_1_v2",
+      eventType: "event.update",
+      payload: { key: "value" },
+      signalType: "wait-resume",
+    });
+  });
+
+  it("revalidates the current Event subscription before refreshing a token", async () => {
+    claimWaitingStateByIdMock.mockImplementationOnce(() =>
+      Effect.succeed(null)
+    );
+    findWaitStateByIdMock.mockImplementationOnce(() =>
+      Effect.succeed(
+        createPersistedWaitState("1", "exec_1", {
+          resumeToken: "token_1_v2",
+          subscriptions: [{ event: "event.other" }],
+        })
+      )
+    );
+
+    const result = await resumeWaits({
+      workflowId: "workflow_1",
+      eventType: "event.update",
+      payload: {},
+      waitStates: [
+        createWaitState("1", "exec_1", { resumeToken: "token_1_v1" }),
+      ],
+    });
+
+    expect(result).toBe(0);
+    expect(claimWaitingStateByIdMock).toHaveBeenCalledTimes(1);
+    expect(sendWaitSignalMock).not.toHaveBeenCalled();
+  });
+
+  it("revalidates the current Connection before refreshing a token", async () => {
+    claimWaitingStateByIdMock.mockImplementationOnce(() =>
+      Effect.succeed(null)
+    );
+    findWaitStateByIdMock.mockImplementationOnce(() =>
+      Effect.succeed(
+        createPersistedWaitState("1", "exec_1", {
+          resumeToken: "token_1_v2",
+          subscriptions: [
+            { event: "event.update", connectionId: "connection_b" },
+          ],
+        })
+      )
+    );
+
+    const result = await resumeWaits({
+      workflowId: "workflow_1",
+      eventType: "event.update",
+      payload: {},
+      connectionId: "connection_a",
+      waitStates: [
+        createWaitState("1", "exec_1", {
+          resumeToken: "token_1_v1",
+          subscriptions: [
+            { event: "event.update", connectionId: "connection_a" },
+          ],
+        }),
+      ],
+    });
+
+    expect(result).toBe(0);
+    expect(claimWaitingStateByIdMock).toHaveBeenCalledTimes(1);
+    expect(sendWaitSignalMock).not.toHaveBeenCalled();
+  });
+
+  it("revalidates the current payload filter before refreshing a token", async () => {
+    const oldSubscription = {
+      event: "event.update",
+      match: { expression: 'payload.account == "old"', timestampPaths: [] },
+    };
+    claimWaitingStateByIdMock.mockImplementationOnce(() =>
+      Effect.succeed(null)
+    );
+    findWaitStateByIdMock.mockImplementationOnce(() =>
+      Effect.succeed(
+        createPersistedWaitState("1", "exec_1", {
+          resumeToken: "token_1_v2",
+          subscriptions: [
+            {
+              event: "event.update",
+              match: {
+                expression: 'payload.account == "new"',
+                timestampPaths: [],
+              },
+            },
+          ],
+        })
+      )
+    );
+
+    const result = await resumeWaits({
+      workflowId: "workflow_1",
+      eventType: "event.update",
+      payload: { account: "old" },
+      waitStates: [
+        createWaitState("1", "exec_1", {
+          resumeToken: "token_1_v1",
+          subscriptions: [oldSubscription],
+        }),
+      ],
+    });
+
+    expect(result).toBe(0);
+    expect(claimWaitingStateByIdMock).toHaveBeenCalledTimes(1);
+    expect(sendWaitSignalMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps retrying only the same Wait across more than three token rotations", async () => {
+    claimWaitingStateByIdMock
+      .mockImplementationOnce(() => Effect.succeed(null))
+      .mockImplementationOnce(() => Effect.succeed(null))
+      .mockImplementationOnce(() => Effect.succeed(null))
+      .mockImplementationOnce(() => Effect.succeed(null));
+    findWaitStateByIdMock
+      .mockImplementationOnce(() =>
+        Effect.succeed(
+          createPersistedWaitState("1", "exec_1", {
+            resumeToken: "token_1_v2",
+          })
+        )
+      )
+      .mockImplementationOnce(() =>
+        Effect.succeed(
+          createPersistedWaitState("1", "exec_1", {
+            resumeToken: "token_1_v3",
+          })
+        )
+      )
+      .mockImplementationOnce(() =>
+        Effect.succeed(
+          createPersistedWaitState("1", "exec_1", {
+            resumeToken: "token_1_v4",
+          })
+        )
+      )
+      .mockImplementationOnce(() =>
+        Effect.succeed(
+          createPersistedWaitState("1", "exec_1", {
+            resumeToken: "token_1_v5",
+          })
+        )
+      );
+
+    const result = await resumeWaits({
+      workflowId: "workflow_1",
+      eventType: "event.update",
+      payload: {},
+      waitStates: [
+        createWaitState("1", "exec_1", { resumeToken: "token_1_v1" }),
+      ],
+    });
+
+    expect(result).toBe(1);
+    expect(findWaitStateByIdMock.mock.calls).toEqual([
+      ["1"],
+      ["1"],
+      ["1"],
+      ["1"],
+    ]);
+    expect(
+      claimWaitingStateByIdMock.mock.calls.map(([claim]) => claim.resumeToken)
+    ).toEqual([
+      "token_1_v1",
+      "token_1_v2",
+      "token_1_v3",
+      "token_1_v4",
+      "token_1_v5",
+    ]);
+    expect(sendWaitSignalMock).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ token: "token_1_v5" })
+    );
+  });
+
+  it("does not refresh a recorded arrival when the delivery has no id", async () => {
+    claimWaitingStateByIdMock.mockImplementationOnce(() =>
+      Effect.succeed(null)
+    );
+    findWaitStateByIdMock.mockImplementationOnce(() =>
+      Effect.succeed(
+        createPersistedWaitState("1", "exec_1", {
+          resumeToken: "token_1_v2",
+          metadata: {
+            waitFor: [{ event: "event.update" }],
+            arrival: {
+              signalType: "wait-resume",
+              eventName: "event.update",
+              payload: { earlier: true },
+            },
+          },
+        })
+      )
+    );
+
+    const result = await resumeWaits({
+      workflowId: "workflow_1",
+      eventType: "event.update",
+      payload: { later: true },
+      waitStates: [
+        createWaitState("1", "exec_1", { resumeToken: "token_1_v1" }),
+      ],
+    });
+
+    expect(result).toBe(0);
+    expect(claimWaitingStateByIdMock).toHaveBeenCalledTimes(1);
+    expect(sendWaitSignalMock).not.toHaveBeenCalled();
+  });
+
+  it("retries its own recorded arrival after token rotation", async () => {
+    const deliveryId = "delivery_1";
+    claimWaitingStateByIdMock.mockImplementationOnce(() =>
+      Effect.succeed(null)
+    );
+    findWaitStateByIdMock.mockImplementationOnce(() =>
+      Effect.succeed(
+        createPersistedWaitState("1", "exec_1", {
+          resumeToken: "token_1_v2",
+          metadata: {
+            waitFor: [{ event: "event.update" }],
+            arrival: {
+              signalType: "wait-resume",
+              eventName: "event.update",
+              deliveryId,
+              payload: { key: "value" },
+            },
+          },
+        })
+      )
+    );
+
+    const result = await resumeWaits({
+      workflowId: "workflow_1",
+      eventType: "event.update",
+      payload: { key: "value" },
+      waitStates: [
+        createWaitState("1", "exec_1", { resumeToken: "token_1_v1" }),
+      ],
+      deliveryId,
+    });
+
+    expect(result).toBe(1);
+    expect(claimWaitingStateByIdMock).toHaveBeenCalledTimes(2);
+    expect(claimWaitingStateByIdMock.mock.calls[1]?.[0]).toMatchObject({
+      waitStateId: "1",
+      resumeToken: "token_1_v2",
+      eventName: "event.update",
+      allowSameDeliveryRetry: true,
+      arrival: {
+        deliveryId,
+        eventName: "event.update",
+        payload: { key: "value" },
+      },
+    });
+    expect(sendWaitSignalMock).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ token: "token_1_v2" })
+    );
+  });
+
+  it("does not replace an arrival owned by a different Event delivery", async () => {
+    claimWaitingStateByIdMock.mockImplementationOnce(() =>
+      Effect.succeed(null)
+    );
+    findWaitStateByIdMock.mockImplementationOnce(() =>
+      Effect.succeed(
+        createPersistedWaitState("1", "exec_1", {
+          resumeToken: "token_1_v2",
+          metadata: {
+            waitFor: [{ event: "event.update" }],
+            arrival: {
+              signalType: "wait-resume",
+              eventName: "event.update",
+              deliveryId: "delivery_older",
+              payload: { key: "value" },
+            },
+          },
+        })
+      )
+    );
+
+    const result = await resumeWaits({
+      workflowId: "workflow_1",
+      eventType: "event.update",
+      payload: { key: "value" },
+      waitStates: [
+        createWaitState("1", "exec_1", { resumeToken: "token_1_v1" }),
+      ],
+      deliveryId: "delivery_current",
+    });
+
+    expect(result).toBe(0);
+    expect(claimWaitingStateByIdMock).toHaveBeenCalledTimes(1);
+    expect(sendWaitSignalMock).not.toHaveBeenCalled();
+  });
+
+  it("does not bypass a termination claim when the refreshed token is unclaimable", async () => {
+    const current = createPersistedWaitState("1", "exec_1", {
+      resumeToken: "token_1_v2",
+    });
+    claimWaitingStateByIdMock
+      .mockImplementationOnce(() => Effect.succeed(null))
+      .mockImplementationOnce(() => Effect.succeed(null));
+    findWaitStateByIdMock
+      .mockImplementationOnce(() => Effect.succeed(current))
+      .mockImplementationOnce(() => Effect.succeed(current));
+
+    const result = await resumeWaits({
+      workflowId: "workflow_1",
+      eventType: "event.update",
+      payload: {},
+      waitStates: [
+        createWaitState("1", "exec_1", { resumeToken: "token_1_v1" }),
+      ],
+    });
+
+    expect(result).toBe(0);
+    expect(claimWaitingStateByIdMock).toHaveBeenCalledTimes(2);
+    expect(findWaitStateByIdMock).toHaveBeenCalledTimes(2);
+    expect(sendWaitSignalMock).not.toHaveBeenCalled();
   });
 
   it("propagates a transient database failure while claiming a wait", async () => {
