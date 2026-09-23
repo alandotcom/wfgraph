@@ -352,7 +352,7 @@ describe("conditions", () => {
     expect(compiled.valid).toBe(true);
     if (compiled.valid) {
       expect(compiled.expression).toBe(
-        '(("crm/patient.v2" in entity && "attributes" in entity["crm/patient.v2"] && "journey.status" in entity["crm/patient.v2"]["attributes"] && (entity["crm/patient.v2"]["attributes"]["journey.status"] == "active")))'
+        '(("crm/patient.v2" in entity && type(entity["crm/patient.v2"]) == map && "attributes" in entity["crm/patient.v2"] && type(entity["crm/patient.v2"]["attributes"]) == map && "journey.status" in entity["crm/patient.v2"]["attributes"] && (entity["crm/patient.v2"]["attributes"]["journey.status"] == "active")))'
       );
     }
   });
@@ -754,7 +754,7 @@ describe("conditions", () => {
     expect(compiled).toEqual({
       valid: true,
       expression:
-        '"data" in payload && "tags" in payload["data"] && "campaign.name[0]" in payload["data"]["tags"] && (payload["data"]["tags"]["campaign.name[0]"] == "spring")',
+        'type(payload) == map && "data" in payload && type(payload["data"]) == map && "tags" in payload["data"] && type(payload["data"]["tags"]) == map && "campaign.name[0]" in payload["data"]["tags"] && (payload["data"]["tags"]["campaign.name[0]"] == "spring")',
     });
   });
 

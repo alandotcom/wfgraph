@@ -237,6 +237,79 @@ describe("a compiled condition against a payload", () => {
     });
   });
 
+  it.each([
+    {
+      name: "missing array element below a null array",
+      rule: {
+        id: "rule-1",
+        field: "items[0].sku",
+        fieldType: "string",
+        operator: "is_not_set",
+      } satisfies ConditionRule,
+      payload: { items: null },
+      expected: true,
+    },
+    {
+      name: "array index on a string",
+      rule: {
+        id: "rule-1",
+        field: "items[0]",
+        fieldType: "string",
+        operator: "is_set",
+      } satisfies ConditionRule,
+      payload: { items: "sku_1" },
+      expected: false,
+    },
+    {
+      name: "array index on a record",
+      rule: {
+        id: "rule-1",
+        field: "items[0]",
+        fieldType: "string",
+        operator: "is_set",
+      } satisfies ConditionRule,
+      payload: { items: { "0": "sku_1" } },
+      expected: false,
+    },
+    {
+      name: "open-record key below a null record",
+      rule: {
+        id: "rule-1",
+        field: "data",
+        recordKey: "campaign.name",
+        fieldType: "string",
+        operator: "is_not_set",
+      } satisfies ConditionRule,
+      payload: { data: null },
+      expected: true,
+    },
+    {
+      name: "open-record key against a string",
+      rule: {
+        id: "rule-1",
+        field: "data",
+        recordKey: "campaign.name",
+        fieldType: "string",
+        operator: "is_set",
+      } satisfies ConditionRule,
+      payload: { data: "campaign.name" },
+      expected: false,
+    },
+    {
+      name: "present null leaf",
+      rule: {
+        id: "rule-1",
+        field: "items[0].sku",
+        fieldType: "string",
+        operator: "is_set",
+      } satisfies ConditionRule,
+      payload: { items: [{ sku: null }] },
+      expected: true,
+    },
+  ])("matches path presence for $name", ({ rule, payload, expected }) => {
+    expect(evaluate([[rule]], payload)).toEqual({ ok: true, value: expected });
+  });
+
   it("decodes a timestamp inside an array before CEL compares it", () => {
     const evaluation = evaluate(
       [
