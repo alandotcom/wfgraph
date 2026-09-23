@@ -94,6 +94,12 @@ const catalogLayer = stubExtensionCatalog({
         { path: "appointment.code", type: "number" },
       ],
     },
+    {
+      name: "slack/message.posted",
+      label: "Message posted",
+      integration: "slack",
+      payloadFields: [{ path: "message.id", type: "string" }],
+    },
   ],
 });
 
@@ -106,6 +112,17 @@ const appointmentCanceled = {
   name: "app/appointment.canceled",
   correlationPath: "appointment.id",
 };
+
+const slackMessagePosted = { name: "slack/message.posted" };
+
+function connectedStartRules(connectionId: string): LifecycleRules {
+  return {
+    startEvents: [slackMessagePosted.name],
+    cancelEvents: [],
+    concurrency: "unlimited",
+    connectionIds: { [slackMessagePosted.name]: connectionId },
+  };
+}
 
 const payload = { appointment: { id: "appt_8813" } };
 
@@ -230,6 +247,7 @@ function createWorkflow(input: {
   rules?: LifecycleRules | undefined;
   isPaused?: boolean | undefined;
   graph?: Workflow["graph"] | undefined;
+  publishedVersionId?: string | undefined;
 }): Workflow {
   return {
     id: "wf_1",
@@ -240,7 +258,7 @@ function createWorkflow(input: {
     isPaused: input.isPaused ?? false,
     mode: "live",
     visibility: "private",
-    publishedVersionId: "ver_1",
+    publishedVersionId: input.publishedVersionId ?? "ver_1",
     createdAt: new Date("2026-03-01T00:00:00.000Z"),
     updatedAt: new Date("2026-03-01T00:00:00.000Z"),
   };
@@ -248,7 +266,7 @@ function createWorkflow(input: {
 
 function publishedVersion(workflow: Workflow): PublishedWorkflowVersion {
   return {
-    id: "ver_1",
+    id: workflow.publishedVersionId ?? "ver_1",
     workflowId: workflow.id,
     version: 1,
     kind: "published",
@@ -336,7 +354,12 @@ const lifecyclePorts = Layer.mergeAll(
     sendWaitSignal: sendWaitSignalMock,
     sendBranchKill: sendBranchKillMock,
   }),
-  stubIntegrationRepo()
+  stubIntegrationRepo({
+    typesByIds: (integrationIds) =>
+      Effect.succeed(
+        Object.fromEntries(integrationIds.map((id) => [id, "slack"]))
+      ),
+  })
 );
 
 const waitPorts = Layer.mergeAll(
@@ -436,12 +459,14 @@ describe("applyLifecycleRules", () => {
       Effect.gen(function* () {
         const outcome = yield* applyLifecycleRules({
           subscriber: subscriber({ connectionId: "conn_1" }),
-          event: { ...appointmentCreated, connectionId: "conn_other" },
-          payload,
+          event: { ...slackMessagePosted, connectionId: "conn_other" },
+          payload: { message: { id: "message_1" } },
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
-              stubPublishedWorkflow(createWorkflow({ rules: startRules })),
+              stubPublishedWorkflow(
+                createWorkflow({ rules: connectedStartRules("conn_1") })
+              ),
               lifecyclePorts
             )
           )
@@ -459,12 +484,14 @@ describe("applyLifecycleRules", () => {
       Effect.gen(function* () {
         const outcome = yield* applyLifecycleRules({
           subscriber: subscriber({ connectionId: "conn_1" }),
-          event: { ...appointmentCreated, connectionId: "conn_1" },
-          payload,
+          event: { ...slackMessagePosted, connectionId: "conn_1" },
+          payload: { message: { id: "message_1" } },
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
-              stubPublishedWorkflow(createWorkflow({ rules: startRules })),
+              stubPublishedWorkflow(
+                createWorkflow({ rules: connectedStartRules("conn_1") })
+              ),
               lifecyclePorts
             )
           )
@@ -472,6 +499,113 @@ describe("applyLifecycleRules", () => {
 
         assert.strictEqual(outcome.kind, "started");
       })
+    );
+
+    it.effect(
+      "reads the Entity Value from the current published version's Correlation Path",
+      () =>
+        Effect.gen(function* () {
+          const currentRules: LifecycleRules = {
+            ...startRules,
+            correlationPaths: {
+              "app/appointment.created": "current.id",
+            },
+          };
+          const outcome = yield* applyLifecycleRules({
+            subscriber: subscriber({ correlationPath: "appointment.id" }),
+            event: appointmentCreated,
+            payload: {
+              appointment: { id: "stale-entity" },
+              current: { id: "current-entity" },
+            },
+          }).pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                stubPublishedWorkflow(
+                  createWorkflow({
+                    rules: currentRules,
+                    publishedVersionId: "ver_2",
+                  })
+                ),
+                lifecyclePorts
+              )
+            )
+          );
+
+          assert.strictEqual(outcome.kind, "started");
+          assert.strictEqual(
+            startForEntityMock.mock.calls[0]?.[0].execution.entityValue,
+            "current-entity"
+          );
+          assert.strictEqual(
+            startForEntityMock.mock.calls[0]?.[0].execution.workflowVersionId,
+            "ver_2"
+          );
+        })
+    );
+
+    it.effect(
+      "checks the current published version's Connection after rotation",
+      () =>
+        Effect.gen(function* () {
+          const outcome = yield* applyLifecycleRules({
+            subscriber: subscriber({ connectionId: "conn_old" }),
+            event: { ...slackMessagePosted, connectionId: "conn_new" },
+            payload: { message: { id: "message_1" } },
+          }).pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                stubPublishedWorkflow(
+                  createWorkflow({
+                    rules: connectedStartRules("conn_new"),
+                    publishedVersionId: "ver_2",
+                  })
+                ),
+                lifecyclePorts
+              )
+            )
+          );
+
+          assert.strictEqual(outcome.kind, "started");
+          assert.strictEqual(
+            startForEntityMock.mock.calls[0]?.[0].execution.workflowVersionId,
+            "ver_2"
+          );
+        })
+    );
+
+    it.effect(
+      "does not keep a lifecycle role removed from the current published version",
+      () =>
+        Effect.gen(function* () {
+          const outcome = yield* applyLifecycleRules({
+            subscriber: subscriber({ roles: ["start"] }),
+            event: appointmentCreated,
+            payload,
+          }).pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                stubPublishedWorkflow(
+                  createWorkflow({
+                    rules: {
+                      startEvents: ["app/appointment.canceled"],
+                      cancelEvents: [],
+                      concurrency: "unlimited",
+                    },
+                    publishedVersionId: "ver_2",
+                  })
+                ),
+                lifecyclePorts
+              )
+            )
+          );
+
+          assert.deepStrictEqual(outcome, {
+            kind: "waits_only",
+            workflowId: "wf_1",
+          });
+          assert.strictEqual(startForEntityMock.mock.calls.length, 0);
+        })
     );
 
     // A workflow answering an appointment being booked and being moved lists
@@ -780,8 +914,8 @@ describe("applyLifecycleRules", () => {
     );
 
     // The Event names the entity its author had in mind, and this workflow may
-    // track a different one. The builder's path rides the subscription row, so
-    // the override is read without the delivery consulting the graph.
+    // track a different one. The indexed path can be stale after publication,
+    // so delivery uses the current Lifecycle Rules path.
     it.effect(
       "cancels on the path the builder set rather than the declared one",
       () =>
@@ -789,7 +923,7 @@ describe("applyLifecycleRules", () => {
           yield* applyLifecycleRules({
             subscriber: subscriber({
               roles: ["cancel"],
-              correlationPath: "patient.id",
+              correlationPath: "appointment.id",
             }),
             event: appointmentCanceled,
             payload: {
@@ -799,7 +933,16 @@ describe("applyLifecycleRules", () => {
           }).pipe(
             Effect.provide(
               Layer.mergeAll(
-                stubPublishedWorkflow(createWorkflow({ rules: cancelRules })),
+                stubPublishedWorkflow(
+                  createWorkflow({
+                    rules: {
+                      ...cancelRules,
+                      correlationPaths: {
+                        "app/appointment.canceled": "patient.id",
+                      },
+                    },
+                  })
+                ),
                 lifecyclePorts
               )
             )
