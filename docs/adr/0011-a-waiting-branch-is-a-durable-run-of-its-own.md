@@ -189,9 +189,12 @@ either, because the claim write skips a run that already holds a claim.
 
 A completed Condition releases only its selected outlet. A node-level readiness
 flag allowed a parallel predecessor to release an AND-join through the
-Condition's unselected outlet. Traversal now retains released source/target
-pairs, and a child receives those pairs as `releasedEdges`. Endpoint identity
-survives a Migration that recreates an equivalent edge with a new editor ID.
+Condition's unselected outlet. Traversal retains released source, target, and source outlet triples, and a child
+receives those triples as `releasedEdges`. This identity survives a Migration
+that recreates an equivalent edge with a new editor ID. Changing the source
+outlet creates a different route: a released True edge cannot satisfy a new
+False edge between the same nodes. Edges without an outlet carry
+`sourceHandle: null`; the branch invocation schema requires the field.
 
 This replaces `releasedNodeIds` in the strict branch invocation schema. The
 project accepts the protocol change under the no-backwards-compatibility rule

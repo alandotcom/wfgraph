@@ -23,7 +23,11 @@ import type {
 import { migrateExecutions } from "#src/backend/services/workflows/migration/migrate";
 import { previewMigration } from "#src/backend/services/workflows/migration/preview";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
-import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import {
+  createSerializedWorkflowGraph,
+  toWorkflowGraphData,
+} from "@wfgraph/shared/graph/graph";
+import { validateWorkflowGraph } from "#src/backend/services/workflows/validation/workflow-graph";
 import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
 import type { JsonValue } from "@wfgraph/shared/types/json";
 import {
@@ -780,6 +784,65 @@ describe("previewMigration", () => {
         );
       })
     );
+
+    for (const memberIds of [
+      ["before_1", "wait_1"],
+      ["wait_1", "after_1"],
+      ["before_1", "wait_1", "after_1"],
+    ]) {
+      it.effect(
+        `ignores a visual Group around ${memberIds.join(", ")} during migration`,
+        () =>
+          Effect.gen(function* () {
+            const base = toWorkflowGraphData(
+              targetGraph({ afterSubject: "Hello" })
+            );
+            const graph = createSerializedWorkflowGraph({
+              nodes: [
+                {
+                  id: "lifecycle",
+                  position: { x: 0, y: 0 },
+                  data: { type: "lifecycle", label: "Lifecycle", config: {} },
+                },
+                {
+                  id: "frame",
+                  position: { x: 0, y: 0 },
+                  data: { type: "group", label: "Group" },
+                },
+                ...base.nodes.map((node) =>
+                  memberIds.includes(node.id)
+                    ? { ...node, parentId: "frame" }
+                    : node
+                ),
+              ],
+              edges: [
+                {
+                  id: "entry",
+                  source: "lifecycle",
+                  target: "before_1",
+                  sourceHandle: "started",
+                },
+                ...base.edges,
+              ],
+            });
+            assert.strictEqual(validateWorkflowGraph(graph).valid, true);
+            const seams = makeMigrationSeams({
+              graph,
+              executions: [inFlightRow({ id: "exec_1" })],
+              waitStates: [
+                waitRow({ id: "wait_row_1", executionId: "exec_1" }),
+              ],
+              nodeLogNodeIds: ["before_1", "wait_1"],
+            });
+
+            const report = yield* previewMigration({
+              workflowId: WORKFLOW_ID,
+            }).pipe(Effect.provide(seams.layer));
+            assert.deepStrictEqual(report.refused, []);
+            assert.strictEqual(report.eligible.length, 1);
+          })
+      );
+    }
 
     it.effect("refuses an enabled node added above the parked Wait", () =>
       Effect.gen(function* () {

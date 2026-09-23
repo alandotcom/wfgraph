@@ -855,6 +855,21 @@ export class NodeScheduler {
           return;
         }
 
+        if (nodeId === this.input.branchEntryNodeId && isWaitNode(node)) {
+          // Capture sibling work after this Wait finishes, including when a
+          // Migration returns to a version whose initial snapshot is older.
+          // The resume snapshot is replayed before any downstream work.
+          const outputs = yield* runDurable(
+            this.input.runtime,
+            {
+              id: `branch-resumed-${nodeId}`,
+              name: "Inherit completed outputs after Wait",
+            },
+            this.input.store.readNodeOutputs(this.input.executionId)
+          );
+          traversal.inheritStoredOutputs(outputs, nodeId);
+        }
+
         const route = routeAfterStrategy(
           node,
           this.currentEventName(),

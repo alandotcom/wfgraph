@@ -47,7 +47,9 @@ export function failedExecution(failure: EngineFailure): ExecutionResult {
 export type NodeOutputs = Record<string, { label: string; data: JsonValue }>;
 
 /** An outgoing edge a completed node actually selected, retained across branches. */
-export type ReleasedEdge = Pick<WorkflowEdge, "source" | "target">;
+export type ReleasedEdge = Pick<WorkflowEdge, "source" | "target"> & {
+  sourceHandle: string | null;
+};
 
 /** The sentence a failed node left, or nothing for a node that succeeded. */
 export function executionError(

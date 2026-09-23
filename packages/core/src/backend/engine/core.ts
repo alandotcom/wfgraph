@@ -25,7 +25,6 @@ import {
   type ExecutionResult,
   type NodeOutputs,
   type ReleasedEdge,
-  wrapStoredOutput,
 } from "#src/backend/engine/contracts";
 import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
 import {
@@ -650,7 +649,7 @@ function executeWorkflowBranchInner(
 ): Effect.Effect<BranchRunResult, EngineFailure> {
   return Effect.gen(function* () {
     const { entryNodeId, executionId } = input;
-    const { nodes, traversal, scheduler, cancelBoundary } = prepareRun(
+    const { traversal, scheduler, cancelBoundary } = prepareRun(
       input,
       runtime,
       store,
@@ -662,25 +661,18 @@ function executeWorkflowBranchInner(
     // walked. The store holds that view rather than the invoke payload, because an
     // HTTP Request step's response body is what makes those outputs large. The
     // cost is that a row whose close was refused leaves its template unresolved.
+    // A Migration takes a fresh snapshot: another branch may have completed
+    // outputs the new graph now references while this branch was parked.
     const upstream = yield* runDurable(
       runtime,
       {
-        id: `branch-upstream-${entryNodeId}`,
+        id: `branch-upstream-${entryNodeId}-${input.workflowVersionId}`,
         name: "Inherit upstream outputs",
       },
       store.readNodeOutputs(executionId)
     );
 
-    for (const node of nodes) {
-      const data = upstream[node.id];
-      if (node.id === entryNodeId || data === undefined) {
-        continue;
-      }
-      traversal.inheritCompleted(node.id, {
-        label: node.data.label || node.id,
-        data: wrapStoredOutput(data),
-      });
-    }
+    traversal.inheritStoredOutputs(upstream, entryNodeId);
 
     traversal.releaseEdges(input.releasedEdges);
 

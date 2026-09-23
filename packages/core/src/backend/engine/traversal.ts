@@ -22,6 +22,7 @@ import type {
   WorkflowNode,
 } from "@wfgraph/shared/graph/types";
 import { eventSplitOutletEvent } from "@wfgraph/shared/lifecycle/event-split";
+import type { JsonValue } from "@wfgraph/shared/types/json";
 import type { LifecycleOutlet } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import type { BranchRunResult } from "#src/backend/engine/branch";
 import {
@@ -30,6 +31,7 @@ import {
   executionFailure,
   type NodeOutputs,
   type ReleasedEdge,
+  wrapStoredOutput,
 } from "#src/backend/engine/contracts";
 import type { EngineFailure } from "#src/backend/engine/engine-failure";
 
@@ -67,6 +69,10 @@ export type TraversalRoute =
   | { kind: "outlet"; outlet: LifecycleOutlet }
   | { kind: "event"; eventName: string | null };
 
+function releasedEdgeKey(edge: WorkflowEdge | ReleasedEdge): string {
+  return JSON.stringify([edge.source, edge.target, edge.sourceHandle ?? null]);
+}
+
 export class Traversal {
   private readonly nodeOutputs: NodeOutputs = {};
   private readonly nodeResults: Record<string, ExecutionResult> = {};
@@ -78,7 +84,7 @@ export class Traversal {
   private readonly completedNodes = new Set<string>();
   private readonly inheritedOutputKeys = new Set<string>();
   private readonly inProgressNodes = new Set<string>();
-  private readonly downstreamReadyEdges = new Map<string, Set<string>>();
+  private readonly downstreamReadyEdges = new Map<string, ReleasedEdge>();
 
   constructor(nodes: readonly WorkflowNode[], edges: readonly WorkflowEdge[]) {
     this.nodes = nodes;
@@ -133,7 +139,7 @@ export class Traversal {
    */
   isReadyToRun(nodeId: string): boolean {
     return (this.edgesByTarget.get(nodeId) ?? []).every((edge) =>
-      this.downstreamReadyEdges.get(edge.source)?.has(edge.target)
+      this.downstreamReadyEdges.has(releasedEdgeKey(edge))
     );
   }
 
@@ -212,17 +218,20 @@ export class Traversal {
    */
   markReadyForDownstream(nodeId: string, route: TraversalRoute): string[] {
     const edges = this.nextEdges(nodeId, route);
-    this.releaseEdges(edges);
+    this.releaseEdges(
+      edges.map(({ source, target, sourceHandle }) => ({
+        source,
+        target,
+        sourceHandle: sourceHandle ?? null,
+      }))
+    );
     return edges.map((edge) => edge.target);
   }
 
   /** Restores the parent's selected edges without selecting any new outlet. */
   releaseEdges(edges: readonly ReleasedEdge[]): void {
-    for (const { source, target } of edges) {
-      const targets =
-        this.downstreamReadyEdges.get(source) ?? new Set<string>();
-      targets.add(target);
-      this.downstreamReadyEdges.set(source, targets);
+    for (const edge of edges) {
+      this.downstreamReadyEdges.set(releasedEdgeKey(edge), { ...edge });
     }
   }
 
@@ -295,11 +304,31 @@ export class Traversal {
     this.completedNodes.add(nodeId);
   }
 
-  /** Selected edge endpoints, stable when a migration recreates an edge ID. */
+  /** Inherits stored work without replacing this branch's own completed outputs. */
+  inheritStoredOutputs(
+    outputs: Record<string, JsonValue>,
+    entryNodeId: string
+  ) {
+    for (const [nodeId, data] of Object.entries(outputs)) {
+      const node = this.nodeMap.get(nodeId);
+      if (
+        !node ||
+        nodeId === entryNodeId ||
+        this.isCompleted(nodeId) ||
+        Object.hasOwn(this.nodeOutputs, nodeId)
+      ) {
+        continue;
+      }
+      this.inheritCompleted(nodeId, {
+        label: node.data.label || nodeId,
+        data: wrapStoredOutput(data),
+      });
+    }
+  }
+
+  /** Selected endpoints and outlets, stable when a migration recreates an edge ID. */
   get releasedEdges(): ReleasedEdge[] {
-    return [...this.downstreamReadyEdges].flatMap(([source, targets]) =>
-      [...targets].map((target) => ({ source, target }))
-    );
+    return [...this.downstreamReadyEdges.values()].map((edge) => ({ ...edge }));
   }
 
   /**
