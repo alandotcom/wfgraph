@@ -26,6 +26,15 @@ type WaitTargetInput = {
   waitTimezone?: string | undefined;
 };
 
+type LocalDateTime = {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  second: number;
+};
+
 function unitToMs(unit: string): number {
   switch (unit) {
     case "ms":
@@ -141,7 +150,7 @@ function parseNaiveDateTime(value: string): {
   };
 }
 
-function getTimeZoneOffsetMs(date: Date, timeZone: string): number {
+function getLocalDateTime(date: Date, timeZone: string): LocalDateTime {
   const formatter = new Intl.DateTimeFormat("en-US", {
     timeZone,
     year: "numeric",
@@ -150,7 +159,7 @@ function getTimeZoneOffsetMs(date: Date, timeZone: string): number {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
-    hour12: false,
+    hourCycle: "h23",
   });
 
   const parts = formatter.formatToParts(date);
@@ -158,24 +167,74 @@ function getTimeZoneOffsetMs(date: Date, timeZone: string): number {
     parts.map((part) => [part.type, part.value])
   );
 
-  const asUtcTimestamp = Date.UTC(
-    Number.parseInt(mapped.year, 10),
-    Number.parseInt(mapped.month, 10) - 1,
-    Number.parseInt(mapped.day, 10),
-    Number.parseInt(mapped.hour, 10),
-    Number.parseInt(mapped.minute, 10),
-    Number.parseInt(mapped.second, 10)
-  );
-
-  return asUtcTimestamp - date.getTime();
+  return {
+    year: Number.parseInt(mapped.year, 10),
+    month: Number.parseInt(mapped.month, 10),
+    day: Number.parseInt(mapped.day, 10),
+    hour: Number.parseInt(mapped.hour, 10),
+    minute: Number.parseInt(mapped.minute, 10),
+    second: Number.parseInt(mapped.second, 10),
+  };
 }
 
-function zonedDateTimeToUtc(value: string, timeZone: string): Date | null {
-  const parsed = parseNaiveDateTime(value);
-  if (!parsed) {
-    return null;
+function getTimeZoneOffsetMs(date: Date, timeZone: string): number {
+  const local = getLocalDateTime(date, timeZone);
+  const asUtcTimestamp = Date.UTC(
+    local.year,
+    local.month - 1,
+    local.day,
+    local.hour,
+    local.minute,
+    local.second
+  );
+
+  return asUtcTimestamp - Math.floor(date.getTime() / 1000) * 1000;
+}
+
+function compareLocalDateTime(
+  left: LocalDateTime,
+  right: LocalDateTime
+): number {
+  const fields = ["year", "month", "day", "hour", "minute", "second"] as const;
+
+  for (const field of fields) {
+    if (left[field] !== right[field]) {
+      return left[field] < right[field] ? -1 : 1;
+    }
   }
 
+  return 0;
+}
+
+function firstInstantAfterOffsetChange(input: {
+  before: Date;
+  after: Date;
+  previousOffset: number;
+  timeZone: string;
+}): Date {
+  let low = Math.floor(input.before.getTime() / 1000) * 1000;
+  let high = Math.floor(input.after.getTime() / 1000) * 1000;
+
+  while (high - low > 1000) {
+    const middle = Math.floor((low + high) / 2000) * 1000;
+    if (
+      getTimeZoneOffsetMs(new Date(middle), input.timeZone) ===
+      input.previousOffset
+    ) {
+      low = middle;
+    } else {
+      high = middle;
+    }
+  }
+
+  return new Date(high);
+}
+
+function resolveLocalDateTime(
+  parsed: LocalDateTime,
+  timeZone: string,
+  offsetGuess?: number
+): Date {
   // First-pass UTC guess from local calendar fields
   const utcGuess = new Date(
     Date.UTC(
@@ -188,16 +247,54 @@ function zonedDateTimeToUtc(value: string, timeZone: string): Date | null {
     )
   );
 
-  const firstOffset = getTimeZoneOffsetMs(utcGuess, timeZone);
+  const firstOffset = offsetGuess ?? getTimeZoneOffsetMs(utcGuess, timeZone);
   const firstPass = new Date(utcGuess.getTime() - firstOffset);
 
   // Second pass to stabilize around DST transitions
   const secondOffset = getTimeZoneOffsetMs(firstPass, timeZone);
   if (secondOffset !== firstOffset) {
-    return new Date(utcGuess.getTime() - secondOffset);
+    const adjusted = new Date(utcGuess.getTime() - secondOffset);
+    const adjustedComparison = compareLocalDateTime(
+      getLocalDateTime(adjusted, timeZone),
+      parsed
+    );
+    const firstPassComparison = compareLocalDateTime(
+      getLocalDateTime(firstPass, timeZone),
+      parsed
+    );
+
+    const targetIsBetweenCandidates =
+      (adjustedComparison < 0 && firstPassComparison > 0) ||
+      (firstPassComparison < 0 && adjustedComparison > 0);
+    if (targetIsBetweenCandidates) {
+      const before =
+        adjusted.getTime() < firstPass.getTime() ? adjusted : firstPass;
+      const after = before === adjusted ? firstPass : adjusted;
+
+      // The requested wall time is in a forward clock gap. Return the first
+      // instant after the offset changes; leave fold resolution on the existing
+      // two-pass path.
+      return firstInstantAfterOffsetChange({
+        before,
+        after,
+        previousOffset: getTimeZoneOffsetMs(before, timeZone),
+        timeZone,
+      });
+    }
+
+    return adjusted;
   }
 
   return firstPass;
+}
+
+function zonedDateTimeToUtc(value: string, timeZone: string): Date | null {
+  const parsed = parseNaiveDateTime(value);
+  if (!parsed) {
+    return null;
+  }
+
+  return resolveLocalDateTime(parsed, timeZone);
 }
 
 export function parseTimestampWithTimezone(
@@ -294,17 +391,40 @@ export function applyDailyWindow(
   const startMinute = startMinutes % 60;
   const dayOffset = currentMinutes < startMinutes ? 0 : 1;
 
-  // Build target local time then convert to UTC with DST stabilization
+  // A nonexistent start can move forward through a DST gap. Keep advancing the
+  // local date until that first valid instant is still inside the window.
   const target = new Date(localMs);
   target.setUTCDate(target.getUTCDate() + dayOffset);
-  target.setUTCHours(startHour, startMinute, 0, 0);
 
-  const firstPass = new Date(target.getTime() - offset);
-  const refinedOffset = getTimeZoneOffsetMs(firstPass, timeZone);
-  if (refinedOffset !== offset) {
-    return new Date(target.getTime() - refinedOffset);
+  for (;;) {
+    target.setUTCHours(startHour, startMinute, 0, 0);
+    const requested = {
+      year: target.getUTCFullYear(),
+      month: target.getUTCMonth() + 1,
+      day: target.getUTCDate(),
+      hour: startHour,
+      minute: startMinute,
+      second: 0,
+    };
+    const resolved = resolveLocalDateTime(requested, timeZone, offset);
+    const actual = getLocalDateTime(resolved, timeZone);
+    const actualMinutes = actual.hour * 60 + actual.minute;
+    const sameLocalDate =
+      actual.year === requested.year &&
+      actual.month === requested.month &&
+      actual.day === requested.day;
+
+    if (
+      sameLocalDate &&
+      actualMinutes >= startMinutes &&
+      actualMinutes < endMinutes &&
+      resolved.getTime() >= candidate.getTime()
+    ) {
+      return resolved;
+    }
+
+    target.setUTCDate(target.getUTCDate() + 1);
   }
-  return firstPass;
 }
 
 /**
