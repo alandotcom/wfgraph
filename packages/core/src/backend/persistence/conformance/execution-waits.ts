@@ -91,6 +91,67 @@ export function describeExecutionWaitConformance({
   openDatabase,
 }: PersistenceTestRegistry): void {
   describe("wait rows and migration", () => {
+    it("reuses a committed preparation and preserves an accepted wake on retry", async () => {
+      const database = await openConnection();
+      await seedPublishedWorkflow(database);
+      const waitStateId = await startEventWait(database, "stable-token");
+      await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const original = yield* executions.findWaitStateById(waitStateId);
+          if (!original) throw new Error("missing wait");
+          const retry = () =>
+            executions.startWait({
+              executionId: original.executionId,
+              workflowId: "wf_1",
+              runId: "run_1",
+              nodeId: "wait_1",
+              nodeName: "Approval",
+              workflowVersionId: "ver_1",
+              side: "started",
+              waitType: "event",
+              resumeToken: "stable-token",
+              subscribedEvents: [EVENT_ARRIVAL.eventName],
+            });
+          const repeated = yield* Effect.all([retry(), retry()], {
+            concurrency: "unbounded",
+          });
+          expect(repeated).toEqual([{ waitStateId }, { waitStateId }]);
+          const claim = yield* executions.claimWaitingStateById({
+            waitStateId,
+            resumeToken: "stable-token",
+            eventName: EVENT_ARRIVAL.eventName,
+            arrival: EVENT_ARRIVAL,
+          });
+          expect(claim).not.toBeNull();
+          const claimed = yield* executions.findWaitStateById(waitStateId);
+          expect(yield* retry()).toEqual({ waitStateId });
+          expect(yield* executions.findWaitStateById(waitStateId)).toEqual(
+            claimed
+          );
+          if (!claim) throw new Error("claim refused");
+          yield* executions.releaseWaitingStateClaim({
+            waitStateId,
+            claimedAt: claim.claimedAt,
+          });
+          yield* retry();
+          yield* executions.reparkWait({
+            waitStateId,
+            workflowVersionId: "ver_1",
+            side: "started",
+            waitType: "event",
+            waitUntil: null,
+            subscribedEvents: [EVENT_ARRIVAL.eventName],
+            resumeToken: "next-park",
+            metadata: {},
+          });
+          expect(
+            (yield* executions.findWaitStateById(waitStateId))?.metadata
+          ).toMatchObject({ arrival: EVENT_ARRIVAL });
+        })
+      );
+    });
+
     it("fences concurrent claims and keeps sibling waits claimable", async () => {
       const store = await openDatabase();
       const database = await store.open();

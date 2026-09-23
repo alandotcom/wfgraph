@@ -101,14 +101,15 @@ export type ReparkWaitOutcome =
 /** The `workflow_wait_states` slice of `ExecutionRepo`. */
 export type WaitsRepoMethods = {
   /**
-   * Park a run on a wait, answering the new row's id.
+   * Park a run, reusing its execution/run/node row on retry.
    *
    * The status flip runs first, behind the claim guard for this Wait's side and
    * the pinned version: a policy cancel can land between the run's last step and
    * this park, and a cancelled execution must not gain a live wait row that
    * resume matching would later hit, while a Migration landing in the same
    * window would leave the row holding a park resolved from a graph the run has
-   * left. Undefined is either race lost.
+   * left. Undefined is either race lost. Existing non-waiting rows retain
+   * their wake and are never reopened.
    */
   readonly startWait: (input: {
     executionId: string;
@@ -322,6 +323,38 @@ export function makeWaitsMethods(
             return undefined;
           }
 
+          // The execution update serializes competing prepares for this run.
+          const [existing] = await tx
+            .select()
+            .from(workflowWaitStates)
+            .where(
+              and(
+                eq(workflowWaitStates.executionId, input.executionId),
+                eq(workflowWaitStates.runId, input.runId),
+                eq(workflowWaitStates.nodeId, input.nodeId)
+              )
+            )
+            .limit(1)
+            .for("update");
+          if (existing) {
+            if (existing.status === "waiting") {
+              await tx
+                .update(workflowWaitStates)
+                .set({
+                  waitType: input.waitType,
+                  resumeToken: input.resumeToken ?? null,
+                  waitUntil: input.waitUntil ?? null,
+                  subscribedEvents: input.subscribedEvents ?? [],
+                  metadata: {
+                    ...existing.metadata,
+                    ...toJsonObject(input.metadata),
+                  },
+                })
+                .where(eq(workflowWaitStates.id, existing.id));
+            }
+            return { waitStateId: existing.id };
+          }
+
           const [waitState] = await tx
             .insert(workflowWaitStates)
             .values({
@@ -353,7 +386,7 @@ export function makeWaitsMethods(
               waitUntil: input.waitUntil,
               subscribedEvents: input.subscribedEvents,
               resumeToken: input.resumeToken,
-              metadata: input.metadata,
+              metadata: sql`coalesce(${workflowWaitStates.metadata}, '{}'::jsonb) || ${JSON.stringify(input.metadata)}::jsonb`,
             })
             .where(
               and(

@@ -1,7 +1,7 @@
 /** Event-mode Wait coverage through the engine's runtime and store ports. */
 
 import { Effect } from "effect";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveOutputPath } from "@wfgraph/shared/graph/node-references";
 import { executionError } from "#src/backend/engine/contracts";
 import {
@@ -44,32 +44,75 @@ describe("wait node - event mode", () => {
     store = createRecordingWorkflowStore();
   });
 
-  it("consumes an arrival committed before listener registration", async () => {
-    store.waitState = {
-      status: "resumed",
-      arrival: {
-        signalType: "wait-resume",
-        eventName: "billing/payment.settled",
+  it.each([
+    { elapsedMs: 30_000, remainingMs: 270_000 },
+    { elapsedMs: 360_000, remainingMs: 1 },
+  ])(
+    "preserves preparation after a lost response and $elapsedMs ms retry",
+    async ({ elapsedMs, remainingMs }) => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      const startedAt = new Date("2026-09-22T12:00:00Z");
+      vi.setSystemTime(startedAt);
+      try {
+        const memo = new Map<string, unknown>();
+        const config = {
+          waitMode: "event",
+          waitFor: [{ event: "billing/payment.settled" }],
+          waitTimeout: "5m",
+        };
+        const originalCreate = store.createWaitState.bind(store);
+        store.createWaitState = (input) =>
+          originalCreate(input).pipe(
+            Effect.flatMap(() => Effect.die("lost preparation response"))
+          );
+        expect(
+          (await runWait({ store, config, memo }).execution).results.wait_1
+        ).toMatchObject({
+          success: false,
+          error: { message: "lost preparation response" },
+        });
+        const first = store.callsOf("createWaitState")[0];
+        vi.setSystemTime(startedAt.getTime() + elapsedMs);
+        store.createWaitState = originalCreate;
+        const { runtime, execution } = runWait({ store, config, memo });
+        await execution;
+        expect(store.callsOf("createWaitState")).toEqual([first, first]);
+        expect(runtime.waits[0]?.options.timeoutMs).toBe(remainingMs);
+      } finally {
+        vi.useRealTimers();
+      }
+    }
+  );
+
+  it.each(["waiting", "resuming", "resumed"] as const)(
+    "consumes a persisted arrival from a %s row before registration",
+    async (status) => {
+      store.waitState = {
+        status,
+        arrival: {
+          signalType: "wait-resume",
+          eventName: "billing/payment.settled",
+          payload: { approved: true },
+        },
+      };
+      const { runtime, execution } = runWait({
+        store,
+        config: {
+          waitMode: "event",
+          waitFor: [{ event: "billing/payment.settled" }],
+          waitTimeout: "7d",
+        },
+      });
+      const result = await execution;
+      expect(runtime.waits).toHaveLength(0);
+      expect(waitOutput(result)).toMatchObject({
+        timedOut: false,
+        hops: 0,
         payload: { approved: true },
-      },
-    };
-    const { runtime, execution } = runWait({
-      store,
-      config: {
-        waitMode: "event",
-        waitFor: [{ event: "billing/payment.settled" }],
-        waitTimeout: "7d",
-      },
-    });
-    const result = await execution;
-    expect(runtime.waits).toHaveLength(0);
-    expect(waitOutput(result)).toMatchObject({
-      timedOut: false,
-      hops: 0,
-      payload: { approved: true },
-    });
-    expect(result.results.after_wait?.success).toBe(true);
-  });
+      });
+      expect(result.results.after_wait?.success).toBe(true);
+    }
+  );
 
   it("uses the atomic timeout result when the signal was lost after preparation", async () => {
     const arrival = {

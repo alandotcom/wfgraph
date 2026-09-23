@@ -276,8 +276,8 @@ export type WaitPark = {
 export type WaitAttempt = {
   index: number;
   /**
-   * The instant the first attempt resolved against, absent on that attempt. A
-   * later attempt measures from it, so a Migration changes a Wait's target
+   * The memoized instant the first attempt resolved against. Every later
+   * attempt measures from it, so a Migration changes a Wait's target
    * without restarting its clock.
    */
   anchorAt?: Date | undefined;

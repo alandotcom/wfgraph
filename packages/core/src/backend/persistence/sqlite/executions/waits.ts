@@ -187,6 +187,37 @@ export function makeSqliteWaitsMethods(
             )
             .returning({ id: workflowExecutions.id });
           if (!parked) return undefined;
+          const [existing] = yield* database
+            .select()
+            .from(workflowWaitStates)
+            .where(
+              and(
+                eq(workflowWaitStates.executionId, input.executionId),
+                eq(workflowWaitStates.runId, input.runId),
+                eq(workflowWaitStates.nodeId, input.nodeId)
+              )
+            )
+            .limit(1);
+          if (existing) {
+            if (existing.status === "waiting") {
+              yield* database
+                .update(workflowWaitStates)
+                .set({
+                  waitType: input.waitType,
+                  resumeToken: input.resumeToken ?? null,
+                  waitUntil: input.waitUntil?.getTime() ?? null,
+                  subscribedEvents: JSON.stringify(
+                    input.subscribedEvents ?? []
+                  ),
+                  metadata: encodeJson({
+                    ...optionalJsonObject(existing.metadata, "wait metadata"),
+                    ...toJsonObject(input.metadata),
+                  }),
+                })
+                .where(eq(workflowWaitStates.id, existing.id));
+            }
+            return { waitStateId: existing.id };
+          }
           const id = generateId();
           yield* database.insert(workflowWaitStates).values({
             id,
@@ -216,6 +247,7 @@ export function makeSqliteWaitsMethods(
               status: workflowWaitStates.status,
               pinnedVersionId: workflowExecutions.workflowVersionId,
               terminationKind: workflowExecutions.terminationKind,
+              metadata: workflowWaitStates.metadata,
             })
             .from(workflowWaitStates)
             .leftJoin(
@@ -242,7 +274,10 @@ export function makeSqliteWaitsMethods(
               waitUntil: input.waitUntil?.getTime() ?? null,
               subscribedEvents: JSON.stringify(input.subscribedEvents),
               resumeToken: input.resumeToken,
-              metadata: encodeJson(input.metadata),
+              metadata: encodeJson({
+                ...optionalJsonObject(row.metadata, "wait metadata"),
+                ...input.metadata,
+              }),
             })
             .where(eq(workflowWaitStates.id, input.waitStateId));
 

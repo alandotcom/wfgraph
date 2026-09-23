@@ -32,11 +32,11 @@ import {
   readWaitGateMode,
   readWaitWake,
   type WaitActionInput,
-  type WaitAttempt,
   type WaitBranchContext,
   type WaitMode,
   type WaitOutcome,
   type WaitPark,
+  type WaitPreparation,
   type WaitResumeWake,
   type WaitWake,
   waitSignalMatch,
@@ -52,9 +52,9 @@ export type {
 /**
  * How many attempts one Wait may make before the node fails.
  *
- * An attempt is one pass of the driver, and it costs the prepare, park and
- * resume steps whether or not it reaches a park: a past-due recompute and a
- * re-prepare behind the version fence both consume one without parking. The
+ * An attempt is one pass of the driver, with resolution, prepare, park and
+ * resume steps. A past-due recompute and a re-prepare behind the version fence
+ * both consume one without parking. The
  * step count is what the cap protects, so it counts attempts. Each Migration of
  * a parked run costs an attempt, and a run parked for a week can be migrated
  * many times, so the cap is high. What it is there for is a `version-migrate`
@@ -282,15 +282,34 @@ function runWaitAttempt<Prepared, Resumed>(
     const { attempt, carry } = state;
     const stepIds = waitStepIds({ nodeId: context.nodeId, attempt });
 
-    const anchorAt = carry
-      ? yield* Effect.try({
-          try: () => decodeIsoTimestampOrThrow(carry.anchorAtIso),
-          catch: failureFromUnknown,
-        })
-      : undefined;
-
-    // Everything before the park is one durable step per attempt: a replay must
-    // not resolve a fresh target time or write the wait row a second time.
+    const anchorAtIso =
+      carry?.anchorAtIso ??
+      (yield* runDurable(
+        runtime,
+        {
+          id: `wait-anchor-${context.nodeId}`,
+          name: `${context.nodeName} (anchor)`,
+        },
+        Effect.sync(() => new Date().toISOString())
+      ));
+    const anchorAt = yield* Effect.try({
+      try: () => decodeIsoTimestampOrThrow(anchorAtIso),
+      catch: failureFromUnknown,
+    });
+    // Persist the decision before its database write. A lost write response must
+    // retry with the same token and deadline; a new version resolves a new park.
+    const resolution = yield* runDurable(
+      runtime,
+      {
+        id: `wait-resolve-${context.nodeId}-${attempt}-${branch.workflowVersionId}`,
+        name: waitStepName({
+          nodeName: context.nodeName,
+          attempt,
+          stage: `resolve ${mode.mode}`,
+        }),
+      },
+      mode.prepare(branch, { index: attempt, anchorAt })
+    );
     const prepared = yield* runDurable(
       runtime,
       {
@@ -301,11 +320,8 @@ function runWaitAttempt<Prepared, Resumed>(
           stage: `prepare ${mode.mode}`,
         }),
       },
-      prepareWaitAttempt(branch, mode, {
-        attempt: {
-          index: attempt,
-          anchorAt,
-        },
+      prepareWaitAttempt(branch, resolution, {
+        attempt,
         waitStateId: carry?.waitStateId,
       })
     );
@@ -401,25 +417,18 @@ function runWaitAttempt<Prepared, Resumed>(
   });
 }
 
-/**
- * Resolves one attempt and writes its park onto the run's wait row.
- *
- * All of it is one durable step. The row write has to be memoized with the
- * resolution that produced it, or a replay would open a second row or park
- * against a target it resolved again.
- */
-function prepareWaitAttempt<Prepared, Resumed>(
+/** Writes a memoized resolution, preserving the row identity across retries. */
+function prepareWaitAttempt<Prepared>(
   branch: WaitBranchContext,
-  mode: WaitMode<Prepared, Resumed>,
+  preparation: WaitPreparation<Prepared>,
   input: {
-    attempt: WaitAttempt;
+    attempt: number;
     waitStateId: string | undefined;
   }
 ): Effect.Effect<WaitAttemptPreparation<Prepared>, EngineFailure> {
   return Effect.gen(function* () {
     const { context, store, workflowId, runId } = branch;
 
-    const preparation = yield* mode.prepare(branch, input.attempt);
     if (preparation.status !== "ready") {
       return preparation;
     }
@@ -515,7 +524,7 @@ function prepareWaitAttempt<Prepared, Resumed>(
         );
       }
 
-      yield* recordWaiting(branch, { attempt: input.attempt.index, park });
+      yield* recordWaiting(branch, { attempt: input.attempt, park });
       return yield* parked(created.waitStateId);
     }
 
@@ -570,7 +579,7 @@ function prepareWaitAttempt<Prepared, Resumed>(
       return woken;
     }
 
-    yield* recordWaiting(branch, { attempt: input.attempt.index, park });
+    yield* recordWaiting(branch, { attempt: input.attempt, park });
     return yield* parked(input.waitStateId);
   });
 }
@@ -799,8 +808,9 @@ function failPreparation<Prepared>(
 }
 
 /**
- * The durable arrival that moved a park out of `waiting`, or null when the row
- * does not record one. This also covers the first preparation before registration.
+ * The durable arrival accepted by a park, or null when the row records none.
+ * A failed send can release its claim back to `waiting` without erasing arrival.
+ * This also covers the first preparation before registration.
  *
  * Between a Migration's wake and the next park the row is still `waiting`, so a
  * resume claim can take it and send a signal nothing is parked on. The claim
@@ -823,7 +833,9 @@ function readMissedWake(
       const arrival = waitState.arrival;
       if (
         arrival === null ||
-        (waitState.status !== "resumed" && waitState.status !== "resuming")
+        (waitState.status !== "waiting" &&
+          waitState.status !== "resumed" &&
+          waitState.status !== "resuming")
       ) {
         return null;
       }
@@ -913,7 +925,18 @@ function parkOnSignal(
         },
         {
           event: WAIT_SIGNAL_EVENT,
-          timeoutMs: park.timeoutMs,
+          // Resolution retains the target, not the time left when it ran.
+          // Keep this step reachable on replay even after the target passes:
+          // the runtime may already hold its event. A positive minimum also
+          // avoids an empty duration at the Inngest boundary (1s precision).
+          timeoutMs:
+            park.waitUntilIso === null
+              ? park.timeoutMs
+              : Math.max(
+                  decodeIsoTimestampOrThrow(park.waitUntilIso).getTime() -
+                    Date.now(),
+                  1
+                ),
           ifExpression: waitSignalMatch({
             nodeId: context.nodeId,
             resumeToken: park.resumeToken ?? undefined,

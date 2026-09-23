@@ -103,7 +103,7 @@ function planDelayWait(
 
     // Maximum lateness measures the authored target plus its offset. The
     // allowed-hours window has not shifted that target yet.
-    if (attempt.anchorAt === undefined && targetWaitMs < -maxLatenessMs) {
+    if (attempt.index === 0 && targetWaitMs < -maxLatenessMs) {
       return {
         status: "skipped",
         waitUntilIso: targetIso,
@@ -133,7 +133,7 @@ function planDelayWait(
   // applied. Only the first attempt can answer no: a later attempt is reached
   // from a park that was still counting down.
   if (
-    attempt.anchorAt === undefined &&
+    attempt.index === 0 &&
     waitGateMode === "require_actual_wait" &&
     plannedWaitMs <= 0
   ) {
