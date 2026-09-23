@@ -640,11 +640,11 @@ export const classifyMigrationCandidates = Effect.fn(
       outlet: LIFECYCLE_CANCELED_HANDLE,
       edges: graph.edges,
     }),
-    // A disabled node never runs, and the Lifecycle node is the run's entry
-    // rather than work a target version adds, so neither can be a node this run
-    // is missing.
+    // Only enabled action steps represent work the run could be missing.
+    // Group frames are visual and never produce a node log; the Lifecycle
+    // node is the entry rather than work a target version adds.
     checkedNodes: graph.nodes.filter(
-      (node) => node.data.enabled !== false && !isLifecycleNode(node)
+      (node) => node.data.enabled !== false && node.data.type === "action"
     ),
     trackedEntityType,
     entityCompatibilityError,
