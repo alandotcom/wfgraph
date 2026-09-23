@@ -8,7 +8,10 @@ import { unknownRest } from "@wfgraph/shared/types/schema";
 import { defineAction } from "#src/backend/extensions/define-action";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
-import { executeTestWorkflow } from "#src/backend/engine/test-execution";
+import {
+  executeTestWorkflow,
+  executeTestWorkflowBranch,
+} from "#src/backend/engine/test-execution";
 import { createRecordingWorkflowStore } from "#src/backend/engine/recording-store";
 import type { ExecutionTerminationState } from "#src/backend/engine/store";
 import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
@@ -141,7 +144,7 @@ describe("a canceled run with a killed child branch", () => {
         },
         { id: "a-output", source: "wait-a", target: "output-a" },
         { id: "a-failure", source: "output-a", target: "fail-a" },
-        { id: "a-nested", source: "fail-a", target: "nested-wait" },
+        { id: "a-nested", source: "output-a", target: "nested-wait" },
         {
           id: "entry-b",
           source: "entry",
@@ -177,7 +180,7 @@ describe("a canceled run with a killed child branch", () => {
       {
         killBranchesAtMs: 5_000,
         branch: (runtime, branchInput) =>
-          executeTestWorkflow(
+          executeTestWorkflowBranch(
             { ...executionInput, ...branchInput },
             runtime,
             store,
@@ -206,6 +209,10 @@ describe("a canceled run with a killed child branch", () => {
 
     const callIndex = (method: string) =>
       store.calls.findIndex((call) => call.method === method);
+    expect(
+      store.callsOf("createWaitState").map((call) => call.nodeId)
+    ).toContain("nested-wait");
+    expect(callIndex("cancelOpenWork")).toBeGreaterThanOrEqual(0);
     expect(callIndex("readCompletedNodeProgress")).toBeGreaterThan(
       callIndex("cancelOpenWork")
     );

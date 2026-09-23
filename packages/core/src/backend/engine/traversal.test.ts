@@ -79,6 +79,31 @@ describe("Traversal.setOwnOutput", () => {
   );
 });
 
+describe("Traversal.inheritStoredOutputs", () => {
+  it.effect("preserves an Arriving Event already owned by the branch", () =>
+    Effect.sync(() => {
+      const node: WorkflowNode = {
+        id: "lifecycle_1",
+        type: "lifecycle",
+        position: { x: 0, y: 0 },
+        data: { label: "Lifecycle", type: "lifecycle", config: {} },
+      };
+      const traversal = new Traversal([node], []);
+      traversal.setOwnOutput(node.id, {
+        label: "Lifecycle",
+        data: { event: "current" },
+      });
+      traversal.inheritStoredOutputs(
+        { lifecycle_1: { event: "stale" } },
+        "wait_1"
+      );
+      assert.deepStrictEqual(traversal.ownOutputs.lifecycle_1?.data, {
+        event: "current",
+      });
+    })
+  );
+});
+
 describe("Traversal.deterministicTerminalOutput", () => {
   function node(id: string): WorkflowNode {
     return {

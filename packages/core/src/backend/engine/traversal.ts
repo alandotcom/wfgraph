@@ -22,6 +22,7 @@ import type {
   WorkflowNode,
 } from "@wfgraph/shared/graph/types";
 import { eventSplitOutletEvent } from "@wfgraph/shared/lifecycle/event-split";
+import type { JsonValue } from "@wfgraph/shared/types/json";
 import type { LifecycleOutlet } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import type { BranchRunResult } from "#src/backend/engine/branch";
 import {
@@ -30,6 +31,7 @@ import {
   executionFailure,
   type NodeOutputs,
   type ReleasedEdge,
+  wrapStoredOutput,
 } from "#src/backend/engine/contracts";
 import type { EngineFailure } from "#src/backend/engine/engine-failure";
 
@@ -300,6 +302,28 @@ export class Traversal {
     writeNodeValue(this.nodeOutputs, nodeId, output);
     this.inheritedOutputKeys.add(key);
     this.completedNodes.add(nodeId);
+  }
+
+  /** Inherits stored work without replacing this branch's own completed outputs. */
+  inheritStoredOutputs(
+    outputs: Record<string, JsonValue>,
+    entryNodeId: string
+  ) {
+    for (const [nodeId, data] of Object.entries(outputs)) {
+      const node = this.nodeMap.get(nodeId);
+      if (
+        !node ||
+        nodeId === entryNodeId ||
+        this.isCompleted(nodeId) ||
+        Object.hasOwn(this.nodeOutputs, nodeId)
+      ) {
+        continue;
+      }
+      this.inheritCompleted(nodeId, {
+        label: node.data.label || nodeId,
+        data: wrapStoredOutput(data),
+      });
+    }
   }
 
   /** Selected endpoints and outlets, stable when a migration recreates an edge ID. */
