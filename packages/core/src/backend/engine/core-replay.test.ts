@@ -11,7 +11,10 @@
 
 import { Effect, Schema, SchemaTransformation } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import {
+  createSerializedWorkflowGraph,
+  serializeWorkflowGraphData,
+} from "@wfgraph/shared/graph/graph";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import { defineAction } from "#src/backend/extensions/define-action";
 import { defineIntegration } from "#src/backend/extensions/define-integration";
@@ -24,6 +27,7 @@ import {
   type RecordingWorkflowStore,
 } from "#src/backend/engine/recording-store";
 import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
+import { validateGraphSaveShape } from "#src/backend/services/workflows/graph-save";
 
 const EMAIL_ACTION_ID = "test/replay-email";
 const FOLLOWUP_ACTION_ID = "test/replay-followup";
@@ -199,6 +203,67 @@ describe("workflow engine replay safety", () => {
     expect(second.success).toBe(true);
     expect(emailAction).toHaveBeenCalledTimes(1);
     expect(followupAction).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves a failed __proto__ node result on a fresh run and replay", async () => {
+    const failingAction = vi.fn<() => Record<string, unknown>>(() => {
+      throw new Error("the vendor said no");
+    });
+    const failingActions = createWorkflowActions(
+      assembleExtensions({
+        actions: [aHostAction(EMAIL_ACTION_ID, "Send Email", failingAction)],
+      }),
+      stubWfGraphRuntime()
+    );
+    const graph = serializeWorkflowGraphData({
+      nodes: [
+        createLifecycleNode("lifecycle_1"),
+        createActionNode("__proto__", EMAIL_ACTION_ID, "Send Email"),
+      ],
+      edges: [
+        {
+          id: "edge_1",
+          source: "lifecycle_1",
+          sourceHandle: "started",
+          target: "__proto__",
+        },
+      ],
+    });
+    const graphValidation = validateGraphSaveShape(graph);
+    expect(graphValidation.valid).toBe(true);
+
+    const input = {
+      graph,
+      executionId: "exec_proto_result",
+      workflowId: "workflow_proto_result",
+    };
+    const memo = new Map<string, unknown>();
+
+    const first = await executeWorkflow(
+      input,
+      createReplayRuntime(memo),
+      store,
+      failingActions
+    );
+    const replay = await executeWorkflow(
+      input,
+      createReplayRuntime(memo),
+      store,
+      failingActions
+    );
+
+    for (const result of [first, replay]) {
+      expect(result.status).toBe("failed");
+      expect(result.success).toBe(false);
+      expect(Object.hasOwn(result.results, "__proto__")).toBe(true);
+      expect(result.results["__proto__"]).toMatchObject({
+        success: false,
+        error: { message: "the vendor said no" },
+      });
+    }
+    expect(store.callsOf("completeRun").map((run) => run.status)).toEqual([
+      "failed",
+    ]);
   });
 
   it("re-runs everything without a memo, proving the memo is what prevents it", async () => {

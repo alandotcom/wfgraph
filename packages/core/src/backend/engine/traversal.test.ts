@@ -1,6 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import { Deferred, Effect, Fiber } from "effect";
+import { engineFailure } from "#src/backend/engine/engine-failure";
 import { Traversal } from "#src/backend/engine/traversal";
 
 describe("Traversal.withNodeInProgress", () => {
@@ -105,5 +106,42 @@ describe("Traversal.deterministicTerminalOutput", () => {
         from: "Bx_1",
       });
     })
+  );
+});
+
+describe("Traversal result keys", () => {
+  it.effect(
+    "keeps a __proto__ failure enumerable through every result merge",
+    () =>
+      Effect.sync(() => {
+        const failure = {
+          success: false as const,
+          error: engineFailure("failure", "Action failed"),
+        };
+
+        const recorded = new Traversal([], []);
+        recorded.recordResult("__proto__", failure);
+
+        assert.isTrue(Object.hasOwn(recorded.results, "__proto__"));
+        assert.equal(Object.getPrototypeOf(recorded.results), Object.prototype);
+        assert.equal(recorded.resultCount, 1);
+        assert.isFalse(recorded.allSucceeded());
+        assert.deepStrictEqual(recorded.firstFailure(), failure.error);
+
+        const completed = new Traversal([], []);
+        completed.markCompleted("__proto__", failure);
+        const branchResult = {
+          results: { ...completed.results },
+          outputs: {},
+        };
+        const parent = new Traversal([], []);
+        parent.absorbBranch(branchResult);
+
+        assert.isTrue(Object.hasOwn(parent.results, "__proto__"));
+        assert.equal(Object.getPrototypeOf(parent.results), Object.prototype);
+        assert.equal(parent.resultCount, 1);
+        assert.isFalse(parent.allSucceeded());
+        assert.deepStrictEqual(parent.firstFailure(), failure.error);
+      })
   );
 });
