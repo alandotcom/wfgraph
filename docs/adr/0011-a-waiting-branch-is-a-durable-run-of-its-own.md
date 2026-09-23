@@ -60,9 +60,9 @@ step's payload while a traversal holds the `{ success, data }` envelope around
 it, and every reader steps through one envelope, so a row read back is wrapped
 again: a payload that is itself `{ success, data }` would otherwise be stepped
 through twice below a Wait and once above it. And a row cannot say whether a
-node released what is below it, since a node that halted its branch has an
-output too, so the released ids travel on the invoke payload. They are ids, so
-the size argument against carrying outputs does not reach them.
+node selected an outgoing edge, since a Condition has an output for either
+outcome. Released source/target pairs travel on the invoke payload. Those pairs
+preserve join readiness without carrying the outputs themselves.
 
 **A branch answers with what it walked, and that answer is decoded.** The
 inherited outputs are left out of the value handed back, or a chain of waits
@@ -135,7 +135,7 @@ The branch function is invoke-only. It no longer triggers on a public
 which `getConfigTriggers` omits from the registered list, so an event key or
 unsigned bus cannot start a branch.
 
-The invoke payload carries `executionId`, `entryNodeId` and `releasedNodeIds`.
+The invoke payload carries `executionId`, `entryNodeId` and `releasedEdges`.
 The graph, the start payload and the workflow identity are reloaded from the
 execution row and its pinned published version, the same as the parent run. A
 row that is not in flight is refused before the engine walks it. The ids the
@@ -146,7 +146,7 @@ run panel shows one run whatever it took to walk it. What changed is the Inngest
 dashboard, which now shows one invocation per waiting branch beneath the run.
 
 A node behind two Waits that belong to different branches is the case this does
-not answer. A branch run inherits the released ids of the run that started it, so
+not answer. A branch run inherits the released edges of the run that started it, so
 a join whose other side is still parked in a sibling branch is reached by neither
 run, and one whose other side closes at the same moment could be reached by both.
 Nothing in the editor pushes a builder towards that shape, and the alternative is
@@ -184,3 +184,16 @@ field equalities joined by `&&`. Without the comparison, a parent that reached a
 Canceled-side hand-off before the kill send landed would have that branch killed by
 the cancellation the branch exists to answer. No Cancel Event reaches such a branch
 either, because the claim write skips a run that already holds a claim.
+
+## Amendment: Selected edges determine join readiness
+
+A completed Condition releases only its selected outlet. A node-level readiness
+flag allowed a parallel predecessor to release an AND-join through the
+Condition's unselected outlet. Traversal now retains released source/target
+pairs, and a child receives those pairs as `releasedEdges`. Endpoint identity
+survives a Migration that recreates an equivalent edge with a new editor ID.
+
+This replaces `releasedNodeIds` in the strict branch invocation schema. The
+project accepts the protocol change under the no-backwards-compatibility rule
+in AGENTS.md, as with ADR-0019; engine epochs remain deferred. An existing
+installation must drain invocations using the previous payload before upgrading.

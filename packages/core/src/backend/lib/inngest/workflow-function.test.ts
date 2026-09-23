@@ -1,3 +1,4 @@
+import type { ReleasedEdge } from "#src/backend/engine/contracts";
 import {
   afterAll,
   afterEach,
@@ -184,14 +185,14 @@ function runRequestData() {
 function branchInvokeData(
   varied: {
     entryNodeId?: string;
-    releasedNodeIds?: string[];
+    releasedEdges?: ReleasedEdge[];
     side?: ExecutionSide;
   } = {}
 ) {
   return {
     executionId: testExecution.id,
     entryNodeId: varied.entryNodeId ?? "wait_1",
-    releasedNodeIds: varied.releasedNodeIds ?? [],
+    releasedEdges: varied.releasedEdges ?? [],
     side: varied.side ?? "started",
   };
 }
@@ -455,7 +456,7 @@ describe("the workflow run function", () => {
           name: "inngest/function.invoked",
           data: branchInvokeData({
             entryNodeId: "wait_1",
-            releasedNodeIds: ["entry_1"],
+            releasedEdges: [{ source: "entry_1", target: "wait_1" }],
             side: "started",
           }),
         },
@@ -466,7 +467,7 @@ describe("the workflow run function", () => {
     expect(executeWorkflowBranch.mock.calls[0]?.[0]).toEqual({
       ...persistedRunInput(),
       entryNodeId: "wait_1",
-      releasedNodeIds: ["entry_1"],
+      releasedEdges: [{ source: "entry_1", target: "wait_1" }],
       side: "started",
     });
   });
@@ -691,7 +692,7 @@ describe("the workflow run function", () => {
       { id: "branch-wait_1", name: "Wait for reply (branch)" },
       {
         entryNodeId: "wait_1",
-        releasedNodeIds: ["entry_1"],
+        releasedEdges: [{ source: "entry_1", target: "wait_1" }],
         side: "started",
       }
     );
@@ -705,7 +706,7 @@ describe("the workflow run function", () => {
         data: {
           executionId: "exec_123",
           entryNodeId: "wait_1",
-          releasedNodeIds: ["entry_1"],
+          releasedEdges: [{ source: "entry_1", target: "wait_1" }],
           side: "started",
         },
       }
@@ -730,7 +731,7 @@ describe("the workflow run function", () => {
         { id: "branch-wait_1" },
         {
           entryNodeId: "wait_1",
-          releasedNodeIds: [],
+          releasedEdges: [],
           side: "started",
         }
       )
@@ -742,7 +743,7 @@ describe("the workflow run function", () => {
         { id: "branch-wait_2" },
         {
           entryNodeId: "wait_2",
-          releasedNodeIds: [],
+          releasedEdges: [],
           side: "started",
         }
       )
@@ -773,7 +774,7 @@ describe("the workflow run function", () => {
         { id: "branch-wait_1" },
         {
           entryNodeId: "wait_1",
-          releasedNodeIds: [],
+          releasedEdges: [],
           side: "started",
         }
       )
@@ -792,7 +793,7 @@ describe("the workflow run function", () => {
         { id: "branch-wait_1" },
         {
           entryNodeId: "wait_1",
-          releasedNodeIds: [],
+          releasedEdges: [],
           side: "started",
         }
       )

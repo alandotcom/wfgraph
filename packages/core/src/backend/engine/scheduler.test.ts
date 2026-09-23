@@ -116,8 +116,8 @@ test("two predecessors admit and execute their join only once", async () => {
     { id: "b-join", source: "b", target: "join" },
   ];
   const traversal = new Traversal(nodes, edges);
-  traversal.markReadyForDownstream("a");
-  traversal.markReadyForDownstream("b");
+  traversal.markReadyForDownstream("a", { kind: "all" });
+  traversal.markReadyForDownstream("b", { kind: "all" });
   const runtime = createInMemoryWorkflowRuntime();
   const store = createRecordingWorkflowStore();
   const cancelBoundary = new CancelBoundary({

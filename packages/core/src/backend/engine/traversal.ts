@@ -29,6 +29,7 @@ import {
   executionData,
   executionFailure,
   type NodeOutputs,
+  type ReleasedEdge,
 } from "#src/backend/engine/contracts";
 import type { EngineFailure } from "#src/backend/engine/engine-failure";
 
@@ -77,7 +78,7 @@ export class Traversal {
   private readonly completedNodes = new Set<string>();
   private readonly inheritedOutputKeys = new Set<string>();
   private readonly inProgressNodes = new Set<string>();
-  private readonly downstreamReadyNodes = new Set<string>();
+  private readonly downstreamReadyEdges = new Map<string, Set<string>>();
 
   constructor(nodes: readonly WorkflowNode[], edges: readonly WorkflowEdge[]) {
     this.nodes = nodes;
@@ -127,15 +128,12 @@ export class Traversal {
    * Whether every predecessor has released this node.
    *
    * A root (no incoming edges) is ready when the scheduler names it. An
-   * AND-join waits until each predecessor has called `markReadyForDownstream`.
+   * An AND-join waits until each incoming edge was selected and released by its
+   * predecessor. Completing a Condition does not release its unselected outlet.
    */
   isReadyToRun(nodeId: string): boolean {
-    const predecessors = this.predecessorIds(nodeId);
-    if (predecessors.length === 0) {
-      return true;
-    }
-    return predecessors.every((predecessorId) =>
-      this.downstreamReadyNodes.has(predecessorId)
+    return (this.edgesByTarget.get(nodeId) ?? []).every((edge) =>
+      this.downstreamReadyEdges.get(edge.source)?.has(edge.target)
     );
   }
 
@@ -176,21 +174,20 @@ export class Traversal {
   }
 
   /** The nodes this one hands on to, along the edges the route names. */
-  nextNodes(nodeId: string, route: TraversalRoute): string[] {
+  private nextEdges(
+    nodeId: string,
+    route: TraversalRoute
+  ): readonly WorkflowEdge[] {
     const edges = this.edgesBySource.get(nodeId) ?? [];
 
     if (route.kind === "condition") {
-      return edges
-        .filter(
-          (edge) => normalizeConditionBranch(edge.sourceHandle) === route.branch
-        )
-        .map((edge) => edge.target);
+      return edges.filter(
+        (edge) => normalizeConditionBranch(edge.sourceHandle) === route.branch
+      );
     }
 
     if (route.kind === "outlet") {
-      return edges
-        .filter((edge) => edge.sourceHandle === route.outlet)
-        .map((edge) => edge.target);
+      return edges.filter((edge) => edge.sourceHandle === route.outlet);
     }
 
     if (route.kind === "event") {
@@ -198,15 +195,13 @@ export class Traversal {
       // outlet, so it stops at the split rather than taking every branch.
       return route.eventName === null
         ? []
-        : edges
-            .filter(
-              (edge) =>
-                eventSplitOutletEvent(edge.sourceHandle) === route.eventName
-            )
-            .map((edge) => edge.target);
+        : edges.filter(
+            (edge) =>
+              eventSplitOutletEvent(edge.sourceHandle) === route.eventName
+          );
     }
 
-    return edges.map((edge) => edge.target);
+    return edges;
   }
 
   /**
@@ -215,8 +210,20 @@ export class Traversal {
    * is a Condition whose expression produced no boolean releases nothing, and
    * everything behind it stays unscheduled for the life of the run.
    */
-  markReadyForDownstream(nodeId: string) {
-    this.downstreamReadyNodes.add(nodeId);
+  markReadyForDownstream(nodeId: string, route: TraversalRoute): string[] {
+    const edges = this.nextEdges(nodeId, route);
+    this.releaseEdges(edges);
+    return edges.map((edge) => edge.target);
+  }
+
+  /** Restores the parent's selected edges without selecting any new outlet. */
+  releaseEdges(edges: readonly ReleasedEdge[]): void {
+    for (const { source, target } of edges) {
+      const targets =
+        this.downstreamReadyEdges.get(source) ?? new Set<string>();
+      targets.add(target);
+      this.downstreamReadyEdges.set(source, targets);
+    }
   }
 
   /**
@@ -288,9 +295,11 @@ export class Traversal {
     this.completedNodes.add(nodeId);
   }
 
-  /** Every node that has released what is below it, for a branch run to start from. */
-  get releasedNodeIds(): string[] {
-    return [...this.downstreamReadyNodes];
+  /** Selected edge endpoints, stable when a migration recreates an edge ID. */
+  get releasedEdges(): ReleasedEdge[] {
+    return [...this.downstreamReadyEdges].flatMap(([source, targets]) =>
+      [...targets].map((target) => ({ source, target }))
+    );
   }
 
   /**

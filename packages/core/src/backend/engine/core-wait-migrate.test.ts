@@ -9,8 +9,14 @@
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
+import { Effect } from "effect";
+import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { JsonObject } from "@wfgraph/shared/types/json";
-import { executeTestWorkflow as executeWorkflow } from "#src/backend/engine/test-execution";
+import {
+  executeTestWorkflow as executeWorkflow,
+  executeTestWorkflowBranch,
+} from "#src/backend/engine/test-execution";
+import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
 import { executionError } from "#src/backend/engine/contracts";
 import {
   createRecordingWorkflowStore,
@@ -22,6 +28,9 @@ import type { ExecutionTerminationState } from "#src/backend/engine/store";
 import {
   claimOnceParked,
   createWaitGraph,
+  createLifecycleNode,
+  createWaitNode,
+  createAfterWaitNode,
   waitMigrateSignal,
   waitOutput,
   waitResumeSignal,
@@ -643,4 +652,52 @@ describe("wait node - migration to a later workflow version", () => {
       error: expect.stringContaining("without resuming"),
     });
   });
+});
+
+it("resumes an owned branch Wait after migration rewires its completed predecessors", async () => {
+  const store = createRecordingWorkflowStore();
+  const graph = createSerializedWorkflowGraph({
+    nodes: [
+      createLifecycleNode("lifecycle_1"),
+      { ...createAfterWaitNode(), id: "added_1" },
+      createWaitNode("wait_1", { waitMode: "delay", waitDuration: "1s" }),
+      createAfterWaitNode(),
+    ],
+    edges: [
+      {
+        id: "new-entry",
+        source: "lifecycle_1",
+        target: "added_1",
+        sourceHandle: "started",
+      },
+      { id: "new-before-wait", source: "added_1", target: "wait_1" },
+      { id: "after", source: "wait_1", target: "after_wait" },
+    ],
+  });
+  const result = await executeTestWorkflowBranch(
+    {
+      graph,
+      executionId: "exec_wait",
+      workflowId: "workflow_wait",
+      workflowVersionId: "ver_2",
+      entryNodeId: "wait_1",
+      side: "started",
+      releasedEdges: [
+        { source: "lifecycle_1", target: "wait_1" },
+        { source: "lifecycle_1", target: "added_1" },
+      ],
+    },
+    createInMemoryWorkflowRuntime(),
+    {
+      ...store,
+      readNodeOutputs: () =>
+        Effect.succeed({ lifecycle_1: {}, added_1: { condition: true } }),
+    },
+    noWorkflowActions
+  );
+  expect(result.results.wait_1?.success).toBe(true);
+  expect(result.results.after_wait?.success).toBe(true);
+  expect(
+    store.callsOf("startStepLog").some((call) => call.nodeId === "added_1")
+  ).toBe(false);
 });

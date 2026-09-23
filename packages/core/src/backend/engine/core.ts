@@ -24,6 +24,7 @@ import { CancelBoundary } from "#src/backend/engine/cancel-boundary";
 import {
   type ExecutionResult,
   type NodeOutputs,
+  type ReleasedEdge,
   wrapStoredOutput,
 } from "#src/backend/engine/contracts";
 import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
@@ -103,13 +104,13 @@ export type WorkflowExecutionInput = {
  * A run of the branch below one Wait node, which is a durable run of its own.
  *
  * Everything above the entry node ran in whichever run handed the branch off.
- * Its outputs reach this run through the store, and `releasedNodeIds` says which
- * of those nodes let their downstream follow, which the stored rows cannot: a
- * node that halted its branch has an output and released nothing.
+ * Its outputs reach this run through the store, and `releasedEdges` carries the
+ * outgoing edges those nodes selected. Stored outputs alone do not identify
+ * which outgoing edges a Condition or Event Split released.
  */
 export type WorkflowBranchInput = WorkflowExecutionInput & {
   entryNodeId: string;
-  releasedNodeIds: readonly string[];
+  releasedEdges: readonly ReleasedEdge[];
   /**
    * Which side of the Lifecycle Node the entry node sits on. The branch cannot
    * work it out on its own, because it routes no cancellation and so reads the
@@ -681,9 +682,7 @@ function executeWorkflowBranchInner(
       });
     }
 
-    for (const nodeId of input.releasedNodeIds) {
-      traversal.markReadyForDownstream(nodeId);
-    }
+    traversal.releaseEdges(input.releasedEdges);
 
     // A branch below the Canceled outlet takes its parent's claim on before it
     // walks anything: the claim names the Event this branch arrived on and

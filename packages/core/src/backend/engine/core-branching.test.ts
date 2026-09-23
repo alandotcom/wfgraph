@@ -5,7 +5,7 @@ import { createWorkflowActions } from "#src/backend/extensions/workflow-actions"
 import { checkCelBooleanExpression } from "#src/backend/lib/cel/environment";
 import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
 import { defineAction } from "#src/backend/extensions/define-action";
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 import {
   compileConditionModel,
   type ConditionModel,
@@ -15,6 +15,7 @@ import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import { eventSplitOutlet } from "@wfgraph/shared/lifecycle/event-split";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
+import { validateGraphSaveShape } from "#src/backend/services/workflows/graph-save";
 import { executionData } from "#src/backend/engine/contracts";
 import { executeTestWorkflow as executeWorkflow } from "#src/backend/engine/test-execution";
 import {
@@ -983,3 +984,145 @@ describe("executeWorkflow Event Split traversal", () => {
     expect(result.results.on_rescheduled).toBeUndefined();
   });
 });
+
+it.each([false, true])(
+  "releases a guarded join only along the Condition's selected edge (%s)",
+  async (allowed) => {
+    const conditionDone = Promise.withResolvers<void>();
+    const calls: string[] = [];
+    const parallel = defineAction({
+      id: "test/guarded-parallel",
+      label: "Parallel",
+      description: "Finishes after the Condition has selected its outlet",
+      input: Schema.Struct({}),
+      handler: async () => {
+        await conditionDone.promise;
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        calls.push("parallel");
+        return { ok: true };
+      },
+    });
+    const join = defineAction({
+      id: "test/guarded-join",
+      label: "Join",
+      description: "Records the work behind both predecessors",
+      input: Schema.Struct({}),
+      handler: () => {
+        calls.push("join");
+        return { ok: true };
+      },
+    });
+    const model: ConditionModel = {
+      version: 2,
+      groupLogic: "and",
+      groups: [
+        {
+          id: "group",
+          logic: "and",
+          conditions: [
+            {
+              id: "rule",
+              field: "type",
+              fieldType: "string",
+              operator: "equals",
+              value: "allowed",
+            },
+          ],
+        },
+      ],
+    };
+    const compiled = compileConditionModel(model);
+    if (!compiled.valid) throw new Error(compiled.error);
+    const graph = createSerializedWorkflowGraph({
+      nodes: [
+        createLifecycleNode("lifecycle_1"),
+        {
+          ...createConditionNode("condition", compiled.expression),
+          data: {
+            label: "Condition",
+            type: "action",
+            config: {
+              actionType: "Condition",
+              condition: compiled.expression,
+              conditionModel: serializeConditionModel(model),
+            },
+          },
+        },
+        {
+          ...createWrappedActionNode("parallel"),
+          data: {
+            label: "Parallel",
+            type: "action",
+            config: { actionType: parallel.id },
+          },
+        },
+        {
+          ...createWrappedActionNode("join"),
+          data: {
+            label: "Join",
+            type: "action",
+            config: { actionType: join.id },
+          },
+        },
+      ],
+      edges: [
+        {
+          id: "entry-condition",
+          source: "lifecycle_1",
+          target: "condition",
+          sourceHandle: "started",
+        },
+        {
+          id: "entry-parallel",
+          source: "lifecycle_1",
+          target: "parallel",
+          sourceHandle: "started",
+        },
+        {
+          id: "condition-join",
+          source: "condition",
+          target: "join",
+          sourceHandle: "true",
+        },
+        { id: "parallel-join", source: "parallel", target: "join" },
+      ],
+    });
+    expect(validateGraphSaveShape(graph).valid).toBe(true);
+    const store = createRecordingWorkflowStore();
+    let conditionLogId: string | undefined;
+    const result = await executeWorkflow(
+      {
+        graph,
+        executionId: "guarded-join",
+        workflowId: "workflow",
+        startPayload: { type: allowed ? "allowed" : "denied" },
+      },
+      createInMemoryWorkflowRuntime(),
+      {
+        ...store,
+        startStepLog: (input) =>
+          store.startStepLog(input).pipe(
+            Effect.tap((handle) =>
+              Effect.sync(() => {
+                if (input.nodeId === "condition") conditionLogId = handle.logId;
+              })
+            )
+          ),
+        completeStepLog: (input) =>
+          store.completeStepLog(input).pipe(
+            Effect.tap(() =>
+              Effect.sync(() => {
+                if (input.logId === conditionLogId) conditionDone.resolve();
+              })
+            )
+          ),
+      },
+      createWorkflowActions(
+        assembleExtensions({ actions: [parallel, join] }),
+        stubWfGraphRuntime()
+      )
+    );
+    expect(result.success).toBe(true);
+    expect(calls).toEqual(allowed ? ["parallel", "join"] : ["parallel"]);
+  }
+);

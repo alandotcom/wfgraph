@@ -82,11 +82,16 @@ export const workflowBranchInputSchema = Schema.Struct({
   executionId: NonEmptyTrimmedString,
   entryNodeId: NonEmptyTrimmedString,
   /**
-   * Which nodes above the entry have let their downstream follow. Ids alone, so
-   * the size argument against carrying outputs does not reach it, and the stored
-   * rows cannot answer it: a node that halted its branch has an output too.
+   * The edges completed nodes actually selected. Source/target pairs survive
+   * equivalent edge-ID changes during Migration. Stored output rows do not
+   * identify which Condition or Event Split outlet released an edge.
    */
-  releasedNodeIds: Schema.Array(NonEmptyTrimmedString),
+  releasedEdges: Schema.Array(
+    Schema.Struct({
+      source: NonEmptyTrimmedString,
+      target: NonEmptyTrimmedString,
+    })
+  ),
   /**
    * Which side of the Lifecycle Node the entry node sits on. The branch routes
    * no cancellation of its own, so it reads the side off this payload rather

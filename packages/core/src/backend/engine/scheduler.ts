@@ -461,7 +461,13 @@ export class NodeScheduler {
         // AND-join: a node with several predecessors waits until each has
         // released it. The predecessor that finishes first schedules us early
         // and we no-op; the last one finds us ready.
-        if (!traversal.isReadyToRun(nodeId)) {
+        // The parent already released this branch's entry Wait. Migration can
+        // rewire its completed predecessors, but resumes from the Wait downward.
+        // Every other node still requires its actual incoming edge releases.
+        if (
+          nodeId !== this.input.branchEntryNodeId &&
+          !traversal.isReadyToRun(nodeId)
+        ) {
           return;
         }
 
@@ -656,7 +662,7 @@ export class NodeScheduler {
             { id: `branch-${node.id}`, name: `${nodeName} (branch)` },
             {
               entryNodeId: node.id,
-              releasedNodeIds: traversal.releasedNodeIds,
+              releasedEdges: traversal.releasedEdges,
               side: this.sideOf(node.id),
             }
           )
@@ -847,8 +853,7 @@ export class NodeScheduler {
           return;
         }
 
-        const nextNodes = traversal.nextNodes(nodeId, route);
-        traversal.markReadyForDownstream(nodeId);
+        const nextNodes = traversal.markReadyForDownstream(nodeId, route);
         yield* this.runAll(nextNodes);
       }.bind(this)
     );
