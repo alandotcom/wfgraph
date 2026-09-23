@@ -456,7 +456,9 @@ describe("the workflow run function", () => {
           name: "inngest/function.invoked",
           data: branchInvokeData({
             entryNodeId: "wait_1",
-            releasedEdges: [{ source: "entry_1", target: "wait_1" }],
+            releasedEdges: [
+              { source: "entry_1", target: "wait_1", sourceHandle: "started" },
+            ],
             side: "started",
           }),
         },
@@ -467,7 +469,9 @@ describe("the workflow run function", () => {
     expect(executeWorkflowBranch.mock.calls[0]?.[0]).toEqual({
       ...persistedRunInput(),
       entryNodeId: "wait_1",
-      releasedEdges: [{ source: "entry_1", target: "wait_1" }],
+      releasedEdges: [
+        { source: "entry_1", target: "wait_1", sourceHandle: "started" },
+      ],
       side: "started",
     });
   });
@@ -692,7 +696,9 @@ describe("the workflow run function", () => {
       { id: "branch-wait_1", name: "Wait for reply (branch)" },
       {
         entryNodeId: "wait_1",
-        releasedEdges: [{ source: "entry_1", target: "wait_1" }],
+        releasedEdges: [
+          { source: "entry_1", target: "wait_1", sourceHandle: "started" },
+        ],
         side: "started",
       }
     );
@@ -706,7 +712,9 @@ describe("the workflow run function", () => {
         data: {
           executionId: "exec_123",
           entryNodeId: "wait_1",
-          releasedEdges: [{ source: "entry_1", target: "wait_1" }],
+          releasedEdges: [
+            { source: "entry_1", target: "wait_1", sourceHandle: "started" },
+          ],
           side: "started",
         },
       }
@@ -764,6 +772,27 @@ describe("the workflow run function", () => {
       Schema.decodeUnknownSync(workflowBranchInputSchema)(withoutSide)
     ).toThrow(/side/);
   });
+
+  it("refuses a released edge without its source outlet", () => {
+    expect(() =>
+      Schema.decodeUnknownSync(workflowBranchInputSchema)({
+        ...branchInvokeData(),
+        releasedEdges: [{ source: "entry_1", target: "wait_1" }],
+      })
+    ).toThrow(/sourceHandle/);
+  });
+
+  it.each([null, "true", "started"])(
+    "retains the released source outlet %s in the branch payload",
+    (sourceHandle) => {
+      const payload = branchInvokeData({
+        releasedEdges: [{ source: "entry_1", target: "wait_1", sourceHandle }],
+      });
+      expect(Schema.decodeSync(workflowBranchInputSchema)(payload)).toEqual(
+        payload
+      );
+    }
+  );
 
   it("refuses a branch answer it cannot read", async () => {
     const { runtime, ctx } = await executeWorkflowFunctionForTest();

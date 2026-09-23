@@ -683,8 +683,8 @@ it("resumes an owned branch Wait after migration rewires its completed predecess
       entryNodeId: "wait_1",
       side: "started",
       releasedEdges: [
-        { source: "lifecycle_1", target: "wait_1" },
-        { source: "lifecycle_1", target: "added_1" },
+        { source: "lifecycle_1", target: "wait_1", sourceHandle: "started" },
+        { source: "lifecycle_1", target: "added_1", sourceHandle: "started" },
       ],
     },
     createInMemoryWorkflowRuntime(),

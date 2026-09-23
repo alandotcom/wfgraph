@@ -82,7 +82,7 @@ export const workflowBranchInputSchema = Schema.Struct({
   executionId: NonEmptyTrimmedString,
   entryNodeId: NonEmptyTrimmedString,
   /**
-   * The edges completed nodes actually selected. Source/target pairs survive
+   * The edges completed nodes actually selected. Endpoints and source outlets survive
    * equivalent edge-ID changes during Migration. Stored output rows do not
    * identify which Condition or Event Split outlet released an edge.
    */
@@ -90,6 +90,7 @@ export const workflowBranchInputSchema = Schema.Struct({
     Schema.Struct({
       source: NonEmptyTrimmedString,
       target: NonEmptyTrimmedString,
+      sourceHandle: Schema.NullOr(Schema.String),
     })
   ),
   /**
