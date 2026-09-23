@@ -36,7 +36,10 @@ import {
   evaluateGuardedStart,
   selectTrackedEntity,
 } from "#src/backend/services/workflows/lifecycle/entity-eligibility";
-import { resumeWaitsMatchingEvent } from "#src/backend/services/workflows/lifecycle/resume-waits";
+import {
+  resumeWaitsMatchingEvent,
+  type WaitDeliveryCandidate,
+} from "#src/backend/services/workflows/lifecycle/resume-waits";
 import { runWorkflowExecutionPreflight } from "#src/backend/services/executions/preflight";
 import {
   type EventSubscriber,
@@ -131,17 +134,7 @@ export type LifecycleDeliveryOutcome =
       reason: "workflow_gone" | "graph_unrunnable" | "not_published";
     };
 
-/** What the wait half did, which is a count and nothing else. */
-export type WaitDeliveryOutcome = {
-  workflowId: string;
-  resumedWaits: number;
-};
-
-/**
- * How many parked runs one read of the candidate set brings back. The whole set
- * is still walked; this is what keeps a workflow with thousands of parked runs
- * from materializing all of them, and their compiled matches, at once.
- */
+/** How many candidates a durable snapshot or delivery step carries at once. */
 const WAIT_CANDIDATE_PAGE_SIZE = 200;
 
 /**
@@ -259,7 +252,7 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
       // A workflow that has never been published has no graph this half can
       // read. That holds even while a draft-snapshot run is in flight
       // (ADR-0012, 2026-08-29); a run like that is cancelled from the Runs
-      // panel. Parked waits are still owed this Event, and `deliverToWaits`
+      // panel. Parked waits are still owed this Event, and `listWaitCandidatePage`
       // reaches them from the wait rows instead of from a version.
       return skipped(input.subscriber.id, "not_published");
     }
@@ -619,72 +612,74 @@ const answerFromCommittedDecision = Effect.fn("answerFromCommittedDecision")(
   }
 );
 
+/** A bounded JSON-safe snapshot of candidate Waits for one durable step. */
+export type WaitCandidatePage = {
+  candidates: WaitDeliveryCandidate[];
+  /** The id to use for the next page, or null when the page ends the scan. */
+  afterId: string | null;
+  hasMore: boolean;
+};
+
 /**
- * The Event, offered to the runs of this workflow that are parked on it.
+ * Reads one bounded page of runs that were already parked on this Event.
  *
- * `excluding` names the runs this delivery already settled: a superseded run is on
- * its way out and waking its wait would resume a run with no next step, and the
- * run just started has parked nothing yet.
- *
- * Candidates are found by Event name alone, and each row's own compiled match
- * decides whether the payload belongs to that run. Nothing here reads a
- * Correlation Path: a Wait Subscription states what it compares, so an Event with
- * no entity of its own still wakes exactly the runs that asked for it.
+ * Only the fields the matcher and waker need cross Inngest's durable step
+ * boundary. In particular, no database Dates cross it. The listener records
+ * every page before it sends any wake so a retry cannot discover a later
+ * sequential Wait created by a run this Event already resumed.
  */
-export const deliverToWaits = Effect.fn("deliverToWaits")(function* (input: {
-  workflowId: string;
-  event: DeliveredEvent;
-  payload: JsonObject;
-  excluding: string[];
-}) {
-  const nothing: WaitDeliveryOutcome = {
-    workflowId: input.workflowId,
-    resumedWaits: 0,
-  };
-
-  const repo = yield* ExecutionRepo;
-
-  let afterId: string | undefined;
-  let resumedWaits = 0;
-
-  // A page at a time, because nothing bounds how many runs are parked on one
-  // Event: the wait timeout defaults to 7 days, and every candidate row carries
-  // the JSONB holding its compiled match. Every page is still walked, so no run
-  // owed this Event is skipped.
-  for (;;) {
-    const candidates = yield* repo.listWaitsForEvent({
+export const listWaitCandidatePage = Effect.fn("listWaitCandidatePage")(
+  function* (input: {
+    workflowId: string;
+    eventName: string;
+    afterId?: string | undefined;
+    excludingExecutionIds: string[];
+  }) {
+    const repo = yield* ExecutionRepo;
+    const rows = yield* repo.listWaitsForEvent({
       workflowId: input.workflowId,
-      eventName: input.event.name,
+      eventName: input.eventName,
       limit: WAIT_CANDIDATE_PAGE_SIZE,
-      afterId,
-      excludingExecutionIds: input.excluding,
+      afterId: input.afterId,
+      excludingExecutionIds: input.excludingExecutionIds,
     });
 
-    if (candidates.length === 0) {
-      break;
-    }
+    const lastId = rows.at(-1)?.id ?? null;
 
-    resumedWaits += yield* resumeWaitsMatchingEvent({
+    return {
+      candidates: rows.map((row) => ({
+        id: row.id,
+        executionId: row.executionId,
+        nodeId: row.nodeId,
+        resumeToken: row.resumeToken,
+        subscribedEvents: row.subscribedEvents,
+        metadata: row.metadata,
+      })),
+      afterId: rows.length === WAIT_CANDIDATE_PAGE_SIZE ? lastId : null,
+      hasMore: rows.length === WAIT_CANDIDATE_PAGE_SIZE,
+    } satisfies WaitCandidatePage;
+  }
+);
+
+/** Offers one saved candidate page to the arriving Event. */
+export const deliverWaitCandidates = Effect.fn("deliverWaitCandidates")(
+  function* (input: {
+    workflowId: string;
+    event: DeliveredEvent;
+    payload: JsonObject;
+    candidates: WaitDeliveryCandidate[];
+  }) {
+    const resumedWaits = yield* resumeWaitsMatchingEvent({
       workflowId: input.workflowId,
       eventType: input.event.name,
       payload: input.payload,
-      waitStates: candidates,
+      waitStates: input.candidates,
       connectionId: input.event.connectionId,
     });
 
-    if (candidates.length < WAIT_CANDIDATE_PAGE_SIZE) {
-      break;
-    }
-
-    afterId = candidates.at(-1)?.id;
+    return { workflowId: input.workflowId, resumedWaits };
   }
-
-  if (resumedWaits === 0) {
-    return nothing;
-  }
-
-  return { workflowId: input.workflowId, resumedWaits };
-});
+);
 
 function skipped(
   workflowId: string,

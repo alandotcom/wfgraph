@@ -30,7 +30,8 @@ import type {
 import type { EventSubscriber } from "#src/backend/services/workflows/repo";
 import {
   applyLifecycleRules,
-  deliverToWaits,
+  deliverWaitCandidates,
+  listWaitCandidatePage,
 } from "#src/backend/services/workflows/lifecycle/deliver-event";
 
 type Repo = ExecutionRepo["Service"];
@@ -1006,27 +1007,35 @@ describe("applyLifecycleRules", () => {
   });
 });
 
-describe("deliverToWaits", () => {
+describe("wait candidate delivery", () => {
   layer(Layer.mergeAll(SilentAppLoggerLayer, catalogLayer, waitPorts))((it) => {
-    // Candidates are found by Event name across both run modes, and each row's
-    // own compiled match decides. The lookup takes no published-mode input, so
-    // a draft test run remains reachable while the workflow is live.
-    it.effect("offers the Event to parked runs regardless of run mode", () =>
+    it.effect("returns a JSON-safe page of the parked rows", () =>
       Effect.gen(function* () {
         listWaitsForEventMock.mockReturnValueOnce(
           Effect.succeed([parkedWait("app/appointment.created")])
         );
 
-        const outcome = yield* deliverToWaits({
+        const page = yield* listWaitCandidatePage({
           workflowId: "wf_1",
-          event: appointmentCreated,
-          payload,
-          excluding: [],
+          eventName: appointmentCreated.name,
+          excludingExecutionIds: [],
         }).pipe(Effect.provide(stubWorkflowRepo()));
 
-        assert.deepStrictEqual(outcome, {
-          workflowId: "wf_1",
-          resumedWaits: 1,
+        assert.deepStrictEqual(page, {
+          candidates: [
+            {
+              id: "wait_1",
+              executionId: "exec_parked",
+              nodeId: "node_wait",
+              resumeToken: "token_1",
+              subscribedEvents: ["app/appointment.created"],
+              metadata: {
+                waitFor: [{ event: "app/appointment.created" }],
+              },
+            },
+          ],
+          afterId: null,
+          hasMore: false,
         });
         assert.deepStrictEqual(listWaitsForEventMock.mock.calls[0], [
           {
@@ -1037,6 +1046,67 @@ describe("deliverToWaits", () => {
             excludingExecutionIds: [],
           },
         ]);
+      })
+    );
+
+    it.effect("returns the cursor for a full candidate page", () =>
+      Effect.gen(function* () {
+        listWaitsForEventMock.mockReturnValueOnce(
+          Effect.succeed(
+            Array.from({ length: 200 }, (_, index) =>
+              parkedWait("app/appointment.created", {
+                id: `wait_${String(index).padStart(3, "0")}`,
+              })
+            )
+          )
+        );
+
+        const page = yield* listWaitCandidatePage({
+          workflowId: "wf_1",
+          eventName: appointmentCreated.name,
+          excludingExecutionIds: [],
+        }).pipe(Effect.provide(stubWorkflowRepo()));
+
+        assert.strictEqual(page.candidates.length, 200);
+        assert.strictEqual(page.afterId, "wait_199");
+        assert.strictEqual(page.hasMore, true);
+      })
+    );
+
+    // A run this delivery settled takes nothing, so a settled run never
+    // occupies a place in the page.
+    it.effect("excludes runs the lifecycle just settled", () =>
+      Effect.gen(function* () {
+        listWaitsForEventMock.mockReturnValueOnce(Effect.succeed([]));
+
+        const page = yield* listWaitCandidatePage({
+          workflowId: "wf_1",
+          eventName: appointmentCreated.name,
+          excludingExecutionIds: ["exec_superseded"],
+        }).pipe(Effect.provide(stubWorkflowRepo()));
+
+        assert.strictEqual(page.candidates.length, 0);
+        assert.strictEqual(page.hasMore, false);
+        assert.deepStrictEqual(
+          listWaitsForEventMock.mock.calls[0][0].excludingExecutionIds,
+          ["exec_superseded"]
+        );
+      })
+    );
+
+    // Candidates are found by Event name across both run modes, and each row's
+    // own compiled match decides. The lookup takes no published-mode input, so
+    // a draft test run remains reachable while the workflow is live.
+    it.effect("offers the Event to parked runs regardless of run mode", () =>
+      Effect.gen(function* () {
+        const outcome = yield* deliverWaitCandidates({
+          workflowId: "wf_1",
+          event: appointmentCreated,
+          payload,
+          candidates: [parkedWait(appointmentCreated.name)],
+        }).pipe(Effect.provide(stubWorkflowRepo({})));
+
+        assert.strictEqual(outcome.resumedWaits, 1);
         assert.strictEqual(sendWaitSignalMock.mock.calls.length, 1);
         assert.strictEqual(
           sendWaitSignalMock.mock.calls[0]?.[0].executionId,
@@ -1045,85 +1115,27 @@ describe("deliverToWaits", () => {
       })
     );
 
-    // A run this delivery settled takes nothing: one is ending, and the other has
-    // parked nothing yet. The set goes to the query rather than to a filter after
-    // it, so a settled run never occupies a place in the page.
-    it.effect("leaves out the runs the lifecycle just settled", () =>
+    it.effect("delivers waits with no Correlation Path in sight", () =>
       Effect.gen(function* () {
-        listWaitsForEventMock.mockReturnValueOnce(Effect.succeed([]));
-
-        const outcome = yield* deliverToWaits({
-          workflowId: "wf_1",
-          event: appointmentCreated,
-          payload,
-          excluding: ["exec_superseded"],
-        }).pipe(Effect.provide(stubWorkflowRepo()));
-
-        assert.strictEqual(outcome.resumedWaits, 0);
-        assert.strictEqual(sendWaitSignalMock.mock.calls.length, 0);
-        assert.deepStrictEqual(
-          listWaitsForEventMock.mock.calls[0][0].excludingExecutionIds,
-          ["exec_superseded"]
-        );
-      })
-    );
-
-    // The failure this replaces: an Event nobody declared a path for reached no
-    // parked run at all, whatever the Wait node had asked for.
-    it.effect("reaches parked runs with no Correlation Path in sight", () =>
-      Effect.gen(function* () {
-        listWaitsForEventMock.mockReturnValueOnce(
-          Effect.succeed([parkedWait("ops/nightly.swept")])
-        );
-
-        const outcome = yield* deliverToWaits({
+        const outcome = yield* deliverWaitCandidates({
           workflowId: "wf_1",
           event: { name: "ops/nightly.swept" },
           payload: { sweep: { id: "sweep_1" } },
-          excluding: [],
+          candidates: [parkedWait("ops/nightly.swept")],
         }).pipe(Effect.provide(stubWorkflowRepo({})));
 
         assert.strictEqual(outcome.resumedWaits, 1);
-        assert.deepStrictEqual(listWaitsForEventMock.mock.calls[0], [
-          {
-            workflowId: "wf_1",
-            eventName: "ops/nightly.swept",
-            limit: 200,
-            afterId: undefined,
-            excludingExecutionIds: [],
-          },
-        ]);
         assert.strictEqual(sendWaitSignalMock.mock.calls.length, 1);
       })
     );
 
-    // The wait half reads no graph: that column runs to megabytes and this path
-    // runs per delivery.
-    it.effect("reads no graph on the way to a parked run", () =>
+    it.effect("wakes nothing for an empty saved page", () =>
       Effect.gen(function* () {
-        const findById = vi.fn(() => Effect.succeed(null));
-        listWaitsForEventMock.mockReturnValueOnce(Effect.succeed([]));
-
-        yield* deliverToWaits({
-          workflowId: "wf_1",
-          event: appointmentCreated,
-          payload,
-          excluding: [],
-        }).pipe(Effect.provide(stubWorkflowRepo({ findById })));
-
-        assert.strictEqual(findById.mock.calls.length, 0);
-      })
-    );
-
-    it.effect("wakes nothing when no run is parked on the Event", () =>
-      Effect.gen(function* () {
-        listWaitsForEventMock.mockReturnValueOnce(Effect.succeed([]));
-
-        const outcome = yield* deliverToWaits({
+        const outcome = yield* deliverWaitCandidates({
           workflowId: "wf_1",
           event: { name: "ops/nightly.swept" },
           payload: { sweep: { id: "sweep_1" } },
-          excluding: [],
+          candidates: [],
         }).pipe(Effect.provide(stubWorkflowRepo({})));
 
         assert.strictEqual(outcome.resumedWaits, 0);

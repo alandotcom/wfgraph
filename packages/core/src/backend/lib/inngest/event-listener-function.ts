@@ -22,7 +22,9 @@ import { getAppLogger } from "#src/backend/lib/logger";
 import type { WfGraphRuntime } from "#src/backend/runtime";
 import {
   applyLifecycleRules,
-  deliverToWaits,
+  deliverWaitCandidates,
+  listWaitCandidatePage,
+  type WaitCandidatePage,
   type LifecycleDeliveryOutcome,
   listEventSubscribers,
 } from "#src/backend/services/workflows/lifecycle/deliver-event";
@@ -82,24 +84,25 @@ type EventListenerSteps = {
 export type EventListenerDeliverPorts = {
   listSubscribers: typeof listEventSubscribers;
   applyLifecycle: typeof applyLifecycleRules;
-  deliverWaits: typeof deliverToWaits;
+  listWaitCandidates: typeof listWaitCandidatePage;
+  deliverWaitCandidates: typeof deliverWaitCandidates;
 };
 
 export const defaultDeliverPorts: EventListenerDeliverPorts = {
   listSubscribers: listEventSubscribers,
   applyLifecycle: applyLifecycleRules,
-  deliverWaits: deliverToWaits,
+  listWaitCandidates: listWaitCandidatePage,
+  deliverWaitCandidates,
 };
 
 /**
  * One delivered Event, fanned out.
  *
- * Each workflow is two sibling steps: the Lifecycle Rules, then the wait delivery
- * that follows from what they did. Sibling rather than nested, because a wait
- * delivery that fails must not replay a start -- replaying one would open a second
- * run for the same arrival. The ids are derived from the workflow, and the
- * subscriber list is memoized above them, so a retry resumes at the workflow that
- * failed with the same list it started from.
+ * Each workflow's Lifecycle Rules are a separate step from its waits, because a
+ * wait delivery that fails must not replay a start. Wait candidates are saved in
+ * bounded pages before any signal is sent. Each page's delivery is a sibling
+ * durable step, so a retry uses the original rows and does not discover a later
+ * sequential Wait the same arrival caused.
  */
 export async function runEventListener(input: {
   event: AnyEventDefinition;
@@ -190,26 +193,64 @@ export async function runEventListener(input: {
     // is ending, and the run just started has parked nothing yet.
     const excluding = settledExecutionIds(lifecycle);
 
-    // The wait role is pushed only from the parked-run read, so a subscriber
-    // without it had nothing waiting on this Event when the list was built and
-    // the delivery would resolve to zero runs. A run parking between that step
-    // and this one is outside this arrival's window either way: the subscriber
-    // list is memoized, so a replay reads the same list it did the first time.
-    const waits = subscriber.roles.includes("wait")
-      ? // eslint-disable-next-line no-await-in-loop -- sibling of the step above, and sequential for the same reason.
-        await step.run(
-          `waits-${subscriber.id}`,
+    // The wait role is pushed from the parked-run read. A subscriber without it
+    // cannot gain a wait role on retry because that list is memoized. For a
+    // subscriber that does have it, the candidate pages below become the fixed
+    // set this arrival can wake.
+    let waits = { workflowId: subscriber.id, resumedWaits: 0 };
+    if (subscriber.roles.includes("wait")) {
+      const candidatePages: WaitCandidatePage[] = [];
+      let afterId: string | undefined;
+
+      // Collect every page before a delivery step can wake any run. Inngest
+      // memoizes these step outputs when a later delivery page retries. Each
+      // page consumes two steps; this scan remains subject to Inngest's
+      // per-invocation step limit, including subscriber and lifecycle steps.
+      for (let pageIndex = 0; ; pageIndex += 1) {
+        // eslint-disable-next-line no-await-in-loop -- the next cursor depends on this durable page result.
+        const page = await step.run(
+          `wait-candidates-${subscriber.id}-${pageIndex}`,
           async () =>
             await runtime.runPromise(
-              deliver.deliverWaits({
+              deliver.listWaitCandidates({
+                workflowId: subscriber.id,
+                eventName: deliveredEvent.name,
+                afterId,
+                excludingExecutionIds: excluding,
+              })
+            )
+        );
+        candidatePages.push(page);
+
+        if (!page.hasMore) {
+          break;
+        }
+        if (!page.afterId) {
+          throw new Error("A full wait candidate page has no cursor");
+        }
+        afterId = page.afterId;
+      }
+
+      for (const [pageIndex, page] of candidatePages.entries()) {
+        // eslint-disable-next-line no-await-in-loop -- page delivery steps are siblings and have stable, ordered ids.
+        const pageOutcome = await step.run(
+          `waits-${subscriber.id}-${pageIndex}`,
+          async () =>
+            await runtime.runPromise(
+              deliver.deliverWaitCandidates({
                 workflowId: subscriber.id,
                 event: deliveredEvent,
                 payload,
-                excluding,
+                candidates: page.candidates,
               })
             )
-        )
-      : { workflowId: subscriber.id, resumedWaits: 0 };
+        );
+        waits = {
+          workflowId: subscriber.id,
+          resumedWaits: waits.resumedWaits + pageOutcome.resumedWaits,
+        };
+      }
+    }
 
     arrivalLogger.info("Delivered an event to a workflow", {
       workflowId: subscriber.id,
