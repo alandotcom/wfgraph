@@ -379,6 +379,26 @@ export function makeWaitsMethods(
     reparkWait: (input) =>
       database.query((db) =>
         db.transaction(async (tx): Promise<ReparkWaitOutcome> => {
+          // Migration and startWait lock the execution before its Wait rows.
+          // A version subquery alone can retain a pre-migration snapshot while
+          // this update waits for a Wait-row lock.
+          await tx
+            .select({ id: workflowExecutions.id })
+            .from(workflowExecutions)
+            .where(
+              exists(
+                tx
+                  .select({ id: workflowWaitStates.id })
+                  .from(workflowWaitStates)
+                  .where(
+                    and(
+                      eq(workflowWaitStates.id, input.waitStateId),
+                      eq(workflowWaitStates.executionId, workflowExecutions.id)
+                    )
+                  )
+              )
+            )
+            .for("update");
           const reparked = await tx
             .update(workflowWaitStates)
             .set({

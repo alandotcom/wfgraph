@@ -217,6 +217,10 @@ const repinAndSignal = Effect.fn("repinAndSignal")(function* (input: {
         executionId: input.executionId,
         fromVersionId: input.fromVersionId,
         toVersionId: input.targetVersion.id,
+        expectedWaitStates: input.waitStates.map(({ id, resumeToken }) => ({
+          id,
+          resumeToken,
+        })),
       });
       if (!moved) {
         return { moved: false } as const;

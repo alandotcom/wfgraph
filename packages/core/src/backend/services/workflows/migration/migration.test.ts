@@ -1555,6 +1555,7 @@ describe("migrateExecutions", () => {
             executionId: "exec_1",
             fromVersionId: OLD_VERSION_ID,
             toVersionId: TARGET_VERSION_ID,
+            expectedWaitStates: [{ id: "wait_row_1", resumeToken: "resume_1" }],
           },
         ]);
         assert.deepStrictEqual(seams.calls.auditEvents, [

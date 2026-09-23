@@ -91,6 +91,80 @@ export function describeExecutionWaitConformance({
   openDatabase,
 }: PersistenceTestRegistry): void {
   describe("wait rows and migration", () => {
+    it.each(["added", "claimed", "resumed", "reparked", "replaced"] as const)(
+      "refuses a migration when the classified Wait set was %s",
+      async (change) => {
+        const database = await openConnection();
+        await seedPublishedWorkflow(database);
+        const waitStateId = await startEventWait(database, "classified-token");
+        const result = await database.run(
+          Effect.gen(function* () {
+            const executions = yield* ExecutionRepo;
+            yield* publishSecondVersion;
+            const wait = yield* executions.findWaitStateById(waitStateId);
+            if (!wait) throw new Error("Wait was not found");
+            const executionId = wait.executionId;
+            const expectedWaitStates =
+              yield* executions.listWaitingStates(executionId);
+            if (
+              change === "claimed" ||
+              change === "resumed" ||
+              change === "replaced"
+            ) {
+              const claim = yield* executions.claimWaitingStateByToken({
+                resumeToken: "classified-token",
+                arrival: EVENT_ARRIVAL,
+              });
+              if (!claim) throw new Error("Claim was refused");
+              if (change !== "claimed") {
+                yield* executions.settleWaitingStateClaim({
+                  waitStateId,
+                  claimedAt: claim.claimedAt,
+                });
+              }
+            }
+            if (change === "reparked") {
+              yield* executions.reparkWait({
+                waitStateId,
+                workflowVersionId: "ver_1",
+                side: "started",
+                waitType: "event",
+                waitUntil: null,
+                subscribedEvents: [EVENT_ARRIVAL.eventName],
+                resumeToken: "new-token",
+                metadata: {},
+              });
+            }
+            if (change === "added" || change === "replaced") {
+              yield* executions.startWait({
+                executionId,
+                workflowId: "wf_1",
+                workflowVersionId: "ver_1",
+                runId: "run_1",
+                nodeId: "wait_2",
+                nodeName: "Downstream Wait",
+                side: "started",
+                waitType: "delay",
+                waitUntil: new Date("2026-01-01T00:00:00.000Z"),
+              });
+            }
+            const moved = yield* executions.repinVersion({
+              executionId,
+              fromVersionId: "ver_1",
+              toVersionId: "ver_2",
+              expectedWaitStates,
+            });
+            return {
+              moved,
+              summary: yield* executions.findSummaryById(executionId),
+            };
+          })
+        );
+        expect(result.moved).toBe(false);
+        expect(result.summary?.workflowVersionId).toBe("ver_1");
+      }
+    );
+
     it("reuses a committed preparation and preserves an accepted wake on retry", async () => {
       const database = await openConnection();
       await seedPublishedWorkflow(database);
@@ -1134,6 +1208,8 @@ export function describeExecutionWaitConformance({
           // A Migration lands between the body loading ver_1 and this park.
           const first = yield* park("ver_1");
           const migrated = yield* executions.repinVersion({
+            expectedWaitStates:
+              yield* executions.listWaitingStates(executionId),
             executionId,
             fromVersionId: "ver_1",
             toVersionId: "ver_2",
@@ -1588,6 +1664,8 @@ export function describeExecutionWaitConformance({
           const executionId = started.execution.id;
 
           const whileRunning = yield* executions.repinVersion({
+            expectedWaitStates:
+              yield* executions.listWaitingStates(executionId),
             executionId,
             fromVersionId: "ver_1",
             toVersionId: "ver_2",
@@ -1607,11 +1685,15 @@ export function describeExecutionWaitConformance({
           if (!wait) throw new Error("Wait was refused");
 
           const fromAnotherVersion = yield* executions.repinVersion({
+            expectedWaitStates:
+              yield* executions.listWaitingStates(executionId),
             executionId,
             fromVersionId: "ver_2",
             toVersionId: "ver_2",
           });
           const whileWaiting = yield* executions.repinVersion({
+            expectedWaitStates:
+              yield* executions.listWaitingStates(executionId),
             executionId,
             fromVersionId: "ver_1",
             toVersionId: "ver_2",
@@ -1674,6 +1756,8 @@ export function describeExecutionWaitConformance({
           if (!wait) throw new Error("Wait was refused");
 
           const migrated = yield* executions.repinVersion({
+            expectedWaitStates:
+              yield* executions.listWaitingStates(executionId),
             executionId,
             fromVersionId: "ver_1",
             toVersionId: "ver_2",
@@ -1750,6 +1834,8 @@ export function describeExecutionWaitConformance({
           if (!wait) throw new Error("Wait was refused");
 
           const migrated = yield* executions.repinVersion({
+            expectedWaitStates:
+              yield* executions.listWaitingStates(executionId),
             executionId,
             fromVersionId: "ver_1",
             toVersionId: "ver_2",
