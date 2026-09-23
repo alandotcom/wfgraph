@@ -40,6 +40,7 @@ import type {
   WorkflowEntities,
 } from "#src/backend/engine/entities";
 import type { CancelBoundary } from "#src/backend/engine/cancel-boundary";
+import { restoreCompletedNodeProgress } from "#src/backend/engine/branch-progress";
 import {
   executionData,
   executionError,
@@ -671,13 +672,26 @@ export class NodeScheduler {
         if (handoff.status === "killed") {
           // The cancellation killed the branch where it stood. Its rows are closed
           // here, and the boundary read below this node is what routes the run.
+          // A child cannot return its partial traversal, so restore what its
+          // completed log rows say before a Canceled-side template can read it.
           yield* this.sweepKilledBranchWork();
+          const progress = yield* runDurable(
+            runtime,
+            {
+              id: `branch-kill-progress-${node.id}`,
+              name: "Restore completed branch progress",
+            },
+            this.input.store.readCompletedNodeProgress(this.input.executionId)
+          );
+          restoreCompletedNodeProgress(traversal, progress);
           yield* Effect.logInfo("Branch run was cancelled");
           return {
-            result: {
-              success: true as const,
-              data: { branchCancelled: true },
-            },
+            result: Object.hasOwn(traversal.results, node.id)
+              ? traversal.results[node.id]
+              : {
+                  success: true as const,
+                  data: { branchCancelled: true },
+                },
             haltBranch: true,
           };
         }

@@ -15,6 +15,7 @@ import { redactSensitiveData } from "#src/backend/lib/utils/redact";
 import type { ExecutionRepo } from "#src/backend/services/executions/repo";
 import { decodeIsoTimestampOrThrow } from "@wfgraph/shared/types/timestamp";
 import type {
+  CompletedNodeProgress,
   CompleteRunInput,
   ExecutionTerminationState,
   WorkflowStore,
@@ -178,6 +179,30 @@ export function createDbWorkflowStore(
     readPendingCancel: (executionId) => repo.findPendingCancel(executionId),
 
     readNodeOutputs: (executionId) => repo.readNodeOutputs(executionId),
+
+    readCompletedNodeProgress: (executionId) =>
+      repo.listLogs(executionId).pipe(
+        Effect.map((logs) => {
+          const latestByNode = new Map<string, CompletedNodeProgress>();
+          for (const log of logs) {
+            if (
+              latestByNode.has(log.nodeId) ||
+              (log.status !== "success" && log.status !== "error")
+            ) {
+              continue;
+            }
+
+            latestByNode.set(log.nodeId, {
+              nodeId: log.nodeId,
+              nodeName: log.nodeName,
+              status: log.status,
+              output: log.output ?? null,
+              error: log.error,
+            });
+          }
+          return [...latestByNode.values()];
+        })
+      ),
 
     // Two statements, because the rows a killed branch leaves open are of two
     // kinds and each table decides for itself which of its rows are still open.
