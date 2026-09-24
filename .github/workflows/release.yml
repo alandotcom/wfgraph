@@ -26,7 +26,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version-file: .node-version
       - uses: pnpm/action-setup@v6
         with:
           cache: true
@@ -47,7 +47,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version-file: .node-version
       - uses: pnpm/action-setup@v6
         with:
           cache: true
@@ -75,7 +75,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version-file: .node-version
       - uses: pnpm/action-setup@v6
         with:
           cache: true
@@ -99,7 +99,7 @@ jobs:
       # Never give this step a registry-url; see AGENTS.md ("Releasing").
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version-file: .node-version
       - uses: pnpm/action-setup@v6
         with:
           cache: true

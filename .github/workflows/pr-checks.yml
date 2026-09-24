@@ -4,7 +4,7 @@ on:
   pull_request:
 
 jobs:
-  checks:
+  quality:
     runs-on: ubuntu-latest
 
     steps:
@@ -14,7 +14,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version-file: .node-version
 
       # The pnpm version comes from the "packageManager" field in the root
       # package.json, so this action pins none of its own. `cache` keys the
@@ -49,6 +49,32 @@ jobs:
       - name: Validate agent skills
         run: pnpm run skills:validate
 
+      - name: Run build
+        run: pnpm run build
+
+      - name: Smoke test packed core
+        run: pnpm run package:smoke
+
+  tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          cache: true
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
       # The node and client projects are self-contained. They ran with the
       # local `.env` moved aside, to confirm they pass on a bare runner, which
       # is what this one is. The postgres project is the deliberate exception
@@ -59,11 +85,19 @@ jobs:
       - name: Run tests
         run: pnpm run test
 
-      - name: Run build
-        run: pnpm run build
-
-      - name: Smoke test packed core
-        run: pnpm run package:smoke
+  # Keep the branch rule's required check name while both jobs run independently.
+  checks:
+    needs: [quality, tests]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require quality and tests
+        env:
+          QUALITY_RESULT: ${{ needs.quality.result }}
+          TESTS_RESULT: ${{ needs.tests.result }}
+        run: |
+          test "$QUALITY_RESULT" = success
+          test "$TESTS_RESULT" = success
 
   postgres:
     runs-on: ubuntu-latest
@@ -107,7 +141,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version-file: .node-version
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -134,14 +168,17 @@ jobs:
 
   reliability:
     runs-on: ubuntu-latest
-    # A CI-like local run (both backends, WFGRAPH_RELIABILITY_RUNS=5,
-    # WFGRAPH_RELIABILITY_GROUP_RUNS=3) took about 3.6 minutes on a laptop. The
-    # limit leaves room for a slower runner, setup, and one failing property
-    # shrinking and replaying.
+    # Each backend runs in its own job so the SQLite and PostgreSQL cases in
+    # each test file can proceed at the same time.
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [sqlite, postgres]
     timeout-minutes: 20
     services:
       postgres:
-        image: postgres:17-alpine
+        # An empty image skips the service for SQLite.
+        image: ${{ matrix.backend == 'postgres' && 'postgres:17-alpine' || '' }}
         env:
           POSTGRES_DB: workflow_builder
           POSTGRES_USER: workflow
@@ -159,18 +196,18 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version-file: .node-version
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
         with:
           cache: true
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Exercise real workflow execution on both databases
+      - name: Exercise real workflow execution on ${{ matrix.backend }}
         run: pnpm run test:reliability
         env:
           WFGRAPH_TEST_DATABASE_URL: postgresql://workflow:workflow@localhost:5432/workflow_builder
-          WFGRAPH_RELIABILITY_BACKEND: all
+          WFGRAPH_RELIABILITY_BACKEND: ${{ matrix.backend }}
           WFGRAPH_RELIABILITY_RUNS: "5"
           WFGRAPH_RELIABILITY_GROUP_RUNS: "3"
       # A job stopped at `timeout-minutes` ends with the cancelled status, which
@@ -180,6 +217,6 @@ jobs:
         if: failure() || cancelled()
         uses: actions/upload-artifact@v7
         with:
-          name: reliability-failures
+          name: reliability-failures-${{ matrix.backend }}
           path: test-results/reliability/
           if-no-files-found: ignore
