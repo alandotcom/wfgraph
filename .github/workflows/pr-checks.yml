@@ -134,14 +134,17 @@ jobs:
 
   reliability:
     runs-on: ubuntu-latest
-    # A CI-like local run (both backends, WFGRAPH_RELIABILITY_RUNS=5,
-    # WFGRAPH_RELIABILITY_GROUP_RUNS=3) took about 3.6 minutes on a laptop. The
-    # limit leaves room for a slower runner, setup, and one failing property
-    # shrinking and replaying.
+    # Each backend runs in its own job so the SQLite and PostgreSQL cases in
+    # each test file can proceed at the same time.
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [sqlite, postgres]
     timeout-minutes: 20
     services:
       postgres:
-        image: postgres:17-alpine
+        # An empty image skips the service for SQLite.
+        image: ${{ matrix.backend == 'postgres' && 'postgres:17-alpine' || '' }}
         env:
           POSTGRES_DB: workflow_builder
           POSTGRES_USER: workflow
@@ -166,11 +169,11 @@ jobs:
           cache: true
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Exercise real workflow execution on both databases
+      - name: Exercise real workflow execution on ${{ matrix.backend }}
         run: pnpm run test:reliability
         env:
           WFGRAPH_TEST_DATABASE_URL: postgresql://workflow:workflow@localhost:5432/workflow_builder
-          WFGRAPH_RELIABILITY_BACKEND: all
+          WFGRAPH_RELIABILITY_BACKEND: ${{ matrix.backend }}
           WFGRAPH_RELIABILITY_RUNS: "5"
           WFGRAPH_RELIABILITY_GROUP_RUNS: "3"
       # A job stopped at `timeout-minutes` ends with the cancelled status, which
@@ -180,6 +183,6 @@ jobs:
         if: failure() || cancelled()
         uses: actions/upload-artifact@v7
         with:
-          name: reliability-failures
+          name: reliability-failures-${{ matrix.backend }}
           path: test-results/reliability/
           if-no-files-found: ignore
