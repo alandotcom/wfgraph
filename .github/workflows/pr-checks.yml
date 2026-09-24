@@ -14,7 +14,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version-file: .node-version
 
       # The pnpm version comes from the "packageManager" field in the root
       # package.json, so this action pins none of its own. `cache` keys the
@@ -65,7 +65,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version-file: .node-version
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -141,7 +141,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version-file: .node-version
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -196,7 +196,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version-file: .node-version
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
         with:
