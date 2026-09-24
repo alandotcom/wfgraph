@@ -4,7 +4,7 @@ on:
   pull_request:
 
 jobs:
-  checks:
+  quality:
     runs-on: ubuntu-latest
 
     steps:
@@ -49,6 +49,32 @@ jobs:
       - name: Validate agent skills
         run: pnpm run skills:validate
 
+      - name: Run build
+        run: pnpm run build
+
+      - name: Smoke test packed core
+        run: pnpm run package:smoke
+
+  tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          cache: true
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
       # The node and client projects are self-contained. They ran with the
       # local `.env` moved aside, to confirm they pass on a bare runner, which
       # is what this one is. The postgres project is the deliberate exception
@@ -59,11 +85,19 @@ jobs:
       - name: Run tests
         run: pnpm run test
 
-      - name: Run build
-        run: pnpm run build
-
-      - name: Smoke test packed core
-        run: pnpm run package:smoke
+  # Keep the branch rule's required check name while both jobs run independently.
+  checks:
+    needs: [quality, tests]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require quality and tests
+        env:
+          QUALITY_RESULT: ${{ needs.quality.result }}
+          TESTS_RESULT: ${{ needs.tests.result }}
+        run: |
+          test "$QUALITY_RESULT" = success
+          test "$TESTS_RESULT" = success
 
   postgres:
     runs-on: ubuntu-latest
