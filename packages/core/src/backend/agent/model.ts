@@ -4,15 +4,15 @@
  * Built per request rather than held on the application runtime: the layer
  * closes over a credential, and an application runtime outlives every request.
  *
- * The AI runtime itself lives in `effect/unstable/ai`, so this file is only the
+ * The AI runtime itself lives in `effect/ai`, so this file is only the
  * provider half. Swapping providers is a change here and nowhere else, because
  * every tool and the whole stream mapping speak `LanguageModel`.
  */
 
 import { OpenAiClient, OpenAiLanguageModel } from "@effect/ai-openai";
 import { Layer, Redacted } from "effect";
-import type { LanguageModel } from "effect/unstable/ai";
-import { FetchHttpClient } from "effect/unstable/http";
+import type { LanguageModel } from "effect/ai";
+import { FetchHttpClient } from "effect/http";
 import type { EnabledAgentSettings } from "#src/backend/agent/config";
 
 /** Maximum provider output for one model call inside a turn. */

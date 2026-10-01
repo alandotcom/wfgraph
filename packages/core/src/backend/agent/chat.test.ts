@@ -1,6 +1,6 @@
 import { Effect, Layer, Stream } from "effect";
 import { describe, expect, it } from "@effect/vitest";
-import { Chat, LanguageModel, Response } from "effect/unstable/ai";
+import { Chat, LanguageModel, Response } from "effect/ai";
 import type {
   AgentDocument,
   WorkflowDraftService,

@@ -9,7 +9,7 @@
  */
 
 import { Effect, Schema } from "effect";
-import { Tool } from "effect/unstable/ai";
+import { Tool } from "effect/ai";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { findEvent } from "@wfgraph/shared/extensions/catalog";
 // The barrel keeps a historical import path and leaves these two types out, so

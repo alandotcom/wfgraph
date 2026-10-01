@@ -8,7 +8,7 @@
  */
 
 import { Effect, Schema } from "effect";
-import { Tool } from "effect/unstable/ai";
+import { Tool } from "effect/ai";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
 import { persistedNodeEnabled } from "@wfgraph/shared/graph/node-enabled";

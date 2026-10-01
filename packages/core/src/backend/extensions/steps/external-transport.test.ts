@@ -11,7 +11,7 @@
  */
 
 import { Effect, Schema } from "effect";
-import { HttpClient } from "effect/unstable/http";
+import { HttpClient } from "effect/http";
 import { afterEach, describe, expect, it } from "vitest";
 import { stubStepEnvironment } from "#src/backend/lib/effect/test-layers";
 import { defineStep } from "#src/backend/extensions/steps/define-step";

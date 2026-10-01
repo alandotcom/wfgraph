@@ -6,7 +6,7 @@
  */
 
 import { Effect, Layer, Ref } from "effect";
-import type { Toolkit } from "effect/unstable/ai";
+import type { Toolkit } from "effect/ai";
 import {
   type AgentDocument,
   layerFromDraft,

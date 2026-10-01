@@ -13,12 +13,7 @@
  */
 
 import { Effect, Stream } from "effect";
-import {
-  Chat,
-  type LanguageModel,
-  Prompt,
-  type Toolkit,
-} from "effect/unstable/ai";
+import { Chat, type LanguageModel, Prompt, type Toolkit } from "effect/ai";
 import { agentToolkit, WRITE_TOOL_NAMES } from "@wfgraph/agent/toolkit";
 import type { AgentDocument } from "@wfgraph/agent/document";
 import { buildSystemPrompt } from "@wfgraph/agent/prompt";

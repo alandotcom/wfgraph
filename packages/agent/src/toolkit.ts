@@ -7,7 +7,7 @@
  */
 
 import { Effect } from "effect";
-import { Toolkit } from "effect/unstable/ai";
+import { Toolkit } from "effect/ai";
 import {
   catalogToolHandlers,
   DescribeAction,

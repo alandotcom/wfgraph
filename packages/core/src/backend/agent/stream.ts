@@ -10,7 +10,7 @@
  * caller holds the draft the write tool just changed.
  */
 
-import type { Response, Toolkit } from "effect/unstable/ai";
+import type { Response, Toolkit } from "effect/ai";
 import type { agentToolkit } from "@wfgraph/agent/toolkit";
 import type { AgentStreamPart } from "@wfgraph/shared/rpc/agent-stream";
 import { readJsonObject } from "@wfgraph/shared/types/json";

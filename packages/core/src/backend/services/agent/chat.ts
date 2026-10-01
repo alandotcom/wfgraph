@@ -8,7 +8,7 @@
  */
 
 import { Cause, Effect, Exit, Semaphore, Stream } from "effect";
-import type { Response } from "effect/unstable/ai";
+import type { Response } from "effect/ai";
 import type { AgentDocument } from "@wfgraph/agent/document";
 import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
 import type {
