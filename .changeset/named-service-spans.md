@@ -1,7 +1,0 @@
----
-"@wfgraph/core": minor
----
-
-The spans a publish, a version read and a run's start or cancellation open now carry stable OpenTelemetry names, so a host's dashboards and alerts can key off them. Nine service spans are named `wfgraph.<domain>.<operation>` beside the five the engine has always opened: `wfgraph.workflow.publish`, `wfgraph.workflow.publish_readiness`, `wfgraph.workflow.version.compare`, `wfgraph.workflow.version.history`, `wfgraph.workflow.version.restore`, `wfgraph.execution.start`, `wfgraph.execution.load_workflow`, `wfgraph.execution.preflight` and `wfgraph.execution.cancel`. They replace the function names those spans used to arrive under, which were `publishWorkflow`, `checkPublishReadiness`, `compareWorkflowVersion`, `getWorkflowVersionHistory`, `restoreWorkflowVersion`, `postWorkflowExecute`, `loadWorkflowForRun`, `runWorkflowExecutionPreflight` and `postExecutionCancel`.
-
-Each of the nine annotates the identifiers it is about: the workflow id, the execution id, the publication version id and number, and the version a comparison read against. `wfgraph.outcome` names how the call ended in one machine word, which is the publish conflict code on a refused publish, `ignored` on a start a lifecycle rule turned away, and `canceled` or `already_finished` on a cancellation. Every attribute is one of those identifiers or that outcome word. `docs/embedding.md` has the full table.
