@@ -16,7 +16,7 @@
 import type { JsonValue } from "@wfgraph/core/plugin";
 import type { Effect } from "effect";
 import { Schema } from "effect";
-import type { HttpClient } from "effect/unstable/http";
+import type { HttpClient } from "effect/http";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
   callExternal,

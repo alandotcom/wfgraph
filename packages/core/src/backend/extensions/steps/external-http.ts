@@ -40,7 +40,7 @@ import {
   HttpClientRequest,
   type HttpClientResponse,
   type HttpMethod,
-} from "effect/unstable/http";
+} from "effect/http";
 
 /**
  * How long one attempt may take before the system counts as unreachable.

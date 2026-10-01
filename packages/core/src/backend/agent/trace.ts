@@ -1,4 +1,4 @@
-import type { Response, Toolkit } from "effect/unstable/ai";
+import type { Response, Toolkit } from "effect/ai";
 import type { AgentDocument } from "@wfgraph/agent/document";
 import type { agentToolkit } from "@wfgraph/agent/toolkit";
 import {

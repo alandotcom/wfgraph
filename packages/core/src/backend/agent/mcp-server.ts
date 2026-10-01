@@ -14,7 +14,7 @@ import {
   fromJsonSchema,
   type McpHttpHandler,
 } from "@modelcontextprotocol/server";
-import { Tool } from "effect/unstable/ai";
+import { Tool } from "effect/ai";
 import { Schema } from "effect";
 import { agentToolkit, WRITE_TOOL_NAMES } from "@wfgraph/agent/toolkit";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";

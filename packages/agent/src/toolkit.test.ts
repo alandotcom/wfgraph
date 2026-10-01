@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Effect, Layer, Stream } from "effect";
-import { Tool } from "effect/unstable/ai";
+import { Tool } from "effect/ai";
 import { fixtureCatalog } from "#src/tools/catalog-fixture";
 import { agentToolsFor } from "#src/testing";
 import { layerFromDraft, makeWorkflowDraft } from "#src/document";

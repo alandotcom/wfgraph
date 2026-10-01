@@ -7,7 +7,7 @@
  */
 
 import { Effect, Schema } from "effect";
-import { Tool } from "effect/unstable/ai";
+import { Tool } from "effect/ai";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { conditionTypeOf } from "@wfgraph/shared/conditions/condition-field-type";
 import {
