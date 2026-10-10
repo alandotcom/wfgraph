@@ -571,7 +571,7 @@ describe("workflow draft subscription RPC", () => {
     const decoder = new TextDecoder();
     let body = "";
 
-    while (!body.includes("event: message")) {
+    while (!body.includes("data: ")) {
       const chunk = await reader.read();
       assert.isFalse(chunk.done);
       body += decoder.decode(chunk.value, { stream: true });

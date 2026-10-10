@@ -1015,9 +1015,9 @@ new NodeTracerProvider({
 }).register();
 ```
 
-`OTEL_EXPORTER_OTLP_ENDPOINT` names the collector. Workflow Graph's own `Resource` supplies
-`service.name` and `service.version` for the instrumentation scope alone; what describes the
-service is the `Resource` the host gave its provider.
+`OTEL_EXPORTER_OTLP_ENDPOINT` names the collector. Workflow Graph requests the
+`wfgraph-workflows` instrumentation scope from the global tracer provider. The host's
+`Resource` describes the service.
 
 ## API endpoints
 

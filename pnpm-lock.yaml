@@ -7,17 +7,17 @@ settings:
 catalogs:
   default:
     '@effect/ai-openai':
-      specifier: 4.0.0
-      version: 4.0.0
+      specifier: 4.0.2
+      version: 4.0.2
     '@effect/opentelemetry':
-      specifier: 4.0.0
-      version: 4.0.0
+      specifier: 4.0.2
+      version: 4.0.2
     '@effect/sql-sqlite-node':
-      specifier: 4.0.0
-      version: 4.0.0
+      specifier: 4.0.2
+      version: 4.0.2
     '@effect/vitest':
-      specifier: 4.0.0
-      version: 4.0.0
+      specifier: 4.0.2
+      version: 4.0.2
     '@logtape/logtape':
       specifier: ^2.3.5
       version: 2.3.5
@@ -25,23 +25,23 @@ catalogs:
       specifier: ^8.0.0
       version: 8.0.0
     '@orpc/client':
-      specifier: 2.0.0-beta.32
-      version: 2.0.0-beta.32
+      specifier: 2.0.0-beta.43
+      version: 2.0.0-beta.43
     '@orpc/contract':
-      specifier: 2.0.0-beta.32
-      version: 2.0.0-beta.32
+      specifier: 2.0.0-beta.43
+      version: 2.0.0-beta.43
     '@orpc/experimental-effect':
-      specifier: 2.0.0-beta.32
-      version: 2.0.0-beta.32
+      specifier: 2.0.0-beta.43
+      version: 2.0.0-beta.43
     '@orpc/openapi':
-      specifier: 2.0.0-beta.32
-      version: 2.0.0-beta.32
+      specifier: 2.0.0-beta.43
+      version: 2.0.0-beta.43
     '@orpc/server':
-      specifier: 2.0.0-beta.32
-      version: 2.0.0-beta.32
+      specifier: 2.0.0-beta.43
+      version: 2.0.0-beta.43
     '@orpc/tanstack-query':
-      specifier: 2.0.0-beta.32
-      version: 2.0.0-beta.32
+      specifier: 2.0.0-beta.43
+      version: 2.0.0-beta.43
     '@standard-schema/spec':
       specifier: ^1.1.0
       version: 1.1.0
@@ -58,8 +58,8 @@ catalogs:
       specifier: ^2.2.3
       version: 2.2.3
     effect:
-      specifier: 4.0.0
-      version: 4.0.0
+      specifier: 4.0.2
+      version: 4.0.2
     es-toolkit:
       specifier: ^1.52.0
       version: 1.52.0
@@ -126,10 +126,10 @@ importers:
         version: 0.45.0
       '@effect/vitest':
         specifier: 'catalog:'
-        version: 4.0.0(effect@4.0.0)(vitest@5.0.1(@opentelemetry/api@1.9.1)(@types/node@24.13.5)(happy-dom@20.14.5)(vite@8.3.0(@types/node@24.13.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.1)))
+        version: 4.0.2(effect@4.0.2)(vitest@5.0.1(@opentelemetry/api@1.9.1)(@types/node@24.13.5)(happy-dom@20.14.5)(vite@8.3.0(@types/node@24.13.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.1)))
       '@tanstack/intent':
-        specifier: ^0.4.0
-        version: 0.4.0
+        specifier: ^0.5.5
+        version: 0.5.5
       '@testing-library/dom':
         specifier: ^10.4.2
         version: 10.4.2
@@ -230,7 +230,7 @@ importers:
     dependencies:
       effect:
         specifier: 'catalog:'
-        version: 4.0.0
+        version: 4.0.2
     devDependencies:
       '@wfgraph/shared':
         specifier: workspace:*
@@ -261,13 +261,13 @@ importers:
         version: 2.3.5
       '@orpc/client':
         specifier: 'catalog:'
-        version: 2.0.0-beta.32(@opentelemetry/api@1.9.1)
+        version: 2.0.0-beta.43
       '@orpc/contract':
         specifier: 'catalog:'
-        version: 2.0.0-beta.32(@opentelemetry/api@1.9.1)
+        version: 2.0.0-beta.43
       '@orpc/tanstack-query':
         specifier: 'catalog:'
-        version: 2.0.0-beta.32(@opentelemetry/api@1.9.1)(@tanstack/query-core@5.103.1)
+        version: 2.0.0-beta.43(@tanstack/query-core@5.104.1)
       '@rolldown/plugin-babel':
         specifier: ^0.2.4
         version: 0.2.4(@babel/core@8.0.5)(@babel/runtime@7.29.7)(rolldown@1.2.9)(vite@8.3.0(@types/node@26.6.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.1))
@@ -275,17 +275,17 @@ importers:
         specifier: ^4.3.3
         version: 4.3.3(vite@8.3.0(@types/node@26.6.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.1))
       '@tanstack/react-query':
-        specifier: ^5.103.1
-        version: 5.103.1(react@19.3.0)
+        specifier: ^5.104.1
+        version: 5.104.1(react@19.3.0)
       '@tanstack/react-router':
-        specifier: ^1.170.38
-        version: 1.170.38(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+        specifier: ^1.170.41
+        version: 1.170.41(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@tanstack/react-table':
-        specifier: ^9.2.4
-        version: 9.2.4(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+        specifier: ^9.2.8
+        version: 9.2.8(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@tanstack/react-virtual':
-        specifier: ^3.14.13
-        version: 3.14.13(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+        specifier: ^3.14.14
+        version: 3.14.14(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@testing-library/react':
         specifier: 'catalog:'
         version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -315,7 +315,7 @@ importers:
         version: 0.7.1
       effect:
         specifier: 'catalog:'
-        version: 4.0.0
+        version: 4.0.2
       es-toolkit:
         specifier: 'catalog:'
         version: 1.52.0
@@ -363,13 +363,13 @@ importers:
     dependencies:
       '@effect/ai-openai':
         specifier: 'catalog:'
-        version: 4.0.0(effect@4.0.0)
+        version: 4.0.2(effect@4.0.2)
       '@effect/opentelemetry':
         specifier: 'catalog:'
-        version: 4.0.0(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0)
+        version: 4.0.2(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.2)
       '@effect/sql-sqlite-node':
         specifier: 'catalog:'
-        version: 4.0.0(effect@4.0.0)
+        version: 4.0.2(effect@4.0.2)
       '@hono/node-server':
         specifier: ^2.1.1
         version: 2.1.1(hono@4.13.8)
@@ -393,25 +393,25 @@ importers:
         version: 1.43.0
       '@orpc/contract':
         specifier: 'catalog:'
-        version: 2.0.0-beta.32(@opentelemetry/api@1.9.1)
+        version: 2.0.0-beta.43
       '@orpc/experimental-effect':
         specifier: 'catalog:'
-        version: 2.0.0-beta.32(@opentelemetry/api@1.9.1)(effect@4.0.0)(fastify@5.12.5)
+        version: 2.0.0-beta.43(effect@4.0.2)(fastify@5.12.5)
       '@orpc/openapi':
         specifier: 'catalog:'
-        version: 2.0.0-beta.32(@opentelemetry/api@1.9.1)(fastify@5.12.5)
+        version: 2.0.0-beta.43(fastify@5.12.5)
       '@orpc/server':
         specifier: 'catalog:'
-        version: 2.0.0-beta.32(@opentelemetry/api@1.9.1)(fastify@5.12.5)
+        version: 2.0.0-beta.43(fastify@5.12.5)
       '@standard-schema/spec':
         specifier: 'catalog:'
         version: 1.1.0
       drizzle-orm:
         specifier: 1.0.0-rc.4
-        version: 1.0.0-rc.4(patch_hash=7256b52b8abfa1cb1c9d8f5ac10271151795b277385d2f3bd52ddbea805d58e0)(@effect/sql-sqlite-node@4.0.0(effect@4.0.0))(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(arktype@2.2.3)(bun-types@1.3.14)(effect@4.0.0)(postgres@3.4.9)(zod@4.6.5)
+        version: 1.0.0-rc.4(patch_hash=7256b52b8abfa1cb1c9d8f5ac10271151795b277385d2f3bd52ddbea805d58e0)(@effect/sql-sqlite-node@4.0.2(effect@4.0.2))(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(arktype@2.2.3)(bun-types@1.3.14)(effect@4.0.2)(postgres@3.4.9)(zod@4.6.5)
       effect:
         specifier: 'catalog:'
-        version: 4.0.0
+        version: 4.0.2
       es-toolkit:
         specifier: 'catalog:'
         version: 1.52.0
@@ -481,7 +481,7 @@ importers:
         version: link:../shared
       effect:
         specifier: 'catalog:'
-        version: 4.0.0
+        version: 4.0.2
       es-toolkit:
         specifier: 'catalog:'
         version: 1.52.0
@@ -502,7 +502,7 @@ importers:
         version: 95.1.0(graphql@17.0.2)
       effect:
         specifier: 'catalog:'
-        version: 4.0.0
+        version: 4.0.2
       es-toolkit:
         specifier: 'catalog:'
         version: 1.52.0
@@ -533,10 +533,10 @@ importers:
         version: 8.0.0
       '@orpc/contract':
         specifier: 'catalog:'
-        version: 2.0.0-beta.32(@opentelemetry/api@1.9.1)
+        version: 2.0.0-beta.43
       '@orpc/openapi':
         specifier: 'catalog:'
-        version: 2.0.0-beta.32(@opentelemetry/api@1.9.1)(fastify@5.12.5)
+        version: 2.0.0-beta.43(fastify@5.12.5)
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
@@ -545,7 +545,7 @@ importers:
         version: 3.1.2
       effect:
         specifier: 'catalog:'
-        version: 4.0.0
+        version: 4.0.2
       es-toolkit:
         specifier: 'catalog:'
         version: 1.52.0
@@ -928,16 +928,8 @@ packages:
     resolution: {integrity: sha512-q/ThtP9gcnEP6xlv7LrY26C2mHqdGBti/MmOVngt/M/oIGYkssmQGxPK9WzBNt2juVcH/vml2WQ+ra8LXYOTaA==}
     engines: {node: ^22.11 || ^24 || >=26}
 
-  '@clack/core@1.4.3':
-    resolution: {integrity: sha512-/kr3UWNtdJfxZtPgDqUOmG2pvwlmcLGheex5yiZKdwbzZJxhV+HMNR9QNmyY5cGwTNV6LrR7Jtp+KjhUAP1qBQ==}
-    engines: {node: '>= 20.12.0'}
-
   '@clack/core@1.5.1':
     resolution: {integrity: sha512-iHTrHA8MtVuLl2TfZySmcKv1qO2PoyC9Z7pfSDozEuV5vtY3/wcOPKJXlqJ5Oq2Cx5DDGQGAMVx6HZfRRoVEbQ==}
-    engines: {node: '>= 20.12.0'}
-
-  '@clack/prompts@1.7.0':
-    resolution: {integrity: sha512-y7/yvZ2TPAnR9+jnc00klvNNLkJiXFFrQA/hlLCcxA9a2A4zQIOimyFQ9XfwYKiGD1fb5GY8vbKIIgO8d5Tb2A==}
     engines: {node: '>= 20.12.0'}
 
   '@clack/prompts@1.8.1':
@@ -976,13 +968,13 @@ packages:
   '@drizzle-team/brocli@0.12.1':
     resolution: {integrity: sha512-yHwomvolVafvUXhy5TdiJVkuNCxXn+bKOs2aWiWEQh/5YaV97Oa/abJz3dmx7lxgIUsUlS1Jl4mEfvJPo3YsVw==}
 
-  '@effect/ai-openai@4.0.0':
-    resolution: {integrity: sha512-WjLvyFW4urzXkNy+Ki1YQE912yOxMYHps5gbiPfiUDghuHz0hfA+jzprGL8vj4fTwZI56TIwkviKRqfQNwka7w==}
+  '@effect/ai-openai@4.0.2':
+    resolution: {integrity: sha512-xNaXIInCYaqzVmx5tt3gfnQ7KPlLs3BX02cWomfu/uLggaHoQNlrfbIxRyCtuzBW5teqFACAPTUAf2SUzlGq6g==}
     peerDependencies:
-      effect: ^4.0.0
+      effect: ^4.0.2
 
-  '@effect/opentelemetry@4.0.0':
-    resolution: {integrity: sha512-vXVhqlcADHtmKlw2gIqRRlXFve4ms4JJ5ykAqzNe37QQ/5N5A5gJ9VOXkMBORHZC5O4gdHZwxhAzGZb0zvFf/Q==}
+  '@effect/opentelemetry@4.0.2':
+    resolution: {integrity: sha512-csJqUeoI89WkRz09PeX+BzCYCliLhVJNE+1D2GBgEvGU7J0kdTIxm8pnJLHvn2u0l0ItZOjYvc2gsWL6UI9LMg==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
       '@opentelemetry/api': '>=1.9.0 <2.0.0'
@@ -994,7 +986,7 @@ packages:
       '@opentelemetry/sdk-trace-node': '>=2.0.0 <3.0.0'
       '@opentelemetry/sdk-trace-web': '>=2.0.0 <3.0.0'
       '@opentelemetry/semantic-conventions': '>=1.33.0 <2.0.0'
-      effect: ^4.0.0
+      effect: ^4.0.2
     peerDependenciesMeta:
       '@opentelemetry/api':
         optional: true
@@ -1013,10 +1005,10 @@ packages:
       '@opentelemetry/sdk-trace-web':
         optional: true
 
-  '@effect/sql-sqlite-node@4.0.0':
-    resolution: {integrity: sha512-xyUSLY7v55iMgGxrjFrTo5ngixgQ3jLmOQ+AX8CCazO/caxuMM0oq8zb974FAcvQHRrpMEWU7Vnoo+rxct7PAQ==}
+  '@effect/sql-sqlite-node@4.0.2':
+    resolution: {integrity: sha512-QjhQ6yetczGE08ZV/05Y4Cj7GNGswloRZuk2cZ4tl84C91398Ho0PhDLexihO2RHBTE1YjpUW8Mdl4KH41I/LQ==}
     peerDependencies:
-      effect: ^4.0.0
+      effect: ^4.0.2
 
   '@effect/tsgo-darwin-arm64@0.45.0':
     resolution: {integrity: sha512-WUoiEVcm8E19QK6fl63lsssM4dkT9IFnULbmqQ6LBfv7H9uRkpE9S3thj8ZtZ+vl/QY8atwfuaTf+3A1m/kGtQ==}
@@ -1057,10 +1049,10 @@ packages:
     resolution: {integrity: sha512-gPG0ixVHgtYBUe5DbKX9vzHlhqd9+ZEfs4m/XWy0808av0A2XqMzaG3F5rnPBN7EUJRPlo9TluIi8WHx/pBV+A==}
     hasBin: true
 
-  '@effect/vitest@4.0.0':
-    resolution: {integrity: sha512-kGElCPFGtP+CgMCwV/HjJWqtE3zYo6I1+8MSA54l+EI24lPU9p2Efa+TBp1jfkg9j711KKzEqgSAy3VzTsb76Q==}
+  '@effect/vitest@4.0.2':
+    resolution: {integrity: sha512-Zb72nu7iUy3rNdBp9J1Xu5oUQGwJ8cOYsUwmYgujj88aqyvASRDjOS01SjlcPViqf77csduetKdCJTVndMNfzw==}
     peerDependencies:
-      effect: ^4.0.0
+      effect: ^4.0.2
       vitest: '>=5.0.0 <6.0.0'
 
   '@emnapi/core@1.11.2':
@@ -1314,12 +1306,6 @@ packages:
     engines: {node: '>=6'}
     hasBin: true
 
-  '@hey-api/spec-types@0.0.0-next-20260408030107':
-    resolution: {integrity: sha512-P5DKr4dpZ7lmZpZt2bc2KWuzU9vl4GZcN7VrjchZF1WWKNGZFnwWhBxZo1t6P2muOCopIvqD2Fvp5os4QiitKA==}
-
-  '@hey-api/types@0.1.4':
-    resolution: {integrity: sha512-thWfawrDIP7wSI9ioT13I5soaaqB5vAPIiZmgD8PbeEVKNrkonc0N/Sjj97ezl7oQgusZmaNphGdMKipPO6IBg==}
-
   '@hono/node-server@2.1.1':
     resolution: {integrity: sha512-ELuehkj5VCBdgEw9zs+ivkKwyzzUCSQuE96YmiPvn1ECBoZCczbFXJLeEGMTYjphP6gydh4pHMqEYPVMYUVgQg==}
     engines: {node: '>=20'}
@@ -1455,6 +1441,12 @@ packages:
   '@nodelib/fs.walk@1.2.8':
     resolution: {integrity: sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg==}
     engines: {node: '>= 8'}
+
+  '@openapi-spec/downgrader@0.3.0':
+    resolution: {integrity: sha512-y4+CkV8chSbRKmR64+uGr0IjDjNUOQIdNMpCbSiD2JCc0a0HouUTXvgt+FO8/ktfaMaNz3ypqq4PmVfB3twx3w==}
+
+  '@openapi-spec/types@0.3.0':
+    resolution: {integrity: sha512-r9Gufbaw9Cpb/rCiEsFdmdWdj41MzL4/y6dCJjwMQBUvQqj5X76WlbErDSwIHR3UsxCNQI2W20GsQ4eh3YXaMQ==}
 
   '@opentelemetry/api-logs@0.203.0':
     resolution: {integrity: sha512-9B9RU0H7Ya1Dx/Rkyc4stuBZSGVQF27WigitInx2QQoj6KUpEFYPKoWjdFTunJYxmXmh17HeBvbMa1EhGyPmqQ==}
@@ -1939,22 +1931,22 @@ packages:
     peerDependencies:
       '@opentelemetry/api': ^1.1.0
 
-  '@orpc/client@2.0.0-beta.32':
-    resolution: {integrity: sha512-Uz+mO5+AHmxu95x9PKq3HLGlMDqZPZbi1AUPfiVtISz8vMwtSRrNk2OuOyTqzWBLIN1GNMHLY4Wy2IRf6aJmkA==}
+  '@orpc/client@2.0.0-beta.43':
+    resolution: {integrity: sha512-176u4pmmoXGyjHRTuJFSQVN4Ucuau5mfn3LkxBs+kyTcNHOZD9XmDW8DAr0NJwhfUBDT/E62q1y9aEgiKUcJsA==}
 
-  '@orpc/contract@2.0.0-beta.32':
-    resolution: {integrity: sha512-ltOySo2yHUCVoEDJW456JP14FQ17jzL4Xon0kZhDxPsnP17ibbXP6G7bSp72qi7ZTn9s41De89RVIWnSVUhgkQ==}
+  '@orpc/contract@2.0.0-beta.43':
+    resolution: {integrity: sha512-8IyzPrpdvGhi51G6QHEkoPOvs4AyV0YjhV6OP57W9rUAS9YnPyc/ScKwpsTZsm6dOjPcNBk8R2n+iN2s7m4t4w==}
 
-  '@orpc/experimental-effect@2.0.0-beta.32':
-    resolution: {integrity: sha512-XFBl23NXg5BfZgdTKGqCQr9ueG3KK3YiAMZ8IFwt1Ucm0sLxxmr6sLgX8L7WSPfxFkm9MyrJcdxbJey2YWRaJA==}
+  '@orpc/experimental-effect@2.0.0-beta.43':
+    resolution: {integrity: sha512-24Lwf6rbiaeidp0d28IG8TosinZInV7f0duHoDAeV9HNccsiXB/7ShL5G/va7tNDaDX+L3N/DU01GybSK5Pl7g==}
     peerDependencies:
-      effect: '>=4.0.0-beta.90'
+      effect: '>=4.0.0'
 
-  '@orpc/json-schema@2.0.0-beta.32':
-    resolution: {integrity: sha512-LUS9AL8ZUrjkhuWc6IZCxRcts62HPZqOuuKwZDa3woJTDXujsfJkofBzQmQV/1eKv0RY7/Znditf5/DYuHNxLQ==}
+  '@orpc/json-schema@2.0.0-beta.43':
+    resolution: {integrity: sha512-h0wq0pMfxTjFEy7RaFTKwwq2GviS7lz+uh16sUMbdUMTNYP4y1t8SLLfa979EbhfG9RJ3/vXPdaToiMh8HQz8g==}
 
-  '@orpc/openapi@2.0.0-beta.32':
-    resolution: {integrity: sha512-rVKQ2ewPUQtUAE0HOTOj6EH4HEjoihb/qQeq1J7NnBpuF4CYNaDKabAS5LHP8NJuPv0Es0hpNyF6ZmPaSFqy8g==}
+  '@orpc/openapi@2.0.0-beta.43':
+    resolution: {integrity: sha512-sT/a4M/rfyemqAv07VRdbBA/NsepWTLlggrqnpRUhqYSUobGKJ+I08uaKRzjPumXUz8ip9oDeSaR3Xgu3q5JXw==}
     peerDependencies:
       '@scalar/api-reference': '>=1.57.2'
       '@types/swagger-ui': '>=5.32.0'
@@ -1967,8 +1959,8 @@ packages:
       swagger-ui:
         optional: true
 
-  '@orpc/server@2.0.0-beta.32':
-    resolution: {integrity: sha512-CUgzQUigBQc1tj3/Kc9A7Lh96bebsSlPizaZrrXN3OYBuRowQiCym+5lauz3nDaLXAjTz98kHI9lujGoGaNJtQ==}
+  '@orpc/server@2.0.0-beta.43':
+    resolution: {integrity: sha512-4G6xYiPQtu5iefsnEZzxa9rcl+P0IJCPkzQu+Mv45QJd/S3Qp6MQwDJAV90WBAjQay6dd0662awGrh4JXfIXhQ==}
     peerDependencies:
       crossws: '>=0.3.4'
       fastify: '>=5.6.1'
@@ -1978,18 +1970,13 @@ packages:
       fastify:
         optional: true
 
-  '@orpc/shared@2.0.0-beta.32':
-    resolution: {integrity: sha512-zxxkQAytfOfrT0yrOClngdsJzrbbbrTBgX8OCPYha5VPqYG8QUxMGMKT0DxS6yWhFEmlT7CdutYpqk/qvvn8hA==}
-    peerDependencies:
-      '@opentelemetry/api': '>=1.9.0'
-    peerDependenciesMeta:
-      '@opentelemetry/api':
-        optional: true
+  '@orpc/shared@2.0.0-beta.43':
+    resolution: {integrity: sha512-2DP1wex6Aja6dcmudQAiMdZlXcuJXN7/k0dtFAj2Sy0TwQ6Jcr+t7aJk5lmZrosPpEAQTbY/f9kJJW+Cxr35Cw==}
 
-  '@orpc/tanstack-query@2.0.0-beta.32':
-    resolution: {integrity: sha512-gpt/uKeDbnRC1z6rh0Pb6JyM3J2Y4+Jq+Om3oa+OmvYBf56SiS7U+PEL7de7HVaoeKd+0AUkjhLSpamO0r7TxQ==}
+  '@orpc/tanstack-query@2.0.0-beta.43':
+    resolution: {integrity: sha512-ezTglhKxmhaMf/l74TPpHW5W16ONiKzDdDSFmVKH+dhAwbm9UafJfncSJXNhNo5h1i5wX2U+22VSM5y2riNzmg==}
     peerDependencies:
-      '@tanstack/query-core': '>=5.80.2'
+      '@tanstack/query-core': '>=5.89.0'
 
   '@oxc-parser/binding-android-arm-eabi@0.148.0':
     resolution: {integrity: sha512-pHASv9g5pASxb7akHERZNSkrEqPhFaUix98o7d9hbTpolnnFWl7UiRrcMhCsV1+iVO4/cJwKsbKRJTFNs2tdBQ==}
@@ -3356,38 +3343,31 @@ packages:
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
-  '@standardserver/aws-lambda@0.8.3':
-    resolution: {integrity: sha512-QozxFyi5h8cmcAgTTfd7KoHjjsfXwoSBdWV64Ehffow4i9+Hv6lvezwhsVchQRPXDbY7f3WzN5MJ/uWwesObng==}
-    deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
+  '@standard-server/aws-lambda@0.10.2':
+    resolution: {integrity: sha512-9E9uTHdR3d1+duJ0VzZBJRdIHq49ldjbMeXwmpUYF2lHLSIs1uA8/MovbtPkf6ZLH3dRS11mwfSyDs3lRgEDwA==}
 
-  '@standardserver/core@0.8.3':
-    resolution: {integrity: sha512-G0jN6oU1N/p4DgmLuoEtuIxWvKr3LsnCGOaqnzM6/tnTQAnqKwxuZN5Oh8S/Fw7+IJNxDcn26jER4ZTAXTxsrA==}
-    deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
+  '@standard-server/core@0.10.2':
+    resolution: {integrity: sha512-s5IRKAKog9vX5eHQiHduE8Yi0mEQ/xoH/J3VRTZGwd+64RWM/HDnr0LzF9TfOFoQOQyd7Shceo5M4RiYvXarOw==}
 
-  '@standardserver/fastify@0.8.3':
-    resolution: {integrity: sha512-bFfFJk1lWFRLgD4Rd/VOyyZm+87xyKdmRuHRVb8TDZw8JjWFrmBzFTJe+amrkrCZ+pzC3VIMy/XNSJoIkuygjA==}
-    deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
+  '@standard-server/fastify@0.10.2':
+    resolution: {integrity: sha512-nUTyzl4xOS1hWik9xxUzkcjccvMvBhYFbXMcj+E77jF9KDrj9DJmmaHC+A0NSVI3hKZLrl5t/di6yAuE06nN8g==}
     peerDependencies:
       fastify: '>=5.6.1'
     peerDependenciesMeta:
       fastify:
         optional: true
 
-  '@standardserver/fetch@0.8.3':
-    resolution: {integrity: sha512-Uy+lE/OzruJp5n7ZS7gFXpI9CkTHLty/wMeT/qSjijByfdN1Lk1kofXk0zQ4NqQ/Yk0m6LPAk0bD/mRyOP4T7g==}
-    deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
+  '@standard-server/fetch@0.10.2':
+    resolution: {integrity: sha512-lSBJHj7P7z8+e8pHw771V+ZIbNLiVXmeUQYfH6OlHLz/bU2PdNDu3hzs8PvznE9S0O9ddGPzzi+sSj1KoQvx3A==}
 
-  '@standardserver/node@0.8.3':
-    resolution: {integrity: sha512-pafmT/2sQ3NYD1CCIa+u0rANi4ke0iZ3Nz94rAPY1bpuf3xU3MlMuLFjg66bt3ioDwYiobGihkbXJ7GcoPfKGA==}
-    deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
+  '@standard-server/node@0.10.2':
+    resolution: {integrity: sha512-9rySfQOD9kR0eOBDdL3kQT8/kdp278A2PXDOgV7v+SB6vrGVSQuvVO4Yi5hcTMTCPTPxght36tLrLc/YlAf19g==}
 
-  '@standardserver/peer@0.8.3':
-    resolution: {integrity: sha512-N1deRqDmSgq5Mz6ZJty3FYxhz7eEfqw3riBlcNR3idJGCssZT662scN3/WhnPjXrVhMXTJbAQNezs2A3gDBq5g==}
-    deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
+  '@standard-server/peer@0.10.2':
+    resolution: {integrity: sha512-yC9g81i0y4zRWGGCbtn6/Pir0cU51Z0uVVg+bTYa9zPGQJxq7TRLjns8CnGH4vP4X+zDnek/ky2pMNz8TaN0Mg==}
 
-  '@standardserver/shared@0.8.3':
-    resolution: {integrity: sha512-HDn1zMWTXY0W5nS+6J7PnD5swCzSz+e8L1FvYk4PxNIAjUsEolNfkRgONOQ5D/W+rU4kyqGF8g0DbC08AfiyxA==}
-    deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
+  '@standard-server/shared@0.10.2':
+    resolution: {integrity: sha512-ffbmIGnzTMjQfJOM91BkC8VvfhB+Rx70f6/dsVnrqjLXEW8GXGUmi8CGTP3Fz9j1G2N+Rum3r4KiewNUBZG7uQ==}
 
   '@tailwindcss/node@4.3.3':
     resolution: {integrity: sha512-/T8IKEsf9VTU6tLjgC7+sv2mOPtQxzE2jMw7u4Tt40Tx+QSZxpzh95/H6cMKoja9XuW7iMdLJYBB0o9G1CaAgg==}
@@ -3487,57 +3467,60 @@ packages:
     resolution: {integrity: sha512-utTS5L2OkeYUzXGohL1Z8sefu1GLNOJcxe8Hd6iIdc/Xo1K1nDB2JEp4iSFhvYh33xKC9V91TxrS8qfrpoKobQ==}
     engines: {node: '>=20.19'}
 
-  '@tanstack/intent@0.4.0':
-    resolution: {integrity: sha512-tTmNJ3+R/J+g/aTikTya39W6jVLEoLQbow1xm7j/zIbTbSY+91ypZDFaPAe9wzeHmDopsKIJxzuUSi+yJnzS4Q==}
+  '@tanstack/intent@0.5.5':
+    resolution: {integrity: sha512-Ei5RqUWgV96HrezTEyDbScy0wZN+17dNo59Am8/3ncv0YIaIxApkiX5LkM488wxe4a1Imdi09nhjFxblxwLMSQ==}
     engines: {node: '>=20.12.0'}
     hasBin: true
 
   '@tanstack/query-core@5.103.1':
     resolution: {integrity: sha512-rms8HqTGp6zA00dM+cUQ2eBcgzNJefuu5CAMB37i/6MiGT1zulPOytCFu2a0qjLqVR2n1jENPj9woqFQNuCzWA==}
 
-  '@tanstack/react-query@5.103.1':
-    resolution: {integrity: sha512-rmAPPApNEK17VXRJhtE1rja53n23VV5w30C0saCgJhhX+EpdUnVqMGV/s5nnzV43X75KTHKzuoiuxSzGTBIkag==}
+  '@tanstack/query-core@5.104.1':
+    resolution: {integrity: sha512-TiRghcrGkUTE+M4JBxvpPSpBhxvIzQairw+cksrHYGr+2uwC77yW1SY9nYxnYRYOppvucf8rEg6b5byoz4rTpw==}
+
+  '@tanstack/react-query@5.104.1':
+    resolution: {integrity: sha512-Zz70EgjahNI7aCz8BZxM3vUGU44ycxEAzMuCUjLeA7SVhhOkg3ZgPjPJPvHjs6Rmky/dtmnu1WzjGHNHmhCoZQ==}
     peerDependencies:
       react: 19.3.0
 
-  '@tanstack/react-router@1.170.38':
-    resolution: {integrity: sha512-iHM9b0aDJbuvftmkiQXawzoqsdV68p2Re2safbVLCnxafe+iLKV++2i3hI/BMAP6uR92/Mjw94JKJJfD7pbwHQ==}
+  '@tanstack/react-router@1.170.41':
+    resolution: {integrity: sha512-Mpvw8Wm5MGDbTqI8Yc9flLKxbOHwoWocv0H2aGKcgw2a017oK5nZWqa954P+DrUx/8fI98YNywnHP5XcD3tQ9w==}
     engines: {node: '>=20.19'}
     peerDependencies:
       react: 19.3.0
       react-dom: 19.3.0
 
-  '@tanstack/react-store@0.11.1':
-    resolution: {integrity: sha512-HaIGKI3YLmjBYIvy5DFDY23oNaYZIsTZfngey07Uh5iLVJgM3bIGCnZeOFOqzjFld9JHWcaHJnasD/bKoGKwJQ==}
+  '@tanstack/react-store@0.11.2':
+    resolution: {integrity: sha512-oj5O5DmiMWE+ih+SioX2ayC1kbK7d3fpLx0B75fPJr9nY3zU+hoW010yr64qXsY/9fyiLVE2bn5mGNV3owm8RQ==}
     peerDependencies:
       react: 19.3.0
       react-dom: 19.3.0
 
-  '@tanstack/react-table@9.2.4':
-    resolution: {integrity: sha512-Rzp1Q4e0/nIgEjmISYR5HeEgLTNtrG+C7NFZf/AbCxPO5hg+zC3yNGwcoECigUk8SFzzvhXbd2rFdtP2ZiGrfA==}
+  '@tanstack/react-table@9.2.8':
+    resolution: {integrity: sha512-cJxgratJm3uMm2sXnmY3PCTvcvIEFleCJ2uSOM2nxCmIY8RWA1KjXt5fsWGlYisL7DODr2w9YpLRQ3i/7MdIsQ==}
     engines: {node: '>=20'}
     peerDependencies:
       react: 19.3.0
 
-  '@tanstack/react-virtual@3.14.13':
-    resolution: {integrity: sha512-JbDTAwtzZ99aOeCrAfW5EsE5KSq5RWh6Af2dtFwyLIIk48Ja7vm6n4axu/43T3vfjFnEGJalxJ1wyYjSQD6bSg==}
+  '@tanstack/react-virtual@3.14.14':
+    resolution: {integrity: sha512-eo/arVIpYi9rGJXR5y4fDoTiz+BBOc4HKVBKQMoPRswxJtP6HV8iupW/DkBE9TRh+PjzikIDHw2h7aV25g0Z4w==}
     peerDependencies:
       react: 19.3.0
       react-dom: 19.3.0
 
-  '@tanstack/router-core@1.171.32':
-    resolution: {integrity: sha512-X86Jqk3vB2KJcUfS6oLi7B7yxbaa59QEhZRPPP1fRx3k+Jw/Fu1UYVBcRtdwK/OccQnrlQdVoKvNO3QXmyEBOw==}
+  '@tanstack/router-core@1.171.34':
+    resolution: {integrity: sha512-X+19pGuuLVPvvAvPYw9v/+ktRk5cCll8AtfpBpOhDRmVgUMrfqze0467xtq8YRVVs/mmo5rVtWn/7Tp32RDBKw==}
     engines: {node: '>=20.19'}
 
-  '@tanstack/store@0.11.1':
-    resolution: {integrity: sha512-mzTOBhypOuDJAy/D8n2MfUZ1HFkXnmSETviRyhqEC8LUE7/IZQExOTxMANj3KjTofYTkFNpBY67qaVrT41YccA==}
+  '@tanstack/store@0.11.2':
+    resolution: {integrity: sha512-sJ4mjol8uQsHV0gOJzzjwXfh2Fwm+Sz0+8deqiTm4jGbMdjzNSW+xZCFm0kUa870uhd8yi+DpKnZb5Kc4apa0Q==}
 
-  '@tanstack/table-core@9.2.4':
-    resolution: {integrity: sha512-GwdDyGGr6UXAtubF14yAwcXvdaogqfsQgIk89Suebjxob/Rjq2xvfmXsjDF1rQmKmhHsJm9TOY7myxv3i6geJw==}
+  '@tanstack/table-core@9.2.8':
+    resolution: {integrity: sha512-M4D6fY5jnc7z7TaoD3Pjvz5R+8MbhzCGYdkcFf2T1AgjigwLinvFWZh6mtqfN016A7yGIroOL0GiTlVGsTh6Vg==}
     engines: {node: '>=20'}
 
-  '@tanstack/virtual-core@3.17.11':
-    resolution: {integrity: sha512-+ILjvtHup6Y2hzQ6YzwMgX1Q+oQpxEGOXCEsCNaPoIP0VxMbizIBTmYTDtkerkIQS8/CbP1BRuyt8V/8BCsy1g==}
+  '@tanstack/virtual-core@3.18.0':
+    resolution: {integrity: sha512-8frWsyfyBwLGoDQ6wN6Lq3CoT8j4BPJUzE6nH4P9mruLhxPOamk82prC3JxRMLJzYnNa9ISaZ8NtfxEiOGkHEQ==}
 
   '@testing-library/dom@10.4.2':
     resolution: {integrity: sha512-yzr2S9HyAIdhz2/6qHgbs665Q7PKVcDF05vsOlHPxG1mo36gKVesdYVeDLnXgfjJ03CrKRk08knc6+E/9m8v2Q==}
@@ -4731,8 +4714,8 @@ packages:
   ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
 
-  effect@4.0.0:
-    resolution: {integrity: sha512-ooc1TG5t+FfzgYnFz2ff6BBKyZ7EwBRVXC7c4RhQUAD6/TZ2gTXXMeb4WX7a19ozQo4J73/QW+S00YAIresoMQ==}
+  effect@4.0.2:
+    resolution: {integrity: sha512-YeYnLqSFrL4+tCOXRrfNP03w8FILoF/wDl+ukraJAGzXrjcS383W7LAAvGBbLatEyktmLxRq+9xJinx7QzXW5A==}
 
   electron-to-chromium@1.5.430:
     resolution: {integrity: sha512-e1QEj72Y4zd8RlNZVmoTg+iCOSVwpk05IOiiQwdrkwCSVlZfPthevErhE+nckGd2YbsXfp1SkisznhGVIXP2NQ==}
@@ -6493,8 +6476,9 @@ packages:
     engines: {node: ^20.19.0 || >=22.12.0}
     hasBin: true
 
-  rou3@0.9.2:
-    resolution: {integrity: sha512-3SOzvaAg8rkHrXtRjpCvCvbyO5to9oOO27Z/XqHEYXfMRVSw/qMIVdmaOk9W2lcRLtR6dlqTjo9hDeJk70QBYQ==}
+  rou3@1.0.0:
+    resolution: {integrity: sha512-ySeaQkSrua+ut9g+65I7FHqOFBaY8tV0FmccXItoq0q21se32Q3u4YiW7/RqXSosWgYJaaKwRHXy3BST9PeCNQ==}
+    engines: {node: '>=20.19.0'}
 
   router@2.2.0:
     resolution: {integrity: sha512-nLTrUKm2UyiL7rlhapu/Zl45FwNgkZGaCpZbIHajDYgwlJCOzLSk+cIPAnsEqV955GjILJnKbdQC1nVPz+gAYQ==}
@@ -7261,11 +7245,6 @@ packages:
     resolution: {integrity: sha512-YgvUTfwqyc7UXVMrB+SImsVYSmTS8X/tSrtdNZMImM+n7+QTriRXyXim0mBrTXNeqzVF0KWGgHPeiyViFFrNDw==}
     engines: {node: '>=18'}
 
-  yaml@2.9.0:
-    resolution: {integrity: sha512-2AvhNX3mb8zd6Zy7INTtSpl1F15HW6Wnqj0srWlkKLcpYl/gMIMJiyuGq2KeI2YFxUPjdlB+3Lc10seMLtL4cA==}
-    engines: {node: '>= 14.6'}
-    hasBin: true
-
   yaml@2.9.1:
     resolution: {integrity: sha512-3NxN8+78OdzbT7C/WjGsyfPAtJaN3FNDsWxv7Y7mcDsT/oOmgW8BpyQQFFBnvZE3j9Y2Sdz1ULFLezL7Eb2yFw==}
     engines: {node: '>= 14.6'}
@@ -7845,20 +7824,8 @@ snapshots:
       '@changesets/types': 7.0.0
       human-id: 4.2.1
 
-  '@clack/core@1.4.3':
-    dependencies:
-      fast-wrap-ansi: 0.2.2
-      sisteransi: 1.0.5
-
   '@clack/core@1.5.1':
     dependencies:
-      fast-wrap-ansi: 0.2.2
-      sisteransi: 1.0.5
-
-  '@clack/prompts@1.7.0':
-    dependencies:
-      '@clack/core': 1.4.3
-      fast-string-width: 3.0.2
       fast-wrap-ansi: 0.2.2
       sisteransi: 1.0.5
 
@@ -7917,14 +7884,14 @@ snapshots:
 
   '@drizzle-team/brocli@0.12.1': {}
 
-  '@effect/ai-openai@4.0.0(effect@4.0.0)':
+  '@effect/ai-openai@4.0.2(effect@4.0.2)':
     dependencies:
-      effect: 4.0.0
+      effect: 4.0.2
 
-  '@effect/opentelemetry@4.0.0(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0)':
+  '@effect/opentelemetry@4.0.2(@opentelemetry/api-logs@0.222.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.2)':
     dependencies:
       '@opentelemetry/semantic-conventions': 1.43.0
-      effect: 4.0.0
+      effect: 4.0.2
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
       '@opentelemetry/api-logs': 0.222.0
@@ -7934,9 +7901,9 @@ snapshots:
       '@opentelemetry/sdk-trace-base': 2.11.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/sdk-trace-node': 2.11.0(@opentelemetry/api@1.9.1)
 
-  '@effect/sql-sqlite-node@4.0.0(effect@4.0.0)':
+  '@effect/sql-sqlite-node@4.0.2(effect@4.0.2)':
     dependencies:
-      effect: 4.0.0
+      effect: 4.0.2
 
   '@effect/tsgo-darwin-arm64@0.45.0':
     optional: true
@@ -7969,9 +7936,9 @@ snapshots:
       '@effect/tsgo-win32-arm64': 0.45.0
       '@effect/tsgo-win32-x64': 0.45.0
 
-  '@effect/vitest@4.0.0(effect@4.0.0)(vitest@5.0.1(@opentelemetry/api@1.9.1)(@types/node@24.13.5)(happy-dom@20.14.5)(vite@8.3.0(@types/node@24.13.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.1)))':
+  '@effect/vitest@4.0.2(effect@4.0.2)(vitest@5.0.1(@opentelemetry/api@1.9.1)(@types/node@24.13.5)(happy-dom@20.14.5)(vite@8.3.0(@types/node@24.13.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.1)))':
     dependencies:
-      effect: 4.0.0
+      effect: 4.0.2
       vitest: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@24.13.5)(happy-dom@20.14.5)(vite@8.3.0(@types/node@24.13.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.1))
 
   '@emnapi/core@1.11.2':
@@ -8166,12 +8133,6 @@ snapshots:
       protobufjs: 7.6.6
       yargs: 17.7.3
 
-  '@hey-api/spec-types@0.0.0-next-20260408030107':
-    dependencies:
-      '@hey-api/types': 0.1.4
-
-  '@hey-api/types@0.1.4': {}
-
   '@hono/node-server@2.1.1(hono@4.13.8)':
     dependencies:
       hono: 4.13.8
@@ -8330,6 +8291,12 @@ snapshots:
     dependencies:
       '@nodelib/fs.scandir': 2.1.5
       fastq: 1.20.3
+
+  '@openapi-spec/downgrader@0.3.0':
+    dependencies:
+      '@openapi-spec/types': 0.3.0
+
+  '@openapi-spec/types@0.3.0': {}
 
   '@opentelemetry/api-logs@0.203.0':
     dependencies:
@@ -9020,99 +8987,88 @@ snapshots:
       '@opentelemetry/api': 1.9.1
       '@opentelemetry/core': 2.11.0(@opentelemetry/api@1.9.1)
 
-  '@orpc/client@2.0.0-beta.32(@opentelemetry/api@1.9.1)':
+  '@orpc/client@2.0.0-beta.43':
     dependencies:
-      '@orpc/shared': 2.0.0-beta.32(@opentelemetry/api@1.9.1)
-      '@standardserver/core': 0.8.3
-      '@standardserver/fetch': 0.8.3
-      '@standardserver/peer': 0.8.3
-    transitivePeerDependencies:
-      - '@opentelemetry/api'
+      '@orpc/shared': 2.0.0-beta.43
+      '@standard-server/core': 0.10.2
+      '@standard-server/fetch': 0.10.2
+      '@standard-server/peer': 0.10.2
 
-  '@orpc/contract@2.0.0-beta.32(@opentelemetry/api@1.9.1)':
+  '@orpc/contract@2.0.0-beta.43':
     dependencies:
-      '@orpc/client': 2.0.0-beta.32(@opentelemetry/api@1.9.1)
-      '@orpc/shared': 2.0.0-beta.32(@opentelemetry/api@1.9.1)
+      '@orpc/client': 2.0.0-beta.43
+      '@orpc/shared': 2.0.0-beta.43
+      '@standard-schema/spec': 1.1.0
+
+  '@orpc/experimental-effect@2.0.0-beta.43(effect@4.0.2)(fastify@5.12.5)':
+    dependencies:
+      '@orpc/client': 2.0.0-beta.43
+      '@orpc/contract': 2.0.0-beta.43
+      '@orpc/json-schema': 2.0.0-beta.43(fastify@5.12.5)
+      '@orpc/server': 2.0.0-beta.43(fastify@5.12.5)
+      '@orpc/shared': 2.0.0-beta.43
+      effect: 4.0.2
+    transitivePeerDependencies:
+      - crossws
+      - fastify
+
+  '@orpc/json-schema@2.0.0-beta.43(fastify@5.12.5)':
+    dependencies:
+      '@openapi-spec/types': 0.3.0
+      '@orpc/client': 2.0.0-beta.43
+      '@orpc/contract': 2.0.0-beta.43
+      '@orpc/server': 2.0.0-beta.43(fastify@5.12.5)
+      '@orpc/shared': 2.0.0-beta.43
       '@standard-schema/spec': 1.1.0
     transitivePeerDependencies:
-      - '@opentelemetry/api'
-
-  '@orpc/experimental-effect@2.0.0-beta.32(@opentelemetry/api@1.9.1)(effect@4.0.0)(fastify@5.12.5)':
-    dependencies:
-      '@orpc/client': 2.0.0-beta.32(@opentelemetry/api@1.9.1)
-      '@orpc/contract': 2.0.0-beta.32(@opentelemetry/api@1.9.1)
-      '@orpc/json-schema': 2.0.0-beta.32(@opentelemetry/api@1.9.1)(fastify@5.12.5)
-      '@orpc/server': 2.0.0-beta.32(@opentelemetry/api@1.9.1)(fastify@5.12.5)
-      '@orpc/shared': 2.0.0-beta.32(@opentelemetry/api@1.9.1)
-      effect: 4.0.0
-    transitivePeerDependencies:
-      - '@opentelemetry/api'
       - crossws
       - fastify
 
-  '@orpc/json-schema@2.0.0-beta.32(@opentelemetry/api@1.9.1)(fastify@5.12.5)':
+  '@orpc/openapi@2.0.0-beta.43(fastify@5.12.5)':
     dependencies:
-      '@orpc/client': 2.0.0-beta.32(@opentelemetry/api@1.9.1)
-      '@orpc/contract': 2.0.0-beta.32(@opentelemetry/api@1.9.1)
-      '@orpc/server': 2.0.0-beta.32(@opentelemetry/api@1.9.1)(fastify@5.12.5)
-      '@orpc/shared': 2.0.0-beta.32(@opentelemetry/api@1.9.1)
-      '@standard-schema/spec': 1.1.0
-      json-schema-typed: 8.0.2
+      '@openapi-spec/downgrader': 0.3.0
+      '@openapi-spec/types': 0.3.0
+      '@orpc/client': 2.0.0-beta.43
+      '@orpc/contract': 2.0.0-beta.43
+      '@orpc/json-schema': 2.0.0-beta.43(fastify@5.12.5)
+      '@orpc/server': 2.0.0-beta.43(fastify@5.12.5)
+      '@orpc/shared': 2.0.0-beta.43
+      '@standard-server/core': 0.10.2
+      '@standard-server/fetch': 0.10.2
+      rou3: 1.0.0
     transitivePeerDependencies:
-      - '@opentelemetry/api'
       - crossws
       - fastify
 
-  '@orpc/openapi@2.0.0-beta.32(@opentelemetry/api@1.9.1)(fastify@5.12.5)':
+  '@orpc/server@2.0.0-beta.43(fastify@5.12.5)':
     dependencies:
-      '@hey-api/spec-types': 0.0.0-next-20260408030107
-      '@orpc/client': 2.0.0-beta.32(@opentelemetry/api@1.9.1)
-      '@orpc/contract': 2.0.0-beta.32(@opentelemetry/api@1.9.1)
-      '@orpc/json-schema': 2.0.0-beta.32(@opentelemetry/api@1.9.1)(fastify@5.12.5)
-      '@orpc/server': 2.0.0-beta.32(@opentelemetry/api@1.9.1)(fastify@5.12.5)
-      '@orpc/shared': 2.0.0-beta.32(@opentelemetry/api@1.9.1)
-      '@standardserver/core': 0.8.3
-      '@standardserver/fetch': 0.8.3
-      rou3: 0.9.2
-    transitivePeerDependencies:
-      - '@opentelemetry/api'
-      - crossws
-      - fastify
-
-  '@orpc/server@2.0.0-beta.32(@opentelemetry/api@1.9.1)(fastify@5.12.5)':
-    dependencies:
-      '@orpc/client': 2.0.0-beta.32(@opentelemetry/api@1.9.1)
-      '@orpc/contract': 2.0.0-beta.32(@opentelemetry/api@1.9.1)
-      '@orpc/shared': 2.0.0-beta.32(@opentelemetry/api@1.9.1)
-      '@standardserver/aws-lambda': 0.8.3
-      '@standardserver/core': 0.8.3
-      '@standardserver/fastify': 0.8.3(fastify@5.12.5)
-      '@standardserver/fetch': 0.8.3
-      '@standardserver/node': 0.8.3
-      '@standardserver/peer': 0.8.3
+      '@orpc/client': 2.0.0-beta.43
+      '@orpc/contract': 2.0.0-beta.43
+      '@orpc/shared': 2.0.0-beta.43
+      '@standard-server/aws-lambda': 0.10.2
+      '@standard-server/core': 0.10.2
+      '@standard-server/fastify': 0.10.2(fastify@5.12.5)
+      '@standard-server/fetch': 0.10.2
+      '@standard-server/node': 0.10.2
+      '@standard-server/peer': 0.10.2
       cookie: 2.0.1
     optionalDependencies:
       fastify: 5.12.5
-    transitivePeerDependencies:
-      - '@opentelemetry/api'
 
-  '@orpc/shared@2.0.0-beta.32(@opentelemetry/api@1.9.1)':
+  '@orpc/shared@2.0.0-beta.43':
     dependencies:
-      '@standardserver/shared': 0.8.3
+      '@standard-server/shared': 0.10.2
       radash: 12.1.1
       type-fest: 5.9.0
-    optionalDependencies:
-      '@opentelemetry/api': 1.9.1
 
-  '@orpc/tanstack-query@2.0.0-beta.32(@opentelemetry/api@1.9.1)(@tanstack/query-core@5.103.1)':
+  '@orpc/tanstack-query@2.0.0-beta.43(@tanstack/query-core@5.104.1)':
     dependencies:
-      '@orpc/client': 2.0.0-beta.32(@opentelemetry/api@1.9.1)
-      '@orpc/contract': 2.0.0-beta.32(@opentelemetry/api@1.9.1)
-      '@orpc/openapi': 2.0.0-beta.32(@opentelemetry/api@1.9.1)(fastify@5.12.5)
-      '@orpc/shared': 2.0.0-beta.32(@opentelemetry/api@1.9.1)
-      '@tanstack/query-core': 5.103.1
+      '@orpc/client': 2.0.0-beta.43
+      '@orpc/contract': 2.0.0-beta.43
+      '@orpc/openapi': 2.0.0-beta.43(fastify@5.12.5)
+      '@orpc/shared': 2.0.0-beta.43
+      '@tanstack/query-core': 5.104.1
     transitivePeerDependencies:
-      - '@opentelemetry/api'
       - '@scalar/api-reference'
       - '@types/swagger-ui'
       - crossws
@@ -10215,41 +10171,41 @@ snapshots:
 
   '@standard-schema/spec@1.1.0': {}
 
-  '@standardserver/aws-lambda@0.8.3':
+  '@standard-server/aws-lambda@0.10.2':
     dependencies:
-      '@standardserver/core': 0.8.3
-      '@standardserver/fetch': 0.8.3
-      '@standardserver/node': 0.8.3
-      '@standardserver/shared': 0.8.3
+      '@standard-server/core': 0.10.2
+      '@standard-server/fetch': 0.10.2
+      '@standard-server/node': 0.10.2
+      '@standard-server/shared': 0.10.2
 
-  '@standardserver/core@0.8.3':
+  '@standard-server/core@0.10.2':
     dependencies:
-      '@standardserver/shared': 0.8.3
+      '@standard-server/shared': 0.10.2
 
-  '@standardserver/fastify@0.8.3(fastify@5.12.5)':
+  '@standard-server/fastify@0.10.2(fastify@5.12.5)':
     dependencies:
-      '@standardserver/core': 0.8.3
-      '@standardserver/node': 0.8.3
+      '@standard-server/core': 0.10.2
+      '@standard-server/node': 0.10.2
     optionalDependencies:
       fastify: 5.12.5
 
-  '@standardserver/fetch@0.8.3':
+  '@standard-server/fetch@0.10.2':
     dependencies:
-      '@standardserver/core': 0.8.3
-      '@standardserver/shared': 0.8.3
+      '@standard-server/core': 0.10.2
+      '@standard-server/shared': 0.10.2
 
-  '@standardserver/node@0.8.3':
+  '@standard-server/node@0.10.2':
     dependencies:
-      '@standardserver/core': 0.8.3
-      '@standardserver/fetch': 0.8.3
-      '@standardserver/shared': 0.8.3
+      '@standard-server/core': 0.10.2
+      '@standard-server/fetch': 0.10.2
+      '@standard-server/shared': 0.10.2
 
-  '@standardserver/peer@0.8.3':
+  '@standard-server/peer@0.10.2':
     dependencies:
-      '@standardserver/core': 0.8.3
-      '@standardserver/shared': 0.8.3
+      '@standard-server/core': 0.10.2
+      '@standard-server/shared': 0.10.2
 
-  '@standardserver/shared@0.8.3': {}
+  '@standard-server/shared@0.10.2': {}
 
   '@tailwindcss/node@4.3.3':
     dependencies:
@@ -10321,66 +10277,61 @@ snapshots:
 
   '@tanstack/history@1.162.4': {}
 
-  '@tanstack/intent@0.4.0':
-    dependencies:
-      '@clack/prompts': 1.7.0
-      cac: 7.0.0
-      jsonc-parser: 3.3.1
-      semver: 7.8.5
-      std-env: 4.2.0
-      yaml: 2.9.0
+  '@tanstack/intent@0.5.5': {}
 
   '@tanstack/query-core@5.103.1': {}
 
-  '@tanstack/react-query@5.103.1(react@19.3.0)':
+  '@tanstack/query-core@5.104.1': {}
+
+  '@tanstack/react-query@5.104.1(react@19.3.0)':
     dependencies:
-      '@tanstack/query-core': 5.103.1
+      '@tanstack/query-core': 5.104.1
       react: 19.3.0
 
-  '@tanstack/react-router@1.170.38(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
+  '@tanstack/react-router@1.170.41(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
     dependencies:
       '@tanstack/history': 1.162.4
-      '@tanstack/react-store': 0.11.1(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@tanstack/router-core': 1.171.32
+      '@tanstack/react-store': 0.11.2(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@tanstack/router-core': 1.171.34
       isbot: 5.2.2
       react: 19.3.0
       react-dom: 19.3.0(react@19.3.0)
 
-  '@tanstack/react-store@0.11.1(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
+  '@tanstack/react-store@0.11.2(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
     dependencies:
-      '@tanstack/store': 0.11.1
+      '@tanstack/store': 0.11.2
       react: 19.3.0
       react-dom: 19.3.0(react@19.3.0)
       use-sync-external-store: 1.7.0(react@19.3.0)
 
-  '@tanstack/react-table@9.2.4(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
+  '@tanstack/react-table@9.2.8(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
     dependencies:
-      '@tanstack/react-store': 0.11.1(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@tanstack/table-core': 9.2.4
+      '@tanstack/react-store': 0.11.2(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@tanstack/table-core': 9.2.8
       react: 19.3.0
     transitivePeerDependencies:
       - react-dom
 
-  '@tanstack/react-virtual@3.14.13(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
+  '@tanstack/react-virtual@3.14.14(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
     dependencies:
-      '@tanstack/virtual-core': 3.17.11
+      '@tanstack/virtual-core': 3.18.0
       react: 19.3.0
       react-dom: 19.3.0(react@19.3.0)
 
-  '@tanstack/router-core@1.171.32':
+  '@tanstack/router-core@1.171.34':
     dependencies:
       '@tanstack/history': 1.162.4
       cookie-es: 3.1.1
       seroval: 1.6.7
       seroval-plugins: 1.6.7(seroval@1.6.7)
 
-  '@tanstack/store@0.11.1': {}
+  '@tanstack/store@0.11.2': {}
 
-  '@tanstack/table-core@9.2.4':
+  '@tanstack/table-core@9.2.8':
     dependencies:
-      '@tanstack/store': 0.11.1
+      '@tanstack/store': 0.11.2
 
-  '@tanstack/virtual-core@3.17.11': {}
+  '@tanstack/virtual-core@3.18.0': {}
 
   '@testing-library/dom@10.4.2':
     dependencies:
@@ -11258,14 +11209,14 @@ snapshots:
       get-tsconfig: 4.14.3
       jiti: 2.7.0
 
-  drizzle-orm@1.0.0-rc.4(patch_hash=7256b52b8abfa1cb1c9d8f5ac10271151795b277385d2f3bd52ddbea805d58e0)(@effect/sql-sqlite-node@4.0.0(effect@4.0.0))(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(arktype@2.2.3)(bun-types@1.3.14)(effect@4.0.0)(postgres@3.4.9)(zod@4.6.5):
+  drizzle-orm@1.0.0-rc.4(patch_hash=7256b52b8abfa1cb1c9d8f5ac10271151795b277385d2f3bd52ddbea805d58e0)(@effect/sql-sqlite-node@4.0.2(effect@4.0.2))(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(arktype@2.2.3)(bun-types@1.3.14)(effect@4.0.2)(postgres@3.4.9)(zod@4.6.5):
     optionalDependencies:
-      '@effect/sql-sqlite-node': 4.0.0(effect@4.0.0)
+      '@effect/sql-sqlite-node': 4.0.2(effect@4.0.2)
       '@opentelemetry/api': 1.9.1
       '@types/pg': 8.23.1
       arktype: 2.2.3
       bun-types: 1.3.14
-      effect: 4.0.0
+      effect: 4.0.2
       postgres: 3.4.9
       zod: 4.6.5
 
@@ -11283,7 +11234,7 @@ snapshots:
 
   ee-first@1.1.1: {}
 
-  effect@4.0.0: {}
+  effect@4.0.2: {}
 
   electron-to-chromium@1.5.430: {}
 
@@ -13368,7 +13319,7 @@ snapshots:
       '@rolldown/binding-win32-arm64-msvc': 1.2.9
       '@rolldown/binding-win32-x64-msvc': 1.2.9
 
-  rou3@0.9.2: {}
+  rou3@1.0.0: {}
 
   router@2.2.0(supports-color@10.2.2):
     dependencies:
@@ -14065,8 +14016,6 @@ snapshots:
 
   yallist@5.0.0:
     optional: true
-
-  yaml@2.9.0: {}
 
   yaml@2.9.1: {}
 

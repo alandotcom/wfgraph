@@ -1,9 +1,9 @@
 import { Layer } from "effect";
+import { trace } from "@opentelemetry/api";
 // By subpath, because the package's own entry re-exports NodeSdk and WebSdk,
 // which import @opentelemetry/sdk-trace-node and -web at module scope. Workflow Graph
 // installs neither: the SDK is the host's.
 import * as OtelTracer from "@effect/opentelemetry/OtelTracer";
-import * as Resource from "@effect/opentelemetry/Resource";
 import { TRACER_NAME, TRACER_VERSION } from "#src/backend/lib/telemetry";
 
 /**
@@ -20,14 +20,9 @@ import { TRACER_NAME, TRACER_VERSION } from "#src/backend/lib/telemetry";
  */
 export const TracerBridgeLayer: Layer.Layer<never> =
   OtelTracer.layerWithoutOtelTracer.pipe(
-    Layer.provide(OtelTracer.layerGlobalTracer),
-    // The Resource is read for `service.name` and `service.version` alone, which
-    // name the instrumentation scope. What describes the service itself is the
-    // host's own Resource, carried by the provider.
     Layer.provide(
-      Resource.layer({
-        serviceName: TRACER_NAME,
-        serviceVersion: TRACER_VERSION,
-      })
+      Layer.sync(OtelTracer.OtelTracer, () =>
+        trace.getTracer(TRACER_NAME, TRACER_VERSION)
+      )
     )
   );

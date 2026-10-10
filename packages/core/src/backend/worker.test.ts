@@ -243,7 +243,7 @@ describe("wfWorker", () => {
 
     const decoder = new TextDecoder();
     let body = "";
-    while ((body.match(/event: message/g) ?? []).length < 2) {
+    while ((body.match(/data: /g) ?? []).length < 2) {
       // The list stream polls serially, so each response chunk must be read in order.
       // eslint-disable-next-line no-await-in-loop
       const chunk = await reader.read();

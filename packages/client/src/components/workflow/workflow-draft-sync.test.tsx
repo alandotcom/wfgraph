@@ -529,6 +529,7 @@ describe("WorkflowDraftSync", () => {
     draftStream.emit(2);
     await waitFor(() => expect(graphRead).toBe(1));
     draftStream.emit(3);
+    await waitFor(() => expect(graphRead).toBe(2));
     revisionTwoRead.resolve(rpcJsonResponse(workflowPayload(2, "revision_2")));
 
     await waitFor(

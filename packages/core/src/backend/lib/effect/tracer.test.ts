@@ -75,4 +75,18 @@ describe("TracerBridgeLayer", () => {
 
     await expect(runtime.runPromise(tracedWork())).resolves.toBe("ok");
   });
+
+  test("records spans when the host registers after the runtime starts", async () => {
+    await using runtime = ManagedRuntime.make(TracerBridgeLayer);
+    await expect(runtime.runPromise(tracedWork())).resolves.toBe("ok");
+
+    spans = recordSpans();
+    await expect(runtime.runPromise(tracedWork())).resolves.toBe("ok");
+
+    const span = await spans.named("traced.work");
+    expect(span?.instrumentationScope).toMatchObject({
+      name: "wfgraph-workflows",
+      version: "0.1.0",
+    });
+  });
 });

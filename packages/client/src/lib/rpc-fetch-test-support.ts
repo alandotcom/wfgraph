@@ -58,7 +58,6 @@ export function rpcErrorResponse(failure: {
     JSON.stringify({
       json: {
         defined: false,
-        inferable: false,
         code: failure.code,
         message: failure.message,
         data: failure.data,

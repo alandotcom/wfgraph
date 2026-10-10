@@ -146,7 +146,7 @@ describe("ApiError from a failed call", () => {
   });
 
   // A body oRPC cannot read as one of its errors: the link answers with its own
-  // MALFORMED_ORPC_ERROR_RESPONSE, which maps to no status of its own.
+  // MALFORMED_ORPC_RESPONSE, which maps to no status of its own.
   it("falls back for a response that is not an oRPC error", async () => {
     const error = await failedCall(
       new Response(JSON.stringify({ json: { oops: true } }), {
