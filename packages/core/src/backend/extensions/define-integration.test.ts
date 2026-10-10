@@ -293,9 +293,11 @@ describe("CredentialsOf", () => {
   });
 
   it("describes no key for an integration declaring no credentials", () => {
+    // oxlint-disable typescript/no-generated-empty-object-type -- An empty credential record is intentional; this checks its exact inferred type.
     expectTypeOf<CredentialsOf<Record<never, never>>>().toEqualTypeOf<
       Record<never, string>
     >();
+    // oxlint-enable typescript/no-generated-empty-object-type
   });
 });
 

@@ -126,19 +126,19 @@ export class ReplayHostTimers {
   }
 
   private patchGlobals(): void {
-    // Host timer types carry Node promisify brands; the queue returns plain ids.
-    // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- see above
-    globalThis.setImmediate = ((
+    const replaySetImmediate = (
       fn: (...args: unknown[]) => void,
       ...args: unknown[]
-    ) => this.enqueue(() => fn(...args))) as unknown as typeof setImmediate;
+    ) => this.enqueue(() => fn(...args));
+    globalThis.setImmediate =
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Host timer types carry Node promisify brands; the queue returns plain ids.
+      replaySetImmediate as unknown as typeof setImmediate;
 
     globalThis.clearImmediate = (id: unknown) => {
       this.cancel(id);
     };
 
-    // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- see above
-    globalThis.setTimeout = ((
+    const replaySetTimeout = (
       fn: (...args: unknown[]) => void,
       ms?: number,
       ...args: unknown[]
@@ -150,7 +150,9 @@ export class ReplayHostTimers {
         );
       }
       return this.enqueue(() => fn(...args));
-    }) as unknown as typeof setTimeout;
+    };
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Host timer types carry Node promisify brands; the queue returns plain ids.
+    globalThis.setTimeout = replaySetTimeout as unknown as typeof setTimeout;
 
     globalThis.clearTimeout = (id: unknown) => {
       this.cancel(id);

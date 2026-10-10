@@ -202,9 +202,9 @@ function branchInvokeData(
  * the values and the kind a run attaches to itself. Spied on the prototype
  * because `metadata` is a getter there rather than an own property.
  */
-function recordRunMetadata(update: () => Promise<void>) {
-  const run = vi.fn(() => ({ update }));
-  // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the handler reaches for `.run().update()` and nothing else on the builder
+function recordRunMetadata(set: () => Promise<void>) {
+  const run = vi.fn(() => ({ set }));
+  // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the handler reaches for `.run().set()` and nothing else on the builder
   vi.spyOn(Inngest.prototype, "metadata", "get").mockReturnValue({
     run,
   } as never);
@@ -348,8 +348,8 @@ describe("the workflow run function", () => {
    * runs apart in the Inngest UI is what the run writes about itself here.
    */
   it("attaches the run's identity to Inngest as metadata", async () => {
-    const update = vi.fn(() => Promise.resolve());
-    const run = recordRunMetadata(update);
+    const set = vi.fn(() => Promise.resolve());
+    const run = recordRunMetadata(set);
     executeWorkflowMock.mockReturnValue(
       Effect.succeed({ success: true, outputs: {}, results: {} })
     );
@@ -366,7 +366,7 @@ describe("the workflow run function", () => {
     // Scoped to the run rather than to the step that wrote it, which is what
     // puts it on the run's own Metadata tab.
     expect(run).toHaveBeenCalledWith();
-    expect(update).toHaveBeenCalledWith(
+    expect(set).toHaveBeenCalledWith(
       {
         workflow: "Donor intake follow-up",
         workflowId: "workflow_123",
@@ -400,8 +400,8 @@ describe("the workflow run function", () => {
    * node it entered at is what tells two branches of one run apart.
    */
   it("names the entry node in a branch run's metadata", async () => {
-    const update = vi.fn(() => Promise.resolve());
-    recordRunMetadata(update);
+    const set = vi.fn(() => Promise.resolve());
+    recordRunMetadata(set);
     const executeWorkflowBranch = vi.fn((..._args: [unknown, ...unknown[]]) =>
       Effect.succeed({ results: {}, outputs: {} })
     );
@@ -423,11 +423,17 @@ describe("the workflow run function", () => {
       ],
     });
 
-    expect(update).toHaveBeenCalledWith(
-      expect.objectContaining({
+    expect(set).toHaveBeenCalledWith(
+      {
         workflow: "Donor intake follow-up",
+        workflowId: "workflow_123",
+        executionId: "exec_123",
+        runMode: "live",
+        triggerEvent: "donor/intake.submitted",
+        versionId: "ver_1",
+        nodes: 0,
         entryNode: "wait_1",
-      }),
+      },
       "wfgraph"
     );
   });

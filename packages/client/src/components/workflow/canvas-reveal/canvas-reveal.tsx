@@ -119,8 +119,8 @@ export function CanvasReveal() {
         : "browse";
 
   // Back and Escape both run this, so a kind's own unwind answers both.
+  const unwindLevel = () => close(unwoundLevel(level));
   const unwind = () => {
-    const unwindLevel = () => close(unwoundLevel(level));
     if (subject && kind?.unwind) {
       kind.unwind({
         subject,

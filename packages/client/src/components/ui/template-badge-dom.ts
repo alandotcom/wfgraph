@@ -224,6 +224,93 @@ function readTextFrom(container: HTMLElement, multiline: boolean): string {
     .join("");
 }
 
+function totalLength(units: Unit[]): number {
+  const last = units.at(-1);
+  return last ? unitEnd(last) : 0;
+}
+
+/**
+ * Where a DOM point falls in the field's text.
+ *
+ * A point on an element names a child index rather than a character, which is
+ * the shape a selection takes after the browser deletes a badge, so it
+ * resolves to where the first unit at or after that child begins.
+ */
+function offsetOfPoint(
+  units: Unit[],
+  node: Node,
+  nodeOffset: number
+): number {
+  const textUnit = units.find(
+    (unit) => unit.kind === "text" && unit.node === node
+  );
+  if (textUnit) {
+    return textUnit.start + Math.min(nodeOffset, textUnit.text.length);
+  }
+
+  const enclosing = units.find(
+    (unit) => unit.kind !== "text" && unit.node.contains(node)
+  );
+  if (enclosing) {
+    return nodeOffset === 0 ? enclosing.start : unitEnd(enclosing);
+  }
+
+  if (node instanceof HTMLElement) {
+    const children = Array.from(node.childNodes);
+    for (const child of children.slice(nodeOffset)) {
+      const following = units.find(
+        (unit) => unit.node === child || child.contains(unit.node)
+      );
+      if (following) {
+        return following.start;
+      }
+    }
+
+    const last = units.findLast((unit) => node.contains(unit.node));
+    return last ? unitEnd(last) : totalLength(units);
+  }
+
+  return totalLength(units);
+}
+
+function badgeAt(units: Unit[], edge: "end" | "start", offset: number) {
+  const unit = units.find(
+    (candidate) =>
+      candidate.kind === "badge" &&
+      (edge === "start" ? candidate.start : unitEnd(candidate)) === offset
+  );
+  return unit ? { end: unitEnd(unit), start: unit.start } : null;
+}
+
+/**
+ * A text node the caret can occupy at `offset`.
+ *
+ * Only a text unit is eligible, and a badge's label is not one, so the caret
+ * lands in editable content every time. The last unit spanning the offset
+ * wins, which is the empty node `draw` leaves against each badge.
+ */
+function caretPointAt(
+  units: Unit[],
+  offset: number
+): { node: Text; offset: number } | null {
+  const pierced = units.find(
+    (unit) =>
+      unit.kind === "badge" && offset > unit.start && offset < unitEnd(unit)
+  );
+  if (pierced) {
+    return caretPointAt(units, pierced.start);
+  }
+
+  const spanning = units.findLast(
+    (unit) =>
+      unit.kind === "text" && unit.start <= offset && offset <= unitEnd(unit)
+  );
+
+  return spanning?.kind === "text"
+    ? { node: spanning.node, offset: offset - spanning.start }
+    : null;
+}
+
 export function createBadgeEditor(
   container: HTMLElement,
   options: BadgeEditorOptions
@@ -231,64 +318,6 @@ export function createBadgeEditor(
   const { catalog } = options;
   const multiline = options.multiline ?? false;
   let lastRenderOptions: RenderOptions = { focused: false, nodes: [] };
-
-  function totalLength(units: Unit[]): number {
-    const last = units.at(-1);
-    return last ? unitEnd(last) : 0;
-  }
-
-  /**
-   * Where a DOM point falls in the field's text.
-   *
-   * A point on an element names a child index rather than a character, which is
-   * the shape a selection takes after the browser deletes a badge, so it
-   * resolves to where the first unit at or after that child begins.
-   */
-  function offsetOfPoint(
-    units: Unit[],
-    node: Node,
-    nodeOffset: number
-  ): number {
-    const textUnit = units.find(
-      (unit) => unit.kind === "text" && unit.node === node
-    );
-    if (textUnit) {
-      return textUnit.start + Math.min(nodeOffset, textUnit.text.length);
-    }
-
-    const enclosing = units.find(
-      (unit) => unit.kind !== "text" && unit.node.contains(node)
-    );
-    if (enclosing) {
-      return nodeOffset === 0 ? enclosing.start : unitEnd(enclosing);
-    }
-
-    if (node instanceof HTMLElement) {
-      const children = Array.from(node.childNodes);
-      for (const child of children.slice(nodeOffset)) {
-        const following = units.find(
-          (unit) => unit.node === child || child.contains(unit.node)
-        );
-        if (following) {
-          return following.start;
-        }
-      }
-
-      const last = units.findLast((unit) => node.contains(unit.node));
-      return last ? unitEnd(last) : totalLength(units);
-    }
-
-    return totalLength(units);
-  }
-
-  function badgeAt(units: Unit[], edge: "end" | "start", offset: number) {
-    const unit = units.find(
-      (candidate) =>
-        candidate.kind === "badge" &&
-        (edge === "start" ? candidate.start : unitEnd(candidate)) === offset
-    );
-    return unit ? { end: unitEnd(unit), start: unit.start } : null;
-  }
 
   function readCaret(): CaretContext | null {
     const selection = window.getSelection();
@@ -317,35 +346,6 @@ export function createBadgeEditor(
     if (document.activeElement !== container) {
       container.focus();
     }
-  }
-
-  /**
-   * A text node the caret can occupy at `offset`.
-   *
-   * Only a text unit is eligible, and a badge's label is not one, so the caret
-   * lands in editable content every time. The last unit spanning the offset
-   * wins, which is the empty node `draw` leaves against each badge.
-   */
-  function caretPointAt(
-    units: Unit[],
-    offset: number
-  ): { node: Text; offset: number } | null {
-    const pierced = units.find(
-      (unit) =>
-        unit.kind === "badge" && offset > unit.start && offset < unitEnd(unit)
-    );
-    if (pierced) {
-      return caretPointAt(units, pierced.start);
-    }
-
-    const spanning = units.findLast(
-      (unit) =>
-        unit.kind === "text" && unit.start <= offset && offset <= unitEnd(unit)
-    );
-
-    return spanning?.kind === "text"
-      ? { node: spanning.node, offset: offset - spanning.start }
-      : null;
   }
 
   function placeCaret(targetOffset: number) {

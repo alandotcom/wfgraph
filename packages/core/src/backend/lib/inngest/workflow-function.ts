@@ -257,7 +257,7 @@ type RunMetadataWriter = (values: JsonObject) => Promise<void>;
  * whole run rather than to the step that wrote it.
  */
 function runMetadataWriter(client: Inngest): RunMetadataWriter {
-  return (values) => client.metadata.run().update(values, "wfgraph");
+  return (values) => client.metadata.run().set(values, "wfgraph");
 }
 
 /**

@@ -40,6 +40,10 @@ import { isSafeRecordKey } from "@wfgraph/shared/types/record-key";
 
 const OAUTH_ATTEMPT_LIFETIME_SECONDS = 10 * 60;
 
+function terminalExpiry(): Date {
+  return new Date(Date.now() + OAUTH_ATTEMPT_LIFETIME_SECONDS * 1000);
+}
+
 export const oauthBindingCookieName = (state: string): string | null =>
   /^[A-Za-z0-9_-]{43}$/.test(state) ? `wfgraph_oauth_${state}` : null;
 
@@ -397,8 +401,6 @@ export const completeIntegrationOAuth = Effect.fn("completeIntegrationOAuth")(
     const browserBindingHash = yield* Effect.promise(() =>
       sha256Base64Url(input.browserBinding ?? "")
     );
-    const terminalExpiry = () =>
-      new Date(Date.now() + OAUTH_ATTEMPT_LIFETIME_SECONDS * 1000);
     const failAttempt = () =>
       Effect.result(
         repo.failOAuthAuthorizationAttempt({

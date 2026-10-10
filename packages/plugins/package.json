@@ -42,11 +42,11 @@
     "build": "tsdown"
   },
   "dependencies": {
-    "@clerk/backend": "^3.18.1",
-    "@linear/sdk": "^95.1.0",
+    "@clerk/backend": "^3.23.2",
+    "@linear/sdk": "^97.1.0",
     "effect": "catalog:",
     "es-toolkit": "catalog:",
-    "svix": "^2.5.0"
+    "svix": "^2.8.0"
   },
   "devDependencies": {
     "@types/react": "catalog:",
