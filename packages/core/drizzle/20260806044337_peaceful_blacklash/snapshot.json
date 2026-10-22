@@ -1,28 +1,906 @@
 {
+  "type": "base",
+  "version": "9",
+  "dialect": "postgres",
   "id": "f4c6fefe-87a1-42b6-8f27-b386e48846d7",
   "prevIds": [
     "00000000-0000-0000-0000-000000000000"
   ],
-  "version": "8",
-  "dialect": "postgres",
+  "footprints": [
+    {
+      "statementType": "create_table",
+      "statementTarget": [
+        "table",
+        "public",
+        "api_keys"
+      ],
+      "writes": [
+        "s|tbl|public.api_keys",
+        "n|tbl|public.api_keys",
+        "e|tbl|public.api_keys",
+        "n|rel|public.api_keys",
+        "n|type|public.api_keys",
+        "n|rel|public.api_keys_pkey"
+      ],
+      "reads": [
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": [
+        "table",
+        "public",
+        "integrations"
+      ],
+      "writes": [
+        "s|tbl|public.integrations",
+        "n|tbl|public.integrations",
+        "e|tbl|public.integrations",
+        "n|rel|public.integrations",
+        "n|type|public.integrations",
+        "n|rel|public.integrations_pkey"
+      ],
+      "reads": [
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflow_event_subscriptions"
+      ],
+      "writes": [
+        "s|tbl|public.workflow_event_subscriptions",
+        "n|tbl|public.workflow_event_subscriptions",
+        "e|tbl|public.workflow_event_subscriptions",
+        "n|rel|public.workflow_event_subscriptions",
+        "n|type|public.workflow_event_subscriptions",
+        "n|rel|public.workflow_event_subscriptions_workflow_id_event_name_role_pk"
+      ],
+      "reads": [
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflow_execution_events"
+      ],
+      "writes": [
+        "s|tbl|public.workflow_execution_events",
+        "n|tbl|public.workflow_execution_events",
+        "e|tbl|public.workflow_execution_events",
+        "n|rel|public.workflow_execution_events",
+        "n|type|public.workflow_execution_events",
+        "n|rel|public.workflow_execution_events_pkey"
+      ],
+      "reads": [
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflow_execution_logs"
+      ],
+      "writes": [
+        "s|tbl|public.workflow_execution_logs",
+        "n|tbl|public.workflow_execution_logs",
+        "e|tbl|public.workflow_execution_logs",
+        "n|rel|public.workflow_execution_logs",
+        "n|type|public.workflow_execution_logs",
+        "n|rel|public.workflow_execution_logs_pkey"
+      ],
+      "reads": [
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflow_executions"
+      ],
+      "writes": [
+        "s|tbl|public.workflow_executions",
+        "n|tbl|public.workflow_executions",
+        "e|tbl|public.workflow_executions",
+        "n|rel|public.workflow_executions",
+        "n|type|public.workflow_executions",
+        "n|rel|public.workflow_executions_pkey"
+      ],
+      "reads": [
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflow_versions"
+      ],
+      "writes": [
+        "s|tbl|public.workflow_versions",
+        "n|tbl|public.workflow_versions",
+        "e|tbl|public.workflow_versions",
+        "n|rel|public.workflow_versions",
+        "n|type|public.workflow_versions",
+        "n|rel|public.workflow_versions_pkey"
+      ],
+      "reads": [
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflow_wait_states"
+      ],
+      "writes": [
+        "s|tbl|public.workflow_wait_states",
+        "n|tbl|public.workflow_wait_states",
+        "e|tbl|public.workflow_wait_states",
+        "n|rel|public.workflow_wait_states",
+        "n|type|public.workflow_wait_states",
+        "n|rel|public.workflow_wait_states_pkey"
+      ],
+      "reads": [
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflows"
+      ],
+      "writes": [
+        "s|tbl|public.workflows",
+        "n|tbl|public.workflows",
+        "e|tbl|public.workflows",
+        "n|rel|public.workflows",
+        "n|type|public.workflows",
+        "n|rel|public.workflows_pkey"
+      ],
+      "reads": [
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "api_keys",
+        "api_keys_key_prefix_idx"
+      ],
+      "writes": [
+        "s|idx|public.api_keys_key_prefix_idx",
+        "n|idx|public.api_keys_key_prefix_idx",
+        "e|idx|public.api_keys_key_prefix_idx",
+        "n|rel|public.api_keys_key_prefix_idx"
+      ],
+      "reads": [
+        "n|tbl|public.api_keys",
+        "n|sch|public",
+        "n|col|public.api_keys.key_prefix"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "workflow_event_subscriptions",
+        "workflow_event_subscriptions_event_name_idx"
+      ],
+      "writes": [
+        "s|idx|public.workflow_event_subscriptions_event_name_idx",
+        "n|idx|public.workflow_event_subscriptions_event_name_idx",
+        "e|idx|public.workflow_event_subscriptions_event_name_idx",
+        "n|rel|public.workflow_event_subscriptions_event_name_idx"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_event_subscriptions",
+        "n|sch|public",
+        "n|col|public.workflow_event_subscriptions.event_name"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "workflow_execution_events",
+        "workflow_execution_events_workflow_created_at_idx"
+      ],
+      "writes": [
+        "s|idx|public.workflow_execution_events_workflow_created_at_idx",
+        "n|idx|public.workflow_execution_events_workflow_created_at_idx",
+        "e|idx|public.workflow_execution_events_workflow_created_at_idx",
+        "n|rel|public.workflow_execution_events_workflow_created_at_idx"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_execution_events",
+        "n|sch|public",
+        "n|col|public.workflow_execution_events.workflow_id",
+        "n|col|public.workflow_execution_events.created_at"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "workflow_execution_events",
+        "workflow_execution_events_execution_created_at_idx"
+      ],
+      "writes": [
+        "s|idx|public.workflow_execution_events_execution_created_at_idx",
+        "n|idx|public.workflow_execution_events_execution_created_at_idx",
+        "e|idx|public.workflow_execution_events_execution_created_at_idx",
+        "n|rel|public.workflow_execution_events_execution_created_at_idx"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_execution_events",
+        "n|sch|public",
+        "n|col|public.workflow_execution_events.execution_id",
+        "n|col|public.workflow_execution_events.created_at"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "workflow_execution_events",
+        "workflow_execution_events_workflow_scoped_idx"
+      ],
+      "writes": [
+        "s|idx|public.workflow_execution_events_workflow_scoped_idx",
+        "n|idx|public.workflow_execution_events_workflow_scoped_idx",
+        "e|idx|public.workflow_execution_events_workflow_scoped_idx",
+        "n|rel|public.workflow_execution_events_workflow_scoped_idx"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_execution_events",
+        "n|sch|public",
+        "n|col|public.workflow_execution_events.workflow_id",
+        "n|col|public.workflow_execution_events.created_at"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "workflow_execution_logs",
+        "workflow_execution_logs_execution_id_idx"
+      ],
+      "writes": [
+        "s|idx|public.workflow_execution_logs_execution_id_idx",
+        "n|idx|public.workflow_execution_logs_execution_id_idx",
+        "e|idx|public.workflow_execution_logs_execution_id_idx",
+        "n|rel|public.workflow_execution_logs_execution_id_idx"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_execution_logs",
+        "n|sch|public",
+        "n|col|public.workflow_execution_logs.execution_id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "workflow_execution_logs",
+        "workflow_execution_logs_execution_id_timestamp_idx"
+      ],
+      "writes": [
+        "s|idx|public.workflow_execution_logs_execution_id_timestamp_idx",
+        "n|idx|public.workflow_execution_logs_execution_id_timestamp_idx",
+        "e|idx|public.workflow_execution_logs_execution_id_timestamp_idx",
+        "n|rel|public.workflow_execution_logs_execution_id_timestamp_idx"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_execution_logs",
+        "n|sch|public",
+        "n|col|public.workflow_execution_logs.execution_id",
+        "n|col|public.workflow_execution_logs.timestamp"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "workflow_executions",
+        "workflow_executions_workflow_run_id_uidx"
+      ],
+      "writes": [
+        "s|idx|public.workflow_executions_workflow_run_id_uidx",
+        "n|idx|public.workflow_executions_workflow_run_id_uidx",
+        "e|idx|public.workflow_executions_workflow_run_id_uidx",
+        "n|rel|public.workflow_executions_workflow_run_id_uidx"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_executions",
+        "n|sch|public",
+        "n|col|public.workflow_executions.workflow_run_id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "workflow_executions",
+        "workflow_executions_workflow_id_delivery_id_uidx"
+      ],
+      "writes": [
+        "s|idx|public.workflow_executions_workflow_id_delivery_id_uidx",
+        "n|idx|public.workflow_executions_workflow_id_delivery_id_uidx",
+        "e|idx|public.workflow_executions_workflow_id_delivery_id_uidx",
+        "n|rel|public.workflow_executions_workflow_id_delivery_id_uidx"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_executions",
+        "n|sch|public",
+        "n|col|public.workflow_executions.workflow_id",
+        "n|col|public.workflow_executions.delivery_id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "workflow_executions",
+        "workflow_executions_workflow_id_started_at_idx"
+      ],
+      "writes": [
+        "s|idx|public.workflow_executions_workflow_id_started_at_idx",
+        "n|idx|public.workflow_executions_workflow_id_started_at_idx",
+        "e|idx|public.workflow_executions_workflow_id_started_at_idx",
+        "n|rel|public.workflow_executions_workflow_id_started_at_idx"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_executions",
+        "n|sch|public",
+        "n|col|public.workflow_executions.workflow_id",
+        "n|col|public.workflow_executions.started_at",
+        "n|col|public.workflow_executions.id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "workflow_executions",
+        "workflow_executions_started_at_id_idx"
+      ],
+      "writes": [
+        "s|idx|public.workflow_executions_started_at_id_idx",
+        "n|idx|public.workflow_executions_started_at_id_idx",
+        "e|idx|public.workflow_executions_started_at_id_idx",
+        "n|rel|public.workflow_executions_started_at_id_idx"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_executions",
+        "n|sch|public",
+        "n|col|public.workflow_executions.started_at",
+        "n|col|public.workflow_executions.id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "workflow_executions",
+        "workflow_executions_superseded_by_workflow_idx"
+      ],
+      "writes": [
+        "s|idx|public.workflow_executions_superseded_by_workflow_idx",
+        "n|idx|public.workflow_executions_superseded_by_workflow_idx",
+        "e|idx|public.workflow_executions_superseded_by_workflow_idx",
+        "n|rel|public.workflow_executions_superseded_by_workflow_idx"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_executions",
+        "n|sch|public",
+        "n|col|public.workflow_executions.workflow_id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "workflow_executions",
+        "workflow_executions_live_by_workflow_idx"
+      ],
+      "writes": [
+        "s|idx|public.workflow_executions_live_by_workflow_idx",
+        "n|idx|public.workflow_executions_live_by_workflow_idx",
+        "e|idx|public.workflow_executions_live_by_workflow_idx",
+        "n|rel|public.workflow_executions_live_by_workflow_idx"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_executions",
+        "n|sch|public",
+        "n|col|public.workflow_executions.workflow_id",
+        "n|col|public.workflow_executions.started_at"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "workflow_executions",
+        "workflow_executions_in_flight_by_entity_idx"
+      ],
+      "writes": [
+        "s|idx|public.workflow_executions_in_flight_by_entity_idx",
+        "n|idx|public.workflow_executions_in_flight_by_entity_idx",
+        "e|idx|public.workflow_executions_in_flight_by_entity_idx",
+        "n|rel|public.workflow_executions_in_flight_by_entity_idx"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_executions",
+        "n|sch|public",
+        "n|col|public.workflow_executions.workflow_id",
+        "n|col|public.workflow_executions.entity_value",
+        "n|col|public.workflow_executions.run_mode"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "workflow_versions",
+        "workflow_versions_workflow_id_version_uidx"
+      ],
+      "writes": [
+        "s|idx|public.workflow_versions_workflow_id_version_uidx",
+        "n|idx|public.workflow_versions_workflow_id_version_uidx",
+        "e|idx|public.workflow_versions_workflow_id_version_uidx",
+        "n|rel|public.workflow_versions_workflow_id_version_uidx"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_versions",
+        "n|sch|public",
+        "n|col|public.workflow_versions.workflow_id",
+        "n|col|public.workflow_versions.version"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "workflow_versions",
+        "workflow_versions_workflow_id_published_at_idx"
+      ],
+      "writes": [
+        "s|idx|public.workflow_versions_workflow_id_published_at_idx",
+        "n|idx|public.workflow_versions_workflow_id_published_at_idx",
+        "e|idx|public.workflow_versions_workflow_id_published_at_idx",
+        "n|rel|public.workflow_versions_workflow_id_published_at_idx"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_versions",
+        "n|sch|public",
+        "n|col|public.workflow_versions.workflow_id",
+        "n|col|public.workflow_versions.published_at"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "workflow_wait_states",
+        "workflow_wait_states_resume_token_uidx"
+      ],
+      "writes": [
+        "s|idx|public.workflow_wait_states_resume_token_uidx",
+        "n|idx|public.workflow_wait_states_resume_token_uidx",
+        "e|idx|public.workflow_wait_states_resume_token_uidx",
+        "n|rel|public.workflow_wait_states_resume_token_uidx"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_wait_states",
+        "n|sch|public",
+        "n|col|public.workflow_wait_states.resume_token"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "workflow_wait_states",
+        "workflow_wait_states_execution_status_idx"
+      ],
+      "writes": [
+        "s|idx|public.workflow_wait_states_execution_status_idx",
+        "n|idx|public.workflow_wait_states_execution_status_idx",
+        "e|idx|public.workflow_wait_states_execution_status_idx",
+        "n|rel|public.workflow_wait_states_execution_status_idx"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_wait_states",
+        "n|sch|public",
+        "n|col|public.workflow_wait_states.execution_id",
+        "n|col|public.workflow_wait_states.status"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "workflow_wait_states",
+        "workflow_wait_states_subscribed_events_idx"
+      ],
+      "writes": [
+        "s|idx|public.workflow_wait_states_subscribed_events_idx",
+        "n|idx|public.workflow_wait_states_subscribed_events_idx",
+        "e|idx|public.workflow_wait_states_subscribed_events_idx",
+        "n|rel|public.workflow_wait_states_subscribed_events_idx"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_wait_states",
+        "n|sch|public",
+        "n|col|public.workflow_wait_states.subscribed_events"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "workflow_wait_states",
+        "workflow_wait_states_waiting_by_workflow_idx"
+      ],
+      "writes": [
+        "s|idx|public.workflow_wait_states_waiting_by_workflow_idx",
+        "n|idx|public.workflow_wait_states_waiting_by_workflow_idx",
+        "e|idx|public.workflow_wait_states_waiting_by_workflow_idx",
+        "n|rel|public.workflow_wait_states_waiting_by_workflow_idx"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_wait_states",
+        "n|sch|public",
+        "n|col|public.workflow_wait_states.workflow_id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "workflows",
+        "workflows_name_ci_uidx"
+      ],
+      "writes": [
+        "s|idx|public.workflows_name_ci_uidx",
+        "n|idx|public.workflows_name_ci_uidx",
+        "e|idx|public.workflows_name_ci_uidx",
+        "n|rel|public.workflows_name_ci_uidx"
+      ],
+      "reads": [
+        "n|tbl|public.workflows",
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflow_event_subscriptions"
+      ],
+      "writes": [
+        "s|fk|public.workflow_event_subscriptions.workflow_event_subscriptions_workflow_id_workflows_id_fk",
+        "n|fk|public.workflow_event_subscriptions.workflow_event_subscriptions_workflow_id_workflows_id_fk",
+        "e|fk|public.workflow_event_subscriptions.workflow_event_subscriptions_workflow_id_workflows_id_fk",
+        "n|con|public.workflow_event_subscriptions.workflow_event_subscriptions_workflow_id_workflows_id_fk"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_event_subscriptions",
+        "n|sch|public",
+        "n|tbl|public.workflows",
+        "n|sch|public",
+        "n|col|public.workflow_event_subscriptions.workflow_id",
+        "n|col|public.workflows.id",
+        "e|uniqueness|public.workflows.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflow_execution_events"
+      ],
+      "writes": [
+        "s|fk|public.workflow_execution_events.workflow_execution_events_workflow_id_workflows_id_fk",
+        "n|fk|public.workflow_execution_events.workflow_execution_events_workflow_id_workflows_id_fk",
+        "e|fk|public.workflow_execution_events.workflow_execution_events_workflow_id_workflows_id_fk",
+        "n|con|public.workflow_execution_events.workflow_execution_events_workflow_id_workflows_id_fk"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_execution_events",
+        "n|sch|public",
+        "n|tbl|public.workflows",
+        "n|sch|public",
+        "n|col|public.workflow_execution_events.workflow_id",
+        "n|col|public.workflows.id",
+        "e|uniqueness|public.workflows.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflow_execution_events"
+      ],
+      "writes": [
+        "s|fk|public.workflow_execution_events.workflow_execution_events_execution_id_workflow_executions_id_f",
+        "n|fk|public.workflow_execution_events.workflow_execution_events_execution_id_workflow_executions_id_f",
+        "e|fk|public.workflow_execution_events.workflow_execution_events_execution_id_workflow_executions_id_f",
+        "n|con|public.workflow_execution_events.workflow_execution_events_execution_id_workflow_executions_id_f"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_execution_events",
+        "n|sch|public",
+        "n|tbl|public.workflow_executions",
+        "n|sch|public",
+        "n|col|public.workflow_execution_events.execution_id",
+        "n|col|public.workflow_executions.id",
+        "e|uniqueness|public.workflow_executions.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflow_execution_logs"
+      ],
+      "writes": [
+        "s|fk|public.workflow_execution_logs.workflow_execution_logs_execution_id_workflow_executions_id_fk",
+        "n|fk|public.workflow_execution_logs.workflow_execution_logs_execution_id_workflow_executions_id_fk",
+        "e|fk|public.workflow_execution_logs.workflow_execution_logs_execution_id_workflow_executions_id_fk",
+        "n|con|public.workflow_execution_logs.workflow_execution_logs_execution_id_workflow_executions_id_fk"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_execution_logs",
+        "n|sch|public",
+        "n|tbl|public.workflow_executions",
+        "n|sch|public",
+        "n|col|public.workflow_execution_logs.execution_id",
+        "n|col|public.workflow_executions.id",
+        "e|uniqueness|public.workflow_executions.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflow_executions"
+      ],
+      "writes": [
+        "s|fk|public.workflow_executions.workflow_executions_workflow_id_workflows_id_fk",
+        "n|fk|public.workflow_executions.workflow_executions_workflow_id_workflows_id_fk",
+        "e|fk|public.workflow_executions.workflow_executions_workflow_id_workflows_id_fk",
+        "n|con|public.workflow_executions.workflow_executions_workflow_id_workflows_id_fk"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_executions",
+        "n|sch|public",
+        "n|tbl|public.workflows",
+        "n|sch|public",
+        "n|col|public.workflow_executions.workflow_id",
+        "n|col|public.workflows.id",
+        "e|uniqueness|public.workflows.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflow_executions"
+      ],
+      "writes": [
+        "s|fk|public.workflow_executions.workflow_executions_workflow_version_id_workflow_versions_id_fk",
+        "n|fk|public.workflow_executions.workflow_executions_workflow_version_id_workflow_versions_id_fk",
+        "e|fk|public.workflow_executions.workflow_executions_workflow_version_id_workflow_versions_id_fk",
+        "n|con|public.workflow_executions.workflow_executions_workflow_version_id_workflow_versions_id_fk"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_executions",
+        "n|sch|public",
+        "n|tbl|public.workflow_versions",
+        "n|sch|public",
+        "n|col|public.workflow_executions.workflow_version_id",
+        "n|col|public.workflow_versions.id",
+        "e|uniqueness|public.workflow_versions.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflow_versions"
+      ],
+      "writes": [
+        "s|fk|public.workflow_versions.workflow_versions_workflow_id_workflows_id_fk",
+        "n|fk|public.workflow_versions.workflow_versions_workflow_id_workflows_id_fk",
+        "e|fk|public.workflow_versions.workflow_versions_workflow_id_workflows_id_fk",
+        "n|con|public.workflow_versions.workflow_versions_workflow_id_workflows_id_fk"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_versions",
+        "n|sch|public",
+        "n|tbl|public.workflows",
+        "n|sch|public",
+        "n|col|public.workflow_versions.workflow_id",
+        "n|col|public.workflows.id",
+        "e|uniqueness|public.workflows.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflow_wait_states"
+      ],
+      "writes": [
+        "s|fk|public.workflow_wait_states.workflow_wait_states_execution_id_workflow_executions_id_fk",
+        "n|fk|public.workflow_wait_states.workflow_wait_states_execution_id_workflow_executions_id_fk",
+        "e|fk|public.workflow_wait_states.workflow_wait_states_execution_id_workflow_executions_id_fk",
+        "n|con|public.workflow_wait_states.workflow_wait_states_execution_id_workflow_executions_id_fk"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_wait_states",
+        "n|sch|public",
+        "n|tbl|public.workflow_executions",
+        "n|sch|public",
+        "n|col|public.workflow_wait_states.execution_id",
+        "n|col|public.workflow_executions.id",
+        "e|uniqueness|public.workflow_executions.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflow_wait_states"
+      ],
+      "writes": [
+        "s|fk|public.workflow_wait_states.workflow_wait_states_workflow_id_workflows_id_fk",
+        "n|fk|public.workflow_wait_states.workflow_wait_states_workflow_id_workflows_id_fk",
+        "e|fk|public.workflow_wait_states.workflow_wait_states_workflow_id_workflows_id_fk",
+        "n|con|public.workflow_wait_states.workflow_wait_states_workflow_id_workflows_id_fk"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_wait_states",
+        "n|sch|public",
+        "n|tbl|public.workflows",
+        "n|sch|public",
+        "n|col|public.workflow_wait_states.workflow_id",
+        "n|col|public.workflows.id",
+        "e|uniqueness|public.workflows.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflows"
+      ],
+      "writes": [
+        "s|fk|public.workflows.workflows_published_version_id_workflow_versions_id_fk",
+        "n|fk|public.workflows.workflows_published_version_id_workflow_versions_id_fk",
+        "e|fk|public.workflows.workflows_published_version_id_workflow_versions_id_fk",
+        "n|con|public.workflows.workflows_published_version_id_workflow_versions_id_fk"
+      ],
+      "reads": [
+        "n|tbl|public.workflows",
+        "n|sch|public",
+        "n|tbl|public.workflow_versions",
+        "n|sch|public",
+        "n|col|public.workflows.published_version_id",
+        "n|col|public.workflow_versions.id",
+        "e|uniqueness|public.workflow_versions.id"
+      ]
+    }
+  ],
   "ddl": [
     {
-      "isRlsEnabled": false,
-      "name": "api_keys",
       "schema": "public",
+      "name": "api_keys",
+      "isRlsEnabled": false,
       "entityType": "tables"
     },
     {
-      "columns": [
-        "id"
-      ],
-      "nameExplicit": false,
-      "name": "api_keys_pkey",
       "schema": "public",
-      "table": "api_keys",
-      "entityType": "pks"
+      "name": "integrations",
+      "isRlsEnabled": false,
+      "entityType": "tables"
     },
     {
+      "schema": "public",
+      "name": "workflow_event_subscriptions",
+      "isRlsEnabled": false,
+      "entityType": "tables"
+    },
+    {
+      "schema": "public",
+      "name": "workflow_execution_events",
+      "isRlsEnabled": false,
+      "entityType": "tables"
+    },
+    {
+      "schema": "public",
+      "name": "workflow_execution_logs",
+      "isRlsEnabled": false,
+      "entityType": "tables"
+    },
+    {
+      "schema": "public",
+      "name": "workflow_executions",
+      "isRlsEnabled": false,
+      "entityType": "tables"
+    },
+    {
+      "schema": "public",
+      "name": "workflow_versions",
+      "isRlsEnabled": false,
+      "entityType": "tables"
+    },
+    {
+      "schema": "public",
+      "name": "workflow_wait_states",
+      "isRlsEnabled": false,
+      "entityType": "tables"
+    },
+    {
+      "schema": "public",
+      "name": "workflows",
+      "isRlsEnabled": false,
+      "entityType": "tables"
+    },
+    {
+      "schema": "public",
+      "table": "api_keys",
+      "name": "id",
       "type": "text",
       "typeSchema": null,
       "notNull": true,
@@ -30,12 +908,12 @@
       "default": null,
       "generated": null,
       "identity": null,
-      "name": "id",
-      "schema": "public",
-      "table": "api_keys",
       "entityType": "columns"
     },
     {
+      "schema": "public",
+      "table": "api_keys",
+      "name": "name",
       "type": "text",
       "typeSchema": null,
       "notNull": false,
@@ -43,25 +921,12 @@
       "default": null,
       "generated": null,
       "identity": null,
-      "name": "name",
-      "schema": "public",
-      "table": "api_keys",
       "entityType": "columns"
     },
     {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
+      "schema": "public",
+      "table": "api_keys",
       "name": "key_hash",
-      "schema": "public",
-      "table": "api_keys",
-      "entityType": "columns"
-    },
-    {
       "type": "text",
       "typeSchema": null,
       "notNull": true,
@@ -69,12 +934,25 @@
       "default": null,
       "generated": null,
       "identity": null,
-      "name": "key_prefix",
-      "schema": "public",
-      "table": "api_keys",
       "entityType": "columns"
     },
     {
+      "schema": "public",
+      "table": "api_keys",
+      "name": "key_prefix",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "api_keys",
+      "name": "created_at",
       "type": "timestamp",
       "typeSchema": null,
       "notNull": true,
@@ -82,12 +960,12 @@
       "default": "(now() at time zone 'utc')",
       "generated": null,
       "identity": null,
-      "name": "created_at",
-      "schema": "public",
-      "table": "api_keys",
       "entityType": "columns"
     },
     {
+      "schema": "public",
+      "table": "api_keys",
+      "name": "last_used_at",
       "type": "timestamp",
       "typeSchema": null,
       "notNull": false,
@@ -95,12 +973,1117 @@
       "default": null,
       "generated": null,
       "identity": null,
-      "name": "last_used_at",
-      "schema": "public",
-      "table": "api_keys",
       "entityType": "columns"
     },
     {
+      "schema": "public",
+      "table": "integrations",
+      "name": "id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "integrations",
+      "name": "name",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "integrations",
+      "name": "type",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "integrations",
+      "name": "config",
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "integrations",
+      "name": "is_managed",
+      "type": "boolean",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": "false",
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "integrations",
+      "name": "created_at",
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "(now() at time zone 'utc')",
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "integrations",
+      "name": "updated_at",
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "(now() at time zone 'utc')",
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_event_subscriptions",
+      "name": "workflow_id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_event_subscriptions",
+      "name": "event_name",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_event_subscriptions",
+      "name": "role",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_event_subscriptions",
+      "name": "correlation_path",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_execution_events",
+      "name": "id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_execution_events",
+      "name": "workflow_id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_execution_events",
+      "name": "execution_id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_execution_events",
+      "name": "event_type",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_execution_events",
+      "name": "message",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_execution_events",
+      "name": "metadata",
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_execution_events",
+      "name": "created_at",
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "(now() at time zone 'utc')",
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_execution_logs",
+      "name": "id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_execution_logs",
+      "name": "execution_id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_execution_logs",
+      "name": "node_id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_execution_logs",
+      "name": "node_name",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_execution_logs",
+      "name": "node_type",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_execution_logs",
+      "name": "status",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_execution_logs",
+      "name": "input",
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_execution_logs",
+      "name": "output",
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_execution_logs",
+      "name": "error",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_execution_logs",
+      "name": "started_at",
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "(now() at time zone 'utc')",
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_execution_logs",
+      "name": "completed_at",
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_execution_logs",
+      "name": "duration",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_execution_logs",
+      "name": "timestamp",
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "(now() at time zone 'utc')",
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_executions",
+      "name": "id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_executions",
+      "name": "workflow_id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_executions",
+      "name": "workflow_version_id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_executions",
+      "name": "workflow_run_id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_executions",
+      "name": "status",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_executions",
+      "name": "start_source",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_executions",
+      "name": "delivery_id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_executions",
+      "name": "enqueued_at",
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_executions",
+      "name": "run_mode",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "'live'",
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_executions",
+      "name": "start_event_name",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_executions",
+      "name": "entity_value",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_executions",
+      "name": "input",
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_executions",
+      "name": "output",
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_executions",
+      "name": "error",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_executions",
+      "name": "started_at",
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "(now() at time zone 'utc')",
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_executions",
+      "name": "waiting_at",
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_executions",
+      "name": "cancelled_at",
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_executions",
+      "name": "completed_at",
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_executions",
+      "name": "duration",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_executions",
+      "name": "cancel_requested_at",
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_executions",
+      "name": "cancel_event_name",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_executions",
+      "name": "cancel_payload",
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_versions",
+      "name": "id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_versions",
+      "name": "workflow_id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_versions",
+      "name": "version",
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_versions",
+      "name": "graph",
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_versions",
+      "name": "catalog_fingerprint",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_versions",
+      "name": "graph_digest",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_versions",
+      "name": "published_at",
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "(now() at time zone 'utc')",
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_wait_states",
+      "name": "id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_wait_states",
+      "name": "execution_id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_wait_states",
+      "name": "workflow_id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_wait_states",
+      "name": "run_id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_wait_states",
+      "name": "node_id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_wait_states",
+      "name": "node_name",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_wait_states",
+      "name": "wait_type",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_wait_states",
+      "name": "status",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_wait_states",
+      "name": "resume_token",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_wait_states",
+      "name": "wait_until",
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_wait_states",
+      "name": "subscribed_events",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 1,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_wait_states",
+      "name": "metadata",
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_wait_states",
+      "name": "created_at",
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "(now() at time zone 'utc')",
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_wait_states",
+      "name": "resumed_at",
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_wait_states",
+      "name": "cancelled_at",
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflows",
+      "name": "id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflows",
+      "name": "name",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflows",
+      "name": "description",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflows",
+      "name": "graph",
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflows",
+      "name": "is_paused",
+      "type": "boolean",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "false",
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflows",
+      "name": "mode",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "'live'",
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflows",
+      "name": "visibility",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "'private'",
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflows",
+      "name": "published_version_id",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflows",
+      "name": "created_at",
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "(now() at time zone 'utc')",
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "workflows",
+      "name": "updated_at",
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "(now() at time zone 'utc')",
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "api_keys",
+      "name": "api_keys_key_prefix_idx",
       "nameExplicit": true,
       "columns": [
         {
@@ -116,189 +2099,12 @@
       "with": "",
       "method": "btree",
       "concurrently": false,
-      "name": "api_keys_key_prefix_idx",
-      "schema": "public",
-      "table": "api_keys",
       "entityType": "indexes"
     },
     {
-      "isRlsEnabled": false,
-      "name": "integrations",
-      "schema": "public",
-      "entityType": "tables"
-    },
-    {
-      "columns": [
-        "id"
-      ],
-      "nameExplicit": false,
-      "name": "integrations_pkey",
-      "schema": "public",
-      "table": "integrations",
-      "entityType": "pks"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "id",
-      "schema": "public",
-      "table": "integrations",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "name",
-      "schema": "public",
-      "table": "integrations",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "type",
-      "schema": "public",
-      "table": "integrations",
-      "entityType": "columns"
-    },
-    {
-      "type": "jsonb",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "config",
-      "schema": "public",
-      "table": "integrations",
-      "entityType": "columns"
-    },
-    {
-      "type": "boolean",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": "false",
-      "generated": null,
-      "identity": null,
-      "name": "is_managed",
-      "schema": "public",
-      "table": "integrations",
-      "entityType": "columns"
-    },
-    {
-      "type": "timestamp",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": "(now() at time zone 'utc')",
-      "generated": null,
-      "identity": null,
-      "name": "created_at",
-      "schema": "public",
-      "table": "integrations",
-      "entityType": "columns"
-    },
-    {
-      "type": "timestamp",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": "(now() at time zone 'utc')",
-      "generated": null,
-      "identity": null,
-      "name": "updated_at",
-      "schema": "public",
-      "table": "integrations",
-      "entityType": "columns"
-    },
-    {
-      "isRlsEnabled": false,
-      "name": "workflow_event_subscriptions",
-      "schema": "public",
-      "entityType": "tables"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "workflow_id",
       "schema": "public",
       "table": "workflow_event_subscriptions",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "event_name",
-      "schema": "public",
-      "table": "workflow_event_subscriptions",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "role",
-      "schema": "public",
-      "table": "workflow_event_subscriptions",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "correlation_path",
-      "schema": "public",
-      "table": "workflow_event_subscriptions",
-      "entityType": "columns"
-    },
-    {
-      "columns": [
-        "workflow_id",
-        "event_name",
-        "role"
-      ],
-      "nameExplicit": false,
-      "name": "workflow_event_subscriptions_workflow_id_event_name_role_pk",
-      "schema": "public",
-      "table": "workflow_event_subscriptions",
-      "entityType": "pks"
-    },
-    {
+      "name": "workflow_event_subscriptions_event_name_idx",
       "nameExplicit": true,
       "columns": [
         {
@@ -314,136 +2120,12 @@
       "with": "",
       "method": "btree",
       "concurrently": false,
-      "name": "workflow_event_subscriptions_event_name_idx",
-      "schema": "public",
-      "table": "workflow_event_subscriptions",
       "entityType": "indexes"
     },
     {
-      "nameExplicit": false,
-      "columns": [
-        "workflow_id"
-      ],
-      "schemaTo": "public",
-      "tableTo": "workflows",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "name": "workflow_event_subscriptions_workflow_id_workflows_id_fk",
-      "schema": "public",
-      "table": "workflow_event_subscriptions",
-      "entityType": "fks"
-    },
-    {
-      "isRlsEnabled": false,
-      "name": "workflow_execution_events",
-      "schema": "public",
-      "entityType": "tables"
-    },
-    {
-      "columns": [
-        "id"
-      ],
-      "nameExplicit": false,
-      "name": "workflow_execution_events_pkey",
       "schema": "public",
       "table": "workflow_execution_events",
-      "entityType": "pks"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "id",
-      "schema": "public",
-      "table": "workflow_execution_events",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "workflow_id",
-      "schema": "public",
-      "table": "workflow_execution_events",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "execution_id",
-      "schema": "public",
-      "table": "workflow_execution_events",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "event_type",
-      "schema": "public",
-      "table": "workflow_execution_events",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "message",
-      "schema": "public",
-      "table": "workflow_execution_events",
-      "entityType": "columns"
-    },
-    {
-      "type": "jsonb",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "metadata",
-      "schema": "public",
-      "table": "workflow_execution_events",
-      "entityType": "columns"
-    },
-    {
-      "type": "timestamp",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": "(now() at time zone 'utc')",
-      "generated": null,
-      "identity": null,
-      "name": "created_at",
-      "schema": "public",
-      "table": "workflow_execution_events",
-      "entityType": "columns"
-    },
-    {
+      "name": "workflow_execution_events_workflow_created_at_idx",
       "nameExplicit": true,
       "columns": [
         {
@@ -466,12 +2148,12 @@
       "with": "",
       "method": "btree",
       "concurrently": false,
-      "name": "workflow_execution_events_workflow_created_at_idx",
-      "schema": "public",
-      "table": "workflow_execution_events",
       "entityType": "indexes"
     },
     {
+      "schema": "public",
+      "table": "workflow_execution_events",
+      "name": "workflow_execution_events_execution_created_at_idx",
       "nameExplicit": true,
       "columns": [
         {
@@ -494,12 +2176,12 @@
       "with": "",
       "method": "btree",
       "concurrently": false,
-      "name": "workflow_execution_events_execution_created_at_idx",
-      "schema": "public",
-      "table": "workflow_execution_events",
       "entityType": "indexes"
     },
     {
+      "schema": "public",
+      "table": "workflow_execution_events",
+      "name": "workflow_execution_events_workflow_scoped_idx",
       "nameExplicit": true,
       "columns": [
         {
@@ -522,231 +2204,12 @@
       "with": "",
       "method": "btree",
       "concurrently": false,
-      "name": "workflow_execution_events_workflow_scoped_idx",
-      "schema": "public",
-      "table": "workflow_execution_events",
       "entityType": "indexes"
     },
     {
-      "nameExplicit": false,
-      "columns": [
-        "workflow_id"
-      ],
-      "schemaTo": "public",
-      "tableTo": "workflows",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "name": "workflow_execution_events_workflow_id_workflows_id_fk",
-      "schema": "public",
-      "table": "workflow_execution_events",
-      "entityType": "fks"
-    },
-    {
-      "nameExplicit": false,
-      "columns": [
-        "execution_id"
-      ],
-      "schemaTo": "public",
-      "tableTo": "workflow_executions",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "name": "workflow_execution_events_execution_id_workflow_executions_id_f",
-      "schema": "public",
-      "table": "workflow_execution_events",
-      "entityType": "fks"
-    },
-    {
-      "isRlsEnabled": false,
-      "name": "workflow_execution_logs",
-      "schema": "public",
-      "entityType": "tables"
-    },
-    {
-      "columns": [
-        "id"
-      ],
-      "nameExplicit": false,
-      "name": "workflow_execution_logs_pkey",
       "schema": "public",
       "table": "workflow_execution_logs",
-      "entityType": "pks"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "id",
-      "schema": "public",
-      "table": "workflow_execution_logs",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "execution_id",
-      "schema": "public",
-      "table": "workflow_execution_logs",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "node_id",
-      "schema": "public",
-      "table": "workflow_execution_logs",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "node_name",
-      "schema": "public",
-      "table": "workflow_execution_logs",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "node_type",
-      "schema": "public",
-      "table": "workflow_execution_logs",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "status",
-      "schema": "public",
-      "table": "workflow_execution_logs",
-      "entityType": "columns"
-    },
-    {
-      "type": "jsonb",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "input",
-      "schema": "public",
-      "table": "workflow_execution_logs",
-      "entityType": "columns"
-    },
-    {
-      "type": "jsonb",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "output",
-      "schema": "public",
-      "table": "workflow_execution_logs",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "error",
-      "schema": "public",
-      "table": "workflow_execution_logs",
-      "entityType": "columns"
-    },
-    {
-      "type": "timestamp",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": "(now() at time zone 'utc')",
-      "generated": null,
-      "identity": null,
-      "name": "started_at",
-      "schema": "public",
-      "table": "workflow_execution_logs",
-      "entityType": "columns"
-    },
-    {
-      "type": "timestamp",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "completed_at",
-      "schema": "public",
-      "table": "workflow_execution_logs",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "duration",
-      "schema": "public",
-      "table": "workflow_execution_logs",
-      "entityType": "columns"
-    },
-    {
-      "type": "timestamp",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": "(now() at time zone 'utc')",
-      "generated": null,
-      "identity": null,
-      "name": "timestamp",
-      "schema": "public",
-      "table": "workflow_execution_logs",
-      "entityType": "columns"
-    },
-    {
+      "name": "workflow_execution_logs_execution_id_idx",
       "nameExplicit": true,
       "columns": [
         {
@@ -762,12 +2225,12 @@
       "with": "",
       "method": "btree",
       "concurrently": false,
-      "name": "workflow_execution_logs_execution_id_idx",
-      "schema": "public",
-      "table": "workflow_execution_logs",
       "entityType": "indexes"
     },
     {
+      "schema": "public",
+      "table": "workflow_execution_logs",
+      "name": "workflow_execution_logs_execution_id_timestamp_idx",
       "nameExplicit": true,
       "columns": [
         {
@@ -790,331 +2253,12 @@
       "with": "",
       "method": "btree",
       "concurrently": false,
-      "name": "workflow_execution_logs_execution_id_timestamp_idx",
-      "schema": "public",
-      "table": "workflow_execution_logs",
       "entityType": "indexes"
     },
     {
-      "nameExplicit": false,
-      "columns": [
-        "execution_id"
-      ],
-      "schemaTo": "public",
-      "tableTo": "workflow_executions",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "name": "workflow_execution_logs_execution_id_workflow_executions_id_fk",
-      "schema": "public",
-      "table": "workflow_execution_logs",
-      "entityType": "fks"
-    },
-    {
-      "isRlsEnabled": false,
-      "name": "workflow_executions",
-      "schema": "public",
-      "entityType": "tables"
-    },
-    {
-      "columns": [
-        "id"
-      ],
-      "nameExplicit": false,
-      "name": "workflow_executions_pkey",
       "schema": "public",
       "table": "workflow_executions",
-      "entityType": "pks"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "id",
-      "schema": "public",
-      "table": "workflow_executions",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "workflow_id",
-      "schema": "public",
-      "table": "workflow_executions",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "workflow_version_id",
-      "schema": "public",
-      "table": "workflow_executions",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "workflow_run_id",
-      "schema": "public",
-      "table": "workflow_executions",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "status",
-      "schema": "public",
-      "table": "workflow_executions",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "start_source",
-      "schema": "public",
-      "table": "workflow_executions",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "delivery_id",
-      "schema": "public",
-      "table": "workflow_executions",
-      "entityType": "columns"
-    },
-    {
-      "type": "timestamp",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "enqueued_at",
-      "schema": "public",
-      "table": "workflow_executions",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": "'live'",
-      "generated": null,
-      "identity": null,
-      "name": "run_mode",
-      "schema": "public",
-      "table": "workflow_executions",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "start_event_name",
-      "schema": "public",
-      "table": "workflow_executions",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "entity_value",
-      "schema": "public",
-      "table": "workflow_executions",
-      "entityType": "columns"
-    },
-    {
-      "type": "jsonb",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "input",
-      "schema": "public",
-      "table": "workflow_executions",
-      "entityType": "columns"
-    },
-    {
-      "type": "jsonb",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "output",
-      "schema": "public",
-      "table": "workflow_executions",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "error",
-      "schema": "public",
-      "table": "workflow_executions",
-      "entityType": "columns"
-    },
-    {
-      "type": "timestamp",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": "(now() at time zone 'utc')",
-      "generated": null,
-      "identity": null,
-      "name": "started_at",
-      "schema": "public",
-      "table": "workflow_executions",
-      "entityType": "columns"
-    },
-    {
-      "type": "timestamp",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "waiting_at",
-      "schema": "public",
-      "table": "workflow_executions",
-      "entityType": "columns"
-    },
-    {
-      "type": "timestamp",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "cancelled_at",
-      "schema": "public",
-      "table": "workflow_executions",
-      "entityType": "columns"
-    },
-    {
-      "type": "timestamp",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "completed_at",
-      "schema": "public",
-      "table": "workflow_executions",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "duration",
-      "schema": "public",
-      "table": "workflow_executions",
-      "entityType": "columns"
-    },
-    {
-      "type": "timestamp",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "cancel_requested_at",
-      "schema": "public",
-      "table": "workflow_executions",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "cancel_event_name",
-      "schema": "public",
-      "table": "workflow_executions",
-      "entityType": "columns"
-    },
-    {
-      "type": "jsonb",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "cancel_payload",
-      "schema": "public",
-      "table": "workflow_executions",
-      "entityType": "columns"
-    },
-    {
+      "name": "workflow_executions_workflow_run_id_uidx",
       "nameExplicit": true,
       "columns": [
         {
@@ -1130,12 +2274,12 @@
       "with": "",
       "method": "btree",
       "concurrently": false,
-      "name": "workflow_executions_workflow_run_id_uidx",
-      "schema": "public",
-      "table": "workflow_executions",
       "entityType": "indexes"
     },
     {
+      "schema": "public",
+      "table": "workflow_executions",
+      "name": "workflow_executions_workflow_id_delivery_id_uidx",
       "nameExplicit": true,
       "columns": [
         {
@@ -1158,12 +2302,12 @@
       "with": "",
       "method": "btree",
       "concurrently": false,
-      "name": "workflow_executions_workflow_id_delivery_id_uidx",
-      "schema": "public",
-      "table": "workflow_executions",
       "entityType": "indexes"
     },
     {
+      "schema": "public",
+      "table": "workflow_executions",
+      "name": "workflow_executions_workflow_id_started_at_idx",
       "nameExplicit": true,
       "columns": [
         {
@@ -1193,12 +2337,12 @@
       "with": "",
       "method": "btree",
       "concurrently": false,
-      "name": "workflow_executions_workflow_id_started_at_idx",
-      "schema": "public",
-      "table": "workflow_executions",
       "entityType": "indexes"
     },
     {
+      "schema": "public",
+      "table": "workflow_executions",
+      "name": "workflow_executions_started_at_id_idx",
       "nameExplicit": true,
       "columns": [
         {
@@ -1221,12 +2365,12 @@
       "with": "",
       "method": "btree",
       "concurrently": false,
-      "name": "workflow_executions_started_at_id_idx",
-      "schema": "public",
-      "table": "workflow_executions",
       "entityType": "indexes"
     },
     {
+      "schema": "public",
+      "table": "workflow_executions",
+      "name": "workflow_executions_superseded_by_workflow_idx",
       "nameExplicit": true,
       "columns": [
         {
@@ -1242,12 +2386,12 @@
       "with": "",
       "method": "btree",
       "concurrently": false,
-      "name": "workflow_executions_superseded_by_workflow_idx",
-      "schema": "public",
-      "table": "workflow_executions",
       "entityType": "indexes"
     },
     {
+      "schema": "public",
+      "table": "workflow_executions",
+      "name": "workflow_executions_live_by_workflow_idx",
       "nameExplicit": true,
       "columns": [
         {
@@ -1270,12 +2414,12 @@
       "with": "",
       "method": "btree",
       "concurrently": false,
-      "name": "workflow_executions_live_by_workflow_idx",
-      "schema": "public",
-      "table": "workflow_executions",
       "entityType": "indexes"
     },
     {
+      "schema": "public",
+      "table": "workflow_executions",
+      "name": "workflow_executions_in_flight_by_entity_idx",
       "nameExplicit": true,
       "columns": [
         {
@@ -1305,153 +2449,12 @@
       "with": "",
       "method": "btree",
       "concurrently": false,
-      "name": "workflow_executions_in_flight_by_entity_idx",
-      "schema": "public",
-      "table": "workflow_executions",
       "entityType": "indexes"
     },
     {
-      "nameExplicit": false,
-      "columns": [
-        "workflow_id"
-      ],
-      "schemaTo": "public",
-      "tableTo": "workflows",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "name": "workflow_executions_workflow_id_workflows_id_fk",
-      "schema": "public",
-      "table": "workflow_executions",
-      "entityType": "fks"
-    },
-    {
-      "nameExplicit": false,
-      "columns": [
-        "workflow_version_id"
-      ],
-      "schemaTo": "public",
-      "tableTo": "workflow_versions",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "name": "workflow_executions_workflow_version_id_workflow_versions_id_fk",
-      "schema": "public",
-      "table": "workflow_executions",
-      "entityType": "fks"
-    },
-    {
-      "isRlsEnabled": false,
-      "name": "workflow_versions",
-      "schema": "public",
-      "entityType": "tables"
-    },
-    {
-      "columns": [
-        "id"
-      ],
-      "nameExplicit": false,
-      "name": "workflow_versions_pkey",
       "schema": "public",
       "table": "workflow_versions",
-      "entityType": "pks"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "id",
-      "schema": "public",
-      "table": "workflow_versions",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "workflow_id",
-      "schema": "public",
-      "table": "workflow_versions",
-      "entityType": "columns"
-    },
-    {
-      "type": "integer",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "version",
-      "schema": "public",
-      "table": "workflow_versions",
-      "entityType": "columns"
-    },
-    {
-      "type": "jsonb",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "graph",
-      "schema": "public",
-      "table": "workflow_versions",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "catalog_fingerprint",
-      "schema": "public",
-      "table": "workflow_versions",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "graph_digest",
-      "schema": "public",
-      "table": "workflow_versions",
-      "entityType": "columns"
-    },
-    {
-      "type": "timestamp",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": "(now() at time zone 'utc')",
-      "generated": null,
-      "identity": null,
-      "name": "published_at",
-      "schema": "public",
-      "table": "workflow_versions",
-      "entityType": "columns"
-    },
-    {
+      "name": "workflow_versions_workflow_id_version_uidx",
       "nameExplicit": true,
       "columns": [
         {
@@ -1474,12 +2477,12 @@
       "with": "",
       "method": "btree",
       "concurrently": false,
-      "name": "workflow_versions_workflow_id_version_uidx",
-      "schema": "public",
-      "table": "workflow_versions",
       "entityType": "indexes"
     },
     {
+      "schema": "public",
+      "table": "workflow_versions",
+      "name": "workflow_versions_workflow_id_published_at_idx",
       "nameExplicit": true,
       "columns": [
         {
@@ -1502,240 +2505,12 @@
       "with": "",
       "method": "btree",
       "concurrently": false,
-      "name": "workflow_versions_workflow_id_published_at_idx",
-      "schema": "public",
-      "table": "workflow_versions",
       "entityType": "indexes"
     },
     {
-      "nameExplicit": false,
-      "columns": [
-        "workflow_id"
-      ],
-      "schemaTo": "public",
-      "tableTo": "workflows",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "name": "workflow_versions_workflow_id_workflows_id_fk",
-      "schema": "public",
-      "table": "workflow_versions",
-      "entityType": "fks"
-    },
-    {
-      "isRlsEnabled": false,
-      "name": "workflow_wait_states",
-      "schema": "public",
-      "entityType": "tables"
-    },
-    {
-      "columns": [
-        "id"
-      ],
-      "nameExplicit": false,
-      "name": "workflow_wait_states_pkey",
       "schema": "public",
       "table": "workflow_wait_states",
-      "entityType": "pks"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "id",
-      "schema": "public",
-      "table": "workflow_wait_states",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "execution_id",
-      "schema": "public",
-      "table": "workflow_wait_states",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "workflow_id",
-      "schema": "public",
-      "table": "workflow_wait_states",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "run_id",
-      "schema": "public",
-      "table": "workflow_wait_states",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "node_id",
-      "schema": "public",
-      "table": "workflow_wait_states",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "node_name",
-      "schema": "public",
-      "table": "workflow_wait_states",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "wait_type",
-      "schema": "public",
-      "table": "workflow_wait_states",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "status",
-      "schema": "public",
-      "table": "workflow_wait_states",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "resume_token",
-      "schema": "public",
-      "table": "workflow_wait_states",
-      "entityType": "columns"
-    },
-    {
-      "type": "timestamp",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "wait_until",
-      "schema": "public",
-      "table": "workflow_wait_states",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 1,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "subscribed_events",
-      "schema": "public",
-      "table": "workflow_wait_states",
-      "entityType": "columns"
-    },
-    {
-      "type": "jsonb",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "metadata",
-      "schema": "public",
-      "table": "workflow_wait_states",
-      "entityType": "columns"
-    },
-    {
-      "type": "timestamp",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": "(now() at time zone 'utc')",
-      "generated": null,
-      "identity": null,
-      "name": "created_at",
-      "schema": "public",
-      "table": "workflow_wait_states",
-      "entityType": "columns"
-    },
-    {
-      "type": "timestamp",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "resumed_at",
-      "schema": "public",
-      "table": "workflow_wait_states",
-      "entityType": "columns"
-    },
-    {
-      "type": "timestamp",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "cancelled_at",
-      "schema": "public",
-      "table": "workflow_wait_states",
-      "entityType": "columns"
-    },
-    {
+      "name": "workflow_wait_states_resume_token_uidx",
       "nameExplicit": true,
       "columns": [
         {
@@ -1751,12 +2526,12 @@
       "with": "",
       "method": "btree",
       "concurrently": false,
-      "name": "workflow_wait_states_resume_token_uidx",
-      "schema": "public",
-      "table": "workflow_wait_states",
       "entityType": "indexes"
     },
     {
+      "schema": "public",
+      "table": "workflow_wait_states",
+      "name": "workflow_wait_states_execution_status_idx",
       "nameExplicit": true,
       "columns": [
         {
@@ -1779,12 +2554,12 @@
       "with": "",
       "method": "btree",
       "concurrently": false,
-      "name": "workflow_wait_states_execution_status_idx",
-      "schema": "public",
-      "table": "workflow_wait_states",
       "entityType": "indexes"
     },
     {
+      "schema": "public",
+      "table": "workflow_wait_states",
+      "name": "workflow_wait_states_subscribed_events_idx",
       "nameExplicit": true,
       "columns": [
         {
@@ -1800,12 +2575,12 @@
       "with": "",
       "method": "gin",
       "concurrently": false,
-      "name": "workflow_wait_states_subscribed_events_idx",
-      "schema": "public",
-      "table": "workflow_wait_states",
       "entityType": "indexes"
     },
     {
+      "schema": "public",
+      "table": "workflow_wait_states",
+      "name": "workflow_wait_states_waiting_by_workflow_idx",
       "nameExplicit": true,
       "columns": [
         {
@@ -1821,192 +2596,12 @@
       "with": "",
       "method": "btree",
       "concurrently": false,
-      "name": "workflow_wait_states_waiting_by_workflow_idx",
-      "schema": "public",
-      "table": "workflow_wait_states",
       "entityType": "indexes"
     },
     {
-      "nameExplicit": false,
-      "columns": [
-        "execution_id"
-      ],
-      "schemaTo": "public",
-      "tableTo": "workflow_executions",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "name": "workflow_wait_states_execution_id_workflow_executions_id_fk",
-      "schema": "public",
-      "table": "workflow_wait_states",
-      "entityType": "fks"
-    },
-    {
-      "nameExplicit": false,
-      "columns": [
-        "workflow_id"
-      ],
-      "schemaTo": "public",
-      "tableTo": "workflows",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "name": "workflow_wait_states_workflow_id_workflows_id_fk",
-      "schema": "public",
-      "table": "workflow_wait_states",
-      "entityType": "fks"
-    },
-    {
-      "isRlsEnabled": false,
-      "name": "workflows",
-      "schema": "public",
-      "entityType": "tables"
-    },
-    {
-      "columns": [
-        "id"
-      ],
-      "nameExplicit": false,
-      "name": "workflows_pkey",
       "schema": "public",
       "table": "workflows",
-      "entityType": "pks"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "id",
-      "schema": "public",
-      "table": "workflows",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "name",
-      "schema": "public",
-      "table": "workflows",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "description",
-      "schema": "public",
-      "table": "workflows",
-      "entityType": "columns"
-    },
-    {
-      "type": "jsonb",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "graph",
-      "schema": "public",
-      "table": "workflows",
-      "entityType": "columns"
-    },
-    {
-      "type": "boolean",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": "false",
-      "generated": null,
-      "identity": null,
-      "name": "is_paused",
-      "schema": "public",
-      "table": "workflows",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": "'live'",
-      "generated": null,
-      "identity": null,
-      "name": "mode",
-      "schema": "public",
-      "table": "workflows",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": "'private'",
-      "generated": null,
-      "identity": null,
-      "name": "visibility",
-      "schema": "public",
-      "table": "workflows",
-      "entityType": "columns"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "published_version_id",
-      "schema": "public",
-      "table": "workflows",
-      "entityType": "columns"
-    },
-    {
-      "type": "timestamp",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": "(now() at time zone 'utc')",
-      "generated": null,
-      "identity": null,
-      "name": "created_at",
-      "schema": "public",
-      "table": "workflows",
-      "entityType": "columns"
-    },
-    {
-      "type": "timestamp",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": "(now() at time zone 'utc')",
-      "generated": null,
-      "identity": null,
-      "name": "updated_at",
-      "schema": "public",
-      "table": "workflows",
-      "entityType": "columns"
-    },
-    {
+      "name": "workflows_name_ci_uidx",
       "nameExplicit": true,
       "columns": [
         {
@@ -2022,12 +2617,165 @@
       "with": "",
       "method": "btree",
       "concurrently": false,
-      "name": "workflows_name_ci_uidx",
-      "schema": "public",
-      "table": "workflows",
       "entityType": "indexes"
     },
     {
+      "schema": "public",
+      "table": "workflow_event_subscriptions",
+      "name": "workflow_event_subscriptions_workflow_id_workflows_id_fk",
+      "nameExplicit": false,
+      "columns": [
+        "workflow_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "workflows",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "entityType": "fks"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_execution_events",
+      "name": "workflow_execution_events_workflow_id_workflows_id_fk",
+      "nameExplicit": false,
+      "columns": [
+        "workflow_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "workflows",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "entityType": "fks"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_execution_events",
+      "name": "workflow_execution_events_execution_id_workflow_executions_id_f",
+      "nameExplicit": false,
+      "columns": [
+        "execution_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "workflow_executions",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "entityType": "fks"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_execution_logs",
+      "name": "workflow_execution_logs_execution_id_workflow_executions_id_fk",
+      "nameExplicit": false,
+      "columns": [
+        "execution_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "workflow_executions",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "entityType": "fks"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_executions",
+      "name": "workflow_executions_workflow_id_workflows_id_fk",
+      "nameExplicit": false,
+      "columns": [
+        "workflow_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "workflows",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "entityType": "fks"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_executions",
+      "name": "workflow_executions_workflow_version_id_workflow_versions_id_fk",
+      "nameExplicit": false,
+      "columns": [
+        "workflow_version_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "workflow_versions",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "entityType": "fks"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_versions",
+      "name": "workflow_versions_workflow_id_workflows_id_fk",
+      "nameExplicit": false,
+      "columns": [
+        "workflow_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "workflows",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "entityType": "fks"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_wait_states",
+      "name": "workflow_wait_states_execution_id_workflow_executions_id_fk",
+      "nameExplicit": false,
+      "columns": [
+        "execution_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "workflow_executions",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "entityType": "fks"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_wait_states",
+      "name": "workflow_wait_states_workflow_id_workflows_id_fk",
+      "nameExplicit": false,
+      "columns": [
+        "workflow_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "workflows",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "entityType": "fks"
+    },
+    {
+      "schema": "public",
+      "table": "workflows",
+      "name": "workflows_published_version_id_workflow_versions_id_fk",
       "nameExplicit": false,
       "columns": [
         "published_version_id"
@@ -2039,11 +2787,99 @@
       ],
       "onUpdate": "NO ACTION",
       "onDelete": "SET NULL",
-      "name": "workflows_published_version_id_workflow_versions_id_fk",
+      "entityType": "fks"
+    },
+    {
+      "schema": "public",
+      "table": "api_keys",
+      "name": "api_keys_pkey",
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "entityType": "pks"
+    },
+    {
+      "schema": "public",
+      "table": "integrations",
+      "name": "integrations_pkey",
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "entityType": "pks"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_event_subscriptions",
+      "name": "workflow_event_subscriptions_workflow_id_event_name_role_pk",
+      "columns": [
+        "workflow_id",
+        "event_name",
+        "role"
+      ],
+      "nameExplicit": false,
+      "entityType": "pks"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_execution_events",
+      "name": "workflow_execution_events_pkey",
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "entityType": "pks"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_execution_logs",
+      "name": "workflow_execution_logs_pkey",
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "entityType": "pks"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_executions",
+      "name": "workflow_executions_pkey",
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "entityType": "pks"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_versions",
+      "name": "workflow_versions_pkey",
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "entityType": "pks"
+    },
+    {
+      "schema": "public",
+      "table": "workflow_wait_states",
+      "name": "workflow_wait_states_pkey",
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "entityType": "pks"
+    },
+    {
       "schema": "public",
       "table": "workflows",
-      "entityType": "fks"
+      "name": "workflows_pkey",
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "entityType": "pks"
     }
-  ],
-  "renames": []
+  ]
 }

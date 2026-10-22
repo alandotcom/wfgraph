@@ -181,9 +181,5 @@ minimumReleaseAgeExclude:
   - "motion@14.1.0"
   - "smol-toml@1.9.1"
   - "uuid@14.0.3"
-
-patchedDependencies:
-  # RC4 calls Effect's removed Schema.TaggedErrorClass API. Upstream replaced it
-  # with Schema.TaggedError in drizzle-team/drizzle-orm@b1b6cf1 on the unreleased
-  # rc5 branch; remove this patch after upgrading to a release containing it.
-  drizzle-orm@1.0.0-rc.4: patches/drizzle-orm@1.0.0-rc.4.patch
+  - "drizzle-kit@1.0.0-rc.5"
+  - "drizzle-orm@1.0.0-rc.5"

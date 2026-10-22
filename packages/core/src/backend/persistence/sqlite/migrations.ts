@@ -78,8 +78,13 @@ function exclusiveMigrationTransaction<A, E>(
     const setting = yield* database.get<{ timeout: number }>(
       sql`pragma busy_timeout`
     );
+    if (setting === undefined) {
+      return yield* new SqliteInitializationError({
+        message: "SQLite did not return its busy timeout",
+      });
+    }
     yield* database.run(sql`pragma busy_timeout = 0`);
-    yield* acquireExclusiveMigrationLock(
+    return yield* acquireExclusiveMigrationLock(
       database,
       Math.max(1, Math.ceil(setting.timeout / 10))
     ).pipe(
