@@ -411,7 +411,7 @@ export function makeWaitsMethods(
               waitUntil: input.waitUntil,
               subscribedEvents: input.subscribedEvents,
               resumeToken: input.resumeToken,
-              metadata: sql`coalesce(${workflowWaitStates.metadata}, '{}'::jsonb) || ${JSON.stringify(input.metadata)}::jsonb`,
+              metadata: sql`coalesce(${workflowWaitStates.metadata}, '{}'::jsonb) || ${input.metadata}::jsonb`,
             })
             .where(
               and(
@@ -775,7 +775,7 @@ async function claimWaitState(
     .set({
       status: "resuming",
       resumedAt: claimedAt,
-      metadata: sql`coalesce(${workflowWaitStates.metadata}, '{}'::jsonb) || ${JSON.stringify(arrivalMetadata(arrival))}::jsonb`,
+      metadata: sql`coalesce(${workflowWaitStates.metadata}, '{}'::jsonb) || ${arrivalMetadata(arrival)}::jsonb`,
     })
     .where(
       and(

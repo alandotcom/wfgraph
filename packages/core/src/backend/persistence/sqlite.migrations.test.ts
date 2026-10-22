@@ -53,7 +53,7 @@ async function migrationFixture() {
 async function migrateMetadata(
   filename: string,
   migrations: readonly MigrationMeta[]
-): Promise<{ foreign_keys: number }> {
+): Promise<{ foreign_keys: number } | undefined> {
   await using runtime = ManagedRuntime.make(
     SqliteClient.layer({ filename, busyTimeout: 1_000 })
   );
@@ -67,7 +67,7 @@ async function migrateMetadata(
 async function migrate(
   filename: string,
   migrations: string
-): Promise<{ foreign_keys: number }> {
+): Promise<{ foreign_keys: number } | undefined> {
   return migrateMetadata(
     filename,
     readMigrationFiles({ migrationsFolder: migrations })
