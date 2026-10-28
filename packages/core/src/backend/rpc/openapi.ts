@@ -1,7 +1,7 @@
 import { OpenAPIGenerator } from "@orpc/openapi";
 import { OpenAPIHandler } from "@orpc/openapi/fetch";
 import { OpenAPIReferenceHandlerPlugin } from "@orpc/openapi/plugins";
-import { EffectSchemaToJsonSchemaConverter } from "@orpc/experimental-effect";
+import { EffectSchemaToJsonSchemaConverter } from "@orpc/effect";
 import type { RpcContext } from "#src/backend/rpc/context";
 import { rpcRouter } from "#src/backend/rpc/router";
 

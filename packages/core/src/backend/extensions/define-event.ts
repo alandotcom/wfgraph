@@ -146,14 +146,14 @@ export type AnyEventDefinition = EventDefinition<JsonObject, unknown>;
  * foreign library's own messages for the operator. An Effect payload schema
  * renders both through `formatSchemaFailure`, so the two read alike there.
  */
-export class PayloadRejected extends Schema.TaggedError<PayloadRejected>()(
-  "PayloadRejected",
-  {
-    eventName: Schema.String,
-    error: Schema.String,
-    detail: Schema.String,
-  }
-) {}
+export class PayloadRejected extends Schema.TaggedError<
+  PayloadRejected,
+  { readonly brand: unique symbol }
+>()("PayloadRejected", {
+  eventName: Schema.String,
+  error: Schema.String,
+  detail: Schema.String,
+}) {}
 
 /**
  * The intake gate for one Event, built once at definition.

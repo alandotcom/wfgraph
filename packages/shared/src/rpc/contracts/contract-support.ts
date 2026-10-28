@@ -42,24 +42,19 @@ export function route(
 /**
  * Hands a schema to oRPC as a Standard Schema, closed to keys it did not name.
  *
- * `@orpc/experimental-effect` exports a `toStandardSchema` of its own and this
+ * `@orpc/effect` exports a `toStandardSchema` of its own and this
  * is not it. That one takes no parse options, and parse options are the only
  * way an Effect schema can be strict about unknown keys: oRPC calls
  * `~standard.validate(payload)` with nothing else to say, so anything the
  * schema wants to be true of that call has to be closed over before it gets
- * there. The two are otherwise interchangeable -- Effect assigns `~standard`
- * onto the schema and hands the same object back, so the schema oRPC holds is
- * still an Effect schema either way, which is what
- * `EffectSchemaToJsonSchemaConverter` looks for when it builds the OpenAPI
- * document. The one thing oRPC's version adds, carrying meta plugins across, is
- * a copy onto the object it was read from.
+ * there. The two are otherwise interchangeable -- Effect returns a copy of the
+ * schema carrying `~standard`, so the schema oRPC holds is still an Effect
+ * schema either way, which is what `EffectSchemaToJsonSchemaConverter` looks
+ * for when it builds the OpenAPI document. The one thing oRPC's version adds,
+ * carrying meta plugins across, is a copy onto the object it was read from.
  *
- * Effect's bridge is first-call-wins: a schema that already carries a
- * `validate` keeps it, options and all. So every schema crosses here exactly
- * once. A shape more than one procedure names is bridged once at module scope
- * and the binding is what the procedures hand to oRPC. `toStandardSchema`
- * throws on a second crossing that carries options rather than dropping them,
- * so this is a rule the contracts cannot quietly break.
+ * Each call returns a new copy. A shape more than one procedure names is bridged
+ * once at module scope and the binding is what the procedures hand to oRPC.
  */
 export function contractSchema<S extends Schema.ConstraintDecoder<unknown>>(
   schema: S

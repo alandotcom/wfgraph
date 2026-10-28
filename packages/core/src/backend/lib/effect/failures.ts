@@ -81,12 +81,12 @@ export type ServiceFailurePayload = {
 };
 
 /** The caller's input, or the resource it points at, does not pass validation. */
-export class InvalidInput extends Schema.TaggedError<InvalidInput>()(
-  "InvalidInput",
-  {
-    error: Schema.String,
-  }
-) {
+export class InvalidInput extends Schema.TaggedError<
+  InvalidInput,
+  { readonly brand: unique symbol }
+>()("InvalidInput", {
+  error: Schema.String,
+}) {
   readonly kind: Kind<"invalid"> = "invalid";
 
   get payload(): ServiceFailurePayload {
@@ -104,13 +104,13 @@ export class InvalidInput extends Schema.TaggedError<InvalidInput>()(
  * body that `getRpcErrorMessage` reads, which appends the ids to the message it
  * builds and is the only thing that reads them today.
  */
-export class IntegrationValidationFailed extends Schema.TaggedError<IntegrationValidationFailed>()(
-  "IntegrationValidationFailed",
-  {
-    error: Schema.String,
-    invalidIntegrationIds: Schema.Array(Schema.String),
-  }
-) {
+export class IntegrationValidationFailed extends Schema.TaggedError<
+  IntegrationValidationFailed,
+  { readonly brand: unique symbol }
+>()("IntegrationValidationFailed", {
+  error: Schema.String,
+  invalidIntegrationIds: Schema.Array(Schema.String),
+}) {
   readonly kind: Kind<"invalid"> = "invalid";
 
   get payload(): ServiceFailurePayload {
@@ -123,12 +123,12 @@ export class IntegrationValidationFailed extends Schema.TaggedError<IntegrationV
 }
 
 /** The caller's credentials did not authenticate. */
-export class Unauthorized extends Schema.TaggedError<Unauthorized>()(
-  "Unauthorized",
-  {
-    error: Schema.String,
-  }
-) {
+export class Unauthorized extends Schema.TaggedError<
+  Unauthorized,
+  { readonly brand: unique symbol }
+>()("Unauthorized", {
+  error: Schema.String,
+}) {
   readonly kind: Kind<"unauthorized"> = "unauthorized";
 
   get payload(): ServiceFailurePayload {
@@ -137,7 +137,10 @@ export class Unauthorized extends Schema.TaggedError<Unauthorized>()(
 }
 
 /** The addressed resource does not exist. */
-export class NotFound extends Schema.TaggedError<NotFound>()("NotFound", {
+export class NotFound extends Schema.TaggedError<
+  NotFound,
+  { readonly brand: unique symbol }
+>()("NotFound", {
   error: Schema.String,
 }) {
   readonly kind: Kind<"not_found"> = "not_found";
@@ -148,7 +151,10 @@ export class NotFound extends Schema.TaggedError<NotFound>()("NotFound", {
 }
 
 /** The request collides with existing state, such as a duplicate name. */
-export class Conflict extends Schema.TaggedError<Conflict>()("Conflict", {
+export class Conflict extends Schema.TaggedError<
+  Conflict,
+  { readonly brand: unique symbol }
+>()("Conflict", {
   error: Schema.String,
 }) {
   readonly kind: Kind<"conflict"> = "conflict";
@@ -159,16 +165,16 @@ export class Conflict extends Schema.TaggedError<Conflict>()("Conflict", {
 }
 
 /** A graph write used an older editable draft revision. */
-export class DraftConflict extends Schema.TaggedError<DraftConflict>()(
-  "DraftConflict",
-  {
-    error: Schema.String,
-    currentDraftRevision: Schema.Finite.check(
-      Schema.isInt(),
-      Schema.isGreaterThan(0)
-    ),
-  }
-) {
+export class DraftConflict extends Schema.TaggedError<
+  DraftConflict,
+  { readonly brand: unique symbol }
+>()("DraftConflict", {
+  error: Schema.String,
+  currentDraftRevision: Schema.Finite.check(
+    Schema.isInt(),
+    Schema.isGreaterThan(0)
+  ),
+}) {
   readonly kind: Kind<"conflict"> = "conflict";
 
   get payload(): ServiceFailurePayload {
@@ -193,13 +199,13 @@ export class DraftConflict extends Schema.TaggedError<DraftConflict>()(
  * The two codes are the whole set. Any other collision stays a plain
  * `Conflict`.
  */
-export class PublicationConflict extends Schema.TaggedError<PublicationConflict>()(
-  "PublicationConflict",
-  {
-    error: Schema.String,
-    code: Schema.Literals(PUBLICATION_CONFLICT_CODE_VALUES),
-  }
-) {
+export class PublicationConflict extends Schema.TaggedError<
+  PublicationConflict,
+  { readonly brand: unique symbol }
+>()("PublicationConflict", {
+  error: Schema.String,
+  code: Schema.Literals(PUBLICATION_CONFLICT_CODE_VALUES),
+}) {
   readonly kind: Kind<"conflict"> = "conflict";
 
   get payload(): ServiceFailurePayload {
@@ -213,13 +219,13 @@ export class PublicationConflict extends Schema.TaggedError<PublicationConflict>
  * `cause` holds whatever was thrown underneath, so the operator-facing log keeps
  * the detail while the caller-facing `error` stays a sentence a UI can show.
  */
-export class InternalFailure extends Schema.TaggedError<InternalFailure>()(
-  "InternalFailure",
-  {
-    error: Schema.String,
-    cause: Schema.optional(Schema.Defect()),
-  }
-) {
+export class InternalFailure extends Schema.TaggedError<
+  InternalFailure,
+  { readonly brand: unique symbol }
+>()("InternalFailure", {
+  error: Schema.String,
+  cause: Schema.optional(Schema.Defect()),
+}) {
   readonly kind: Kind<"internal"> = "internal";
 
   // `cause` is for the operator-facing log, so it stays out of the payload.

@@ -16,12 +16,12 @@ import {
  * that could not enqueue a run answers "internal", and the sentence the caller
  * reads comes from the cause's own message.
  */
-export class InngestError extends Schema.TaggedError<InngestError>()(
-  "InngestError",
-  {
-    cause: Schema.Defect(),
-  }
-) {}
+export class InngestError extends Schema.TaggedError<
+  InngestError,
+  { readonly brand: unique symbol }
+>()("InngestError", {
+  cause: Schema.Defect(),
+}) {}
 
 /**
  * The event bus that drives runs, as a service rather than a module-level

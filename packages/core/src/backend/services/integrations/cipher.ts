@@ -68,12 +68,12 @@ export function assertValidEncryptionKey(
  * process holding the wrong `encryption.key`, which is why it leaves the read
  * rather than becoming one more empty config.
  */
-export class EncryptionKeyMismatch extends Schema.TaggedError<EncryptionKeyMismatch>()(
-  "EncryptionKeyMismatch",
-  {
-    cause: Schema.Defect(),
-  }
-) {}
+export class EncryptionKeyMismatch extends Schema.TaggedError<
+  EncryptionKeyMismatch,
+  { readonly brand: unique symbol }
+>()("EncryptionKeyMismatch", {
+  cause: Schema.Defect(),
+}) {}
 
 /**
  * What a person can do about a key mismatch, for whoever the failure reaches.

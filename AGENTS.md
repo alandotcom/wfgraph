@@ -174,8 +174,9 @@ predicate, and never es-toolkit's `isPlainObject`; that module's header says why
 
 - Strictness is a decode option. Effect has no `.strict()`, so a wire decode passes
   `rejectUnknownKeys`; a shape meant to stay open says so with `Schema.StructWithRest`.
-- `toStandardSchema` bakes those options in, and a schema crosses that bridge once. The
-  first crossing decides its options for good.
+- `toStandardSchema` bakes those options into the copy it returns and leaves the schema it
+  was given untouched, so hand a consumer the returned value. `asStandardSchema` passes an
+  already-bridged schema through, since bridging it again would drop its options.
 - `Schema.optionalKey` for a shape read from JSON, `Schema.optional` for one built in
   process, and under a canonical JSON codec the two swap places. All three cases are worked
   in `packages/core/src/backend/extensions/steps/define-step.test.ts`.
