@@ -89,6 +89,13 @@ pinning it, so a later change to any of them is a decision rather than a drift.
   decided by module initialisation order. `contracts.ts` binds each shared shape's bridged
   form once at module scope rather than bridging at each `.output()`.
 
+**Amendment, 2026-10-28.** `toStandardSchema` no longer throws on a second crossing.
+Effect 4.0.6 changed `Schema.toStandardSchemaV1` and `Schema.toStandardJSONSchemaV1` to
+return a shallow copy carrying `~standard` and to leave the schema they were given
+untouched, so each crossing's parse options belong to the copy it returned and no
+crossing can drop another's. A copy that is bridged again does have its `validate`
+replaced, so `asStandardSchema` hands an already-bridged schema back as it arrived.
+
 ## Dependency wiring
 
 `createWfGraphApp` builds a Layer graph and holds it in a `ManagedRuntime` owned by that app

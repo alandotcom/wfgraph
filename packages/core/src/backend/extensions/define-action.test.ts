@@ -11,10 +11,6 @@ import { Effect, Schema, SchemaTransformation } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import { type } from "arktype";
 import { z } from "zod";
-import type {
-  StandardJSONSchemaV1,
-  StandardSchemaV1,
-} from "@standard-schema/spec";
 import type { NodeSteps } from "@wfgraph/shared/actions/step-result";
 import { stubStepEnvironment } from "#src/backend/lib/effect/test-layers";
 import {
@@ -435,11 +431,10 @@ describe("defineAction as the engine calls it", () => {
  * schema before anything reads it.
  */
 describe("defineAction bridges the schema it is given", () => {
-  it("gives a bare Effect schema both halves, once", () => {
+  it("bridges a bare Effect schema without touching it", () => {
     const schema = Schema.Struct({ text: Schema.String });
-    expect("~standard" in schema).toBe(false);
 
-    defineAction({
+    const action = defineAction({
       id: "effect/bridge-test",
       label: "Effect Bridge",
       description: "Tests that defineAction bridges what it is handed",
@@ -449,14 +444,12 @@ describe("defineAction bridges the schema it is given", () => {
       },
     });
 
-    // The same object, now carrying both halves. Effect's bridge assigns onto the
-    // schema rather than wrapping it, which is what makes "bridged once, where the
-    // action is defined" observable from out here.
-    const bridged = schema as unknown as StandardSchemaV1<unknown, unknown> &
-      StandardJSONSchemaV1<unknown, unknown>;
-    expect(bridged["~standard"].vendor).toBe("effect");
-    expect(typeof bridged["~standard"].validate).toBe("function");
-    expect(typeof bridged["~standard"].jsonSchema.input).toBe("function");
+    // Effect's bridge returns a copy, so the author's schema stays as written
+    // while the form fields are derived from the bridged half.
+    expect("~standard" in schema).toBe(false);
+    expect(action.configFields).toEqual([
+      { key: "text", label: "Text", type: "template-input", required: true },
+    ]);
   });
 
   it("leaves a Zod schema exactly as it arrived", () => {

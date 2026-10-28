@@ -20,12 +20,12 @@ import type {
  * `serializableTransaction` reads it to retry an aborted transaction; services
  * otherwise log database failures and answer "internal".
  */
-export class DatabaseError extends Schema.TaggedError<DatabaseError>()(
-  "DatabaseError",
-  {
-    cause: Schema.Defect(),
-  }
-) {}
+export class DatabaseError extends Schema.TaggedError<
+  DatabaseError,
+  { readonly brand: unique symbol }
+>()("DatabaseError", {
+  cause: Schema.Defect(),
+}) {}
 
 /** Bounds the walk, so a cause that points at itself cannot spin a predicate. */
 const MAX_CAUSE_DEPTH = 8;

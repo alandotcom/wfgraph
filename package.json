@@ -34,14 +34,14 @@
     "release:publish": "pnpm run build && changeset publish"
   },
   "dependencies": {
-    "dotenv": "^18.0.7"
+    "dotenv": "^18.0.9"
   },
   "devDependencies": {
     "@changesets/changelog-github": "1.0.1",
     "@changesets/cli": "3.0.3",
-    "@effect/tsgo": "0.51.1",
+    "@effect/tsgo": "0.59.0",
     "@effect/vitest": "catalog:",
-    "@tanstack/intent": "^0.5.5",
+    "@tanstack/intent": "^0.5.6",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "catalog:",
     "@types/d3-hierarchy": "^3.1.7",
@@ -53,20 +53,20 @@
     "esbuild": "^0.28.2",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-you-might-not-need-an-effect": "1.0.2",
-    "happy-dom": "^20.14.6",
-    "knip": "^6.41.0",
-    "oxfmt": "^0.72.0",
-    "oxlint": "^1.87.0",
-    "oxlint-tsgolint": "^7.0.2003",
-    "pkg-pr-new": "^0.0.91",
-    "tsdown": "^0.23.0",
+    "happy-dom": "^21.0.4",
+    "knip": "^6.43.0",
+    "oxfmt": "^0.74.0",
+    "oxlint": "^1.89.0",
+    "oxlint-tsgolint": "^7.0.2005",
+    "pkg-pr-new": "^0.0.92",
+    "tsdown": "^0.23.1",
     "tsx": "catalog:",
     "typescript": "^7.0.2",
     "vite": "catalog:",
-    "vitest": "^5.0.3"
+    "vitest": "^5.0.5"
   },
   "optionalDependencies": {
-    "inngest-cli": "^1.46.0"
+    "inngest-cli": "^1.49.0"
   },
   "engines": {
     "node": ">=24"

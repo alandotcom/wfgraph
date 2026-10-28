@@ -1,6 +1,7 @@
 import {
   COMMON_ERROR_STATUS_MAP,
   createORPCClient,
+  MalformedResponseError,
   ORPCError,
 } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
@@ -219,6 +220,12 @@ const link = new RPCLink<RpcClientContext>({
             getRpcErrorMessage(error.data ?? error.message),
             asNonEmptyString(payload?.code)
           );
+        }
+
+        // A body that is not an oRPC response, such as a proxy's error page.
+        // oRPC copies that body into the message, and it is not ours to show.
+        if (error instanceof MalformedResponseError) {
+          throw new ApiError(500, "Request failed");
         }
 
         if (error instanceof Error) {

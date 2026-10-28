@@ -124,13 +124,15 @@ export function readAs<S extends Schema.ConstraintDecoder<unknown>>(
 }
 
 /**
- * Whether a schema has already been across the bridge below.
+ * Whether an Effect schema is already the copy `toStandardSchema` returns,
+ * carrying both a `validate` and a `jsonSchema`.
  *
- * `~standard` alone is not the answer: Effect's two bridge functions write into
- * the same object, so a schema can carry a `jsonSchema` and still be waiting for
- * the `validate` that parse options ride on.
+ * Bridging that copy again replaces its `validate`, and with it whatever parse
+ * options the first crossing closed over.
  */
-function hasStandardValidate(schema: object): boolean {
+function isBridged<TOutput, TInput>(
+  schema: object
+): schema is StandardSchema<TOutput, TInput> {
   if (!("~standard" in schema)) {
     return false;
   }
@@ -140,7 +142,8 @@ function hasStandardValidate(schema: object): boolean {
     typeof standard === "object" &&
     standard !== null &&
     "validate" in standard &&
-    typeof standard.validate === "function"
+    typeof standard.validate === "function" &&
+    "jsonSchema" in standard
   );
 }
 
@@ -163,25 +166,15 @@ function hasStandardValidate(schema: object): boolean {
  * per-schema equivalent of Zod's `.strict()`, so
  * `{ onExcessProperty: "error" }` given here is the whole mechanism.
  *
- * Both Effect functions assign onto the schema they are given, so the value
- * that comes back is the same object, now carrying `~standard`. That also means
- * the first call wins: a schema that already has a `validate` keeps it, options
- * and all, so a schema wanting these options has to cross this bridge once.
- *
- * A second crossing with options is therefore a silent loss, and which crossing
- * came first is decided by module initialisation order -- nothing a reader of
- * either call site can see. So the second crossing throws instead.
+ * Both Effect functions return a shallow copy carrying `~standard` and leave
+ * the schema they were given untouched, so the options belong to the returned
+ * copy alone. That copy is the value to hand a consumer; the schema passed in
+ * still has no `validate`.
  */
 export function toStandardSchema<S extends Schema.ConstraintDecoder<unknown>>(
   schema: S,
   parseOptions?: SchemaAST.ParseOptions
 ) {
-  if (parseOptions && hasStandardValidate(schema)) {
-    throw new Error(
-      "This schema already carries a Standard Schema validate, so these parse options would be silently dropped. Which crossing ran first is decided by module initialisation order, which no call site can see, so a schema that needs parse options must cross this bridge exactly once."
-    );
-  }
-
   return Schema.toStandardJSONSchemaV1(
     Schema.toStandardSchemaV1(schema, { parseOptions })
   );
@@ -279,8 +272,7 @@ export function isEffectSchema<T, REncode = unknown>(
  * Effect Schema reads the same as writing one in Zod -- `schema:
  * Schema.Struct({ ... })`, no wrapper -- while the library-agnostic seam stays
  * exactly as wide as it was. Definition is where it is called, which is the one
- * moment a schema is handled before anything reads it, so the bridge's
- * first-call-wins rule is satisfied by there being only one call.
+ * moment a schema is handled before anything reads it.
  *
  * `Other` is whatever the caller's own seam already accepted, handed back
  * untouched. The separate input and output parameters preserve codecs such as
@@ -289,12 +281,16 @@ export function isEffectSchema<T, REncode = unknown>(
  *
  * The discrimination is exact rather than structural: `Schema.isSchema` tests
  * for the `"~effect/Schema/Schema"` type id Effect brands every schema with, so
- * no amount of resemblance makes a Zod or arktype schema answer to it. The
- * bridge is idempotent besides -- Effect returns a schema that already carries a
- * `validate` untouched -- so an author who bridged by hand loses nothing here.
+ * no amount of resemblance makes a Zod or arktype schema answer to it. A
+ * schema the author already bridged is handed back as it arrived, so the parse
+ * options they gave `toStandardSchema` survive.
  */
 export function asStandardSchema<TOutput, TInput = unknown, Other = never>(
   schema: Other | Schema.ConstraintCodec<TOutput, TInput, never, unknown>
 ): Other | StandardSchema<TOutput, TInput> {
-  return isEffectSchema<TOutput>(schema) ? toStandardSchema(schema) : schema;
+  if (!isEffectSchema<TOutput>(schema)) {
+    return schema;
+  }
+
+  return isBridged<TOutput, TInput>(schema) ? schema : toStandardSchema(schema);
 }

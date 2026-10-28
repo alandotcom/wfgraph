@@ -17,7 +17,7 @@
     "@wfgraph/shared": "workspace:*",
     "effect": "catalog:",
     "es-toolkit": "catalog:",
-    "vitest": "4.1.11",
+    "vitest": "4.1.12",
     "vitest-evals": "catalog:"
   }
 }

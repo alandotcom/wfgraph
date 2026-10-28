@@ -329,9 +329,9 @@ export function defineAction<TInput extends Record<string, unknown>>(
     | DefineActionInput<TInput>
     | DefineActionInputWithOutput<TInput, Record<string, unknown>>
 ): ActionDefinition {
-  // The one place a schema is bridged. Effect's bridge assigns onto the schema
-  // rather than wrapping it, so `definition.input` below is the same object,
-  // now carrying the `~standard` half the field derivation reads.
+  // The one place a schema is bridged. Effect's bridge returns a copy, so the
+  // field derivation reads `schema` and `definition.input` stays as the author
+  // wrote it for the step, which decodes an Effect schema directly.
   const schema = asStandardSchema(definition.input);
   const outputSchema = "output" in definition ? definition.output : undefined;
 

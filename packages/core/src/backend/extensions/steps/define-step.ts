@@ -70,12 +70,12 @@ import type { JsonSafe } from "@wfgraph/shared/types/json";
  * becomes one of these in the plugin that knows how to read its system's error
  * body, which is the only place that reading can happen accurately.
  */
-export class StepFailure extends Schema.TaggedError<StepFailure>()(
-  "StepFailure",
-  {
-    message: Schema.String,
-  }
-) {}
+export class StepFailure extends Schema.TaggedError<
+  StepFailure,
+  { readonly brand: unique symbol }
+>()("StepFailure", {
+  message: Schema.String,
+}) {}
 
 /**
  * How a handler remembers work across a replay.

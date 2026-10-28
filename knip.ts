@@ -147,7 +147,7 @@ const config: KnipConfig = {
         // names them.
         //
         // @standard-schema/spec's entry is deliberate for that reason, even
-        // though define-action.test.ts also imports it: knip will keep hinting
+        // though config-options.test.ts also imports it: knip will keep hinting
         // "Remove from ignoreDependencies" for it, because it cannot see the
         // .d.ts import the entry justifies. That hint is expected; do not act
         // on it.

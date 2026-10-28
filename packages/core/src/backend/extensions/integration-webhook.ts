@@ -23,12 +23,12 @@ import type { JsonObject } from "@wfgraph/shared/types/json";
  * The HTTP route turns this into a 401. The sentence is for the sender, so it
  * names the rule and quotes nothing of what arrived.
  */
-export class SignatureRejected extends Schema.TaggedError<SignatureRejected>()(
-  "SignatureRejected",
-  {
-    error: Schema.String,
-  }
-) {}
+export class SignatureRejected extends Schema.TaggedError<
+  SignatureRejected,
+  { readonly brand: unique symbol }
+>()("SignatureRejected", {
+  error: Schema.String,
+}) {}
 
 /** An accepted payload, as `inngest.send` takes its `data` and idempotency key. */
 export type WebhookAccepted = {

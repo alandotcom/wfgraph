@@ -2,7 +2,11 @@ import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import { type } from "arktype";
 import { z } from "zod";
-import { extractSchemaKeys, toStandardSchema } from "#src/types/schema";
+import {
+  asStandardSchema,
+  extractSchemaKeys,
+  toStandardSchema,
+} from "#src/types/schema";
 import { requireOutputFieldsFromSchema } from "#src/graph/output-fields";
 import { rewriteCelExpression } from "#src/lifecycle/inngest-event-data";
 import {
@@ -193,26 +197,38 @@ describe("toStandardSchema with Effect Schema", () => {
     });
   });
 
-  it("refuses a second crossing that carries parse options", () => {
-    // Effect's bridge is first-call-wins, so a second set of options is
-    // dropped in silence, and which crossing ran first is decided by module
-    // initialisation order. A schema that has to be strict cannot be left
-    // depending on that, so the second crossing is an error instead.
+  it("gives each crossing its own copy and options", () => {
+    // Effect's bridge returns a copy and leaves the schema it was given alone,
+    // so one shape can cross strict and open without either losing its options.
     const schema = Schema.Struct({ triggerType: Schema.Literal("Webhook") });
-    toStandardSchema(schema, { onExcessProperty: "error" });
+    const strict = toStandardSchema(schema, { onExcessProperty: "error" });
+    const open = toStandardSchema(schema);
+    const payload = { triggerType: "Webhook", integrationId: "stray" };
 
-    expect(() =>
-      toStandardSchema(schema, { onExcessProperty: "error" })
-    ).toThrow(/already carries a Standard Schema validate/);
+    expect("~standard" in schema).toBe(false);
+    expect(strict).not.toBe(open);
+    expect(strict["~standard"].validate(payload)).toHaveProperty("issues");
+    expect(open["~standard"].validate(payload)).toEqual({
+      value: { triggerType: "Webhook" },
+    });
   });
 
-  it("lets a second crossing without options through, as Effect does", () => {
-    // No options means nothing to lose, and Effect already treats this as the
-    // no-op it is: the same object comes back, validate and all.
-    const schema = Schema.Struct({ text: Schema.String });
-    const first = toStandardSchema(schema);
+  it("hands an already-bridged schema back with its options", () => {
+    // Bridging the copy again would replace its validate, and the strictness
+    // closed over inside it with that.
+    const strict = toStandardSchema(
+      Schema.Struct({ triggerType: Schema.Literal("Webhook") }),
+      { onExcessProperty: "error" }
+    );
+    const bridged = asStandardSchema(strict);
 
-    expect(toStandardSchema(schema)).toBe(first);
+    expect(bridged).toBe(strict);
+    expect(
+      bridged["~standard"].validate({
+        triggerType: "Webhook",
+        integrationId: "stray",
+      })
+    ).toHaveProperty("issues");
   });
 
   it("keeps an annotated description at the top of the derived JSON Schema", () => {
