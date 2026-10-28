@@ -47,12 +47,6 @@
       "source": "wshobson/agents",
       "sourceType": "github",
       "computedHash": "ab7ca5f3ff515b873a8446bdf88b9edc156741cf32c07accbbb3804f25543179"
-    },
-    "vitest-evals": {
-      "source": "getsentry/vitest-evals",
-      "sourceType": "github",
-      "skillPath": "skills/vitest-evals/SKILL.md",
-      "computedHash": "84a65b5b4f02424e0ee337cb6ae6149b5dafe698a9f297268d301106f1f61b05"
     }
   }
 }

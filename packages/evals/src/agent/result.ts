@@ -1,9 +1,9 @@
 /** Normalizes the production agent stream for eval assertions and reports. */
-import type { TranscriptEvent } from "vitest-evals";
 import type { AgentDocument } from "@wfgraph/agent/document";
 import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
 import type { AgentStreamPart } from "@wfgraph/shared/rpc/agent-stream";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
+import type { TranscriptEvent } from "#src/eval/types";
 
 export type AgentEvalDocument = {
   nodes: Array<AgentDocument["nodes"][number]>;

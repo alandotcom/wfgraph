@@ -1,5 +1,4 @@
 import { Cause, Effect, Stream } from "effect";
-import { createHarness } from "vitest-evals";
 import {
   type AgentReasoningEffort,
   type EnabledAgentSettings,
@@ -28,6 +27,7 @@ import {
 import { collectAgentEvalResult } from "#src/agent/result";
 import { buildAgentTrajectory } from "#src/agent/trajectory";
 import type { AgentEvalInput, AgentEvalOutput } from "#src/agent/types";
+import type { Harness } from "#src/eval/types";
 
 const API_KEY_ENV = "OPENAI_API_KEY";
 const AGENT_MODEL_ENV = "WFGRAPH_EVAL_AGENT_MODEL";
@@ -104,11 +104,12 @@ export function collectAgentTurn(
 export type AgentEvalRunner = (input: AgentEvalInput) => AgentRunner;
 
 /** Builds the eval harness around the runner under assessment. */
-export function createWorkflowAgentHarness(resolveRunner: AgentEvalRunner) {
-  return createHarness<AgentEvalInput, AgentEvalOutput>({
+export function createWorkflowAgentHarness(
+  resolveRunner: AgentEvalRunner
+): Harness<AgentEvalInput, AgentEvalOutput> {
+  return {
     name: "workflow-build-agent",
-    run: async ({ input, setArtifact, signal }) => {
-      const startedAt = Date.now();
+    run: async (input, { setArtifact, signal }) => {
       const runner = resolveRunner(input);
       const trace: AgentTraceEvent[] = [];
       const session = await Effect.runPromise(
@@ -209,9 +210,8 @@ export function createWorkflowAgentHarness(resolveRunner: AgentEvalRunner) {
             finishReasons: traceSummary.finishReasons,
           },
         },
-        timings: { totalMs: Date.now() - startedAt },
-        errors: result.errors.map((message) => ({ message })),
+        errors: result.errors,
       };
     },
-  });
+  };
 }

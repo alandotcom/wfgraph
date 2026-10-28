@@ -12,9 +12,9 @@ What an adopter installs changes: `@wfgraph/plugins` now needs `@clerk/backend`
 `nanoid` as the generator behind every id this repository mints. No exported
 API changed.
 
-Vitest 5 now runs the main suite, as required by `@effect/vitest` rc.113. The
-private eval package keeps its own Vitest 4 runner because `vitest-evals` still
-caps its peer range below 5.
+Vitest 5 now runs the whole repository, as required by `@effect/vitest` rc.113.
+The private eval package replaced `vitest-evals`, whose peer range stops below
+Vitest 5, with an eval layer of its own.
 
 `@types/node` 26 remains held back because it is ahead of the Node 24 that the
 `engines` floor and CI both name. Typing against a newer runtime than the floor

@@ -101,10 +101,12 @@ const config: KnipConfig = {
     },
 
     "packages/evals": {
-      // Vitest discovers these files through packages/evals/vitest.evals.config.ts.
-      // Naming the pattern here makes each eval suite an entry while helper files
-      // still have to be imported by a suite or a deterministic support test.
-      entry: ["src/**/*.eval.ts"],
+      // Vitest discovers the eval suites through packages/evals/vitest.evals.config.ts,
+      // and the support tests through the root vitest.config.ts. knip's Vitest
+      // plugin reads neither for this workspace, since neither is a
+      // `vitest.config` here. Naming the patterns makes each suite and test an
+      // entry while helper files still have to be imported by one.
+      entry: ["src/**/*.eval.ts", "src/**/*.test.ts"],
       project: ["*.ts", "src/**/*.ts"],
     },
 
