@@ -32,8 +32,8 @@ const config: KnipConfig = {
         // place by being imported.
         //
         // knip already reads the "scripts" block of package.json and treats a
-        // file a script runs as an entry, which covers scripts/migrate.ts and
-        // scripts/unqualify-migrations.ts through the two db: scripts. Listing
+        // file a script runs as an entry, which covers scripts/migrate.ts
+        // through db:migrate. Listing
         // such a file here draws a "redundant entry pattern" hint. What remains
         // is the one it cannot see.
         //

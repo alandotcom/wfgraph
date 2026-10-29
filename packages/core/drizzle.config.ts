@@ -9,11 +9,6 @@ import { defineConfig } from "drizzle-kit";
  * and `pull` look in `public` and find nothing. Generating SQL is the one thing
  * it does without a connection. `pnpm run db:migrate` applies that SQL through
  * Workflow Graph's own migrator, which is what carries the search_path.
- *
- * `pnpm run db:generate` runs a second step after this one: drizzle-kit
- * qualifies a foreign key's target with `public` even where both tables are
- * unqualified, and scripts/unqualify-migrations.ts takes that qualifier off
- * again.
  */
 export default defineConfig({
   schema: "./packages/core/src/backend/lib/db/schema.ts",

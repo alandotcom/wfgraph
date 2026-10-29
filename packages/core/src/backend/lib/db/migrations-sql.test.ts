@@ -16,10 +16,10 @@ import { INTEGRATION_REFRESH_STATES } from "@wfgraph/shared/types/integration";
  * `database.schema` works by declaring the tables unqualified and letting the
  * connection's search_path place them, so a schema name reaching the generated
  * SQL would pin the tables to one schema for every host at once. drizzle-kit
- * writes exactly one such qualifier today, `REFERENCES "public"."workflows"`, and
- * `scripts/unqualify-migrations.ts` takes that spelling off during
- * `pnpm run db:generate`. This is the guard that does not have to know the
- * spelling: any qualifier that is not one of Workflow Graph's own table names fails here.
+ * writes none as of 1.0.0-rc.5; before that it wrote
+ * `REFERENCES "public"."workflows"` for every foreign key. This is the guard
+ * that does not have to know the spelling: any qualifier that is not one of
+ * Workflow Graph's own table names fails here.
  */
 const MIGRATIONS_DIR = resolve(
   dirname(fileURLToPath(import.meta.url)),

@@ -300,8 +300,10 @@ own Base UI flavour at `r.assistant-ui.com/base/*` does.
 **`vi.mock` is hoisted, and shares the worker's module graph.** vitest lifts every
 `vi.mock` call above the imports, so a factory reading a variable declared later in
 the file hits the temporal dead zone. Put that variable in `vi.hoisted`, which vitest
-lifts higher still. The suite runs with `isolate: false`, so a mock that replaces a
-module stays in that worker's evaluated graph for later files. Prefer:
+lifts higher still. The suite runs with `isolate: false`, so a file shares its
+worker's evaluated graph with the files after it. Vitest 5 hands the next file the
+real copy of a mocked module, but any module first evaluated while the mock was
+active keeps the mocked import for every later file in that worker. Prefer:
 
 - catalog-as-argument on pure helpers, and `ExtensionCatalogProvider` /
   `useExtensionCatalog()` for React (fixtures wrap the provider; only
