@@ -1,8 +1,8 @@
 import { Layer } from "effect";
 import { trace } from "@opentelemetry/api";
-// By subpath, because the package's own entry re-exports NodeSdk and WebSdk,
-// which import @opentelemetry/sdk-trace-node and -web at module scope. Workflow Graph
-// installs neither: the SDK is the host's.
+// By subpath, because the package's own entry re-exports OtelLogger, which
+// imports @opentelemetry/sdk-logs at module scope. Workflow Graph does not
+// install it: the SDK is the host's.
 import * as OtelTracer from "@effect/opentelemetry/OtelTracer";
 import { TRACER_NAME, TRACER_VERSION } from "#src/backend/lib/telemetry";
 
