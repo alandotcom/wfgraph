@@ -1,4 +1,4 @@
-import { eventIterator } from "@orpc/contract";
+import { asyncIteratorObject } from "@orpc/contract";
 import { Schema } from "effect";
 import { serializedWorkflowGraphSchema } from "#src/graph/schemas";
 import {
@@ -14,9 +14,9 @@ import {
 } from "#src/rpc/contracts/contract-support";
 
 /**
- * The build agent's one procedure, and the only streaming contract in the repo.
+ * The build agent's one procedure.
  *
- * `eventIterator` exposes an async iterable through `RPCLink`. The iterable yields
+ * `asyncIteratorObject` exposes an async iterable through `RPCLink`. The iterable yields
  * incremental agent stream parts. Request and iterator cancellation stop the stream.
  * Construction failures map to oRPC errors, and failures after streaming starts travel
  * as `error` parts.
@@ -65,5 +65,5 @@ const agentChatInput = contractSchema(agentChatInputSchema);
 export const agentContract = {
   chat: route("POST", "/agent/chat", WfGraphOperations.agentChat)
     .input(agentChatInput)
-    .output(eventIterator(contractSchema(agentStreamPartSchema))),
+    .output(asyncIteratorObject(contractSchema(agentStreamPartSchema))),
 };

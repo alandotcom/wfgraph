@@ -1,4 +1,3 @@
-import { ORPCError } from "@orpc/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import {
@@ -11,21 +10,14 @@ import {
   cacheWorkflowList,
   workflowListQueryOptions,
 } from "#src/lib/rpc-query";
-import { ApiError, rpc } from "#src/lib/rpc-client";
+import { rpc } from "#src/lib/rpc-client";
 
 const logger = getClientLogger("workflow", "list-sync");
-const PERMANENT_LIST_ERROR_CODES = new Set(["UNAUTHORIZED", "FORBIDDEN"]);
-
-function isPermanentListError(error: unknown): boolean {
-  if (error instanceof ApiError) {
-    return error.status === 401 || error.status === 403;
-  }
-  return (
-    error instanceof ORPCError && PERMANENT_LIST_ERROR_CODES.has(error.code)
-  );
-}
-
-/** Keeps the shared workflow-list query cache current across browser routes. */
+/**
+ * Keeps the shared workflow-list query cache current across browser routes.
+ * `RetryLinkPlugin`'s default check ends the retries on a 4xx other than 408
+ * and 429, so a refused subscription stops rather than reconnecting forever.
+ */
 export function WorkflowListSync() {
   const queryClient = useQueryClient();
   const visibility = useDocumentVisibility();
@@ -44,10 +36,7 @@ export function WorkflowListSync() {
         {},
         {
           signal,
-          context: {
-            retry: Number.POSITIVE_INFINITY,
-            shouldRetry: ({ error }) => !isPermanentListError(error),
-          },
+          context: { retry: Number.POSITIVE_INFINITY },
         }
       ),
     onValue: (workflows) => cacheWorkflowList(queryClient, workflows),

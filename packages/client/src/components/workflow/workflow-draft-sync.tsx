@@ -27,6 +27,7 @@ const PERMANENT_DRAFT_ERROR_CODES = new Set([
   "NOT_FOUND",
 ]);
 
+/** Whether a snapshot read failed in a way waiting will not change. */
 function isPermanentDraftError(error: unknown): boolean {
   if (error instanceof ApiError) {
     return error.status === 401 || error.status === 403 || error.status === 404;
@@ -82,10 +83,9 @@ export function WorkflowDraftSync({ workflowId }: { workflowId: string }) {
         { workflowId, afterDraftRevision: localRevision },
         {
           signal,
-          context: {
-            retry: Number.POSITIVE_INFINITY,
-            shouldRetry: ({ error }) => !isPermanentDraftError(error),
-          },
+          // RetryLinkPlugin's default check stops on a 4xx other than 408
+          // and 429, which is what ends this on a deleted workflow.
+          context: { retry: Number.POSITIVE_INFINITY },
         }
       ),
     onValue: (event) => {
