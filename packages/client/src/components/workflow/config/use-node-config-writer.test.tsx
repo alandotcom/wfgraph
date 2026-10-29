@@ -16,6 +16,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
+import type { Store } from "jotai";
 import type { JSX } from "react";
 import { toast } from "sonner";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
@@ -115,7 +116,7 @@ function connectedNode(config: Record<string, unknown>): WorkflowNode {
 }
 
 function renderInWorkflowRoute(
-  store: ReturnType<typeof createStore>,
+  store: Store,
   queryClient: QueryClient,
   Component: () => JSX.Element,
   initialEntry = "/workflows/wf_1"

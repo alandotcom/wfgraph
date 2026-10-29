@@ -66,17 +66,35 @@ function toAgentMessages(messages: readonly ThreadMessage[]): AgentMessage[] {
 type TurnContent = ThreadAssistantMessagePart[];
 
 /**
+ * Stamp `completedAt` on a reasoning part still open.
+ *
+ * A passage of reasoning ends when the turn moves on to anything else, or when
+ * the turn ends, and nothing in the stream says so on its own.
+ */
+function withReasoningSettled(content: TurnContent, now: number): TurnContent {
+  return content.map((part) =>
+    part.type === "reasoning" &&
+    part.timing !== undefined &&
+    part.timing.completedAt === undefined
+      ? { ...part, timing: { ...part.timing, completedAt: now } }
+      : part
+  );
+}
+
+/**
  * Append a delta to the run of text or reasoning already in progress, or start a
  * new one.
  *
  * Message parts are readonly, so the trailing part is replaced rather than
  * appended to. That also gives assistant-ui a new object per tick, which is what
- * makes it repaint.
+ * makes it repaint. A reasoning part carries the wall-clock span it streamed
+ * for, which `useLocalRuntime` does not measure for an adapter.
  */
 function withDelta(
   content: TurnContent,
   kind: "text" | "reasoning",
-  delta: string
+  delta: string,
+  now: number
 ): TurnContent {
   const last = content.at(-1);
   if (last?.type === kind) {
@@ -85,7 +103,10 @@ function withDelta(
       { ...last, type: kind, text: last.text + delta },
     ];
   }
-  return [...content, { type: kind, text: delta }];
+  const settled = withReasoningSettled(content, now);
+  return kind === "reasoning"
+    ? [...settled, { type: kind, text: delta, timing: { startedAt: now } }]
+    : [...settled, { type: kind, text: delta }];
 }
 
 /**
@@ -103,13 +124,36 @@ function withToolResult(
     toolCallId: string;
     summary: string | undefined;
     failed: boolean;
+    now: number;
   }
 ): TurnContent {
   return content.map((part) =>
     part.type === "tool-call" && part.toolCallId === input.toolCallId
-      ? { ...part, result: input.summary ?? null, isError: input.failed }
+      ? {
+          ...part,
+          result: input.summary ?? null,
+          isError: input.failed,
+          timing: {
+            startedAt: part.timing?.startedAt ?? input.now,
+            completedAt: input.now,
+          },
+        }
       : part
   );
+}
+
+/** One tick of the turn, carrying its failure as the message status. */
+function turnResult(content: TurnContent, failure: string | undefined) {
+  return failure === undefined
+    ? { content }
+    : {
+        content,
+        status: {
+          type: "incomplete" as const,
+          reason: "error" as const,
+          error: failure,
+        },
+      };
 }
 
 export function useAgentRuntime(workflowId: string) {
@@ -142,26 +186,28 @@ export function useAgentRuntime(workflowId: string) {
           );
 
           for await (const part of stream) {
+            const now = Date.now();
             switch (part.type) {
               case "text-delta": {
-                content = withDelta(content, "text", part.delta);
+                content = withDelta(content, "text", part.delta, now);
                 break;
               }
 
               case "reasoning-delta": {
-                content = withDelta(content, "reasoning", part.delta);
+                content = withDelta(content, "reasoning", part.delta, now);
                 break;
               }
 
               case "tool-call": {
                 content = [
-                  ...content,
+                  ...withReasoningSettled(content, now),
                   {
                     type: "tool-call",
                     toolCallId: part.id,
                     toolName: part.name,
                     args: part.input,
                     argsText: JSON.stringify(part.input),
+                    timing: { startedAt: now },
                   },
                 ];
                 break;
@@ -172,6 +218,7 @@ export function useAgentRuntime(workflowId: string) {
                   toolCallId: part.id,
                   summary: part.summary,
                   failed: part.failed,
+                  now,
                 });
                 break;
               }
@@ -203,17 +250,12 @@ export function useAgentRuntime(workflowId: string) {
               }
             }
 
-            yield failure === undefined
-              ? { content }
-              : {
-                  content,
-                  status: {
-                    type: "incomplete" as const,
-                    reason: "error" as const,
-                    error: failure,
-                  },
-                };
+            yield turnResult(content, failure);
           }
+
+          // Reasoning the turn ended on is closed here, so its panel can say
+          // how long it took.
+          yield turnResult(withReasoningSettled(content, Date.now()), failure);
         } finally {
           if (
             appStore.get(currentWorkflowIdAtom) === workflowId &&

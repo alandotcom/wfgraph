@@ -7,6 +7,7 @@
 
 import { expect, vi } from "vitest";
 import { createStore } from "jotai";
+import type { Store } from "jotai";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { groupStructureRefusalReason } from "@wfgraph/shared/graph/group-structure";
 import { undersizedGroupIds } from "@wfgraph/shared/graph/node-group";
@@ -31,7 +32,7 @@ import {
 import type { WorkflowData } from "#src/lib/rpc-client";
 import { savedWorkflow } from "./workflow-save-test-support";
 
-export type Store = ReturnType<typeof createStore>;
+export type { Store };
 export type Graph = { nodes: WorkflowNode[]; edges: WorkflowEdge[] };
 
 /** The store's `workflow.update`, which answers every save with success. */

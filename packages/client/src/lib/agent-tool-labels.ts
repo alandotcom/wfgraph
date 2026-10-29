@@ -19,6 +19,8 @@
  * key is present or holds the type its schema declares.
  */
 
+import type { MessagePartTiming } from "@assistant-ui/react";
+import { sentenceCase } from "es-toolkit/string";
 import { type JsonObject, readJsonObject } from "@wfgraph/shared/types/json";
 import { asNonEmptyString, isBlank } from "@wfgraph/shared/types/string";
 
@@ -88,10 +90,8 @@ function catalogSearchLabel(input: {
  * rows around it.
  */
 function unknownToolLabel(toolName: string): string {
-  const words = toolName.replaceAll("_", " ").trim();
-  return isBlank(words)
-    ? "Called a tool"
-    : words.charAt(0).toUpperCase() + words.slice(1);
+  const label = sentenceCase(toolName);
+  return isBlank(label) ? "Called a tool" : label;
 }
 
 /** The phrase the panel shows for one tool call. */
@@ -185,4 +185,33 @@ export function agentToolLabel(input: {
     default:
       return unknownToolLabel(toolName);
   }
+}
+
+/**
+ * The reasoning panel's resting label: how long the turn spent reasoning, from
+ * the timing the agent adapter stamps on each passage. The passages are added
+ * together, so the tool calls between them do not count. It says "Done
+ * thinking" while any passage has no finished timing to count.
+ */
+export function agentReasoningLabel(
+  parts: readonly {
+    readonly type: string;
+    readonly timing?: MessagePartTiming | undefined;
+  }[]
+): string {
+  let totalMs = 0;
+  for (const part of parts) {
+    if (part.type !== "reasoning") {
+      continue;
+    }
+    if (part.timing?.completedAt === undefined) {
+      return "Done thinking";
+    }
+    totalMs += part.timing.completedAt - part.timing.startedAt;
+  }
+
+  const seconds = Math.max(1, Math.round(totalMs / 1000));
+  return seconds < 60
+    ? `Thought for ${seconds}s`
+    : `Thought for ${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 }

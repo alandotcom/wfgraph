@@ -1,4 +1,4 @@
-import type { createStore } from "jotai";
+import type { Store } from "jotai";
 import type { WorkflowRouteSearch } from "#src/lib/workflow-navigation-state";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { applyWorkspaceRouteAtom } from "#src/lib/workflow-workspace-navigation";
@@ -9,7 +9,7 @@ import { applyWorkspaceRouteAtom } from "#src/lib/workflow-workspace-navigation"
  * given, so set `currentWorkflowIdAtom` first.
  */
 export function showWorkspaceRoute(
-  store: ReturnType<typeof createStore>,
+  store: Store,
   search: WorkflowRouteSearch,
   workflowId?: string
 ): void {

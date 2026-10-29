@@ -154,6 +154,24 @@ describe("AgentThread", () => {
     expect(screen.getByText("No heading on this one.")).toBeTruthy();
   });
 
+  it("says how long a finished turn spent reasoning", async () => {
+    renderThread([
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "reasoning",
+            text: "Reading the workflow.",
+            timing: { startedAt: 0, completedAt: 4_000 },
+          },
+          { type: "text", text: "Added the step." },
+        ],
+      },
+    ]);
+
+    expect(await screen.findByText("Thought for 4s")).toBeTruthy();
+  });
+
   it("keeps the tool calls under a count of their own", async () => {
     renderThread([
       {

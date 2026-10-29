@@ -1,4 +1,5 @@
 import { createStore } from "jotai";
+import type { Store } from "jotai";
 import { describe, expect, it } from "vitest";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { toSerializedGraph } from "#src/lib/rpc-client";
@@ -133,7 +134,7 @@ describe("active workspace address", () => {
 });
 
 /** The node ids and edge ids the active canvas paints as selected. */
-function paintedSelection(store: ReturnType<typeof createStore>) {
+function paintedSelection(store: Store) {
   return {
     nodeIds: store
       .get(displayNodesAtom)

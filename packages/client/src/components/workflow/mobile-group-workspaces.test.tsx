@@ -23,6 +23,7 @@ import {
   type Viewport,
 } from "@xyflow/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
+import type { Store } from "jotai";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
@@ -195,7 +196,7 @@ function FlowHandle({
 /** The rendered phone editor and the reads and gestures a case drives it with. */
 type PhoneEditor = {
   view: ReturnType<typeof render>;
-  store: ReturnType<typeof createStore>;
+  store: Store;
   router: { history: RouterHistory };
   search: () => unknown;
   canvasNode: (id: string) => HTMLElement | null;
@@ -415,7 +416,7 @@ async function renderPhoneEditor(input: {
 }
 
 /** What stays true of the stored draft through every Runs and Changes step. */
-function expectDraftUntouched(store: ReturnType<typeof createStore>) {
+function expectDraftUntouched(store: Store) {
   const positions = (nodes: readonly { id: string; position: unknown }[]) =>
     new Map(nodes.map((node) => [node.id, node.position]));
   expect(positions(store.get(nodesAtom))).toEqual(positions(DRAFT_NODES));

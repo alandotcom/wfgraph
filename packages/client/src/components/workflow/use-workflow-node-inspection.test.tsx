@@ -1,5 +1,6 @@
 import { act, fireEvent, render } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider, useAtomValue } from "jotai";
+import type { Store } from "jotai";
 import { beforeEach, describe, expect, it } from "vitest";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import { useWorkflowNodeInspection } from "#src/components/workflow/use-workflow-node-inspection";
@@ -67,7 +68,7 @@ function InspectorButton({
 }
 
 function renderInspector(
-  store: ReturnType<typeof createStore>,
+  store: Store,
   nodeId = "readonly_b",
   selectionApplied = false
 ) {
@@ -94,7 +95,7 @@ function selectionStore() {
 }
 
 /** The owner's selection beside the flags the active canvas paints from it. */
-function selectionState(store: ReturnType<typeof createStore>) {
+function selectionState(store: Store) {
   return {
     owner: store.get(activeSelectionAtom),
     painted: {
@@ -112,7 +113,7 @@ function selectionState(store: ReturnType<typeof createStore>) {
 
 /** The read-only node is the only selection, and Draft kept its own. */
 function assertReadOnlySelection(
-  store: ReturnType<typeof createStore>,
+  store: Store,
   view: { search: { view: "runs" | "changes" } }
 ) {
   const readOnly = { nodeIds: ["readonly_b"], edgeIds: [] };

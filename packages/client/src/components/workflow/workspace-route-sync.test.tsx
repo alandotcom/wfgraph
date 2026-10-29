@@ -10,6 +10,7 @@ import {
 } from "@tanstack/react-router";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
+import type { Store } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
@@ -289,7 +290,7 @@ async function renderEditorRoute(initialEntry: string) {
 }
 
 /** The owner's selection beside the node flags the active canvas paints. */
-function selectionState(store: ReturnType<typeof createStore>) {
+function selectionState(store: Store) {
   return {
     owner: store.get(activeSelectionAtom).nodeIds,
     painted: store

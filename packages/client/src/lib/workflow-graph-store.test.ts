@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { createStore as createJotaiStore } from "jotai";
+import type { Store } from "jotai";
 import { createStore } from "jotai";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { orderGroupParentsFirst } from "@wfgraph/shared/graph/node-group";
@@ -84,8 +84,6 @@ import {
 } from "#src/lib/workflow-publication-review-store";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
 import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
-
-type Store = ReturnType<typeof createJotaiStore>;
 
 const updateMock = vi.fn(() => Promise.resolve(savedWorkflow("workflow_1")));
 
