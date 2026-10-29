@@ -34,13 +34,9 @@ function developmentLogger(category: string[]): ClientLogger {
         // logtape announces itself through the meta logger on every configure
         // and warns when the meta logger is left unconfigured. Raising it to
         // "error" keeps the startup notice out of the console while still
-        // surfacing a sink that throws.
+        // surfacing a sink that throws. ["logtape", "meta"] inherits this
+        // sink, and naming it as well would print each of its records twice.
         { category: "logtape", sinks: ["console"], lowestLevel: "error" },
-        {
-          category: ["logtape", "meta"],
-          sinks: ["console"],
-          lowestLevel: "error",
-        },
       ],
     });
     isConfigured = true;

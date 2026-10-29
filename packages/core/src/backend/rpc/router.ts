@@ -145,11 +145,17 @@ function recordRpcFailure(
  * A defect is left to reject the promise and reach oRPC's own 500, and its
  * reason is recorded on the way past.
  *
+ * The request's abort signal interrupts the fiber, so a client that hangs up
+ * stops the work it asked for.
+ *
  * Generic over the service's failures rather than over the whole union, so the
  * narrowing a service's error channel expresses survives the trip through here.
  */
 export function rpcEffectHandler<
-  TArgs extends [{ context: RpcContext }, ...unknown[]],
+  TArgs extends [
+    { context: RpcContext; signal?: AbortSignal | undefined },
+    ...unknown[],
+  ],
   TOutput,
   TFailure extends ServiceFailure,
 >(
@@ -187,7 +193,8 @@ export function rpcEffectHandler<
           })
         ),
         Effect.mapError(toOrpcError)
-      )
+      ),
+      { signal: args[0].signal }
     );
 }
 

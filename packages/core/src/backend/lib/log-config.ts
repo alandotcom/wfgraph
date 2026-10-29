@@ -1,6 +1,6 @@
 /**
  * The parts of a logtape configuration that a host does not write by hand: the
- * level read off the environment, the two logtape meta loggers, the bridge that
+ * level read off the environment, the logtape meta logger, the bridge that
  * sends every record to a `WfGraphLogger` a host passed, and the notice printed
  * when nobody configured anything.
  *
@@ -12,6 +12,7 @@
 import {
   configureSync,
   getConfig,
+  inspectLogger,
   isLogLevel,
   type LogLevel,
   type LoggerConfig,
@@ -40,9 +41,10 @@ export function resolveLogLevel(): LogLevel {
 
 /**
  * logtape announces itself through the meta logger on every configure, and
- * warns when the meta logger is left unconfigured. Holding both at `error`
+ * warns when the meta logger is left unconfigured. Holding `logtape` at `error`
  * keeps the startup notice out of the stream while a sink that throws still
- * says so.
+ * says so. `["logtape", "meta"]` inherits that sink, and naming it as well
+ * would deliver each of its records twice.
  */
 export function loggerConfigs(
   sink: string,
@@ -51,7 +53,6 @@ export function loggerConfigs(
   return [
     { category: WFGRAPH_LOG_ROOT, sinks: [sink], lowestLevel },
     { category: "logtape", sinks: [sink], lowestLevel: "error" },
-    { category: ["logtape", "meta"], sinks: [sink], lowestLevel: "error" },
   ];
 }
 
@@ -59,7 +60,8 @@ export function loggerConfigs(
  * Renders logtape's alternating template/value message array into one string.
  * The bridge target takes a message and a property bag, so the placeholders
  * have to be filled in before the record leaves. `pretty-formatter.ts` renders
- * a header's message through the same function.
+ * a header's message through the same function. A bigint renders as its digits,
+ * since `JSON.stringify` throws on one.
  */
 export function renderLogMessage(message: readonly unknown[]): string {
   let result = "";
@@ -68,10 +70,16 @@ export function renderLogMessage(message: readonly unknown[]): string {
     if (i + 1 < message.length) {
       const value = message[i + 1];
       result +=
-        typeof value === "string" ? value : (JSON.stringify(value) ?? "");
+        typeof value === "string" || typeof value === "bigint"
+          ? String(value)
+          : (JSON.stringify(value, stringifyBigInt) ?? "");
     }
   }
   return result;
+}
+
+function stringifyBigInt(_key: string, value: unknown): unknown {
+  return typeof value === "bigint" ? value.toString() : value;
 }
 
 /**
@@ -128,19 +136,24 @@ export function configureLoggingWithBridge(
 let hasWarnedAboutMissingConfig = false;
 
 /**
- * Says so, once, when an app boots with no logtape configuration installed.
+ * Says so, once, when an app boots with no logtape sink that receives the
+ * `wfgraph` category's errors: either nothing is configured, or a host
+ * configured logtape for its own categories alone.
  *
  * Workflow Graph configures nothing on its own, so this is the difference
  * between an adopter reading a sentence that names the fix and an adopter
  * watching a silent process and guessing.
  */
 export function warnWhenLoggingUnconfigured(): void {
-  if (hasWarnedAboutMissingConfig || getConfig() !== null) {
+  if (
+    hasWarnedAboutMissingConfig ||
+    inspectLogger([WFGRAPH_LOG_ROOT], { level: "error" }).status !== "disabled"
+  ) {
     return;
   }
 
   hasWarnedAboutMissingConfig = true;
   console.warn(
-    'Workflow Graph logs through LogTape and no configuration is installed, so nothing it logs will be recorded. Call configureWfGraphLogging() from @wfgraph/core/logging before creating the app, pass a logger to createWfGraphApp, or configure LogTape yourself with a sink for the "wfgraph" category.'
+    'Workflow Graph logs through LogTape and no sink receives the "wfgraph" category, so nothing it logs will be recorded. Call configureWfGraphLogging() from @wfgraph/core/logging before creating the app, pass a logger to createWfGraphApp, or configure LogTape yourself with a sink for the "wfgraph" category.'
   );
 }

@@ -202,6 +202,28 @@ describe("rpcEffectHandler", () => {
     });
     assert.deepStrictEqual(logLines, []);
   });
+
+  it("interrupts the procedure when the request is aborted", async () => {
+    await using runtime = createStubRuntime();
+    const started = Promise.withResolvers<void>();
+    const interrupted = Promise.withResolvers<void>();
+    const handler = rpcEffectHandler(() =>
+      Effect.sync(() => started.resolve()).pipe(
+        Effect.andThen(Effect.never),
+        Effect.onInterrupt(() => Effect.sync(() => interrupted.resolve()))
+      )
+    );
+    const controller = new AbortController();
+
+    const pending = handler(createContext(runtime, controller.signal)).catch(
+      () => undefined
+    );
+    await started.promise;
+    controller.abort();
+
+    await interrupted.promise;
+    await pending;
+  });
 });
 
 describe("rpcStreamHandler", () => {
