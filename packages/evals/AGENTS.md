@@ -1,8 +1,10 @@
 # Eval instructions
 
-This package owns Vitest 4 because `vitest-evals` requires it; the main repository suite
-uses Vitest 5 for `@effect/vitest`. Keep deterministic support tests and model-backed evals
-on the package-local runner through the root `test` and `evals` scripts.
+The eval layer is `src/eval/`: `describeEval` binds a harness and its judges to a Vitest
+suite, `EvalReporter` prints each case after the run, and `task.meta.eval` is the record
+both read. A gating judge fails a case below 1; an advisory judge is only recorded.
+Deterministic support tests (`*.test.ts`) run in the root suite's `node` project through
+`pnpm run test`; model-backed evals (`*.eval.ts`) run only through `pnpm run evals`.
 
 Before reporting that `OPENAI_API_KEY` is unavailable, check both `.env.local`
 and `.env` at the repository root. The eval configuration loads those files

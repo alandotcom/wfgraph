@@ -66,7 +66,9 @@ catalog:
   # the only export the repository calls.
   uuid: ^14.0.3
   vite: ^8.3.5
-  vitest-evals: ^0.17.0
+  # The root suite and the model-backed evals in packages/evals run on one copy,
+  # because the eval layer there is built on Vitest's fixture and reporter APIs.
+  vitest: ^5.0.5
   # The example app writes its Events and its custom action in it, and the schema
   # tests in packages/core and packages/shared use it as the foreign Standard
   # Schema library, beside arktype.

@@ -7,9 +7,7 @@
     "#src/*": "./src/*.js"
   },
   "scripts": {
-    "evals": "vitest run --config vitest.evals.config.ts",
-    "evals:ui": "vitest-evals serve ../../eval-results",
-    "test": "vitest run --config vitest.config.ts"
+    "evals": "vitest run --config vitest.evals.config.ts"
   },
   "devDependencies": {
     "@wfgraph/agent": "workspace:*",
@@ -17,7 +15,6 @@
     "@wfgraph/shared": "workspace:*",
     "effect": "catalog:",
     "es-toolkit": "catalog:",
-    "vitest": "4.1.12",
-    "vitest-evals": "catalog:"
+    "vitest": "catalog:"
   }
 }

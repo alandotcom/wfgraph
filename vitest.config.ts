@@ -6,7 +6,7 @@ import { workspaceSourceAliases } from "./scripts/plugins/workspace-source-alias
 /**
  * The test runner's own Vite config. It does not extend the client's:
  * `packages/client/vite.config.ts` configures a dev server and a build for one
- * package, while this suite spans every package except the isolated eval harness.
+ * package, while this suite spans every package.
  * Vitest would not read the client config in any case, because it looks for
  * `vitest.config` first and stops at the first match. Anything these tests need
  * is declared here.
@@ -18,7 +18,6 @@ import { workspaceSourceAliases } from "./scripts/plugins/workspace-source-alias
 // tests then run from the day they are written.
 const PACKAGE_TESTS = "packages/*/src/**/*.test.{ts,tsx}";
 const CLIENT_TESTS = "packages/client/src/**/*.test.{ts,tsx}";
-const EVAL_SUPPORT_TESTS = "packages/evals/src/**/*.test.ts";
 const DEVELOPMENT_HARNESS_TESTS = "scripts/**/*.test.ts";
 // The suite that wants a live PostgreSQL. A `.pg.test.ts` also ends in
 // `.test.ts`, so it matches `PACKAGE_TESTS` and `CLIENT_TESTS`. The node and
@@ -48,12 +47,7 @@ export default defineConfig({
           name: "node",
           environment: "node",
           include: [PACKAGE_TESTS, DEVELOPMENT_HARNESS_TESTS],
-          exclude: [
-            ...ALWAYS_EXCLUDED,
-            CLIENT_TESTS,
-            EVAL_SUPPORT_TESTS,
-            POSTGRES_TESTS,
-          ],
+          exclude: [...ALWAYS_EXCLUDED, CLIENT_TESTS, POSTGRES_TESTS],
         },
       },
       {

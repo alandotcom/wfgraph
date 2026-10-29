@@ -1,23 +1,18 @@
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 import { workspaceSourceAliases } from "../../scripts/plugins/workspace-source-aliases.ts";
+import { EvalReporter } from "./src/eval/reporter.ts";
 
 const repositoryFile = (path: string) =>
   fileURLToPath(new URL(`../../${path}`, import.meta.url));
-
-if (!process.env.VITEST_EVALS_REPLAY_DIR?.trim()) {
-  process.env.VITEST_EVALS_REPLAY_DIR = repositoryFile(
-    ".vitest-evals/recordings"
-  );
-}
 
 /**
  * A file name no run overwrites, so two runs can be compared.
  *
  * `WFGRAPH_EVAL_LABEL` names what the run was measuring, matching the other two
  * knobs this suite reads from the environment, `WFGRAPH_EVAL_AGENT_MODEL` and
- * `WFGRAPH_EVAL_REASONING_EFFORT`. `vitest-evals serve eval-results` reads the
- * whole directory, which is the point of keeping each one.
+ * `WFGRAPH_EVAL_REASONING_EFFORT`. Each case's scores, transcript, usage and
+ * artifacts are in its `meta.eval`.
  */
 function reportPath(): string {
   const [date, time] = new Date().toISOString().split("T");
@@ -37,10 +32,10 @@ export default defineConfig({
     setupFiles: [repositoryFile("load-env.ts")],
     testTimeout: 180_000,
     hookTimeout: 30_000,
-    // Info rather than the reporter's compact default: it prints per-tool
-    // summaries, arguments and the final output, which is what makes a failing
-    // run readable without opening the report UI.
-    reporters: [["vitest-evals/reporter", { reportLevel: "info" }], "json"],
+    // The eval reporter prints each case's judge scores, usage, tool activity
+    // and final reply after Vitest's own summary, which is what makes a failing
+    // run readable without opening the JSON report.
+    reporters: ["default", new EvalReporter(), "json"],
     outputFile: { json: reportPath() },
     // Scenarios keep their own graph, trace, and cancellation state. Running a
     // small batch concurrently reduces model wait time without a large burst.

@@ -72,19 +72,20 @@ describe("collectAgentTurn", () => {
       expectedCompletion: { outcome: "ready" },
       intentCriteria: [],
     };
-    const artifacts: Record<string, never> = {};
+    const artifacts: string[] = [];
     const harness = createWorkflowAgentHarness(() => runner);
 
     const result = await harness.run(input, {
-      artifacts,
-      setArtifact: (name, value) => {
-        Object.assign(artifacts, { [name]: value });
+      signal: undefined,
+      setArtifact: (name) => {
+        artifacts.push(name);
       },
     });
 
     expect(receivedMessage).toBe("Build it");
     expect(receivedDocument).toEqual(input.document);
-    expect(result.output?.finalText).toBe("Done");
+    expect(result.output.finalText).toBe("Done");
+    expect(artifacts).toEqual(["finalDocument", "streamParts", "agentTrace"]);
     expect(result.usage).toMatchObject({
       provider: "test",
       model: "custom-runner",
