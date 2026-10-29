@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
@@ -48,10 +48,6 @@ import {
   type Store,
   type Graph,
 } from "./workflow-group-mutations-test-support";
-
-beforeEach(() => {
-  vi.clearAllMocks();
-});
 
 /**
  * `qualify` fans out onto the lookups `read` and `profile`, and `read` feeds

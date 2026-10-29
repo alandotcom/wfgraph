@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { RANK_SPACING } from "@wfgraph/shared/graph/workflow-layout-geometry";
@@ -28,7 +28,6 @@ import {
   updateMock,
 } from "./workflow-group-mutations-test-support";
 
-beforeEach(() => vi.clearAllMocks());
 async function focusedStore() {
   const store = createGraphStore(ungroupedGraph());
   store.set(groupSelectionAtom, { selectedIds: new Set(["a", "b", "c"]) });

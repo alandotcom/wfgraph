@@ -68,7 +68,6 @@ const threeWaits = [
 ];
 
 beforeEach(() => {
-  vi.clearAllMocks();
   listActiveWaitStatesMock.mockReturnValue(Effect.succeed([]));
   sendWaitSignalMock.mockReturnValue(Effect.void);
 });

@@ -66,7 +66,6 @@ function createWaitState(
 
 /** Every read answers `exec_1` mid-run and no wait row, unless a case says otherwise. */
 beforeEach(() => {
-  vi.clearAllMocks();
   findWorkflowIdById.mockImplementation(() => Effect.succeed("wf_1"));
   findStatusById.mockImplementation(() =>
     Effect.succeed({ id: "exec_1", status: "running" })

@@ -90,7 +90,6 @@ function cancel(
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
   requestCancelForEntityMock.mockReturnValue(Effect.succeed(["exec_1"]));
   listWaitingStatesForExecutionsMock.mockReturnValue(Effect.succeed(new Map()));
   recordAuditEventMock.mockReturnValue(Effect.void);

@@ -68,7 +68,16 @@
           "effect/http/HttpClientResponse#HttpClientResponse",
           "effect/http/HttpMethod#HttpMethod"
         ],
+        // Holds every tagged error and tagged class to a tag equal to its
+        // class name. Service keys are package-qualified paths that no
+        // built-in pattern produces, so services are left out.
+        "keyPatterns": [
+          { "target": "error", "pattern": "identifier" },
+          { "target": "taggedClass", "pattern": "identifier" }
+        ],
         "diagnosticSeverity": {
+          "deterministicKeys": "error",
+          "mapMapErrorToMapBoth": "error",
           // The suggested Effect.void loses the specific success type these
           // functions declare (e.g. `number | undefined`); the fix does not compile.
           "effectSucceedWithVoid": "off",

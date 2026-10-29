@@ -1,5 +1,5 @@
 import { Effect, Schema } from "effect";
-import { beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   defineStep,
   StepFailure,
@@ -13,10 +13,6 @@ import {
   runStep,
   runner,
 } from "#src/backend/extensions/steps/define-step-test-utils";
-
-beforeEach(() => {
-  credentialsFor.mockClear();
-});
 
 describe("defineStep", () => {
   const step = defineStep({

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { createStore as createJotaiStore } from "jotai";
 import { createStore } from "jotai";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
@@ -228,10 +228,6 @@ function standardGraph(): [WorkflowNode[], WorkflowEdge[]] {
     [edge("e1", "t", "a")],
   ];
 }
-
-beforeEach(() => {
-  vi.clearAllMocks();
-});
 
 /** Delete a selected node through the complete canvas operation. */
 function deleteCanvasNode(store: Store) {

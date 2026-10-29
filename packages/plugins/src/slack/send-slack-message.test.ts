@@ -38,7 +38,6 @@ function credentialsRead(
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
   mocks.callSlack.mockReturnValue(
     Effect.succeed({ ts: "1739.123", channel: "C12345" })
   );

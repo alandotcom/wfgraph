@@ -42,7 +42,6 @@ function credentialsRead(
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
   // Answer the way Twilio does, in its own snake_case, so the step's reading of
   // the response is exercised rather than assumed.
   mocks.createMessage.mockImplementation(
