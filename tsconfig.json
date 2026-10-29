@@ -58,6 +58,8 @@
           "effect/http/FetchHttpClient#layer",
           "effect/http/Headers#Headers",
           "effect/http/Headers#get",
+          "effect/http/Headers#parseRetryAfter",
+          "effect/http/Headers#retryAfterDelay",
           "effect/http/HttpClient#HttpClient",
           "effect/http/HttpClientError#HttpClientError",
           "effect/http/HttpClientRequest#HttpClientRequest",

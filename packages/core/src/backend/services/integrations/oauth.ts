@@ -1,4 +1,5 @@
 import { Effect, Result } from "effect";
+import { Base64Url } from "effect/encoding";
 import {
   AppLogger,
   type EffectLogger,
@@ -50,18 +51,7 @@ export const oauthBindingCookieName = (state: string): string | null =>
 function randomOpaqueValue(): string {
   const bytes = new Uint8Array(32);
   globalThis.crypto.getRandomValues(bytes);
-  return toBase64Url(bytes);
-}
-
-function toBase64Url(bytes: Uint8Array): string {
-  let binary = "";
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-  return btoa(binary)
-    .replaceAll("+", "-")
-    .replaceAll("/", "_")
-    .replace(/=+$/u, "");
+  return Base64Url.encode(bytes);
 }
 
 async function sha256Base64Url(value: string): Promise<string> {
@@ -69,7 +59,7 @@ async function sha256Base64Url(value: string): Promise<string> {
     "SHA-256",
     new TextEncoder().encode(value)
   );
-  return toBase64Url(new Uint8Array(digest));
+  return Base64Url.encode(new Uint8Array(digest));
 }
 
 function missingPublicUrl() {

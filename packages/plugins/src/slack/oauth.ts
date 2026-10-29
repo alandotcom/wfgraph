@@ -14,6 +14,7 @@ import {
   type ExternalError,
 } from "@wfgraph/core/plugin";
 import { Schema } from "effect";
+import { Base64 } from "effect/encoding";
 
 const SLACK_OAUTH_URL = "https://slack.com/api/oauth.v2.access";
 const SLACK_UNINSTALL_URL = "https://slack.com/api/apps.uninstall";
@@ -103,9 +104,9 @@ function redactSensitive(
 }
 
 function basicAuthorization(client: OAuthClientRegistration): string {
-  return `Basic ${Buffer.from(
+  return `Basic ${Base64.encode(
     `${client.clientId}:${client.clientSecret ?? ""}`
-  ).toString("base64")}`;
+  )}`;
 }
 
 async function requestSlackOAuth<S extends Schema.ConstraintDecoder<unknown>>(

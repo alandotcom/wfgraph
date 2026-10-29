@@ -16,6 +16,7 @@
 import type { JsonValue } from "@wfgraph/core/plugin";
 import type { Effect } from "effect";
 import { Schema } from "effect";
+import { Base64 } from "effect/encoding";
 import type { HttpClient } from "effect/http";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
@@ -77,7 +78,7 @@ export type TwilioCredentialPair = {
 };
 
 function toBasicAuth(accountSid: string, authToken: string): string {
-  return `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`;
+  return `Basic ${Base64.encode(`${accountSid}:${authToken}`)}`;
 }
 
 function requestTwilio<S extends Schema.ConstraintDecoder<unknown>>(
