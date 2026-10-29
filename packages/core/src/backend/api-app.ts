@@ -104,22 +104,27 @@ type McpRequestLogFields = {
   workflowId?: string | undefined;
 };
 
-function mcpRequestLogFields(rawBody: string): McpRequestLogFields {
+/** The body as JSON, or `undefined` for one that is not. */
+function parseJsonBody(rawBody: string): unknown {
   try {
-    const body = readJsonObject(JSON.parse(rawBody));
-    const params = readJsonObject(body?.params);
-    const toolArguments = readJsonObject(params?.arguments);
-    return omitUndefined({
-      method: typeof body?.method === "string" ? body.method : undefined,
-      name: typeof params?.name === "string" ? params.name : undefined,
-      workflowId:
-        typeof toolArguments?.workflowId === "string"
-          ? toolArguments.workflowId
-          : undefined,
-    });
+    return JSON.parse(rawBody);
   } catch {
-    return {};
+    return undefined;
   }
+}
+
+function mcpRequestLogFields(parsedBody: unknown): McpRequestLogFields {
+  const body = readJsonObject(parsedBody);
+  const params = readJsonObject(body?.params);
+  const toolArguments = readJsonObject(params?.arguments);
+  return omitUndefined({
+    method: typeof body?.method === "string" ? body.method : undefined,
+    name: typeof params?.name === "string" ? params.name : undefined,
+    workflowId:
+      typeof toolArguments?.workflowId === "string"
+        ? toolArguments.workflowId
+        : undefined,
+  });
 }
 
 async function mcpResponseLogFields(response: Response) {
@@ -521,12 +526,17 @@ export function createApiApp(options: CreateApiAppOptions) {
       }
 
       let mcpFields: McpRequestLogFields = {};
+      let parsedBody: unknown;
       if (c.req.method === "POST") {
         const body = await readCappedText(c.req.raw.clone());
         if (!body.ok) {
           return c.json(TOO_LARGE_BODY, 413);
         }
-        mcpFields = mcpRequestLogFields(body.text);
+        // Parsed once here and handed on, so neither the handler's pre-check
+        // nor the SDK reads the body again. A body that is not JSON is left
+        // for the SDK to answer with its own parse error.
+        parsedBody = parseJsonBody(body.text);
+        mcpFields = mcpRequestLogFields(parsedBody);
         c.get("wfgraphRequestEvent").set({ mcp: mcpFields });
       }
 
@@ -587,7 +597,10 @@ export function createApiApp(options: CreateApiAppOptions) {
       });
 
       try {
-        const response = await handler.fetch(c.req.raw);
+        const response = await handler.fetch(
+          c.req.raw,
+          parsedBody === undefined ? undefined : { parsedBody }
+        );
         c.get("wfgraphRequestEvent").set({
           mcp: {
             ...mcpFields,
