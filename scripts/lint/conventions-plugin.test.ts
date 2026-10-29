@@ -1,3 +1,4 @@
+import type { Context, CreateRule, RuleMeta } from "@oxlint/plugins";
 import { RuleTester } from "oxlint/plugins-dev";
 import { describe, it } from "vitest";
 import plugin from "./conventions-plugin";
@@ -17,29 +18,29 @@ const ruleTester = new RuleTester({
 
 const rules = plugin.rules;
 
-/** A rule as this plugin declares it. */
-type PluginRule = (typeof rules)[keyof typeof rules];
-
-/** The fields a report and a text lookup need from a node. */
-type ReportedNode = { type: string; range: [number, number] };
-
 /**
  * Wraps a rule so each report carries the source text of the node it named,
  * which RuleTester then matches against the expected error message. A rule
  * that underlines a parent or a neighbour instead of the offending node fails
  * the wrapped run even though it still reports the right number of errors.
+ *
+ * The rule sees the real context with `report` swapped out. oxlint freezes
+ * that context, so the swap is an object of its own whose prototype is the
+ * real one.
  */
-function reportsNodeText(rule: PluginRule) {
+function reportsNodeText(rule: CreateRule & { meta: RuleMeta }): CreateRule {
   return {
     meta: rule.meta,
-    create(context: {
-      report(diagnostic: { node: ReportedNode; message: string }): void;
-      sourceCode: { getText(node: ReportedNode): string };
-    }) {
-      return rule.create({
-        report: ({ node }) =>
-          context.report({ node, message: context.sourceCode.getText(node) }),
+    create(context) {
+      const report: Context["report"] = ({ node }) => {
+        if (node !== undefined) {
+          context.report({ node, message: context.sourceCode.getText(node) });
+        }
+      };
+      const reporting: Context = Object.create(context, {
+        report: { value: report },
       });
+      return rule.create(reporting);
     },
   };
 }
