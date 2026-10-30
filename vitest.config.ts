@@ -42,7 +42,6 @@ export default defineConfig({
     isolate: false,
     projects: [
       {
-        extends: true,
         test: {
           name: "node",
           environment: "node",
@@ -51,7 +50,6 @@ export default defineConfig({
         },
       },
       {
-        extends: true,
         test: {
           // The one project that wants a service. Every case skips itself when
           // `WFGRAPH_TEST_DATABASE_URL` names no server. That is the case for a
@@ -93,7 +91,6 @@ export default defineConfig({
         },
       },
       {
-        extends: true,
         test: {
           name: "client",
           // Only the client renders components, so only the client pays for a

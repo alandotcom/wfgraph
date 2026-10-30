@@ -50,7 +50,6 @@ function sentCall() {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
   mocks.sendEmail.mockReturnValue(Effect.succeed({ id: "email_123" }));
   vi.spyOn(resendClient, "sendResendEmail").mockImplementation(mocks.sendEmail);
   vi.spyOn(resendClient, "describeResendFailure").mockImplementation(

@@ -32,7 +32,6 @@ const retrievedEmail = {
 };
 
 beforeEach(() => {
-  vi.clearAllMocks();
   mocks.getEmail.mockReturnValue(Effect.succeed(retrievedEmail));
   vi.spyOn(resendClient, "getResendEmail").mockImplementation(mocks.getEmail);
   vi.spyOn(resendClient, "describeResendFailure").mockImplementation(

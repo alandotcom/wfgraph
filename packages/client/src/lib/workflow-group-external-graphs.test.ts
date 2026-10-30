@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import {
   applyAgentGraphAtom,
@@ -27,10 +27,6 @@ import {
   type Graph,
 } from "./workflow-group-mutations-test-support";
 import { savedWorkflow } from "./workflow-save-test-support";
-
-beforeEach(() => {
-  vi.clearAllMocks();
-});
 
 const turnId = Symbol("agent-turn");
 

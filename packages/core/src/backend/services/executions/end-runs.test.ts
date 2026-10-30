@@ -33,7 +33,6 @@ const recordAuditEvent = vi.fn<Repo["recordAuditEvent"]>(() => Effect.void);
 
 /** Every send answers, every write lands, unless a case says otherwise. */
 beforeEach(() => {
-  vi.clearAllMocks();
   sendCancelRequested.mockImplementation(() => Effect.void);
   endInFlight.mockImplementation(() =>
     Effect.succeed({

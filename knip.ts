@@ -16,23 +16,6 @@ import type { KnipConfig } from "knip";
  *    core's own source. Those are named in ignoreDependencies with the reason.
  */
 const config: KnipConfig = {
-  // The SPA's stylesheet pulls Tailwind and its animation plugin in with CSS
-  // `@import`, which is the only way those two dependencies are ever named. A
-  // knip compiler turns a file of any extension into something knip can parse,
-  // and lifting the `@` off each `@import` leaves a plain import statement.
-  // knip 6.29 documents a built-in `.css` compiler but ships none, so setting
-  // `css: true` crashes; this hands it the function the docs print.
-  //
-  // A compiler is global in knip 6.29 while the one stylesheet lives in
-  // packages/client, so every workspace whose project glob names no stylesheet
-  // prints one standing "Compiled extension excluded by project" hint. Hints are
-  // informational and leave the exit code at 0, and giving those workspaces a
-  // `**/*.css` glob only trades the hint for a "no matches" one.
-  compilers: {
-    css: (text: string) =>
-      [...text.matchAll(/(?<=@)import[^;]+/g)].map(([m]) => m).join("\n"),
-  },
-
   // An export referenced inside its own file is reachable code; the only thing
   // wrong with it is a wider-than-needed declaration. Exports that nothing
   // references at all are still reported, which is the signal worth acting on.

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { boundaryStubId } from "#src/lib/group-scope-canvas";
@@ -49,10 +49,6 @@ import {
   edgeIds,
   type Store,
 } from "./workflow-group-mutations-test-support";
-
-beforeEach(() => {
-  vi.clearAllMocks();
-});
 
 /** The canvas after `a`, `b` and `c` are grouped, and the new frame's id. */
 function groupedStore(): { store: Store; frameId: string } {

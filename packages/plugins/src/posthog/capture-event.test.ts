@@ -63,7 +63,6 @@ function capturedConnection() {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
   mocks.captureEvent.mockReturnValue(Effect.succeed({ status: 1 }));
   vi.spyOn(posthogClient, "captureEvent").mockImplementation(
     mocks.captureEvent

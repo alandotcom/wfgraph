@@ -695,28 +695,28 @@ export const resend = defineIntegration({
         return yield* bag.step.run(
           "find-email",
           getResendEmail(apiKey, emailId).pipe(
-            Effect.map((email) => ({
-              id: email.id,
-              messageId: email.message_id,
-              from: email.from,
-              to: email.to,
-              cc: email.cc,
-              bcc: email.bcc,
-              replyTo: email.reply_to,
-              subject: email.subject,
-              html: email.html,
-              text: email.text,
-              createdAt: email.created_at.toISOString(),
-              lastEvent: email.last_event,
-              scheduledAt: email.scheduled_at?.toISOString() ?? null,
-              ...omitUndefined({ tags: tagsByName(email.tags) }),
-            })),
-            Effect.mapError(
-              (error) =>
+            Effect.mapBoth({
+              onFailure: (error) =>
                 new StepFailure({
                   message: `Failed to find email: ${describeResendFailure(error)}`,
-                })
-            )
+                }),
+              onSuccess: (email) => ({
+                id: email.id,
+                messageId: email.message_id,
+                from: email.from,
+                to: email.to,
+                cc: email.cc,
+                bcc: email.bcc,
+                replyTo: email.reply_to,
+                subject: email.subject,
+                html: email.html,
+                text: email.text,
+                createdAt: email.created_at.toISOString(),
+                lastEvent: email.last_event,
+                scheduledAt: email.scheduled_at?.toISOString() ?? null,
+                ...omitUndefined({ tags: tagsByName(email.tags) }),
+              }),
+            })
           )
         );
       }),

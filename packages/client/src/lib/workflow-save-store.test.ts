@@ -104,7 +104,6 @@ async function waitForCalls(count: number) {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
   pending.length = 0;
 });
 
