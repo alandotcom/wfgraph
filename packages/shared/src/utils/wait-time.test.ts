@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   applyDailyWindow,
   applyWaitAllowedHours,
+  parseDurationMs,
   parsePositiveDurationMs,
   resolveWaitTarget,
   resolveWaitUntil,
@@ -107,6 +108,16 @@ describe("parsePositiveDurationMs", () => {
     expect(parsePositiveDurationMs("later")).toBeNull();
     expect(parsePositiveDurationMs("0h")).toBeNull();
     expect(parsePositiveDurationMs("-1h")).toBeNull();
+  });
+});
+
+describe("parseDurationMs", () => {
+  it("reads an ISO 8601 duration and refuses one naming no component", () => {
+    expect(parseDurationMs("PT1H30M")).toBe(5_400_000);
+    expect(parseDurationMs("-P1W2D")).toBe(-777_600_000);
+    expect(parseDurationMs("PT1.5S")).toBe(1500);
+    expect(parseDurationMs("P")).toBeNull();
+    expect(parseDurationMs("PT")).toBeNull();
   });
 });
 

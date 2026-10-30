@@ -207,7 +207,7 @@ describe("the timeout", () => {
 /**
  * The retry policy lives in `external-http.ts` and is stated in the comment above
  * `RETRY_ATTEMPTS`. These pin the decisions in it: what is retried, how long the
- * wait is, that a `Retry-After` in the form the RFC gives replaces that wait,
+ * wait is, that a `Retry-After` in either form the RFC gives replaces that wait,
  * how long the loop as a whole may run, and that a request a repeat could do
  * twice is not retried at all.
  */
@@ -242,6 +242,32 @@ describe("the retry policy", () => {
       assert.strictEqual(stub.attempts(), 1);
 
       // Two seconds into the three the system asked for, nothing has moved.
+      yield* TestClock.adjust("2 seconds");
+      yield* settle;
+      assert.strictEqual(stub.attempts(), 1);
+
+      yield* TestClock.adjust("1 second");
+      yield* settle;
+
+      assert.deepStrictEqual(yield* Fiber.join(fiber), { id: "1" });
+      assert.strictEqual(stub.attempts(), 2);
+    })
+  );
+
+  // The test clock starts at the epoch, so this date is three seconds away.
+  it.effect("waits out a Retry-After given as an HTTP date", () =>
+    Effect.gen(function* () {
+      const stub = respondTimes(
+        1,
+        () =>
+          new Response("{}", {
+            status: 429,
+            headers: { "retry-after": "Thu, 01 Jan 1970 00:00:03 GMT" },
+          })
+      );
+
+      const fiber = yield* Effect.forkChild(call(readable));
+      yield* settle;
       yield* TestClock.adjust("2 seconds");
       yield* settle;
       assert.strictEqual(stub.attempts(), 1);
@@ -334,7 +360,7 @@ describe("the retry policy", () => {
   // three of these as numbers anyway, and the empty one, which is what a
   // whitespace-only header becomes, as a zero: that zero would make a bare 500
   // retryable and then name no delay at all.
-  it.effect("ignores a Retry-After that is not delta-seconds", () =>
+  it.effect("ignores a Retry-After that is neither form", () =>
     Effect.gen(function* () {
       for (const value of ["", " ", "1e3", "0x10"]) {
         const stub = respondTimes(

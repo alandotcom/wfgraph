@@ -57,7 +57,6 @@ export async function openSqliteDatabase(input: {
       busyTimeout: input.busyTimeoutMs,
     })
   );
-  let closePromise: Promise<void> | undefined;
   try {
     const database = await runtime.runPromise(makeWithDefaults());
     await runtime.runPromise(initializeSqlite(database));
@@ -70,10 +69,8 @@ export async function openSqliteDatabase(input: {
             Effect.suspend(() => run(transaction))
           )
         ),
-      close: () => {
-        closePromise ??= runtime.dispose();
-        return closePromise;
-      },
+      // A second close waits on the disposal already in progress.
+      close: () => runtime.dispose(),
     };
   } catch (error) {
     await runtime.dispose();

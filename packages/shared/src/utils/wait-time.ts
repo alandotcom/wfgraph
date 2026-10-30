@@ -1,3 +1,4 @@
+import { Duration, Option } from "effect";
 import {
   normalizeWaitAllowedHoursMode,
   parseTimeOfDayMinutes,
@@ -6,8 +7,6 @@ import {
 
 const DURATION_TOKEN_PATTERN = /(-?\d+(?:\.\d+)?)\s*(ms|s|m|h|d|w)/gi;
 const ISO_OFFSET_PATTERN = /(Z|[+-]\d{2}:\d{2})$/i;
-const ISO_DURATION_PATTERN =
-  /^(-)?P(?:(\d+(?:\.\d+)?)W)?(?:(\d+(?:\.\d+)?)D)?(?:T(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?)?$/i;
 const NUMERIC_VALUE_PATTERN = /^-?\d+(?:\.\d+)?$/;
 const DIGITS_ONLY_PATTERN = /^\d+$/;
 const NAIVE_DATETIME_PATTERN =
@@ -54,29 +53,6 @@ function unitToMs(unit: string): number {
   }
 }
 
-function parseIsoDuration(value: string): number | null {
-  const match = ISO_DURATION_PATTERN.exec(value.trim());
-  if (!match) {
-    return null;
-  }
-
-  const sign = match[1] ? -1 : 1;
-  const weeks = Number.parseFloat(match[2] ?? "0");
-  const days = Number.parseFloat(match[3] ?? "0");
-  const hours = Number.parseFloat(match[4] ?? "0");
-  const minutes = Number.parseFloat(match[5] ?? "0");
-  const seconds = Number.parseFloat(match[6] ?? "0");
-
-  const ms =
-    weeks * unitToMs("w") +
-    days * unitToMs("d") +
-    hours * unitToMs("h") +
-    minutes * unitToMs("m") +
-    seconds * unitToMs("s");
-
-  return sign * ms;
-}
-
 export function parseDurationMs(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value;
@@ -95,9 +71,9 @@ export function parseDurationMs(value: unknown): number | null {
     return Number.parseFloat(trimmed);
   }
 
-  const isoDurationMs = parseIsoDuration(trimmed);
-  if (isoDurationMs !== null) {
-    return isoDurationMs;
+  const isoDuration = Duration.fromIso(trimmed);
+  if (Option.isSome(isoDuration)) {
+    return Duration.toMillis(isoDuration.value);
   }
 
   let total = 0;

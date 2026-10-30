@@ -32,7 +32,15 @@ import {
   isPromiseLike,
 } from "#src/backend/extensions/schema-io";
 import { isEffectSchema } from "@wfgraph/shared/types/schema";
-import { Duration, Effect, Option, Schedule, Schema } from "effect";
+import {
+  Clock,
+  Duration,
+  Effect,
+  Option,
+  Result,
+  Schedule,
+  Schema,
+} from "effect";
 import {
   Headers,
   HttpClient,
@@ -108,9 +116,10 @@ export class ExternalUnreachable extends Schema.TaggedError<
  *
  * `payload` is whatever JSON came with the refusal, for the client to read its
  * system's error envelope out of; it is absent when the body was not JSON.
- * `retryAfterSeconds` is the header's delta-seconds form, absent when the
- * system sent no `Retry-After` or sent it in some other form, such as the
- * HTTP-date one, which none of these systems uses and this module does not read.
+ * `retryAfterSeconds` is the wait the `Retry-After` header asked for, in either
+ * of its forms: delta-seconds as written, or an HTTP date measured from when
+ * the refusal arrived, which can leave a fraction. It is absent when the system
+ * sent no `Retry-After` or one that is neither form.
  */
 export class ExternalRejected extends Schema.TaggedError<
   ExternalRejected,
@@ -287,7 +296,10 @@ function attemptCall<T>(
       return yield* new ExternalRejected({
         status: response.status,
         payload,
-        retryAfterSeconds: readRetryAfter(response.headers),
+        retryAfterSeconds: readRetryAfter(
+          response.headers,
+          yield* Clock.currentTimeMillis
+        ),
       });
     }
 
@@ -360,26 +372,27 @@ function isSuccessStatus(status: number): boolean {
   return status >= 200 && status < 300;
 }
 
-function readRetryAfter(headers: Headers.Headers): number | undefined {
+function readRetryAfter(
+  headers: Headers.Headers,
+  nowMillis: number
+): number | undefined {
   const header = Option.getOrUndefined(Headers.get(headers, "retry-after"));
   if (header === undefined) {
     return undefined;
   }
 
-  // RFC 9110 writes the form this module reads as digits and nothing else, so
-  // the digits are checked before the conversion. `Number` would otherwise read
-  // "1e3" as a thousand seconds, "0x10" as sixteen, and an empty header, which
-  // is what `Headers` makes of a whitespace-only one, as zero. That zero is the
-  // damaging one: it satisfies the 5xx-with-a-`Retry-After` case in
-  // `isWorthRetrying` and then names no delay at all, so a bare 500 carrying an
-  // empty header would be sent twice more on the spot.
-  if (!/^\d+$/.test(header)) {
+  // `parseRetryAfter` takes digits and nothing else for the seconds form, so
+  // "1e3", "0x10" and an empty header, which is what `Headers` makes of a
+  // whitespace-only one, are refused rather than read as numbers. Reading the
+  // empty one as zero is the damaging case: it satisfies the
+  // 5xx-with-a-`Retry-After` case in `isWorthRetrying` and then names no
+  // delay at all, so a bare 500 would be sent twice more on the spot.
+  const parsed = Headers.parseRetryAfter(header);
+  if (Result.isFailure(parsed)) {
     return undefined;
   }
 
-  // A digit string long enough to overflow is still not a number of seconds.
-  const seconds = Number(header);
-  return Number.isFinite(seconds) ? seconds : undefined;
+  return Duration.toSeconds(Headers.retryAfterDelay(parsed.success, nowMillis));
 }
 
 /**
