@@ -239,4 +239,36 @@ describe("RunHistoryTable", () => {
     fireEvent.click(view.getByRole("button", { name: "Load more" }));
     expect(onLoadMore).toHaveBeenCalledTimes(1);
   });
+
+  it("asks for the next page when a scroll nears the end", () => {
+    const onLoadMore = vi.fn(() => undefined);
+    const view = render(
+      <RunHistoryTable
+        hasNextPage
+        isLoading={false}
+        isLoadingMore={false}
+        onLoadMore={onLoadMore}
+        onOpenRun={() => undefined}
+        runs={ROWS}
+      />
+    );
+    const scroller = view.container.querySelector(".overflow-auto");
+    if (!(scroller instanceof HTMLElement)) {
+      throw new Error("expected the scroll container");
+    }
+    Object.defineProperty(scroller, "scrollHeight", {
+      configurable: true,
+      get() {
+        return 1400;
+      },
+    });
+
+    scroller.scrollTop = 200;
+    fireEvent.scroll(scroller);
+    expect(onLoadMore).not.toHaveBeenCalled();
+
+    scroller.scrollTop = 800;
+    fireEvent.scroll(scroller);
+    expect(onLoadMore).toHaveBeenCalledTimes(1);
+  });
 });
