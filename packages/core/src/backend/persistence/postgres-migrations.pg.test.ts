@@ -82,9 +82,8 @@ describePostgres("PostgreSQL migrations", () => {
           where table_schema = ${schema}
         `;
       // The shipped SQL names no schema, so a lost `search_path` would have
-      // built all of this in `public` instead. `scripts/unqualify-migrations.ts`
-      // is what keeps the qualifier out. This is the only place its work is
-      // checked against a server, rather than against the file it wrote.
+      // built all of this in `public` instead. This is the only place that is
+      // checked against a server, rather than against the committed SQL.
       const [stray] = await client<{ leaked: string | null }[]>`
           select to_regclass('public.workflows')::text as leaked
         `;

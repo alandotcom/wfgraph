@@ -194,3 +194,14 @@ frozen fingerprint; adoption writes the Drizzle baseline journal without
 rebuilding application tables. Journal rows must be an exact prefix of the
 shipped manifest, and the resulting physical schema must match the current
 fingerprint, so a newer or altered database is refused rather than guessed at.
+
+## Amendment: drizzle-kit stopped qualifying foreign keys (2026-10-29)
+
+drizzle-kit 1.0.0-rc.5 writes a foreign key's target unqualified, as
+`REFERENCES "workflows"("id")`, when both tables are declared unqualified. A
+throwaway foreign key generated against rc.5 confirmed it. The
+`scripts/unqualify-migrations.ts` step that `db:generate` ran after drizzle-kit had
+nothing left to remove, so it was deleted. `db/migrations-sql.test.ts` still holds
+every committed statement to qualifying nothing but Workflow Graph's own table names, so
+a release that brings the qualifier back fails the suite rather than reaching a
+database.

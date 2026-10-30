@@ -26,7 +26,7 @@
     "skills:stale": "intent stale",
     "check": "oxfmt --check .",
     "fix": "oxfmt .",
-    "db:generate": "pnpm exec drizzle-kit generate --config packages/core/drizzle.config.ts && tsx scripts/unqualify-migrations.ts",
+    "db:generate": "pnpm exec drizzle-kit generate --config packages/core/drizzle.config.ts",
     "db:generate:sqlite": "pnpm exec drizzle-kit generate --config packages/core/drizzle-sqlite.config.ts && tsx scripts/validate-sqlite-migrations.ts",
     "db:migrate": "tsx scripts/migrate.ts",
     "release:version": "changeset version && pnpm install --lockfile-only",
