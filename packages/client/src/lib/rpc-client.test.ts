@@ -146,8 +146,8 @@ describe("ApiError from a failed call", () => {
   });
 
   // A body oRPC cannot read as one of its errors: the link throws a
-  // MalformedResponseError, which maps to no status of its own.
-  it("falls back for a response that is not an oRPC error", async () => {
+  // MalformedResponseError, which still carries the status it arrived with.
+  it("keeps the status of a response that is not an oRPC error", async () => {
     const error = await failedCall(
       new Response(JSON.stringify({ json: { oops: true } }), {
         status: 502,
@@ -156,7 +156,7 @@ describe("ApiError from a failed call", () => {
     );
 
     expect(error).toBeInstanceOf(ApiError);
-    expect((error as ApiError).status).toBe(500);
+    expect((error as ApiError).status).toBe(502);
     expect((error as ApiError).message).toBe("Request failed");
     expect((error as ApiError).code).toBeUndefined();
   });

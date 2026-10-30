@@ -42,16 +42,13 @@ export function route(
 /**
  * Hands a schema to oRPC as a Standard Schema, closed to keys it did not name.
  *
- * `@orpc/effect` exports a `toStandardSchema` of its own and this
- * is not it. That one takes no parse options, and parse options are the only
- * way an Effect schema can be strict about unknown keys: oRPC calls
- * `~standard.validate(payload)` with nothing else to say, so anything the
- * schema wants to be true of that call has to be closed over before it gets
- * there. The two are otherwise interchangeable -- Effect returns a copy of the
- * schema carrying `~standard`, so the schema oRPC holds is still an Effect
- * schema either way, which is what `EffectSchemaToJsonSchemaConverter` looks
- * for when it builds the OpenAPI document. The one thing oRPC's version adds,
- * carrying meta plugins across, is a copy onto the object it was read from.
+ * Parse options are the only way an Effect schema can be strict about unknown
+ * keys, and oRPC calls `~standard.validate(payload)` with nothing else to say,
+ * so anything the schema wants to be true of that call has to be closed over
+ * before it gets there. Effect returns a copy of the schema carrying
+ * `~standard`, so the schema oRPC holds is still an Effect schema, which is
+ * what `EffectSchemaToJsonSchemaConverter` looks for when it builds the
+ * OpenAPI document.
  *
  * Each call returns a new copy. A shape more than one procedure names is bridged
  * once at module scope and the binding is what the procedures hand to oRPC.

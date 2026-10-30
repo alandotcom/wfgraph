@@ -1,8 +1,8 @@
 import {
-  COMMON_ERROR_STATUS_MAP,
   createORPCClient,
   MalformedResponseError,
   ORPCError,
+  ResponseError,
 } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import {
@@ -181,16 +181,55 @@ function splitRpcUrl(absoluteUrl: string): {
 }
 
 /**
- * oRPC sends an error code rather than an HTTP status, so the status comes back
- * from the same table the server derived it from. `ApiError` is the last place in
- * the client that speaks HTTP.
- *
- * The annotation widens the table's keys to `string`, because `error.code` is
- * a string rather than a union of known codes; an unmapped code indexes to
- * `undefined` and the `?? 500` at the call site absorbs it.
+ * The HTTP status a failed call was answered with. `RPCLink` puts the response
+ * on a decoded `ORPCError` as a `ResponseError` cause, and a
+ * `MalformedResponseError` is one. A failure that never got a response, and an
+ * error a stream sent after it started, have none and read as 500. `ApiError`
+ * is the last place in the client that speaks HTTP.
  */
-const ORPC_CODE_TO_STATUS: Record<string, number | undefined> =
-  COMMON_ERROR_STATUS_MAP;
+function responseStatus(error: unknown): number {
+  const response = error instanceof ORPCError ? error.cause : error;
+  return response instanceof ResponseError ? response.response.status : 500;
+}
+
+/**
+ * Turns whatever a call threw into an `ApiError`. It runs as a client
+ * interceptor, outside the link, so `RetryLinkPlugin`'s default check still
+ * sees the `ResponseError` and refuses to retry a 4xx other than 408 and 429.
+ */
+async function toApiError<T>(options: { next: () => Promise<T> }): Promise<T> {
+  try {
+    return await options.next();
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+
+    // A body that is not an oRPC response, such as a proxy's error page.
+    // oRPC copies that body into the message, and it is not ours to show.
+    if (error instanceof MalformedResponseError) {
+      throw new ApiError(responseStatus(error), "Request failed");
+    }
+
+    if (error instanceof ORPCError) {
+      // An oRPC error's data arrives as decoded JSON, so a plain object is
+      // the only shape with a `code` to read. A string body, an array or a
+      // null reads back as null and leaves the code unset.
+      const payload = readJsonObject(error.data);
+      throw new ApiError(
+        responseStatus(error),
+        getRpcErrorMessage(error.data ?? error.message),
+        asNonEmptyString(payload?.code)
+      );
+    }
+
+    if (error instanceof Error) {
+      throw new ApiError(500, error.message || "Request failed");
+    }
+
+    throw new ApiError(500, "Request failed");
+  }
+}
 
 const rpcEndpoint = splitRpcUrl(resolveRpcUrl());
 
@@ -201,45 +240,10 @@ const link = new RPCLink<RpcClientContext>({
   url: rpcEndpoint.pathWithQuery,
   fetch: (url, init) => globalThis.fetch(url, init),
   plugins: [new RetryLinkPlugin()],
-  interceptors: [
-    async (options) => {
-      try {
-        return await options.next();
-      } catch (error) {
-        if (error instanceof ApiError) {
-          throw error;
-        }
-
-        if (error instanceof ORPCError) {
-          // An oRPC error's data arrives as decoded JSON, so a plain object is
-          // the only shape with a `code` to read. A string body, an array or a
-          // null reads back as null and leaves the code unset.
-          const payload = readJsonObject(error.data);
-          throw new ApiError(
-            ORPC_CODE_TO_STATUS[error.code] ?? 500,
-            getRpcErrorMessage(error.data ?? error.message),
-            asNonEmptyString(payload?.code)
-          );
-        }
-
-        // A body that is not an oRPC response, such as a proxy's error page.
-        // oRPC copies that body into the message, and it is not ours to show.
-        if (error instanceof MalformedResponseError) {
-          throw new ApiError(500, "Request failed");
-        }
-
-        if (error instanceof Error) {
-          throw new ApiError(500, error.message || "Request failed");
-        }
-
-        throw new ApiError(500, "Request failed");
-      }
-    },
-  ],
 });
 
 export const rpc: RouterContractClient<RpcContract, RpcClientContext> =
-  createORPCClient(link);
+  createORPCClient(link, { interceptors: [toApiError] });
 
 type RpcOutput<T> = T extends (...args: never[]) => Promise<infer TResult>
   ? TResult
