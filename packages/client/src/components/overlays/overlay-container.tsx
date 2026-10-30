@@ -140,14 +140,12 @@ function DesktopOverlayContainer() {
   useDomEvent(document, "keydown", handleEscapeKey, { enabled: isOpen });
   useFocusTrap(dialogRef, isOpen);
 
-  if (!isOpen) {
-    return null;
-  }
-
+  // The conditional sits inside AnimatePresence so that closing the last
+  // overlay plays the backdrop and container exits before the dialog unmounts.
   return (
     <AnimatePresence>
       {isOpen && (
-        <Dialog modal={false} open>
+        <Dialog key="overlay-dialog" modal={false} open>
           <DialogPortal keepMounted>
             {/* Backdrop - standalone clickable div */}
             <motion.div
