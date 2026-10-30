@@ -9,6 +9,7 @@ import {
 } from "@tanstack/react-router";
 import { act, fireEvent, render } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
+import type { Store } from "jotai";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   OverlayProvider,
@@ -33,7 +34,7 @@ import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-
  */
 
 /** A run pinned to the canvas, which is what holds editing locked. */
-function pinRun(store: ReturnType<typeof createStore>): void {
+function pinRun(store: Store): void {
   store.set(executionOverlayGraphAtom, {
     nodes: [
       {

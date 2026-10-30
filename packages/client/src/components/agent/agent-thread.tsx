@@ -45,7 +45,10 @@ import {
 } from "#src/components/agent/elements/tool-group";
 import { Button } from "#src/components/ui/button";
 import { useAfterCommit } from "#src/hooks/effects";
-import { agentToolLabel } from "#src/lib/agent-tool-labels";
+import {
+  agentReasoningLabel,
+  agentToolLabel,
+} from "#src/lib/agent-tool-labels";
 
 /**
  * Which parts group, and into what.
@@ -107,10 +110,7 @@ function toReasoningStep(text: string): ReasoningStep {
  * The model's working-out, as the steps it went through.
  *
  * Open while it streams and closed once it settles, unless the reader has
- * opened or closed it themselves, at which point their choice sticks. The
- * resting label names the state rather than a duration: `useLocalRuntime` and
- * this adapter attach no timing, so a "Thought for Ns" label would have nothing
- * to count.
+ * opened or closed it themselves, at which point their choice sticks.
  */
 function AgentReasoning() {
   const parts = useAuiState((state) => state.message.parts);
@@ -134,7 +134,7 @@ function AgentReasoning() {
     <ReasoningPanel
       onOpenChange={setReaderOpen}
       open={readerOpen ?? streaming}
-      restingLabel="Done thinking"
+      restingLabel={agentReasoningLabel(parts)}
       steps={steps}
       streaming={streaming}
       visibleSteps={steps.length}

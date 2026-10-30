@@ -30,7 +30,8 @@ import { readConfigString } from "@wfgraph/shared/graph/node-config";
 import type { WorkflowIssue } from "@wfgraph/shared/graph/workflow-issues";
 import { isBlank } from "@wfgraph/shared/types/string";
 import { compact } from "es-toolkit/array";
-import type { createStore, Getter } from "jotai";
+import type { Getter } from "jotai";
+import type { Store } from "jotai";
 import { activeChosenExecutionAtom } from "#src/lib/workflow-workspace-navigation";
 import { ChangesBrowse, ChangesHeader } from "./changes-browse";
 import { ChangesFocus } from "./changes-focus";
@@ -143,7 +144,7 @@ export type RevealKindHeader =
 export type RevealUnwind = (input: {
   subject: RevealSubject;
   level: OpenRevealLevel;
-  store: ReturnType<typeof createStore>;
+  store: Store;
   unwindLevel: () => void;
   /**
    * Hand DOM focus back to what opened Reveal at the next close, for a kind

@@ -11,6 +11,7 @@ import {
 import { act, fireEvent, render, within } from "@testing-library/react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { createStore, Provider as JotaiProvider, useAtomValue } from "jotai";
+import type { Store } from "jotai";
 import { vi } from "vitest";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
@@ -66,8 +67,6 @@ export function changesStep(id: string, label: string): PersistedWorkflowNode {
     data: { label, type: "action" },
   };
 }
-
-type Store = ReturnType<typeof createStore>;
 
 /**
  * The server a Changes case talks to: each comparison request's base, answered

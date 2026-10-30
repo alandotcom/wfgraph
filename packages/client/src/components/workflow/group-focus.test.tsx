@@ -17,6 +17,7 @@ import {
 } from "@testing-library/react";
 import { ReactFlowProvider, useReactFlow } from "@xyflow/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
+import type { Store } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
@@ -534,10 +535,7 @@ function stubRunRpc(served: WorkflowRunRpcFixture) {
 type EditorRouter = Awaited<ReturnType<typeof renderEditor>>["router"];
 
 /** Pin the test graph as the run's graph and open `run_1` in Runs. */
-async function openRun(
-  store: ReturnType<typeof createStore>,
-  router: EditorRouter
-) {
+async function openRun(store: Store, router: EditorRouter) {
   await act(async () => {
     store.set(executionOverlayGraphAtom, { nodes: NODES, edges: EDGES });
     await router.navigate({
@@ -1522,16 +1520,13 @@ describe("a Group holding a Condition whose False path ends inside it", () => {
 });
 
 describe("adding a step after a step and inserting one into a connection", () => {
-  const links = (store: ReturnType<typeof createStore>) =>
+  const links = (store: Store) =>
     store
       .get(edgesAtom)
       .map((edge) => `${edge.source}>${edge.target}`)
       .toSorted();
 
-  const openNodeMenu = (
-    store: ReturnType<typeof createStore>,
-    nodeId: string
-  ) =>
+  const openNodeMenu = (store: Store, nodeId: string) =>
     render(
       <JotaiProvider store={store}>
         <QueryClientProvider client={new QueryClient()}>

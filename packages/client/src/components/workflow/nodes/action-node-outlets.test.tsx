@@ -2,6 +2,7 @@ import { render } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Position, ReactFlowProvider } from "@xyflow/react";
 import { createStore, Provider } from "jotai";
+import type { Store } from "jotai";
 import { describe, expect, it } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
@@ -99,7 +100,7 @@ function renderCard(input: {
   id: string;
   data: WorkflowNodeData;
   sides?: { sourcePosition: Position; targetPosition: Position };
-  store?: ReturnType<typeof createStore>;
+  store?: Store;
   /** The edges React Flow holds, which decide which outlets are connected. */
   edges?: WorkflowEdge[];
 }) {

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { agentToolLabel } from "#src/lib/agent-tool-labels";
+import {
+  agentReasoningLabel,
+  agentToolLabel,
+} from "#src/lib/agent-tool-labels";
 
 describe("agentToolLabel", () => {
   it("names what a catalog search looked for, so repeats read apart", () => {
@@ -93,5 +96,40 @@ describe("agentToolLabel", () => {
     expect(agentToolLabel({ toolName: "inspect_bindings", args: {} })).toBe(
       "Inspect bindings"
     );
+  });
+});
+
+describe("agentReasoningLabel", () => {
+  it("adds the passages together, leaving out the tool calls between them", () => {
+    expect(
+      agentReasoningLabel([
+        { type: "reasoning", timing: { startedAt: 0, completedAt: 2_000 } },
+        { type: "tool-call", timing: { startedAt: 2_000, completedAt: 9_000 } },
+        {
+          type: "reasoning",
+          timing: { startedAt: 9_000, completedAt: 12_400 },
+        },
+      ])
+    ).toBe("Thought for 5s");
+  });
+
+  it("counts minutes past the first and never says zero", () => {
+    expect(
+      agentReasoningLabel([
+        { type: "reasoning", timing: { startedAt: 0, completedAt: 75_000 } },
+      ])
+    ).toBe("Thought for 1m 15s");
+    expect(
+      agentReasoningLabel([
+        { type: "reasoning", timing: { startedAt: 0, completedAt: 200 } },
+      ])
+    ).toBe("Thought for 1s");
+  });
+
+  it("names the state while a passage has no finished timing", () => {
+    expect(
+      agentReasoningLabel([{ type: "reasoning", timing: { startedAt: 0 } }])
+    ).toBe("Done thinking");
+    expect(agentReasoningLabel([{ type: "reasoning" }])).toBe("Done thinking");
   });
 });

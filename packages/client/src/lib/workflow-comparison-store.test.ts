@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createStore } from "jotai";
+import type { Store } from "jotai";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
 import type { WorkflowNode as PersistedWorkflowNode } from "@wfgraph/shared/graph/types";
@@ -75,7 +76,7 @@ const historicalBase = {
 };
 
 function installComparison(
-  store: ReturnType<typeof createStore>,
+  store: Store,
   input: {
     workflowId: string;
     payload: WorkflowComparisonPayload;

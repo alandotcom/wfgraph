@@ -6,7 +6,7 @@
  */
 
 import type { RegisteredRouter, useNavigate } from "@tanstack/react-router";
-import type { createStore } from "jotai";
+import type { Store } from "jotai";
 import { openMobileChangeAtom } from "#src/lib/mobile-sheet-store";
 import { comparisonDisplayGraphAtom } from "#src/lib/workflow-comparison-store";
 import {
@@ -54,7 +54,7 @@ function changeSelection(object: InspectedObject): CanvasSelection {
  * overview for every other node and connection.
  */
 function changedObjectScope(
-  store: ReturnType<typeof createStore>,
+  store: Store,
   object: InspectedObject
 ): WorkspaceScope {
   const graph = store.get(comparisonDisplayGraphAtom);
@@ -74,7 +74,7 @@ function changedObjectScope(
  */
 export function openMobileChangedObject(
   input: {
-    store: ReturnType<typeof createStore>;
+    store: Store;
     navigate: EditorNavigate;
     object: InspectedObject;
   },
@@ -105,7 +105,7 @@ export function openMobileChangedObject(
  */
 export function selectChangedObject(
   input: {
-    store: ReturnType<typeof createStore>;
+    store: Store;
     navigate: EditorNavigate;
     object: InspectedObject;
   },
