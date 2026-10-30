@@ -12,6 +12,7 @@ import {
   originValidationResponse,
   PROTOCOL_VERSION_META_KEY,
   fromJsonSchema,
+  type JsonSchemaType,
   type McpHttpHandler,
 } from "@modelcontextprotocol/server";
 import { Tool } from "effect/ai";
@@ -115,6 +116,15 @@ type AgentToolName = keyof typeof agentToolkit.tools;
 const TOOLS_WITHOUT_AN_MCP_MEANING: ReadonlySet<string> = new Set([
   "revert_draft",
 ]);
+
+/**
+ * The most array elements and object members one call's arguments may hold.
+ * A tool edits one node, one edge or one rule set, and the largest honest
+ * argument, a list of every node id in a graph at `MAX_AGENT_GRAPH_NODES`, is
+ * five hundred. A call over the limit is answered as a tool error before its
+ * arguments are validated.
+ */
+const MAX_TOOL_INPUT_ELEMENTS = 10_000;
 
 const WORKFLOW_ID_SCHEMA = {
   type: "string",
@@ -246,11 +256,48 @@ function toolDescription(name: AgentToolName, description: string): string {
     : `${description} Pass workflowId to select the persisted draft.`;
 }
 
-function isAgentToolName(value: unknown): value is AgentToolName {
-  return (
-    typeof value === "string" &&
-    Object.values(agentToolkit.tools).some((tool) => tool.name === value)
-  );
+/**
+ * Each tool's JSON Schemas and the Standard Schema validators built from them,
+ * made once. The toolkit is fixed at module load, while the SDK wants a new
+ * server per request, and both the server and the pre-check below read these.
+ */
+type ToolSchemas = {
+  readonly input: ReturnType<typeof fromJsonSchema<Record<string, unknown>>>;
+  readonly output: ReturnType<typeof fromJsonSchema<Record<string, unknown>>>;
+};
+
+function toolSchemas(inputJson: JsonSchemaType, outputJson: JsonSchemaType) {
+  return {
+    input: fromJsonSchema<Record<string, unknown>>(inputJson),
+    output: fromJsonSchema<Record<string, unknown>>(outputJson),
+  } satisfies ToolSchemas;
+}
+
+const COLLECTION_TOOL_SCHEMAS = {
+  list_workflows: toolSchemas(
+    LIST_WORKFLOWS_INPUT_SCHEMA,
+    LIST_WORKFLOWS_OUTPUT_SCHEMA
+  ),
+  create_workflow: toolSchemas(
+    CREATE_WORKFLOW_INPUT_SCHEMA,
+    CREATE_WORKFLOW_OUTPUT_SCHEMA
+  ),
+};
+
+const AGENT_TOOL_SCHEMAS: ReadonlyMap<string, ToolSchemas> = new Map(
+  Object.values(agentToolkit.tools)
+    .filter((tool) => !TOOLS_WITHOUT_AN_MCP_MEANING.has(tool.name))
+    .map((tool) => [
+      tool.name,
+      toolSchemas(inputSchemaFor(tool.name), outputSchemaFor(tool.name)),
+    ])
+);
+
+function schemasForTool(name: unknown): ToolSchemas | undefined {
+  if (name === "list_workflows" || name === "create_workflow") {
+    return COLLECTION_TOOL_SCHEMAS[name];
+  }
+  return typeof name === "string" ? AGENT_TOOL_SCHEMAS.get(name) : undefined;
 }
 
 function invalidParamsResponse(body: JsonObject, message: string): Response {
@@ -322,30 +369,20 @@ function collectionToolResult(result: JsonObject, isError: boolean) {
 export function createAgentMcpServer(
   input: CreateAgentMcpServerInput
 ): McpServer {
-  const server = new McpServer({
-    name: "workflow-graph",
-    version: "1.0.0",
-  });
+  const server = new McpServer(
+    { name: "workflow-graph", version: "1.0.0" },
+    { maxToolInputElements: MAX_TOOL_INPUT_ELEMENTS }
+  );
 
-  const listWorkflowsInput = fromJsonSchema<Record<string, unknown>>(
-    LIST_WORKFLOWS_INPUT_SCHEMA
-  );
-  const listWorkflowsOutput = fromJsonSchema<Record<string, unknown>>(
-    LIST_WORKFLOWS_OUTPUT_SCHEMA
-  );
-  const createWorkflowInput = fromJsonSchema<Record<string, unknown>>(
-    CREATE_WORKFLOW_INPUT_SCHEMA
-  );
-  const createWorkflowOutput = fromJsonSchema<Record<string, unknown>>(
-    CREATE_WORKFLOW_OUTPUT_SCHEMA
-  );
-  server.registerTool<typeof listWorkflowsOutput, typeof listWorkflowsInput>(
+  const listWorkflows = COLLECTION_TOOL_SCHEMAS.list_workflows;
+  const createWorkflow = COLLECTION_TOOL_SCHEMAS.create_workflow;
+  server.registerTool<typeof listWorkflows.output, typeof listWorkflows.input>(
     "list_workflows",
     {
       description:
         "List the workflows visible to the authenticated caller. Use a returned workflow ID with workflow authoring tools.",
-      inputSchema: listWorkflowsInput,
-      outputSchema: listWorkflowsOutput,
+      inputSchema: listWorkflows.input,
+      outputSchema: listWorkflows.output,
       annotations: { readOnlyHint: true, idempotentHint: true },
     },
     async (_arguments, context) => {
@@ -375,13 +412,16 @@ export function createAgentMcpServer(
     }
   );
 
-  server.registerTool<typeof createWorkflowOutput, typeof createWorkflowInput>(
+  server.registerTool<
+    typeof createWorkflow.output,
+    typeof createWorkflow.input
+  >(
     "create_workflow",
     {
       description:
         "Create a workflow draft with the default Lifecycle node. Use the returned workflow ID and draft revision with workflow authoring tools.",
-      inputSchema: createWorkflowInput,
-      outputSchema: createWorkflowOutput,
+      inputSchema: createWorkflow.input,
+      outputSchema: createWorkflow.output,
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -432,22 +472,17 @@ export function createAgentMcpServer(
 
   for (const tool of Object.values(agentToolkit.tools)) {
     const name = tool.name;
-    if (TOOLS_WITHOUT_AN_MCP_MEANING.has(name)) {
+    const schemas = AGENT_TOOL_SCHEMAS.get(name);
+    if (!schemas) {
       continue;
     }
-    const inputSchema = fromJsonSchema<Record<string, unknown>>(
-      inputSchemaFor(name)
-    );
-    const outputSchema = fromJsonSchema<Record<string, unknown>>(
-      outputSchemaFor(name)
-    );
 
-    server.registerTool<typeof outputSchema, typeof inputSchema>(
+    server.registerTool<typeof schemas.output, typeof schemas.input>(
       name,
       {
         description: toolDescription(name, tool.description ?? ""),
-        inputSchema,
-        outputSchema,
+        inputSchema: schemas.input,
+        outputSchema: schemas.output,
         annotations: {
           readOnlyHint: !WRITE_TOOL_NAMES.has(name),
           idempotentHint: !WRITE_TOOL_NAMES.has(name),
@@ -530,7 +565,9 @@ export function createAgentMcpHandler(
 
       if (request.method === "POST") {
         try {
-          const body = readJsonObject(await request.clone().json());
+          const body = readJsonObject(
+            options?.parsedBody ?? (await request.clone().json())
+          );
           const params = readJsonObject(body?.params);
           const meta = readJsonObject(params?.["_meta"]);
           const method = body?.method;
@@ -555,21 +592,12 @@ export function createAgentMcpHandler(
               );
             }
 
-            if (
-              method === "tools/call" &&
-              (name === "list_workflows" ||
-                name === "create_workflow" ||
-                isAgentToolName(name))
-            ) {
-              const schema =
-                name === "list_workflows"
-                  ? LIST_WORKFLOWS_INPUT_SCHEMA
-                  : name === "create_workflow"
-                    ? CREATE_WORKFLOW_INPUT_SCHEMA
-                    : inputSchemaFor(name);
-              const validation = await fromJsonSchema<Record<string, unknown>>(
-                schema
-              )["~standard"].validate(params?.arguments ?? {});
+            const schemas =
+              method === "tools/call" ? schemasForTool(name) : undefined;
+            if (schemas) {
+              const validation = await schemas.input["~standard"].validate(
+                params?.arguments ?? {}
+              );
               if (validation.issues) {
                 return invalidParamsResponse(
                   body ?? {},

@@ -330,6 +330,31 @@ describe("createAgentMcpServer", () => {
     }
   });
 
+  it("refuses arguments past the element cap before executing", async () => {
+    const execute = vi.fn<DraftToolExecutor>(async () => {
+      throw new Error("unexpected");
+    });
+    const { client, server } = await makeSubject({ execute });
+    try {
+      const result = await client.callTool({
+        name: "read_nodes",
+        arguments: {
+          workflowId: "wf_1",
+          nodeIds: Array.from({ length: 10_001 }, (_, index) => `n${index}`),
+        },
+      });
+
+      expect(execute).not.toHaveBeenCalled();
+      expect(result).toMatchObject({
+        isError: true,
+        content: [{ text: expect.stringContaining("10000 elements") }],
+      });
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
   it("returns workflow creation failures as tool errors", async () => {
     const { client, server } = await makeSubject({
       createWorkflow: async () => ({
