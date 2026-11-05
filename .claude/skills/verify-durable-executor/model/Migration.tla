@@ -201,8 +201,8 @@ Release(w) ==
 
 LeaseExpires ==
   /\ sched = "leased" /\ faults < MaxFaults
-  /\ sched' = "queued" /\ holder' = 0 /\ attempt' = Sat(attempt + 1)
-  /\ faults' = faults + 1 /\ failures' = Sat(failures + 1)
+  /\ sched' = "queued" /\ holder' = 0 /\ faults' = faults + 1
+  /\ attempt' = Sat(attempt + 1) /\ failures' = Sat(failures + 1)
   /\ UNCHANGED <<pc, loaded, passFailed, sawParked, pinned, status, aboveDone, row, rowVersion, mode, rowMode,
                  migrateDue, belowDone, migrations, aboveRuns, belowRuns,
                  belowVersionWrong, hopWakes, terminalWrites, eventWokeDelay>>
