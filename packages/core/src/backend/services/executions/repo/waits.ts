@@ -24,15 +24,19 @@ import {
   sql,
 } from "drizzle-orm";
 import type { Effect } from "effect";
+import { omit } from "es-toolkit/object";
 import {
   workflowExecutions,
   workflowWaitStates,
 } from "#src/backend/lib/db/schema";
-import type { WfGraphDatabase } from "#src/backend/lib/db/index";
+import type {
+  WfGraphDatabase,
+  WfGraphTransaction,
+} from "#src/backend/lib/db/index";
 import {
-  serializableTransaction,
   type Database,
   type DatabaseError,
+  serializableTransaction,
 } from "#src/backend/lib/effect/database";
 import {
   IN_FLIGHT_EXECUTION_STATUSES,
@@ -56,9 +60,14 @@ import {
   notExitClaimed,
 } from "#src/backend/services/executions/repo/runs";
 import type {
+  OwnerFence,
+  ParkState,
   SettledWaitStatus,
+  StoreWrite,
   WorkflowWaitState,
 } from "#src/backend/services/executions/repo/contracts";
+
+type Executor = WfGraphDatabase | WfGraphTransaction;
 
 const WAIT_RESUME_CLAIM_LEASE_MS = 5 * 60 * 1000;
 
@@ -114,23 +123,26 @@ export type WaitsRepoMethods = {
    * left. Undefined is either race lost. Existing non-waiting rows retain
    * their wake and are never reopened.
    */
-  readonly startWait: (input: {
-    executionId: string;
-    workflowId: string;
-    runId: string;
-    nodeId: string;
-    nodeName: string;
-    /** The version the caller resolved this park from. */
-    workflowVersionId: string;
-    /** Which side of the Lifecycle Node this Wait sits on. */
-    side: ExecutionSide;
-    waitType: "delay" | "event";
-    resumeToken?: string | undefined;
-    waitUntil?: Date | undefined;
-    /** The Event names a delivery finds this row by. Empty for a wait on a clock. */
-    subscribedEvents?: string[] | undefined;
-    metadata?: JsonObjectDraft | undefined;
-  }) => Effect.Effect<{ waitStateId: string } | undefined, DatabaseError>;
+  readonly startWait: StoreWrite<
+    {
+      executionId: string;
+      workflowId: string;
+      runId: string;
+      nodeId: string;
+      nodeName: string;
+      /** The version the caller resolved this park from. */
+      workflowVersionId: string;
+      /** Which side of the Lifecycle Node this Wait sits on. */
+      side: ExecutionSide;
+      waitType: "delay" | "event";
+      resumeToken?: string | undefined;
+      waitUntil?: Date | undefined;
+      /** The Event names a delivery finds this row by. Empty for a wait on a clock. */
+      subscribedEvents?: string[] | undefined;
+      metadata?: JsonObjectDraft | undefined;
+    },
+    { waitStateId: string } | undefined
+  >;
   /**
    * Write a re-parked wait's whole park onto the row it is already parked on,
    * answering whether a row still `waiting` was written and, when none was, why.
@@ -142,22 +154,33 @@ export type WaitsRepoMethods = {
    * including the wait type, so a Wait that changed mode re-parks as the mode it
    * now is.
    */
-  readonly reparkWait: (input: {
-    waitStateId: string;
-    /** The version the caller resolved this park from. */
-    workflowVersionId: string;
-    /** Which side of the Lifecycle Node this Wait sits on. */
-    side: ExecutionSide;
-    waitType: "delay" | "event";
-    waitUntil: Date | null;
-    subscribedEvents: string[];
-    resumeToken: string | null;
-    metadata: JsonObject;
-  }) => Effect.Effect<ReparkWaitOutcome, DatabaseError>;
+  readonly reparkWait: StoreWrite<
+    {
+      waitStateId: string;
+      /** The version the caller resolved this park from. */
+      workflowVersionId: string;
+      /** Which side of the Lifecycle Node this Wait sits on. */
+      side: ExecutionSide;
+      waitType: "delay" | "event";
+      waitUntil: Date | null;
+      subscribedEvents: string[];
+      resumeToken: string | null;
+      metadata: JsonObject;
+    },
+    ReparkWaitOutcome
+  >;
   /** One wait row by id, whatever status it is in. */
   readonly findWaitStateById: (
     waitStateId: string
   ) => Effect.Effect<WorkflowWaitState | null, DatabaseError>;
+  /**
+   * One park as the database executor reads it: the wake a producer or a claim
+   * resolved it with, and the step that parked on it. Null when no row holds
+   * that id.
+   */
+  readonly findPark: (
+    waitStateId: string
+  ) => Effect.Effect<ParkState | null, DatabaseError>;
   /**
    * Close out one wait row, answering whether it was still active.
    *
@@ -166,18 +189,19 @@ export type WaitsRepoMethods = {
    * sent the signal settled its own claim. A row closed this way no longer
    * carries a claim, so no later wake can reclaim it at any lease age.
    */
-  readonly markWaitStatus: (input: {
-    waitStateId: string;
-    status: SettledWaitStatus;
-  }) => Effect.Effect<boolean, DatabaseError>;
+  readonly markWaitStatus: StoreWrite<
+    {
+      waitStateId: string;
+      status: SettledWaitStatus;
+    },
+    boolean
+  >;
   /**
    * Resolve the timeout against the row's persisted arrival in one fenced
    * transition. A valid arrival wins whether its claim is still `resuming`,
    * already `resumed`, or was released back to `waiting` after a refused send.
    */
-  readonly settleWaitTimeout: (
-    waitStateId: string
-  ) => Effect.Effect<WaitArrival | null, DatabaseError>;
+  readonly settleWaitTimeout: StoreWrite<string, WaitArrival | null>;
   /** Cancel whichever rows are waiting or being resumed, answering which. */
   readonly cancelWaits: (
     waitStateIds: string[]
@@ -188,9 +212,7 @@ export type WaitsRepoMethods = {
    * For the rows a killed branch run left behind, whose ids nobody holds: the
    * branch parked and was then stopped where it stood.
    */
-  readonly cancelWaitsForExecution: (
-    executionId: string
-  ) => Effect.Effect<void, DatabaseError>;
+  readonly cancelWaitsForExecution: StoreWrite<string, void>;
   /**
    * One page of the runs of this workflow parked on this Event name, whatever
    * they are waiting for the payload to say.
@@ -299,220 +321,299 @@ export type WaitsRepoMethods = {
   ) => Effect.Effect<Map<string, WorkflowWaitState[]>, DatabaseError>;
 };
 
+type StartWaitInput = Parameters<WaitsRepoMethods["startWait"]>[0];
+type ReparkWaitInput = Parameters<WaitsRepoMethods["reparkWait"]>[0];
+type MarkWaitStatusInput = Parameters<WaitsRepoMethods["markWaitStatus"]>[0];
+
+/**
+ * Every column of a wait row but the database executor's two, which is the
+ * shape `WorkflowWaitState` names. `findPark` reads the other two.
+ */
+const WAIT_STATE_COLUMNS = omit(getColumns(workflowWaitStates), [
+  "parkStepId",
+  "wake",
+]);
+
+/** The same choice for a relational query, which names what it leaves out. */
+const WITHOUT_PARK_COLUMNS = { parkStepId: false, wake: false } as const;
+
+/** The park behind `startWait`, on whichever handle the caller holds. */
+export function startWaitWrite(input: StartWaitInput) {
+  return (db: Executor) =>
+    db.transaction(async (tx) => {
+      // The version predicate is this park's fence. The statement writes the
+      // execution row itself, so the pin is compared on that row rather than
+      // through the correlated subquery `reparkWait` needs.
+      const parked = await tx
+        .update(workflowExecutions)
+        .set({ status: "waiting", waitingAt: new Date() })
+        .where(
+          and(
+            inFlightExecution(input.executionId, input.side),
+            eq(workflowExecutions.workflowVersionId, input.workflowVersionId)
+          )
+        )
+        .returning({ id: workflowExecutions.id });
+
+      if (parked.length === 0) {
+        return undefined;
+      }
+
+      // The execution update serializes competing prepares for this run.
+      const [existing] = await tx
+        .select()
+        .from(workflowWaitStates)
+        .where(
+          and(
+            eq(workflowWaitStates.executionId, input.executionId),
+            eq(workflowWaitStates.runId, input.runId),
+            eq(workflowWaitStates.nodeId, input.nodeId)
+          )
+        )
+        .limit(1)
+        .for("update");
+      if (existing) {
+        if (existing.status === "waiting") {
+          await tx
+            .update(workflowWaitStates)
+            .set({
+              waitType: input.waitType,
+              resumeToken: input.resumeToken ?? null,
+              waitUntil: input.waitUntil ?? null,
+              subscribedEvents: input.subscribedEvents ?? [],
+              metadata: {
+                ...existing.metadata,
+                ...toJsonObject(input.metadata),
+              },
+            })
+            .where(eq(workflowWaitStates.id, existing.id));
+        }
+        return { waitStateId: existing.id };
+      }
+
+      const [waitState] = await tx
+        .insert(workflowWaitStates)
+        .values({
+          executionId: input.executionId,
+          workflowId: input.workflowId,
+          runId: input.runId,
+          nodeId: input.nodeId,
+          nodeName: input.nodeName,
+          waitType: input.waitType,
+          status: "waiting",
+          resumeToken: input.resumeToken,
+          waitUntil: input.waitUntil,
+          subscribedEvents: input.subscribedEvents ?? [],
+          metadata: toJsonObject(input.metadata),
+        })
+        .returning({ id: workflowWaitStates.id });
+
+      return { waitStateId: waitState.id };
+    });
+}
+
+/**
+ * The re-park behind `reparkWait`. Given a fence, it reaches only a wait row of
+ * the fenced Execution.
+ */
+export function reparkWaitWrite(input: ReparkWaitInput, fence?: OwnerFence) {
+  return (db: Executor) =>
+    db.transaction(async (tx): Promise<ReparkWaitOutcome> => {
+      // Migration and startWait lock the execution before its Wait rows. A
+      // version subquery alone can retain a pre-migration snapshot while this
+      // update waits for a Wait-row lock.
+      await tx
+        .select({ id: workflowExecutions.id })
+        .from(workflowExecutions)
+        .where(
+          exists(
+            tx
+              .select({ id: workflowWaitStates.id })
+              .from(workflowWaitStates)
+              .where(
+                and(
+                  eq(workflowWaitStates.id, input.waitStateId),
+                  eq(workflowWaitStates.executionId, workflowExecutions.id)
+                )
+              )
+          )
+        )
+        .for("update");
+      const reparked = await tx
+        .update(workflowWaitStates)
+        .set({
+          waitType: input.waitType,
+          waitUntil: input.waitUntil,
+          subscribedEvents: input.subscribedEvents,
+          resumeToken: input.resumeToken,
+          metadata: sql`coalesce(${workflowWaitStates.metadata}, '{}'::jsonb) || ${input.metadata}::jsonb`,
+        })
+        .where(
+          and(
+            eq(workflowWaitStates.id, input.waitStateId),
+            ofFencedExecution(fence),
+            eq(workflowWaitStates.status, "waiting"),
+            pinsVersionAndAdmits(tx, input.workflowVersionId, input.side)
+          )
+        )
+        .returning({ id: workflowWaitStates.id });
+
+      if (reparked.length > 0) {
+        return { ok: true };
+      }
+
+      // Which of the two guards refused, read in the same transaction as the
+      // write it explains. A row nobody holds reads as `not_waiting`, which
+      // sends the caller to the wake the row would record.
+      const [row] = await tx
+        .select({
+          status: workflowWaitStates.status,
+          pinnedVersionId: workflowExecutions.workflowVersionId,
+        })
+        .from(workflowWaitStates)
+        .leftJoin(
+          workflowExecutions,
+          eq(workflowExecutions.id, workflowWaitStates.executionId)
+        )
+        .where(eq(workflowWaitStates.id, input.waitStateId))
+        .limit(1);
+
+      return row?.status === "waiting" &&
+        row.pinnedVersionId !== input.workflowVersionId
+        ? { ok: false, reason: "version_moved" }
+        : { ok: false, reason: "not_waiting" };
+    });
+}
+
+/**
+ * The settle behind `markWaitStatus`. Given a fence, it reaches only a wait
+ * row of the fenced Execution.
+ */
+export function markWaitStatusWrite(
+  input: MarkWaitStatusInput,
+  fence?: OwnerFence
+) {
+  return async (db: Executor): Promise<boolean> => {
+    const now = new Date();
+    const settled = await db
+      .update(workflowWaitStates)
+      .set({
+        status: input.status,
+        resumedAt: input.status === "cancelled" ? null : now,
+        cancelledAt: input.status === "cancelled" ? now : null,
+      })
+      .where(
+        and(
+          eq(workflowWaitStates.id, input.waitStateId),
+          ofFencedExecution(fence),
+          inArray(workflowWaitStates.status, ["waiting", "resuming"])
+        )
+      )
+      .returning({ id: workflowWaitStates.id });
+
+    return settled.length > 0;
+  };
+}
+
+/**
+ * The transition behind `settleWaitTimeout`, run as a serializable
+ * transaction. Given a fence, it reaches only a wait row of the fenced
+ * Execution.
+ */
+export function settleWaitTimeoutWrite(
+  waitStateId: string,
+  fence?: OwnerFence
+) {
+  return async (tx: WfGraphTransaction): Promise<WaitArrival | null> => {
+    const [row] = await tx
+      .select({
+        status: workflowWaitStates.status,
+        metadata: workflowWaitStates.metadata,
+      })
+      .from(workflowWaitStates)
+      .where(
+        and(eq(workflowWaitStates.id, waitStateId), ofFencedExecution(fence))
+      )
+      .limit(1);
+
+    if (!row) return null;
+
+    const arrival = readWaitArrival(row.metadata);
+    if (row.status === "resumed") return arrival;
+    if (row.status !== "waiting" && row.status !== "resuming") return null;
+
+    const settled = await tx
+      .update(workflowWaitStates)
+      .set({
+        status: arrival ? "resumed" : "timed_out",
+        resumedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(workflowWaitStates.id, waitStateId),
+          eq(workflowWaitStates.status, row.status)
+        )
+      )
+      .returning({ id: workflowWaitStates.id });
+
+    return settled.length > 0 ? arrival : null;
+  };
+}
+
+/** The update behind `cancelWaitsForExecution`. */
+export function cancelWaitsForExecutionWrite(executionId: string) {
+  return async (db: Executor): Promise<void> => {
+    await db
+      .update(workflowWaitStates)
+      .set({ status: "cancelled", cancelledAt: new Date() })
+      .where(
+        and(
+          eq(workflowWaitStates.executionId, executionId),
+          inArray(workflowWaitStates.status, ["waiting", "resuming"])
+        )
+      );
+  };
+}
+
 /** Builds the `workflow_wait_states` slice of `ExecutionRepo` over one database. */
 export function makeWaitsMethods(
   database: Database["Service"]
 ): WaitsRepoMethods {
   return {
-    startWait: (input) =>
-      database.query((db) =>
-        db.transaction(async (tx) => {
-          // The version predicate is this park's fence. The statement writes the
-          // execution row itself, so the pin is compared on that row rather than
-          // through the correlated subquery `reparkWait` needs.
-          const parked = await tx
-            .update(workflowExecutions)
-            .set({ status: "waiting", waitingAt: new Date() })
-            .where(
-              and(
-                inFlightExecution(input.executionId, input.side),
-                eq(
-                  workflowExecutions.workflowVersionId,
-                  input.workflowVersionId
-                )
-              )
-            )
-            .returning({ id: workflowExecutions.id });
+    startWait: (input) => database.query(startWaitWrite(input)),
 
-          if (parked.length === 0) {
-            return undefined;
-          }
-
-          // The execution update serializes competing prepares for this run.
-          const [existing] = await tx
-            .select()
-            .from(workflowWaitStates)
-            .where(
-              and(
-                eq(workflowWaitStates.executionId, input.executionId),
-                eq(workflowWaitStates.runId, input.runId),
-                eq(workflowWaitStates.nodeId, input.nodeId)
-              )
-            )
-            .limit(1)
-            .for("update");
-          if (existing) {
-            if (existing.status === "waiting") {
-              await tx
-                .update(workflowWaitStates)
-                .set({
-                  waitType: input.waitType,
-                  resumeToken: input.resumeToken ?? null,
-                  waitUntil: input.waitUntil ?? null,
-                  subscribedEvents: input.subscribedEvents ?? [],
-                  metadata: {
-                    ...existing.metadata,
-                    ...toJsonObject(input.metadata),
-                  },
-                })
-                .where(eq(workflowWaitStates.id, existing.id));
-            }
-            return { waitStateId: existing.id };
-          }
-
-          const [waitState] = await tx
-            .insert(workflowWaitStates)
-            .values({
-              executionId: input.executionId,
-              workflowId: input.workflowId,
-              runId: input.runId,
-              nodeId: input.nodeId,
-              nodeName: input.nodeName,
-              waitType: input.waitType,
-              status: "waiting",
-              resumeToken: input.resumeToken,
-              waitUntil: input.waitUntil,
-              subscribedEvents: input.subscribedEvents ?? [],
-              metadata: toJsonObject(input.metadata),
-            })
-            .returning({ id: workflowWaitStates.id });
-
-          return { waitStateId: waitState.id };
-        })
-      ),
-
-    reparkWait: (input) =>
-      database.query((db) =>
-        db.transaction(async (tx): Promise<ReparkWaitOutcome> => {
-          // Migration and startWait lock the execution before its Wait rows.
-          // A version subquery alone can retain a pre-migration snapshot while
-          // this update waits for a Wait-row lock.
-          await tx
-            .select({ id: workflowExecutions.id })
-            .from(workflowExecutions)
-            .where(
-              exists(
-                tx
-                  .select({ id: workflowWaitStates.id })
-                  .from(workflowWaitStates)
-                  .where(
-                    and(
-                      eq(workflowWaitStates.id, input.waitStateId),
-                      eq(workflowWaitStates.executionId, workflowExecutions.id)
-                    )
-                  )
-              )
-            )
-            .for("update");
-          const reparked = await tx
-            .update(workflowWaitStates)
-            .set({
-              waitType: input.waitType,
-              waitUntil: input.waitUntil,
-              subscribedEvents: input.subscribedEvents,
-              resumeToken: input.resumeToken,
-              metadata: sql`coalesce(${workflowWaitStates.metadata}, '{}'::jsonb) || ${input.metadata}::jsonb`,
-            })
-            .where(
-              and(
-                eq(workflowWaitStates.id, input.waitStateId),
-                eq(workflowWaitStates.status, "waiting"),
-                pinsVersionAndAdmits(db, input.workflowVersionId, input.side)
-              )
-            )
-            .returning({ id: workflowWaitStates.id });
-
-          if (reparked.length > 0) {
-            return { ok: true };
-          }
-
-          // Which of the two guards refused, read in the same transaction as the
-          // write it explains. A row nobody holds reads as `not_waiting`, which
-          // sends the caller to the wake the row would record.
-          const [row] = await tx
-            .select({
-              status: workflowWaitStates.status,
-              pinnedVersionId: workflowExecutions.workflowVersionId,
-            })
-            .from(workflowWaitStates)
-            .leftJoin(
-              workflowExecutions,
-              eq(workflowExecutions.id, workflowWaitStates.executionId)
-            )
-            .where(eq(workflowWaitStates.id, input.waitStateId))
-            .limit(1);
-
-          return row?.status === "waiting" &&
-            row.pinnedVersionId !== input.workflowVersionId
-            ? { ok: false, reason: "version_moved" }
-            : { ok: false, reason: "not_waiting" };
-        })
-      ),
+    reparkWait: (input) => database.query(reparkWaitWrite(input)),
 
     findWaitStateById: (waitStateId) =>
       database.query(async (db) => {
         const [row] = await db
-          .select()
+          .select(WAIT_STATE_COLUMNS)
           .from(workflowWaitStates)
           .where(eq(workflowWaitStates.id, waitStateId))
           .limit(1);
         return row ?? null;
       }),
 
-    markWaitStatus: (input) =>
+    findPark: (waitStateId) =>
       database.query(async (db) => {
-        const now = new Date();
-        const settled = await db
-          .update(workflowWaitStates)
-          .set({
-            status: input.status,
-            resumedAt: input.status === "cancelled" ? null : now,
-            cancelledAt: input.status === "cancelled" ? now : null,
-          })
-          .where(
-            and(
-              eq(workflowWaitStates.id, input.waitStateId),
-              inArray(workflowWaitStates.status, ["waiting", "resuming"])
-            )
-          )
-          .returning({ id: workflowWaitStates.id });
-
-        return settled.length > 0;
-      }),
-
-    settleWaitTimeout: (waitStateId) =>
-      serializableTransaction(database, async (tx) => {
-        const [row] = await tx
+        const [row] = await db
           .select({
+            waitStateId: workflowWaitStates.id,
+            executionId: workflowWaitStates.executionId,
             status: workflowWaitStates.status,
-            metadata: workflowWaitStates.metadata,
+            parkStepId: workflowWaitStates.parkStepId,
+            wake: workflowWaitStates.wake,
           })
           .from(workflowWaitStates)
           .where(eq(workflowWaitStates.id, waitStateId))
           .limit(1);
-
-        if (!row) return null;
-
-        const arrival = readWaitArrival(row.metadata);
-        if (row.status === "resumed") return arrival;
-        if (row.status !== "waiting" && row.status !== "resuming") return null;
-
-        const settled = await tx
-          .update(workflowWaitStates)
-          .set({
-            status: arrival ? "resumed" : "timed_out",
-            resumedAt: new Date(),
-          })
-          .where(
-            and(
-              eq(workflowWaitStates.id, waitStateId),
-              eq(workflowWaitStates.status, row.status)
-            )
-          )
-          .returning({ id: workflowWaitStates.id });
-
-        return settled.length > 0 ? arrival : null;
+        return row ?? null;
       }),
+
+    markWaitStatus: (input) => database.query(markWaitStatusWrite(input)),
+
+    settleWaitTimeout: (waitStateId) =>
+      serializableTransaction(database, settleWaitTimeoutWrite(waitStateId)),
 
     cancelWaits: (waitStateIds) =>
       database.query(async (db) => {
@@ -535,22 +636,12 @@ export function makeWaitsMethods(
       }),
 
     cancelWaitsForExecution: (executionId) =>
-      database.query(async (db) => {
-        await db
-          .update(workflowWaitStates)
-          .set({ status: "cancelled", cancelledAt: new Date() })
-          .where(
-            and(
-              eq(workflowWaitStates.executionId, executionId),
-              inArray(workflowWaitStates.status, ["waiting", "resuming"])
-            )
-          );
-      }),
+      database.query(cancelWaitsForExecutionWrite(executionId)),
 
     listWaitsForEvent: (input) =>
       database.query((db) =>
         db
-          .select(getColumns(workflowWaitStates))
+          .select(WAIT_STATE_COLUMNS)
           .from(workflowWaitStates)
           .innerJoin(
             workflowExecutions,
@@ -665,6 +756,7 @@ export function makeWaitsMethods(
     listWaitingStates: (executionId) =>
       database.query((db) =>
         db.query.workflowWaitStates.findMany({
+          columns: WITHOUT_PARK_COLUMNS,
           where: {
             executionId,
             status: "waiting",
@@ -689,6 +781,7 @@ export function makeWaitsMethods(
     listActiveWaitStates: (executionId) =>
       database.query((db) =>
         db.query.workflowWaitStates.findMany({
+          columns: WITHOUT_PARK_COLUMNS,
           where: {
             executionId,
             status: { in: ["waiting", "resuming"] },
@@ -704,6 +797,7 @@ export function makeWaitsMethods(
         }
 
         const rows = await db.query.workflowWaitStates.findMany({
+          columns: WITHOUT_PARK_COLUMNS,
           where: {
             executionId: { in: executionIds },
             status: "waiting",
@@ -725,6 +819,16 @@ export function makeWaitsMethods(
 }
 
 /**
+ * Narrows a fenced write to the wait rows of the Execution its pass runs, so a
+ * fenced write addressed by wait row id cannot reach another run's row.
+ */
+function ofFencedExecution(fence: OwnerFence | undefined): SQL | undefined {
+  return fence === undefined
+    ? undefined
+    : eq(workflowWaitStates.executionId, fence.executionId);
+}
+
+/**
  * Whether the execution a wait row belongs to still pins this Workflow Version
  * and still admits work on this side.
  *
@@ -733,7 +837,7 @@ export function makeWaitsMethods(
  * overtaken after.
  */
 function pinsVersionAndAdmits(
-  db: WfGraphDatabase,
+  db: WfGraphDatabase | WfGraphTransaction,
   workflowVersionId: string,
   side: ExecutionSide
 ): SQL {
@@ -803,7 +907,7 @@ async function claimWaitState(
         )
       )
     )
-    .returning();
+    .returning(WAIT_STATE_COLUMNS);
 
   return waitState ? { waitState, claimedAt } : null;
 }

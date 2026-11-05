@@ -1,28 +1,56 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { Effect } from "effect";
 import { workflowExecutionLogs } from "#src/backend/lib/db/schema";
+import type {
+  WfGraphDatabase,
+  WfGraphTransaction,
+} from "#src/backend/lib/db/index";
 import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
-import type { WorkflowExecutionLog } from "#src/backend/services/executions/repo/contracts";
+import type {
+  OwnerFence,
+  WorkflowExecutionLog,
+} from "#src/backend/services/executions/repo/contracts";
+import { nodeLogId } from "#src/backend/services/executions/repo/fencing";
 import type { JsonValue } from "@wfgraph/shared/types/json";
+
+type Executor = WfGraphDatabase | WfGraphTransaction;
+
+export type OpenNodeLogInput = {
+  executionId: string;
+  nodeId: string;
+  nodeName: string;
+  nodeType: string;
+  input?: JsonValue | undefined;
+};
+
+export type CloseNodeLogInput = {
+  logId: string;
+  status: "success" | "error";
+  output?: JsonValue | undefined;
+  error?: string | undefined;
+  durationMs: number;
+};
 
 /** The `workflow_execution_logs` slice of `ExecutionRepo`, one row per node attempt. */
 export type NodeLogsRepoMethods = {
-  /** Open the run-log row for a node, answering the row's id. */
-  readonly openNodeLog: (input: {
-    executionId: string;
-    nodeId: string;
-    nodeName: string;
-    nodeType: string;
-    input?: JsonValue | undefined;
-  }) => Effect.Effect<string, DatabaseError>;
-  /** Close a row `openNodeLog` opened. */
-  readonly closeNodeLog: (input: {
-    logId: string;
-    status: "success" | "error";
-    output?: JsonValue | undefined;
-    error?: string | undefined;
-    durationMs: number;
-  }) => Effect.Effect<void, DatabaseError>;
+  /**
+   * Open the run-log row for a node, answering the row's id.
+   *
+   * The id derives from the Execution and the node (`nodeLogId`), and a second
+   * open of the same node answers the row the first one inserted, untouched.
+   * A re-run of the step that opens the row therefore writes nothing new.
+   */
+  readonly openNodeLog: (
+    input: OpenNodeLogInput
+  ) => Effect.Effect<string, DatabaseError>;
+  /**
+   * Close a row `openNodeLog` opened, whatever it holds, which is how a retry
+   * corrects the verdict an earlier attempt wrote. The fenced close
+   * (`ExecutionRepo.fenced`) closes only a row that is `running` or `error`.
+   */
+  readonly closeNodeLog: (
+    input: CloseNodeLogInput
+  ) => Effect.Effect<void, DatabaseError>;
   /**
    * Close every row of one run that is still open, as cancelled.
    *
@@ -72,64 +100,94 @@ export type NodeLogsRepoMethods = {
   >;
 };
 
+/** The insert behind `openNodeLog`, on whichever handle the caller holds. */
+export function openNodeLogWrite(input: OpenNodeLogInput) {
+  return async (db: Executor): Promise<string> => {
+    const id = nodeLogId(input.executionId, input.nodeId);
+    await db
+      .insert(workflowExecutionLogs)
+      .values({
+        id,
+        executionId: input.executionId,
+        nodeId: input.nodeId,
+        nodeName: input.nodeName,
+        nodeType: input.nodeType,
+        status: "running",
+        input: input.input,
+        startedAt: new Date(),
+      })
+      .onConflictDoNothing({ target: workflowExecutionLogs.id });
+    return id;
+  };
+}
+
+/**
+ * The update behind `closeNodeLog`. Given a fence, it closes only a row of the
+ * fenced Execution that is `running` or `error`. `runWithStepLog` closes a row
+ * as `error` before it rethrows a retriable error, so a later attempt of the
+ * node can still correct that verdict, while a row closed with any other
+ * status keeps it.
+ */
+export function closeNodeLogWrite(
+  input: CloseNodeLogInput,
+  fence?: OwnerFence
+) {
+  return async (db: Executor): Promise<void> => {
+    await db
+      .update(workflowExecutionLogs)
+      .set({
+        status: input.status,
+        // Drizzle leaves an undefined key out of the update, so an absent
+        // payload is written as null to clear what an earlier close wrote.
+        output: input.output ?? null,
+        error: input.error ?? null,
+        completedAt: new Date(),
+        duration: input.durationMs.toString(),
+      })
+      .where(
+        and(
+          eq(workflowExecutionLogs.id, input.logId),
+          fence === undefined
+            ? undefined
+            : and(
+                eq(workflowExecutionLogs.executionId, fence.executionId),
+                inArray(workflowExecutionLogs.status, ["running", "error"])
+              )
+        )
+      );
+  };
+}
+
+/** The update behind `cancelOpenNodeLogs`. */
+export function cancelOpenNodeLogsWrite(executionId: string) {
+  return async (db: Executor): Promise<void> => {
+    await db
+      .update(workflowExecutionLogs)
+      .set({
+        status: "cancelled",
+        completedAt: new Date(),
+        // Same reasoning as `finishRun`: the row holds when it started, and the
+        // caller's clock belongs to a body that replays.
+        duration: sql`round(extract(epoch from ((now() at time zone 'utc') - ${workflowExecutionLogs.startedAt})) * 1000)::text`,
+      })
+      .where(
+        and(
+          eq(workflowExecutionLogs.executionId, executionId),
+          inArray(workflowExecutionLogs.status, ["pending", "running"])
+        )
+      );
+  };
+}
+
 /** Builds the `workflow_execution_logs` slice of `ExecutionRepo` over one database. */
 export function makeNodeLogsMethods(
   database: Database["Service"]
 ): NodeLogsRepoMethods {
   return {
-    openNodeLog: (input) =>
-      database.query(async (db) => {
-        const [log] = await db
-          .insert(workflowExecutionLogs)
-          .values({
-            executionId: input.executionId,
-            nodeId: input.nodeId,
-            nodeName: input.nodeName,
-            nodeType: input.nodeType,
-            status: "running",
-            input: input.input,
-            startedAt: new Date(),
-          })
-          .returning({ id: workflowExecutionLogs.id });
-
-        return log.id;
-      }),
-
-    closeNodeLog: (input) =>
-      database.query(async (db) => {
-        await db
-          .update(workflowExecutionLogs)
-          .set({
-            status: input.status,
-            // Drizzle leaves an undefined key out of an update, so an absent
-            // output or error is written as null to clear what an earlier
-            // attempt of the node left on the row.
-            output: input.output ?? null,
-            error: input.error ?? null,
-            completedAt: new Date(),
-            duration: input.durationMs.toString(),
-          })
-          .where(eq(workflowExecutionLogs.id, input.logId));
-      }),
-
+    openNodeLog: (input) => database.query(openNodeLogWrite(input)),
+    closeNodeLog: (input) => database.query(closeNodeLogWrite(input)),
     cancelOpenNodeLogs: (executionId) =>
-      database.query(async (db) => {
-        await db
-          .update(workflowExecutionLogs)
-          .set({
-            status: "cancelled",
-            completedAt: new Date(),
-            // Same reasoning as `finishRun`: the row holds when it started, and
-            // the caller's clock belongs to a body that replays.
-            duration: sql`round(extract(epoch from ((now() at time zone 'utc') - ${workflowExecutionLogs.startedAt})) * 1000)::text`,
-          })
-          .where(
-            and(
-              eq(workflowExecutionLogs.executionId, executionId),
-              inArray(workflowExecutionLogs.status, ["pending", "running"])
-            )
-          );
-      }),
+      database.query(cancelOpenNodeLogsWrite(executionId)),
 
     readNodeOutputs: (executionId) =>
       database.query(async (db) => {
@@ -180,6 +238,8 @@ export function makeNodeLogsMethods(
     listLogs: (executionId) =>
       database.query((db) =>
         db.query.workflowExecutionLogs.findMany({
+          // `WorkflowExecutionLog` leaves this column out; see its comment.
+          columns: { releasedOutlet: false },
           where: { executionId },
           orderBy: { timestamp: "desc" },
         })

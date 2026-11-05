@@ -1,66 +1,103 @@
-import { generateId } from "@wfgraph/shared/utils/id";
 import { Effect } from "effect";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type { JsonValue } from "@wfgraph/shared/types/json";
-import type { NodeLogsRepoMethods } from "#src/backend/services/executions/repo/node-logs";
-import type { SqliteDatabase } from "#src/backend/persistence/sqlite/database";
+import type {
+  CloseNodeLogInput,
+  NodeLogsRepoMethods,
+  OpenNodeLogInput,
+} from "#src/backend/services/executions/repo/node-logs";
+import type { OwnerFence } from "#src/backend/services/executions/repo/contracts";
+import { nodeLogId } from "#src/backend/services/executions/repo/fencing";
+import type {
+  SqliteDatabase,
+  SqliteExecutor,
+} from "#src/backend/persistence/sqlite/database";
 import { encodeJson } from "#src/backend/persistence/sqlite/database";
 import { sqliteExecutionLog } from "#src/backend/persistence/sqlite/executions/rows";
 import { workflowExecutionLogs } from "#src/backend/persistence/sqlite/schema";
+
+/** The insert behind `openNodeLog`; see its comment for the derived id. */
+export function openNodeLogWrite(input: OpenNodeLogInput) {
+  return (database: SqliteExecutor) => {
+    const id = nodeLogId(input.executionId, input.nodeId);
+    const now = Date.now();
+    return database
+      .insert(workflowExecutionLogs)
+      .values({
+        id,
+        executionId: input.executionId,
+        nodeId: input.nodeId,
+        nodeName: input.nodeName,
+        nodeType: input.nodeType,
+        status: "running",
+        input: encodeJson(input.input),
+        startedAt: now,
+        timestamp: now,
+      })
+      .onConflictDoNothing({ target: workflowExecutionLogs.id })
+      .pipe(Effect.as(id));
+  };
+}
+
+/**
+ * The update behind `closeNodeLog`. Given a fence, it closes only a row of the
+ * fenced Execution that is `running` or `error`, as the PostgreSQL write does.
+ */
+export function closeNodeLogWrite(
+  input: CloseNodeLogInput,
+  fence?: OwnerFence
+) {
+  return (database: SqliteExecutor) =>
+    database
+      .update(workflowExecutionLogs)
+      .set({
+        status: input.status,
+        output: encodeJson(input.output),
+        error: input.error ?? null,
+        completedAt: Date.now(),
+        duration: String(input.durationMs),
+      })
+      .where(
+        and(
+          eq(workflowExecutionLogs.id, input.logId),
+          fence === undefined
+            ? undefined
+            : and(
+                eq(workflowExecutionLogs.executionId, fence.executionId),
+                inArray(workflowExecutionLogs.status, ["running", "error"])
+              )
+        )
+      );
+}
+
+/** The update behind `cancelOpenNodeLogs`. */
+export function cancelOpenNodeLogsWrite(executionId: string) {
+  return (database: SqliteExecutor) => {
+    const now = Date.now();
+    return database
+      .update(workflowExecutionLogs)
+      .set({
+        status: "cancelled",
+        completedAt: now,
+        duration: sql<string>`cast(${now} - ${workflowExecutionLogs.startedAt} as text)`,
+      })
+      .where(
+        and(
+          eq(workflowExecutionLogs.executionId, executionId),
+          inArray(workflowExecutionLogs.status, ["pending", "running"])
+        )
+      );
+  };
+}
 
 export function makeSqliteNodeLogsMethods(
   store: SqliteDatabase
 ): NodeLogsRepoMethods {
   return {
-    openNodeLog: (input) =>
-      store.write((database) => {
-        const id = generateId();
-        const now = Date.now();
-        return database
-          .insert(workflowExecutionLogs)
-          .values({
-            id,
-            executionId: input.executionId,
-            nodeId: input.nodeId,
-            nodeName: input.nodeName,
-            nodeType: input.nodeType,
-            status: "running",
-            input: encodeJson(input.input),
-            startedAt: now,
-            timestamp: now,
-          })
-          .pipe(Effect.as(id));
-      }),
-    closeNodeLog: (input) =>
-      store.write((database) =>
-        database
-          .update(workflowExecutionLogs)
-          .set({
-            status: input.status,
-            output: encodeJson(input.output),
-            error: input.error ?? null,
-            completedAt: Date.now(),
-            duration: String(input.durationMs),
-          })
-          .where(eq(workflowExecutionLogs.id, input.logId))
-      ),
+    openNodeLog: (input) => store.write(openNodeLogWrite(input)),
+    closeNodeLog: (input) => store.write(closeNodeLogWrite(input)),
     cancelOpenNodeLogs: (executionId) =>
-      store.write((database) => {
-        const now = Date.now();
-        return database
-          .update(workflowExecutionLogs)
-          .set({
-            status: "cancelled",
-            completedAt: now,
-            duration: sql<string>`cast(${now} - ${workflowExecutionLogs.startedAt} as text)`,
-          })
-          .where(
-            and(
-              eq(workflowExecutionLogs.executionId, executionId),
-              inArray(workflowExecutionLogs.status, ["pending", "running"])
-            )
-          );
-      }),
+      store.write(cancelOpenNodeLogsWrite(executionId)),
     readNodeOutputs: (executionId) =>
       store.read((database) =>
         database

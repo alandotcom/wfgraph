@@ -28,7 +28,12 @@ describe("finishRun", () => {
         error: "boom",
       });
 
-      assert.match(statements[0]?.query, /"duration" = [^,]*started_at/i);
+      // The terminal write locks the run's schedule row before it updates the
+      // execution row, so the update is not the first statement sent.
+      const update = statements.find((statement) =>
+        /^update "workflow_executions"/i.test(statement.query)
+      );
+      assert.match(update?.query ?? "", /"duration" = [^,]*started_at/i);
     })
   );
 });

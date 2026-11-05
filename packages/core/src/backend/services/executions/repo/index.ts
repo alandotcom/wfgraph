@@ -37,14 +37,26 @@ import {
   makeWaitsMethods,
   type WaitsRepoMethods,
 } from "#src/backend/services/executions/repo/waits";
+import {
+  dropExecutorState,
+  lockSchedules,
+  makeScheduleMethods,
+  type ScheduleRepoMethods,
+} from "#src/backend/services/executions/repo/schedule";
+import {
+  type FencedExecutionWrites,
+  makeFencedWrites,
+} from "#src/backend/services/executions/repo/fenced-writes";
 import type {
   EntityStartOutcome,
   NewExecution,
+  OwnerFence,
   StartAdmissionDecision,
 } from "#src/backend/services/executions/repo/contracts";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 
 export * from "#src/backend/services/executions/repo/contracts";
+export type { FencedExecutionWrites } from "#src/backend/services/executions/repo/fenced-writes";
 
 /**
  * How long a run may sit with its row committed and `enqueued_at` unstamped
@@ -124,12 +136,13 @@ async function reclaimStuckRuns(
 }
 
 /**
- * The two methods that touch more than one table in one transaction, which is
- * the reason `ExecutionRepo` is one service rather than four: `startForEntity`
+ * The methods that touch more than one table in one transaction, which is the
+ * reason `ExecutionRepo` is one service rather than several: `startForEntity`
  * writes `workflow_executions` and `workflow_wait_states` inside one serializable
- * transaction, and `deleteAllForWorkflow` deletes the runs and the workflow-scoped audit
- * rows together. Neither can be split across services without splitting a
- * transaction.
+ * transaction, `deleteAllForWorkflow` deletes the runs and the workflow-scoped
+ * audit rows together, and every write `fenced` answers takes the run's
+ * schedule row in the same transaction as the rows it writes. None can be split
+ * across services without splitting a transaction.
  */
 type CrossTableRepoMethods = {
   /**
@@ -184,6 +197,12 @@ type CrossTableRepoMethods = {
   readonly deleteAllForWorkflow: (
     workflowId: string
   ) => Effect.Effect<number, DatabaseError>;
+  /**
+   * The writes of one database executor pass, fenced on its owner token. See
+   * `fenced-writes.ts`. The Inngest path makes the unfenced writes of the same
+   * names.
+   */
+  readonly fenced: (fence: OwnerFence) => FencedExecutionWrites;
 };
 
 /**
@@ -194,8 +213,9 @@ type CrossTableRepoMethods = {
  * different lifetime: a workflow is edited, its runs accumulate and are swept.
  * The four polling endpoints the editor keeps open ask only through here.
  *
- * The shape is assembled from four slices, one file each beside this one
- * (`runs.ts`, `node-logs.ts`, `waits.ts`, `audit.ts`), plus the two cross-table
+ * The shape is assembled from five slices, one file each beside this one
+ * (`runs.ts`, `node-logs.ts`, `waits.ts`, `audit.ts`, and `schedule.ts` for
+ * the database executor's schedule rows and step memo), plus the cross-table
  * methods above that only this file can implement.
  */
 export class ExecutionRepo extends Context.Service<
@@ -204,6 +224,7 @@ export class ExecutionRepo extends Context.Service<
     NodeLogsRepoMethods &
     WaitsRepoMethods &
     AuditRepoMethods &
+    ScheduleRepoMethods &
     CrossTableRepoMethods
 >()("@wfgraph/core/ExecutionRepo") {}
 
@@ -218,6 +239,8 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
         ...makeNodeLogsMethods(database),
         ...makeWaitsMethods(database),
         ...makeAuditMethods(database),
+        ...makeScheduleMethods(database),
+        fenced: makeFencedWrites(database),
 
         startForEntity: ({
           execution,
@@ -368,10 +391,10 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
                   };
                 }
 
-                reclaimedExecutionIds = await reclaimStuckRuns(
-                  tx,
-                  unsent.map((row) => row.id)
-                );
+                const unsentIds = unsent.map((row) => row.id);
+                await lockSchedules(tx, unsentIds);
+                reclaimedExecutionIds = await reclaimStuckRuns(tx, unsentIds);
+                await dropExecutorState(tx, reclaimedExecutionIds);
               }
 
               let supersededExecutionIds: string[] = [];
@@ -382,6 +405,7 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
                 const ids = inFlight.map((row) => row.id);
                 const now = new Date();
 
+                await lockSchedules(tx, ids);
                 const superseded = await tx
                   .update(workflowExecutions)
                   .set({
@@ -417,6 +441,7 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
                       )
                     );
                 }
+                await dropExecutorState(tx, supersededExecutionIds);
               }
 
               return {

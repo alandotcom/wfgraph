@@ -1,6 +1,15 @@
+import { Schema } from "effect";
 import { isEntityEligibilityReason } from "@wfgraph/shared/lifecycle/execution-contracts";
-import { readJsonValue, type JsonValue } from "@wfgraph/shared/types/json";
+import {
+  jsonObjectSchema,
+  readJsonValue,
+  type JsonValue,
+} from "@wfgraph/shared/types/json";
+import { readAs } from "@wfgraph/shared/types/schema";
 import type {
+  ExecutionSchedule,
+  ParkState,
+  ParkWake,
   WorkflowExecution,
   WorkflowExecutionEvent,
   WorkflowExecutionListRow,
@@ -10,6 +19,7 @@ import type {
 import {
   workflowExecutionEvents,
   workflowExecutionLogs,
+  workflowExecutionSchedule,
   workflowExecutions,
   workflowWaitStates,
 } from "#src/backend/persistence/sqlite/schema";
@@ -38,7 +48,7 @@ export type SqliteExecutionListRow = Pick<
   versionKind: string;
   versionNumber: number | null;
 };
-function optionalJsonValue(
+export function optionalJsonValue(
   value: string | null,
   key: string
 ): JsonValue | null {
@@ -234,7 +244,74 @@ function stringArray(encoded: string, key: string): string[] {
   return value;
 }
 
-export function sqliteWaitState(row: SqliteWaitStateRow): WorkflowWaitState {
+type SqliteScheduleRow = typeof workflowExecutionSchedule.$inferSelect;
+
+/** A schedule row decoded from SQLite's text and epoch-millisecond columns. */
+export function sqliteExecutionSchedule(
+  row: SqliteScheduleRow
+): ExecutionSchedule {
+  const { kind, state } = row;
+  if (kind !== "run" && kind !== "delivery") {
+    throw new Error("Invalid SQLite schedule kind");
+  }
+  if (state !== "queued" && state !== "leased" && state !== "waiting") {
+    throw new Error("Invalid SQLite schedule state");
+  }
+  return {
+    executionId: row.executionId,
+    kind,
+    state,
+    wakeAt: new Date(row.wakeAt),
+    attempt: row.attempt,
+    leaseExpiresAt:
+      row.leaseExpiresAt === null ? null : new Date(row.leaseExpiresAt),
+    ownerToken: row.ownerToken,
+    workerId: row.workerId,
+    lastError: row.lastError,
+  };
+}
+
+const parkWakeSchema = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literals(["timeout", "migrate", "cancel", "exit"]),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("resume"),
+    eventName: Schema.NullOr(Schema.String),
+    payload: jsonObjectSchema,
+    deliveryId: Schema.NullOr(Schema.String),
+  }),
+]);
+const readParkWake = readAs(parkWakeSchema);
+
+function parkWake(encoded: string | null): ParkWake | null {
+  if (encoded === null) return null;
+  const wake: ParkWake | undefined = readParkWake(JSON.parse(encoded));
+  if (wake === undefined) throw new Error("Invalid SQLite wait wake");
+  return wake;
+}
+
+/** A park as `findPark` answers it, from the columns that query selects. */
+export function sqliteParkState(
+  row: Pick<
+    SqliteWaitStateRow,
+    "executionId" | "status" | "parkStepId" | "wake"
+  > & {
+    waitStateId: string;
+  }
+): ParkState {
+  return {
+    waitStateId: row.waitStateId,
+    executionId: row.executionId,
+    status: waitStatus(row.status),
+    parkStepId: row.parkStepId,
+    wake: parkWake(row.wake),
+  };
+}
+
+export function sqliteWaitState(
+  row: Omit<SqliteWaitStateRow, "parkStepId" | "wake">
+): WorkflowWaitState {
   const waitType = row.waitType;
   if (waitType !== "delay" && waitType !== "event") {
     throw new Error("Invalid SQLite wait type");

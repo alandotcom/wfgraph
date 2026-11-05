@@ -44,6 +44,7 @@ import {
   sqliteVersionKind,
   type SqliteExecutionListRow,
 } from "#src/backend/persistence/sqlite/executions/rows";
+import { dropExecutorState } from "#src/backend/persistence/sqlite/executions/schedule";
 
 const WORKFLOW_EXECUTIONS_LIMIT = 50;
 
@@ -474,24 +475,33 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
       ),
     markEnqueueFailed: ({ executionId, error }) =>
       store.write((database) =>
-        database
-          .update(workflowExecutions)
-          .set({
-            status: "failed",
-            error,
-            completedAt: Date.now(),
-            waitingAt: null,
-          })
-          .where(
-            and(
-              eq(workflowExecutions.id, executionId),
-              inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES),
-              isNull(workflowExecutions.terminationKind),
-              isNull(workflowExecutions.enqueuedAt)
+        Effect.gen(function* () {
+          const closed = yield* database
+            .update(workflowExecutions)
+            .set({
+              status: "failed",
+              error,
+              completedAt: Date.now(),
+              waitingAt: null,
+            })
+            .where(
+              and(
+                eq(workflowExecutions.id, executionId),
+                inArray(
+                  workflowExecutions.status,
+                  IN_FLIGHT_EXECUTION_STATUSES
+                ),
+                isNull(workflowExecutions.terminationKind),
+                isNull(workflowExecutions.enqueuedAt)
+              )
             )
-          )
-          .returning({ id: workflowExecutions.id })
-          .pipe(Effect.map((rows) => rows.length > 0))
+            .returning({ id: workflowExecutions.id });
+          yield* dropExecutorState(
+            database,
+            closed.map((row) => row.id)
+          );
+          return closed.length > 0;
+        })
       ),
     repinVersion: (input) =>
       store.write((database) =>
@@ -540,38 +550,9 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
         })
       ),
 
-    markRunning: (input) =>
-      store.write((database) =>
-        database
-          .update(workflowExecutions)
-          .set({ status: "running", waitingAt: null })
-          .where(
-            and(
-              eq(workflowExecutions.id, input.executionId),
-              eq(workflowExecutions.workflowVersionId, input.workflowVersionId),
-              inArray(workflowExecutions.status, ["waiting", "running"]),
-              claimAdmits(input.side)
-            )
-          )
-          .returning({ id: workflowExecutions.id })
-          .pipe(Effect.map((rows) => rows.length > 0))
-      ),
+    markRunning: (input) => store.write(markRunningWrite(input)),
     markWaitingIfParked: (input) =>
-      store.write((database) =>
-        database
-          .update(workflowExecutions)
-          .set({ status: "waiting", waitingAt: Date.now() })
-          .where(
-            and(
-              eq(workflowExecutions.id, input.executionId),
-              eq(workflowExecutions.status, "running"),
-              notExitClaimed,
-              stillParked()
-            )
-          )
-          .returning({ id: workflowExecutions.id })
-          .pipe(Effect.map((rows) => rows.length > 0))
-      ),
+      store.write(markWaitingIfParkedWrite(input)),
     endInFlight: (input) =>
       store.write((database) =>
         Effect.gen(function* () {
@@ -597,14 +578,11 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
             )
             .returning();
           const [written] = updated;
-          if (written) return terminationState(written, true);
-
-          const current = yield* database
-            .select()
-            .from(workflowExecutions)
-            .where(eq(workflowExecutions.id, input.executionId))
-            .get();
-          return current ? terminationState(current) : null;
+          if (written) {
+            yield* dropExecutorState(database, [written.id]);
+            return terminationState(written, true);
+          }
+          return yield* readTerminationState(database, input.executionId);
         })
       ),
     requestCancelForEntity: (input) =>
@@ -638,40 +616,7 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
           return flagged.map((row) => row.id);
         })
       ),
-    requestExit: (input) =>
-      store.write((database) =>
-        Effect.gen(function* () {
-          const updated = yield* database
-            .update(workflowExecutions)
-            .set({
-              terminationKind: "exit",
-              terminationRequestedAt:
-                input.requestedAt?.getTime() ?? Date.now(),
-              terminationReason: input.reason,
-              terminationNodeId: input.nodeId,
-            })
-            .where(
-              and(
-                eq(workflowExecutions.id, input.executionId),
-                inArray(
-                  workflowExecutions.status,
-                  IN_FLIGHT_EXECUTION_STATUSES
-                ),
-                isNull(workflowExecutions.terminationKind)
-              )
-            )
-            .returning();
-          const [written] = updated;
-          if (written) return terminationState(written, true);
-
-          const current = yield* database
-            .select()
-            .from(workflowExecutions)
-            .where(eq(workflowExecutions.id, input.executionId))
-            .get();
-          return current ? terminationState(current) : null;
-        })
-      ),
+    requestExit: (input) => store.write(requestExitWrite(input)),
     canAdmitNode: (executionId) =>
       store.read((database) =>
         database
@@ -717,48 +662,125 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
             })
           )
       ),
-    finishRun: (input) =>
-      store.write((database) =>
-        Effect.gen(function* () {
-          const claimGuard =
-            input.status === "canceled"
-              ? eq(workflowExecutions.terminationKind, "cancel")
-              : input.status === "exited"
-                ? eq(workflowExecutions.terminationKind, "exit")
-                : isNull(workflowExecutions.terminationKind);
-          const now = Date.now();
-          const updated = yield* database
-            .update(workflowExecutions)
-            .set({
-              status: input.status,
-              output: encodeJson(input.output),
-              error: input.error ?? null,
-              waitingAt: null,
-              cancelledAt: input.status === "canceled" ? now : null,
-              completedAt: now,
-              duration: sql`cast(${now} - ${workflowExecutions.startedAt} as text)`,
-            })
-            .where(
-              and(
-                eq(workflowExecutions.id, input.executionId),
-                inArray(
-                  workflowExecutions.status,
-                  IN_FLIGHT_EXECUTION_STATUSES
-                ),
-                claimGuard
-              )
-            )
-            .returning();
-          const [written] = updated;
-          if (written) return terminationState(written, true);
-
-          const current = yield* database
-            .select()
-            .from(workflowExecutions)
-            .where(eq(workflowExecutions.id, input.executionId))
-            .get();
-          return current ? terminationState(current) : null;
-        })
-      ),
+    finishRun: (input) => store.write(finishRunWrite(input)),
   };
+}
+
+type MarkRunningInput = Parameters<RunsRepoMethods["markRunning"]>[0];
+type MarkWaitingIfParkedInput = Parameters<
+  RunsRepoMethods["markWaitingIfParked"]
+>[0];
+type RequestExitInput = Parameters<RunsRepoMethods["requestExit"]>[0];
+type FinishRunInput = Parameters<RunsRepoMethods["finishRun"]>[0];
+
+/** The stored boundary of one Execution, or null when the row is absent. */
+function readTerminationState(database: SqliteExecutor, executionId: string) {
+  return database
+    .select()
+    .from(workflowExecutions)
+    .where(eq(workflowExecutions.id, executionId))
+    .get()
+    .pipe(Effect.map((row) => (row ? terminationState(row) : null)));
+}
+
+/** The update behind `markRunning`, inside the caller's write transaction. */
+export function markRunningWrite(input: MarkRunningInput) {
+  return (database: SqliteExecutor) =>
+    database
+      .update(workflowExecutions)
+      .set({ status: "running", waitingAt: null })
+      .where(
+        and(
+          eq(workflowExecutions.id, input.executionId),
+          eq(workflowExecutions.workflowVersionId, input.workflowVersionId),
+          inArray(workflowExecutions.status, ["waiting", "running"]),
+          claimAdmits(input.side)
+        )
+      )
+      .returning({ id: workflowExecutions.id })
+      .pipe(Effect.map((rows) => rows.length > 0));
+}
+
+/** The update behind `markWaitingIfParked`. */
+export function markWaitingIfParkedWrite(input: MarkWaitingIfParkedInput) {
+  return (database: SqliteExecutor) =>
+    database
+      .update(workflowExecutions)
+      .set({ status: "waiting", waitingAt: Date.now() })
+      .where(
+        and(
+          eq(workflowExecutions.id, input.executionId),
+          eq(workflowExecutions.status, "running"),
+          notExitClaimed,
+          stillParked()
+        )
+      )
+      .returning({ id: workflowExecutions.id })
+      .pipe(Effect.map((rows) => rows.length > 0));
+}
+
+/** The update behind `requestExit`. */
+export function requestExitWrite(input: RequestExitInput) {
+  return (database: SqliteExecutor) =>
+    Effect.gen(function* () {
+      const [written] = yield* database
+        .update(workflowExecutions)
+        .set({
+          terminationKind: "exit",
+          terminationRequestedAt: input.requestedAt?.getTime() ?? Date.now(),
+          terminationReason: input.reason,
+          terminationNodeId: input.nodeId,
+        })
+        .where(
+          and(
+            eq(workflowExecutions.id, input.executionId),
+            inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES),
+            isNull(workflowExecutions.terminationKind)
+          )
+        )
+        .returning();
+      if (written) return terminationState(written, true);
+      return yield* readTerminationState(database, input.executionId);
+    });
+}
+
+/**
+ * The terminal write behind `finishRun`. The write that made the row terminal
+ * deletes the run's schedule row and step memo in the same transaction.
+ */
+export function finishRunWrite(input: FinishRunInput) {
+  return (database: SqliteExecutor) =>
+    Effect.gen(function* () {
+      const claimGuard =
+        input.status === "canceled"
+          ? eq(workflowExecutions.terminationKind, "cancel")
+          : input.status === "exited"
+            ? eq(workflowExecutions.terminationKind, "exit")
+            : isNull(workflowExecutions.terminationKind);
+      const now = Date.now();
+      const [written] = yield* database
+        .update(workflowExecutions)
+        .set({
+          status: input.status,
+          output: encodeJson(input.output),
+          error: input.error ?? null,
+          waitingAt: null,
+          cancelledAt: input.status === "canceled" ? now : null,
+          completedAt: now,
+          duration: sql`cast(${now} - ${workflowExecutions.startedAt} as text)`,
+        })
+        .where(
+          and(
+            eq(workflowExecutions.id, input.executionId),
+            inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES),
+            claimGuard
+          )
+        )
+        .returning();
+      if (written) {
+        yield* dropExecutorState(database, [written.id]);
+        return terminationState(written, true);
+      }
+      return yield* readTerminationState(database, input.executionId);
+    });
 }

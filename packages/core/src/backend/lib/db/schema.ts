@@ -50,6 +50,48 @@ const utcNow = () => sql`(now() at time zone 'utc')`;
 export type WorkflowVisibility = "private" | "public";
 export type WorkflowMode = "live" | "test";
 export type OAuthAuthorizationAttemptMode = "create" | "reconnect";
+
+/**
+ * How a park ended, as `workflow_wait_states.wake` stores it.
+ *
+ * `timeout` is the park's deadline passing. `resume` is an Event arrival or a
+ * manual resume, carrying what arrived. `cancel` is a Cancel Event claiming the
+ * run, `exit` is another branch of the run claiming an Entity Eligibility Exit,
+ * and `migrate` is a Migration telling the Wait to prepare itself again against
+ * the version the run now pins.
+ */
+export type ParkWake =
+  | { kind: "timeout" }
+  | { kind: "migrate" }
+  | { kind: "cancel" }
+  | { kind: "exit" }
+  | {
+      kind: "resume";
+      /** The Event that arrived, and null for a resume that named none. */
+      eventName: string | null;
+      payload: JsonObject;
+      /** The delivery that carried the Event, and null when none did. */
+      deliveryId: string | null;
+    };
+
+/**
+ * What a schedule row runs: a workflow run (`run`) or an Event's delivery to
+ * the workflows subscribed to it (`delivery`).
+ */
+export const EXECUTION_SCHEDULE_KINDS = ["run", "delivery"] as const;
+export type ExecutionScheduleKind = (typeof EXECUTION_SCHEDULE_KINDS)[number];
+
+/**
+ * Where a schedule row stands. `queued` is due at `wake_at`, `leased` is held by
+ * one worker's pass until `lease_expires_at`, and `waiting` is a run with every
+ * branch parked, due again at its earliest park deadline.
+ */
+export const EXECUTION_SCHEDULE_STATES = [
+  "queued",
+  "leased",
+  "waiting",
+] as const;
+export type ExecutionScheduleState = (typeof EXECUTION_SCHEDULE_STATES)[number];
 export type OAuthAuthorizationAttemptStatus =
   | "pending"
   | "processing"
@@ -448,6 +490,12 @@ export const workflowExecutionLogs = pgTable(
     completedAt: timestamp("completed_at"),
     duration: text("duration"),
     timestamp: timestamp("timestamp").notNull().default(utcNow()),
+    /**
+     * The outlet handle a completed node released its outgoing edges through,
+     * so a row can say which branch the run took below it. Null while the node
+     * runs, for a node that released every edge, and for one that released none.
+     */
+    releasedOutlet: text("released_outlet"),
   },
   (table) => [
     index("workflow_execution_logs_execution_id_idx").on(table.executionId),
@@ -497,6 +545,15 @@ export const workflowWaitStates = pgTable(
     // Settling the claim replaces it with the actual resume time.
     resumedAt: timestamp("resumed_at"),
     cancelledAt: timestamp("cancelled_at"),
+    /** The durable step that parked on this row, which reads `wake` back. */
+    parkStepId: text("park_step_id"),
+    /**
+     * How the park was resolved: null while it is parked, and set once by the
+     * producer that won the row (an Event, a deadline, a claim or a Migration).
+     * A row holding a wake while its status is `resuming` is a wake no pass has
+     * consumed yet.
+     */
+    wake: jsonb("wake").$type<ParkWake>(),
   },
   (table) => [
     uniqueIndex("workflow_wait_states_resume_token_uidx").on(table.resumeToken),
@@ -519,6 +576,93 @@ export const workflowWaitStates = pgTable(
       .on(table.workflowId)
       .where(sql`${table.status} = 'waiting'`),
   ]
+);
+
+/**
+ * The schedule kinds and states as SQL literals. Both lists are closed sets of
+ * lower-case words declared in this file, so `sql.raw` interpolates them safely.
+ */
+const scheduleKindLiterals = EXECUTION_SCHEDULE_KINDS.map(
+  (kind) => `'${kind}'`
+).join(", ");
+const scheduleStateLiterals = EXECUTION_SCHEDULE_STATES.map(
+  (state) => `'${state}'`
+).join(", ");
+
+/**
+ * One claimable row per Execution the database executor still has to run.
+ *
+ * A worker claims a due row under a lease, replays the run against its step
+ * memo, and releases the row as `queued` or `waiting`. The terminal write
+ * deletes the row, so the table holds the working set and its partial indexes
+ * stay small.
+ */
+export const workflowExecutionSchedule = pgTable(
+  "workflow_execution_schedule",
+  {
+    executionId: text("execution_id")
+      .primaryKey()
+      .references(() => workflowExecutions.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull().$type<ExecutionScheduleKind>(),
+    state: text("state").notNull().$type<ExecutionScheduleState>(),
+    /**
+     * When the row is due. Queued: now, or the end of a retry backoff. Waiting:
+     * the earliest deadline among the run's open parks.
+     */
+    wakeAt: timestamp("wake_at").notNull(),
+    /**
+     * Failed passes and expired leases counted against the run's retries. A
+     * claim leaves it alone, so a wake that re-queues the run spends nothing.
+     */
+    attempt: integer("attempt").notNull().default(0),
+    leaseExpiresAt: timestamp("lease_expires_at"),
+    /**
+     * The fencing token of the pass holding the lease, minted per claim. Every
+     * write a pass makes is refused once this no longer names that pass.
+     */
+    ownerToken: text("owner_token"),
+    workerId: text("worker_id"),
+    lastError: text("last_error"),
+  },
+  (table) => [
+    check(
+      "workflow_execution_schedule_kind_check",
+      sql`${table.kind} in (${sql.raw(scheduleKindLiterals)})`
+    ),
+    check(
+      "workflow_execution_schedule_state_check",
+      sql`${table.state} in (${sql.raw(scheduleStateLiterals)})`
+    ),
+    // The claim's question: the due rows, oldest first.
+    index("workflow_execution_schedule_due_idx")
+      .on(table.wakeAt, table.executionId)
+      .where(sql`${table.state} in ('queued', 'waiting')`),
+    // The claim's other question: the leases a dead worker left to expire.
+    index("workflow_execution_schedule_lease_idx")
+      .on(table.leaseExpiresAt)
+      .where(sql`${table.state} = 'leased'`),
+  ]
+);
+
+/**
+ * The step memo: one row per durable step an Execution completed, holding the
+ * JSON value the step answered. A pass loads every row before it replays the
+ * run, and a step whose row exists returns that value instead of running again.
+ * The terminal write deletes an Execution's rows with its schedule row.
+ */
+export const workflowExecutionSteps = pgTable(
+  "workflow_execution_steps",
+  {
+    executionId: text("execution_id")
+      .notNull()
+      .references(() => workflowExecutions.id, { onDelete: "cascade" }),
+    stepId: text("step_id").notNull(),
+    /** The schedule row's attempt counter when the step completed. */
+    attempt: integer("attempt").notNull(),
+    value: jsonb("value").$type<JsonValue>(),
+    createdAt: timestamp("created_at").notNull().default(utcNow()),
+  },
+  (table) => [primaryKey({ columns: [table.executionId, table.stepId] })]
 );
 
 export const workflowExecutionEvents = pgTable(
@@ -584,6 +728,8 @@ export const tables = {
   workflowExecutionLogs,
   workflowExecutionEvents,
   workflowWaitStates,
+  workflowExecutionSchedule,
+  workflowExecutionSteps,
   workflowEventSubscriptions,
   integrations,
   oauthAuthorizationAttempts,

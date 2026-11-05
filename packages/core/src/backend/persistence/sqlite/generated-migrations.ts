@@ -111,4 +111,19 @@ export const sqliteMigrations = [
     hash: "689a2b8b42cc9d691efe00f3fac12965e6285b5e6e8af93727eef2ab5a961092",
     name: "20260911033829_needy_wendell_rand",
   },
+  {
+    sql: [
+      "CREATE TABLE `workflow_execution_schedule` (\n\t`execution_id` text PRIMARY KEY,\n\t`kind` text NOT NULL,\n\t`state` text NOT NULL,\n\t`wake_at` integer NOT NULL,\n\t`attempt` integer DEFAULT 0 NOT NULL,\n\t`lease_expires_at` integer,\n\t`owner_token` text,\n\t`worker_id` text,\n\t`last_error` text,\n\tCONSTRAINT `fk_workflow_execution_schedule_execution_id_workflow_executions_id_fk` FOREIGN KEY (`execution_id`) REFERENCES `workflow_executions`(`id`) ON DELETE CASCADE,\n\tCONSTRAINT \"workflow_execution_schedule_kind_check\" CHECK(\"kind\" in ('run', 'delivery')),\n\tCONSTRAINT \"workflow_execution_schedule_state_check\" CHECK(\"state\" in ('queued', 'leased', 'waiting'))\n) STRICT;\n",
+      "\nCREATE TABLE `workflow_execution_steps` (\n\t`execution_id` text NOT NULL,\n\t`step_id` text NOT NULL,\n\t`attempt` integer NOT NULL,\n\t`value` text,\n\t`created_at` integer NOT NULL,\n\tCONSTRAINT `workflow_execution_steps_pk` PRIMARY KEY(`execution_id`, `step_id`),\n\tCONSTRAINT `fk_workflow_execution_steps_execution_id_workflow_executions_id_fk` FOREIGN KEY (`execution_id`) REFERENCES `workflow_executions`(`id`) ON DELETE CASCADE,\n\tCONSTRAINT \"workflow_execution_steps_value_json_check\" CHECK(\"value\" is null or json_valid(\"value\"))\n) STRICT;\n",
+      "\nALTER TABLE `workflow_execution_logs` ADD `released_outlet` text;",
+      "\nALTER TABLE `workflow_wait_states` ADD `park_step_id` text;",
+      "\nALTER TABLE `workflow_wait_states` ADD `wake` text;",
+      "\nCREATE INDEX `schedule_due_idx` ON `workflow_execution_schedule` (`wake_at`,`execution_id`) WHERE \"workflow_execution_schedule\".\"state\" in ('queued', 'waiting');",
+      "\nCREATE INDEX `schedule_lease_idx` ON `workflow_execution_schedule` (`lease_expires_at`) WHERE \"workflow_execution_schedule\".\"state\" = 'leased';",
+    ],
+    bps: true,
+    folderMillis: 1793902543000,
+    hash: "38da241d0dfd6a31c7ba7e2711a951148a9c794bbaca21e3f19bc4a0ff733a0d",
+    name: "20261105181543_black_turbo",
+  },
 ] satisfies readonly MigrationMeta[];

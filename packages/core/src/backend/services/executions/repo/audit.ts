@@ -1,6 +1,10 @@
 import type { Effect } from "effect";
 import type { WorkflowScopedAuditEventType } from "@wfgraph/shared/lifecycle/audit-event-types";
 import { workflowExecutionEvents } from "#src/backend/lib/db/schema";
+import type {
+  WfGraphDatabase,
+  WfGraphTransaction,
+} from "#src/backend/lib/db/index";
 import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
 import type {
   NewAuditEvent,
@@ -49,21 +53,25 @@ export type AuditRepoMethods = {
   }) => Effect.Effect<WorkflowExecutionEvent[], DatabaseError>;
 };
 
+/** The insert behind `recordAuditEvent`, on whichever handle the caller holds. */
+export function recordAuditEventWrite(input: NewAuditEvent) {
+  return async (db: WfGraphDatabase | WfGraphTransaction): Promise<void> => {
+    await db.insert(workflowExecutionEvents).values({
+      workflowId: input.workflowId,
+      executionId: input.executionId ?? null,
+      eventType: input.eventType,
+      message: input.message,
+      metadata: toJsonObject(input.metadata),
+    });
+  };
+}
+
 /** Builds the `workflow_execution_events` slice of `ExecutionRepo` over one database. */
 export function makeAuditMethods(
   database: Database["Service"]
 ): AuditRepoMethods {
   return {
-    recordAuditEvent: (input) =>
-      database.query(async (db) => {
-        await db.insert(workflowExecutionEvents).values({
-          workflowId: input.workflowId,
-          executionId: input.executionId ?? null,
-          eventType: input.eventType,
-          message: input.message,
-          metadata: toJsonObject(input.metadata),
-        });
-      }),
+    recordAuditEvent: (input) => database.query(recordAuditEventWrite(input)),
 
     listEvents: (executionId) =>
       database.query((db) =>

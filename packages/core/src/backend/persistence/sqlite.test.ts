@@ -401,7 +401,7 @@ describe("native SQLite persistence", () => {
              AND name <> '__wfgraph_sqlite_migrations'`
         )
         .all();
-      expect(applicationTables).toHaveLength(9);
+      expect(applicationTables).toHaveLength(11);
       expect(applicationTables.map((table) => table.name)).not.toContain(
         "api_keys"
       );

@@ -206,6 +206,7 @@ export const workflowExecutionLogs = sqliteTable(
     completedAt: integer("completed_at"),
     duration: text("duration"),
     timestamp: integer("timestamp").notNull(),
+    releasedOutlet: text("released_outlet"),
   },
   (table) => [
     index("logs_execution_timestamp_idx").on(
@@ -249,6 +250,11 @@ export const workflowWaitStates = sqliteTable(
     createdAt: integer("created_at").notNull(),
     resumedAt: integer("resumed_at"),
     cancelledAt: integer("cancelled_at"),
+    parkStepId: text("park_step_id"),
+    // JSON text holding a `ParkWake`. It carries no json_valid check, because
+    // adding a table check makes the migration rebuild the whole table; the
+    // repository decodes it on every read instead.
+    wake: text("wake"),
   },
   (table) => [
     index("waits_execution_status_idx").on(table.executionId, table.status),
@@ -268,6 +274,69 @@ export const workflowWaitStates = sqliteTable(
     check(
       "workflow_wait_states_metadata_json_check",
       sql`${table.metadata} is null or (json_valid(${table.metadata}) and json_type(${table.metadata}) = 'object')`
+    ),
+  ]
+);
+
+/**
+ * The PostgreSQL schedule table in SQLite's encoding, with timestamps as epoch
+ * milliseconds. `workflowExecutionSchedule` in `lib/db/schema.ts` describes the
+ * columns.
+ */
+export const workflowExecutionSchedule = sqliteTable(
+  "workflow_execution_schedule",
+  {
+    executionId: text("execution_id")
+      .primaryKey()
+      .references(() => workflowExecutions.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    state: text("state").notNull(),
+    wakeAt: integer("wake_at").notNull(),
+    attempt: integer("attempt").notNull().default(0),
+    leaseExpiresAt: integer("lease_expires_at"),
+    ownerToken: text("owner_token"),
+    workerId: text("worker_id"),
+    lastError: text("last_error"),
+  },
+  (table) => [
+    index("schedule_due_idx")
+      .on(table.wakeAt, table.executionId)
+      .where(sql`${table.state} in ('queued', 'waiting')`),
+    index("schedule_lease_idx")
+      .on(table.leaseExpiresAt)
+      .where(sql`${table.state} = 'leased'`),
+    check(
+      "workflow_execution_schedule_kind_check",
+      sql`${table.kind} in ('run', 'delivery')`
+    ),
+    check(
+      "workflow_execution_schedule_state_check",
+      sql`${table.state} in ('queued', 'leased', 'waiting')`
+    ),
+  ]
+);
+
+/**
+ * The PostgreSQL step memo in SQLite's encoding, with the value as JSON text and
+ * the timestamp as epoch milliseconds. `workflowExecutionSteps` in
+ * `lib/db/schema.ts` describes the columns.
+ */
+export const workflowExecutionSteps = sqliteTable(
+  "workflow_execution_steps",
+  {
+    executionId: text("execution_id")
+      .notNull()
+      .references(() => workflowExecutions.id, { onDelete: "cascade" }),
+    stepId: text("step_id").notNull(),
+    attempt: integer("attempt").notNull(),
+    value: text("value"),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.executionId, table.stepId] }),
+    check(
+      "workflow_execution_steps_value_json_check",
+      sql`${table.value} is null or json_valid(${table.value})`
     ),
   ]
 );
@@ -369,6 +438,8 @@ export const sqliteTables = {
   workflowExecutions,
   workflowExecutionLogs,
   workflowWaitStates,
+  workflowExecutionSchedule,
+  workflowExecutionSteps,
   workflowExecutionEvents,
   integrations,
   oauthAuthorizationAttempts,

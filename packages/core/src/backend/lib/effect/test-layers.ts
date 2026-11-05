@@ -380,6 +380,17 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
   listEvents: refuse("listEvents"),
   listWorkflowEvents: refuse("listWorkflowEvents"),
   deleteAllForWorkflow: refuse("deleteAllForWorkflow"),
+  findPark: refuse("findPark"),
+  scheduleExecution: refuse("scheduleExecution"),
+  findSchedule: refuse("findSchedule"),
+  claimDue: refuse("claimDue"),
+  resolvePark: refuse("resolvePark"),
+  listStepMemo: refuse("listStepMemo"),
+  // `fenced` answers a set of writes rather than an Effect, so it throws where
+  // the others die.
+  fenced: () => {
+    throw new Error("fenced is not part of this test");
+  },
 };
 
 export function stubExecutionRepo(

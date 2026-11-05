@@ -33,6 +33,11 @@ import {
 import { makeSqliteNodeLogsMethods } from "#src/backend/persistence/sqlite/executions/logs";
 import { makeSqliteWaitsMethods } from "#src/backend/persistence/sqlite/executions/waits";
 import { makeSqliteAuditMethods } from "#src/backend/persistence/sqlite/executions/audit";
+import { makeSqliteFencedWrites } from "#src/backend/persistence/sqlite/executions/fenced-writes";
+import {
+  dropExecutorState,
+  makeSqliteScheduleMethods,
+} from "#src/backend/persistence/sqlite/executions/schedule";
 import {
   optionalJsonObject,
   sqliteExecution,
@@ -111,6 +116,7 @@ function endInFlightExecutions(
           isNull(workflowExecutions.terminationKind)
         )
       );
+    yield* dropExecutorState(database, eligible);
     return eligible;
   });
 }
@@ -235,6 +241,8 @@ export function makeSqliteExecutionRepo(
     ...makeSqliteNodeLogsMethods(store),
     ...makeSqliteWaitsMethods(store),
     ...makeSqliteAuditMethods(store),
+    ...makeSqliteScheduleMethods(store),
+    fenced: makeSqliteFencedWrites(store),
     startForEntity: ({
       execution,
       concurrency,

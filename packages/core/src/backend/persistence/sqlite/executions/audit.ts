@@ -3,7 +3,11 @@ import { Effect } from "effect";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { toJsonObject } from "@wfgraph/shared/types/json";
 import type { AuditRepoMethods } from "#src/backend/services/executions/repo/audit";
-import type { SqliteDatabase } from "#src/backend/persistence/sqlite/database";
+import type { NewAuditEvent } from "#src/backend/services/executions/repo/contracts";
+import type {
+  SqliteDatabase,
+  SqliteExecutor,
+} from "#src/backend/persistence/sqlite/database";
 import { encodeJson } from "#src/backend/persistence/sqlite/database";
 import { sqliteExecutionEvent } from "#src/backend/persistence/sqlite/executions/rows";
 import { workflowExecutionEvents } from "#src/backend/persistence/sqlite/schema";
@@ -19,22 +23,25 @@ const EXECUTION_EVENTS_LIMIT = 200;
 const newestFirst = [desc(workflowExecutionEvents.createdAt), desc(sql`rowid`)];
 const WORKFLOW_EVENTS_LIMIT = 50;
 
+/** The insert behind `recordAuditEvent`. */
+export function recordAuditEventWrite(input: NewAuditEvent) {
+  return (database: SqliteExecutor) =>
+    database.insert(workflowExecutionEvents).values({
+      id: generateId(),
+      workflowId: input.workflowId,
+      executionId: input.executionId ?? null,
+      eventType: input.eventType,
+      message: input.message,
+      metadata: encodeJson(toJsonObject(input.metadata)),
+      createdAt: Date.now(),
+    });
+}
+
 export function makeSqliteAuditMethods(
   store: SqliteDatabase
 ): AuditRepoMethods {
   return {
-    recordAuditEvent: (input) =>
-      store.write((database) =>
-        database.insert(workflowExecutionEvents).values({
-          id: generateId(),
-          workflowId: input.workflowId,
-          executionId: input.executionId ?? null,
-          eventType: input.eventType,
-          message: input.message,
-          metadata: encodeJson(toJsonObject(input.metadata)),
-          createdAt: Date.now(),
-        })
-      ),
+    recordAuditEvent: (input) => store.write(recordAuditEventWrite(input)),
     listEvents: (executionId) =>
       store.read((database) =>
         database

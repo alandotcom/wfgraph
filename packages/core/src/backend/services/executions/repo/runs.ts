@@ -29,7 +29,15 @@ import {
   workflowVersions,
   workflowWaitStates,
 } from "#src/backend/lib/db/schema";
+import type {
+  WfGraphDatabase,
+  WfGraphTransaction,
+} from "#src/backend/lib/db/index";
 import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
+import {
+  dropExecutorState,
+  lockSchedules,
+} from "#src/backend/services/executions/repo/schedule";
 import {
   IN_FLIGHT_EXECUTION_STATUSES,
   type EntityEligibilityReason,
@@ -39,6 +47,7 @@ import {
 import type { JsonObject, JsonValue } from "@wfgraph/shared/types/json";
 import type {
   ExecutionEntitySelector,
+  StoreWrite,
   ExecutionPageQuery,
   ExecutionStatusRow,
   ExecutionSummary,
@@ -83,6 +92,8 @@ const pinnedVersion = eq(
   workflowExecutions.workflowVersionId,
   workflowVersions.id
 );
+
+type Executor = WfGraphDatabase | WfGraphTransaction;
 
 /** The most recent runs one workflow's panel shows. */
 const WORKFLOW_EXECUTIONS_LIMIT = 50;
@@ -345,12 +356,15 @@ export type RunsRepoMethods = {
    * `pending` run has not reached a Wait, so a resume finding one is addressing
    * a row nothing parked.
    */
-  readonly markRunning: (input: {
-    executionId: string;
-    workflowVersionId: string;
-    /** Which side of the Lifecycle Node the resuming Wait sits on. */
-    side: ExecutionSide;
-  }) => Effect.Effect<boolean, DatabaseError>;
+  readonly markRunning: StoreWrite<
+    {
+      executionId: string;
+      workflowVersionId: string;
+      /** Which side of the Lifecycle Node the resuming Wait sits on. */
+      side: ExecutionSide;
+    },
+    boolean
+  >;
   /**
    * Move a `running` run back to `waiting` when it still holds a waiting wait
    * row, answering whether a row moved.
@@ -361,9 +375,7 @@ export type RunsRepoMethods = {
    * waiting: the wait-row test and the status test are one statement, so a park
    * or a resume landing beside it cannot be overtaken.
    */
-  readonly markWaitingIfParked: (input: {
-    executionId: string;
-  }) => Effect.Effect<boolean, DatabaseError>;
+  readonly markWaitingIfParked: StoreWrite<{ executionId: string }, boolean>;
   /**
    * End a run from outside it, answering whether this write is the one that
    * made the row terminal.
@@ -373,6 +385,9 @@ export type RunsRepoMethods = {
    * `canceled` is an operator or a Cancel Event stopping the run, so it stamps
    * `cancelledAt`; `superseded` is newest-wins Concurrency letting a newer
    * start take this run's place, which is routine and not a cancellation.
+   *
+   * A write that made the row terminal also deletes the run's schedule row and
+   * step memo, so a pass holding its lease is refused at its next fenced write.
    */
   readonly endInFlight: (input: {
     executionId: string;
@@ -402,12 +417,15 @@ export type RunsRepoMethods = {
    * Atomically claims an execution-wide Entity Eligibility exit and returns the
    * authoritative stored boundary, including an earlier competing outcome.
    */
-  readonly requestExit: (input: {
-    executionId: string;
-    reason: EntityEligibilityReason;
-    nodeId: string;
-    requestedAt?: Date | undefined;
-  }) => Effect.Effect<ExecutionTerminationState | null, DatabaseError>;
+  readonly requestExit: StoreWrite<
+    {
+      executionId: string;
+      reason: EntityEligibilityReason;
+      nodeId: string;
+      requestedAt?: Date | undefined;
+    },
+    ExecutionTerminationState | null
+  >;
   /**
    * Linearizes one node admission before or after an execution-wide claim.
    * True means the node was admitted while the run was still in flight and
@@ -427,14 +445,19 @@ export type RunsRepoMethods = {
   /**
    * Write the run's own terminal row and return the authoritative state. The
    * same in-flight guard as `endInFlight` prevents a completion from
-   * overwriting an earlier Cancel or Exit claim.
+   * overwriting an earlier Cancel or Exit claim. The write that made the row
+   * terminal deletes the run's schedule row and step memo in the same
+   * transaction.
    */
-  readonly finishRun: (input: {
-    executionId: string;
-    status: "completed" | "failed" | "canceled" | "exited";
-    output?: JsonValue | undefined;
-    error?: string | undefined;
-  }) => Effect.Effect<ExecutionTerminationState | null, DatabaseError>;
+  readonly finishRun: StoreWrite<
+    {
+      executionId: string;
+      status: "completed" | "failed" | "canceled" | "exited";
+      output?: JsonValue | undefined;
+      error?: string | undefined;
+    },
+    ExecutionTerminationState | null
+  >;
 };
 
 /** Builds the `workflow_executions` slice of `ExecutionRepo` over one database. */
@@ -631,29 +654,34 @@ export function makeRunsMethods(
       }),
 
     markEnqueueFailed: (input) =>
-      database.query(async (db) => {
-        const closed = await db
-          .update(workflowExecutions)
-          .set({
-            status: "failed",
-            error: input.error,
-            completedAt: new Date(),
-            waitingAt: null,
-          })
-          .where(
-            and(
-              eq(workflowExecutions.id, input.executionId),
-              inArray(workflowExecutions.status, [
-                ...IN_FLIGHT_EXECUTION_STATUSES,
-              ]),
-              isNull(workflowExecutions.terminationKind),
-              isNull(workflowExecutions.enqueuedAt)
+      database.query((db) =>
+        endExecutions(db, [input.executionId], async (tx) => {
+          const closed = await tx
+            .update(workflowExecutions)
+            .set({
+              status: "failed",
+              error: input.error,
+              completedAt: new Date(),
+              waitingAt: null,
+            })
+            .where(
+              and(
+                eq(workflowExecutions.id, input.executionId),
+                inArray(workflowExecutions.status, [
+                  ...IN_FLIGHT_EXECUTION_STATUSES,
+                ]),
+                isNull(workflowExecutions.terminationKind),
+                isNull(workflowExecutions.enqueuedAt)
+              )
             )
-          )
-          .returning({ id: workflowExecutions.id });
+            .returning({ id: workflowExecutions.id });
 
-        return closed.length > 0;
-      }),
+          return {
+            result: closed.length > 0,
+            ended: closed.map((row) => row.id),
+          };
+        })
+      ),
 
     repinVersion: (input) =>
       database.query((db) =>
@@ -713,78 +741,38 @@ export function makeRunsMethods(
         })
       ),
 
-    markRunning: (input) =>
-      database.query(async (db) => {
-        const moved = await db
-          .update(workflowExecutions)
-          .set({ status: "running", waitingAt: null })
-          .where(
-            and(
-              eq(workflowExecutions.id, input.executionId),
-              inArray(workflowExecutions.status, ["waiting", "running"]),
-              eq(workflowExecutions.workflowVersionId, input.workflowVersionId),
-              claimAdmits(input.side)
-            )
-          )
-          .returning({ id: workflowExecutions.id });
-
-        return moved.length > 0;
-      }),
+    markRunning: (input) => database.query(markRunningWrite(input)),
 
     markWaitingIfParked: (input) =>
-      database.query(async (db) => {
-        const parked = await db
-          .update(workflowExecutions)
-          .set({ status: "waiting", waitingAt: new Date() })
-          .where(
-            and(
-              eq(workflowExecutions.id, input.executionId),
-              eq(workflowExecutions.status, "running"),
-              notExitClaimed,
-              exists(
-                db
-                  .select({ id: workflowWaitStates.id })
-                  .from(workflowWaitStates)
-                  .where(
-                    and(
-                      eq(workflowWaitStates.executionId, workflowExecutions.id),
-                      eq(workflowWaitStates.status, "waiting")
-                    )
-                  )
-              )
-            )
-          )
-          .returning({ id: workflowExecutions.id });
-
-        return parked.length > 0;
-      }),
+      database.query(markWaitingIfParkedWrite(input)),
 
     endInFlight: (input) =>
-      database.query(async (db) => {
-        const now = new Date();
-        const updated = await db
-          .update(workflowExecutions)
-          .set({
-            status: input.status,
-            waitingAt: null,
-            cancelledAt: input.status === "canceled" ? now : null,
-            completedAt: now,
-            error: input.error,
-          })
-          .where(inFlightExecution(input.executionId, "started"))
-          .returning(TERMINATION_COLUMNS);
+      database.query((db) =>
+        endExecutions(db, [input.executionId], async (tx) => {
+          const now = new Date();
+          const [written] = await tx
+            .update(workflowExecutions)
+            .set({
+              status: input.status,
+              waitingAt: null,
+              cancelledAt: input.status === "canceled" ? now : null,
+              completedAt: now,
+              error: input.error,
+            })
+            .where(inFlightExecution(input.executionId, "started"))
+            .returning(TERMINATION_COLUMNS);
 
-        const [written] = updated;
-        if (written) {
-          return executionTerminationState(written, true);
-        }
-        const [current] = await db
-          .select(TERMINATION_COLUMNS)
-          .from(workflowExecutions)
-          .where(eq(workflowExecutions.id, input.executionId))
-          .limit(1);
-        return current ? executionTerminationState(current) : null;
-      }),
+          return written
+            ? {
+                result: executionTerminationState(written, true),
+                ended: [written.executionId],
+              }
+            : {
+                result: await readTerminationState(tx, input.executionId),
+                ended: [],
+              };
+        })
+      ),
 
     requestCancelForEntity: (input) =>
       database.query(async (db) => {
@@ -822,30 +810,7 @@ export function makeRunsMethods(
         return flagged.map((row) => row.id);
       }),
 
-    requestExit: (input) =>
-      database.query(async (db) => {
-        const updated = await db
-          .update(workflowExecutions)
-          .set({
-            terminationKind: "exit",
-            terminationRequestedAt: input.requestedAt ?? new Date(),
-            terminationReason: input.reason,
-            terminationNodeId: input.nodeId,
-          })
-          .where(inFlightExecution(input.executionId, "started"))
-          .returning(TERMINATION_COLUMNS);
-
-        const [written] = updated;
-        if (written) {
-          return executionTerminationState(written, true);
-        }
-        const [current] = await db
-          .select(TERMINATION_COLUMNS)
-          .from(workflowExecutions)
-          .where(eq(workflowExecutions.id, input.executionId))
-          .limit(1);
-        return current ? executionTerminationState(current) : null;
-      }),
+    requestExit: (input) => database.query(requestExitWrite(input)),
 
     canAdmitNode: (executionId) =>
       database.query(async (db) => {
@@ -888,50 +853,170 @@ export function makeRunsMethods(
         };
       }),
 
-    finishRun: (input) =>
-      database.query(async (db) => {
-        const claimGuard =
-          input.status === "canceled"
-            ? eq(workflowExecutions.terminationKind, "cancel")
-            : input.status === "exited"
-              ? eq(workflowExecutions.terminationKind, "exit")
-              : isNull(workflowExecutions.terminationKind);
-        const updated = await db
-          .update(workflowExecutions)
-          .set({
-            status: input.status,
-            output: input.output,
-            error: input.error,
-            waitingAt: null,
-            cancelledAt: input.status === "canceled" ? new Date() : null,
-            completedAt: new Date(),
-            // Derived here rather than passed in, because the caller's clock is
-            // the workflow function body, which a durable runtime re-runs on
-            // every attempt and after every wait. The row holds when it started,
-            // so both ends of the elapsed come from the same place.
-            duration: sql`round(extract(epoch from ((now() at time zone 'utc') - ${workflowExecutions.startedAt})) * 1000)::text`,
-          })
-          .where(
-            and(
-              eq(workflowExecutions.id, input.executionId),
-              inArray(workflowExecutions.status, [
-                ...IN_FLIGHT_EXECUTION_STATUSES,
-              ]),
-              claimGuard
-            )
-          )
-          .returning(TERMINATION_COLUMNS);
-
-        const [written] = updated;
-        if (written) {
-          return executionTerminationState(written, true);
-        }
-        const [current] = await db
-          .select(TERMINATION_COLUMNS)
-          .from(workflowExecutions)
-          .where(eq(workflowExecutions.id, input.executionId))
-          .limit(1);
-        return current ? executionTerminationState(current) : null;
-      }),
+    finishRun: (input) => database.query(finishRunWrite(input)),
   };
+}
+
+type MarkRunningInput = Parameters<RunsRepoMethods["markRunning"]>[0];
+type MarkWaitingIfParkedInput = Parameters<
+  RunsRepoMethods["markWaitingIfParked"]
+>[0];
+type RequestExitInput = Parameters<RunsRepoMethods["requestExit"]>[0];
+type FinishRunInput = Parameters<RunsRepoMethods["finishRun"]>[0];
+
+/** The update behind `markRunning`, on whichever handle the caller holds. */
+export function markRunningWrite(input: MarkRunningInput) {
+  return async (db: Executor): Promise<boolean> => {
+    const moved = await db
+      .update(workflowExecutions)
+      .set({ status: "running", waitingAt: null })
+      .where(
+        and(
+          eq(workflowExecutions.id, input.executionId),
+          inArray(workflowExecutions.status, ["waiting", "running"]),
+          eq(workflowExecutions.workflowVersionId, input.workflowVersionId),
+          claimAdmits(input.side)
+        )
+      )
+      .returning({ id: workflowExecutions.id });
+
+    return moved.length > 0;
+  };
+}
+
+/** The update behind `markWaitingIfParked`. */
+export function markWaitingIfParkedWrite(input: MarkWaitingIfParkedInput) {
+  return async (db: Executor): Promise<boolean> => {
+    const parked = await db
+      .update(workflowExecutions)
+      .set({ status: "waiting", waitingAt: new Date() })
+      .where(
+        and(
+          eq(workflowExecutions.id, input.executionId),
+          eq(workflowExecutions.status, "running"),
+          notExitClaimed,
+          exists(
+            db
+              .select({ id: workflowWaitStates.id })
+              .from(workflowWaitStates)
+              .where(
+                and(
+                  eq(workflowWaitStates.executionId, workflowExecutions.id),
+                  eq(workflowWaitStates.status, "waiting")
+                )
+              )
+          )
+        )
+      )
+      .returning({ id: workflowExecutions.id });
+
+    return parked.length > 0;
+  };
+}
+
+/** The update behind `requestExit`. */
+export function requestExitWrite(input: RequestExitInput) {
+  return async (db: Executor): Promise<ExecutionTerminationState | null> => {
+    const [written] = await db
+      .update(workflowExecutions)
+      .set({
+        terminationKind: "exit",
+        terminationRequestedAt: input.requestedAt ?? new Date(),
+        terminationReason: input.reason,
+        terminationNodeId: input.nodeId,
+      })
+      .where(inFlightExecution(input.executionId, "started"))
+      .returning(TERMINATION_COLUMNS);
+
+    return written
+      ? executionTerminationState(written, true)
+      : readTerminationState(db, input.executionId);
+  };
+}
+
+/**
+ * The terminal write behind `finishRun`. A fenced caller holds the schedule
+ * row `for update`, because the write deletes it.
+ */
+export function finishRunWrite(input: FinishRunInput) {
+  return (db: Executor): Promise<ExecutionTerminationState | null> =>
+    endExecutions(db, [input.executionId], async (tx) => {
+      const claimGuard =
+        input.status === "canceled"
+          ? eq(workflowExecutions.terminationKind, "cancel")
+          : input.status === "exited"
+            ? eq(workflowExecutions.terminationKind, "exit")
+            : isNull(workflowExecutions.terminationKind);
+      const [written] = await tx
+        .update(workflowExecutions)
+        .set({
+          status: input.status,
+          output: input.output,
+          error: input.error,
+          waitingAt: null,
+          cancelledAt: input.status === "canceled" ? new Date() : null,
+          completedAt: new Date(),
+          // Derived here rather than passed in, because the caller's clock is
+          // the workflow function body, which a durable runtime re-runs on
+          // every attempt and after every wait. The row holds when it started,
+          // so both ends of the elapsed come from the same place.
+          duration: sql`round(extract(epoch from ((now() at time zone 'utc') - ${workflowExecutions.startedAt})) * 1000)::text`,
+        })
+        .where(
+          and(
+            eq(workflowExecutions.id, input.executionId),
+            inArray(workflowExecutions.status, [
+              ...IN_FLIGHT_EXECUTION_STATUSES,
+            ]),
+            claimGuard
+          )
+        )
+        .returning(TERMINATION_COLUMNS);
+
+      return written
+        ? {
+            result: executionTerminationState(written, true),
+            ended: [written.executionId],
+          }
+        : {
+            result: await readTerminationState(tx, input.executionId),
+            ended: [],
+          };
+    });
+}
+
+/** The stored boundary of one Execution, or null when the row is absent. */
+async function readTerminationState(
+  db: Executor,
+  executionId: string
+): Promise<ExecutionTerminationState | null> {
+  const [current] = await db
+    .select(TERMINATION_COLUMNS)
+    .from(workflowExecutions)
+    .where(eq(workflowExecutions.id, executionId))
+    .limit(1);
+  return current ? executionTerminationState(current) : null;
+}
+
+/**
+ * Runs a write that may make Executions terminal, as one transaction.
+ *
+ * The candidates' schedule rows are locked first, in the order every fenced
+ * write takes them. `write` reports which Executions it ended, and their
+ * schedule rows and step memos are deleted before the transaction commits.
+ * Inside a fenced write the transaction is a savepoint of the fenced one.
+ */
+export function endExecutions<A>(
+  db: Executor,
+  candidateIds: readonly string[],
+  write: (
+    tx: WfGraphTransaction
+  ) => Promise<{ result: A; ended: readonly string[] }>
+): Promise<A> {
+  return db.transaction(async (tx) => {
+    await lockSchedules(tx, candidateIds);
+    const { result, ended } = await write(tx);
+    await dropExecutorState(tx, ended);
+    return result;
+  });
 }

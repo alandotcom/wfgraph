@@ -616,4 +616,166 @@ describePostgres("PostgreSQL concurrency", () => {
     );
     expect((await start({ runMode: "test" }, "d_4")).status).toBe("started");
   });
+
+  /** A run with a schedule row, leased to one pass, parked on two Waits. */
+  const leasedRunParkedTwice = (connection: ConformanceConnection, now: Date) =>
+    connection.run(
+      Effect.gen(function* () {
+        const executions = yield* ExecutionRepo;
+        const started = yield* executions.startForEntity({
+          execution: {
+            workflowId: "wf_1",
+            workflowVersionId: "ver_1",
+            startSource: "manual",
+            runMode: "live",
+            input: {},
+          },
+          concurrency: "unlimited",
+          supersededReason: "newer start",
+        });
+        if (started.status !== "started") throw new Error("Start refused");
+        const executionId = started.execution.id;
+        yield* executions.scheduleExecution({
+          executionId,
+          kind: "run",
+          wakeAt: now,
+        });
+        const claimed = yield* executions.claimDue({
+          workerId: "worker_1",
+          limit: 100,
+          leaseMs: 60_000,
+          now,
+        });
+        const own = claimed.find((row) => row.executionId === executionId);
+        if (!own) throw new Error("The run was not claimed");
+        const parkOn = (nodeId: string, offsetMs: number) =>
+          executions.startWait({
+            side: "started",
+            executionId,
+            workflowId: "wf_1",
+            runId: "run_1",
+            nodeId,
+            nodeName: nodeId,
+            workflowVersionId: "ver_1",
+            waitType: "event",
+            resumeToken: `${executionId}-${nodeId}`,
+            waitUntil: new Date(now.getTime() + offsetMs),
+            subscribedEvents: ["appointment/approved"],
+          });
+        const woken = yield* parkOn("wait_a", 3_600_000);
+        yield* parkOn("wait_b", 7_200_000);
+        if (!woken) throw new Error("The park was refused");
+        return {
+          executionId,
+          fence: { executionId, ownerToken: own.ownerToken },
+          wokenWaitStateId: woken.waitStateId,
+        };
+      })
+    );
+
+  // The release and the producer both lock the schedule row before anything
+  // else. Without that, a release could read the wait rows before the wake
+  // committed, the producer could find the row still leased and leave it, and
+  // the run would sleep until another Wait's deadline with a woken branch
+  // nobody runs.
+  it("never leaves a run waiting while a park holds a wake no pass consumed", async () => {
+    const [releaser, producer] = await openRacers(2);
+    await seedPublishedWorkflow(releaser);
+    const now = new Date("2026-03-01T09:00:00.000Z");
+
+    for (let round = 0; round < 25; round += 1) {
+      const run = await leasedRunParkedTwice(releaser, now);
+      const [released] = await Promise.all([
+        releaser.run(
+          Effect.gen(function* () {
+            const executions = yield* ExecutionRepo;
+            return yield* executions
+              .fenced(run.fence)
+              .releasePass({ outcome: { kind: "parked" }, now });
+          })
+        ),
+        producer.run(
+          Effect.gen(function* () {
+            const executions = yield* ExecutionRepo;
+            return yield* executions.resolvePark({
+              executionId: run.executionId,
+              waitStateId: run.wokenWaitStateId,
+              wake: {
+                kind: "resume",
+                eventName: "appointment/approved",
+                payload: {},
+                deliveryId: `delivery_${round}`,
+              },
+              now,
+            });
+          })
+        ),
+      ]);
+      const schedule = await releaser.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          return yield* executions.findSchedule(run.executionId);
+        })
+      );
+
+      // Whichever committed first, the wake reached the schedule row: the
+      // release saw it and queued the run, or the producer found the run
+      // waiting and queued it.
+      expect(schedule?.state, `round ${round}`).toBe("queued");
+      expect(["queued", "waiting"]).toContain(released.state);
+    }
+  });
+
+  it("leases one due row to exactly one of two claimers", async () => {
+    const [first, second] = await openRacers(2);
+    await seedPublishedWorkflow(first);
+    const now = new Date("2026-03-01T09:00:00.000Z");
+
+    for (let round = 0; round < 25; round += 1) {
+      const executionId = await first.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const started = yield* executions.startForEntity({
+            execution: {
+              workflowId: "wf_1",
+              workflowVersionId: "ver_1",
+              startSource: "manual",
+              runMode: "live",
+              input: {},
+            },
+            concurrency: "unlimited",
+            supersededReason: "newer start",
+          });
+          if (started.status !== "started") throw new Error("Start refused");
+          yield* executions.scheduleExecution({
+            executionId: started.execution.id,
+            kind: "run",
+            wakeAt: now,
+          });
+          return started.execution.id;
+        })
+      );
+      const claim = (connection: ConformanceConnection, workerId: string) =>
+        connection.run(
+          Effect.gen(function* () {
+            const executions = yield* ExecutionRepo;
+            return yield* executions.claimDue({
+              workerId,
+              limit: 1,
+              leaseMs: 60_000,
+              now,
+            });
+          })
+        );
+
+      const claims = await Promise.all([
+        claim(first, "worker_a"),
+        claim(second, "worker_b"),
+      ]);
+      const winners = claims.flat();
+
+      expect(winners, `round ${round}`).toHaveLength(1);
+      expect(winners[0]?.executionId).toBe(executionId);
+    }
+  });
 });

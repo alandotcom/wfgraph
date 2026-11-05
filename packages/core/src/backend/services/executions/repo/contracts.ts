@@ -1,9 +1,15 @@
+import type { Effect } from "effect";
 import {
+  type ExecutionScheduleKind,
+  type ExecutionScheduleState,
+  type ParkWake,
   workflowExecutionEvents,
   workflowExecutionLogs,
   workflowExecutions,
   workflowWaitStates,
 } from "#src/backend/lib/db/schema";
+import type { DatabaseError } from "#src/backend/lib/effect/database";
+import type { Conflict } from "#src/backend/lib/effect/failures";
 import type {
   RunScopedAuditEventType,
   WorkflowScopedAuditEventType,
@@ -12,14 +18,132 @@ import type {
   EntityEligibilityReason,
   WorkflowExecutionStatus,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
-import type { JsonObject, JsonObjectDraft } from "@wfgraph/shared/types/json";
+import type {
+  JsonObject,
+  JsonObjectDraft,
+  JsonValue,
+} from "@wfgraph/shared/types/json";
 import type { WorkflowVersionKind } from "@wfgraph/shared/graph/version-kinds";
+
+export type {
+  ExecutionScheduleKind,
+  ExecutionScheduleState,
+  ParkWake,
+} from "#src/backend/lib/db/schema";
+
+/**
+ * The pass a write is made for: the Execution it runs and the fencing token its
+ * claim minted. A write carrying a fence commits only while the Execution's
+ * schedule row is still `leased` under that token.
+ */
+export type OwnerFence = {
+  executionId: string;
+  ownerToken: string;
+};
+
+/**
+ * A write the engine's store makes, as the Inngest path calls it: unfenced, so
+ * it is never refused for ownership. `ExecutionRepo.fenced` offers the same
+ * write fenced on a pass.
+ */
+export type StoreWrite<Input, Output> = (
+  input: Input
+) => Effect.Effect<Output, DatabaseError>;
+
+/**
+ * The fenced twin of a `StoreWrite`. It takes the Execution's schedule row
+ * inside its own transaction before anything else, and answers `Conflict`
+ * without writing when that row no longer names the pass.
+ */
+export type FencedWrite<Write> =
+  Write extends StoreWrite<infer Input, infer Output>
+    ? (input: Input) => Effect.Effect<Output, DatabaseError | Conflict>
+    : never;
+
+/** One row of `workflow_execution_schedule`, as the executor reads it. */
+export type ExecutionSchedule = {
+  executionId: string;
+  kind: ExecutionScheduleKind;
+  state: ExecutionScheduleState;
+  wakeAt: Date;
+  attempt: number;
+  leaseExpiresAt: Date | null;
+  ownerToken: string | null;
+  workerId: string | null;
+  lastError: string | null;
+};
+
+/** A schedule row a claim leased to one worker's pass. */
+export type ClaimedExecution = {
+  executionId: string;
+  kind: ExecutionScheduleKind;
+  /** The fencing token every write of this pass carries. */
+  ownerToken: string;
+  /**
+   * The retry counter after the claim. It is one higher than before only when
+   * the claim swept an expired lease.
+   */
+  attempt: number;
+  leaseExpiresAt: Date;
+};
+
+/**
+ * How a pass that wrote no terminal record ended, which decides the schedule
+ * row its release writes.
+ *
+ * - `parked`: the body ended with work parked. The release re-queues the run
+ *   when a park holds a wake the pass did not consume, and otherwise puts it to
+ *   sleep until its earliest park deadline.
+ * - `retry`: a step threw a retriable error. The release counts an attempt and
+ *   re-queues the run after `backoffMs`.
+ * - `retries_spent`: a step's retries ran out. The release records `failure`
+ *   as that step's memoized result, resets the attempt counter, and re-queues
+ *   the run, so the step fails its node and the rest of the run goes on.
+ * - `fence_refused`: a version fence refused a write because a Migration moved
+ *   the run. Nothing failed, so the release re-queues the run without counting
+ *   an attempt, and the next pass loads the version the run now pins.
+ */
+export type PassOutcome =
+  | { kind: "parked" }
+  | { kind: "retry"; error: string; backoffMs: number }
+  | { kind: "retries_spent"; stepId: string; failure: JsonValue }
+  | { kind: "fence_refused" };
+
+/** The schedule row a release left behind. */
+export type ReleasedSchedule = {
+  state: Extract<ExecutionScheduleState, "queued" | "waiting">;
+  wakeAt: Date;
+  attempt: number;
+};
+
+/** One memoized step of an Execution. */
+export type StepMemoEntry = {
+  stepId: string;
+  /** The schedule row's attempt counter when the step's value was recorded. */
+  attempt: number;
+  value: JsonValue;
+};
+
+/** What a producer's write did to a park and to its run's schedule row. */
+export type ParkResolution = {
+  /** Whether this call set the wake. False when the row had left `waiting`. */
+  resolved: boolean;
+  /** Whether this call moved a `waiting` schedule row to `queued`. */
+  requeued: boolean;
+};
 
 /** One row of `workflow_executions`, as the Runs view and the engine see it. */
 export type WorkflowExecution = typeof workflowExecutions.$inferSelect;
 
-/** One row of `workflow_execution_logs`, one node's attempt within a run. */
-export type WorkflowExecutionLog = typeof workflowExecutionLogs.$inferSelect;
+/**
+ * One row of `workflow_execution_logs`, one node's attempt within a run.
+ *
+ * `released_outlet` is left out: no write fills it yet, and no reader asks.
+ */
+export type WorkflowExecutionLog = Omit<
+  typeof workflowExecutionLogs.$inferSelect,
+  "releasedOutlet"
+>;
 
 /**
  * One row of `workflow_execution_events`, the audit trail beside a run.
@@ -33,8 +157,28 @@ export type WorkflowExecutionEvent = Omit<
   "seq"
 >;
 
-/** One row of `workflow_wait_states`, a node parked waiting to be woken. */
-export type WorkflowWaitState = typeof workflowWaitStates.$inferSelect;
+/**
+ * One row of `workflow_wait_states`, a node parked waiting to be woken.
+ *
+ * The database executor's two columns, `park_step_id` and `wake`, are left
+ * out: they are read through `findPark`, which is the one reader that needs
+ * them.
+ */
+export type WorkflowWaitState = Omit<
+  typeof workflowWaitStates.$inferSelect,
+  "parkStepId" | "wake"
+>;
+
+/** A park as the database executor reads it back. */
+export type ParkState = {
+  waitStateId: string;
+  executionId: string;
+  status: WorkflowWaitState["status"];
+  /** The durable step that parked on this row, or null before one recorded it. */
+  parkStepId: string | null;
+  /** How the park was resolved, or null while it is still parked. */
+  wake: ParkWake | null;
+};
 
 /**
  * The columns every entrypoint fills when it opens a run.
