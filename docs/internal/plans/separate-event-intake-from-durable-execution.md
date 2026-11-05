@@ -923,8 +923,9 @@ available for today.
   calls `driveWithReplay` directly and six of them assert ADR-0011's branch
   runs, so phase 1 first makes the harness take a runtime, re-run a parked body
   and wake a run on any resolution. The cases that enter a Wait in place then
-  run unchanged on both drivers, and each branch-run assertion is rewritten to
-  its single-run equivalent.
+  run unchanged on both drivers, and each branch-run case gains a single-run
+  equivalent beside it. The branch-run cases keep covering the Inngest driver
+  until phase 5 deletes it.
 - **Memo write amplification.** Five writes per node is fine at the scale this
   product runs at; it is the number to watch. The Design B cursor model is the
   answer if it becomes the bottleneck.
@@ -953,8 +954,9 @@ Each phase ends green against the AGENTS.md check list.
    log row, in both schemas; the producer and release writes as `ExecutionRepo`
    methods; and a Postgres and a SQLite driver for `WorkflowExecutionRuntime`.
    Exit criteria: every case in the eight suites that enters a Wait in place
-   passes unchanged on both drivers; each ADR-0011 branch-run assertion is rewritten to its
-   single-run equivalent and passes; S2, a Cancel while both Waits are parked,
+   passes unchanged on both drivers; each ADR-0011 branch-run case gains a
+   single-run equivalent that passes, and the branch-run case stays until phase
+   5; S2, a Cancel while both Waits are parked,
    and a Wait behind a Wait pass under the harness's virtual clock and once by
    wall clock with scaled durations, within a second of their targets, on both
    backends; and `.claude/skills/verify-durable-executor/check.sh` passes. The
@@ -984,8 +986,8 @@ Each phase ends green against the AGENTS.md check list.
 
 1. Decided: the Inngest executor driver does not survive past phase 5. Keeping
    it for hosts that cannot run a worker would keep ADR-0011's branch runs, kill
-   event and sweep. Phase 1 therefore rewrites the ADR-0011 branch-run tests to
-   their single-run equivalents.
+   event and sweep. Phase 1 adds a single-run equivalent beside each ADR-0011
+   branch-run test, and phase 5 deletes the branch-run tests with the driver.
 2. Decided: per-Event flow control is dropped, because no Event in this
    repository or in Fountain's spike declares any of it (section 7.4).
 3. Decided: the Cloudflare Worker backend is a release target for the executor,
