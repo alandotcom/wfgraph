@@ -1,6 +1,6 @@
 ---
 name: verify-durable-executor
-description: Model-check the Postgres executor proposed to replace Inngest (Design A and the event inbox in docs/internal/plans/separate-event-intake-from-durable-execution.md) with TLA+ models run by tla-ts. Use when a change touches that design's claim, lease, pass, release, park resolution, cancellation, Exit claim, retries, Migration (including a Wait that changes mode), inbox, delivery fan-out to several workflows, Wait wakes from one or several arrivals, Wait match expressions, steps inside a handler, admission Entity Eligibility, Concurrency, or the drivers' leases, heartbeats, polling and Worker platform limits, when the executor it describes is being built, or when a change touches the existing code the design reuses (claimWaitState, openResume's version fence, admitNode, finishRun, startForEntity, repinVersion, answerFromCommittedDecision). Triggers on "verify the executor", "model-check the design", "does the release still hold", or a claim that a run cannot be stranded, woken twice, opened twice, or run after it ended.
+description: Model-check the database executor that replaces Inngest (Design A and the event inbox in docs/internal/plans/separate-event-intake-from-durable-execution.md) with TLA+ models run by tla-ts. Use when a change touches that design's claim, lease, pass, release, park resolution, cancellation, Exit claim, retries, Migration (including a Wait that changes mode), inbox, delivery fan-out to several workflows, Wait wakes from one or several arrivals, Wait match expressions, steps inside a handler, admission Entity Eligibility, Concurrency, or the drivers' leases, heartbeats, polling and Worker platform limits, when a change touches the executor's code (packages/core/src/backend/executor, the schedule, step memo and fenced writes in services/executions/repo and persistence/sqlite/executions, the engine's parked Waits), or when a change touches the existing code the design reuses (claimWaitState, openResume's version fence, admitNode, finishRun, startForEntity, repinVersion, answerFromCommittedDecision). Triggers on "verify the executor", "model-check the design", "does the release still hold", or a claim that a run cannot be stranded, woken twice, opened twice, or run after it ended.
 ---
 
 # Verify the durable executor design
@@ -26,26 +26,40 @@ Find out whether the verification is stale before you trust it:
 
 ```sh
 git diff --stat -- docs/internal/plans/separate-event-intake-from-durable-execution.md
-git log --oneline 9f79c206.. -- docs/internal/plans/separate-event-intake-from-durable-execution.md
-git log --oneline a92cea15.. -- \
+git log --oneline e02009e3.. -- docs/internal/plans/separate-event-intake-from-durable-execution.md
+git log --oneline ba704be1.. -- \
+  packages/core/src/backend/executor \
+  packages/core/src/backend/services/executions/repo/schedule.ts \
+  packages/core/src/backend/services/executions/repo/fenced-writes.ts \
+  packages/core/src/backend/services/executions/repo/fencing.ts \
+  packages/core/src/backend/services/executions/repo/release-policy.ts \
+  packages/core/src/backend/services/executions/repo/node-logs.ts \
   packages/core/src/backend/services/executions/repo/waits.ts \
   packages/core/src/backend/services/executions/repo/runs.ts \
   packages/core/src/backend/services/executions/repo/index.ts \
+  packages/core/src/backend/persistence/sqlite/executions \
+  packages/core/src/backend/lib/db/schema.ts \
+  packages/core/src/backend/engine/core.ts \
+  packages/core/src/backend/engine/wait.ts \
+  packages/core/src/backend/engine/runtime.ts \
+  packages/core/src/backend/engine/scheduler.ts \
+  packages/core/src/backend/engine/cancel-boundary.ts \
+  packages/core/src/backend/engine/db-store.ts \
+  packages/core/src/backend/engine/step-log.ts \
   packages/core/src/backend/services/executions/end-runs.ts \
   packages/core/src/backend/services/workflows/lifecycle/cancel.ts \
   packages/core/src/backend/services/workflows/lifecycle/concurrency.ts \
   packages/core/src/backend/services/workflows/lifecycle/deliver-event.ts \
   packages/core/src/backend/services/workflows/lifecycle/resume-waits.ts \
   packages/core/src/backend/lib/inngest/event-listener-function.ts \
-  packages/core/src/backend/services/workflows/migration/migrate.ts \
-  packages/core/src/backend/engine/wait.ts \
-  packages/core/src/backend/engine/scheduler.ts \
-  packages/core/src/backend/engine/cancel-boundary.ts
+  packages/core/src/backend/services/workflows/migration/migrate.ts
 ```
 
 The first command shows an edit you have not committed yet. Output from the
 other two means the models may no longer describe the design. Read each listed
-commit against the coverage record before you rely on a pass.
+commit against the coverage record before you rely on a pass. The `Migration`
+model is confirmed against an older commit of the design doc than the other
+models; "Last confirmed against" in the coverage record says which and why.
 
 ## Run it
 
@@ -243,12 +257,14 @@ current match. About 511,000 states.
 One node opens its log row in a `log-open` step, reads a value from vendor A in
 a `read` step, sends it to vendor B in a `send` step with an idempotency key
 (ADR-0009), and closes its log row in a `log-close` step. Vendor A may answer
-differently each time. The send may succeed, be refused (a `StepFailure`,
-stored as a value), or throw a retriable error. A pass loads the memo when it
-claims the run, and `run(step, fn)` writes the memo row after `fn`, fenced on
-the lease. The log writes and the node's outcome are store writes, which commit
-in their own transactions and are fenced on the lease too ("Fencing store
-writes"). About 3,800 states.
+differently each time, or throw a retriable error. The send may succeed, be
+refused (a `StepFailure`, stored as a value), or throw a retriable error. Each
+step counts its own failures, and an expired lease counts against the step its
+holder was running ("Retries"). A pass loads the memo when it claims the run,
+and `run(step, fn)` writes the memo row after `fn`, fenced on the lease. The log
+writes and the node's outcome are store writes, which commit in their own
+transactions and are fenced on the lease too ("Fencing store writes"). About
+15,700 states.
 
 This is at-least-once by design: a worker whose lease expired mid-step can still
 call a vendor once more before its memo write is refused, and a crash or an
@@ -260,7 +276,7 @@ The rules check what the design promises despite that.
 | `WriteAppliedOnce` | Vendor B applies the send once, however many times the step runs. | A patient gets the same message twice. |
 | `AppliedWriteMatchesTheOutput` | What vendor B applied is the value the node records as its output. | The Runs view shows a value other than the one sent. |
 | `RefusalFailsTheNodeOnce` | A refused call is never retried as a transient error, and no lease holder sends again after a refusal is recorded. | A vendor's 400 is sent four more times. |
-| `FailedOnlyOnRefusalOrSpentRetries` | The node fails only on a refusal or after its retries were spent. | A transient error fails the node. |
+| `FailedOnlyOnRefusalOrSpentRetries` | The node fails only on a refusal, or after one of its steps spent that step's own retries. | A transient error fails the node, or a step gets only the retries an earlier step left. |
 | `OneLogRowPerNode` | The node has one log row, however many passes open it. | The Runs view shows a node twice, and a later node reads the wrong row's output. |
 | `LogClosedOnce` | The node's log row is closed once, however many passes close it. | A finished node's output or duration is overwritten. |
 | `NodeOutcomeIsFinal` | Once the node has succeeded or failed, nothing rewrites that outcome. | A stale worker turns a succeeded node into a failed one. |
@@ -323,30 +339,40 @@ atomic. Its ticker is the `node` driver's poll.
 Each guard the design depends on is a named operator in its model, so a reader
 can find it and a mutation can remove it.
 
-| Model part | Design doc section | Existing code the design reuses |
+The last column names the code that implements each model part. Phase 1 built
+the executor's claim, pass, release, fenced writes and parked Waits. A part phase
+1 did not build names today's code, which the design reuses: the Event delivery,
+inbox and Arrivals rows stay on the Inngest path until phase 3. A design doc
+section stays in the middle column where the code alone does not explain the
+rule. Paths are under `packages/core/src/backend`, with `repo/` for
+`services/executions/repo/`, `sqlite/` for `persistence/sqlite/executions/`,
+`executions/` for `services/executions/`, and `lifecycle/` and `migration/` for
+the directories of those names under `services/workflows/`.
+
+| Model part | Design doc section | Code |
 | --- | --- | --- |
-| `DurableExecutor`: `Claim`, `ClaimWhenDue`, `ParkIsDue` | Design A, "The invocation", step 1 | |
-| `LeaseHeldBy`, `Fenced` (all models) | "The runtime", `run(step, fn)` | |
-| `VisitStarted`, `VisitCanceled`, `RunsPast`, `RunsOutlet` | "A park is a value"; "The runtime", `waitForEvent` | `openResume` and `createWaitState` fences in `engine/wait.ts`; `startWait` in `repo/waits.ts` |
-| `StartedSideAdmits`, `CanceledSideAdmits` | "Cancellation"; CONTEXT.md "Canceled Branch" | `claimAdmits` in `repo/runs.ts` |
-| `EnterCanceledOutlet` | "Cancellation" | the `lifecycle-check` step in `engine/cancel-boundary.ts` |
-| `AdmitJoin`, `ExitBeforeJoin`, `ExitBeforeBranch`, `ClaimIsFree` | "Exit claim"; CONTEXT.md "Entity Eligibility" | `admitNode` in `engine/scheduler.ts`; `requestExit` in `repo/runs.ts` |
-| `JoinSucceeds`, `JoinFails`, `Release`, `RetriesSpent`, `FailedNodeEndsRun` | "The invocation", step 4; "Retries" | `finishRun` in `repo/runs.ts`; the terminal status `executeWorkflow` chooses in `engine/terminal-record.ts` |
-| `ReleaseReadsWaitRows`, `ReleaseReadsWaitRow` | "The invocation", step 4 | |
-| `LeaseExpires`, `SweepDeadLease`, `Crash` (all models) | "Lease and liveness" | |
-| `EventWake`, `WakeIsUnclaimed` | "Resolving a park" (the `status = 'waiting'` update) | `claimWaitState` in `repo/waits.ts` |
-| `CancelEvent` | "Cancellation" | `requestCanceledOutlet` in `lifecycle/cancel.ts` |
-| `PolicyCancel`, `RunInFlight` | "Cancellation", the policy cancel | `cancelInFlightRuns` in `executions/end-runs.ts` |
-| `Migration`: `Repin`, `RepinNeedsAPark` | "Migration"; ADR-0019 | `repinVersion` in `repo/runs.ts`; `migrateExecutions` in `migration/migrate.ts` |
-| `Migration`: `MigrateWake`, `Prepare`, `Park`, `StillPinned` | "Migration" | `reparkWaitState` and `markExecutionRunning` fences in `engine/wait.ts` |
-| `Migration`: `Release`, `FenceRefusalCountsNoAttempt` | "Migration"; scenario S6 | |
+| `DurableExecutor`: `Claim`, `ClaimWhenDue`, `ParkIsDue` | | `claimDue` in `repo/schedule.ts` and `sqlite/schedule.ts`, which resolves each claimed run's overdue `waiting` parks with `TIMEOUT_WAKE` in the claim's transaction (`resolveOverdueParks`); `claimAttempt` in `repo/release-policy.ts`, which counts nothing for a row a wake or a release queued |
+| `LeaseHeldBy`, `Fenced` (all models) | | `holdsLease` and `writeFenced` in `repo/schedule.ts` and `sqlite/schedule.ts`; `watchPassWrites` in `executor/runtime.ts`, which stops the pass at the first write the fence refuses with `LeaseLost` |
+| `VisitStarted`, `VisitCanceled`, `RunsPast`, `RunsOutlet` | | `waitForEvent` in `executor/runtime.ts`, which answers `{ kind: "woke" }` from the wait row's `wake`, or records the parking step (`recordParkStep`) and answers `{ kind: "parked" }`; `runWaitAttempt` in `engine/wait.ts`, which halts the branch on `parked`; `settle` and `PassParked` in `engine/scheduler.ts` and `endParked` in `engine/core.ts`, the pass's one parked exit; the `openResume` and `createWaitState` fences in `engine/wait.ts`; `startWait` in `repo/waits.ts` |
+| `StartedSideAdmits`, `CanceledSideAdmits` | CONTEXT.md "Canceled Branch" | `claimAdmits` in `repo/runs.ts` and `sqlite/runs.ts` |
+| `EnterCanceledOutlet` | | the `lifecycle-check` step in `engine/cancel-boundary.ts`; `runCanceledOutlet` in `engine/scheduler.ts` |
+| `AdmitJoin`, `ExitBeforeJoin`, `ExitBeforeBranch`, `ClaimIsFree` | CONTEXT.md "Entity Eligibility" | `admitNode` in `engine/scheduler.ts`; `requestExitWrite` in `repo/runs.ts`, which writes a free claim only; the fenced `requestExit` in `repo/fenced-writes.ts` and `sqlite/fenced-writes.ts`, which resolves the run's other `waiting` parks with the `exit` wake in the same transaction (`exitWakeForClaim`, `resolveOpenParks`) |
+| `JoinSucceeds`, `JoinFails`, `Release`, `RetriesSpent`, `FailedNodeEndsRun` | "Retries" | `run` in `executor/runtime.ts`, which stops the pass when a step throws and fails a step whose memo row is `failed`; `decideFailedPass` in `executor/pass.ts`; `releasePass` in `repo/schedule.ts` and `sqlite/schedule.ts`, with `countStepFailure` and `decideRelease` in `repo/release-policy.ts`; the terminal status `executeWorkflow` chooses in `engine/core.ts`, written by `finishRunWrite` in `repo/runs.ts`, whose `endExecutions` deletes the schedule row and cancels the run's open parks. The model keeps one run counter for the Join's failures and every expired lease, and the code counts each step's failures on its memo row; `Handler` checks the per-step count. The code produces fewer orders than the model: a throwing step ends the pass, so a Canceled outlet's Wait cannot park in the same pass in which an admitted Join throws. It parks on the pass after the Join's node fails, as the case "runs the Canceled outlet and ends canceled when a Join admitted before the Cancel Event spends its retries" in `executor/testing/pass-cases.ts` shows. |
+| `ReleaseReadsWaitRows`, `ReleaseReadsWaitRow` | | `releasePass` in `repo/schedule.ts` and `sqlite/schedule.ts`, which locks the schedule row before it reads the run's wait rows; `decideRelease` in `repo/release-policy.ts`, which re-queues a run whose wait row holds a wake no pass consumed |
+| `LeaseExpires`, `SweepDeadLease`, `Crash` (all models) | | the expired-lease sweep in `claimDue`, which counts one failure against the step the schedule row records as running (`sweptStepFailures`), or against the run when no step is recorded (`claimAttempt`); `renewLeaseWhileRunning` in `executor/pass.ts`, which records the running step. `DurableExecutor` and `Migration` count every expired lease against the run. |
+| `EventWake`, `WakeIsUnclaimed` | "Resolving a park" | `resolvePark` in `repo/schedule.ts` and `sqlite/schedule.ts`, which locks the schedule row and then writes the wake only onto a row still `waiting`. `resolvePark` checks neither the run's status nor its claim; the terminal write and `requestExit` leave no row `waiting`, which gives the model's in-flight and Exit conditions. No producer calls `resolvePark` until phase 2, and today's Event wake is `claimWaitState` in `repo/waits.ts`. |
+| `CancelEvent` | "Cancellation" | `requestCanceledOutlet` in `lifecycle/cancel.ts`, on the Inngest path. Phase 2 moves the Cancel claim's outlet request onto the executor's row writes. |
+| `PolicyCancel`, `RunInFlight` | | `cancelInFlightRuns` in `executions/end-runs.ts`; `endInFlight` in `repo/runs.ts`, whose `endExecutions` deletes the schedule row and cancels the run's open parks in the same transaction |
+| `Migration`: `Repin`, `RepinNeedsAPark` | "Migration"; ADR-0019; section 11, phase 2 | `repinVersion` in `repo/runs.ts`; `migrateExecutions` in `migration/migrate.ts`, both on the Inngest path. Section 11's phase 2 lets `repinVersion` move a run that is running or holds a woken Wait, which `RepinNeedsAPark` forbids. The `repin-while-running` mutation shows that dropping this guard alone breaks `BelowRunsThePinnedVersion`. |
+| `Migration`: `MigrateWake`, `Prepare`, `Park`, `StillPinned` | "Migration" | the `createWaitState`, `reparkWaitState` and `markExecutionRunning` fences in `engine/wait.ts`. `migrateExecutions` sends the migrate wake on the Inngest path until phase 2. |
+| `Migration`: `Release`, `FenceRefusalCountsNoAttempt` | | `versionRefused` in `engine/wait.ts`, which fails with the `version_refused` kind; `decideFailedPass` in `executor/pass.ts`, which releases that failure as `fence_refused`; `decideRelease` in `repo/release-policy.ts`, which re-queues the run due at once and counts nothing |
 | `Intake`: `SendViaApp`, `SendInHostTransaction`, `PollInbox`, `InboxKeyIsUnique` | Section 7.1 and 7.3 | |
 | `Intake`: `ClaimDelivery`, `LifecycleStep`, `RecordMemo`, `FinishDelivery` | Section 7.2 | `runEventListener` in `lib/inngest/event-listener-function.ts` |
-| `Intake`: `StartWrite`, `DeliveryIdIsUnique`, `ExecutionAndScheduleTogether` | Section 7.1; scenario S13 | `answerFromCommittedDecision` in `lifecycle/deliver-event.ts`; `startForEntity` in `repo/index.ts` |
+| `Intake`: `StartWrite`, `DeliveryIdIsUnique`, `ExecutionAndScheduleTogether` | Section 7.1; scenario S13 | `answerFromCommittedDecision` in `lifecycle/deliver-event.ts`; `startForEntity` in `repo/index.ts`, which writes no schedule row until phase 2 |
 | `Intake`: Concurrency in `StartWrite`, `SupersedeDropsSchedule` | CONTEXT.md "Concurrency", "Superseded" | `startWithConcurrency` in `lifecycle/concurrency.ts` |
 | `Intake`: `CancelWrite` | "Cancellation" | `requestCancelForEntity` in `repo/runs.ts` |
-| `Migration`: `EventWakeNeedsAnEventPark` | "Resolving a park"; ADR-0019 | the `wait_type = 'event'` condition in `claimWaitState`, `repo/waits.ts` |
-| `Migration`: `ReparkMode` | "Migration"; ADR-0019 | `reparkWait` in `repo/waits.ts` |
+| `Migration`: `EventWakeNeedsAnEventPark` | "Resolving a park"; ADR-0019 | the `wait_type = 'event'` condition `claimWaitingStateByToken` and `claimWaitingStateById` pass to `claimWaitState`, in `repo/waits.ts`. `resolvePark` does not check the mode, so phase 2's Event producer has to keep this condition. |
+| `Migration`: `ReparkMode` | "Migration"; ADR-0019 | `reparkWaitWrite` in `repo/waits.ts` and `sqlite/waits.ts`, which the fenced `reparkWait` runs |
 | `Delivery`: `Lifecycle`, `Life1`, `Life2`, `Settled` | Section 7.2; CONTEXT.md "Precedence" | `runEventListener` and `settledExecutionIds` in `lib/inngest/event-listener-function.ts`; `applyLifecycleRules` in `lifecycle/deliver-event.ts` |
 | `Delivery`: `ScanAllPages`, `Candidate`, `ExcludeSettledRuns`, `SavePagesBeforeWaking` | Section 7.2 | `listWaitCandidatePage` in `lifecycle/deliver-event.ts`; `listWaitsForEvent` in `repo/waits.ts` |
 | `Delivery`: `WakeSavedPage`, `RecordWokenPage`, `WakeIsUnclaimed` | Section 7.2; "The runtime", `run(step, fn)` | `deliverWaitCandidates` in `lifecycle/deliver-event.ts`; `resumeWaitsMatchingEvent` in `lifecycle/resume-waits.ts`; `claimWaitingStateById` in `repo/waits.ts` |
@@ -354,19 +380,23 @@ can find it and a mutation can remove it.
 | `Arrivals`: `OfferOne`, `CanClaim`, `ClaimNeedsTheToken`, `RowIsWaiting` | "Resolving a park"; section 7.2 | `resumeOneWait` in `lifecycle/resume-waits.ts`; `claimWaitingStateById` in `repo/waits.ts` |
 | `Arrivals`: the refresh branch of `OfferOne`, `RefreshOnRotatedToken` | ADR-0019 | `canRefreshWaitCandidate` in `lifecycle/resume-waits.ts` |
 | `Arrivals`: `Scan`, `Record` | Section 7.2 | `listWaitCandidatePage` and `deliverWaitCandidates` in `lifecycle/deliver-event.ts` |
-| `Handler`: `Read`, `Send`, `ReadMemo`, `SendMemo`, `ReadIsMemoized`, `RefusalIsAValue` | "The runtime", `run(step, fn)`; "Retries"; ADR-0009 | `StepFailure` and `RememberedStep` in `extensions/steps/define-step.ts` |
+| `Handler`: `Read`, `Send`, `ReadMemo`, `SendMemo`, `ReadIsMemoized`, `RefusalIsAValue` | ADR-0009 | `run` in `executor/runtime.ts`, which answers a `succeeded` memo row with its value, and otherwise runs the step and records its value through `writeStepMemo` in `repo/schedule.ts` and `sqlite/schedule.ts`, fenced on the lease; `StepFailure` and `RememberedStep` in `extensions/steps/define-step.ts` |
 | `Handler`: `SendCarriesAKey` | ADR-0009 | the idempotency key `callExternal` passes, in `extensions/steps/external-http.ts` |
-| `Handler`: `Open`, `Close`, `OpenMemo`, `CloseMemo`, `LogIdIsTheStepId`, `CloseIsConditional` | "Fencing store writes" | `startStepLog` and `completeStepLog` in `engine/db-store.ts`; `openNodeLog` and `closeNodeLog` in `repo/node-logs.ts`; the `node:<n>:log-open` and `log-close` steps in `engine/step-log.ts` |
-| `Handler`: `StoreWriteIsFenced`, `MayWrite`, `Outcome`, `Release` | "Fencing store writes"; "Retries" | `createDbWorkflowStore` in `engine/db-store.ts`; `finishRun` in `repo/runs.ts` |
-| `Timing`: `NodeLease`, `NodeHeartbeat`, `NodePoll`, `Expire`, `SweepLateness` | "Lease and liveness"; "Wake latency" | |
+| `Handler`: `Open`, `Close`, `OpenMemo`, `CloseMemo`, `LogIdIsTheStepId`, `CloseIsConditional` | | `nodeLogId`, `openNodeLogWrite` and `closeNodeLogWrite` in `repo/node-logs.ts`, and their twins in `sqlite/logs.ts`: the row id derives from the execution and node ids, the insert keeps the first row, and the fenced close updates a row still `running` or `error`; `startStepLog` and `completeStepLog` in `engine/db-store.ts`; the `node:<n>:log-open` and `log-close` steps in `engine/step-log.ts`. The model has no `error` close, so it does not check a retry that corrects a row closed as `error`. |
+| `Handler`: `StoreWriteIsFenced`, `MayWrite`, `Outcome`, `Release` | | `makeFencedWrites` in `repo/fenced-writes.ts` and `makeSqliteFencedWrites` in `sqlite/fenced-writes.ts`, held to the fence's run by `guardStoreWrites` in `repo/fencing.ts`; `watchPassWrites` in `executor/runtime.ts`, through which `createDbWorkflowStore` (`engine/db-store.ts`) writes on a pass (`executor/run-body.ts`); `releasePass` in `repo/schedule.ts`; `finishRunWrite` in `repo/runs.ts`. The pass that wrote the terminal record makes its remaining store writes unfenced (the `ended` phase in `executor/runtime.ts`); no model has a write after the terminal record. |
+| `Handler`: `AttemptsArePerStep`, `FailingStep`, `RetriesSpent`, `StepOf` | "Retries"; "Lease and liveness" | `countStepFailure` and `STEP_RETRY_LIMIT` in `repo/release-policy.ts`, which count a step's failures on its memo row; `sweptStepFailures` in `repo/release-policy.ts` and the running step `renewLeaseWhileRunning` records in `executor/pass.ts`. The run's own count, for a failure no step owns, is not modelled: `claimAttempt` and `runRetriesSpent` in `repo/release-policy.ts` end such a run `failed` past the limit, which takes more faults than any model allows. |
+| `Timing`: `NodeLease`, `NodeHeartbeat`, `NodePoll`, `Expire`, `SweepLateness` | "Wake latency" | `DEFAULT_LEASE_MS`, `DEFAULT_HEARTBEAT_MS` and the `pollMs` option of `runWorkerLoop` in `executor/worker-loop.ts`; `renewLeaseWhileRunning` in `executor/pass.ts`; the expired-lease sweep in `claimDue`. The loop also claims at a released run's own `wake_at` and on a same-process wake (`createWorkerWake`), both sooner than the poll the model bounds. `NOTIFY` is phase 2. |
 | `Timing`: `WorkerLease`, `WorkerCron`, `WorkerBudget`, `QueueMaxDelay`, `Kill`, `WorkerUsesCron` | Section 8, "Cloudflare Worker over Hyperdrive" | |
-| `Timing`: `ClaimWaitsForTheDeadline` | "The invocation", step 1 (`wake_at <= now()`) | |
+| `Timing`: `ClaimWaitsForTheDeadline` | | the `wake_at <= now` condition on `queued` and `waiting` rows in `claimDue` |
 
-Last confirmed against: the design doc at `9f79c206`, and the existing code at
-`a92cea15` (`main`). Move these two commits forward only after you have read
-the covered sections and files at the new commit and confirmed that the models
-still describe them. When the executor is built, add its files to the last
-column and replace the doc sections with the code that implements them.
+Last confirmed against: the design doc at `e02009e3` and the code at
+`ba704be1` (`feat/durable-executor`), for every model. The Migration producer's
+re-queue, which phase 2 adds beside `repinVersion`, is not modelled yet; add it
+to `Migration` when phase 2 builds it. Move these commits forward only after
+you have read the covered sections and files at the new commit and confirmed
+that the models still describe them. When phase 2 or phase 3 moves a part onto
+the executor, replace its Inngest-path code in the last column with the code
+that implements it.
 
 ## Telling a real bug from a modelling error
 
@@ -417,16 +447,16 @@ back to show the rule still catches it:
 
 - `DurableExecutor` `FailedOnlyAfterRetriesSpent`: the claim counted an attempt
   each time a wake re-queued the run, so waking a Wait spent a retry. Fixed at
-  `d652b52c`. Mutation: `claim-counts-an-attempt`.
+  `de79dec4`. Mutation: `claim-counts-an-attempt`.
 - `DurableExecutor` `NoWaitLeftOpenAfterTheRunEnds` and
   `CancelClaimRunsItsOutlet`: a Join admitted before a Cancel Event failed on its
   last retry after the outlet's Wait had parked, and the release ended the run
-  `failed`, so the Outlet never ran. Fixed at `e47ef6f0`: a step whose retries
+  `failed`, so the Outlet never ran. Fixed at `a7900a58`: a step whose retries
   run out fails its node, and the run goes on to its outlet. Mutation:
   `failed-node-ends-the-run`.
 - `Migration` `FailedOnlyAfterRetriesSpent`: a refused version fence counted as
   a retry, so a Migration landing during a pass, after one expired lease, marked
-  the run failed with no step having failed. Fixed at `25e215b0`: a refused
+  the run failed with no step having failed. Fixed at `aa34a2dc`: a refused
   fence re-queues the run with the attempt counter unchanged. Mutation:
   `fence-refusal-counts-an-attempt`.
 - `Handler` `NodeOutcomeIsFinal`, `FailedOnlyOnRefusalOrSpentRetries` and
@@ -434,7 +464,7 @@ back to show the rule still catches it:
   fenced every write. A stale worker's store write could rewrite a node's
   outcome or fail a node the live worker would retry, and a lease expiry
   between a log insert and its memo row left two log rows. Fixed at
-  `9f79c206`: every store write is fenced, and each one a re-run step repeats
+  `4eab3b43`: every store write is fenced, and each one a re-run step repeats
   is idempotent. Mutations: `store-write-not-fenced`, `log-id-random`,
   `log-close-unconditional`.
 
