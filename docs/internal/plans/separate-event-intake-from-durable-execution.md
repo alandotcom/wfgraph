@@ -414,12 +414,16 @@ with `$ClaimTimeout`. The lease is shorter than any platform kill timeout
 (section 8), and the fencing token makes a lease that expired under a worker that
 was merely slow a harmless duplicate attempt rather than a duplicate side effect.
 
-**Wake latency.** Postgres: `LISTEN` on one channel, with `NOTIFY` issued by the
-re-queue write and debounced per process, and a one-second poll as the backstop.
-The notify is an optimisation only; timers always need the poll, and the recall.ai
-and DBOS write-ups show `NOTIFY` under many concurrent committers serialising
-commits, so it is batched per transaction and never per row. SQLite: an
-in-process ticker at two hundred and fifty milliseconds. Worker: section 8.
+**Wake latency.** Postgres: `LISTEN` on one channel, and a one-second poll as the
+backstop. The notify is an optimisation only; timers always need the poll. A
+transaction that issued `NOTIFY` takes a global exclusive lock at commit and holds
+it through the fsync, so those commits run one at a time and lose group commit;
+the recall.ai and DBOS write-ups both measured the ceiling this sets. The re-queue
+write therefore commits with no `NOTIFY`. Each process buffers the execution ids it
+re-queued and flushes one `NOTIFY` in its own transaction every 50 ms, so re-queue
+commits keep group commit and only the flush takes the lock. A crash loses at most
+one buffer of notifications, which the poll recovers. SQLite: an in-process ticker
+at two hundred and fifty milliseconds. Worker: section 8.
 
 **What Design A changes in the engine.** Two things, both small.
 
