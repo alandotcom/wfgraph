@@ -1,6 +1,6 @@
 ---
 name: verify-durable-executor
-description: Model-check the Postgres executor proposed to replace Inngest (Design A and the event inbox in docs/internal/plans/separate-event-intake-from-durable-execution.md) with TLA+ models run by tla-ts. Use when a change touches that design's claim, lease, pass, release, park resolution, cancellation, Exit claim, retries, Migration (including a Wait that changes mode), inbox, delivery fan-out to several workflows, Wait wakes from an arrival, or Concurrency rules, when the executor it describes is being built, or when a change touches the existing code the design reuses (claimWaitState, openResume's version fence, admitNode, finishRun, startForEntity, repinVersion, answerFromCommittedDecision). Triggers on "verify the executor", "model-check the design", "does the release still hold", or a claim that a run cannot be stranded, woken twice, opened twice, or run after it ended.
+description: Model-check the Postgres executor proposed to replace Inngest (Design A and the event inbox in docs/internal/plans/separate-event-intake-from-durable-execution.md) with TLA+ models run by tla-ts. Use when a change touches that design's claim, lease, pass, release, park resolution, cancellation, Exit claim, retries, Migration (including a Wait that changes mode), inbox, delivery fan-out to several workflows, Wait wakes from an arrival, admission Entity Eligibility, or Concurrency rules, when the executor it describes is being built, or when a change touches the existing code the design reuses (claimWaitState, openResume's version fence, admitNode, finishRun, startForEntity, repinVersion, answerFromCommittedDecision). Triggers on "verify the executor", "model-check the design", "does the release still hold", or a claim that a run cannot be stranded, woken twice, opened twice, or run after it ended.
 ---
 
 # Verify the durable executor design
@@ -149,7 +149,8 @@ One behaviour the model allows and no rule forbids: an Event that claims the
 old event-mode park after the repin and before the migrate wake still resumes
 the run, even when the version the run now pins gives the Wait delay mode
 (`ReachEventResumesAcrossAModeChange`). The Event arrived while the run was
-parked on a subscription to it, which is why the design lets it through.
+parked on a subscription to it. The design's owner has accepted this; do not
+add a rule against it without asking.
 
 | Rule | The promise | The harm when it breaks |
 | --- | --- | --- |
@@ -198,14 +199,18 @@ enters the inbox through `app.events.send`, which writes its delivery's schedule
 row in the same transaction, or inside the host's own transaction, which leaves
 the poll to schedule the delivery. A delivery's lifecycle write and its memo
 row are separate transactions, so a crash between them runs the delivery again.
-Both Concurrency modes, newest wins and first wins, are checked. An Execution's
-own run is one step here, because `DurableExecutor` checks what happens inside
-one. About 125,000 states.
+Both Concurrency modes, newest wins and first wins, are checked. Admission
+Entity Eligibility decides before Concurrency, and the host's resolver is asked
+again on every attempt, so a re-run delivery may get a different answer. An
+Execution's own run is one step here, because `DurableExecutor` checks what
+happens inside one. About 195,000 states.
 
 | Rule | The promise | The harm when it breaks |
 | --- | --- | --- |
 | `DuplicateSendIsOneArrival` | Sending the same arrival twice puts one row in the inbox. | A retried send starts two runs. |
 | `EachArrivalOpensAtMostOneRun` | Each Start arrival opens at most one Execution, however often its delivery runs. | A crash during delivery starts a second run. |
+| `AdmissionDecidedOnce` | An arrival Entity Eligibility refused never later opens a run. | A retried delivery starts a run for an ineligible Entity. |
+| `RefusedArrivalChangesNothing` | An arrival Entity Eligibility refused supersedes nothing. | An ineligible reschedule cancels the reminders already running. |
 | `OneLiveRunPerEntity` | Under one-at-a-time Concurrency, at most one run per Entity is live. | Two reminder sequences run for one appointment. |
 | `EveryOpenRunIsScheduled` | Every open Execution has a schedule row. | A run is opened that nothing will ever execute. |
 | `SupersededRunsStop` | A superseded run does no more work. | A rescheduled appointment gets the old reminders too. |
@@ -265,6 +270,7 @@ can find it and a mutation can remove it.
 | `Delivery`: `Lifecycle`, `Life1`, `Life2`, `Settled` | Section 7.2; CONTEXT.md "Precedence" | `runEventListener` and `settledExecutionIds` in `lib/inngest/event-listener-function.ts`; `applyLifecycleRules` in `lifecycle/deliver-event.ts` |
 | `Delivery`: `ScanAllPages`, `Candidate`, `ExcludeSettledRuns`, `SavePagesBeforeWaking` | Section 7.2 | `listWaitCandidatePage` in `lifecycle/deliver-event.ts`; `listWaitsForEvent` in `repo/waits.ts` |
 | `Delivery`: `WakeSavedPage`, `RecordWokenPage`, `WakeIsUnclaimed` | Section 7.2; "The runtime", `run(step, fn)` | `deliverWaitCandidates` in `lifecycle/deliver-event.ts`; `resumeWaitsMatchingEvent` in `lifecycle/resume-waits.ts`; `claimWaitingStateById` in `repo/waits.ts` |
+| `Intake`: `StartWrite` admission arm, `RefusalIsConsulted`, `EligibilityBeforeConcurrency` | CONTEXT.md "Entity Eligibility", "Precedence" | `answerFromCommittedDecision` in `lifecycle/deliver-event.ts`; `recordStartRefusal` and `startAdmissionDecisionId` in `executions/run-rows.ts` |
 
 Last confirmed against: the design doc at `25e215b0`, and the existing code at
 `a92cea15` (`main`). Move these two commits forward only after you have read
@@ -345,6 +351,5 @@ back to show the rule still catches it:
 - Handler sub-steps inside one node.
 - A delivery's attempt limit. `Intake` re-runs a delivery after a crash or an
   expired lease, and never gives up on one.
-- Exit claimed before an Execution opens (admission Eligibility).
 - The SQLite and Cloudflare Worker drivers, `NOTIFY` latency, database
   failover, and lease, heartbeat and backoff timing.

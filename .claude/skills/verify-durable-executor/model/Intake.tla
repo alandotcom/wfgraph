@@ -55,15 +55,19 @@ VARIABLES
                 \*   | "canceled" | "superseded"
   esched,       \* each Execution's schedule row: "none" | "present" | "gone"
   refused,      \* each inbox row of a Start arrival: recorded as a Refused Start
+  eligRefused,  \* each inbox row: refused by admission Entity Eligibility
+  refusedChanged, \* an arrival Eligibility refused changed a run anyway
   faults,
   opened        \* Executions opened per Start arrival
 
 vars == <<mode, sends, inbox, dsched, dholder, written, memo, pc, cur, exec, esched,
-          refused, faults, opened>>
+          refused, eligRefused, refusedChanged, faults, opened>>
 
 \* The guards the design depends on.
 InboxKeyIsUnique == TRUE                 \* unique (name, idempotency_key) on the inbox
 DeliveryIdIsUnique == TRUE               \* unique (workflow_id, delivery_id) on executions
+RefusalIsConsulted == TRUE               \* answerFromCommittedDecision reads a prior refusal first
+EligibilityBeforeConcurrency == TRUE     \* Precedence: admission Eligibility, then Concurrency
 ExecutionAndScheduleTogether == TRUE     \* one transaction inserts both rows
 SupersedeDropsSchedule == TRUE           \* a supersede deletes the run's schedule row
 LeaseHeldBy(w) == dholder[cur[w]] = w
@@ -79,9 +83,10 @@ Init ==
   /\ pc = [w \in Workers |-> "idle"] /\ cur = [w \in Workers |-> <<"c", 1>>]
   /\ exec = [x \in Execs |-> "none"] /\ esched = [x \in Execs |-> "none"]
   /\ refused = [r \in Rows |-> FALSE] /\ faults = 0
+  /\ eligRefused = [r \in Rows |-> FALSE] /\ refusedChanged = FALSE
   /\ opened = [k \in Starts |-> 0]
 
-execVars == <<exec, esched, refused, opened>>
+execVars == <<exec, esched, refused, eligRefused, refusedChanged, opened>>
 
 -----------------------------------------------------------------------------
 (* Sources, section 7.3. *)
@@ -134,34 +139,53 @@ DeliveryFenced(w) ==
 \* The Execution a second run of the same delivery would insert.
 SecondCopy(x) == <<x[1], x[2], 2>>
 
-\* startForEntity for a Start arrival, under the Entity's lock.
+\* Newest-wins supersedes every live run: its status, and its schedule row.
+Supersede(exclude) ==
+  /\ exec' = [y \in Execs |-> IF y \in Live /\ y # exclude THEN "superseded" ELSE exec[y]]
+  /\ esched' = [y \in Execs |-> IF y \in Live /\ y # exclude /\ SupersedeDropsSchedule THEN "gone" ELSE esched[y]]
+
+\* startForEntity for a Start arrival. A retried delivery is answered from what
+\* its first attempt committed (answerFromCommittedDecision). Otherwise the
+\* host's Entity resolver is read again, which can answer differently on each
+\* attempt, and admission Eligibility decides before Concurrency does
+\* (CONTEXT.md "Precedence").
 StartWrite(r) ==
   LET k == r[1]
       first == <<k, r[2], 1>>
-      already == exec[first] # "none" \/ refused[r]
       x == IF exec[first] = "none" THEN first ELSE SecondCopy(first)
   IN
-  IF already /\ DeliveryIdIsUnique
-    THEN UNCHANGED execVars           \* answerFromCommittedDecision
-  ELSE IF mode = "first" /\ Live # {}
-    THEN /\ refused' = [refused EXCEPT ![r] = TRUE]
-         /\ UNCHANGED <<exec, esched, opened>>
-  ELSE
-    /\ exec' = [y \in Execs |->
-                 IF y = x THEN "running"
-                 ELSE IF y \in Live /\ mode = "newest" THEN "superseded"
-                 ELSE exec[y]]
-    /\ esched' = [y \in Execs |->
-                   IF y = x THEN (IF ExecutionAndScheduleTogether THEN "present" ELSE "none")
-                   ELSE IF y \in Live /\ mode = "newest" /\ SupersedeDropsSchedule THEN "gone"
-                   ELSE esched[y]]
-    /\ opened' = [opened EXCEPT ![k] = @ + 1]
-    /\ UNCHANGED refused
+  IF exec[first] # "none" /\ DeliveryIdIsUnique
+    THEN UNCHANGED execVars
+  ELSE IF refused[r] /\ RefusalIsConsulted
+    THEN UNCHANGED execVars
+  ELSE \E eligible \in BOOLEAN :
+    IF ~eligible
+      THEN \* recordAdmissionRefusal: a Refused Start, and no Execution.
+           /\ refused' = [refused EXCEPT ![r] = TRUE]
+           /\ eligRefused' = [eligRefused EXCEPT ![r] = TRUE]
+           /\ IF ~EligibilityBeforeConcurrency /\ mode = "newest" /\ Live # {}
+                THEN Supersede(<<"none">>) /\ refusedChanged' = TRUE
+                ELSE UNCHANGED <<exec, esched, refusedChanged>>
+           /\ UNCHANGED opened
+    ELSE IF mode = "first" /\ Live # {}
+      THEN /\ refused' = [refused EXCEPT ![r] = TRUE]
+           /\ UNCHANGED <<exec, esched, opened, eligRefused, refusedChanged>>
+    ELSE
+      /\ exec' = [y \in Execs |->
+                   IF y = x THEN "running"
+                   ELSE IF y \in Live /\ mode = "newest" THEN "superseded"
+                   ELSE exec[y]]
+      /\ esched' = [y \in Execs |->
+                     IF y = x THEN (IF ExecutionAndScheduleTogether THEN "present" ELSE "none")
+                     ELSE IF y \in Live /\ mode = "newest" /\ SupersedeDropsSchedule THEN "gone"
+                     ELSE esched[y]]
+      /\ opened' = [opened EXCEPT ![k] = @ + 1]
+      /\ UNCHANGED <<refused, eligRefused, refusedChanged>>
 
 \* requestCancelForEntity for the Cancel arrival: claim every live run.
 CancelWrite ==
   /\ exec' = [y \in Execs |-> IF exec[y] = "running" THEN "claimed" ELSE exec[y]]
-  /\ UNCHANGED <<esched, refused, opened>>
+  /\ UNCHANGED <<esched, refused, eligRefused, refusedChanged, opened>>
 
 LifecycleStep(w) ==
   /\ pc[w] = "write" /\ LeaseHeldBy(w)
@@ -206,20 +230,20 @@ SweepDelivery(r) ==
 RunCompletes(x) ==
   /\ exec[x] = "running" /\ esched[x] = "present"
   /\ exec' = [exec EXCEPT ![x] = "completed"] /\ esched' = [esched EXCEPT ![x] = "gone"]
-  /\ UNCHANGED <<mode, sends, inbox, dsched, dholder, written, memo, pc, cur, refused,
+  /\ UNCHANGED <<mode, sends, inbox, dsched, dholder, written, memo, pc, cur, refused, eligRefused, refusedChanged,
                  opened, faults>>
 
 RunEndsCanceled(x) ==
   /\ exec[x] = "claimed" /\ esched[x] = "present"
   /\ exec' = [exec EXCEPT ![x] = "canceled"] /\ esched' = [esched EXCEPT ![x] = "gone"]
-  /\ UNCHANGED <<mode, sends, inbox, dsched, dholder, written, memo, pc, cur, refused,
+  /\ UNCHANGED <<mode, sends, inbox, dsched, dholder, written, memo, pc, cur, refused, eligRefused, refusedChanged,
                  opened, faults>>
 
 \* A superseded run that still has a schedule row would be claimed and run on.
 SupersededRunRuns(x) ==
   /\ exec[x] = "superseded" /\ esched[x] = "present"
   /\ exec' = [exec EXCEPT ![x] = "completed"] /\ esched' = [esched EXCEPT ![x] = "gone"]
-  /\ UNCHANGED <<mode, sends, inbox, dsched, dholder, written, memo, pc, cur, refused,
+  /\ UNCHANGED <<mode, sends, inbox, dsched, dholder, written, memo, pc, cur, refused, eligRefused, refusedChanged,
                  opened, faults>>
 
 AllDone ==
@@ -260,6 +284,13 @@ DuplicateSendIsOneArrival == \A k \in Arrivals : inbox[<<k, 2>>] = "none"
 \* Each Start arrival opens at most one Execution, however often its delivery runs.
 EachArrivalOpensAtMostOneRun == \A k \in Starts : opened[k] <= 1
 
+\* An arrival's admission is decided once: one Eligibility refused never opens a run.
+AdmissionDecidedOnce ==
+  \A r \in Rows : eligRefused[r] => \A c \in Copies : exec[<<r[1], r[2], c>>] = "none"
+
+\* An arrival Eligibility refused changes no run: it supersedes nothing.
+RefusedArrivalChangesNothing == ~refusedChanged
+
 \* Under one-at-a-time Concurrency, at most one run per Entity is live.
 OneLiveRunPerEntity == Cardinality(Live) <= 1
 
@@ -277,6 +308,8 @@ EveryArrivalIsDelivered == \A r \in Rows : (inbox[r] = "present") ~> (dsched[r] 
 EveryRunEnds == \A x \in Execs : (exec[x] \in {"running", "claimed"}) ~> (exec[x] \notin {"running", "claimed"})
 
 ReachSupersede     == \E x \in Execs : exec[x] = "superseded"
+ReachEligibilityRefusal == \E r \in Rows : eligRefused[r]
+ReachRefusalAnsweredOnRetry == \E r \in Rows : eligRefused[r] /\ written[r] /\ ~memo[r] /\ dsched[r] = "queued"
 ReachRefusedStart  == \E r \in Rows : refused[r]
 ReachCanceledRun   == \E x \in Execs : exec[x] = "canceled"
 ReachRedelivery    == \E r \in Rows : written[r] /\ ~memo[r] /\ dsched[r] = "queued"
