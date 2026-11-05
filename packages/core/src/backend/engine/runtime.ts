@@ -14,6 +14,7 @@
 import type { BranchHandoff } from "#src/backend/engine/branch";
 import type { ReleasedEdge } from "#src/backend/engine/contracts";
 import type { ExecutionSide } from "@wfgraph/shared/lifecycle/execution-contracts";
+import { readJsonObject } from "@wfgraph/shared/types/json";
 
 export type WaitForEventOptions = {
   event: string;
@@ -32,7 +33,33 @@ export type WaitForEventOptions = {
  */
 export type DurableStepRef = { id: string; name?: string };
 
+/**
+ * What `waitForEvent` answers for a park that has not resolved yet.
+ *
+ * A runtime that answers it runs the body again once the park resolves. The
+ * engine halts the Wait's branch with the node unfinished, runs every other
+ * branch as far as it can, and returns a parked result with no terminal record.
+ * The Inngest runtime never answers it, because Inngest suspends the invocation
+ * at a park.
+ */
+export type ParkedWaitAnswer = { parked: true };
+
+export const PARKED_WAIT_ANSWER: ParkedWaitAnswer = Object.freeze({
+  parked: true,
+});
+
+export function isParkedWaitAnswer(
+  answer: unknown
+): answer is ParkedWaitAnswer {
+  return readJsonObject(answer)?.parked === true;
+}
+
 export type WorkflowExecutionRuntime = {
+  /**
+   * Parks the Wait on a wait signal matching `options` and answers why the park
+   * ended: the signal event that woke it, `null` for a timeout, or
+   * `PARKED_WAIT_ANSWER` for a park that has not resolved yet.
+   */
   waitForEvent: (
     step: DurableStepRef,
     options: WaitForEventOptions
@@ -106,7 +133,10 @@ export type InMemoryRuntimeOptions = {
    * Left out, each runtime gets a fresh map and memoizes within one run only.
    */
   memo?: Map<string, unknown> | undefined;
-  /** What `waitForEvent` resolves to. `null` models a timeout. */
+  /**
+   * What `waitForEvent` resolves to. `null` models a timeout, and
+   * `PARKED_WAIT_ANSWER` models a park that has not resolved yet.
+   */
   resumeEvent?: unknown;
   /** The attempt this runtime reports. See `WorkflowExecutionRuntime.attempt`. */
   attempt?: number | undefined;

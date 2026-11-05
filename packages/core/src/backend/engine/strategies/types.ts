@@ -21,7 +21,16 @@ import type { JsonObject } from "@wfgraph/shared/types/json";
 import type { Effect } from "effect";
 import type { EngineFailure } from "#src/backend/engine/engine-failure";
 
-export type NodeWorkOutcome = {
+/**
+ * What a node's work left: an outcome, or a Wait still parked.
+ *
+ * A parked Wait has no outcome yet. The scheduler leaves the node unfinished
+ * and schedules nothing below it, and the next pass of the body enters it again.
+ */
+export type NodeWorkOutcome = SettledNodeWork | { status: "parked" };
+
+export type SettledNodeWork = {
+  status: "settled";
   result: ExecutionResult;
   /** Action node without an actionType: recorded as failed, no output stored. */
   unconfigured?: boolean | undefined;

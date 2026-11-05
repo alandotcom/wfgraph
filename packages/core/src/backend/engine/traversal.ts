@@ -84,6 +84,7 @@ export class Traversal {
   private readonly completedNodes = new Set<string>();
   private readonly inheritedOutputKeys = new Set<string>();
   private readonly inProgressNodes = new Set<string>();
+  private readonly parkedNodes = new Set<string>();
   private readonly downstreamReadyEdges = new Map<string, ReleasedEdge>();
 
   constructor(nodes: readonly WorkflowNode[], edges: readonly WorkflowEdge[]) {
@@ -257,6 +258,19 @@ export class Traversal {
       writeNodeValue(this.nodeOutputs, nodeId, output);
     }
     this.completedNodes.add(nodeId);
+  }
+
+  /**
+   * Records a Wait whose park the runtime has not resolved. The node has no
+   * result and releases nothing.
+   */
+  markParked(nodeId: string) {
+    this.parkedNodes.add(nodeId);
+  }
+
+  /** How many Waits this pass of the body left parked. */
+  get openParkCount(): number {
+    return this.parkedNodes.size;
   }
 
   /** Writes a node's output without closing the node. */

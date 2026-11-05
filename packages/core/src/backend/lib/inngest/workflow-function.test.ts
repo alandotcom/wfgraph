@@ -1011,6 +1011,7 @@ function dispatchInParallel(nodeIds: string[]) {
   ) =>
     dispatchNodes(nodeIds, runtime, actions).pipe(
       Effect.as({
+        kind: "ended" as const,
         status: "completed" as const,
         success: true,
         outputs: {},

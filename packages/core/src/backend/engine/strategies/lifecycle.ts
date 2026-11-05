@@ -37,7 +37,10 @@ function runLifecycle(context: NodeWorkContext) {
       () => Effect.succeed({ success: true as const, data: lifecycleData })
     );
 
-    return { result: executionResultFromStepResult(lifecycleResult) };
+    return {
+      status: "settled" as const,
+      result: executionResultFromStepResult(lifecycleResult),
+    };
   });
 }
 

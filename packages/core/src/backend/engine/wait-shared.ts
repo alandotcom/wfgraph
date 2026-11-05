@@ -21,7 +21,10 @@ import {
 import { celStringLiteral } from "@wfgraph/shared/conditions/cel-string-literal";
 import { type JsonObject, readJsonObject } from "@wfgraph/shared/types/json";
 import type { ExecutionResult } from "#src/backend/engine/contracts";
-import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
+import {
+  isParkedWaitAnswer,
+  type WorkflowExecutionRuntime,
+} from "#src/backend/engine/runtime";
 import type { NodeContext } from "#src/backend/engine/step-log";
 import type {
   WorkflowStepLogHandle,
@@ -85,14 +88,24 @@ export type WaitBranchContext = {
 };
 
 /**
- * What the Wait node leaves behind: its own outcome, and whether the run should
- * stop below it.
+ * What the Wait node leaves behind: settled, or still parked.
+ *
+ * A parked Wait has no outcome yet. Its branch halts with the node unfinished,
+ * and the node is entered again on the next pass of the body, once the runtime
+ * has resolved the park.
+ */
+export type WaitOutcome = SettledWaitOutcome | { status: "parked" };
+
+/**
+ * A Wait that finished: its own outcome, and whether the run should stop below
+ * it.
  *
  * The two are separate because they travel different distances. The outcome is
  * the node's, and it is stored and read back. Halting is the scheduler's, read
  * a few lines from where this is returned and never persisted.
  */
-export type WaitOutcome = {
+export type SettledWaitOutcome = {
+  status: "settled";
   result: ExecutionResult;
   haltBranch: boolean;
   /**
@@ -152,10 +165,11 @@ export function waitSignalMatch(input: {
 }
 
 /**
- * Why a park ended.
+ * Why a park ended, or that it has not ended yet.
  *
- * `timeout` is the park running out of the time it was given. Every other kind
- * is a reason a `workflow/wait.signal` carries. `resume` is an Event or a manual
+ * `timeout` is the park running out of the time it was given. `parked` is a
+ * runtime answering that the park has not resolved. Every other kind is a
+ * reason a `workflow/wait.signal` carries. `resume` is an Event or a manual
  * resume. `cancel` is a Cancel Event claiming the run, and `exit` is another
  * branch of the run claiming an Entity Eligibility Exit. `migrate` is a
  * Migration telling the Wait to prepare itself again. A signal envelope naming
@@ -167,6 +181,7 @@ export function waitSignalMatch(input: {
  * Canceled-side Wait parks after that.
  */
 export type WaitWake =
+  | { kind: "parked" }
   | { kind: "timeout" }
   | { kind: "migrate" }
   | { kind: "cancel" }
@@ -191,19 +206,28 @@ export function isClaimWake(
  *
  * A `migrate` wake never reaches a resume: the driver reads it as the
  * instruction to prepare the Wait again against the version the run was moved
- * to, and starts the next attempt instead of resuming.
+ * to, and starts the next attempt instead of resuming. A `parked` answer never
+ * reaches one either, because the park has not ended.
  */
-export type WaitResumeWake = Exclude<WaitWake, { kind: "migrate" }>;
+export type WaitResumeWake = Exclude<
+  WaitWake,
+  { kind: "migrate" } | { kind: "parked" }
+>;
 
 /**
- * Reads why a park ended out of the Inngest event that ended it.
+ * Reads what `waitForEvent` answered.
  *
- * `waitForEvent` resolves to the whole event object, and Workflow Graph's own
+ * A wake resolves to the whole Inngest event object, and Workflow Graph's own
  * envelope is the `data` inside it. Reading it once here is what keeps that
  * envelope out of everything below: a builder addresses the Event's payload,
- * not the transport it travelled in. A timeout resolves to null.
+ * not the transport it travelled in. A timeout resolves to null, and a park
+ * that has not resolved to `PARKED_WAIT_ANSWER`.
  */
 export function readWaitWake(resumeEvent: unknown): WaitWake {
+  if (isParkedWaitAnswer(resumeEvent)) {
+    return { kind: "parked" };
+  }
+
   if (resumeEvent === null) {
     return { kind: "timeout" };
   }
@@ -332,7 +356,10 @@ export type WaitMode<Prepared, Resumed> = {
     input: WaitResumeInput<Prepared>
   ) => Effect.Effect<Resumed, EngineFailure>;
   /** What the node leaves behind, read off the memoized resume and the wake. */
-  outcome: (input: { resumed: Resumed; wake: WaitWake }) => WaitOutcome;
+  outcome: (input: {
+    resumed: Resumed;
+    wake: WaitResumeWake;
+  }) => SettledWaitOutcome;
 };
 
 /**

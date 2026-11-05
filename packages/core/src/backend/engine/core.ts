@@ -44,6 +44,7 @@ import {
   type EngineFailure,
   engineFailure,
   failureFromCause,
+  failureFromUnknown,
 } from "#src/backend/engine/engine-failure";
 import { runDurable, runDurableUnit } from "#src/backend/engine/durable";
 import { withAppLogCategory } from "#src/backend/lib/effect/app-logger";
@@ -130,11 +131,40 @@ type PreparedRun = {
   entityEligibility?: NodeSchedulerInput["entityEligibility"];
 };
 
-type WorkflowExecutionResult = {
-  status: WorkflowExecutionStatus;
-  success: boolean;
+/** What the run's nodes left behind in this pass, which every result carries. */
+type RunProgress = {
   results: Readonly<Record<string, ExecutionResult>>;
   outputs: Readonly<NodeOutputs>;
+};
+
+/**
+ * What one pass of the body answers: the run ended with its terminal record
+ * written, or the pass ended with at least one Wait parked.
+ */
+type WorkflowExecutionResult = EndedWorkflowExecution | ParkedWorkflowExecution;
+
+/**
+ * A pass of the body that ended with at least one Wait parked, and wrote no
+ * terminal record. `openParks` counts those Waits. `status` is what the
+ * execution row holds while parked, and `success` is true because the run has no
+ * verdict yet. The fields only an ended run fills are declared absent so a
+ * caller can read any result before narrowing on `kind`.
+ */
+type ParkedWorkflowExecution = RunProgress & {
+  kind: "parked";
+  openParks: number;
+  status: "waiting";
+  success: true;
+  error?: undefined;
+  cancelled?: undefined;
+  exit?: undefined;
+};
+
+/** A pass of the body that wrote the run's terminal record. */
+type EndedWorkflowExecution = RunProgress & {
+  kind: "ended";
+  status: WorkflowExecutionStatus;
+  success: boolean;
   error?: string | undefined;
   cancelled?: boolean | undefined;
   exit?:
@@ -367,6 +397,12 @@ function executeWorkflowInner(
       // suspend nothing are finished by now and the run may park.
       yield* scheduler.drainDeferredWaits();
 
+      // The outcome read below is memoized, so reading it while a Wait is parked
+      // would give the pass in which the park resolves a stale answer.
+      if (traversal.openParkCount > 0) {
+        return { kind: "parked" as const };
+      }
+
       const termination = yield* runDurable(
         runtime,
         { id: "execution-termination-final", name: "Read run outcome" },
@@ -384,6 +420,9 @@ function executeWorkflowInner(
           eventName: termination.claim.eventName,
           payload: termination.claim.payload,
         });
+        if (traversal.openParkCount > 0) {
+          return { kind: "parked" as const };
+        }
       }
       const exitClaim =
         termination?.claim?.kind === "exit" ? termination.claim : undefined;
@@ -403,7 +442,14 @@ function executeWorkflowInner(
             ? "completed"
             : "failed";
 
-      return { terminalStatus, exitContext };
+      return { kind: "ended" as const, terminalStatus, exitContext };
+    });
+
+    const parked = endParked({
+      store,
+      executionId,
+      traversal,
+      attemptStartTime,
     });
 
     return Effect.gen(function* () {
@@ -474,17 +520,23 @@ function executeWorkflowInner(
         // (ADR-0007), so the outlet runs for that claim and a step of its own
         // records canceled after it.
         const claim = failedRecord.cancelClaim;
-        const recorded =
+        const afterOutlet =
           claim === undefined
-            ? failedRecord
+            ? { kind: "recorded" as const, recorded: failedRecord }
             : yield* runCanceledOutletThenRecord({
                 runtime,
                 scheduler,
+                traversal,
                 claim,
                 record: (outlet) => recordFailure({ kind: "canceled", outlet }),
               });
+        if (afterOutlet.kind === "parked") {
+          return yield* parked;
+        }
+        const { recorded } = afterOutlet;
 
         return {
+          kind: "ended" as const,
           status: recorded.status,
           success: recorded.status !== "failed",
           results: traversal.results,
@@ -494,6 +546,11 @@ function executeWorkflowInner(
           exit: recorded.exit,
         };
       }
+
+      if (outcome.value.kind === "parked") {
+        return yield* parked;
+      }
+      const { terminalStatus, exitContext } = outcome.value;
 
       // The output, failure and count are read when each step is built, so the
       // record written after the Canceled outlet runs includes that outlet.
@@ -510,7 +567,7 @@ function executeWorkflowInner(
           failure: traversal.firstFailure(),
           resultCount: traversal.resultCount,
           runMode,
-          exitContext: outcome.value.exitContext,
+          exitContext,
           canceledOutlet,
         });
 
@@ -520,7 +577,7 @@ function executeWorkflowInner(
       const completed = yield* runDurable(
         runtime,
         { id: "workflow-run-completed", name: "Run completed" },
-        recordCompletion(outcome.value.terminalStatus)
+        recordCompletion(terminalStatus)
       );
 
       // A Cancel claim that landed after the outcome read refused the record
@@ -529,15 +586,20 @@ function executeWorkflowInner(
       // of its own, so the outlet's nodes run before the terminal row ends the
       // run.
       const claim = completed.cancelClaim;
-      const recorded =
+      const afterOutlet =
         claim === undefined
-          ? completed
+          ? { kind: "recorded" as const, recorded: completed }
           : yield* runCanceledOutletThenRecord({
               runtime,
               scheduler,
+              traversal,
               claim,
               record: (outlet) => recordCompletion("canceled", outlet),
             });
+      if (afterOutlet.kind === "parked") {
+        return yield* parked;
+      }
+      const { recorded } = afterOutlet;
 
       const attemptMs = Date.now() - attemptStartTime;
       yield* Effect.logInfo(`Run ${recorded.status} in ${attemptMs}ms`).pipe(
@@ -552,6 +614,7 @@ function executeWorkflowInner(
       );
 
       return {
+        kind: "ended" as const,
         status: recorded.status,
         success: recorded.status !== "failed",
         results: traversal.results,
@@ -559,6 +622,54 @@ function executeWorkflowInner(
         exit: recorded.exit,
       };
     });
+  });
+}
+
+/**
+ * Ends a pass of the body that left at least one Wait parked, and writes no
+ * terminal record.
+ *
+ * A Wait that resumed in this pass may have moved the execution row to
+ * `running` while a sibling stayed parked, so the row is moved back to
+ * `waiting`. The write applies only while some wait row is still waiting. It is
+ * not a memoized step, because every pass that ends parked has to make it.
+ */
+function endParked(input: {
+  store: WorkflowStore;
+  executionId: string;
+  traversal: Traversal;
+  attemptStartTime: number;
+}): Effect.Effect<ParkedWorkflowExecution, EngineFailure> {
+  return Effect.gen(function* () {
+    const { store, executionId, traversal } = input;
+
+    yield* store
+      .markExecutionWaitingIfParked({ executionId })
+      .pipe(Effect.mapError(failureFromUnknown));
+
+    const openParks = traversal.openParkCount;
+    const attemptMs = Date.now() - input.attemptStartTime;
+    yield* Effect.logInfo(
+      `Run parked on ${openParks} Wait${openParks === 1 ? "" : "s"} in ${attemptMs}ms`
+    ).pipe(
+      Effect.annotateLogs({
+        outcome: {
+          status: "waiting",
+          parks: openParks,
+          nodes: traversal.resultCount,
+          ms: attemptMs,
+        },
+      })
+    );
+
+    return {
+      kind: "parked",
+      openParks,
+      status: "waiting",
+      success: true,
+      results: traversal.results,
+      outputs: traversal.outputs,
+    };
   });
 }
 
@@ -572,6 +683,9 @@ function executeWorkflowInner(
  * outlet failure: the cause is re-raised, the attempt ends with nothing
  * written, and the retry the durability runtime starts runs the outlet.
  *
+ * An outlet that left a Wait parked writes no record and answers `parked`, so
+ * the caller ends the pass the way a parked traversal does.
+ *
  * The step id is shared with whichever terminal path did not call this. An
  * execution takes one of the two paths, and a replay takes the path it took
  * before, so the two never claim the id inside one run.
@@ -579,9 +693,13 @@ function executeWorkflowInner(
 function runCanceledOutletThenRecord<A, E>(input: {
   runtime: WorkflowExecutionRuntime;
   scheduler: NodeScheduler;
+  traversal: Traversal;
   claim: PendingCancel;
   record: (outlet: CanceledOutletOutcome) => Effect.Effect<A, E>;
-}): Effect.Effect<A, EngineFailure> {
+}): Effect.Effect<
+  { kind: "recorded"; recorded: A } | { kind: "parked" },
+  EngineFailure
+> {
   return Effect.gen(function* () {
     const outlet = yield* input.scheduler.runCanceledOutlet(input.claim).pipe(
       Effect.as("ran" as const),
@@ -600,11 +718,15 @@ function runCanceledOutletThenRecord<A, E>(input: {
             );
       })
     );
-    return yield* runDurable(
+    if (input.traversal.openParkCount > 0) {
+      return { kind: "parked" as const };
+    }
+    const recorded = yield* runDurable(
       input.runtime,
       { id: "workflow-run-canceled", name: "Run canceled" },
       input.record(outlet)
     );
+    return { kind: "recorded" as const, recorded };
   });
 }
 

@@ -82,6 +82,7 @@ export function executeWaitAction(
 
 function failedWait(message: string): WaitOutcome {
   return {
+    status: "settled",
     result: {
       success: false,
       error: { kind: "failure", message },
@@ -205,7 +206,8 @@ type WaitDriveState = {
 };
 
 /**
- * Runs the Wait until it resumes, times out, is skipped, or fails.
+ * Runs the Wait until it resumes, times out, is skipped, or fails, or until the
+ * runtime answers that its park has not resolved.
  *
  * The mode is chosen per attempt from the config this body loaded, which is the
  * config of the Workflow Version the execution row names. A Migration therefore
@@ -237,7 +239,10 @@ function driveWait(
   });
 }
 
-/** Either the Wait is done, or this attempt has to be prepared again. */
+/**
+ * Either this pass of the Wait is done, settled or still parked, or this
+ * attempt has to be prepared again.
+ */
 type WaitAttemptResult =
   | { status: "finished"; outcome: WaitOutcome }
   | { status: "reprepare" };
@@ -334,6 +339,7 @@ function runWaitAttempt<Prepared, Resumed>(
       return {
         status: "finished",
         outcome: {
+          status: "settled",
           result: { success: true, data: prepared.output },
           haltBranch: true,
         },
@@ -363,6 +369,12 @@ function runWaitAttempt<Prepared, Resumed>(
       }
     } else {
       wake = prepared.wake;
+    }
+
+    // The wait row stays `waiting` and the step-log row stays open. The next
+    // pass replays this attempt's memoized steps back to the park.
+    if (wake.kind === "parked") {
+      return { status: "finished", outcome: { status: "parked" } };
     }
 
     // The run has been moved to a later Workflow Version. The next attempt is
@@ -899,7 +911,8 @@ function recordWaiting(
 
 /**
  * Suspends until a signal addressed to this park arrives, answering null for the
- * timeout.
+ * timeout. A runtime that ends the pass at a park answers `PARKED_WAIT_ANSWER`
+ * here instead of suspending.
  *
  * Inngest waits on Workflow Graph's own signal envelope rather than on the
  * business Event: Workflow Graph decides which runs an arrival concerns first.

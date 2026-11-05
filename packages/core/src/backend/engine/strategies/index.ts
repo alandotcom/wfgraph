@@ -12,6 +12,7 @@ import type {
   NodeStrategy,
   NodeWorkContext,
   NodeWorkOutcome,
+  SettledNodeWork,
 } from "#src/backend/engine/strategies/types";
 import type { TraversalRoute } from "#src/backend/engine/traversal";
 import {
@@ -46,6 +47,7 @@ const unknownNodeStrategy: NodeStrategy = {
     Effect.gen(function* () {
       yield* Effect.logError("Unknown node type");
       return {
+        status: "settled" as const,
         result: failedExecution(
           engineFailure(
             "failure",
@@ -65,7 +67,7 @@ const unknownNodeStrategy: NodeStrategy = {
 export function routeAfterStrategy(
   node: WorkflowNode,
   eventName: string | null,
-  outcome: NodeWorkOutcome
+  outcome: SettledNodeWork
 ): TraversalRoute | null {
   if (isConditionNode(node)) {
     const conditionResult = outcome.conditionValue;

@@ -595,6 +595,7 @@ export class NodeScheduler {
         if (node.data.enabled === false) {
           yield* Effect.logInfo("Skipping disabled node");
           return {
+            status: "settled" as const,
             result: { success: true as const, data: null },
             haltBranch: true,
           };
@@ -686,6 +687,7 @@ export class NodeScheduler {
           restoreCompletedNodeProgress(traversal, progress);
           yield* Effect.logInfo("Branch run was cancelled");
           return {
+            status: "settled" as const,
             result: Object.hasOwn(traversal.results, node.id)
               ? traversal.results[node.id]
               : {
@@ -699,6 +701,7 @@ export class NodeScheduler {
         traversal.absorbBranch(handoff.result);
         if (handoff.result.exit) {
           return {
+            status: "settled" as const,
             result: { success: true as const, data: null },
             haltBranch: true,
             executionExited: true,
@@ -711,7 +714,11 @@ export class NodeScheduler {
         };
         // The branch run walked everything below this node, so this run schedules
         // none of it. A Wait that failed keeps reading as a failure on both sides.
-        return { result: own, haltBranch: own.success };
+        return {
+          status: "settled" as const,
+          result: own,
+          haltBranch: own.success,
+        };
       }.bind(this)
     );
   }
@@ -795,6 +802,15 @@ export class NodeScheduler {
         const { traversal, cancelBoundary } = this.input;
         const startedAt = Date.now();
         const outcome = yield* this.runNodeWork(node, nodeName, entityContext);
+
+        // The node stays unfinished (no result, no release, no boundary read);
+        // the next pass of the body enters the Wait again.
+        if (outcome.status === "parked") {
+          traversal.markParked(nodeId);
+          yield* logNode(startedAt, "parked", {});
+          return;
+        }
+
         const { result } = outcome;
 
         if (outcome.executionExited) {
@@ -924,7 +940,9 @@ export class NodeScheduler {
    * This is where a branch is handed off. A runtime that starts durable runs
    * gets one per waiting branch, which is how a short wait stops costing what a
    * long sibling costs; a runtime that starts none enters the wait in place, and
-   * the batch is entered side by side so two sibling timers still overlap. Each
+   * the batch is entered side by side so two sibling timers still overlap. A
+   * Wait the runtime answers as parked halts its own branch alone and the rest
+   * of the batch carries on. Each
    * round may reach further waits, and the loop terminates because a wait the
    * drain has dealt with never returns to the queue.
    *

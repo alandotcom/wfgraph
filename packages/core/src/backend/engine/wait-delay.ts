@@ -30,8 +30,8 @@ import {
   type WaitAttempt,
   type WaitGateMode,
   type WaitBranchContext,
+  type SettledWaitOutcome,
   type WaitMode,
-  type WaitOutcome,
   type WaitPreparation,
   type WaitResumeInput,
 } from "#src/backend/engine/wait-shared";
@@ -261,7 +261,8 @@ export const delayWaitMode: WaitMode<DelayPrepared, DelayResumed> = {
   // A Cancel or Exit wake halts the branch because the run has been claimed. An
   // Event arrival can reach this mode after a Migration and replaces the
   // Arriving Event.
-  outcome: ({ resumed, wake }): WaitOutcome => ({
+  outcome: ({ resumed, wake }): SettledWaitOutcome => ({
+    status: "settled",
     result: { success: true, data: resumed.output },
     haltBranch: resumed.canceled,
     arrivingEvent:

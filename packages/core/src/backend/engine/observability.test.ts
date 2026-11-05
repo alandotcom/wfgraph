@@ -164,7 +164,10 @@ describe("engine Effect spans", () => {
       }).pipe(Effect.provide(TracerBridgeLayer))
     );
 
-    expect(result.result.success).toBe(false);
+    expect(result).toMatchObject({
+      status: "settled",
+      result: { success: false },
+    });
     const wait = await spanRecording.named("wfgraph.workflow.wait");
     expect(wait?.attributes).toMatchObject({
       "wfgraph.wait.type": "delay",

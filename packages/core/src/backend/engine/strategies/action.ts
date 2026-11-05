@@ -13,7 +13,7 @@ import type {
   ActionStepInput,
   NodeStrategy,
   NodeWorkContext,
-  NodeWorkOutcome,
+  SettledNodeWork,
 } from "#src/backend/engine/strategies/types";
 import type { NodeContext } from "#src/backend/engine/step-log";
 import {
@@ -53,7 +53,7 @@ function getNodeName(
 function executeActionStep(
   input: ActionStepInput
 ): Effect.Effect<
-  { result: NodeWorkOutcome["result"]; conditionValue?: boolean },
+  { result: SettledNodeWork["result"]; conditionValue?: boolean },
   EngineFailure
 > {
   const execute = Effect.suspend(() => {
@@ -99,6 +99,7 @@ function runAction(context: NodeWorkContext) {
     if (!actionType) {
       yield* Effect.logError("Action node missing action type");
       return {
+        status: "settled" as const,
         result: failedExecution(
           engineFailure(
             "failure",
@@ -156,9 +157,14 @@ function runAction(context: NodeWorkContext) {
           resolveTemplateString(value, traversal.outputs, entityContext),
       });
 
+      if (waitOutcome.status === "parked") {
+        return waitOutcome;
+      }
+
       const waitResult = waitOutcome.result;
       if (waitResult.success) {
         return {
+          status: "settled" as const,
           result: { success: true as const, data: waitResult },
           haltBranch: waitOutcome.haltBranch,
           arrivingEvent: waitOutcome.arrivingEvent,
@@ -172,7 +178,7 @@ function runAction(context: NodeWorkContext) {
           error: waitResult.error.message,
         })
       );
-      return { result: waitResult };
+      return { status: "settled" as const, result: waitResult };
     }
 
     const actionOutcome = yield* executeActionStep({
@@ -191,6 +197,7 @@ function runAction(context: NodeWorkContext) {
     const stepResult = actionOutcome.result;
     if (stepResult.success) {
       return {
+        status: "settled" as const,
         result: { success: true as const, data: stepResult },
         conditionValue: actionOutcome.conditionValue,
       };
@@ -205,6 +212,7 @@ function runAction(context: NodeWorkContext) {
       })
     );
     return {
+      status: "settled" as const,
       result: stepResult,
       conditionValue: actionOutcome.conditionValue,
     };

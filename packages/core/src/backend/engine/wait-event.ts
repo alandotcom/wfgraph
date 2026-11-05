@@ -20,11 +20,11 @@ import {
   isClaimWake,
   type WaitAttempt,
   type WaitBranchContext,
+  type SettledWaitOutcome,
   type WaitMode,
-  type WaitOutcome,
   type WaitPreparation,
   type WaitResumeInput,
-  type WaitWake,
+  type WaitResumeWake,
 } from "#src/backend/engine/wait-shared";
 
 /**
@@ -133,7 +133,7 @@ const prepareEventWait = Effect.fn("prepareEventWait")(function* (
  * nudge, and the claim itself is on the execution row. A timeout carries
  * nothing either.
  */
-function readArrival(wake: WaitWake): {
+function readArrival(wake: WaitResumeWake): {
   eventName: string | null;
   payload: JsonObject;
 } | null {
@@ -190,7 +190,7 @@ export const eventWaitMode: WaitMode<EventPrepared, EventResumed> = {
   prepare: prepareEventWait,
   resume: resumeEventWait,
 
-  outcome: ({ resumed, wake }): WaitOutcome => {
+  outcome: ({ resumed, wake }): SettledWaitOutcome => {
     const arrival = readArrival(wake);
 
     // Skip and a claim wake halt the branch, so the Arriving Event they would
@@ -213,6 +213,7 @@ export const eventWaitMode: WaitMode<EventPrepared, EventResumed> = {
     // node, which happens before the halt is consulted, and a branch run has no
     // boundary of its own and would otherwise carry on for a run already ending.
     return {
+      status: "settled",
       result: { success: true, data: resumed.output },
       haltBranch: resumed.skipOnTimeout || claimed,
       arrivingEvent,
