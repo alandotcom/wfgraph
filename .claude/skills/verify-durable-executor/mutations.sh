@@ -68,8 +68,11 @@ Arrivals|offer-never-recorded|offered' = [offered EXCEPT ![pc[w][2]] = @ + 1]|of
 Handler|no-idempotency-key|SendCarriesAKey == TRUE|SendCarriesAKey == FALSE|WriteAppliedOnce
 Handler|read-not-memoized|ReadIsMemoized == TRUE|ReadIsMemoized == FALSE|AppliedWriteMatchesTheOutput
 Handler|refusal-thrown|RefusalIsAValue == TRUE|RefusalIsAValue == FALSE|RefusalFailsTheNodeOnce
-Handler|no-retries|/\ attempt + 1 >= MaxAttempts ->|/\ attempt + 1 >= 1 ->|FailedOnlyOnRefusalOrSpentRetries
-Handler|success-never-ends-the-node|CASE memoSend = "ok" ->|CASE FALSE ->|NodeEnds
+Handler|no-retries|/\ attempt + 1 >= MaxAttempts|/\ attempt + 1 >= 1|FailedOnlyOnRefusalOrSpentRetries
+Handler|success-never-ends-the-node|/\ CASE memoSend = "ok" ->|/\ CASE FALSE ->|NodeEnds
+Handler|store-write-not-fenced|StoreWriteIsFenced == TRUE|StoreWriteIsFenced == FALSE|NodeOutcomeIsFinal FailedOnlyOnRefusalOrSpentRetries
+Handler|log-id-random|LogIdIsTheStepId == TRUE|LogIdIsTheStepId == FALSE|OneLogRowPerNode
+Handler|log-close-unconditional|CloseIsConditional == TRUE|CloseIsConditional == FALSE|LogClosedOnce
 Timing|heartbeat-slower-than-lease|NodeHeartbeat == 1|NodeHeartbeat == 3|LiveLeaseNeverExpires
 Timing|no-cron-sweep|WorkerUsesCron == TRUE|WorkerUsesCron == FALSE|DeadlineHonouredOnTime EveryRunEndsInTime
 Timing|claim-ignores-the-deadline|ClaimWaitsForTheDeadline == TRUE|ClaimWaitsForTheDeadline == FALSE|NoResumeBeforeTheDeadline
