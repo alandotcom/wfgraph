@@ -296,7 +296,8 @@ the way the existing SQLite schema mirrors Postgres.
    taken on every claim would spend a retry on each Event that woke a Wait. The
    TLA+ model in `.claude/skills/verify-durable-executor` found that path, with a
    Join whose step failed once after two wakes and was never retried. Only a
-   failed pass and an expired lease count an attempt.
+   step that throws and a lease that expires while a step runs count a failure,
+   and each counts against that step ("Retries").
    A `waiting` row claimed because `wake_at` passed is a timed-out park, and the
    claim resolves that park as `{ kind: "timeout" }` in the same transaction. On
    SQLite the claim is an `UPDATE ... WHERE execution_id IN (SELECT ... LIMIT n)
@@ -311,8 +312,8 @@ the way the existing SQLite schema mirrors Postgres.
    holds a wake the pass did not consume; `waiting` with
    `wake_at = min(deadline over open parks)` when the body ended with at least
    one park outstanding and no unconsumed wake; `queued` with
-   `attempt = attempt + 1` and `wake_at = now() + backoff(attempt)` when a step
-   body threw a retriable error and the incremented count is at most four.
+   `wake_at = now() + backoff` when a step body threw a retriable error and that
+   step's own failure count, incremented, is at most four.
    When the retries are spent, the step fails its node and the run goes on, as
    "Retries" describes.
 
@@ -429,17 +430,23 @@ The "signal sent before the listener registered" race in
 `signal-parked-waits.ts` disappears, because the park reads the row.
 
 **Retries.** A step body that throws a retriable error ends the invocation. The
-release writes `queued` with a backoff and one more on the attempt counter, which
-is the one place besides the lease sweep that counts one; the memo keeps
-every step that completed. A `StepFailure` keeps travelling as a value
+release writes `queued` with a backoff and one more failure on that step's memo
+row, which holds the step's failure count until the step succeeds and its
+value replaces it; the memo keeps every step that completed. Failures are
+counted per step. A count kept for the whole run would hand each later step the
+retries its predecessors spent: a step that failed three times before it
+succeeded would leave the next step one retry. The TLA+ Handler model checks
+this with two steps that can each fail. A `StepFailure` keeps travelling as a value
 (ADR-0009) so a refused vendor call fails the node once. A non-retriable failure
 of the run itself, such as an execution row that no longer exists, writes the
 terminal record through the store and deletes the schedule row.
 
-When the count would pass four, the step fails its node and the run carries on.
-The release writes the failure into the memo as that node's result, the way a
-`StepFailure` is stored, and resets the attempt counter, so the next step to
-throw gets retries of its own. The branch below the failed node halts. Every
+When a step's count would pass four, the step fails its node and the run
+carries on. The release writes the failure into the step's memo row as its
+result, the way a `StepFailure` is stored, so every later pass reads the node as
+failed. A step that runs outside any node, such as the run's terminal record,
+has no node to fail: when its retries are spent, the run ends `failed` through
+the fenced terminal write. The branch below the failed node halts. Every
 other branch keeps running, and so does a Canceled outlet the run has entered.
 The run's terminal status is chosen when nothing is left to run, the way
 `executeWorkflow` chooses it today: `canceled` when a Cancel claim stands and
@@ -482,10 +489,13 @@ siblings are branches of the same invocation; their parks resolve on the next
 pass and halt, which is what `wakeParkedWaits` achieves across invocations today.
 
 **Lease and liveness.** Lease sixty seconds, heartbeat every twenty from the
-worker while a step body runs, renewed on every memo write. An expired lease is
-swept inside the claim statement, bounded to the batch size, and the swept row is
-re-queued with its attempt counted, the way Absurd's `claim_task` fails the run
-with `$ClaimTimeout`. The lease is shorter than any platform kill timeout
+worker while a step body runs, renewed on every memo write. The heartbeat
+records which step is running on the schedule row. An expired lease is swept
+inside the claim statement, bounded to the batch size, and the swept row is
+re-queued with a failure counted against the step that was running, the way
+Absurd's `claim_task` fails the run with `$ClaimTimeout`. A lease that expires
+between steps counts against the run's own counter on the schedule row, which
+ends the run `failed` past the same limit and resets on every release. The lease is shorter than any platform kill timeout
 (section 8), and the fencing token makes a lease that expired under a worker that
 was merely slow a harmless duplicate attempt rather than a duplicate side effect.
 
