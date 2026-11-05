@@ -1,6 +1,6 @@
 ---
 name: verify-durable-executor
-description: Model-check the Postgres executor proposed to replace Inngest (Design A and the event inbox in docs/internal/plans/separate-event-intake-from-durable-execution.md) with TLA+ models run by tla-ts. Use when a change touches that design's claim, lease, pass, release, park resolution, cancellation, Exit claim, retries, Migration (including a Wait that changes mode), inbox, delivery fan-out to several workflows, Wait wakes from one or several arrivals, Wait match expressions, admission Entity Eligibility, or Concurrency rules, when the executor it describes is being built, or when a change touches the existing code the design reuses (claimWaitState, openResume's version fence, admitNode, finishRun, startForEntity, repinVersion, answerFromCommittedDecision). Triggers on "verify the executor", "model-check the design", "does the release still hold", or a claim that a run cannot be stranded, woken twice, opened twice, or run after it ended.
+description: Model-check the Postgres executor proposed to replace Inngest (Design A and the event inbox in docs/internal/plans/separate-event-intake-from-durable-execution.md) with TLA+ models run by tla-ts. Use when a change touches that design's claim, lease, pass, release, park resolution, cancellation, Exit claim, retries, Migration (including a Wait that changes mode), inbox, delivery fan-out to several workflows, Wait wakes from one or several arrivals, Wait match expressions, steps inside a handler, admission Entity Eligibility, or Concurrency rules, when the executor it describes is being built, or when a change touches the existing code the design reuses (claimWaitState, openResume's version fence, admitNode, finishRun, startForEntity, repinVersion, answerFromCommittedDecision). Triggers on "verify the executor", "model-check the design", "does the release still hold", or a claim that a run cannot be stranded, woken twice, opened twice, or run after it ended.
 ---
 
 # Verify the durable executor design
@@ -11,7 +11,7 @@ a step memo, producers that wake a Wait by writing its wait row, and an inbox
 whose deliveries run on the same executor. The order in which those writes land
 decides whether a run is stranded, woken twice, opened twice, or run after it
 ended. No unit test explores every order. This skill checks every order, up to
-stated bounds, with five TLA+ models and `tla-ts`, a TLC-compatible model
+stated bounds, with six TLA+ models and `tla-ts`, a TLC-compatible model
 checker that runs on Node with no JVM.
 
 Read this whole file before running anything.
@@ -92,7 +92,7 @@ pass or fail.
 
 Each model checks every behaviour of a small configuration. Two workers, a
 retry limit of 2 (the design's 4, scaled down), and one crash or expired lease
-per behaviour run through all five. Liveness rules assume workers keep
+per behaviour run through all six. Liveness rules assume workers keep
 working and the lease sweep keeps running. Events, cancels, crashes and
 Migrations are free never to happen.
 
@@ -236,6 +236,28 @@ current match. About 511,000 states.
 | `NoMatchingParkMissed` | An arrival never passes over a waiting row its current match accepts, including one re-parked since the scan. | A Migration landing mid-delivery makes a run miss the Event it waits for. |
 | `EveryDeliveryEnds` (liveness) | Both deliveries end. | A delivery loops on its candidates. |
 
+### `Handler`: the steps inside one node
+
+One node's handler reads a value from vendor A in a `read` step, then sends it
+to vendor B in a `send` step with an idempotency key (ADR-0009). Vendor A may
+answer differently each time. The send may succeed, be refused (a
+`StepFailure`, stored as a value), or throw a retriable error. A pass loads the
+memo when it claims the run, and `run(step, fn)` writes the memo row after
+`fn`, fenced on the lease. About 1,800 states.
+
+This is at-least-once by design: a worker whose lease expired mid-step can still
+call a vendor once more before its memo write is refused, and a crash between a
+call and its memo row calls again. The rules check what the design promises
+despite that.
+
+| Rule | The promise | The harm when it breaks |
+| --- | --- | --- |
+| `WriteAppliedOnce` | Vendor B applies the send once, however many times the step runs. | A patient gets the same message twice. |
+| `AppliedWriteMatchesTheOutput` | What vendor B applied is the value the node records as its output. | The Runs view shows a value other than the one sent. |
+| `RefusalFailsTheNodeOnce` | A refused call is never retried as a transient error, and no lease holder sends again after a refusal is recorded. | A vendor's 400 is sent four more times. |
+| `FailedOnlyOnRefusalOrSpentRetries` | The node fails only on a refusal or after its retries were spent. | A transient error fails the node. |
+| `NodeEnds` (liveness) | The node ends. | The run loops on a node forever. |
+
 ## Bounds and assumptions
 
 - The bounds above: two workers, two versions and two Migrations, three
@@ -294,6 +316,8 @@ can find it and a mutation can remove it.
 | `Arrivals`: `OfferOne`, `CanClaim`, `ClaimNeedsTheToken`, `RowIsWaiting` | "Resolving a park"; section 7.2 | `resumeOneWait` in `lifecycle/resume-waits.ts`; `claimWaitingStateById` in `repo/waits.ts` |
 | `Arrivals`: the refresh branch of `OfferOne`, `RefreshOnRotatedToken` | ADR-0019 | `canRefreshWaitCandidate` in `lifecycle/resume-waits.ts` |
 | `Arrivals`: `Scan`, `Record` | Section 7.2 | `listWaitCandidatePage` and `deliverWaitCandidates` in `lifecycle/deliver-event.ts` |
+| `Handler`: `Read`, `Send`, `ReadMemo`, `SendMemo`, `ReadIsMemoized`, `RefusalIsAValue` | "The runtime", `run(step, fn)`; "Retries"; ADR-0009 | `StepFailure` and `RememberedStep` in `extensions/steps/define-step.ts` |
+| `Handler`: `SendCarriesAKey` | ADR-0009 | the idempotency key `callExternal` passes, in `extensions/steps/external-http.ts` |
 
 Last confirmed against: the design doc at `25e215b0`, and the existing code at
 `a92cea15` (`main`). Move these two commits forward only after you have read
@@ -369,7 +393,6 @@ back to show the rule still catches it:
   Connection filter is a further condition of the same kind.
 - More than one Execution inside the run model. Concurrency is checked in
   `Intake`, with each run reduced to one step.
-- Handler sub-steps inside one node.
 - A delivery's attempt limit. `Intake` re-runs a delivery after a crash or an
   expired lease, and never gives up on one.
 - The SQLite and Cloudflare Worker drivers, `NOTIFY` latency, database

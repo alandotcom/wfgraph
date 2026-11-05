@@ -65,6 +65,11 @@ Arrivals|no-refresh-after-a-repark|RefreshOnRotatedToken == TRUE|RefreshOnRotate
 Arrivals|claim-takes-a-woken-row|RowIsWaiting(r) == row[r] = "waiting"|RowIsWaiting(r) == row[r] # "none"|EachWaitWokenOnce
 Arrivals|rescan-on-retry|IF scannedOk[a] THEN|IF FALSE THEN|NoSecondWaitFromOneArrival
 Arrivals|offer-never-recorded|offered' = [offered EXCEPT ![pc[w][2]] = @ + 1]|offered' = offered|EveryDeliveryEnds
+Handler|no-idempotency-key|SendCarriesAKey == TRUE|SendCarriesAKey == FALSE|WriteAppliedOnce
+Handler|read-not-memoized|ReadIsMemoized == TRUE|ReadIsMemoized == FALSE|AppliedWriteMatchesTheOutput
+Handler|refusal-thrown|RefusalIsAValue == TRUE|RefusalIsAValue == FALSE|RefusalFailsTheNodeOnce
+Handler|no-retries|/\ attempt + 1 >= MaxAttempts ->|/\ attempt + 1 >= 1 ->|FailedOnlyOnRefusalOrSpentRetries
+Handler|success-never-ends-the-node|CASE memoSend = "ok" ->|CASE FALSE ->|NodeEnds
 MUTATIONS
 )
 
