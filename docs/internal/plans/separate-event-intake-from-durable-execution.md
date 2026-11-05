@@ -77,10 +77,11 @@ from `inngest`; all seventeen importing files sit under `lib/inngest`,
 (`lib/inngest/event-listener-function.ts`) are Inngest functions whose fan-out
 runs as memoized `step.run` calls, so "Inngest as the event source" today also
 means "Inngest as the durable executor of the delivery." Per-Event flow control
-(`rateLimit`, `throttle`, `debounce`, `priority`, `timeouts`, `retries`) is
-declared on `defineEvent` and handed to Inngest's `createFunction`. The
-`inngest` option on `createWfGraphApp` is required, and the Layer graph takes
-the client at construction.
+(`rateLimit`, `throttle`, `debounce`, `priority`, `timeouts`, `retries`) can be
+declared on `defineEvent` and is handed to Inngest's `createFunction`; no Event
+declares any of it, and section 7.4 drops it. The `inngest` option on
+`createWfGraphApp` is required, and the Layer graph takes the client at
+construction.
 
 **Inventory of Inngest features in use.**
 
@@ -612,8 +613,8 @@ out through memoized steps named `subscribers-*`, `lifecycle-*`,
 `wait-candidates-*` and `waits-*`. It becomes the second kind of body the
 executor runs: a schedule row with `kind = 'delivery'` and the inbox id, claimed
 and leased the same way, with the same memo table keyed by the inbox id. One
-queue, one lease, one memo, two bodies. The per-Event retry count moves from
-`inngest.retries` to a column on the Event definition the driver reads.
+queue, one lease, one memo, two bodies. A delivery retries under the executor's
+own attempt limit, the same one a run uses (section 7.4).
 
 ### 7.3 Sources
 
@@ -646,23 +647,20 @@ A source is anything that inserts an inbox row and enqueues its delivery.
 
 ### 7.4 Per-Event flow control
 
-`defineEvent` lets an Event Author declare Inngest's `rateLimit`, `throttle`,
-`debounce`, `priority`, `timeouts` and `retries`, with `batchEvents` and
-`concurrency` refused. Without Inngest each needs an owner.
+Dropped. `defineEvent` lets an Event Author declare Inngest's `rateLimit`,
+`throttle`, `debounce`, `priority`, `timeouts` and `retries` through its `inngest`
+option (`extensions/inngest-options.ts`). No Event uses it. The built-in
+integrations and the example app declare none of these options, and neither do
+the fourteen Events in Fountain's `spike/donor-os-workflows` branch at
+`14d21cae9`. Re-homing them would have meant a token bucket per key for
+`throttle` and `rateLimit` and a held, re-pointed delivery row for `debounce`,
+which is the hardest part of the intake to get right under many workers.
 
-- `retries` and `timeouts`: columns the delivery body reads. Straightforward.
-- `priority`: a column on the schedule row and a term in the claim's `ORDER BY`.
-  Straightforward.
-- `debounce` by key: the delivery row is held with `wake_at = received_at +
-  period` and re-pointed at the newest inbox row for the key while it waits; one
-  conditional update per arrival. Moderate.
-- `throttle` and `rateLimit` by key: a token-bucket row per key, consumed inside
-  the claim. Moderate, and the only part of Inngest's flow control that is hard
-  to get exactly right under many workers.
-
-Whether any adopter uses the last two is unknown and decides whether they ship in
-the first release or are dropped from `defineEvent` under the no-backwards-
-compatibility convention. Section 12 lists it.
+When the inbox lands, `defineEvent` loses its `inngest` option and
+`extensions/inngest-options.ts` is deleted, under the no-backwards-compatibility
+convention in AGENTS.md. A delivery retries under the executor's own attempt
+limit, the same one a run uses. An Event that later needs its own retry count or
+priority gets it as a plain field on the Event definition.
 
 ## 8. Deployment topologies
 
@@ -822,9 +820,6 @@ available for today.
   product runs at; it is the number to watch. The Design B cursor model is the
   answer if it becomes the bottleneck.
 - **The Worker driver.** The least certain piece and the easiest to defer.
-- **Flow control.** `debounce`, `throttle` and `rateLimit` under many workers are
-  real distributed-systems work; the honest first release ships `retries`,
-  `timeouts`, `priority` and `debounce`, and decides the other two with data.
 - **Two drivers during transition.** Keeping the Inngest driver alive for one
   release keeps ADR-0011 alive for one release. The diffing it enables through
   the reliability suite is worth it; carrying it longer is not.
@@ -849,7 +844,8 @@ Each phase ends green against the AGENTS.md check list.
    with `parked`. The reliability suite runs on both drivers and diffs.
 4. **The inbox.** `workflow_event_inbox`, delivery bodies on the executor,
    `app.events.send`, the HTTP route, webhook intake rewired, the Inngest source
-   entry. `defineEvent` flow control re-homed as section 7.4 describes.
+   entry. `defineEvent` loses its `inngest` option and
+   `extensions/inngest-options.ts` is deleted (section 7.4).
 5. **Retire ADR-0011 and the Inngest driver.** Delete the branch function, kill
    event, sweep and progress restore; `inngest` leaves `createWfGraphApp` and the
    peer dependency; `scripts/dev.ts` drops the CLI. New ADR superseding ADR-0004;
@@ -862,8 +858,8 @@ Each phase ends green against the AGENTS.md check list.
 
 1. Does the Inngest executor driver survive past phase 5, for hosts that cannot
    run a worker, at the cost of keeping ADR-0011? Recommendation: no.
-2. Which `defineEvent` flow-control options do real adopters use? `throttle` and
-   `rateLimit` ship only if the answer is yes.
+2. Decided: per-Event flow control is dropped, because no Event in this
+   repository or in Fountain's spike declares any of it (section 7.4).
 3. Is the Cloudflare Worker backend a release target for the executor, or does it
    keep an Inngest or Cloudflare Workflows driver? Recommendation: tick-based
    driver, last.
