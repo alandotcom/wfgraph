@@ -26,7 +26,7 @@ Find out whether the verification is stale before you trust it:
 
 ```sh
 git diff --stat -- docs/internal/plans/separate-event-intake-from-durable-execution.md
-git log --oneline afc0ce3c.. -- docs/internal/plans/separate-event-intake-from-durable-execution.md
+git log --oneline fe9616b8.. -- docs/internal/plans/separate-event-intake-from-durable-execution.md
 git log --oneline a92cea15.. -- \
   packages/core/src/backend/services/executions/repo/waits.ts \
   packages/core/src/backend/services/executions/repo/runs.ts \
@@ -221,7 +221,7 @@ can find it and a mutation can remove it.
 | `Intake`: Concurrency in `StartWrite`, `SupersedeDropsSchedule` | CONTEXT.md "Concurrency", "Superseded" | `startWithConcurrency` in `lifecycle/concurrency.ts` |
 | `Intake`: `CancelWrite` | "Cancellation" | `requestCancelForEntity` in `repo/runs.ts` |
 
-Last confirmed against: the design doc at `afc0ce3c`, and the existing code at
+Last confirmed against: the design doc at `fe9616b8`, and the existing code at
 `a92cea15` (`main`). Move these two commits forward only after you have read
 the covered sections and files at the new commit and confirmed that the models
 still describe them. When the executor is built, add its files to the last
@@ -300,8 +300,9 @@ keeps it fixed.
   inbox (the delivery's wait-candidate pages).
 - More than one Execution inside the run model. Concurrency is checked in
   `Intake`, with each run reduced to one step.
-- Handler sub-steps inside one node, and the per-Event flow control of section
-  7.4.
+- Handler sub-steps inside one node.
+- A delivery's attempt limit. `Intake` re-runs a delivery after a crash or an
+  expired lease, and never gives up on one.
 - Exit claimed before an Execution opens (admission Eligibility), and a Wait
   that changes mode under a Migration.
 - The SQLite and Cloudflare Worker drivers, `NOTIFY` latency, database
