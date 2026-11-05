@@ -44,6 +44,10 @@ Migration|expiry-keeps-token|/\ sched' = "queued" /\ holder' = 0 /\ attempt' = S
 Migration|migrate-wake-never-consumed|THEN /\ row' = "waiting" /\ rowVersion' = loaded[w] /\ hopWakes' = 0|THEN /\ row' = "migrate" /\ rowVersion' = loaded[w] /\ hopWakes' = 0|EveryRunEnds
 Migration|fence-refusal-counts-an-attempt|FenceRefusalCountsNoAttempt == TRUE|FenceRefusalCountsNoAttempt == FALSE|FailedOnlyAfterRetriesSpent
 Migration|wake-claims-a-woken-row|WakeIsUnclaimed == row = "waiting"|WakeIsUnclaimed == row # "none"|EachHopWokenOnce
+Delivery|wake-the-runs-it-settled|ExcludeSettledRuns == TRUE|ExcludeSettledRuns == FALSE|NoWakeInTheRunItStarted NoWakeInARunItSettled
+Delivery|scan-and-wake-page-by-page|SavePagesBeforeWaking == TRUE|SavePagesBeforeWaking == FALSE|NoSecondWaitFromOneArrival
+Delivery|wake-claims-a-woken-row|WakeIsUnclaimed(r) == row[r] = "waiting"|WakeIsUnclaimed(r) == row[r] \in {"waiting", "woken"}|EachWaitWokenOnce
+Delivery|scan-drops-running-runs|/\ run[RunOf[r]] \in {"running", "claimed"}|/\ run[RunOf[r]] = "claimed"|SurvivingWaitsAreWoken
 Intake|inbox-key-not-unique|InboxKeyIsUnique == TRUE|InboxKeyIsUnique == FALSE|DuplicateSendIsOneArrival EachArrivalOpensAtMostOneRun
 Intake|delivery-id-not-unique|DeliveryIdIsUnique == TRUE|DeliveryIdIsUnique == FALSE|EachArrivalOpensAtMostOneRun
 Intake|schedule-row-inserted-later|ExecutionAndScheduleTogether == TRUE|ExecutionAndScheduleTogether == FALSE|EveryOpenRunIsScheduled
