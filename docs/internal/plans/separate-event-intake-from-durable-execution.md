@@ -357,15 +357,22 @@ token once per pass, so the engine's `WorkflowStore` port does not change.
 
 The fence leaves one window open: a store write that commits just before its
 memo row is refused. The next pass finds no memo and runs the step again.
-Today's Inngest memo has the same window. Each store write a re-run step repeats
-is therefore idempotent:
+Today's Inngest memo has the same window. The store writes a re-run step
+repeats are therefore idempotent:
 
 - `startStepLog` inserts a row whose id derives from the execution id and the
-  step id, with `on conflict do nothing`.
-- `completeStepLog` updates only a row that is still `running`.
-- `recordAuditEvent` takes a derived id the same way.
+  node id, with `on conflict do nothing`. A node opens its log row in one step
+  per Execution, and its retries reuse that row.
+- `completeStepLog` updates only a row that is still `running` or was closed as
+  `error`. A re-run of the same close writes the same values, and a retry that
+  succeeds after an attempt failed can still correct the row's verdict.
 
-The other store writes are already conditional updates. The Handler model in
+The other store writes are already conditional updates, except
+`recordAuditEvent`, which stays a plain insert. A derived id there would have
+to come from the entry's content, which would merge two legitimate identical
+timeline entries, such as one Wait re-parking after a Migration. A duplicate
+timeline row in the crash window is the smaller harm, and Inngest leaves the
+same one today. The Handler model in
 `.claude/skills/verify-durable-executor` checks both halves. Without the fence,
 a stale worker rewrites a node's outcome after it ended, or fails a node the
 live worker would retry. With the fence but a random log row id, one lease
@@ -712,7 +719,10 @@ out through memoized steps named `subscribers-*`, `lifecycle-*`,
 `wait-candidates-*` and `waits-*`. It becomes the second kind of body the
 executor runs: a schedule row with `kind = 'delivery'` and the inbox id, claimed
 and leased the same way, with the same memo table keyed by the inbox id. One
-queue, one lease, one memo, two bodies. A delivery retries under the executor's
+queue, one lease, one memo, two bodies. The schedule table's foreign key
+points at `workflow_executions`, so a delivery's schedule row, keyed by an
+inbox id, cannot share it as written; phase 3 gives deliveries a nullable
+execution id with a separate inbox key, or a schedule table of their own. A delivery retries under the executor's
 own attempt limit, the same one a run uses (section 7.4).
 
 ### 7.3 Sources

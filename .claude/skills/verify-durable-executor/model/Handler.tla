@@ -67,7 +67,7 @@ Sat2(n) == IF n > 2 THEN 2 ELSE n
 LeaseHeldBy(w) == holder = w                 \* the memo write checks owner_token
 StoreWriteIsFenced == TRUE                   \* every store write checks owner_token
 LogIdIsTheStepId == TRUE                     \* log-open inserts a row id derived from the step id, on conflict do nothing
-CloseIsConditional == TRUE                   \* log-close updates only a row still running
+CloseIsConditional == TRUE                   \* log-close updates only a row still running or closed as error
 SendCarriesAKey == TRUE                      \* callExternal passes an idempotency key
 ReadIsMemoized == TRUE                       \* the handler wraps the read in step.run
 RefusalIsAValue == TRUE                      \* a StepFailure is stored, not thrown
