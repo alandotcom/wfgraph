@@ -26,7 +26,7 @@ Find out whether the verification is stale before you trust it:
 
 ```sh
 git diff --stat -- docs/internal/plans/separate-event-intake-from-durable-execution.md
-git log --oneline be83bbdb.. -- docs/internal/plans/separate-event-intake-from-durable-execution.md
+git log --oneline 9f79c206.. -- docs/internal/plans/separate-event-intake-from-durable-execution.md
 git log --oneline a92cea15.. -- \
   packages/core/src/backend/services/executions/repo/waits.ts \
   packages/core/src/backend/services/executions/repo/runs.ts \
@@ -240,17 +240,20 @@ current match. About 511,000 states.
 
 ### `Handler`: the steps inside one node
 
-One node's handler reads a value from vendor A in a `read` step, then sends it
-to vendor B in a `send` step with an idempotency key (ADR-0009). Vendor A may
-answer differently each time. The send may succeed, be refused (a
-`StepFailure`, stored as a value), or throw a retriable error. A pass loads the
-memo when it claims the run, and `run(step, fn)` writes the memo row after
-`fn`, fenced on the lease. About 1,800 states.
+One node opens its log row in a `log-open` step, reads a value from vendor A in
+a `read` step, sends it to vendor B in a `send` step with an idempotency key
+(ADR-0009), and closes its log row in a `log-close` step. Vendor A may answer
+differently each time. The send may succeed, be refused (a `StepFailure`,
+stored as a value), or throw a retriable error. A pass loads the memo when it
+claims the run, and `run(step, fn)` writes the memo row after `fn`, fenced on
+the lease. The log writes and the node's outcome are store writes, which commit
+in their own transactions and are fenced on the lease too ("Fencing store
+writes"). About 3,800 states.
 
 This is at-least-once by design: a worker whose lease expired mid-step can still
-call a vendor once more before its memo write is refused, and a crash between a
-call and its memo row calls again. The rules check what the design promises
-despite that.
+call a vendor once more before its memo write is refused, and a crash or an
+expired lease between a store write or a call and its memo row runs it again.
+The rules check what the design promises despite that.
 
 | Rule | The promise | The harm when it breaks |
 | --- | --- | --- |
@@ -258,6 +261,9 @@ despite that.
 | `AppliedWriteMatchesTheOutput` | What vendor B applied is the value the node records as its output. | The Runs view shows a value other than the one sent. |
 | `RefusalFailsTheNodeOnce` | A refused call is never retried as a transient error, and no lease holder sends again after a refusal is recorded. | A vendor's 400 is sent four more times. |
 | `FailedOnlyOnRefusalOrSpentRetries` | The node fails only on a refusal or after its retries were spent. | A transient error fails the node. |
+| `OneLogRowPerNode` | The node has one log row, however many passes open it. | The Runs view shows a node twice, and a later node reads the wrong row's output. |
+| `LogClosedOnce` | The node's log row is closed once, however many passes close it. | A finished node's output or duration is overwritten. |
+| `NodeOutcomeIsFinal` | Once the node has succeeded or failed, nothing rewrites that outcome. | A stale worker turns a succeeded node into a failed one. |
 | `NodeEnds` (liveness) | The node ends. | The run loops on a node forever. |
 
 ### `Timing`: leases, heartbeats, polling and the Worker driver
@@ -350,11 +356,13 @@ can find it and a mutation can remove it.
 | `Arrivals`: `Scan`, `Record` | Section 7.2 | `listWaitCandidatePage` and `deliverWaitCandidates` in `lifecycle/deliver-event.ts` |
 | `Handler`: `Read`, `Send`, `ReadMemo`, `SendMemo`, `ReadIsMemoized`, `RefusalIsAValue` | "The runtime", `run(step, fn)`; "Retries"; ADR-0009 | `StepFailure` and `RememberedStep` in `extensions/steps/define-step.ts` |
 | `Handler`: `SendCarriesAKey` | ADR-0009 | the idempotency key `callExternal` passes, in `extensions/steps/external-http.ts` |
+| `Handler`: `Open`, `Close`, `OpenMemo`, `CloseMemo`, `LogIdIsTheStepId`, `CloseIsConditional` | "Fencing store writes" | `startStepLog` and `completeStepLog` in `engine/db-store.ts`; `openNodeLog` and `closeNodeLog` in `repo/node-logs.ts`; the `node:<n>:log-open` and `log-close` steps in `engine/step-log.ts` |
+| `Handler`: `StoreWriteIsFenced`, `MayWrite`, `Outcome`, `Release` | "Fencing store writes"; "Retries" | `createDbWorkflowStore` in `engine/db-store.ts`; `finishRun` in `repo/runs.ts` |
 | `Timing`: `NodeLease`, `NodeHeartbeat`, `NodePoll`, `Expire`, `SweepLateness` | "Lease and liveness"; "Wake latency" | |
 | `Timing`: `WorkerLease`, `WorkerCron`, `WorkerBudget`, `QueueMaxDelay`, `Kill`, `WorkerUsesCron` | Section 8, "Cloudflare Worker over Hyperdrive" | |
 | `Timing`: `ClaimWaitsForTheDeadline` | "The invocation", step 1 (`wake_at <= now()`) | |
 
-Last confirmed against: the design doc at `be83bbdb`, and the existing code at
+Last confirmed against: the design doc at `9f79c206`, and the existing code at
 `a92cea15` (`main`). Move these two commits forward only after you have read
 the covered sections and files at the new commit and confirmed that the models
 still describe them. When the executor is built, add its files to the last
@@ -404,7 +412,7 @@ None. Every rule holds on the design as written. `mutations.sh` keeps a
 `findings` list for a rule that breaks and has been accepted as a finding, and
 fails when that list disagrees with what `check.sh` reports.
 
-Three earlier findings are fixed in the design doc, and a mutation puts each
+Four earlier findings are fixed in the design doc, and a mutation puts each
 back to show the rule still catches it:
 
 - `DurableExecutor` `FailedOnlyAfterRetriesSpent`: the claim counted an attempt
@@ -421,6 +429,14 @@ back to show the rule still catches it:
   the run failed with no step having failed. Fixed at `25e215b0`: a refused
   fence re-queues the run with the attempt counter unchanged. Mutation:
   `fence-refusal-counts-an-attempt`.
+- `Handler` `NodeOutcomeIsFinal`, `FailedOnlyOnRefusalOrSpentRetries` and
+  `OneLogRowPerNode`: the design fenced only the memo write, while the models
+  fenced every write. A stale worker's store write could rewrite a node's
+  outcome or fail a node the live worker would retry, and a lease expiry
+  between a log insert and its memo row left two log rows. Fixed at
+  `9f79c206`: every store write is fenced, and each one a re-run step repeats
+  is idempotent. Mutations: `store-write-not-fenced`, `log-id-random`,
+  `log-close-unconditional`.
 
 ## Not covered
 
