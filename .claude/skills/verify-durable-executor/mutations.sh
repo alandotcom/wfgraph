@@ -60,6 +60,11 @@ Intake|poll-skips-host-rows|/\ inbox[r] = "present" /\ dsched[r] = "none"|/\ inb
 Intake|canceled-run-never-ends|  /\ exec[x] = "claimed" /\ esched[x] = "present"|  /\ exec[x] = "claimed" /\ esched[x] = "present" /\ FALSE|EveryRunEnds
 Intake|refusal-not-consulted|RefusalIsConsulted == TRUE|RefusalIsConsulted == FALSE|AdmissionDecidedOnce
 Intake|concurrency-before-eligibility|EligibilityBeforeConcurrency == TRUE|EligibilityBeforeConcurrency == FALSE|RefusedArrivalChangesNothing
+Arrivals|claim-ignores-the-token|ClaimNeedsTheToken == TRUE|ClaimNeedsTheToken == FALSE|WakeOnlyOnAMatch
+Arrivals|no-refresh-after-a-repark|RefreshOnRotatedToken == TRUE|RefreshOnRotatedToken == FALSE|NoMatchingParkMissed
+Arrivals|claim-takes-a-woken-row|RowIsWaiting(r) == row[r] = "waiting"|RowIsWaiting(r) == row[r] # "none"|EachWaitWokenOnce
+Arrivals|rescan-on-retry|IF scannedOk[a] THEN|IF FALSE THEN|NoSecondWaitFromOneArrival
+Arrivals|offer-never-recorded|offered' = [offered EXCEPT ![pc[w][2]] = @ + 1]|offered' = offered|EveryDeliveryEnds
 MUTATIONS
 )
 
