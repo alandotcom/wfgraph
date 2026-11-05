@@ -322,8 +322,8 @@ Release(w) ==
 \* with one more on the attempt counter, and owner_token is cleared.
 LeaseExpires ==
   /\ sched = "leased" /\ faults < MaxFaults
-  /\ sched' = "queued" /\ holder' = 0 /\ attempt' = Sat(attempt + 1)
-  /\ faults' = faults + 1 /\ failures' = Sat(failures + 1)
+  /\ sched' = "queued" /\ holder' = 0 /\ faults' = faults + 1
+  /\ attempt' = Sat(attempt + 1) /\ failures' = Sat(failures + 1)
   /\ UNCHANGED <<workerVars, dataVars, wakes, branchRuns, joinRuns, canceledEntries,
                  terminalWrites, claimWrites, startedWorkAfterClaim,
                  canceledWorkAfterExit, commitAfterEnd, policyCanceled>>

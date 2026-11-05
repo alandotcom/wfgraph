@@ -31,7 +31,7 @@ DurableExecutor|terminal-write-unguarded|RunInFlight == status = "running"|RunIn
 DurableExecutor|completion-ignores-claim|[] joinDone /\ claim = "none" ->|[] joinDone ->|EndMatchesWork
 DurableExecutor|failed-node-ends-the-run|FailedNodeEndsRun == claim = "none"|FailedNodeEndsRun == TRUE|CancelClaimRunsItsOutlet NoWaitLeftOpenAfterTheRunEnds
 DurableExecutor|claim-counts-an-attempt|  /\ UNCHANGED <<attempt, faults, dataVars, observers>>|  /\ attempt' = Sat(attempt + 1) /\ UNCHANGED <<faults, dataVars, observers>>|FailedOnlyAfterRetriesSpent
-DurableExecutor|expiry-keeps-token|/\ sched' = "queued" /\ holder' = 0 /\ attempt' = Sat(attempt + 1)|/\ sched' = "queued" /\ holder' = holder /\ attempt' = Sat(attempt + 1)|LeaseHasAHolder
+DurableExecutor|expiry-keeps-token|/\ sched' = "queued" /\ holder' = 0 /\ faults' = faults + 1|/\ sched' = "queued" /\ holder' = holder /\ faults' = faults + 1|LeaseHasAHolder
 Migration|no-version-fence|StillPinned(w) == pinned = loaded[w]|StillPinned(w) == TRUE|BelowRunsThePinnedVersion
 Migration|repin-while-running|RepinNeedsAPark == row = "waiting"|RepinNeedsAPark == TRUE|BelowRunsThePinnedVersion
 Migration|migrate-wake-dropped|THEN row' = "migrate" /\ Requeue|THEN UNCHANGED <<row, sched>>|ParkedUnderThePinnedVersion
@@ -40,7 +40,7 @@ Migration|above-not-memoized|aboveRuns' = IF aboveDone THEN aboveRuns ELSE above
 Migration|below-not-memoized|belowRuns' = IF belowDone THEN belowRuns ELSE belowRuns + 1|belowRuns' = belowRuns + 1|BelowRunsOnce
 Migration|release-ignores-wait-row|ReleaseReadsWaitRow == TRUE|ReleaseReadsWaitRow == FALSE|WokenWaitIsNeverStranded
 Migration|no-lease-fencing|LeaseHeldBy(w) == holder = w|LeaseHeldBy(w) == TRUE|OneTerminalRecord
-Migration|expiry-keeps-token|/\ sched' = "queued" /\ holder' = 0 /\ attempt' = Sat(attempt + 1)|/\ sched' = "queued" /\ holder' = holder /\ attempt' = Sat(attempt + 1)|LeaseHasAHolder
+Migration|expiry-keeps-token|/\ sched' = "queued" /\ holder' = 0 /\ faults' = faults + 1|/\ sched' = "queued" /\ holder' = holder /\ faults' = faults + 1|LeaseHasAHolder
 Migration|migrate-wake-never-consumed|THEN /\ row' = "waiting" /\ rowVersion' = loaded[w] /\ hopWakes' = 0|THEN /\ row' = "migrate" /\ rowVersion' = loaded[w] /\ hopWakes' = 0|EveryRunEnds
 Migration|fence-refusal-counts-an-attempt|FenceRefusalCountsNoAttempt == TRUE|FenceRefusalCountsNoAttempt == FALSE|FailedOnlyAfterRetriesSpent
 Migration|event-wakes-a-delay-park|EventWakeNeedsAnEventPark == rowMode = "event"|EventWakeNeedsAnEventPark == TRUE|EventOnlyWakesAnEventPark
@@ -96,8 +96,13 @@ while IFS='|' read -r model name from to rules; do
     fi
   done
   rm -rf "$work/models" && cp -R "$here/model" "$work/models"
-  FROM=$from TO=$to perl -0pi -e 's/\Q$ENV{FROM}\E/$ENV{TO}/ or die "not found\n"' "$work/models/$model.tla" 2>/dev/null \
-    || { echo "missing  $model $name: the model no longer contains: $from"; failed=1; continue; }
+  matches=$(FROM=$from perl -0ne 'my $n = () = /\Q$ENV{FROM}\E/g; print $n' "$work/models/$model.tla")
+  if [ "$matches" -eq 0 ]; then
+    echo "missing  $model $name: the model no longer contains: $from"; failed=1; continue
+  elif [ "$matches" -gt 1 ]; then
+    echo "AMBIGUOUS $model $name: the model contains this text $matches times: $from"; failed=1; continue
+  fi
+  FROM=$from TO=$to perl -0pi -e 's/\Q$ENV{FROM}\E/$ENV{TO}/' "$work/models/$model.tla"
   result=$(MODEL_DIR=$work/models RULES=$rules "$here/check.sh" "$model" 2>&1) || true
   if printf '%s\n' "$result" | grep -q '^error'; then
     echo "ERROR    $model $name: tla-ts could not check the mutated model"

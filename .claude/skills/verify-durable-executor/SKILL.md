@@ -74,8 +74,10 @@ many-core machine, most of it the `Arrivals` and `Intake` models.
 the design at a time and requires the rules named beside that guard to break.
 It reports a mutation `UNPROVEN` when its rule already breaks on the models as
 written, `MISSED` when its rule still holds, `UNCOVERED` for a rule no mutation
-reaches, `STALE` for a recorded finding that no longer reproduces, and `NEW` for
-a rule that breaks and is not a recorded finding. Any of those fails the suite.
+reaches, `STALE` for a recorded finding that no longer reproduces, `NEW` for
+a rule that breaks and is not a recorded finding, and `AMBIGUOUS` when a
+mutation's text occurs more than once in its model, since the mutation would
+then change only the first occurrence. Any of those fails the suite.
 It takes about three minutes.
 
 Both scripts run `tla-ts@0.0.8` through `pnpm dlx` on every core, so nothing is
