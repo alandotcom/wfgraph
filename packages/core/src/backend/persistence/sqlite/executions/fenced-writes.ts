@@ -4,6 +4,7 @@
  * `BEGIN IMMEDIATE` transaction after its schedule row check.
  */
 
+import { Effect } from "effect";
 import type {
   FencedExecutionWrites,
   OwnerFence,
@@ -23,6 +24,7 @@ import {
 } from "#src/backend/persistence/sqlite/executions/runs";
 import {
   makeSqlitePassWrites,
+  resolveOpenParks,
   writeFenced,
 } from "#src/backend/persistence/sqlite/executions/schedule";
 import {
@@ -57,7 +59,21 @@ export function makeSqliteFencedWrites(
     markRunning: (input) => writeFenced(store, fence, markRunningWrite(input)),
     markWaitingIfParked: (input) =>
       writeFenced(store, fence, markWaitingIfParkedWrite(input)),
-    requestExit: (input) => writeFenced(store, fence, requestExitWrite(input)),
+    // The pass that wins the Exit claim resolves the run's other parks in the
+    // same transaction, so a parked sibling halts on the next pass rather than
+    // holding the run until its own deadline.
+    requestExit: (input) =>
+      writeFenced(store, fence, (database) =>
+        Effect.gen(function* () {
+          const state = yield* requestExitWrite(input)(database);
+          if (state?.didWrite) {
+            yield* resolveOpenParks(database, input.executionId, {
+              kind: "exit",
+            });
+          }
+          return state;
+        })
+      ),
     finishRun: (input) => writeFenced(store, fence, finishRunWrite(input)),
   });
 }

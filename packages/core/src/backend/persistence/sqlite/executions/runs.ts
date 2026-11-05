@@ -44,7 +44,7 @@ import {
   sqliteVersionKind,
   type SqliteExecutionListRow,
 } from "#src/backend/persistence/sqlite/executions/rows";
-import { dropExecutorState } from "#src/backend/persistence/sqlite/executions/schedule";
+import { settleEndedExecutions } from "#src/backend/persistence/sqlite/executions/schedule";
 
 const WORKFLOW_EXECUTIONS_LIMIT = 50;
 
@@ -496,7 +496,7 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
               )
             )
             .returning({ id: workflowExecutions.id });
-          yield* dropExecutorState(
+          yield* settleEndedExecutions(
             database,
             closed.map((row) => row.id)
           );
@@ -579,7 +579,7 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
             .returning();
           const [written] = updated;
           if (written) {
-            yield* dropExecutorState(database, [written.id]);
+            yield* settleEndedExecutions(database, [written.id]);
             return terminationState(written, true);
           }
           return yield* readTerminationState(database, input.executionId);
@@ -778,7 +778,7 @@ export function finishRunWrite(input: FinishRunInput) {
         )
         .returning();
       if (written) {
-        yield* dropExecutorState(database, [written.id]);
+        yield* settleEndedExecutions(database, [written.id]);
         return terminationState(written, true);
       }
       return yield* readTerminationState(database, input.executionId);

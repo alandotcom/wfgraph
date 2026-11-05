@@ -93,11 +93,12 @@ export function writeFenced<A>(
 }
 
 /**
- * Deletes the schedule row and the step memo of Executions whose terminal
- * record this transaction wrote. Nothing claims, replays or migrates a run once
- * it is terminal; the log rows stay.
+ * Closes what Executions whose terminal record this transaction wrote still
+ * hold open, as the PostgreSQL backend's `settleEndedExecutions` does: open
+ * wait rows are cancelled, and the schedule row and step memo are deleted. The
+ * log rows stay.
  */
-export function dropExecutorState(
+export function settleEndedExecutions(
   database: SqliteExecutor,
   executionIds: readonly string[]
 ) {
@@ -105,12 +106,42 @@ export function dropExecutorState(
   const ids = [...executionIds];
   return Effect.gen(function* () {
     yield* database
+      .update(workflowWaitStates)
+      .set({ status: "cancelled", cancelledAt: Date.now() })
+      .where(
+        and(
+          inArray(workflowWaitStates.executionId, ids),
+          inArray(workflowWaitStates.status, ["waiting", "resuming"])
+        )
+      );
+    yield* database
       .delete(workflowExecutionSteps)
       .where(inArray(workflowExecutionSteps.executionId, ids));
     yield* database
       .delete(workflowExecutionSchedule)
       .where(inArray(workflowExecutionSchedule.executionId, ids));
   });
+}
+
+/**
+ * Resolves every park of one run still `waiting` with `wake`, as the
+ * PostgreSQL backend's `resolveOpenParks` does. It runs inside the caller's
+ * write transaction, which already holds the one writer.
+ */
+export function resolveOpenParks(
+  database: SqliteExecutor,
+  executionId: string,
+  wake: ParkWake
+) {
+  return database
+    .update(workflowWaitStates)
+    .set({ wake: encodeJson(wake), status: "resuming" })
+    .where(
+      and(
+        eq(workflowWaitStates.executionId, executionId),
+        eq(workflowWaitStates.status, "waiting")
+      )
+    );
 }
 
 export function makeSqliteScheduleMethods(

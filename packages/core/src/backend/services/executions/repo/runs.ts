@@ -35,7 +35,7 @@ import type {
 } from "#src/backend/lib/db/index";
 import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
 import {
-  dropExecutorState,
+  settleEndedExecutions,
   lockSchedules,
 } from "#src/backend/services/executions/repo/schedule";
 import {
@@ -386,8 +386,9 @@ export type RunsRepoMethods = {
    * `cancelledAt`; `superseded` is newest-wins Concurrency letting a newer
    * start take this run's place, which is routine and not a cancellation.
    *
-   * A write that made the row terminal also deletes the run's schedule row and
-   * step memo, so a pass holding its lease is refused at its next fenced write.
+   * A write that made the row terminal also cancels the run's open wait rows
+   * and deletes its schedule row and step memo, so a pass holding its lease is
+   * refused at its next fenced write.
    */
   readonly endInFlight: (input: {
     executionId: string;
@@ -446,8 +447,8 @@ export type RunsRepoMethods = {
    * Write the run's own terminal row and return the authoritative state. The
    * same in-flight guard as `endInFlight` prevents a completion from
    * overwriting an earlier Cancel or Exit claim. The write that made the row
-   * terminal deletes the run's schedule row and step memo in the same
-   * transaction.
+   * terminal cancels the run's open wait rows and deletes its schedule row and
+   * step memo in the same transaction.
    */
   readonly finishRun: StoreWrite<
     {
@@ -1002,8 +1003,9 @@ async function readTerminationState(
  * Runs a write that may make Executions terminal, as one transaction.
  *
  * The candidates' schedule rows are locked first, in the order every fenced
- * write takes them. `write` reports which Executions it ended, and their
- * schedule rows and step memos are deleted before the transaction commits.
+ * write takes them. `write` reports which Executions it ended, and their open
+ * wait rows, schedule rows and step memos are settled by
+ * `settleEndedExecutions` before the transaction commits.
  * Inside a fenced write the transaction is a savepoint of the fenced one.
  */
 export function endExecutions<A>(
@@ -1016,7 +1018,7 @@ export function endExecutions<A>(
   return db.transaction(async (tx) => {
     await lockSchedules(tx, candidateIds);
     const { result, ended } = await write(tx);
-    await dropExecutorState(tx, ended);
+    await settleEndedExecutions(tx, ended);
     return result;
   });
 }

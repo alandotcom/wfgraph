@@ -10,7 +10,7 @@
  * the row `waiting` after the release commits.
  */
 
-import { and, asc, eq, inArray, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, lte, or, type SQL, sql } from "drizzle-orm";
 import { Effect } from "effect";
 import {
   type ExecutionScheduleKind,
@@ -145,16 +145,28 @@ export async function lockSchedules(
 }
 
 /**
- * Deletes the schedule row and the step memo of Executions whose terminal
- * record this transaction wrote. Nothing claims, replays or migrates a run once
- * it is terminal, so nothing reads either again; the log rows stay.
+ * Closes what Executions whose terminal record this transaction wrote still
+ * hold open: every wait row still `waiting` or `resuming` is cancelled, and the
+ * schedule row and the step memo are deleted. Nothing claims, replays or
+ * migrates a run once it is terminal, so nothing reads the memo again, and no
+ * Event or Runs view action may address a park of a run that has ended. The
+ * log rows stay.
  */
-export async function dropExecutorState(
+export async function settleEndedExecutions(
   tx: Executor,
   executionIds: readonly string[]
 ): Promise<void> {
   if (executionIds.length === 0) return;
   const ids = [...executionIds];
+  await tx
+    .update(workflowWaitStates)
+    .set({ status: "cancelled", cancelledAt: new Date() })
+    .where(
+      and(
+        inArray(workflowWaitStates.executionId, ids),
+        inArray(workflowWaitStates.status, ["waiting", "resuming"])
+      )
+    );
   await tx
     .delete(workflowExecutionSteps)
     .where(inArray(workflowExecutionSteps.executionId, ids));
@@ -286,6 +298,27 @@ async function resolveOverdueParks(
         inArray(workflowWaitStates.executionId, executionIds),
         eq(workflowWaitStates.status, "waiting"),
         lte(workflowWaitStates.waitUntil, now)
+      )
+    );
+}
+
+/**
+ * Resolves every park of one run still `waiting` with `wake`, the way a
+ * producer resolves one park. The caller holds the run's schedule row, so a
+ * release reads these wakes once this transaction commits.
+ */
+export async function resolveOpenParks(
+  tx: Executor,
+  executionId: string,
+  wake: ParkWake
+): Promise<void> {
+  await tx
+    .update(workflowWaitStates)
+    .set({ wake, status: "resuming" })
+    .where(
+      and(
+        eq(workflowWaitStates.executionId, executionId),
+        eq(workflowWaitStates.status, "waiting")
       )
     );
 }
@@ -429,6 +462,16 @@ export function makeScheduleMethods(
   };
 }
 
+/**
+ * A memo value as a `jsonb` parameter. The driver types a JavaScript boolean
+ * as a boolean parameter, which the column refuses, so the value is sent as
+ * its JSON text and cast. The parameter is typed `text` first: typed `jsonb`,
+ * the driver would encode the JSON text a second time.
+ */
+function memoJson(value: JsonValue): SQL {
+  return sql`${JSON.stringify(value)}::text::jsonb`;
+}
+
 /** Builds the writes only a pass makes, fenced on `fence`. */
 export function makePassWrites(
   database: Database["Service"],
@@ -460,7 +503,7 @@ export function makePassWrites(
               executionId,
               stepId: input.stepId,
               attempt: input.attempt,
-              value: input.value,
+              value: memoJson(input.value),
             })
             .onConflictDoNothing();
           if (input.leaseExpiresAt !== undefined) {
@@ -517,7 +560,7 @@ export function makePassWrites(
                 executionId,
                 stepId: input.outcome.stepId,
                 attempt,
-                value: input.outcome.failure,
+                value: memoJson(input.outcome.failure),
               })
               .onConflictDoNothing();
           }

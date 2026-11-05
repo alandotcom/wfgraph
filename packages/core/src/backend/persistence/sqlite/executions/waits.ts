@@ -53,6 +53,7 @@ import {
 } from "#src/backend/persistence/sqlite/schema";
 import {
   optionalJsonObject,
+  optionalJsonValue,
   sqliteParkState,
   sqliteWaitState,
 } from "#src/backend/persistence/sqlite/executions/rows";
@@ -266,8 +267,21 @@ export function startWaitWrite(input: StartWaitInput) {
 }
 
 /**
+ * Whether a re-park may write over this row, as the PostgreSQL backend's
+ * `reparkableWait` decides: still `waiting`, or resolved by the database
+ * executor with a `migrate` or `timeout` wake the re-park supersedes.
+ */
+function isReparkable(row: { status: string; wake: string | null }): boolean {
+  if (row.status === "waiting") return true;
+  if (row.status !== "resuming") return false;
+  const kind = readJsonObject(optionalJsonValue(row.wake, "wake"))?.kind;
+  return kind === "migrate" || kind === "timeout";
+}
+
+/**
  * The re-park behind `reparkWait`. Given a fence, it reaches only a wait row of
- * the fenced Execution.
+ * the fenced Execution. The row goes back to `waiting` with no wake and no park
+ * step, so the next `waitForEvent` parks on it afresh.
  */
 export function reparkWaitWrite(input: ReparkWaitInput, fence?: OwnerFence) {
   return (database: SqliteExecutor) =>
@@ -277,6 +291,7 @@ export function reparkWaitWrite(input: ReparkWaitInput, fence?: OwnerFence) {
       const [row] = yield* database
         .select({
           status: workflowWaitStates.status,
+          wake: workflowWaitStates.wake,
           pinnedVersionId: workflowExecutions.workflowVersionId,
           terminationKind: workflowExecutions.terminationKind,
           metadata: workflowWaitStates.metadata,
@@ -294,7 +309,7 @@ export function reparkWaitWrite(input: ReparkWaitInput, fence?: OwnerFence) {
         )
         .limit(1);
 
-      if (row?.status !== "waiting") {
+      if (!row || !isReparkable(row)) {
         return refusedRepark("not_waiting");
       }
       if (row.pinnedVersionId !== input.workflowVersionId) {
@@ -315,6 +330,9 @@ export function reparkWaitWrite(input: ReparkWaitInput, fence?: OwnerFence) {
             ...optionalJsonObject(row.metadata, "wait metadata"),
             ...input.metadata,
           }),
+          status: "waiting",
+          wake: null,
+          parkStepId: null,
         })
         .where(eq(workflowWaitStates.id, input.waitStateId));
 

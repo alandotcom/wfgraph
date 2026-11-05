@@ -153,6 +153,11 @@ export type WaitsRepoMethods = {
    * addressing the same park. Everything else is the new version's answer,
    * including the wait type, so a Wait that changed mode re-parks as the mode it
    * now is.
+   *
+   * Under the database executor a Migration resolves the park with a `migrate`
+   * wake, which moves the row to `resuming`. A re-park also writes over a row
+   * resolved with `migrate` or `timeout`, returning it to `waiting` with its
+   * wake and park step cleared.
    */
   readonly reparkWait: StoreWrite<
     {
@@ -413,8 +418,20 @@ export function startWaitWrite(input: StartWaitInput) {
 }
 
 /**
+ * A wait row a re-park may write over: one still `waiting`, or one the
+ * database executor resolved with a wake the re-park supersedes. A `migrate`
+ * wake is the instruction to prepare again, and a `timeout` wake read under a
+ * version the run has since left is discarded the same way. Any other wake is
+ * an Event or a claim the Wait still has to act on.
+ */
+function reparkableWait(): SQL {
+  return sql`(${workflowWaitStates.status} = 'waiting' or (${workflowWaitStates.status} = 'resuming' and ${workflowWaitStates.wake}->>'kind' in ('migrate', 'timeout')))`;
+}
+
+/**
  * The re-park behind `reparkWait`. Given a fence, it reaches only a wait row of
- * the fenced Execution.
+ * the fenced Execution. The row goes back to `waiting` with no wake and no
+ * park step, so the next `waitForEvent` parks on it afresh.
  */
 export function reparkWaitWrite(input: ReparkWaitInput, fence?: OwnerFence) {
   return (db: Executor) =>
@@ -447,12 +464,15 @@ export function reparkWaitWrite(input: ReparkWaitInput, fence?: OwnerFence) {
           subscribedEvents: input.subscribedEvents,
           resumeToken: input.resumeToken,
           metadata: sql`coalesce(${workflowWaitStates.metadata}, '{}'::jsonb) || ${input.metadata}::jsonb`,
+          status: "waiting",
+          wake: null,
+          parkStepId: null,
         })
         .where(
           and(
             eq(workflowWaitStates.id, input.waitStateId),
             ofFencedExecution(fence),
-            eq(workflowWaitStates.status, "waiting"),
+            reparkableWait(),
             pinsVersionAndAdmits(tx, input.workflowVersionId, input.side)
           )
         )
@@ -467,7 +487,7 @@ export function reparkWaitWrite(input: ReparkWaitInput, fence?: OwnerFence) {
       // sends the caller to the wake the row would record.
       const [row] = await tx
         .select({
-          status: workflowWaitStates.status,
+          reparkable: sql<boolean>`${reparkableWait()}`,
           pinnedVersionId: workflowExecutions.workflowVersionId,
         })
         .from(workflowWaitStates)
@@ -478,7 +498,8 @@ export function reparkWaitWrite(input: ReparkWaitInput, fence?: OwnerFence) {
         .where(eq(workflowWaitStates.id, input.waitStateId))
         .limit(1);
 
-      return row?.status === "waiting" &&
+      return row !== undefined &&
+        row.reparkable &&
         row.pinnedVersionId !== input.workflowVersionId
         ? { ok: false, reason: "version_moved" }
         : { ok: false, reason: "not_waiting" };

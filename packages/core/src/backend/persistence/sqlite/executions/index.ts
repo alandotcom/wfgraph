@@ -35,7 +35,7 @@ import { makeSqliteWaitsMethods } from "#src/backend/persistence/sqlite/executio
 import { makeSqliteAuditMethods } from "#src/backend/persistence/sqlite/executions/audit";
 import { makeSqliteFencedWrites } from "#src/backend/persistence/sqlite/executions/fenced-writes";
 import {
-  dropExecutorState,
+  settleEndedExecutions,
   makeSqliteScheduleMethods,
 } from "#src/backend/persistence/sqlite/executions/schedule";
 import {
@@ -116,7 +116,7 @@ function endInFlightExecutions(
           isNull(workflowExecutions.terminationKind)
         )
       );
-    yield* dropExecutorState(database, eligible);
+    yield* settleEndedExecutions(database, eligible);
     return eligible;
   });
 }

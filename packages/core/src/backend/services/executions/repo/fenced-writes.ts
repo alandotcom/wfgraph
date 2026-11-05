@@ -38,6 +38,7 @@ import {
 import {
   makePassWrites,
   type PassWrites,
+  resolveOpenParks,
   writeFenced,
   writeFencedSerializable,
 } from "#src/backend/services/executions/repo/schedule";
@@ -71,10 +72,18 @@ type StoreWriteName =
   | "requestExit"
   | "finishRun";
 
-/** What `ExecutionRepo.fenced` answers for one pass. */
-export type FencedExecutionWrites = {
+/**
+ * The repository writes the engine's `WorkflowStore` reaches, as
+ * `createDbWorkflowStore` binds them. The unfenced methods of `ExecutionRepo`
+ * fill it on the Inngest path, and `ExecutionRepo.fenced` on a pass of the
+ * database executor.
+ */
+export type StoreWrites = {
   readonly [Name in StoreWriteName]: FencedWrite<RepoMethods[Name]>;
-} & PassWrites;
+};
+
+/** What `ExecutionRepo.fenced` answers for one pass. */
+export type FencedExecutionWrites = StoreWrites & PassWrites;
 
 /** Builds `ExecutionRepo.fenced` over one PostgreSQL database. */
 export function makeFencedWrites(
@@ -107,8 +116,17 @@ export function makeFencedWrites(
       writeFenced(database, fence, markRunningWrite(input)),
     markWaitingIfParked: (input) =>
       writeFenced(database, fence, markWaitingIfParkedWrite(input)),
+    // The pass that wins the Exit claim resolves the run's other parks in the
+    // same transaction, so a parked sibling halts on the next pass rather than
+    // holding the run until its own deadline.
     requestExit: (input) =>
-      writeFenced(database, fence, requestExitWrite(input)),
+      writeFenced(database, fence, async (tx) => {
+        const state = await requestExitWrite(input)(tx);
+        if (state?.didWrite) {
+          await resolveOpenParks(tx, input.executionId, { kind: "exit" });
+        }
+        return state;
+      }),
     // The terminal write deletes the schedule row it stands on.
     finishRun: (input) =>
       writeFenced(database, fence, finishRunWrite(input), "update"),

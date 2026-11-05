@@ -13,6 +13,7 @@ import { Effect } from "effect";
 import {
   ExecutionRepo,
   type OwnerFence,
+  type ParkWake,
   type PassOutcome,
 } from "#src/backend/services/executions/repo";
 import type {
@@ -245,6 +246,37 @@ export function describeExecutionScheduleConformance({
         wake: { kind: "timeout" },
       });
       expect(result.later).toMatchObject({ status: "waiting", wake: null });
+    });
+
+    // A step may answer any JSON value, and a step whose value is a bare
+    // scalar must read back as that scalar rather than fail the write.
+    it("stores and reads back every kind of JSON value a step answers", async () => {
+      const connection = await seeded(await openConnection());
+      const values = {
+        flag: true,
+        text: "sent",
+        count: 3,
+        nothing: null,
+        list: [1, "two", false],
+        record: { id: "msg_1", nested: { ok: true } },
+      };
+      const memo = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const executionId = yield* scheduledRun(T0);
+          const { fence } = yield* claimRun(executionId, T0);
+          for (const [stepId, value] of Object.entries(values)) {
+            yield* executions
+              .fenced(fence)
+              .writeStepMemo({ stepId, attempt: 0, value });
+          }
+          return yield* executions.listStepMemo(executionId);
+        })
+      );
+
+      expect(
+        Object.fromEntries(memo.map((entry) => [entry.stepId, entry.value]))
+      ).toEqual(values);
     });
 
     it("writes each release outcome", async () => {
@@ -666,6 +698,193 @@ export function describeExecutionScheduleConformance({
         didWrite: true,
       });
       expect(result.cancelledSchedule).toBeNull();
+    });
+
+    // A fatal failure in one branch writes the run's terminal record while a
+    // sibling Wait is still parked, and a parked Wait of a run that ended must
+    // not stay addressable by an Event or by the Runs view.
+    it("cancels every open wait row of a run in the transaction that ends it", async () => {
+      const connection = await seeded(await openConnection());
+      const result = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const executionId = yield* scheduledRun(T0);
+          const { fence } = yield* claimRun(executionId, T0);
+          const parked = yield* park(executionId, "wait_parked", at(90_000));
+          const woken = yield* park(executionId, "wait_woken", at(90_000));
+          yield* executions.resolvePark({
+            executionId,
+            waitStateId: woken,
+            wake: { kind: "timeout" },
+            now: at(1_000),
+          });
+          yield* executions.fenced(fence).finishRun({
+            executionId,
+            status: "failed",
+            error: "A step failed",
+          });
+
+          // A policy cancel ends a run from outside its pass the same way.
+          const cancelledId = yield* openRun;
+          const cancelledWait = yield* park(
+            cancelledId,
+            "wait_cancelled",
+            at(90_000)
+          );
+          yield* executions.endInFlight({
+            executionId: cancelledId,
+            status: "canceled",
+          });
+
+          return {
+            parked: yield* executions.findPark(parked),
+            woken: yield* executions.findPark(woken),
+            cancelled: yield* executions.findPark(cancelledWait),
+            open: yield* executions.listActiveWaitStates(executionId),
+          };
+        })
+      );
+
+      expect(result.parked).toMatchObject({ status: "cancelled" });
+      expect(result.woken).toMatchObject({
+        status: "cancelled",
+        wake: { kind: "timeout" },
+      });
+      expect(result.cancelled).toMatchObject({ status: "cancelled" });
+      expect(result.open).toEqual([]);
+    });
+
+    it("resolves the run's other parks as an Exit in the fenced write that wins the Exit claim", async () => {
+      const connection = await seeded(await openConnection());
+      const result = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const executionId = yield* scheduledRun(T0);
+          const { fence } = yield* claimRun(executionId, T0);
+          const pass = executions.fenced(fence);
+          const sibling = yield* park(executionId, "wait_sibling", at(90_000));
+          const won = yield* pass.requestExit({
+            executionId,
+            reason: "entity_condition_not_met",
+            nodeId: "send",
+            requestedAt: at(1_000),
+          });
+          const parkedAfter = yield* executions.startWait({
+            side: "started",
+            executionId,
+            workflowId: "wf_1",
+            runId: "run_1",
+            nodeId: "wait_after",
+            nodeName: "wait_after",
+            workflowVersionId: "ver_1",
+            waitType: "delay",
+            waitUntil: at(90_000),
+          });
+          const lost = yield* pass.requestExit({
+            executionId,
+            reason: "entity_condition_not_met",
+            nodeId: "other",
+            requestedAt: at(2_000),
+          });
+          const released = yield* pass.releasePass({
+            outcome: { kind: "parked" },
+            now: at(3_000),
+          });
+          return {
+            won,
+            lost,
+            sibling: yield* executions.findPark(sibling),
+            parkedAfter,
+            released,
+          };
+        })
+      );
+
+      expect(result.won).toMatchObject({ didWrite: true });
+      expect(result.lost).toMatchObject({ didWrite: false });
+      expect(result.sibling).toMatchObject({
+        status: "resuming",
+        wake: { kind: "exit" },
+      });
+      // The claim refuses every later park, so nothing new is left open.
+      expect(result.parkedAfter).toBeUndefined();
+      // The release reads the Exit wakes and hands the run straight back.
+      expect(result.released).toMatchObject({
+        state: "queued",
+        wakeAt: at(3_000),
+      });
+    });
+
+    it("re-parks a row a Migration or a timeout resolved, clearing its wake", async () => {
+      const connection = await seeded(await openConnection());
+      const result = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const executionId = yield* scheduledRun(T0);
+          const { fence } = yield* claimRun(executionId, T0);
+          const pass = executions.fenced(fence);
+          const reparkInput = (waitStateId: string) => ({
+            waitStateId,
+            workflowVersionId: "ver_1",
+            side: "started" as const,
+            waitType: "delay" as const,
+            waitUntil: at(120_000),
+            subscribedEvents: [],
+            resumeToken: null,
+            metadata: {},
+          });
+          const wake = (waitStateId: string, parkWake: ParkWake) =>
+            Effect.gen(function* () {
+              yield* pass.recordParkStep({
+                waitStateId,
+                parkStepId: `park-${waitStateId}`,
+              });
+              yield* executions.resolvePark({
+                executionId,
+                waitStateId,
+                wake: parkWake,
+                now: at(1_000),
+              });
+            });
+
+          const migrated = yield* park(executionId, "wait_migrated", at(9_000));
+          const timedOut = yield* park(executionId, "wait_timed", at(9_000));
+          const resumed = yield* park(executionId, "wait_resumed", at(9_000));
+          yield* wake(migrated, { kind: "migrate" });
+          yield* wake(timedOut, { kind: "timeout" });
+          yield* wake(resumed, {
+            kind: "resume",
+            eventName: "appointment/approved",
+            payload: {},
+            deliveryId: null,
+          });
+
+          return {
+            migrated: yield* pass.reparkWait(reparkInput(migrated)),
+            timedOut: yield* pass.reparkWait(reparkInput(timedOut)),
+            resumed: yield* pass.reparkWait(reparkInput(resumed)),
+            migratedPark: yield* executions.findPark(migrated),
+            timedOutPark: yield* executions.findPark(timedOut),
+            resumedPark: yield* executions.findPark(resumed),
+          };
+        })
+      );
+
+      expect(result.migrated).toEqual({ ok: true });
+      expect(result.timedOut).toEqual({ ok: true });
+      // An Event's wake is the Wait's to act on, so the re-park leaves it.
+      expect(result.resumed).toEqual({ ok: false, reason: "not_waiting" });
+      for (const reparked of [result.migratedPark, result.timedOutPark]) {
+        expect(reparked).toMatchObject({
+          status: "waiting",
+          wake: null,
+          parkStepId: null,
+        });
+      }
+      expect(result.resumedPark).toMatchObject({
+        status: "resuming",
+        wake: { kind: "resume" },
+      });
     });
   });
 }

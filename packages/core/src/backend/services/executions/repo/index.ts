@@ -38,7 +38,7 @@ import {
   type WaitsRepoMethods,
 } from "#src/backend/services/executions/repo/waits";
 import {
-  dropExecutorState,
+  settleEndedExecutions,
   lockSchedules,
   makeScheduleMethods,
   type ScheduleRepoMethods,
@@ -56,7 +56,10 @@ import type {
 import type { JsonObject } from "@wfgraph/shared/types/json";
 
 export * from "#src/backend/services/executions/repo/contracts";
-export type { FencedExecutionWrites } from "#src/backend/services/executions/repo/fenced-writes";
+export type {
+  FencedExecutionWrites,
+  StoreWrites,
+} from "#src/backend/services/executions/repo/fenced-writes";
 
 /**
  * How long a run may sit with its row committed and `enqueued_at` unstamped
@@ -394,7 +397,7 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
                 const unsentIds = unsent.map((row) => row.id);
                 await lockSchedules(tx, unsentIds);
                 reclaimedExecutionIds = await reclaimStuckRuns(tx, unsentIds);
-                await dropExecutorState(tx, reclaimedExecutionIds);
+                await settleEndedExecutions(tx, reclaimedExecutionIds);
               }
 
               let supersededExecutionIds: string[] = [];
@@ -441,7 +444,7 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
                       )
                     );
                 }
-                await dropExecutorState(tx, supersededExecutionIds);
+                await settleEndedExecutions(tx, supersededExecutionIds);
               }
 
               return {
