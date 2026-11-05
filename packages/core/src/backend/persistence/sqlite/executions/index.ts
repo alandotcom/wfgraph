@@ -35,7 +35,7 @@ import { makeSqliteWaitsMethods } from "#src/backend/persistence/sqlite/executio
 import { makeSqliteAuditMethods } from "#src/backend/persistence/sqlite/executions/audit";
 import { makeSqliteFencedWrites } from "#src/backend/persistence/sqlite/executions/fenced-writes";
 import {
-  settleEndedExecutions,
+  endExecutions,
   makeSqliteScheduleMethods,
 } from "#src/backend/persistence/sqlite/executions/schedule";
 import {
@@ -89,19 +89,9 @@ function endInFlightExecutions(
   update: { status: "failed" | "superseded"; error: string }
 ) {
   if (ids.length === 0) return Effect.succeed<string[]>([]);
-  const inFlight = and(
-    inArray(workflowExecutions.id, ids),
-    inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES),
-    isNull(workflowExecutions.terminationKind)
-  );
-  return Effect.gen(function* () {
-    const rows = yield* database
-      .select({ id: workflowExecutions.id })
-      .from(workflowExecutions)
-      .where(inFlight);
-    const eligible = rows.map((row) => row.id);
-    if (eligible.length === 0) return [];
-    yield* database
+  return endExecutions(
+    database,
+    database
       .update(workflowExecutions)
       .set({
         status: update.status,
@@ -111,14 +101,19 @@ function endInFlightExecutions(
       })
       .where(
         and(
-          inArray(workflowExecutions.id, eligible),
+          inArray(workflowExecutions.id, ids),
           inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES),
           isNull(workflowExecutions.terminationKind)
         )
-      );
-    yield* settleEndedExecutions(database, eligible);
-    return eligible;
-  });
+      )
+      .returning({ id: workflowExecutions.id })
+      .pipe(
+        Effect.map((rows) => {
+          const ended = rows.map((row) => row.id);
+          return { result: ended, ended };
+        })
+      )
+  );
 }
 
 function startForEntity(

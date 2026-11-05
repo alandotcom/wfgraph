@@ -16,7 +16,6 @@
 
 import { Effect } from "effect";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
-import type { JsonValue } from "@wfgraph/shared/types/json";
 import type {
   DurableStepRef,
   WaitForEventOptions,
@@ -38,6 +37,7 @@ import {
   type FencedExecutionWrites,
   type OwnerFence,
   type ParkWake,
+  type StepMemo,
 } from "#src/backend/services/executions/repo";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 
@@ -217,7 +217,11 @@ export function openDatabaseReplayBackend(
           );
         }
 
-        const fence = { executionId, ownerToken: own.ownerToken };
+        const fence = {
+          scheduleId: own.scheduleId,
+          executionId,
+          ownerToken: own.ownerToken,
+        };
         const state = createPassState();
         const memo = await run(repo.listStepMemo(executionId));
         const writes = watchPassWrites({
@@ -230,8 +234,8 @@ export function openDatabaseReplayBackend(
         const runtime = createExecutorRuntime({
           executionId,
           attempt: own.attempt,
-          memo: new Map<string, JsonValue>(
-            memo.map((entry) => [entry.stepId, entry.value])
+          memo: new Map<string, StepMemo>(
+            memo.map(({ stepId, ...entry }) => [stepId, entry])
           ),
           writes,
           findPark: repo.findPark,
@@ -279,8 +283,8 @@ export function openDatabaseReplayBackend(
       endParkedPass: async ({ now }) => {
         const { writes } = holder();
         const memo = new Set(
-          (await run(repo.listStepMemo(executionId))).map(
-            (entry) => entry.stepId
+          (await run(repo.listStepMemo(executionId))).flatMap((entry) =>
+            entry.status === "succeeded" ? [entry.stepId] : []
           )
         );
         // A row whose wake the pass read is settled, as the Wait's resume

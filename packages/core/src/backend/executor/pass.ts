@@ -6,7 +6,7 @@
  * writes nothing after the write that found it out, its release included.
  */
 
-import { Cause, Effect, Exit } from "effect";
+import { Cause, Effect, Exit, Option } from "effect";
 import { executeWorkflow } from "#src/backend/engine/core";
 import { createDbWorkflowStore } from "#src/backend/engine/db-store";
 import type { WorkflowActions } from "#src/backend/engine/actions";
@@ -15,7 +15,6 @@ import {
   type WorkflowEntities,
 } from "#src/backend/engine/entities";
 import {
-  type EngineFailure,
   failureFromCause,
   failureFromUnknown,
 } from "#src/backend/engine/engine-failure";
@@ -24,7 +23,6 @@ import {
   createExecutorRuntime,
   createPassState,
   type PassState,
-  stepFailureMemo,
   watchPassWrites,
 } from "#src/backend/executor/runtime";
 import {
@@ -32,24 +30,20 @@ import {
   ExecutionRepo,
   type FencedExecutionWrites,
   type PassOutcome,
+  type ReleasedPass,
   type ReleasedSchedule,
+  type StepMemo,
 } from "#src/backend/services/executions/repo";
+import {
+  retryBackoffMs,
+  runRetriesSpent,
+} from "#src/backend/services/executions/repo/release-policy";
 import {
   loadPersistedRunInput,
   RunInputUnavailable,
 } from "#src/backend/services/executions/run-input";
 import type { WorkflowRepo } from "#src/backend/services/workflows/repo";
-
-/**
- * How many times a failing step is retried before it fails its node, the
- * count the Inngest path gives the same step.
- */
-export const STEP_RETRY_LIMIT = 4;
-
-/** The default wait before a retry: one second, doubling, at most a minute. */
-export function retryBackoffMs(attempt: number): number {
-  return Math.min(1_000 * 2 ** attempt, 60_000);
-}
+import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
 
 /**
  * What one pass did with its run.
@@ -60,24 +54,29 @@ export function retryBackoffMs(attempt: number): number {
  *   when a park holds a wake the pass did not read, and otherwise put it to
  *   sleep until its earliest park deadline.
  * - `retry`: a step threw, or the body failed outside any step. The release
- *   counted an attempt and re-queued the run after a backoff.
- * - `retries_spent`: a step threw on its last retry. The release recorded the
- *   failure as that step's value, so the next pass fails the step's node and
- *   the rest of the run goes on.
+ *   counted the failure against that step's memo row, or against the run's
+ *   own count, and re-queued the run after a backoff.
+ * - `retries_spent`: a step threw past its retries. The release made that
+ *   step's memo row `failed`, so the next pass fails the step's node and the
+ *   rest of the run goes on.
+ * - `run_failed`: the run itself has no retries left: its own failure count
+ *   passed the limit, or a step outside any node failed past its retries. The
+ *   pass wrote the run's terminal record, which deleted the schedule row.
  * - `fence_refused` on `version`: the engine reported a version fence refused
  *   a write, because a Migration moved the run off the version this pass
- *   loaded. The release re-queued it with the attempt unchanged.
+ *   loaded. The release re-queued it and counted nothing.
  * - `fence_refused` on `owner`: a fenced write found the schedule row no
  *   longer names this pass. Nothing else was written, the release included.
  * - `unavailable`: the run could not be loaded. The pass wrote the terminal
- *   record when the version is missing, and nothing for a run that is gone or
- *   already ended.
+ *   record when the version is missing, deleted the schedule row when the run
+ *   is no longer in flight, and wrote nothing for a run that is gone.
  */
 export type PassResult =
   | { kind: "ended" }
   | { kind: "parked"; schedule: ReleasedSchedule }
   | { kind: "retry"; error: string; schedule: ReleasedSchedule }
   | { kind: "retries_spent"; stepId: string; schedule: ReleasedSchedule }
+  | { kind: "run_failed"; error: string }
   | { kind: "fence_refused"; fence: "version"; schedule: ReleasedSchedule }
   | { kind: "fence_refused"; fence: "owner" }
   | { kind: "unavailable"; reason: RunInputUnavailable["reason"] };
@@ -94,17 +93,17 @@ export type PassOptions = {
   heartbeatMs?: number | undefined;
   actions: WorkflowActions;
   entities?: WorkflowEntities | undefined;
-  /** Defaults to `STEP_RETRY_LIMIT`. */
-  retryLimit?: number | undefined;
-  /** Defaults to `retryBackoffMs`. */
-  backoffMs?: ((attempt: number) => number) | undefined;
+  /**
+   * The wait before a retry, given the failures already counted against what
+   * failed. Defaults to `retryBackoffMs`.
+   */
+  backoffMs?: ((failures: number) => number) | undefined;
 };
 
-/**
- * Why a body that did not end on its own stopped, as the release reads it: the
- * step that threw, if a step did, and the engine's failure.
- */
-type Failure = { stepId: string | undefined; failure: EngineFailure };
+/** Why a body that did not end on its own stopped, as the release reads it. */
+type Failure =
+  | { kind: "step"; stepId: string; error: unknown }
+  | { kind: "body"; cause: Cause.Cause<unknown> };
 
 export function runPass(
   claimed: ClaimedExecution,
@@ -113,7 +112,11 @@ export function runPass(
   return Effect.gen(function* () {
     const executions = yield* ExecutionRepo;
     const { executionId } = claimed;
-    const fence = { executionId, ownerToken: claimed.ownerToken };
+    const fence = {
+      scheduleId: claimed.scheduleId,
+      executionId,
+      ownerToken: claimed.ownerToken,
+    };
     const state = createPassState();
     const fenced = executions.fenced(fence);
     const writes = watchPassWrites({
@@ -123,13 +126,20 @@ export function runPass(
     });
     const leaseExpiresAt = () =>
       new Date(options.now().getTime() + options.leaseMs);
+    const backoffMs = options.backoffMs ?? retryBackoffMs;
+    const ownerRefused = { kind: "fence_refused", fence: "owner" } as const;
 
     const release = (outcome: PassOutcome) =>
       writes.releasePass({ outcome, now: options.now() }).pipe(
-        Effect.map((schedule) => ({ owned: true as const, schedule })),
+        Effect.map((released) => ({ owned: true as const, released })),
         Effect.catchTag("LeaseLost", () =>
           Effect.succeed({ owned: false as const })
         )
+      );
+    const endRunFailed = (error: string) =>
+      failRun(writes, executionId, error).pipe(
+        Effect.as<PassResult>({ kind: "run_failed", error }),
+        Effect.catchTag("LeaseLost", () => Effect.succeed(ownerRefused))
       );
 
     const loaded = yield* loadPersistedRunInput(executionId).pipe(
@@ -147,10 +157,23 @@ export function runPass(
           })
         );
       }
+      // Nothing will run an ended run again, so its schedule row and memo go.
+      if (loaded.reason === "not_in_flight") {
+        yield* Effect.ignore(writes.dropSchedule());
+      }
       return { kind: "unavailable", reason: loaded.reason } as const;
     }
 
-    const memo = yield* executions.listStepMemo(executionId);
+    if (runRetriesSpent(claimed.attempt)) {
+      return yield* endRunFailed(
+        "The run's workers stopped renewing its lease too many times"
+      );
+    }
+
+    const memoEntries = yield* executions.listStepMemo(executionId);
+    const memo = new Map<string, StepMemo>(
+      memoEntries.map(({ stepId, ...entry }) => [stepId, entry])
+    );
     const context = yield* Effect.context();
     const runEffect = async <A, E>(effect: Effect.Effect<A, E>): Promise<A> => {
       const exit = await Effect.runPromiseExitWith(context)(effect);
@@ -163,7 +186,7 @@ export function runPass(
     const runtime = createExecutorRuntime({
       executionId,
       attempt: claimed.attempt,
-      memo: new Map(memo.map((entry) => [entry.stepId, entry.value])),
+      memo,
       writes,
       findPark: executions.findPark,
       state,
@@ -203,14 +226,14 @@ export function runPass(
     const phase = state.phase();
     const stop = phase.kind === "stopped" ? phase.stop : undefined;
     if (stop?.kind === "lease_lost") {
-      return { kind: "fence_refused", fence: "owner" } as const;
+      return ownerRefused;
     }
 
     const failure: Failure | undefined =
       stop?.kind === "step_threw"
-        ? { stepId: stop.stepId, failure: failureFromUnknown(stop.error) }
+        ? { kind: "step", stepId: stop.stepId, error: stop.error }
         : Exit.isFailure(body)
-          ? { stepId: undefined, failure: failureFromCause(body.cause) }
+          ? { kind: "body", cause: body.cause }
           : undefined;
 
     if (failure === undefined) {
@@ -219,23 +242,71 @@ export function runPass(
       if (Exit.isSuccess(body) && body.value.kind === "ended") {
         return { kind: "ended" } as const;
       }
-      const released = yield* release({ kind: "parked" });
-      return released.owned
-        ? ({ kind: "parked", schedule: released.schedule } as const)
-        : ({ kind: "fence_refused", fence: "owner" } as const);
+      const parked = yield* release({ kind: "parked" });
+      return parked.owned
+        ? ({ kind: "parked", schedule: parked.released.schedule } as const)
+        : ownerRefused;
+    }
+
+    // A step outside any node has no node to fail, so once its retries are
+    // spent the body fails on it every pass. The run ends failed instead.
+    if (failure.kind === "body") {
+      const spent = state.spentStepBehind(
+        Option.getOrUndefined(Cause.findErrorOption(failure.cause))
+      );
+      if (spent !== undefined) {
+        return yield* endRunFailed(spent.failure.message);
+      }
     }
 
     const outcome = decideFailedPass({
       failure,
+      memo,
       attempt: claimed.attempt,
-      retryLimit: options.retryLimit ?? STEP_RETRY_LIMIT,
-      backoffMs: options.backoffMs ?? retryBackoffMs,
+      backoffMs,
     });
+    if (outcome.kind === "run_failed" && runRetriesSpent(claimed.attempt + 1)) {
+      return yield* endRunFailed(outcome.error);
+    }
     const released = yield* release(outcome);
     if (!released.owned) {
-      return { kind: "fence_refused", fence: "owner" } as const;
+      return ownerRefused;
     }
-    return passResultOf(outcome, released.schedule);
+    return passResultOf(outcome, released.released);
+  });
+}
+
+/**
+ * Writes the run's terminal record as failed with `error`. A run holding a
+ * Cancel or Exit claim refuses `failed`, so it ends in the status its claim
+ * names instead, carrying the same error.
+ */
+function failRun(
+  writes: FencedExecutionWrites,
+  executionId: string,
+  error: string
+) {
+  return Effect.gen(function* () {
+    const written = yield* writes.finishRun({
+      executionId,
+      status: "failed",
+      error,
+    });
+    const claim = written?.claim;
+    if (
+      written === null ||
+      written.didWrite ||
+      claim === null ||
+      claim === undefined ||
+      !IN_FLIGHT_EXECUTION_STATUSES.some((status) => status === written.status)
+    ) {
+      return;
+    }
+    yield* writes.finishRun({
+      executionId,
+      status: claim.kind === "cancel" ? "canceled" : "exited",
+      error,
+    });
   });
 }
 
@@ -260,7 +331,9 @@ type Beat = "renewed" | "failed" | "refused" | "run_ended";
 
 /**
  * The pass's heartbeat: every `everyMs` while the pass needs its lease, move
- * the lease to end `leaseMs` from now through the fenced `renewLease`.
+ * the lease to end `leaseMs` from now through the fenced `renewLease`, and
+ * record the step the pass is running, so a lease that expires counts against
+ * that step.
  *
  * A refused renewal stops the pass as a lost lease, so the body starts no
  * further step and writes nothing more. The one exception is a refusal that
@@ -281,7 +354,10 @@ function renewLeaseWhileRunning(input: {
   const { state, executionId } = input;
   const beat: Effect.Effect<Beat> = Effect.gen(function* () {
     const renewal = yield* input.fenced
-      .renewLease({ leaseExpiresAt: input.leaseExpiresAt() })
+      .renewLease({
+        leaseExpiresAt: input.leaseExpiresAt(),
+        runningStepId: state.runningStep(),
+      })
       .pipe(
         Effect.as("renewed" as const),
         Effect.catchTag("LeaseLost", () => Effect.succeed("refused" as const))
@@ -314,48 +390,53 @@ function renewLeaseWhileRunning(input: {
 
 /** What a failed pass answers for the release it wrote. */
 function passResultOf(
-  outcome: PassOutcome,
-  schedule: ReleasedSchedule
+  outcome: Exclude<PassOutcome, { kind: "parked" }>,
+  released: ReleasedPass
 ): PassResult {
+  const { schedule } = released;
   if (outcome.kind === "fence_refused") {
     return { kind: "fence_refused", fence: "version", schedule };
   }
-  if (outcome.kind === "retries_spent") {
+  if (
+    outcome.kind === "step_failed" &&
+    released.countedStep?.status === "failed"
+  ) {
     return { kind: "retries_spent", stepId: outcome.stepId, schedule };
   }
-  if (outcome.kind === "retry") {
-    return { kind: "retry", error: outcome.error, schedule };
-  }
-  return { kind: "parked", schedule };
+  return { kind: "retry", error: outcome.error, schedule };
 }
 
 /**
  * The release a failed pass writes. A version fence the engine reports refused
- * is the run having moved, so nothing failed and no attempt is counted. A
- * step's retries are spent once the attempt after this one would pass
- * `retryLimit`; a failure no step owns is retried without that limit, since
- * there is no step to fail in its place.
+ * is the run having moved, so nothing failed and nothing is counted. A step
+ * that threw counts against its own memo row, and its backoff grows with the
+ * failures that row holds. A failure no step owns counts against the run.
  */
 function decideFailedPass(input: {
   failure: Failure;
+  memo: ReadonlyMap<string, StepMemo>;
   attempt: number;
-  retryLimit: number;
-  backoffMs: (attempt: number) => number;
-}): PassOutcome {
-  const { stepId, failure } = input.failure;
-  if (failure.kind === "version_refused") {
+  backoffMs: (failures: number) => number;
+}): Exclude<PassOutcome, { kind: "parked" }> {
+  const { failure } = input;
+  const engineFailure =
+    failure.kind === "step"
+      ? failureFromUnknown(failure.error)
+      : failureFromCause(failure.cause);
+  if (engineFailure.kind === "version_refused") {
     return { kind: "fence_refused" };
   }
-  if (stepId !== undefined && input.attempt + 1 > input.retryLimit) {
+  if (failure.kind === "step") {
     return {
-      kind: "retries_spent",
-      stepId,
-      failure: stepFailureMemo(failure.message),
+      kind: "step_failed",
+      stepId: failure.stepId,
+      error: engineFailure.message,
+      backoffMs: input.backoffMs(input.memo.get(failure.stepId)?.failures ?? 0),
     };
   }
   return {
-    kind: "retry",
-    error: failure.message,
+    kind: "run_failed",
+    error: engineFailure.message,
     backoffMs: input.backoffMs(input.attempt),
   };
 }

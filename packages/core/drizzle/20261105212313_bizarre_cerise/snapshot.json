@@ -2,7 +2,7 @@
   "type": "diff",
   "version": "9",
   "dialect": "postgres",
-  "id": "0f1c49a5-6286-4fb2-b253-d0181a3b8c50",
+  "id": "5eba541c-c5e1-4183-b525-94c6589219d5",
   "prevIds": [
     "ea5060d9-c105-4f27-936f-6074d77cc54f"
   ],
@@ -105,6 +105,26 @@
         "index",
         "public",
         "workflow_execution_schedule",
+        "workflow_execution_schedule_execution_uidx"
+      ],
+      "writes": [
+        "s|idx|public.workflow_execution_schedule_execution_uidx",
+        "n|idx|public.workflow_execution_schedule_execution_uidx",
+        "e|idx|public.workflow_execution_schedule_execution_uidx",
+        "n|rel|public.workflow_execution_schedule_execution_uidx"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_execution_schedule",
+        "n|sch|public",
+        "n|col|public.workflow_execution_schedule.execution_id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "workflow_execution_schedule",
         "workflow_execution_schedule_due_idx"
       ],
       "writes": [
@@ -117,7 +137,7 @@
         "n|tbl|public.workflow_execution_schedule",
         "n|sch|public",
         "n|col|public.workflow_execution_schedule.wake_at",
-        "n|col|public.workflow_execution_schedule.execution_id"
+        "n|col|public.workflow_execution_schedule.id"
       ]
     },
     {
@@ -171,19 +191,19 @@
         "workflow_execution_steps"
       ],
       "writes": [
-        "s|fk|public.workflow_execution_steps.workflow_execution_steps_iMIOYERAsOxz_fkey",
-        "n|fk|public.workflow_execution_steps.workflow_execution_steps_iMIOYERAsOxz_fkey",
-        "e|fk|public.workflow_execution_steps.workflow_execution_steps_iMIOYERAsOxz_fkey",
-        "n|con|public.workflow_execution_steps.workflow_execution_steps_iMIOYERAsOxz_fkey"
+        "s|fk|public.workflow_execution_steps.workflow_execution_steps_OTqafp6eqJgr_fkey",
+        "n|fk|public.workflow_execution_steps.workflow_execution_steps_OTqafp6eqJgr_fkey",
+        "e|fk|public.workflow_execution_steps.workflow_execution_steps_OTqafp6eqJgr_fkey",
+        "n|con|public.workflow_execution_steps.workflow_execution_steps_OTqafp6eqJgr_fkey"
       ],
       "reads": [
         "n|tbl|public.workflow_execution_steps",
         "n|sch|public",
-        "n|tbl|public.workflow_executions",
+        "n|tbl|public.workflow_execution_schedule",
         "n|sch|public",
-        "n|col|public.workflow_execution_steps.execution_id",
-        "n|col|public.workflow_executions.id",
-        "e|uniqueness|public.workflow_executions.id"
+        "n|col|public.workflow_execution_steps.schedule_id",
+        "n|col|public.workflow_execution_schedule.id",
+        "e|uniqueness|public.workflow_execution_schedule.id"
       ]
     }
   ],
@@ -227,7 +247,7 @@
       "row": {
         "schema": "public",
         "table": "workflow_execution_schedule",
-        "name": "execution_id",
+        "name": "id",
         "type": "text",
         "typeSchema": null,
         "notNull": true,
@@ -247,6 +267,22 @@
         "type": "text",
         "typeSchema": null,
         "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_execution_schedule",
+        "name": "execution_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
         "dimensions": 0,
         "default": null,
         "generated": null,
@@ -297,6 +333,22 @@
         "notNull": true,
         "dimensions": 0,
         "default": "0",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_execution_schedule",
+        "name": "running_step_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
         "generated": null,
         "identity": null,
         "entityType": "columns"
@@ -371,7 +423,7 @@
       "row": {
         "schema": "public",
         "table": "workflow_execution_steps",
-        "name": "execution_id",
+        "name": "schedule_id",
         "type": "text",
         "typeSchema": null,
         "notNull": true,
@@ -403,8 +455,8 @@
       "row": {
         "schema": "public",
         "table": "workflow_execution_steps",
-        "name": "attempt",
-        "type": "integer",
+        "name": "status",
+        "type": "text",
         "typeSchema": null,
         "notNull": true,
         "dimensions": 0,
@@ -419,8 +471,40 @@
       "row": {
         "schema": "public",
         "table": "workflow_execution_steps",
+        "name": "failures",
+        "type": "integer",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "0",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_execution_steps",
         "name": "value",
         "type": "jsonb",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_execution_steps",
+        "name": "error",
+        "type": "text",
         "typeSchema": null,
         "notNull": false,
         "dimensions": 0,
@@ -483,6 +567,30 @@
       "row": {
         "schema": "public",
         "table": "workflow_execution_schedule",
+        "name": "workflow_execution_schedule_execution_uidx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "execution_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": true,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "concurrently": false,
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_execution_schedule",
         "name": "workflow_execution_schedule_due_idx",
         "nameExplicit": true,
         "columns": [
@@ -494,7 +602,7 @@
             "opclass": null
           },
           {
-            "value": "execution_id",
+            "value": "id",
             "isExpression": false,
             "asc": true,
             "nullsFirst": false,
@@ -558,13 +666,13 @@
       "row": {
         "schema": "public",
         "table": "workflow_execution_steps",
-        "name": "workflow_execution_steps_iMIOYERAsOxz_fkey",
+        "name": "workflow_execution_steps_OTqafp6eqJgr_fkey",
         "nameExplicit": false,
         "columns": [
-          "execution_id"
+          "schedule_id"
         ],
         "schemaTo": "public",
-        "tableTo": "workflow_executions",
+        "tableTo": "workflow_execution_schedule",
         "columnsTo": [
           "id"
         ],
@@ -580,7 +688,7 @@
         "table": "workflow_execution_steps",
         "name": "workflow_execution_steps_pkey",
         "columns": [
-          "execution_id",
+          "schedule_id",
           "step_id"
         ],
         "nameExplicit": false,
@@ -594,7 +702,7 @@
         "table": "workflow_execution_schedule",
         "name": "workflow_execution_schedule_pkey",
         "columns": [
-          "execution_id"
+          "id"
         ],
         "nameExplicit": false,
         "entityType": "pks"
@@ -617,6 +725,36 @@
         "table": "workflow_execution_schedule",
         "name": "workflow_execution_schedule_state_check",
         "value": "\"state\" in ('queued', 'leased', 'waiting')",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_execution_schedule",
+        "name": "workflow_execution_schedule_run_execution_check",
+        "value": "\"kind\" <> 'run' or \"execution_id\" is not null",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_execution_steps",
+        "name": "workflow_execution_steps_status_check",
+        "value": "\"status\" in ('succeeded', 'failing', 'failed')",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_execution_steps",
+        "name": "workflow_execution_steps_error_check",
+        "value": "(\"status\" = 'succeeded') = (\"error\" is null)",
         "entityType": "checks"
       }
     }

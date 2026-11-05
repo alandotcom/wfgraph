@@ -34,10 +34,7 @@ import type {
   WfGraphTransaction,
 } from "#src/backend/lib/db/index";
 import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
-import {
-  settleEndedExecutions,
-  lockSchedules,
-} from "#src/backend/services/executions/repo/schedule";
+import { endExecutions } from "#src/backend/services/executions/repo/schedule";
 import {
   IN_FLIGHT_EXECUTION_STATUSES,
   type EntityEligibilityReason,
@@ -763,15 +760,7 @@ export function makeRunsMethods(
             .where(inFlightExecution(input.executionId, "started"))
             .returning(TERMINATION_COLUMNS);
 
-          return written
-            ? {
-                result: executionTerminationState(written, true),
-                ended: [written.executionId],
-              }
-            : {
-                result: await readTerminationState(tx, input.executionId),
-                ended: [],
-              };
+          return await endedBy(tx, input.executionId, written);
         })
       ),
 
@@ -929,9 +918,7 @@ export function requestExitWrite(input: RequestExitInput) {
       .where(inFlightExecution(input.executionId, "started"))
       .returning(TERMINATION_COLUMNS);
 
-    return written
-      ? executionTerminationState(written, true)
-      : readTerminationState(db, input.executionId);
+    return await writtenOrStored(db, input.executionId, written);
   };
 }
 
@@ -974,23 +961,21 @@ export function finishRunWrite(input: FinishRunInput) {
         )
         .returning(TERMINATION_COLUMNS);
 
-      return written
-        ? {
-            result: executionTerminationState(written, true),
-            ended: [written.executionId],
-          }
-        : {
-            result: await readTerminationState(tx, input.executionId),
-            ended: [],
-          };
+      return await endedBy(tx, input.executionId, written);
     });
 }
 
-/** The stored boundary of one Execution, or null when the row is absent. */
-async function readTerminationState(
+/**
+ * The boundary a guarded write answers: the row it wrote when its guard
+ * admitted the row, and otherwise the row as stored, or null when the row is
+ * absent.
+ */
+async function writtenOrStored(
   db: Executor,
-  executionId: string
+  executionId: string,
+  written: TerminationRow | undefined
 ): Promise<ExecutionTerminationState | null> {
+  if (written) return executionTerminationState(written, true);
   const [current] = await db
     .select(TERMINATION_COLUMNS)
     .from(workflowExecutions)
@@ -1000,25 +985,16 @@ async function readTerminationState(
 }
 
 /**
- * Runs a write that may make Executions terminal, as one transaction.
- *
- * The candidates' schedule rows are locked first, in the order every fenced
- * write takes them. `write` reports which Executions it ended, and their open
- * wait rows, schedule rows and step memos are settled by
- * `settleEndedExecutions` before the transaction commits.
- * Inside a fenced write the transaction is a savepoint of the fenced one.
+ * What a terminal write hands `endExecutions`: its answer, and the run it
+ * ended when its guard admitted the row.
  */
-export function endExecutions<A>(
+async function endedBy(
   db: Executor,
-  candidateIds: readonly string[],
-  write: (
-    tx: WfGraphTransaction
-  ) => Promise<{ result: A; ended: readonly string[] }>
-): Promise<A> {
-  return db.transaction(async (tx) => {
-    await lockSchedules(tx, candidateIds);
-    const { result, ended } = await write(tx);
-    await settleEndedExecutions(tx, ended);
-    return result;
-  });
+  executionId: string,
+  written: TerminationRow | undefined
+): Promise<{ result: ExecutionTerminationState | null; ended: string[] }> {
+  return {
+    result: await writtenOrStored(db, executionId, written),
+    ended: written ? [written.executionId] : [],
+  };
 }

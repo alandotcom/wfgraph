@@ -1,17 +1,11 @@
 import type { Effect } from "effect";
 import {
-  type ExecutionScheduleKind,
-  type ExecutionScheduleState,
-  type ParkWake,
   workflowExecutionEvents,
   workflowExecutionLogs,
   workflowExecutions,
   workflowWaitStates,
 } from "#src/backend/lib/db/schema";
-import type {
-  DatabaseError,
-  LeaseLost,
-} from "#src/backend/lib/effect/database";
+import type { DatabaseError } from "#src/backend/lib/effect/database";
 import type {
   RunScopedAuditEventType,
   WorkflowScopedAuditEventType,
@@ -20,6 +14,11 @@ import type {
   EntityEligibilityReason,
   WorkflowExecutionStatus,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
+import type {
+  ExecutionScheduleKind,
+  ExecutionScheduleState,
+  ParkWake,
+} from "@wfgraph/shared/lifecycle/execution-schedule";
 import type {
   JsonObject,
   JsonObjectDraft,
@@ -31,14 +30,17 @@ export type {
   ExecutionScheduleKind,
   ExecutionScheduleState,
   ParkWake,
-} from "#src/backend/lib/db/schema";
+} from "@wfgraph/shared/lifecycle/execution-schedule";
 
 /**
- * The pass a write is made for: the Execution it runs and the fencing token its
- * claim minted. A write carrying a fence commits only while the Execution's
- * schedule row is still `leased` under that token.
+ * The pass a write is made for: the schedule row its claim leased, the
+ * fencing token that claim minted, and the Execution the row runs. A write
+ * carrying a fence commits only while that schedule row is still `leased`
+ * under that token and still names that Execution, and a fenced write that
+ * addresses another Execution is refused.
  */
 export type OwnerFence = {
+  scheduleId: string;
   executionId: string;
   ownerToken: string;
 };
@@ -52,38 +54,34 @@ export type StoreWrite<Input, Output> = (
   input: Input
 ) => Effect.Effect<Output, DatabaseError>;
 
-/**
- * The fenced twin of a `StoreWrite`. It takes the Execution's schedule row
- * inside its own transaction before anything else, and answers `LeaseLost`
- * without writing when that row no longer names the pass.
- */
-export type FencedWrite<Write> =
-  Write extends StoreWrite<infer Input, infer Output>
-    ? (input: Input) => Effect.Effect<Output, DatabaseError | LeaseLost>
-    : never;
-
 /** One row of `workflow_execution_schedule`, as the executor reads it. */
 export type ExecutionSchedule = {
-  executionId: string;
+  id: string;
   kind: ExecutionScheduleKind;
+  /** The run the row schedules, and null on a `delivery` row. */
+  executionId: string | null;
   state: ExecutionScheduleState;
   wakeAt: Date;
+  /** The run's own failure count. See `workflow_execution_schedule.attempt`. */
   attempt: number;
+  /** The step the leased pass last recorded as running, or null. */
+  runningStepId: string | null;
   leaseExpiresAt: Date | null;
   ownerToken: string | null;
   workerId: string | null;
   lastError: string | null;
 };
 
-/** A schedule row a claim leased to one worker's pass. */
+/** A run's schedule row a claim leased to one worker's pass. */
 export type ClaimedExecution = {
+  scheduleId: string;
   executionId: string;
-  kind: ExecutionScheduleKind;
   /** The fencing token every write of this pass carries. */
   ownerToken: string;
   /**
-   * The retry counter after the claim. It is one higher than before only when
-   * the claim swept an expired lease.
+   * The run's own failure count after the claim. It is one higher than before
+   * only when the claim swept a lease that expired with no step recorded as
+   * running. A count past `STEP_RETRY_LIMIT` ends the run failed.
    */
   attempt: number;
   leaseExpiresAt: Date;
@@ -91,24 +89,28 @@ export type ClaimedExecution = {
 
 /**
  * How a pass that wrote no terminal record ended, which decides the schedule
- * row its release writes.
+ * row and the memo row its release writes. Every outcome but `run_failed`
+ * resets the run's own failure count.
  *
  * - `parked`: the body ended with work parked. The release re-queues the run
  *   when a park holds a wake the pass did not consume, and otherwise puts it to
  *   sleep until its earliest park deadline.
- * - `retry`: a step threw a retriable error. The release counts an attempt and
- *   re-queues the run after `backoffMs`.
- * - `retries_spent`: a step's retries ran out. The release records `failure`
- *   as that step's memoized result, resets the attempt counter, and re-queues
- *   the run, so the step fails its node and the rest of the run goes on.
+ * - `step_failed`: the step `stepId` threw a retriable error. The release
+ *   counts one failure on that step's memo row. A step still within its
+ *   retries is re-queued after `backoffMs`; a step whose count passed the
+ *   limit becomes `failed` and the run is re-queued at once, so the step fails
+ *   its node and the rest of the run goes on.
+ * - `run_failed`: the body failed outside any step. The release counts one
+ *   failure against the run's own count and re-queues the run after
+ *   `backoffMs`.
  * - `fence_refused`: a version fence refused a write because a Migration moved
- *   the run. Nothing failed, so the release re-queues the run without counting
- *   an attempt, and the next pass loads the version the run now pins.
+ *   the run. Nothing failed, so the release re-queues the run at once and
+ *   counts nothing, and the next pass loads the version the run now pins.
  */
 export type PassOutcome =
   | { kind: "parked" }
-  | { kind: "retry"; error: string; backoffMs: number }
-  | { kind: "retries_spent"; stepId: string; failure: JsonValue }
+  | { kind: "step_failed"; stepId: string; error: string; backoffMs: number }
+  | { kind: "run_failed"; error: string; backoffMs: number }
   | { kind: "fence_refused" };
 
 /** The schedule row a release left behind. */
@@ -118,19 +120,42 @@ export type ReleasedSchedule = {
   attempt: number;
 };
 
-/** One memoized step of an Execution. */
-export type StepMemoEntry = {
-  stepId: string;
-  /** The schedule row's attempt counter when the step's value was recorded. */
-  attempt: number;
-  value: JsonValue;
+/**
+ * One durable step's memo row, by its status. `failures` is the count of
+ * retriable failures the step has had, which a `succeeded` row keeps.
+ */
+export type StepMemo =
+  | { status: "succeeded"; failures: number; value: JsonValue }
+  | { status: "failing"; failures: number; error: string }
+  | { status: "failed"; failures: number; error: string };
+
+/** A memo row a failure was just counted on. */
+export type CountedStepFailure = Extract<
+  StepMemo,
+  { status: "failing" | "failed" }
+>;
+
+/** One memo row of a schedule row's body. */
+export type StepMemoEntry = StepMemo & { stepId: string };
+
+/** What a release wrote. */
+export type ReleasedPass = {
+  schedule: ReleasedSchedule;
+  /**
+   * The memo row of the step a `step_failed` outcome named, after the release
+   * counted the failure on it, and null for every other outcome.
+   */
+  countedStep: CountedStepFailure | null;
 };
 
 /** What a producer's write did to a park and to its run's schedule row. */
 export type ParkResolution = {
   /** Whether this call set the wake. False when the row had left `waiting`. */
   resolved: boolean;
-  /** Whether this call moved a `waiting` schedule row to `queued`. */
+  /**
+   * Whether this call moved a `waiting` schedule row to `queued`. Only a wake
+   * this call set re-queues the run.
+   */
   requeued: boolean;
 };
 

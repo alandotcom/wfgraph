@@ -1,23 +1,26 @@
 /**
- * What both backends share about the database executor's writes: the refusal a
- * fenced write answers, the run-log row id that makes a re-run log open
- * idempotent, and the decision a release makes.
- *
- * Each backend takes its own locks; nothing here touches a database.
+ * What both backends share about the database executor's fenced writes: the
+ * one list of writes the engine's store reaches, the refusals a fenced write
+ * answers, and the guard that holds each fenced write to the run its fence
+ * names. Each backend writes the statements and takes its own locks.
  */
 
-import { createHash } from "node:crypto";
-import { LeaseLost } from "#src/backend/lib/effect/database";
-import type {
-  PassOutcome,
-  ReleasedSchedule,
-  WorkflowWaitState,
-} from "#src/backend/services/executions/repo/contracts";
+import { Effect } from "effect";
+import {
+  type DatabaseError,
+  LeaseLost,
+} from "#src/backend/lib/effect/database";
+import type { AuditRepoMethods } from "#src/backend/services/executions/repo/audit";
+import type { OwnerFence } from "#src/backend/services/executions/repo/contracts";
+import type { NodeLogsRepoMethods } from "#src/backend/services/executions/repo/node-logs";
+import type { RunsRepoMethods } from "#src/backend/services/executions/repo/runs";
+import type { PassWrites } from "#src/backend/services/executions/repo/schedule";
+import type { WaitsRepoMethods } from "#src/backend/services/executions/repo/waits";
 
 /**
- * The refusal a fenced write answers when the Execution's schedule row no
- * longer names the pass: its lease expired and another claim took the run, a
- * policy cancel or a terminal write deleted the row, or the row was released.
+ * The refusal a fenced write answers when the pass's schedule row no longer
+ * names the pass: its lease expired and another claim took the run, a policy
+ * cancel or a terminal write deleted the row, or the row was released.
  */
 export function ownershipLost(): LeaseLost {
   return new LeaseLost({
@@ -25,86 +28,148 @@ export function ownershipLost(): LeaseLost {
   });
 }
 
-function sha256(parts: readonly string[]): string {
-  return createHash("sha256").update(parts.join("\0")).digest("hex");
+/** The refusal a fenced write answers when it addresses a run its fence does not name. */
+function addressesAnotherRun(): LeaseLost {
+  return new LeaseLost({
+    message: "The write addresses a run this pass does not hold",
+  });
 }
 
 /**
- * The id of a node's run-log row.
- *
- * A node opens its row at most once per Execution, in one durable step whose id
- * is built from the node id (`node:<id>:log-open`, or `wait-start-log-<id>` for
- * a Wait), so the Execution and the node name the step that opens the row. A
- * re-run of that step therefore inserts the same id, and the insert's conflict
- * leaves the first row in place.
+ * The repository writes the engine's `WorkflowStore` reaches. Each backend's
+ * `ExecutionRepo.fenced`, the executor's watched writes and the test stub are
+ * built from this list.
  */
-export function nodeLogId(executionId: string, nodeId: string): string {
-  return `log_${sha256([executionId, nodeId])}`;
-}
+export const STORE_WRITE_NAMES = [
+  "openNodeLog",
+  "closeNodeLog",
+  "cancelOpenNodeLogs",
+  "recordAuditEvent",
+  "startWait",
+  "reparkWait",
+  "markWaitStatus",
+  "settleWaitTimeout",
+  "cancelWaitsForExecution",
+  "markRunning",
+  "markWaitingIfParked",
+  "requestExit",
+  "finishRun",
+] as const;
+export type StoreWriteName = (typeof STORE_WRITE_NAMES)[number];
 
-/**
- * The wake time a release writes for a run whose open parks carry no deadline.
- * Only a producer's wake re-queues such a run, so it sorts after every real
- * deadline.
- */
-export const UNDATED_PARK_WAKE_AT = new Date("9999-12-31T00:00:00.000Z");
+/** The writes only a pass makes, beside the store writes. */
+export const PASS_WRITE_NAMES = [
+  "renewLease",
+  "writeStepMemo",
+  "recordParkStep",
+  "releasePass",
+  "dropSchedule",
+] as const satisfies readonly (keyof PassWrites)[];
 
-/** One of the run's wait rows as a release reads it. */
-export type ReleasePark = {
-  status: WorkflowWaitState["status"];
-  waitUntil: Date | null;
-  /** Whether a producer or a claim has written a wake onto the row. */
-  woken: boolean;
+type RepoMethods = RunsRepoMethods &
+  NodeLogsRepoMethods &
+  WaitsRepoMethods &
+  AuditRepoMethods;
+
+/** Each store write's input and output, read off the repository's unfenced method. */
+type StoreWriteSignatures = {
+  [Name in StoreWriteName]: RepoMethods[Name] extends (
+    input: infer Input
+  ) => Effect.Effect<infer Output, DatabaseError>
+    ? { input: Input; output: Output }
+    : never;
 };
 
 /**
- * The schedule row a release writes, decided from the pass's outcome and the
- * run's wait rows as they stand once the schedule row is locked.
- *
- * A row `resuming` with a wake holds a wake no pass has consumed, because the
- * pass that consumes one settles the row out of `resuming`.
+ * The repository writes the engine's `WorkflowStore` reaches, as
+ * `createDbWorkflowStore` binds them. The unfenced methods of `ExecutionRepo`
+ * fill it on the Inngest path, and `ExecutionRepo.fenced` on a pass of the
+ * database executor, where a write may also answer `LeaseLost`.
  */
-export function decideRelease(input: {
-  outcome: PassOutcome;
-  attempt: number;
-  now: Date;
-  parks: readonly ReleasePark[];
-}): ReleasedSchedule & { lastError: string | null } {
-  const { outcome, attempt, now } = input;
-  if (outcome.kind === "retry") {
-    return {
-      state: "queued",
-      wakeAt: new Date(now.getTime() + outcome.backoffMs),
-      attempt: attempt + 1,
-      lastError: outcome.error,
-    };
-  }
-  if (outcome.kind === "retries_spent") {
-    return { state: "queued", wakeAt: now, attempt: 0, lastError: null };
-  }
-  if (outcome.kind === "fence_refused") {
-    return { state: "queued", wakeAt: now, attempt, lastError: null };
-  }
+export type StoreWrites = {
+  readonly [Name in StoreWriteName]: StoreWriteOf<Name>;
+};
 
-  const unconsumedWake = input.parks.some(
-    (park) => park.status === "resuming" && park.woken
-  );
-  const open = input.parks.filter((park) => park.status === "waiting");
-  // A pass that ended parked with nothing left waiting has nothing to sleep on,
-  // so the run goes back to the queue rather than to sleep for good.
-  if (unconsumedWake || open.length === 0) {
-    return { state: "queued", wakeAt: now, attempt, lastError: null };
+/** One store write, which a fenced pass may also see answer `LeaseLost`. */
+type StoreWriteOf<Name extends StoreWriteName> = (
+  input: StoreWriteSignatures[Name]["input"]
+) => Effect.Effect<
+  StoreWriteSignatures[Name]["output"],
+  DatabaseError | LeaseLost
+>;
+
+/** What `ExecutionRepo.fenced` answers for one pass. */
+export type FencedExecutionWrites = StoreWrites & PassWrites;
+
+type PartialStoreWrites = {
+  [Name in StoreWriteName]?: StoreWriteOf<Name>;
+};
+
+function setStoreWrite<Name extends StoreWriteName>(
+  writes: PartialStoreWrites,
+  name: Name,
+  write: StoreWriteOf<Name>
+): void {
+  writes[name] = write;
+}
+
+function hasEveryStoreWrite(writes: PartialStoreWrites): writes is StoreWrites {
+  return STORE_WRITE_NAMES.every((name) => writes[name] !== undefined);
+}
+
+/** Builds a full set of store writes by calling `build` once per name. */
+export function buildStoreWrites(
+  build: <Name extends StoreWriteName>(name: Name) => StoreWriteOf<Name>
+): StoreWrites {
+  const writes: PartialStoreWrites = {};
+  for (const name of STORE_WRITE_NAMES) {
+    setStoreWrite(writes, name, build(name));
   }
-  const deadlines = open.flatMap((park) =>
-    park.waitUntil === null ? [] : [park.waitUntil.getTime()]
-  );
-  return {
-    state: "waiting",
-    wakeAt:
-      deadlines.length === 0
-        ? UNDATED_PARK_WAKE_AT
-        : new Date(Math.min(...deadlines)),
-    attempt,
-    lastError: null,
-  };
+  if (!hasEveryStoreWrite(writes)) {
+    throw new Error("A store write was left unbuilt");
+  }
+  return writes;
+}
+
+/**
+ * The run each store write addresses, read off its input. A write addressed
+ * by a log or wait row id answers undefined: its statement narrows the row to
+ * the fence's run itself. So does a workflow-scoped audit entry, which names
+ * no run.
+ */
+const addressedRun: {
+  [Name in StoreWriteName]: (
+    input: StoreWriteSignatures[Name]["input"]
+  ) => string | undefined;
+} = {
+  openNodeLog: (input) => input.executionId,
+  closeNodeLog: () => undefined,
+  cancelOpenNodeLogs: (executionId) => executionId,
+  recordAuditEvent: (input) => input.executionId,
+  startWait: (input) => input.executionId,
+  reparkWait: () => undefined,
+  markWaitStatus: () => undefined,
+  settleWaitTimeout: () => undefined,
+  cancelWaitsForExecution: (executionId) => executionId,
+  markRunning: (input) => input.executionId,
+  markWaitingIfParked: (input) => input.executionId,
+  requestExit: (input) => input.executionId,
+  finishRun: (input) => input.executionId,
+};
+
+/**
+ * Holds a backend's fenced store writes to the run `fence` names: a write
+ * whose input addresses another run is refused with `LeaseLost` before it
+ * reaches the database.
+ */
+export function guardStoreWrites(
+  fence: OwnerFence,
+  writes: StoreWrites
+): StoreWrites {
+  return buildStoreWrites((name) => (input) => {
+    const run = addressedRun[name](input);
+    return run === undefined || run === fence.executionId
+      ? writes[name](input)
+      : Effect.fail(addressesAnotherRun());
+  });
 }

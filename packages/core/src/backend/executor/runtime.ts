@@ -2,13 +2,14 @@
  * The database executor's `WorkflowExecutionRuntime` for one pass of one run.
  *
  * A pass replays the body against the step memo it loaded when it claimed the
- * run. `run` answers a step the memo holds and otherwise runs it and records
- * its value; `waitForEvent` answers the wake on the park's wait row and
- * otherwise records the parking step and answers `parked`, which ends the
- * branch for this pass. Every write is fenced on the pass's owner token until
- * the pass writes the run's terminal record. Once the pass stops, because a
- * step threw or the lease was lost, it starts no step and writes nothing more:
- * each attempt fails with `LeaseLost`, which ends the body. The caller reads
+ * run. `run` answers a step whose memo row `succeeded` with its value, fails a
+ * step whose row is `failed`, and otherwise runs the step and records its
+ * value; `waitForEvent` answers the wake on the park's wait row and otherwise
+ * records the parking step and answers `parked`, which ends the branch for
+ * this pass. Every write is fenced on the pass's owner token until the pass
+ * writes the run's terminal record. Once the pass stops, because a step threw
+ * or the lease was lost, it starts no step and writes nothing more: each
+ * attempt fails with `LeaseLost`, which ends the body. The caller reads
  * `PassState` to decide the release.
  */
 
@@ -20,7 +21,10 @@ import type {
   WaitWake,
   WorkflowExecutionRuntime,
 } from "#src/backend/engine/runtime";
-import { engineFailure } from "#src/backend/engine/engine-failure";
+import {
+  type EngineFailure,
+  engineFailure,
+} from "#src/backend/engine/engine-failure";
 import {
   type DatabaseError,
   LeaseLost,
@@ -29,21 +33,18 @@ import type {
   FencedExecutionWrites,
   ParkState,
   ParkWake,
+  StepMemo,
   StoreWrites,
 } from "#src/backend/services/executions/repo";
-import {
-  type JsonObject,
-  jsonObjectSchema,
-  type JsonValue,
-  readJsonObject,
-} from "@wfgraph/shared/types/json";
+import { buildStoreWrites } from "#src/backend/services/executions/repo/fencing";
+import { jsonObjectSchema, type JsonValue } from "@wfgraph/shared/types/json";
 import { readAs } from "@wfgraph/shared/types/schema";
 
 /**
  * Why a pass stopped before its body ended on its own.
  *
- * - `step_threw`: a step body threw. The release retries the run, or fails the
- *   step's node once its retries are spent.
+ * - `step_threw`: a step body threw. The release counts a failure against
+ *   that step.
  * - `lease_lost`: a fenced write found the schedule row no longer names this
  *   pass. Another worker, a terminal write or a Migration's re-queue owns the
  *   run now, so the pass writes nothing, not even its release.
@@ -67,6 +68,9 @@ export type PassPhase =
   | { kind: "ended" }
   | { kind: "stopped"; stop: PassStop };
 
+/** A step whose memo row is `failed`, as this pass answered it. */
+export type SpentStep = { stepId: string; failure: EngineFailure };
+
 export type PassState = {
   readonly phase: () => PassPhase;
   /** Records the first step that threw. A pass already stopped keeps its stop. */
@@ -75,10 +79,34 @@ export type PassState = {
   readonly leaseLost: () => void;
   /** Records that this pass wrote the run's terminal record. */
   readonly ended: () => void;
+  /** Records that a step body started running. */
+  readonly stepStarted: (stepId: string) => void;
+  /** Records that a step body and its memo write are done, either way. */
+  readonly stepFinished: (stepId: string) => void;
+  /**
+   * The step the heartbeat records as running: the earliest started of the
+   * steps still running, since parallel branches run steps side by side, and
+   * null between steps.
+   */
+  readonly runningStep: () => string | null;
+  /**
+   * Answers a step whose memo row is `failed` with the failure the step
+   * throws, and remembers that failure, so `spentStepBehind` can tell the
+   * body failed because of it.
+   */
+  readonly spentStep: (stepId: string, message: string) => EngineFailure;
+  /**
+   * The step whose spent retries `error` is the failure of, or undefined when
+   * `error` is no such failure. Compared by identity with what `spentStep`
+   * answered.
+   */
+  readonly spentStepBehind: (error: unknown) => SpentStep | undefined;
 };
 
 export function createPassState(): PassState {
   let phase: PassPhase = { kind: "running" };
+  const running: string[] = [];
+  const spent: SpentStep[] = [];
   return {
     phase: () => phase,
     stepThrew: (stepId, error) => {
@@ -91,6 +119,20 @@ export function createPassState(): PassState {
     ended: () => {
       if (phase.kind === "running") phase = { kind: "ended" };
     },
+    stepStarted: (stepId) => {
+      running.push(stepId);
+    },
+    stepFinished: (stepId) => {
+      const index = running.indexOf(stepId);
+      if (index >= 0) running.splice(index, 1);
+    },
+    runningStep: () => running[0] ?? null,
+    spentStep: (stepId, message) => {
+      const failure = engineFailure("failure", message);
+      spent.push({ stepId, failure });
+      return failure;
+    },
+    spentStepBehind: (error) => spent.find((entry) => entry.failure === error),
   };
 }
 
@@ -147,8 +189,9 @@ function watchedPassWrite<I>(
 /**
  * The pass's writes, each watched by `state`. `unfenced` is the repository's
  * own store writes, which the pass makes once it has ended the run. The
- * release is passed through unwatched, because a pass whose step threw still
- * writes it; a pass that lost its lease or ended the run never calls it.
+ * release and the schedule row's deletion are passed through unwatched: a pass
+ * whose step threw still writes its release, and a pass that found its run no
+ * longer in flight deletes its row before it runs anything.
  */
 export function watchPassWrites(input: {
   fenced: FencedExecutionWrites;
@@ -156,70 +199,14 @@ export function watchPassWrites(input: {
   state: PassState;
 }): FencedExecutionWrites {
   const { fenced, unfenced, state } = input;
-  const finishRun = watchedStoreWrite(
-    fenced.finishRun,
-    unfenced.finishRun,
-    state
+  const fencedStore: StoreWrites = fenced;
+  const store = buildStoreWrites((name) =>
+    watchedStoreWrite(fencedStore[name], unfenced[name], state)
   );
   return {
-    openNodeLog: watchedStoreWrite(
-      fenced.openNodeLog,
-      unfenced.openNodeLog,
-      state
-    ),
-    closeNodeLog: watchedStoreWrite(
-      fenced.closeNodeLog,
-      unfenced.closeNodeLog,
-      state
-    ),
-    cancelOpenNodeLogs: watchedStoreWrite(
-      fenced.cancelOpenNodeLogs,
-      unfenced.cancelOpenNodeLogs,
-      state
-    ),
-    recordAuditEvent: watchedStoreWrite(
-      fenced.recordAuditEvent,
-      unfenced.recordAuditEvent,
-      state
-    ),
-    startWait: watchedStoreWrite(fenced.startWait, unfenced.startWait, state),
-    reparkWait: watchedStoreWrite(
-      fenced.reparkWait,
-      unfenced.reparkWait,
-      state
-    ),
-    markWaitStatus: watchedStoreWrite(
-      fenced.markWaitStatus,
-      unfenced.markWaitStatus,
-      state
-    ),
-    settleWaitTimeout: watchedStoreWrite(
-      fenced.settleWaitTimeout,
-      unfenced.settleWaitTimeout,
-      state
-    ),
-    cancelWaitsForExecution: watchedStoreWrite(
-      fenced.cancelWaitsForExecution,
-      unfenced.cancelWaitsForExecution,
-      state
-    ),
-    markRunning: watchedStoreWrite(
-      fenced.markRunning,
-      unfenced.markRunning,
-      state
-    ),
-    markWaitingIfParked: watchedStoreWrite(
-      fenced.markWaitingIfParked,
-      unfenced.markWaitingIfParked,
-      state
-    ),
-    requestExit: watchedStoreWrite(
-      fenced.requestExit,
-      unfenced.requestExit,
-      state
-    ),
+    ...store,
     finishRun: (write) =>
-      finishRun(write).pipe(
+      store.finishRun(write).pipe(
         Effect.tap((written) =>
           Effect.sync(() => {
             if (written?.didWrite === true) state.ended();
@@ -230,27 +217,8 @@ export function watchPassWrites(input: {
     writeStepMemo: watchedPassWrite(fenced.writeStepMemo, state),
     recordParkStep: watchedPassWrite(fenced.recordParkStep, state),
     releasePass: fenced.releasePass,
+    dropSchedule: fenced.dropSchedule,
   };
-}
-
-/**
- * The key a step's memo value carries when the step's retries ran out. The
- * engine's own step values and an action's remembered envelope never use it.
- */
-const STEP_FAILURE_KEY = "wfgraph.executor.stepFailed";
-
-/**
- * The memo value that fails a step whose retries are spent. Every later pass
- * answers that step by rejecting with `message`, which is how the step fails
- * its node while the rest of the run goes on.
- */
-export function stepFailureMemo(message: string): JsonObject {
-  return { [STEP_FAILURE_KEY]: { message } };
-}
-
-function readStepFailure(value: JsonValue | undefined): string | undefined {
-  const failed = readJsonObject(readJsonObject(value)?.[STEP_FAILURE_KEY]);
-  return typeof failed?.message === "string" ? failed.message : undefined;
 }
 
 /** The wake a park's row holds, as the Wait reads it. */
@@ -291,10 +259,10 @@ function memoValue(value: unknown): JsonValue {
 
 export type ExecutorRuntimeInput = {
   executionId: string;
-  /** The schedule row's attempt counter at the claim. */
+  /** The run's own failure count at the claim. */
   attempt: number;
   /** Every memo row of the run, loaded once at the claim, keyed by step id. */
-  memo: ReadonlyMap<string, JsonValue>;
+  memo: ReadonlyMap<string, StepMemo>;
   /** The pass's writes, watched by `state`. */
   writes: FencedExecutionWrites;
   /** Reads one park's row. */
@@ -332,12 +300,15 @@ export function createExecutorRuntime(
     await runEffect(
       writes.writeStepMemo({
         stepId,
-        attempt,
         value,
         leaseExpiresAt: input.leaseExpiresAt(),
       })
     );
-    memo.set(stepId, value);
+    memo.set(stepId, {
+      status: "succeeded",
+      failures: memo.get(stepId)?.failures ?? 0,
+      value,
+    });
   }
 
   return {
@@ -347,38 +318,48 @@ export function createExecutorRuntime(
     runId: input.executionId,
 
     run: async <T>(step: DurableStepRef, fn: () => Promise<T>): Promise<T> => {
-      if (memo.has(step.id)) {
-        const stored = memo.get(step.id);
-        const failed = readStepFailure(stored);
-        if (failed !== undefined) {
-          throw engineFailure("failure", failed);
-        }
+      const stored = memo.get(step.id);
+      if (stored?.status === "succeeded") {
         // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- a step id always maps back to that step's own result type
-        return stored as T;
+        return stored.value as T;
+      }
+      if (stored?.status === "failed") {
+        throw state.spentStep(step.id, stored.error);
       }
       if (isStopped(state)) {
         throw passStopped();
       }
 
-      let value: T;
+      state.stepStarted(step.id);
       try {
-        value = await fn();
-      } catch (error) {
-        state.stepThrew(step.id, error);
-        throw error;
+        let value: T;
+        try {
+          value = await fn();
+        } catch (error) {
+          state.stepThrew(step.id, error);
+          throw error;
+        }
+        // The attempt that ran the step gets the value it returned and every
+        // replay gets the stored JSON, as Inngest hands them back.
+        await forStep(step.id, remember(step.id, memoValue(value)));
+        return value;
+      } finally {
+        state.stepFinished(step.id);
       }
-      // The attempt that ran the step gets the value it returned and every
-      // replay gets the stored JSON, as Inngest hands them back.
-      await forStep(step.id, remember(step.id, memoValue(value)));
-      return value;
     },
 
     waitForEvent: async (
       step: DurableStepRef,
       options: WaitForEventOptions
     ): Promise<WaitAnswer> => {
-      if (memo.has(step.id)) {
-        const wake = readMemoizedWake(memo.get(step.id));
+      const stored = memo.get(step.id);
+      // A park step whose retries are spent fails the Wait as a step would.
+      // It never reads as a wake.
+      if (stored?.status === "failed") {
+        throw state.spentStep(step.id, stored.error);
+      }
+      if (stored?.status === "succeeded") {
+        const wake = readMemoizedWake(stored.value);
         if (wake === undefined) {
           throw engineFailure(
             "failure",

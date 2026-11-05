@@ -16,6 +16,7 @@ import {
   type ParkWake,
   type PassOutcome,
 } from "#src/backend/services/executions/repo";
+import { LEASE_EXPIRED_ERROR } from "#src/backend/services/executions/repo/release-policy";
 import type {
   ConformanceConnection,
   PersistenceTestRegistry,
@@ -69,7 +70,11 @@ function claimRun(executionId: string, now: Date) {
     });
     const own = claimed.find((row) => row.executionId === executionId);
     if (!own) throw new Error("The run was not claimed");
-    const fence: OwnerFence = { executionId, ownerToken: own.ownerToken };
+    const fence: OwnerFence = {
+      scheduleId: own.scheduleId,
+      executionId,
+      ownerToken: own.ownerToken,
+    };
     return { claim: own, fence };
   });
 }
@@ -109,6 +114,11 @@ function claimOne(connection: ConformanceConnection, workerId: string) {
       });
     })
   );
+}
+
+/** The tag of the failure a write answers, for a write the case expects refused. */
+function refusalOf<A>(write: Effect.Effect<A, { _tag: string }>) {
+  return Effect.flip(write).pipe(Effect.map((failure) => failure._tag));
 }
 
 async function seeded(connection: ConformanceConnection) {
@@ -167,7 +177,7 @@ export function describeExecutionScheduleConformance({
       expect(sequential.claimed).toEqual([sequential.fresh]);
     });
 
-    it("leases with a fresh token, and counts an attempt only for an expired lease", async () => {
+    it("leases with a fresh token, and counts a run failure only for a lease that expired with no step running", async () => {
       const connection = await seeded(await openConnection());
       const result = await connection.run(
         Effect.gen(function* () {
@@ -190,8 +200,8 @@ export function describeExecutionScheduleConformance({
           const staleWrite = yield* Effect.flip(
             executions.fenced(staleFence).writeStepMemo({
               stepId: "step_1",
-              attempt: first.attempt,
               value: "stale",
+              leaseExpiresAt: at(LEASE_MS * 3),
             })
           );
           return {
@@ -209,6 +219,7 @@ export function describeExecutionScheduleConformance({
       expect(result.beforeExpiry).toEqual([]);
       expect(result.second.attempt).toBe(1);
       expect(result.second.ownerToken).not.toBe(result.first.ownerToken);
+      expect(result.second.scheduleId).toBe(result.first.scheduleId);
       expect(result.staleWrite._tag).toBe("LeaseLost");
       expect(result.memo).toEqual([]);
     });
@@ -236,9 +247,8 @@ export function describeExecutionScheduleConformance({
       );
 
       expect(result.released).toEqual({
-        state: "waiting",
-        wakeAt: at(10_000),
-        attempt: 0,
+        schedule: { state: "waiting", wakeAt: at(10_000), attempt: 0 },
+        countedStep: null,
       });
       expect(result.claim.attempt).toBe(0);
       expect(result.overdue).toMatchObject({
@@ -268,14 +278,19 @@ export function describeExecutionScheduleConformance({
           for (const [stepId, value] of Object.entries(values)) {
             yield* executions
               .fenced(fence)
-              .writeStepMemo({ stepId, attempt: 0, value });
+              .writeStepMemo({ stepId, value, leaseExpiresAt: at(LEASE_MS) });
           }
           return yield* executions.listStepMemo(executionId);
         })
       );
 
       expect(
-        Object.fromEntries(memo.map((entry) => [entry.stepId, entry.value]))
+        Object.fromEntries(
+          memo.map((entry) => [
+            entry.stepId,
+            entry.status === "succeeded" ? entry.value : entry.status,
+          ])
+        )
       ).toEqual(values);
     });
 
@@ -284,9 +299,9 @@ export function describeExecutionScheduleConformance({
       const result = await connection.run(
         Effect.gen(function* () {
           const executions = yield* ExecutionRepo;
-          // Each run has already lost one lease, so its counter stands at one
-          // and an outcome that leaves the counter alone can be told from one
-          // that resets it.
+          // Each run has already lost one lease with no step running, so its
+          // own failure count stands at one and an outcome that counts a run
+          // failure can be told from one that resets the count.
           const release = (outcome: PassOutcome) =>
             Effect.gen(function* () {
               const executionId = yield* scheduledRun(T0);
@@ -304,57 +319,67 @@ export function describeExecutionScheduleConformance({
             });
 
           return {
-            retry: yield* release({
-              kind: "retry",
+            stepFailed: yield* release({
+              kind: "step_failed",
+              stepId: "node:send:dispatch",
               error: "vendor timed out",
               backoffMs: 30_000,
             }),
-            fenceRefused: yield* release({ kind: "fence_refused" }),
-            retriesSpent: yield* release({
-              kind: "retries_spent",
-              stepId: "node:send:step",
-              failure: { success: false, error: { message: "refused" } },
+            runFailed: yield* release({
+              kind: "run_failed",
+              error: "the body failed outside any step",
+              backoffMs: 30_000,
             }),
+            fenceRefused: yield* release({ kind: "fence_refused" }),
             nothingParked: yield* release({ kind: "parked" }),
           };
         })
       );
 
       const releasedAt = at(LEASE_MS + 1_000);
-      expect(result.retry.released).toEqual({
-        state: "queued",
-        wakeAt: at(LEASE_MS + 31_000),
-        attempt: 2,
+      const failing = {
+        status: "failing",
+        failures: 1,
+        error: "vendor timed out",
+      };
+      expect(result.stepFailed.released).toEqual({
+        schedule: {
+          state: "queued",
+          wakeAt: at(LEASE_MS + 31_000),
+          attempt: 0,
+        },
+        countedStep: failing,
       });
-      expect(result.retry.schedule).toMatchObject({
+      expect(result.stepFailed.schedule).toMatchObject({
         state: "queued",
         lastError: "vendor timed out",
+        runningStepId: null,
         ownerToken: null,
         leaseExpiresAt: null,
         workerId: null,
       });
-      expect(result.fenceRefused.released).toEqual({
-        state: "queued",
-        wakeAt: releasedAt,
-        attempt: 1,
+      expect(result.stepFailed.memo).toEqual([
+        { stepId: "node:send:dispatch", ...failing },
+      ]);
+      expect(result.runFailed.released).toEqual({
+        schedule: {
+          state: "queued",
+          wakeAt: at(LEASE_MS + 31_000),
+          attempt: 2,
+        },
+        countedStep: null,
       });
-      expect(result.retriesSpent.released).toEqual({
+      expect(result.runFailed.memo).toEqual([]);
+      expect(result.fenceRefused.released.schedule).toEqual({
         state: "queued",
         wakeAt: releasedAt,
         attempt: 0,
       });
-      expect(result.retriesSpent.memo).toEqual([
-        {
-          stepId: "node:send:step",
-          attempt: 1,
-          value: { success: false, error: { message: "refused" } },
-        },
-      ]);
       // A pass that ended parked with nothing waiting has nothing to sleep on.
-      expect(result.nothingParked.released).toEqual({
+      expect(result.nothingParked.released.schedule).toEqual({
         state: "queued",
         wakeAt: releasedAt,
-        attempt: 1,
+        attempt: 0,
       });
     });
 
@@ -428,12 +453,12 @@ export function describeExecutionScheduleConformance({
         payload: { approved: true },
         deliveryId: "delivery_1",
       });
-      expect(result.released).toEqual({
+      expect(result.released.schedule).toEqual({
         state: "queued",
         wakeAt: at(1_000),
         attempt: 0,
       });
-      expect(result.slept).toEqual({
+      expect(result.slept.schedule).toEqual({
         state: "waiting",
         wakeAt: at(120_000),
         attempt: 0,
@@ -451,12 +476,11 @@ export function describeExecutionScheduleConformance({
         Effect.gen(function* () {
           const executions = yield* ExecutionRepo;
           const executionId = yield* scheduledRun(T0);
-          const { claim, fence } = yield* claimRun(executionId, T0);
+          const { fence } = yield* claimRun(executionId, T0);
           const waitStateId = yield* park(executionId, "wait_1", at(90_000));
           const live = executions.fenced(fence);
           yield* live.writeStepMemo({
             stepId: "node:a:log-open",
-            attempt: claim.attempt,
             value: { logId: "log_a" },
             leaseExpiresAt: at(LEASE_MS * 2),
           });
@@ -469,15 +493,15 @@ export function describeExecutionScheduleConformance({
           // The pass released its row, so its token names no lease.
           const stale = executions.fenced(fence);
           const forged = executions.fenced({
-            executionId,
+            ...fence,
             ownerToken: "not-a-token",
           });
           return {
             memo: yield* Effect.flip(
               stale.writeStepMemo({
                 stepId: "node:b:log-open",
-                attempt: 0,
                 value: null,
+                leaseExpiresAt: at(LEASE_MS * 2),
               })
             ),
             markRunning: yield* Effect.flip(
@@ -498,10 +522,12 @@ export function describeExecutionScheduleConformance({
                 message: "Run resumed",
               })
             ),
+            dropped: yield* Effect.flip(stale.dropSchedule()),
             memoRows: yield* executions.listStepMemo(executionId),
             park: yield* executions.findPark(waitStateId),
             status: yield* executions.findStatusById(executionId),
             events: yield* executions.listEvents(executionId),
+            schedule: yield* executions.findSchedule(executionId),
           };
         })
       );
@@ -510,12 +536,19 @@ export function describeExecutionScheduleConformance({
       expect(result.markRunning._tag).toBe("LeaseLost");
       expect(result.finishRun._tag).toBe("LeaseLost");
       expect(result.audit._tag).toBe("LeaseLost");
+      expect(result.dropped._tag).toBe("LeaseLost");
       expect(result.memoRows).toEqual([
-        { stepId: "node:a:log-open", attempt: 0, value: { logId: "log_a" } },
+        {
+          stepId: "node:a:log-open",
+          status: "succeeded",
+          failures: 0,
+          value: { logId: "log_a" },
+        },
       ]);
       expect(result.park).toMatchObject({ parkStepId: "wait:1", wake: null });
       expect(result.status?.status).toBe("waiting");
       expect(result.events).toEqual([]);
+      expect(result.schedule).toMatchObject({ state: "waiting" });
     });
 
     it("keeps one log row when its open re-runs, and writes every timeline entry", async () => {
@@ -649,8 +682,8 @@ export function describeExecutionScheduleConformance({
           });
           yield* pass.writeStepMemo({
             stepId: "node:send:log-open",
-            attempt: 0,
             value: { logId },
+            leaseExpiresAt: at(LEASE_MS),
           });
           const finished = yield* pass.finishRun({
             executionId,
@@ -809,7 +842,7 @@ export function describeExecutionScheduleConformance({
       // The claim refuses every later park, so nothing new is left open.
       expect(result.parkedAfter).toBeUndefined();
       // The release reads the Exit wakes and hands the run straight back.
-      expect(result.released).toMatchObject({
+      expect(result.released.schedule).toMatchObject({
         state: "queued",
         wakeAt: at(3_000),
       });
@@ -884,6 +917,411 @@ export function describeExecutionScheduleConformance({
       expect(result.resumedPark).toMatchObject({
         status: "resuming",
         wake: { kind: "resume" },
+      });
+    });
+
+    it("keys a run's schedule row by an id of its own, one row per run, and deletes it and its memo with the run", async () => {
+      const connection = await seeded(await openConnection());
+      const result = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const executionId = yield* scheduledRun(T0);
+          const again = yield* executions.scheduleExecution({
+            executionId,
+            kind: "run",
+            wakeAt: at(5_000),
+          });
+          const { claim, fence } = yield* claimRun(executionId, T0);
+          yield* executions.fenced(fence).writeStepMemo({
+            stepId: "step_1",
+            value: "sent",
+            leaseExpiresAt: at(LEASE_MS),
+          });
+          const schedule = yield* executions.findSchedule(executionId);
+          const memo = yield* executions.listStepMemo(executionId);
+          yield* executions.deleteAllForWorkflow("wf_1");
+          return {
+            again,
+            claim,
+            schedule,
+            memo,
+            afterDelete: {
+              schedule: yield* executions.findSchedule(executionId),
+              memo: yield* executions.listStepMemo(executionId),
+            },
+          };
+        })
+      );
+
+      expect(result.again).toBe(false);
+      expect(result.schedule).toMatchObject({
+        id: result.claim.scheduleId,
+        kind: "run",
+        executionId: result.claim.executionId,
+        wakeAt: T0,
+      });
+      expect(result.claim.scheduleId).not.toBe(result.claim.executionId);
+      expect(result.memo).toHaveLength(1);
+      expect(result.afterDelete).toEqual({ schedule: null, memo: [] });
+    });
+
+    it("deletes the schedule row and its memo through a pass that found its run no longer in flight", async () => {
+      const connection = await seeded(await openConnection());
+      const result = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const executionId = yield* scheduledRun(T0);
+          const { fence } = yield* claimRun(executionId, T0);
+          const pass = executions.fenced(fence);
+          yield* pass.writeStepMemo({
+            stepId: "step_1",
+            value: "sent",
+            leaseExpiresAt: at(LEASE_MS),
+          });
+          yield* pass.dropSchedule();
+          return {
+            schedule: yield* executions.findSchedule(executionId),
+            memo: yield* executions.listStepMemo(executionId),
+            again: yield* Effect.flip(pass.dropSchedule()),
+          };
+        })
+      );
+
+      expect(result.schedule).toBeNull();
+      expect(result.memo).toEqual([]);
+      expect(result.again._tag).toBe("LeaseLost");
+    });
+
+    // A count kept for the whole run would hand each later step the retries
+    // its predecessors spent.
+    it("counts each step's failures on its own memo row, so a step that failed three times leaves the next one four retries", async () => {
+      const connection = await seeded(await openConnection());
+      const result = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const executionId = yield* scheduledRun(T0);
+          let clock = 0;
+          // One pass whose step `stepId` throws. Each pass claims the row the
+          // previous release queued at its own time.
+          const failOnce = (stepId: string) =>
+            Effect.gen(function* () {
+              const { fence } = yield* claimRun(executionId, at(clock));
+              const released = yield* executions.fenced(fence).releasePass({
+                outcome: {
+                  kind: "step_failed",
+                  stepId,
+                  error: `${stepId} failed`,
+                  backoffMs: 1_000,
+                },
+                now: at(clock),
+              });
+              clock = released.schedule.wakeAt.getTime() - T0.getTime();
+              return released;
+            });
+
+          for (let failure = 1; failure <= 3; failure += 1) {
+            yield* failOnce("step_a");
+          }
+          const { fence } = yield* claimRun(executionId, at(clock));
+          yield* executions.fenced(fence).writeStepMemo({
+            stepId: "step_a",
+            value: "sent",
+            leaseExpiresAt: at(clock + LEASE_MS),
+          });
+          yield* executions
+            .fenced(fence)
+            .releasePass({ outcome: { kind: "parked" }, now: at(clock) });
+
+          const stepB = [];
+          for (let failure = 1; failure <= 5; failure += 1) {
+            stepB.push(yield* failOnce("step_b"));
+          }
+
+          // A step whose row is `failed` keeps it when a late value arrives.
+          const { fence: last } = yield* claimRun(executionId, at(clock));
+          yield* executions.fenced(last).writeStepMemo({
+            stepId: "step_b",
+            value: "late",
+            leaseExpiresAt: at(clock + LEASE_MS),
+          });
+          return {
+            stepB,
+            memo: yield* executions.listStepMemo(executionId),
+          };
+        })
+      );
+
+      expect(result.stepB.map((released) => released.countedStep)).toEqual([
+        { status: "failing", failures: 1, error: "step_b failed" },
+        { status: "failing", failures: 2, error: "step_b failed" },
+        { status: "failing", failures: 3, error: "step_b failed" },
+        { status: "failing", failures: 4, error: "step_b failed" },
+        { status: "failed", failures: 5, error: "step_b failed" },
+      ]);
+      // A step within its retries waits out its backoff; a step whose retries
+      // are spent re-queues the run at once, so its node fails on the next pass.
+      const [fourth, fifth] = result.stepB.slice(3);
+      expect(fourth?.schedule).toMatchObject({ state: "queued", attempt: 0 });
+      expect(fifth?.schedule.wakeAt.getTime()).toBeLessThan(
+        (fourth?.schedule.wakeAt.getTime() ?? 0) + 1_000
+      );
+      expect(
+        Object.fromEntries(
+          result.memo.map(({ stepId, ...entry }) => [stepId, entry])
+        )
+      ).toEqual({
+        step_a: { status: "succeeded", failures: 3, value: "sent" },
+        step_b: { status: "failed", failures: 5, error: "step_b failed" },
+      });
+    });
+
+    it("counts a lease that expires under a recorded step against that step, and fails the step past the limit", async () => {
+      const connection = await seeded(await openConnection());
+      const result = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const executionId = yield* scheduledRun(T0);
+          const attempts = [];
+          const memoAfterFirstExpiry = [];
+          let clock = 0;
+          // Five passes in a row stop renewing their lease while the same step
+          // runs, the way a step that hangs past every lease does. Each claim
+          // after the first sweeps the lease the pass before it left.
+          for (let pass = 1; pass <= 5; pass += 1) {
+            const { claim, fence } = yield* claimRun(executionId, at(clock));
+            attempts.push(claim.attempt);
+            if (pass === 2) {
+              memoAfterFirstExpiry.push(
+                ...(yield* executions.listStepMemo(executionId))
+              );
+            }
+            yield* executions.fenced(fence).renewLease({
+              leaseExpiresAt: at(clock + LEASE_MS),
+              runningStepId: "step_slow",
+            });
+            clock += LEASE_MS + 1;
+          }
+          const { claim: last } = yield* claimRun(executionId, at(clock));
+          attempts.push(last.attempt);
+          return {
+            attempts,
+            memoAfterFirstExpiry,
+            schedule: yield* executions.findSchedule(executionId),
+            memo: yield* executions.listStepMemo(executionId),
+          };
+        })
+      );
+
+      // The run's own count is left alone, because a step was recorded.
+      expect(result.attempts).toEqual([0, 0, 0, 0, 0, 0]);
+      expect(result.memoAfterFirstExpiry).toEqual([
+        {
+          stepId: "step_slow",
+          status: "failing",
+          failures: 1,
+          error: LEASE_EXPIRED_ERROR,
+        },
+      ]);
+      // The claim clears the step the swept pass recorded.
+      expect(result.schedule).toMatchObject({
+        state: "leased",
+        runningStepId: null,
+        attempt: 0,
+      });
+      expect(result.memo).toEqual([
+        {
+          stepId: "step_slow",
+          status: "failed",
+          failures: 5,
+          error: LEASE_EXPIRED_ERROR,
+        },
+      ]);
+    });
+
+    it("counts a lease that expires between steps against the run, and resets that count at the next release", async () => {
+      const connection = await seeded(await openConnection());
+      const result = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const executionId = yield* scheduledRun(T0);
+
+          // The first pass records a step and then finishes it, so the lease
+          // expires with no step running.
+          const { fence } = yield* claimRun(executionId, T0);
+          yield* executions.fenced(fence).renewLease({
+            leaseExpiresAt: at(LEASE_MS),
+            runningStepId: "step_done",
+          });
+          yield* executions.fenced(fence).writeStepMemo({
+            stepId: "step_done",
+            value: "sent",
+            leaseExpiresAt: at(LEASE_MS),
+          });
+          const afterMemo = yield* executions.findSchedule(executionId);
+
+          const { claim: second } = yield* claimRun(
+            executionId,
+            at(LEASE_MS + 1)
+          );
+          const { claim: third, fence: thirdFence } = yield* claimRun(
+            executionId,
+            at(LEASE_MS * 2 + 2)
+          );
+          const released = yield* executions.fenced(thirdFence).releasePass({
+            outcome: { kind: "parked" },
+            now: at(LEASE_MS * 2 + 3),
+          });
+          return {
+            afterMemo,
+            second,
+            third,
+            released,
+            memo: yield* executions.listStepMemo(executionId),
+          };
+        })
+      );
+
+      // The memo write stopped naming its step as running.
+      expect(result.afterMemo?.runningStepId).toBeNull();
+      expect(result.second.attempt).toBe(1);
+      expect(result.third.attempt).toBe(2);
+      expect(result.released.schedule.attempt).toBe(0);
+      expect(result.memo).toEqual([
+        {
+          stepId: "step_done",
+          status: "succeeded",
+          failures: 0,
+          value: "sent",
+        },
+      ]);
+    });
+
+    it("refuses a fenced write that addresses a run the fence does not name", async () => {
+      const connection = await seeded(await openConnection());
+      const result = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const ownId = yield* openRun;
+          // The other run is leased to a pass of its own first.
+          const otherId = yield* scheduledRun(T0);
+          const { fence: otherFence } = yield* claimRun(otherId, T0);
+          yield* executions.scheduleExecution({
+            executionId: ownId,
+            kind: "run",
+            wakeAt: T0,
+          });
+          const { fence } = yield* claimRun(ownId, T0);
+          const pass = executions.fenced(fence);
+          // The pass's own token and schedule row, paired with the other run.
+          const crossed = executions.fenced({
+            ...fence,
+            executionId: otherId,
+          });
+          return {
+            markRunning: yield* refusalOf(
+              pass.markRunning({
+                executionId: otherId,
+                workflowVersionId: "ver_1",
+                side: "started",
+              })
+            ),
+            finishRun: yield* refusalOf(
+              pass.finishRun({ executionId: otherId, status: "completed" })
+            ),
+            openNodeLog: yield* refusalOf(
+              pass.openNodeLog({
+                executionId: otherId,
+                nodeId: "send",
+                nodeName: "Send",
+                nodeType: "action",
+              })
+            ),
+            audit: yield* refusalOf(
+              pass.recordAuditEvent({
+                workflowId: "wf_1",
+                executionId: otherId,
+                eventType: "run_resumed",
+                message: "Run resumed",
+              })
+            ),
+            crossedFinish: yield* refusalOf(
+              crossed.finishRun({ executionId: otherId, status: "completed" })
+            ),
+            crossedMemo: yield* refusalOf(
+              crossed.writeStepMemo({
+                stepId: "step_1",
+                value: null,
+                leaseExpiresAt: at(LEASE_MS),
+              })
+            ),
+            other: yield* executions.findStatusById(otherId),
+            otherLogs: yield* executions.listLogs(otherId),
+            otherEvents: yield* executions.listEvents(otherId),
+            otherSchedule: yield* executions.findSchedule(otherId),
+            otherFence,
+          };
+        })
+      );
+
+      expect(result).toMatchObject({
+        markRunning: "LeaseLost",
+        finishRun: "LeaseLost",
+        openNodeLog: "LeaseLost",
+        audit: "LeaseLost",
+        crossedFinish: "LeaseLost",
+        crossedMemo: "LeaseLost",
+      });
+      expect(result.other?.status).toBe("running");
+      expect(result.otherLogs).toEqual([]);
+      expect(result.otherEvents).toEqual([]);
+      expect(result.otherSchedule).toMatchObject({
+        state: "leased",
+        ownerToken: result.otherFence.ownerToken,
+      });
+    });
+
+    it("re-queues a waiting run only when the producer's wake landed", async () => {
+      const connection = await seeded(await openConnection());
+      const result = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const executionId = yield* scheduledRun(T0);
+          const { fence } = yield* claimRun(executionId, T0);
+          const consumed = yield* park(executionId, "wait_a", at(90_000));
+          yield* park(executionId, "wait_b", at(120_000));
+          yield* executions.resolvePark({
+            executionId,
+            waitStateId: consumed,
+            wake: { kind: "timeout" },
+            now: at(500),
+          });
+          // The pass consumed the wake on `wait_a` and the other Wait sleeps.
+          yield* executions.markWaitStatus({
+            waitStateId: consumed,
+            status: "timed_out",
+          });
+          const released = yield* executions
+            .fenced(fence)
+            .releasePass({ outcome: { kind: "parked" }, now: at(1_000) });
+          const late = yield* executions.resolvePark({
+            executionId,
+            waitStateId: consumed,
+            wake: { kind: "cancel" },
+            now: at(2_000),
+          });
+          return {
+            released,
+            late,
+            schedule: yield* executions.findSchedule(executionId),
+          };
+        })
+      );
+
+      expect(result.released.schedule.state).toBe("waiting");
+      expect(result.late).toEqual({ resolved: false, requeued: false });
+      expect(result.schedule).toMatchObject({
+        state: "waiting",
+        wakeAt: at(120_000),
       });
     });
   });

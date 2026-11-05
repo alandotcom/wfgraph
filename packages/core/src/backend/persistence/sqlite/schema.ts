@@ -286,21 +286,24 @@ export const workflowWaitStates = sqliteTable(
 export const workflowExecutionSchedule = sqliteTable(
   "workflow_execution_schedule",
   {
-    executionId: text("execution_id")
-      .primaryKey()
-      .references(() => workflowExecutions.id, { onDelete: "cascade" }),
+    id: text("id").primaryKey(),
     kind: text("kind").notNull(),
+    executionId: text("execution_id").references(() => workflowExecutions.id, {
+      onDelete: "cascade",
+    }),
     state: text("state").notNull(),
     wakeAt: integer("wake_at").notNull(),
     attempt: integer("attempt").notNull().default(0),
+    runningStepId: text("running_step_id"),
     leaseExpiresAt: integer("lease_expires_at"),
     ownerToken: text("owner_token"),
     workerId: text("worker_id"),
     lastError: text("last_error"),
   },
   (table) => [
+    uniqueIndex("schedule_execution_uidx").on(table.executionId),
     index("schedule_due_idx")
-      .on(table.wakeAt, table.executionId)
+      .on(table.wakeAt, table.id)
       .where(sql`${table.state} in ('queued', 'waiting')`),
     index("schedule_lease_idx")
       .on(table.leaseExpiresAt)
@@ -313,6 +316,10 @@ export const workflowExecutionSchedule = sqliteTable(
       "workflow_execution_schedule_state_check",
       sql`${table.state} in ('queued', 'leased', 'waiting')`
     ),
+    check(
+      "workflow_execution_schedule_run_execution_check",
+      sql`${table.kind} <> 'run' or ${table.executionId} is not null`
+    ),
   ]
 );
 
@@ -324,16 +331,26 @@ export const workflowExecutionSchedule = sqliteTable(
 export const workflowExecutionSteps = sqliteTable(
   "workflow_execution_steps",
   {
-    executionId: text("execution_id")
+    scheduleId: text("schedule_id")
       .notNull()
-      .references(() => workflowExecutions.id, { onDelete: "cascade" }),
+      .references(() => workflowExecutionSchedule.id, { onDelete: "cascade" }),
     stepId: text("step_id").notNull(),
-    attempt: integer("attempt").notNull(),
+    status: text("status").notNull(),
+    failures: integer("failures").notNull().default(0),
     value: text("value"),
+    error: text("error"),
     createdAt: integer("created_at").notNull(),
   },
   (table) => [
-    primaryKey({ columns: [table.executionId, table.stepId] }),
+    primaryKey({ columns: [table.scheduleId, table.stepId] }),
+    check(
+      "workflow_execution_steps_status_check",
+      sql`${table.status} in ('succeeded', 'failing', 'failed')`
+    ),
+    check(
+      "workflow_execution_steps_error_check",
+      sql`(${table.status} = 'succeeded') = (${table.error} is null)`
+    ),
     check(
       "workflow_execution_steps_value_json_check",
       sql`${table.value} is null or json_valid(${table.value})`

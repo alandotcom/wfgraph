@@ -7,7 +7,7 @@ import type {
   OpenNodeLogInput,
 } from "#src/backend/services/executions/repo/node-logs";
 import type { OwnerFence } from "#src/backend/services/executions/repo/contracts";
-import { nodeLogId } from "#src/backend/services/executions/repo/fencing";
+import { nodeLogId } from "#src/backend/services/executions/repo/node-logs";
 import type {
   SqliteDatabase,
   SqliteExecutor,

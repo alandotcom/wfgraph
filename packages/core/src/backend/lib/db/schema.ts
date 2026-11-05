@@ -31,6 +31,15 @@ import {
   WORKFLOW_VERSION_KINDS,
   type WorkflowVersionKind,
 } from "@wfgraph/shared/graph/version-kinds";
+import {
+  EXECUTION_SCHEDULE_KINDS,
+  EXECUTION_SCHEDULE_STATES,
+  type ExecutionScheduleKind,
+  type ExecutionScheduleState,
+  type ParkWake,
+  STEP_MEMO_STATUSES,
+  type StepMemoStatus,
+} from "@wfgraph/shared/lifecycle/execution-schedule";
 
 // Every table here is unqualified, and the Postgres schema holding them is the
 // host's `database.schema` option: the connection's search_path names it, on the
@@ -51,47 +60,6 @@ export type WorkflowVisibility = "private" | "public";
 export type WorkflowMode = "live" | "test";
 export type OAuthAuthorizationAttemptMode = "create" | "reconnect";
 
-/**
- * How a park ended, as `workflow_wait_states.wake` stores it.
- *
- * `timeout` is the park's deadline passing. `resume` is an Event arrival or a
- * manual resume, carrying what arrived. `cancel` is a Cancel Event claiming the
- * run, `exit` is another branch of the run claiming an Entity Eligibility Exit,
- * and `migrate` is a Migration telling the Wait to prepare itself again against
- * the version the run now pins.
- */
-export type ParkWake =
-  | { kind: "timeout" }
-  | { kind: "migrate" }
-  | { kind: "cancel" }
-  | { kind: "exit" }
-  | {
-      kind: "resume";
-      /** The Event that arrived, and null for a resume that named none. */
-      eventName: string | null;
-      payload: JsonObject;
-      /** The delivery that carried the Event, and null when none did. */
-      deliveryId: string | null;
-    };
-
-/**
- * What a schedule row runs: a workflow run (`run`) or an Event's delivery to
- * the workflows subscribed to it (`delivery`).
- */
-export const EXECUTION_SCHEDULE_KINDS = ["run", "delivery"] as const;
-export type ExecutionScheduleKind = (typeof EXECUTION_SCHEDULE_KINDS)[number];
-
-/**
- * Where a schedule row stands. `queued` is due at `wake_at`, `leased` is held by
- * one worker's pass until `lease_expires_at`, and `waiting` is a run with every
- * branch parked, due again at its earliest park deadline.
- */
-export const EXECUTION_SCHEDULE_STATES = [
-  "queued",
-  "leased",
-  "waiting",
-] as const;
-export type ExecutionScheduleState = (typeof EXECUTION_SCHEDULE_STATES)[number];
 export type OAuthAuthorizationAttemptStatus =
   | "pending"
   | "processing"
@@ -579,8 +547,10 @@ export const workflowWaitStates = pgTable(
 );
 
 /**
- * The schedule kinds and states as SQL literals. Both lists are closed sets of
- * lower-case words declared in this file, so `sql.raw` interpolates them safely.
+ * The schedule kinds and states and the memo statuses as SQL literals. Each
+ * list is a closed set of lower-case words declared in
+ * `@wfgraph/shared/lifecycle/execution-schedule`, so `sql.raw` interpolates
+ * them safely.
  */
 const scheduleKindLiterals = EXECUTION_SCHEDULE_KINDS.map(
   (kind) => `'${kind}'`
@@ -588,22 +558,33 @@ const scheduleKindLiterals = EXECUTION_SCHEDULE_KINDS.map(
 const scheduleStateLiterals = EXECUTION_SCHEDULE_STATES.map(
   (state) => `'${state}'`
 ).join(", ");
+const stepMemoStatusLiterals = STEP_MEMO_STATUSES.map(
+  (status) => `'${status}'`
+).join(", ");
 
 /**
- * One claimable row per Execution the database executor still has to run.
+ * One claimable row per body the database executor still has to run: a
+ * workflow run, which names its Execution, or an Event's delivery.
  *
- * A worker claims a due row under a lease, replays the run against its step
- * memo, and releases the row as `queued` or `waiting`. The terminal write
- * deletes the row, so the table holds the working set and its partial indexes
- * stay small.
+ * A worker claims a due row under a lease, replays the body against the step
+ * memo the row owns, and releases the row as `queued` or `waiting`. A run's
+ * terminal write deletes its row, and the memo rows go with it, so the table
+ * holds the working set and its partial indexes stay small.
  */
 export const workflowExecutionSchedule = pgTable(
   "workflow_execution_schedule",
   {
-    executionId: text("execution_id")
+    id: text("id")
       .primaryKey()
-      .references(() => workflowExecutions.id, { onDelete: "cascade" }),
+      .$defaultFn(() => generateId()),
     kind: text("kind").notNull().$type<ExecutionScheduleKind>(),
+    /**
+     * The run this row schedules. A `run` row always names one, and at most one
+     * row names each Execution. A `delivery` row names none.
+     */
+    executionId: text("execution_id").references(() => workflowExecutions.id, {
+      onDelete: "cascade",
+    }),
     state: text("state").notNull().$type<ExecutionScheduleState>(),
     /**
      * When the row is due. Queued: now, or the end of a retry backoff. Waiting:
@@ -611,10 +592,18 @@ export const workflowExecutionSchedule = pgTable(
      */
     wakeAt: timestamp("wake_at").notNull(),
     /**
-     * Failed passes and expired leases counted against the run's retries. A
-     * claim leaves it alone, so a wake that re-queues the run spends nothing.
+     * The run's own failure count: leases that expired while no step was
+     * recorded as running, and failures of the body that no step owns. A
+     * failing step counts against its own memo row instead. Every other
+     * release resets it to zero.
      */
     attempt: integer("attempt").notNull().default(0),
+    /**
+     * The step the pass holding the lease is running, as its heartbeat last
+     * recorded it, and null between steps. A lease that expires counts one
+     * failure against this step's memo row.
+     */
+    runningStepId: text("running_step_id"),
     leaseExpiresAt: timestamp("lease_expires_at"),
     /**
      * The fencing token of the pass holding the lease, minted per claim. Every
@@ -633,9 +622,16 @@ export const workflowExecutionSchedule = pgTable(
       "workflow_execution_schedule_state_check",
       sql`${table.state} in (${sql.raw(scheduleStateLiterals)})`
     ),
+    check(
+      "workflow_execution_schedule_run_execution_check",
+      sql`${table.kind} <> 'run' or ${table.executionId} is not null`
+    ),
+    uniqueIndex("workflow_execution_schedule_execution_uidx").on(
+      table.executionId
+    ),
     // The claim's question: the due rows, oldest first.
     index("workflow_execution_schedule_due_idx")
-      .on(table.wakeAt, table.executionId)
+      .on(table.wakeAt, table.id)
       .where(sql`${table.state} in ('queued', 'waiting')`),
     // The claim's other question: the leases a dead worker left to expire.
     index("workflow_execution_schedule_lease_idx")
@@ -645,24 +641,44 @@ export const workflowExecutionSchedule = pgTable(
 );
 
 /**
- * The step memo: one row per durable step an Execution completed, holding the
- * JSON value the step answered. A pass loads every row before it replays the
- * run, and a step whose row exists returns that value instead of running again.
- * The terminal write deletes an Execution's rows with its schedule row.
+ * The step memo: one row per durable step a schedule row's body has reached,
+ * keyed by that schedule row. A pass loads every row before it replays the
+ * body. A `succeeded` row answers the step with its value instead of running
+ * it again; a `failing` row counts the step's failures so far, and the step
+ * runs again; a `failed` row fails the step on every pass. Deleting the
+ * schedule row deletes its memo.
  */
 export const workflowExecutionSteps = pgTable(
   "workflow_execution_steps",
   {
-    executionId: text("execution_id")
+    scheduleId: text("schedule_id")
       .notNull()
-      .references(() => workflowExecutions.id, { onDelete: "cascade" }),
+      .references(() => workflowExecutionSchedule.id, { onDelete: "cascade" }),
     stepId: text("step_id").notNull(),
-    /** The schedule row's attempt counter when the step completed. */
-    attempt: integer("attempt").notNull(),
+    status: text("status").notNull().$type<StepMemoStatus>(),
+    /**
+     * The retriable failures counted against this step: each time it threw,
+     * and each lease that expired while it ran. A step that later succeeded
+     * keeps the count it reached.
+     */
+    failures: integer("failures").notNull().default(0),
+    /** The step's answer when `succeeded`, and null otherwise. */
     value: jsonb("value").$type<JsonValue>(),
+    /** The step's last failure when `failing` or `failed`, and null otherwise. */
+    error: text("error"),
     createdAt: timestamp("created_at").notNull().default(utcNow()),
   },
-  (table) => [primaryKey({ columns: [table.executionId, table.stepId] })]
+  (table) => [
+    primaryKey({ columns: [table.scheduleId, table.stepId] }),
+    check(
+      "workflow_execution_steps_status_check",
+      sql`${table.status} in (${sql.raw(stepMemoStatusLiterals)})`
+    ),
+    check(
+      "workflow_execution_steps_error_check",
+      sql`(${table.status} = 'succeeded') = (${table.error} is null)`
+    ),
+  ]
 );
 
 export const workflowExecutionEvents = pgTable(

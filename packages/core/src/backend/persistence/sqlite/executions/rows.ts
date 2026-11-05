@@ -258,11 +258,13 @@ export function sqliteExecutionSchedule(
     throw new Error("Invalid SQLite schedule state");
   }
   return {
-    executionId: row.executionId,
+    id: row.id,
     kind,
+    executionId: row.executionId,
     state,
     wakeAt: new Date(row.wakeAt),
     attempt: row.attempt,
+    runningStepId: row.runningStepId,
     leaseExpiresAt:
       row.leaseExpiresAt === null ? null : new Date(row.leaseExpiresAt),
     ownerToken: row.ownerToken,

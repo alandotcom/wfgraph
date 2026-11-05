@@ -1,20 +1,20 @@
 /**
  * The `workflow_execution_schedule` and `workflow_execution_steps` slice of
  * `ExecutionRepo`, which the database executor runs on, and the PostgreSQL
- * locking a fenced write stands on.
+ * locking a fenced write stands on. `release-policy.ts` makes the decisions;
+ * this file runs the statements they call for.
  *
  * Lock order: every transaction here, and every fenced or terminal write in the
- * sibling slices, takes the Execution's schedule row before its execution row
- * and its wait rows. The producer and the release both lock the schedule row
- * first, so a wake either commits before a release reads the wait rows or finds
- * the row `waiting` after the release commits.
+ * sibling slices, takes the run's schedule row before its execution row and its
+ * wait rows. The producer and the release both lock the schedule row first, so
+ * a wake either commits before a release reads the wait rows or finds the row
+ * `waiting` after the release commits.
  */
 
 import { and, asc, eq, inArray, lte, or, type SQL, sql } from "drizzle-orm";
 import { Effect } from "effect";
+import { sortBy } from "es-toolkit/array";
 import {
-  type ExecutionScheduleKind,
-  type ParkWake,
   workflowExecutionSchedule,
   workflowExecutionSteps,
   workflowWaitStates,
@@ -31,17 +31,26 @@ import {
 } from "#src/backend/lib/effect/database";
 import type {
   ClaimedExecution,
+  CountedStepFailure,
   ExecutionSchedule,
   OwnerFence,
   ParkResolution,
+  ParkWake,
   PassOutcome,
-  ReleasedSchedule,
+  ReleasedPass,
+  StepMemo,
   StepMemoEntry,
 } from "#src/backend/services/executions/repo/contracts";
 import {
+  claimAttempt,
+  countStepFailure,
   decideRelease,
-  ownershipLost,
-} from "#src/backend/services/executions/repo/fencing";
+  LEASE_EXPIRED_ERROR,
+  OPEN_PARK_STATUSES,
+  sweptStepFailures,
+  TIMEOUT_WAKE,
+} from "#src/backend/services/executions/repo/release-policy";
+import { ownershipLost } from "#src/backend/services/executions/repo/fencing";
 import type { JsonValue } from "@wfgraph/shared/types/json";
 
 type Executor = WfGraphDatabase | WfGraphTransaction;
@@ -49,12 +58,9 @@ type Executor = WfGraphDatabase | WfGraphTransaction;
 /** How strongly a fenced write holds the schedule row it stands on. */
 export type LeaseLock = "share" | "update";
 
-/** The wake a claim writes onto a park whose deadline passed. */
-const TIMEOUT_WAKE: ParkWake = { kind: "timeout" };
-
 /**
- * Takes the Execution's schedule row when it is still leased under the fence's
- * token, answering whether it was.
+ * Takes the pass's schedule row when it is still leased under the fence's
+ * token and still names the fence's Execution, answering whether it was.
  *
  * `share` lets the pass's concurrent writes stand on the row together while a
  * claim, a release, a producer or a terminal write waits for them. `update` is
@@ -66,10 +72,11 @@ async function holdsLease(
   lock: LeaseLock
 ): Promise<boolean> {
   const [row] = await tx
-    .select({ executionId: workflowExecutionSchedule.executionId })
+    .select({ id: workflowExecutionSchedule.id })
     .from(workflowExecutionSchedule)
     .where(
       and(
+        eq(workflowExecutionSchedule.id, fence.scheduleId),
         eq(workflowExecutionSchedule.executionId, fence.executionId),
         eq(workflowExecutionSchedule.state, "leased"),
         eq(workflowExecutionSchedule.ownerToken, fence.ownerToken)
@@ -88,7 +95,7 @@ function answerOwned<A>(result: Owned<A>): Effect.Effect<A, LeaseLost> {
 }
 
 /**
- * Runs one write of a pass in a transaction that first takes the Execution's
+ * Runs one write of a pass in a transaction that first takes the pass's
  * schedule row, and runs nothing when the row no longer names the pass, which
  * answers `LeaseLost`.
  */
@@ -127,32 +134,29 @@ export function writeFencedSerializable<A>(
 }
 
 /**
- * Locks the schedule rows of Executions a terminal write is about to end, so
- * the terminal write takes them before the execution rows, in the order every
+ * Locks the schedule rows of the runs a terminal write is about to end, so the
+ * terminal write takes them before the execution rows, in the order every
  * fenced write takes them.
  */
-export async function lockSchedules(
+async function lockSchedules(
   tx: Executor,
   executionIds: readonly string[]
 ): Promise<void> {
   if (executionIds.length === 0) return;
   await tx
-    .select({ executionId: workflowExecutionSchedule.executionId })
+    .select({ id: workflowExecutionSchedule.id })
     .from(workflowExecutionSchedule)
     .where(inArray(workflowExecutionSchedule.executionId, [...executionIds]))
-    .orderBy(asc(workflowExecutionSchedule.executionId))
+    .orderBy(asc(workflowExecutionSchedule.id))
     .for("update");
 }
 
 /**
- * Closes what Executions whose terminal record this transaction wrote still
- * hold open: every wait row still `waiting` or `resuming` is cancelled, and the
- * schedule row and the step memo are deleted. Nothing claims, replays or
- * migrates a run once it is terminal, so nothing reads the memo again, and no
- * Event or Runs view action may address a park of a run that has ended. The
- * log rows stay.
+ * Closes what runs whose terminal record this transaction wrote still hold
+ * open, as `OPEN_PARK_STATUSES` describes: their open wait rows are cancelled
+ * and their schedule rows are deleted, which deletes the step memo by cascade.
  */
-export async function settleEndedExecutions(
+async function settleEndedExecutions(
   tx: Executor,
   executionIds: readonly string[]
 ): Promise<void> {
@@ -164,59 +168,121 @@ export async function settleEndedExecutions(
     .where(
       and(
         inArray(workflowWaitStates.executionId, ids),
-        inArray(workflowWaitStates.status, ["waiting", "resuming"])
+        inArray(workflowWaitStates.status, [...OPEN_PARK_STATUSES])
       )
     );
-  await tx
-    .delete(workflowExecutionSteps)
-    .where(inArray(workflowExecutionSteps.executionId, ids));
   await tx
     .delete(workflowExecutionSchedule)
     .where(inArray(workflowExecutionSchedule.executionId, ids));
 }
 
 /**
- * A row the claim just leased, as its pass sees it. The claim wrote both the
- * token and the lease expiry, so a row missing either is not one it leased.
+ * Runs a write that may make runs terminal, as one transaction.
+ *
+ * The candidates' schedule rows are locked first, in the order every fenced
+ * write takes them. `write` reports which runs it ended, and their open wait
+ * rows, schedule rows and step memos are settled before the transaction
+ * commits. Inside a fenced write the transaction is a savepoint of the fenced
+ * one.
  */
-export function claimedExecution(row: ExecutionSchedule): ClaimedExecution {
-  if (row.ownerToken === null || row.leaseExpiresAt === null) {
-    throw new Error("A claimed schedule row carries no lease");
+export function endExecutions<A>(
+  db: Executor,
+  candidateIds: readonly string[],
+  write: (
+    tx: WfGraphTransaction
+  ) => Promise<{ result: A; ended: readonly string[] }>
+): Promise<A> {
+  return db.transaction(async (tx) => {
+    await lockSchedules(tx, candidateIds);
+    const { result, ended } = await write(tx);
+    await settleEndedExecutions(tx, ended);
+    return result;
+  });
+}
+
+/**
+ * A row the claim just leased, as its pass sees it. The claim wrote the token
+ * and the lease expiry and claims only `run` rows, so a row missing any of
+ * them is a defect.
+ */
+export function claimedExecution(
+  row: ExecutionSchedule
+): Effect.Effect<ClaimedExecution> {
+  if (
+    row.ownerToken === null ||
+    row.leaseExpiresAt === null ||
+    row.executionId === null
+  ) {
+    return Effect.die(
+      new Error(`The claimed schedule row ${row.id} carries no lease or run`)
+    );
   }
-  return {
+  return Effect.succeed({
+    scheduleId: row.id,
     executionId: row.executionId,
-    kind: row.kind,
     ownerToken: row.ownerToken,
     attempt: row.attempt,
     leaseExpiresAt: row.leaseExpiresAt,
-  };
+  });
+}
+
+/** The rows a claim leased, oldest `wake_at` first, as their passes see them. */
+export function claimedExecutions(
+  rows: readonly ExecutionSchedule[]
+): Effect.Effect<ClaimedExecution[]> {
+  return Effect.forEach(
+    sortBy(rows, [(row) => row.wakeAt.getTime(), (row) => row.id]),
+    claimedExecution
+  );
+}
+
+/** A memo row's columns, as both backends read them back. */
+export type StepMemoColumns = {
+  status: string;
+  failures: number;
+  value: JsonValue | null;
+  error: string | null;
+};
+
+/** A memo row's columns as a `StepMemo`. The table's checks keep them consistent. */
+export function stepMemoOf(row: StepMemoColumns): StepMemo {
+  const { status, failures, error } = row;
+  if (status === "succeeded") {
+    return { status, failures, value: row.value ?? null };
+  }
+  if ((status === "failing" || status === "failed") && error !== null) {
+    return { status, failures, error };
+  }
+  throw new Error(`A step memo row holds the invalid status ${status}`);
 }
 
 /** The schedule and step memo slice of `ExecutionRepo`. */
 export type ScheduleRepoMethods = {
   /**
-   * Give an Execution a schedule row, `queued` and due at `wakeAt`, answering
-   * whether this call inserted it. A second call for the same Execution leaves
-   * the row as it stands.
+   * Give a run a schedule row, `queued` and due at `wakeAt`, answering whether
+   * this call inserted it. A second call for the same run leaves the row as it
+   * stands.
    */
   readonly scheduleExecution: (input: {
     executionId: string;
-    kind: ExecutionScheduleKind;
+    kind: "run";
     wakeAt: Date;
   }) => Effect.Effect<boolean, DatabaseError>;
-  /** One Execution's schedule row, or null when it has none. */
+  /** One run's schedule row, or null when it has none. */
   readonly findSchedule: (
     executionId: string
   ) => Effect.Effect<ExecutionSchedule | null, DatabaseError>;
   /**
-   * Lease up to `limit` due rows to one worker, oldest `wake_at` first.
+   * Lease up to `limit` due run rows to one worker, oldest `wake_at` first.
    *
    * A row is due when it is `queued` or `waiting` with `wake_at` at or before
    * `now`, or `leased` with a lease that expired by `now`. Each claimed row gets
-   * a new owner token and a lease ending `leaseMs` after `now`. The claim leaves
-   * `attempt` alone, except that sweeping an expired lease counts one. Every
-   * park of a claimed run still `waiting` with a deadline at or before `now` is
-   * resolved as a timeout in the same transaction.
+   * a new owner token and a lease ending `leaseMs` after `now`. A row queued by
+   * a wake or a release spends nothing. Sweeping an expired lease counts one
+   * failure against the step the row recorded as running, or against the run's
+   * own count when it recorded none (`release-policy.ts`). Every park of a
+   * claimed run still `waiting` with a deadline at or before `now` is resolved
+   * as a timeout in the same transaction.
    *
    * PostgreSQL skips a row another claim has locked, so two workers claiming at
    * once never lease the same row.
@@ -232,8 +298,8 @@ export type ScheduleRepoMethods = {
    *
    * The schedule row is locked first whatever state it holds. The wake is set
    * only on a row still `waiting`, so each park takes one wake. The schedule
-   * row moves to `queued` only from `waiting`; a leased run's release notices
-   * the wake instead.
+   * row moves to `queued` only when this call set the wake and only from
+   * `waiting`; a leased run's release notices the wake instead.
    */
   readonly resolvePark: (input: {
     executionId: string;
@@ -241,7 +307,10 @@ export type ScheduleRepoMethods = {
     wake: ParkWake;
     now: Date;
   }) => Effect.Effect<ParkResolution, DatabaseError>;
-  /** Every memoized step of one Execution, which a pass loads before it replays. */
+  /**
+   * Every memo row of one run's schedule row, which a pass loads before it
+   * replays. A run with no schedule row has none.
+   */
   readonly listStepMemo: (
     executionId: string
   ) => Effect.Effect<StepMemoEntry[], DatabaseError>;
@@ -252,19 +321,25 @@ export type ScheduleRepoMethods = {
  * offers them beside the fenced store writes.
  */
 export type PassWrites = {
-  /** Move the pass's lease to end at `leaseExpiresAt`, the worker's heartbeat. */
+  /**
+   * The worker's heartbeat: move the pass's lease to end at `leaseExpiresAt`
+   * and record which step the pass is running, null between steps.
+   */
   readonly renewLease: (input: {
     leaseExpiresAt: Date;
+    runningStepId: string | null;
   }) => Effect.Effect<void, DatabaseError | LeaseLost>;
   /**
-   * Record one step's value. A step already recorded keeps its first value.
-   * `leaseExpiresAt`, when given, renews the lease in the same transaction.
+   * Record one step's value and renew the lease to `leaseExpiresAt`, in one
+   * transaction holding the schedule row for update. A step already
+   * `succeeded` or `failed` keeps its row; a `failing` step's row becomes
+   * `succeeded` with this value and keeps its failure count. The schedule row
+   * stops naming the step as running.
    */
   readonly writeStepMemo: (input: {
     stepId: string;
-    attempt: number;
     value: JsonValue;
-    leaseExpiresAt?: Date | undefined;
+    leaseExpiresAt: Date;
   }) => Effect.Effect<void, DatabaseError | LeaseLost>;
   /** Record which durable step parked on a wait row of the pass's run. */
   readonly recordParkStep: (input: {
@@ -275,12 +350,17 @@ export type PassWrites = {
    * Hand the run back after a pass that wrote no terminal record. See
    * `PassOutcome` for what each outcome writes. The schedule row is locked
    * before the run's wait rows are read, so a wake that lands during the pass
-   * is never missed. The owner token and lease are cleared.
+   * is never missed. The owner token, lease and running step are cleared.
    */
   readonly releasePass: (input: {
     outcome: PassOutcome;
     now: Date;
-  }) => Effect.Effect<ReleasedSchedule, DatabaseError | LeaseLost>;
+  }) => Effect.Effect<ReleasedPass, DatabaseError | LeaseLost>;
+  /**
+   * Delete the pass's schedule row, and its step memo with it, for a pass that
+   * found its run no longer in flight: nothing will run it again.
+   */
+  readonly dropSchedule: () => Effect.Effect<void, DatabaseError | LeaseLost>;
 };
 
 /** Resolves every overdue park of the claimed runs as a timeout. */
@@ -323,6 +403,59 @@ export async function resolveOpenParks(
     );
 }
 
+const memoColumns = {
+  stepId: workflowExecutionSteps.stepId,
+  status: workflowExecutionSteps.status,
+  failures: workflowExecutionSteps.failures,
+  value: workflowExecutionSteps.value,
+  error: workflowExecutionSteps.error,
+};
+
+/**
+ * Counts one failure against a step's memo row, as `countStepFailure`
+ * decides, answering the row it wrote. The caller holds the schedule row.
+ */
+async function countFailureOnStep(
+  tx: Executor,
+  input: { scheduleId: string; stepId: string; error: string }
+): Promise<CountedStepFailure | null> {
+  const [row] = await tx
+    .select(memoColumns)
+    .from(workflowExecutionSteps)
+    .where(
+      and(
+        eq(workflowExecutionSteps.scheduleId, input.scheduleId),
+        eq(workflowExecutionSteps.stepId, input.stepId)
+      )
+    );
+  const counted = countStepFailure(
+    row === undefined ? undefined : stepMemoOf(row),
+    input.error
+  );
+  if (counted === null) return null;
+  await tx
+    .insert(workflowExecutionSteps)
+    .values({
+      scheduleId: input.scheduleId,
+      stepId: input.stepId,
+      status: counted.status,
+      failures: counted.failures,
+      error: counted.error,
+    })
+    .onConflictDoUpdate({
+      target: [
+        workflowExecutionSteps.scheduleId,
+        workflowExecutionSteps.stepId,
+      ],
+      set: {
+        status: counted.status,
+        failures: counted.failures,
+        error: counted.error,
+      },
+    });
+  return counted;
+}
+
 /** Builds the schedule and step memo slice of `ExecutionRepo` over one database. */
 export function makeScheduleMethods(
   database: Database["Service"]
@@ -339,7 +472,7 @@ export function makeScheduleMethods(
             wakeAt: input.wakeAt,
           })
           .onConflictDoNothing()
-          .returning({ executionId: workflowExecutionSchedule.executionId });
+          .returning({ id: workflowExecutionSchedule.id });
         return inserted.length > 0;
       }),
 
@@ -354,59 +487,78 @@ export function makeScheduleMethods(
       }),
 
     claimDue: (input) =>
-      database.query((db) =>
-        db.transaction(async (tx) => {
-          const due = tx.$with("due").as(
-            tx
-              .select({ executionId: workflowExecutionSchedule.executionId })
+      database
+        .query((db) =>
+          db.transaction(async (tx) => {
+            const due = await tx
+              .select({
+                id: workflowExecutionSchedule.id,
+                state: workflowExecutionSchedule.state,
+                runningStepId: workflowExecutionSchedule.runningStepId,
+              })
               .from(workflowExecutionSchedule)
               .where(
-                or(
-                  and(
-                    inArray(workflowExecutionSchedule.state, [
-                      "queued",
-                      "waiting",
-                    ]),
-                    lte(workflowExecutionSchedule.wakeAt, input.now)
-                  ),
-                  and(
-                    eq(workflowExecutionSchedule.state, "leased"),
-                    lte(workflowExecutionSchedule.leaseExpiresAt, input.now)
+                and(
+                  eq(workflowExecutionSchedule.kind, "run"),
+                  or(
+                    and(
+                      inArray(workflowExecutionSchedule.state, [
+                        "queued",
+                        "waiting",
+                      ]),
+                      lte(workflowExecutionSchedule.wakeAt, input.now)
+                    ),
+                    and(
+                      eq(workflowExecutionSchedule.state, "leased"),
+                      lte(workflowExecutionSchedule.leaseExpiresAt, input.now)
+                    )
                   )
                 )
               )
               .orderBy(
                 asc(workflowExecutionSchedule.wakeAt),
-                asc(workflowExecutionSchedule.executionId)
+                asc(workflowExecutionSchedule.id)
               )
               .limit(input.limit)
-              .for("update", { skipLocked: true })
-          );
-          const claimed = await tx
-            .with(due)
-            .update(workflowExecutionSchedule)
-            .set({
-              state: "leased",
-              ownerToken: sql`gen_random_uuid()::text`,
-              leaseExpiresAt: new Date(input.now.getTime() + input.leaseMs),
-              workerId: input.workerId,
-              // Only an expired lease counts an attempt here: the pass it cut
-              // short is the failure. A row queued by a wake spends nothing.
-              attempt: sql`case when ${workflowExecutionSchedule.state} = 'leased' then ${workflowExecutionSchedule.attempt} + 1 else ${workflowExecutionSchedule.attempt} end`,
-            })
-            .from(due)
-            .where(eq(workflowExecutionSchedule.executionId, due.executionId))
-            .returning();
+              .for("update", { skipLocked: true });
+            if (due.length === 0) return [];
 
-          await resolveOverdueParks(
-            tx,
-            claimed.map((row) => row.executionId),
-            input.now
-          );
+            const claimed = await tx
+              .update(workflowExecutionSchedule)
+              .set({
+                state: "leased",
+                ownerToken: sql`gen_random_uuid()::text`,
+                leaseExpiresAt: new Date(input.now.getTime() + input.leaseMs),
+                workerId: input.workerId,
+                attempt: claimAttempt(workflowExecutionSchedule),
+                runningStepId: null,
+              })
+              .where(
+                inArray(
+                  workflowExecutionSchedule.id,
+                  due.map((row) => row.id)
+                )
+              )
+              .returning();
 
-          return claimed.map(claimedExecution);
-        })
-      ),
+            for (const swept of sweptStepFailures(due)) {
+              // eslint-disable-next-line eslint/no-await-in-loop -- one transaction runs one statement at a time
+              await countFailureOnStep(tx, {
+                ...swept,
+                error: LEASE_EXPIRED_ERROR,
+              });
+            }
+            await resolveOverdueParks(
+              tx,
+              claimed.flatMap((row) =>
+                row.executionId === null ? [] : [row.executionId]
+              ),
+              input.now
+            );
+            return claimed;
+          })
+        )
+        .pipe(Effect.flatMap(claimedExecutions)),
 
     resolvePark: (input) =>
       database.query((db) =>
@@ -430,6 +582,9 @@ export function makeScheduleMethods(
               )
             )
             .returning({ id: workflowWaitStates.id });
+          if (resolved.length === 0) {
+            return { resolved: false, requeued: false };
+          }
           const requeued = await tx
             .update(workflowExecutionSchedule)
             .set({ state: "queued", wakeAt: input.now })
@@ -439,25 +594,22 @@ export function makeScheduleMethods(
                 eq(workflowExecutionSchedule.state, "waiting")
               )
             )
-            .returning({ executionId: workflowExecutionSchedule.executionId });
-          return {
-            resolved: resolved.length > 0,
-            requeued: requeued.length > 0,
-          };
+            .returning({ id: workflowExecutionSchedule.id });
+          return { resolved: true, requeued: requeued.length > 0 };
         })
       ),
 
     listStepMemo: (executionId) =>
       database.query(async (db) => {
         const rows = await db
-          .select({
-            stepId: workflowExecutionSteps.stepId,
-            attempt: workflowExecutionSteps.attempt,
-            value: workflowExecutionSteps.value,
-          })
+          .select(memoColumns)
           .from(workflowExecutionSteps)
-          .where(eq(workflowExecutionSteps.executionId, executionId));
-        return rows.map((row) => ({ ...row, value: row.value ?? null }));
+          .innerJoin(
+            workflowExecutionSchedule,
+            eq(workflowExecutionSchedule.id, workflowExecutionSteps.scheduleId)
+          )
+          .where(eq(workflowExecutionSchedule.executionId, executionId));
+        return rows.map((row) => ({ stepId: row.stepId, ...stepMemoOf(row) }));
       }),
   };
 }
@@ -477,7 +629,8 @@ export function makePassWrites(
   database: Database["Service"],
   fence: OwnerFence
 ): PassWrites {
-  const { executionId } = fence;
+  const { scheduleId, executionId } = fence;
+  const thisSchedule = eq(workflowExecutionSchedule.id, scheduleId);
   return {
     renewLease: (input) =>
       writeFenced(
@@ -486,8 +639,11 @@ export function makePassWrites(
         async (tx) => {
           await tx
             .update(workflowExecutionSchedule)
-            .set({ leaseExpiresAt: input.leaseExpiresAt })
-            .where(eq(workflowExecutionSchedule.executionId, executionId));
+            .set({
+              leaseExpiresAt: input.leaseExpiresAt,
+              runningStepId: input.runningStepId,
+            })
+            .where(thisSchedule);
         },
         "update"
       ),
@@ -500,20 +656,32 @@ export function makePassWrites(
           await tx
             .insert(workflowExecutionSteps)
             .values({
-              executionId,
+              scheduleId,
               stepId: input.stepId,
-              attempt: input.attempt,
+              status: "succeeded",
               value: memoJson(input.value),
             })
-            .onConflictDoNothing();
-          if (input.leaseExpiresAt !== undefined) {
-            await tx
-              .update(workflowExecutionSchedule)
-              .set({ leaseExpiresAt: input.leaseExpiresAt })
-              .where(eq(workflowExecutionSchedule.executionId, executionId));
-          }
+            .onConflictDoUpdate({
+              target: [
+                workflowExecutionSteps.scheduleId,
+                workflowExecutionSteps.stepId,
+              ],
+              set: {
+                status: "succeeded",
+                value: sql`excluded.value`,
+                error: null,
+              },
+              setWhere: eq(workflowExecutionSteps.status, "failing"),
+            });
+          await tx
+            .update(workflowExecutionSchedule)
+            .set({
+              leaseExpiresAt: input.leaseExpiresAt,
+              runningStepId: sql`nullif(${workflowExecutionSchedule.runningStepId}, ${input.stepId})`,
+            })
+            .where(thisSchedule);
         },
-        input.leaseExpiresAt === undefined ? "share" : "update"
+        "update"
       ),
 
     recordParkStep: (input) =>
@@ -537,8 +705,7 @@ export function makePassWrites(
           const [schedule] = await tx
             .select({ attempt: workflowExecutionSchedule.attempt })
             .from(workflowExecutionSchedule)
-            .where(eq(workflowExecutionSchedule.executionId, executionId));
-          const attempt = schedule?.attempt ?? 0;
+            .where(thisSchedule);
           const parks = await tx
             .select({
               status: workflowWaitStates.status,
@@ -549,27 +716,25 @@ export function makePassWrites(
             .where(
               and(
                 eq(workflowWaitStates.executionId, executionId),
-                inArray(workflowWaitStates.status, ["waiting", "resuming"])
+                inArray(workflowWaitStates.status, [...OPEN_PARK_STATUSES])
               )
             );
-
-          if (input.outcome.kind === "retries_spent") {
-            await tx
-              .insert(workflowExecutionSteps)
-              .values({
-                executionId,
-                stepId: input.outcome.stepId,
-                attempt,
-                value: memoJson(input.outcome.failure),
-              })
-              .onConflictDoNothing();
-          }
+          const { outcome } = input;
+          const countedStep =
+            outcome.kind === "step_failed"
+              ? await countFailureOnStep(tx, {
+                  scheduleId,
+                  stepId: outcome.stepId,
+                  error: outcome.error,
+                })
+              : null;
 
           const released = decideRelease({
-            outcome: input.outcome,
-            attempt,
+            outcome,
+            attempt: schedule?.attempt ?? 0,
             now: input.now,
             parks,
+            countedStep,
           });
           await tx
             .update(workflowExecutionSchedule)
@@ -578,16 +743,30 @@ export function makePassWrites(
               wakeAt: released.wakeAt,
               attempt: released.attempt,
               lastError: released.lastError,
+              runningStepId: null,
               leaseExpiresAt: null,
               ownerToken: null,
               workerId: null,
             })
-            .where(eq(workflowExecutionSchedule.executionId, executionId));
+            .where(thisSchedule);
           return {
-            state: released.state,
-            wakeAt: released.wakeAt,
-            attempt: released.attempt,
+            schedule: {
+              state: released.state,
+              wakeAt: released.wakeAt,
+              attempt: released.attempt,
+            },
+            countedStep,
           };
+        },
+        "update"
+      ),
+
+    dropSchedule: () =>
+      writeFenced(
+        database,
+        fence,
+        async (tx) => {
+          await tx.delete(workflowExecutionSchedule).where(thisSchedule);
         },
         "update"
       ),

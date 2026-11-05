@@ -43,7 +43,9 @@ import type { PersistenceConformanceHarness } from "#src/backend/persistence/per
 import {
   ExecutionRepo,
   type FencedExecutionWrites,
+  type StoreWrites,
 } from "#src/backend/services/executions/repo";
+import { buildStoreWrites } from "#src/backend/services/executions/repo/fencing";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 
 const LEASE_MS = 60_000;
@@ -164,6 +166,7 @@ function describeCases(
     pass: (options?: {
       workerId?: string | undefined;
       wrap?: RepoWrap | undefined;
+      heartbeatMs?: number | undefined;
     }) => Promise<PassResult | null>;
     /** Publishes `graph` as the workflow's second version. */
     publishSecondVersion: (graph: SerializedWorkflowGraph) => Promise<void>;
@@ -208,8 +211,8 @@ function describeCases(
             return yield* runPass(claimed, {
               now,
               leaseMs: LEASE_MS,
+              heartbeatMs: options.heartbeatMs,
               actions,
-              retryLimit: 2,
               backoffMs: () => 0,
             }).pipe(Effect.provideService(ExecutionRepo, worker));
           })
@@ -268,6 +271,13 @@ function describeCases(
   function logsOf(harness: Harness, nodeId: string) {
     return readRun(harness).then((run) =>
       run.logs.filter((log) => log.nodeId === nodeId)
+    );
+  }
+
+  /** The memo row of the step that prepares the Wait `hold` on its first attempt. */
+  function prepareMemoOf(harness: Harness) {
+    return readRun(harness).then((run) =>
+      run.memo.find((entry) => entry.stepId === "wait-prepare-hold-0")
     );
   }
 
@@ -383,10 +393,14 @@ function describeCases(
         });
       })
     );
-    results.push(await harness.pass());
-    results.push(await harness.pass());
-    // The Join's step failure is now its memoized value: the node fails and
-    // the run reads the claim and parks on the outlet's Wait.
+    // The Join's step fails three more times within its retries, and the
+    // fifth failure spends them.
+    for (let failure = 2; failure <= 5; failure += 1) {
+      // eslint-disable-next-line eslint/no-await-in-loop -- each pass follows the one before it
+      results.push(await harness.pass());
+    }
+    // The Join's step memo row is now `failed`: the node fails and the run
+    // reads the claim and parks on the outlet's Wait.
     results.push(await harness.pass());
     expect((await readRun(harness)).waits.map((wait) => wait.nodeId)).toEqual([
       "outlet_wait",
@@ -399,11 +413,13 @@ function describeCases(
       "parked",
       "retry",
       "retry",
+      "retry",
+      "retry",
       "retries_spent",
       "parked",
       "ended",
     ]);
-    expect(results[3]).toMatchObject({
+    expect(results[5]).toMatchObject({
       kind: "retries_spent",
       stepId: "node:join:dispatch",
       schedule: { state: "queued", attempt: 0 },
@@ -418,7 +434,7 @@ function describeCases(
     expect(run.memo).toEqual([]);
   });
 
-  it("re-queues with the attempt unchanged when a Migration lands during a pass, and the next pass runs the new version", async () => {
+  it("re-queues counting no failure when a Migration lands during a pass, and the next pass runs the new version", async () => {
     const harness = await startRun(
       createSerializedWorkflowGraph({
         nodes: [
@@ -458,7 +474,11 @@ function describeCases(
     }));
     expect(await harness.pass({ wrap: dropPrepareMemo })).toMatchObject({
       kind: "retry",
-      schedule: { state: "queued", attempt: 1 },
+      schedule: { state: "queued", attempt: 0 },
+    });
+    expect(await prepareMemoOf(harness)).toMatchObject({
+      status: "failing",
+      failures: 1,
     });
 
     // The Migration lands after the second pass loaded version 1 and before
@@ -491,16 +511,21 @@ function describeCases(
     expect(await harness.pass({ wrap: migrateOnLoad })).toMatchObject({
       kind: "fence_refused",
       fence: "version",
-      schedule: { state: "queued", attempt: 1 },
+      schedule: { state: "queued", attempt: 0 },
     });
     expect(migrated).toBe(true);
+    // The refused fence counted nothing against the step either.
+    expect(await prepareMemoOf(harness)).toMatchObject({
+      status: "failing",
+      failures: 1,
+    });
 
     // The next pass loads version 2, reads the migrate wake and parks the
     // same row again as a two-hour delay.
     const third = await harness.pass();
     expect(third).toMatchObject({
       kind: "parked",
-      schedule: { state: "waiting", attempt: 1 },
+      schedule: { state: "waiting", attempt: 0 },
     });
     const run = await readRun(harness);
     expect(run.waits).toHaveLength(1);
@@ -516,9 +541,9 @@ function describeCases(
   });
 
   // Only a version fence the engine reports refused is the run having moved. A
-  // failure of another kind in a pass a Migration lands in still counts an
-  // attempt, even though the version the run pins has changed by the release.
-  it("counts an attempt for a failure that is not a version refusal when a Migration lands in the same pass", async () => {
+  // failure of another kind in a pass a Migration lands in still counts a
+  // failure, even though the version the run pins has changed by the release.
+  it("counts a failure that is not a version refusal when a Migration lands in the same pass", async () => {
     const graph = createSerializedWorkflowGraph({
       nodes: [
         lifecycleNode(),
@@ -544,7 +569,8 @@ function describeCases(
       }));
     expect(
       await harness.pass({ wrap: failMemoWrite("wait-prepare-hold-0") })
-    ).toMatchObject({ kind: "retry", schedule: { attempt: 1 } });
+    ).toMatchObject({ kind: "retry", schedule: { attempt: 0 } });
+    expect(await prepareMemoOf(harness)).toMatchObject({ failures: 1 });
 
     // The Migration lands as the second pass loads, and the pass then fails
     // to park the Wait again for a reason of its own: the database drops the
@@ -582,9 +608,13 @@ function describeCases(
     });
     expect(await harness.pass({ wrap: migrateOnLoad })).toMatchObject({
       kind: "retry",
-      schedule: { state: "queued", attempt: 2 },
+      schedule: { state: "queued", attempt: 0 },
     });
     expect(migrated).toBe(true);
+    expect(await prepareMemoOf(harness)).toMatchObject({
+      status: "failing",
+      failures: 2,
+    });
   });
 
   it("refuses every write of a worker paused past its lease while a second worker completes the run", async () => {
@@ -725,6 +755,184 @@ function describeCases(
     expect((await readRun(harness)).status).toBe("completed");
   });
 
+  it("records the running step through the heartbeat, so a lease that expires under it counts against that step", async () => {
+    const harness = await startRun(
+      createSerializedWorkflowGraph({
+        nodes: [lifecycleNode(), actionNode("held", "test/held")],
+        edges: [edge("entry", "held", "started")],
+      })
+    );
+    // The worker's heartbeat goes quiet on cue, as a process that died would.
+    let silenced = false;
+    const silenceable = wrapFenced((writes) => ({
+      ...writes,
+      renewLease: (input) =>
+        silenced ? Effect.void : writes.renewLease(input),
+    }));
+    const readSchedule = () =>
+      harness.connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          return yield* executions.findSchedule(harness.executionId);
+        })
+      );
+
+    const stale = harness.pass({
+      workerId: "worker_stale",
+      wrap: silenceable,
+      heartbeatMs: 5,
+    });
+    await heldStep.entered;
+    // A beat sent before an earlier step finished may land after it, so the
+    // case waits for a beat sent while the held step runs.
+    const recorded = await answersWithin(
+      1_000,
+      "The heartbeat's running step",
+      (async () => {
+        for (;;) {
+          // eslint-disable-next-line eslint/no-await-in-loop -- polls until the heartbeat lands
+          const schedule = await readSchedule();
+          if (schedule?.runningStepId === "node:held:dispatch") {
+            return schedule.runningStepId;
+          }
+          // eslint-disable-next-line eslint/no-await-in-loop -- polls until the heartbeat lands
+          await new Promise((resolve) => setTimeout(resolve, 5));
+        }
+      })()
+    ).finally(() => {
+      silenced = true;
+    });
+
+    // PostgreSQL's claim skips a row a renewal sent before the silence still
+    // holds, so the claim is tried until that renewal has committed.
+    offsetMs += LEASE_MS + 1_000;
+    const claimOnce = () =>
+      harness.connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const [claimed] = yield* executions.claimDue({
+            workerId: "worker_live",
+            limit: 1,
+            leaseMs: LEASE_MS,
+            now: now(),
+          });
+          return claimed;
+        })
+      );
+    const swept = await answersWithin(
+      1_000,
+      "The claim of the silenced lease",
+      (async () => {
+        for (;;) {
+          // eslint-disable-next-line eslint/no-await-in-loop -- claims until the row is free
+          const claimed = await claimOnce();
+          if (claimed) {
+            // eslint-disable-next-line eslint/no-await-in-loop -- reads once the claim landed
+            const memo = await harness.connection.run(
+              Effect.gen(function* () {
+                const executions = yield* ExecutionRepo;
+                return yield* executions.listStepMemo(harness.executionId);
+              })
+            );
+            return { claimed, memo };
+          }
+          // eslint-disable-next-line eslint/no-await-in-loop -- claims until the row is free
+          await new Promise((resolve) => setTimeout(resolve, 5));
+        }
+      })()
+    ).finally(() => heldStep.release());
+    expect(await stale).toEqual({ kind: "fence_refused", fence: "owner" });
+    expect(recorded).toBe("node:held:dispatch");
+    expect(swept.claimed?.attempt).toBe(0);
+    expect(
+      swept.memo.find((entry) => entry.stepId === "node:held:dispatch")
+    ).toMatchObject({ status: "failing", failures: 1 });
+  });
+
+  it("fails a Wait whose park step spent its retries rather than reading the step as a wake", async () => {
+    const harness = await startRun(
+      createSerializedWorkflowGraph({
+        nodes: [
+          lifecycleNode(),
+          waitNode("hold", onEvent("app/approved", "1h")),
+          actionNode("after_hold", "test/send"),
+        ],
+        edges: [edge("entry", "hold", "started"), edge("hold", "after_hold")],
+      })
+    );
+    const failPark = wrapFenced((writes) => ({
+      ...writes,
+      recordParkStep: () =>
+        Effect.fail(
+          new DatabaseError({ cause: new Error("connection reset") })
+        ),
+    }));
+
+    const results: Array<PassResult | null> = [];
+    for (let failure = 1; failure <= 5; failure += 1) {
+      // eslint-disable-next-line eslint/no-await-in-loop -- each pass follows the one before it
+      results.push(await harness.pass({ wrap: failPark }));
+    }
+    results.push(await harness.pass());
+
+    expect(results.map((result) => result?.kind)).toEqual([
+      "retry",
+      "retry",
+      "retry",
+      "retry",
+      "retries_spent",
+      "ended",
+    ]);
+    const run = await readRun(harness);
+    expect(run.status).toBe("failed");
+    expect(await logsOf(harness, "hold")).toMatchObject([{ status: "error" }]);
+    expect(await logsOf(harness, "after_hold")).toEqual([]);
+    expect(run.schedule).toBeNull();
+  });
+
+  it("ends the run failed once a step outside any node spends its retries", async () => {
+    const harness = await startRun(
+      createSerializedWorkflowGraph({
+        nodes: [lifecycleNode(), actionNode("send", "test/send")],
+        edges: [edge("entry", "send", "started")],
+      })
+    );
+    // The run's completed record is refused every time it is written.
+    const refuseCompletion = wrapFenced((writes) => ({
+      ...writes,
+      finishRun: (input) =>
+        input.status === "completed"
+          ? Effect.fail(
+              new DatabaseError({ cause: new Error("connection reset") })
+            )
+          : writes.finishRun(input),
+    }));
+
+    const results: Array<PassResult | null> = [];
+    for (let pass = 1; pass <= 6; pass += 1) {
+      // eslint-disable-next-line eslint/no-await-in-loop -- each pass follows the one before it
+      results.push(await harness.pass({ wrap: refuseCompletion }));
+    }
+
+    expect(results.map((result) => result?.kind)).toEqual([
+      "retry",
+      "retry",
+      "retry",
+      "retry",
+      "retries_spent",
+      "run_failed",
+    ]);
+    expect(results[4]).toMatchObject({ stepId: "workflow-run-completed" });
+    const run = await readRun(harness);
+    expect(run.status).toBe("failed");
+    expect(await logsOf(harness, "send")).toMatchObject([
+      { status: "success" },
+    ]);
+    expect(run.schedule).toBeNull();
+    expect(run.memo).toEqual([]);
+    expect(await harness.pass()).toBeNull();
+  });
+
   it("writes at most five memo rows per node of a 50-node run, and none survive the terminal write", async () => {
     const ids = Array.from(
       { length: 50 },
@@ -788,32 +996,13 @@ function recordWrites(
           Effect.sync(() => record(name, failure._tag))
         )
       );
+  const store: StoreWrites = writes;
   return {
-    openNodeLog: observe("openNodeLog", writes.openNodeLog),
-    closeNodeLog: observe("closeNodeLog", writes.closeNodeLog),
-    cancelOpenNodeLogs: observe(
-      "cancelOpenNodeLogs",
-      writes.cancelOpenNodeLogs
-    ),
-    recordAuditEvent: observe("recordAuditEvent", writes.recordAuditEvent),
-    startWait: observe("startWait", writes.startWait),
-    reparkWait: observe("reparkWait", writes.reparkWait),
-    markWaitStatus: observe("markWaitStatus", writes.markWaitStatus),
-    settleWaitTimeout: observe("settleWaitTimeout", writes.settleWaitTimeout),
-    cancelWaitsForExecution: observe(
-      "cancelWaitsForExecution",
-      writes.cancelWaitsForExecution
-    ),
-    markRunning: observe("markRunning", writes.markRunning),
-    markWaitingIfParked: observe(
-      "markWaitingIfParked",
-      writes.markWaitingIfParked
-    ),
-    requestExit: observe("requestExit", writes.requestExit),
-    finishRun: observe("finishRun", writes.finishRun),
+    ...buildStoreWrites((name) => observe(name, store[name])),
     renewLease: observe("renewLease", writes.renewLease),
     writeStepMemo: observe("writeStepMemo", writes.writeStepMemo),
     recordParkStep: observe("recordParkStep", writes.recordParkStep),
     releasePass: observe("releasePass", writes.releasePass),
+    dropSchedule: () => observe("dropSchedule", writes.dropSchedule)(undefined),
   };
 }

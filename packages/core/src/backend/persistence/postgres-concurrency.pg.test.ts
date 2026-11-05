@@ -667,7 +667,11 @@ describePostgres("PostgreSQL concurrency", () => {
         if (!woken) throw new Error("The park was refused");
         return {
           executionId,
-          fence: { executionId, ownerToken: own.ownerToken },
+          fence: {
+            scheduleId: own.scheduleId,
+            executionId,
+            ownerToken: own.ownerToken,
+          },
           wokenWaitStateId: woken.waitStateId,
         };
       })
@@ -722,7 +726,7 @@ describePostgres("PostgreSQL concurrency", () => {
       // release saw it and queued the run, or the producer found the run
       // waiting and queued it.
       expect(schedule?.state, `round ${round}`).toBe("queued");
-      expect(["queued", "waiting"]).toContain(released.state);
+      expect(["queued", "waiting"]).toContain(released.schedule.state);
     }
   });
 

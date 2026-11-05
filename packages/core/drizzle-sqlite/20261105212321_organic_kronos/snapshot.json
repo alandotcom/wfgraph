@@ -1,7 +1,7 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "81aa9edb-ce68-4fb1-83ee-d18fcbffcd8a",
+  "id": "0137e572-b3f2-40d7-96e3-eae71ac300f0",
   "prevIds": ["e2de7d22-b285-4cc7-a87a-f389d9a9c22c"],
   "ddl": [
     {
@@ -520,7 +520,7 @@
     },
     {
       "table": "workflow_execution_schedule",
-      "name": "execution_id",
+      "name": "id",
       "type": "text",
       "notNull": false,
       "autoincrement": false,
@@ -533,6 +533,16 @@
       "name": "kind",
       "type": "text",
       "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_schedule",
+      "name": "execution_id",
+      "type": "text",
+      "notNull": false,
       "autoincrement": false,
       "default": null,
       "generated": null,
@@ -565,6 +575,16 @@
       "notNull": true,
       "autoincrement": false,
       "default": "0",
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_schedule",
+      "name": "running_step_id",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
       "generated": null,
       "entityType": "columns"
     },
@@ -610,7 +630,7 @@
     },
     {
       "table": "workflow_execution_steps",
-      "name": "execution_id",
+      "name": "schedule_id",
       "type": "text",
       "notNull": true,
       "autoincrement": false,
@@ -630,8 +650,8 @@
     },
     {
       "table": "workflow_execution_steps",
-      "name": "attempt",
-      "type": "integer",
+      "name": "status",
+      "type": "text",
       "notNull": true,
       "autoincrement": false,
       "default": null,
@@ -640,7 +660,27 @@
     },
     {
       "table": "workflow_execution_steps",
+      "name": "failures",
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "0",
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_steps",
       "name": "value",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_steps",
+      "name": "error",
       "type": "text",
       "notNull": false,
       "autoincrement": false,
@@ -1404,6 +1444,20 @@
     },
     {
       "table": "workflow_execution_schedule",
+      "name": "schedule_execution_uidx",
+      "columns": [
+        {
+          "value": "execution_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "entityType": "indexes"
+    },
+    {
+      "table": "workflow_execution_schedule",
       "name": "schedule_due_idx",
       "columns": [
         {
@@ -1411,7 +1465,7 @@
           "isExpression": false
         },
         {
-          "value": "execution_id",
+          "value": "id",
           "isExpression": false
         }
       ],
@@ -1692,9 +1746,9 @@
     },
     {
       "table": "workflow_execution_steps",
-      "name": "fk_workflow_execution_steps_execution_id_workflow_executions_id_fk",
-      "columns": ["execution_id"],
-      "tableTo": "workflow_executions",
+      "name": "fk_workflow_execution_steps_schedule_id_workflow_execution_schedule_id_fk",
+      "columns": ["schedule_id"],
+      "tableTo": "workflow_execution_schedule",
       "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
@@ -1777,7 +1831,7 @@
     {
       "table": "workflow_execution_steps",
       "name": "workflow_execution_steps_pk",
-      "columns": ["execution_id", "step_id"],
+      "columns": ["schedule_id", "step_id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
@@ -1812,7 +1866,7 @@
     {
       "table": "workflow_execution_schedule",
       "name": "workflow_execution_schedule_pk",
-      "columns": ["execution_id"],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
@@ -1929,6 +1983,24 @@
       "table": "workflow_execution_schedule",
       "name": "workflow_execution_schedule_state_check",
       "value": "\"state\" in ('queued', 'leased', 'waiting')",
+      "entityType": "checks"
+    },
+    {
+      "table": "workflow_execution_schedule",
+      "name": "workflow_execution_schedule_run_execution_check",
+      "value": "\"kind\" <> 'run' or \"execution_id\" is not null",
+      "entityType": "checks"
+    },
+    {
+      "table": "workflow_execution_steps",
+      "name": "workflow_execution_steps_status_check",
+      "value": "\"status\" in ('succeeded', 'failing', 'failed')",
+      "entityType": "checks"
+    },
+    {
+      "table": "workflow_execution_steps",
+      "name": "workflow_execution_steps_error_check",
+      "value": "(\"status\" = 'succeeded') = (\"error\" is null)",
       "entityType": "checks"
     },
     {

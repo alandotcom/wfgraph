@@ -29,7 +29,13 @@ import {
   type ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
 import { IntegrationRepo } from "#src/backend/services/integrations/repo";
+import { keyBy } from "es-toolkit/array";
+import { mapValues } from "es-toolkit/object";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
+import {
+  buildStoreWrites,
+  PASS_WRITE_NAMES,
+} from "#src/backend/services/executions/repo/fencing";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import type { WfGraphServices } from "#src/backend/runtime";
 import {
@@ -386,11 +392,15 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
   claimDue: refuse("claimDue"),
   resolvePark: refuse("resolvePark"),
   listStepMemo: refuse("listStepMemo"),
-  // `fenced` answers a set of writes rather than an Effect, so it throws where
-  // the others die.
-  fenced: () => {
-    throw new Error("fenced is not part of this test");
-  },
+  // `fenced` answers a set of writes, each of which dies when called, the way
+  // every other method here does.
+  fenced: () => ({
+    ...buildStoreWrites((name) => refuse(`fenced.${name}`)),
+    ...mapValues(
+      keyBy(PASS_WRITE_NAMES, (name) => name),
+      (name) => refuse(`fenced.${name}`)
+    ),
+  }),
 };
 
 export function stubExecutionRepo(

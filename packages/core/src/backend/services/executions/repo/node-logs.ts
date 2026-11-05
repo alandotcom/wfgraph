@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { Effect } from "effect";
 import { workflowExecutionLogs } from "#src/backend/lib/db/schema";
@@ -10,10 +11,25 @@ import type {
   OwnerFence,
   WorkflowExecutionLog,
 } from "#src/backend/services/executions/repo/contracts";
-import { nodeLogId } from "#src/backend/services/executions/repo/fencing";
 import type { JsonValue } from "@wfgraph/shared/types/json";
 
 type Executor = WfGraphDatabase | WfGraphTransaction;
+
+/**
+ * The id of a node's run-log row.
+ *
+ * A node opens its row at most once per Execution, in one durable step whose id
+ * is built from the node id (`node:<id>:log-open`, or `wait-start-log-<id>` for
+ * a Wait), so the Execution and the node name the step that opens the row. A
+ * re-run of that step therefore inserts the same id, and the insert's conflict
+ * leaves the first row in place.
+ */
+export function nodeLogId(executionId: string, nodeId: string): string {
+  const digest = createHash("sha256")
+    .update(`${executionId}\0${nodeId}`)
+    .digest("hex");
+  return `log_${digest}`;
+}
 
 export type OpenNodeLogInput = {
   executionId: string;

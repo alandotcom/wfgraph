@@ -4,7 +4,6 @@ import { partition } from "es-toolkit/array";
 import {
   workflowExecutionEvents,
   workflowExecutions,
-  workflowWaitStates,
 } from "#src/backend/lib/db/schema";
 import type {
   WfGraphDatabase,
@@ -38,15 +37,12 @@ import {
   type WaitsRepoMethods,
 } from "#src/backend/services/executions/repo/waits";
 import {
-  settleEndedExecutions,
-  lockSchedules,
+  endExecutions,
   makeScheduleMethods,
   type ScheduleRepoMethods,
 } from "#src/backend/services/executions/repo/schedule";
-import {
-  type FencedExecutionWrites,
-  makeFencedWrites,
-} from "#src/backend/services/executions/repo/fenced-writes";
+import { makeFencedWrites } from "#src/backend/services/executions/repo/fenced-writes";
+import type { FencedExecutionWrites } from "#src/backend/services/executions/repo/fencing";
 import type {
   EntityStartOutcome,
   NewExecution,
@@ -59,7 +55,7 @@ export * from "#src/backend/services/executions/repo/contracts";
 export type {
   FencedExecutionWrites,
   StoreWrites,
-} from "#src/backend/services/executions/repo/fenced-writes";
+} from "#src/backend/services/executions/repo/fencing";
 
 /**
  * How long a run may sit with its row committed and `enqueued_at` unstamped
@@ -395,9 +391,14 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
                 }
 
                 const unsentIds = unsent.map((row) => row.id);
-                await lockSchedules(tx, unsentIds);
-                reclaimedExecutionIds = await reclaimStuckRuns(tx, unsentIds);
-                await settleEndedExecutions(tx, reclaimedExecutionIds);
+                reclaimedExecutionIds = await endExecutions(
+                  tx,
+                  unsentIds,
+                  async (inner) => {
+                    const reclaimed = await reclaimStuckRuns(inner, unsentIds);
+                    return { result: reclaimed, ended: reclaimed };
+                  }
+                );
               }
 
               let supersededExecutionIds: string[] = [];
@@ -406,45 +407,32 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
               // found or reclaimed them above, and displaces nothing.
               if (inFlight.length > 0 && concurrency !== "first-wins") {
                 const ids = inFlight.map((row) => row.id);
-                const now = new Date();
-
-                await lockSchedules(tx, ids);
-                const superseded = await tx
-                  .update(workflowExecutions)
-                  .set({
-                    status: "superseded",
-                    waitingAt: null,
-                    completedAt: now,
-                    error: supersededReason,
-                  })
-                  .where(
-                    and(
-                      inArray(workflowExecutions.id, ids),
-                      inArray(workflowExecutions.status, [
-                        ...IN_FLIGHT_EXECUTION_STATUSES,
-                      ]),
-                      isNull(workflowExecutions.terminationKind)
-                    )
-                  )
-                  .returning({ id: workflowExecutions.id });
-
-                supersededExecutionIds = superseded.map((row) => row.id);
-
-                if (supersededExecutionIds.length > 0) {
-                  await tx
-                    .update(workflowWaitStates)
-                    .set({ status: "cancelled", cancelledAt: now })
-                    .where(
-                      and(
-                        inArray(
-                          workflowWaitStates.executionId,
-                          supersededExecutionIds
-                        ),
-                        eq(workflowWaitStates.status, "waiting")
+                supersededExecutionIds = await endExecutions(
+                  tx,
+                  ids,
+                  async (inner) => {
+                    const superseded = await inner
+                      .update(workflowExecutions)
+                      .set({
+                        status: "superseded",
+                        waitingAt: null,
+                        completedAt: new Date(),
+                        error: supersededReason,
+                      })
+                      .where(
+                        and(
+                          inArray(workflowExecutions.id, ids),
+                          inArray(workflowExecutions.status, [
+                            ...IN_FLIGHT_EXECUTION_STATUSES,
+                          ]),
+                          isNull(workflowExecutions.terminationKind)
+                        )
                       )
-                    );
-                }
-                await settleEndedExecutions(tx, supersededExecutionIds);
+                      .returning({ id: workflowExecutions.id });
+                    const ended = superseded.map((row) => row.id);
+                    return { result: ended, ended };
+                  }
+                );
               }
 
               return {

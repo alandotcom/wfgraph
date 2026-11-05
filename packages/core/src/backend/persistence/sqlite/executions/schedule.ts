@@ -1,6 +1,7 @@
 /**
  * The schedule and step memo slice of the SQLite `ExecutionRepo`, and the
- * fencing a pass's writes stand on.
+ * fencing a pass's writes stand on. `release-policy.ts` makes the decisions;
+ * this file runs the statements they call for.
  *
  * SQLite has one writer: every write here runs inside one `BEGIN IMMEDIATE`
  * transaction, so a claim needs no `SKIP LOCKED` and a fence check needs no row
@@ -10,23 +11,31 @@
 
 import { Effect } from "effect";
 import { and, asc, eq, inArray, lte, or, sql } from "drizzle-orm";
-import { sortBy } from "es-toolkit/array";
+import { generateId } from "@wfgraph/shared/utils/id";
 import type {
   DatabaseError,
   LeaseLost,
 } from "#src/backend/lib/effect/database";
 import type {
+  CountedStepFailure,
   OwnerFence,
   ParkWake,
 } from "#src/backend/services/executions/repo/contracts";
+import { ownershipLost } from "#src/backend/services/executions/repo/fencing";
 import {
+  claimAttempt,
+  countStepFailure,
   decideRelease,
-  ownershipLost,
-} from "#src/backend/services/executions/repo/fencing";
+  LEASE_EXPIRED_ERROR,
+  OPEN_PARK_STATUSES,
+  sweptStepFailures,
+  TIMEOUT_WAKE,
+} from "#src/backend/services/executions/repo/release-policy";
 import {
-  claimedExecution,
+  claimedExecutions,
   type PassWrites,
   type ScheduleRepoMethods,
+  stepMemoOf,
 } from "#src/backend/services/executions/repo/schedule";
 import type {
   SqliteDatabase,
@@ -43,15 +52,13 @@ import {
   sqliteExecutionSchedule,
 } from "#src/backend/persistence/sqlite/executions/rows";
 
-/** The wake a claim writes onto a park whose deadline passed. */
-const TIMEOUT_WAKE: ParkWake = { kind: "timeout" };
-
 function holdsLease(database: SqliteExecutor, fence: OwnerFence) {
   return database
-    .select({ executionId: workflowExecutionSchedule.executionId })
+    .select({ id: workflowExecutionSchedule.id })
     .from(workflowExecutionSchedule)
     .where(
       and(
+        eq(workflowExecutionSchedule.id, fence.scheduleId),
         eq(workflowExecutionSchedule.executionId, fence.executionId),
         eq(workflowExecutionSchedule.state, "leased"),
         eq(workflowExecutionSchedule.ownerToken, fence.ownerToken)
@@ -65,8 +72,8 @@ type Owned<A> = { owned: true; value: A } | { owned: false };
 
 /**
  * Runs one write of a pass in the write transaction, after checking that the
- * Execution's schedule row is still leased under the pass's token. Nothing
- * runs when it is not, which answers `LeaseLost`.
+ * pass's schedule row is still leased under its token and still names its
+ * run. Nothing runs when it is not, which answers `LeaseLost`.
  */
 export function writeFenced<A>(
   store: SqliteDatabase,
@@ -95,12 +102,11 @@ export function writeFenced<A>(
 }
 
 /**
- * Closes what Executions whose terminal record this transaction wrote still
- * hold open, as the PostgreSQL backend's `settleEndedExecutions` does: open
- * wait rows are cancelled, and the schedule row and step memo are deleted. The
- * log rows stay.
+ * Closes what runs whose terminal record this transaction wrote still hold
+ * open, as `OPEN_PARK_STATUSES` describes: their open wait rows are cancelled
+ * and their schedule rows are deleted, which deletes the step memo by cascade.
  */
-export function settleEndedExecutions(
+function settleEndedExecutions(
   database: SqliteExecutor,
   executionIds: readonly string[]
 ) {
@@ -113,15 +119,28 @@ export function settleEndedExecutions(
       .where(
         and(
           inArray(workflowWaitStates.executionId, ids),
-          inArray(workflowWaitStates.status, ["waiting", "resuming"])
+          inArray(workflowWaitStates.status, [...OPEN_PARK_STATUSES])
         )
       );
     yield* database
-      .delete(workflowExecutionSteps)
-      .where(inArray(workflowExecutionSteps.executionId, ids));
-    yield* database
       .delete(workflowExecutionSchedule)
       .where(inArray(workflowExecutionSchedule.executionId, ids));
+  });
+}
+
+/**
+ * Runs a write that may make runs terminal inside the caller's write
+ * transaction. `write` reports which runs it ended, and their open wait rows,
+ * schedule rows and step memos are settled before the transaction commits.
+ */
+export function endExecutions<A, E>(
+  database: SqliteExecutor,
+  write: Effect.Effect<{ result: A; ended: readonly string[] }, E>
+): Effect.Effect<A, unknown> {
+  return Effect.gen(function* () {
+    const { result, ended } = yield* write;
+    yield* settleEndedExecutions(database, ended);
+    return result;
   });
 }
 
@@ -146,6 +165,78 @@ export function resolveOpenParks(
     );
 }
 
+const memoColumns = {
+  stepId: workflowExecutionSteps.stepId,
+  status: workflowExecutionSteps.status,
+  failures: workflowExecutionSteps.failures,
+  value: workflowExecutionSteps.value,
+  error: workflowExecutionSteps.error,
+};
+
+/** A memo row read back from SQLite's text columns. */
+function sqliteStepMemo(row: {
+  status: string;
+  failures: number;
+  value: string | null;
+  error: string | null;
+}) {
+  return stepMemoOf({
+    status: row.status,
+    failures: row.failures,
+    value: optionalJsonValue(row.value, "step value"),
+    error: row.error,
+  });
+}
+
+/**
+ * Counts one failure against a step's memo row, as `countStepFailure`
+ * decides, answering the row it wrote.
+ */
+function countFailureOnStep(
+  database: SqliteExecutor,
+  input: { scheduleId: string; stepId: string; error: string }
+): Effect.Effect<CountedStepFailure | null, unknown> {
+  return Effect.gen(function* () {
+    const row = yield* database
+      .select(memoColumns)
+      .from(workflowExecutionSteps)
+      .where(
+        and(
+          eq(workflowExecutionSteps.scheduleId, input.scheduleId),
+          eq(workflowExecutionSteps.stepId, input.stepId)
+        )
+      )
+      .get();
+    const counted = countStepFailure(
+      row === undefined ? undefined : sqliteStepMemo(row),
+      input.error
+    );
+    if (counted === null) return null;
+    yield* database
+      .insert(workflowExecutionSteps)
+      .values({
+        scheduleId: input.scheduleId,
+        stepId: input.stepId,
+        status: counted.status,
+        failures: counted.failures,
+        error: counted.error,
+        createdAt: Date.now(),
+      })
+      .onConflictDoUpdate({
+        target: [
+          workflowExecutionSteps.scheduleId,
+          workflowExecutionSteps.stepId,
+        ],
+        set: {
+          status: counted.status,
+          failures: counted.failures,
+          error: counted.error,
+        },
+      });
+    return counted;
+  });
+}
+
 export function makeSqliteScheduleMethods(
   store: SqliteDatabase
 ): ScheduleRepoMethods {
@@ -155,13 +246,14 @@ export function makeSqliteScheduleMethods(
         database
           .insert(workflowExecutionSchedule)
           .values({
-            executionId: input.executionId,
+            id: generateId(),
             kind: input.kind,
+            executionId: input.executionId,
             state: "queued",
             wakeAt: input.wakeAt.getTime(),
           })
           .onConflictDoNothing()
-          .returning({ executionId: workflowExecutionSchedule.executionId })
+          .returning({ id: workflowExecutionSchedule.id })
           .pipe(Effect.map((rows) => rows.length > 0))
       ),
 
@@ -178,66 +270,85 @@ export function makeSqliteScheduleMethods(
       ),
 
     claimDue: (input) =>
-      store.write((database) =>
-        Effect.gen(function* () {
-          const now = input.now.getTime();
-          const due = database
-            .select({ executionId: workflowExecutionSchedule.executionId })
-            .from(workflowExecutionSchedule)
-            .where(
-              or(
-                and(
-                  inArray(workflowExecutionSchedule.state, [
-                    "queued",
-                    "waiting",
-                  ]),
-                  lte(workflowExecutionSchedule.wakeAt, now)
-                ),
-                and(
-                  eq(workflowExecutionSchedule.state, "leased"),
-                  lte(workflowExecutionSchedule.leaseExpiresAt, now)
-                )
-              )
-            )
-            .orderBy(
-              asc(workflowExecutionSchedule.wakeAt),
-              asc(workflowExecutionSchedule.executionId)
-            )
-            .limit(input.limit);
-          const claimed = yield* database
-            .update(workflowExecutionSchedule)
-            .set({
-              state: "leased",
-              ownerToken: sql`lower(hex(randomblob(16)))`,
-              leaseExpiresAt: now + input.leaseMs,
-              workerId: input.workerId,
-              // Only an expired lease counts an attempt here: the pass it cut
-              // short is the failure. A row queued by a wake spends nothing.
-              attempt: sql`case when ${workflowExecutionSchedule.state} = 'leased' then ${workflowExecutionSchedule.attempt} + 1 else ${workflowExecutionSchedule.attempt} end`,
-            })
-            .where(inArray(workflowExecutionSchedule.executionId, due))
-            .returning();
-
-          const claimedIds = claimed.map((row) => row.executionId);
-          if (claimedIds.length > 0) {
-            yield* database
-              .update(workflowWaitStates)
-              .set({ wake: encodeJson(TIMEOUT_WAKE), status: "resuming" })
+      store
+        .write((database) =>
+          Effect.gen(function* () {
+            const now = input.now.getTime();
+            const due = yield* database
+              .select({
+                id: workflowExecutionSchedule.id,
+                state: workflowExecutionSchedule.state,
+                runningStepId: workflowExecutionSchedule.runningStepId,
+              })
+              .from(workflowExecutionSchedule)
               .where(
                 and(
-                  inArray(workflowWaitStates.executionId, claimedIds),
-                  eq(workflowWaitStates.status, "waiting"),
-                  lte(workflowWaitStates.waitUntil, now)
+                  eq(workflowExecutionSchedule.kind, "run"),
+                  or(
+                    and(
+                      inArray(workflowExecutionSchedule.state, [
+                        "queued",
+                        "waiting",
+                      ]),
+                      lte(workflowExecutionSchedule.wakeAt, now)
+                    ),
+                    and(
+                      eq(workflowExecutionSchedule.state, "leased"),
+                      lte(workflowExecutionSchedule.leaseExpiresAt, now)
+                    )
+                  )
                 )
-              );
-          }
+              )
+              .orderBy(
+                asc(workflowExecutionSchedule.wakeAt),
+                asc(workflowExecutionSchedule.id)
+              )
+              .limit(input.limit);
+            if (due.length === 0) return [];
 
-          return sortBy(claimed.map(sqliteExecutionSchedule), [
-            (row) => row.wakeAt.getTime(),
-            (row) => row.executionId,
-          ]).map(claimedExecution);
-        })
-      ),
+            const claimed = yield* database
+              .update(workflowExecutionSchedule)
+              .set({
+                state: "leased",
+                ownerToken: sql`lower(hex(randomblob(16)))`,
+                leaseExpiresAt: now + input.leaseMs,
+                workerId: input.workerId,
+                attempt: claimAttempt(workflowExecutionSchedule),
+                runningStepId: null,
+              })
+              .where(
+                inArray(
+                  workflowExecutionSchedule.id,
+                  due.map((row) => row.id)
+                )
+              )
+              .returning();
+
+            for (const swept of sweptStepFailures(due)) {
+              yield* countFailureOnStep(database, {
+                ...swept,
+                error: LEASE_EXPIRED_ERROR,
+              });
+            }
+            const claimedRuns = claimed.flatMap((row) =>
+              row.executionId === null ? [] : [row.executionId]
+            );
+            if (claimedRuns.length > 0) {
+              yield* database
+                .update(workflowWaitStates)
+                .set({ wake: encodeJson(TIMEOUT_WAKE), status: "resuming" })
+                .where(
+                  and(
+                    inArray(workflowWaitStates.executionId, claimedRuns),
+                    eq(workflowWaitStates.status, "waiting"),
+                    lte(workflowWaitStates.waitUntil, now)
+                  )
+                );
+            }
+            return claimed.map(sqliteExecutionSchedule);
+          })
+        )
+        .pipe(Effect.flatMap(claimedExecutions)),
 
     resolvePark: (input) =>
       store.write((database) =>
@@ -255,6 +366,9 @@ export function makeSqliteScheduleMethods(
               )
             )
             .returning({ id: workflowWaitStates.id });
+          if (resolved.length === 0) {
+            return { resolved: false, requeued: false };
+          }
           const requeued = yield* database
             .update(workflowExecutionSchedule)
             .set({ state: "queued", wakeAt: input.now.getTime() })
@@ -264,30 +378,26 @@ export function makeSqliteScheduleMethods(
                 eq(workflowExecutionSchedule.state, "waiting")
               )
             )
-            .returning({ executionId: workflowExecutionSchedule.executionId });
-          return {
-            resolved: resolved.length > 0,
-            requeued: requeued.length > 0,
-          };
+            .returning({ id: workflowExecutionSchedule.id });
+          return { resolved: true, requeued: requeued.length > 0 };
         })
       ),
 
     listStepMemo: (executionId) =>
       store.read((database) =>
         database
-          .select({
-            stepId: workflowExecutionSteps.stepId,
-            attempt: workflowExecutionSteps.attempt,
-            value: workflowExecutionSteps.value,
-          })
+          .select(memoColumns)
           .from(workflowExecutionSteps)
-          .where(eq(workflowExecutionSteps.executionId, executionId))
+          .innerJoin(
+            workflowExecutionSchedule,
+            eq(workflowExecutionSchedule.id, workflowExecutionSteps.scheduleId)
+          )
+          .where(eq(workflowExecutionSchedule.executionId, executionId))
           .pipe(
             Effect.map((rows) =>
               rows.map((row) => ({
                 stepId: row.stepId,
-                attempt: row.attempt,
-                value: optionalJsonValue(row.value, "step value"),
+                ...sqliteStepMemo(row),
               }))
             )
           )
@@ -300,15 +410,18 @@ export function makeSqlitePassWrites(
   store: SqliteDatabase,
   fence: OwnerFence
 ): PassWrites {
-  const { executionId } = fence;
-  const ofThisRun = eq(workflowExecutionSchedule.executionId, executionId);
+  const { scheduleId, executionId } = fence;
+  const thisSchedule = eq(workflowExecutionSchedule.id, scheduleId);
   return {
     renewLease: (input) =>
       writeFenced(store, fence, (database) =>
         database
           .update(workflowExecutionSchedule)
-          .set({ leaseExpiresAt: input.leaseExpiresAt.getTime() })
-          .where(ofThisRun)
+          .set({
+            leaseExpiresAt: input.leaseExpiresAt.getTime(),
+            runningStepId: input.runningStepId,
+          })
+          .where(thisSchedule)
       ).pipe(Effect.asVoid),
 
     writeStepMemo: (input) =>
@@ -317,19 +430,31 @@ export function makeSqlitePassWrites(
           yield* database
             .insert(workflowExecutionSteps)
             .values({
-              executionId,
+              scheduleId,
               stepId: input.stepId,
-              attempt: input.attempt,
+              status: "succeeded",
               value: encodeJson(input.value),
               createdAt: Date.now(),
             })
-            .onConflictDoNothing();
-          if (input.leaseExpiresAt !== undefined) {
-            yield* database
-              .update(workflowExecutionSchedule)
-              .set({ leaseExpiresAt: input.leaseExpiresAt.getTime() })
-              .where(ofThisRun);
-          }
+            .onConflictDoUpdate({
+              target: [
+                workflowExecutionSteps.scheduleId,
+                workflowExecutionSteps.stepId,
+              ],
+              set: {
+                status: "succeeded",
+                value: sql`excluded.value`,
+                error: null,
+              },
+              setWhere: eq(workflowExecutionSteps.status, "failing"),
+            });
+          yield* database
+            .update(workflowExecutionSchedule)
+            .set({
+              leaseExpiresAt: input.leaseExpiresAt.getTime(),
+              runningStepId: sql`nullif(${workflowExecutionSchedule.runningStepId}, ${input.stepId})`,
+            })
+            .where(thisSchedule);
         })
       ),
 
@@ -352,9 +477,8 @@ export function makeSqlitePassWrites(
           const schedule = yield* database
             .select({ attempt: workflowExecutionSchedule.attempt })
             .from(workflowExecutionSchedule)
-            .where(ofThisRun)
+            .where(thisSchedule)
             .get();
-          const attempt = schedule?.attempt ?? 0;
           const parks = yield* database
             .select({
               status: workflowWaitStates.status,
@@ -365,26 +489,22 @@ export function makeSqlitePassWrites(
             .where(
               and(
                 eq(workflowWaitStates.executionId, executionId),
-                inArray(workflowWaitStates.status, ["waiting", "resuming"])
+                inArray(workflowWaitStates.status, [...OPEN_PARK_STATUSES])
               )
             );
-
-          if (input.outcome.kind === "retries_spent") {
-            yield* database
-              .insert(workflowExecutionSteps)
-              .values({
-                executionId,
-                stepId: input.outcome.stepId,
-                attempt,
-                value: encodeJson(input.outcome.failure),
-                createdAt: Date.now(),
-              })
-              .onConflictDoNothing();
-          }
+          const { outcome } = input;
+          const countedStep =
+            outcome.kind === "step_failed"
+              ? yield* countFailureOnStep(database, {
+                  scheduleId,
+                  stepId: outcome.stepId,
+                  error: outcome.error,
+                })
+              : null;
 
           const released = decideRelease({
-            outcome: input.outcome,
-            attempt,
+            outcome,
+            attempt: schedule?.attempt ?? 0,
             now: input.now,
             parks: parks.map((park) => ({
               status: park.status === "waiting" ? "waiting" : "resuming",
@@ -392,6 +512,7 @@ export function makeSqlitePassWrites(
                 park.waitUntil === null ? null : new Date(park.waitUntil),
               woken: park.wake !== null,
             })),
+            countedStep,
           });
           yield* database
             .update(workflowExecutionSchedule)
@@ -400,17 +521,26 @@ export function makeSqlitePassWrites(
               wakeAt: released.wakeAt.getTime(),
               attempt: released.attempt,
               lastError: released.lastError,
+              runningStepId: null,
               leaseExpiresAt: null,
               ownerToken: null,
               workerId: null,
             })
-            .where(ofThisRun);
+            .where(thisSchedule);
           return {
-            state: released.state,
-            wakeAt: released.wakeAt,
-            attempt: released.attempt,
+            schedule: {
+              state: released.state,
+              wakeAt: released.wakeAt,
+              attempt: released.attempt,
+            },
+            countedStep,
           };
         })
       ),
+
+    dropSchedule: () =>
+      writeFenced(store, fence, (database) =>
+        database.delete(workflowExecutionSchedule).where(thisSchedule)
+      ).pipe(Effect.asVoid),
   };
 }
