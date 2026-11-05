@@ -300,8 +300,10 @@ the way the existing SQLite schema mirrors Postgres.
 3. Run. `executeWorkflow(input, runtime, store, actions, entities)` with the
    runtime below. The body replays from the top; memo hits return in memory.
 4. Release. The body's outcome decides the row: deleted when the terminal record
-   was written; `waiting` with `wake_at = min(deadline over open parks)` when
-   the body ended with at least one park outstanding; `queued` with
+   was written; `queued` with `wake_at = now()` when any of the run's wait rows
+   holds a wake the pass did not consume; `waiting` with
+   `wake_at = min(deadline over open parks)` when the body ended with at least
+   one park outstanding and no unconsumed wake; `queued` with
    `wake_at = now() + backoff(attempt)` when a step body threw a retriable error
    and `attempt < 4`; terminal `failed` written through the store when the
    retries are spent. The last case is new behaviour: today a run whose step
@@ -342,11 +344,23 @@ The producers are the ones that exist: `wakeWait` for an Event arrival or a
 manual resume, `signalParkedWaits` for `lifecycle-cancel` and `lifecycle-exit`,
 `migrateExecutions` for `version-migrate`. The claim they already take on the
 row (`claimWaitState`, with its five-minute lease and `allowSameDeliveryRetry`)
-stays; what changes is that the second half is a row write instead of a send. A
-run that is `leased` when the wake lands keeps running; the park it is about to
-reach, or has already passed, reads the wake at its next attempt. The
-"signal sent before the listener registered" race in `signal-parked-waits.ts`
-disappears, because the park reads the row.
+stays; what changes is that the second half is a row write instead of a send.
+
+A wake that lands while the run is `leased` leaves the schedule row alone, so
+the release is what has to notice it. The pass may already have read that Wait
+as parked, and a release that wrote `waiting` from the pass's own view would put
+the run to sleep with a woken branch nobody runs. That branch then waits for the
+next deadline of some other open park, and when no other park is open the run
+has no `wake_at` at all and sleeps until a cancel. A TLA+ model of this executor
+(one run, two parallel Waits, two workers) reaches that state in four steps:
+claim, park both, wake one during the pass, release. The release therefore takes
+the schedule row's lock and then reads the run's wait rows in the same
+transaction, writing `queued` when any holds an unconsumed wake. Both writers
+lock the schedule row, so either the producer commits first and the release sees
+its wake, or the release commits first and the producer finds `waiting` and
+re-queues. With that release the model holds the rule in every reachable state.
+The "signal sent before the listener registered" race in
+`signal-parked-waits.ts` disappears, because the park reads the row.
 
 **Retries.** A step body that throws a retriable error ends the invocation. The
 release writes `queued` with a backoff and the attempt counter; the memo keeps
