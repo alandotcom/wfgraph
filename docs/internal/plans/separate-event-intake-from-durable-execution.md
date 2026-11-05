@@ -494,8 +494,10 @@ records which step is running on the schedule row. An expired lease is swept
 inside the claim statement, bounded to the batch size, and the swept row is
 re-queued with a failure counted against the step that was running, the way
 Absurd's `claim_task` fails the run with `$ClaimTimeout`. A lease that expires
-between steps counts against the run's own counter on the schedule row, which
-ends the run `failed` past the same limit and resets on every release. The lease is shorter than any platform kill timeout
+with no step recorded counts against the run's own counter on the schedule row,
+and so does a pass whose body failed outside any step. That counter ends the
+run `failed` past the same limit, and every other release resets it, so a run
+whose failures no step owns cannot retry forever. The lease is shorter than any platform kill timeout
 (section 8), and the fencing token makes a lease that expired under a worker that
 was merely slow a harmless duplicate attempt rather than a duplicate side effect.
 
