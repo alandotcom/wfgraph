@@ -1,8 +1,9 @@
 /**
  * Event Split below a Wait: the Wait is an Arriving Event source, so the split
  * routes on the Event that woke it, not the Start Event that put the run there.
- * A timeout that continues names none, and a branch run must hand the payload
- * overwrite back to the run that started it.
+ * A timeout that continues names none. The case that drives the Wait under
+ * each executor lives in `core-wait-split.replay-cases.ts`, so the replay
+ * suite runners can run it on a real database too.
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
@@ -18,57 +19,23 @@ import { eventSplitOutlet } from "@wfgraph/shared/lifecycle/event-split";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import { noWorkflowActions } from "#src/backend/engine/actions";
 import { executionData } from "#src/backend/engine/contracts";
-import {
-  createInMemoryWorkflowRuntime,
-  type WaitWake,
-} from "#src/backend/engine/runtime";
-import {
-  executeTestWorkflow as executeWorkflow,
-  executeTestWorkflowBranch as executeWorkflowBranch,
-} from "#src/backend/engine/test-execution";
-import { driveWithReplay } from "#src/backend/engine/testing/replay-runtime";
+import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
+import { executeTestWorkflow as executeWorkflow } from "#src/backend/engine/test-execution";
+import { IN_PLACE_EXECUTORS } from "#src/backend/engine/testing/replay-runtime";
 import {
   createRecordingWorkflowStore,
   type RecordingWorkflowStore,
 } from "#src/backend/engine/recording-store";
-
-const SETTLED = "billing/payment.settled";
-const FAILED = "billing/payment.failed";
-const CREATED = "app/appointment.created";
-
-function createLifecycleNode(id: string): WorkflowNode {
-  return {
-    id,
-    type: "lifecycle",
-    position: { x: 0, y: 0 },
-    data: {
-      label: "Lifecycle",
-      type: "lifecycle",
-      config: {},
-    },
-  };
-}
-
-function createConditionNode(
-  id: string,
-  condition: boolean | string,
-  conditionModel?: string
-): WorkflowNode {
-  return {
-    id,
-    type: "action",
-    position: { x: 100, y: 100 },
-    data: {
-      label: id,
-      type: "action",
-      config: {
-        actionType: "Condition",
-        condition,
-        conditionModel,
-      },
-    },
-  };
-}
+import {
+  CREATED,
+  createConditionNode,
+  createLifecycleNode,
+  createWaitSplitGraph,
+  defineWaitSplitReplayCases,
+  FAILED,
+  SETTLED,
+  waitResumeSignal,
+} from "#src/backend/engine/core-wait-split.replay-cases";
 
 function eventNameEqualsModel(eventName: string): ConditionModel {
   return {
@@ -106,76 +73,6 @@ function createEventNameConditionNode(
     compiled.expression,
     serializeConditionModel(model)
   );
-}
-
-function waitResumeSignal(
-  eventType: string,
-  payload: Record<string, string>
-): WaitWake {
-  return { kind: "resume", eventName: eventType, payload };
-}
-
-function createWaitSplitGraph() {
-  return createSerializedWorkflowGraph({
-    nodes: [
-      createLifecycleNode("lifecycle_1"),
-      {
-        id: "wait_1",
-        type: "action",
-        position: { x: 0, y: 100 },
-        data: {
-          label: "Wait",
-          type: "action",
-          config: {
-            actionType: BUILT_IN_ACTION_IDS.wait,
-            waitMode: "event",
-            waitFor: [{ event: SETTLED }, { event: FAILED }],
-            waitTimeout: "7d",
-          },
-        },
-      },
-      {
-        id: "split_1",
-        type: "action",
-        position: { x: 0, y: 200 },
-        data: {
-          label: "Split on Event",
-          type: "action",
-          config: { actionType: BUILT_IN_ACTION_IDS.eventSplit },
-        },
-      },
-      createConditionNode("on_settled", true),
-      createConditionNode("on_failed", true),
-      createConditionNode("on_created", true),
-    ],
-    edges: [
-      {
-        id: "edge_l_w",
-        source: "lifecycle_1",
-        sourceHandle: "started",
-        target: "wait_1",
-      },
-      { id: "edge_w_s", source: "wait_1", target: "split_1" },
-      {
-        id: "edge_s_settled",
-        source: "split_1",
-        sourceHandle: eventSplitOutlet(SETTLED),
-        target: "on_settled",
-      },
-      {
-        id: "edge_s_failed",
-        source: "split_1",
-        sourceHandle: eventSplitOutlet(FAILED),
-        target: "on_failed",
-      },
-      {
-        id: "edge_s_created",
-        source: "split_1",
-        sourceHandle: eventSplitOutlet(CREATED),
-        target: "on_created",
-      },
-    ],
-  });
 }
 
 describe("executeWorkflow Event Split after Wait", () => {
@@ -387,77 +284,8 @@ describe("executeWorkflow Event Split after Wait", () => {
     expect(result.outputs.lifecycle_1?.data).toEqual({});
   });
 
-  it("overwrites the entry payload on a branch run so the parent sees the Wait's Event", async () => {
-    const input = {
-      graph: createWaitSplitGraph(),
-      executionId: "exec_wait_split",
-      workflowId: "workflow_wait_split",
-      startEventName: CREATED,
-      startPayload: { appointmentId: "appt_1" },
-    };
-
-    const run = await driveWithReplay(
-      (runtime) => executeWorkflow(input, runtime, store, noWorkflowActions),
-      {
-        events: {
-          "wait-park-wait_1-0": waitResumeSignal(SETTLED, { amount: "40" }),
-        },
-        executor: {
-          kind: "inngest",
-          branch: (runtime, branchInput) =>
-            executeWorkflowBranch(
-              { ...input, ...branchInput },
-              runtime,
-              store,
-              noWorkflowActions
-            ),
-        },
-      }
-    );
-
-    const result = run.value;
-    expect(result).toMatchObject({ kind: "ended", success: true });
-    expect(result.results.on_settled?.success).toBe(true);
-    expect(result.results.on_failed).toBeUndefined();
-    expect(result.results.on_created).toBeUndefined();
-    expect(executionData(result.results.split_1)).toEqual({
-      success: true,
-      data: { event: SETTLED },
-    });
-    expect(result.outputs.lifecycle_1?.data).toEqual({ amount: "40" });
-  });
-
-  // The pass that resumes the Wait overwrites the entry payload in its own
-  // traversal, so the run's result carries the Wait's Event with no hand-back.
-  it("overwrites the entry payload in the pass that resumes the Wait, in one run", async () => {
-    const input = {
-      graph: createWaitSplitGraph(),
-      executionId: "exec_wait_split",
-      workflowId: "workflow_wait_split",
-      startEventName: CREATED,
-      startPayload: { appointmentId: "appt_1" },
-    };
-
-    const run = await driveWithReplay(
-      (runtime) => executeWorkflow(input, runtime, store, noWorkflowActions),
-      {
-        events: {
-          "wait-park-wait_1-0": waitResumeSignal(SETTLED, { amount: "40" }),
-        },
-        executor: { kind: "database" },
-      }
-    );
-
-    const result = run.value;
-    expect(result).toMatchObject({ kind: "ended", success: true });
-    expect(result.results.on_settled?.success).toBe(true);
-    expect(result.results.on_failed).toBeUndefined();
-    expect(result.results.on_created).toBeUndefined();
-    expect(executionData(result.results.split_1)).toEqual({
-      success: true,
-      data: { event: SETTLED },
-    });
-    expect(result.outputs.lifecycle_1?.data).toEqual({ amount: "40" });
-    expect(run.runs).toBe(1);
-  });
+  describe.each(IN_PLACE_EXECUTORS)(
+    "under the $kind executor",
+    defineWaitSplitReplayCases
+  );
 });

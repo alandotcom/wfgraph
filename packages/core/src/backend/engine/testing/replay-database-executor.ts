@@ -67,7 +67,8 @@ export type DatabaseReplayExecutor = {
   /**
    * Opens the backend for one drive. Called once per `driveWithReplay`, so a
    * shared executor value never carries state from one case into the next.
-   * Left out, `createInMemoryReplayBackend` is used.
+   * Left out, `createInMemoryReplayBackend` is used. The replay suites' runners
+   * set it to open a backend over PostgreSQL or SQLite.
    */
   openBackend?:
     | (() => ReplayDatabaseBackend | Promise<ReplayDatabaseBackend>)
@@ -128,24 +129,6 @@ export function createInMemoryReplayBackend(): ReplayDatabaseBackend {
   };
 }
 
-let openDefaultBackend: () =>
-  | ReplayDatabaseBackend
-  | Promise<ReplayDatabaseBackend> = createInMemoryReplayBackend;
-
-/**
- * Replaces the backend a drive opens when its executor names none, so a suite
- * can run every database-executor case of the replay suites against a real
- * database. Answers the function that restores the in-memory default.
- */
-export function useDefaultReplayBackend(
-  open: () => ReplayDatabaseBackend | Promise<ReplayDatabaseBackend>
-): () => void {
-  openDefaultBackend = open;
-  return () => {
-    openDefaultBackend = createInMemoryReplayBackend;
-  };
-}
-
 /**
  * Whether a pass ended with the run still open. `executeWorkflow` answers
  * `kind: "parked"` for such a pass and `kind: "ended"` once it wrote the
@@ -178,7 +161,7 @@ export async function driveDatabaseExecutor<T>(
   executor: DatabaseReplayExecutor
 ): Promise<ReplayRun<T>> {
   const { events = {}, maxInvocations = DEFAULT_MAX_INVOCATIONS } = options;
-  const backend = await (executor.openBackend ?? openDefaultBackend)();
+  const backend = await (executor.openBackend ?? createInMemoryReplayBackend)();
 
   const executed: ReplayExecution[] = [];
   /** Each park's deadline on the virtual clock, fixed the first time it parks. */

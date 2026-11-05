@@ -91,6 +91,38 @@ export const IN_PLACE_EXECUTORS: readonly ReplayExecutor[] = [
   { kind: "database" },
 ];
 
+/**
+ * Picks the value a case expects under the executor it runs on, for an
+ * assertion both executors make with different answers, such as how many
+ * durable runs a graph takes.
+ */
+export function perExecutor<T>(
+  executor: ReplayExecutor,
+  expected: Record<ReplayExecutor["kind"], T>
+): T {
+  return expected[executor.kind];
+}
+
+/**
+ * The executor with each Wait handed to a branch run that runs `branch`, when
+ * it is the Inngest executor. The database executor has no branch runs and
+ * comes back as it was, entering every Wait where it stands.
+ */
+export function withBranchRuns(
+  executor: ReplayExecutor,
+  branch: NonNullable<InngestReplayExecutor["branch"]>
+): ReplayExecutor {
+  return executor.kind === "inngest" ? { ...executor, branch } : executor;
+}
+
+/**
+ * Declares a replay suite's database-executor cases. The suite calls it with
+ * the in-memory backend, and each replay suite runner calls it with a backend
+ * over a real database. A function that also takes the Inngest executor fits,
+ * and the suite calls it for both.
+ */
+export type ReplayCases = (executor: DatabaseReplayExecutor) => void;
+
 export type ReplayRunOptions = {
   /**
    * The wake that ends a park, keyed by the park's step id. A park with no
