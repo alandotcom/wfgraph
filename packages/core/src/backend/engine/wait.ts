@@ -828,14 +828,19 @@ function failPreparation<Prepared>(
 }
 
 /**
- * The durable arrival accepted by a park, or null when the row records none.
- * A failed send can release its claim back to `waiting` without erasing arrival.
- * This also covers the first preparation before registration.
+ * The wake that resolved the row before this park, or null when the row
+ * records none. This also covers the first preparation before registration.
  *
- * Between a Migration's wake and the next park the row is still `waiting`, so a
- * resume claim can take it and send a signal nothing is parked on. The claim
- * writes what it was about onto the row, which is what this reads back. A
- * cancelled row is the Cancel Event having claimed the run in the same window.
+ * Between a Migration's repin and the next park the row can still be
+ * `waiting`, so a resume can resolve it while nothing is parked on it. Under
+ * the database executor the producer writes its wake into the row's `wake`
+ * column, and an Event or claim wake there is answered whatever version the
+ * row was parked from: the TLA+ Migration model resumes a Wait from an Event
+ * taken before the re-park, under the version the run then pins. Under
+ * Inngest the resume claim writes its arrival into the row's metadata instead,
+ * and a failed send can release the claim back to `waiting` without erasing
+ * that arrival. A cancelled row is the Cancel Event having claimed the run in
+ * the same window.
  */
 function readMissedWake(
   branch: WaitBranchContext,
@@ -850,13 +855,22 @@ function readMissedWake(
       if (waitState.status === "cancelled") {
         return { kind: "cancel" };
       }
-      const arrival = waitState.arrival;
       if (
-        arrival === null ||
-        (waitState.status !== "waiting" &&
-          waitState.status !== "resumed" &&
-          waitState.status !== "resuming")
+        waitState.status !== "waiting" &&
+        waitState.status !== "resumed" &&
+        waitState.status !== "resuming"
       ) {
+        return null;
+      }
+      // A re-park writes over a `migrate` or `timeout` wake (`reparkWait`), so
+      // an Event or a claim is the only wake this Wait still has to act on. A
+      // `migrate` wake that lands after this read is found by the park step.
+      const wake = waitState.wake;
+      if (wake !== null && wake.kind !== "migrate" && wake.kind !== "timeout") {
+        return wake;
+      }
+      const arrival = waitState.arrival;
+      if (arrival === null) {
         return null;
       }
       return {

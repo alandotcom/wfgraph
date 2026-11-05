@@ -167,6 +167,27 @@ export function seedPublishedWorkflow(
   );
 }
 
+/**
+ * Publishes `ver_2` of the workflow `seedPublishedWorkflow` seeds, which the
+ * Migration cases move a parked run onto.
+ */
+export const publishSecondVersion = Effect.gen(function* () {
+  const workflows = yield* WorkflowRepo;
+  const draft = yield* workflows.findDraftRevisionById("wf_1");
+  yield* workflows.insertPublishedVersion({
+    workflowId: "wf_1",
+    versionId: "ver_2",
+    version: 2,
+    expectedPublishedVersionId: "ver_1",
+    expectedDraftRevision: draft?.draftRevision ?? 1,
+    graph: emptyGraph,
+    draftGraph: emptyGraph,
+    catalogFingerprint: "catalog",
+    graphDigest: "digest-2",
+    eventSubscriptions: [],
+  });
+});
+
 export type StartOptions = {
   deliveryId: string;
   entityValue?: string | undefined;

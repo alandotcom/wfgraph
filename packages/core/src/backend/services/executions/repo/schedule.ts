@@ -4,11 +4,11 @@
  * locking a fenced write stands on. `release-policy.ts` makes the decisions;
  * this file runs the statements they call for.
  *
- * Lock order: every transaction here, and every fenced or terminal write in the
- * sibling slices, takes the run's schedule row before its execution row and its
- * wait rows. The producer and the release both lock the schedule row first, so
- * a wake either commits before a release reads the wait rows or finds the row
- * `waiting` after the release commits.
+ * Lock order: every transaction here, and every fenced or terminal write and
+ * Migration repin in the sibling slices, takes the run's schedule row before
+ * its execution row and its wait rows. The producers and the release all lock
+ * the schedule row first, so a wake either commits before a release reads the
+ * wait rows or finds the row `waiting` after the release commits.
  */
 
 import { and, asc, eq, inArray, lte, or, type SQL, sql } from "drizzle-orm";
@@ -134,11 +134,11 @@ export function writeFencedSerializable<A>(
 }
 
 /**
- * Locks the schedule rows of the runs a terminal write is about to end, so the
- * terminal write takes them before the execution rows, in the order every
- * fenced write takes them.
+ * Locks the schedule rows of the runs a write is about to change, so the write
+ * takes them before the execution rows, in the order every fenced write takes
+ * them. A run with no schedule row has nothing to lock.
  */
-async function lockSchedules(
+export async function lockSchedules(
   tx: Executor,
   executionIds: readonly string[]
 ): Promise<void> {
@@ -405,6 +405,29 @@ export async function resolveOpenParks(
     );
 }
 
+/**
+ * Moves one run's schedule row from `waiting` to `queued` at `now`, answering
+ * whether it moved. A `leased` row is left for its release, which reads the
+ * wakes this transaction wrote. The caller holds the schedule row.
+ */
+export async function requeueWaitingRun(
+  tx: Executor,
+  executionId: string,
+  now: Date
+): Promise<boolean> {
+  const requeued = await tx
+    .update(workflowExecutionSchedule)
+    .set({ state: "queued", wakeAt: now })
+    .where(
+      and(
+        eq(workflowExecutionSchedule.executionId, executionId),
+        eq(workflowExecutionSchedule.state, "waiting")
+      )
+    )
+    .returning({ id: workflowExecutionSchedule.id });
+  return requeued.length > 0;
+}
+
 const memoColumns = {
   stepId: workflowExecutionSteps.stepId,
   status: workflowExecutionSteps.status,
@@ -587,17 +610,10 @@ export function makeScheduleMethods(
           if (resolved.length === 0) {
             return { resolved: false, requeued: false };
           }
-          const requeued = await tx
-            .update(workflowExecutionSchedule)
-            .set({ state: "queued", wakeAt: input.now })
-            .where(
-              and(
-                eq(workflowExecutionSchedule.executionId, input.executionId),
-                eq(workflowExecutionSchedule.state, "waiting")
-              )
-            )
-            .returning({ id: workflowExecutionSchedule.id });
-          return { resolved: true, requeued: requeued.length > 0 };
+          return {
+            resolved: true,
+            requeued: await requeueWaitingRun(tx, input.executionId, input.now),
+          };
         })
       ),
 

@@ -34,7 +34,12 @@ import type {
   WfGraphTransaction,
 } from "#src/backend/lib/db/index";
 import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
-import { endExecutions } from "#src/backend/services/executions/repo/schedule";
+import {
+  endExecutions,
+  lockSchedules,
+  requeueWaitingRun,
+  resolveOpenParks,
+} from "#src/backend/services/executions/repo/schedule";
 import {
   IN_FLIGHT_EXECUTION_STATUSES,
   type EntityEligibilityReason,
@@ -53,6 +58,7 @@ import type {
   InFlightExecutionRow,
   NewTerminalExecution,
   PendingCancel,
+  RepinParks,
   WorkflowExecution,
   WorkflowExecutionListRow,
 } from "#src/backend/services/executions/repo/contracts";
@@ -328,16 +334,22 @@ export type RunsRepoMethods = {
     error: string;
   }) => Effect.Effect<boolean, DatabaseError>;
   /**
-   * Move a parked run's pinned version pointer, answering whether a row moved.
+   * Move a parked run's pinned version pointer, answering whether a row moved,
+   * and act on its parks as `parks` says in the same transaction.
    *
    * The version, status, and exact parked Wait set must still match the
-   * classification. A wake, repark, or newly parked branch invalidates it.
+   * classification. A wake, repark, or newly parked branch invalidates it, so
+   * a run that is running or holds a woken Wait is refused: the work below a
+   * Wait then stays on the version the run pinned when the Wait resumed. The
+   * run's schedule row is locked before its execution row, the order the
+   * release and every producer take them in.
    */
   readonly repinVersion: (input: {
     executionId: string;
     fromVersionId: string;
     toVersionId: string;
     expectedWaitStates: readonly { id: string; resumeToken: string | null }[];
+    parks: RepinParks;
   }) => Effect.Effect<boolean, DatabaseError>;
   /**
    * Move a run back from "waiting" to "running" under the version the caller
@@ -684,6 +696,10 @@ export function makeRunsMethods(
     repinVersion: (input) =>
       database.query((db) =>
         db.transaction(async (tx) => {
+          // The schedule row first, as every other writer of a run takes it.
+          // A release then either commits before this repin reads the wait
+          // rows, or reads the migrate wakes this repin writes.
+          await lockSchedules(tx, [input.executionId]);
           // startWait takes this lock before inserting a row. Lock Wait rows
           // next so delivery cannot change the classified set during the move.
           const [execution] = await tx
@@ -735,6 +751,10 @@ export function makeRunsMethods(
             .update(workflowExecutions)
             .set({ workflowVersionId: input.toVersionId })
             .where(eq(workflowExecutions.id, input.executionId));
+          if (input.parks.kind === "requeue") {
+            await resolveOpenParks(tx, input.executionId, { kind: "migrate" });
+            await requeueWaitingRun(tx, input.executionId, input.parks.now);
+          }
           return true;
         })
       ),

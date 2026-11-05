@@ -16,8 +16,10 @@ import { DatabaseError } from "#src/backend/lib/effect/database";
 import { redactSensitiveData } from "#src/backend/lib/utils/redact";
 import type {
   ExecutionRepo,
+  ParkWake,
   StoreWrites,
 } from "#src/backend/services/executions/repo";
+import type { WaitWake } from "#src/backend/engine/runtime";
 import { decodeIsoTimestampOrThrow } from "@wfgraph/shared/types/timestamp";
 import type {
   CompletedNodeProgress,
@@ -97,10 +99,26 @@ function readWaitArrival(metadata: JsonObject | null): WaitArrival | null {
   };
 }
 
+/**
+ * A park's stored wake as the engine reads it. The delivery that carried an
+ * Event is the row's own bookkeeping, so the engine's wake leaves it out.
+ */
+function engineWake(wake: ParkWake): WaitWake {
+  if (wake.kind === "resume") {
+    return {
+      kind: "resume",
+      eventName: wake.eventName,
+      payload: wake.payload,
+    };
+  }
+  return wake;
+}
+
 /** The repository reads the store answers the engine's questions from. */
 export type StoreReads = Pick<
   ExecutionRepo["Service"],
   | "findWaitStateById"
+  | "findPark"
   | "canAdmitNode"
   | "findTerminationState"
   | "findPendingCancel"
@@ -162,12 +180,20 @@ export function createDbWorkflowStore(bound: {
         writes.reparkWait({ ...input, waitUntil: waitUntil ?? null })
       ),
 
+    // Two reads: `findWaitStateById` leaves out the database executor's own
+    // columns, which `findPark` holds. The wake is read second, so a wake a
+    // producer writes between the two reads is still seen.
     readWaitState: (waitStateId) =>
-      Effect.map(reads.findWaitStateById(waitStateId), (row) =>
-        row
-          ? { status: row.status, arrival: readWaitArrival(row.metadata) }
-          : null
-      ),
+      Effect.gen(function* () {
+        const row = yield* reads.findWaitStateById(waitStateId);
+        if (!row) return null;
+        const park = yield* reads.findPark(waitStateId);
+        return {
+          status: row.status,
+          arrival: readWaitArrival(row.metadata),
+          wake: park?.wake ? engineWake(park.wake) : null,
+        };
+      }),
 
     markWaitStateStatus: (input) => writes.markWaitStatus(input),
 

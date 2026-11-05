@@ -44,7 +44,11 @@ import {
   sqliteVersionKind,
   type SqliteExecutionListRow,
 } from "#src/backend/persistence/sqlite/executions/rows";
-import { endExecutions } from "#src/backend/persistence/sqlite/executions/schedule";
+import {
+  endExecutions,
+  requeueWaitingRun,
+  resolveOpenParks,
+} from "#src/backend/persistence/sqlite/executions/schedule";
 
 const WORKFLOW_EXECUTIONS_LIMIT = 50;
 
@@ -505,6 +509,9 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
           })
         )
       ),
+    // The write transaction holds the one writer from its first statement, so
+    // the repin takes the run's schedule row, execution row and wait rows
+    // together, and a release runs wholly before or after it.
     repinVersion: (input) =>
       store.write((database) =>
         Effect.gen(function* () {
@@ -548,7 +555,18 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
               )
             )
             .returning({ id: workflowExecutions.id });
-          return moved.length > 0;
+          if (moved.length === 0) return false;
+          if (input.parks.kind === "requeue") {
+            yield* resolveOpenParks(database, input.executionId, {
+              kind: "migrate",
+            });
+            yield* requeueWaitingRun(
+              database,
+              input.executionId,
+              input.parks.now
+            );
+          }
+          return true;
         })
       ),
 

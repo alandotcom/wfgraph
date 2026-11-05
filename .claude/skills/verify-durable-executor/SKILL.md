@@ -363,8 +363,9 @@ the directories of those names under `services/workflows/`.
 | `EventWake`, `WakeIsUnclaimed` | "Resolving a park" | `resolvePark` in `repo/schedule.ts` and `sqlite/schedule.ts`, which locks the schedule row and then writes the wake only onto a row still `waiting`. `resolvePark` checks neither the run's status nor its claim; the terminal write and `requestExit` leave no row `waiting`, which gives the model's in-flight and Exit conditions. No producer calls `resolvePark` until phase 2, and today's Event wake is `claimWaitState` in `repo/waits.ts`. |
 | `CancelEvent` | "Cancellation" | `requestCanceledOutlet` in `lifecycle/cancel.ts`, on the Inngest path. Phase 2 moves the Cancel claim's outlet request onto the executor's row writes. |
 | `PolicyCancel`, `RunInFlight` | | `cancelInFlightRuns` in `executions/end-runs.ts`; `endInFlight` in `repo/runs.ts`, whose `endExecutions` deletes the schedule row and cancels the run's open parks in the same transaction |
-| `Migration`: `Repin`, `RepinNeedsAPark` | "Migration"; ADR-0019; section 11, phase 2 | `repinVersion` in `repo/runs.ts`; `migrateExecutions` in `migration/migrate.ts`, both on the Inngest path. Section 11's phase 2 lets `repinVersion` move a run that is running or holds a woken Wait, which `RepinNeedsAPark` forbids. The `repin-while-running` mutation shows that dropping this guard alone breaks `BelowRunsThePinnedVersion`. |
-| `Migration`: `MigrateWake`, `Prepare`, `Park`, `StillPinned` | "Migration" | the `createWaitState`, `reparkWaitState` and `markExecutionRunning` fences in `engine/wait.ts`. `migrateExecutions` sends the migrate wake on the Inngest path until phase 2. |
+| `Migration`: `Repin`, `RepinNeedsAPark` | "Migration"; ADR-0019; section 11, phase 2 | `repinVersion` in `repo/runs.ts` and `sqlite/runs.ts`, which locks the run's schedule row before its execution row and refuses a run that is running or holds a woken Wait; `migrateExecutions` in `migration/migrate.ts`, on the Inngest path. The `repin-while-running` mutation shows that dropping this guard alone breaks `BelowRunsThePinnedVersion`. |
+| `Migration`: `MigrateWake`, `Requeue` | "Migration" | `repinVersion` with `parks: { kind: "requeue" }`, which writes the `migrate` wake on every park (`resolveOpenParks`) and re-queues a `waiting` run (`requeueWaitingRun`) in the repin's own transaction: `Repin` followed at once by `MigrateWake`. `migrateExecutions` passes `leave_parked` and sends the migrate wake on the Inngest path until phase 2's producers move. |
+| `Migration`: `Prepare`, `Park`, `StillPinned` | "Migration" | the `createWaitState`, `reparkWaitState` and `markExecutionRunning` fences in `engine/wait.ts`; `readMissedWake` in `engine/wait.ts`, which answers an Event or claim wake from the wait row's `wake` column (`readWaitState` in `engine/db-store.ts`) when a re-park finds the row already woken, the `Park` action's `event` arm after the pass re-prepares under the version it loaded |
 | `Migration`: `Release`, `FenceRefusalCountsNoAttempt` | | `versionRefused` in `engine/wait.ts`, which fails with the `version_refused` kind; `decideFailedPass` in `executor/pass.ts`, which releases that failure as `fence_refused`; `decideRelease` in `repo/release-policy.ts`, which re-queues the run due at once and counts nothing |
 | `Intake`: `SendViaApp`, `SendInHostTransaction`, `PollInbox`, `InboxKeyIsUnique` | Section 7.1 and 7.3 | |
 | `Intake`: `ClaimDelivery`, `LifecycleStep`, `RecordMemo`, `FinishDelivery` | Section 7.2 | `runEventListener` in `lib/inngest/event-listener-function.ts` |
@@ -390,11 +391,10 @@ the directories of those names under `services/workflows/`.
 | `Timing`: `ClaimWaitsForTheDeadline` | | the `wake_at <= now` condition on `queued` and `waiting` rows in `claimDue` |
 
 Last confirmed against: the design doc at `e02009e3` and the code at
-`ba704be1` (`feat/durable-executor`), for every model. The Migration producer's
-re-queue, which phase 2 adds beside `repinVersion`, is not modelled yet; add it
-to `Migration` when phase 2 builds it. Move these commits forward only after
-you have read the covered sections and files at the new commit and confirmed
-that the models still describe them. When phase 2 or phase 3 moves a part onto
+`ba704be1` (`feat/durable-executor`), for every model. Move these commits
+forward only after you have read the covered sections and files at the new
+commit and confirmed that the models still describe them. When phase 2 or
+phase 3 moves a part onto
 the executor, replace its Inngest-path code in the last column with the code
 that implements it.
 

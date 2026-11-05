@@ -15,6 +15,7 @@ import type {
 } from "#src/backend/persistence/conformance/support";
 import {
   emptyGraph,
+  publishSecondVersion,
   seedPublishedWorkflow,
 } from "#src/backend/persistence/conformance/support";
 
@@ -27,27 +28,6 @@ const EVENT_ARRIVAL = {
   eventName: "appointment/approved",
   payload: { approved: true },
 } as const;
-
-/**
- * Publishes a second version of the seeded workflow, which the Migration cases
- * move a parked run onto.
- */
-const publishSecondVersion = Effect.gen(function* () {
-  const workflows = yield* WorkflowRepo;
-  const draft = yield* workflows.findDraftRevisionById("wf_1");
-  yield* workflows.insertPublishedVersion({
-    workflowId: "wf_1",
-    versionId: "ver_2",
-    version: 2,
-    expectedPublishedVersionId: "ver_1",
-    expectedDraftRevision: draft?.draftRevision ?? 1,
-    graph: emptyGraph,
-    draftGraph: emptyGraph,
-    catalogFingerprint: "catalog",
-    graphDigest: "digest-2",
-    eventSubscriptions: [],
-  });
-});
 
 function startEventWait(
   connection: ConformanceConnection,
@@ -153,6 +133,7 @@ export function describeExecutionWaitConformance({
               fromVersionId: "ver_1",
               toVersionId: "ver_2",
               expectedWaitStates,
+              parks: { kind: "leave_parked" },
             });
             return {
               moved,
@@ -1323,6 +1304,7 @@ export function describeExecutionWaitConformance({
             executionId,
             fromVersionId: "ver_1",
             toVersionId: "ver_2",
+            parks: { kind: "leave_parked" },
           });
           if (!migrated) throw new Error("The migration was refused");
 
@@ -1779,6 +1761,7 @@ export function describeExecutionWaitConformance({
             executionId,
             fromVersionId: "ver_1",
             toVersionId: "ver_2",
+            parks: { kind: "leave_parked" },
           });
 
           const wait = yield* executions.startWait({
@@ -1800,6 +1783,7 @@ export function describeExecutionWaitConformance({
             executionId,
             fromVersionId: "ver_2",
             toVersionId: "ver_2",
+            parks: { kind: "leave_parked" },
           });
           const whileWaiting = yield* executions.repinVersion({
             expectedWaitStates:
@@ -1807,6 +1791,7 @@ export function describeExecutionWaitConformance({
             executionId,
             fromVersionId: "ver_1",
             toVersionId: "ver_2",
+            parks: { kind: "leave_parked" },
           });
 
           return {
@@ -1871,6 +1856,7 @@ export function describeExecutionWaitConformance({
             executionId,
             fromVersionId: "ver_1",
             toVersionId: "ver_2",
+            parks: { kind: "leave_parked" },
           });
           if (!migrated) throw new Error("The migration was refused");
 
@@ -1949,6 +1935,7 @@ export function describeExecutionWaitConformance({
             executionId,
             fromVersionId: "ver_1",
             toVersionId: "ver_2",
+            parks: { kind: "leave_parked" },
           });
           if (!migrated) throw new Error("The migration was refused");
 

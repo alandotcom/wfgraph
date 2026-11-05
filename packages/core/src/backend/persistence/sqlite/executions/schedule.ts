@@ -165,6 +165,30 @@ export function resolveOpenParks(
     );
 }
 
+/**
+ * Moves one run's schedule row from `waiting` to `queued` at `now`, answering
+ * whether it moved, as the PostgreSQL backend's `requeueWaitingRun` does. A
+ * `leased` row is left for its release, which reads the wakes the caller's
+ * transaction wrote.
+ */
+export function requeueWaitingRun(
+  database: SqliteExecutor,
+  executionId: string,
+  now: Date
+) {
+  return database
+    .update(workflowExecutionSchedule)
+    .set({ state: "queued", wakeAt: now.getTime() })
+    .where(
+      and(
+        eq(workflowExecutionSchedule.executionId, executionId),
+        eq(workflowExecutionSchedule.state, "waiting")
+      )
+    )
+    .returning({ id: workflowExecutionSchedule.id })
+    .pipe(Effect.map((requeued) => requeued.length > 0));
+}
+
 const memoColumns = {
   stepId: workflowExecutionSteps.stepId,
   status: workflowExecutionSteps.status,
@@ -369,17 +393,14 @@ export function makeSqliteScheduleMethods(
           if (resolved.length === 0) {
             return { resolved: false, requeued: false };
           }
-          const requeued = yield* database
-            .update(workflowExecutionSchedule)
-            .set({ state: "queued", wakeAt: input.now.getTime() })
-            .where(
-              and(
-                eq(workflowExecutionSchedule.executionId, input.executionId),
-                eq(workflowExecutionSchedule.state, "waiting")
-              )
-            )
-            .returning({ id: workflowExecutionSchedule.id });
-          return { resolved: true, requeued: requeued.length > 0 };
+          return {
+            resolved: true,
+            requeued: yield* requeueWaitingRun(
+              database,
+              input.executionId,
+              input.now
+            ),
+          };
         })
       ),
 

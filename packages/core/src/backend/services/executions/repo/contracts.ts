@@ -161,6 +161,21 @@ export type ParkResolution = {
   requeued: boolean;
 };
 
+/**
+ * What a Migration's repin does to the parks it moved the run under, inside
+ * the repin's own transaction.
+ *
+ * - `leave_parked`: every park stays `waiting`, and the caller wakes each one
+ *   itself, as the Inngest runtime needs a signal sent to the parked body.
+ * - `requeue`: every park is resolved with a `migrate` wake, the way
+ *   `resolvePark` resolves one, and a `waiting` schedule row moves to `queued`
+ *   at `now`. A leased run's release reads the wakes instead. This is the
+ *   database executor's Migration producer.
+ */
+export type RepinParks =
+  | { kind: "leave_parked" }
+  | { kind: "requeue"; now: Date };
+
 /** One row of `workflow_executions`, as the Runs view and the engine see it. */
 export type WorkflowExecution = typeof workflowExecutions.$inferSelect;
 

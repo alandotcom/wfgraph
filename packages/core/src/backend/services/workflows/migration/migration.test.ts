@@ -1619,6 +1619,7 @@ describe("migrateExecutions", () => {
             fromVersionId: OLD_VERSION_ID,
             toVersionId: TARGET_VERSION_ID,
             expectedWaitStates: [{ id: "wait_row_1", resumeToken: "resume_1" }],
+            parks: { kind: "leave_parked" },
           },
         ]);
         assert.deepStrictEqual(seams.calls.auditEvents, [

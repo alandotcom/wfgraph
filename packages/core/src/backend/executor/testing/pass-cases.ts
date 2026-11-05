@@ -512,12 +512,7 @@ function describeCases(
             expectedWaitStates: [
               { id: wait.id, resumeToken: wait.resumeToken },
             ],
-          });
-          yield* repo.resolvePark({
-            executionId,
-            waitStateId: wait.id,
-            wake: { kind: "migrate" },
-            now: now(),
+            parks: { kind: "requeue", now: now() },
           });
           return yield* repo.listStepMemo(executionId);
         }),
@@ -610,12 +605,7 @@ function describeCases(
             expectedWaitStates: [
               { id: wait.id, resumeToken: wait.resumeToken },
             ],
-          });
-          yield* repo.resolvePark({
-            executionId,
-            waitStateId: wait.id,
-            wake: { kind: "migrate" },
-            now: now(),
+            parks: { kind: "requeue", now: now() },
           });
           return yield* repo.listStepMemo(executionId);
         }),
@@ -629,6 +619,86 @@ function describeCases(
       status: "failing",
       failures: 2,
     });
+  });
+
+  // A repin that leaves the parked row `waiting` lets an Event take the row
+  // before the next pass re-parks it. That pass loads the new version, finds
+  // the Wait's first preparation came from the old one and prepares it again.
+  // The re-park is refused because the row holds the Event's wake, and the
+  // Wait resumes from that wake under the new version, as the TLA+ Migration
+  // model's `ReachEventResumesAcrossAModeChange` state has it.
+  it("resumes from an Event wake written after a repin and before the re-park", async () => {
+    const harness = await startRun(
+      createSerializedWorkflowGraph({
+        nodes: [
+          lifecycleNode(),
+          waitNode("hold", onEvent("app/approved", "1h")),
+          actionNode("after_hold", "test/send"),
+        ],
+        edges: [edge("entry", "hold", "started"), edge("hold", "after_hold")],
+      })
+    );
+    await harness.publishSecondVersion(
+      createSerializedWorkflowGraph({
+        nodes: [
+          lifecycleNode(),
+          waitNode("hold", onEvent("app/approved", "1h")),
+          actionNode("after_migration", "test/send"),
+        ],
+        edges: [
+          edge("entry", "hold", "started"),
+          edge("hold", "after_migration"),
+        ],
+      })
+    );
+
+    expect(await harness.pass()).toMatchObject({
+      kind: "parked",
+      schedule: { state: "waiting" },
+    });
+
+    const wake = await harness.connection.run(
+      Effect.gen(function* () {
+        const repo = yield* ExecutionRepo;
+        const executionId = harness.executionId;
+        const [wait] = yield* repo.listActiveWaitStates(executionId);
+        if (!wait) throw new Error("No parked Wait to migrate");
+        const migrated = yield* repo.repinVersion({
+          executionId,
+          fromVersionId: "ver_1",
+          toVersionId: "ver_2",
+          expectedWaitStates: [{ id: wait.id, resumeToken: wait.resumeToken }],
+          parks: { kind: "leave_parked" },
+        });
+        const resolved = yield* repo.resolvePark({
+          executionId,
+          waitStateId: wait.id,
+          wake: {
+            kind: "resume",
+            eventName: "app/approved",
+            payload: { approvedBy: "dana" },
+            deliveryId: null,
+          },
+          now: now(),
+        });
+        return { migrated, resolved };
+      })
+    );
+    expect(wake).toEqual({
+      migrated: true,
+      resolved: { resolved: true, requeued: true },
+    });
+
+    expect(await harness.pass()).toEqual({ kind: "ended" });
+    const run = await readRun(harness);
+    expect(run.status).toBe("completed");
+    expect(run.logs.filter((log) => log.nodeId === "hold")).toMatchObject([
+      { status: "success", output: { payload: { approvedBy: "dana" } } },
+    ]);
+    expect(await logsOf(harness, "after_migration")).toMatchObject([
+      { status: "success" },
+    ]);
+    expect(await logsOf(harness, "after_hold")).toEqual([]);
   });
 
   it("refuses every write of a worker paused past its lease while a second worker completes the run", async () => {

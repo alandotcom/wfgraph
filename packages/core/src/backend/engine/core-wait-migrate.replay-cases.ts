@@ -349,6 +349,7 @@ export function defineWaitMigrateReplayCases(executor: ReplayExecutor): void {
   it("resumes from the arrival recorded on a row that left waiting", async () => {
     store.reparkAnswer = { ok: false, reason: "not_waiting" };
     store.waitState = {
+      wake: null,
       status: "resumed",
       arrival: {
         signalType: "wait-resume",
@@ -391,6 +392,7 @@ export function defineWaitMigrateReplayCases(executor: ReplayExecutor): void {
   it("keeps a recorded arrival when the target version changes the wait to delay mode", async () => {
     store.reparkAnswer = { ok: false, reason: "not_waiting" };
     store.waitState = {
+      wake: null,
       status: "resumed",
       arrival: {
         signalType: "wait-resume",
@@ -444,7 +446,7 @@ export function defineWaitMigrateReplayCases(executor: ReplayExecutor): void {
 
   it("takes the cancel path when the row was cancelled between two parks", async () => {
     store.reparkAnswer = { ok: false, reason: "not_waiting" };
-    store.waitState = { status: "cancelled", arrival: null };
+    store.waitState = { status: "cancelled", arrival: null, wake: null };
 
     const run = await runMigratedWait({
       executor,
@@ -473,7 +475,7 @@ export function defineWaitMigrateReplayCases(executor: ReplayExecutor): void {
   // Exit and halts its branch.
   it("resumes as an Exit when an Exit claim refused the re-park", async () => {
     store.reparkAnswer = { ok: false, reason: "not_waiting" };
-    store.waitState = { status: "waiting", arrival: null };
+    store.waitState = { status: "waiting", arrival: null, wake: null };
 
     const run = await runMigratedWait({
       executor,
@@ -521,7 +523,7 @@ export function defineWaitMigrateReplayCases(executor: ReplayExecutor): void {
 
   it("fails the node when the row that left waiting records no wake", async () => {
     store.reparkAnswer = { ok: false, reason: "not_waiting" };
-    store.waitState = { status: "timed_out", arrival: null };
+    store.waitState = { status: "timed_out", arrival: null, wake: null };
 
     const run = await runMigratedWait({
       executor,

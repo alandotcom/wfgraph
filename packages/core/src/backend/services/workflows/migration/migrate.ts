@@ -221,6 +221,8 @@ const repinAndSignal = Effect.fn("repinAndSignal")(function* (input: {
           id,
           resumeToken,
         })),
+        // `signalMigratedWaits` wakes each park once the repin commits.
+        parks: { kind: "leave_parked" },
       });
       if (!moved) {
         return { moved: false } as const;

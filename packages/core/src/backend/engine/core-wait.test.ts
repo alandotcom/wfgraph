@@ -88,6 +88,7 @@ describe("wait node - event mode", () => {
     "consumes a persisted arrival from a %s row before registration",
     async (status) => {
       store.waitState = {
+        wake: null,
         status,
         arrival: {
           signalType: "wait-resume",

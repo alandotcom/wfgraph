@@ -33,6 +33,7 @@ import { wfPostgres } from "#src/backend/persistence/postgres";
 import {
   connect,
   conformanceCipher,
+  publishSecondVersion,
 } from "#src/backend/persistence/conformance/support";
 
 const emptyGraph = createSerializedWorkflowGraph({ nodes: [], edges: [] });
@@ -726,6 +727,71 @@ describePostgres("PostgreSQL concurrency", () => {
       // release saw it and queued the run, or the producer found the run
       // waiting and queued it.
       expect(schedule?.state, `round ${round}`).toBe("queued");
+      expect(["queued", "waiting"]).toContain(released.schedule.state);
+    }
+  });
+
+  // The Migration's repin is a producer too: it writes a migrate wake on each
+  // park and re-queues a sleeping run. It locks the schedule row before the
+  // execution row, as the release does, so the release either reads the
+  // repin's wakes or commits `waiting` before the repin re-queues the run.
+  it("never leaves a run waiting when a repin's migrate wakes race its release", async () => {
+    const [releaser, migrator] = await openRacers(2);
+    await seedPublishedWorkflow(releaser);
+    await releaser.run(publishSecondVersion);
+    const now = new Date("2026-03-01T09:00:00.000Z");
+
+    for (let round = 0; round < 25; round += 1) {
+      const run = await leasedRunParkedTwice(releaser, now);
+      const classified = await migrator.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          return yield* executions.listWaitingStates(run.executionId);
+        })
+      );
+      const [released, moved] = await Promise.all([
+        releaser.run(
+          Effect.gen(function* () {
+            const executions = yield* ExecutionRepo;
+            return yield* executions
+              .fenced(run.fence)
+              .releasePass({ outcome: { kind: "parked" }, now });
+          })
+        ),
+        migrator.run(
+          Effect.gen(function* () {
+            const executions = yield* ExecutionRepo;
+            return yield* executions.repinVersion({
+              executionId: run.executionId,
+              fromVersionId: "ver_1",
+              toVersionId: "ver_2",
+              expectedWaitStates: classified,
+              parks: { kind: "requeue", now },
+            });
+          })
+        ),
+      ]);
+      const after = await releaser.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          return {
+            schedule: yield* executions.findSchedule(run.executionId),
+            parks: yield* Effect.forEach(classified, (wait) =>
+              executions.findPark(wait.id)
+            ),
+          };
+        })
+      );
+
+      // The release leaves the parks alone, so the repin always moves the
+      // run, and whichever committed first, its wakes reached the schedule
+      // row.
+      expect(moved, `round ${round}`).toBe(true);
+      expect(after.schedule?.state, `round ${round}`).toBe("queued");
+      expect(after.parks).toMatchObject([
+        { status: "resuming", wake: { kind: "migrate" } },
+        { status: "resuming", wake: { kind: "migrate" } },
+      ]);
       expect(["queued", "waiting"]).toContain(released.schedule.state);
     }
   });

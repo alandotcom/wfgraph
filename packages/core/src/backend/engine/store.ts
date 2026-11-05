@@ -19,6 +19,7 @@ import type {
 } from "@wfgraph/shared/lifecycle/execution-contracts";
 import { Effect } from "effect";
 import type { EngineFailure } from "#src/backend/engine/engine-failure";
+import type { WaitWake } from "#src/backend/engine/runtime";
 import type {
   DatabaseError,
   LeaseLost,
@@ -171,16 +172,21 @@ export type WaitStateStatus =
   | "cancelled";
 
 /**
- * A wait row as the engine reads it back after a re-park was refused.
+ * A wait row as the engine reads it back when a park finds the row already
+ * resolved, which is how a Wait learns of a wake that reached the row before
+ * the Wait parked on it.
  *
- * A run woken by a Migration is still `waiting` between that wake and its next
- * park, so a resume can claim the row in the meantime and send a signal nothing
- * is parked on. The claim's recorded arrival lets the next park read the wake it
- * missed instead of waiting forever.
+ * A Migration's repin can leave the row `waiting` until the Wait parks again
+ * under the new version, so a resume can resolve the row in that window. Each
+ * runtime records the resolution in its own place: under Inngest a resume
+ * claim records its `arrival` in the row's metadata, and under the database
+ * executor a producer records its `wake` in the row's `wake` column. `wake` is
+ * always null under Inngest.
  */
 export type WaitStateSnapshot = {
   status: WaitStateStatus;
   arrival: WaitArrival | null;
+  wake: WaitWake | null;
 };
 
 export type MarkWaitStateStatusInput = {
@@ -264,8 +270,9 @@ export type WorkflowStore = {
     input: ReparkWaitStateInput
   ): Effect.Effect<ReparkWaitStateOutcome, StoreFailure>;
   /**
-   * One wait row as it stands, or null when no row holds that id. Read after a
-   * refused re-park, to find out what moved the row.
+   * One wait row as it stands, with the wake or arrival it records, or null
+   * when no row holds that id. Read after each park is written or refused, to
+   * find a wake that reached the row before the Wait parked on it.
    */
   readWaitState(
     waitStateId: string
