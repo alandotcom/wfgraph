@@ -332,13 +332,22 @@ instead writes the wake onto the wait row and re-queues the execution, in one
 transaction:
 
 ```sql
+select state from workflow_execution_schedule
+ where execution_id = $executionId for update;            -- taken first, whatever the state holds
 update workflow_wait_states
    set wake = $wake, status = 'resuming'
  where id = $waitStateId and status = 'waiting';          -- conditional: one wake per park
 update workflow_execution_schedule
    set state = 'queued', wake_at = now()
- where execution_id = $executionId and state = 'waiting';  -- a leased run reads the row on its next pass
+ where execution_id = $executionId and state = 'waiting';  -- a leased run is re-queued by its release
 ```
+
+The unconditional lock on the first line is load-bearing. A conditional update
+alone takes no row lock when its predicate fails on a `leased` row, so a release
+reading the wait rows in the same window would miss the wake and write
+`waiting`. Locking the row first serialises the producer against the release
+below: the producer either commits before the release reads, or waits for the
+release to commit and then finds `waiting`.
 
 The producers are the ones that exist: `wakeWait` for an Event arrival or a
 manual resume, `signalParkedWaits` for `lifecycle-cancel` and `lifecycle-exit`,
