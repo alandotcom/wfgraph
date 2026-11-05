@@ -86,6 +86,7 @@ describe("wfWorker", () => {
     const persistence: WfGraphPersistence = {
       open: async () => ({
         repositories,
+        wakes: { kind: "poll", pollMs: 1_000 },
         description: { backend: "test" },
         close: () => Promise.resolve(),
       }),
@@ -214,6 +215,7 @@ describe("wfWorker", () => {
     const persistence: WfGraphPersistence = {
       open: async () => ({
         repositories,
+        wakes: { kind: "poll", pollMs: 1_000 },
         description: { backend: "test" },
         close: async () => {
           closed += 1;
@@ -273,6 +275,7 @@ describe("wfWorker", () => {
     const persistence: WfGraphPersistence = {
       open: async () => ({
         repositories,
+        wakes: { kind: "poll", pollMs: 1_000 },
         description: { backend: "test" },
         close: () => {
           closed += 1;

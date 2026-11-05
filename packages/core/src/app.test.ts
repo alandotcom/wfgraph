@@ -36,6 +36,7 @@ import { createInngestSurface } from "#src/backend/lib/inngest/client";
 import * as inngestClientModule from "#src/backend/lib/inngest/client";
 import { buildInngestFunctions } from "#src/backend/lib/inngest/functions";
 import { createWfGraphRuntime } from "#src/backend/runtime";
+import { createWorkerWake } from "#src/backend/executor/worker-wake";
 import { makePostgresRepositories } from "#src/backend/persistence/postgres-repositories";
 import { normalizeDatabaseConfig } from "#src/backend/lib/db/config";
 import * as dbModule from "#src/backend/lib/db/index";
@@ -375,6 +376,10 @@ describe("createWfGraphApp with host authentication", () => {
         database,
         createIntegrationCipher(BASE_OPTIONS.encryption)
       ),
+      wakes: {
+        worker: createWorkerWake(),
+        persistence: { kind: "poll", pollMs: 1_000 },
+      },
     });
     try {
       const app = createApiApp({

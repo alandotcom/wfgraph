@@ -36,33 +36,7 @@ import {
 } from "#src/backend/services/executions/repo";
 import { UNDATED_PARK_WAKE_AT } from "#src/backend/services/executions/repo/release-policy";
 import type { WorkflowRepo } from "#src/backend/services/workflows/repo";
-
-/**
- * Makes the worker loops it is handed to claim at once. A producer in the same
- * process calls `wake()` after committing a write that makes a run due, such as
- * a `resolvePark`, so the loop acts on it without waiting for its next poll. A
- * wake that lands while a loop is claiming makes it claim once more right after.
- */
-export type WorkerWake = {
-  wake: () => void;
-  /** Calls `listener` on every wake until the returned function is called. */
-  subscribe: (listener: () => void) => () => void;
-};
-
-export function createWorkerWake(): WorkerWake {
-  const listeners = new Set<() => void>();
-  return {
-    wake: () => {
-      for (const listener of listeners) listener();
-    },
-    subscribe: (listener) => {
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    },
-  };
-}
+import type { WorkerWake } from "#src/backend/executor/worker-wake";
 
 /**
  * The lease a claim takes. It is shorter than any platform's kill timeout, so a

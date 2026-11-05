@@ -50,6 +50,7 @@ import type {
 import type { WfGraphLogger } from "@wfgraph/shared/types/logger";
 import { closeInOrder, failAfterClose } from "#src/backend/lib/close-in-order";
 import { resolvePublicUrl } from "#src/backend/lib/http/public-url";
+import { createWorkerWake } from "#src/backend/executor/worker-wake";
 import type { WfGraphMcpOptions } from "#src/backend/agent/mcp-server";
 
 export type { EncryptionRuntimeConfig } from "#src/backend/services/integrations/cipher";
@@ -270,6 +271,7 @@ async function buildWfGraphApp(
       },
       agent: readAgentSettings(options.agent),
       repositories: persistence.repositories,
+      wakes: { worker: createWorkerWake(), persistence: persistence.wakes },
     });
 
     return await assembleWfGraphApp(options, {

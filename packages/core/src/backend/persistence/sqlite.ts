@@ -9,6 +9,13 @@ import { makeSqliteIntegrationRepo } from "#src/backend/persistence/sqlite/integ
 import { makeSqliteWorkflowRepo } from "#src/backend/persistence/sqlite/workflows";
 import { makeSqliteExecutionRepo } from "#src/backend/persistence/sqlite/executions/index";
 
+/**
+ * How long a loop on SQLite sleeps between claims when nothing wakes it. A
+ * claim is a short local write, so the loop polls more often than on
+ * PostgreSQL.
+ */
+const SQLITE_POLL_MS = 250;
+
 export type SqlitePersistenceOptions = {
   /** A filesystem path. Omit for an in-memory database. */
   filename?: string | undefined;
@@ -43,6 +50,8 @@ export function wfSqlite(
           Layer.succeed(WorkflowRepo, makeSqliteWorkflowRepo(database)),
           Layer.succeed(ExecutionRepo, makeSqliteExecutionRepo(database))
         ),
+        // Every loop runs in the one process that writes the file.
+        wakes: { kind: "poll", pollMs: SQLITE_POLL_MS },
         description: { backend: "sqlite", filename },
         close: database.close,
       };

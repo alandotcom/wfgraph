@@ -31,6 +31,7 @@ import type { WfGraphPersistence } from "#src/backend/persistence/types";
 import type { WfGraphLogger } from "@wfgraph/shared/types/logger";
 import { runWithResponseClose } from "#src/backend/lib/close-in-order";
 import { resolvePublicUrl } from "#src/backend/lib/http/public-url";
+import { createWorkerWake } from "#src/backend/executor/worker-wake";
 import type { WfGraphMcpOptions } from "#src/backend/agent/mcp-server";
 
 export type { WfGraphMcpOptions } from "#src/backend/agent/mcp-server";
@@ -138,6 +139,9 @@ export function wfWorker<Env>(
           },
           agent: readAgentSettings(config.agent),
           repositories: persistence.repositories,
+          // No worker loop runs in a request, so the in-process wake reaches
+          // no one.
+          wakes: { worker: createWorkerWake(), persistence: persistence.wakes },
         });
         const functions = await buildInngestFunctions(inngest.client, runtime);
         const app = new Hono();

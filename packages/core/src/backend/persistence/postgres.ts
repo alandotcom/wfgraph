@@ -12,6 +12,10 @@ import {
 } from "#src/backend/lib/db/migrations";
 import type { WfGraphPersistence } from "#src/backend/persistence/types";
 import { makePostgresRepositories } from "#src/backend/persistence/postgres-repositories";
+import {
+  createPostgresRunWakes,
+  POSTGRES_POLL_MS,
+} from "#src/backend/persistence/postgres-run-wakes";
 
 export type PostgresPersistenceOptions = DatabaseRuntimeConfig & {
   migrations?: MigrationsOptions | undefined;
@@ -34,13 +38,21 @@ export function wfPostgres(
           });
         }
 
+        const broadcast = createPostgresRunWakes({
+          client: database.client,
+          schema: database.schema,
+        });
         return {
           repositories: makePostgresRepositories(database, cipher),
+          wakes: { kind: "notify", pollMs: POSTGRES_POLL_MS, broadcast },
           description: {
             backend: "postgres",
             ...describeConnection(database.client, database.schema),
           },
-          close: database.close,
+          close: async () => {
+            await broadcast.close();
+            await database.close();
+          },
         };
       } catch (error) {
         await database.close();

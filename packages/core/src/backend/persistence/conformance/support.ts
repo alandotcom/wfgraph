@@ -17,7 +17,10 @@ import {
 } from "#src/backend/services/integrations/cipher";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
-import type { WfGraphPersistenceInstance } from "#src/backend/persistence/types";
+import type {
+  WfGraphPersistenceInstance,
+  WfGraphRunWakes,
+} from "#src/backend/persistence/types";
 import type { WfGraphRepositories } from "#src/backend/runtime";
 
 export const emptyGraph = createSerializedWorkflowGraph({
@@ -36,6 +39,8 @@ export type ConformanceConnection = {
     WfGraphRepositories,
     never
   >["runPromise"];
+  /** How the backend wakes worker loops, as the instance supplied it. */
+  readonly wakes: WfGraphRunWakes;
   readonly close: () => Promise<void>;
 };
 
@@ -68,6 +73,7 @@ export function connect(
 
   return {
     run: runtime.runPromise.bind(runtime),
+    wakes: instance.wakes,
     close: async () => {
       await runtime.dispose();
       await instance.close();
@@ -107,6 +113,7 @@ export function usePersistenceRegistry(
         let closed = false;
         const registered: ConformanceConnection = {
           run: connection.run,
+          wakes: connection.wakes,
           close: async () => {
             if (closed) {
               return;

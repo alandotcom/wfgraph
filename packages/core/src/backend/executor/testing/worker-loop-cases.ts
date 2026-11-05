@@ -33,10 +33,10 @@ import {
 } from "#src/backend/executor/testing/run-fixtures";
 import { measureWakeTimings } from "#src/backend/executor/testing/wake-timing";
 import {
-  createWorkerWake,
   runWorkerLoop,
   type WorkerLoopOptions,
 } from "#src/backend/executor/worker-loop";
+import { createWorkerWake } from "#src/backend/executor/worker-wake";
 import {
   type ConformanceConnection,
   usePersistenceRegistry,

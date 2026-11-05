@@ -310,6 +310,20 @@ export type ScheduleRepoMethods = {
     now: Date;
   }) => Effect.Effect<ParkResolution, DatabaseError>;
   /**
+   * Take one run's schedule row back from whichever pass holds it, answering
+   * whether the run had a row.
+   *
+   * The row loses its owner token, lease, worker and running step and becomes
+   * `queued`, due at `now`, with its failure count unchanged. A pass that held
+   * the lease has its next fenced write refused with `LeaseLost`. The next
+   * claim's pass finds the run as it now stands, and drops the row of a run
+   * that has ended.
+   */
+  readonly revokeLease: (input: {
+    executionId: string;
+    now: Date;
+  }) => Effect.Effect<boolean, DatabaseError>;
+  /**
    * Every memo row of one run's schedule row, which a pass loads before it
    * replays. A run with no schedule row has none.
    */
@@ -616,6 +630,23 @@ export function makeScheduleMethods(
           };
         })
       ),
+
+    revokeLease: (input) =>
+      database.query(async (db) => {
+        const revoked = await db
+          .update(workflowExecutionSchedule)
+          .set({
+            state: "queued",
+            wakeAt: input.now,
+            ownerToken: null,
+            leaseExpiresAt: null,
+            workerId: null,
+            runningStepId: null,
+          })
+          .where(eq(workflowExecutionSchedule.executionId, input.executionId))
+          .returning({ id: workflowExecutionSchedule.id });
+        return revoked.length > 0;
+      }),
 
     listStepMemo: (executionId) =>
       database.query(async (db) => {

@@ -25,6 +25,11 @@ import type { ExtensionSet } from "#src/backend/extensions/extension-set";
 import type { InngestSurface } from "#src/backend/lib/inngest/client";
 import { IntegrationRepo } from "#src/backend/services/integrations/repo";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
+import {
+  ExecutionDriver,
+  type ExecutionDriverWakes,
+  makeExecutionDriverLayer,
+} from "#src/backend/services/executions/driver";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import {
   makeAppContextLayer,
@@ -53,6 +58,7 @@ export type WfGraphServices =
   | IntegrationRepo
   | WorkflowRepo
   | ExecutionRepo
+  | ExecutionDriver
   | InngestClient;
 
 /** The storage-facing services supplied by one persistence backend. */
@@ -75,6 +81,11 @@ export type WfGraphRuntimeParts = {
   agent: AgentSettings;
   /** One backend's complete implementation of the repository contracts. */
   repositories: Layer.Layer<WfGraphRepositories>;
+  /**
+   * Who `ExecutionDriver` tells that a run fell due: the worker loop in this
+   * process, and through the backend, loops in others.
+   */
+  wakes: ExecutionDriverWakes;
 };
 
 // A persistence backend composes the repository implementations. The runtime
@@ -95,7 +106,11 @@ function buildWfGraphLayer(
         ? makeBuiltInAgentRunner(parts.agent)
         : disabledAgentRunner
     ),
-    parts.repositories,
+    // The driver writes through the backend's `ExecutionRepo`, and the
+    // repositories it was built on are offered to the services beside it.
+    makeExecutionDriverLayer(parts.wakes).pipe(
+      Layer.provideMerge(parts.repositories)
+    ),
     makeInngestClientLayer(parts.inngest.client)
   );
 }

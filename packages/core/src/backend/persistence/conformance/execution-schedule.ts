@@ -996,6 +996,60 @@ export function describeExecutionScheduleConformance({
       expect(result.again._tag).toBe("LeaseLost");
     });
 
+    it("revokes a pass's lease, queueing the row due now and keeping its step memo", async () => {
+      const connection = await seeded(await openConnection());
+      const result = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const executionId = yield* scheduledRun(T0);
+          const { fence } = yield* claimRun(executionId, T0);
+          const pass = executions.fenced(fence);
+          yield* pass.renewLease({
+            leaseExpiresAt: at(LEASE_MS * 2),
+            runningStepId: "step_2",
+          });
+          yield* pass.writeStepMemo({
+            stepId: "step_1",
+            value: "sent",
+            leaseExpiresAt: at(LEASE_MS * 2),
+          });
+          const revoked = yield* executions.revokeLease({
+            executionId,
+            now: at(1_000),
+          });
+          return {
+            revoked,
+            staleWrite: yield* refusalOf(
+              pass.writeStepMemo({
+                stepId: "step_2",
+                value: "stale",
+                leaseExpiresAt: at(LEASE_MS * 3),
+              })
+            ),
+            schedule: yield* executions.findSchedule(executionId),
+            memo: yield* executions.listStepMemo(executionId),
+            unscheduled: yield* executions.revokeLease({
+              executionId: yield* openRun,
+              now: at(1_000),
+            }),
+          };
+        })
+      );
+
+      expect(result.revoked).toBe(true);
+      expect(result.staleWrite).toBe("LeaseLost");
+      expect(result.schedule).toMatchObject({
+        state: "queued",
+        wakeAt: at(1_000),
+        ownerToken: null,
+        leaseExpiresAt: null,
+        workerId: null,
+        runningStepId: null,
+      });
+      expect(result.memo.map((entry) => entry.stepId)).toEqual(["step_1"]);
+      expect(result.unscheduled).toBe(false);
+    });
+
     // A count kept for the whole run would hand each later step the retries
     // its predecessors spent.
     it("counts each step's failures on its own memo row, so a step that failed three times leaves the next one four retries", async () => {

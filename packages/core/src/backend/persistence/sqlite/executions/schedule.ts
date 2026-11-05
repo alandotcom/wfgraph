@@ -404,6 +404,23 @@ export function makeSqliteScheduleMethods(
         })
       ),
 
+    revokeLease: (input) =>
+      store.write((database) =>
+        database
+          .update(workflowExecutionSchedule)
+          .set({
+            state: "queued",
+            wakeAt: input.now.getTime(),
+            ownerToken: null,
+            leaseExpiresAt: null,
+            workerId: null,
+            runningStepId: null,
+          })
+          .where(eq(workflowExecutionSchedule.executionId, input.executionId))
+          .returning({ id: workflowExecutionSchedule.id })
+          .pipe(Effect.map((rows) => rows.length > 0))
+      ),
+
     listStepMemo: (executionId) =>
       store.read((database) =>
         database

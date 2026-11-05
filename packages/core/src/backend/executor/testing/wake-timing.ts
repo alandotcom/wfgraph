@@ -31,11 +31,11 @@ import {
   startScheduledRun,
   waitNode,
 } from "#src/backend/executor/testing/run-fixtures";
+import { runWorkerLoop } from "#src/backend/executor/worker-loop";
 import {
   createWorkerWake,
-  runWorkerLoop,
   type WorkerWake,
-} from "#src/backend/executor/worker-loop";
+} from "#src/backend/executor/worker-wake";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import type { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import type { WfGraphPersistenceInstance } from "#src/backend/persistence/types";

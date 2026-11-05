@@ -32,6 +32,7 @@ import { IntegrationRepo } from "#src/backend/services/integrations/repo";
 import { keyBy } from "es-toolkit/array";
 import { mapValues } from "es-toolkit/object";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
+import { ExecutionDriver } from "#src/backend/services/executions/driver";
 import {
   buildStoreWrites,
   PASS_WRITE_NAMES,
@@ -391,6 +392,7 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
   findSchedule: refuse("findSchedule"),
   claimDue: refuse("claimDue"),
   resolvePark: refuse("resolvePark"),
+  revokeLease: refuse("revokeLease"),
   listStepMemo: refuse("listStepMemo"),
   // `fenced` answers a set of writes, each of which dies when called, the way
   // every other method here does.
@@ -458,6 +460,21 @@ export function stubInngestClient(
   });
 }
 
+const executionDriverStubs: ExecutionDriver["Service"] = {
+  enqueueRun: refuse("enqueueRun"),
+  resolvePark: refuse("resolvePark"),
+  stopRun: refuse("stopRun"),
+};
+
+export function stubExecutionDriver(
+  overrides: Partial<ExecutionDriver["Service"]> = {}
+): Layer.Layer<ExecutionDriver> {
+  return Layer.succeed(ExecutionDriver, {
+    ...executionDriverStubs,
+    ...overrides,
+  });
+}
+
 /**
  * A whole `WfGraphRuntime`, for a test standing up something the app builds from
  * its own.
@@ -477,6 +494,7 @@ export function stubWfGraphRuntime(
     executionRepo?: Partial<ExecutionRepo["Service"]> | undefined;
     integrationRepo?: Partial<IntegrationRepo["Service"]> | undefined;
     inngestClient?: Partial<InngestClient["Service"]> | undefined;
+    executionDriver?: Partial<ExecutionDriver["Service"]> | undefined;
     /** The build agent is off unless a test turns it on. */
     agent?: AgentSettings | undefined;
     /** Stable host URLs. OAuth is off in a test unless it supplies a public URL. */
@@ -497,7 +515,8 @@ export function stubWfGraphRuntime(
       stubIntegrationRepo(overrides.integrationRepo),
       makeAgentConfigLayer(overrides.agent ?? { enabled: false }),
       makeAgentRunnerLayer(disabledAgentRunner),
-      stubInngestClient(overrides.inngestClient)
+      stubInngestClient(overrides.inngestClient),
+      stubExecutionDriver(overrides.executionDriver)
     )
   );
 }
