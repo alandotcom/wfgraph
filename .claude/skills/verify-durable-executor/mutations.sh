@@ -68,7 +68,8 @@ Arrivals|offer-never-recorded|offered' = [offered EXCEPT ![pc[w][2]] = @ + 1]|of
 Handler|no-idempotency-key|SendCarriesAKey == TRUE|SendCarriesAKey == FALSE|WriteAppliedOnce
 Handler|read-not-memoized|ReadIsMemoized == TRUE|ReadIsMemoized == FALSE|AppliedWriteMatchesTheOutput
 Handler|refusal-thrown|RefusalIsAValue == TRUE|RefusalIsAValue == FALSE|RefusalFailsTheNodeOnce
-Handler|no-retries|/\ attempt + 1 >= MaxAttempts|/\ attempt + 1 >= 1|FailedOnlyOnRefusalOrSpentRetries
+Handler|no-retries|FailuresOf(FailingStep(w)) + 1 >= MaxAttempts|FailuresOf(FailingStep(w)) + 1 >= 1|FailedOnlyOnRefusalOrSpentRetries
+Handler|attempts-shared-across-steps|AttemptsArePerStep == TRUE|AttemptsArePerStep == FALSE|FailedOnlyOnRefusalOrSpentRetries
 Handler|success-never-ends-the-node|/\ CASE memoSend = "ok" ->|/\ CASE FALSE ->|NodeEnds
 Handler|store-write-not-fenced|StoreWriteIsFenced == TRUE|StoreWriteIsFenced == FALSE|NodeOutcomeIsFinal FailedOnlyOnRefusalOrSpentRetries
 Handler|log-id-random|LogIdIsTheStepId == TRUE|LogIdIsTheStepId == FALSE|OneLogRowPerNode

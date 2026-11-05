@@ -25,11 +25,12 @@ EXTENDS Naturals
 CONSTANTS Workers, MaxAttempts, MaxFaults
 
 Values == {"x", "y"}
+Steps == {"read", "send"}
 
 VARIABLES
   sched,        \* the run's schedule row: "queued" | "leased" | "gone"
   holder,       \* owner_token, 0 for none
-  attempt,      \* the attempt counter, saturating past MaxAttempts
+  attempt,      \* failures and expired leases of the whole run, saturating past MaxAttempts
   faults,
   pc,           \* each worker: "idle" | "open" | "openMemo" | "read" | "readMemo" | "send"
                 \*   | "sendMemo" | "close" | "closeMemo" | "release"
@@ -38,6 +39,7 @@ VARIABLES
   seenSend,     \* each worker: the send memo its pass loaded: "none" | "ok" | "refused"
   seenClose,    \* each worker: whether its pass loaded the log-close memo
   readVal,      \* each worker: the value this pass read
+  readOut,      \* each worker: whether this pass's read step "ok" or "threw"
   sendOut,      \* each worker: what this pass's send came back with: "ok" | "refused" | "threw"
   memoOpen,     \* the log-open step's memo row exists
   memoRead,     \* the read step's memo row: "none" or the value
@@ -53,10 +55,10 @@ VARIABLES
   refusalRetried, \* a refused send was retried as if it were a transient error
   sentAfterRefusal, \* the lease holder sent again after a refusal was recorded
   outcomeChanged, \* the node's outcome was rewritten after it ended
-  failures      \* retriable failures and expired leases
+  failures      \* each step: its retriable failures and the expired leases it was running under
 
 vars == <<sched, holder, attempt, faults, pc, seenOpen, seenRead, seenSend, seenClose,
-          readVal, sendOut, memoOpen, memoRead, memoSend, memoClose, logRows, openRows,
+          readVal, readOut, sendOut, memoOpen, memoRead, memoSend, memoClose, logRows, openRows,
           logCloses, node, applied, applies, output, refusalRetried, sentAfterRefusal,
           outcomeChanged, failures>>
 
@@ -71,6 +73,7 @@ CloseIsConditional == TRUE                   \* log-close updates only a row sti
 SendCarriesAKey == TRUE                      \* callExternal passes an idempotency key
 ReadIsMemoized == TRUE                       \* the handler wraps the read in step.run
 RefusalIsAValue == TRUE                      \* a StepFailure is stored, not thrown
+AttemptsArePerStep == TRUE                   \* each step's memo row counts that step's own failures
 
 \* A store write this worker may commit: the lease holder's, or any worker's
 \* when store writes are not fenced.
@@ -85,10 +88,11 @@ Init ==
   /\ memoOpen = FALSE /\ memoRead = "none" /\ memoSend = "none" /\ memoClose = FALSE
   /\ logRows = 0 /\ openRows = 0 /\ logCloses = 0 /\ node = "running"
   /\ applied = "none" /\ applies = 0 /\ output = "none" /\ refusalRetried = FALSE
-  /\ sentAfterRefusal = FALSE /\ outcomeChanged = FALSE /\ failures = 0
+  /\ sentAfterRefusal = FALSE /\ outcomeChanged = FALSE
+  /\ failures = [st \in Steps |-> 0] /\ readOut = [w \in Workers |-> "ok"]
 
 seenVars == <<seenOpen, seenRead, seenSend, seenClose>>
-workerVars == <<pc, seenVars, readVal, sendOut>>
+workerVars == <<pc, seenVars, readVal, readOut, sendOut>>
 memoVars == <<memoOpen, memoRead, memoSend, memoClose>>
 logVars == <<logRows, openRows, logCloses>>
 nodeVars == <<node, output, refusalRetried, outcomeChanged, failures>>
@@ -106,8 +110,9 @@ Claim(w) ==
   /\ seenRead' = [seenRead EXCEPT ![w] = IF ReadIsMemoized THEN memoRead ELSE "none"]
   /\ seenSend' = [seenSend EXCEPT ![w] = memoSend]
   /\ seenClose' = [seenClose EXCEPT ![w] = memoClose]
+  /\ readOut' = [readOut EXCEPT ![w] = "ok"] /\ sendOut' = [sendOut EXCEPT ![w] = "ok"]
   /\ Go(w, "open")
-  /\ UNCHANGED <<attempt, faults, readVal, sendOut, memoVars, logVars, nodeVars, vendorVars>>
+  /\ UNCHANGED <<attempt, faults, readVal, memoVars, logVars, nodeVars, vendorVars>>
 
 \* The log-open step: a memo hit skips it; otherwise insert the node's log row.
 Open(w) ==
@@ -121,22 +126,27 @@ Open(w) ==
                  THEN UNCHANGED logVars
                  ELSE /\ logRows' = Sat2(logRows + 1) /\ openRows' = Sat2(openRows + 1)
                       /\ UNCHANGED logCloses
-  /\ UNCHANGED <<leaseVars, seenVars, readVal, sendOut, memoVars, nodeVars, vendorVars>>
+  /\ UNCHANGED <<leaseVars, seenVars, readVal, readOut, sendOut, memoVars, nodeVars, vendorVars>>
 
 OpenMemo(w) ==
   /\ pc[w] = "openMemo"
   /\ IF LeaseHeldBy(w)
        THEN memoOpen' = TRUE /\ Go(w, "read")
        ELSE Go(w, "idle") /\ UNCHANGED memoOpen
-  /\ UNCHANGED <<leaseVars, seenVars, readVal, sendOut, memoRead, memoSend, memoClose,
+  /\ UNCHANGED <<leaseVars, seenVars, readVal, readOut, sendOut, memoRead, memoSend, memoClose,
                  logVars, nodeVars, vendorVars>>
 
-\* The read step: a memo hit returns the recorded value; otherwise ask vendor A.
+\* The read step: a memo hit returns the recorded value; otherwise ask vendor A,
+\* which may answer either value or throw a retriable error that ends the pass.
 Read(w) ==
   /\ pc[w] = "read"
   /\ IF seenRead[w] # "none"
        THEN /\ readVal' = [readVal EXCEPT ![w] = seenRead[w]] /\ Go(w, "send")
-       ELSE \E v \in Values : readVal' = [readVal EXCEPT ![w] = v] /\ Go(w, "readMemo")
+            /\ UNCHANGED readOut
+       ELSE \/ \E v \in Values : /\ readVal' = [readVal EXCEPT ![w] = v] /\ Go(w, "readMemo")
+                                 /\ UNCHANGED readOut
+            \/ /\ readOut' = [readOut EXCEPT ![w] = "threw"] /\ Go(w, "release")
+               /\ UNCHANGED readVal
   /\ UNCHANGED <<leaseVars, seenVars, sendOut, memoVars, logVars, nodeVars, vendorVars>>
 
 WriteMemo(old, new) == IF old = "none" THEN new ELSE old
@@ -148,7 +158,7 @@ ReadMemo(w) ==
        ELSE IF ~ReadIsMemoized /\ LeaseHeldBy(w)
        THEN /\ Go(w, "send") /\ UNCHANGED memoRead
        ELSE /\ Go(w, "idle") /\ UNCHANGED memoRead
-  /\ UNCHANGED <<leaseVars, seenVars, readVal, sendOut, memoOpen, memoSend, memoClose,
+  /\ UNCHANGED <<leaseVars, seenVars, readVal, readOut, sendOut, memoOpen, memoSend, memoClose,
                  logVars, nodeVars, vendorVars>>
 
 \* The send step: a memo hit returns the recorded outcome; otherwise call vendor B.
@@ -165,14 +175,14 @@ Send(w) ==
                         /\ applies' = IF applied = "none" \/ ~SendCarriesAKey THEN applies + 1 ELSE applies
                    ELSE UNCHANGED <<applied, applies>>
               /\ Go(w, IF out = "threw" \/ (out = "refused" /\ ~RefusalIsAValue) THEN "release" ELSE "sendMemo")
-  /\ UNCHANGED <<leaseVars, seenVars, readVal, memoVars, logVars, nodeVars>>
+  /\ UNCHANGED <<leaseVars, seenVars, readVal, readOut, memoVars, logVars, nodeVars>>
 
 SendMemo(w) ==
   /\ pc[w] = "sendMemo"
   /\ IF LeaseHeldBy(w)
        THEN /\ memoSend' = WriteMemo(memoSend, sendOut[w]) /\ Go(w, "close")
        ELSE /\ Go(w, "idle") /\ UNCHANGED memoSend
-  /\ UNCHANGED <<leaseVars, seenVars, readVal, sendOut, memoOpen, memoRead, memoClose,
+  /\ UNCHANGED <<leaseVars, seenVars, readVal, readOut, sendOut, memoOpen, memoRead, memoClose,
                  logVars, nodeVars, vendorVars>>
 
 \* The log-close step: a memo hit skips it; otherwise close the log row.
@@ -187,21 +197,34 @@ Close(w) ==
                  THEN UNCHANGED <<openRows, logCloses>>
                  ELSE /\ openRows' = IF openRows > 0 THEN openRows - 1 ELSE 0
                       /\ logCloses' = Sat2(logCloses + 1)
-  /\ UNCHANGED <<leaseVars, seenVars, readVal, sendOut, memoVars, nodeVars, vendorVars>>
+  /\ UNCHANGED <<leaseVars, seenVars, readVal, readOut, sendOut, memoVars, nodeVars, vendorVars>>
 
 CloseMemo(w) ==
   /\ pc[w] = "closeMemo"
   /\ IF LeaseHeldBy(w)
        THEN memoClose' = TRUE /\ Go(w, "release")
        ELSE Go(w, "idle") /\ UNCHANGED memoClose
-  /\ UNCHANGED <<leaseVars, seenVars, readVal, sendOut, memoOpen, memoRead, memoSend,
+  /\ UNCHANGED <<leaseVars, seenVars, readVal, readOut, sendOut, memoOpen, memoRead, memoSend,
                  logVars, nodeVars, vendorVars>>
 
 \* The node's output is the value the send carried, as the memo records it.
 RecordedBy(w) == IF ReadIsMemoized THEN memoRead ELSE readVal[w]
 
 \* This pass's send failed, and the node has no retries left.
-RetriesSpent(w) == sendOut[w] \in {"threw", "refused"} /\ attempt + 1 >= MaxAttempts
+\* The step this pass's failure belongs to, "none" when no step failed.
+FailingStep(w) ==
+  IF readOut[w] = "threw" THEN "read"
+  ELSE IF sendOut[w] \in {"threw", "refused"} THEN "send"
+  ELSE "none"
+
+\* The failures counted against a step: its own, or the whole run's when
+\* attempts are counted per run.
+FailuresOf(st) == IF AttemptsArePerStep THEN failures[st] ELSE attempt
+
+\* This pass's step failed, and that step has no retries left.
+RetriesSpent(w) == FailingStep(w) # "none" /\ FailuresOf(FailingStep(w)) + 1 >= MaxAttempts
+
+CountFailure(st) == [failures EXCEPT ![st] = Sat(@ + 1)]
 
 \* The outcome a pass ending here writes for the node, "none" when it writes none.
 Outcome(w) ==
@@ -235,38 +258,45 @@ Release(w) ==
                       /\ node' = "failed" /\ sched' = "gone"
                       /\ UNCHANGED <<attempt, output, failures, refusalRetried>>
                  [] RetriesSpent(w) ->
-                      /\ node' = "failed" /\ sched' = "gone" /\ failures' = Sat(failures + 1)
+                      /\ node' = "failed" /\ sched' = "gone" /\ failures' = CountFailure(FailingStep(w))
                       /\ refusalRetried' = (refusalRetried \/ sendOut[w] = "refused")
                       /\ UNCHANGED <<attempt, output>>
-                 [] sendOut[w] \in {"threw", "refused"} ->
+                 [] FailingStep(w) # "none" ->
                       /\ sched' = "queued" /\ attempt' = Sat(attempt + 1)
-                      /\ failures' = Sat(failures + 1)
+                      /\ failures' = CountFailure(FailingStep(w))
                       /\ refusalRetried' = (refusalRetried \/ sendOut[w] = "refused")
                       /\ UNCHANGED <<node, output>>
                  [] OTHER ->
                       /\ sched' = "queued" /\ UNCHANGED <<attempt, node, output, failures, refusalRetried>>
-  /\ UNCHANGED <<faults, seenVars, readVal, sendOut, memoVars, logVars, vendorVars>>
+  /\ UNCHANGED <<faults, seenVars, readVal, readOut, sendOut, memoVars, logVars, vendorVars>>
 
 -----------------------------------------------------------------------------
 
+\* The step a worker is running, as the lease records it, "none" between steps.
+StepOf(w) ==
+  IF pc[w] \in {"read", "readMemo"} THEN "read"
+  ELSE IF pc[w] \in {"send", "sendMemo"} THEN "send"
+  ELSE "none"
+
+\* An expired lease counts against the step its holder was running.
 LeaseExpires ==
   /\ sched = "leased" /\ faults < MaxFaults
   /\ sched' = "queued" /\ holder' = 0 /\ attempt' = Sat(attempt + 1)
-  /\ faults' = faults + 1 /\ failures' = Sat(failures + 1)
+  /\ faults' = faults + 1
+  /\ failures' = IF StepOf(holder) = "none" THEN failures ELSE CountFailure(StepOf(holder))
   /\ UNCHANGED <<workerVars, memoVars, logVars, node, output, refusalRetried,
                  outcomeChanged, vendorVars>>
 
 Crash(w) ==
   /\ pc[w] # "idle" /\ faults < MaxFaults
   /\ Go(w, "idle") /\ faults' = faults + 1
-  /\ UNCHANGED <<sched, holder, attempt, seenVars, readVal, sendOut, memoVars, logVars,
+  /\ UNCHANGED <<sched, holder, attempt, seenVars, readVal, readOut, sendOut, memoVars, logVars,
                  nodeVars, vendorVars>>
 
 SweepDeadLease ==
   /\ sched = "leased" /\ holder # 0 /\ pc[holder] = "idle"
   /\ sched' = "queued" /\ holder' = 0 /\ attempt' = Sat(attempt + 1)
-  /\ failures' = Sat(failures + 1)
-  /\ UNCHANGED <<faults, workerVars, memoVars, logVars, node, output, refusalRetried,
+  /\ UNCHANGED <<faults, failures, workerVars, memoVars, logVars, node, output, refusalRetried,
                  outcomeChanged, vendorVars>>
 
 Ended == sched = "gone" /\ \A w \in Workers : pc[w] = "idle" /\ UNCHANGED vars
@@ -299,8 +329,10 @@ AppliedWriteMatchesTheOutput == (node = "succeeded" /\ applied # "none") => appl
 \* idempotency key absorbs.
 RefusalFailsTheNodeOnce == ~refusalRetried /\ ~sentAfterRefusal
 
-\* The node fails only on a refusal or after its retries were spent on failures.
-FailedOnlyOnRefusalOrSpentRetries == node = "failed" => (memoSend = "refused" \/ failures >= MaxAttempts)
+\* The node fails only on a refusal, or after one of its steps spent that
+\* step's own retries.
+FailedOnlyOnRefusalOrSpentRetries ==
+  node = "failed" => (memoSend = "refused" \/ \E st \in Steps : failures[st] >= MaxAttempts)
 
 \* The node has one log row, however many passes open it.
 OneLogRowPerNode == logRows <= 1
@@ -316,7 +348,8 @@ NodeEnds == <>(node # "running")
 
 ReachSentTwice      == applies = 1 /\ \E w \in Workers : pc[w] = "send" /\ seenSend[w] = "none" /\ memoSend = "ok"
 ReachRefused        == node = "failed" /\ memoSend = "refused"
-ReachRetriedThenOk  == node = "succeeded" /\ failures >= 1
+ReachRetriedThenOk  == node = "succeeded" /\ failures["send"] >= 1
+ReachReadRetried    == node = "succeeded" /\ failures["read"] >= 1 /\ memoRead # "none"
 ReachStaleRead      == \E w \in Workers : pc[w] = "readMemo" /\ holder # w /\ memoRead # "none"
 ReachOpenedTwice    == logRows = 1 /\ ~memoOpen /\ \E w \in Workers : pc[w] = "open" /\ LeaseHeldBy(w)
 ReachClosedTwice    == logCloses = 1 /\ ~memoClose /\ \E w \in Workers : pc[w] = "close" /\ LeaseHeldBy(w)
