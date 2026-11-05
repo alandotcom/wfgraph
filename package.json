@@ -29,6 +29,7 @@
     "db:generate": "pnpm exec drizzle-kit generate --config packages/core/drizzle.config.ts",
     "db:generate:sqlite": "pnpm exec drizzle-kit generate --config packages/core/drizzle-sqlite.config.ts && tsx scripts/validate-sqlite-migrations.ts",
     "db:migrate": "tsx scripts/migrate.ts",
+    "executor:timing": "tsx scripts/executor-timing.ts",
     "release:version": "changeset version && pnpm install --lockfile-only",
     "release:publish": "pnpm run build && changeset publish"
   },

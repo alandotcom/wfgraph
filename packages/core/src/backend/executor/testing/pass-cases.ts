@@ -15,18 +15,26 @@
 import { describe, expect, it } from "vitest";
 import { Effect, Schema } from "effect";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
-import type {
-  SerializedWorkflowGraph,
-  WorkflowNode,
-} from "@wfgraph/shared/graph/types";
-import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
-import type { JsonObject } from "@wfgraph/shared/types/json";
+import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
 import { defineAction } from "#src/backend/extensions/define-action";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
 import { DatabaseError } from "#src/backend/lib/effect/database";
 import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
 import { type PassResult, runPass } from "#src/backend/executor/pass";
+import {
+  actionNode,
+  CANCEL_EVENT,
+  CANCELABLE,
+  createGate,
+  delay,
+  edge,
+  lifecycleNode,
+  onEvent,
+  publishWorkflow,
+  startScheduledRun,
+  waitNode,
+} from "#src/backend/executor/testing/run-fixtures";
 import {
   type ConformanceConnection,
   usePersistenceRegistry,
@@ -39,30 +47,7 @@ import {
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 
 const LEASE_MS = 60_000;
-const START_EVENT = "app/appointment.created";
-const CANCEL_EVENT = "app/appointment.canceled";
 const ENTITY = "appointment_1";
-
-/**
- * A step a case holds open: the first call waits until the case lets it go,
- * and every later call returns at once.
- */
-function createGate() {
-  const entered = Promise.withResolvers<void>();
-  const released = Promise.withResolvers<void>();
-  let calls = 0;
-  return {
-    entered: entered.promise,
-    release: () => released.resolve(),
-    pass: async () => {
-      calls += 1;
-      if (calls === 1) {
-        entered.resolve();
-        await released.promise;
-      }
-    },
-  };
-}
 
 let heldStep = createGate();
 
@@ -108,62 +93,6 @@ const actions = createWorkflowActions(
   }),
   stubWfGraphRuntime()
 );
-
-function lifecycleNode(config: JsonObject = {}): WorkflowNode {
-  return {
-    id: "entry",
-    type: "lifecycle",
-    position: { x: 0, y: 0 },
-    data: { label: "Appointments", type: "lifecycle", config },
-  };
-}
-
-const CANCELABLE: JsonObject = {
-  lifecycleRules: {
-    concurrency: "unlimited",
-    startEvents: [START_EVENT],
-    cancelEvents: [CANCEL_EVENT],
-    allowManualStart: true,
-  },
-};
-
-function actionNode(id: string, actionType: string): WorkflowNode {
-  return {
-    id,
-    type: "action",
-    position: { x: 0, y: 0 },
-    data: { label: id, type: "action", config: { actionType } },
-  };
-}
-
-function waitNode(id: string, config: JsonObject): WorkflowNode {
-  return {
-    id,
-    type: "action",
-    position: { x: 0, y: 0 },
-    data: {
-      label: id,
-      type: "action",
-      config: { actionType: BUILT_IN_ACTION_IDS.wait, ...config },
-    },
-  };
-}
-
-const delay = (waitDuration: string) => ({ waitMode: "delay", waitDuration });
-const onEvent = (event: string, waitTimeout: string) => ({
-  waitMode: "event",
-  waitFor: [{ event }],
-  waitTimeout,
-});
-
-function edge(source: string, target: string, sourceHandle?: string) {
-  return {
-    id: `${source}->${target}`,
-    source,
-    target,
-    sourceHandle: sourceHandle ?? null,
-  };
-}
 
 /** One worker's view of the repository, which a case may wrap. */
 type RepoWrap = (repo: ExecutionRepo["Service"]) => ExecutionRepo["Service"];
@@ -246,46 +175,18 @@ function describeCases(
     const connection = await openConnection();
     const executionId = await connection.run(
       Effect.gen(function* () {
-        const workflows = yield* WorkflowRepo;
-        const executions = yield* ExecutionRepo;
-        yield* workflows.insert({
-          id: "wf_1",
-          name: "Appointments",
-          graph,
-          eventSubscriptions: [],
-        });
-        yield* workflows.insertPublishedVersion({
+        yield* publishWorkflow({
           workflowId: "wf_1",
           versionId: "ver_1",
-          version: 1,
-          expectedPublishedVersionId: null,
-          expectedDraftRevision: 1,
           graph,
-          draftGraph: graph,
           catalogFingerprint: actions.catalogFingerprint(),
-          graphDigest: "digest-1",
-          eventSubscriptions: [],
         });
-        const started = yield* executions.startForEntity({
-          execution: {
-            workflowId: "wf_1",
-            workflowVersionId: "ver_1",
-            startSource: "event",
-            startEventName: START_EVENT,
-            runMode: "live",
-            entityValue: ENTITY,
-            input: {},
-          },
-          concurrency: "unlimited",
-          supersededReason: "newer start",
-        });
-        if (started.status !== "started") throw new Error("Start refused");
-        yield* executions.scheduleExecution({
-          executionId: started.execution.id,
-          kind: "run",
+        return yield* startScheduledRun({
+          workflowId: "wf_1",
+          versionId: "ver_1",
+          entityValue: ENTITY,
           wakeAt: now(),
         });
-        return started.execution.id;
       })
     );
 

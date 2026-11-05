@@ -19,12 +19,14 @@ import type { DatabaseError } from "#src/backend/lib/effect/database";
 import {
   createExecutorRuntime,
   createPassState,
+  type PassState,
   stepFailureMemo,
   watchPassWrites,
 } from "#src/backend/executor/runtime";
 import {
   type ClaimedExecution,
   ExecutionRepo,
+  type FencedExecutionWrites,
   type PassOutcome,
   type ReleasedSchedule,
 } from "#src/backend/services/executions/repo";
@@ -78,8 +80,13 @@ export type PassResult =
 export type PassOptions = {
   /** The clock every lease, memo and release write is stamped with. */
   now: () => Date;
-  /** How long a memo write renews the lease for. */
+  /** How long a memo write or a heartbeat renews the lease for. */
   leaseMs: number;
+  /**
+   * How often the lease is renewed while the body runs. Omitted, only a memo
+   * write renews it, so a step body that outlasts `leaseMs` loses the lease.
+   */
+  heartbeatMs?: number | undefined;
   actions: WorkflowActions;
   entities?: WorkflowEntities | undefined;
   /** Defaults to `STEP_RETRY_LIMIT`. */
@@ -100,11 +107,14 @@ export function runPass(
     const { executionId } = claimed;
     const fence = { executionId, ownerToken: claimed.ownerToken };
     const state = createPassState();
+    const fenced = executions.fenced(fence);
     const writes = watchPassWrites({
-      fenced: executions.fenced(fence),
+      fenced,
       unfenced: executions,
       state,
     });
+    const leaseExpiresAt = () =>
+      new Date(options.now().getTime() + options.leaseMs);
 
     const release = (outcome: PassOutcome) =>
       writes.releasePass({ outcome, now: options.now() }).pipe(
@@ -149,12 +159,12 @@ export function runPass(
       writes,
       findPark: executions.findPark,
       state,
-      leaseExpiresAt: () => new Date(options.now().getTime() + options.leaseMs),
+      leaseExpiresAt,
       runEffect,
     });
     const store = createDbWorkflowStore({ reads: executions, writes });
 
-    const body = yield* Effect.exit(
+    const runBody = Effect.exit(
       executeWorkflow(
         loaded,
         runtime,
@@ -163,6 +173,24 @@ export function runPass(
         options.entities ?? noWorkflowEntities
       )
     );
+    const { heartbeatMs } = options;
+    // The heartbeat is a fiber scoped to the body: it starts with the body and
+    // is interrupted once the body has ended, before the release is written.
+    const body =
+      heartbeatMs === undefined
+        ? yield* runBody
+        : yield* Effect.scoped(
+            Effect.forkScoped(
+              renewLeaseWhileRunning({
+                fenced,
+                findSchedule: executions.findSchedule,
+                executionId,
+                state,
+                everyMs: heartbeatMs,
+                leaseExpiresAt,
+              })
+            ).pipe(Effect.andThen(runBody))
+          );
 
     const phase = state.phase();
     const stop = phase.kind === "stopped" ? phase.stop : undefined;
@@ -209,6 +237,79 @@ export function runPass(
       return { kind: "fence_refused", fence: "owner" } as const;
     }
     return passResultOf(outcome, released.schedule);
+  });
+}
+
+/**
+ * Whether the pass still owes its run a release, and so still needs its
+ * lease: it is running, or a step threw and the body is winding down.
+ */
+function needsLease(state: PassState): boolean {
+  const phase = state.phase();
+  return (
+    phase.kind === "running" ||
+    (phase.kind === "stopped" && phase.stop.kind === "step_threw")
+  );
+}
+
+/**
+ * How one heartbeat ended: the lease moved, the database failed the write,
+ * the fence refused it with the run still scheduled, or the fence refused it
+ * because the run's schedule row is gone.
+ */
+type Beat = "renewed" | "failed" | "refused" | "run_ended";
+
+/**
+ * The pass's heartbeat: every `everyMs` while the pass needs its lease, move
+ * the lease to end `leaseMs` from now through the fenced `renewLease`.
+ *
+ * A refused renewal stops the pass as a lost lease, so the body starts no
+ * further step and writes nothing more. The one exception is a refusal that
+ * finds the schedule row gone: the run has ended, and when it was this pass's
+ * own terminal write the pass must keep the `ended` phase that write set, so
+ * the heartbeat stops and leaves it alone. A renewal the database fails is
+ * logged and tried again on the next beat. Each renewal is uninterruptible, so
+ * the interrupt at the end of the body waits for one already sent.
+ */
+function renewLeaseWhileRunning(input: {
+  fenced: FencedExecutionWrites;
+  findSchedule: ExecutionRepo["Service"]["findSchedule"];
+  executionId: string;
+  state: PassState;
+  everyMs: number;
+  leaseExpiresAt: () => Date;
+}): Effect.Effect<void> {
+  const { state, executionId } = input;
+  const beat: Effect.Effect<Beat> = Effect.gen(function* () {
+    const renewal = yield* input.fenced
+      .renewLease({ leaseExpiresAt: input.leaseExpiresAt() })
+      .pipe(
+        Effect.as("renewed" as const),
+        Effect.catchTag("Conflict", () => Effect.succeed("refused" as const))
+      );
+    if (renewal === "renewed") return renewal;
+    if ((yield* input.findSchedule(executionId)) === null) {
+      return "run_ended" as const;
+    }
+    state.leaseLost();
+    return renewal;
+  }).pipe(
+    Effect.catchTag("DatabaseError", (error) =>
+      Effect.logWarning("Could not renew a pass's lease").pipe(
+        Effect.annotateLogs({ pass: { execution: executionId }, error }),
+        Effect.as("failed" as const)
+      )
+    ),
+    Effect.uninterruptible
+  );
+
+  return Effect.gen(function* () {
+    while (needsLease(state)) {
+      yield* Effect.sleep(input.everyMs);
+      if (!needsLease(state)) return;
+      const renewal = yield* beat;
+      if (renewal === "refused" || renewal === "run_ended") return;
+    }
   });
 }
 

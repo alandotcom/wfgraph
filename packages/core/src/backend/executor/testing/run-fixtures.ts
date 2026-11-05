@@ -1,0 +1,210 @@
+/**
+ * Graphs and seeded runs for the executor's cases and the wall-clock timing
+ * script: the node and edge shapes a lifecycle workflow is drawn with, and a
+ * published workflow with one Execution scheduled to run.
+ */
+
+import { Effect } from "effect";
+import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import type {
+  SerializedWorkflowGraph,
+  WorkflowNode,
+} from "@wfgraph/shared/graph/types";
+import type { JsonObject } from "@wfgraph/shared/types/json";
+import type { DatabaseError } from "#src/backend/lib/effect/database";
+import { ExecutionRepo } from "#src/backend/services/executions/repo";
+import { WorkflowRepo } from "#src/backend/services/workflows/repo";
+
+export const START_EVENT = "app/appointment.created";
+export const CANCEL_EVENT = "app/appointment.canceled";
+
+export function lifecycleNode(config: JsonObject = {}): WorkflowNode {
+  return {
+    id: "entry",
+    type: "lifecycle",
+    position: { x: 0, y: 0 },
+    data: { label: "Appointments", type: "lifecycle", config },
+  };
+}
+
+/** Lifecycle Rules whose Cancel Event routes a run to its Canceled outlet. */
+export const CANCELABLE: JsonObject = {
+  lifecycleRules: {
+    concurrency: "unlimited",
+    startEvents: [START_EVENT],
+    cancelEvents: [CANCEL_EVENT],
+    allowManualStart: true,
+  },
+};
+
+/** An action node; `config` is handed to the action as its input. */
+export function actionNode(
+  id: string,
+  actionType: string,
+  config: JsonObject = {}
+): WorkflowNode {
+  return {
+    id,
+    type: "action",
+    position: { x: 0, y: 0 },
+    data: { label: id, type: "action", config: { actionType, ...config } },
+  };
+}
+
+export function waitNode(id: string, config: JsonObject): WorkflowNode {
+  return {
+    id,
+    type: "action",
+    position: { x: 0, y: 0 },
+    data: {
+      label: id,
+      type: "action",
+      config: { actionType: BUILT_IN_ACTION_IDS.wait, ...config },
+    },
+  };
+}
+
+export const delay = (waitDuration: string) => ({
+  waitMode: "delay",
+  waitDuration,
+});
+
+export const onEvent = (event: string, waitTimeout: string) => ({
+  waitMode: "event",
+  waitFor: [{ event }],
+  waitTimeout,
+});
+
+export function edge(source: string, target: string, sourceHandle?: string) {
+  return {
+    id: `${source}->${target}`,
+    source,
+    target,
+    sourceHandle: sourceHandle ?? null,
+  };
+}
+
+/**
+ * A step a case holds open: the first call waits until the case lets it go,
+ * and every later call returns at once.
+ */
+export function createGate() {
+  const entered = Promise.withResolvers<void>();
+  const released = Promise.withResolvers<void>();
+  let calls = 0;
+  return {
+    entered: entered.promise,
+    release: () => released.resolve(),
+    /** How many times the step has been called. */
+    calls: () => calls,
+    pass: async () => {
+      calls += 1;
+      if (calls === 1) {
+        entered.resolve();
+        await released.promise;
+      }
+    },
+  };
+}
+
+/**
+ * Inserts a workflow and publishes `graph` as its first version. A workflow's
+ * name is unique, so the workflow is named after its id.
+ */
+export function publishWorkflow(input: {
+  workflowId: string;
+  versionId: string;
+  graph: SerializedWorkflowGraph;
+  catalogFingerprint: string;
+}): Effect.Effect<void, DatabaseError, WorkflowRepo> {
+  return Effect.gen(function* () {
+    const workflows = yield* WorkflowRepo;
+    yield* workflows.insert({
+      id: input.workflowId,
+      name: input.workflowId,
+      graph: input.graph,
+      eventSubscriptions: [],
+    });
+    yield* workflows.insertPublishedVersion({
+      workflowId: input.workflowId,
+      versionId: input.versionId,
+      version: 1,
+      expectedPublishedVersionId: null,
+      expectedDraftRevision: 1,
+      graph: input.graph,
+      draftGraph: input.graph,
+      catalogFingerprint: input.catalogFingerprint,
+      graphDigest: `digest-${input.versionId}`,
+      eventSubscriptions: [],
+    });
+  });
+}
+
+/**
+ * Starts an Execution of a published version for `entityValue`, as the start
+ * Event would, and schedules it due at `wakeAt`. Answers the Execution's id.
+ */
+export function startScheduledRun(input: {
+  workflowId: string;
+  versionId: string;
+  entityValue: string;
+  wakeAt: Date;
+}): Effect.Effect<string, DatabaseError, ExecutionRepo> {
+  return Effect.gen(function* () {
+    const executions = yield* ExecutionRepo;
+    const started = yield* executions.startForEntity({
+      execution: {
+        workflowId: input.workflowId,
+        workflowVersionId: input.versionId,
+        startSource: "event",
+        startEventName: START_EVENT,
+        runMode: "live",
+        entityValue: input.entityValue,
+        input: {},
+      },
+      concurrency: "unlimited",
+      supersededReason: "newer start",
+    });
+    if (started.status !== "started") throw new Error("Start refused");
+    yield* executions.scheduleExecution({
+      executionId: started.execution.id,
+      kind: "run",
+      wakeAt: input.wakeAt,
+    });
+    return started.execution.id;
+  });
+}
+
+/**
+ * Writes a Cancel Event the way its producer does: the Cancel claim on every
+ * in-flight run of the entity, then a `cancel` wake on each of their parks
+ * still waiting, which re-queues each run. Answers the claimed Execution ids.
+ */
+export function cancelEntity(input: {
+  workflowId: string;
+  entityValue: string;
+  now: Date;
+}): Effect.Effect<string[], DatabaseError, ExecutionRepo> {
+  return Effect.gen(function* () {
+    const executions = yield* ExecutionRepo;
+    const claimed = yield* executions.requestCancelForEntity({
+      workflowId: input.workflowId,
+      runMode: "live",
+      entityValue: input.entityValue,
+      eventName: CANCEL_EVENT,
+      payload: {},
+    });
+    for (const executionId of claimed) {
+      const waits = yield* executions.listActiveWaitStates(executionId);
+      for (const wait of waits) {
+        yield* executions.resolvePark({
+          executionId,
+          waitStateId: wait.id,
+          wake: { kind: "cancel" },
+          now: input.now,
+        });
+      }
+    }
+    return claimed;
+  });
+}

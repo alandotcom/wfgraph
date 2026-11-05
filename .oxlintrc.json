@@ -330,6 +330,7 @@
     {
       "files": [
         "examples/app.ts",
+        "scripts/executor-timing.ts",
         "scripts/migrate.ts",
         "scripts/postgres-test-schemas.ts",
         "packages/core/src/app.ts",
