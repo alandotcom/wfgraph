@@ -449,6 +449,29 @@ commits keep group commit and only the flush takes the lock. A crash loses at mo
 one buffer of notifications, which the poll recovers. SQLite: an in-process ticker
 at two hundred and fifty milliseconds. Worker: section 8.
 
+**Retention.** Inngest stores the step memo and the in-flight event queue on its
+own infrastructure and expires them under its own policy. This executor moves
+that storage into the adopter's database, so the library decides how long each
+row lives.
+
+- The schedule row holds the working set by construction: the terminal write
+  deletes it. Its cost is update churn from claims, lease renewals and releases,
+  which the table settings in section 8 address.
+- The memo rows of an execution are deleted in the transaction that writes its
+  terminal record, the same transaction that deletes the schedule row. A run
+  that has written its terminal record is never claimed, replayed or migrated
+  again, so nothing reads its memo afterwards. The Runs view reads log rows and
+  never the memo. The memo table then holds the working set too: about two
+  hundred and fifty rows for each open run of a fifty-node graph, and no rows
+  for finished runs. A policy cancel deletes the memo with the schedule row. A
+  leased pass of that run has its memo in memory already, and its next fenced
+  write is refused.
+- A delivery's memo rows are deleted in the transaction that sets the inbox
+  row's `delivered_at`, for the same reason.
+
+The inbox (section 7.1) and the run history tables have retention questions of
+their own, which section 12 lists.
+
 **What Design A changes in the engine.** Two things, both small.
 
 - `WaitOutcome` gains a `parked` state (section 6.2). `executeWorkflow` ends with
@@ -629,6 +652,24 @@ An inbox row is the arrival. It replaces the Inngest event as the thing the
 Inngest event id, and `answerFromCommittedDecision` keeps making a retried
 delivery idempotent.
 
+**Inbox retention.** The inbox gains one row for every arrival, and nothing in
+the delivery path deletes one. A sweep deletes delivered rows whose
+`received_at` is older than a retention window. The window is also the
+deduplication window: the unique `(name, idempotency_key)` index refuses a
+resent key only while the first row exists. Once a sweep deletes the row, the
+same key is accepted as a new arrival with a new inbox id, so the
+`(workflow_id, delivery_id)` index on `workflow_executions` does not catch it
+either, and new runs start. Inngest has the same property today: an event `id`
+deduplicates for 24 hours, and after that the same id triggers functions again.
+The window length is a decision (section 12). Undelivered rows are never swept.
+
+Whether `workflow_executions.delivery_id` becomes a foreign key to the inbox
+decides how the sweep works. As a foreign key, the sweep has to keep every inbox
+row an execution still names, which keeps the inbox as large as the run history.
+As a plain text column, as it is today against the Inngest event id, the sweep
+is free to delete, and an old execution's `delivery_id` names a row that no
+longer exists. The recommendation is the plain column.
+
 ### 7.2 Delivery is a durable body on the executor
 
 `runEventListener` already takes a `step` port with one verb, `run`, and fans
@@ -703,8 +744,8 @@ agrees on: partial indexes on the claimable rows only, per-table autovacuum at a
 fixed threshold rather than a scale factor, `fillfactor` around seventy on the
 schedule table so lease renewals are heap-only updates, and
 `idle_in_transaction_session_timeout` set. Memo rows of terminal executions are
-deleted with the schedule row or kept under a retention sweep; the Runs view
-reads log rows, not the memo.
+deleted with the schedule row ("Retention" in section 6.1), so neither table
+grows with run history.
 
 **SQLite.** One process, one writer. The loop is a ticker in the same process as
 the HTTP app, every claim is `BEGIN IMMEDIATE` and returns in microseconds, and
@@ -850,6 +891,11 @@ available for today.
 - **Two drivers during transition.** Keeping the Inngest driver alive for one
   release keeps ADR-0011 alive for one release. The diffing it enables through
   the reliability suite is worth it; carrying it longer is not.
+- **Storage moves to the adopter.** The memo, the queue and the event inbox
+  live in the adopter's database instead of Inngest's. The memo and schedule
+  rows are deleted at the terminal write, so their size follows the number of
+  open runs. The inbox and the run history tables grow with traffic until the
+  retention decisions in section 12 are made and their sweeps are built.
 - **Public contract.** `createWfGraphApp`'s required `inngest` option becomes
   optional and then goes; `docs/events.md`, both published skills, the example
   app and the peer dependency change. One major version under the fixed group.
@@ -900,6 +946,19 @@ Each phase ends green against the AGENTS.md check list.
    source (section 7.3). The transactional
    outbox case (section 7.3) argues for exposing the inbox insert as a documented
    SQL contract as well.
+7. How long a delivered inbox row is kept, which is also how long a resent
+   idempotency key is refused (section 7.1). Inngest's equivalent window is 24
+   hours. Recommendation: a configurable window on `createWfGraphApp`
+   defaulting to seven days, so that a host retrying a send over a weekend
+   still deduplicates.
+8. Whether the library prunes run history. `workflow_executions`,
+   `workflow_execution_logs`, `workflow_execution_events` and closed
+   `workflow_wait_states` rows grow with every run today, and nothing deletes
+   them. That growth exists with or without this executor, and the data lives
+   in the adopter's database. Recommendation: a retention option on
+   `createWfGraphApp` that deletes terminal executions older than a window,
+   with their rows in the child tables, and that is off by default. Time
+   partitioning waits until volume calls for it.
 
 ## 13. Sources
 
@@ -945,6 +1004,7 @@ Inngest (https://www.inngest.com/docs/self-hosting,
 https://www.inngest.com/docs-markdown/setup/connect,
 https://github.com/inngest/inngest/blob/main/docs/SDK_SPEC.md,
 https://www.inngest.com/docs/durable-execution/primitives/group-parallel,
+https://www.inngest.com/docs/durable-execution/guides-and-advanced/idempotency,
 https://github.com/inngest/inngest/blob/main/LICENSE.md);
 Cloudflare (https://developers.cloudflare.com/workflows/reference/limits/,
 https://developers.cloudflare.com/durable-objects/api/alarms/,
