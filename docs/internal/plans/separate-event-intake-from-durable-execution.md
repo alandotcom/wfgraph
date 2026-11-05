@@ -1020,8 +1020,10 @@ keeps compatibility machinery alive for the next one.
      put a Cancel on PostgreSQL past the one-second bound in phase 1's
      timings.
    - The Migration producer takes the schedule row's lock before the execution
-     row, re-queues the run, and lets `repinVersion` move a run that is
-     running or holds a woken Wait.
+     row and re-queues the run. `repinVersion` keeps refusing a run that is
+     running or holds a woken Wait: the TLA+ Migration model's
+     `RepinNeedsAPark` guard is what keeps the work below a Wait on the
+     pinned version, and removing it breaks `BelowRunsThePinnedVersion`.
    - The engine's wait-row read includes the `wake` column, so an Event wake
      written onto a row whose version has since moved is not lost.
    - A pass that finds its run no longer in flight deletes the run's schedule
