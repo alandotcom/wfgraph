@@ -999,8 +999,14 @@ keeps compatibility machinery alive for the next one.
    ADR-0011, including the branch-run tests. The reliability suite runs on the
    executor, and each family's outcomes are compared with the same suite on
    `main`. New ADR superseding ADR-0004; amendments on ADR-0011 and ADR-0015.
-   Event delivery stays on Inngest until phase 3. Phase 1 left three items for
+   Event delivery stays on Inngest until phase 3. Phase 1 left four items for
    this phase, because no producer reaches them before it:
+   - Every producer wakes the worker loop after its write: through the loop's
+     in-process wake in its own process, and on PostgreSQL through the
+     buffered `NOTIFY` of "Wake latency" for loops in other processes. The
+     poll alone finds a producer's wake up to one poll interval late, which
+     put a Cancel on PostgreSQL past the one-second bound in phase 1's
+     timings.
    - The Migration producer takes the schedule row's lock before the execution
      row, re-queues the run, and lets `repinVersion` move a run that is
      running or holds a woken Wait.
