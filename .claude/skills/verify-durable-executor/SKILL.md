@@ -1,6 +1,6 @@
 ---
 name: verify-durable-executor
-description: Model-check the Postgres executor proposed to replace Inngest (Design A and the event inbox in docs/internal/plans/separate-event-intake-from-durable-execution.md) with TLA+ models run by tla-ts. Use when a change touches that design's claim, lease, pass, release, park resolution, cancellation, Exit claim, retries, Migration, inbox, delivery fan-out to several workflows, Wait wakes from an arrival, or Concurrency rules, when the executor it describes is being built, or when a change touches the existing code the design reuses (claimWaitState, openResume's version fence, admitNode, finishRun, startForEntity, repinVersion, answerFromCommittedDecision). Triggers on "verify the executor", "model-check the design", "does the release still hold", or a claim that a run cannot be stranded, woken twice, opened twice, or run after it ended.
+description: Model-check the Postgres executor proposed to replace Inngest (Design A and the event inbox in docs/internal/plans/separate-event-intake-from-durable-execution.md) with TLA+ models run by tla-ts. Use when a change touches that design's claim, lease, pass, release, park resolution, cancellation, Exit claim, retries, Migration (including a Wait that changes mode), inbox, delivery fan-out to several workflows, Wait wakes from an arrival, or Concurrency rules, when the executor it describes is being built, or when a change touches the existing code the design reuses (claimWaitState, openResume's version fence, admitNode, finishRun, startForEntity, repinVersion, answerFromCommittedDecision). Triggers on "verify the executor", "model-check the design", "does the release still hold", or a claim that a run cannot be stranded, woken twice, opened twice, or run after it ended.
 ---
 
 # Verify the durable executor design
@@ -141,7 +141,15 @@ Lifecycle --> Above --> Wait --> Below
 The run is pinned to version 1 or 2, and up to two Migrations move it. A pass
 loads the pinned version once, and every write the Wait makes is fenced on that
 version still being pinned. A refused fence ends the pass and re-queues the run
-without counting an attempt. About 5,200 states.
+without counting an attempt. Each version's Wait is event-mode or delay-mode,
+and all four pairings are checked, so a Migration can change the Wait's mode.
+About 17,200 states.
+
+One behaviour the model allows and no rule forbids: an Event that claims the
+old event-mode park after the repin and before the migrate wake still resumes
+the run, even when the version the run now pins gives the Wait delay mode
+(`ReachEventResumesAcrossAModeChange`). The Event arrived while the run was
+parked on a subscription to it, which is why the design lets it through.
 
 | Rule | The promise | The harm when it breaks |
 | --- | --- | --- |
@@ -150,6 +158,8 @@ without counting an attempt. About 5,200 states.
 | `BelowRunsThePinnedVersion` | The node below the Wait runs the definition of the version the run pins. | A migrated run runs the old step. |
 | `EachHopWokenOnce` | Each park of the Wait is resumed by at most one Event or timeout. | The run resumes twice. |
 | `ParkedUnderThePinnedVersion` | A sleeping run is parked on a row prepared from the version it pins, unless its migrate wake is still on the way. | A migrated run keeps the old version's delay. |
+| `ParkedInThePinnedMode` | A sleeping run is parked in the mode its pinned version gives the Wait, unless its migrate wake is still on the way. | A Wait migrated to delay mode still accepts Events, or the reverse. |
+| `EventOnlyWakesAnEventPark` | An Event wakes only a Wait parked in event mode. | A delay Wait ends early because an Event arrived. |
 | `WokenWaitIsNeverStranded` | A run never sleeps while its Wait holds a wake. | The run waits for a deadline after it was woken. |
 | `OneTerminalRecord` | The terminal record is written once. | The status flips after the run ended. |
 | `FailedOnlyAfterRetriesSpent` | A run is marked failed only after its retries were spent on failures. | A Migration fails a run. |
@@ -250,6 +260,8 @@ can find it and a mutation can remove it.
 | `Intake`: `StartWrite`, `DeliveryIdIsUnique`, `ExecutionAndScheduleTogether` | Section 7.1; scenario S13 | `answerFromCommittedDecision` in `lifecycle/deliver-event.ts`; `startForEntity` in `repo/index.ts` |
 | `Intake`: Concurrency in `StartWrite`, `SupersedeDropsSchedule` | CONTEXT.md "Concurrency", "Superseded" | `startWithConcurrency` in `lifecycle/concurrency.ts` |
 | `Intake`: `CancelWrite` | "Cancellation" | `requestCancelForEntity` in `repo/runs.ts` |
+| `Migration`: `EventWakeNeedsAnEventPark` | "Resolving a park"; ADR-0019 | the `wait_type = 'event'` condition in `claimWaitState`, `repo/waits.ts` |
+| `Migration`: `ReparkMode` | "Migration"; ADR-0019 | `reparkWait` in `repo/waits.ts` |
 | `Delivery`: `Lifecycle`, `Life1`, `Life2`, `Settled` | Section 7.2; CONTEXT.md "Precedence" | `runEventListener` and `settledExecutionIds` in `lib/inngest/event-listener-function.ts`; `applyLifecycleRules` in `lifecycle/deliver-event.ts` |
 | `Delivery`: `ScanAllPages`, `Candidate`, `ExcludeSettledRuns`, `SavePagesBeforeWaking` | Section 7.2 | `listWaitCandidatePage` in `lifecycle/deliver-event.ts`; `listWaitsForEvent` in `repo/waits.ts` |
 | `Delivery`: `WakeSavedPage`, `RecordWokenPage`, `WakeIsUnclaimed` | Section 7.2; "The runtime", `run(step, fn)` | `deliverWaitCandidates` in `lifecycle/deliver-event.ts`; `resumeWaitsMatchingEvent` in `lifecycle/resume-waits.ts`; `claimWaitingStateById` in `repo/waits.ts` |
@@ -333,7 +345,6 @@ back to show the rule still catches it:
 - Handler sub-steps inside one node.
 - A delivery's attempt limit. `Intake` re-runs a delivery after a crash or an
   expired lease, and never gives up on one.
-- Exit claimed before an Execution opens (admission Eligibility), and a Wait
-  that changes mode under a Migration.
+- Exit claimed before an Execution opens (admission Eligibility).
 - The SQLite and Cloudflare Worker drivers, `NOTIFY` latency, database
   failover, and lease, heartbeat and backoff timing.

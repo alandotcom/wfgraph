@@ -43,6 +43,8 @@ Migration|no-lease-fencing|LeaseHeldBy(w) == holder = w|LeaseHeldBy(w) == TRUE|O
 Migration|expiry-keeps-token|/\ sched' = "queued" /\ holder' = 0 /\ attempt' = Sat(attempt + 1)|/\ sched' = "queued" /\ holder' = holder /\ attempt' = Sat(attempt + 1)|LeaseHasAHolder
 Migration|migrate-wake-never-consumed|THEN /\ row' = "waiting" /\ rowVersion' = loaded[w] /\ hopWakes' = 0|THEN /\ row' = "migrate" /\ rowVersion' = loaded[w] /\ hopWakes' = 0|EveryRunEnds
 Migration|fence-refusal-counts-an-attempt|FenceRefusalCountsNoAttempt == TRUE|FenceRefusalCountsNoAttempt == FALSE|FailedOnlyAfterRetriesSpent
+Migration|event-wakes-a-delay-park|EventWakeNeedsAnEventPark == rowMode = "event"|EventWakeNeedsAnEventPark == TRUE|EventOnlyWakesAnEventPark
+Migration|repark-keeps-old-mode|ReparkMode(w) == mode[loaded[w]]|ReparkMode(w) == rowMode|ParkedInThePinnedMode
 Migration|wake-claims-a-woken-row|WakeIsUnclaimed == row = "waiting"|WakeIsUnclaimed == row # "none"|EachHopWokenOnce
 Delivery|wake-the-runs-it-settled|ExcludeSettledRuns == TRUE|ExcludeSettledRuns == FALSE|NoWakeInTheRunItStarted NoWakeInARunItSettled
 Delivery|scan-and-wake-page-by-page|SavePagesBeforeWaking == TRUE|SavePagesBeforeWaking == FALSE|NoSecondWaitFromOneArrival
