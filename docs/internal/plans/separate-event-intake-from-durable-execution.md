@@ -289,7 +289,12 @@ the way the existing SQLite schema mirrors Postgres.
 1. Claim. One statement: a locking CTE over `workflow_execution_schedule` where
    `state in ('queued','waiting') and wake_at <= now()`, ordered by `wake_at`,
    `FOR UPDATE SKIP LOCKED`, then `update ... set state = 'leased', owner_token =
-   <new>, lease_expires_at = now() + <lease>, attempt = attempt + (state = 'queued')`.
+   <new>, lease_expires_at = now() + <lease>`. The claim leaves `attempt` alone:
+   a queued row is claimed after a wake as well as after a failure, and a count
+   taken on every claim would spend a retry on each Event that woke a Wait. The
+   TLA+ model in `.claude/skills/verify-durable-executor` found that path, with a
+   Join whose step failed once after two wakes and was never retried. Only a
+   failed pass and an expired lease count an attempt.
    A `waiting` row claimed because `wake_at` passed is a timed-out park, and the
    claim resolves that park as `{ kind: "timeout" }` in the same transaction. On
    SQLite the claim is an `UPDATE ... WHERE execution_id IN (SELECT ... LIMIT n)
@@ -304,8 +309,9 @@ the way the existing SQLite schema mirrors Postgres.
    holds a wake the pass did not consume; `waiting` with
    `wake_at = min(deadline over open parks)` when the body ended with at least
    one park outstanding and no unconsumed wake; `queued` with
-   `wake_at = now() + backoff(attempt)` when a step body threw a retriable error
-   and `attempt < 4`; terminal `failed` written through the store when the
+   `attempt = attempt + 1` and `wake_at = now() + backoff(attempt)` when a step
+   body threw a retriable error and the incremented count is at most four;
+   terminal `failed` written through the store when the
    retries are spent. The last case is new behaviour: today a run whose step
    keeps failing is marked failed by Inngest and the execution row reads
    `running` forever.
@@ -372,7 +378,8 @@ The "signal sent before the listener registered" race in
 `signal-parked-waits.ts` disappears, because the park reads the row.
 
 **Retries.** A step body that throws a retriable error ends the invocation. The
-release writes `queued` with a backoff and the attempt counter; the memo keeps
+release writes `queued` with a backoff and one more on the attempt counter, which
+is the one place besides the lease sweep that counts one; the memo keeps
 every step that completed. A `StepFailure` keeps travelling as a value
 (ADR-0009) so a refused vendor call fails the node once. A non-retriable failure
 writes the terminal record through the store and deletes the schedule row.
