@@ -311,11 +311,9 @@ the way the existing SQLite schema mirrors Postgres.
    `wake_at = min(deadline over open parks)` when the body ended with at least
    one park outstanding and no unconsumed wake; `queued` with
    `attempt = attempt + 1` and `wake_at = now() + backoff(attempt)` when a step
-   body threw a retriable error and the incremented count is at most four;
-   terminal `failed` written through the store when the
-   retries are spent. The last case is new behaviour: today a run whose step
-   keeps failing is marked failed by Inngest and the execution row reads
-   `running` forever.
+   body threw a retriable error and the incremented count is at most four.
+   When the retries are spent, the step fails its node and the run goes on, as
+   "Retries" describes.
 
 **The runtime.**
 
@@ -383,7 +381,24 @@ release writes `queued` with a backoff and one more on the attempt counter, whic
 is the one place besides the lease sweep that counts one; the memo keeps
 every step that completed. A `StepFailure` keeps travelling as a value
 (ADR-0009) so a refused vendor call fails the node once. A non-retriable failure
-writes the terminal record through the store and deletes the schedule row.
+of the run itself, such as an execution row that no longer exists, writes the
+terminal record through the store and deletes the schedule row.
+
+When the count would pass four, the step fails its node and the run carries on.
+The release writes the failure into the memo as that node's result, the way a
+`StepFailure` is stored, and resets the attempt counter, so the next step to
+throw gets retries of its own. The branch below the failed node halts. Every
+other branch keeps running, and so does a Canceled outlet the run has entered.
+The run's terminal status is chosen when nothing is left to run, the way
+`executeWorkflow` chooses it today: `canceled` when a Cancel claim stands and
+its outlet has run, `exited` for an Exit claim, `failed` when a node failed, and
+`completed` otherwise. Ending the run `failed` as soon as a step's retries ran
+out would abandon a Canceled outlet already in progress: the model check in
+`.claude/skills/verify-durable-executor` found a Join admitted before a Cancel
+Event that failed on its last retry after the outlet's Wait had parked, so the
+outlet's work never ran. Today a run whose step keeps failing is marked failed
+by Inngest and its execution row reads `running` forever, so either behaviour is
+new.
 
 **Cancellation.** A Cancel Event writes the claim on the execution row (exists),
 resolves every open park on the Started side as `{ kind: "cancel" }` and
