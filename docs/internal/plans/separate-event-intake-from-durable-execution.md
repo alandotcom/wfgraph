@@ -367,6 +367,12 @@ repeats are therefore idempotent:
   `error`. A re-run of the same close writes the same values, and a retry that
   succeeds after an attempt failed can still correct the row's verdict.
 
+The terminal write deletes the schedule row, which leaves the pass that wrote
+it with no row to fence against. That pass makes its remaining store writes,
+such as the run's closing timeline entry, without the fence, and writes no
+more memo rows. No other pass can reach that state: every other pass's fence
+names the schedule row that no longer exists, so its writes are refused.
+
 The other store writes are already conditional updates, except
 `recordAuditEvent`, which stays a plain insert. A derived id there would have
 to come from the entry's content, which would merge two legitimate identical
@@ -993,7 +999,15 @@ keeps compatibility machinery alive for the next one.
    ADR-0011, including the branch-run tests. The reliability suite runs on the
    executor, and each family's outcomes are compared with the same suite on
    `main`. New ADR superseding ADR-0004; amendments on ADR-0011 and ADR-0015.
-   Event delivery stays on Inngest until phase 3.
+   Event delivery stays on Inngest until phase 3. Phase 1 left three items for
+   this phase, because no producer reaches them before it:
+   - The Migration producer takes the schedule row's lock before the execution
+     row, re-queues the run, and lets `repinVersion` move a run that is
+     running or holds a woken Wait.
+   - The engine's wait-row read includes the `wake` column, so an Event wake
+     written onto a row whose version has since moved is not lost.
+   - A pass that finds its run no longer in flight deletes the run's schedule
+     and memo rows.
 3. **The inbox.** `workflow_event_inbox`, delivery bodies on the executor, the
    Inngest source entry, `app.events.send`, the HTTP route, webhook intake
    rewired. `defineEvent` loses its `inngest` option and
