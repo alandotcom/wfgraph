@@ -171,6 +171,12 @@ export function claimedRun(kind: "cancel" | "exit"): ExecutionTerminationState {
   };
 }
 
+/** The wake a Cancel Event's producer writes onto a parked Wait. */
+export const CANCEL_WAKE = { data: { signalType: "lifecycle-cancel" } };
+
+/** The wake the store write that wins an Exit claim writes onto a parked Wait. */
+export const EXIT_WAKE = { data: { signalType: "lifecycle-exit" } };
+
 const CLAIM_WAKE_MESSAGE = {
   cancel: "Run woken by a cancel request in node 'Wait'",
   exit: "Run woken by an Exit in node 'Wait'",

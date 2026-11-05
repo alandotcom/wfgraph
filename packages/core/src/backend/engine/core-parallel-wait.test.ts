@@ -3,9 +3,14 @@
  *
  * A durable runtime suspends the run rather than the branch, so these cases run
  * through `driveWithReplay` instead of the in-memory runtime: only a driver that
- * abandons the body at a step boundary can show a branch stopping there. The
- * graph is the one that surfaced the defect, an entry node whose Started outlet
- * feeds both an Event Split and a Wait.
+ * calls the body again on a virtual clock can show a branch stopping at a Wait.
+ * The graph is the one that surfaced the defect, an entry node whose Started
+ * outlet feeds both an Event Split and a Wait.
+ *
+ * Each case that hands a Wait to a branch run of its own (ADR-0011) under the
+ * Inngest executor has a single-run case beside it under the database
+ * executor, where every Wait parks in the one run and the run wakes on any
+ * resolution.
  */
 
 import { describe, expect, it } from "vitest";
@@ -27,8 +32,19 @@ import {
   executeTestWorkflow as executeWorkflow,
   executeTestWorkflowBranch as executeWorkflowBranch,
 } from "#src/backend/engine/test-execution";
-import { createRecordingWorkflowStore } from "#src/backend/engine/recording-store";
-import { driveWithReplay } from "#src/backend/engine/testing/replay-runtime";
+import {
+  createRecordingWorkflowStore,
+  type RecordingWorkflowStore,
+} from "#src/backend/engine/recording-store";
+import type { DatabaseReplayExecutor } from "#src/backend/engine/testing/replay-database-executor";
+import {
+  driveWithReplay,
+  type ReplayPass,
+} from "#src/backend/engine/testing/replay-runtime";
+import {
+  CANCEL_WAKE,
+  EXIT_WAKE,
+} from "#src/backend/engine/testing/wait-fixtures";
 
 const SEND_ACTION_ID = "test/send";
 const ECHO_ACTION_ID = "test/echo";
@@ -217,17 +233,281 @@ function runGraph(
   return driveWithReplay(
     (runtime) => executeWorkflow(input, runtime, store, actions, entities),
     {
-      ...replayOptions,
-      branch: (runtime, branchInput) =>
-        executeWorkflowBranch(
-          { ...input, ...branchInput },
-          runtime,
-          store,
-          actions,
-          entities
-        ),
+      executor: {
+        kind: "inngest",
+        ...replayOptions,
+        branch: (runtime, branchInput) =>
+          executeWorkflowBranch(
+            { ...input, ...branchInput },
+            runtime,
+            store,
+            actions,
+            entities
+          ),
+      },
     }
   );
+}
+
+/**
+ * Drives one graph the way the database executor runs it: one run per
+ * Execution, every Wait entered where it stands, and the body run again from
+ * the top whenever one of its parks resolves.
+ *
+ * `storeForPass` wraps the store one pass writes through, for a case whose
+ * store write is also a producer that resolves parks during the pass.
+ */
+function runGraphInOneRun(
+  graph: ReturnType<typeof createSerializedWorkflowGraph>,
+  options: {
+    store?: WorkflowStore;
+    storeForPass?: (store: WorkflowStore, pass: ReplayPass) => WorkflowStore;
+    entities?: WorkflowEntities;
+    guarded?: boolean;
+    signalOpenParksAt?: DatabaseReplayExecutor["signalOpenParksAt"];
+  } = {}
+) {
+  const {
+    store = createRecordingWorkflowStore(),
+    storeForPass = (passStore) => passStore,
+    entities,
+    guarded = false,
+    signalOpenParksAt,
+  } = options;
+  const input = {
+    graph,
+    executionId: "exec_parallel",
+    workflowId: "workflow_parallel",
+    startEventName: START_EVENT,
+    startPayload: { appointment: { id: "123" } },
+    ...(guarded
+      ? { entityType: "appointment", entityId: "appointment_123" }
+      : {}),
+  };
+
+  return driveWithReplay(
+    (runtime, pass) =>
+      executeWorkflow(
+        input,
+        runtime,
+        storeForPass(store, pass),
+        actions,
+        entities
+      ),
+    { executor: { kind: "database", signalOpenParksAt } }
+  );
+}
+
+/**
+ * Two sibling delay Waits on the Started outlet, each with a node behind it.
+ * With `canceledOutlet` the entry node declares a Cancel Event and one node
+ * hangs off its Canceled outlet.
+ */
+function siblingWaitsGraph(
+  shortWait: string,
+  longWait: string,
+  options: { canceledOutlet?: boolean } = {}
+) {
+  const canceled = options.canceledOutlet === true;
+  return createSerializedWorkflowGraph({
+    nodes: [
+      lifecycleNode("entry", canceled ? CANCELABLE : {}),
+      waitNode("short_wait", shortWait),
+      sendNode("after_short"),
+      waitNode("long_wait", longWait),
+      sendNode("after_long"),
+      ...(canceled ? [sendNode("canceled_sms")] : []),
+    ],
+    edges: [
+      ...(canceled
+        ? [
+            {
+              id: "e5",
+              source: "entry",
+              sourceHandle: "canceled",
+              target: "canceled_sms",
+            },
+          ]
+        : []),
+      {
+        id: "e1",
+        source: "entry",
+        sourceHandle: "started",
+        target: "short_wait",
+      },
+      {
+        id: "e2",
+        source: "short_wait",
+        sourceHandle: null,
+        target: "after_short",
+      },
+      {
+        id: "e3",
+        source: "entry",
+        sourceHandle: "started",
+        target: "long_wait",
+      },
+      {
+        id: "e4",
+        source: "long_wait",
+        sourceHandle: null,
+        target: "after_long",
+      },
+    ],
+  });
+}
+
+/** A node beside two delay Waits in a row on the Started outlet. */
+function waitBehindWaitGraph() {
+  return createSerializedWorkflowGraph({
+    nodes: [
+      lifecycleNode("entry"),
+      sendNode("notify"),
+      waitNode("first_wait", "30s"),
+      waitNode("second_wait", "30s"),
+      sendNode("follow_up"),
+    ],
+    edges: [
+      {
+        id: "e1",
+        source: "entry",
+        sourceHandle: "started",
+        target: "notify",
+      },
+      {
+        id: "e2",
+        source: "entry",
+        sourceHandle: "started",
+        target: "first_wait",
+      },
+      {
+        id: "e3",
+        source: "first_wait",
+        sourceHandle: null,
+        target: "second_wait",
+      },
+      {
+        id: "e4",
+        source: "second_wait",
+        sourceHandle: null,
+        target: "follow_up",
+      },
+    ],
+  });
+}
+
+/**
+ * `above`, then a delay Wait, then an `echo` node whose `subject` is the
+ * template `subject`, which addresses `above`.
+ */
+function templateBehindWaitGraph(above: WorkflowNode, subject: string) {
+  return createSerializedWorkflowGraph({
+    nodes: [
+      lifecycleNode("entry"),
+      above,
+      waitNode("wait_before", "30s"),
+      actionNode("follow_up", { actionType: ECHO_ACTION_ID, subject }),
+    ],
+    edges: [
+      {
+        id: "e1",
+        source: "entry",
+        sourceHandle: "started",
+        target: above.id,
+      },
+      {
+        id: "e2",
+        source: above.id,
+        sourceHandle: null,
+        target: "wait_before",
+      },
+      {
+        id: "e3",
+        source: "wait_before",
+        sourceHandle: null,
+        target: "follow_up",
+      },
+    ],
+  });
+}
+
+/** A ten-minute Wait on the Started outlet, and one node on the Canceled one. */
+function cancelableWaitGraph() {
+  return createSerializedWorkflowGraph({
+    nodes: [
+      lifecycleNode("entry", CANCELABLE),
+      waitNode("wait_before", "10m"),
+      sendNode("reminder"),
+      sendNode("canceled_sms"),
+    ],
+    edges: [
+      {
+        id: "e1",
+        source: "entry",
+        sourceHandle: "started",
+        target: "wait_before",
+      },
+      {
+        id: "e2",
+        source: "wait_before",
+        sourceHandle: null,
+        target: "reminder",
+      },
+      {
+        id: "e3",
+        source: "entry",
+        sourceHandle: "canceled",
+        target: "canceled_sms",
+      },
+    ],
+  });
+}
+
+/** A node that fails behind a Wait, beside a branch that succeeds. */
+function failureBehindWaitGraph() {
+  return createSerializedWorkflowGraph({
+    nodes: [
+      lifecycleNode("entry"),
+      waitNode("wait_before", "30s"),
+      // No action type, which is a node that fails without running.
+      actionNode("broken", {}),
+      sendNode("elsewhere"),
+    ],
+    edges: [
+      {
+        id: "e1",
+        source: "entry",
+        sourceHandle: "started",
+        target: "wait_before",
+      },
+      {
+        id: "e2",
+        source: "wait_before",
+        sourceHandle: null,
+        target: "broken",
+      },
+      {
+        id: "e3",
+        source: "entry",
+        sourceHandle: "started",
+        target: "elsewhere",
+      },
+    ],
+  });
+}
+
+/** A Cancel claim on the recording store's execution row. */
+function landCancelClaim(store: RecordingWorkflowStore) {
+  store.terminationState = {
+    status: "running",
+    claim: {
+      kind: "cancel",
+      requestedAt: "2026-10-19T15:00:00.000Z",
+      eventName: "app/appointment.canceled",
+      payload: {},
+    },
+    didWrite: false,
+  };
 }
 
 describe("a wait node beside another branch", () => {
@@ -275,6 +555,53 @@ describe("a wait node beside another branch", () => {
     expect(run.value.success).toBe(true);
     expect(dispatchClock(run.executed, "scheduled_sms")).toBe(0);
     expect(dispatchClock(run.executed, "reminder")).toBeGreaterThan(25_000);
+  });
+
+  it("lets the branch that suspends nothing finish in the pass that parks, in one run", async () => {
+    const run = await runGraphInOneRun(
+      createSerializedWorkflowGraph({
+        nodes: [
+          lifecycleNode("entry"),
+          actionNode("split", {
+            actionType: BUILT_IN_ACTION_IDS.eventSplit,
+          }),
+          sendNode("scheduled_sms"),
+          waitNode("wait_before", "30s"),
+          sendNode("reminder"),
+        ],
+        edges: [
+          {
+            id: "e1",
+            source: "entry",
+            sourceHandle: "started",
+            target: "split",
+          },
+          {
+            id: "e2",
+            source: "split",
+            sourceHandle: eventSplitOutlet(START_EVENT),
+            target: "scheduled_sms",
+          },
+          {
+            id: "e3",
+            source: "entry",
+            sourceHandle: "started",
+            target: "wait_before",
+          },
+          {
+            id: "e4",
+            source: "wait_before",
+            sourceHandle: null,
+            target: "reminder",
+          },
+        ],
+      })
+    );
+
+    expect(run.value.success).toBe(true);
+    expect(dispatchClock(run.executed, "scheduled_sms")).toBe(0);
+    expect(dispatchClock(run.executed, "reminder")).toBeGreaterThan(25_000);
+    expect(run.runs).toBe(1);
   });
 
   it("runs a short branch at its own target while a long sibling is still parked", async () => {
@@ -330,6 +657,38 @@ describe("a wait node beside another branch", () => {
     expect(dispatchClock(run.executed, "after_short")).toBeLessThan(60_000);
     // The root, and one run per waiting branch.
     expect(run.runs).toBe(3);
+  });
+
+  // The run wakes when any one park resolves, so both Waits park in one run
+  // and the short branch still lands on its own target.
+  it("runs a short branch at its own target while a long sibling is still parked, in one run", async () => {
+    const run = await runGraphInOneRun(siblingWaitsGraph("30s", "10m"));
+
+    expect(run.elapsedMs).toBeLessThan(11 * 60 * 1000);
+    expect(dispatchClock(run.executed, "after_long")).toBeGreaterThan(
+      9 * 60 * 1000
+    );
+    expect(dispatchClock(run.executed, "after_short")).toBeLessThan(60_000);
+    expect(run.runs).toBe(1);
+  });
+
+  // The timings ADR-0011 measured with a run per branch. The delay derives its
+  // remaining time from Date.now(), so each park can land a millisecond early.
+  it("acts on sibling Waits of 20 and 90 seconds at their own targets, in one run", async () => {
+    const run = await runGraphInOneRun(siblingWaitsGraph("20s", "90s"));
+
+    expect(run.value.status).toBe("completed");
+    expect(dispatchClock(run.executed, "after_short")).toBeGreaterThan(19_000);
+    expect(dispatchClock(run.executed, "after_short")).toBeLessThanOrEqual(
+      20_000
+    );
+    expect(dispatchClock(run.executed, "after_long")).toBeGreaterThan(89_000);
+    expect(dispatchClock(run.executed, "after_long")).toBeLessThanOrEqual(
+      90_000
+    );
+    // One pass parks both, one runs the short branch, one the long.
+    expect(run.invocations).toBe(3);
+    expect(run.runs).toBe(1);
   });
 
   // The branch run that wins an Exit claim wakes the sibling branch run parked
@@ -429,6 +788,120 @@ describe("a wait node beside another branch", () => {
     expect(store.callsOf("completeRun")[0]?.status).toBe("exited");
   });
 
+  // The store write that wins the Exit claim resolves every park still open
+  // with an Exit wake, inside the pass that claimed it. The run goes again at
+  // once, the sibling Wait halts on that wake, and the run ends `exited` at the
+  // short Wait's 30 seconds.
+  it("wakes a sibling parked on a Wait with the Exit its branch claimed, in one run", async () => {
+    const store = createRecordingWorkflowStore();
+    const checkedNodes: string[] = [];
+    const entities: WorkflowEntities = {
+      resolveNode: (input) =>
+        Effect.sync(() => {
+          checkedNodes.push(input.nodeId);
+          const decision =
+            input.nodeId === "after_short"
+              ? {
+                  outcome: "exit" as const,
+                  reason: "entity_condition_not_met" as const,
+                  checkedAt: "2026-10-19T15:00:00.000Z",
+                }
+              : { outcome: "eligible" as const };
+          return { decision, values: {} };
+        }),
+    };
+    const exitWakesOpenParks = (
+      passStore: WorkflowStore,
+      pass: ReplayPass
+    ): WorkflowStore => ({
+      ...passStore,
+      requestExit: (input) =>
+        Effect.tap(passStore.requestExit(input), (claimed) =>
+          claimed?.didWrite && claimed.claim?.kind === "exit"
+            ? Effect.promise(
+                async () => await pass.signalOpenParks?.(EXIT_WAKE)
+              )
+            : Effect.void
+        ),
+    });
+
+    const run = await runGraphInOneRun(
+      createSerializedWorkflowGraph({
+        nodes: [
+          lifecycleNode("entry", GUARDED),
+          waitNode("short_wait", "30s"),
+          sendNode("after_short"),
+          waitNode("long_wait", "10m"),
+          sendNode("after_long"),
+        ],
+        edges: [
+          {
+            id: "e1",
+            source: "entry",
+            sourceHandle: "started",
+            target: "short_wait",
+          },
+          {
+            id: "e2",
+            source: "short_wait",
+            sourceHandle: null,
+            target: "after_short",
+          },
+          {
+            id: "e3",
+            source: "entry",
+            sourceHandle: "started",
+            target: "long_wait",
+          },
+          {
+            id: "e4",
+            source: "long_wait",
+            sourceHandle: null,
+            target: "after_long",
+          },
+        ],
+      }),
+      {
+        store,
+        storeForPass: exitWakesOpenParks,
+        entities,
+        guarded: true,
+      }
+    );
+
+    expect(run.value).toMatchObject({
+      status: "exited",
+      success: true,
+      exit: {
+        reason: "entity_condition_not_met",
+        nodeId: "after_short",
+      },
+    });
+    expect(run.elapsedMs).toBeGreaterThan(29_000);
+    expect(run.elapsedMs).toBeLessThanOrEqual(30_000);
+    expect(checkedNodes).toContain("short_wait");
+    expect(checkedNodes).toContain("long_wait");
+    expect(checkedNodes).toContain("after_short");
+    expect(checkedNodes).not.toContain("after_long");
+    expect(dispatchClock(run.executed, "after_long")).toBeUndefined();
+    expect(
+      store
+        .callsOf("recordAuditEvent")
+        .filter((event) => event.eventType === "run_resumed")
+        .map((event) => event.message)
+    ).toContain("Run woken by an Exit in node 'long_wait'");
+    expect(
+      store
+        .callsOf("markWaitStateStatus")
+        .filter((call) => call.status === "cancelled")
+    ).toHaveLength(1);
+    expect(store.callsOf("cancelOpenWork")).toHaveLength(0);
+    expect(store.callsOf("completeRun").map((call) => call.status)).toEqual([
+      "exited",
+    ]);
+    expect(run.runs).toBe(1);
+  });
+
   // Only a park writes "waiting", and the short branch's resume writes
   // "running". The long sibling is still parked when that branch finishes, so
   // the branch offers the run back to the repository, whose guard decides.
@@ -481,44 +954,25 @@ describe("a wait node beside another branch", () => {
     ]);
   });
 
+  // Every pass that ends parked offers the run back to waiting: the pass that
+  // parks both Waits, and the pass whose short branch resumed and finished
+  // while the long sibling stayed parked. The pass that ends the run writes its
+  // terminal record instead.
+  it("offers the run back to waiting from each pass that ends parked, in one run", async () => {
+    const store = createRecordingWorkflowStore();
+    const run = await runGraphInOneRun(siblingWaitsGraph("30s", "10m"), {
+      store,
+    });
+
+    expect(run.invocations).toBe(3);
+    expect(store.callsOf("markExecutionWaitingIfParked")).toEqual([
+      { executionId: "exec_parallel" },
+      { executionId: "exec_parallel" },
+    ]);
+  });
+
   it("takes a second wait further down the same branch on a later pass", async () => {
-    const run = await runGraph(
-      createSerializedWorkflowGraph({
-        nodes: [
-          lifecycleNode("entry"),
-          sendNode("notify"),
-          waitNode("first_wait", "30s"),
-          waitNode("second_wait", "30s"),
-          sendNode("follow_up"),
-        ],
-        edges: [
-          {
-            id: "e1",
-            source: "entry",
-            sourceHandle: "started",
-            target: "notify",
-          },
-          {
-            id: "e2",
-            source: "entry",
-            sourceHandle: "started",
-            target: "first_wait",
-          },
-          {
-            id: "e3",
-            source: "first_wait",
-            sourceHandle: null,
-            target: "second_wait",
-          },
-          {
-            id: "e4",
-            source: "second_wait",
-            sourceHandle: null,
-            target: "follow_up",
-          },
-        ],
-      })
-    );
+    const run = await runGraph(waitBehindWaitGraph());
 
     expect(run.value.success).toBe(true);
     expect(dispatchClock(run.executed, "notify")).toBe(0);
@@ -526,46 +980,40 @@ describe("a wait node beside another branch", () => {
     expect(dispatchClock(run.executed, "follow_up")).toBeGreaterThan(55_000);
   });
 
+  it("takes a second wait further down the same branch on a later pass, in one run", async () => {
+    const run = await runGraphInOneRun(waitBehindWaitGraph());
+
+    expect(run.value.success).toBe(true);
+    expect(dispatchClock(run.executed, "notify")).toBe(0);
+    expect(dispatchClock(run.executed, "follow_up")).toBeGreaterThan(55_000);
+    // One pass parks the first Wait, one parks the second, one finishes.
+    expect(run.invocations).toBe(3);
+    expect(run.runs).toBe(1);
+  });
+
   it("resolves a template behind the wait against a node above it", async () => {
     echoedConfig = undefined;
 
     const run = await runGraph(
-      createSerializedWorkflowGraph({
-        nodes: [
-          lifecycleNode("entry"),
-          sendNode("notify"),
-          waitNode("wait_before", "30s"),
-          actionNode("follow_up", {
-            actionType: ECHO_ACTION_ID,
-            subject: "{{@notify:Notify.sent}}",
-          }),
-        ],
-        edges: [
-          {
-            id: "e1",
-            source: "entry",
-            sourceHandle: "started",
-            target: "notify",
-          },
-          {
-            id: "e2",
-            source: "notify",
-            sourceHandle: null,
-            target: "wait_before",
-          },
-          {
-            id: "e3",
-            source: "wait_before",
-            sourceHandle: null,
-            target: "follow_up",
-          },
-        ],
-      })
+      templateBehindWaitGraph(sendNode("notify"), "{{@notify:Notify.sent}}")
     );
 
     expect(run.value.success).toBe(true);
     // The branch run walked none of the graph above its entry node, so this
     // value came back out of the store rather than out of a traversal.
+    expect(echoedConfig).toMatchObject({ subject: "true" });
+  });
+
+  // The pass that runs the node behind the Wait replays the node above it from
+  // the memo, so the template reads the output that pass's traversal rebuilt.
+  it("resolves a template behind the wait against a node above it, in one run", async () => {
+    echoedConfig = undefined;
+
+    const run = await runGraphInOneRun(
+      templateBehindWaitGraph(sendNode("notify"), "{{@notify:Notify.sent}}")
+    );
+
+    expect(run.value.success).toBe(true);
     expect(echoedConfig).toMatchObject({ subject: "true" });
   });
 
@@ -580,37 +1028,26 @@ describe("a wait node beside another branch", () => {
     echoedConfig = undefined;
 
     await runGraph(
-      createSerializedWorkflowGraph({
-        nodes: [
-          lifecycleNode("entry"),
-          actionNode("wrapped", { actionType: WRAP_ACTION_ID }),
-          waitNode("wait_before", "30s"),
-          actionNode("follow_up", {
-            actionType: ECHO_ACTION_ID,
-            subject: "{{@wrapped:Wrap.id}}",
-          }),
-        ],
-        edges: [
-          {
-            id: "e1",
-            source: "entry",
-            sourceHandle: "started",
-            target: "wrapped",
-          },
-          {
-            id: "e2",
-            source: "wrapped",
-            sourceHandle: null,
-            target: "wait_before",
-          },
-          {
-            id: "e3",
-            source: "wait_before",
-            sourceHandle: null,
-            target: "follow_up",
-          },
-        ],
-      })
+      templateBehindWaitGraph(
+        actionNode("wrapped", { actionType: WRAP_ACTION_ID }),
+        "{{@wrapped:Wrap.id}}"
+      )
+    );
+
+    expect(echoedConfig).toMatchObject({ subject: "inner" });
+  });
+
+  // One run inherits nothing, so the output is the one the pass's traversal
+  // rebuilt from the memo. A step-envelope-shaped payload must still be stepped
+  // through once after it round-tripped through that memo.
+  it("reads an output above the wait the way the pass that produced it did, in one run", async () => {
+    echoedConfig = undefined;
+
+    await runGraphInOneRun(
+      templateBehindWaitGraph(
+        actionNode("wrapped", { actionType: WRAP_ACTION_ID }),
+        "{{@wrapped:Wrap.id}}"
+      )
     );
 
     expect(echoedConfig).toMatchObject({ subject: "inner" });
@@ -642,37 +1079,10 @@ describe("a wait node beside another branch", () => {
         }),
     };
 
-    const run = await runGraph(
-      createSerializedWorkflowGraph({
-        nodes: [
-          lifecycleNode("entry", CANCELABLE),
-          waitNode("wait_before", "10m"),
-          sendNode("reminder"),
-          sendNode("canceled_sms"),
-        ],
-        edges: [
-          {
-            id: "e1",
-            source: "entry",
-            sourceHandle: "started",
-            target: "wait_before",
-          },
-          {
-            id: "e2",
-            source: "wait_before",
-            sourceHandle: null,
-            target: "reminder",
-          },
-          {
-            id: "e3",
-            source: "entry",
-            sourceHandle: "canceled",
-            target: "canceled_sms",
-          },
-        ],
-      }),
-      { store: cancelStore, killBranchesAtMs: 30_000 }
-    );
+    const run = await runGraph(cancelableWaitGraph(), {
+      store: cancelStore,
+      killBranchesAtMs: 30_000,
+    });
 
     // The branch died mid-sleep, so the node behind it never ran.
     expect(dispatchClock(run.executed, "reminder")).toBeUndefined();
@@ -692,38 +1102,86 @@ describe("a wait node beside another branch", () => {
     expect(store.callsOf("completeRun")[0]?.status).toBe("canceled");
   });
 
-  it("carries a failure inside a branch back as that node's own", async () => {
-    const run = await runGraph(
-      createSerializedWorkflowGraph({
-        nodes: [
-          lifecycleNode("entry"),
-          waitNode("wait_before", "30s"),
-          // No action type, which is a node that fails without running.
-          actionNode("broken", {}),
-          sendNode("elsewhere"),
-        ],
-        edges: [
-          {
-            id: "e1",
-            source: "entry",
-            sourceHandle: "started",
-            target: "wait_before",
-          },
-          {
-            id: "e2",
-            source: "wait_before",
-            sourceHandle: null,
-            target: "broken",
-          },
-          {
-            id: "e3",
-            source: "entry",
-            sourceHandle: "started",
-            target: "elsewhere",
-          },
-        ],
-      })
+  // In one run nothing is killed. The Cancel Event writes its claim and
+  // resolves the parked Wait with a cancel wake, so the Wait closes its own
+  // rows in the next pass before the Canceled outlet opens one, and no sweep
+  // is needed.
+  it("closes a parked Wait's rows on the cancel wake before taking the Canceled outlet, in one run", async () => {
+    const store = createRecordingWorkflowStore();
+
+    const run = await runGraphInOneRun(cancelableWaitGraph(), {
+      store,
+      signalOpenParksAt: {
+        atMs: 30_000,
+        wake: CANCEL_WAKE,
+        write: () => landCancelClaim(store),
+      },
+    });
+
+    expect(dispatchClock(run.executed, "reminder")).toBeUndefined();
+    expect(dispatchClock(run.executed, "canceled_sms")).toBe(30_000);
+    expect(store.callsOf("cancelOpenWork")).toHaveLength(0);
+
+    const closedAt = store.calls.findIndex(
+      (call) =>
+        call.method === "markWaitStateStatus" &&
+        call.input.status === "cancelled"
     );
+    const canceledBranchAt = store.calls.findIndex(
+      (call) =>
+        call.method === "startStepLog" && call.input.nodeId === "canceled_sms"
+    );
+    expect(closedAt).toBeGreaterThanOrEqual(0);
+    expect(closedAt).toBeLessThan(canceledBranchAt);
+    expect(store.callsOf("completeRun").map((call) => call.status)).toEqual([
+      "canceled",
+    ]);
+    expect(run.runs).toBe(1);
+  });
+
+  // A Cancel Event while both sibling Waits are parked resolves both parks in
+  // one write. The pass that follows halts both Started branches and runs the
+  // Canceled outlet once.
+  it("runs the Canceled outlet once for a Cancel Event that lands while two Waits are parked, in one run", async () => {
+    const store = createRecordingWorkflowStore();
+
+    const run = await runGraphInOneRun(
+      siblingWaitsGraph("20s", "90s", { canceledOutlet: true }),
+      {
+        store,
+        signalOpenParksAt: {
+          atMs: 10_000,
+          wake: CANCEL_WAKE,
+          write: () => landCancelClaim(store),
+        },
+      }
+    );
+
+    expect(run.value.status).toBe("canceled");
+    expect(run.elapsedMs).toBe(10_000);
+    expect(dispatchClock(run.executed, "after_short")).toBeUndefined();
+    expect(dispatchClock(run.executed, "after_long")).toBeUndefined();
+    expect(
+      store
+        .callsOf("startStepLog")
+        .filter((open) => open.nodeId === "canceled_sms")
+    ).toHaveLength(1);
+    expect(
+      store
+        .callsOf("markWaitStateStatus")
+        .map((call) => call.status)
+        .toSorted()
+    ).toEqual(["cancelled", "cancelled"]);
+    expect(store.callsOf("completeRun").map((call) => call.status)).toEqual([
+      "canceled",
+    ]);
+    // One pass parks both Waits, and the pass after the Cancel Event ends it.
+    expect(run.invocations).toBe(2);
+    expect(run.runs).toBe(1);
+  });
+
+  it("carries a failure inside a branch back as that node's own", async () => {
+    const run = await runGraph(failureBehindWaitGraph());
 
     // The run answers for what its branch did, and for that node alone: the
     // branch beside it succeeded and the Wait it hung off did too.
@@ -731,6 +1189,16 @@ describe("a wait node beside another branch", () => {
     expect(run.value.results.broken?.success).toBe(false);
     expect(run.value.results.wait_before?.success).toBe(true);
     expect(run.value.results.elsewhere?.success).toBe(true);
+  });
+
+  it("answers for a failure behind a Wait as that node's own, in one run", async () => {
+    const run = await runGraphInOneRun(failureBehindWaitGraph());
+
+    expect(run.value.success).toBe(false);
+    expect(run.value.results.broken?.success).toBe(false);
+    expect(run.value.results.wait_before?.success).toBe(true);
+    expect(run.value.results.elsewhere?.success).toBe(true);
+    expect(run.runs).toBe(1);
   });
 
   /**

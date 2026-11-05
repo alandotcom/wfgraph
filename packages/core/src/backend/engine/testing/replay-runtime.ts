@@ -4,15 +4,17 @@
  *
  * `createInMemoryWorkflowRuntime` resolves everything where it stands, so a
  * branch never suspends and every ordering question it could answer is the
- * answer the engine's own `Promise.all` gives. This driver instead abandons the
- * body at each step boundary and calls it again from the top, on a virtual
- * clock, which is what makes "the run parked here, and that branch had to wait
- * for it" a fact a test can assert on.
+ * answer the engine's own `Promise.all` gives. This driver instead calls the
+ * body again from the top on a virtual clock, which is what makes "the run
+ * parked here, and that branch had to wait for it" a fact a test can assert on.
  *
- * It owns a set of runs rather than one body, because a Wait is handed to a
- * durable run of its own and the whole question is what one run's pause costs
- * another. Each run carries its own memo and its own pauses, and the executor
- * policy below applies per run.
+ * `ReplayRunOptions.executor` picks the executor it models. The database
+ * executor runs one run per Execution and lives in
+ * `replay-database-executor.ts`. The Inngest executor, the default and the
+ * subject of this module, abandons the body at each step boundary and owns a
+ * set of runs, because a Wait is handed to a durable run of its own and the
+ * whole question is what one run's pause costs another. Each run carries its
+ * own memo and its own pauses, and the executor policy below applies per run.
  *
  * That policy is Inngest's, read off a dev-server trace rather than off its
  * documentation. `docs/adr/0004` covers why Inngest is the substrate; the policy
@@ -24,6 +26,10 @@ import type {
   BranchHandoff,
   BranchRunResult,
 } from "#src/backend/engine/branch";
+import {
+  type DatabaseReplayExecutor,
+  driveDatabaseExecutor,
+} from "#src/backend/engine/testing/replay-database-executor";
 import { ReplayHostTimers } from "#src/backend/engine/testing/replay-host-timers";
 import type {
   DurableStepRef,
@@ -43,6 +49,45 @@ export type ReplayExecution = {
   stepId: string;
 };
 
+/**
+ * The Inngest executor: a Wait suspends the invocation that reached it, and a
+ * run wakes once the last of its outstanding pauses ends.
+ */
+export type InngestReplayExecutor = {
+  kind: "inngest";
+  /**
+   * The body a branch hand-off starts. Left out, the runtime's `startBranch`
+   * holds `undefined`, which the engine reads as "run the Wait here".
+   */
+  branch?:
+    | ((
+        runtime: WorkflowExecutionRuntime,
+        input: {
+          entryNodeId: string;
+          releasedEdges: readonly ReleasedEdge[];
+          side: ExecutionSide;
+        }
+      ) => Promise<unknown>)
+    | undefined;
+  /**
+   * Virtual clock at which every live branch run is killed, which is what a
+   * cancellation does to them. The run that started one reads `killed` back.
+   */
+  killBranchesAtMs?: number | undefined;
+};
+
+/** Which durable executor a drive models. */
+export type ReplayExecutor = InngestReplayExecutor | DatabaseReplayExecutor;
+
+/**
+ * Both executors, each entering every Wait in place, for a `describe.each`
+ * that holds a case to the same assertions under each.
+ */
+export const IN_PLACE_EXECUTORS: readonly ReplayExecutor[] = [
+  { kind: "inngest" },
+  { kind: "database" },
+];
+
 export type ReplayRunOptions = {
   /**
    * What an event wait resolves to, keyed by its step id. A wait with no answer
@@ -51,24 +96,28 @@ export type ReplayRunOptions = {
   events?: Record<string, unknown> | undefined;
   /** Invocation ceiling, which turns a non-converging graph into a failure. */
   maxInvocations?: number | undefined;
-  /**
-   * The body a branch hand-off starts. Left out, the runtime's `startBranch`
-   * holds `undefined`, which the engine reads as "run the Wait here".
-   */
-  branch?: (
-    runtime: WorkflowExecutionRuntime,
-    input: {
-      entryNodeId: string;
-      releasedEdges: readonly ReleasedEdge[];
-      side: ExecutionSide;
-    }
-  ) => Promise<unknown>;
-  /**
-   * Virtual clock at which every live branch run is killed, which is what a
-   * cancellation does to them. The run that started one reads `killed` back.
-   */
-  killBranchesAtMs?: number | undefined;
+  /** The executor this drive models. Left out, the Inngest executor. */
+  executor?: ReplayExecutor | undefined;
 };
+
+/** What a body is told about the invocation it runs in. */
+export type ReplayPass = {
+  /** Which invocation of the run's body this is, counted from zero. */
+  invocation: number;
+  /**
+   * Resolves every park still open with `wake`, the way a producer writing to
+   * the wait rows does in the middle of a pass, such as the store write that
+   * wins an Exit claim. Only the database executor offers it. The Inngest
+   * executor's runs are signaled through `wakeParkedWaits` instead.
+   */
+  signalOpenParks?: ((wake: unknown) => Promise<void>) | undefined;
+};
+
+/** One durable run's body, called once per invocation. */
+export type ReplayBody<T> = (
+  runtime: WorkflowExecutionRuntime,
+  pass: ReplayPass
+) => Promise<T>;
 
 export type ReplayRun<T> = {
   value: T;
@@ -163,7 +212,7 @@ type BranchEnding = { handoff: BranchHandoff } | { error: unknown };
 /** One durable run of the tree, with everything that survives its replays. */
 type DurableRun = {
   readonly id: string;
-  readonly body: (runtime: WorkflowExecutionRuntime) => Promise<unknown>;
+  readonly body: ReplayBody<unknown>;
   readonly memo: Map<string, unknown>;
   readonly finishedWaits: Map<string, unknown>;
   /** When each pause fires, fixed the first time this run reaches it. */
@@ -187,32 +236,36 @@ type DurableRun = {
  *
  * Every body is called once per invocation and must build its own state each
  * time, which is what the engine does: `executeWorkflow` constructs a fresh
- * `Traversal` per call and recovers the rest from the memo.
+ * `Traversal` per call and recovers the rest from the memo. Under the database
+ * executor a body ends a pass by answering `kind: "parked"`, which is what
+ * `executeWorkflow` answers while a Wait is parked.
  */
 export async function driveWithReplay<T>(
-  body: (runtime: WorkflowExecutionRuntime) => Promise<T>,
+  body: ReplayBody<T>,
   options: ReplayRunOptions = {}
 ): Promise<ReplayRun<T>> {
+  const executor = options.executor ?? { kind: "inngest" };
+  if (executor.kind === "database") {
+    return await driveDatabaseExecutor(body, options, executor);
+  }
+
   const timers = new ReplayHostTimers();
   timers.install();
   try {
-    return await driveWithReplayInstalled(body, options, timers);
+    return await driveWithReplayInstalled(body, options, executor, timers);
   } finally {
     timers.uninstall();
   }
 }
 
 async function driveWithReplayInstalled<T>(
-  body: (runtime: WorkflowExecutionRuntime) => Promise<T>,
+  body: ReplayBody<T>,
   options: ReplayRunOptions,
+  executor: InngestReplayExecutor,
   timers: ReplayHostTimers
 ): Promise<ReplayRun<T>> {
-  const {
-    events = {},
-    maxInvocations = DEFAULT_MAX_INVOCATIONS,
-    branch,
-    killBranchesAtMs,
-  } = options;
+  const { events = {}, maxInvocations = DEFAULT_MAX_INVOCATIONS } = options;
+  const { branch, killBranchesAtMs } = executor;
 
   const tree: DurableRun[] = [];
   const executed: ReplayExecution[] = [];
@@ -221,7 +274,7 @@ async function driveWithReplayInstalled<T>(
 
   function startRun(
     id: string,
-    runBody: (runtime: WorkflowExecutionRuntime) => Promise<unknown>,
+    runBody: ReplayBody<unknown>,
     parent?: { run: DurableRun; stepId: string }
   ): DurableRun {
     const run: DurableRun = {
@@ -451,7 +504,7 @@ async function driveWithReplayInstalled<T>(
     };
 
     let settlement: Settlement | undefined;
-    void run.body(runtime).then(
+    void run.body(runtime, { invocation: run.invocation }).then(
       (value) => {
         settlement = { value };
       },

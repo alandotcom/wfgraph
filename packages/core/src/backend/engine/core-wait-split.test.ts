@@ -405,13 +405,16 @@ describe("executeWorkflow Event Split after Wait", () => {
         events: {
           "wait-park-wait_1-0": waitResumeSignal(SETTLED, { amount: "40" }),
         },
-        branch: (runtime, branchInput) =>
-          executeWorkflowBranch(
-            { ...input, ...branchInput },
-            runtime,
-            store,
-            noWorkflowActions
-          ),
+        executor: {
+          kind: "inngest",
+          branch: (runtime, branchInput) =>
+            executeWorkflowBranch(
+              { ...input, ...branchInput },
+              runtime,
+              store,
+              noWorkflowActions
+            ),
+        },
       }
     );
 
@@ -425,5 +428,39 @@ describe("executeWorkflow Event Split after Wait", () => {
       data: { event: SETTLED },
     });
     expect(result.outputs.lifecycle_1?.data).toEqual({ amount: "40" });
+  });
+
+  // The pass that resumes the Wait overwrites the entry payload in its own
+  // traversal, so the run's result carries the Wait's Event with no hand-back.
+  it("overwrites the entry payload in the pass that resumes the Wait, in one run", async () => {
+    const input = {
+      graph: createWaitSplitGraph(),
+      executionId: "exec_wait_split",
+      workflowId: "workflow_wait_split",
+      startEventName: CREATED,
+      startPayload: { appointmentId: "appt_1" },
+    };
+
+    const run = await driveWithReplay(
+      (runtime) => executeWorkflow(input, runtime, store, noWorkflowActions),
+      {
+        events: {
+          "wait-park-wait_1-0": waitResumeSignal(SETTLED, { amount: "40" }),
+        },
+        executor: { kind: "database" },
+      }
+    );
+
+    const result = run.value;
+    expect(result.success).toBe(true);
+    expect(result.results.on_settled?.success).toBe(true);
+    expect(result.results.on_failed).toBeUndefined();
+    expect(result.results.on_created).toBeUndefined();
+    expect(executionData(result.results.split_1)).toEqual({
+      success: true,
+      data: { event: SETTLED },
+    });
+    expect(result.outputs.lifecycle_1?.data).toEqual({ amount: "40" });
+    expect(run.runs).toBe(1);
   });
 });

@@ -21,7 +21,10 @@ import { executionData } from "#src/backend/engine/contracts";
 import { createRecordingWorkflowStore } from "#src/backend/engine/recording-store";
 import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
 import { executeTestWorkflow } from "#src/backend/engine/test-execution";
-import { driveWithReplay } from "#src/backend/engine/testing/replay-runtime";
+import {
+  driveWithReplay,
+  IN_PLACE_EXECUTORS,
+} from "#src/backend/engine/testing/replay-runtime";
 import { DatabaseError } from "#src/backend/lib/effect/database";
 import {
   waitMigrateSignal,
@@ -1222,52 +1225,56 @@ describe("per-node Entity Eligibility", () => {
     expect(runAction).not.toHaveBeenCalled();
   });
 
-  it("keeps completed checkpoints across Migration and applies the target rule downstream", async () => {
-    const migratedCondition = condition.replace(
-      '"active"',
-      '"remindersEnabled"'
-    );
-    const store = createRecordingWorkflowStore();
-    const entities = entityPort([
-      { outcome: "eligible" },
-      { outcome: "eligible" },
-      { outcome: "eligible" },
-    ]);
+  it.each(IN_PLACE_EXECUTORS)(
+    "keeps completed checkpoints across Migration and applies the target rule downstream ($kind executor)",
+    async (executor) => {
+      const migratedCondition = condition.replace(
+        '"active"',
+        '"remindersEnabled"'
+      );
+      const store = createRecordingWorkflowStore();
+      const entities = entityPort([
+        { outcome: "eligible" },
+        { outcome: "eligible" },
+        { outcome: "eligible" },
+      ]);
 
-    const run = await driveWithReplay(
-      (runtime) => {
-        const migrated = store.callsOf("createWaitState").length > 0;
-        return executeTestWorkflow(
-          {
-            ...executionInput,
-            graph: migrationGraph(migrated ? migratedCondition : condition),
-            executionId: "exec_wait",
-            workflowVersionId: migrated ? "version_2" : "version_1",
-          },
-          runtime,
-          store,
-          actions,
-          entities
-        );
-      },
-      {
-        events: {
-          "wait-park-wait_1-0": waitMigrateSignal(),
-          "wait-park-wait_1-1": waitResumeSignal({}, "appointment.ready"),
+      const run = await driveWithReplay(
+        (runtime) => {
+          const migrated = store.callsOf("createWaitState").length > 0;
+          return executeTestWorkflow(
+            {
+              ...executionInput,
+              graph: migrationGraph(migrated ? migratedCondition : condition),
+              executionId: "exec_wait",
+              workflowVersionId: migrated ? "version_2" : "version_1",
+            },
+            runtime,
+            store,
+            actions,
+            entities
+          );
         },
-      }
-    );
+        {
+          events: {
+            "wait-park-wait_1-0": waitMigrateSignal(),
+            "wait-park-wait_1-1": waitResumeSignal({}, "appointment.ready"),
+          },
+          executor,
+        }
+      );
 
-    expect(run.value.status).toBe("completed");
-    expect(entities.inputs).toEqual([
-      expect.objectContaining({ nodeId: "first", condition }),
-      expect.objectContaining({ nodeId: "wait_1", condition }),
-      expect.objectContaining({
-        nodeId: "second",
-        condition: migratedCondition,
-      }),
-    ]);
-  });
+      expect(run.value.status).toBe("completed");
+      expect(entities.inputs).toEqual([
+        expect.objectContaining({ nodeId: "first", condition }),
+        expect.objectContaining({ nodeId: "wait_1", condition }),
+        expect.objectContaining({
+          nodeId: "second",
+          condition: migratedCondition,
+        }),
+      ]);
+    }
+  );
 
   it("memoizes only referenced Entity values for deterministic replay", async () => {
     const memo = new Map<string, unknown>();
