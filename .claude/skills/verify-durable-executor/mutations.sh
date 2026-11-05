@@ -1,48 +1,115 @@
 #!/bin/sh
 # Shows that each rule can fail. Every mutation removes one guard the design
-# depends on, and the rule beside it must break on the mutated model. A
-# mutation whose rule still holds means the model no longer exercises that
-# guard, which is a modelling error to fix before trusting a pass.
+# depends on, and the rules named beside it must break on the mutated model.
 #
 #   .claude/skills/verify-durable-executor/mutations.sh
 #
-# Exit 0 when every mutation is caught, 1 otherwise.
+# The models are checked unmutated first. A mutation whose rule already breaks
+# there proves nothing, so it is reported UNPROVEN and fails the suite, as is a
+# MISSED mutation whose rule still holds. Either means the model no longer
+# exercises that guard. Exit 0 when every mutation is caught, 1 otherwise.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
-spec=$here/model/DurableExecutor.tla
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
-# name | text in the model | replacement | rules that must break, space-separated.
-# FailedOnlyAfterRetriesSpent has no mutation: it breaks on the model as
-# written, which is the finding SKILL.md records.
+# model | name | text in the model | replacement | rules that must break
 mutations=$(cat <<'MUTATIONS'
-release-ignores-wait-rows|ReleaseReadsWaitRows == TRUE|ReleaseReadsWaitRows == FALSE|WokenBranchIsNeverStranded SleepingRunHasADeadline
-wake-claims-a-woken-row|WakeIsUnclaimed(p) == park[p] = "open"|WakeIsUnclaimed(p) == park[p] \in {"open", "woken"}|EachWaitWokenOnce
-branch-run-not-memoized|[] park[p] = "woken"     -> IF StartedSideAdmits THEN "ran"|[] park[p] = "woken"     -> IF StartedSideAdmits THEN "woken"|EachBranchRunsOnce
-join-admitted-after-one-branch|ELSE IF \A p \in Parks : park[p] = "ran"|ELSE IF \E p \in Parks : park[p] = "ran"|JoinRunsOnceAfterBothBranches
-outlet-not-memoized|THEN /\ outletDone' = TRUE /\ outletRuns' = outletRuns + 1|THEN /\ outletDone' = outletDone /\ outletRuns' = outletRuns + 1|OutletRunsOnceOnCancelClaim
-no-claim-fence|StartedSideAdmits == claim = "none"|StartedSideAdmits == TRUE|NoStartedWorkAdmittedAfterClaim
-no-lease-fencing|LeaseHeldBy(w) == holder = w|LeaseHeldBy(w) == TRUE|OneTerminalRecord
-policy-cancel-keeps-lease|/\ sched' = "gone" /\ holder' = 0|/\ sched' = "gone" /\ holder' = holder|NothingCommitsAfterTheRunEnds
-terminal-write-unguarded|RunInFlight == status = "running"|RunInFlight == TRUE|OneTerminalRecord
-completion-ignores-claim|outletDone \/ (joinDone /\ claim = "cancel") ->|outletDone ->|EndMatchesWork
-expiry-keeps-token|/\ sched' = "queued" /\ holder' = 0|/\ sched' = "queued" /\ holder' = holder|LeaseHasAHolder
+DurableExecutor|release-ignores-wait-rows|ReleaseReadsWaitRows == TRUE|ReleaseReadsWaitRows == FALSE|WokenBranchIsNeverStranded SleepingRunHasADeadline EveryRunEnds
+DurableExecutor|wake-claims-a-woken-row|WakeIsUnclaimed(p) == park[p] = "open"|WakeIsUnclaimed(p) == park[p] \in {"open", "woken"}|EachWaitWokenOnce
+DurableExecutor|branch-run-not-memoized|[] park[p] = "woken"     -> IF StartedSideAdmits THEN "ran"|[] park[p] = "woken"     -> IF StartedSideAdmits THEN "woken"|EachBranchRunsOnce
+DurableExecutor|join-admitted-after-one-branch|JoinIsDue == /\ ~joinAdmitted /\ \A p \in Started|JoinIsDue == /\ ~joinAdmitted /\ \E p \in Started|JoinRunsOnceAfterBothBranches
+DurableExecutor|outlet-entry-not-memoized|/\ canceledEntered' = TRUE /\ canceledEntries' = canceledEntries + 1|/\ canceledEntered' = canceledEntered /\ canceledEntries' = canceledEntries + 1|CanceledOutletEnteredOnceOnCancel
+DurableExecutor|outlet-entered-on-exit|  /\ claim = "cancel" /\ ~canceledEntered|  /\ claim # "none" /\ ~canceledEntered|NoCanceledWorkAfterExit
+DurableExecutor|second-claim-overwrites|ClaimIsFree == claim = "none"|ClaimIsFree == TRUE|OneClaimWins
+DurableExecutor|no-claim-fence|StartedSideAdmits == claim = "none"|StartedSideAdmits == TRUE|NoStartedWorkAfterAClaim
+DurableExecutor|exit-leaves-siblings-parked|[] park[q] = "open"  -> "hwoken"|[] park[q] = "open"  -> "open"|ExitHaltsEveryWait
+DurableExecutor|claim-wake-ignored|[] park[p] = "hwoken"    -> "halted"|[] park[p] = "hwoken"    -> "hwoken"|EveryWakeIsActedOn EveryRunEnds
+DurableExecutor|no-lease-fencing|LeaseHeldBy(w) == holder = w|LeaseHeldBy(w) == TRUE|OneTerminalRecord
+DurableExecutor|policy-cancel-keeps-lease|/\ sched' = "gone" /\ holder' = 0|/\ sched' = "gone" /\ holder' = holder|NothingCommitsAfterTheRunEnds
+DurableExecutor|terminal-write-unguarded|RunInFlight == status = "running"|RunInFlight == TRUE|OneTerminalRecord
+DurableExecutor|completion-ignores-claim|[] joinDone /\ claim = "none" ->|[] joinDone ->|EndMatchesWork
+DurableExecutor|claim-counts-an-attempt|  /\ UNCHANGED <<attempt, faults, dataVars, observers>>|  /\ attempt' = Sat(attempt + 1) /\ UNCHANGED <<faults, dataVars, observers>>|FailedOnlyAfterRetriesSpent
+DurableExecutor|expiry-keeps-token|/\ sched' = "queued" /\ holder' = 0 /\ attempt' = Sat(attempt + 1)|/\ sched' = "queued" /\ holder' = holder /\ attempt' = Sat(attempt + 1)|LeaseHasAHolder
+Migration|no-version-fence|StillPinned(w) == pinned = loaded[w]|StillPinned(w) == TRUE|BelowRunsThePinnedVersion
+Migration|repin-while-running|RepinNeedsAPark == row = "waiting"|RepinNeedsAPark == TRUE|BelowRunsThePinnedVersion
+Migration|migrate-wake-dropped|THEN row' = "migrate" /\ Requeue|THEN UNCHANGED <<row, sched>>|ParkedUnderThePinnedVersion
+Migration|repark-keeps-old-version|/\ row' = "waiting" /\ rowVersion' = loaded[w] /\ hopWakes' = 0|/\ row' = "waiting" /\ rowVersion' = rowVersion /\ hopWakes' = 0|ParkedUnderThePinnedVersion
+Migration|above-not-memoized|aboveRuns' = IF aboveDone THEN aboveRuns ELSE aboveRuns + 1|aboveRuns' = aboveRuns + 1|AboveRunsOnce
+Migration|below-not-memoized|belowRuns' = IF belowDone THEN belowRuns ELSE belowRuns + 1|belowRuns' = belowRuns + 1|BelowRunsOnce
+Migration|release-ignores-wait-row|ReleaseReadsWaitRow == TRUE|ReleaseReadsWaitRow == FALSE|WokenWaitIsNeverStranded
+Migration|no-lease-fencing|LeaseHeldBy(w) == holder = w|LeaseHeldBy(w) == TRUE|OneTerminalRecord
+Migration|expiry-keeps-token|/\ sched' = "queued" /\ holder' = 0 /\ attempt' = Sat(attempt + 1)|/\ sched' = "queued" /\ holder' = holder /\ attempt' = Sat(attempt + 1)|LeaseHasAHolder
+Migration|migrate-wake-never-consumed|THEN /\ row' = "waiting" /\ rowVersion' = loaded[w] /\ hopWakes' = 0|THEN /\ row' = "migrate" /\ rowVersion' = loaded[w] /\ hopWakes' = 0|EveryRunEnds
+Migration|wake-claims-a-woken-row|WakeIsUnclaimed == row = "waiting"|WakeIsUnclaimed == row # "none"|EachHopWokenOnce
+Intake|inbox-key-not-unique|InboxKeyIsUnique == TRUE|InboxKeyIsUnique == FALSE|DuplicateSendIsOneArrival EachArrivalOpensAtMostOneRun
+Intake|delivery-id-not-unique|DeliveryIdIsUnique == TRUE|DeliveryIdIsUnique == FALSE|EachArrivalOpensAtMostOneRun
+Intake|schedule-row-inserted-later|ExecutionAndScheduleTogether == TRUE|ExecutionAndScheduleTogether == FALSE|EveryOpenRunIsScheduled
+Intake|supersede-keeps-schedule|SupersedeDropsSchedule == TRUE|SupersedeDropsSchedule == FALSE|SupersededRunsStop
+Intake|first-wins-ignores-live-run|ELSE IF mode = "first" /\ Live # {}|ELSE IF FALSE|OneLiveRunPerEntity
+Intake|newest-wins-keeps-old-run|ELSE IF y \in Live /\ mode = "newest" THEN "superseded"|ELSE IF FALSE THEN "superseded"|OneLiveRunPerEntity
+Intake|poll-skips-host-rows|/\ inbox[r] = "present" /\ dsched[r] = "none"|/\ inbox[r] = "present" /\ dsched[r] = "none" /\ FALSE|EveryArrivalIsDelivered
+Intake|canceled-run-never-ends|  /\ exec[x] = "claimed" /\ esched[x] = "present"|  /\ exec[x] = "claimed" /\ esched[x] = "present" /\ FALSE|EveryRunEnds
 MUTATIONS
 )
 
-printf '%s\n' "$mutations" | while IFS='|' read -r name from to rule; do
-  FROM=$from TO=$to perl -0pe 's/\Q$ENV{FROM}\E/$ENV{TO}/ or die "mutation text not found\n"' "$spec" > "$work/DurableExecutor.tla" \
-    || { echo "missing $name: the model no longer contains: $from"; exit 1; }
-  result=$(SPEC=$work/DurableExecutor.tla "$here/check.sh" 2>&1) || true
+# Rules that break on the models as written. Each is a finding SKILL.md
+# records, and this list must match what check.sh reports.
+findings="DurableExecutor:NoWaitLeftOpenAfterTheRunEnds Migration:FailedOnlyAfterRetriesSpent"
+
+echo "checking the models as written"
+base=$("$here/check.sh" 2>&1) || true
+if printf '%s\n' "$base" | grep -q '^error'; then
+  printf '%s\n' "$base" | grep -A5 '^error'; exit 2
+fi
+
+failed=0
+while IFS='|' read -r model name from to rules; do
+  for rule in $rules; do
+    if printf '%s\n' "$base" | grep -q "^breaks  $model $rule\$"; then
+      echo "UNPROVEN $model $name: $rule already breaks on the model as written"; failed=1; continue 2
+    fi
+  done
+  rm -rf "$work/models" && cp -R "$here/model" "$work/models"
+  FROM=$from TO=$to perl -0pi -e 's/\Q$ENV{FROM}\E/$ENV{TO}/ or die "not found\n"' "$work/models/$model.tla" 2>/dev/null \
+    || { echo "missing  $model $name: the model no longer contains: $from"; failed=1; continue; }
+  result=$(MODEL_DIR=$work/models RULES=$rules "$here/check.sh" "$model" 2>&1) || true
   if printf '%s\n' "$result" | grep -q '^error'; then
-    echo "ERROR   $name: tla-ts could not check the mutated model"; printf '%s\n' "$result" | grep -A5 '^error'; exit 1
+    echo "ERROR    $model $name: tla-ts could not check the mutated model"
+    printf '%s\n' "$result" | grep -A5 '^error'; failed=1; continue
   fi
-  for one in $rule; do
-    if printf '%s\n' "$result" | grep -q "^breaks  $one\$"; then
-      echo "caught  $name breaks $one"
+  for rule in $rules; do
+    if printf '%s\n' "$result" | grep -q "^breaks  $model $rule\$"; then
+      echo "caught   $model $name breaks $rule"
     else
-      echo "MISSED  $name: $one still holds"; exit 1
+      echo "MISSED   $model $name: $rule still holds"; failed=1
+    fi
+  done
+done <<EOF
+$mutations
+EOF
+
+# Every rule is either proven able to fail by a mutation or is a known finding.
+covered=$(printf '%s\n' "$mutations" | awk -F'|' '{ n = split($5, r, " "); for (i = 1; i <= n; i++) print $1 ":" r[i] }')
+for cfg in "$here"/model/*.cfg; do
+  model=$(basename "$cfg" .cfg)
+  for rule in $(sed -n 's/^INVARIANT //p; s/^PROPERTY //p' "$cfg"); do
+    key="$model:$rule"
+    if printf ' %s ' "$findings" | grep -q " $key "; then
+      if printf '%s\n' "$base" | grep -q "^breaks  $model $rule\$"; then
+        echo "finding  $model $rule breaks on the model as written"
+      else
+        echo "STALE    $model $rule no longer breaks: remove it from the findings and add a mutation"; failed=1
+      fi
+    elif ! printf '%s\n' "$covered" | grep -qx "$key"; then
+      echo "UNCOVERED $model $rule: no mutation shows it can fail"; failed=1
     fi
   done
 done
+printf '%s\n' "$base" | sed -n 's/^breaks  \([^ ]*\) \([^ ]*\)$/\1:\2/p' | while read -r key; do
+  printf ' %s ' "$findings" | grep -q " $key " || echo "NEW      $key breaks on the model as written and is not a recorded finding"
+done
+printf '%s\n' "$base" | sed -n 's/^breaks  \([^ ]*\) \([^ ]*\)$/\1:\2/p' | while read -r key; do
+  printf ' %s ' "$findings" | grep -q " $key " || exit 1
+done || failed=1
+exit $failed
