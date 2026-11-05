@@ -8,7 +8,6 @@ import {
   measureWakeTimingsOn,
   type WakeMeasurement,
 } from "@wfgraph/core/backend/executor/testing/wake-timing";
-import type { WorkerBackend } from "@wfgraph/core/backend/executor/worker-loop";
 import { migrateWfGraphDatabase } from "@wfgraph/core/migrate";
 import { wfPostgres } from "@wfgraph/core/postgres";
 import { wfSqlite } from "@wfgraph/core/sqlite";
@@ -23,9 +22,10 @@ import { createIntegrationCipher } from "@wfgraph/core/backend/services/integrat
 // `pnpm run executor:timing` measures the database executor's wake timings by
 // wall clock on SQLite and on PostgreSQL: sibling Waits of 2 s and 9 s, a Cancel
 // Event 1 s after both of them parked, and a Wait of 3 s behind a Wait of 2 s,
-// each through the real worker loop at the backend's own poll interval. It
-// prints when each node acted against when it should have, and exits non-zero
-// when any of them acted more than a second late, early, or not at all.
+// each through the real worker loop at the poll interval the plan names for
+// that backend. It prints when each node acted against when it should have,
+// and exits non-zero when any of them acted more than a second late, early, or
+// not at all.
 //
 // The PostgreSQL half runs in a schema of its own on the server
 // `WFGRAPH_TEST_DATABASE_URL` names (`docker compose up -d` serves one), which
@@ -35,17 +35,25 @@ import { createIntegrationCipher } from "@wfgraph/core/backend/services/integrat
 /** How late a node may act and still count as on time. */
 const LATENESS_BOUND_MS = 1_000;
 
+/**
+ * The loop's poll on each backend. A SQLite claim is a local `BEGIN IMMEDIATE`
+ * that returns in microseconds; a PostgreSQL poll is a round trip to a server
+ * other processes also poll.
+ */
+const SQLITE_POLL_MS = 250;
+const POSTGRES_POLL_MS = 1_000;
+
 const cipher = createIntegrationCipher({ key: "e".repeat(64) });
 
 async function measureOn(
-  backend: WorkerBackend,
+  pollMs: number,
   persistence: WfGraphPersistence
 ): Promise<WakeMeasurement[]> {
   const instance = await persistence.open(cipher);
   try {
     return await measureWakeTimingsOn({
       instance,
-      backend,
+      pollMs,
       durations: FULL_WAKE_TIMINGS,
     });
   } finally {
@@ -57,7 +65,7 @@ async function measureSqlite(): Promise<WakeMeasurement[]> {
   const directory = await mkdtemp(join(tmpdir(), "wfgraph-timing-"));
   try {
     return await measureOn(
-      "sqlite",
+      SQLITE_POLL_MS,
       wfSqlite({ filename: join(directory, "wfgraph.db") })
     );
   } finally {
@@ -70,7 +78,7 @@ async function measurePostgres(): Promise<WakeMeasurement[]> {
   const schema = mintTestSchemaName();
   try {
     await migrateWfGraphDatabase({ url, schema });
-    return await measureOn("postgres", wfPostgres({ url, schema }));
+    return await measureOn(POSTGRES_POLL_MS, wfPostgres({ url, schema }));
   } finally {
     await withAdminClient((client) =>
       client.unsafe(`drop schema if exists "${schema}" cascade`)
@@ -110,8 +118,8 @@ function report(measured: WakeMeasurement): { line: string; missed: boolean } {
 
 let missedAny = false;
 for (const [name, measure] of [
-  ["SQLite (poll 250 ms)", measureSqlite],
-  ["PostgreSQL (poll 1000 ms)", measurePostgres],
+  [`SQLite (poll ${SQLITE_POLL_MS} ms)`, measureSqlite],
+  [`PostgreSQL (poll ${POSTGRES_POLL_MS} ms)`, measurePostgres],
 ] as const) {
   console.log(name);
   // eslint-disable-next-line eslint/no-await-in-loop -- one backend at a time, so neither delays the other's wakes

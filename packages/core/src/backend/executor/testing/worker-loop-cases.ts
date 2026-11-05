@@ -35,7 +35,6 @@ import { measureWakeTimings } from "#src/backend/executor/testing/wake-timing";
 import {
   createWorkerWake,
   runWorkerLoop,
-  type WorkerBackend,
   type WorkerLoopOptions,
 } from "#src/backend/executor/worker-loop";
 import {
@@ -48,11 +47,7 @@ import {
   type ExecutionSchedule,
 } from "#src/backend/services/executions/repo";
 
-/** How long the slow step's body runs, several times the case's lease. */
-const SLOW_STEP_MS = 600;
-
 let heldStep = createGate();
-let slowStepCalls = 0;
 /** When each `test/mark` node ran, by node id. */
 let marks = new Map<string, number>();
 
@@ -83,20 +78,6 @@ const actions = createWorkflowActions(
             return null;
           });
           return { held: true };
-        },
-      }),
-      defineAction({
-        id: "test/slow",
-        label: "Slow",
-        description: "Runs one durable step whose body outlasts the lease",
-        input: Schema.Struct({}),
-        handler: async ({ step }) => {
-          await step.run("dispatch", async () => {
-            slowStepCalls += 1;
-            await sleep(SLOW_STEP_MS);
-            return null;
-          });
-          return {};
         },
       }),
       defineAction({
@@ -149,7 +130,7 @@ function recordingLogger() {
 }
 
 export function describeWorkerLoopCases(
-  harness: PersistenceConformanceHarness & { workerBackend: WorkerBackend }
+  harness: PersistenceConformanceHarness
 ): void {
   const title = `database executor worker loop on ${harness.backend}`;
   if (harness.skip !== undefined) {
@@ -165,13 +146,35 @@ export function describeWorkerLoopCases(
       harness.createDatabase,
       harness.teardown
     );
-    describeCases(openConnection, harness.workerBackend);
+    describeCases(openConnection);
   });
 }
 
+/**
+ * How long a case waits for the database to reach a state before it fails.
+ * Every wait ends as soon as the state is reached, so the bound only has to
+ * outlast a loaded machine.
+ */
+const REACHED_WITHIN_MS = 10_000;
+
+/** Resolves once `reached` answers true, polling every 10 ms, or rejects. */
+async function waitUntil(
+  reached: () => boolean | Promise<boolean>,
+  what: string
+): Promise<void> {
+  const giveUpAt = Date.now() + REACHED_WITHIN_MS;
+  // eslint-disable-next-line eslint/no-await-in-loop -- one check per tick until `reached` holds
+  while (!(await reached())) {
+    if (Date.now() > giveUpAt) {
+      throw new Error(`${what} within ${REACHED_WITHIN_MS} ms`);
+    }
+    // eslint-disable-next-line eslint/no-await-in-loop -- one check per tick until `reached` holds
+    await sleep(10);
+  }
+}
+
 function describeCases(
-  openConnection: () => Promise<ConformanceConnection>,
-  backend: WorkerBackend
+  openConnection: () => Promise<ConformanceConnection>
 ): void {
   type Loop = {
     /** Aborts the loop's signal and resolves once the loop has returned. */
@@ -182,7 +185,7 @@ function describeCases(
     connection: ConformanceConnection;
     /** Starts an Execution of `graph`, due now, and answers its id. */
     start: (graph: SerializedWorkflowGraph) => Promise<string>;
-    /** Starts a loop on this connection. */
+    /** Starts a loop on this connection, polling every 20 ms unless told. */
     loop: (
       options: Partial<Omit<WorkerLoopOptions, "signal" | "actions">> & {
         wrap?: (repo: ExecutionRepo["Service"]) => ExecutionRepo["Service"];
@@ -205,7 +208,6 @@ function describeCases(
 
   async function open(): Promise<Harness> {
     heldStep = createGate();
-    slowStepCalls = 0;
     marks = new Map();
     const connection = await openConnection();
     // The workflow and entity each run was started for, by Execution id.
@@ -252,9 +254,9 @@ function describeCases(
           Effect.gen(function* () {
             const repo = yield* ExecutionRepo;
             yield* runWorkerLoop({
-              backend,
               actions,
               signal: controller.signal,
+              pollMs: 20,
               ...options,
             }).pipe(
               Effect.provideService(ExecutionRepo, wrap?.(repo) ?? repo),
@@ -269,7 +271,7 @@ function describeCases(
           },
         };
       },
-      ended: async (executionId, ms = 3_000) => {
+      ended: async (executionId, ms = REACHED_WITHIN_MS) => {
         const giveUpAt = Date.now() + ms;
         for (;;) {
           // eslint-disable-next-line eslint/no-await-in-loop -- a read per tick until the run ends
@@ -297,7 +299,7 @@ function describeCases(
       },
       schedule,
       scheduleState: async (executionId, state) => {
-        const giveUpAt = Date.now() + 3_000;
+        const giveUpAt = Date.now() + REACHED_WITHIN_MS;
         // eslint-disable-next-line eslint/no-await-in-loop -- a read per tick until the row is in `state`
         while ((await schedule(executionId))?.state !== state) {
           if (Date.now() > giveUpAt) {
@@ -341,6 +343,35 @@ function describeCases(
     });
   });
 
+  it("interrupts a pass still running once its drain deadline passes, leaving its row leased and its step unrecorded", async () => {
+    const harness = await open();
+    const executionId = await harness.start(oneActionThenMark("test/held"));
+    const loop = harness.loop({ drainMs: 100, workerId: "worker_draining" });
+    await heldStep.entered;
+
+    // The loop returns with the step body still held, because its pass was
+    // interrupted at the deadline.
+    await loop.stop();
+    heldStep.release();
+    // The step body returns after its pass ended. Its memo write runs on a
+    // fiber the interrupted pass closed, so it never reaches the database.
+    await sleep(200);
+
+    expect(await harness.schedule(executionId)).toMatchObject({
+      state: "leased",
+      workerId: "worker_draining",
+    });
+    const memo = await harness.connection.run(
+      Effect.flatMap(ExecutionRepo, (executions) =>
+        executions.listStepMemo(executionId)
+      )
+    );
+    expect(memo.filter((entry) => entry.stepId.includes("dispatch"))).toEqual(
+      []
+    );
+    expect(marks.has("after")).toBe(false);
+  });
+
   it("logs a pass that fails, keeps claiming, and runs the failed run again once its lease expires", async () => {
     const harness = await open();
     const failing = await harness.start(oneActionThenMark("test/send"));
@@ -378,24 +409,55 @@ function describeCases(
     );
     expect(errors).toHaveLength(1);
     expect(errors[0]?.annotations).toMatchObject({
-      pass: { execution: failing, attempt: 0 },
+      run: { execution: failing },
+      pass: { attempt: 0 },
     });
   });
 
   it("keeps a step body's lease through heartbeats while the body outlasts the lease", async () => {
     const harness = await open();
-    const executionId = await harness.start(oneActionThenMark("test/slow"));
-
-    // Two loops poll the same rows. Without the heartbeat the second claims
-    // the run once the first lease runs out, and the step body runs twice.
-    const options = { pollMs: 20, leaseMs: 150, heartbeatMs: 40 };
+    const executionId = await harness.start(oneActionThenMark("test/held"));
+    const leaseMs = 800;
+    const options = { pollMs: 20, leaseMs, heartbeatMs: 50 };
     const first = harness.loop({ ...options, workerId: "worker_a" });
-    const second = harness.loop({ ...options, workerId: "worker_b" });
+    await heldStep.entered;
+
+    // A second loop polls the same row while the first loop's pass holds the
+    // step body open. Without the heartbeat it would claim the run once the
+    // lease ran out, and the step body would run twice. A beat every 50 ms
+    // leaves the lease 750 ms of slack against a loaded event loop.
+    let secondClaims = 0;
+    const second = harness.loop({
+      ...options,
+      workerId: "worker_b",
+      wrap: (repo) => ({
+        ...repo,
+        claimDue: (input) =>
+          repo.claimDue(input).pipe(
+            Effect.tap(() =>
+              Effect.sync(() => {
+                secondClaims += 1;
+              })
+            )
+          ),
+      }),
+    });
+
+    // The body is held for two leases, and then until the second loop has
+    // claimed ten more times, so its claims run well past the moment an
+    // unrenewed lease would have expired.
+    await sleep(2 * leaseMs);
+    const claimsBefore = secondClaims;
+    await waitUntil(
+      () => secondClaims >= claimsBefore + 10,
+      "The second loop did not claim ten times"
+    );
+    heldStep.release();
 
     expect(await harness.ended(executionId)).toBe("completed");
     await Promise.all([first.stop(), second.stop()]);
-    expect(slowStepCalls).toBe(1);
-  });
+    expect(heldStep.calls()).toBe(1);
+  }, 30_000);
 
   it("recovers a run whose worker died mid-pass within one lease and one poll", async () => {
     const harness = await open();
@@ -407,14 +469,28 @@ function describeCases(
     // heartbeat is far longer than the case, and its loop is told to stop at
     // once, so it neither renews nor claims again, as a killed process would
     // not. Its pass stays stuck until the case lets the step go.
+    let leaseExpiresAt = Number.NaN;
     const dying = harness.loop({
       pollMs: 20,
       leaseMs,
       heartbeatMs: 60_000,
       workerId: "worker_killed",
+      wrap: (repo) => ({
+        ...repo,
+        claimDue: (input) =>
+          repo.claimDue(input).pipe(
+            Effect.tap((claimed) =>
+              Effect.sync(() => {
+                const own = claimed.find(
+                  (row) => row.executionId === executionId
+                );
+                if (own) leaseExpiresAt = own.leaseExpiresAt.getTime();
+              })
+            )
+          ),
+      }),
     });
     await heldStep.entered;
-    const diedAt = Date.now();
     const dyingStopped = dying.stop();
 
     const recovering = harness.loop({ pollMs, workerId: "worker_live" });
@@ -423,15 +499,16 @@ function describeCases(
 
     // The step body runs again on the live worker: a step is at least once.
     expect(heldStep.calls()).toBe(2);
-    // The claim came after the lease ran out, and at most one poll later.
-    // The lease started at the claim, a little before the body was entered.
-    expect(recoveredAt - diedAt).toBeGreaterThan(leaseMs - 150);
-    expect(recoveredAt - diedAt).toBeLessThan(leaseMs + pollMs + 250);
+    // The live worker's claim came after the dead worker's lease ran out,
+    // and within about one poll of it. The upper bound leaves a loaded
+    // machine a second of slack.
+    expect(recoveredAt).toBeGreaterThanOrEqual(leaseExpiresAt);
+    expect(recoveredAt - leaseExpiresAt).toBeLessThan(pollMs + 1_000);
 
     heldStep.release();
     await dyingStopped;
     await recovering.stop();
-  });
+  }, 30_000);
 
   it("claims a run a producer re-queued as soon as the producer wakes the loop, well before its next poll", async () => {
     const harness = await open();
@@ -449,11 +526,11 @@ function describeCases(
       })
     );
     const wake = createWorkerWake();
-    const loop = harness.loop({ pollMs: 5_000, wake });
+    const loop = harness.loop({ pollMs: 30_000, wake });
 
     await harness.scheduleState(executionId, "waiting");
     // The release that parked the run made the loop claim once more. Once that
-    // claim has ended, the loop sleeps until its next poll, about 5 s away.
+    // claim has ended, the loop sleeps until its next poll, 30 s away.
     await sleep(100);
     await harness.cancel(executionId);
     const wokenAt = Date.now();
@@ -461,8 +538,9 @@ function describeCases(
 
     await harness.ended(executionId);
     await loop.stop();
-    expect((marks.get("outlet") ?? Number.NaN) - wokenAt).toBeLessThan(200);
-  });
+    // Well inside the poll, with a second of slack for a loaded machine.
+    expect((marks.get("outlet") ?? Number.NaN) - wokenAt).toBeLessThan(1_000);
+  }, 30_000);
 
   it("claims once more right after a claim that a wake arrived during", async () => {
     const harness = await open();
@@ -472,7 +550,7 @@ function describeCases(
     // The loop's first claim reads the schedule and is then held open, so the
     // run the case starts next is due only after that claim has looked.
     const loop = harness.loop({
-      pollMs: 5_000,
+      pollMs: 30_000,
       wake,
       wrap: (repo) => ({
         ...repo,
@@ -493,21 +571,26 @@ function describeCases(
     expect(await harness.ended(executionId)).toBe("completed");
     await loop.stop();
     expect(claimStartedAt).toHaveLength(2);
-    expect((claimStartedAt[1] ?? Number.NaN) - wokenAt).toBeLessThan(200);
-  });
+    // Well inside the poll, with a second of slack for a loaded machine.
+    expect((claimStartedAt[1] ?? Number.NaN) - wokenAt).toBeLessThan(1_000);
+  }, 30_000);
 
-  it("resumes sibling Waits, a Cancel, and a Wait behind a Wait within a second of their targets", async () => {
+  // The strict bound, a second, is `pnpm run executor:timing`'s, at full
+  // length on an idle machine. This shortened run checks that every node acts
+  // and that none acts early, with slack for a loaded machine.
+  it("resumes sibling Waits, a Cancel, and a Wait behind a Wait soon after their targets", async () => {
     const harness = await open();
     const measurements = await measureWakeTimings({
       run: harness.connection.run,
-      backend,
       pollMs: 50,
+      // The Cancel lands 800 ms before the short sibling's deadline, so a
+      // measurement that notices the parks late still cancels both of them.
       durations: {
-        shortMs: 300,
-        longMs: 1_200,
+        shortMs: 1_000,
+        longMs: 2_000,
         cancelAfterMs: 200,
-        firstMs: 300,
-        secondMs: 300,
+        firstMs: 500,
+        secondMs: 500,
       },
     });
 
@@ -519,11 +602,11 @@ function describeCases(
         measured.actedAt === null
           ? Number.NaN
           : measured.actedAt - measured.targetAt;
-      return lateMs >= 0 && lateMs < 1_000
+      return lateMs >= 0 && lateMs < 3_000
         ? []
         : [`${measured.what}: ${lateMs} ms after its target`];
     });
     expect(missed).toEqual([]);
     expect(measurements).toHaveLength(7);
-  });
+  }, 60_000);
 }

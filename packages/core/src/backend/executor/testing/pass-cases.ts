@@ -7,8 +7,8 @@
  * run writes. A runner per backend calls `describePassCases` with its
  * database, so every backend answers the same assertions.
  *
- * Every case drives one Execution with `claimDue` and `runPass` on a clock the
- * case moves. A Wait measures its deadline from the wall clock, so the case's
+ * Every case drives one Execution with `claimDue` and `leasedPass` over the
+ * run body, on a clock the case moves. A Wait measures its deadline from the wall clock, so the case's
  * clock is the wall clock plus an offset.
  */
 
@@ -21,7 +21,8 @@ import { assembleExtensions } from "#src/backend/extensions/extension-set";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
 import { DatabaseError } from "#src/backend/lib/effect/database";
 import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
-import { type PassResult, runPass } from "#src/backend/executor/pass";
+import { leasedPass, type PassResult } from "#src/backend/executor/pass";
+import { runBody } from "#src/backend/executor/run-body";
 import {
   actionNode,
   CANCEL_EVENT,
@@ -105,6 +106,19 @@ function wrapFenced(
 ): RepoWrap {
   return (repo) => ({ ...repo, fenced: (fence) => wrap(repo.fenced(fence)) });
 }
+
+/** Reads every run as canceled, so a pass finds its run no longer in flight. */
+const endedRun: RepoWrap = (repo) => ({
+  ...repo,
+  findSummaryById: (executionId) =>
+    repo
+      .findSummaryById(executionId)
+      .pipe(
+        Effect.map((summary) =>
+          summary === null ? null : { ...summary, status: "canceled" }
+        )
+      ),
+});
 
 /**
  * Settles with `work`, or rejects once `ms` pass first. A case that expects
@@ -208,11 +222,11 @@ function describeCases(
               now: now(),
             });
             if (!claimed) return null;
-            return yield* runPass(claimed, {
+            return yield* leasedPass(claimed, runBody({ actions }), {
+              workerId: options.workerId ?? "worker_1",
               now,
               leaseMs: LEASE_MS,
               heartbeatMs: options.heartbeatMs,
-              actions,
               backoffMs: () => 0,
             }).pipe(Effect.provideService(ExecutionRepo, worker));
           })
@@ -931,6 +945,38 @@ function describeCases(
     expect(run.schedule).toBeNull();
     expect(run.memo).toEqual([]);
     expect(await harness.pass()).toBeNull();
+  });
+
+  it("releases a run it has nothing to run for when deleting its row fails, and deletes the row on the next pass", async () => {
+    const harness = await startRun(
+      createSerializedWorkflowGraph({
+        nodes: [lifecycleNode(), actionNode("send", "test/send")],
+        edges: [edge("entry", "send", "started")],
+      })
+    );
+    // The run reads as ended, as it would once a policy cancel ended it after
+    // the claim, so the pass has nothing to run and deletes its schedule row.
+    const refuseDrop: RepoWrap = (repo) =>
+      wrapFenced((writes) => ({
+        ...writes,
+        dropSchedule: () =>
+          Effect.fail(
+            new DatabaseError({ cause: new Error("connection reset") })
+          ),
+      }))(endedRun(repo));
+
+    expect(await harness.pass({ wrap: refuseDrop })).toMatchObject({
+      kind: "unavailable",
+      reason: "not_in_flight",
+      ending: "failed",
+      schedule: { state: "queued", attempt: 1 },
+    });
+    expect(await harness.pass({ wrap: endedRun })).toEqual({
+      kind: "unavailable",
+      reason: "not_in_flight",
+      ending: "written",
+    });
+    expect((await readRun(harness)).schedule).toBeNull();
   });
 
   it("writes at most five memo rows per node of a 50-node run, and none survive the terminal write", async () => {

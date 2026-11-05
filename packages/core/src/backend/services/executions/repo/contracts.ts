@@ -74,6 +74,8 @@ export type ExecutionSchedule = {
 
 /** A run's schedule row a claim leased to one worker's pass. */
 export type ClaimedExecution = {
+  /** What the row runs, which picks its pass's body. A claim leases only runs. */
+  kind: Extract<ExecutionScheduleKind, "run">;
   scheduleId: string;
   executionId: string;
   /** The fencing token every write of this pass carries. */

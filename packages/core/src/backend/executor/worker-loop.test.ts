@@ -8,6 +8,5 @@ import { createSqliteTestDatabase } from "#src/backend/persistence/sqlite-test-d
 
 describeWorkerLoopCases({
   backend: "native SQLite",
-  workerBackend: "sqlite",
   createDatabase: createSqliteTestDatabase,
 });

@@ -1,7 +1,8 @@
 /**
  * A `ReplayDatabaseBackend` over a real database, so the replay suites'
- * database-executor cases run each pass through the executor's own runtime
- * and the repository's claim, producer and release, with the harness's
+ * database-executor cases run each pass through the pass the worker loop
+ * opens (`openPass`: its fenced and watched writes, its memo, its runtime and
+ * its release) and the repository's claim and producer, with the harness's
  * virtual clock as every `now`.
  *
  * The cases keep their in-memory store, which is what their assertions read.
@@ -26,18 +27,11 @@ import {
   REPLAY_FALLBACK_TIMEOUT_MS,
   type ReplayDatabaseBackend,
 } from "#src/backend/engine/testing/replay-database-executor";
-import {
-  createExecutorRuntime,
-  createPassState,
-  watchPassWrites,
-} from "#src/backend/executor/runtime";
+import { type OpenPass, openPass } from "#src/backend/executor/pass";
 import type { ConformanceConnection } from "#src/backend/persistence/conformance/support";
 import {
   ExecutionRepo,
-  type FencedExecutionWrites,
-  type OwnerFence,
   type ParkWake,
-  type StepMemo,
 } from "#src/backend/services/executions/repo";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 
@@ -134,8 +128,9 @@ export function openDatabaseReplayBackend(
     /** Mirror rows by the step that parked on them. */
     const rowsByStep = new Map<string, string>();
     /** The pass currently holding the lease. */
-    let current: { fence: OwnerFence; writes: FencedExecutionWrites } | null =
-      null;
+    let current: OpenPass | null = null;
+    /** The harness's virtual clock, as the last pass or release read it. */
+    let clockMs = 0;
 
     function holder() {
       if (!current) throw new Error("No pass holds the replay run's lease");
@@ -217,30 +212,19 @@ export function openDatabaseReplayBackend(
           );
         }
 
-        const fence = {
-          scheduleId: own.scheduleId,
-          executionId,
-          ownerToken: own.ownerToken,
-        };
-        const state = createPassState();
-        const memo = await run(repo.listStepMemo(executionId));
-        const writes = watchPassWrites({
-          fenced: repo.fenced(fence),
-          unfenced: repo,
-          state,
+        clockMs = now;
+        // The pass the worker loop's passes open, with the harness running the
+        // body and writing the release in `endParkedPass`.
+        const pass = openPass({
+          claimed: own,
+          executions: repo,
+          now: () => virtual(clockMs),
+          leaseMs: LEASE_MS,
         });
-        current = { fence, writes };
-
-        const runtime = createExecutorRuntime({
-          executionId,
-          attempt: own.attempt,
-          memo: new Map<string, StepMemo>(
-            memo.map(({ stepId, ...entry }) => [stepId, entry])
-          ),
-          writes,
-          findPark: repo.findPark,
-          state,
-          leaseExpiresAt: () => virtual(now + LEASE_MS),
+        const memo = await run(pass.loadMemo);
+        current = pass;
+        const runtime = pass.runtime({
+          memo,
           runEffect: (effect) => connection.run(effect),
         });
 
@@ -281,7 +265,9 @@ export function openDatabaseReplayBackend(
       },
 
       endParkedPass: async ({ now }) => {
-        const { writes } = holder();
+        clockMs = now;
+        const pass = holder();
+        const { writes } = pass;
         const memo = new Set(
           (await run(repo.listStepMemo(executionId))).flatMap((entry) =>
             entry.status === "succeeded" ? [entry.stepId] : []
@@ -307,12 +293,10 @@ export function openDatabaseReplayBackend(
             );
           }
         }
-        await run(
-          writes.releasePass({
-            outcome: { kind: "parked" },
-            now: virtual(now),
-          })
-        );
+        const release = await run(pass.release({ kind: "parked" }));
+        if (!release.owned) {
+          throw new Error("The parked pass no longer held the replay run");
+        }
         current = null;
       },
     };

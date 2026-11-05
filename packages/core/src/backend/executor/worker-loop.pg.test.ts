@@ -11,7 +11,6 @@ const shared = sharedPostgresTestDatabase();
 
 describeWorkerLoopCases({
   backend: "PostgreSQL",
-  workerBackend: "postgres",
   createDatabase: shared.createDatabase,
   teardown: shared.teardown,
   skip: postgresTestUrl()

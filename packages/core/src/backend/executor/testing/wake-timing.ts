@@ -34,7 +34,6 @@ import {
 import {
   createWorkerWake,
   runWorkerLoop,
-  type WorkerBackend,
   type WorkerWake,
 } from "#src/backend/executor/worker-loop";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
@@ -249,19 +248,19 @@ const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /**
- * `measureWakeTimings` on an open persistence instance, at the backend's own
- * poll interval. The instance stays open; the caller closes it.
+ * `measureWakeTimings` on an open persistence instance. The instance stays
+ * open; the caller closes it.
  */
 export async function measureWakeTimingsOn(input: {
   instance: WfGraphPersistenceInstance;
-  backend: WorkerBackend;
+  pollMs: number;
   durations: WakeTimingDurations;
 }): Promise<WakeMeasurement[]> {
   const runtime = ManagedRuntime.make(input.instance.repositories);
   try {
     return await measureWakeTimings({
       run: (effect) => runtime.runPromise(effect),
-      backend: input.backend,
+      pollMs: input.pollMs,
       durations: input.durations,
     });
   } finally {
@@ -270,16 +269,14 @@ export async function measureWakeTimingsOn(input: {
 }
 
 /**
- * Runs every scenario through one worker loop on the database `run` reaches,
- * and answers the measurements in scenario order. The loop is stopped before
- * this returns.
+ * Runs every scenario through one worker loop polling every `pollMs` on the
+ * database `run` reaches, and answers the measurements in scenario order. The
+ * loop is stopped before this returns.
  */
 export async function measureWakeTimings(input: {
   run: RunOnRepositories;
-  backend: WorkerBackend;
+  pollMs: number;
   durations: WakeTimingDurations;
-  /** Defaults to the backend's own poll. */
-  pollMs?: number | undefined;
 }): Promise<WakeMeasurement[]> {
   const { run, durations } = input;
   // Each mark node's first action time, by Execution and then by node id.
@@ -313,7 +310,6 @@ export async function measureWakeTimings(input: {
   // lines, so only warnings and errors from the run come through.
   const loop = run(
     runWorkerLoop({
-      backend: input.backend,
       actions,
       signal: controller.signal,
       wake,

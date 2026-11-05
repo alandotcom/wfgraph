@@ -1,23 +1,40 @@
 /**
- * The database executor's worker loop: claim due schedule rows and run one pass
- * per claimed row, at most `concurrency` at once. It claims every `pollMs`, and
- * sooner when a run one of its own passes released falls due or its `wake` is
- * called. The Effect
- * succeeds once `signal` has aborted and every pass in flight has released its
- * row. A pass that fails is logged and leaves its row leased, so a later claim
- * sweeps it once the lease expires.
+ * The database executor's worker loop and the drain step it repeats. A drain
+ * step claims due schedule rows and starts one leased pass per claimed row.
+ * The loop runs a drain step every `pollMs`, sooner when a run one of its own
+ * passes released falls due or its `wake` is called, and keeps at most
+ * `concurrency` passes running. The loop's Effect succeeds once `signal` has
+ * aborted and every pass in flight has ended, or once `drainMs` has passed and
+ * the passes still running are interrupted. A pass that fails or is
+ * interrupted leaves its row leased, so a later claim sweeps it once the lease
+ * expires.
  */
 
-import { Cause, Deferred, Effect, Exit, FiberSet } from "effect";
+import {
+  Cause,
+  Clock,
+  Deferred,
+  Effect,
+  Exit,
+  Fiber,
+  FiberSet,
+  type Scope,
+} from "effect";
 import { generateId } from "@wfgraph/shared/utils/id";
 import type { WorkflowActions } from "#src/backend/engine/actions";
 import type { WorkflowEntities } from "#src/backend/engine/entities";
 import { withAppLogCategory } from "#src/backend/lib/effect/app-logger";
-import { runPass } from "#src/backend/executor/pass";
+import {
+  leasedPass,
+  type PassBodies,
+  type PassResult,
+} from "#src/backend/executor/pass";
+import { runBody } from "#src/backend/executor/run-body";
 import {
   type ClaimedExecution,
   ExecutionRepo,
 } from "#src/backend/services/executions/repo";
+import { UNDATED_PARK_WAKE_AT } from "#src/backend/services/executions/repo/release-policy";
 import type { WorkflowRepo } from "#src/backend/services/workflows/repo";
 
 /**
@@ -47,19 +64,6 @@ export function createWorkerWake(): WorkerWake {
   };
 }
 
-/** The persistence backend a loop claims from, which sets its default poll. */
-export type WorkerBackend = "postgres" | "sqlite";
-
-/**
- * How long a loop sleeps between claims when nothing wakes it sooner. A
- * PostgreSQL poll is a round trip to a server other processes also poll; a
- * SQLite claim is a local `BEGIN IMMEDIATE` that returns in microseconds.
- */
-const DEFAULT_POLL_MS: Record<WorkerBackend, number> = {
-  postgres: 1_000,
-  sqlite: 250,
-};
-
 /**
  * The lease a claim takes. It is shorter than any platform's kill timeout, so a
  * worker that died is noticed before its host would have restarted it.
@@ -72,16 +76,160 @@ const DEFAULT_HEARTBEAT_MS = 20_000;
 /** How many passes one loop runs at once. */
 const DEFAULT_CONCURRENCY = 10;
 
+/** What every drain step of one worker shares. */
+export type DrainOptions<R> = {
+  /** The body each claimed row's pass runs, by the row's kind. */
+  bodies: PassBodies<R>;
+  /** Written on each row the claim leases. */
+  workerId: string;
+  leaseMs: number;
+  /** See `LeasedPassOptions.heartbeatMs`. */
+  heartbeatMs?: number | undefined;
+  /** The clock claims, leases and releases are stamped with. */
+  now: () => Date;
+};
+
+/**
+ * What one pass of a drain step came to.
+ *
+ * - `passed`: the pass ran to its end and answered `result`.
+ * - `failed`: the pass failed or died, which was logged. Its row stays leased.
+ * - `interrupted`: the pass was still running at the drain step's deadline.
+ *   Its row stays leased.
+ */
+export type DrainedPass =
+  | { kind: "passed"; claimed: ClaimedExecution; result: PassResult }
+  | { kind: "failed"; claimed: ClaimedExecution }
+  | { kind: "interrupted"; claimed: ClaimedExecution };
+
+/**
+ * One drain step: claims up to `limit` due rows and starts one pass over each
+ * in the caller's scope. Answers a fiber per claimed row, in claim order, each
+ * succeeding with what its pass came to. A pass still running at `deadline` is
+ * interrupted, and closing the caller's scope interrupts every pass still
+ * running. A claim the database fails is logged and claims nothing.
+ */
+export const drainOnce = Effect.fn("wfgraph.executor.drain")(function* <R>(
+  options: DrainOptions<R>,
+  step: { limit: number; deadline?: Date | undefined }
+): Effect.fn.Return<
+  Fiber.Fiber<DrainedPass>[],
+  never,
+  ExecutionRepo | Scope.Scope | R
+> {
+  const claimed = yield* claimDue({
+    workerId: options.workerId,
+    limit: step.limit,
+    leaseMs: options.leaseMs,
+    now: options.now(),
+  });
+  return yield* Effect.forEach(claimed, (row) =>
+    Effect.forkScoped(drainPass(options, row, step.deadline))
+  );
+}, withExecutorLogCategory);
+
+function withExecutorLogCategory<A, E, R>(
+  effect: Effect.Effect<A, E, R>
+): Effect.Effect<A, E, R> {
+  return withAppLogCategory(effect, "executor");
+}
+
+/** Leases up to `limit` due rows to the worker; see `ExecutionRepo.claimDue`. */
+const claimDue = Effect.fn("wfgraph.executor.claim")(function* (input: {
+  workerId: string;
+  limit: number;
+  leaseMs: number;
+  now: Date;
+}) {
+  yield* Effect.annotateCurrentSpan({
+    "wfgraph.executor.worker": input.workerId,
+    "wfgraph.executor.limit": input.limit,
+  });
+  const executions = yield* ExecutionRepo;
+  const claimed = yield* executions
+    .claimDue(input)
+    .pipe(
+      Effect.catchTag("DatabaseError", (error) =>
+        Effect.logError("Could not claim due runs").pipe(
+          Effect.annotateLogs({ claim: { worker: input.workerId }, error }),
+          Effect.as([])
+        )
+      )
+    );
+  yield* Effect.annotateCurrentSpan("wfgraph.executor.claimed", claimed.length);
+  return claimed;
+});
+
+/**
+ * One claimed row's pass, as a drain step answers it. A pass that fails is
+ * logged as one record; its row is claimed again once its lease expires.
+ */
+const drainPass = Effect.fnUntraced(function* <R>(
+  options: DrainOptions<R>,
+  claimed: ClaimedExecution,
+  deadline: Date | undefined
+): Effect.fn.Return<DrainedPass, never, ExecutionRepo | R> {
+  const startedAt = yield* Clock.currentTimeMillis;
+  const interrupted = Effect.succeed<DrainedPass>({
+    kind: "interrupted",
+    claimed,
+  });
+  const pass = leasedPass(claimed, options.bodies[claimed.kind], options).pipe(
+    Effect.map((result): DrainedPass => ({ kind: "passed", claimed, result }))
+  );
+  const bounded =
+    deadline === undefined
+      ? pass
+      : pass.pipe(
+          Effect.timeoutOrElse({
+            duration: Math.max(0, deadline.getTime() - options.now().getTime()),
+            orElse: () => interrupted,
+          })
+        );
+  return yield* bounded.pipe(
+    Effect.catchCause((cause) =>
+      Cause.hasInterruptsOnly(cause)
+        ? interrupted
+        : Effect.gen(function* () {
+            const ms = (yield* Clock.currentTimeMillis) - startedAt;
+            yield* Effect.logError(
+              "A pass failed; its run is claimed again once its lease expires"
+            ).pipe(
+              Effect.annotateLogs({
+                run: { execution: claimed.executionId },
+                pass: {
+                  worker: options.workerId,
+                  attempt: claimed.attempt,
+                  ms,
+                },
+                error: Cause.squash(cause),
+              })
+            );
+            const failed: DrainedPass = { kind: "failed", claimed };
+            return failed;
+          })
+    )
+  );
+});
+
 export type WorkerLoopOptions = {
-  backend: WorkerBackend;
   actions: WorkflowActions;
   entities?: WorkflowEntities | undefined;
-  /** Aborting it stops the loop claiming; passes in flight run to their end. */
+  /**
+   * Aborting it stops the loop claiming. Passes in flight run to their end,
+   * or until `drainMs` has passed.
+   */
   signal: AbortSignal;
+  /**
+   * How long a stopped loop waits for its passes in flight before it
+   * interrupts them, leaving their rows leased. Omitted, it waits for every
+   * pass to end.
+   */
+  drainMs?: number | undefined;
+  /** How long the loop sleeps between claims when nothing wakes it sooner. */
+  pollMs: number;
   /** Wakes the loop to claim at once, for a producer in the same process. */
   wake?: WorkerWake | undefined;
-  /** Defaults to 1000 ms on PostgreSQL and 250 ms on SQLite. */
-  pollMs?: number | undefined;
   /** Defaults to 10. */
   concurrency?: number | undefined;
   /** Defaults to 60 s. */
@@ -111,18 +259,23 @@ function stopRequested(signal: AbortSignal): Effect.Effect<void> {
 export function runWorkerLoop(
   options: WorkerLoopOptions
 ): Effect.Effect<void, never, ExecutionRepo | WorkflowRepo> {
-  const pollMs = options.pollMs ?? DEFAULT_POLL_MS[options.backend];
+  const { pollMs, signal } = options;
   const concurrency = options.concurrency ?? DEFAULT_CONCURRENCY;
-  const leaseMs = options.leaseMs ?? DEFAULT_LEASE_MS;
-  const heartbeatMs = options.heartbeatMs ?? DEFAULT_HEARTBEAT_MS;
-  const workerId = options.workerId ?? `worker_${generateId()}`;
   const now = options.now ?? (() => new Date());
-  const { signal } = options;
+  const drain: DrainOptions<ExecutionRepo | WorkflowRepo> = {
+    bodies: {
+      run: runBody({ actions: options.actions, entities: options.entities }),
+    },
+    workerId: options.workerId ?? `worker_${generateId()}`,
+    leaseMs: options.leaseMs ?? DEFAULT_LEASE_MS,
+    heartbeatMs: options.heartbeatMs ?? DEFAULT_HEARTBEAT_MS,
+    now,
+  };
 
   // When each run a pass of this loop released is next due, by Execution id.
   // The loop claims at the earliest of these when it comes before the next
   // poll, so a Wait it parked resumes at its deadline. An entry is dropped once
-  // its moment has come.
+  // its moment has come, and a release with no deadline holds none.
   const releasedWakes = new Map<string, number>();
   // How many passes are running. A claim takes at most the remaining slots.
   let running = 0;
@@ -136,11 +289,25 @@ export function runWorkerLoop(
     Deferred.doneUnsafe(wakeLoop, Exit.void);
   };
 
-  /** Notes when a released run is due again, waking the loop if that is sooner. */
-  const noteRelease = (executionId: string, wakeAt: Date) => {
+  /**
+   * Notes when a run a pass released is due again, waking the loop if that is
+   * sooner than anything noted. A run released with no deadline, or ended,
+   * holds no entry.
+   */
+  const noteRelease = (drained: DrainedPass) => {
+    if (drained.kind !== "passed") return;
+    const { executionId } = drained.claimed;
+    const wakeAt =
+      "schedule" in drained.result
+        ? drained.result.schedule.wakeAt.getTime()
+        : undefined;
+    if (wakeAt === undefined || wakeAt >= UNDATED_PARK_WAKE_AT.getTime()) {
+      releasedWakes.delete(executionId);
+      return;
+    }
     const soonest = earliest(releasedWakes);
-    releasedWakes.set(executionId, wakeAt.getTime());
-    if (soonest === undefined || wakeAt.getTime() < soonest) wakeNow();
+    releasedWakes.set(executionId, wakeAt);
+    if (soonest === undefined || wakeAt < soonest) wakeNow();
   };
 
   /** Frees a pass's slot, waking the loop when it is waiting for one. */
@@ -149,54 +316,10 @@ export function runWorkerLoop(
     if (full) wakeNow();
   };
 
-  /** One pass over one claimed row, logged as one record whatever it answers. */
-  const passOver = (claimed: ClaimedExecution) => {
-    const startedAt = Date.now();
-    const pass = {
-      execution: claimed.executionId,
-      worker: workerId,
-      attempt: claimed.attempt,
-    };
-    return runPass(claimed, {
-      now,
-      leaseMs,
-      heartbeatMs,
-      actions: options.actions,
-      entities: options.entities,
-    }).pipe(
-      Effect.tap((result) =>
-        Effect.sync(() => {
-          if ("schedule" in result) {
-            noteRelease(claimed.executionId, result.schedule.wakeAt);
-          }
-        })
-      ),
-      Effect.flatMap((result) =>
-        Effect.logDebug(`Pass ${result.kind}`).pipe(
-          Effect.annotateLogs({
-            pass: { ...pass, outcome: result.kind, ms: Date.now() - startedAt },
-          })
-        )
-      ),
-      Effect.catchCause((cause) =>
-        Cause.hasInterruptsOnly(cause)
-          ? Effect.void
-          : Effect.logError(
-              "A pass failed; its run is claimed again once its lease expires"
-            ).pipe(
-              Effect.annotateLogs({
-                pass: { ...pass, ms: Date.now() - startedAt },
-                error: Cause.squash(cause),
-              })
-            )
-      ),
-      Effect.ensuring(Effect.sync(freeSlot))
-    );
-  };
-
   const loop = Effect.gen(function* () {
-    const executions = yield* ExecutionRepo;
-    const passes = yield* FiberSet.make<void, never>();
+    // Each fiber here waits for one pass and then notes its release and frees
+    // its slot, so the set is empty once every pass has ended.
+    const settling = yield* FiberSet.make<void, never>();
     const { wake } = options;
     if (wake !== undefined) {
       yield* Effect.acquireRelease(
@@ -207,28 +330,29 @@ export function runWorkerLoop(
 
     while (!signal.aborted) {
       wakeLoop = Deferred.makeUnsafe<void>();
-      const claimAt = now();
+      const claimAt = now().getTime();
       for (const [executionId, wakeAt] of releasedWakes) {
-        if (wakeAt <= claimAt.getTime()) releasedWakes.delete(executionId);
+        if (wakeAt <= claimAt) releasedWakes.delete(executionId);
       }
 
       const free = concurrency - running;
       full = free <= 0;
       if (free > 0) {
-        const claimed = yield* executions
-          .claimDue({ workerId, limit: free, leaseMs, now: claimAt })
-          .pipe(
-            Effect.catchTag("DatabaseError", (error) =>
-              Effect.logError("Could not claim due runs").pipe(
-                Effect.annotateLogs({ claim: { worker: workerId }, error }),
-                Effect.as([])
-              )
+        const passes = yield* drainOnce(drain, { limit: free });
+        running += passes.length;
+        full = passes.length === free;
+        for (const pass of passes) {
+          yield* FiberSet.run(
+            settling,
+            Fiber.await(pass).pipe(
+              Effect.flatMap((exit) =>
+                Effect.sync(() => {
+                  if (Exit.isSuccess(exit)) noteRelease(exit.value);
+                })
+              ),
+              Effect.ensuring(Effect.sync(freeSlot))
             )
           );
-        full = claimed.length === free;
-        for (const row of claimed) {
-          running += 1;
-          yield* FiberSet.run(passes, passOver(row));
         }
       }
 
@@ -250,12 +374,20 @@ export function runWorkerLoop(
       );
     }
 
-    // The set's scope interrupts whatever is left in it when it closes, so the
-    // loop waits for the set to drain before it returns.
-    yield* FiberSet.awaitEmpty(passes);
+    // Closing the loop's scope interrupts every pass still running, so the
+    // loop first waits for them to end, for at most `drainMs` when it is set.
+    const drained = FiberSet.awaitEmpty(settling);
+    yield* options.drainMs === undefined
+      ? drained
+      : drained.pipe(
+          Effect.timeoutOrElse({
+            duration: options.drainMs,
+            orElse: () => Effect.void,
+          })
+        );
   });
 
-  return withAppLogCategory(Effect.scoped(loop), "executor");
+  return withExecutorLogCategory(Effect.scoped(loop));
 }
 
 /** The smallest of the map's values, or undefined for an empty map. */

@@ -209,6 +209,7 @@ export function claimedExecution(
   row: ExecutionSchedule
 ): Effect.Effect<ClaimedExecution> {
   if (
+    row.kind !== "run" ||
     row.ownerToken === null ||
     row.leaseExpiresAt === null ||
     row.executionId === null
@@ -218,6 +219,7 @@ export function claimedExecution(
     );
   }
   return Effect.succeed({
+    kind: row.kind,
     scheduleId: row.id,
     executionId: row.executionId,
     ownerToken: row.ownerToken,
