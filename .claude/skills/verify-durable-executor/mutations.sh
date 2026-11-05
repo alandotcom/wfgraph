@@ -58,6 +58,8 @@ Intake|first-wins-ignores-live-run|ELSE IF mode = "first" /\ Live # {}|ELSE IF F
 Intake|newest-wins-keeps-old-run|ELSE IF y \in Live /\ mode = "newest" THEN "superseded"|ELSE IF FALSE THEN "superseded"|OneLiveRunPerEntity
 Intake|poll-skips-host-rows|/\ inbox[r] = "present" /\ dsched[r] = "none"|/\ inbox[r] = "present" /\ dsched[r] = "none" /\ FALSE|EveryArrivalIsDelivered
 Intake|canceled-run-never-ends|  /\ exec[x] = "claimed" /\ esched[x] = "present"|  /\ exec[x] = "claimed" /\ esched[x] = "present" /\ FALSE|EveryRunEnds
+Intake|refusal-not-consulted|RefusalIsConsulted == TRUE|RefusalIsConsulted == FALSE|AdmissionDecidedOnce
+Intake|concurrency-before-eligibility|EligibilityBeforeConcurrency == TRUE|EligibilityBeforeConcurrency == FALSE|RefusedArrivalChangesNothing
 MUTATIONS
 )
 
