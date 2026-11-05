@@ -47,11 +47,11 @@ The recommended end state has four parts.
    Trigger, a Queue consumer, and optional per-run Durable Object alarms call.
    Section 8.
 
-The order of work is in section 11. The first deliverable is a spike: the
-Postgres runtime driving the existing engine test suite through
-`driveWithReplay`, with the park-as-value change, measured against the two
-timing cases ADR-0011 records. Everything after the spike depends on what it
-shows.
+The order of work is in section 11. The first deliverable is the executor core,
+built in production locations so it graduates: the park-as-value change, a
+replay harness that takes a runtime, and the Postgres and SQLite drivers, held
+to the engine's replay suites and the timing cases ADR-0011 records.
+Everything after it depends on what it shows.
 
 ## 2. The two roles, as the code has them
 
@@ -600,10 +600,9 @@ for one release lets the reliability suite (`pnpm run test:reliability`) run
 each case on both drivers and diff the outcomes, which is the strongest
 verification available before the Inngest driver is deleted.
 
-Whether the Inngest driver survives past the transition is a product question
-(section 12). If it does, it is the one case where ADR-0011's branch machinery
-must stay, because Inngest's wake policy has not changed. The cost of keeping
-two drivers is the cost of keeping ADR-0011. The recommendation is to delete it.
+The Inngest driver is deleted in phase 5 (section 12, decision 1). Keeping it
+would have been the one case where ADR-0011's branch machinery must stay,
+because Inngest's wake policy has not changed.
 
 ### 6.5 Design D: DBOS as the executor
 
@@ -882,8 +881,12 @@ available for today.
 - **Replay correctness in the engine.** The park-as-value change touches the Wait
   driver, `executeWorkflow`'s exit and the scheduler's halt path. The existing
   replay tests (`driveWithReplay`, the eight engine suites) are the safety net,
-  and they already model abandonment at every undiscovered step. The spike runs
-  them unchanged against the new runtime before any engine edit.
+  and they already model abandonment at every undiscovered step. Each suite
+  calls `driveWithReplay` directly and six of them assert ADR-0011's branch
+  runs, so phase 1 first makes the harness take a runtime, re-run a parked body
+  and wake a run on any resolution. The cases that enter a Wait in place then
+  run unchanged on both drivers, and each branch-run assertion is rewritten to
+  its single-run equivalent.
 - **Memo write amplification.** Five writes per node is fine at the scale this
   product runs at; it is the number to watch. The Design B cursor model is the
   answer if it becomes the bottleneck.
@@ -904,11 +907,23 @@ available for today.
 
 Each phase ends green against the AGENTS.md check list.
 
-1. **Spike (time-boxed).** A Postgres driver and a SQLite driver for
-   `WorkflowExecutionRuntime` in a scratch branch, plus park-as-value. Drive the
-   eight engine replay suites and the ADR-0011 timing cases through them. Exit
-   criterion: the suites pass unchanged, and S2 measures within a second of the
-   targets on both backends.
+1. **The executor core, built to graduate.** Written in production locations
+   with generated migrations, on a branch that becomes phase 3's first commits
+   once phase 2 lands. It holds park-as-value; `driveWithReplay` taking a
+   runtime, re-running a parked body and waking a run on any resolution; the
+   schedule and memo tables, the wait-row columns and `released_outlet` on the
+   log row, in both schemas; the producer and release writes as `ExecutionRepo`
+   methods; and a Postgres and a SQLite driver for `WorkflowExecutionRuntime`.
+   Exit criteria: every case in the eight suites that enters a Wait in place
+   passes unchanged on both drivers; each ADR-0011 branch-run assertion is rewritten to its
+   single-run equivalent and passes; S2, a Cancel while both Waits are parked,
+   and a Wait behind a Wait pass under the harness's virtual clock and once by
+   wall clock with scaled durations, within a second of their targets, on both
+   backends; and `.claude/skills/verify-durable-executor/check.sh` passes. The
+   bound: the Postgres driver comes first, and the SQLite driver starts only
+   after Postgres meets the criteria. If a replay case fails for a reason the
+   Wait driver's park-as-value change cannot fix, the phase stops and reports
+   before any more driver code is written.
 2. **The port.** `ExecutionDriver` replaces `InngestClient` in `WfGraphServices`;
    the Inngest driver is its first implementation and nothing observable changes.
    The reliability suite runs on it.
@@ -927,25 +942,24 @@ Each phase ends green against the AGENTS.md check list.
    Design E as the documented fallback.
 7. **Cron source and the Runs view fields** of S14.
 
-## 12. Decisions needed
+## 12. Decisions
 
-1. Does the Inngest executor driver survive past phase 5, for hosts that cannot
-   run a worker, at the cost of keeping ADR-0011? Recommendation: no.
+1. Decided: the Inngest executor driver does not survive past phase 5. Keeping
+   it for hosts that cannot run a worker would keep ADR-0011's branch runs, kill
+   event and sweep. Phase 1 therefore rewrites the ADR-0011 branch-run tests to
+   their single-run equivalents.
 2. Decided: per-Event flow control is dropped, because no Event in this
    repository or in Fountain's spike declares any of it (section 7.4).
-3. Is the Cloudflare Worker backend a release target for the executor, or does it
-   keep an Inngest or Cloudflare Workflows driver? Recommendation: tick-based
-   driver, last.
-4. Is cron a product feature now that the executor can schedule?
-5. Is Design B (the cursor model) a destination to design towards from the start,
-   which argues for `released_outlet` on the log row in phase 3, or a possibility
-   kept open? Recommendation: add the column, defer the rewrite.
-6. The API for a host with no Inngest: `app.events.send` on the app value, a
-   standalone `sendEvent` that takes the persistence handle, or both. A host on
-   Inngest is unaffected, since it keeps `inngest.send` through the Inngest
-   source (section 7.3). The transactional
-   outbox case (section 7.3) argues for exposing the inbox insert as a documented
-   SQL contract as well.
+3. Decided: the Cloudflare Worker backend is a release target for the executor,
+   through the tick-based driver of section 8, built last (phase 6). Design E
+   stays the fallback.
+4. Decided: cron waits for phase 7. The executor makes it cheap to add then.
+5. Decided: `released_outlet` is added to the log row in phase 1's schema, and
+   the Design B rewrite is deferred.
+6. Decided: both `app.events.send` and the inbox insert as a documented SQL
+   contract, for a host with no Inngest. The SQL contract is what lets a host
+   raise an Event inside its own transaction (section 7.3). A host on Inngest is
+   unaffected, since it keeps `inngest.send` through the Inngest source.
 7. How long a delivered inbox row is kept, which is also how long a resent
    idempotency key is refused (section 7.1). Inngest's equivalent window is 24
    hours. Recommendation: a configurable window on `createWfGraphApp`
