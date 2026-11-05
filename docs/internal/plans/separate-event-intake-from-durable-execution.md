@@ -33,13 +33,14 @@ The recommended end state has four parts.
    run resumes when any one park resolves. That single change removes the reason
    ADR-0011 exists: every Wait is entered in place, one durable run per
    Execution, no branch invocations, no kill events, no sweep. Section 6.2.
-3. **An event inbox the executor drains.** A host raises an Event with
-   `app.events.send`, over an HTTP route, through the existing webhook intake,
-   or by inserting into the inbox table inside its own database transaction.
-   Delivery fan-out runs as a durable body on the same executor as workflow runs.
-   Inngest becomes an event source adapter whose listener functions forward
-   into the inbox, so a host already on Inngest keeps its `inngest.send` calls.
-   Section 7.
+3. **An event inbox the executor drains.** A host on Inngest keeps raising
+   Events with `inngest.send`. The Inngest source registers one listener
+   function per catalog Event, and each forwards its Event into the inbox, so
+   that host needs to know nothing about the inbox or the executor. A host with
+   no Inngest raises an Event with `app.events.send`, over an HTTP route, or by
+   inserting into the inbox table inside its own database transaction. The
+   existing webhook intake writes to the inbox too. Delivery fan-out runs as a
+   durable body on the same executor as workflow runs. Section 7.
 4. **One port, several drivers.** The executor is reached through one Effect
    service. The Postgres and SQLite drivers run an in-process worker loop. The
    Cloudflare Worker driver exposes a bounded `tick` the platform's Cron
@@ -642,25 +643,28 @@ own attempt limit, the same one a run uses (section 7.4).
 
 A source is anything that inserts an inbox row and enqueues its delivery.
 
-- **`app.events.send({ name, data, id? })`** on `WfGraphApp`, which is the API
-  `docs/events.md` currently writes as `inngest.send`. Validated against the
-  catalog at the boundary.
+- **The Inngest source, the default path for a host on Inngest.** An entry
+  (`@wfgraph/core/inngest`, or a package) that builds one Inngest function per
+  catalog Event whose body is one `send`. The host publishes with
+  `inngest.send`, as `docs/events.md` documents today, keeps its Inngest-side
+  idempotency, and needs no knowledge of the inbox or the executor. Its one
+  wiring step is mounting the entry's functions on its Inngest `serve`. Workflow
+  Graph's own durability starts at the inbox row. The `inngest` peer dependency
+  moves to that entry, so only a host that uses Inngest installs it.
+- **`app.events.send({ name, data, id? })`** on `WfGraphApp`, for a host with
+  no Inngest. Validated against the catalog at the boundary. `docs/events.md`
+  documents it beside `inngest.send`.
 - **`POST {basePath}/api/events`** on the machine routes, authenticated by a
-  shared signing key the way the Inngest callback is today, for a host whose
-  producer is a different process or language.
-- **Webhook intake** (exists). `receiveWebhook` calls `send` instead of
-  `sendCatalogEvent`; the Connection id becomes a column instead of a stamped
-  payload key, which removes `catalog-connection.ts`.
+  shared signing key the way the Inngest callback is today, for a host with no
+  Inngest whose producer is a different process or language.
 - **A host's own transaction.** A host that shares the database can insert the
   inbox row inside the transaction that produced the business fact, which is the
   transactional outbox the host cannot get from any external bus. The executor
   picks it up on its poll. This is worth documenting as a first-class pattern;
   it is the strongest argument for the inbox over any external bus.
-- **The Inngest source.** An entry (`@wfgraph/core/inngest`, or a package) that
-  builds one Inngest function per catalog Event whose body is one `send`. A host
-  already on Inngest keeps its `inngest.send` calls and its Inngest-side
-  idempotency, and Workflow Graph's own durability starts at the inbox row. The
-  `inngest` peer dependency moves to that entry.
+- **Webhook intake** (exists). `receiveWebhook` calls `send` instead of
+  `sendCatalogEvent`; the Connection id becomes a column instead of a stamped
+  payload key, which removes `catalog-connection.ts`.
 - **Cron.** There is no scheduled start today. With the executor owning a
   scheduler, a `workflow_schedules` table with `next_fire_at` and a
   compare-and-swap enqueue (`update ... where last_enqueued_at is not distinct
@@ -866,8 +870,8 @@ Each phase ends green against the AGENTS.md check list.
    loop; the Postgres and SQLite drivers behind the port; `executeWorkflow` ends
    with `parked`. The reliability suite runs on both drivers and diffs.
 4. **The inbox.** `workflow_event_inbox`, delivery bodies on the executor,
-   `app.events.send`, the HTTP route, webhook intake rewired, the Inngest source
-   entry. `defineEvent` loses its `inngest` option and
+   the Inngest source entry, `app.events.send`, the HTTP route, webhook intake
+   rewired. `defineEvent` loses its `inngest` option and
    `extensions/inngest-options.ts` is deleted (section 7.4).
 5. **Retire ADR-0011 and the Inngest driver.** Delete the branch function, kill
    event, sweep and progress restore; `inngest` leaves `createWfGraphApp` and the
@@ -890,8 +894,10 @@ Each phase ends green against the AGENTS.md check list.
 5. Is Design B (the cursor model) a destination to design towards from the start,
    which argues for `released_outlet` on the log row in phase 3, or a possibility
    kept open? Recommendation: add the column, defer the rewrite.
-6. The host-facing API shape: `app.events.send` on the app value, a standalone
-   `sendEvent` that takes the persistence handle, or both. The transactional
+6. The API for a host with no Inngest: `app.events.send` on the app value, a
+   standalone `sendEvent` that takes the persistence handle, or both. A host on
+   Inngest is unaffected, since it keeps `inngest.send` through the Inngest
+   source (section 7.3). The transactional
    outbox case (section 7.3) argues for exposing the inbox insert as a documented
    SQL contract as well.
 
