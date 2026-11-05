@@ -264,8 +264,8 @@ create index workflow_execution_schedule_lease_idx
   on workflow_execution_schedule (lease_expires_at) where state = 'leased';
 
 -- The step memo. One row per durable step; the value is the JSON the engine
--- already round-trips. Written in the same transaction as the step's own store
--- write wherever the step has one.
+-- already round-trips. Written in its own transaction after the step body,
+-- fenced on owner_token ("Fencing store writes").
 create table workflow_execution_steps (
   execution_id  text not null references workflow_executions(id) on delete cascade,
   step_id       text not null,
@@ -332,6 +332,44 @@ the way the existing SQLite schema mirrors Postgres.
 - `attempt` comes from the schedule row. `startBranch` and `wakeParkedWaits` are
   absent. The engine already enters every Wait in place when `startBranch` is
   absent, and the Exit wake becomes a direct resolution of sibling parks (below).
+
+**Fencing store writes.** The memo row is not the only write a stale worker
+can make. A step body's store writes go through `WorkflowStore`, which
+`createDbWorkflowStore` fills, and each commits in its own transaction. Their
+guards test the run's status, its pinned version, its Cancel or Exit claim, and
+the wait row's status. None tests which worker is writing. A worker whose lease
+expired in the middle of a step could therefore:
+
+- flip a running run to waiting (`createWaitState`,
+  `markExecutionWaitingIfParked`), or a parked run to running
+  (`markExecutionRunning`);
+- cancel the live worker's open log and wait rows (`cancelOpenWork`);
+- take an Exit claim the live worker did not decide (`requestExit`);
+- write the run's terminal record before the live worker does (`finishRun`).
+
+So every store write the executor makes carries the pass's `owner_token`, and
+the repository checks it against the schedule row inside the write's own
+transaction: `FOR SHARE` on Postgres, and the `BEGIN IMMEDIATE` write on SQLite.
+A mismatch refuses the write and stops the pass, the same as a refused memo
+write. The check takes the schedule row before the execution and wait rows,
+the order the producer and the release use. `createDbWorkflowStore` binds the
+token once per pass, so the engine's `WorkflowStore` port does not change.
+
+The fence leaves one window open: a store write that commits just before its
+memo row is refused. The next pass finds no memo and runs the step again.
+Today's Inngest memo has the same window. Each store write a re-run step repeats
+is therefore idempotent:
+
+- `startStepLog` inserts a row whose id derives from the execution id and the
+  step id, with `on conflict do nothing`.
+- `completeStepLog` updates only a row that is still `running`.
+- `recordAuditEvent` takes a derived id the same way.
+
+The other store writes are already conditional updates. The Handler model in
+`.claude/skills/verify-durable-executor` checks both halves. Without the fence,
+a stale worker rewrites a node's outcome after it ended, or fails a node the
+live worker would retry. With the fence but a random log row id, one lease
+expiry between the insert and its memo row leaves the node with two log rows.
 
 **Resolving a park.** Every producer that sends a `workflow/wait.signal` today
 instead writes the wake onto the wait row and re-queues the execution, in one
