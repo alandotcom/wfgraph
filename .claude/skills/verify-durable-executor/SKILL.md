@@ -186,8 +186,8 @@ therefore spends a retry. The shortest path:
    never got a retry.
 
 Counting an attempt on a failed pass and on an expired lease, rather than on
-every claim, makes every rule hold (18,236 states). That change has not been
-made to the design doc.
+every claim, makes every rule hold (18,236 states). The design doc now counts
+attempts that way, in its claim and release steps, and names this finding.
 
 ## Not covered
 
