@@ -767,6 +767,57 @@ export function describeExecutionConformance({
       ).rejects.toBeDefined();
     });
 
+    it("lets a later close of a node log replace an earlier attempt's error", async () => {
+      const database = await openConnection();
+      await seedPublishedWorkflow(database);
+
+      const logs = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const start = yield* executions.startForEntity({
+            execution: {
+              workflowId: "wf_1",
+              workflowVersionId: "ver_1",
+              startSource: "event",
+              startEventName: "appointment/created",
+              entityValue: "appointment_1",
+              deliveryId: "delivery_1",
+              runMode: "live",
+              input: { appointmentId: "appointment_1" },
+            },
+            concurrency: "first-wins",
+            supersededReason: "newer start",
+          });
+          if (start.status !== "started") throw new Error("Start was refused");
+          const executionId = start.execution.id;
+
+          const logId = yield* executions.openNodeLog({
+            executionId,
+            nodeId: "node_1",
+            nodeName: "Create task",
+            nodeType: "action",
+          });
+          yield* executions.closeNodeLog({
+            logId,
+            status: "error",
+            error: "vendor timed out",
+            durationMs: 5,
+          });
+          yield* executions.closeNodeLog({
+            logId,
+            status: "success",
+            output: { taskId: "task_1" },
+            durationMs: 9,
+          });
+          return yield* executions.listLogs(executionId);
+        })
+      );
+
+      expect(logs).toMatchObject([
+        { status: "success", output: { taskId: "task_1" }, error: null },
+      ]);
+    });
+
     it("implements the execution, log, wait, and audit repository contracts", async () => {
       const database = await openConnection();
       await seedPublishedWorkflow(database);

@@ -101,8 +101,11 @@ export function makeNodeLogsMethods(
           .update(workflowExecutionLogs)
           .set({
             status: input.status,
-            output: input.output,
-            error: input.error,
+            // Drizzle leaves an undefined key out of an update, so an absent
+            // output or error is written as null to clear what an earlier
+            // attempt of the node left on the row.
+            output: input.output ?? null,
+            error: input.error ?? null,
             completedAt: new Date(),
             duration: input.durationMs.toString(),
           })
