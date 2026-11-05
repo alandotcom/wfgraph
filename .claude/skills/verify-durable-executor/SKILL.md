@@ -26,7 +26,7 @@ Find out whether the verification is stale before you trust it:
 
 ```sh
 git diff --stat -- docs/internal/plans/separate-event-intake-from-durable-execution.md
-git log --oneline e47ef6f0.. -- docs/internal/plans/separate-event-intake-from-durable-execution.md
+git log --oneline 25e215b0.. -- docs/internal/plans/separate-event-intake-from-durable-execution.md
 git log --oneline a92cea15.. -- \
   packages/core/src/backend/services/executions/repo/waits.ts \
   packages/core/src/backend/services/executions/repo/runs.ts \
@@ -138,7 +138,8 @@ Lifecycle --> Above --> Wait --> Below
 
 The run is pinned to version 1 or 2, and up to two Migrations move it. A pass
 loads the pinned version once, and every write the Wait makes is fenced on that
-version still being pinned. About 7,600 states.
+version still being pinned. A refused fence ends the pass and re-queues the run
+without counting an attempt. About 5,200 states.
 
 | Rule | The promise | The harm when it breaks |
 | --- | --- | --- |
@@ -216,13 +217,14 @@ can find it and a mutation can remove it.
 | `PolicyCancel`, `RunInFlight` | "Cancellation", the policy cancel | `cancelInFlightRuns` in `executions/end-runs.ts` |
 | `Migration`: `Repin`, `RepinNeedsAPark` | "Migration"; ADR-0019 | `repinVersion` in `repo/runs.ts`; `migrateExecutions` in `migration/migrate.ts` |
 | `Migration`: `MigrateWake`, `Prepare`, `Park`, `StillPinned` | "Migration" | `reparkWaitState` and `markExecutionRunning` fences in `engine/wait.ts` |
+| `Migration`: `Release`, `FenceRefusalCountsNoAttempt` | "Migration"; scenario S6 | |
 | `Intake`: `SendViaApp`, `SendInHostTransaction`, `PollInbox`, `InboxKeyIsUnique` | Section 7.1 and 7.3 | |
 | `Intake`: `ClaimDelivery`, `LifecycleStep`, `RecordMemo`, `FinishDelivery` | Section 7.2 | `runEventListener` in `lib/inngest/event-listener-function.ts` |
 | `Intake`: `StartWrite`, `DeliveryIdIsUnique`, `ExecutionAndScheduleTogether` | Section 7.1; scenario S13 | `answerFromCommittedDecision` in `lifecycle/deliver-event.ts`; `startForEntity` in `repo/index.ts` |
 | `Intake`: Concurrency in `StartWrite`, `SupersedeDropsSchedule` | CONTEXT.md "Concurrency", "Superseded" | `startWithConcurrency` in `lifecycle/concurrency.ts` |
 | `Intake`: `CancelWrite` | "Cancellation" | `requestCancelForEntity` in `repo/runs.ts` |
 
-Last confirmed against: the design doc at `e47ef6f0`, and the existing code at
+Last confirmed against: the design doc at `25e215b0`, and the existing code at
 `a92cea15` (`main`). Move these two commits forward only after you have read
 the covered sections and files at the new commit and confirmed that the models
 still describe them. When the executor is built, add its files to the last
@@ -268,32 +270,27 @@ or accept the finding. An accepted finding goes in Known findings and in the
 
 ## Known findings
 
-This breaks on the design as written. It is listed in `mutations.sh`, which
-fails if it stops reproducing.
+None. Every rule holds on the design as written. `mutations.sh` keeps a
+`findings` list for a rule that breaks and has been accepted as a finding, and
+fails when that list disagrees with what `check.sh` reports.
 
-- **`Migration` `FailedOnlyAfterRetriesSpent`: a Migration spends a retry.** The
-  doc's "Migration" paragraph ends a pass whose version fence is refused "as a
-  retry", and "Retries" counts an attempt for each retry. The shortest path: a
-  worker's lease expires, which counts one attempt. A second worker claims the
-  run, runs the node above the Wait, and parks the Wait. A Migration repins the
-  run and sends its migrate wake while that pass is still running. The pass
-  reads the migrate wake, its fence refuses the re-park because the run now pins
-  the other version, and the release counts a second attempt and marks the run
-  failed. No step ever failed. A refused version fence would need to re-queue
-  the run without counting an attempt.
-
-Two earlier findings are fixed in the design doc, and a mutation keeps each
-fixed:
+Three earlier findings are fixed in the design doc, and a mutation puts each
+back to show the rule still catches it:
 
 - `DurableExecutor` `FailedOnlyAfterRetriesSpent`: the claim counted an attempt
   each time a wake re-queued the run, so waking a Wait spent a retry. Fixed at
-  `d652b52c`; the `claim-counts-an-attempt` mutation puts it back.
+  `d652b52c`. Mutation: `claim-counts-an-attempt`.
 - `DurableExecutor` `NoWaitLeftOpenAfterTheRunEnds` and
   `CancelClaimRunsItsOutlet`: a Join admitted before a Cancel Event failed on its
   last retry after the outlet's Wait had parked, and the release ended the run
   `failed`, so the Outlet never ran. Fixed at `e47ef6f0`: a step whose retries
-  run out fails its node, and the run goes on to its outlet. The
-  `failed-node-ends-the-run` mutation puts it back.
+  run out fails its node, and the run goes on to its outlet. Mutation:
+  `failed-node-ends-the-run`.
+- `Migration` `FailedOnlyAfterRetriesSpent`: a refused version fence counted as
+  a retry, so a Migration landing during a pass, after one expired lease, marked
+  the run failed with no step having failed. Fixed at `25e215b0`: a refused
+  fence re-queues the run with the attempt counter unchanged. Mutation:
+  `fence-refusal-counts-an-attempt`.
 
 ## Not covered
 

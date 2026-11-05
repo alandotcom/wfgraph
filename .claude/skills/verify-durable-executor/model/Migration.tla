@@ -53,6 +53,7 @@ StillPinned(w) == pinned = loaded[w]             \* the version fence on every W
 RepinNeedsAPark == row = "waiting"               \* repinVersion: run waiting at this Wait
 WakeIsUnclaimed == row = "waiting"               \* claimWaitState: `status = 'waiting'`
 ReleaseReadsWaitRow == TRUE                      \* the release decides from the wait row, not the pass's view
+FenceRefusalCountsNoAttempt == TRUE              \* "Migration": a refused fence re-queues with the attempt unchanged
 
 Init ==
   /\ sched = "queued" /\ holder = 0 /\ attempt = 0 /\ faults = 0
@@ -70,7 +71,7 @@ observers == <<migrations, aboveRuns, belowRuns, belowVersionWrong, hopWakes,
 
 Go(w, next) == pc' = [pc EXCEPT ![w] = next]
 
-\* The pass ends on a refused version fence: a retry.
+\* The pass ends on a refused version fence.
 FenceRefused(w) ==
   /\ passFailed' = [passFailed EXCEPT ![w] = TRUE] /\ Go(w, "release")
 
@@ -167,11 +168,12 @@ Release(w) ==
   /\ CASE belowDone ->
             /\ status' = "completed" /\ sched' = "gone" /\ terminalWrites' = terminalWrites + 1
             /\ UNCHANGED attempt
-       [] passFailed[w] /\ attempt + 1 >= MaxAttempts ->
+       [] passFailed[w] /\ ~FenceRefusalCountsNoAttempt /\ attempt + 1 >= MaxAttempts ->
             /\ status' = "failed" /\ sched' = "gone" /\ terminalWrites' = terminalWrites + 1
             /\ UNCHANGED attempt
        [] passFailed[w] ->
-            /\ sched' = "queued" /\ attempt' = Sat(attempt + 1)
+            /\ sched' = "queued"
+            /\ attempt' = IF FenceRefusalCountsNoAttempt THEN attempt ELSE Sat(attempt + 1)
             /\ UNCHANGED <<status, terminalWrites>>
        [] ReleaseReadsWaitRow /\ row \in {"event", "timeout", "migrate"} ->
             /\ sched' = "queued" /\ UNCHANGED <<attempt, status, terminalWrites>>
