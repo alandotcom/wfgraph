@@ -1,6 +1,6 @@
 ---
 name: verify-durable-executor
-description: Model-check the Postgres executor proposed to replace Inngest (Design A and the event inbox in docs/internal/plans/separate-event-intake-from-durable-execution.md) with TLA+ models run by tla-ts. Use when a change touches that design's claim, lease, pass, release, park resolution, cancellation, Exit claim, retries, Migration, inbox, delivery or Concurrency rules, when the executor it describes is being built, or when a change touches the existing code the design reuses (claimWaitState, openResume's version fence, admitNode, finishRun, startForEntity, repinVersion, answerFromCommittedDecision). Triggers on "verify the executor", "model-check the design", "does the release still hold", or a claim that a run cannot be stranded, woken twice, opened twice, or run after it ended.
+description: Model-check the Postgres executor proposed to replace Inngest (Design A and the event inbox in docs/internal/plans/separate-event-intake-from-durable-execution.md) with TLA+ models run by tla-ts. Use when a change touches that design's claim, lease, pass, release, park resolution, cancellation, Exit claim, retries, Migration, inbox, delivery fan-out to several workflows, Wait wakes from an arrival, or Concurrency rules, when the executor it describes is being built, or when a change touches the existing code the design reuses (claimWaitState, openResume's version fence, admitNode, finishRun, startForEntity, repinVersion, answerFromCommittedDecision). Triggers on "verify the executor", "model-check the design", "does the release still hold", or a claim that a run cannot be stranded, woken twice, opened twice, or run after it ended.
 ---
 
 # Verify the durable executor design
@@ -11,7 +11,7 @@ a step memo, producers that wake a Wait by writing its wait row, and an inbox
 whose deliveries run on the same executor. The order in which those writes land
 decides whether a run is stranded, woken twice, opened twice, or run after it
 ended. No unit test explores every order. This skill checks every order, up to
-stated bounds, with three TLA+ models and `tla-ts`, a TLC-compatible model
+stated bounds, with four TLA+ models and `tla-ts`, a TLC-compatible model
 checker that runs on Node with no JVM.
 
 Read this whole file before running anything.
@@ -35,6 +35,8 @@ git log --oneline a92cea15.. -- \
   packages/core/src/backend/services/workflows/lifecycle/cancel.ts \
   packages/core/src/backend/services/workflows/lifecycle/concurrency.ts \
   packages/core/src/backend/services/workflows/lifecycle/deliver-event.ts \
+  packages/core/src/backend/services/workflows/lifecycle/resume-waits.ts \
+  packages/core/src/backend/lib/inngest/event-listener-function.ts \
   packages/core/src/backend/services/workflows/migration/migrate.ts \
   packages/core/src/backend/engine/wait.ts \
   packages/core/src/backend/engine/scheduler.ts \
@@ -65,7 +67,7 @@ check:
   by mistake, and a pass from that model checks less than it claims.
 
 It exits 0 when everything holds and is reached, 1 otherwise, and 2 when
-`tla-ts` cannot check a model. The whole run takes about 50 seconds on a
+`tla-ts` cannot check a model. The whole run takes about a minute on a
 many-core machine, most of it the intake model and the liveness checks.
 
 `mutations.sh` first checks the models as written. Then it removes one guard of
@@ -74,7 +76,7 @@ It reports a mutation `UNPROVEN` when its rule already breaks on the models as
 written, `MISSED` when its rule still holds, `UNCOVERED` for a rule no mutation
 reaches, `STALE` for a recorded finding that no longer reproduces, and `NEW` for
 a rule that breaks and is not a recorded finding. Any of those fails the suite.
-It takes about 75 seconds.
+It takes about 90 seconds.
 
 Both scripts run `tla-ts@0.0.8` through `pnpm dlx` on every core, so nothing is
 installed into the workspace. `MODEL_DIR` points `check.sh` at a copy of the
@@ -90,7 +92,7 @@ pass or fail.
 
 Each model checks every behaviour of a small configuration. Two workers, a
 retry limit of 2 (the design's 4, scaled down), and one crash or expired lease
-per behaviour run through all three. Liveness rules assume workers keep
+per behaviour run through all four. Liveness rules assume workers keep
 working and the lease sweep keeps running. Events, cancels, crashes and
 Migrations are free never to happen.
 
@@ -154,6 +156,30 @@ without counting an attempt. About 5,200 states.
 | `LeaseHasAHolder` | A leased row has a holder. | Two workers own the run. |
 | `EveryRunEnds` (liveness) | Every run eventually ends. | A migrated run loops forever. |
 
+### `Delivery`: one arrival delivered to several workflows
+
+One arrival of Event X, delivered as `runEventListener` delivers it today:
+per subscribing workflow, a lifecycle step, then every page of Wait candidates
+saved, then each saved page offered the arrival. Two workflows subscribe:
+
+- W1 starts on X with newest-wins Concurrency, and its runs have a Wait on X.
+  The run X supersedes is parked on that Wait, and the run X starts reaches the
+  same Wait while the delivery is still going.
+- W2 cancels on X behind a Cancel Filter that may decline it. Its run R2 waits
+  on X twice in a row, and if the Cancel claims it, its Canceled outlet parks a
+  third Wait on X. Its run R3 belongs to another Entity and waits on X once.
+
+Pages hold one row each. A worker can crash between waking a page and writing
+that step's memo row, so a page can be offered twice. About 2,200 states.
+
+| Rule | The promise | The harm when it breaks |
+| --- | --- | --- |
+| `NoWakeInTheRunItStarted` | An arrival never wakes a Wait in a run it started. | A run started by an Event skips its own Wait for the next one. |
+| `NoWakeInARunItSettled` | An arrival never wakes a Wait in a run it superseded or claimed, including a Wait the claimed run's Canceled outlet parks. | A canceled run's outlet Wait resumes on the Event that canceled it. |
+| `NoSecondWaitFromOneArrival` | One arrival never resumes two Waits of the same run one after the other. | One Event satisfies "wait for two payments". |
+| `EachWaitWokenOnce` | An arrival wakes each Wait at most once, however often its delivery runs. | The work below the Wait runs twice. |
+| `SurvivingWaitsAreWoken` (liveness) | Every Wait of a surviving run that was parked on X when it arrived is woken by it. | A run misses the Event it was waiting for. |
+
 ### `Intake`: the inbox, delivery and Concurrency
 
 One workflow and one Entity. The host raises two Start Events and a Cancel
@@ -179,7 +205,8 @@ one. About 125,000 states.
 ## Bounds and assumptions
 
 - The bounds above: two workers, two versions and two Migrations, three
-  arrivals, a retry limit of 2, one fault per behaviour.
+  arrivals in `Intake`, one arrival fanned out to two workflows in `Delivery`
+  with pages of one row, a retry limit of 2, one fault per behaviour.
 - Counters stop one past the retry limit, because nothing compares them further.
 - The `CountersBounded` constraints cap observer counters at 2 so a mutated
   model stays finite. In the models as written, every counter stays at most 1
@@ -223,6 +250,9 @@ can find it and a mutation can remove it.
 | `Intake`: `StartWrite`, `DeliveryIdIsUnique`, `ExecutionAndScheduleTogether` | Section 7.1; scenario S13 | `answerFromCommittedDecision` in `lifecycle/deliver-event.ts`; `startForEntity` in `repo/index.ts` |
 | `Intake`: Concurrency in `StartWrite`, `SupersedeDropsSchedule` | CONTEXT.md "Concurrency", "Superseded" | `startWithConcurrency` in `lifecycle/concurrency.ts` |
 | `Intake`: `CancelWrite` | "Cancellation" | `requestCancelForEntity` in `repo/runs.ts` |
+| `Delivery`: `Lifecycle`, `Life1`, `Life2`, `Settled` | Section 7.2; CONTEXT.md "Precedence" | `runEventListener` and `settledExecutionIds` in `lib/inngest/event-listener-function.ts`; `applyLifecycleRules` in `lifecycle/deliver-event.ts` |
+| `Delivery`: `ScanAllPages`, `Candidate`, `ExcludeSettledRuns`, `SavePagesBeforeWaking` | Section 7.2 | `listWaitCandidatePage` in `lifecycle/deliver-event.ts`; `listWaitsForEvent` in `repo/waits.ts` |
+| `Delivery`: `WakeSavedPage`, `RecordWokenPage`, `WakeIsUnclaimed` | Section 7.2; "The runtime", `run(step, fn)` | `deliverWaitCandidates` in `lifecycle/deliver-event.ts`; `resumeWaitsMatchingEvent` in `lifecycle/resume-waits.ts`; `claimWaitingStateById` in `repo/waits.ts` |
 
 Last confirmed against: the design doc at `25e215b0`, and the existing code at
 `a92cea15` (`main`). Move these two commits forward only after you have read
@@ -294,8 +324,10 @@ back to show the rule still catches it:
 
 ## Not covered
 
-- Several workflows subscribed to one Event, and Wait Subscriptions fed by the
-  inbox (the delivery's wait-candidate pages).
+- Two arrivals delivered at the same time to one workflow. `Delivery` has one
+  arrival; `DurableExecutor` checks that two producers never both wake one Wait.
+- A Wait's match expression and Connection filter. `Delivery` treats every
+  candidate as matching.
 - More than one Execution inside the run model. Concurrency is checked in
   `Intake`, with each run reduced to one step.
 - Handler sub-steps inside one node.
