@@ -26,7 +26,7 @@ Find out whether the verification is stale before you trust it:
 
 ```sh
 git diff --stat -- docs/internal/plans/separate-event-intake-from-durable-execution.md
-git log --oneline 25e215b0.. -- docs/internal/plans/separate-event-intake-from-durable-execution.md
+git log --oneline be83bbdb.. -- docs/internal/plans/separate-event-intake-from-durable-execution.md
 git log --oneline a92cea15.. -- \
   packages/core/src/backend/services/executions/repo/waits.ts \
   packages/core/src/backend/services/executions/repo/runs.ts \
@@ -352,7 +352,7 @@ can find it and a mutation can remove it.
 | `Timing`: `WorkerLease`, `WorkerCron`, `WorkerBudget`, `QueueMaxDelay`, `Kill`, `WorkerUsesCron` | Section 8, "Cloudflare Worker over Hyperdrive" | |
 | `Timing`: `ClaimWaitsForTheDeadline` | "The invocation", step 1 (`wake_at <= now()`) | |
 
-Last confirmed against: the design doc at `25e215b0`, and the existing code at
+Last confirmed against: the design doc at `be83bbdb`, and the existing code at
 `a92cea15` (`main`). Move these two commits forward only after you have read
 the covered sections and files at the new commit and confirmed that the models
 still describe them. When the executor is built, add its files to the last
