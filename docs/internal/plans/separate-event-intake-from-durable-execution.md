@@ -601,9 +601,10 @@ the Runs view.
 
 ### 6.4 Design C: Design A behind a driver port, Inngest kept as a driver
 
-Same as Design A, with the executor behind one Effect service so that the Inngest
-adapter remains a second implementation during the transition and, if wanted,
-for hosts that cannot run a worker. The port:
+Same as Design A, with the executor behind one Effect service. The service is
+kept: phase 2 introduces it with the database driver as its one implementation.
+Keeping an Inngest adapter as a second implementation, for the transition or
+for hosts that cannot run a worker, is the part that was rejected. The port:
 
 ```ts
 class ExecutionDriver extends Context.Service<
@@ -631,16 +632,13 @@ class ExecutionDriver extends Context.Service<
 >()("@wfgraph/core/ExecutionDriver") {}
 ```
 
-This is `InngestClient` with its five sends renamed by intent. The Inngest driver
-maps `resolvePark` to `sendWaitSignal` and `stopRun` to the two cancel sends. The
-Postgres driver maps them to the row writes of section 6.1. Keeping both alive
-for one release lets the reliability suite (`pnpm run test:reliability`) run
-each case on both drivers and diff the outcomes, which is the strongest
-verification available before the Inngest driver is deleted.
-
-The Inngest driver is deleted in phase 5 (section 12, decision 1). Keeping it
-would have been the one case where ADR-0011's branch machinery must stay,
-because Inngest's wake policy has not changed.
+This is `InngestClient` with its five sends renamed by intent. The database
+driver maps them to the row writes of section 6.1. An Inngest driver would have
+mapped `resolvePark` to `sendWaitSignal` and `stopRun` to the two cancel sends,
+and kept ADR-0011's branch machinery alive, because Inngest's wake policy has
+not changed. The migration is built on one branch that merges once (section
+11), so no Inngest driver is built: the reliability suite compares the executor
+with the same suite run on `main` (section 12, decision 1).
 
 ### 6.5 Design D: DBOS as the executor
 
@@ -924,15 +922,15 @@ available for today.
   runs, so phase 1 first makes the harness take a runtime, re-run a parked body
   and wake a run on any resolution. The cases that enter a Wait in place then
   run unchanged on both drivers, and each branch-run case gains a single-run
-  equivalent beside it. The branch-run cases keep covering the Inngest driver
-  until phase 5 deletes it.
+  equivalent beside it. The branch-run cases keep covering the Inngest path
+  until phase 2 deletes it.
 - **Memo write amplification.** Five writes per node is fine at the scale this
   product runs at; it is the number to watch. The Design B cursor model is the
   answer if it becomes the bottleneck.
 - **The Worker driver.** The least certain piece and the easiest to defer.
-- **Two drivers during transition.** Keeping the Inngest driver alive for one
-  release keeps ADR-0011 alive for one release. The diffing it enables through
-  the reliability suite is worth it; carrying it longer is not.
+- **One long branch.** The migration merges into `main` once, so `main` moves
+  under it for weeks. The branch is rebased onto `main` often, and the
+  reliability suite compares the branch's outcomes with `main`'s.
 - **Storage moves to the adopter.** The memo, the queue and the event inbox
   live in the adopter's database instead of Inngest's. The memo and schedule
   rows are deleted at the terminal write, so their size follows the number of
@@ -944,56 +942,72 @@ available for today.
 
 ## 11. Recommended path
 
-Each phase ends green against the AGENTS.md check list.
+The whole migration is built on one feature branch, `feat/durable-executor`,
+cut from `main` with this document, and merged into `main` once when the last
+phase is done. Each commit on the branch passes the AGENTS.md check list, so
+the branch is green at every step. No intermediate state ships, so no phase
+keeps compatibility machinery alive for the next one.
 
-1. **The executor core, built to graduate.** Written in production locations
-   with generated migrations, on a branch that becomes phase 3's first commits
-   once phase 2 lands. It holds park-as-value; `driveWithReplay` taking a
-   runtime, re-running a parked body and waking a run on any resolution; the
-   schedule and memo tables, the wait-row columns and `released_outlet` on the
-   log row, in both schemas; the producer and release writes as `ExecutionRepo`
-   methods; and a Postgres and a SQLite driver for `WorkflowExecutionRuntime`.
+1. **The executor core.** Six units, committed in order:
+   - E1. A Wait's park is a value in the engine (section 6.2).
+   - E2. `driveWithReplay` takes a runtime, re-runs a parked body and wakes a
+     run on any resolution. Each case that enters a Wait in place runs in both
+     modes, and each ADR-0011 branch-run case gains a single-run equivalent
+     beside it.
+   - E3. The schedule and memo tables, the wait-row columns and
+     `released_outlet` on the log row, in both schemas; the claim, release,
+     producer and memo writes as `ExecutionRepo` methods; and the fenced,
+     idempotent store writes of "Fencing store writes".
+   - E4. A Postgres driver for `WorkflowExecutionRuntime` runs the replay
+     suites.
+   - E5. A SQLite driver runs the same suites, started only after E4 passes.
+   - E6. A worker loop, and the wake timings measured by wall clock on both
+     backends.
+
    Exit criteria: every case in the eight suites that enters a Wait in place
-   passes unchanged on both drivers; each ADR-0011 branch-run case gains a
-   single-run equivalent that passes, and the branch-run case stays until phase
-   5; S2, a Cancel while both Waits are parked,
-   and a Wait behind a Wait pass under the harness's virtual clock and once by
-   wall clock with scaled durations, within a second of their targets, on both
-   backends; and `.claude/skills/verify-durable-executor/check.sh` passes. The
-   bound: the Postgres driver comes first, and the SQLite driver starts only
-   after Postgres meets the criteria. If a replay case fails for a reason the
-   Wait driver's park-as-value change cannot fix, the phase stops and reports
-   before any more driver code is written.
-2. **The port.** `ExecutionDriver` replaces `InngestClient` in `WfGraphServices`;
-   the Inngest driver is its first implementation and nothing observable changes.
-   The reliability suite runs on it.
-3. **The executor.** Schedule, memo and wake columns in both schemas; the worker
-   loop; the Postgres and SQLite drivers behind the port; `executeWorkflow` ends
-   with `parked`. The reliability suite runs on both drivers and diffs.
-4. **The inbox.** `workflow_event_inbox`, delivery bodies on the executor,
-   the Inngest source entry, `app.events.send`, the HTTP route, webhook intake
+   passes unchanged on both drivers; each single-run equivalent passes; S2, a
+   Cancel while both Waits are parked, and a Wait behind a Wait pass under the
+   harness's virtual clock and once by wall clock with scaled durations, within
+   a second of their targets, on both backends; and
+   `.claude/skills/verify-durable-executor/check.sh` passes. If a replay case
+   fails for a reason the park-as-value change cannot fix, the work stops and
+   reports before any more driver code is written.
+
+2. **Runs move to the executor.** `ExecutionDriver` (section 6.4) replaces
+   `InngestClient` in `WfGraphServices`, with the database driver as its one
+   implementation. The producers become the row writes of section 6.1:
+   `wakeWait`, `signalParkedWaits`, `migrateExecutions`, the Cancel claim's
+   outlet request, `signalRunToStop` and `enqueueStartedRun`.
+   `createWfGraphApp` runs the worker loop. The `workflow-run` and
+   `workflow-branch` Inngest functions are deleted with everything under
+   ADR-0011, including the branch-run tests. The reliability suite runs on the
+   executor, and each family's outcomes are compared with the same suite on
+   `main`. New ADR superseding ADR-0004; amendments on ADR-0011 and ADR-0015.
+   Event delivery stays on Inngest until phase 3.
+3. **The inbox.** `workflow_event_inbox`, delivery bodies on the executor, the
+   Inngest source entry, `app.events.send`, the HTTP route, webhook intake
    rewired. `defineEvent` loses its `inngest` option and
    `extensions/inngest-options.ts` is deleted (section 7.4).
-5. **Retire ADR-0011 and the Inngest driver.** Delete the branch function, kill
-   event, sweep and progress restore; `inngest` leaves `createWfGraphApp` and the
-   peer dependency; `scripts/dev.ts` drops the CLI. New ADR superseding ADR-0004;
-   amendments on ADR-0011 and ADR-0015.
-6. **Worker driver.** `tick`, cron, queue consumer, optional DO alarms, with
+4. **Inngest leaves the core.** The Inngest source entry is the only Inngest
+   code left; `inngest` leaves `createWfGraphApp` and the core's peer
+   dependencies; `scripts/dev.ts` drops the CLI; `docs/events.md`, both
+   published skills and the example app change; one major-version changeset.
+5. **Worker driver.** `tick`, cron, queue consumer, optional DO alarms, with
    Design E as the documented fallback.
-7. **Cron source and the Runs view fields** of S14.
+6. **Cron source and the Runs view fields** of S14.
 
 ## 12. Decisions
 
-1. Decided: the Inngest executor driver does not survive past phase 5. Keeping
-   it for hosts that cannot run a worker would keep ADR-0011's branch runs, kill
-   event and sweep. Phase 1 adds a single-run equivalent beside each ADR-0011
-   branch-run test, and phase 5 deletes the branch-run tests with the driver.
+1. Decided: no Inngest executor driver. Keeping one for hosts that cannot run
+   a worker would keep ADR-0011's branch runs, kill event and sweep. Phase 1
+   adds a single-run equivalent beside each ADR-0011 branch-run test, and phase
+   2 deletes the branch-run tests when runs move to the executor.
 2. Decided: per-Event flow control is dropped, because no Event in this
    repository or in Fountain's spike declares any of it (section 7.4).
 3. Decided: the Cloudflare Worker backend is a release target for the executor,
-   through the tick-based driver of section 8, built last (phase 6). Design E
+   through the tick-based driver of section 8, built last (phase 5). Design E
    stays the fallback.
-4. Decided: cron waits for phase 7. The executor makes it cheap to add then.
+4. Decided: cron waits for phase 6. The executor makes it cheap to add then.
 5. Decided: `released_outlet` is added to the log row in phase 1's schema, and
    the Design B rewrite is deferred.
 6. Decided: both `app.events.send` and the inbox insert as a documented SQL
