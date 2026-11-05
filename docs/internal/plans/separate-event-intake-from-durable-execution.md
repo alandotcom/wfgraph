@@ -413,9 +413,16 @@ A leased invocation of that run fails its next fenced write and stops.
 parked row plus a re-queue. The replay loads the new version, the Wait driver's
 attempt loop sees the `migrate` wake and prepares again (exists, ADR-0019). The
 version fences on `createWaitState`, `reparkWaitState` and
-`markExecutionRunning` keep working unchanged; a refused fence ends the
-invocation as a retry, which reloads the newer graph, which is the behaviour
-ADR-0019 describes.
+`markExecutionRunning` keep working unchanged. A refused fence ends the pass,
+and the next pass reloads the newer graph, which is the behaviour ADR-0019
+describes. The engine reports a refused fence as a failure kind of its own, and
+the release re-queues the run with `wake_at = now()` and the attempt counter
+unchanged. A refused fence is the run having moved, so nothing failed: counting
+it as an attempt would let a Migration that lands during a pass mark the run
+failed with no step having failed, which the model check in
+`.claude/skills/verify-durable-executor` found. `WAIT_ATTEMPT_LIMIT` still caps
+how many times one Wait is prepared again, so a run migrated over and over still
+stops.
 
 **Exit claim.** The run that wins `requestExit` resolves its own sibling parks
 as `{ kind: "exit" }` inside the same step. With one run per Execution the
@@ -767,8 +774,9 @@ registered before or after. The race no longer exists.
 **S6. Migration of a parked run.** `repinVersion` plus a migrate wake plus a
 re-queue. The pass loads the new graph; the Wait driver re-prepares against it
 under the attempt-indexed step ids (exists). A migration landing while a pass is
-between loading the version and parking fails the fence, ends the pass as a retry,
-and the next pass loads the newer graph, the behaviour ADR-0019 describes.
+between loading the version and parking fails the fence and ends the pass
+without counting an attempt, and the next pass loads the newer graph, the
+behaviour ADR-0019 describes.
 
 **S7. Two workers claim the same run.** Impossible under `SKIP LOCKED` while the
 lease holds. After an expiry under a worker that is slow rather than dead, both
