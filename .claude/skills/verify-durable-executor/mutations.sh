@@ -29,6 +29,7 @@ DurableExecutor|no-lease-fencing|LeaseHeldBy(w) == holder = w|LeaseHeldBy(w) == 
 DurableExecutor|policy-cancel-keeps-lease|/\ sched' = "gone" /\ holder' = 0|/\ sched' = "gone" /\ holder' = holder|NothingCommitsAfterTheRunEnds
 DurableExecutor|terminal-write-unguarded|RunInFlight == status = "running"|RunInFlight == TRUE|OneTerminalRecord
 DurableExecutor|completion-ignores-claim|[] joinDone /\ claim = "none" ->|[] joinDone ->|EndMatchesWork
+DurableExecutor|failed-node-ends-the-run|FailedNodeEndsRun == claim = "none"|FailedNodeEndsRun == TRUE|CancelClaimRunsItsOutlet NoWaitLeftOpenAfterTheRunEnds
 DurableExecutor|claim-counts-an-attempt|  /\ UNCHANGED <<attempt, faults, dataVars, observers>>|  /\ attempt' = Sat(attempt + 1) /\ UNCHANGED <<faults, dataVars, observers>>|FailedOnlyAfterRetriesSpent
 DurableExecutor|expiry-keeps-token|/\ sched' = "queued" /\ holder' = 0 /\ attempt' = Sat(attempt + 1)|/\ sched' = "queued" /\ holder' = holder /\ attempt' = Sat(attempt + 1)|LeaseHasAHolder
 Migration|no-version-fence|StillPinned(w) == pinned = loaded[w]|StillPinned(w) == TRUE|BelowRunsThePinnedVersion
@@ -55,7 +56,7 @@ MUTATIONS
 
 # Rules that break on the models as written. Each is a finding SKILL.md
 # records, and this list must match what check.sh reports.
-findings="DurableExecutor:NoWaitLeftOpenAfterTheRunEnds Migration:FailedOnlyAfterRetriesSpent"
+findings="Migration:FailedOnlyAfterRetriesSpent"
 
 echo "checking the models as written"
 base=$("$here/check.sh" 2>&1) || true

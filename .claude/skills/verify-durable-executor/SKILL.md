@@ -26,7 +26,7 @@ Find out whether the verification is stale before you trust it:
 
 ```sh
 git diff --stat -- docs/internal/plans/separate-event-intake-from-durable-execution.md
-git log --oneline fe9616b8.. -- docs/internal/plans/separate-event-intake-from-durable-execution.md
+git log --oneline e47ef6f0.. -- docs/internal/plans/separate-event-intake-from-durable-execution.md
 git log --oneline a92cea15.. -- \
   packages/core/src/backend/services/executions/repo/waits.ts \
   packages/core/src/backend/services/executions/repo/runs.ts \
@@ -105,8 +105,8 @@ Lifecycle --Started--> Wait A --+
 The two parallel Waits are the case ADR-0011 exists for, and the Join behind
 both is the case it leaves open. Entity Eligibility may refuse the work below a
 woken Wait or the Join, which claims an Exit. A Cancel Event claims the run and
-routes it to the Canceled outlet, whose own Wait parks like any other. About
-17,000 states.
+routes it to the Canceled outlet, whose own Wait parks like any other. A Join
+whose retries run out fails its node, and the run goes on. About 19,400 states.
 
 | Rule | The promise | The harm when it breaks |
 | --- | --- | --- |
@@ -122,8 +122,9 @@ routes it to the Canceled outlet, whose own Wait parks like any other. About
 | `NothingCommitsAfterTheRunEnds` | Nothing commits after the run has ended. | A canceled run keeps doing work. |
 | `OneTerminalRecord` | The run's terminal record is written once. | The run's status flips after it ended. |
 | `NoWaitLeftOpenAfterTheRunEnds` | A run that has ended leaves no Wait parked. | The Runs view shows an ended run waiting, and its outlet work never runs. |
+| `CancelClaimRunsItsOutlet` | A run a Cancel Event claimed ends only after its Outlet ran, unless a policy cancel ended it first. | Cancellation work is abandoned because another step failed. |
 | `ExitHaltsEveryWait` | An exited run leaves no Wait parked. | A sibling branch stays parked on a run that has exited. |
-| `EndMatchesWork` | A completed run ran the Join, a run a Cancel Event ended ran its outlet, and an exited run ran neither. | The Runs view reports work that never happened. |
+| `EndMatchesWork` | A completed run ran the Join, a run a Cancel Event ended ran its outlet, an exited run ran neither, and a failed run has a failed Join and no claim. | The Runs view reports work that never happened. |
 | `FailedOnlyAfterRetriesSpent` | A run is marked failed only after its retries were spent on failures. | A transient error fails a run with no retry. |
 | `LeaseHasAHolder` | A leased schedule row has a lease holder, and no other row does. | Two workers believe they own the run. |
 | `EveryRunEnds` (liveness) | Every run eventually ends. | A run sits in progress forever. |
@@ -207,7 +208,7 @@ can find it and a mutation can remove it.
 | `StartedSideAdmits`, `CanceledSideAdmits` | "Cancellation"; CONTEXT.md "Canceled Branch" | `claimAdmits` in `repo/runs.ts` |
 | `EnterCanceledOutlet` | "Cancellation" | the `lifecycle-check` step in `engine/cancel-boundary.ts` |
 | `AdmitJoin`, `ExitBeforeJoin`, `ExitBeforeBranch`, `ClaimIsFree` | "Exit claim"; CONTEXT.md "Entity Eligibility" | `admitNode` in `engine/scheduler.ts`; `requestExit` in `repo/runs.ts` |
-| `JoinSucceeds`, `JoinFails`, `Release` | "The invocation", step 4; "Retries" | `finishRun` in `repo/runs.ts` |
+| `JoinSucceeds`, `JoinFails`, `Release`, `RetriesSpent`, `FailedNodeEndsRun` | "The invocation", step 4; "Retries" | `finishRun` in `repo/runs.ts`; the terminal status `executeWorkflow` chooses in `engine/terminal-record.ts` |
 | `ReleaseReadsWaitRows`, `ReleaseReadsWaitRow` | "The invocation", step 4 | |
 | `LeaseExpires`, `SweepDeadLease`, `Crash` (all models) | "Lease and liveness" | |
 | `EventWake`, `WakeIsUnclaimed` | "Resolving a park" (the `status = 'waiting'` update) | `claimWaitState` in `repo/waits.ts` |
@@ -221,7 +222,7 @@ can find it and a mutation can remove it.
 | `Intake`: Concurrency in `StartWrite`, `SupersedeDropsSchedule` | CONTEXT.md "Concurrency", "Superseded" | `startWithConcurrency` in `lifecycle/concurrency.ts` |
 | `Intake`: `CancelWrite` | "Cancellation" | `requestCancelForEntity` in `repo/runs.ts` |
 
-Last confirmed against: the design doc at `fe9616b8`, and the existing code at
+Last confirmed against: the design doc at `e47ef6f0`, and the existing code at
 `a92cea15` (`main`). Move these two commits forward only after you have read
 the covered sections and files at the new commit and confirmed that the models
 still describe them. When the executor is built, add its files to the last
@@ -267,8 +268,8 @@ or accept the finding. An accepted finding goes in Known findings and in the
 
 ## Known findings
 
-These break on the design as written. Each is listed in `mutations.sh`, which
-fails if one stops reproducing.
+This breaks on the design as written. It is listed in `mutations.sh`, which
+fails if it stops reproducing.
 
 - **`Migration` `FailedOnlyAfterRetriesSpent`: a Migration spends a retry.** The
   doc's "Migration" paragraph ends a pass whose version fence is refused "as a
@@ -280,19 +281,19 @@ fails if one stops reproducing.
   the other version, and the release counts a second attempt and marks the run
   failed. No step ever failed. A refused version fence would need to re-queue
   the run without counting an attempt.
-- **`DurableExecutor` `NoWaitLeftOpenAfterTheRunEnds`: a failing Join abandons
-  the Canceled outlet.** The Join is admitted before a Cancel Event claims the
-  run, which the design allows ("work already admitted may finish"). The claim
-  lands, the next pass enters the Canceled outlet and parks Wait C, and the
-  admitted Join then fails on its last retry. The release marks the run failed:
-  the Outlet never runs, and Wait C stays parked on a run that has ended. The
-  design says the release writes `failed` when retries are spent. It does not
-  say what happens to a Canceled outlet in progress, or to Waits still parked.
 
-`DurableExecutor` `FailedOnlyAfterRetriesSpent` was the first finding of this
-check: the claim counted an attempt each time a wake re-queued the run. The
-design doc fixed it at `d652b52c`, and the `claim-counts-an-attempt` mutation
-keeps it fixed.
+Two earlier findings are fixed in the design doc, and a mutation keeps each
+fixed:
+
+- `DurableExecutor` `FailedOnlyAfterRetriesSpent`: the claim counted an attempt
+  each time a wake re-queued the run, so waking a Wait spent a retry. Fixed at
+  `d652b52c`; the `claim-counts-an-attempt` mutation puts it back.
+- `DurableExecutor` `NoWaitLeftOpenAfterTheRunEnds` and
+  `CancelClaimRunsItsOutlet`: a Join admitted before a Cancel Event failed on its
+  last retry after the outlet's Wait had parked, and the release ended the run
+  `failed`, so the Outlet never ran. Fixed at `e47ef6f0`: a step whose retries
+  run out fails its node, and the run goes on to its outlet. The
+  `failed-node-ends-the-run` mutation puts it back.
 
 ## Not covered
 

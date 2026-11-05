@@ -48,6 +48,7 @@ VARIABLES
                   \*   "running" | "completed" | "canceled" | "exited" | "failed"
   joinAdmitted,   \* memo of the Join's node-admission step
   joinDone,       \* memo of the Join's action step
+  joinFailed,     \* memo of the Join failing for good, once its retries ran out
   canceledEntered,\* memo of the lifecycle-check step that routed the Canceled outlet
   \* Observers. They count what happened so the rules below can be stated.
   wakes, branchRuns, joinRuns, canceledEntries, terminalWrites, failures,
@@ -56,7 +57,7 @@ VARIABLES
 
 runVars    == <<sched, holder, attempt, faults>>
 workerVars == <<pc, passFailed, sawParked>>
-dataVars   == <<park, claim, status, joinAdmitted, joinDone, canceledEntered>>
+dataVars   == <<park, claim, status, joinAdmitted, joinDone, joinFailed, canceledEntered>>
 observers  == <<wakes, branchRuns, joinRuns, canceledEntries, terminalWrites,
                 failures, claimWrites, startedWorkAfterClaim,
                 canceledWorkAfterExit, commitAfterEnd, policyCanceled>>
@@ -76,6 +77,7 @@ ParkIsDue(p) == park[p] = "open"              \* the claim's `wake_at <= now()`:
 ClaimIsFree == claim = "none"                 \* requestCancelForEntity and requestExit write a free claim only
 RunInFlight == status = "running"             \* finishRun updates an in-flight row only
 ReleaseReadsWaitRows == TRUE                  \* the release decides from the wait rows, not the pass's view
+FailedNodeEndsRun == claim = "none"           \* "Retries": a node that failed for good ends the run only when no claim has work left
 
 Init ==
   /\ sched = "queued" /\ holder = 0 /\ attempt = 0 /\ faults = 0
@@ -83,7 +85,7 @@ Init ==
   /\ passFailed = [w \in Workers |-> FALSE] /\ sawParked = [w \in Workers |-> FALSE]
   /\ park = [p \in Parks |-> "unreached"]
   /\ claim = "none" /\ status = "running"
-  /\ joinAdmitted = FALSE /\ joinDone = FALSE /\ canceledEntered = FALSE
+  /\ joinAdmitted = FALSE /\ joinDone = FALSE /\ joinFailed = FALSE /\ canceledEntered = FALSE
   /\ wakes = [p \in Parks |-> 0] /\ branchRuns = [p \in Parks |-> 0]
   /\ joinRuns = 0 /\ canceledEntries = 0 /\ terminalWrites = 0 /\ failures = 0
   /\ claimWrites = 0 /\ startedWorkAfterClaim = FALSE /\ canceledWorkAfterExit = FALSE
@@ -117,7 +119,7 @@ ClaimWhenDue(w) ==
        /\ park' = [park EXCEPT ![p] = "woken"]
        /\ wakes' = [wakes EXCEPT ![p] = @ + 1]
   /\ StartPass(w)
-  /\ UNCHANGED <<attempt, faults, claim, status, joinAdmitted, joinDone, canceledEntered,
+  /\ UNCHANGED <<attempt, faults, claim, status, joinAdmitted, joinDone, joinFailed, canceledEntered,
                  branchRuns, joinRuns, canceledEntries, terminalWrites, failures,
                  claimWrites, startedWorkAfterClaim, canceledWorkAfterExit,
                  commitAfterEnd, policyCanceled>>
@@ -150,7 +152,7 @@ VisitStarted(w) ==
   /\ commitAfterEnd' = (commitAfterEnd \/ (status # "running" /\ park' # park))
   /\ sawParked' = [sawParked EXCEPT ![w] = \E p \in Parks : park'[p] = "open"]
   /\ pc' = [pc EXCEPT ![w] = "admit"]
-  /\ UNCHANGED <<runVars, passFailed, claim, status, joinAdmitted, joinDone,
+  /\ UNCHANGED <<runVars, passFailed, claim, status, joinAdmitted, joinDone, joinFailed,
                  canceledEntered, wakes, joinRuns, canceledEntries, terminalWrites,
                  failures, claimWrites, canceledWorkAfterExit, policyCanceled>>
 
@@ -167,7 +169,7 @@ ExitBeforeBranch(w) ==
        /\ wakes' = [q \in Parks |-> IF q # p /\ park[q] = "open" THEN wakes[q] + 1 ELSE wakes[q]]
   /\ claim' = "exit" /\ claimWrites' = claimWrites + 1
   /\ commitAfterEnd' = (commitAfterEnd \/ status # "running")
-  /\ UNCHANGED <<runVars, workerVars, status, joinAdmitted, joinDone, canceledEntered,
+  /\ UNCHANGED <<runVars, workerVars, status, joinAdmitted, joinDone, joinFailed, canceledEntered,
                  branchRuns, joinRuns, canceledEntries, terminalWrites, failures,
                  startedWorkAfterClaim, canceledWorkAfterExit, policyCanceled>>
 
@@ -181,7 +183,7 @@ EnterCanceledOutlet(w) ==
   /\ commitAfterEnd' = (commitAfterEnd \/ status # "running")
   /\ pc' = [pc EXCEPT ![w] = "canceled"]
   /\ UNCHANGED <<runVars, passFailed, sawParked, park, claim, status, joinAdmitted,
-                 joinDone, wakes, branchRuns, joinRuns, terminalWrites, failures,
+                 joinDone, joinFailed, wakes, branchRuns, joinRuns, terminalWrites, failures,
                  claimWrites, startedWorkAfterClaim, policyCanceled>>
 
 JoinIsDue == /\ ~joinAdmitted /\ \A p \in Started : park[p] = "ran"
@@ -193,7 +195,7 @@ AdmitJoin(w) ==
   /\ startedWorkAfterClaim' = (startedWorkAfterClaim \/ (StartedSideAdmits /\ claim # "none"))
   /\ commitAfterEnd' = (commitAfterEnd \/ (status # "running" /\ StartedSideAdmits))
   /\ pc' = [pc EXCEPT ![w] = "canceled"]
-  /\ UNCHANGED <<runVars, passFailed, sawParked, park, claim, status, joinDone,
+  /\ UNCHANGED <<runVars, passFailed, sawParked, park, claim, status, joinDone, joinFailed,
                  canceledEntered, wakes, branchRuns, joinRuns, canceledEntries,
                  terminalWrites, failures, claimWrites, canceledWorkAfterExit, policyCanceled>>
 
@@ -203,7 +205,7 @@ ExitBeforeJoin(w) ==
   /\ claim' = "exit" /\ claimWrites' = claimWrites + 1
   /\ commitAfterEnd' = (commitAfterEnd \/ status # "running")
   /\ pc' = [pc EXCEPT ![w] = "canceled"]
-  /\ UNCHANGED <<runVars, passFailed, sawParked, park, status, joinAdmitted, joinDone,
+  /\ UNCHANGED <<runVars, passFailed, sawParked, park, status, joinAdmitted, joinDone, joinFailed,
                  canceledEntered, wakes, branchRuns, joinRuns, canceledEntries,
                  terminalWrites, failures, startedWorkAfterClaim, canceledWorkAfterExit,
                  policyCanceled>>
@@ -230,24 +232,24 @@ VisitCanceled(w) ==
   /\ commitAfterEnd' = (commitAfterEnd \/ (status # "running" /\ park' # park))
   /\ sawParked' = [sawParked EXCEPT ![w] = \E p \in Parks : park'[p] = "open"]
   /\ pc' = [pc EXCEPT ![w] = "run"]
-  /\ UNCHANGED <<runVars, passFailed, claim, status, joinAdmitted, joinDone,
+  /\ UNCHANGED <<runVars, passFailed, claim, status, joinAdmitted, joinDone, joinFailed,
                  canceledEntered, wakes, joinRuns, canceledEntries, terminalWrites,
                  failures, claimWrites, startedWorkAfterClaim, policyCanceled>>
 
 \* An admitted Join runs once. Work already admitted may finish after a claim.
 JoinSucceeds(w) ==
-  /\ pc[w] = "run" /\ LeaseHeldBy(w) /\ joinAdmitted /\ ~joinDone
+  /\ pc[w] = "run" /\ LeaseHeldBy(w) /\ joinAdmitted /\ ~joinDone /\ ~joinFailed
   /\ joinDone' = TRUE /\ joinRuns' = joinRuns + 1
   /\ commitAfterEnd' = (commitAfterEnd \/ status # "running")
   /\ pc' = [pc EXCEPT ![w] = "release"]
-  /\ UNCHANGED <<runVars, passFailed, sawParked, park, claim, status, joinAdmitted,
+  /\ UNCHANGED <<runVars, passFailed, sawParked, park, claim, status, joinAdmitted, joinFailed,
                  canceledEntered, wakes, branchRuns, canceledEntries, terminalWrites,
                  failures, claimWrites, startedWorkAfterClaim, canceledWorkAfterExit,
                  policyCanceled>>
 
 \* "Retries": the Join's step body throws a retriable error and the pass ends.
 JoinFails(w) ==
-  /\ pc[w] = "run" /\ LeaseHeldBy(w) /\ joinAdmitted /\ ~joinDone
+  /\ pc[w] = "run" /\ LeaseHeldBy(w) /\ joinAdmitted /\ ~joinDone /\ ~joinFailed
   /\ passFailed' = [passFailed EXCEPT ![w] = TRUE] /\ failures' = Sat(failures + 1)
   /\ pc' = [pc EXCEPT ![w] = "release"]
   /\ UNCHANGED <<runVars, sawParked, dataVars, wakes, branchRuns, joinRuns,
@@ -255,15 +257,20 @@ JoinFails(w) ==
                  canceledWorkAfterExit, commitAfterEnd, policyCanceled>>
 
 NothingToRun(w) ==
-  /\ pc[w] = "run" /\ LeaseHeldBy(w) /\ ~(joinAdmitted /\ ~joinDone)
+  /\ pc[w] = "run" /\ LeaseHeldBy(w) /\ ~(joinAdmitted /\ ~joinDone /\ ~joinFailed)
   /\ Advance(w, "release")
 
 -----------------------------------------------------------------------------
 (* Design A, step 4: release. *)
 
+\* The Join's retries ran out on this pass.
+RetriesSpent(w) == passFailed[w] /\ attempt + 1 >= MaxAttempts
+
 Release(w) ==
   /\ pc[w] = "release" /\ LeaseHeldBy(w)
   /\ holder' = 0 /\ pc' = [pc EXCEPT ![w] = "idle"]
+  \* "Retries": a step whose retries ran out fails its node, and the run goes on.
+  /\ joinFailed' = (joinFailed \/ RetriesSpent(w))
   /\ CASE claim = "exit" /\ \A p \in Parks : park[p] \notin Woken ->
             \* Exited: no Canceled outlet, and admitted work has finished.
             /\ status' = IF RunInFlight THEN "exited" ELSE status
@@ -277,10 +284,18 @@ Release(w) ==
             /\ status' = IF RunInFlight THEN "completed" ELSE status
             /\ sched' = "gone" /\ terminalWrites' = terminalWrites + 1
             /\ UNCHANGED attempt
-       [] passFailed[w] /\ attempt + 1 >= MaxAttempts ->
+       [] RetriesSpent(w) /\ FailedNodeEndsRun ->
             /\ status' = IF RunInFlight THEN "failed" ELSE status
             /\ sched' = "gone" /\ terminalWrites' = terminalWrites + 1
             /\ UNCHANGED attempt
+       [] RetriesSpent(w) ->
+            \* A claim still has work: the attempt counter starts over and the
+            \* run is released as its Waits say.
+            /\ attempt' = 0
+            /\ sched' = IF \E p \in Parks : park[p] \in Woken THEN "queued"
+                        ELSE IF \E p \in Parks : park[p] = "open" THEN "waiting"
+                        ELSE "queued"
+            /\ UNCHANGED <<status, terminalWrites>>
        [] passFailed[w] ->
             \* "Retries": queued with one more on the attempt counter.
             /\ sched' = "queued" /\ attempt' = Sat(attempt + 1)
@@ -342,7 +357,7 @@ EventWake(p) ==
   /\ park' = [park EXCEPT ![p] = "woken"] /\ wakes' = [wakes EXCEPT ![p] = @ + 1]
   /\ Requeue
   /\ UNCHANGED <<holder, attempt, faults, workerVars, claim, status, joinAdmitted,
-                 joinDone, canceledEntered, branchRuns, joinRuns, canceledEntries,
+                 joinDone, joinFailed, canceledEntered, branchRuns, joinRuns, canceledEntries,
                  terminalWrites, failures, claimWrites, startedWorkAfterClaim,
                  canceledWorkAfterExit, commitAfterEnd, policyCanceled>>
 
@@ -354,7 +369,7 @@ CancelEvent ==
   /\ park' = [p \in Parks |-> IF p \in Started /\ park[p] = "open" THEN "hwoken" ELSE park[p]]
   /\ wakes' = [p \in Parks |-> IF p \in Started /\ park[p] = "open" THEN wakes[p] + 1 ELSE wakes[p]]
   /\ Requeue
-  /\ UNCHANGED <<holder, attempt, faults, workerVars, status, joinAdmitted, joinDone,
+  /\ UNCHANGED <<holder, attempt, faults, workerVars, status, joinAdmitted, joinDone, joinFailed,
                  canceledEntered, branchRuns, joinRuns, canceledEntries, terminalWrites,
                  failures, startedWorkAfterClaim, canceledWorkAfterExit, commitAfterEnd,
                  policyCanceled>>
@@ -366,7 +381,7 @@ PolicyCancel ==
   /\ status' = "canceled" /\ policyCanceled' = TRUE /\ terminalWrites' = terminalWrites + 1
   /\ sched' = "gone" /\ holder' = 0
   /\ park' = [p \in Parks |-> IF park[p] \in {"open", "woken", "hwoken"} THEN "cancelled" ELSE park[p]]
-  /\ UNCHANGED <<attempt, faults, workerVars, claim, joinAdmitted, joinDone,
+  /\ UNCHANGED <<attempt, faults, workerVars, claim, joinAdmitted, joinDone, joinFailed,
                  canceledEntered, wakes, branchRuns, joinRuns, canceledEntries, failures,
                  claimWrites, startedWorkAfterClaim, canceledWorkAfterExit, commitAfterEnd>>
 
@@ -448,6 +463,12 @@ EndMatchesWork ==
   /\ status = "completed" => joinDone /\ claim = "none"
   /\ (status = "canceled" /\ ~policyCanceled) => park["C"] = "ran" /\ claim = "cancel"
   /\ status = "exited" => claim = "exit" /\ branchRuns["C"] = 0 /\ ~joinDone
+  /\ status = "failed" => joinFailed /\ claim = "none"
+
+\* A Cancel Event's claim always reaches its outlet: a run it claimed ends only
+\* after the Outlet ran, unless a policy cancel ended it first.
+CancelClaimRunsItsOutlet ==
+  (status # "running" /\ claim = "cancel" /\ ~policyCanceled) => park["C"] = "ran"
 
 \* A run is marked failed only after its retries were spent on failures.
 FailedOnlyAfterRetriesSpent == status = "failed" => failures >= MaxAttempts
@@ -475,6 +496,7 @@ ReachExitedAtBranch   == status = "exited" /\ \E p \in Started : park[p] = "halt
 ReachExitedAtJoin     == status = "exited" /\ \A p \in Started : park[p] = "ran"
 ReachFailed           == status = "failed"
 ReachRetriedJoin      == joinDone /\ failures >= 1
+ReachCanceledAfterJoinFailed == status = "canceled" /\ joinFailed /\ park["C"] = "ran"
 ReachCanceledWaitParks == park["C"] = "open" /\ sched = "waiting"
 ReachTimeoutWake      == \E p \in Parks : park[p] = "woken" /\ sched = "leased" /\ wakes[p] = 1
 ReachStaleWorkerFenced == \E w \in Workers : pc[w] # "idle" /\ holder # w /\ sched = "leased"
