@@ -42,6 +42,7 @@ Migration|release-ignores-wait-row|ReleaseReadsWaitRow == TRUE|ReleaseReadsWaitR
 Migration|no-lease-fencing|LeaseHeldBy(w) == holder = w|LeaseHeldBy(w) == TRUE|OneTerminalRecord
 Migration|expiry-keeps-token|/\ sched' = "queued" /\ holder' = 0 /\ attempt' = Sat(attempt + 1)|/\ sched' = "queued" /\ holder' = holder /\ attempt' = Sat(attempt + 1)|LeaseHasAHolder
 Migration|migrate-wake-never-consumed|THEN /\ row' = "waiting" /\ rowVersion' = loaded[w] /\ hopWakes' = 0|THEN /\ row' = "migrate" /\ rowVersion' = loaded[w] /\ hopWakes' = 0|EveryRunEnds
+Migration|fence-refusal-counts-an-attempt|FenceRefusalCountsNoAttempt == TRUE|FenceRefusalCountsNoAttempt == FALSE|FailedOnlyAfterRetriesSpent
 Migration|wake-claims-a-woken-row|WakeIsUnclaimed == row = "waiting"|WakeIsUnclaimed == row # "none"|EachHopWokenOnce
 Intake|inbox-key-not-unique|InboxKeyIsUnique == TRUE|InboxKeyIsUnique == FALSE|DuplicateSendIsOneArrival EachArrivalOpensAtMostOneRun
 Intake|delivery-id-not-unique|DeliveryIdIsUnique == TRUE|DeliveryIdIsUnique == FALSE|EachArrivalOpensAtMostOneRun
@@ -54,9 +55,9 @@ Intake|canceled-run-never-ends|  /\ exec[x] = "claimed" /\ esched[x] = "present"
 MUTATIONS
 )
 
-# Rules that break on the models as written. Each is a finding SKILL.md
-# records, and this list must match what check.sh reports.
-findings="Migration:FailedOnlyAfterRetriesSpent"
+# Rules that break on the models as written, as "Model:Rule". Each is a
+# finding SKILL.md records, and this list must match what check.sh reports.
+findings=""
 
 echo "checking the models as written"
 base=$("$here/check.sh" 2>&1) || true
