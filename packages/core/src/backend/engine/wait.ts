@@ -361,6 +361,7 @@ function runWaitAttempt<Prepared, Resumed>(
             stepId: stepIds.park,
             attempt,
             park: prepared.park,
+            waitStateId: prepared.carry.waitStateId,
           })
         );
         state.hops += 1;
@@ -919,7 +920,12 @@ function recordWaiting(
  */
 function parkOnSignal(
   branch: WaitBranchContext,
-  input: { stepId: string; attempt: number; park: WaitPark }
+  input: {
+    stepId: string;
+    attempt: number;
+    park: WaitPark;
+    waitStateId: string;
+  }
 ): Effect.Effect<unknown, EngineFailure> {
   const { context, runtime } = branch;
   const { park } = input;
@@ -938,6 +944,7 @@ function parkOnSignal(
         },
         {
           event: WAIT_SIGNAL_EVENT,
+          waitStateId: input.waitStateId,
           // Resolution retains the target, not the time left when it ran.
           // Keep this step reachable on replay even after the target passes:
           // the runtime may already hold its event. A positive minimum also

@@ -53,7 +53,10 @@ export async function buildInngestFunctions(
   const ports = {
     actions: () => createWorkflowActions(extensions, runtime),
     entities: () => createWorkflowEntities(extensions),
-    store: createDbWorkflowStore(executionRepo),
+    store: createDbWorkflowStore({
+      reads: executionRepo,
+      writes: executionRepo,
+    }),
     appRuntime: runtime,
     executeWorkflow,
     executeWorkflowBranch,

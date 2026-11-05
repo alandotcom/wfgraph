@@ -33,15 +33,32 @@ export type ReplayDatabaseBackend = {
    * the wake `resolvePark` recorded for that step id, or `PARKED_WAIT_ANSWER`
    * while none is recorded. The harness reads only `run`, `waitForEvent`,
    * `attempt` and `runId` from it, so a branch hand-off is never offered.
+   * `now` is the virtual clock in milliseconds, which a backend over a real
+   * database hands its claim.
    */
   runtimeForPass: (pass: {
     invocation: number;
+    now: number;
   }) => WorkflowExecutionRuntime | Promise<WorkflowExecutionRuntime>;
   /**
    * Records what a park resolved to, keyed by the step id it parked under: the
    * signal event, or `null` for a timeout. Every pass after the call answers it.
+   * `now` is the virtual clock at the moment the park resolves.
    */
-  resolvePark: (stepId: string, wake: unknown) => void | Promise<void>;
+  resolvePark: (
+    stepId: string,
+    wake: unknown,
+    at: { now: number }
+  ) => void | Promise<void>;
+  /**
+   * Hands the run back after a pass whose body ended parked, the way the
+   * executor's release does. The harness still decides when the next pass
+   * runs; a backend over a real database answers that pass's claim only if its
+   * release agreed.
+   */
+  endParkedPass?:
+    | ((pass: { invocation: number; now: number }) => void | Promise<void>)
+    | undefined;
 };
 
 /** The database executor, as a `ReplayRunOptions.executor` value. */
@@ -71,8 +88,11 @@ export type DatabaseReplayExecutor = {
     | undefined;
 };
 
-/** An event wait the engine left unbounded still has to end somewhere. */
-const FALLBACK_TIMEOUT_MS = 365 * 24 * 60 * 60 * 1000;
+/**
+ * An event wait the engine left unbounded still has to end somewhere. A
+ * backend that records a park's deadline gives such a park this one too.
+ */
+export const REPLAY_FALLBACK_TIMEOUT_MS = 365 * 24 * 60 * 60 * 1000;
 
 const DEFAULT_MAX_INVOCATIONS = 200;
 
@@ -100,6 +120,24 @@ export function createInMemoryReplayBackend(): ReplayDatabaseBackend {
     resolvePark: (stepId, wake) => {
       wakes.set(stepId, wake);
     },
+  };
+}
+
+let openDefaultBackend: () =>
+  | ReplayDatabaseBackend
+  | Promise<ReplayDatabaseBackend> = createInMemoryReplayBackend;
+
+/**
+ * Replaces the backend a drive opens when its executor names none, so a suite
+ * can run every database-executor case of the replay suites against a real
+ * database. Answers the function that restores the in-memory default.
+ */
+export function useDefaultReplayBackend(
+  open: () => ReplayDatabaseBackend | Promise<ReplayDatabaseBackend>
+): () => void {
+  openDefaultBackend = open;
+  return () => {
+    openDefaultBackend = createInMemoryReplayBackend;
   };
 }
 
@@ -135,7 +173,7 @@ export async function driveDatabaseExecutor<T>(
   executor: DatabaseReplayExecutor
 ): Promise<ReplayRun<T>> {
   const { events = {}, maxInvocations = DEFAULT_MAX_INVOCATIONS } = options;
-  const backend = await (executor.openBackend ?? createInMemoryReplayBackend)();
+  const backend = await (executor.openBackend ?? openDefaultBackend)();
 
   const executed: ReplayExecution[] = [];
   /** Each park's deadline on the virtual clock, fixed the first time it parks. */
@@ -153,7 +191,7 @@ export async function driveDatabaseExecutor<T>(
     if (passRunning) {
       unreadWakes.add(stepId);
     }
-    await backend.resolvePark(stepId, wake);
+    await backend.resolvePark(stepId, wake, { now });
   }
 
   async function signalOpenParks(wake: unknown) {
@@ -207,7 +245,7 @@ export async function driveDatabaseExecutor<T>(
 
   for (let invocation = 0; invocation < maxInvocations; invocation += 1) {
     // eslint-disable-next-line eslint/no-await-in-loop -- each pass runs against the runtime the backend opens for it
-    const inner = await backend.runtimeForPass({ invocation });
+    const inner = await backend.runtimeForPass({ invocation, now });
     let stepFailure: { error: unknown } | undefined;
 
     const runtime: WorkflowExecutionRuntime = {
@@ -235,7 +273,8 @@ export async function driveDatabaseExecutor<T>(
         const answer = await inner.waitForEvent(step, waitOptions);
         if (isParkedWaitAnswer(answer)) {
           if (!deadlines.has(step.id)) {
-            const timeoutMs = waitOptions.timeoutMs ?? FALLBACK_TIMEOUT_MS;
+            const timeoutMs =
+              waitOptions.timeoutMs ?? REPLAY_FALLBACK_TIMEOUT_MS;
             deadlines.set(step.id, now + Math.max(timeoutMs, 0));
           }
           openParks.add(step.id);
@@ -273,6 +312,9 @@ export async function driveDatabaseExecutor<T>(
         elapsedMs: now,
       };
     }
+
+    // eslint-disable-next-line eslint/no-await-in-loop -- the release follows its own pass
+    await backend.endParkedPass?.({ invocation, now });
 
     // A wake that landed while the pass ran re-queues the run at once.
     if (unreadWakes.size > 0) {

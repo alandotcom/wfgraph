@@ -1,18 +1,23 @@
 /**
- * Postgres-backed `WorkflowStore`: the adapter real runs use.
+ * Repository-backed `WorkflowStore`: the adapter real runs use.
  *
  * It is the only place that knows both the engine's persistence port and the
  * repository behind it, which is what keeps the engine module free of database
- * imports. The repository is resolved once when the Inngest functions are
- * assembled; every method here remains an Effect for the engine to compose.
- * Database failures remain in the error channel for the engine policy at the
- * call site to interpret.
+ * imports. The caller supplies the reads and writes: the Inngest path passes
+ * the repository's unfenced writes, and a pass of the database executor passes
+ * `ExecutionRepo.fenced` for its own owner token. Every method remains an
+ * Effect for the engine to compose, and database failures remain in the error
+ * channel for the engine policy at the call site to interpret.
  */
 
 import { Effect } from "effect";
 import { DatabaseError } from "#src/backend/lib/effect/database";
+import type { Conflict } from "#src/backend/lib/effect/failures";
 import { redactSensitiveData } from "#src/backend/lib/utils/redact";
-import type { ExecutionRepo } from "#src/backend/services/executions/repo";
+import type {
+  ExecutionRepo,
+  StoreWrites,
+} from "#src/backend/services/executions/repo";
 import { decodeIsoTimestampOrThrow } from "@wfgraph/shared/types/timestamp";
 import type {
   CompletedNodeProgress,
@@ -91,22 +96,51 @@ function readWaitArrival(metadata: JsonObject | null): WaitArrival | null {
   };
 }
 
-export function createDbWorkflowStore(
-  repo: ExecutionRepo["Service"]
-): WorkflowStore {
+/** The repository reads the store answers the engine's questions from. */
+export type StoreReads = Pick<
+  ExecutionRepo["Service"],
+  | "findWaitStateById"
+  | "canAdmitNode"
+  | "findTerminationState"
+  | "findPendingCancel"
+  | "readNodeOutputs"
+  | "listLogs"
+>;
+
+/**
+ * A fenced write's refusal reaches the engine as a database failure, which is
+ * the one failure the port carries. The pass that owns the fence has already
+ * recorded that it lost the run, and ends without writing anything more.
+ */
+function asStoreFailure<A>(
+  write: Effect.Effect<A, DatabaseError | Conflict>
+): Effect.Effect<A, DatabaseError> {
+  return Effect.mapError(write, (failure) =>
+    failure._tag === "Conflict"
+      ? new DatabaseError({ cause: failure })
+      : failure
+  );
+}
+
+export function createDbWorkflowStore(bound: {
+  reads: StoreReads;
+  writes: StoreWrites;
+}): WorkflowStore {
+  const { reads, writes } = bound;
+
   function completeRun(
     input: CompleteRunInput
   ): Effect.Effect<ExecutionTerminationState | null, DatabaseError> {
-    return repo
-      .finishRun({
+    return asStoreFailure(
+      writes.finishRun({
         executionId: input.executionId,
         status: input.status,
         output: redactSensitiveData(input.output),
         error: input.failure?.message,
       })
-      .pipe(
-        Effect.map((state) => (state ? engineTerminationState(state) : null))
-      );
+    ).pipe(
+      Effect.map((state) => (state ? engineTerminationState(state) : null))
+    );
   }
 
   return {
@@ -114,76 +148,83 @@ export function createDbWorkflowStore(
     // scrubbed here rather than at each call site - this is the last point before
     // they reach a table.
     startStepLog: (input) =>
-      repo
-        .openNodeLog({
+      asStoreFailure(
+        writes.openNodeLog({
           ...input,
           input: redactSensitiveData(input.input),
         })
-        .pipe(Effect.map((logId) => ({ logId, startTime: Date.now() }))),
+      ).pipe(Effect.map((logId) => ({ logId, startTime: Date.now() }))),
 
     completeStepLog: (input) =>
-      repo.closeNodeLog({
-        logId: input.logId,
-        status: input.status,
-        output: redactSensitiveData(input.output),
-        error: input.error,
-        durationMs: input.durationMs,
-      }),
+      asStoreFailure(
+        writes.closeNodeLog({
+          logId: input.logId,
+          status: input.status,
+          output: redactSensitiveData(input.output),
+          error: input.error,
+          durationMs: input.durationMs,
+        })
+      ),
 
-    recordAuditEvent: (input) => repo.recordAuditEvent(input),
+    recordAuditEvent: (input) => asStoreFailure(writes.recordAuditEvent(input)),
 
     createWaitState: ({ waitUntilIso, ...input }) =>
       Effect.flatMap(readWaitUntil(waitUntilIso), (waitUntil) =>
-        repo.startWait({ ...input, waitUntil })
+        asStoreFailure(writes.startWait({ ...input, waitUntil }))
       ),
 
     reparkWaitState: ({ waitUntilIso, ...input }) =>
       Effect.flatMap(readWaitUntil(waitUntilIso ?? undefined), (waitUntil) =>
-        repo.reparkWait({ ...input, waitUntil: waitUntil ?? null })
+        asStoreFailure(
+          writes.reparkWait({ ...input, waitUntil: waitUntil ?? null })
+        )
       ),
 
     readWaitState: (waitStateId) =>
-      Effect.map(repo.findWaitStateById(waitStateId), (row) =>
+      Effect.map(reads.findWaitStateById(waitStateId), (row) =>
         row
           ? { status: row.status, arrival: readWaitArrival(row.metadata) }
           : null
       ),
 
-    markWaitStateStatus: (input) => repo.markWaitStatus(input),
+    markWaitStateStatus: (input) =>
+      asStoreFailure(writes.markWaitStatus(input)),
 
-    settleWaitTimeout: (waitStateId) => repo.settleWaitTimeout(waitStateId),
+    settleWaitTimeout: (waitStateId) =>
+      asStoreFailure(writes.settleWaitTimeout(waitStateId)),
 
-    markExecutionRunning: (input) => repo.markRunning(input),
+    markExecutionRunning: (input) => asStoreFailure(writes.markRunning(input)),
 
-    markExecutionWaitingIfParked: (input) => repo.markWaitingIfParked(input),
+    markExecutionWaitingIfParked: (input) =>
+      asStoreFailure(writes.markWaitingIfParked(input)),
 
-    admitNode: (executionId) => repo.canAdmitNode(executionId),
+    admitNode: (executionId) => reads.canAdmitNode(executionId),
 
     requestExit: (input) =>
-      repo
-        .requestExit({
+      asStoreFailure(
+        writes.requestExit({
           executionId: input.executionId,
           reason: input.reason,
           nodeId: input.nodeId,
           requestedAt: decodeIsoTimestampOrThrow(input.checkedAt),
         })
-        .pipe(
-          Effect.map((state) => (state ? engineTerminationState(state) : null))
-        ),
+      ).pipe(
+        Effect.map((state) => (state ? engineTerminationState(state) : null))
+      ),
 
     readTerminationState: (executionId) =>
-      repo
+      reads
         .findTerminationState(executionId)
         .pipe(
           Effect.map((state) => (state ? engineTerminationState(state) : null))
         ),
 
-    readPendingCancel: (executionId) => repo.findPendingCancel(executionId),
+    readPendingCancel: (executionId) => reads.findPendingCancel(executionId),
 
-    readNodeOutputs: (executionId) => repo.readNodeOutputs(executionId),
+    readNodeOutputs: (executionId) => reads.readNodeOutputs(executionId),
 
     readCompletedNodeProgress: (executionId) =>
-      repo.listLogs(executionId).pipe(
+      reads.listLogs(executionId).pipe(
         Effect.map((logs) => {
           const latestByNode = new Map<string, CompletedNodeProgress>();
           for (const log of logs) {
@@ -213,8 +254,8 @@ export function createDbWorkflowStore(
       Effect.asVoid(
         Effect.all(
           [
-            repo.cancelOpenNodeLogs(executionId),
-            repo.cancelWaitsForExecution(executionId),
+            asStoreFailure(writes.cancelOpenNodeLogs(executionId)),
+            asStoreFailure(writes.cancelWaitsForExecution(executionId)),
           ],
           { concurrency: 2 }
         )

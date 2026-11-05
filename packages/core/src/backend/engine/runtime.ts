@@ -20,6 +20,12 @@ export type WaitForEventOptions = {
   event: string;
   timeoutMs?: number | undefined;
   ifExpression?: string | undefined;
+  /**
+   * The wait row this park is written on. The database executor reads the
+   * park's wake from that row and records the parking step on it. Inngest
+   * matches its signal on `ifExpression` and ignores the row.
+   */
+  waitStateId?: string | undefined;
 };
 
 /**

@@ -1,0 +1,334 @@
+/**
+ * A `ReplayDatabaseBackend` over a real database, so the replay suites'
+ * database-executor cases run each pass through the executor's own runtime
+ * and the repository's claim, producer and release, with the harness's
+ * virtual clock as every `now`.
+ *
+ * The cases keep their in-memory store, which is what their assertions read.
+ * What runs on the database is everything the runtime owns: the claim, the
+ * memo, each park's wake, and the release. Each park the case's store writes
+ * is mirrored onto a wait row of one seeded Execution, because the runtime
+ * reads a park's wake from its row. The mirror stands in for the store's park
+ * writes and nothing else: it opens the row at the first park, re-parks it
+ * when a later attempt of the same Wait parks again, and settles a row once a
+ * pass has read its wake.
+ */
+
+import { Effect } from "effect";
+import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import { type JsonValue, readJsonObject } from "@wfgraph/shared/types/json";
+import type {
+  DurableStepRef,
+  WaitForEventOptions,
+  WorkflowExecutionRuntime,
+} from "#src/backend/engine/runtime";
+import {
+  REPLAY_FALLBACK_TIMEOUT_MS,
+  type ReplayDatabaseBackend,
+} from "#src/backend/engine/testing/replay-database-executor";
+import {
+  createExecutorRuntime,
+  createPassState,
+  watchPassWrites,
+} from "#src/backend/executor/runtime";
+import type { ConformanceConnection } from "#src/backend/persistence/conformance/support";
+import {
+  ExecutionRepo,
+  type FencedExecutionWrites,
+  type OwnerFence,
+  type ParkWake,
+} from "#src/backend/services/executions/repo";
+import { WorkflowRepo } from "#src/backend/services/workflows/repo";
+
+const LEASE_MS = 60_000;
+
+/** The virtual clock, in milliseconds from the start of a drive, as a date. */
+function virtual(nowMs: number): Date {
+  return new Date(nowMs);
+}
+
+/**
+ * The wake a harness answer stands for. The harness speaks the signal envelope
+ * a Wait reads, and `null` for a timeout, which this backend leaves to the
+ * claim at the park's deadline.
+ */
+function parkWakeOf(answer: unknown): ParkWake {
+  const data = readJsonObject(readJsonObject(answer)?.data);
+  switch (data?.signalType) {
+    case "version-migrate":
+      return { kind: "migrate" };
+    case "lifecycle-cancel":
+      return { kind: "cancel" };
+    case "lifecycle-exit":
+      return { kind: "exit" };
+    default:
+      return {
+        kind: "resume",
+        eventName: typeof data?.eventType === "string" ? data.eventType : null,
+        payload: readJsonObject(data?.payload) ?? {},
+        deliveryId: null,
+      };
+  }
+}
+
+/** The status a settled mirror row takes for the wake a pass read from it. */
+function settledStatus(wake: ParkWake): "resumed" | "timed_out" | "cancelled" {
+  if (wake.kind === "timeout") return "timed_out";
+  if (wake.kind === "cancel" || wake.kind === "exit") return "cancelled";
+  return "resumed";
+}
+
+const emptyGraph = createSerializedWorkflowGraph({ nodes: [], edges: [] });
+
+/**
+ * Answers a function that opens one backend per drive, each on a fresh
+ * connection with a workflow and an Execution of its own. `onOpen` is told
+ * about every drive that opened one.
+ */
+export function openDatabaseReplayBackend(
+  openConnection: () => Promise<ConformanceConnection>,
+  onOpen?: () => void
+): () => Promise<ReplayDatabaseBackend> {
+  let drives = 0;
+
+  return async () => {
+    drives += 1;
+    onOpen?.();
+    const connection = await openConnection();
+    const run = <A, E>(
+      effect: Effect.Effect<A, E, ExecutionRepo | WorkflowRepo>
+    ): Promise<A> => connection.run(effect);
+    const repo = await connection.run(ExecutionRepo);
+
+    const workflowId = `wf_replay_${drives}`;
+    const workflowVersionId = `ver_replay_${drives}`;
+    const executionId = await run(
+      Effect.gen(function* () {
+        const workflows = yield* WorkflowRepo;
+        const executions = yield* ExecutionRepo;
+        yield* workflows.insert({
+          id: workflowId,
+          name: "Replay",
+          graph: emptyGraph,
+          eventSubscriptions: [],
+        });
+        yield* workflows.insertPublishedVersion({
+          workflowId,
+          versionId: workflowVersionId,
+          version: 1,
+          expectedPublishedVersionId: null,
+          expectedDraftRevision: 1,
+          graph: emptyGraph,
+          draftGraph: emptyGraph,
+          catalogFingerprint: "catalog",
+          graphDigest: "digest",
+          eventSubscriptions: [],
+        });
+        const started = yield* executions.startForEntity({
+          execution: {
+            workflowId,
+            workflowVersionId,
+            startSource: "manual",
+            runMode: "live",
+            input: {},
+          },
+          concurrency: "unlimited",
+          supersededReason: "newer start",
+        });
+        if (started.status !== "started") {
+          throw new Error("The replay Execution was refused");
+        }
+        yield* executions.scheduleExecution({
+          executionId: started.execution.id,
+          kind: "run",
+          wakeAt: virtual(0),
+        });
+        return started.execution.id;
+      })
+    );
+
+    /** Mirror rows by the park's own id: the case store's row, or the step. */
+    const rowsByPark = new Map<string, string>();
+    /** Mirror rows by the step that parked on them. */
+    const rowsByStep = new Map<string, string>();
+    /** The pass currently holding the lease. */
+    let current: { fence: OwnerFence; writes: FencedExecutionWrites } | null =
+      null;
+
+    function holder() {
+      if (!current) throw new Error("No pass holds the replay run's lease");
+      return current;
+    }
+
+    /**
+     * The mirror row a park stands on, opened at its first park and re-parked
+     * when a later attempt of the same Wait parks on it again.
+     */
+    async function mirrorPark(
+      step: DurableStepRef,
+      options: WaitForEventOptions,
+      nowMs: number
+    ): Promise<string> {
+      const known = rowsByStep.get(step.id);
+      if (known !== undefined) return known;
+
+      const parkKey = options.waitStateId ?? `step:${step.id}`;
+      const waitUntil = virtual(
+        nowMs + Math.max(options.timeoutMs ?? REPLAY_FALLBACK_TIMEOUT_MS, 0)
+      );
+      const existing = rowsByPark.get(parkKey);
+      if (existing === undefined) {
+        const opened = await run(
+          repo.startWait({
+            executionId,
+            workflowId,
+            workflowVersionId,
+            runId: executionId,
+            nodeId: parkKey,
+            nodeName: parkKey,
+            side: "started",
+            waitType: "delay",
+            waitUntil,
+          })
+        );
+        if (!opened) throw new Error(`The mirror park ${parkKey} was refused`);
+        rowsByPark.set(parkKey, opened.waitStateId);
+        rowsByStep.set(step.id, opened.waitStateId);
+        return opened.waitStateId;
+      }
+
+      const reparked = await run(
+        holder().writes.reparkWait({
+          waitStateId: existing,
+          workflowVersionId,
+          side: "started",
+          waitType: "delay",
+          waitUntil,
+          subscribedEvents: [],
+          resumeToken: null,
+          metadata: {},
+        })
+      );
+      if (!reparked.ok) {
+        throw new Error(
+          `The mirror park ${parkKey} could not be parked again: ${reparked.reason}`
+        );
+      }
+      rowsByStep.set(step.id, existing);
+      return existing;
+    }
+
+    return {
+      runtimeForPass: async ({ now }) => {
+        const claimed = await run(
+          repo.claimDue({
+            workerId: "replay",
+            limit: 1,
+            leaseMs: LEASE_MS,
+            now: virtual(now),
+          })
+        );
+        const own = claimed.find((row) => row.executionId === executionId);
+        if (!own) {
+          throw new Error(
+            `The database did not hand the run back at ${now} ms: its release put the run to sleep past the moment the harness woke it`
+          );
+        }
+
+        const fence = { executionId, ownerToken: own.ownerToken };
+        const state = createPassState();
+        const memo = await run(repo.listStepMemo(executionId));
+        const writes = watchPassWrites({
+          fenced: repo.fenced(fence),
+          unfenced: repo,
+          state,
+        });
+        current = { fence, writes };
+
+        const runtime = createExecutorRuntime({
+          executionId,
+          attempt: own.attempt,
+          memo: new Map<string, JsonValue>(
+            memo.map((entry) => [entry.stepId, entry.value])
+          ),
+          writes,
+          findPark: repo.findPark,
+          state,
+          leaseExpiresAt: () => virtual(now + LEASE_MS),
+          runEffect: (effect) => connection.run(effect),
+        });
+
+        const passRuntime: WorkflowExecutionRuntime = {
+          attempt: runtime.attempt,
+          runId: runtime.runId,
+          run: runtime.run,
+          waitForEvent: async (step, options) => {
+            const waitStateId = await mirrorPark(step, options, now);
+            return await runtime.waitForEvent(step, {
+              ...options,
+              waitStateId,
+            });
+          },
+        };
+        return passRuntime;
+      },
+
+      resolvePark: async (stepId, wake, { now }) => {
+        // A timeout is the claim's to resolve, at the deadline the mirror row
+        // holds, which is the deadline the harness fixed for the park.
+        if (wake === null) return;
+        const waitStateId = rowsByStep.get(stepId);
+        if (waitStateId === undefined) {
+          throw new Error(`No mirror park was opened for step ${stepId}`);
+        }
+        const resolution = await run(
+          repo.resolvePark({
+            executionId,
+            waitStateId,
+            wake: parkWakeOf(wake),
+            now: virtual(now),
+          })
+        );
+        if (!resolution.resolved) {
+          throw new Error(`The park of step ${stepId} was no longer waiting`);
+        }
+      },
+
+      endParkedPass: async ({ now }) => {
+        const { writes } = holder();
+        const memo = new Set(
+          (await run(repo.listStepMemo(executionId))).map(
+            (entry) => entry.stepId
+          )
+        );
+        // A row whose wake the pass read is settled, as the Wait's resume
+        // would settle it, so the release reads only wakes no pass has seen.
+        for (const waitStateId of new Set(rowsByStep.values())) {
+          // eslint-disable-next-line eslint/no-await-in-loop -- one row at a time, in a stable order
+          const park = await run(repo.findPark(waitStateId));
+          if (
+            park?.status === "resuming" &&
+            park.wake !== null &&
+            park.parkStepId !== null &&
+            memo.has(park.parkStepId)
+          ) {
+            // eslint-disable-next-line eslint/no-await-in-loop -- one row at a time, in a stable order
+            await run(
+              writes.markWaitStatus({
+                waitStateId,
+                status: settledStatus(park.wake),
+              })
+            );
+          }
+        }
+        await run(
+          writes.releasePass({
+            outcome: { kind: "parked" },
+            now: virtual(now),
+          })
+        );
+        current = null;
+      },
+    };
+  };
+}

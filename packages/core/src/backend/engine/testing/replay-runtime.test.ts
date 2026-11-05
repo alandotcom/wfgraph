@@ -102,6 +102,16 @@ describe.each(IN_PLACE_EXECUTORS)(
     });
 
     it("resolves an event wait from the answer it was given", async () => {
+      // A resume in the whole envelope a database executor stores, so the
+      // answer reads back the same from every backend.
+      const resume = {
+        data: {
+          signalType: "wait-resume",
+          eventType: "app/approved",
+          payload: { token: "abc" },
+          deliveryId: null,
+        },
+      };
       const run = await driveWithReplay(
         async (runtime) => {
           const answer = await runtime.waitForEvent(stepRef("signal"), {
@@ -110,10 +120,10 @@ describe.each(IN_PLACE_EXECUTORS)(
           });
           return isParkedWaitAnswer(answer) ? PARKED_PASS : answer;
         },
-        { executor, events: { signal: { data: { token: "abc" } } } }
+        { executor, events: { signal: resume } }
       );
 
-      expect(run.value).toEqual({ data: { token: "abc" } });
+      expect(run.value).toEqual(resume);
       expect(run.elapsedMs).toBe(1_000);
     });
 
@@ -560,9 +570,9 @@ describe("driveWithReplay, database executor only", () => {
         passes.push(pass.invocation);
         return memory.runtimeForPass(pass);
       },
-      resolvePark: (stepId, wake) => {
+      resolvePark: (stepId, wake, at) => {
         resolved.push({ stepId, wake });
-        return memory.resolvePark(stepId, wake);
+        return memory.resolvePark(stepId, wake, at);
       },
     };
 
@@ -618,6 +628,7 @@ describe("driveWithReplay, database executor only", () => {
   it("answers a park the backend has no wake for as parked", async () => {
     const runtime = await createInMemoryReplayBackend().runtimeForPass({
       invocation: 0,
+      now: 0,
     });
 
     await expect(park(runtime, "nap", 1_000)).resolves.toEqual(

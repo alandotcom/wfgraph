@@ -28,7 +28,6 @@ import type {
 } from "#src/backend/engine/runtime";
 import type { WorkflowStore } from "#src/backend/engine/store";
 import { getAppLogger } from "#src/backend/lib/logger";
-import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import { readJsonObject } from "@wfgraph/shared/types/json";
 import { rejectUnknownKeys } from "@wfgraph/shared/types/schema";
@@ -44,10 +43,11 @@ import {
   workflowRunRequested,
 } from "#src/backend/lib/inngest/events";
 import type { WfGraphRuntime, WfGraphServices } from "#src/backend/runtime";
-import { ExecutionRepo } from "#src/backend/services/executions/repo";
-import type { ExecutionSummary } from "#src/backend/services/executions/repo/contracts";
+import {
+  loadPersistedRunInput,
+  RunInputUnavailable,
+} from "#src/backend/services/executions/run-input";
 import { wakeParkedWaitsAfterExit } from "#src/backend/services/workflows/lifecycle/signal-parked-waits";
-import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 
 /** The engine entry the run function calls; tests inject a stand-in. */
 type ExecuteWorkflow = typeof defaultExecuteWorkflow;
@@ -310,74 +310,31 @@ async function writeRunMetadata(input: {
   });
 }
 
-function isInFlightStatus(status: ExecutionSummary["status"]): boolean {
-  return IN_FLIGHT_EXECUTION_STATUSES.some((inFlight) => inFlight === status);
-}
-
 /**
  * Reloads the engine input from the execution row and its pinned published
  * version. The trigger is only an id: a graph or a workflow id on the event
  * is not what this run walks, and a row that has already ended is not walked
- * again.
+ * again, so a run that cannot be loaded fails without a retry.
  *
  * A payload that fails Inngest's schema check raises `EventValidationError`
  * before this runs, which extends `NonRetriableError`: a malformed id fails
  * once instead of spending all four retries re-deserializing the same bad JSON.
  */
-async function loadPersistedRunInput(
+async function loadRunInput(
   appRuntime: WfGraphRuntime,
   executionId: string
 ): Promise<WorkflowExecutionInput> {
-  const { execution, workflow, version } = await appRuntime.runPromise(
-    Effect.gen(function* () {
-      const executions = yield* ExecutionRepo;
-      const workflows = yield* WorkflowRepo;
-      const storedExecution = yield* executions.findSummaryById(executionId);
-      if (!storedExecution) {
-        return { execution: storedExecution, workflow: null, version: null };
-      }
-
-      const [storedWorkflow, storedVersion] = yield* Effect.all([
-        workflows.findById(storedExecution.workflowId),
-        workflows.findVersionById(storedExecution.workflowVersionId),
-      ]);
-      return {
-        execution: storedExecution,
-        workflow: storedWorkflow,
-        version: storedVersion,
-      };
-    })
+  const loaded = await appRuntime.runPromise(
+    loadPersistedRunInput(executionId).pipe(
+      Effect.catchTag("RunInputUnavailable", (unavailable) =>
+        Effect.succeed(unavailable)
+      )
+    )
   );
-  if (!execution) {
-    throw new NonRetriableError(
-      "The requested workflow execution does not exist"
-    );
+  if (loaded instanceof RunInputUnavailable) {
+    throw new NonRetriableError(loaded.message);
   }
-  if (!isInFlightStatus(execution.status)) {
-    throw new NonRetriableError(
-      "The requested workflow execution is no longer in flight"
-    );
-  }
-  if (!workflow || !version || version.workflowId !== execution.workflowId) {
-    throw new NonRetriableError(
-      "The requested workflow version does not exist"
-    );
-  }
-
-  return {
-    graph: version.graph,
-    workflowVersionId: version.id,
-    catalogFingerprint: version.catalogFingerprint,
-    startPayload: execution.input ?? {},
-    requestPayload: execution.input ?? {},
-    startEventName: execution.startEventName ?? undefined,
-    executionId: execution.id,
-    workflowId: execution.workflowId,
-    workflowName: workflow.name,
-    entityType: execution.entityType ?? undefined,
-    entityId: execution.entityId ?? undefined,
-    runMode: execution.runMode,
-  };
+  return loaded;
 }
 
 async function workflowRunRequestedHandler({
@@ -405,7 +362,7 @@ async function workflowRunRequestedHandler({
   executeWorkflow: ExecuteWorkflow;
   write: RunMetadataWriter;
 }) {
-  const data = await loadPersistedRunInput(appRuntime, event.data.executionId);
+  const data = await loadRunInput(appRuntime, event.data.executionId);
 
   await writeRunMetadata({ step, write, data });
 
@@ -486,10 +443,7 @@ async function workflowBranchRequestedHandler({
   executeWorkflowBranch: ExecuteWorkflowBranch;
   write: RunMetadataWriter;
 }) {
-  const persisted = await loadPersistedRunInput(
-    appRuntime,
-    event.data.executionId
-  );
+  const persisted = await loadRunInput(appRuntime, event.data.executionId);
   const data: WorkflowBranchInput = {
     ...persisted,
     entryNodeId: event.data.entryNodeId,

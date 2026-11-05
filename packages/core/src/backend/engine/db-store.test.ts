@@ -32,8 +32,10 @@ describe("completeRun", () => {
     it.effect("answers the claimed terminal state", () =>
       Effect.gen(function* () {
         const repo = yield* ExecutionRepo;
-        const result =
-          yield* createDbWorkflowStore(repo).completeRun(terminalWrite);
+        const result = yield* createDbWorkflowStore({
+          reads: repo,
+          writes: repo,
+        }).completeRun(terminalWrite);
 
         expect(result).toEqual({
           status: "completed",
@@ -60,8 +62,10 @@ describe("completeRun", () => {
       () =>
         Effect.gen(function* () {
           const repo = yield* ExecutionRepo;
-          const result =
-            yield* createDbWorkflowStore(repo).completeRun(terminalWrite);
+          const result = yield* createDbWorkflowStore({
+            reads: repo,
+            writes: repo,
+          }).completeRun(terminalWrite);
 
           expect(result).toEqual({
             status: "canceled",
@@ -82,7 +86,9 @@ describe("completeRun", () => {
       Effect.gen(function* () {
         const repo = yield* ExecutionRepo;
         const error = yield* Effect.flip(
-          createDbWorkflowStore(repo).completeRun(terminalWrite)
+          createDbWorkflowStore({ reads: repo, writes: repo }).completeRun(
+            terminalWrite
+          )
         );
 
         expect(error).toBeInstanceOf(DatabaseError);
@@ -155,10 +161,10 @@ describe("readCompletedNodeProgress", () => {
     it.effect("returns only each node's newest terminal result", () =>
       Effect.gen(function* () {
         const repo = yield* ExecutionRepo;
-        const result =
-          yield* createDbWorkflowStore(repo).readCompletedNodeProgress(
-            "exec_1"
-          );
+        const result = yield* createDbWorkflowStore({
+          reads: repo,
+          writes: repo,
+        }).readCompletedNodeProgress("exec_1");
 
         expect(result).toEqual([
           {
