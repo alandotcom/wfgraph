@@ -1,6 +1,6 @@
 ---
 name: verify-durable-executor
-description: Model-check the Postgres executor proposed to replace Inngest (Design A and the event inbox in docs/internal/plans/separate-event-intake-from-durable-execution.md) with TLA+ models run by tla-ts. Use when a change touches that design's claim, lease, pass, release, park resolution, cancellation, Exit claim, retries, Migration (including a Wait that changes mode), inbox, delivery fan-out to several workflows, Wait wakes from one or several arrivals, Wait match expressions, steps inside a handler, admission Entity Eligibility, or Concurrency rules, when the executor it describes is being built, or when a change touches the existing code the design reuses (claimWaitState, openResume's version fence, admitNode, finishRun, startForEntity, repinVersion, answerFromCommittedDecision). Triggers on "verify the executor", "model-check the design", "does the release still hold", or a claim that a run cannot be stranded, woken twice, opened twice, or run after it ended.
+description: Model-check the Postgres executor proposed to replace Inngest (Design A and the event inbox in docs/internal/plans/separate-event-intake-from-durable-execution.md) with TLA+ models run by tla-ts. Use when a change touches that design's claim, lease, pass, release, park resolution, cancellation, Exit claim, retries, Migration (including a Wait that changes mode), inbox, delivery fan-out to several workflows, Wait wakes from one or several arrivals, Wait match expressions, steps inside a handler, admission Entity Eligibility, Concurrency, or the drivers' leases, heartbeats, polling and Worker platform limits, when the executor it describes is being built, or when a change touches the existing code the design reuses (claimWaitState, openResume's version fence, admitNode, finishRun, startForEntity, repinVersion, answerFromCommittedDecision). Triggers on "verify the executor", "model-check the design", "does the release still hold", or a claim that a run cannot be stranded, woken twice, opened twice, or run after it ended.
 ---
 
 # Verify the durable executor design
@@ -11,7 +11,7 @@ a step memo, producers that wake a Wait by writing its wait row, and an inbox
 whose deliveries run on the same executor. The order in which those writes land
 decides whether a run is stranded, woken twice, opened twice, or run after it
 ended. No unit test explores every order. This skill checks every order, up to
-stated bounds, with six TLA+ models and `tla-ts`, a TLC-compatible model
+stated bounds, with seven TLA+ models and `tla-ts`, a TLC-compatible model
 checker that runs on Node with no JVM.
 
 Read this whole file before running anything.
@@ -67,8 +67,8 @@ check:
   by mistake, and a pass from that model checks less than it claims.
 
 It exits 0 when everything holds and is reached, 1 otherwise, and 2 when
-`tla-ts` cannot check a model. The whole run takes about a minute on a
-many-core machine, most of it the intake model and the liveness checks.
+`tla-ts` cannot check a model. The whole run takes under two minutes on a
+many-core machine, most of it the `Arrivals` and `Intake` models.
 
 `mutations.sh` first checks the models as written. Then it removes one guard of
 the design at a time and requires the rules named beside that guard to break.
@@ -76,7 +76,7 @@ It reports a mutation `UNPROVEN` when its rule already breaks on the models as
 written, `MISSED` when its rule still holds, `UNCOVERED` for a rule no mutation
 reaches, `STALE` for a recorded finding that no longer reproduces, and `NEW` for
 a rule that breaks and is not a recorded finding. Any of those fails the suite.
-It takes about 90 seconds.
+It takes about three minutes.
 
 Both scripts run `tla-ts@0.0.8` through `pnpm dlx` on every core, so nothing is
 installed into the workspace. `MODEL_DIR` points `check.sh` at a copy of the
@@ -92,7 +92,7 @@ pass or fail.
 
 Each model checks every behaviour of a small configuration. Two workers, a
 retry limit of 2 (the design's 4, scaled down), and one crash or expired lease
-per behaviour run through all six. Liveness rules assume workers keep
+per behaviour run through all seven. Liveness rules assume workers keep
 working and the lease sweep keeps running. Events, cancels, crashes and
 Migrations are free never to happen.
 
@@ -258,12 +258,41 @@ despite that.
 | `FailedOnlyOnRefusalOrSpentRetries` | The node fails only on a refusal or after its retries were spent. | A transient error fails the node. |
 | `NodeEnds` (liveness) | The node ends. | The run loops on a node forever. |
 
+### `Timing`: leases, heartbeats, polling and the Worker driver
+
+A discrete clock. Anything due at the current instant (a poll, a heartbeat, an
+expired lease, a platform kill) happens before time advances. One run does a
+step, sleeps until its deadline, then does a second step; a step takes one
+unit, or four, which outlasts either driver's lease. Two drivers are checked:
+
+- `node`: a long-lived loop polling every unit and heartbeating every unit, with
+  a lease of three: the design's one-second poll and 20-second heartbeat over a
+  60-second lease.
+- `worker`: a Cloudflare Worker invocation started by a one-minute Cron Trigger
+  or a queue message, heartbeating every minute, killed at a six-minute budget,
+  with a two-minute lease (the design's 5:15 lease-to-budget ratio, scaled). A
+  queue message can be delayed at most two minutes, so the run's five-minute
+  sleep is woken by the cron sweep. About 3,200 states.
+
+| Rule | The promise | The harm when it breaks |
+| --- | --- | --- |
+| `NoResumeBeforeTheDeadline` | A Wait never resumes before its deadline. | A reminder goes out early. |
+| `DeadlineHonouredOnTime` | A sleeping run is picked up within one poll or cron interval of its deadline, or of the moment it parked if later. | A long sleep on Workers overshoots by the queue's delay cap or never wakes. |
+| `LiveLeaseNeverExpires` | A lease never expires under a live worker heartbeating through a step. | A long step is run twice and an attempt is spent. |
+| `DeadWorkerRecoveredInTime` | A run whose worker crashed or was killed is picked up again within one lease and one interval. | A run sits stuck behind a dead worker. |
+| `EveryRunEndsInTime` | Every run ends before the clock stops. | A step longer than the Worker budget never completes. |
+
+The SQLite driver needs no model of its own. Its one process and one writer,
+with every write under `BEGIN IMMEDIATE`, allow a subset of the interleavings the
+two-worker models check, and the models already treat each guarded write as
+atomic. Its ticker is the `node` driver's poll.
+
 ## Bounds and assumptions
 
 - The bounds above: two workers, two versions and two Migrations, three
   arrivals in `Intake`, one arrival fanned out to two workflows in `Delivery`
-  with pages of one row, two arrivals and two payloads in `Arrivals`, a retry
-  limit of 2, one fault per behaviour.
+  with pages of one row, two arrivals and two payloads in `Arrivals`, a clock
+  of twenty units in `Timing`, a retry limit of 2, one fault per behaviour.
 - Counters stop one past the retry limit, because nothing compares them further.
 - The `CountersBounded` constraints cap observer counters at 2 so a mutated
   model stays finite. In the models as written, every counter stays at most 1
@@ -277,8 +306,9 @@ despite that.
 - `NOTIFY` is not modelled. The design treats it as a latency optimisation and
   relies on the poll for correctness, which is what the models check: a worker
   finds every due row by polling.
-- Clock time is abstract. A timeout is "the deadline passed". Lease length,
-  heartbeat interval and backoff are not modelled.
+- Clock time is abstract in every model except `Timing`, where a timeout is
+  "the deadline passed". `Timing` uses the design's ratios, not its seconds,
+  and models no retry backoff.
 
 ## Coverage record
 
@@ -318,6 +348,9 @@ can find it and a mutation can remove it.
 | `Arrivals`: `Scan`, `Record` | Section 7.2 | `listWaitCandidatePage` and `deliverWaitCandidates` in `lifecycle/deliver-event.ts` |
 | `Handler`: `Read`, `Send`, `ReadMemo`, `SendMemo`, `ReadIsMemoized`, `RefusalIsAValue` | "The runtime", `run(step, fn)`; "Retries"; ADR-0009 | `StepFailure` and `RememberedStep` in `extensions/steps/define-step.ts` |
 | `Handler`: `SendCarriesAKey` | ADR-0009 | the idempotency key `callExternal` passes, in `extensions/steps/external-http.ts` |
+| `Timing`: `NodeLease`, `NodeHeartbeat`, `NodePoll`, `Expire`, `SweepLateness` | "Lease and liveness"; "Wake latency" | |
+| `Timing`: `WorkerLease`, `WorkerCron`, `WorkerBudget`, `QueueMaxDelay`, `Kill`, `WorkerUsesCron` | Section 8, "Cloudflare Worker over Hyperdrive" | |
+| `Timing`: `ClaimWaitsForTheDeadline` | "The invocation", step 1 (`wake_at <= now()`) | |
 
 Last confirmed against: the design doc at `25e215b0`, and the existing code at
 `a92cea15` (`main`). Move these two commits forward only after you have read
@@ -395,5 +428,5 @@ back to show the rule still catches it:
   `Intake`, with each run reduced to one step.
 - A delivery's attempt limit. `Intake` re-runs a delivery after a crash or an
   expired lease, and never gives up on one.
-- The SQLite and Cloudflare Worker drivers, `NOTIFY` latency, database
-  failover, and lease, heartbeat and backoff timing.
+- Retry backoff timing, `NOTIFY` latency, database failover, and real clock
+  values. `Timing` checks the design's ratios.

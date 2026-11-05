@@ -70,6 +70,11 @@ Handler|read-not-memoized|ReadIsMemoized == TRUE|ReadIsMemoized == FALSE|Applied
 Handler|refusal-thrown|RefusalIsAValue == TRUE|RefusalIsAValue == FALSE|RefusalFailsTheNodeOnce
 Handler|no-retries|/\ attempt + 1 >= MaxAttempts ->|/\ attempt + 1 >= 1 ->|FailedOnlyOnRefusalOrSpentRetries
 Handler|success-never-ends-the-node|CASE memoSend = "ok" ->|CASE FALSE ->|NodeEnds
+Timing|heartbeat-slower-than-lease|NodeHeartbeat == 1|NodeHeartbeat == 3|LiveLeaseNeverExpires
+Timing|no-cron-sweep|WorkerUsesCron == TRUE|WorkerUsesCron == FALSE|DeadlineHonouredOnTime EveryRunEndsInTime
+Timing|claim-ignores-the-deadline|ClaimWaitsForTheDeadline == TRUE|ClaimWaitsForTheDeadline == FALSE|NoResumeBeforeTheDeadline
+Timing|budget-shorter-than-a-step|WorkerBudget == 6|WorkerBudget == 3|EveryRunEndsInTime
+Timing|sweep-runs-late|SweepLateness == 0|SweepLateness == 3|DeadWorkerRecoveredInTime
 MUTATIONS
 )
 
