@@ -211,7 +211,7 @@ describe("executeWorkflow branch traversal", () => {
       actions
     );
 
-    expect(result.success).toBe(true);
+    expect(result).toMatchObject({ kind: "ended", success: true });
     expect(result.results.condition_node?.success).toBe(true);
     // The Condition step answers in the same wrapper every other step uses, and
     // the decision it recorded is the branch that ran.
@@ -264,7 +264,7 @@ describe("executeWorkflow branch traversal", () => {
       actions
     );
 
-    expect(result.success).toBe(true);
+    expect(result).toMatchObject({ kind: "ended", success: true });
     expect(result.results.condition_node?.success).toBe(true);
     // Both edges below the node name a branch its decision would have picked
     // between. Taking either without a decision is a guess, and taking both
@@ -305,7 +305,7 @@ describe("executeWorkflow branch traversal", () => {
       actions
     );
 
-    expect(result.success).toBe(true);
+    expect(result).toMatchObject({ kind: "ended", success: true });
     expect(result.results.below_node).toBeUndefined();
     // The skipped node is still recorded, so the run's trace shows where the
     // branch ended and a reader is not left with a silent hole.
@@ -357,7 +357,7 @@ describe("executeWorkflow branch traversal", () => {
       actions
     );
 
-    expect(result.success).toBe(true);
+    expect(result).toMatchObject({ kind: "ended", success: true });
     expect(result.results.wait_1?.success).toBe(true);
     expect(result.results.below_node).toBeUndefined();
   });
@@ -447,7 +447,7 @@ describe("executeWorkflow branch traversal", () => {
       actions
     );
 
-    expect(result.success).toBe(true);
+    expect(result).toMatchObject({ kind: "ended", success: true });
     expect(result.results.condition_node?.success).toBe(true);
     expect(executionData(result.results.condition_node)).toEqual({
       success: true,
@@ -505,7 +505,7 @@ describe("executeWorkflow branch traversal", () => {
       actions
     );
 
-    expect(result.success).toBe(true);
+    expect(result).toMatchObject({ kind: "ended", success: true });
     expect(result.results.true_node_a?.success).toBe(true);
     expect(result.results.true_node_b?.success).toBe(true);
     expect(result.results.false_node).toBeUndefined();
@@ -934,7 +934,7 @@ describe("executeWorkflow Event Split traversal", () => {
       actions
     );
 
-    expect(result.success).toBe(true);
+    expect(result).toMatchObject({ kind: "ended", success: true });
     expect(result.results.on_rescheduled?.success).toBe(true);
     expect(result.results.on_created).toBeUndefined();
     // The step records which Event it routed on, so a run's trace says why the
@@ -958,7 +958,7 @@ describe("executeWorkflow Event Split traversal", () => {
       actions
     );
 
-    expect(result.success).toBe(true);
+    expect(result).toMatchObject({ kind: "ended", success: true });
     expect(result.results.split_1?.success).toBe(true);
     // One arrival would otherwise run the branch for every Event at once.
     expect(result.results.on_created).toBeUndefined();
@@ -978,7 +978,7 @@ describe("executeWorkflow Event Split traversal", () => {
       actions
     );
 
-    expect(result.success).toBe(true);
+    expect(result).toMatchObject({ kind: "ended", success: true });
     expect(result.results.split_1?.success).toBe(true);
     expect(result.results.on_created).toBeUndefined();
     expect(result.results.on_rescheduled).toBeUndefined();
@@ -1122,7 +1122,7 @@ it.each([false, true])(
         stubWfGraphRuntime()
       )
     );
-    expect(result.success).toBe(true);
+    expect(result).toMatchObject({ kind: "ended", success: true });
     expect(calls).toEqual(allowed ? ["parallel", "join"] : ["parallel"]);
   }
 );

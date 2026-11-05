@@ -1,10 +1,10 @@
 /**
- * The graph and the signal envelopes the Wait node's own suites run against.
+ * The graph and the wakes the Wait node's own suites run against.
  *
  * Three files drive the same one-Wait graph: the delay and Event suites cover
  * what each mode does with a park, and `core-wait-migrate.test.ts` covers what a
  * Migration does to one. The node ids and the execution id are part of the fixture,
- * because a wait signal addresses a run and a node by id.
+ * because a wait row addresses a run and a node by id.
  */
 
 import { Effect } from "effect";
@@ -18,7 +18,10 @@ import {
   executionData,
 } from "#src/backend/engine/contracts";
 import type { RecordingWorkflowStore } from "#src/backend/engine/recording-store";
-import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
+import {
+  createInMemoryWorkflowRuntime,
+  type WaitWake,
+} from "#src/backend/engine/runtime";
 import { executeTestWorkflow } from "#src/backend/engine/test-execution";
 import type {
   ExecutionTerminationState,
@@ -28,7 +31,7 @@ import type {
 /** The execution the fixture graph's runs are recorded against. */
 export const WAIT_EXECUTION_ID = "exec_wait";
 
-/** The Wait node in the fixture graph, which every signal here addresses. */
+/** The Wait node in the fixture graph, which every wake here addresses. */
 export const WAIT_NODE_ID = "wait_1";
 
 export function createLifecycleNode(id: string): WorkflowNode {
@@ -99,7 +102,8 @@ export function createWaitGraph(config: Record<string, unknown>) {
 type RunWaitOptions = {
   config: Record<string, unknown>;
   store: RecordingWorkflowStore;
-  resumeEvent?: unknown;
+  /** The wake every park answers. Left out, every park times out. */
+  wake?: WaitWake | undefined;
   startPayload?: JsonObject | undefined;
   memo?: Map<string, unknown> | undefined;
   /** An execution-wide claim that lands once the run has parked. */
@@ -108,7 +112,7 @@ type RunWaitOptions = {
 
 export function runWait(options: RunWaitOptions) {
   const runtime = createInMemoryWorkflowRuntime({
-    resumeEvent: options.resumeEvent ?? null,
+    waitAnswer: options.wake && { kind: "woke", wake: options.wake },
     memo: options.memo,
   });
   const execution = executeTestWorkflow(
@@ -172,10 +176,10 @@ export function claimedRun(kind: "cancel" | "exit"): ExecutionTerminationState {
 }
 
 /** The wake a Cancel Event's producer writes onto a parked Wait. */
-export const CANCEL_WAKE = { data: { signalType: "lifecycle-cancel" } };
+export const CANCEL_WAKE: WaitWake = { kind: "cancel" };
 
 /** The wake the store write that wins an Exit claim writes onto a parked Wait. */
-export const EXIT_WAKE = { data: { signalType: "lifecycle-exit" } };
+export const EXIT_WAKE: WaitWake = { kind: "exit" };
 
 const CLAIM_WAKE_MESSAGE = {
   cancel: "Run woken by a cancel request in node 'Wait'",
@@ -219,46 +223,22 @@ export function expectHaltedByClaim(
 }
 
 /**
- * A resume as `resume-waits.ts` sends it: an Inngest event whose `data` is the
- * `workflow/wait.signal` envelope, with the arriving Event's payload inside it.
- * The nesting is what the node's output has to strip.
+ * The wake a resume signal carries: the arriving Event's name, or null for a
+ * resume that named none, and its payload.
  */
 export function waitResumeSignal(
   payload: JsonObject,
   eventType: string | null = "billing/payment.settled"
-) {
-  const data = {
-    executionId: WAIT_EXECUTION_ID,
-    nodeId: WAIT_NODE_ID,
-    token: "token_1",
-    signalType: "wait-resume" as const,
-    payload,
-  };
-  return {
-    name: "workflow/wait.signal",
-    id: "evt_signal",
-    ts: 0,
-    data: eventType === null ? data : { ...data, eventType },
-  };
+): WaitWake {
+  return { kind: "resume", eventName: eventType, payload };
 }
 
 /**
- * A Migration's wake, as the service that moves an Execution to another
- * Workflow Version sends it: the same envelope a resume travels in, carrying
- * `version-migrate` instead.
+ * A Migration's wake, which the service that moves an Execution to another
+ * Workflow Version sends.
  */
-export function waitMigrateSignal() {
-  return {
-    name: "workflow/wait.signal",
-    id: "evt_migrate",
-    ts: 0,
-    data: {
-      executionId: WAIT_EXECUTION_ID,
-      nodeId: WAIT_NODE_ID,
-      token: "token_1",
-      signalType: "version-migrate",
-    },
-  };
+export function waitMigrateSignal(): WaitWake {
+  return { kind: "migrate" };
 }
 
 /**

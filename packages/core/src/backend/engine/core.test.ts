@@ -8,7 +8,7 @@ import { defineIntegration } from "#src/backend/extensions/define-integration";
 import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
 import { Effect, Schema } from "effect";
-import { DatabaseError } from "#src/backend/lib/effect/database";
+import { DatabaseError, LeaseLost } from "#src/backend/lib/effect/database";
 import { unknownRest } from "@wfgraph/shared/types/schema";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
@@ -192,7 +192,7 @@ describe("host action execution", () => {
       actions
     );
 
-    expect(result.success).toBe(true);
+    expect(result).toMatchObject({ kind: "ended", success: true });
     expect(result.results.action_1?.success).toBe(true);
     expect(handlerFn).toHaveBeenCalledTimes(1);
   });
@@ -235,7 +235,7 @@ describe("host action execution", () => {
       actions
     );
 
-    expect(result.success).toBe(true);
+    expect(result).toMatchObject({ kind: "ended", success: true });
     expect(result.results.action_1?.success).toBe(true);
     expect(handlerFn).toHaveBeenCalledTimes(1);
   });
@@ -563,7 +563,7 @@ describe("run persistence through the store port", () => {
     );
 
     expect(handlerFn).toHaveBeenCalledTimes(1);
-    expect(result.success).toBe(true);
+    expect(result).toMatchObject({ kind: "ended", success: true });
     expect(executionData(result.results.action_1)).toEqual({
       success: true,
       data: { ok: true },
@@ -587,7 +587,7 @@ describe("run persistence through the store port", () => {
     );
 
     expect(handlerFn).toHaveBeenCalledTimes(0);
-    expect(result.success).toBe(false);
+    expect(result).toMatchObject({ kind: "ended", success: false });
     expect(executionError(result.results.lifecycle_1)).toBe(
       "DatabaseError: run log unreachable"
     );
@@ -636,6 +636,34 @@ describe("run persistence through the store port", () => {
     });
   });
 
+  // Under the database executor a write the pass's fence refused means another
+  // owner holds the run. The pass ends where it stands: no node is failed and
+  // no terminal record is written.
+  it("ends the pass without failing a node when a store write answers LeaseLost", async () => {
+    const run = executeWorkflow(
+      {
+        graph: createLifecycleToActionGraph(),
+        executionId: "exec_lease_lost",
+        workflowId: "workflow_lease_lost",
+      },
+      createInMemoryWorkflowRuntime(),
+      {
+        ...store,
+        startStepLog: () =>
+          Effect.fail(
+            new LeaseLost({
+              message: "The pass no longer holds this run's lease",
+            })
+          ),
+      },
+      actions
+    );
+
+    await expect(run).rejects.toMatchObject({ kind: "lease_lost" });
+    expect(handlerFn).toHaveBeenCalledTimes(0);
+    expect(store.callsOf("completeRun")).toEqual([]);
+  });
+
   // The timeline write runs after the terminal row has landed, so a refusal
   // there is logged and dropped and the run keeps its verdict.
   it("keeps a completed run completed when its timeline write fails", async () => {
@@ -650,7 +678,7 @@ describe("run persistence through the store port", () => {
       actions
     );
 
-    expect(result.success).toBe(true);
+    expect(result).toMatchObject({ kind: "ended", success: true });
     expect(store.callsOf("completeRun")).toHaveLength(1);
     expect(store.callsOf("completeRun")[0]?.status).toBe("completed");
   });
@@ -676,7 +704,7 @@ describe("run persistence through the store port", () => {
 
     const result = await executeWorkflow(input, runtime, store, actions);
 
-    expect(result.success).toBe(true);
+    expect(result).toMatchObject({ kind: "ended", success: true });
     expect(store.terminationState?.status).toBe("completed");
     expect(
       store.callsOf("recordAuditEvent").map((call) => call.eventType)
@@ -701,7 +729,7 @@ describe("run persistence through the store port", () => {
       actions
     );
 
-    expect(result.success).toBe(false);
+    expect(result).toMatchObject({ kind: "ended", success: false });
     expect(executionError(result.results.action_1)).toBe("boom");
     expect(store.callsOf("completeRun")).toHaveLength(1);
     expect(store.callsOf("completeRun")[0]?.failure).toEqual({
@@ -760,7 +788,7 @@ describe("run persistence through the store port", () => {
       actions
     );
 
-    expect(result.success).toBe(false);
+    expect(result).toMatchObject({ kind: "ended", success: false });
     expect(executionError(result.results.action_1)).toBe(
       "Subscription cancelled by the provider"
     );
@@ -813,7 +841,7 @@ describe("run persistence through the store port", () => {
       actions
     );
 
-    expect(result.success).toBe(true);
+    expect(result).toMatchObject({ kind: "ended", success: true });
     expect(store.callsOf("completeRun")).toHaveLength(1);
     expect(
       store.callsOf("recordAuditEvent").map((call) => call.eventType)

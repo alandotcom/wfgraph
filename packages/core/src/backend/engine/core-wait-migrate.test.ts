@@ -17,7 +17,10 @@ import {
   executeTestWorkflow as executeWorkflow,
   executeTestWorkflowBranch,
 } from "#src/backend/engine/test-execution";
-import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
+import {
+  createInMemoryWorkflowRuntime,
+  type WaitWake,
+} from "#src/backend/engine/runtime";
 import { executionError } from "#src/backend/engine/contracts";
 import {
   createRecordingWorkflowStore,
@@ -53,7 +56,7 @@ function runMigratedWait(options: {
   store: RecordingWorkflowStore;
   parked: Record<string, unknown>;
   migrated: Record<string, unknown>;
-  events: Record<string, unknown>;
+  events: Record<string, WaitWake>;
   startEventName?: string | undefined;
   startPayload?: JsonObject | undefined;
   /** An execution-wide claim that lands once the run has parked. */

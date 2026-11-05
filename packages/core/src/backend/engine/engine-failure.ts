@@ -1,21 +1,43 @@
 import { Cause, Context, Effect, Exit, Option, Result, Schema } from "effect";
 import { getErrorMessage } from "@wfgraph/shared/utils";
 
-export type EngineFailureKind = "failure" | "defect" | "interrupt";
+/**
+ * What kind of failure ended a node, a step or a run.
+ *
+ * - `failure`: an expected failure, such as a step that threw or a write the
+ *   database refused.
+ * - `defect`: an unexpected error the Effect runtime caught.
+ * - `interrupt`: the durable runtime tore the invocation down.
+ * - `version_refused`: a version fence refused a write, because a Migration
+ *   moved the run off the Workflow Version this body loaded. Nothing failed,
+ *   and the next pass loads the version the run now pins.
+ * - `lease_lost`: under the database executor, the pass no longer acts on the
+ *   run (`LeaseLost`). It ends the pass and never fails a node.
+ */
+export type EngineFailureKind =
+  | "failure"
+  | "defect"
+  | "interrupt"
+  | "version_refused"
+  | "lease_lost";
+
+const ENGINE_FAILURE_KINDS = [
+  "failure",
+  "defect",
+  "interrupt",
+  "version_refused",
+  "lease_lost",
+] as const satisfies readonly EngineFailureKind[];
 
 export const engineFailureSchema = Schema.Struct({
-  kind: Schema.Union([
-    Schema.Literal("failure"),
-    Schema.Literal("defect"),
-    Schema.Literal("interrupt"),
-  ]),
+  kind: Schema.Literals(ENGINE_FAILURE_KINDS),
   message: Schema.String,
 });
 
 export type EngineFailure = typeof engineFailureSchema.Type;
 
 function isEngineFailureKind(value: unknown): value is EngineFailureKind {
-  return value === "failure" || value === "defect" || value === "interrupt";
+  return ENGINE_FAILURE_KINDS.some((kind) => kind === value);
 }
 
 export function isEngineFailure(value: unknown): value is EngineFailure {
@@ -29,6 +51,19 @@ export function isEngineFailure(value: unknown): value is EngineFailure {
   );
 }
 
+/**
+ * Whether a value is the store's `LeaseLost` failure. Read by its tag so the
+ * engine imports nothing from the database layer.
+ */
+function isLeaseLost(value: unknown): boolean {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "_tag" in value &&
+    value._tag === "LeaseLost"
+  );
+}
+
 export function engineFailure(
   kind: EngineFailureKind,
   message: string
@@ -37,9 +72,23 @@ export function engineFailure(
 }
 
 export function failureFromUnknown(error: unknown): EngineFailure {
-  return isEngineFailure(error)
-    ? error
-    : engineFailure("failure", getErrorMessage(error));
+  if (isEngineFailure(error)) {
+    return error;
+  }
+  return engineFailure(
+    isLeaseLost(error) ? "lease_lost" : "failure",
+    getErrorMessage(error)
+  );
+}
+
+/**
+ * Whether a failure ends this pass of the body with nothing more written,
+ * rather than failing a node or the run. An interrupted invocation is retried
+ * by the durable runtime, and a pass that lost its lease leaves the run to the
+ * owner that holds it now.
+ */
+export function endsPass(failure: EngineFailure): boolean {
+  return failure.kind === "interrupt" || failure.kind === "lease_lost";
 }
 
 /**

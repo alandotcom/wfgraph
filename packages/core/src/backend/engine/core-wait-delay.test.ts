@@ -28,7 +28,7 @@ describe("wait node - delay mode", () => {
     });
     const result = await execution;
 
-    expect(result.success).toBe(true);
+    expect(result).toMatchObject({ kind: "ended", success: true });
     const waitData = waitOutput(result);
     expect(waitData.waitType).toBe("delay");
     // Timestamps cross a step boundary, so they travel as ISO strings.
@@ -267,7 +267,7 @@ describe("wait node - delay mode", () => {
     const { runtime, execution } = runWait({
       config: { waitMode: "delay", waitDuration: "1h" },
       store,
-      resumeEvent: { data: { signalType: "lifecycle-exit" } },
+      wake: { kind: "exit" },
     });
     const result = await execution;
 
@@ -343,7 +343,7 @@ describe("wait node - delay mode", () => {
       const { execution } = runWait({
         config: { waitMode: "delay", waitDuration: "1h" },
         store,
-        resumeEvent: waitResumeSignal({ orderId: "ord_1" }),
+        wake: waitResumeSignal({ orderId: "ord_1" }),
         claimOnPark: claimedRun(kind),
       });
 

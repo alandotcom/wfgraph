@@ -8,13 +8,13 @@ import type {
   ExecutionTerminationState,
   PendingCancel,
   RecordAuditEventInput,
+  StoreFailure,
   WorkflowRunAuditEventType,
   WorkflowStore,
 } from "#src/backend/engine/store";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { Cause, Effect } from "effect";
 import { type EngineFailure } from "#src/backend/engine/engine-failure";
-import type { DatabaseError } from "#src/backend/lib/effect/database";
 import type {
   EntityEligibilityReason,
   WorkflowExecutionStatus,
@@ -148,13 +148,13 @@ function refusingCancelClaim(
 
 /**
  * Writes the status a standing Cancel or Exit claim selected, after the run's
- * own verdict was refused. A `DatabaseError` is logged and fails the enclosing
+ * own verdict was refused. A store failure is logged and fails the enclosing
  * durable step, so Inngest retries the step.
  */
 function writeClaimedStatus(input: {
   store: WorkflowStore;
   run: CompleteRunInput;
-}): Effect.Effect<ExecutionTerminationState | null, DatabaseError> {
+}): Effect.Effect<ExecutionTerminationState | null, StoreFailure> {
   return input.store.completeRun(input.run).pipe(
     Effect.tapError((error) =>
       Effect.logWarning("Claimed terminal run record not written").pipe(
@@ -175,14 +175,14 @@ function writeClaimedStatus(input: {
  *
  * A racing Cancel claim is returned unwritten, still in flight, because the
  * caller takes the Canceled outlet for that claim before it records canceled.
- * A `DatabaseError` from either write is logged and fails the enclosing
+ * A store failure from either write is logged and fails the enclosing
  * durable step, so Inngest retries the step. `null` means the store found no
  * execution row.
  */
 function finalizeRun(input: {
   store: WorkflowStore;
   run: CompleteRunInput;
-}): Effect.Effect<ExecutionTerminationState | null, DatabaseError> {
+}): Effect.Effect<ExecutionTerminationState | null, StoreFailure> {
   return Effect.gen(function* () {
     const first = yield* input.store.completeRun(input.run).pipe(
       Effect.tapError((error) =>
@@ -266,7 +266,7 @@ export function recordRunCompleted(input: {
     exit?: RunExitOutcome | undefined;
     cancelClaim?: PendingCancel | undefined;
   },
-  DatabaseError
+  StoreFailure
 > {
   return Effect.gen(function* () {
     const state = yield* finalizeRun({
@@ -346,7 +346,7 @@ export function recordRunFailed(input: {
     exit?: RunExitOutcome | undefined;
     cancelClaim?: PendingCancel | undefined;
   },
-  DatabaseError
+  StoreFailure
 > {
   return Effect.gen(function* () {
     const requestedStatus = input.outcome.kind;

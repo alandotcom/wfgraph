@@ -11,10 +11,10 @@
 
 import { describe, expect, it } from "vitest";
 import type { BranchRunResult } from "#src/backend/engine/branch";
-import {
-  isParkedWaitAnswer,
-  PARKED_WAIT_ANSWER,
-  type WorkflowExecutionRuntime,
+import type {
+  WaitAnswer,
+  WaitWake,
+  WorkflowExecutionRuntime,
 } from "#src/backend/engine/runtime";
 import {
   createInMemoryReplayBackend,
@@ -45,16 +45,21 @@ const stepRef = (id: string) => ({ id });
 /**
  * A park with no answer, which the driver ends at its timeout. The Wait node is
  * the only thing that suspends a run, so a park is how these cases hold one.
+ * Each park stands on a wait row of its own, named after its step.
  */
 const park = (
   runtime: WorkflowExecutionRuntime,
   id: string,
   timeoutMs: number
-): Promise<unknown> =>
+): Promise<WaitAnswer> =>
   runtime.waitForEvent(stepRef(id), {
     event: "workflow/wait.signal",
     timeoutMs,
+    waitStateId: id,
   });
+
+/** Whether a park is still open, which ends a database executor's pass. */
+const isParked = (answer: WaitAnswer): boolean => answer.kind === "parked";
 
 describe.each(IN_PLACE_EXECUTORS)(
   "driveWithReplay under the $kind executor",
@@ -84,7 +89,7 @@ describe.each(IN_PLACE_EXECUTORS)(
     it("moves the clock to a park's target", async () => {
       const run = await driveWithReplay(
         async (runtime) => {
-          if (isParkedWaitAnswer(await park(runtime, "nap", 5_000))) {
+          if (isParked(await park(runtime, "nap", 5_000))) {
             return PARKED_PASS;
           }
           return await runtime.run(stepRef("after"), () =>
@@ -102,23 +107,15 @@ describe.each(IN_PLACE_EXECUTORS)(
     });
 
     it("resolves an event wait from the answer it was given", async () => {
-      // A resume in the whole envelope a database executor stores, so the
-      // answer reads back the same from every backend.
-      const resume = {
-        data: {
-          signalType: "wait-resume",
-          eventType: "app/approved",
-          payload: { token: "abc" },
-          deliveryId: null,
-        },
+      const resume: WaitWake = {
+        kind: "resume",
+        eventName: "app/approved",
+        payload: { token: "abc" },
       };
       const run = await driveWithReplay(
         async (runtime) => {
-          const answer = await runtime.waitForEvent(stepRef("signal"), {
-            event: "workflow/wait.signal",
-            timeoutMs: 1_000,
-          });
-          return isParkedWaitAnswer(answer) ? PARKED_PASS : answer;
+          const answer = await park(runtime, "signal", 1_000);
+          return answer.kind === "parked" ? PARKED_PASS : answer.wake;
         },
         { executor, events: { signal: resume } }
       );
@@ -130,16 +127,13 @@ describe.each(IN_PLACE_EXECUTORS)(
     it("reads an event wait with no answer as a timeout", async () => {
       const run = await driveWithReplay(
         async (runtime) => {
-          const answer = await runtime.waitForEvent(stepRef("signal"), {
-            event: "workflow/wait.signal",
-            timeoutMs: 2_000,
-          });
-          return isParkedWaitAnswer(answer) ? PARKED_PASS : answer;
+          const answer = await park(runtime, "signal", 2_000);
+          return answer.kind === "parked" ? PARKED_PASS : answer.wake;
         },
         { executor }
       );
 
-      expect(run.value).toBeNull();
+      expect(run.value).toEqual({ kind: "timeout" });
       expect(run.elapsedMs).toBe(2_000);
     });
   }
@@ -424,7 +418,7 @@ describe("driveWithReplay, Inngest executor only", () => {
         results: {
           sibling: {
             success: true,
-            data: { data: { signalType: "lifecycle-exit" } },
+            data: { kind: "woke", wake: { kind: "exit" } },
           },
         },
         outputs: {},
@@ -450,7 +444,7 @@ describe("driveWithReplay, database executor only", () => {
           calls += 1;
           return Promise.resolve(null);
         });
-        if (isParkedWaitAnswer(await park(runtime, "nap", 5_000))) {
+        if (isParked(await park(runtime, "nap", 5_000))) {
           return PARKED_PASS;
         }
         return await runtime.run(stepRef("after"), () =>
@@ -477,7 +471,7 @@ describe("driveWithReplay, database executor only", () => {
     const run = await driveWithReplay(
       async (runtime) => {
         const branchBehind = async (id: string, timeoutMs: number) => {
-          if (isParkedWaitAnswer(await park(runtime, id, timeoutMs))) {
+          if (isParked(await park(runtime, id, timeoutMs))) {
             return "parked";
           }
           await runtime.run(stepRef(`after-${id}`), () => Promise.resolve(1));
@@ -505,12 +499,12 @@ describe("driveWithReplay, database executor only", () => {
       async (runtime, pass) => {
         // A Wait asks again with the time left, which shrinks between passes.
         const answer = await park(runtime, "nap", 3_000 - pass.invocation);
-        return isParkedWaitAnswer(answer) ? PARKED_PASS : answer;
+        return answer.kind === "parked" ? PARKED_PASS : answer.wake;
       },
       { executor: DATABASE }
     );
 
-    expect(run.value).toBeNull();
+    expect(run.value).toEqual({ kind: "timeout" });
     expect(run.elapsedMs).toBe(3_000);
     expect(run.invocations).toBe(2);
   });
@@ -519,8 +513,8 @@ describe("driveWithReplay, database executor only", () => {
     const run = await driveWithReplay(
       async (runtime, pass) => {
         const answer = await park(runtime, "nap", 600_000);
-        if (!isParkedWaitAnswer(answer)) {
-          return answer;
+        if (answer.kind === "woke") {
+          return answer.wake;
         }
         await pass.signalOpenParks?.(CANCEL_WAKE);
         return PARKED_PASS;
@@ -541,7 +535,9 @@ describe("driveWithReplay, database executor only", () => {
           park(runtime, "first", 600_000),
           park(runtime, "second", 900_000),
         ]);
-        return answers.some(isParkedWaitAnswer) ? PARKED_PASS : answers;
+        return answers.some(isParked)
+          ? PARKED_PASS
+          : answers.map((answer) => answer.kind === "woke" && answer.wake);
       },
       {
         executor: {
@@ -564,7 +560,7 @@ describe("driveWithReplay, database executor only", () => {
   it("runs each pass against the runtime the backend supplies, and records each wake there", async () => {
     const memory = createInMemoryReplayBackend();
     const passes: number[] = [];
-    const resolved: Array<{ stepId: string; wake: unknown }> = [];
+    const resolved: Array<{ stepId: string; wake: WaitWake }> = [];
     const backend: ReplayDatabaseBackend = {
       runtimeForPass: (pass) => {
         passes.push(pass.invocation);
@@ -578,15 +574,13 @@ describe("driveWithReplay, database executor only", () => {
 
     const run = await driveWithReplay(
       async (runtime) =>
-        isParkedWaitAnswer(await park(runtime, "nap", 1_000))
-          ? PARKED_PASS
-          : "done",
+        isParked(await park(runtime, "nap", 1_000)) ? PARKED_PASS : "done",
       { executor: { kind: "database", openBackend: () => backend } }
     );
 
     expect(run.value).toBe("done");
     expect(passes).toEqual([0, 1]);
-    expect(resolved).toEqual([{ stepId: "nap", wake: null }]);
+    expect(resolved).toEqual([{ stepId: "nap", wake: { kind: "timeout" } }]);
   });
 
   it("offers no branch hand-off, so every Wait enters where it stands", async () => {
@@ -631,8 +625,8 @@ describe("driveWithReplay, database executor only", () => {
       now: 0,
     });
 
-    await expect(park(runtime, "nap", 1_000)).resolves.toEqual(
-      PARKED_WAIT_ANSWER
-    );
+    await expect(park(runtime, "nap", 1_000)).resolves.toEqual({
+      kind: "parked",
+    });
   });
 });

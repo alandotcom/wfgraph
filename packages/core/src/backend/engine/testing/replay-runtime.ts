@@ -29,11 +29,14 @@ import type {
 import {
   type DatabaseReplayExecutor,
   driveDatabaseExecutor,
+  TIMEOUT_WAKE,
 } from "#src/backend/engine/testing/replay-database-executor";
 import { ReplayHostTimers } from "#src/backend/engine/testing/replay-host-timers";
 import type {
   DurableStepRef,
+  WaitAnswer,
   WaitForEventOptions,
+  WaitWake,
   WorkflowExecutionRuntime,
 } from "#src/backend/engine/runtime";
 import type { ExecutionSide } from "@wfgraph/shared/lifecycle/execution-contracts";
@@ -90,10 +93,10 @@ export const IN_PLACE_EXECUTORS: readonly ReplayExecutor[] = [
 
 export type ReplayRunOptions = {
   /**
-   * What an event wait resolves to, keyed by its step id. A wait with no answer
-   * here runs to its timeout, which the engine reads as `null`.
+   * The wake that ends a park, keyed by the park's step id. A park with no
+   * entry here runs to its timeout.
    */
-  events?: Record<string, unknown> | undefined;
+  events?: Record<string, WaitWake> | undefined;
   /** Invocation ceiling, which turns a non-converging graph into a failure. */
   maxInvocations?: number | undefined;
   /** The executor this drive models. Left out, the Inngest executor. */
@@ -110,7 +113,7 @@ export type ReplayPass = {
    * wins an Exit claim. Only the database executor offers it. The Inngest
    * executor's runs are signaled through `wakeParkedWaits` instead.
    */
-  signalOpenParks?: ((wake: unknown) => Promise<void>) | undefined;
+  signalOpenParks?: ((wake: WaitWake) => Promise<void>) | undefined;
 };
 
 /** One durable run's body, called once per invocation. */
@@ -214,7 +217,7 @@ type DurableRun = {
   readonly id: string;
   readonly body: ReplayBody<unknown>;
   readonly memo: Map<string, unknown>;
-  readonly finishedWaits: Map<string, unknown>;
+  readonly finishedWaits: Map<string, WaitWake>;
   /** When each pause fires, fixed the first time this run reaches it. */
   readonly wakeAt: Map<string, number>;
   /** The step ids this run has started a branch under. */
@@ -295,10 +298,10 @@ async function driveWithReplayInstalled<T>(
 
   /**
    * Ends one pause, which is what lets the run that holds it be called again. A
-   * wait with no answer reached its timeout, which the engine reads as null.
+   * wait with no answer reached its timeout.
    */
   function endPause(run: DurableRun, stepId: string) {
-    run.finishedWaits.set(stepId, events[stepId] ?? null);
+    run.finishedWaits.set(stepId, events[stepId] ?? TIMEOUT_WAKE);
     run.outstanding.delete(stepId);
   }
 
@@ -340,9 +343,7 @@ async function driveWithReplayInstalled<T>(
       }
       for (const stepId of run.outstanding) {
         if (run.wakeAt.has(stepId)) {
-          run.finishedWaits.set(stepId, {
-            data: { signalType: "lifecycle-exit" },
-          });
+          run.finishedWaits.set(stepId, { kind: "exit" });
           run.outstanding.delete(stepId);
         }
       }
@@ -451,8 +452,9 @@ async function driveWithReplayInstalled<T>(
 
       waitForEvent: ({ id: stepId }, waitOptions: WaitForEventOptions) =>
         withActivity(() => {
-          if (run.finishedWaits.has(stepId)) {
-            return Promise.resolve(run.finishedWaits.get(stepId));
+          const wake = run.finishedWaits.get(stepId);
+          if (wake !== undefined) {
+            return Promise.resolve<WaitAnswer>({ kind: "woke", wake });
           }
           if (!pass.pauses.has(stepId)) {
             noteFirstReach(
@@ -460,7 +462,7 @@ async function driveWithReplayInstalled<T>(
               waitOptions.timeoutMs ?? FALLBACK_TIMEOUT_MS
             );
           }
-          return pending<unknown>();
+          return pending<WaitAnswer>();
         }),
 
       // The engine calls this inside a durable step, which the driver runs

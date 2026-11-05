@@ -22,6 +22,7 @@ import {
   type EngineFailure,
   failureFromUnknown,
 } from "#src/backend/engine/engine-failure";
+import type { WaitAnswer, WaitWake } from "#src/backend/engine/runtime";
 import { delayWaitMode } from "#src/backend/engine/wait-delay";
 import { eventWaitMode } from "#src/backend/engine/wait-event";
 import {
@@ -30,7 +31,6 @@ import {
   parkUntil,
   readAllowedHoursConfig,
   readWaitGateMode,
-  readWaitWake,
   type WaitActionInput,
   type WaitBranchContext,
   type WaitMode,
@@ -38,7 +38,6 @@ import {
   type WaitPark,
   type WaitPreparation,
   type WaitResumeWake,
-  type WaitWake,
   waitSignalMatch,
   waitStepIds,
   waitStepName,
@@ -356,26 +355,24 @@ function runWaitAttempt<Prepared, Resumed>(
       // nothing left to wait for, and a park with no time on it would hold the
       // run for the minimum a durable runtime can express.
       if (prepared.park.timeoutMs > 0) {
-        wake = readWaitWake(
-          yield* parkOnSignal(branch, {
-            stepId: stepIds.park,
-            attempt,
-            park: prepared.park,
-            waitStateId: prepared.carry.waitStateId,
-          })
-        );
+        const answer = yield* parkOnSignal(branch, {
+          stepId: stepIds.park,
+          attempt,
+          park: prepared.park,
+          waitStateId: prepared.carry.waitStateId,
+        });
+        // The wait row stays `waiting` and the step-log row stays open. The
+        // next pass replays this attempt's memoized steps back to the park.
+        if (answer.kind === "parked") {
+          return { status: "finished", outcome: { status: "parked" } };
+        }
+        wake = answer.wake;
         state.hops += 1;
       } else {
         wake = { kind: "timeout" };
       }
     } else {
       wake = prepared.wake;
-    }
-
-    // The wait row stays `waiting` and the step-log row stays open. The next
-    // pass replays this attempt's memoized steps back to the park.
-    if (wake.kind === "parked") {
-      return { status: "finished", outcome: { status: "parked" } };
     }
 
     // The run has been moved to a later Workflow Version. The next attempt is
@@ -528,10 +525,11 @@ function prepareWaitAttempt<Prepared>(
         // step or a policy cancel that ended the run. Failing the step covers
         // both: Inngest retries the body, which reloads the graph from the
         // pointer the row now names, and a run Inngest is already killing never
-        // reaches that retry.
+        // reaches that retry. Under the database executor a run's terminal
+        // write deletes the schedule row this write is fenced on, so a pass
+        // reaches this refusal only for a Migration.
         return yield* Effect.fail(
-          engineFailure(
-            "failure",
+          versionRefused(
             `This run would not accept a park under workflow version ${branch.workflowVersionId}: it has ended, or it has been moved to another version.`
           )
         );
@@ -561,8 +559,7 @@ function prepareWaitAttempt<Prepared>(
         // the body around again against the pointer the row now names, and the
         // row is left waiting for that retry to re-park.
         return yield* Effect.fail(
-          engineFailure(
-            "failure",
+          versionRefused(
             `This run has been moved off workflow version ${branch.workflowVersionId} since its graph was loaded.`
           )
         );
@@ -595,6 +592,17 @@ function prepareWaitAttempt<Prepared>(
     yield* recordWaiting(branch, { attempt: input.attempt, park });
     return yield* parked(input.waitStateId);
   });
+}
+
+/**
+ * The failure a Wait raises when a version fence refused one of its writes,
+ * because a Migration moved the run off the Workflow Version this body loaded.
+ * Inngest retries the step, and the retried body reloads the graph from the
+ * version the row now names. The database executor ends the pass and re-queues
+ * the run without counting an attempt, since nothing failed.
+ */
+function versionRefused(message: string): EngineFailure {
+  return engineFailure("version_refused", message);
 }
 
 /**
@@ -691,8 +699,7 @@ function openResume(
       const claim = yield* readClaimWake(branch);
       if (claim === null) {
         return yield* Effect.fail(
-          engineFailure(
-            "failure",
+          versionRefused(
             `This run has been moved off workflow version ${branch.workflowVersionId} since its graph was loaded.`
           )
         );
@@ -911,9 +918,9 @@ function recordWaiting(
 }
 
 /**
- * Suspends until a signal addressed to this park arrives, answering null for the
- * timeout. A runtime that ends the pass at a park answers `PARKED_WAIT_ANSWER`
- * here instead of suspending.
+ * Parks on this Wait's row and answers the wake that ended the park. Inngest
+ * suspends here until a signal addressed to the park arrives or the timeout
+ * passes; a runtime that ends the pass at a park answers `parked` instead.
  *
  * Inngest waits on Workflow Graph's own signal envelope rather than on the
  * business Event: Workflow Graph decides which runs an arrival concerns first.
@@ -926,7 +933,7 @@ function parkOnSignal(
     park: WaitPark;
     waitStateId: string;
   }
-): Effect.Effect<unknown, EngineFailure> {
+): Effect.Effect<WaitAnswer, EngineFailure> {
   const { context, runtime } = branch;
   const { park } = input;
 

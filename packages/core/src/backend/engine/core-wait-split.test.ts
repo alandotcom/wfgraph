@@ -18,7 +18,10 @@ import { eventSplitOutlet } from "@wfgraph/shared/lifecycle/event-split";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import { noWorkflowActions } from "#src/backend/engine/actions";
 import { executionData } from "#src/backend/engine/contracts";
-import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
+import {
+  createInMemoryWorkflowRuntime,
+  type WaitWake,
+} from "#src/backend/engine/runtime";
 import {
   executeTestWorkflow as executeWorkflow,
   executeTestWorkflowBranch as executeWorkflowBranch,
@@ -105,20 +108,11 @@ function createEventNameConditionNode(
   );
 }
 
-function waitResumeSignal(eventType: string, payload: Record<string, string>) {
-  return {
-    name: "workflow/wait.signal",
-    id: "evt_signal",
-    ts: 0,
-    data: {
-      executionId: "exec_wait_split",
-      nodeId: "wait_1",
-      token: "token_1",
-      eventType,
-      signalType: "wait-resume",
-      payload,
-    },
-  };
+function waitResumeSignal(
+  eventType: string,
+  payload: Record<string, string>
+): WaitWake {
+  return { kind: "resume", eventName: eventType, payload };
 }
 
 function createWaitSplitGraph() {
@@ -201,13 +195,16 @@ describe("executeWorkflow Event Split after Wait", () => {
         startPayload: { appointmentId: "appt_1" },
       },
       createInMemoryWorkflowRuntime({
-        resumeEvent: waitResumeSignal(SETTLED, { amount: "40" }),
+        waitAnswer: {
+          kind: "woke",
+          wake: waitResumeSignal(SETTLED, { amount: "40" }),
+        },
       }),
       store,
       noWorkflowActions
     );
 
-    expect(result.success).toBe(true);
+    expect(result).toMatchObject({ kind: "ended", success: true });
     expect(result.results.on_settled?.success).toBe(true);
     expect(result.results.on_failed).toBeUndefined();
     // The Start Event put the run at the Wait; it is not what the split below
@@ -287,7 +284,7 @@ describe("executeWorkflow Event Split after Wait", () => {
       noWorkflowActions
     );
 
-    expect(result.success).toBe(true);
+    expect(result).toMatchObject({ kind: "ended", success: true });
     expect(result.results.on_created?.success).toBe(true);
     expect(result.results.on_settled).toBeUndefined();
     expect(result.outputs.lifecycle_1?.data).toEqual({
@@ -373,12 +370,12 @@ describe("executeWorkflow Event Split after Wait", () => {
         startEventName: CREATED,
         startPayload: { appointmentId: "appt_1" },
       },
-      createInMemoryWorkflowRuntime({ resumeEvent: null }),
+      createInMemoryWorkflowRuntime(),
       store,
       noWorkflowActions
     );
 
-    expect(result.success).toBe(true);
+    expect(result).toMatchObject({ kind: "ended", success: true });
     expect(result.results.on_created).toBeUndefined();
     expect(result.results.on_settled).toBeUndefined();
     expect(result.results.name_is_start).toBeUndefined();
@@ -419,7 +416,7 @@ describe("executeWorkflow Event Split after Wait", () => {
     );
 
     const result = run.value;
-    expect(result.success).toBe(true);
+    expect(result).toMatchObject({ kind: "ended", success: true });
     expect(result.results.on_settled?.success).toBe(true);
     expect(result.results.on_failed).toBeUndefined();
     expect(result.results.on_created).toBeUndefined();
@@ -452,7 +449,7 @@ describe("executeWorkflow Event Split after Wait", () => {
     );
 
     const result = run.value;
-    expect(result.success).toBe(true);
+    expect(result).toMatchObject({ kind: "ended", success: true });
     expect(result.results.on_settled?.success).toBe(true);
     expect(result.results.on_failed).toBeUndefined();
     expect(result.results.on_created).toBeUndefined();

@@ -16,10 +16,11 @@
 
 import { Effect } from "effect";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
-import { type JsonValue, readJsonObject } from "@wfgraph/shared/types/json";
+import type { JsonValue } from "@wfgraph/shared/types/json";
 import type {
   DurableStepRef,
   WaitForEventOptions,
+  WaitWake,
   WorkflowExecutionRuntime,
 } from "#src/backend/engine/runtime";
 import {
@@ -47,28 +48,9 @@ function virtual(nowMs: number): Date {
   return new Date(nowMs);
 }
 
-/**
- * The wake a harness answer stands for. The harness speaks the signal envelope
- * a Wait reads, and `null` for a timeout, which this backend leaves to the
- * claim at the park's deadline.
- */
-function parkWakeOf(answer: unknown): ParkWake {
-  const data = readJsonObject(readJsonObject(answer)?.data);
-  switch (data?.signalType) {
-    case "version-migrate":
-      return { kind: "migrate" };
-    case "lifecycle-cancel":
-      return { kind: "cancel" };
-    case "lifecycle-exit":
-      return { kind: "exit" };
-    default:
-      return {
-        kind: "resume",
-        eventName: typeof data?.eventType === "string" ? data.eventType : null,
-        payload: readJsonObject(data?.payload) ?? {},
-        deliveryId: null,
-      };
-  }
+/** The wake a producer writes onto the row for a harness wake. */
+function parkWakeOf(wake: WaitWake): ParkWake {
+  return wake.kind === "resume" ? { ...wake, deliveryId: null } : wake;
 }
 
 /** The status a settled mirror row takes for the wake a pass read from it. */
@@ -172,7 +154,7 @@ export function openDatabaseReplayBackend(
       const known = rowsByStep.get(step.id);
       if (known !== undefined) return known;
 
-      const parkKey = options.waitStateId ?? `step:${step.id}`;
+      const parkKey = options.waitStateId;
       const waitUntil = virtual(
         nowMs + Math.max(options.timeoutMs ?? REPLAY_FALLBACK_TIMEOUT_MS, 0)
       );
@@ -276,7 +258,7 @@ export function openDatabaseReplayBackend(
       resolvePark: async (stepId, wake, { now }) => {
         // A timeout is the claim's to resolve, at the deadline the mirror row
         // holds, which is the deadline the harness fixed for the park.
-        if (wake === null) return;
+        if (wake.kind === "timeout") return;
         const waitStateId = rowsByStep.get(stepId);
         if (waitStateId === undefined) {
           throw new Error(`No mirror park was opened for step ${stepId}`);

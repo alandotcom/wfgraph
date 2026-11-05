@@ -209,7 +209,7 @@ export function describeExecutionScheduleConformance({
       expect(result.beforeExpiry).toEqual([]);
       expect(result.second.attempt).toBe(1);
       expect(result.second.ownerToken).not.toBe(result.first.ownerToken);
-      expect(result.staleWrite._tag).toBe("Conflict");
+      expect(result.staleWrite._tag).toBe("LeaseLost");
       expect(result.memo).toEqual([]);
     });
 
@@ -506,10 +506,10 @@ export function describeExecutionScheduleConformance({
         })
       );
 
-      expect(result.memo._tag).toBe("Conflict");
-      expect(result.markRunning._tag).toBe("Conflict");
-      expect(result.finishRun._tag).toBe("Conflict");
-      expect(result.audit._tag).toBe("Conflict");
+      expect(result.memo._tag).toBe("LeaseLost");
+      expect(result.markRunning._tag).toBe("LeaseLost");
+      expect(result.finishRun._tag).toBe("LeaseLost");
+      expect(result.audit._tag).toBe("LeaseLost");
       expect(result.memoRows).toEqual([
         { stepId: "node:a:log-open", attempt: 0, value: { logId: "log_a" } },
       ]);
@@ -689,7 +689,7 @@ export function describeExecutionScheduleConformance({
         status: "completed",
         didWrite: true,
       });
-      expect(result.afterEnd._tag).toBe("Conflict");
+      expect(result.afterEnd._tag).toBe("LeaseLost");
       expect(result.schedule).toBeNull();
       expect(result.memo).toEqual([]);
       expect(result.logs).toHaveLength(1);

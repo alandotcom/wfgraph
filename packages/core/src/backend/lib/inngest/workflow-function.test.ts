@@ -219,6 +219,7 @@ async function executeWorkflowFunctionForTest() {
 
   executeWorkflowMock.mockReturnValueOnce(
     Effect.succeed({
+      kind: "ended",
       success: true,
       outputs: {},
       results: {},
@@ -567,6 +568,7 @@ describe("the workflow run function", () => {
   it("ends a run that failed without asking for another attempt", async () => {
     executeWorkflowMock.mockReturnValueOnce(
       Effect.succeed({
+        kind: "ended",
         success: false,
         outputs: {},
         results: {
@@ -856,10 +858,14 @@ describe("the workflow run function", () => {
         event: "workflow/wait.signal",
         ifExpression: "async.data.executionId == event.data.executionId",
         timeoutMs: 1500,
+        waitStateId: "wait_state_1",
       }
     );
 
-    expect(result).toBe(waitResult);
+    expect(result).toEqual({
+      kind: "woke",
+      wake: { kind: "resume", eventName: null, payload: {} },
+    });
     expect(waitForEventSpy).toHaveBeenNthCalledWith(
       1,
       { id: "wait-hook" },
@@ -877,6 +883,7 @@ describe("the workflow run function", () => {
       {
         event: "workflow/wait.signal",
         timeoutMs: 100,
+        waitStateId: "wait_state_1",
       }
     );
 
@@ -894,6 +901,7 @@ describe("the workflow run function", () => {
       { id: "wait-hook-default-timeout" },
       {
         event: "workflow/wait.signal",
+        waitStateId: "wait_state_1",
       }
     );
 
@@ -906,6 +914,79 @@ describe("the workflow run function", () => {
         timeout: "365d",
       }
     );
+  });
+
+  // Inngest resolves a park with the whole `workflow/wait.signal` event, or
+  // with null at the timeout. The runtime answers the wake inside it, so the
+  // envelope never reaches the engine.
+  it.each([
+    { label: "a timeout", event: null, wake: { kind: "timeout" } },
+    {
+      label: "a resume",
+      event: {
+        name: "workflow/wait.signal",
+        data: {
+          executionId: "exec_1",
+          nodeId: "wait_1",
+          token: "token_1",
+          signalType: "wait-resume",
+          eventType: "billing/payment.settled",
+          payload: { approved: true },
+        },
+      },
+      wake: {
+        kind: "resume",
+        eventName: "billing/payment.settled",
+        payload: { approved: true },
+      },
+    },
+    {
+      label: "a resume that named no Event and carried no payload",
+      event: {
+        name: "workflow/wait.signal",
+        data: { signalType: "wait-resume" },
+      },
+      wake: { kind: "resume", eventName: null, payload: {} },
+    },
+    {
+      label: "a signal naming no reason this build knows",
+      event: { name: "workflow/wait.signal", data: {} },
+      wake: { kind: "resume", eventName: null, payload: {} },
+    },
+    {
+      label: "a Migration",
+      event: {
+        name: "workflow/wait.signal",
+        data: { signalType: "version-migrate" },
+      },
+      wake: { kind: "migrate" },
+    },
+    {
+      label: "a Cancel claim",
+      event: {
+        name: "workflow/wait.signal",
+        data: { signalType: "lifecycle-cancel", payload: { reason: "gone" } },
+      },
+      wake: { kind: "cancel" },
+    },
+    {
+      label: "an Exit claim",
+      event: {
+        name: "workflow/wait.signal",
+        data: { signalType: "lifecycle-exit" },
+      },
+      wake: { kind: "exit" },
+    },
+  ])("runtime.waitForEvent answers $label as its wake", async (input) => {
+    const { runtime, ctx } = await executeWorkflowFunctionForTest();
+    vi.spyOn(ctx.step, "waitForEvent").mockResolvedValueOnce(input.event);
+
+    const answer = await runtime.waitForEvent(
+      { id: "wait-park-wait_1-0" },
+      { event: "workflow/wait.signal", waitStateId: "wait_state_1" }
+    );
+
+    expect(answer).toEqual({ kind: "woke", wake: input.wake });
   });
 });
 

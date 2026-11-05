@@ -5,7 +5,7 @@
  * Every write the engine's `WorkflowStore` reaches is here, beside the writes
  * only a pass makes. Each takes the Execution's schedule row first inside its
  * own transaction (`for share`, or `for update` when it changes or deletes the
- * row), then its execution and wait rows, and answers `Conflict` without
+ * row), then its execution and wait rows, and answers `LeaseLost` without
  * writing when the row is no longer leased under the pass's token.
  *
  * The log writes are also idempotent across a re-run of the step that made

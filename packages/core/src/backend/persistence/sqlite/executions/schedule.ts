@@ -11,8 +11,10 @@
 import { Effect } from "effect";
 import { and, asc, eq, inArray, lte, or, sql } from "drizzle-orm";
 import { sortBy } from "es-toolkit/array";
-import type { Conflict } from "#src/backend/lib/effect/failures";
-import type { DatabaseError } from "#src/backend/lib/effect/database";
+import type {
+  DatabaseError,
+  LeaseLost,
+} from "#src/backend/lib/effect/database";
 import type {
   OwnerFence,
   ParkWake,
@@ -64,13 +66,13 @@ type Owned<A> = { owned: true; value: A } | { owned: false };
 /**
  * Runs one write of a pass in the write transaction, after checking that the
  * Execution's schedule row is still leased under the pass's token. Nothing
- * runs when it is not, which answers `Conflict`.
+ * runs when it is not, which answers `LeaseLost`.
  */
 export function writeFenced<A>(
   store: SqliteDatabase,
   fence: OwnerFence,
   write: (database: SqliteExecutor) => Effect.Effect<A, unknown>
-): Effect.Effect<A, DatabaseError | Conflict> {
+): Effect.Effect<A, DatabaseError | LeaseLost> {
   return store
     .write((database) =>
       holdsLease(database, fence).pipe(

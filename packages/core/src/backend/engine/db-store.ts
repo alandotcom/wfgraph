@@ -6,13 +6,13 @@
  * imports. The caller supplies the reads and writes: the Inngest path passes
  * the repository's unfenced writes, and a pass of the database executor passes
  * `ExecutionRepo.fenced` for its own owner token. Every method remains an
- * Effect for the engine to compose, and database failures remain in the error
- * channel for the engine policy at the call site to interpret.
+ * Effect for the engine to compose. Database failures, and the `LeaseLost` a
+ * fenced write answers once the pass no longer holds the run, remain in the
+ * error channel for the engine policy at the call site to interpret.
  */
 
 import { Effect } from "effect";
 import { DatabaseError } from "#src/backend/lib/effect/database";
-import type { Conflict } from "#src/backend/lib/effect/failures";
 import { redactSensitiveData } from "#src/backend/lib/utils/redact";
 import type {
   ExecutionRepo,
@@ -23,6 +23,7 @@ import type {
   CompletedNodeProgress,
   CompleteRunInput,
   ExecutionTerminationState,
+  StoreFailure,
   WorkflowStore,
 } from "#src/backend/engine/store";
 import type { ExecutionTerminationState as StoredTerminationState } from "#src/backend/services/executions/repo/contracts";
@@ -107,21 +108,6 @@ export type StoreReads = Pick<
   | "listLogs"
 >;
 
-/**
- * A fenced write's refusal reaches the engine as a database failure, which is
- * the one failure the port carries. The pass that owns the fence has already
- * recorded that it lost the run, and ends without writing anything more.
- */
-function asStoreFailure<A>(
-  write: Effect.Effect<A, DatabaseError | Conflict>
-): Effect.Effect<A, DatabaseError> {
-  return Effect.mapError(write, (failure) =>
-    failure._tag === "Conflict"
-      ? new DatabaseError({ cause: failure })
-      : failure
-  );
-}
-
 export function createDbWorkflowStore(bound: {
   reads: StoreReads;
   writes: StoreWrites;
@@ -130,17 +116,17 @@ export function createDbWorkflowStore(bound: {
 
   function completeRun(
     input: CompleteRunInput
-  ): Effect.Effect<ExecutionTerminationState | null, DatabaseError> {
-    return asStoreFailure(
-      writes.finishRun({
+  ): Effect.Effect<ExecutionTerminationState | null, StoreFailure> {
+    return writes
+      .finishRun({
         executionId: input.executionId,
         status: input.status,
         output: redactSensitiveData(input.output),
         error: input.failure?.message,
       })
-    ).pipe(
-      Effect.map((state) => (state ? engineTerminationState(state) : null))
-    );
+      .pipe(
+        Effect.map((state) => (state ? engineTerminationState(state) : null))
+      );
   }
 
   return {
@@ -148,36 +134,32 @@ export function createDbWorkflowStore(bound: {
     // scrubbed here rather than at each call site - this is the last point before
     // they reach a table.
     startStepLog: (input) =>
-      asStoreFailure(
-        writes.openNodeLog({
+      writes
+        .openNodeLog({
           ...input,
           input: redactSensitiveData(input.input),
         })
-      ).pipe(Effect.map((logId) => ({ logId, startTime: Date.now() }))),
+        .pipe(Effect.map((logId) => ({ logId, startTime: Date.now() }))),
 
     completeStepLog: (input) =>
-      asStoreFailure(
-        writes.closeNodeLog({
-          logId: input.logId,
-          status: input.status,
-          output: redactSensitiveData(input.output),
-          error: input.error,
-          durationMs: input.durationMs,
-        })
-      ),
+      writes.closeNodeLog({
+        logId: input.logId,
+        status: input.status,
+        output: redactSensitiveData(input.output),
+        error: input.error,
+        durationMs: input.durationMs,
+      }),
 
-    recordAuditEvent: (input) => asStoreFailure(writes.recordAuditEvent(input)),
+    recordAuditEvent: (input) => writes.recordAuditEvent(input),
 
     createWaitState: ({ waitUntilIso, ...input }) =>
       Effect.flatMap(readWaitUntil(waitUntilIso), (waitUntil) =>
-        asStoreFailure(writes.startWait({ ...input, waitUntil }))
+        writes.startWait({ ...input, waitUntil })
       ),
 
     reparkWaitState: ({ waitUntilIso, ...input }) =>
       Effect.flatMap(readWaitUntil(waitUntilIso ?? undefined), (waitUntil) =>
-        asStoreFailure(
-          writes.reparkWait({ ...input, waitUntil: waitUntil ?? null })
-        )
+        writes.reparkWait({ ...input, waitUntil: waitUntil ?? null })
       ),
 
     readWaitState: (waitStateId) =>
@@ -187,30 +169,27 @@ export function createDbWorkflowStore(bound: {
           : null
       ),
 
-    markWaitStateStatus: (input) =>
-      asStoreFailure(writes.markWaitStatus(input)),
+    markWaitStateStatus: (input) => writes.markWaitStatus(input),
 
-    settleWaitTimeout: (waitStateId) =>
-      asStoreFailure(writes.settleWaitTimeout(waitStateId)),
+    settleWaitTimeout: (waitStateId) => writes.settleWaitTimeout(waitStateId),
 
-    markExecutionRunning: (input) => asStoreFailure(writes.markRunning(input)),
+    markExecutionRunning: (input) => writes.markRunning(input),
 
-    markExecutionWaitingIfParked: (input) =>
-      asStoreFailure(writes.markWaitingIfParked(input)),
+    markExecutionWaitingIfParked: (input) => writes.markWaitingIfParked(input),
 
     admitNode: (executionId) => reads.canAdmitNode(executionId),
 
     requestExit: (input) =>
-      asStoreFailure(
-        writes.requestExit({
+      writes
+        .requestExit({
           executionId: input.executionId,
           reason: input.reason,
           nodeId: input.nodeId,
           requestedAt: decodeIsoTimestampOrThrow(input.checkedAt),
         })
-      ).pipe(
-        Effect.map((state) => (state ? engineTerminationState(state) : null))
-      ),
+        .pipe(
+          Effect.map((state) => (state ? engineTerminationState(state) : null))
+        ),
 
     readTerminationState: (executionId) =>
       reads
@@ -254,8 +233,8 @@ export function createDbWorkflowStore(bound: {
       Effect.asVoid(
         Effect.all(
           [
-            asStoreFailure(writes.cancelOpenNodeLogs(executionId)),
-            asStoreFailure(writes.cancelWaitsForExecution(executionId)),
+            writes.cancelOpenNodeLogs(executionId),
+            writes.cancelWaitsForExecution(executionId),
           ],
           { concurrency: 2 }
         )

@@ -27,6 +27,7 @@ import type {
   WorkflowExecutionRuntime,
 } from "#src/backend/engine/runtime";
 import type { WorkflowStore } from "#src/backend/engine/store";
+import { readWaitWake } from "#src/backend/engine/wait-shared";
 import { getAppLogger } from "#src/backend/lib/logger";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import { readJsonObject } from "@wfgraph/shared/types/json";
@@ -156,23 +157,29 @@ function createDurableRuntime(input: {
   // step tools each take a `StepOptionsOrId`, where `id` memoizes and `name` is
   // the label the trace prints.
   return {
-    waitForEvent: async (durableStep, options) =>
-      await step.waitForEvent(
-        durableStep,
-        // Inngest declares `if` as an optional string, so a wait that matches
-        // any occurrence of the event leaves the key out.
-        omitUndefined({
-          event: options.event,
-          if: options.ifExpression,
-          // Inngest takes a timeout as a number of milliseconds, and renders it
-          // itself: `timeStr` clamps anything under a second up to `1s`, the
-          // minimum resolution of a durable wait, and drops the sub-second
-          // remainder of anything longer. Handing it the milliseconds keeps the
-          // engine's own value exact up to that boundary; rounding here as well
-          // would turn a 1.5s wait into 2s.
-          timeout: options.timeoutMs ?? "365d",
-        })
+    // Inngest suspends the invocation at a park, so the answer is always the
+    // wake: the signal event that ended the park, or null for its timeout.
+    waitForEvent: async (durableStep, options) => ({
+      kind: "woke",
+      wake: readWaitWake(
+        await step.waitForEvent(
+          durableStep,
+          // Inngest declares `if` as an optional string, so a wait that matches
+          // any occurrence of the event leaves the key out.
+          omitUndefined({
+            event: options.event,
+            if: options.ifExpression,
+            // Inngest takes a timeout as a number of milliseconds, and renders
+            // it itself: `timeStr` clamps anything under a second up to `1s`,
+            // the minimum resolution of a durable wait, and drops the
+            // sub-second remainder of anything longer. Handing it the
+            // milliseconds keeps the engine's own value exact up to that
+            // boundary; rounding here as well would turn a 1.5s wait into 2s.
+            timeout: options.timeoutMs ?? "365d",
+          })
+        )
       ),
+    }),
     // Memoization boundary: Inngest stores the result under the step's id, so
     // work already done in an earlier attempt is replayed instead of repeated.
     run: (durableStep, fn) => step.run(durableStep, fn),
@@ -383,7 +390,9 @@ async function workflowRunRequestedHandler({
       entities
     )
   );
-  if (!result.success) {
+  // Inngest suspends the invocation at a park, so the body never ends parked
+  // here.
+  if (result.kind === "ended" && !result.success) {
     // A run that died carries one sentence; a run that finished with failed
     // nodes carries one per node, and naming them is the whole of what Inngest
     // shows for the attempt.

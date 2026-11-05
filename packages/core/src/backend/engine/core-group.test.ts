@@ -7,7 +7,15 @@
  */
 
 import { Effect } from "effect";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  assert,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import { groupContractViolations } from "@wfgraph/shared/graph/group-contract";
@@ -122,6 +130,7 @@ async function run(nodes: WorkflowNode[], edges: WorkflowEdge[] = EDGES) {
     store,
     actions
   );
+  assert(result.kind === "ended", "a Group run in place never parks");
   return {
     status: result.status,
     success: result.success,

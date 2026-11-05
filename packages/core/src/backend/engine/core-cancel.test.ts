@@ -32,7 +32,10 @@ import {
   createRecordingWorkflowStore,
   type RecordingWorkflowStore,
 } from "#src/backend/engine/recording-store";
-import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
+import {
+  createInMemoryWorkflowRuntime,
+  type WaitWake,
+} from "#src/backend/engine/runtime";
 import type { PendingCancel, WorkflowStore } from "#src/backend/engine/store";
 import {
   driveWithReplay,
@@ -396,7 +399,7 @@ describe("a run claimed for the Canceled outlet", () => {
       actions
     );
 
-    expect(result.success).toBe(true);
+    expect(result).toMatchObject({ kind: "ended", success: true });
     expect(Object.keys(recorded)).toEqual(["After"]);
     expect(store.callsOf("completeRun")[0]?.status).toBe("completed");
     // One read per node the run walked: entry, Producer, After.
@@ -490,7 +493,7 @@ describe("a run claimed for the Canceled outlet", () => {
     await executeWorkflow(
       { ...cancelInput, graph },
       createInMemoryWorkflowRuntime({
-        resumeEvent: { data: { signalType: "lifecycle-cancel" } },
+        waitAnswer: { kind: "woke", wake: { kind: "cancel" } },
       }),
       withCancelAnswers(store, [null, CANCEL]),
       actions
@@ -830,18 +833,11 @@ describe("a Cancel claim that lands after the last boundary read", () => {
     });
   }
 
-  /** The signal an arriving `billing/payment.settled` Event wakes the Wait with. */
-  const SETTLED_SIGNAL = {
-    name: "workflow/wait.signal",
-    id: "evt_settled",
-    ts: 0,
-    data: {
-      executionId: "exec_cancel",
-      nodeId: "grace_1",
-      signalType: "wait-resume",
-      eventType: "billing/payment.settled",
-      payload: { invoiceId: "inv_1" },
-    },
+  /** The wake an arriving `billing/payment.settled` Event resumes the Wait with. */
+  const SETTLED_SIGNAL: WaitWake = {
+    kind: "resume",
+    eventName: "billing/payment.settled",
+    payload: { invoiceId: "inv_1" },
   };
 
   /**
@@ -851,7 +847,7 @@ describe("a Cancel claim that lands after the last boundary read", () => {
    */
   function driveCanceledBranch(
     waitConfig: Record<string, unknown>,
-    events: Record<string, unknown> = {}
+    events: Record<string, WaitWake> = {}
   ) {
     const input = {
       ...cancelInput,
@@ -884,7 +880,7 @@ describe("a Cancel claim that lands after the last boundary read", () => {
    */
   function driveCanceledWaitInOneRun(
     waitConfig: Record<string, unknown>,
-    events: Record<string, unknown> = {}
+    events: Record<string, WaitWake> = {}
   ) {
     const input = {
       ...cancelInput,

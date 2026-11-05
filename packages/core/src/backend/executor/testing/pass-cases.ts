@@ -515,6 +515,78 @@ function describeCases(
     expect(await logsOf(harness, "after_hold")).toEqual([]);
   });
 
+  // Only a version fence the engine reports refused is the run having moved. A
+  // failure of another kind in a pass a Migration lands in still counts an
+  // attempt, even though the version the run pins has changed by the release.
+  it("counts an attempt for a failure that is not a version refusal when a Migration lands in the same pass", async () => {
+    const graph = createSerializedWorkflowGraph({
+      nodes: [
+        lifecycleNode(),
+        waitNode("hold", onEvent("app/approved", "1h")),
+        actionNode("after_hold", "test/send"),
+      ],
+      edges: [edge("entry", "hold", "started"), edge("hold", "after_hold")],
+    });
+    const harness = await startRun(graph);
+    await harness.publishSecondVersion(graph);
+
+    // The first pass parks the Wait's row and its retry leaves the run queued
+    // with the row parked, which is the state a Migration may repin.
+    const failMemoWrite = (stepId: string) =>
+      wrapFenced((writes) => ({
+        ...writes,
+        writeStepMemo: (input) =>
+          input.stepId === stepId
+            ? Effect.fail(
+                new DatabaseError({ cause: new Error("connection reset") })
+              )
+            : writes.writeStepMemo(input),
+      }));
+    expect(
+      await harness.pass({ wrap: failMemoWrite("wait-prepare-hold-0") })
+    ).toMatchObject({ kind: "retry", schedule: { attempt: 1 } });
+
+    // The Migration lands as the second pass loads, and the pass then fails
+    // to park the Wait again for a reason of its own: the database drops the
+    // write before its version fence is read.
+    const failPark = wrapFenced((writes) => ({
+      ...writes,
+      startWait: () =>
+        Effect.fail(
+          new DatabaseError({ cause: new Error("connection reset") })
+        ),
+    }));
+    let migrated = false;
+    const migrateOnLoad: RepoWrap = (repo) => ({
+      ...failPark(repo),
+      listStepMemo: (executionId) =>
+        Effect.gen(function* () {
+          const [wait] = yield* repo.listActiveWaitStates(executionId);
+          if (!wait) throw new Error("No parked Wait to migrate");
+          migrated = yield* repo.repinVersion({
+            executionId,
+            fromVersionId: "ver_1",
+            toVersionId: "ver_2",
+            expectedWaitStates: [
+              { id: wait.id, resumeToken: wait.resumeToken },
+            ],
+          });
+          yield* repo.resolvePark({
+            executionId,
+            waitStateId: wait.id,
+            wake: { kind: "migrate" },
+            now: now(),
+          });
+          return yield* repo.listStepMemo(executionId);
+        }),
+    });
+    expect(await harness.pass({ wrap: migrateOnLoad })).toMatchObject({
+      kind: "retry",
+      schedule: { state: "queued", attempt: 2 },
+    });
+    expect(migrated).toBe(true);
+  });
+
   it("refuses every write of a worker paused past its lease while a second worker completes the run", async () => {
     const harness = await startRun(
       createSerializedWorkflowGraph({
@@ -552,7 +624,7 @@ function describeCases(
     heldStep.release();
     expect(await stale).toEqual({ kind: "fence_refused", fence: "owner" });
     expect(lateWrites).toEqual([
-      { name: "writeStepMemo", outcome: "Conflict" },
+      { name: "writeStepMemo", outcome: "LeaseLost" },
     ]);
     expect(await readRun(harness)).toEqual(afterLive);
   });

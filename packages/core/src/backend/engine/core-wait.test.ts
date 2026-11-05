@@ -164,11 +164,11 @@ describe("wait node - event mode", () => {
         waitTimeout: "7d",
       },
       store,
-      resumeEvent: waitResumeSignal({ approved: true }),
+      wake: waitResumeSignal({ approved: true }),
     });
     const result = await execution;
 
-    expect(result.success).toBe(true);
+    expect(result).toMatchObject({ kind: "ended", success: true });
     expect(waitOutput(result)).toMatchObject({
       waitType: "event",
       timedOut: false,
@@ -226,7 +226,7 @@ describe("wait node - event mode", () => {
         waitTimeout: "7d",
       },
       store,
-      resumeEvent: waitResumeSignal({ approved: true }),
+      wake: waitResumeSignal({ approved: true }),
     });
     await execution;
 
@@ -243,7 +243,7 @@ describe("wait node - event mode", () => {
         waitTimeout: "7d",
       },
       store,
-      resumeEvent: waitResumeSignal({ approved: true }, null),
+      wake: waitResumeSignal({ approved: true }, null),
     });
     await execution;
 
@@ -270,7 +270,7 @@ describe("wait node - event mode", () => {
         waitTimeout: "7d",
       },
       store,
-      resumeEvent: waitResumeSignal({ orderId: "ord_7" }),
+      wake: waitResumeSignal({ orderId: "ord_7" }),
     });
     const result = await execution;
 
@@ -297,7 +297,7 @@ describe("wait node - event mode", () => {
         waitTimeout: "7d",
       },
       store,
-      resumeEvent: waitResumeSignal({ id: "pay_1" }, "billing/payment.failed"),
+      wake: waitResumeSignal({ id: "pay_1" }, "billing/payment.failed"),
     });
     const result = await execution;
 
@@ -320,7 +320,7 @@ describe("wait node - event mode", () => {
         waitTimeout: "7d",
       },
       store,
-      resumeEvent: { data: { signalType: "wait-resume" } },
+      wake: { kind: "resume", eventName: null, payload: {} },
     });
     const result = await execution;
 
@@ -340,13 +340,11 @@ describe("wait node - event mode", () => {
         waitTimeout: "7d",
       },
       store,
-      resumeEvent: {
-        data: { signalType: "lifecycle-cancel", payload: { reason: "gone" } },
-      },
+      wake: { kind: "cancel" },
     });
     const result = await execution;
 
-    expect(result.success).toBe(true);
+    expect(result).toMatchObject({ kind: "ended", success: true });
     expect(waitOutput(result)).toMatchObject({
       waitType: "event",
       timedOut: false,
@@ -377,11 +375,11 @@ describe("wait node - event mode", () => {
         waitTimeout: "7d",
       },
       store,
-      resumeEvent: { data: { signalType: "lifecycle-exit" } },
+      wake: { kind: "exit" },
     });
     const result = await execution;
 
-    expect(result.success).toBe(true);
+    expect(result).toMatchObject({ kind: "ended", success: true });
     expect(waitOutput(result)).toMatchObject({
       waitType: "event",
       timedOut: false,
@@ -424,7 +422,7 @@ describe("wait node - event mode", () => {
         waitTimeout: "7d",
       },
       store,
-      resumeEvent: { data: { signalType: "lifecycle-cancel" } },
+      wake: { kind: "cancel" },
     });
     const result = await execution;
 
@@ -453,7 +451,7 @@ describe("wait node - event mode", () => {
           waitTimeout: "7d",
         },
         store,
-        resumeEvent: waitResumeSignal({ orderId: "ord_1" }),
+        wake: waitResumeSignal({ orderId: "ord_1" }),
         claimOnPark: claimedRun(kind),
       });
 
@@ -471,12 +469,11 @@ describe("wait node - event mode", () => {
       waitFor: [{ event: "billing/payment.settled" }],
       waitTimeout: "7d",
     };
-    const resumeEvent = waitResumeSignal({ orderId: "ord_1" });
+    const wake = waitResumeSignal({ orderId: "ord_1" });
     const claimOnPark = claimedRun("exit");
 
-    await runWait({ config, store, resumeEvent, memo, claimOnPark }).execution;
-    const replayed = await runWait({ config, store, resumeEvent, memo })
-      .execution;
+    await runWait({ config, store, wake, memo, claimOnPark }).execution;
+    const replayed = await runWait({ config, store, wake, memo }).execution;
 
     expect(replayed.results.after_wait).toBeUndefined();
     expect(waitOutput(replayed)).not.toHaveProperty("payload");
@@ -492,7 +489,7 @@ describe("wait node - event mode", () => {
         waitFor: [{ event: "billing/payment.settled" }],
       },
       store,
-      resumeEvent: {},
+      wake: { kind: "resume", eventName: null, payload: {} },
     });
     await execution;
 
@@ -511,7 +508,7 @@ describe("wait node - event mode", () => {
         waitTimeout: "30m",
       },
       store,
-      resumeEvent: null,
+      wake: { kind: "timeout" },
     });
     const result = await execution;
 
@@ -539,7 +536,7 @@ describe("wait node - event mode", () => {
         waitTimeout: "1d",
       },
       store,
-      resumeEvent: {},
+      wake: { kind: "resume", eventName: null, payload: {} },
     });
     await execution;
 
@@ -569,7 +566,7 @@ describe("wait node - event mode", () => {
       },
       store,
       startPayload: { appointment: { id: "appt_8813" } },
-      resumeEvent: {},
+      wake: { kind: "resume", eventName: null, payload: {} },
     });
     await execution;
 
@@ -595,7 +592,7 @@ describe("wait node - event mode", () => {
         waitTimeout: "7d",
       },
       store,
-      resumeEvent: {},
+      wake: { kind: "resume", eventName: null, payload: {} },
     });
     await execution;
 
@@ -683,7 +680,7 @@ describe("wait node - event mode", () => {
         waitTimeout: "7d",
       },
       store,
-      resumeEvent: {},
+      wake: { kind: "resume", eventName: null, payload: {} },
     });
     const result = await execution;
 
@@ -700,7 +697,7 @@ describe("wait node - event mode", () => {
         waitTimeoutBehavior: "skip",
       },
       store,
-      resumeEvent: null,
+      wake: { kind: "timeout" },
     });
     const result = await execution;
 
@@ -728,14 +725,15 @@ describe("wait node - event mode", () => {
       waitTimeoutBehavior: "skip",
     };
 
-    await runWait({ config: parked, store, memo, resumeEvent: null }).execution;
+    await runWait({ config: parked, store, memo, wake: { kind: "timeout" } })
+      .execution;
     memo.delete("wait-resume-wait_1-0");
 
     const result = await runWait({
       config: { ...parked, waitTimeoutBehavior: "continue" },
       store,
       memo,
-      resumeEvent: null,
+      wake: { kind: "timeout" },
     }).execution;
 
     expect(result.results.after_wait).toBeUndefined();

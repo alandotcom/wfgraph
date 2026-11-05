@@ -7,7 +7,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { Conflict } from "#src/backend/lib/effect/failures";
+import { LeaseLost } from "#src/backend/lib/effect/database";
 import type {
   PassOutcome,
   ReleasedSchedule,
@@ -19,9 +19,9 @@ import type {
  * longer names the pass: its lease expired and another claim took the run, a
  * policy cancel or a terminal write deleted the row, or the row was released.
  */
-export function ownershipLost(): Conflict {
-  return new Conflict({
-    error: "The pass no longer holds this run's lease",
+export function ownershipLost(): LeaseLost {
+  return new LeaseLost({
+    message: "The pass no longer holds this run's lease",
   });
 }
 

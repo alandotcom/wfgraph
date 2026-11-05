@@ -4,35 +4,40 @@
  * A pass replays the body against the step memo it loaded when it claimed the
  * run. `run` answers a step the memo holds and otherwise runs it and records
  * its value; `waitForEvent` answers the wake on the park's wait row and
- * otherwise records the parking step and answers `PARKED_WAIT_ANSWER`, which
- * ends the branch for this pass. Every write is fenced on the pass's owner
- * token until the pass writes the run's terminal record. Once the pass stops,
- * because a step threw or the lease was lost, it starts no step and writes
- * nothing more; the caller reads `PassState` to decide the release.
+ * otherwise records the parking step and answers `parked`, which ends the
+ * branch for this pass. Every write is fenced on the pass's owner token until
+ * the pass writes the run's terminal record. Once the pass stops, because a
+ * step threw or the lease was lost, it starts no step and writes nothing more:
+ * each attempt fails with `LeaseLost`, which ends the body. The caller reads
+ * `PassState` to decide the release.
  */
 
-import { Effect } from "effect";
-import {
-  type DurableStepRef,
-  PARKED_WAIT_ANSWER,
-  type WaitForEventOptions,
-  type WorkflowExecutionRuntime,
+import { Effect, Schema } from "effect";
+import type {
+  DurableStepRef,
+  WaitAnswer,
+  WaitForEventOptions,
+  WaitWake,
+  WorkflowExecutionRuntime,
 } from "#src/backend/engine/runtime";
 import { engineFailure } from "#src/backend/engine/engine-failure";
-import type { DatabaseError } from "#src/backend/lib/effect/database";
-import { Conflict } from "#src/backend/lib/effect/failures";
+import {
+  type DatabaseError,
+  LeaseLost,
+} from "#src/backend/lib/effect/database";
 import type {
   FencedExecutionWrites,
   ParkState,
   ParkWake,
   StoreWrites,
 } from "#src/backend/services/executions/repo";
-import type { WaitSignalType } from "@wfgraph/shared/lifecycle/wait-signal";
 import {
   type JsonObject,
+  jsonObjectSchema,
   type JsonValue,
   readJsonObject,
 } from "@wfgraph/shared/types/json";
+import { readAs } from "@wfgraph/shared/types/schema";
 
 /**
  * Why a pass stopped before its body ended on its own.
@@ -93,10 +98,13 @@ function isStopped(state: PassState): boolean {
   return state.phase().kind === "stopped";
 }
 
-/** The refusal a stopped pass answers for a write it no longer makes. */
-function passStopped(): Conflict {
-  return new Conflict({
-    error: "This pass has stopped and writes nothing more",
+/**
+ * What a stopped pass answers for a write it no longer makes and a step it no
+ * longer starts.
+ */
+function passStopped(): LeaseLost {
+  return new LeaseLost({
+    message: "This pass has stopped and writes nothing more",
   });
 }
 
@@ -106,10 +114,10 @@ function passStopped(): Conflict {
  * refused locally once the pass has stopped.
  */
 function watchedStoreWrite<I, A>(
-  fenced: (input: I) => Effect.Effect<A, DatabaseError | Conflict>,
-  unfenced: (input: I) => Effect.Effect<A, DatabaseError | Conflict>,
+  fenced: (input: I) => Effect.Effect<A, DatabaseError | LeaseLost>,
+  unfenced: (input: I) => Effect.Effect<A, DatabaseError | LeaseLost>,
   state: PassState
-): (input: I) => Effect.Effect<A, DatabaseError | Conflict> {
+): (input: I) => Effect.Effect<A, DatabaseError | LeaseLost> {
   return (input) => {
     const { kind } = state.phase();
     if (kind === "stopped") return Effect.fail(passStopped());
@@ -117,7 +125,7 @@ function watchedStoreWrite<I, A>(
     return fenced(input).pipe(
       Effect.tapError((failure) =>
         Effect.sync(() => {
-          if (failure._tag === "Conflict") state.leaseLost();
+          if (failure._tag === "LeaseLost") state.leaseLost();
         })
       )
     );
@@ -130,9 +138,9 @@ function watchedStoreWrite<I, A>(
  * terminal write deleted the memo and the schedule row they would write.
  */
 function watchedPassWrite<I>(
-  write: (input: I) => Effect.Effect<void, DatabaseError | Conflict>,
+  write: (input: I) => Effect.Effect<void, DatabaseError | LeaseLost>,
   state: PassState
-): (input: I) => Effect.Effect<void, DatabaseError | Conflict> {
+): (input: I) => Effect.Effect<void, DatabaseError | LeaseLost> {
   return watchedStoreWrite(write, () => Effect.void, state);
 }
 
@@ -245,47 +253,40 @@ function readStepFailure(value: JsonValue | undefined): string | undefined {
   return typeof failed?.message === "string" ? failed.message : undefined;
 }
 
-/**
- * The answer `waitForEvent` gives for a resolved park, in the shape the Wait
- * driver reads a wait signal in: `null` for a timeout, and an event whose
- * `data` is the wait signal's envelope for every other wake.
- */
-export function waitAnswerOf(wake: ParkWake): JsonValue {
-  if (wake.kind === "timeout") {
-    return null;
-  }
+/** The wake a park's row holds, as the Wait reads it. */
+function waitWakeOf(wake: ParkWake): WaitWake {
   if (wake.kind === "resume") {
-    return signal({
-      signalType: "wait-resume",
-      eventType: wake.eventName,
+    // The delivery that carried the Event is the row's own bookkeeping.
+    return {
+      kind: "resume",
+      eventName: wake.eventName,
       payload: wake.payload,
-      deliveryId: wake.deliveryId,
-    });
+    };
   }
-  return signal({ signalType: CLAIM_SIGNAL_TYPES[wake.kind] });
+  return wake;
 }
 
-/** The wait signal each wake that carries no Event is sent as. */
-const CLAIM_SIGNAL_TYPES = {
-  migrate: "version-migrate",
-  cancel: "lifecycle-cancel",
-  exit: "lifecycle-exit",
-} as const satisfies Record<
-  Exclude<ParkWake["kind"], "timeout" | "resume">,
-  WaitSignalType
->;
-
-function signal(data: JsonObject): JsonObject {
-  return { data };
-}
+/**
+ * A `WaitWake` as the memo stores it under the parking step. The pass that
+ * read the wake off the row wrote it, so a value that does not decode is a
+ * memo row this build did not write.
+ */
+const readMemoizedWake = readAs(
+  Schema.Union([
+    Schema.Struct({
+      kind: Schema.Literals(["timeout", "migrate", "cancel", "exit"]),
+    }),
+    Schema.Struct({
+      kind: Schema.Literal("resume"),
+      eventName: Schema.NullOr(Schema.String),
+      payload: jsonObjectSchema,
+    }),
+  ])
+);
 
 /** A copy of a step's value as the memo stores it, which is JSON. */
 function memoValue(value: unknown): JsonValue {
   return JSON.parse(JSON.stringify(value ?? null));
-}
-
-function stoppedError(): Error {
-  return new Error("This pass has stopped and starts no further step");
 }
 
 export type ExecutorRuntimeInput = {
@@ -356,7 +357,7 @@ export function createExecutorRuntime(
         return stored as T;
       }
       if (isStopped(state)) {
-        throw stoppedError();
+        throw passStopped();
       }
 
       let value: T;
@@ -375,20 +376,22 @@ export function createExecutorRuntime(
     waitForEvent: async (
       step: DurableStepRef,
       options: WaitForEventOptions
-    ): Promise<unknown> => {
+    ): Promise<WaitAnswer> => {
       if (memo.has(step.id)) {
-        return memo.get(step.id);
+        const wake = readMemoizedWake(memo.get(step.id));
+        if (wake === undefined) {
+          throw engineFailure(
+            "failure",
+            `Step ${step.id} holds a memoized value that is not a wake`
+          );
+        }
+        return { kind: "woke", wake };
       }
       // A stopped pass halts the branch where it stands, writing nothing.
       if (isStopped(state)) {
-        return PARKED_WAIT_ANSWER;
+        return { kind: "parked" };
       }
       const { waitStateId } = options;
-      if (waitStateId === undefined) {
-        throw new Error(
-          `The database executor parks on a wait row, and step ${step.id} named none`
-        );
-      }
       const park = await forStep(
         step.id,
         runEffect(input.findPark(waitStateId))
@@ -402,13 +405,13 @@ export function createExecutorRuntime(
       }
 
       // A wake on the row is this park's: a re-park clears the wake it
-      // supersedes. The answer is memoized under the parking step, because a
+      // supersedes. The wake is memoized under the parking step, because a
       // later attempt of the same Wait re-parks the row and a replay of this
       // attempt still has to read what woke it.
       if (park.wake) {
-        const answer = waitAnswerOf(park.wake);
-        await forStep(step.id, remember(step.id, answer));
-        return answer;
+        const wake = waitWakeOf(park.wake);
+        await forStep(step.id, remember(step.id, wake));
+        return { kind: "woke", wake };
       }
       if (park.parkStepId !== step.id) {
         await forStep(
@@ -416,7 +419,7 @@ export function createExecutorRuntime(
           runEffect(writes.recordParkStep({ waitStateId, parkStepId: step.id }))
         );
       }
-      return PARKED_WAIT_ANSWER;
+      return { kind: "parked" };
     },
   };
 }

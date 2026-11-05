@@ -327,9 +327,9 @@ the way the existing SQLite schema mirrors Postgres.
   Restate calls the attempt epoch; the lease alone gives liveness, the token gives
   safety.
 - `waitForEvent(step, options)`: if the wait row for this park carries a `wake`,
-  return it. Otherwise record `park_step_id` on the wait row (the Wait node's
-  prepare step created the row already, with `wait_until` and the subscribed
-  Events) and answer `{ parked: true }`.
+  answer `{ kind: "woke", wake }`. Otherwise record `park_step_id` on the wait
+  row (the Wait node's prepare step created the row already, with `wait_until`
+  and the subscribed Events) and answer `{ kind: "parked" }`.
 - `attempt` comes from the schedule row. `startBranch` and `wakeParkedWaits` are
   absent. The engine already enters every Wait in place when `startBranch` is
   absent, and the Exit wake becomes a direct resolution of sibling parks (below).
@@ -564,7 +564,7 @@ engine therefore already tolerates "the body ends here and runs again from the
 top".
 
 The proposal makes the abandonment explicit. `waitForEvent` answers one of two
-JSON-safe values: the wake, or `{ parked: true }`. The Wait driver, on `parked`,
+JSON-safe values: `{ kind: "woke", wake }`, or `{ kind: "parked" }`. The Wait driver, on `parked`,
 returns a `WaitOutcome` whose `haltBranch` is true and whose node result is left
 unrecorded, so the traversal does not mark the node completed. The scheduler
 treats it as it treats any halted branch: nothing below is scheduled. The

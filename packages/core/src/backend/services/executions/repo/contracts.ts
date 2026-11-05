@@ -8,8 +8,10 @@ import {
   workflowExecutions,
   workflowWaitStates,
 } from "#src/backend/lib/db/schema";
-import type { DatabaseError } from "#src/backend/lib/effect/database";
-import type { Conflict } from "#src/backend/lib/effect/failures";
+import type {
+  DatabaseError,
+  LeaseLost,
+} from "#src/backend/lib/effect/database";
 import type {
   RunScopedAuditEventType,
   WorkflowScopedAuditEventType,
@@ -52,12 +54,12 @@ export type StoreWrite<Input, Output> = (
 
 /**
  * The fenced twin of a `StoreWrite`. It takes the Execution's schedule row
- * inside its own transaction before anything else, and answers `Conflict`
+ * inside its own transaction before anything else, and answers `LeaseLost`
  * without writing when that row no longer names the pass.
  */
 export type FencedWrite<Write> =
   Write extends StoreWrite<infer Input, infer Output>
-    ? (input: Input) => Effect.Effect<Output, DatabaseError | Conflict>
+    ? (input: Input) => Effect.Effect<Output, DatabaseError | LeaseLost>
     : never;
 
 /** One row of `workflow_execution_schedule`, as the executor reads it. */

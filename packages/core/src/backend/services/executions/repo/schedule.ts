@@ -26,9 +26,9 @@ import type {
 import {
   type Database,
   type DatabaseError,
+  type LeaseLost,
   serializableTransaction,
 } from "#src/backend/lib/effect/database";
-import type { Conflict } from "#src/backend/lib/effect/failures";
 import type {
   ClaimedExecution,
   ExecutionSchedule,
@@ -81,7 +81,7 @@ async function holdsLease(
 
 type Owned<A> = { owned: true; value: A } | { owned: false };
 
-function answerOwned<A>(result: Owned<A>): Effect.Effect<A, Conflict> {
+function answerOwned<A>(result: Owned<A>): Effect.Effect<A, LeaseLost> {
   return result.owned
     ? Effect.succeed(result.value)
     : Effect.fail(ownershipLost());
@@ -90,14 +90,14 @@ function answerOwned<A>(result: Owned<A>): Effect.Effect<A, Conflict> {
 /**
  * Runs one write of a pass in a transaction that first takes the Execution's
  * schedule row, and runs nothing when the row no longer names the pass, which
- * answers `Conflict`.
+ * answers `LeaseLost`.
  */
 export function writeFenced<A>(
   database: Database["Service"],
   fence: OwnerFence,
   write: (db: Executor) => Promise<A>,
   lock: LeaseLock = "share"
-): Effect.Effect<A, DatabaseError | Conflict> {
+): Effect.Effect<A, DatabaseError | LeaseLost> {
   return database
     .query((db) =>
       db.transaction(async (tx): Promise<Owned<A>> =>
@@ -118,7 +118,7 @@ export function writeFencedSerializable<A>(
   database: Database["Service"],
   fence: OwnerFence,
   write: (tx: WfGraphTransaction) => Promise<A>
-): Effect.Effect<A, DatabaseError | Conflict> {
+): Effect.Effect<A, DatabaseError | LeaseLost> {
   return serializableTransaction(database, async (tx): Promise<Owned<A>> =>
     (await holdsLease(tx, fence, "share"))
       ? { owned: true, value: await write(tx) }
@@ -255,7 +255,7 @@ export type PassWrites = {
   /** Move the pass's lease to end at `leaseExpiresAt`, the worker's heartbeat. */
   readonly renewLease: (input: {
     leaseExpiresAt: Date;
-  }) => Effect.Effect<void, DatabaseError | Conflict>;
+  }) => Effect.Effect<void, DatabaseError | LeaseLost>;
   /**
    * Record one step's value. A step already recorded keeps its first value.
    * `leaseExpiresAt`, when given, renews the lease in the same transaction.
@@ -265,12 +265,12 @@ export type PassWrites = {
     attempt: number;
     value: JsonValue;
     leaseExpiresAt?: Date | undefined;
-  }) => Effect.Effect<void, DatabaseError | Conflict>;
+  }) => Effect.Effect<void, DatabaseError | LeaseLost>;
   /** Record which durable step parked on a wait row of the pass's run. */
   readonly recordParkStep: (input: {
     waitStateId: string;
     parkStepId: string;
-  }) => Effect.Effect<void, DatabaseError | Conflict>;
+  }) => Effect.Effect<void, DatabaseError | LeaseLost>;
   /**
    * Hand the run back after a pass that wrote no terminal record. See
    * `PassOutcome` for what each outcome writes. The schedule row is locked
@@ -280,7 +280,7 @@ export type PassWrites = {
   readonly releasePass: (input: {
     outcome: PassOutcome;
     now: Date;
-  }) => Effect.Effect<ReleasedSchedule, DatabaseError | Conflict>;
+  }) => Effect.Effect<ReleasedSchedule, DatabaseError | LeaseLost>;
 };
 
 /** Resolves every overdue park of the claimed runs as a timeout. */

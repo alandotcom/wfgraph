@@ -552,7 +552,7 @@ describe("a wait node beside another branch", () => {
       })
     );
 
-    expect(run.value.success).toBe(true);
+    expect(run.value).toMatchObject({ kind: "ended", success: true });
     expect(dispatchClock(run.executed, "scheduled_sms")).toBe(0);
     expect(dispatchClock(run.executed, "reminder")).toBeGreaterThan(25_000);
   });
@@ -598,7 +598,7 @@ describe("a wait node beside another branch", () => {
       })
     );
 
-    expect(run.value.success).toBe(true);
+    expect(run.value).toMatchObject({ kind: "ended", success: true });
     expect(dispatchClock(run.executed, "scheduled_sms")).toBe(0);
     expect(dispatchClock(run.executed, "reminder")).toBeGreaterThan(25_000);
     expect(run.runs).toBe(1);
@@ -974,7 +974,7 @@ describe("a wait node beside another branch", () => {
   it("takes a second wait further down the same branch on a later pass", async () => {
     const run = await runGraph(waitBehindWaitGraph());
 
-    expect(run.value.success).toBe(true);
+    expect(run.value).toMatchObject({ kind: "ended", success: true });
     expect(dispatchClock(run.executed, "notify")).toBe(0);
     // Two waits in a row, so the branch behind them costs both.
     expect(dispatchClock(run.executed, "follow_up")).toBeGreaterThan(55_000);
@@ -983,7 +983,7 @@ describe("a wait node beside another branch", () => {
   it("takes a second wait further down the same branch on a later pass, in one run", async () => {
     const run = await runGraphInOneRun(waitBehindWaitGraph());
 
-    expect(run.value.success).toBe(true);
+    expect(run.value).toMatchObject({ kind: "ended", success: true });
     expect(dispatchClock(run.executed, "notify")).toBe(0);
     expect(dispatchClock(run.executed, "follow_up")).toBeGreaterThan(55_000);
     // One pass parks the first Wait, one parks the second, one finishes.
@@ -998,7 +998,7 @@ describe("a wait node beside another branch", () => {
       templateBehindWaitGraph(sendNode("notify"), "{{@notify:Notify.sent}}")
     );
 
-    expect(run.value.success).toBe(true);
+    expect(run.value).toMatchObject({ kind: "ended", success: true });
     // The branch run walked none of the graph above its entry node, so this
     // value came back out of the store rather than out of a traversal.
     expect(echoedConfig).toMatchObject({ subject: "true" });
@@ -1013,7 +1013,7 @@ describe("a wait node beside another branch", () => {
       templateBehindWaitGraph(sendNode("notify"), "{{@notify:Notify.sent}}")
     );
 
-    expect(run.value.success).toBe(true);
+    expect(run.value).toMatchObject({ kind: "ended", success: true });
     expect(echoedConfig).toMatchObject({ subject: "true" });
   });
 
@@ -1185,7 +1185,7 @@ describe("a wait node beside another branch", () => {
 
     // The run answers for what its branch did, and for that node alone: the
     // branch beside it succeeded and the Wait it hung off did too.
-    expect(run.value.success).toBe(false);
+    expect(run.value).toMatchObject({ kind: "ended", success: false });
     expect(run.value.results.broken?.success).toBe(false);
     expect(run.value.results.wait_before?.success).toBe(true);
     expect(run.value.results.elsewhere?.success).toBe(true);
@@ -1194,7 +1194,7 @@ describe("a wait node beside another branch", () => {
   it("answers for a failure behind a Wait as that node's own, in one run", async () => {
     const run = await runGraphInOneRun(failureBehindWaitGraph());
 
-    expect(run.value.success).toBe(false);
+    expect(run.value).toMatchObject({ kind: "ended", success: false });
     expect(run.value.results.broken?.success).toBe(false);
     expect(run.value.results.wait_before?.success).toBe(true);
     expect(run.value.results.elsewhere?.success).toBe(true);
@@ -1273,7 +1273,7 @@ describe("a wait node beside another branch", () => {
       actions
     );
 
-    expect(result.success).toBe(true);
+    expect(result).toMatchObject({ kind: "ended", success: true });
     // No wait state, so the run never parked on a branch it had left.
     expect(store.callsOf("createWaitState")).toHaveLength(0);
     expect(store.callsOf("startStepLog").map((open) => open.nodeId)).toEqual([

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { assert, beforeEach, describe, expect, it, vi } from "vitest";
 import { Effect, Layer, Logger, References } from "effect";
 import { executeWorkflow } from "#src/backend/engine/core";
 import { TracerBridgeLayer } from "#src/backend/lib/effect/tracer";
@@ -1220,6 +1220,7 @@ describe("per-node Entity Eligibility", () => {
       entities
     );
 
+    assert(result.kind === "ended");
     expect(result.status).toBe("failed");
     expect(result.error).toBeUndefined();
     expect(runAction).not.toHaveBeenCalled();

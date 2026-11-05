@@ -19,7 +19,17 @@ import type {
 } from "@wfgraph/shared/lifecycle/execution-contracts";
 import { Effect } from "effect";
 import type { EngineFailure } from "#src/backend/engine/engine-failure";
-import type { DatabaseError } from "#src/backend/lib/effect/database";
+import type {
+  DatabaseError,
+  LeaseLost,
+} from "#src/backend/lib/effect/database";
+
+/**
+ * Why a store call failed: the database failed the query, or, under the
+ * database executor, the pass making the write no longer acts on the run
+ * (`LeaseLost`). The Inngest path writes unfenced and never sees `LeaseLost`.
+ */
+export type StoreFailure = DatabaseError | LeaseLost;
 
 /**
  * Timeline events the engine itself emits. The database accepts a wider set;
@@ -225,15 +235,15 @@ export type WorkflowStore = {
   /** Opens a step-log row and returns the handle that closes it. */
   startStepLog(
     input: StartStepLogInput
-  ): Effect.Effect<WorkflowStepLogHandle, DatabaseError>;
+  ): Effect.Effect<WorkflowStepLogHandle, StoreFailure>;
   /** Closes a row opened by `startStepLog`. */
   completeStepLog(
     input: CompleteStepLogInput
-  ): Effect.Effect<void, DatabaseError>;
+  ): Effect.Effect<void, StoreFailure>;
   /** Appends an entry to the run's timeline. */
   recordAuditEvent(
     input: RecordAuditEventInput
-  ): Effect.Effect<void, DatabaseError>;
+  ): Effect.Effect<void, StoreFailure>;
   /**
    * Records that the run is parked on a Wait node; returns the new row's id, or
    * undefined when the execution has left the version this park was resolved
@@ -241,7 +251,7 @@ export type WorkflowStore = {
    */
   createWaitState(
     input: CreateWaitStateInput
-  ): Effect.Effect<{ waitStateId: string } | undefined, DatabaseError>;
+  ): Effect.Effect<{ waitStateId: string } | undefined, StoreFailure>;
   /**
    * Writes a re-parked wait's whole park onto the row it already holds, saying
    * which guard refused when none was written: `not_waiting` for the row having
@@ -252,25 +262,25 @@ export type WorkflowStore = {
    */
   reparkWaitState(
     input: ReparkWaitStateInput
-  ): Effect.Effect<ReparkWaitStateOutcome, DatabaseError>;
+  ): Effect.Effect<ReparkWaitStateOutcome, StoreFailure>;
   /**
    * One wait row as it stands, or null when no row holds that id. Read after a
    * refused re-park, to find out what moved the row.
    */
   readWaitState(
     waitStateId: string
-  ): Effect.Effect<WaitStateSnapshot | null, DatabaseError>;
+  ): Effect.Effect<WaitStateSnapshot | null, StoreFailure>;
   /** Closes out a wait row once the run resumes, times out, or is cancelled. */
   markWaitStateStatus(
     input: MarkWaitStateStatusInput
-  ): Effect.Effect<void, DatabaseError>;
+  ): Effect.Effect<void, StoreFailure>;
   /**
    * Atomically closes a timed-out wait or returns the arrival a concurrent
    * producer already persisted, which takes precedence over the timeout.
    */
   settleWaitTimeout(
     waitStateId: string
-  ): Effect.Effect<WaitArrival | null, DatabaseError>;
+  ): Effect.Effect<WaitArrival | null, StoreFailure>;
   /**
    * Moves an execution back to "running" after a wait, answering whether a row
    * moved.
@@ -286,7 +296,7 @@ export type WorkflowStore = {
     workflowVersionId: string;
     /** Which side of the Lifecycle Node the resuming Wait sits on. */
     side: ExecutionSide;
-  }): Effect.Effect<boolean, DatabaseError>;
+  }): Effect.Effect<boolean, StoreFailure>;
   /**
    * Moves a "running" execution back to "waiting" when it still holds a waiting
    * wait row, answering whether a row moved.
@@ -298,22 +308,22 @@ export type WorkflowStore = {
    */
   markExecutionWaitingIfParked(input: {
     executionId: string;
-  }): Effect.Effect<boolean, DatabaseError>;
+  }): Effect.Effect<boolean, StoreFailure>;
   /**
    * Atomically admits one Started-side node only while no execution-wide
    * termination claim or terminal status exists. The durable caller treats a
    * true answer as the node's linearized admission, so a later claim may let
    * that already-admitted node finish but cannot admit its successors.
    */
-  admitNode(executionId: string): Effect.Effect<boolean, DatabaseError>;
+  admitNode(executionId: string): Effect.Effect<boolean, StoreFailure>;
   /** Atomically claims execution-wide Entity Eligibility exit. */
   requestExit(
     input: RequestExecutionExitInput
-  ): Effect.Effect<ExecutionTerminationState | null, DatabaseError>;
+  ): Effect.Effect<ExecutionTerminationState | null, StoreFailure>;
   /** Reads the authoritative execution-wide claim and terminal status. */
   readTerminationState(
     executionId: string
-  ): Effect.Effect<ExecutionTerminationState | null, DatabaseError>;
+  ): Effect.Effect<ExecutionTerminationState | null, StoreFailure>;
   /**
    * Whether a Cancel Event has claimed this run, and what it carried. Read at
    * each node boundary inside a step, so the answer is memoized and a replay
@@ -321,7 +331,7 @@ export type WorkflowStore = {
    */
   readPendingCancel(
     executionId: string
-  ): Effect.Effect<PendingCancel | null, DatabaseError>;
+  ): Effect.Effect<PendingCancel | null, StoreFailure>;
   /**
    * Attempts the terminal state and returns the authoritative stored outcome.
    * `didWrite` identifies this call as the compare-and-set winner, and `null`
@@ -331,7 +341,7 @@ export type WorkflowStore = {
    */
   completeRun(
     input: CompleteRunInput
-  ): Effect.Effect<ExecutionTerminationState | null, DatabaseError>;
+  ): Effect.Effect<ExecutionTerminationState | null, StoreFailure>;
   /**
    * What the nodes of this run that have already finished left behind, keyed by
    * node id. A branch run starts partway down the graph, so this is how the
@@ -340,7 +350,7 @@ export type WorkflowStore = {
    */
   readNodeOutputs(
     executionId: string
-  ): Effect.Effect<Record<string, JsonValue>, DatabaseError>;
+  ): Effect.Effect<Record<string, JsonValue>, StoreFailure>;
   /**
    * The newest completed node attempt per node, in newest-first order.
    *
@@ -350,7 +360,7 @@ export type WorkflowStore = {
    */
   readCompletedNodeProgress(
     executionId: string
-  ): Effect.Effect<CompletedNodeProgress[], DatabaseError>;
+  ): Effect.Effect<CompletedNodeProgress[], StoreFailure>;
   /**
    * Closes every node row still open and every wait still waiting, as cancelled.
    *
@@ -359,7 +369,7 @@ export type WorkflowStore = {
    */
   cancelOpenWork(input: {
     executionId: string;
-  }): Effect.Effect<void, DatabaseError>;
+  }): Effect.Effect<void, StoreFailure>;
 };
 
 /**

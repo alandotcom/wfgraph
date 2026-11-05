@@ -14,7 +14,7 @@
 import type { BranchHandoff } from "#src/backend/engine/branch";
 import type { ReleasedEdge } from "#src/backend/engine/contracts";
 import type { ExecutionSide } from "@wfgraph/shared/lifecycle/execution-contracts";
-import { readJsonObject } from "@wfgraph/shared/types/json";
+import type { JsonObject } from "@wfgraph/shared/types/json";
 
 export type WaitForEventOptions = {
   event: string;
@@ -25,7 +25,7 @@ export type WaitForEventOptions = {
    * park's wake from that row and records the parking step on it. Inngest
    * matches its signal on `ifExpression` and ignores the row.
    */
-  waitStateId?: string | undefined;
+  waitStateId: string;
 };
 
 /**
@@ -40,36 +40,45 @@ export type WaitForEventOptions = {
 export type DurableStepRef = { id: string; name?: string };
 
 /**
- * What `waitForEvent` answers for a park that has not resolved yet.
+ * Why a park ended.
  *
- * A runtime that answers it runs the body again once the park resolves. The
- * engine halts the Wait's branch with the node unfinished, runs every other
- * branch as far as it can, and returns a parked result with no terminal record.
- * The Inngest runtime never answers it, because Inngest suspends the invocation
- * at a park.
+ * `timeout` is the park running out of the time it was given. `resume` is an
+ * Event or a manual resume. `cancel` is a Cancel Event claiming the run, and
+ * `exit` is another branch of the run claiming an Entity Eligibility Exit.
+ * `migrate` is a Migration telling the Wait to prepare itself again.
+ *
+ * A `cancel` wake never reaches a Wait on the Canceled side: the cancellation
+ * wakes the Waits parked when the claim landed, and a Canceled-side Wait parks
+ * after that.
  */
-export type ParkedWaitAnswer = { parked: true };
+export type WaitWake =
+  | { kind: "timeout" }
+  | { kind: "migrate" }
+  | { kind: "cancel" }
+  | { kind: "exit" }
+  | { kind: "resume"; eventName: string | null; payload: JsonObject };
 
-export const PARKED_WAIT_ANSWER: ParkedWaitAnswer = Object.freeze({
-  parked: true,
-});
-
-export function isParkedWaitAnswer(
-  answer: unknown
-): answer is ParkedWaitAnswer {
-  return readJsonObject(answer)?.parked === true;
-}
+/**
+ * What `waitForEvent` answers: the wake that ended the park, or that the park
+ * has not ended yet.
+ *
+ * A runtime that answers `parked` runs the body again once the park resolves.
+ * The engine halts the Wait's branch with the node unfinished, runs every other
+ * branch as far as it can, and returns a parked result with no terminal record.
+ * The Inngest runtime never answers `parked`, because Inngest suspends the
+ * invocation at a park.
+ */
+export type WaitAnswer = { kind: "woke"; wake: WaitWake } | { kind: "parked" };
 
 export type WorkflowExecutionRuntime = {
   /**
    * Parks the Wait on a wait signal matching `options` and answers why the park
-   * ended: the signal event that woke it, `null` for a timeout, or
-   * `PARKED_WAIT_ANSWER` for a park that has not resolved yet.
+   * ended, or that it has not ended yet.
    */
   waitForEvent: (
     step: DurableStepRef,
     options: WaitForEventOptions
-  ) => Promise<unknown>;
+  ) => Promise<WaitAnswer>;
   /**
    * Runs one unit of work as a durable, memoized step.
    *
@@ -139,11 +148,8 @@ export type InMemoryRuntimeOptions = {
    * Left out, each runtime gets a fresh map and memoizes within one run only.
    */
   memo?: Map<string, unknown> | undefined;
-  /**
-   * What `waitForEvent` resolves to. `null` models a timeout, and
-   * `PARKED_WAIT_ANSWER` models a park that has not resolved yet.
-   */
-  resumeEvent?: unknown;
+  /** What `waitForEvent` answers for every park. Left out, every park times out. */
+  waitAnswer?: WaitAnswer | undefined;
   /** The attempt this runtime reports. See `WorkflowExecutionRuntime.attempt`. */
   attempt?: number | undefined;
 };
@@ -171,7 +177,10 @@ export type InMemoryWorkflowRuntime = WorkflowExecutionRuntime & {
 export function createInMemoryWorkflowRuntime(
   options: InMemoryRuntimeOptions = {}
 ): InMemoryWorkflowRuntime {
-  const { resumeEvent = null, attempt = 0 } = options;
+  const {
+    waitAnswer = { kind: "woke", wake: { kind: "timeout" } },
+    attempt = 0,
+  } = options;
   const memo = options.memo ?? new Map<string, unknown>();
   const waits: Array<{ stepId: string; options: WaitForEventOptions }> = [];
 
@@ -182,7 +191,7 @@ export function createInMemoryWorkflowRuntime(
 
     waitForEvent: (step, waitOptions) => {
       waits.push({ stepId: step.id, options: waitOptions });
-      return Promise.resolve(resumeEvent);
+      return Promise.resolve(waitAnswer);
     },
 
     // The display name is dropped rather than recorded: it is a label for a

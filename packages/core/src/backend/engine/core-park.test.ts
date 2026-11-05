@@ -1,6 +1,6 @@
 /**
  * A Wait whose park the runtime has not resolved: the runtime answers
- * `PARKED_WAIT_ANSWER`, and the run ends the pass parked rather than suspending.
+ * `parked`, and the run ends the pass parked rather than suspending.
  */
 
 import { sortBy } from "es-toolkit/array";
@@ -12,10 +12,7 @@ import {
   createRecordingWorkflowStore,
   type RecordingWorkflowStore,
 } from "#src/backend/engine/recording-store";
-import {
-  createInMemoryWorkflowRuntime,
-  PARKED_WAIT_ANSWER,
-} from "#src/backend/engine/runtime";
+import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
 import { executeTestWorkflow } from "#src/backend/engine/test-execution";
 import {
   createLifecycleNode,
@@ -61,7 +58,7 @@ function runParked(
   graph: { nodes: WorkflowNode[]; edges: WorkflowEdge[] }
 ) {
   const runtime = createInMemoryWorkflowRuntime({
-    resumeEvent: PARKED_WAIT_ANSWER,
+    waitAnswer: { kind: "parked" },
   });
   return executeTestWorkflow(
     {

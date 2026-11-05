@@ -27,6 +27,24 @@ export class DatabaseError extends Schema.TaggedError<
   cause: Schema.Defect(),
 }) {}
 
+/**
+ * A write of one database executor pass that was not made, because the pass no
+ * longer acts on its run.
+ *
+ * The repository raises it when the Execution's schedule row no longer names
+ * the pass's owner token: the lease expired and another claim took the run, or
+ * a terminal write, a policy cancel or a release cleared the row. The executor
+ * raises it for every write a pass attempts after it stopped. Nothing failed in
+ * the database, and the write collides with no domain state, so the pass ends
+ * where it stands; the engine never reads it as a node's failure.
+ */
+export class LeaseLost extends Schema.TaggedError<
+  LeaseLost,
+  { readonly brand: unique symbol }
+>()("LeaseLost", {
+  message: Schema.String,
+}) {}
+
 /** Bounds the walk, so a cause that points at itself cannot spin a predicate. */
 const MAX_CAUSE_DEPTH = 8;
 

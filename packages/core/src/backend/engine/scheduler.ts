@@ -32,7 +32,7 @@ import {
   readJsonValue,
 } from "@wfgraph/shared/types/json";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
-import { Cause, Effect } from "effect";
+import { Cause, Effect, Option, Schema } from "effect";
 import { uniq } from "es-toolkit/array";
 import type { WorkflowActions } from "#src/backend/engine/actions";
 import type {
@@ -86,6 +86,25 @@ function getNodeName(node: WorkflowNode, actions: WorkflowActions): string {
     return "Lifecycle";
   }
   return node.data.type;
+}
+
+/**
+ * Raised when a walk of the body settles with a Wait parked: every branch has
+ * run as far as it can, and at least one is halted on a park the runtime has
+ * not resolved. `executeWorkflow` catches it in one place and ends the pass
+ * parked, with no terminal record.
+ */
+export class PassParked extends Schema.TaggedError<
+  PassParked,
+  { readonly brand: unique symbol }
+>()("PassParked", {}) {}
+
+/** Whether a cause is a walk that settled with a Wait parked. */
+export function isPassParked(cause: Cause.Cause<unknown>): boolean {
+  return Option.exists(
+    Cause.findErrorOption(cause),
+    (error) => error instanceof PassParked
+  );
 }
 
 /** The ports and the run identity every node of one run is executed against. */
@@ -450,7 +469,7 @@ export class NodeScheduler {
 
   // The persisted graph is validated as a DAG before execution, so we avoid
   // per-call cycle-tracking allocations on this hot path.
-  private executeNode(nodeId: string): Effect.Effect<void> {
+  private executeNode(nodeId: string): Effect.Effect<void, EngineFailure> {
     const execute = Effect.gen(
       function* (this: NodeScheduler) {
         const { traversal, actions } = this.input;
@@ -534,30 +553,34 @@ export class NodeScheduler {
       }.bind(this)
     );
 
-    return Effect.catchCause(execute, (cause) =>
-      Effect.gen(
-        function* (this: NodeScheduler) {
-          // This is the attribution boundary: a cause becomes the node's failure
-          // value here, while sibling nodes continue.
-          yield* Effect.logError("Unexpected error executing node").pipe(
-            Effect.annotateLogs({ error: Cause.squash(cause) })
-          );
-          this.input.traversal.markCompleted(
-            nodeId,
-            failedExecution(failureFromCause(cause))
-          );
-          const cancel = yield* this.input.cancelBoundary.settle(nodeId);
-          if (cancel.entered) {
-            yield* this.runAll(cancel.nextNodes);
-          }
-        }.bind(this)
-      ).pipe(
-        Effect.catchCause((recoveryCause) =>
-          Effect.logError(
-            "Failed to settle cancellation after node failure"
-          ).pipe(Effect.annotateLogs({ error: Cause.squash(recoveryCause) }))
+    return Effect.catchCauseIf(
+      execute,
+      // A pass that lost its lease ends where it stands, and no node failed.
+      (cause) => failureFromCause(cause).kind !== "lease_lost",
+      (cause) =>
+        Effect.gen(
+          function* (this: NodeScheduler) {
+            // This is the attribution boundary: a cause becomes the node's failure
+            // value here, while sibling nodes continue.
+            yield* Effect.logError("Unexpected error executing node").pipe(
+              Effect.annotateLogs({ error: Cause.squash(cause) })
+            );
+            this.input.traversal.markCompleted(
+              nodeId,
+              failedExecution(failureFromCause(cause))
+            );
+            const cancel = yield* this.input.cancelBoundary.settle(nodeId);
+            if (cancel.entered) {
+              yield* this.runAll(cancel.nextNodes);
+            }
+          }.bind(this)
+        ).pipe(
+          Effect.catchCause((recoveryCause) =>
+            Effect.logError(
+              "Failed to settle cancellation after node failure"
+            ).pipe(Effect.annotateLogs({ error: Cause.squash(recoveryCause) }))
+          )
         )
-      )
     ).pipe(Effect.annotateLogs({ node: { id: nodeId } }));
   }
 
@@ -913,20 +936,39 @@ export class NodeScheduler {
    *
    * The Started-side Waits were drained before the claim was read, so the drain
    * here finds only Waits behind the outlet, and one of them may park the run
-   * the way any Wait does.
+   * the way any Wait does, which fails the outlet with `PassParked`.
    */
-  runCanceledOutlet(claim: PendingCancel): Effect.Effect<void> {
+  runCanceledOutlet(
+    claim: PendingCancel
+  ): Effect.Effect<void, EngineFailure | PassParked> {
     return Effect.gen(
       function* (this: NodeScheduler) {
         const nextNodes = yield* this.input.cancelBoundary.enterClaimed(claim);
         yield* this.runAll(nextNodes);
-        yield* this.drainDeferredWaits();
+        yield* this.settle();
       }.bind(this)
     );
   }
 
+  /**
+   * Ends a walk of the body: enters the Waits held back, then fails with
+   * `PassParked` when any Wait of this pass is left parked. Every walk of a run
+   * ends here, so this is the one place a pass is found to have parked.
+   */
+  settle(): Effect.Effect<void, EngineFailure | PassParked> {
+    return this.drainDeferredWaits().pipe(
+      Effect.andThen(
+        Effect.suspend(() =>
+          this.input.traversal.openParkCount > 0
+            ? Effect.fail(new PassParked())
+            : Effect.void
+        )
+      )
+    );
+  }
+
   /** Runs a set of nodes side by side, which is how every branch fans out. */
-  runAll(nodeIds: readonly string[]): Effect.Effect<void[]> {
+  runAll(nodeIds: readonly string[]): Effect.Effect<void[], EngineFailure> {
     return Effect.forEach(nodeIds, (nodeId) => this.executeNode(nodeId), {
       concurrency: "unbounded",
     });
@@ -951,7 +993,7 @@ export class NodeScheduler {
    * and a wait held back since before the crossing would otherwise park the run
    * on a branch it has left.
    */
-  drainDeferredWaits(): Effect.Effect<void> {
+  drainDeferredWaits(): Effect.Effect<void, EngineFailure> {
     return Effect.gen(
       function* (this: NodeScheduler) {
         const { cancelBoundary } = this.input;

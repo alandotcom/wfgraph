@@ -21,12 +21,13 @@ import {
 import { celStringLiteral } from "@wfgraph/shared/conditions/cel-string-literal";
 import { type JsonObject, readJsonObject } from "@wfgraph/shared/types/json";
 import type { ExecutionResult } from "#src/backend/engine/contracts";
-import {
-  isParkedWaitAnswer,
-  type WorkflowExecutionRuntime,
+import type {
+  WaitWake,
+  WorkflowExecutionRuntime,
 } from "#src/backend/engine/runtime";
 import type { NodeContext } from "#src/backend/engine/step-log";
 import type {
+  StoreFailure,
   WorkflowStepLogHandle,
   WorkflowStore,
 } from "#src/backend/engine/store";
@@ -37,7 +38,6 @@ import {
   failureFromUnknown,
 } from "#src/backend/engine/engine-failure";
 import { closeStepLog } from "#src/backend/engine/step-log";
-import type { DatabaseError } from "#src/backend/lib/effect/database";
 
 export type WaitActionInput = {
   config: Record<string, unknown>;
@@ -117,7 +117,7 @@ export type SettledWaitOutcome = {
 };
 
 export function fromStore<A>(
-  effect: Effect.Effect<A, DatabaseError>
+  effect: Effect.Effect<A, StoreFailure>
 ): Effect.Effect<A, EngineFailure> {
   return Effect.mapError(effect, failureFromUnknown);
 }
@@ -165,30 +165,6 @@ export function waitSignalMatch(input: {
 }
 
 /**
- * Why a park ended, or that it has not ended yet.
- *
- * `timeout` is the park running out of the time it was given. `parked` is a
- * runtime answering that the park has not resolved. Every other kind is a
- * reason a `workflow/wait.signal` carries. `resume` is an Event or a manual
- * resume. `cancel` is a Cancel Event claiming the run, and `exit` is another
- * branch of the run claiming an Entity Eligibility Exit. `migrate` is a
- * Migration telling the Wait to prepare itself again. A signal envelope naming
- * no reason this build knows reads as a resume, because a resume is what a wake
- * with a payload and no verdict is.
- *
- * A `lifecycle-cancel` signal never reaches a Wait on the Canceled side: the
- * cancellation sends it to the rows parked when the claim landed, and a
- * Canceled-side Wait parks after that.
- */
-export type WaitWake =
-  | { kind: "parked" }
-  | { kind: "timeout" }
-  | { kind: "migrate" }
-  | { kind: "cancel" }
-  | { kind: "exit" }
-  | { kind: "resume"; eventName: string | null; payload: JsonObject };
-
-/**
  * Whether a wake comes from an execution-wide claim, a Cancel or an Exit.
  *
  * A claim wake halts the branch where it stands and closes the wait row as
@@ -206,28 +182,22 @@ export function isClaimWake(
  *
  * A `migrate` wake never reaches a resume: the driver reads it as the
  * instruction to prepare the Wait again against the version the run was moved
- * to, and starts the next attempt instead of resuming. A `parked` answer never
- * reaches one either, because the park has not ended.
+ * to, and starts the next attempt instead of resuming.
  */
-export type WaitResumeWake = Exclude<
-  WaitWake,
-  { kind: "migrate" } | { kind: "parked" }
->;
+export type WaitResumeWake = Exclude<WaitWake, { kind: "migrate" }>;
 
 /**
- * Reads what `waitForEvent` answered.
+ * Reads the wake out of what Inngest's `step.waitForEvent` resolved to, which
+ * the Inngest runtime does before it answers `waitForEvent`.
  *
  * A wake resolves to the whole Inngest event object, and Workflow Graph's own
- * envelope is the `data` inside it. Reading it once here is what keeps that
- * envelope out of everything below: a builder addresses the Event's payload,
- * not the transport it travelled in. A timeout resolves to null, and a park
- * that has not resolved to `PARKED_WAIT_ANSWER`.
+ * `workflow/wait.signal` envelope is the `data` inside it. Reading it once here
+ * is what keeps that envelope out of the engine: a builder addresses the
+ * Event's payload, not the transport it travelled in. A timeout resolves to
+ * null. A signal naming no reason this build knows reads as a resume, because a
+ * resume is what a wake with a payload and no verdict is.
  */
 export function readWaitWake(resumeEvent: unknown): WaitWake {
-  if (isParkedWaitAnswer(resumeEvent)) {
-    return { kind: "parked" };
-  }
-
   if (resumeEvent === null) {
     return { kind: "timeout" };
   }

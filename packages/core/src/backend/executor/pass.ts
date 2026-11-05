@@ -14,7 +14,11 @@ import {
   noWorkflowEntities,
   type WorkflowEntities,
 } from "#src/backend/engine/entities";
-import { failureFromUnknown } from "#src/backend/engine/engine-failure";
+import {
+  type EngineFailure,
+  failureFromCause,
+  failureFromUnknown,
+} from "#src/backend/engine/engine-failure";
 import type { DatabaseError } from "#src/backend/lib/effect/database";
 import {
   createExecutorRuntime,
@@ -60,8 +64,9 @@ export function retryBackoffMs(attempt: number): number {
  * - `retries_spent`: a step threw on its last retry. The release recorded the
  *   failure as that step's value, so the next pass fails the step's node and
  *   the rest of the run goes on.
- * - `fence_refused` on `version`: a Migration moved the run off the version
- *   this pass loaded. The release re-queued it with the attempt unchanged.
+ * - `fence_refused` on `version`: the engine reported a version fence refused
+ *   a write, because a Migration moved the run off the version this pass
+ *   loaded. The release re-queued it with the attempt unchanged.
  * - `fence_refused` on `owner`: a fenced write found the schedule row no
  *   longer names this pass. Nothing else was written, the release included.
  * - `unavailable`: the run could not be loaded. The pass wrote the terminal
@@ -95,8 +100,11 @@ export type PassOptions = {
   backoffMs?: ((attempt: number) => number) | undefined;
 };
 
-/** Why a body that did not end on its own stopped, as the release reads it. */
-type Failure = { stepId: string | undefined; message: string };
+/**
+ * Why a body that did not end on its own stopped, as the release reads it: the
+ * step that threw, if a step did, and the engine's failure.
+ */
+type Failure = { stepId: string | undefined; failure: EngineFailure };
 
 export function runPass(
   claimed: ClaimedExecution,
@@ -119,7 +127,7 @@ export function runPass(
     const release = (outcome: PassOutcome) =>
       writes.releasePass({ outcome, now: options.now() }).pipe(
         Effect.map((schedule) => ({ owned: true as const, schedule })),
-        Effect.catchTag("Conflict", () =>
+        Effect.catchTag("LeaseLost", () =>
           Effect.succeed({ owned: false as const })
         )
       );
@@ -200,19 +208,15 @@ export function runPass(
 
     const failure: Failure | undefined =
       stop?.kind === "step_threw"
-        ? {
-            stepId: stop.stepId,
-            message: failureFromUnknown(stop.error).message,
-          }
+        ? { stepId: stop.stepId, failure: failureFromUnknown(stop.error) }
         : Exit.isFailure(body)
-          ? {
-              stepId: undefined,
-              message: failureFromUnknown(Cause.squash(body.cause)).message,
-            }
+          ? { stepId: undefined, failure: failureFromCause(body.cause) }
           : undefined;
 
     if (failure === undefined) {
-      if (phase.kind === "ended") {
+      // No step threw and the body raised nothing, so the body's own answer
+      // says whether this pass ended the run or parked it.
+      if (Exit.isSuccess(body) && body.value.kind === "ended") {
         return { kind: "ended" } as const;
       }
       const released = yield* release({ kind: "parked" });
@@ -221,13 +225,8 @@ export function runPass(
         : ({ kind: "fence_refused", fence: "owner" } as const);
     }
 
-    // A version fence refuses a write with a step failure, so a failure is
-    // read as the run having moved whenever the version it pins is no longer
-    // the one this pass loaded.
-    const pinned = yield* executions.findSummaryById(executionId);
     const outcome = decideFailedPass({
       failure,
-      migrated: pinned?.workflowVersionId !== loaded.workflowVersionId,
       attempt: claimed.attempt,
       retryLimit: options.retryLimit ?? STEP_RETRY_LIMIT,
       backoffMs: options.backoffMs ?? retryBackoffMs,
@@ -285,7 +284,7 @@ function renewLeaseWhileRunning(input: {
       .renewLease({ leaseExpiresAt: input.leaseExpiresAt() })
       .pipe(
         Effect.as("renewed" as const),
-        Effect.catchTag("Conflict", () => Effect.succeed("refused" as const))
+        Effect.catchTag("LeaseLost", () => Effect.succeed("refused" as const))
       );
     if (renewal === "renewed") return renewal;
     if ((yield* input.findSchedule(executionId)) === null) {
@@ -331,25 +330,26 @@ function passResultOf(
 }
 
 /**
- * The release a failed pass writes. A step's retries are spent once the
- * attempt after this one would pass `retryLimit`; a failure no step owns is
- * retried without that limit, since there is no step to fail in its place.
+ * The release a failed pass writes. A version fence the engine reports refused
+ * is the run having moved, so nothing failed and no attempt is counted. A
+ * step's retries are spent once the attempt after this one would pass
+ * `retryLimit`; a failure no step owns is retried without that limit, since
+ * there is no step to fail in its place.
  */
 function decideFailedPass(input: {
   failure: Failure;
-  migrated: boolean;
   attempt: number;
   retryLimit: number;
   backoffMs: (attempt: number) => number;
 }): PassOutcome {
-  const { failure } = input;
-  if (input.migrated) {
+  const { stepId, failure } = input.failure;
+  if (failure.kind === "version_refused") {
     return { kind: "fence_refused" };
   }
-  if (failure.stepId !== undefined && input.attempt + 1 > input.retryLimit) {
+  if (stepId !== undefined && input.attempt + 1 > input.retryLimit) {
     return {
       kind: "retries_spent",
-      stepId: failure.stepId,
+      stepId,
       failure: stepFailureMemo(failure.message),
     };
   }

@@ -199,8 +199,8 @@ describe("workflow engine replay safety", () => {
       actions
     );
 
-    expect(first.success).toBe(true);
-    expect(second.success).toBe(true);
+    expect(first).toMatchObject({ kind: "ended", success: true });
+    expect(second).toMatchObject({ kind: "ended", success: true });
     expect(emailAction).toHaveBeenCalledTimes(1);
     expect(followupAction).toHaveBeenCalledTimes(1);
   });
@@ -254,7 +254,7 @@ describe("workflow engine replay safety", () => {
 
     for (const result of [first, replay]) {
       expect(result.status).toBe("failed");
-      expect(result.success).toBe(false);
+      expect(result).toMatchObject({ kind: "ended", success: false });
       expect(Object.hasOwn(result.results, "__proto__")).toBe(true);
       expect(result.results["__proto__"]).toMatchObject({
         success: false,
@@ -392,8 +392,8 @@ describe("workflow engine replay safety", () => {
       flakyActions
     );
 
-    expect(first.success).toBe(false);
-    expect(second.success).toBe(false);
+    expect(first).toMatchObject({ kind: "ended", success: false });
+    expect(second).toMatchObject({ kind: "ended", success: false });
     expect(second.status).toBe("failed");
 
     // Handles are handed out in order, so the row opened for the email node is
@@ -467,7 +467,7 @@ describe("workflow engine replay safety", () => {
       actions
     );
 
-    expect(first.success).toBe(true);
+    expect(first).toMatchObject({ kind: "ended", success: true });
     expect(branchAction).toHaveBeenCalledTimes(3);
     expect(memo.has("node:left_1:work")).toBe(true);
     expect(memo.has("node:right_1:work")).toBe(true);
@@ -519,7 +519,7 @@ describe("workflow engine replay safety", () => {
       actions
     );
 
-    expect(result.success).toBe(true);
+    expect(result).toMatchObject({ kind: "ended", success: true });
     expect(branchAction).toHaveBeenCalledTimes(3);
     expect(result.results).toMatchObject({
       left_1: { success: true },
@@ -578,7 +578,7 @@ describe("workflow engine replay safety", () => {
       failingActions
     );
 
-    expect(result.success).toBe(false);
+    expect(result).toMatchObject({ kind: "ended", success: false });
     expect(result.results.join_1).toBeUndefined();
     expect(branchAction).toHaveBeenCalledTimes(1);
   });
@@ -730,8 +730,8 @@ describe("a Date-bearing step output across a replay", () => {
       actions
     );
 
-    expect(first.success).toBe(true);
-    expect(second.success).toBe(true);
+    expect(first).toMatchObject({ kind: "ended", success: true });
+    expect(second).toMatchObject({ kind: "ended", success: true });
     expect(echoed).toEqual([
       "2026-03-01T10:00:00.000Z",
       "2026-03-01T10:00:00.000Z",
