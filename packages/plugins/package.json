@@ -42,7 +42,7 @@
     "build": "tsdown"
   },
   "dependencies": {
-    "@clerk/backend": "^3.26.4",
+    "@clerk/backend": "^3.27.0",
     "@linear/sdk": "^99.0.0",
     "effect": "catalog:",
     "es-toolkit": "catalog:",
