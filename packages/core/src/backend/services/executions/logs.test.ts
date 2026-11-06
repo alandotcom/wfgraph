@@ -300,6 +300,10 @@ describe("getExecutionLogs", () => {
           ["2026-03-01T10:06:00.000Z"]
         );
 
+        // The retry limit rides every answer, so a finished node can say which
+        // try it ended on once the schedule is gone.
+        assert.strictEqual(result.retryLimit, 4);
+
         const ended = yield* getExecutionLogs("exec_1").pipe(
           Effect.provide(makeRepos(summary()))
         );

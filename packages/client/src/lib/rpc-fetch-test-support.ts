@@ -185,6 +185,7 @@ export async function answerWorkflowRunRpc(
           retries: 0,
           ...readJsonObject(entry),
         })),
+        retryLimit: 4,
         waits: served.waitsByExecutionId[executionId] ?? [],
         exit: served.exitByExecutionId?.[executionId] ?? null,
         schedule: null,

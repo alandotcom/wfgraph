@@ -214,6 +214,7 @@ describe("toPinnedRunSummary", () => {
       entityValue: null,
     },
     logs: [],
+    retryLimit: 4,
     waits: [],
     exit: null,
     schedule: null,
@@ -267,6 +268,7 @@ describe("toExecutionDetail", () => {
         entityValue: null,
       },
       logs: [],
+      retryLimit: 4,
       waits: [],
       exit: {
         reason: "entity_condition_not_met",

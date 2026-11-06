@@ -111,6 +111,7 @@ beforeEach(() => {
       duration: null,
     },
     logs: [],
+    retryLimit: 4,
     waits: [],
     exit: null,
     schedule: null,

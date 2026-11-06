@@ -299,6 +299,7 @@ describe("workflow execution logs RPC output contract", () => {
         retries: 2,
       },
     ],
+    retryLimit: 4,
     waits: [],
     exit: null,
   };

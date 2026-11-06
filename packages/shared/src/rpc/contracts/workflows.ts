@@ -827,6 +827,12 @@ export const workflowContract = {
         Schema.Struct({
           execution: executionSummarySchema,
           logs: listOf(executionLogSchema),
+          /**
+           * How many retries the database executor gives a step before the
+           * step fails its node, which a log's `retries` counts against: a
+           * node that spent them finished on try `retryLimit + 1`.
+           */
+          retryLimit: positiveInteger,
           waits: listOf(executionWaitSchema),
           exit: Schema.NullOr(executionExitSchema),
           /**

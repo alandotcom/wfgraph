@@ -7,6 +7,7 @@ import {
   redactSensitiveText,
 } from "#src/backend/lib/utils/redact";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
+import { STEP_RETRY_LIMIT } from "#src/backend/services/executions/repo/release-policy";
 import {
   executorReading,
   heldByExecutor,
@@ -97,6 +98,7 @@ export const getExecutionLogs = Effect.fn("getExecutionLogs")(
         duration: log.duration,
         retries: log.retries,
       })),
+      retryLimit: STEP_RETRY_LIMIT,
       waits: waits.map((wait) => ({
         id: wait.id,
         nodeId: wait.nodeId,
