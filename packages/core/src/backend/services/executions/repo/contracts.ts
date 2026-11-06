@@ -273,6 +273,8 @@ export type UnconsumedWake = {
   eventName: string | null;
   /** When an Event or a manual resume claimed the park, and null for a wake another producer wrote. */
   wokenAt: Date | null;
+  /** The park's deadline, and null for a park with none. */
+  deadline: Date | null;
 };
 
 /**
@@ -300,28 +302,41 @@ export type ExecutorState = Pick<
 };
 
 /**
- * What the database executor is doing about one open run, reduced to the one
- * fact a runs list shows beside it, as `executorActivityOf` decides.
+ * What the database executor is doing about one open run, as
+ * `executorActivityOf` decides it, in the order it decides:
  *
- * - `retrying`: the run is queued until `nextTryAt`, after a failure. A step's
- *   failure names the step's node (null for a step of no node) and counts the
- *   step's failures; a failure of the run body outside any step names no node
- *   and counts the run's own failures.
- *
- * A named node's `nodeName` is read as `FailingStep.nodeName` is.
+ * - `resuming`: a producer resolved one of the run's parks (`wake` says which
+ *   producer) and no pass has read the wake yet. `wokenAt` is when an Event or
+ *   a manual resume claimed the park, and `deadline` is the park's own
+ *   deadline, which a `timeout` wake passed. `unclaimedSince` is when the wake
+ *   began waiting for a worker (`wokenAt`, or the schedule row's wake time for
+ *   a wake that records none), and null while a worker holds the run's lease.
  * - `lease_expired`: the worker that leased the run stopped renewing its lease
  *   at `since`, while running a step of `nodeId` (null between steps). The
  *   next claim takes the run over.
+ * - `running`: a worker, `workerId`, holds a live lease and is running a step
+ *   of `nodeId`, or is between steps when that is null.
+ * - `retrying`: the run is queued until `nextTryAt`, after a failure. A step's
+ *   failure names the step's node (null for a step of no node), counts the
+ *   step's failures and carries its last error; a failure of the run body
+ *   outside any step names no node, counts the run's own failures and carries
+ *   the schedule row's last error.
  * - `unclaimed`: the run has been due since `dueSince` and no worker has
  *   claimed it.
+ * - `waiting`: the run is asleep on its parks and not yet due.
+ *
+ * A named node's `nodeName` is read as `FailingStep.nodeName` is.
  */
 export type ExecutorActivity =
   | {
-      kind: "retrying";
-      nodeId: string | null;
-      nodeName: string | null;
-      nextTryAt: Date;
-      failures: number;
+      kind: "resuming";
+      nodeId: string;
+      nodeName: string;
+      wake: ParkWake["kind"];
+      eventName: string | null;
+      wokenAt: Date | null;
+      deadline: Date | null;
+      unclaimedSince: Date | null;
     }
   | {
       kind: "lease_expired";
@@ -329,7 +344,22 @@ export type ExecutorActivity =
       nodeName: string | null;
       since: Date;
     }
-  | { kind: "unclaimed"; dueSince: Date };
+  | {
+      kind: "running";
+      nodeId: string | null;
+      nodeName: string | null;
+      workerId: string | null;
+    }
+  | {
+      kind: "retrying";
+      nodeId: string | null;
+      nodeName: string | null;
+      nextTryAt: Date;
+      failures: number;
+      error: string | null;
+    }
+  | { kind: "unclaimed"; dueSince: Date }
+  | { kind: "waiting" };
 
 /** What a producer's write did to a park and to its run's schedule row. */
 export type ParkResolution = {

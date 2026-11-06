@@ -137,6 +137,8 @@ export function describeExecutionExecutorStateConformance({
             ended: yield* executions.findExecutorState(executionId),
             unknown: yield* executions.findExecutorState("exec_missing"),
             wokenAt: at(clock + 1_000),
+            approvalDeadline: at(clock + 90_000),
+            pauseDeadline: at(clock + 5_000),
           };
         })
       );
@@ -203,6 +205,7 @@ export function describeExecutionExecutorStateConformance({
           kind: "resume",
           eventName: "app/approved",
           wokenAt: result.wokenAt,
+          deadline: result.approvalDeadline,
         },
         {
           nodeId: "pause",
@@ -210,6 +213,7 @@ export function describeExecutionExecutorStateConformance({
           kind: "timeout",
           eventName: null,
           wokenAt: null,
+          deadline: result.pauseDeadline,
         },
       ]);
       expect(result.ended).toBeNull();
@@ -327,6 +331,7 @@ export function describeExecutionExecutorStateConformance({
               nodeName: "Send reminder",
               nextTryAt: at(1_000 + BACKOFF_MS),
               failures: 1,
+              error: "send is down",
             },
           ],
           [
@@ -337,6 +342,17 @@ export function describeExecutionExecutorStateConformance({
               nodeName: null,
               nextTryAt: at(1_000 + BACKOFF_MS),
               failures: 1,
+              error: "the body failed outside any step",
+            },
+          ],
+          [ids.asleep, { kind: "waiting" }],
+          [
+            ids.held,
+            {
+              kind: "running",
+              nodeId: null,
+              nodeName: null,
+              workerId: "worker_1",
             },
           ],
           [ids.unclaimed, { kind: "unclaimed", dueSince: at(20_000) }],

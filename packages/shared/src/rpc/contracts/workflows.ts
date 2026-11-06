@@ -151,40 +151,99 @@ const executorNodeFields = {
   nodeName: Schema.NullOr(Schema.String),
 };
 
+/** The wake a producer wrote onto a park. See `ParkWake`. */
+const parkWakeKindSchema = Schema.Literals([
+  "timeout",
+  "migrate",
+  "cancel",
+  "exit",
+  "resume",
+]);
+
+/**
+ * The run waits until `nextTryAt` after a failure. A step's failure names the
+ * step's node, counts that step's failures and carries its last `error`; a
+ * failure outside any step names no node and counts the run's own. A step
+ * gets `retryLimit` retries, so the next try is try `failures + 1` of
+ * `retryLimit + 1`.
+ */
+const retryingActivitySchema = Schema.Struct({
+  kind: Schema.Literal("retrying"),
+  ...executorNodeFields,
+  nextTryAt: executorInstant,
+  failures: positiveInteger,
+  retryLimit: positiveInteger,
+  error: Schema.NullOr(Schema.String),
+});
+
+/**
+ * The worker running the run stopped renewing its lease at `since`, while
+ * running a step of the named node, and another worker will take the run over.
+ */
+const leaseExpiredActivitySchema = Schema.Struct({
+  kind: Schema.Literal("lease_expired"),
+  ...executorNodeFields,
+  since: executorInstant,
+});
+
 /**
  * What the database executor is doing about an in-progress run, as a runs list
- * shows it beside the run, or null when there is nothing to say.
- *
- * - `retrying`: the run waits until `nextTryAt` after a failure. A step's
- *   failure names the step's node and counts that step's failures; a failure
- *   outside any step names no node and counts the run's own. A step gets
- *   `retryLimit` retries, so the next try is try `failures + 1` of
- *   `retryLimit + 1`.
- * - `lease_expired`: the worker running the run stopped renewing its lease at
- *   `since`, while running a step of the named node, and another worker will
- *   take the run over.
- * - `unclaimed`: the run has been due since `dueSince` and no worker has
- *   claimed it. `observedAt` is the server's clock when it answered, which is
- *   what to measure how long it has waited against.
+ * shows it beside the run, or null when there is nothing to show: `retrying`,
+ * `lease_expired`, or `unclaimed`, which says the run has been due since
+ * `dueSince` and no worker has claimed it. `observedAt` is the server's clock
+ * when it answered, which is what to measure how long it has waited against.
+ * The run's overview reads the same decision from `executionScheduleSchema`.
  */
 const executionActivitySchema = Schema.Union([
-  Schema.Struct({
-    kind: Schema.Literal("retrying"),
-    ...executorNodeFields,
-    nextTryAt: executorInstant,
-    failures: positiveInteger,
-    retryLimit: positiveInteger,
-  }),
-  Schema.Struct({
-    kind: Schema.Literal("lease_expired"),
-    ...executorNodeFields,
-    since: executorInstant,
-  }),
+  retryingActivitySchema,
+  leaseExpiredActivitySchema,
   Schema.Struct({
     kind: Schema.Literal("unclaimed"),
     dueSince: executorInstant,
     observedAt: executorInstant,
   }),
+]);
+
+/**
+ * What the database executor is doing about an in-progress run, as the run's
+ * overview states it. The server decides the case, in this order:
+ *
+ * - `resuming`: a producer resolved a park of the run (`wake` says which) and
+ *   no pass has read the wake. `wokenAt` is when an Event or a manual resume
+ *   claimed it, `deadline` is the park's deadline, and `unclaimedSince` is
+ *   when the wake began waiting for a worker, null while a worker holds the
+ *   run.
+ * - `lease_expired`: as in a runs list.
+ * - `running`: a worker, `workerId`, holds a live lease, running a step of the
+ *   named node, or between steps when the node is null.
+ * - `retrying`: as in a runs list.
+ * - `unclaimed`: the run has been due since `dueSince` and no worker has
+ *   claimed it.
+ * - `waiting`: the run is asleep on its parks and not yet due.
+ */
+const scheduleActivitySchema = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("resuming"),
+    nodeId: Schema.String,
+    nodeName: Schema.String,
+    wake: parkWakeKindSchema,
+    eventName: Schema.NullOr(Schema.String),
+    wokenAt: Schema.NullOr(executorInstant),
+    deadline: Schema.NullOr(executorInstant),
+    unclaimedSince: Schema.NullOr(executorInstant),
+  }),
+  leaseExpiredActivitySchema,
+  Schema.Struct({
+    kind: Schema.Literal("running"),
+    ...executorNodeFields,
+    workerId: Schema.NullOr(Schema.String),
+  }),
+  retryingActivitySchema,
+  Schema.Struct({
+    kind: Schema.Literal("unclaimed"),
+    dueSince: executorInstant,
+  }),
+  Schema.Struct({ kind: Schema.Literal("waiting") }),
 ]);
 
 /**
@@ -304,11 +363,14 @@ const executionWaitSchema = Schema.Struct({
  * failures first, and `unconsumedWakes` the parks a producer resolved that no
  * pass has read yet, each with the Event a resume carries and when an Event or
  * a manual resume claimed it. A step or the run body gets `retryLimit` retries.
+ * `activity` is the server's decision about the run, null for a run queued
+ * with no failure and not yet due.
  * `observedAt` is the server's clock when it answered, which is what to compare
  * every other instant here against.
  */
 const executionScheduleSchema = Schema.Struct({
   observedAt: executorInstant,
+  activity: Schema.NullOr(scheduleActivitySchema),
   state: Schema.Literals(EXECUTION_SCHEDULE_STATES),
   wakeAt: executorInstant,
   attempt: nonNegativeInteger,
@@ -332,7 +394,7 @@ const executionScheduleSchema = Schema.Struct({
       waitStateId: idSchema,
       nodeId: Schema.String,
       nodeName: Schema.String,
-      kind: Schema.Literals(["timeout", "migrate", "cancel", "exit", "resume"]),
+      kind: parkWakeKindSchema,
       eventName: Schema.NullOr(Schema.String),
       wokenAt: Schema.NullOr(executorInstant),
     })

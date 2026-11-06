@@ -85,7 +85,7 @@ function makeExecutionRepo(rows: GlobalExecutionRow[]) {
 
   // The runs list reads nothing else, so every other method refuses. The
   // executor holds `exec_3`, whose worker stopped renewing its lease, and
-  // `exec_2`, which is asleep on its parks and has no activity.
+  // `exec_2`, which is asleep on its parks, a case a list row does not show.
   const repoLayer = stubExecutionRepo({
     listPage: (query) =>
       Effect.sync(() => {
@@ -105,6 +105,7 @@ function makeExecutionRepo(rows: GlobalExecutionRow[]) {
               since: new Date("2026-02-18T19:41:00.000Z"),
             },
           ],
+          ["exec_2", { kind: "waiting" }],
         ]);
       }),
   });

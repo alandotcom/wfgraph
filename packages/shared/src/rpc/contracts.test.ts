@@ -204,6 +204,7 @@ describe("workflow executions RPC output contract", () => {
         nextTryAt: "2026-03-01T09:01:00.000Z",
         failures: 2,
         retryLimit: 4,
+        error: "send is down",
       },
       {
         kind: "retrying",
@@ -212,6 +213,7 @@ describe("workflow executions RPC output contract", () => {
         nextTryAt: "2026-03-01T09:01:00.000Z",
         failures: 1,
         retryLimit: 4,
+        error: null,
       },
       {
         kind: "lease_expired",
@@ -304,6 +306,12 @@ describe("workflow execution logs RPC output contract", () => {
     const decode = getOutputDecoder(rpcContract.workflow.getExecutionLogs);
     const schedule = {
       observedAt: "2026-03-01T09:02:00.000Z",
+      activity: {
+        kind: "running",
+        nodeId: "send",
+        nodeName: "Send reminder",
+        workerId: "worker_1",
+      },
       state: "leased",
       wakeAt: "2026-03-01T09:01:00.000Z",
       attempt: 0,
@@ -339,6 +347,61 @@ describe("workflow execution logs RPC output contract", () => {
     expect(await decode({ ...payload, schedule: null })).toHaveProperty(
       "value"
     );
+  });
+
+  it("carries each case of the server's decision about the run, and none", async () => {
+    const decode = getOutputDecoder(rpcContract.workflow.getExecutionLogs);
+    const activities = [
+      null,
+      {
+        kind: "resuming",
+        nodeId: "approval",
+        nodeName: "Approval",
+        wake: "resume",
+        eventName: "app/approved",
+        wokenAt: "2026-03-01T09:01:30.000Z",
+        deadline: null,
+        unclaimedSince: "2026-03-01T09:01:30.000Z",
+      },
+      {
+        kind: "lease_expired",
+        nodeId: null,
+        nodeName: null,
+        since: "2026-03-01T09:00:30.000Z",
+      },
+      { kind: "running", nodeId: null, nodeName: null, workerId: null },
+      {
+        kind: "retrying",
+        nodeId: null,
+        nodeName: null,
+        nextTryAt: "2026-03-01T09:03:00.000Z",
+        failures: 1,
+        retryLimit: 4,
+        error: "the body failed",
+      },
+      { kind: "unclaimed", dueSince: "2026-03-01T09:00:00.000Z" },
+      { kind: "waiting" },
+    ];
+
+    for (const activity of activities) {
+      const schedule = {
+        observedAt: "2026-03-01T09:02:00.000Z",
+        activity,
+        state: "queued",
+        wakeAt: "2026-03-01T09:01:00.000Z",
+        attempt: 0,
+        retryLimit: 4,
+        runningStepId: null,
+        runningNodeId: null,
+        runningNodeName: null,
+        leaseExpiresAt: null,
+        workerId: null,
+        lastError: null,
+        failingSteps: [],
+        unconsumedWakes: [],
+      };
+      expect(await decode({ ...payload, schedule })).toHaveProperty("value");
+    }
   });
 
   it("refuses a node log without its retry count", async () => {

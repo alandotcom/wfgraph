@@ -5,13 +5,15 @@
  * rows, which exist only while the run is open, so a run that ended answers
  * nothing. A node they name is named from the run's log row for it, joined on
  * the run and the node id. Neither read takes a lock. `executorActivityOf`
- * makes the list's decision for both backends.
+ * decides what the executor is doing about a run, for both reads and both
+ * backends.
  */
 
 import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { Effect } from "effect";
-import { maxBy } from "es-toolkit/array";
+import { compact, maxBy } from "es-toolkit/array";
+import { omit } from "es-toolkit/object";
 import {
   workflowExecutionLogs,
   workflowExecutionSchedule,
@@ -20,11 +22,11 @@ import {
 } from "#src/backend/lib/db/schema";
 import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
 import type {
-  ExecutionScheduleState,
   ExecutorActivity,
   ExecutorState,
   FailingStep,
   ParkWake,
+  UnconsumedWake,
 } from "#src/backend/services/executions/repo/contracts";
 
 /** The executor-state slice of `ExecutionRepo`. */
@@ -39,8 +41,12 @@ export type ExecutorStateRepoMethods = {
   ) => Effect.Effect<ExecutorState | null, DatabaseError>;
   /**
    * The activity of each of `executionIds` that has one at `now`, keyed by
-   * execution id, as `executorActivityOf` decides. One query for the whole
-   * set, so a runs list page costs one round trip however many runs it shows.
+   * execution id, as `executorActivityOf` decides from the run's schedule row
+   * and failing steps. The read takes no wait rows, so it never answers
+   * `resuming`: a producer that resolves a park also makes the run due, and
+   * the run reads as `unclaimed` until a worker claims it. One query for the
+   * whole set, so a runs list page costs one round trip however many runs it
+   * shows.
    */
   readonly listExecutorActivity: (input: {
     executionIds: readonly string[];
@@ -48,83 +54,122 @@ export type ExecutorStateRepoMethods = {
   }) => Effect.Effect<Map<string, ExecutorActivity>, DatabaseError>;
 };
 
+/**
+ * The facts `executorActivityOf` decides from: a run's schedule row, its
+ * failing steps in any order, and its unconsumed wakes, oldest first.
+ * `ExecutorState` is one.
+ */
+export type ExecutorHold = Pick<
+  ExecutorState,
+  | "state"
+  | "wakeAt"
+  | "attempt"
+  | "leaseExpiresAt"
+  | "workerId"
+  | "runningNodeId"
+  | "runningNodeName"
+  | "lastError"
+> & {
+  failingSteps: ReadonlyArray<
+    Pick<FailingStep, "nodeId" | "nodeName" | "failures" | "error">
+  >;
+  unconsumedWakes: readonly UnconsumedWake[];
+};
+
 /** One run's schedule row with one of its failing steps, as the list reads it. */
-export type ActivityRow = {
+export type ActivityRow = Omit<
+  ExecutorHold,
+  "failingSteps" | "unconsumedWakes"
+> & {
   executionId: string;
-  state: ExecutionScheduleState;
-  wakeAt: Date;
-  attempt: number;
-  leaseExpiresAt: Date | null;
-  runningNodeId: string | null;
-  runningNodeName: string | null;
   /** A failing step of the run, or null when it has none. */
-  failing: Pick<FailingStep, "nodeId" | "nodeName" | "failures"> | null;
+  failing: ExecutorHold["failingSteps"][number] | null;
 };
 
 /**
- * What the executor is doing about one run at `now`, from its schedule row
- * and its failing steps (one row per failing step, or one row with none):
+ * What the executor is doing about one run at `now`, as `ExecutorActivity`
+ * describes each case, taking the first that holds:
  *
- * - a lease that ended at or before `now` is `lease_expired`, the same test a
- *   claim sweeps it by, naming the node the heartbeat last recorded;
- * - a `queued` or `waiting` row due at or before `now` is `unclaimed`;
- * - a `queued` row not yet due after a step's failure is `retrying` that
- *   step, the one with the most failures when several are failing;
- * - a `queued` row not yet due after a failure of the run body is `retrying`
- *   with no node, counting the run's own failures;
- * - anything else (a lease still held, a run asleep on its parks, a row
- *   queued with no failure) has no activity, which answers null.
+ * 1. an unconsumed wake is `resuming`, naming the oldest when there are several;
+ * 2. a lease that ended at or before `now` is `lease_expired`, the same test a
+ *    claim sweeps it by, and a lease still held is `running`;
+ * 3. a `queued` row not yet due after a step's failure is `retrying` that
+ *    step, the one with the most failures when several are failing, and after
+ *    a failure of the run body (`attempt` above zero) it is `retrying` with no
+ *    node;
+ * 4. a `queued` or `waiting` row due at or before `now` is `unclaimed`;
+ * 5. a `waiting` row not yet due is `waiting`.
+ *
+ * A `queued` row not yet due with no failure has no activity, which answers
+ * null.
  */
 export function executorActivityOf(
-  rows: readonly ActivityRow[],
+  hold: ExecutorHold,
   now: Date
 ): ExecutorActivity | null {
-  const [row] = rows;
-  if (row === undefined) return null;
   const at = now.getTime();
-  if (row.state === "leased") {
-    return row.leaseExpiresAt !== null && row.leaseExpiresAt.getTime() <= at
+  const [wake] = hold.unconsumedWakes;
+  if (wake !== undefined) {
+    return {
+      kind: "resuming",
+      nodeId: wake.nodeId,
+      nodeName: wake.nodeName,
+      wake: wake.kind,
+      eventName: wake.eventName,
+      wokenAt: wake.wokenAt,
+      deadline: wake.deadline,
+      unclaimedSince:
+        hold.state === "leased" ? null : (wake.wokenAt ?? hold.wakeAt),
+    };
+  }
+  if (hold.state === "leased") {
+    return hold.leaseExpiresAt !== null && hold.leaseExpiresAt.getTime() <= at
       ? {
           kind: "lease_expired",
-          nodeId: row.runningNodeId,
-          nodeName: row.runningNodeName,
-          since: row.leaseExpiresAt,
+          nodeId: hold.runningNodeId,
+          nodeName: hold.runningNodeName,
+          since: hold.leaseExpiresAt,
+        }
+      : {
+          kind: "running",
+          nodeId: hold.runningNodeId,
+          nodeName: hold.runningNodeName,
+          workerId: hold.workerId,
+        };
+  }
+  const due = hold.wakeAt.getTime() <= at;
+  if (hold.state === "queued" && !due) {
+    const failing = maxBy([...hold.failingSteps], (step) => step.failures);
+    if (failing !== undefined) {
+      return {
+        kind: "retrying",
+        nodeId: failing.nodeId,
+        nodeName: failing.nodeName,
+        nextTryAt: hold.wakeAt,
+        failures: failing.failures,
+        error: failing.error,
+      };
+    }
+    return hold.attempt > 0
+      ? {
+          kind: "retrying",
+          nodeId: null,
+          nodeName: null,
+          nextTryAt: hold.wakeAt,
+          failures: hold.attempt,
+          error: hold.lastError,
         }
       : null;
   }
-  if (row.wakeAt.getTime() <= at) {
-    return { kind: "unclaimed", dueSince: row.wakeAt };
-  }
-  if (row.state !== "queued") return null;
-  const failing = maxBy(
-    rows.flatMap((candidate) =>
-      candidate.failing === null ? [] : [candidate.failing]
-    ),
-    (step) => step.failures
-  );
-  if (failing !== undefined) {
-    return {
-      kind: "retrying",
-      nodeId: failing.nodeId,
-      nodeName: failing.nodeName,
-      nextTryAt: row.wakeAt,
-      failures: failing.failures,
-    };
-  }
-  return row.attempt > 0
-    ? {
-        kind: "retrying",
-        nodeId: null,
-        nodeName: null,
-        nextTryAt: row.wakeAt,
-        failures: row.attempt,
-      }
-    : null;
+  return due
+    ? { kind: "unclaimed", dueSince: hold.wakeAt }
+    : { kind: "waiting" };
 }
 
 /**
  * The activities `executorActivityOf` decides for every run among `rows`,
  * which hold one row per failing step of each run, keyed by execution id.
+ * The rows carry no wakes, as `listExecutorActivity` describes.
  */
 export function executorActivities(
   rows: readonly ActivityRow[],
@@ -132,8 +177,16 @@ export function executorActivities(
 ): Map<string, ExecutorActivity> {
   return new Map(
     [...Map.groupBy(rows, (row) => row.executionId)].flatMap(
-      ([executionId, runRows]) => {
-        const activity = executorActivityOf(runRows, now);
+      ([executionId, [first, ...rest]]) => {
+        if (first === undefined) return [];
+        const activity = executorActivityOf(
+          {
+            ...omit(first, ["executionId", "failing"]),
+            failingSteps: compact([first, ...rest].map((row) => row.failing)),
+            unconsumedWakes: [],
+          },
+          now
+        );
         return activity === null ? [] : [[executionId, activity] as const];
       }
     )
@@ -145,14 +198,16 @@ export function failingOf(row: {
   failingNodeId: string | null;
   failingNodeName: string | null;
   failingFailures: number | null;
+  failingError: string | null;
 }): ActivityRow["failing"] {
   return row.failingFailures === null
     ? null
-    : {
+    : failingStepOf({
         nodeId: row.failingNodeId,
         nodeName: row.failingNodeName,
         failures: row.failingFailures,
-      };
+        error: row.failingError,
+      });
 }
 
 const WAKE_KINDS: readonly ParkWake["kind"][] = [
@@ -164,12 +219,13 @@ const WAKE_KINDS: readonly ParkWake["kind"][] = [
 ];
 
 /**
- * A `failing` memo row as `FailingStep`. The table's check keeps a failing
- * row's error set, so a row without one is a defect.
+ * A `failing` memo row's columns with the error narrowed to a string. The
+ * table's check keeps a failing row's error set, so a row without one is a
+ * defect.
  */
-export function failingStepOf(
-  row: Omit<FailingStep, "error"> & { error: string | null }
-): FailingStep {
+export function failingStepOf<Row extends { error: string | null }>(
+  row: Row
+): Omit<Row, "error"> & { error: string } {
   if (row.error === null) {
     throw new Error("A failing step memo row holds no error");
   }
@@ -252,6 +308,7 @@ export function makeExecutorStateMethods(
               string | null
             >`${workflowWaitStates.wake} ->> 'eventName'`,
             wokenAt: workflowWaitStates.resumedAt,
+            deadline: workflowWaitStates.waitUntil,
           })
           .from(workflowWaitStates)
           .where(
@@ -290,11 +347,14 @@ export function makeExecutorStateMethods(
             wakeAt: workflowExecutionSchedule.wakeAt,
             attempt: workflowExecutionSchedule.attempt,
             leaseExpiresAt: workflowExecutionSchedule.leaseExpiresAt,
+            workerId: workflowExecutionSchedule.workerId,
+            lastError: workflowExecutionSchedule.lastError,
             runningNodeId: workflowExecutionSchedule.runningNodeId,
             runningNodeName: runningLog.nodeName,
             failingNodeId: workflowExecutionSteps.nodeId,
             failingNodeName: failingLog.nodeName,
             failingFailures: workflowExecutionSteps.failures,
+            failingError: workflowExecutionSteps.error,
           })
           .from(workflowExecutionSchedule)
           .leftJoin(
@@ -335,6 +395,8 @@ export function makeExecutorStateMethods(
                     wakeAt: row.wakeAt,
                     attempt: row.attempt,
                     leaseExpiresAt: row.leaseExpiresAt,
+                    workerId: row.workerId,
+                    lastError: row.lastError,
                     runningNodeId: row.runningNodeId,
                     runningNodeName: row.runningNodeName,
                     failing: failingOf(row),

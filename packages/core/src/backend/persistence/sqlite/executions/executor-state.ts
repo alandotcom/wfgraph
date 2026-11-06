@@ -93,6 +93,7 @@ export function makeSqliteExecutorStateMethods(
                 string | null
               >`${workflowWaitStates.wake} ->> 'eventName'`,
               wokenAt: workflowWaitStates.resumedAt,
+              deadline: workflowWaitStates.waitUntil,
             })
             .from(workflowWaitStates)
             .where(
@@ -118,6 +119,7 @@ export function makeSqliteExecutorStateMethods(
               ...wake,
               kind: parkWakeKind(wake.kind),
               wokenAt: wake.wokenAt === null ? null : new Date(wake.wokenAt),
+              deadline: wake.deadline === null ? null : new Date(wake.deadline),
             })),
           };
         })
@@ -133,6 +135,7 @@ export function makeSqliteExecutorStateMethods(
             failingNodeId: workflowExecutionSteps.nodeId,
             failingNodeName: failingLog.nodeName,
             failingFailures: workflowExecutionSteps.failures,
+            failingError: workflowExecutionSteps.error,
           })
           .from(workflowExecutionSchedule)
           .leftJoin(
@@ -176,6 +179,8 @@ export function makeSqliteExecutorStateMethods(
                           wakeAt: schedule.wakeAt,
                           attempt: schedule.attempt,
                           leaseExpiresAt: schedule.leaseExpiresAt,
+                          workerId: schedule.workerId,
+                          lastError: schedule.lastError,
                           runningNodeId: schedule.runningNodeId,
                           runningNodeName: row.runningNodeName,
                           failing: failingOf(row),

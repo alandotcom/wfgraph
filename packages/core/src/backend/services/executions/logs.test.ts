@@ -218,27 +218,55 @@ describe("getExecutionLogs", () => {
               kind: "resume",
               eventName: "app/approved",
               wokenAt: new Date("2026-03-01T10:04:00.000Z"),
+              deadline: null,
             },
           ],
         };
-        const repos = Layer.mergeAll(
-          SilentAppLoggerLayer,
-          stubExecutionRepo({
-            findSummaryById: () =>
-              Effect.succeed(summary({ status: "running", completedAt: null })),
-            findTerminationState: () => Effect.succeed(null),
-            listLogs: () => Effect.succeed([]),
-            listWaitingStates: () => Effect.succeed([]),
-            findExecutorState: () => Effect.succeed(state),
-          })
-        );
+        const reposFor = (held: ExecutorState) =>
+          Layer.mergeAll(
+            SilentAppLoggerLayer,
+            stubExecutionRepo({
+              findSummaryById: () =>
+                Effect.succeed(
+                  summary({ status: "running", completedAt: null })
+                ),
+              findTerminationState: () => Effect.succeed(null),
+              listLogs: () => Effect.succeed([]),
+              listWaitingStates: () => Effect.succeed([]),
+              findExecutorState: () => Effect.succeed(held),
+            })
+          );
 
         const result = yield* getExecutionLogs("exec_1").pipe(
-          Effect.provide(repos)
+          Effect.provide(reposFor(state))
         );
+        // Once a pass has read the wake, the same run is retrying its failing
+        // step, and the activity carries the step's error redacted.
+        const retrying = yield* getExecutionLogs("exec_1").pipe(
+          Effect.provide(reposFor({ ...state, unconsumedWakes: [] }))
+        );
+        assert.deepStrictEqual(retrying.schedule?.activity, {
+          kind: "retrying",
+          nodeId: "send",
+          nodeName: "Send reminder",
+          nextTryAt: "2026-03-01T10:06:00.000Z",
+          failures: 2,
+          retryLimit: 4,
+          error: "Authorization: [REDACTED]",
+        });
 
         assert.deepStrictEqual(result.schedule, {
           observedAt: "2026-03-01T10:05:00.000Z",
+          activity: {
+            kind: "resuming",
+            nodeId: "approval",
+            nodeName: "Approval",
+            wake: "resume",
+            eventName: "app/approved",
+            wokenAt: "2026-03-01T10:04:00.000Z",
+            deadline: null,
+            unclaimedSince: "2026-03-01T10:04:00.000Z",
+          },
           state: "queued",
           wakeAt: "2026-03-01T10:06:00.000Z",
           attempt: 0,
