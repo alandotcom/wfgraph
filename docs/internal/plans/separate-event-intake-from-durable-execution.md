@@ -1126,14 +1126,53 @@ keeps compatibility machinery alive for the next one.
    `createWfGraphApp` and `createWfGraphRunner` defaulting to seven days, so a
    host retrying a send over a weekend still deduplicates (section 7.1).
    Inngest's equivalent window is 24 hours.
-8. Whether the library prunes run history. `workflow_executions`,
-   `workflow_execution_logs`, `workflow_execution_events` and closed
-   `workflow_wait_states` rows grow with every run today, and nothing deletes
-   them. That growth exists with or without this executor, and the data lives
-   in the adopter's database. Recommendation: a retention option on
-   `createWfGraphApp` that deletes terminal executions older than a window,
-   with their rows in the child tables, and that is off by default. Time
-   partitioning waits until volume calls for it.
+8. Decided 2026-11-06: the library prunes run history when a host asks it to.
+   `workflow_executions`, `workflow_execution_logs`, `workflow_execution_events`
+   and closed `workflow_wait_states` rows grow with every run, and the data
+   lives in the adopter's database, so pruning is off by default.
+   - The option is `runs: { retentionMs }` on `createWfGraphApp`,
+     `createWfGraphRunner` and the `wfWorker` config, beside
+     `events: { retentionMs }`. One window covers every terminal status and is
+     measured from `completed_at`.
+   - The sweep runs in the upkeep that already sweeps the inbox: hourly in the
+     worker loop, and on a Worker's Cron Trigger tick. It deletes in batches of
+     1,000.
+   - It deletes terminal Executions, which takes their logs, run-scoped audit
+     rows and wait rows by cascade. It also deletes the workflow-scoped audit
+     rows (`run_refused`, `cancel_not_delivered`) past the same window, and
+     draft snapshots no Execution references. Published versions stay.
+   - Startup refuses a `runs.retentionMs` shorter than `events.retentionMs`.
+     An Execution's `(workflow_id, delivery_id)` is the record a redelivered
+     inbox row is answered from, so deleting the run while its inbox row can
+     still be delivered again would open a second run.
+   - The Runs view states the window, sent by the server the way the stall
+     threshold is.
+   - A partial index on `completed_at` serves the sweep on both backends. Time
+     partitioning waits until volume calls for it.
+9. Decided 2026-11-06: cron schedules (phase 6). A scheduled run is a manual
+   run of the published version that names no Event, started by the clock.
+   - A schedule is a Lifecycle Rule: `schedules` beside `allowManualStart`, a
+     list of 5-field cron expressions, each with an IANA time zone that defaults
+     to the editor's browser zone. A local time that does not exist fires once
+     at the next valid instant, and a repeated local time fires once, on its
+     first occurrence.
+   - It takes effect at Publish, like the Start Events, and a draft never fires.
+     Republishing keeps the timer of an unchanged schedule.
+   - A fire missed while no worker ran runs once, for the most recent missed
+     slot. A paused workflow does not fire, and on resume the next fire is
+     computed from the resume time.
+   - The run carries no payload. Its Entity Value is `workflow:<id>`, so
+     first-wins skips a fire while a run is going (a Refused Start) and
+     newest-wins supersedes it. A save refuses a schedule on a workflow that
+     tracks an Entity (ADR-0020), and Publish refuses one on a graph whose Event
+     Split needs an Event.
+   - The timer is a `kind = 'cron'` row of `workflow_execution_schedule`, keyed
+     by workflow and schedule. Its pass opens the run and advances `wake_at` in
+     one transaction fenced on its lease, which makes a fire exactly once. The
+     fire does not go through the inbox, because a fire is not a catalog Event.
+   - The Runs view titles the run "Scheduled run" with the schedule's
+     description, and shows the scheduled time beside the start time when they
+     differ by more than a minute.
 
 ## 13. Sources
 
