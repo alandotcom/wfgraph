@@ -4,6 +4,8 @@ import {
   executorActivityCopy,
   executorDetails,
   finishedRetriesSummary,
+  listActivityLabel,
+  listServerNowMs,
   type NodeNamer,
   nodeRetrySummary,
   type ScheduleActivity,
@@ -270,6 +272,83 @@ describe("shortDuration", () => {
     expect(shortDuration(3_600_000)).toBe("1 h");
     expect(shortDuration(3_900_000)).toBe("1 h 5 min");
     expect(shortDuration(90_000_000)).toBe("1 d 1 h");
+  });
+});
+
+describe("listActivityLabel", () => {
+  const dueSince = "2026-03-01T10:00:00.000Z";
+
+  it("names the retried node, or the run when there is none", () => {
+    const retrying = {
+      kind: "retrying",
+      nodeId: "send",
+      nodeName: "Send reminder",
+      nextTryAt: "2026-03-01T10:01:00.000Z",
+      failures: 1,
+      retryLimit: 4,
+      error: null,
+    } as const;
+    expect(listActivityLabel(retrying, null)).toEqual({
+      text: "Retrying Send reminder",
+      warns: false,
+    });
+    expect(
+      listActivityLabel({ ...retrying, nodeId: null, nodeName: null }, null)
+        ?.text
+    ).toBe("Retrying the run");
+  });
+
+  it("names the node a stopped worker was running", () => {
+    const stopped = {
+      kind: "lease_expired",
+      nodeId: "send",
+      nodeName: null,
+      since: dueSince,
+    } as const;
+    expect(listActivityLabel(stopped, null)?.text).toBe(
+      "Worker stopped during send"
+    );
+    expect(listActivityLabel({ ...stopped, nodeId: null }, null)?.text).toBe(
+      "Worker stopped during the run"
+    );
+  });
+
+  it("says an unclaimed run waits only from 60 seconds past due", () => {
+    const unclaimed = {
+      kind: "unclaimed",
+      dueSince,
+      observedAt: dueSince,
+    } as const;
+    const due = Date.parse(dueSince);
+    expect(
+      listActivityLabel(unclaimed, due + UNCLAIMED_WARNING_MS - 1)
+    ).toBeNull();
+    expect(listActivityLabel(unclaimed, due + UNCLAIMED_WARNING_MS)).toEqual({
+      text: "Not claimed for 1 min",
+      warns: true,
+    });
+    expect(listActivityLabel(null, due)).toBeNull();
+  });
+});
+
+describe("listServerNowMs", () => {
+  it("reads the newest server clock among unclaimed rows, and none without one", () => {
+    const unclaimed = (observedAt: string) =>
+      ({ kind: "unclaimed", dueSince: observedAt, observedAt }) as const;
+    expect(
+      listServerNowMs({
+        activities: [
+          unclaimed("2026-03-01T10:00:00.000Z"),
+          null,
+          unclaimed("2026-03-01T10:00:30.000Z"),
+        ],
+        receivedAtMs: 1_000,
+        nowMs: 3_000,
+      })
+    ).toBe(Date.parse("2026-03-01T10:00:32.000Z"));
+    expect(
+      listServerNowMs({ activities: [null], receivedAtMs: 0, nowMs: 0 })
+    ).toBeNull();
   });
 });
 

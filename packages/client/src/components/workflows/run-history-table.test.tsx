@@ -98,6 +98,7 @@ describe("RunHistoryTable", () => {
         isLoadingMore={false}
         onLoadMore={() => undefined}
         onOpenRun={() => undefined}
+        receivedAtMs={0}
         runs={ROWS}
       />
     );
@@ -114,6 +115,51 @@ describe("RunHistoryTable", () => {
     expect(view.getAllByText("v4")).toHaveLength(2);
   });
 
+  // The wait is measured on the server's clock the list carries, so the
+  // browser's own clock, here years later, does not decide it.
+  it("says what the executor is doing beneath an in-progress run's status", () => {
+    const view = render(
+      <RunHistoryTable
+        hasNextPage={false}
+        isLoading={false}
+        isLoadingMore={false}
+        onLoadMore={() => undefined}
+        onOpenRun={() => undefined}
+        receivedAtMs={Date.now()}
+        runs={[
+          run({
+            id: "exec_retry",
+            status: "running",
+            activity: {
+              kind: "retrying",
+              nodeId: "send",
+              nodeName: "Send reminder",
+              nextTryAt: "2026-08-22T10:01:00.000Z",
+              failures: 1,
+              retryLimit: 4,
+              error: "down",
+            },
+          }),
+          run({
+            id: "exec_stuck",
+            workflowName: "Billing",
+            status: "running",
+            activity: {
+              kind: "unclaimed",
+              dueSince: "2026-08-22T10:00:00.000Z",
+              observedAt: "2026-08-22T10:03:00.000Z",
+            },
+          }),
+        ]}
+      />
+    );
+
+    expect(view.getByText("Retrying Send reminder")).toBeTruthy();
+    expect(view.getByText("Not claimed for 3 min").className).toContain(
+      "text-warning"
+    );
+  });
+
   it("labels a draft-snapshot run's row as Draft in the Graph column", () => {
     const view = render(
       <RunHistoryTable
@@ -122,6 +168,7 @@ describe("RunHistoryTable", () => {
         isLoadingMore={false}
         onLoadMore={() => undefined}
         onOpenRun={() => undefined}
+        receivedAtMs={0}
         runs={ROWS}
       />
     );
@@ -153,6 +200,7 @@ describe("RunHistoryTable", () => {
         isLoadingMore={false}
         onLoadMore={() => undefined}
         onOpenRun={() => undefined}
+        receivedAtMs={0}
         runs={rows}
       />
     );
@@ -178,6 +226,7 @@ describe("RunHistoryTable", () => {
         isLoadingMore={false}
         onLoadMore={() => undefined}
         onOpenRun={onOpenRun}
+        receivedAtMs={0}
         runs={ROWS}
       />
     );
@@ -194,6 +243,7 @@ describe("RunHistoryTable", () => {
         isLoadingMore={false}
         onLoadMore={() => undefined}
         onOpenRun={() => undefined}
+        receivedAtMs={0}
         runs={ROWS}
       />
     );
@@ -216,6 +266,7 @@ describe("RunHistoryTable", () => {
         isLoadingMore={false}
         onLoadMore={() => undefined}
         onOpenRun={() => undefined}
+        receivedAtMs={0}
         runs={[]}
       />
     );
@@ -232,6 +283,7 @@ describe("RunHistoryTable", () => {
         isLoadingMore={false}
         onLoadMore={onLoadMore}
         onOpenRun={() => undefined}
+        receivedAtMs={0}
         runs={ROWS}
       />
     );
@@ -249,6 +301,7 @@ describe("RunHistoryTable", () => {
         isLoadingMore={false}
         onLoadMore={onLoadMore}
         onOpenRun={() => undefined}
+        receivedAtMs={0}
         runs={ROWS}
       />
     );

@@ -135,9 +135,15 @@ export async function answerWorkflowRunRpc(
   switch (procedurePath) {
     case "workflow/getExecutions":
       return rpcJsonResponse({
-        items: input.includeSuperseded
+        items: (input.includeSuperseded
           ? served.items
-          : served.items.filter((item) => item.status !== "superseded"),
+          : served.items.filter((item) => item.status !== "superseded")
+        ).map((item) => ({
+          // The server answers an activity on every row, null when it has
+          // nothing to say, and these fixtures name none.
+          activity: null,
+          ...item,
+        })),
         supersededCount: served.supersededCount,
         refusedStarts: served.refusedStarts ?? [],
         cancelNotDelivered: served.cancelNotDelivered ?? [],
@@ -171,9 +177,15 @@ export async function answerWorkflowRunRpc(
           output: {},
           ...extras,
         },
-        logs: served.logsByExecutionId[executionId] ?? [],
+        // The server answers a retry count on every log; these fixtures name
+        // none, and no fixture is held by an executor.
+        logs: (served.logsByExecutionId[executionId] ?? []).map((entry) => ({
+          retries: 0,
+          ...readJsonObject(entry),
+        })),
         waits: served.waitsByExecutionId[executionId] ?? [],
         exit: served.exitByExecutionId?.[executionId] ?? null,
+        schedule: null,
       });
     }
 

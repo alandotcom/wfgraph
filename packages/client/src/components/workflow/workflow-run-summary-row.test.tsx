@@ -23,6 +23,7 @@ const BASE_EXECUTION: WorkflowExecution = {
   startSource: "event",
   waitingAt: null,
   workflowId: "wf_1",
+  activity: null,
 };
 
 describe("WorkflowRunSummaryRow", () => {
@@ -44,6 +45,21 @@ describe("WorkflowRunSummaryRow", () => {
 
     fireEvent.click(row);
     expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("says what the executor is doing in place of the status word", () => {
+    const view = render(
+      <WorkflowRunSummaryRow
+        activityLabel={{ text: "Not claimed for 3 min", warns: true }}
+        execution={{ ...BASE_EXECUTION, status: "running" }}
+        runNumber={2}
+      />
+    );
+
+    expect(view.getByText("Not claimed for 3 min").className).toContain(
+      "text-warning"
+    );
+    expect(view.queryByText("Running")).toBeNull();
   });
 
   // A draft-snapshot run pinned a graph that was never published, so its label

@@ -93,7 +93,13 @@ export type WorkflowRunsScreen =
   | { kind: "loading-list" }
   | { kind: "opening-newest" }
   | { kind: "list-error"; retry: () => void }
-  | { kind: "list"; executions: WorkflowExecution[]; settled: boolean }
+  | {
+      kind: "list";
+      executions: WorkflowExecution[];
+      settled: boolean;
+      /** The browser's clock when the rows arrived. */
+      receivedAtMs: number;
+    }
   | { kind: "run-loading" }
   | { kind: "run-unavailable"; retry: () => void }
   | { kind: "run"; run: OpenRun; pinnedGraph: PinnedGraphState };
@@ -355,6 +361,7 @@ export function useWorkflowRuns(): WorkflowRunsState {
       kind: "list",
       executions,
       settled: !executionsQuery.isPlaceholderData,
+      receivedAtMs: executionsQuery.dataUpdatedAt,
     };
   };
 

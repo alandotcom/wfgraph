@@ -8,6 +8,7 @@ import {
 import type { ExecutionLogEntry } from "@wfgraph/shared/graph/types";
 import type { WorkflowVersionKind } from "@wfgraph/shared/graph/version-kinds";
 import type { ExecutionLogsResult } from "#src/lib/rpc-client";
+import type { ListActivity } from "#src/lib/run-executor-activity";
 
 /**
  * The shapes a workflow run takes on the client, and the pure functions that
@@ -60,6 +61,11 @@ export type WorkflowExecution = {
   completedAt: Date | null;
   duration: string | null;
   error: string | null;
+  /**
+   * What the database executor is doing about the run, as the runs list
+   * carries it, and null for a run with nothing to say or read elsewhere.
+   */
+  activity: ListActivity | null;
 };
 
 export type ExecutionEvent = {
@@ -233,6 +239,8 @@ export function toWorkflowExecutionFromSummary(
     completedAt: summary.completedAt ? new Date(summary.completedAt) : null,
     duration: summary.duration,
     error: summary.error,
+    // The logs read carries the run's executor state as `schedule` instead.
+    activity: null,
   };
 }
 

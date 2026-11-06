@@ -30,6 +30,7 @@ const EXECUTION: WorkflowExecution = {
   completedAt: null,
   duration: null,
   error: null,
+  activity: null,
 };
 
 function log(

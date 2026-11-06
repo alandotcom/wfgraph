@@ -11,7 +11,10 @@
 
 import { formatClockTime } from "@wfgraph/shared/utils/time";
 import { compact } from "es-toolkit/array";
-import type { ExecutionLogsResult } from "#src/lib/rpc-client";
+import type {
+  ExecutionLogsResult,
+  WorkflowExecutionsGlobalResult,
+} from "#src/lib/rpc-client";
 
 /** Where the executor holds an in-progress run, as `getExecutionLogs` answers it. */
 export type ExecutorSchedule = NonNullable<ExecutionLogsResult["schedule"]>;
@@ -257,6 +260,73 @@ export function executorDetails(input: {
       ? null
       : { term: "Running step", value: schedule.runningStepId, mono: true },
   ]);
+}
+
+/**
+ * The server's decision about a run, as both runs lists carry it on a row:
+ * `retrying`, `lease_expired` or `unclaimed`.
+ */
+export type ListActivity = NonNullable<
+  WorkflowExecutionsGlobalResult["items"][number]["activity"]
+>;
+
+/**
+ * The server's clock for a runs list: the newest `observedAt` among its
+ * unclaimed rows, plus the time since the list arrived. A list whose older
+ * pages were fetched earlier still measures every row against the newest
+ * reading. Null when no row is unclaimed, since no other row needs a clock.
+ */
+export function listServerNowMs(input: {
+  activities: ReadonlyArray<ListActivity | null>;
+  receivedAtMs: number;
+  nowMs: number;
+}): number | null {
+  const readings = input.activities.flatMap((activity) =>
+    activity?.kind === "unclaimed" ? [Date.parse(activity.observedAt)] : []
+  );
+  return readings.length === 0
+    ? null
+    : Math.max(...readings) + Math.max(0, input.nowMs - input.receivedAtMs);
+}
+
+/**
+ * What a runs list row says about `activity` in place of its usual outcome,
+ * or null to keep that outcome. An unclaimed run is said only from 60 seconds
+ * past due on `nowMs`, the list's server clock, and `warns` draws it in the
+ * warning token. A node without a recorded name is named by its id.
+ */
+export function listActivityLabel(
+  activity: ListActivity | null,
+  nowMs: number | null
+): { text: string; warns: boolean } | null {
+  if (activity === null) {
+    return null;
+  }
+  switch (activity.kind) {
+    case "retrying": {
+      const node = activity.nodeName ?? activity.nodeId;
+      return {
+        text: node === null ? "Retrying the run" : `Retrying ${node}`,
+        warns: false,
+      };
+    }
+    case "lease_expired": {
+      const node = activity.nodeName ?? activity.nodeId;
+      return {
+        text:
+          node === null
+            ? "Worker stopped during the run"
+            : `Worker stopped during ${node}`,
+        warns: false,
+      };
+    }
+    default: {
+      const waited = nowMs === null ? 0 : elapsedMs(activity.dueSince, nowMs);
+      return waited < UNCLAIMED_WARNING_MS
+        ? null
+        : { text: `Not claimed for ${shortDuration(waited)}`, warns: true };
+    }
+  }
 }
 
 /** `1 time`, `2 times`. */

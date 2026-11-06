@@ -26,6 +26,7 @@ const rawExecution = {
   cancelledAt: null,
   completedAt: "2026-03-01T10:00:05.000Z",
   duration: "5000",
+  activity: null,
 };
 
 describe("toWorkflowExecutions", () => {

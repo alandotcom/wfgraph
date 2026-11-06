@@ -37,6 +37,7 @@ const BASE_EXECUTION: WorkflowExecution = {
   startSource: "event",
   waitingAt: null,
   workflowId: "wf_1",
+  activity: null,
 };
 
 /** The props every case shares, so a case only names what it varies. */

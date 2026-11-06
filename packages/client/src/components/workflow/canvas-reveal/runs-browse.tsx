@@ -528,6 +528,7 @@ export function RunsBody({ subject, frame, level, mobile }: RevealBodyProps) {
             focusId={runs.focusRunId}
             onFocusAnswered={answerRowFocus}
             onSelect={runs.selectRun}
+            receivedAtMs={screen.receivedAtMs}
           />
         </div>
       ) : null}

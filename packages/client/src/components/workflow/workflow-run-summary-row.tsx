@@ -30,6 +30,11 @@ type WorkflowRunSummaryRowProps = {
   onCancel?: ((executionId: string) => void) | undefined;
   isCanceling?: boolean | undefined;
   focusOnMount?: boolean | undefined;
+  /**
+   * What a list row says in place of its status word: what the database
+   * executor is doing about the run, from `listActivityLabel`.
+   */
+  activityLabel?: { text: string; warns: boolean } | null | undefined;
 };
 
 export function getRunIdentity(
@@ -110,9 +115,11 @@ export function getRunOutcome(
 function ListSummary({
   execution,
   runNumber,
+  activityLabel,
 }: {
   execution: WorkflowExecution;
   runNumber: number;
+  activityLabel: { text: string; warns: boolean } | null;
 }) {
   const identity = getRunIdentity(execution, runNumber);
 
@@ -144,9 +151,13 @@ function ListSummary({
           <span>Run #{runNumber}</span>
           <span aria-hidden="true">·</span>
           <span
-            className={statusToneTextClass(runStatusTone(execution.status))}
+            className={statusToneTextClass(
+              activityLabel?.warns === true
+                ? "warning"
+                : runStatusTone(execution.status)
+            )}
           >
-            {runStatusLabel(execution.status)}
+            {activityLabel?.text ?? runStatusLabel(execution.status)}
           </span>
           <span aria-hidden="true">·</span>
           <span>{runGraphRecipientsLabel(execution)}</span>
@@ -285,6 +296,7 @@ export function WorkflowRunSummaryRow({
   onCancel,
   isCanceling = false,
   focusOnMount = false,
+  activityLabel = null,
 }: WorkflowRunSummaryRowProps) {
   if (variant === "header") {
     return (
@@ -308,7 +320,11 @@ export function WorkflowRunSummaryRow({
       onClick={onClick}
       type="button"
     >
-      <ListSummary execution={execution} runNumber={runNumber} />
+      <ListSummary
+        activityLabel={activityLabel}
+        execution={execution}
+        runNumber={runNumber}
+      />
     </button>
   );
 }

@@ -739,6 +739,7 @@ export default function WorkflowsPage() {
                   void runsQuery.fetchNextPage();
                 }}
                 onOpenRun={openRun}
+                receivedAtMs={runsQuery.dataUpdatedAt}
                 runs={visibleRuns}
               />
             </section>
