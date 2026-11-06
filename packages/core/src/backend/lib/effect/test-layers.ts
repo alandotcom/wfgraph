@@ -387,6 +387,8 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
   claimDue: refuse("claimDue"),
   wakePark: refuse("wakePark"),
   listStepMemo: refuse("listStepMemo"),
+  findExecutorState: refuse("findExecutorState"),
+  listExecutorActivity: refuse("listExecutorActivity"),
   insertInboxEvent: refuse("insertInboxEvent"),
   scheduleUnscheduledInbox: refuse("scheduleUnscheduledInbox"),
   finishDelivery: refuse("finishDelivery"),

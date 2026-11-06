@@ -15,6 +15,7 @@ import { describeWorkflowConformance } from "#src/backend/persistence/conformanc
 import { describeExecutionConformance } from "#src/backend/persistence/conformance/executions";
 import { describeExecutionWaitConformance } from "#src/backend/persistence/conformance/execution-waits";
 import { describeExecutionScheduleConformance } from "#src/backend/persistence/conformance/execution-schedule";
+import { describeExecutionExecutorStateConformance } from "#src/backend/persistence/conformance/execution-executor-state";
 import { describeExecutionFencingConformance } from "#src/backend/persistence/conformance/execution-fencing";
 import { describeExecutionProducerConformance } from "#src/backend/persistence/conformance/execution-producers";
 import { describeExecutionInboxConformance } from "#src/backend/persistence/conformance/execution-inbox";
@@ -64,6 +65,7 @@ export function describePersistenceConformance(
     describeExecutionConformance(registry);
     describeExecutionWaitConformance(registry);
     describeExecutionScheduleConformance(registry);
+    describeExecutionExecutorStateConformance(registry);
     describeExecutionFencingConformance(registry);
     describeExecutionProducerConformance(registry);
     describeExecutionInboxConformance(registry);

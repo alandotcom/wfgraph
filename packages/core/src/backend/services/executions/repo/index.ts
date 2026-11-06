@@ -52,6 +52,10 @@ import {
   type InboxRepoMethods,
   makeInboxMethods,
 } from "#src/backend/services/executions/repo/inbox";
+import {
+  type ExecutorStateRepoMethods,
+  makeExecutorStateMethods,
+} from "#src/backend/services/executions/repo/executor-state";
 import { makeFencedWrites } from "#src/backend/services/executions/repo/fenced-writes";
 import type { FencedExecutionWrites } from "#src/backend/services/executions/repo/fencing";
 import type {
@@ -186,10 +190,11 @@ type CrossTableRepoMethods = {
  * different lifetime: a workflow is edited, its runs accumulate and are swept.
  * The four polling endpoints the editor keeps open ask only through here.
  *
- * The shape is assembled from seven slices, one file each beside this one
+ * The shape is assembled from eight slices, one file each beside this one
  * (`runs.ts`, `node-logs.ts`, `waits.ts`, `audit.ts`, `schedule.ts` for the
- * database executor's schedule rows and step memo, `claims.ts` for the
- * producers that claim a run's parks, and `inbox.ts` for the event inbox),
+ * database executor's schedule rows and step memo, `executor-state.ts` for
+ * the Runs view's reads of them, `claims.ts` for the producers that claim a
+ * run's parks, and `inbox.ts` for the event inbox),
  * plus the cross-table methods above that only this file can implement. The
  * event inbox is a slice here because a delivery is a body on the same
  * executor: its schedule row and step memo are this aggregate's tables, and a
@@ -203,6 +208,7 @@ export class ExecutionRepo extends Context.Service<
     WaitsRepoMethods &
     AuditRepoMethods &
     ScheduleRepoMethods &
+    ExecutorStateRepoMethods &
     ClaimsRepoMethods &
     InboxRepoMethods &
     CrossTableRepoMethods
@@ -220,6 +226,7 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
         ...makeWaitsMethods(database),
         ...makeAuditMethods(database),
         ...makeScheduleMethods(database),
+        ...makeExecutorStateMethods(database),
         ...makeClaimsMethods(database),
         ...makeInboxMethods(database),
         fenced: makeFencedWrites(database),

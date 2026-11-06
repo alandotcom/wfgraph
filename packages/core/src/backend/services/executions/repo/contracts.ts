@@ -242,6 +242,95 @@ export type ReleasedPass = {
   countedStep: CountedStepFailure | null;
 };
 
+/** A memo row of a step that failed and will run again on a later pass. */
+export type FailingStep = {
+  stepId: string;
+  /** The node the step does work for, or null for a step of no node. */
+  nodeId: string | null;
+  /**
+   * That node's name as its log row records it, and null when the run has no
+   * log row for the node yet, as for a step that runs before the node's log
+   * opens.
+   */
+  nodeName: string | null;
+  /** The retriable failures counted against the step so far. */
+  failures: number;
+  /** The step's last failure. */
+  error: string;
+};
+
+/**
+ * A park holding a wake no pass has consumed yet: a wait row `resuming` with
+ * a wake. The run's next pass reads the wake and moves the Wait on.
+ */
+export type UnconsumedWake = {
+  waitStateId: string;
+  nodeId: string;
+  nodeName: string;
+  /** Which producer resolved the park. */
+  kind: ParkWake["kind"];
+  /** The Event a `resume` wake carries, and null for any other wake or a resume naming none. */
+  eventName: string | null;
+  /** When an Event or a manual resume claimed the park, and null for a wake another producer wrote. */
+  wokenAt: Date | null;
+};
+
+/**
+ * Where the database executor holds one open run, read for a person asking
+ * why the run has not moved and when it will move next. The schedule row's
+ * columns are as `ExecutionSchedule` describes them.
+ */
+export type ExecutorState = Pick<
+  ExecutionSchedule,
+  | "state"
+  | "wakeAt"
+  | "attempt"
+  | "runningStepId"
+  | "runningNodeId"
+  | "leaseExpiresAt"
+  | "workerId"
+  | "lastError"
+> & {
+  /** The name of the node of `runningNodeId`, read as `FailingStep.nodeName` is. */
+  runningNodeName: string | null;
+  /** Every step of the run that failed and will run again, most failures first. */
+  failingSteps: FailingStep[];
+  /** Every park of the run holding a wake no pass has consumed. */
+  unconsumedWakes: UnconsumedWake[];
+};
+
+/**
+ * What the database executor is doing about one open run, reduced to the one
+ * fact a runs list shows beside it, as `executorActivityOf` decides.
+ *
+ * - `retrying`: the run is queued until `nextTryAt`, after a failure. A step's
+ *   failure names the step's node (null for a step of no node) and counts the
+ *   step's failures; a failure of the run body outside any step names no node
+ *   and counts the run's own failures.
+ *
+ * A named node's `nodeName` is read as `FailingStep.nodeName` is.
+ * - `lease_expired`: the worker that leased the run stopped renewing its lease
+ *   at `since`, while running a step of `nodeId` (null between steps). The
+ *   next claim takes the run over.
+ * - `unclaimed`: the run has been due since `dueSince` and no worker has
+ *   claimed it.
+ */
+export type ExecutorActivity =
+  | {
+      kind: "retrying";
+      nodeId: string | null;
+      nodeName: string | null;
+      nextTryAt: Date;
+      failures: number;
+    }
+  | {
+      kind: "lease_expired";
+      nodeId: string | null;
+      nodeName: string | null;
+      since: Date;
+    }
+  | { kind: "unclaimed"; dueSince: Date };
+
 /** What a producer's write did to a park and to its run's schedule row. */
 export type ParkResolution = {
   /** Whether this call set the wake. False when the row had left `waiting`. */
