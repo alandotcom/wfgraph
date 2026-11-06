@@ -11,7 +11,7 @@ import {
 } from "#src/backend/testing/reliability/fixtures";
 import { eventually } from "#src/backend/testing/reliability/control";
 import {
-  waitForRegisteredWaits,
+  waitForParkedWaits,
   expectSettledExecution,
   observeExecution,
 } from "#src/backend/testing/reliability/assertions";
@@ -49,7 +49,7 @@ const cancellationScenarios = fc
   })
   .map((value) => ({
     ...value,
-    // Only event Waits settle a claimed wake signal; other modes exercise the terminal write.
+    // Only an event Wait is claimed by an Event delivery; other modes exercise the terminal write.
     failurePoint:
       value.failurePoint === "wait-settlement" && value.cleanupMode !== "event"
         ? "terminal-write"
@@ -132,8 +132,8 @@ groupLayoutProperty(
     // Let completion observe the claim and route into the Canceled outlet.
     host.faults.completion.release();
     if (scenario.cleanupMode === "event") {
-      // A real Inngest subscription must exist before the wake event is sent.
-      await waitForRegisteredWaits(host, executionId, 1);
+      // The run must be parked on the cleanup Wait before the wake Event is sent.
+      await waitForParkedWaits(host, executionId, 1);
       await host.runtime.send(WAKE[0]!, {
         entityId: "subject",
         marker: "wake",

@@ -29,6 +29,15 @@ export class HostSetupFailure extends Error {
 
 export type Backend = "sqlite" | "postgres";
 export type ReliabilityHost = ReturnType<typeof fixtureExtensions> & {
+  /**
+   * One-shot repository faults a scenario arms. `admission` fires after
+   * `startForEntity` commits a Start's run, so the delivery loses the answer
+   * and Inngest retries it. `completion` fires before a `completed` terminal
+   * write and `terminal` before any other, whether a pass makes it fenced or
+   * after it ended the run. `settlement` fires after an Event delivery's claim
+   * of a parked Wait commits, which resolves the park and re-queues the run in
+   * the same write, so the delivery retries a claim that already landed.
+   */
   faults: Record<
     "admission" | "completion" | "terminal" | "settlement",
     ReturnType<typeof boundary>
@@ -215,6 +224,16 @@ function injectRepositoryFaults(
   faults: ReliabilityHost["faults"],
   onRepositoryOpen: (repo: ExecutionRepo["Service"]) => void
 ): WfGraphPersistence {
+  // A pass writes the terminal record through its fenced writes while it holds
+  // the lease, and through the unfenced method once it has ended the run, so
+  // both carry the same one-shot fault.
+  const finishRun = <A, E>(
+    input: { status: string },
+    write: Effect.Effect<A, E>
+  ) =>
+    input.status === "completed"
+      ? faults.completion.apply(write, "before")
+      : faults.terminal.apply(write, "before");
   return {
     open: async (cipher) => {
       const instance = await base.open(cipher);
@@ -225,10 +244,14 @@ function injectRepositoryFaults(
         ...repo,
         startForEntity: (input) =>
           faults.admission.apply(repo.startForEntity(input), "after"),
-        finishRun: (input) =>
-          input.status === "completed"
-            ? faults.completion.apply(repo.finishRun(input), "before")
-            : faults.terminal.apply(repo.finishRun(input), "before"),
+        finishRun: (input) => finishRun(input, repo.finishRun(input)),
+        fenced: (fence) => {
+          const writes = repo.fenced(fence);
+          return {
+            ...writes,
+            finishRun: (input) => finishRun(input, writes.finishRun(input)),
+          };
+        },
         claimWaitingStateById: (input) =>
           faults.settlement.apply(repo.claimWaitingStateById(input), "after"),
       };
@@ -263,6 +286,8 @@ async function snapshotWorkflows(
             ...row,
             summary: await Effect.runPromise(repo.findSummaryById(row.id)),
             waits: await Effect.runPromise(repo.listActiveWaitStates(row.id)),
+            schedule: await Effect.runPromise(repo.findSchedule(row.id)),
+            stepMemo: await Effect.runPromise(repo.listStepMemo(row.id)),
             logs: await Effect.runPromise(repo.listLogs(row.id)),
             events: await Effect.runPromise(repo.listEvents(row.id)),
           }))

@@ -92,14 +92,10 @@ type InngestRunner = {
   url: string;
   logs: string[];
   close: () => Promise<void>;
-  runState: (runId: string) => Promise<{
-    readonly id: string;
-    readonly status: string | null;
-    readonly history: ReadonlyArray<{
-      readonly type: string;
-      readonly stepName: string | null;
-    }>;
-  } | null>;
+  /**
+   * Every function run the dev server holds, newest first and at most 100.
+   * Inngest runs only the Event listeners, so each is one Event delivery.
+   */
   allRuns: () => Promise<
     Array<{ readonly id: string; readonly status: string }>
   >;
@@ -244,13 +240,6 @@ async function startInngestAttempt(
     url,
     logs,
     close,
-    async runState(runId: string) {
-      const body = await query(
-        "query($id: ID!) { functionRun(query: {functionRunId: $id}) { id status history { type stepName } } }",
-        { id: runId }
-      );
-      return decodeRunState(body).data.functionRun;
-    },
     async allRuns() {
       const body = await query(
         'query { runs(first: 100, orderBy: [{field: QUEUED_AT, direction: DESC}], filter: {from: "2020-01-01T00:00:00Z"}) { edges { node { id status } } } }'
@@ -290,25 +279,6 @@ async function startInngestAttempt(
     },
   };
 }
-
-const decodeRunState = Schema.decodeUnknownSync(
-  Schema.Struct({
-    data: Schema.Struct({
-      functionRun: Schema.NullOr(
-        Schema.Struct({
-          id: Schema.String,
-          status: Schema.NullOr(Schema.String),
-          history: Schema.Array(
-            Schema.Struct({
-              type: Schema.String,
-              stepName: Schema.NullOr(Schema.String),
-            })
-          ),
-        })
-      ),
-    }),
-  })
-);
 
 const decodeAllRuns = Schema.decodeUnknownSync(
   Schema.Struct({

@@ -42,10 +42,10 @@ export function boundary() {
     get hits() {
       return hits;
     },
-    apply<A>(
-      operation: Effect.Effect<A, DatabaseError>,
+    apply<A, E>(
+      operation: Effect.Effect<A, E>,
       phase: "before" | "after"
-    ) {
+    ): Effect.Effect<A, E | DatabaseError> {
       return Effect.gen(function* () {
         if (!armed) return yield* operation;
         armed = false;

@@ -2,25 +2,30 @@ import { expect } from "vitest";
 import { sortBy } from "es-toolkit/array";
 import { mapValues } from "es-toolkit/object";
 import type { JsonValue } from "@wfgraph/shared/types/json";
+import type { WorkflowWaitState } from "#src/backend/services/executions/repo";
 import type { ReliabilityHost } from "#src/backend/testing/reliability/host";
 import { eventually } from "#src/backend/testing/reliability/control";
 
-export async function waitForRegisteredWaits(
+/**
+ * Waits until the Execution is durably suspended on exactly `count` Waits: see
+ * `waitForSuspension`.
+ */
+export async function waitForParkedWaits(
   host: ReliabilityHost,
   executionId: string,
   count: number
 ) {
-  const waits = await eventually(
-    "persisted Waits",
-    () => host.run(host.repo.listWaitingStates(executionId)),
+  return waitForSuspension(
+    host,
+    executionId,
+    `${count} parked Waits`,
     (rows) => rows.length === count
   );
-  return waitForDurableSuspension(host, waits);
 }
 
 /**
- * Waits until the Execution is parked on exactly the Wait nodes `nodeIds`, each
- * with a persisted row and a registered Inngest wait or sleep.
+ * Waits until the Execution is durably suspended on exactly the Wait nodes
+ * `nodeIds`: see `waitForSuspension`.
  */
 export async function waitForOpenWaits(
   host: ReliabilityHost,
@@ -28,9 +33,10 @@ export async function waitForOpenWaits(
   nodeIds: readonly string[]
 ) {
   const expected = nodeIds.toSorted();
-  const waits = await eventually(
-    `open Waits at [${expected.join(", ")}]`,
-    () => host.run(host.repo.listWaitingStates(executionId)),
+  return waitForSuspension(
+    host,
+    executionId,
+    `parked Waits at [${expected.join(", ")}]`,
     (rows) =>
       rows.length === expected.length &&
       rows
@@ -38,26 +44,29 @@ export async function waitForOpenWaits(
         .toSorted()
         .every((nodeId, index) => nodeId === expected[index])
   );
-  return waitForDurableSuspension(host, waits);
 }
 
-async function waitForDurableSuspension<
-  W extends { nodeId: string; runId: string },
->(host: ReliabilityHost, waits: W[]) {
-  await Promise.all(
-    waits.map((wait) =>
-      eventually(
-        `durable suspension at ${wait.nodeId}`,
-        () => host.runtime.runState(wait.runId),
-        (state) =>
-          state?.history.some(
-            (item) =>
-              item.type === "StepWaiting" || item.type === "StepSleeping"
-          ) === true
-      )
-    )
+/**
+ * Waits until the run's schedule row is `waiting` and its open wait rows are
+ * the ones `accept` expects, and answers those rows. A `waiting` schedule row
+ * is a pass that released the run with every park written, so a wake sent
+ * afterwards resolves a park the executor will read.
+ */
+async function waitForSuspension(
+  host: ReliabilityHost,
+  executionId: string,
+  label: string,
+  accept: (rows: WorkflowWaitState[]) => boolean
+) {
+  const observed = await eventually(
+    `durable suspension on ${label}`,
+    async () => ({
+      schedule: await host.run(host.repo.findSchedule(executionId)),
+      waits: await host.run(host.repo.listWaitingStates(executionId)),
+    }),
+    ({ schedule, waits }) => schedule?.state === "waiting" && accept(waits)
   );
-  return waits;
+  return observed.waits;
 }
 
 const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
@@ -111,6 +120,13 @@ export function nodeLogCounts(
   return Object.fromEntries(counts);
 }
 
+/**
+ * Waits until the workflow's one Execution reads `status` with its schedule row
+ * and step memo deleted, which is the executor done with it, and until every
+ * Event delivery Inngest ran has finished. Then checks that each delivery
+ * completed, and that the run left no open wait row, no open node log and,
+ * unless it completed, no `run_completed` audit event. Answers the Execution id.
+ */
 export async function expectSettledExecution(
   host: ReliabilityHost,
   workflowId: string,
@@ -124,19 +140,23 @@ export async function expectSettledExecution(
       ),
     (rows) => rows.length === 1 && rows[0]?.status === status
   );
-  const durableRuns = await eventually(
-    "durable runs settled",
+  const executionId = runs[0].id;
+  await eventually(
+    "schedule row and step memo deleted",
+    async () => ({
+      schedule: await host.run(host.repo.findSchedule(executionId)),
+      stepMemo: await host.run(host.repo.listStepMemo(executionId)),
+    }),
+    ({ schedule, stepMemo }) => schedule === null && stepMemo.length === 0
+  );
+  const deliveries = await eventually(
+    "Event deliveries finished",
     () => host.runtime.allRuns(),
     (rows) =>
       rows.length > 0 &&
       rows.every((row) => !["RUNNING", "QUEUED"].includes(row.status))
   );
-  const allowed =
-    status === "exited" ? ["COMPLETED", "CANCELLED"] : ["COMPLETED"];
-  expect(durableRuns.filter((run) => !allowed.includes(run.status))).toEqual(
-    []
-  );
-  const executionId = runs[0].id;
+  expect(deliveries.filter((run) => run.status !== "COMPLETED")).toEqual([]);
   expect(await host.run(host.repo.listActiveWaitStates(executionId))).toEqual(
     []
   );

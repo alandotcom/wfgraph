@@ -10,7 +10,7 @@ import {
 } from "#src/backend/testing/reliability/fixtures";
 import { eventually } from "#src/backend/testing/reliability/control";
 import {
-  waitForRegisteredWaits,
+  waitForParkedWaits,
   expectSettledExecution,
   observeExecution,
 } from "#src/backend/testing/reliability/assertions";
@@ -80,7 +80,7 @@ groupLayoutProperty(
       )
     );
 
-    // Wait for both the database rows and Inngest's registered waits or sleeps.
+    // Wait until the run is parked on every branch's Wait.
     await host.runtime.send(START, { entityId: "subject", marker: "start" });
     const executions = await eventually(
       "Execution admitted",
@@ -91,7 +91,7 @@ groupLayoutProperty(
       (rows) => rows.length === 1
     );
     const executionId = executions[0]!.id;
-    const parked = await waitForRegisteredWaits(
+    const parked = await waitForParkedWaits(
       host,
       executionId,
       scenario.branchCount
