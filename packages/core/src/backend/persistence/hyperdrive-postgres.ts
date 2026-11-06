@@ -32,8 +32,8 @@ export function hyperdrivePostgresClientOptions() {
  *
  * The Worker host opens this backend once per invocation and closes it when
  * the invocation ends: after a request's response, or after a Cron Trigger's
- * or a Queue message's tick. The schema check makes a misconfigured origin role fail before an
- * unqualified repository query can land in `public`.
+ * or a Queue message's tick. The schema check makes a misconfigured origin
+ * role fail before an unqualified repository query can land in `public`.
  */
 export function wfHyperdrive(
   binding: HyperdriveBinding,

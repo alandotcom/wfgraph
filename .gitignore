@@ -78,3 +78,6 @@ dist/
 # TanStack Intent generate dump (domain map, skill spec, skill tree). Published
 # skills are authored under packages/*/skills; do not commit this output.
 _artifacts/
+
+# Local state the Inngest dev server writes, for a host that still runs it
+.inngest/

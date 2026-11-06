@@ -267,10 +267,6 @@ const wfgraph = await createWfGraphApp({
   events: {
     key: process.env.WFGRAPH_EVENTS_KEY?.trim() || undefined,
   },
-  // Workflow runs and Event deliveries execute in this process's worker loop,
-  // which the `runner` option tunes; left out, the loop runs at SQLite's
-  // defaults.
-  //
   // The whole extension surface, assembled in one place. The Events are what the
   // editor lists and what a send is checked against.
   extensions: {

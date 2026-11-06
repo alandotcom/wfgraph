@@ -122,9 +122,9 @@ export type ExtensionSet = {
   /**
    * Which Event an arrival is. An arrival with no Connection is an Event the
    * host declared itself, named by the Event's own name or by the
-   * `source.event` name it arrives under. An arrival with a Connection is an integration-owned
-   * Event, named the same two ways. `app.events.send`, the events route and
-   * the delivery body all decide through this.
+   * `source.event` name it arrives under. An arrival with a Connection is an
+   * integration-owned Event, named the same two ways. `app.events.send`, the
+   * events route and the delivery body all decide through this.
    */
   readonly resolveArrival: (arrival: Arrival) => ArrivalMatch;
   readonly entityByType: (type: string) => AnyEntityDefinition | undefined;
