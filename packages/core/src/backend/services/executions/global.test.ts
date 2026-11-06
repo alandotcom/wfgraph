@@ -2,14 +2,15 @@
 // provides, so nothing here imports the bare one.
 import { assert, describe, layer } from "@effect/vitest";
 import { Effect } from "effect";
+import { TestClock } from "effect/testing";
 import { InvalidInput } from "#src/backend/lib/effect/failures";
 import {
   SilentAppLoggerLayer,
   stubExecutionRepo,
+  stubExecutorHold,
 } from "#src/backend/lib/effect/test-layers";
 import type {
   ExecutionPageQuery,
-  ExecutorActivity,
   GlobalExecutionRow,
 } from "#src/backend/services/executions/repo";
 import { getWorkflowExecutionsGlobal } from "#src/backend/services/executions/global";
@@ -92,20 +93,28 @@ function makeExecutionRepo(rows: GlobalExecutionRow[]) {
         calls.pages.push(query);
         return rows.slice(0, query.limit);
       }),
-    listExecutorActivity: ({ executionIds }) =>
+    listExecutorHolds: (executionIds) =>
       Effect.sync(() => {
         calls.activities.push([...executionIds]);
-        return new Map<string, ExecutorActivity>([
+        return new Map([
           [
             "exec_3",
-            {
-              kind: "lease_expired",
-              nodeId: "send",
-              nodeName: "Send reminder",
-              since: new Date("2026-02-18T19:41:00.000Z"),
-            },
+            stubExecutorHold({
+              state: "leased",
+              workerId: "worker_1",
+              runningStepId: "node:send:dispatch",
+              runningNodeId: "send",
+              runningNodeName: "Send reminder",
+              leaseExpiresAt: new Date("2026-02-18T19:41:00.000Z"),
+            }),
           ],
-          ["exec_2", { kind: "waiting" }],
+          [
+            "exec_2",
+            stubExecutorHold({
+              state: "waiting",
+              wakeAt: new Date("2026-03-01T00:00:00.000Z"),
+            }),
+          ],
         ]);
       }),
   });
@@ -136,6 +145,7 @@ describe("getWorkflowExecutionsGlobal", () => {
     // One read for the page, asking only about the runs still in progress.
     it.effect("answers each in-progress run's executor activity", () =>
       Effect.gen(function* () {
+        yield* TestClock.setTime(Date.parse("2026-02-18T19:45:00.000Z"));
         const repo = makeExecutionRepo(page);
 
         const result = yield* getWorkflowExecutionsGlobal({}).pipe(

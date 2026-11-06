@@ -7,6 +7,7 @@ import type { WorkflowExecutionListRow } from "#src/backend/services/executions/
 import {
   SilentAppLoggerLayer,
   stubExecutionRepo,
+  stubExecutorHold,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
 import { getWorkflowExecutions } from "#src/backend/services/executions/list";
@@ -101,7 +102,7 @@ describe("getWorkflowExecutions", () => {
     it.effect("answers an unclaimed run's activity at the server's clock", () =>
       Effect.gen(function* () {
         yield* TestClock.setTime(Date.parse("2026-03-01T10:02:00.000Z"));
-        const asked: Array<{ executionIds: readonly string[]; now: Date }> = [];
+        const asked: Array<readonly string[]> = [];
         const result = yield* getWorkflowExecutions({
           workflowId: "wf_1",
           includeSuperseded: false,
@@ -118,16 +119,15 @@ describe("getWorkflowExecutions", () => {
                   ]),
                 countSuperseded: () => Effect.succeed(0),
                 listWorkflowEvents: () => Effect.succeed([]),
-                listExecutorActivity: (input) =>
+                listExecutorHolds: (executionIds) =>
                   Effect.sync(() => {
-                    asked.push(input);
+                    asked.push(executionIds);
                     return new Map([
                       [
                         "exec_1",
-                        {
-                          kind: "unclaimed" as const,
-                          dueSince: new Date("2026-03-01T10:00:00.000Z"),
-                        },
+                        stubExecutorHold({
+                          wakeAt: new Date("2026-03-01T10:00:00.000Z"),
+                        }),
                       ],
                     ]);
                   }),
@@ -136,12 +136,7 @@ describe("getWorkflowExecutions", () => {
           )
         );
 
-        assert.deepStrictEqual(asked, [
-          {
-            executionIds: ["exec_1"],
-            now: new Date("2026-03-01T10:02:00.000Z"),
-          },
-        ]);
+        assert.deepStrictEqual(asked, [["exec_1"]]);
         assert.deepStrictEqual(
           result.items.map((item) => item.activity),
           [

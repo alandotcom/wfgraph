@@ -30,7 +30,10 @@ import {
 import { IntegrationRepo } from "#src/backend/services/integrations/repo";
 import { keyBy } from "es-toolkit/array";
 import { mapValues } from "es-toolkit/object";
-import { ExecutionRepo } from "#src/backend/services/executions/repo";
+import {
+  ExecutionRepo,
+  type ExecutorHold,
+} from "#src/backend/services/executions/repo";
 import { ExecutionDriver } from "#src/backend/services/executions/driver";
 import {
   buildStoreWrites,
@@ -388,7 +391,7 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
   wakePark: refuse("wakePark"),
   listStepMemo: refuse("listStepMemo"),
   findExecutorState: refuse("findExecutorState"),
-  listExecutorActivity: refuse("listExecutorActivity"),
+  listExecutorHolds: refuse("listExecutorHolds"),
   insertInboxEvent: refuse("insertInboxEvent"),
   scheduleUnscheduledInbox: refuse("scheduleUnscheduledInbox"),
   finishDelivery: refuse("finishDelivery"),
@@ -416,6 +419,26 @@ export function stubExecutionRepo(
   overrides: Partial<ExecutionRepo["Service"]> = {}
 ): Layer.Layer<ExecutionRepo> {
   return Layer.succeed(ExecutionRepo, { ...executionRepoStubs, ...overrides });
+}
+
+/**
+ * An `ExecutorHold` for a stubbed executor-state read: a run queued with no
+ * failure and nothing running, with `fields` over it.
+ */
+export function stubExecutorHold(fields: Partial<ExecutorHold>): ExecutorHold {
+  return {
+    state: "queued",
+    wakeAt: new Date(0),
+    attempt: 0,
+    runningStepId: null,
+    runningNodeId: null,
+    runningNodeName: null,
+    leaseExpiresAt: null,
+    workerId: null,
+    lastError: null,
+    failingSteps: [],
+    ...fields,
+  };
 }
 
 const integrationRepoStubs: IntegrationRepo["Service"] = {

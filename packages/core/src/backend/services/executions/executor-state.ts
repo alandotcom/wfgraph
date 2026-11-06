@@ -1,10 +1,10 @@
 /**
  * The database executor's hold on a run as the Runs view's procedures answer
  * it: `toExecutionSchedule` for one run's logs, `toExecutionActivity` for a
- * runs list row. Both carry what `executorActivityOf` decided, so the overview
- * and the list never disagree about a run. Every instant is an ISO string, and
- * `observedAt` is the server's clock, which is what the client measures a wait
- * against. Error text passes through the same redaction as a node log's.
+ * runs list row, each classified here by `executorActivityOf`. The list reads
+ * no wake rows, so it never decides `resuming`. Every instant is an ISO
+ * string, `observedAt` is the server's clock the client measures a wait
+ * against, and error text passes through the same redaction as a node log's.
  */
 
 import { Clock, Effect } from "effect";
@@ -16,7 +16,7 @@ import {
   type ExecutorState,
   type ParkWake,
 } from "#src/backend/services/executions/repo";
-import { executorActivityOf } from "#src/backend/services/executions/repo/executor-state";
+import { executorActivityOf } from "#src/backend/services/executions/repo/executor-activity";
 import { STEP_RETRY_LIMIT } from "#src/backend/services/executions/repo/release-policy";
 import {
   IN_FLIGHT_EXECUTION_STATUSES,
@@ -147,7 +147,11 @@ export function toExecutionSchedule(
   state: ExecutorState,
   observedAt: Date
 ): ExecutionSchedule {
-  const activity = executorActivityOf(state, observedAt);
+  const activity = executorActivityOf({
+    hold: state,
+    wakes: state.unconsumedWakes,
+    now: observedAt,
+  });
   return {
     observedAt: encodeIsoTimestamp(observedAt),
     activity: activity === null ? null : toScheduleActivity(activity),
@@ -196,13 +200,19 @@ export const readExecutionActivities = Effect.fn("readExecutionActivities")(
     if (executionIds.length === 0) return new Map<string, ExecutionActivity>();
     const repo = yield* ExecutionRepo;
     const observedAt = yield* observedNow;
-    const activities = yield* repo.listExecutorActivity({
-      executionIds,
-      now: observedAt,
-    });
+    const holds = yield* repo.listExecutorHolds(executionIds);
     return new Map(
-      [...activities].flatMap(([executionId, activity]) => {
-        const shown = toExecutionActivity(activity, observedAt);
+      [...holds].flatMap(([executionId, hold]) => {
+        // The list reads no wake rows, so it never decides `resuming`: a
+        // producer that resolves a park also makes the run due, and the run
+        // reads as `unclaimed` until a worker claims it.
+        const activity = executorActivityOf({
+          hold,
+          wakes: [],
+          now: observedAt,
+        });
+        const shown =
+          activity === null ? null : toExecutionActivity(activity, observedAt);
         return shown === null ? [] : [[executionId, shown] as const];
       })
     );

@@ -278,11 +278,11 @@ export type UnconsumedWake = {
 };
 
 /**
- * Where the database executor holds one open run, read for a person asking
- * why the run has not moved and when it will move next. The schedule row's
- * columns are as `ExecutionSchedule` describes them.
+ * Where the database executor holds one open run, from its schedule row and
+ * its failing steps: what both executor-state reads answer for a run. The
+ * schedule row's columns are as `ExecutionSchedule` describes them.
  */
-export type ExecutorState = Pick<
+export type ExecutorHold = Pick<
   ExecutionSchedule,
   | "state"
   | "wakeAt"
@@ -297,13 +297,21 @@ export type ExecutorState = Pick<
   runningNodeName: string | null;
   /** Every step of the run that failed and will run again, most failures first. */
   failingSteps: FailingStep[];
-  /** Every park of the run holding a wake no pass has consumed. */
+};
+
+/**
+ * An `ExecutorHold` with the run's wakes, read for a person asking why one
+ * run has not moved and when it will move next.
+ */
+export type ExecutorState = ExecutorHold & {
+  /** Every park of the run holding a wake no pass has consumed, oldest first. */
   unconsumedWakes: UnconsumedWake[];
 };
 
 /**
- * What the database executor is doing about one open run, as
- * `executorActivityOf` decides it, in the order it decides:
+ * What the database executor is doing about one open run. Which case holds is
+ * decided by `executorActivityOf` (`repo/executor-activity.ts`), whose comment
+ * gives the order the cases are tested in. Each case means:
  *
  * - `resuming`: a producer resolved one of the run's parks (`wake` says which
  *   producer) and no pass has read the wake yet. `wokenAt` is when an Event or

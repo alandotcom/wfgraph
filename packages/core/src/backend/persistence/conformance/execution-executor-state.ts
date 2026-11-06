@@ -1,7 +1,7 @@
 /**
  * The executions aggregate's reads of the database executor for the Runs
- * view: where the executor holds one open run (`findExecutorState`), and the
- * activity of each run on a runs list page (`listExecutorActivity`).
+ * view: where the executor holds one open run (`findExecutorState`), and where
+ * it holds each run on a runs list page (`listExecutorHolds`).
  *
  * Every case passes its own clock to the claim, the release and the read, so
  * the due and lease comparisons do not depend on how fast the case runs.
@@ -12,6 +12,7 @@ import { Effect } from "effect";
 import { sortBy } from "es-toolkit/array";
 import { omit } from "es-toolkit/object";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
+import { executorActivityOf } from "#src/backend/services/executions/repo/executor-activity";
 import type { PersistenceTestRegistry } from "#src/backend/persistence/conformance/support";
 import {
   T0,
@@ -220,7 +221,7 @@ export function describeExecutionExecutorStateConformance({
       expect(result.unknown).toBeNull();
     });
 
-    it("reads each run's activity on a list page in one call", async () => {
+    it("reads where the executor holds each run on a list page in one call", async () => {
       const connection = await seeded(await openConnection());
       const result = await connection.run(
         Effect.gen(function* () {
@@ -291,28 +292,29 @@ export function describeExecutionExecutorStateConformance({
               ended,
               unclaimed,
             },
-            activity: yield* executions.listExecutorActivity({
-              executionIds: [
-                leaseExpired,
-                stepRetry,
-                bodyRetry,
-                asleep,
-                held,
-                ended,
-                unclaimed,
-              ],
-              now: at(LEASE_MS + 5_000),
-            }),
-            none: yield* executions.listExecutorActivity({
-              executionIds: [],
-              now: at(LEASE_MS + 5_000),
-            }),
+            holds: yield* executions.listExecutorHolds([
+              leaseExpired,
+              stepRetry,
+              bodyRetry,
+              asleep,
+              held,
+              ended,
+              unclaimed,
+            ]),
+            none: yield* executions.listExecutorHolds([]),
           };
         })
       );
 
       const { ids } = result;
-      expect(result.activity).toEqual(
+      // The holds decide as the list service decides them, with no wakes.
+      const activities = new Map(
+        [...result.holds].map(([executionId, hold]) => [
+          executionId,
+          executorActivityOf({ hold, wakes: [], now: at(LEASE_MS + 5_000) }),
+        ])
+      );
+      expect(activities).toEqual(
         new Map([
           [
             ids.leaseExpired,
