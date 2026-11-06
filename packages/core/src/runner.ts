@@ -1,11 +1,8 @@
-import {
-  assertValidRetention,
-  assertValidRunnerOptions,
-  type InProcessRunner,
-  type WfGraphRunnerOptions,
+import type {
+  InProcessRunner,
+  WfGraphRunnerOptions,
 } from "#src/backend/executor/in-process-runner";
 import type { WfGraphExtensions } from "#src/backend/extensions/extension-set";
-import type { WfGraphEventsOptions } from "#src/app";
 import { failAfterClose } from "#src/backend/lib/close-in-order";
 import { normalizeBasePath } from "#src/backend/lib/http/mount-path";
 import { resolvePublicUrl } from "#src/backend/lib/http/public-url";
@@ -14,7 +11,10 @@ import {
   assertValidEncryptionKey,
   type EncryptionRuntimeConfig,
 } from "#src/backend/services/integrations/cipher";
-import type { WfGraphEvents } from "#src/backend/host-events";
+import type {
+  WfGraphEvents,
+  WfGraphEventsOptions,
+} from "#src/backend/host-events";
 import { openWfGraphSetup } from "#src/backend/setup";
 import type { WfGraphLogger } from "@wfgraph/shared/types/logger";
 
@@ -39,8 +39,7 @@ export type CreateWfGraphRunnerOptions = {
   runner?: WfGraphRunnerOptions | undefined;
   /**
    * How long this loop keeps a settled inbox row, as `createWfGraphApp`'s
-   * `events.retentionMs` describes. The loop sweeps with this process's
-   * window, whatever the app sets.
+   * `events.retentionMs` describes. Set the same window the app sets.
    */
   events?: Pick<WfGraphEventsOptions, "retentionMs"> | undefined;
 };
@@ -68,8 +67,6 @@ export async function createWfGraphRunner(
   const basePath = normalizeBasePath(options.basePath ?? "/");
   const publicUrl = resolvePublicUrl(options.publicUrl);
   assertValidEncryptionKey(options.encryption.key);
-  assertValidRunnerOptions(options.runner);
-  assertValidRetention(options.events?.retentionMs, "createWfGraphRunner");
 
   const setup = await openWfGraphSetup({
     logger: options.logger,
@@ -80,6 +77,9 @@ export async function createWfGraphRunner(
     basePath,
     publicUrl,
     agent: { enabled: false },
+    caller: "createWfGraphRunner",
+    runner: options.runner,
+    retentionMs: options.events?.retentionMs,
   });
 
   let runner: InProcessRunner;
@@ -89,10 +89,11 @@ export async function createWfGraphRunner(
         "createWfGraphRunner cannot run on this persistence backend: no other process can share its database, so its runs advance in the app's own process"
       );
     }
-    runner = setup.prepareRunner({
-      runner: options.runner ?? {},
-      retentionMs: options.events?.retentionMs,
-    })();
+    // A setup opened with a `runner` option other than `false` has a loop.
+    if (setup.startRunner === undefined) {
+      throw new Error("createWfGraphRunner's setup resolved no worker loop");
+    }
+    runner = setup.startRunner();
   } catch (error) {
     return await failAfterClose(error, [setup.close]);
   }

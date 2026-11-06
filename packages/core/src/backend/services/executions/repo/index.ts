@@ -69,7 +69,10 @@ export type {
   FencedExecutionWrites,
   StoreWrites,
 } from "#src/backend/services/executions/repo/fencing";
-export type { PassWrites } from "#src/backend/services/executions/repo/schedule";
+export type {
+  ParkWrites,
+  PassWrites,
+} from "#src/backend/services/executions/repo/schedule";
 
 async function findAdmissionRefusal(
   database: WfGraphDatabase | WfGraphTransaction,

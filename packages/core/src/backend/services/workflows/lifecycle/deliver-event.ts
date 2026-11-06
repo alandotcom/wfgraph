@@ -7,13 +7,14 @@
  * A retried delivery is answered from the decision its first attempt committed,
  * ahead of every gate that reads the workflow as it stands now.
  *
- * The two halves are separate entry points because the listener runs each in its
- * own durable step: a wait delivery that fails then retries without replaying the
- * start, which would open a second run. Everything either half answers with is
- * JSON, because that is what crosses a step boundary.
+ * The two halves are separate entry points because the delivery's fan-out
+ * (`fanOutDelivery` in `executor/delivery-fanout.ts`) runs each in its own
+ * durable step: a wait delivery that fails then retries without replaying the
+ * start, which would open a second run. Everything either half answers with
+ * is JSON, because that is what crosses a step boundary.
  *
- * There is no whole-fan-out function here. The listener is the only fan-out, and
- * it owns the loop so that each workflow is its own retry unit.
+ * There is no whole-fan-out function here. `fanOutDelivery` is the only
+ * fan-out, and it owns the loop so that each workflow is its own retry unit.
  */
 
 import { Effect } from "effect";
@@ -98,7 +99,7 @@ type LifecycleDeliveryRefusalReason =
   /** The Start Filter could not be read against this payload at all. */
   | "start_filter_unevaluable";
 
-/** What the Lifecycle Rules did to one workflow, as the listener records it. */
+/** What the Lifecycle Rules did to one workflow, as the fan-out records it. */
 export type LifecycleDeliveryOutcome =
   | {
       kind: "started";
@@ -578,9 +579,10 @@ export type WaitCandidatePage = {
 /**
  * Reads one bounded page of runs that were already parked on this Event.
  *
- * Only the fields the matcher and waker need cross a step boundary. In particular, no database Dates cross it. The listener records
- * every page before it sends any wake so a retry cannot discover a later
- * sequential Wait created by a run this Event already resumed.
+ * Only the fields the matcher and waker need cross a step boundary. In
+ * particular, no database Dates cross it. The fan-out records every page
+ * before it writes any wake, so a retry cannot discover a later sequential
+ * Wait created by a run this Event already resumed.
  */
 export const listWaitCandidatePage = Effect.fn("listWaitCandidatePage")(
   function* (input: {

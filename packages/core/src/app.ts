@@ -34,15 +34,16 @@ import type { WfGraphPersistence } from "#src/backend/persistence/types";
 import type { WfGraphLogger } from "@wfgraph/shared/types/logger";
 import { failAfterClose } from "#src/backend/lib/close-in-order";
 import { resolvePublicUrl } from "#src/backend/lib/http/public-url";
-import {
-  assertValidRetention,
-  assertValidRunnerOptions,
-  type InProcessRunner,
-  type WfGraphRunnerOptions,
+import type {
+  InProcessRunner,
+  WfGraphRunnerOptions,
 } from "#src/backend/executor/in-process-runner";
 import { openWfGraphSetup, type WfGraphSetup } from "#src/backend/setup";
 import type { WfGraphMcpOptions } from "#src/backend/agent/mcp-server";
-import type { WfGraphEvents } from "#src/backend/host-events";
+import type {
+  WfGraphEvents,
+  WfGraphEventsOptions,
+} from "#src/backend/host-events";
 import { isBlank } from "@wfgraph/shared/types/string";
 
 export type { EncryptionRuntimeConfig } from "#src/backend/services/integrations/cipher";
@@ -64,29 +65,8 @@ export {
   type WfGraphEventInput,
   type WfGraphEventReceipt,
   type WfGraphEvents,
+  type WfGraphEventsOptions,
 } from "#src/backend/host-events";
-
-/** How Events reach this app's event inbox, and how long the inbox keeps them. */
-export type WfGraphEventsOptions = {
-  /**
-   * The shared key that mounts `POST {basePath}/api/events`. A sender
-   * presents it as `Authorization: Bearer <key>`, so it holds no
-   * whitespace. Absent, the route is not
-   * mounted, and `app.events.send` stays the only way in besides Inngest and
-   * webhook intake. Treat it as a secret, like `encryption.key`.
-   */
-  key?: string | undefined;
-  /**
-   * How long a delivered or failed inbox row is kept after it arrived, in
-   * milliseconds. Defaults to seven days. This is also the deduplication
-   * window: a send whose idempotency key matches a row still kept answers
-   * with that row, and once the sweep has deleted the row the same key is a
-   * new arrival. The worker loop applies the window of the process it runs
-   * in, so a host running the loop with `createWfGraphRunner` sets it there.
-   * A pending row is never deleted.
-   */
-  retentionMs?: number | undefined;
-};
 
 export type WfGraphAppOptions = {
   /**
@@ -223,8 +203,6 @@ export async function createWfGraphApp(
   }
 
   assertValidEncryptionKey(options.encryption.key);
-  assertValidRunnerOptions(options.runner);
-  assertValidRetention(options.events?.retentionMs, "createWfGraphApp");
   const eventsKey = options.events?.key;
   if (eventsKey !== undefined && isBlank(eventsKey)) {
     throw new Error(
@@ -255,6 +233,9 @@ export async function createWfGraphApp(
     basePath,
     publicUrl,
     agent: readAgentSettings(options.agent),
+    caller: "createWfGraphApp",
+    runner: options.runner,
+    retentionMs: options.events?.retentionMs,
   });
 
   // Everything past this point can fail with persistence already open, and
@@ -308,13 +289,7 @@ async function assembleWfGraphApp(
 ): Promise<WfGraphApp> {
   const { basePath, auth, setup, inngest } = startup;
   const { runtime } = setup;
-  const startRunner =
-    options.runner === false
-      ? undefined
-      : setup.prepareRunner({
-          runner: options.runner ?? {},
-          retentionMs: options.events?.retentionMs,
-        });
+  const { startRunner } = setup;
 
   // Built once: Connect and HTTP serve are alternatives, and whichever path
   // this app takes registers that same list. Building the list runs the

@@ -192,9 +192,8 @@ export function openDatabaseReplayBackend(
       runtimeForPass: async ({ now, parkDeadline }) => {
         const claimed = await run(
           repo.claimDue({
-            kind: "run",
+            lanes: [{ kind: "run", limit: 1 }],
             workerId: "replay",
-            limit: 1,
             leaseMs: LEASE_MS,
             now: virtual(now),
           })
@@ -215,12 +214,13 @@ export function openDatabaseReplayBackend(
         const pass = openRunPass({
           claimed: own,
           executions: repo,
+          workerId: "replay",
           now: () => virtual(clockMs),
           leaseMs: LEASE_MS,
         });
         const memo = await run(pass.loadMemo);
         current = pass;
-        const runtime = pass.runtime({
+        const runtime = pass.port({
           memo,
           runEffect: (effect) => connection.run(effect),
         });

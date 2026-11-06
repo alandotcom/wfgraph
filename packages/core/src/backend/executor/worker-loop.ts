@@ -1,14 +1,14 @@
 /**
  * The database executor's worker loop, the drain step it repeats, and `tick`,
  * one drain step within a budget for a host with no long-lived process. A
- * drain step claims the due schedule rows of one kind and starts one leased
- * pass per claimed row. Runs and deliveries are claimed in two lanes, each
- * with its own slots (`concurrency` and `deliveryConcurrency`), so a long run
- * never holds back an Event's delivery. The loop runs a drain step per lane
- * every `pollMs`, sooner when a row one of its own passes released falls due
- * or its `wake` is called. Once per `pollMs`, and once per tick, it first
- * gives the inbox rows a host inserted itself their delivery schedule rows;
- * once an hour the loop also deletes settled inbox rows past `retentionMs`.
+ * drain step claims due schedule rows in lanes, one lane per kind, each with
+ * its own slots (`concurrency` for runs, `deliveryConcurrency` for
+ * deliveries), so a long run never holds back an Event's delivery; one claim
+ * answers every lane. It starts one leased pass per claimed row. The loop runs
+ * a drain step every `pollMs`, sooner when a row one of its own passes
+ * released falls due or its `wake` is called. The loop and `tick` both keep
+ * the event inbox through `inboxUpkeep`: a poll that schedules the rows a host
+ * inserted itself, and a sweep that deletes settled rows past `retentionMs`.
  * The loop's Effect succeeds once `signal` has aborted and every pass in
  * flight has ended, or once `drainMs` has passed and the passes still running
  * are interrupted. A pass that fails leaves its row leased, so a later claim
@@ -26,9 +26,8 @@ import {
   FiberSet,
   type Scope,
 } from "effect";
-import { countBy } from "es-toolkit/array";
+import { countBy, groupBy } from "es-toolkit/array";
 import { sumBy } from "es-toolkit/math";
-import type { ExecutionScheduleKind } from "@wfgraph/shared/lifecycle/execution-schedule";
 import { generateId } from "@wfgraph/shared/utils/id";
 import type { WorkflowActions } from "#src/backend/engine/actions";
 import type { WorkflowEntities } from "#src/backend/engine/entities";
@@ -42,10 +41,11 @@ import {
 import { runBody } from "#src/backend/executor/run-body";
 import {
   deliveryBody,
-  type DeliverySettings,
+  type DeliveryServices,
 } from "#src/backend/executor/delivery-body";
 import {
   type ClaimedSchedule,
+  type ClaimLane,
   ExecutionRepo,
 } from "#src/backend/services/executions/repo";
 import { UNDATED_PARK_WAKE_AT } from "#src/backend/services/executions/repo/release-policy";
@@ -61,30 +61,21 @@ export const DEFAULT_LEASE_MS = 60_000;
 /** How often a pass renews its lease while its body runs: three per lease. */
 export const DEFAULT_HEARTBEAT_MS = 20_000;
 
-/** How many runs one loop advances at once. */
-const DEFAULT_CONCURRENCY = 10;
-
-/** How many deliveries one loop runs at once, on every backend. */
-export const DEFAULT_DELIVERY_CONCURRENCY = 1;
-
 /** How many host-inserted inbox rows one poll schedules at most. */
 const INBOX_POLL_LIMIT = 100;
 
-/**
- * How long a settled inbox row is kept after it arrived: seven days, so a
- * host retrying a send over a weekend still finds its first row.
- */
-export const DEFAULT_INBOX_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
-
-/** How often the loop deletes settled inbox rows past the retention window. */
+/** How often a loop deletes settled inbox rows past the retention window. */
 const INBOX_SWEEP_INTERVAL_MS = 60 * 60 * 1000;
 
 /**
  * How many inbox rows one sweep deletes at most, in one statement. A sweep
- * that reaches it leaves more rows past the window, and the next one runs at
- * the next poll.
+ * that reaches it leaves more rows past the window, and the next one runs a
+ * poll interval later.
  */
 const INBOX_SWEEP_LIMIT = 1_000;
+
+/** Every service a worker's passes read. */
+export type ExecutorServices = ExecutionRepo | WorkflowRepo | DeliveryServices;
 
 /** What every drain step of one worker shares. */
 export type DrainOptions<R> = {
@@ -112,11 +103,31 @@ export type DrainedPass =
   | { kind: "failed"; claimed: ClaimedSchedule }
   | { kind: "interrupted"; claimed: ClaimedSchedule };
 
+/** One pass a drain step started: the row it claimed, and the pass's fiber. */
+export type StartedPass = {
+  claimed: ClaimedSchedule;
+  fiber: Fiber.Fiber<DrainedPass>;
+};
+
 /**
- * One drain step: claims up to `limit` due rows of `kind` and starts one pass
- * over each in the caller's scope. Answers a fiber per claimed row, in claim
- * order, each succeeding with what its pass came to. A pass still running at `deadline` is
- * interrupted, and closing the caller's scope interrupts every pass still
+ * `effect`, or `fallback` once `abandon` succeeds first. With no `abandon`,
+ * `effect` alone.
+ */
+function raceAbandon<A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  abandon: Effect.Effect<void> | undefined,
+  fallback: A
+): Effect.Effect<A, E, R> {
+  return abandon === undefined
+    ? effect
+    : Effect.raceFirst(effect, abandon.pipe(Effect.as(fallback)));
+}
+
+/**
+ * One drain step: one claim of up to each lane's `limit` due rows of the
+ * lane's kind, and one pass over each claimed row in the caller's scope,
+ * started lane by lane in `lanes` order. A pass still running at `deadline`
+ * is interrupted, and closing the caller's scope interrupts every pass still
  * running. A claim the database fails is logged and claims nothing, and so is
  * a claim still waiting on the database when `abandon` succeeds. A claim that
  * commits after it was abandoned leaves its rows leased until their leases
@@ -125,31 +136,27 @@ export type DrainedPass =
 export const drainOnce = Effect.fn("wfgraph.executor.drain")(function* <R>(
   options: DrainOptions<R>,
   step: {
-    kind: ExecutionScheduleKind;
-    limit: number;
+    lanes: readonly ClaimLane[];
     deadline?: Date | undefined;
     abandon?: Effect.Effect<void> | undefined;
   }
-): Effect.fn.Return<
-  Fiber.Fiber<DrainedPass>[],
-  never,
-  ExecutionRepo | Scope.Scope | R
-> {
-  const claim = claimDue({
-    kind: step.kind,
-    workerId: options.workerId,
-    limit: step.limit,
-    leaseMs: options.leaseMs,
-    now: options.now(),
-  });
-  const claimed = yield* step.abandon === undefined
-    ? claim
-    : Effect.raceFirst(
-        claim,
-        step.abandon.pipe(Effect.as<ClaimedSchedule[]>([]))
-      );
-  return yield* Effect.forEach(claimed, (row) =>
-    Effect.forkScoped(drainPass(options, row, step.deadline))
+): Effect.fn.Return<StartedPass[], never, ExecutionRepo | Scope.Scope | R> {
+  const claimed = yield* raceAbandon(
+    claimDue({
+      lanes: step.lanes,
+      workerId: options.workerId,
+      leaseMs: options.leaseMs,
+      now: options.now(),
+    }),
+    step.abandon,
+    []
+  );
+  const byKind = groupBy(claimed, (row) => row.kind);
+  const inLaneOrder = step.lanes.flatMap((lane) => byKind[lane.kind] ?? []);
+  return yield* Effect.forEach(inLaneOrder, (row) =>
+    Effect.forkScoped(drainPass(options, row, step.deadline)).pipe(
+      Effect.map((fiber): StartedPass => ({ claimed: row, fiber }))
+    )
   );
 }, withExecutorLogCategory);
 
@@ -159,39 +166,46 @@ function withExecutorLogCategory<A, E, R>(
   return withAppLogCategory(effect, "executor");
 }
 
-/**
- * Leases up to `limit` due rows of one kind to the worker; see
- * `ExecutionRepo.claimDue`.
- */
+/** Leases due rows to the worker in every lane at once; see `ExecutionRepo.claimDue`. */
 const claimDue = Effect.fn("wfgraph.executor.claim")(function* (input: {
-  kind: ExecutionScheduleKind;
+  lanes: readonly ClaimLane[];
   workerId: string;
-  limit: number;
   leaseMs: number;
   now: Date;
 }) {
   yield* Effect.annotateCurrentSpan({
-    "wfgraph.executor.kind": input.kind,
     "wfgraph.executor.worker": input.workerId,
-    "wfgraph.executor.limit": input.limit,
+    ...Object.fromEntries(
+      input.lanes.map((lane) => [
+        `wfgraph.executor.limit.${lane.kind}`,
+        lane.limit,
+      ])
+    ),
   });
   const executions = yield* ExecutionRepo;
   const claimed = yield* executions.claimDue(input).pipe(
     Effect.catchTag("DatabaseError", (error) =>
-      Effect.logError(
-        input.kind === "run"
-          ? "Could not claim due runs"
-          : "Could not claim due deliveries"
-      ).pipe(
+      Effect.logError("Could not claim due schedule rows").pipe(
         Effect.annotateLogs({
-          claim: { kind: input.kind, worker: input.workerId },
+          claim: {
+            worker: input.workerId,
+            lanes: input.lanes.map((lane) => lane.kind),
+          },
           error,
         }),
         Effect.as([])
       )
     )
   );
-  yield* Effect.annotateCurrentSpan("wfgraph.executor.claimed", claimed.length);
+  const counts = countBy(claimed, (row) => row.kind);
+  yield* Effect.annotateCurrentSpan(
+    Object.fromEntries(
+      input.lanes.map((lane) => [
+        `wfgraph.executor.claimed.${lane.kind}`,
+        counts[lane.kind] ?? 0,
+      ])
+    )
+  );
   return claimed;
 });
 
@@ -255,6 +269,10 @@ const drainPass = Effect.fnUntraced(function* <R>(
  */
 const scheduleHostInsertedInbox = Effect.fn("wfgraph.executor.poll_inbox")(
   function* (now: Date) {
+    yield* Effect.annotateCurrentSpan(
+      "wfgraph.executor.limit",
+      INBOX_POLL_LIMIT
+    );
     const executions = yield* ExecutionRepo;
     const scheduled = yield* executions
       .scheduleUnscheduledInbox({ now, limit: INBOX_POLL_LIMIT })
@@ -276,16 +294,19 @@ const scheduleHostInsertedInbox = Effect.fn("wfgraph.executor.poll_inbox")(
  * The retention sweep: deletes up to `INBOX_SWEEP_LIMIT` delivered or failed
  * inbox rows that arrived more than `retentionMs` before `now`, and answers
  * how many went. A `pending` row is never deleted. A sweep the database fails
- * is logged and answers 0, so the next sweep runs at the usual interval.
+ * is logged and answers 0.
  */
 const sweepSettledInbox = Effect.fn("wfgraph.executor.sweep_inbox")(
   function* (input: { now: Date; retentionMs: number }) {
+    const olderThan = new Date(input.now.getTime() - input.retentionMs);
+    yield* Effect.annotateCurrentSpan({
+      "wfgraph.executor.limit": INBOX_SWEEP_LIMIT,
+      "wfgraph.executor.retention_ms": input.retentionMs,
+      "wfgraph.executor.cutoff": olderThan.toISOString(),
+    });
     const executions = yield* ExecutionRepo;
     const swept = yield* executions
-      .sweepSettledInbox({
-        olderThan: new Date(input.now.getTime() - input.retentionMs),
-        limit: INBOX_SWEEP_LIMIT,
-      })
+      .sweepSettledInbox({ olderThan, limit: INBOX_SWEEP_LIMIT })
       .pipe(
         Effect.catchTag("DatabaseError", (error) =>
           Effect.logError(
@@ -307,20 +328,76 @@ const sweepSettledInbox = Effect.fn("wfgraph.executor.sweep_inbox")(
   }
 );
 
+/**
+ * The event inbox's upkeep for one worker loop or one tick, which keeps its
+ * own timing so its caller can ask for both halves on every iteration.
+ */
+export type InboxUpkeep = {
+  /**
+   * Schedules the inbox rows a host inserted itself, when `pollMs` has passed
+   * since the last poll, and otherwise does nothing.
+   */
+  readonly poll: (now: Date) => Effect.Effect<void, never, ExecutionRepo>;
+  /**
+   * The retention sweep due at `now`, for the caller to run or fork, or
+   * undefined while one is running or none is due. A sweep runs once an hour,
+   * and a poll interval after one that reached its limit or did not finish.
+   */
+  readonly sweepDue: (
+    now: Date
+  ) => Effect.Effect<void, never, ExecutionRepo> | undefined;
+};
+
+/**
+ * The upkeep of one loop or tick. A new upkeep polls and sweeps at its first
+ * call, so a tick, which builds one per invocation, polls and sweeps every
+ * time it runs.
+ */
+export function inboxUpkeep(input: {
+  pollMs: number;
+  retentionMs: number;
+}): InboxUpkeep {
+  const { pollMs, retentionMs } = input;
+  let polledAt = Number.NEGATIVE_INFINITY;
+  let sweepAt = Number.NEGATIVE_INFINITY;
+  return {
+    poll: (now) =>
+      Effect.suspend(() => {
+        if (now.getTime() - polledAt < pollMs) return Effect.void;
+        polledAt = now.getTime();
+        return scheduleHostInsertedInbox(now);
+      }),
+    sweepDue: (now) => {
+      const at = now.getTime();
+      if (at < sweepAt) return undefined;
+      // No second sweep starts while this one runs.
+      sweepAt = Number.POSITIVE_INFINITY;
+      return sweepSettledInbox({ now, retentionMs }).pipe(
+        Effect.onExit((exit) =>
+          Effect.sync(() => {
+            const finished =
+              Exit.isSuccess(exit) && exit.value < INBOX_SWEEP_LIMIT;
+            sweepAt = finished ? at + INBOX_SWEEP_INTERVAL_MS : at + pollMs;
+          })
+        ),
+        Effect.asVoid
+      );
+    },
+  };
+}
+
 /** What every drain step of a loop or a tick is built from. */
 type DrainSettings = {
   /** Builds the action surface for one pass; see `runBody`. */
   actions: () => WorkflowActions;
   entities?: WorkflowEntities | undefined;
-  /** What a delivery's pass needs; see `deliveryBody`. */
-  delivery: DeliverySettings;
-  /** How many runs' passes run at once. Defaults to 10. */
-  concurrency?: number | undefined;
+  /** How many runs' passes run at once. */
+  concurrency: number;
   /**
    * How many deliveries' passes run at once, in a lane beside the runs', so
-   * a run never holds a delivery's slot. Defaults to 1.
+   * a run never holds a delivery's slot.
    */
-  deliveryConcurrency?: number | undefined;
+  deliveryConcurrency: number;
   /** Defaults to 60 s. */
   leaseMs?: number | undefined;
   /** Defaults to 20 s. */
@@ -332,6 +409,11 @@ type DrainSettings = {
    * deadline from the wall clock, so a live loop keeps the default.
    */
   now?: (() => Date) | undefined;
+  /**
+   * How long a delivered or failed inbox row is kept after it arrived, in
+   * milliseconds, before the retention sweep deletes it.
+   */
+  retentionMs: number;
 };
 
 export type WorkerLoopOptions = DrainSettings & {
@@ -351,11 +433,6 @@ export type WorkerLoopOptions = DrainSettings & {
   pollMs: number;
   /** Wakes the loop to claim at once, for a producer in the same process. */
   wake?: WorkerWake | undefined;
-  /**
-   * How long a delivered or failed inbox row is kept after it arrived, in
-   * milliseconds, before the hourly sweep deletes it. Defaults to seven days.
-   */
-  retentionMs?: number | undefined;
 };
 
 /** What a stopped loop's passes in flight came to. */
@@ -379,11 +456,11 @@ function stopRequested(signal: AbortSignal): Effect.Effect<void> {
 
 function drainOptionsFor(
   settings: DrainSettings
-): DrainOptions<ExecutionRepo | WorkflowRepo> {
+): DrainOptions<ExecutorServices> {
   return {
     bodies: {
       run: runBody({ actions: settings.actions, entities: settings.entities }),
-      delivery: deliveryBody(settings.delivery),
+      delivery: deliveryBody(),
     },
     workerId: settings.workerId ?? `worker_${generateId()}`,
     leaseMs: settings.leaseMs ?? DEFAULT_LEASE_MS,
@@ -396,7 +473,8 @@ export type TickOptions = DrainSettings & {
   /**
    * How long the tick may run, in milliseconds. A pass still running when it
    * runs out is interrupted and releases its row due at once, counting no
-   * failure, so the budget stays under the platform's own limit.
+   * failure, and so is the retention sweep, so the budget stays under the
+   * platform's own limit.
    */
   budgetMs: number;
 };
@@ -405,44 +483,61 @@ export type TickOptions = DrainSettings & {
 export type TickOutcome = Record<DrainedPass["kind"], number>;
 
 /** One lane of claims: the schedule kind it claims, and its slots. */
-type Lane = { kind: ExecutionScheduleKind; concurrency: number };
+type Lane = { kind: ClaimLane["kind"]; concurrency: number };
 
-/** Deliveries first, so an arrival is claimed ahead of the runs it may wake. */
+/** Deliveries first, so an arrival's pass starts ahead of the runs it may wake. */
 function lanesFor(settings: DrainSettings): Lane[] {
   return [
-    {
-      kind: "delivery",
-      concurrency: settings.deliveryConcurrency ?? DEFAULT_DELIVERY_CONCURRENCY,
-    },
-    { kind: "run", concurrency: settings.concurrency ?? DEFAULT_CONCURRENCY },
+    { kind: "delivery", concurrency: settings.deliveryConcurrency },
+    { kind: "run", concurrency: settings.concurrency },
   ];
 }
 
 /**
- * One drain step per lane within a budget, for a host whose platform invokes
- * it, such as a Cron Trigger or a Queue consumer on a Cloudflare Worker: polls
- * the inbox, claims up to `deliveryConcurrency` due deliveries and up to
- * `concurrency` due runs, runs one pass over each, and succeeds once every
- * pass has ended or the budget has run out. It sleeps for nothing, so the
- * platform's next invocation is what finds the rows due later.
+ * One drain step within a budget, for a host whose platform invokes it, such
+ * as a Cron Trigger or a Queue consumer on a Cloudflare Worker: polls the
+ * inbox, starts the retention sweep beside the passes, claims up to
+ * `deliveryConcurrency` due deliveries and up to `concurrency` due runs, runs
+ * one pass over each, and succeeds once every pass and the sweep have ended
+ * or the budget has run out. It sleeps for nothing, so the platform's next
+ * invocation is what finds the rows due later.
  */
 export function tick(
   options: TickOptions
-): Effect.Effect<TickOutcome, never, ExecutionRepo | WorkflowRepo> {
+): Effect.Effect<TickOutcome, never, ExecutorServices> {
   const drain = drainOptionsFor(options);
   return withExecutorLogCategory(
     Effect.scoped(
       Effect.gen(function* () {
-        const deadline = new Date(drain.now().getTime() + options.budgetMs);
-        yield* scheduleHostInsertedInbox(drain.now());
-        const passes = yield* Effect.forEach(lanesFor(options), (lane) =>
-          drainOnce(drain, {
+        const startedAt = drain.now();
+        const deadline = new Date(startedAt.getTime() + options.budgetMs);
+        const upkeep = inboxUpkeep({
+          pollMs: 0,
+          retentionMs: options.retentionMs,
+        });
+        yield* upkeep.poll(startedAt);
+        const sweep = upkeep.sweepDue(startedAt);
+        const sweeping =
+          sweep === undefined ? undefined : yield* Effect.forkScoped(sweep);
+        const passes = yield* drainOnce(drain, {
+          lanes: lanesFor(options).map((lane) => ({
             kind: lane.kind,
             limit: lane.concurrency,
-            deadline,
-          })
+          })),
+          deadline,
+        });
+        const drained = yield* Effect.forEach(passes, (pass) =>
+          Fiber.join(pass.fiber)
         );
-        const drained = yield* Effect.forEach(passes.flat(), Fiber.join);
+        if (sweeping !== undefined) {
+          // Closing the tick's scope interrupts a sweep that outlasts it.
+          yield* Fiber.await(sweeping).pipe(
+            Effect.timeoutOrElse({
+              duration: Math.max(0, deadline.getTime() - drain.now().getTime()),
+              orElse: () => Effect.void,
+            })
+          );
+        }
         const counts = countBy(drained, (pass) => pass.kind);
         const outcome: TickOutcome = {
           passed: counts.passed ?? 0,
@@ -457,11 +552,11 @@ export function tick(
 
 export function runWorkerLoop(
   options: WorkerLoopOptions
-): Effect.Effect<WorkerLoopOutcome, never, ExecutionRepo | WorkflowRepo> {
+): Effect.Effect<WorkerLoopOutcome, never, ExecutorServices> {
   const { pollMs, signal } = options;
-  const retentionMs = options.retentionMs ?? DEFAULT_INBOX_RETENTION_MS;
   const drain = drainOptionsFor(options);
   const { now } = drain;
+  const upkeep = inboxUpkeep({ pollMs, retentionMs: options.retentionMs });
   // A claim the database never answers would hold a stopped loop forever, so
   // once the stop arrives the claim has the drain to answer.
   const { drainMs } = options;
@@ -485,12 +580,6 @@ export function runWorkerLoop(
   }));
   type LaneState = (typeof lanes)[number];
   const runningPasses = () => sumBy(lanes, (lane) => lane.running);
-  // When the loop last polled the inbox, so a loop woken often still polls
-  // only once per `pollMs`.
-  let inboxPolledAt = Number.NEGATIVE_INFINITY;
-  // When the next retention sweep is due. The first runs on the loop's first
-  // poll.
-  let inboxSweepAt = Number.NEGATIVE_INFINITY;
   // Completed to cut the loop's current sleep short. Replaced at the top of
   // every iteration, before the claim, so completing it during a claim makes
   // the loop skip its sleep and claim again.
@@ -528,7 +617,8 @@ export function runWorkerLoop(
 
   const loop = Effect.gen(function* () {
     // Each fiber here waits for one pass and then notes its release and frees
-    // its slot, so the set is empty once every pass has ended.
+    // its slot, or runs a retention sweep, so the set is empty once every pass
+    // and sweep has ended.
     const settling = yield* FiberSet.make<void, never>();
     const { wake } = options;
     if (wake !== undefined) {
@@ -545,45 +635,38 @@ export function runWorkerLoop(
         if (wakeAt <= claimAt) releasedWakes.delete(scheduleId);
       }
 
-      if (claimAt - inboxPolledAt >= pollMs) {
-        inboxPolledAt = claimAt;
-        // A stopped loop abandons a poll the database never answers, as it
-        // abandons a claim.
-        const poll = scheduleHostInsertedInbox(new Date(claimAt));
-        yield* abandon === undefined ? poll : Effect.raceFirst(poll, abandon);
+      // A stopped loop abandons a poll the database never answers, as it
+      // abandons a claim. The sweep runs beside the lanes, so a long delete
+      // holds back no claim, and a stopped loop drains it with its passes.
+      yield* raceAbandon(upkeep.poll(new Date(claimAt)), abandon, undefined);
+      const sweep = upkeep.sweepDue(new Date(claimAt));
+      if (sweep !== undefined) yield* FiberSet.run(settling, sweep);
 
-        if (claimAt >= inboxSweepAt) {
-          const sweep = sweepSettledInbox({
-            now: new Date(claimAt),
-            retentionMs,
-          });
-          const swept = yield* abandon === undefined
-            ? sweep
-            : Effect.raceFirst(sweep, abandon.pipe(Effect.as(0)));
-          inboxSweepAt =
-            swept >= INBOX_SWEEP_LIMIT
-              ? claimAt
-              : claimAt + INBOX_SWEEP_INTERVAL_MS;
+      // A stop that arrived during the poll ends claiming.
+      if (signal.aborted) break;
+      const free = new Map(
+        lanes.map((lane) => [lane, lane.concurrency - lane.running])
+      );
+      for (const lane of lanes) lane.full = (free.get(lane) ?? 0) <= 0;
+      const claimLanes = lanes.flatMap((lane) => {
+        const limit = free.get(lane) ?? 0;
+        return limit > 0 ? [{ kind: lane.kind, limit }] : [];
+      });
+      if (claimLanes.length > 0) {
+        const passes = yield* drainOnce(drain, { lanes: claimLanes, abandon });
+        const started = countBy(passes, (pass) => pass.claimed.kind);
+        for (const lane of lanes) {
+          const claimed = started[lane.kind] ?? 0;
+          if (claimed === 0) continue;
+          lane.running += claimed;
+          lane.full = claimed === free.get(lane);
         }
-      }
-
-      for (const lane of lanes) {
-        // A stop that arrived during the previous lane's claim ends claiming.
-        if (signal.aborted) break;
-        const free = lane.concurrency - lane.running;
-        lane.full = free <= 0;
-        if (free <= 0) continue;
-        const passes = yield* drainOnce(drain, {
-          kind: lane.kind,
-          limit: free,
-          abandon,
-        });
-        lane.running += passes.length;
-        lane.full = passes.length === free;
         for (const pass of passes) {
+          const lane = lanes.find((each) => each.kind === pass.claimed.kind);
+          if (lane === undefined) continue;
           yield* FiberSet.run(
             settling,
-            Fiber.await(pass).pipe(
+            Fiber.await(pass.fiber).pipe(
               Effect.flatMap((exit) =>
                 Effect.sync(() => {
                   if (Exit.isSuccess(exit)) noteRelease(exit.value);
@@ -613,8 +696,9 @@ export function runWorkerLoop(
       );
     }
 
-    // Closing the loop's scope interrupts every pass still running, so the
-    // loop first waits for them to end, for at most `drainMs` when it is set.
+    // Closing the loop's scope interrupts every pass and sweep still running,
+    // so the loop first waits for them to end, for at most `drainMs` when it
+    // is set.
     const inFlight = runningPasses();
     const settled = FiberSet.awaitEmpty(settling).pipe(Effect.as(true));
     const drainedAll = yield* drainMs === undefined

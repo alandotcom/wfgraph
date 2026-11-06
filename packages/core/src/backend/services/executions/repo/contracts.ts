@@ -59,6 +59,14 @@ export type RunFence = OwnerFence & { executionId: string };
 export type DeliveryFence = OwnerFence & { inboxId: string };
 
 /**
+ * The fence of a pass over a schedule row of any kind. A `RunFence` names the
+ * Execution the row runs and a `DeliveryFence` the inbox row it delivers, and
+ * a fenced write also checks that its schedule row still names it
+ * (`leasedUnderFence` in `release-policy.ts`).
+ */
+export type PassFence = RunFence | DeliveryFence;
+
+/**
  * A write the engine's store makes, unfenced, so it is never refused for
  * ownership: a pass makes it this way once it has written the run's terminal
  * record. `ExecutionRepo.fenced` offers the same write fenced on a pass.
@@ -129,15 +137,22 @@ export type ClaimedDelivery = ScheduleLease & {
 /**
  * A schedule row a claim leased to one worker's pass, by what the row runs.
  * `kind` picks the pass's body, and each schedule kind is one member of this
- * union, claimed by a claim for that kind.
+ * union, claimed by a claim lane for that kind.
  */
 export type ClaimedSchedule = ClaimedRun | ClaimedDelivery;
 
 /**
- * How a pass that wrote no terminal record ended, which decides the schedule
- * row and the memo row its release writes. `run_failed` counts one failure
- * against the run's own failure count, `interrupted` leaves that count as it
- * was, and every other outcome resets it.
+ * One lane of a claim: up to `limit` due rows of `kind`. A worker claims each
+ * kind in a lane of its own, so runs and deliveries never wait for each
+ * other's slots.
+ */
+export type ClaimLane = { kind: ExecutionScheduleKind; limit: number };
+
+/**
+ * How a pass that did not end its row's subject ended, which decides the
+ * schedule row and the memo row its release writes. `body_failed` counts one
+ * failure against the row's own failure count, `interrupted` leaves that count
+ * as it was, and every other outcome resets it.
  *
  * - `parked`: the body ended with work parked. The release re-queues the run
  *   when a park holds a wake the pass did not consume, and otherwise puts it to
@@ -147,8 +162,8 @@ export type ClaimedSchedule = ClaimedRun | ClaimedDelivery;
  *   retries is re-queued after `backoffMs`; a step whose count passed the
  *   limit becomes `failed` and the run is re-queued at once, so the step fails
  *   its node and the rest of the run goes on.
- * - `run_failed`: the body failed outside any step. The release counts one
- *   failure against the run's own count and re-queues the run after
+ * - `body_failed`: the body failed outside any step. The release counts one
+ *   failure against the row's own count and re-queues the row after
  *   `backoffMs`.
  * - `fence_refused`: a version fence refused a write because a Migration moved
  *   the run. Nothing failed, so the release re-queues the run at once and
@@ -161,7 +176,7 @@ export type ClaimedSchedule = ClaimedRun | ClaimedDelivery;
 export type PassOutcome =
   | { kind: "parked" }
   | { kind: "step_failed"; stepId: string; error: string; backoffMs: number }
-  | { kind: "run_failed"; error: string; backoffMs: number }
+  | { kind: "body_failed"; error: string; backoffMs: number }
   | { kind: "fence_refused" }
   | { kind: "interrupted" };
 

@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { Effect, Layer, Logger, References, Schema } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
@@ -26,13 +26,20 @@ import {
   createGate,
   delay,
   edge,
-  noDeliveries,
+  LOOP_SETTINGS,
+  noDeliveryServices,
   lifecycleNode,
   publishWorkflow,
   startScheduledRun,
   waitNode,
 } from "#src/backend/executor/testing/run-fixtures";
+import { recordingLogger } from "#src/backend/executor/testing/recorded-logger";
 import { measureWakeTimings } from "#src/backend/executor/testing/wake-timing";
+import {
+  REACHED_WITHIN_MS,
+  sleep,
+  waitUntil,
+} from "#src/backend/executor/testing/waiting";
 import {
   runWorkerLoop,
   tick,
@@ -54,9 +61,6 @@ import {
 let heldStep = createGate();
 /** When each `test/mark` node ran, by node id. */
 let marks = new Map<string, number>();
-
-const sleep = (ms: number) =>
-  new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 const actions = createWorkflowActions(
   assembleExtensions({
@@ -114,25 +118,6 @@ function oneActionThenMark(actionType: string): SerializedWorkflowGraph {
   });
 }
 
-/** Captures every log line a loop writes, with its annotations. */
-function recordingLogger() {
-  const lines: { message: unknown; annotations: Record<string, unknown> }[] =
-    [];
-  const logger = Logger.make<unknown, void>(({ fiber, message }) => {
-    lines.push({
-      message: Array.isArray(message) ? message[0] : message,
-      annotations: fiber.getRef(References.CurrentLogAnnotations),
-    });
-  });
-  return {
-    lines,
-    layer: Layer.merge(
-      Logger.layer([logger]),
-      Layer.succeed(References.MinimumLogLevel, "All")
-    ),
-  };
-}
-
 export function describeWorkerLoopCases(
   harness: PersistenceConformanceHarness
 ): void {
@@ -154,29 +139,6 @@ export function describeWorkerLoopCases(
   });
 }
 
-/**
- * How long a case waits for the database to reach a state before it fails.
- * Every wait ends as soon as the state is reached, so the bound only has to
- * outlast a loaded machine.
- */
-const REACHED_WITHIN_MS = 10_000;
-
-/** Resolves once `reached` answers true, polling every 10 ms, or rejects. */
-async function waitUntil(
-  reached: () => boolean | Promise<boolean>,
-  what: string
-): Promise<void> {
-  const giveUpAt = Date.now() + REACHED_WITHIN_MS;
-  // eslint-disable-next-line eslint/no-await-in-loop -- one check per tick until `reached` holds
-  while (!(await reached())) {
-    if (Date.now() > giveUpAt) {
-      throw new Error(`${what} within ${REACHED_WITHIN_MS} ms`);
-    }
-    // eslint-disable-next-line eslint/no-await-in-loop -- one check per tick until `reached` holds
-    await sleep(10);
-  }
-}
-
 function describeCases(
   openConnection: () => Promise<ConformanceConnection>
 ): void {
@@ -194,9 +156,7 @@ function describeCases(
     start: (graph: SerializedWorkflowGraph) => Promise<string>;
     /** Starts a loop on this connection, polling every 20 ms unless told. */
     loop: (
-      options: Partial<
-        Omit<WorkerLoopOptions, "signal" | "actions" | "delivery">
-      > & {
+      options: Partial<Omit<WorkerLoopOptions, "signal" | "actions">> & {
         wrap?: (repo: ExecutionRepo["Service"]) => ExecutionRepo["Service"];
         logger?: Layer.Layer<never> | undefined;
       }
@@ -270,13 +230,15 @@ function describeCases(
             const repo = yield* ExecutionRepo;
             return yield* runWorkerLoop({
               actions: () => actions,
-              delivery: noDeliveries,
+              ...LOOP_SETTINGS,
               signal: controller.signal,
               pollMs: 20,
               ...options,
             }).pipe(
               Effect.provideService(ExecutionRepo, wrap?.(repo) ?? repo),
-              Effect.provide(logger ?? Layer.empty)
+              Effect.provide(
+                Layer.merge(noDeliveryServices, logger ?? Layer.empty)
+              )
             );
           })
         );
@@ -393,7 +355,9 @@ function describeCases(
     const second = await harness.start(oneActionThenMark("test/send"));
 
     const outcome = await harness.connection.run(
-      tick({ actions: () => actions, delivery: noDeliveries, budgetMs: 10_000 })
+      tick({ actions: () => actions, ...LOOP_SETTINGS, budgetMs: 10_000 }).pipe(
+        Effect.provide(noDeliveryServices)
+      )
     );
 
     expect(outcome).toEqual({ passed: 2, failed: 0, interrupted: 0 });
@@ -406,7 +370,9 @@ function describeCases(
     const held = await harness.start(oneActionThenMark("test/held"));
 
     const outcome = await harness.connection.run(
-      tick({ actions: () => actions, delivery: noDeliveries, budgetMs: 100 })
+      tick({ actions: () => actions, ...LOOP_SETTINGS, budgetMs: 100 }).pipe(
+        Effect.provide(noDeliveryServices)
+      )
     );
 
     expect(outcome).toEqual({ passed: 0, failed: 0, interrupted: 1 });
@@ -484,9 +450,8 @@ function describeCases(
       Effect.gen(function* () {
         const executions = yield* ExecutionRepo;
         const [claimed] = yield* executions.claimDue({
-          kind: "run",
+          lanes: [{ kind: "run", limit: 1 }],
           workerId: "worker_next",
-          limit: 1,
           leaseMs: 60_000,
           now: new Date(),
         });
@@ -719,15 +684,18 @@ function describeCases(
     );
     await delivering.stop();
 
-    // A loop whose delivery claims find nothing leaves this row pending,
-    // however old it is.
+    // A loop that claims no deliveries leaves this row pending, however old
+    // it is.
     const pending = await harness.send({ receivedAt: minuteAgo });
     const sweeping = harness.loop({
       retentionMs: 30_000,
       wrap: (repo) => ({
         ...repo,
         claimDue: (input) =>
-          input.kind === "delivery" ? Effect.succeed([]) : repo.claimDue(input),
+          repo.claimDue({
+            ...input,
+            lanes: input.lanes.filter((lane) => lane.kind !== "delivery"),
+          }),
       }),
     });
     await waitUntil(
@@ -745,21 +713,18 @@ function describeCases(
     const wake = createWorkerWake();
     const claimHeld = createGate();
     const claimStartedAt: number[] = [];
-    // The loop's first claim of runs reads the schedule and is then held
-    // open, so the run the case starts next is due only after that claim has
-    // looked. The delivery lane's claims find nothing and are not counted.
+    // The loop's first claim reads the schedule and is then held open, so the
+    // run the case starts next is due only after that claim has looked.
     const loop = harness.loop({
       pollMs: 30_000,
       wake,
       wrap: (repo) => ({
         ...repo,
         claimDue: (input) =>
-          input.kind === "run"
-            ? Effect.sync(() => claimStartedAt.push(Date.now())).pipe(
-                Effect.andThen(repo.claimDue(input)),
-                Effect.tap(() => Effect.promise(() => claimHeld.pass()))
-              )
-            : repo.claimDue(input),
+          Effect.sync(() => claimStartedAt.push(Date.now())).pipe(
+            Effect.andThen(repo.claimDue(input)),
+            Effect.tap(() => Effect.promise(() => claimHeld.pass()))
+          ),
       }),
     });
 

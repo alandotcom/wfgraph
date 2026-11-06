@@ -401,6 +401,7 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
       keyBy(PASS_WRITE_NAMES, (name) => name),
       (name) => refuse(`fenced.${name}`)
     ),
+    recordParkStep: refuse("fenced.recordParkStep"),
   }),
   fencedDelivery: () =>
     mapValues(

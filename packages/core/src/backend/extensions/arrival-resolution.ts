@@ -11,7 +11,7 @@
  */
 
 import type { AnyEventDefinition } from "#src/backend/extensions/define-event";
-import { matchesSourceFilter } from "@wfgraph/shared/lifecycle/event-source-filter";
+import { matchesSourceFilter } from "#src/backend/extensions/event-source-filter";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 
 /** An arrival as a source records it in the inbox. */
@@ -25,7 +25,9 @@ export type Arrival = {
 /**
  * Which Event an arrival is.
  *
- * - `event`: the arrival is `event`.
+ * - `event`: the arrival is `event`, named by its own name (`via: "name"`) or
+ *   by the source it arrives under, whose `source.when` filter accepted the
+ *   arrival's data (`via: "source"`).
  * - `unmatched_source`: the arrival names a source, and no Event on it accepts
  *   the arrival's data. It is a subtype no Event declares, so nothing is owed
  *   it.
@@ -33,7 +35,7 @@ export type Arrival = {
  *   kind arrives under.
  */
 export type ArrivalMatch =
-  | { kind: "event"; event: AnyEventDefinition }
+  | { kind: "event"; event: AnyEventDefinition; via: "name" | "source" }
   | { kind: "unmatched_source" }
   | { kind: "unknown" };
 
@@ -48,7 +50,9 @@ function resolverOver(
   const bySource = Map.groupBy(events, (event) => event.source.event);
   return ({ name, data }) => {
     const named = byName.get(name);
-    if (named !== undefined) return { kind: "event", event: named };
+    if (named !== undefined) {
+      return { kind: "event", event: named, via: "name" };
+    }
     const onSource = bySource.get(name);
     if (onSource === undefined) return { kind: "unknown" };
     // `event-uniqueness.ts` keeps at most one Event on a source accepting any
@@ -60,7 +64,7 @@ function resolverOver(
     );
     return event === undefined
       ? { kind: "unmatched_source" }
-      : { kind: "event", event };
+      : { kind: "event", event, via: "source" };
   };
 }
 

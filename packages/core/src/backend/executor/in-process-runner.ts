@@ -12,9 +12,7 @@ import type { ExtensionSet } from "#src/backend/extensions/extension-set";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
 import { createWorkflowEntities } from "#src/backend/extensions/workflow-entities";
 import {
-  DEFAULT_DELIVERY_CONCURRENCY,
   DEFAULT_HEARTBEAT_MS,
-  DEFAULT_INBOX_RETENTION_MS,
   DEFAULT_LEASE_MS,
   runWorkerLoop,
   type WorkerLoopOutcome,
@@ -64,6 +62,16 @@ export type WfGraphRunnerOptions = {
   heartbeatMs?: number | undefined;
 };
 
+/** How many deliveries the loop runs at once when the host sets none. */
+const DEFAULT_DELIVERY_CONCURRENCY = 1;
+
+/**
+ * How long a settled inbox row is kept after it arrived when the host sets no
+ * `events.retentionMs`: seven days, so a host retrying a send over a weekend
+ * still finds its first row.
+ */
+const DEFAULT_INBOX_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+
 /** How long `stop` waits for passes in flight before it interrupts them. */
 const RUNNER_DRAIN_MS = 10_000;
 
@@ -87,12 +95,25 @@ const RESTART_BACKOFF = Schedule.min([
 const logger = getAppLogger("executor");
 
 /**
- * Refuses a `runner` option a loop could not run with, so the mistake fails
- * at startup.
+ * Refuses a `runner` option or an `events.retentionMs` a loop could not run
+ * with, so the mistake fails at startup. `caller` names the function the host
+ * called.
  */
-export function assertValidRunnerOptions(
-  options: false | WfGraphRunnerOptions | undefined
-): void {
+export function assertValidRunnerOptions(input: {
+  runner: false | WfGraphRunnerOptions | undefined;
+  retentionMs: number | undefined;
+  caller: string;
+}): void {
+  const { retentionMs } = input;
+  if (
+    retentionMs !== undefined &&
+    (!Number.isInteger(retentionMs) || retentionMs <= 0)
+  ) {
+    throw new Error(
+      `${input.caller}'s events.retentionMs must be a positive integer of milliseconds. Leave it out to keep settled inbox rows for seven days.`
+    );
+  }
+  const options = input.runner;
   if (options === false || options === undefined) return;
   for (const key of [
     "concurrency",
@@ -112,24 +133,6 @@ export function assertValidRunnerOptions(
   if (heartbeatMs >= leaseMs) {
     throw new Error(
       `runner.heartbeatMs (${heartbeatMs}) must be shorter than runner.leaseMs (${leaseMs})`
-    );
-  }
-}
-
-/**
- * Refuses an `events.retentionMs` the sweep could not use, so the mistake
- * fails at startup. `option` names the function the host called.
- */
-export function assertValidRetention(
-  retentionMs: number | undefined,
-  option: string
-): void {
-  if (
-    retentionMs !== undefined &&
-    (!Number.isInteger(retentionMs) || retentionMs <= 0)
-  ) {
-    throw new Error(
-      `${option}'s events.retentionMs must be a positive integer of milliseconds. Leave it out to keep settled inbox rows for seven days.`
     );
   }
 }
@@ -199,7 +202,6 @@ export function startInProcessRunner(input: {
       // Built per pass, so a decrypted credential lives as long as its pass.
       actions: () => createWorkflowActions(extensions, runtime),
       entities: createWorkflowEntities(extensions),
-      delivery: { resolveArrival: extensions.resolveArrival, runtime },
       signal,
       drainMs: RUNNER_DRAIN_MS,
       wake: wakes.local,

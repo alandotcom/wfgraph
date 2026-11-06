@@ -1,7 +1,7 @@
 /**
  * The database executor's scheduling decisions, made once for both backends:
- * which rows a claim for one kind leases, how many failures a step or a run
- * may have, what a claim counts when it sweeps an expired lease, which parks
+ * which rows a claim lane leases, which schedule row a fenced write stands on,
+ * how many failures a step or a schedule row may have, what a claim counts when it sweeps an expired lease, which parks
  * it times out, what a release writes back, which runs a producer's wake
  * re-queues, which parks an Event, a re-park or a terminal write may take,
  * which wake the winner of an Exit claim gives the run's other parks, which
@@ -13,7 +13,7 @@
 
 import { countBy, sortBy } from "es-toolkit/array";
 import { Effect } from "effect";
-import { type Column, type SQL, sql } from "drizzle-orm";
+import { and, type Column, eq, type SQL, sql } from "drizzle-orm";
 import type {
   ExecutionScheduleKind,
   ParkWake,
@@ -31,6 +31,7 @@ import type {
   ExecutionTerminationState,
   NewAuditEvent,
   ParkResolution,
+  PassFence,
   PassOutcome,
   ReleasedSchedule,
   StepMemo,
@@ -39,8 +40,8 @@ import type {
 
 /**
  * How many retries a failing step gets before it fails its node. The fifth
- * failure of one step makes its memo row `failed`. The run's own failure count
- * is held to the same limit.
+ * failure of one step makes its memo row `failed`. A schedule row's own
+ * failure count is held to the same limit.
  */
 export const STEP_RETRY_LIMIT = 4;
 
@@ -92,8 +93,12 @@ export function countStepFailure(
   };
 }
 
-/** Whether the run's own failure count has passed the limit, which ends the run failed. */
-export function runRetriesSpent(attempt: number): boolean {
+/**
+ * Whether a schedule row's own failure count has passed the limit, which ends
+ * the row's subject failed: a run's terminal record, or a delivery's `failed`
+ * inbox row.
+ */
+export function retriesSpent(attempt: number): boolean {
   return attempt > STEP_RETRY_LIMIT;
 }
 
@@ -121,6 +126,34 @@ type ScheduleColumns = {
   leaseExpiresAt: Column;
 };
 
+/** The schedule row columns a fenced write checks its lease against. */
+type LeaseColumns = {
+  id: Column;
+  executionId: Column;
+  inboxId: Column;
+  state: Column;
+  ownerToken: Column;
+};
+
+/**
+ * The schedule row `fence` names, while it is still `leased` under the
+ * fence's owner token and still names the fence's Execution or inbox row.
+ * Every fenced write of either backend stands on a row this selects.
+ */
+export function leasedUnderFence(
+  columns: LeaseColumns,
+  fence: PassFence
+): SQL | undefined {
+  return and(
+    eq(columns.id, fence.scheduleId),
+    "executionId" in fence
+      ? eq(columns.executionId, fence.executionId)
+      : eq(columns.inboxId, fence.inboxId),
+    eq(columns.state, "leased"),
+    eq(columns.ownerToken, fence.ownerToken)
+  );
+}
+
 /**
  * Whether a lease expired by `now`: the row is `leased` and its lease ends at
  * or before `now`, so the worker that held it stopped renewing it.
@@ -133,7 +166,7 @@ function expiredLease(
 }
 
 /**
- * Whether a claim for `kind` leases this row at `now`: the row is of that kind,
+ * Whether a claim lane for `kind` leases this row at `now`: the row is of that kind,
  * and it is `queued` or `waiting` with `wake_at` at or before `now`, or its
  * lease expired (`expiredLease`).
  */
@@ -307,7 +340,7 @@ export function decideRelease(input: {
         attempt: 0,
         lastError: outcome.error,
       };
-    case "run_failed":
+    case "body_failed":
       return {
         state: "queued",
         wakeAt: at(outcome.backoffMs),

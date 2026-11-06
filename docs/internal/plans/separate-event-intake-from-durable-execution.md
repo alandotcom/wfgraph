@@ -1081,7 +1081,15 @@ keeps compatibility machinery alive for the next one.
    published skills and the example app change; one major-version changeset.
 5. **Worker driver.** `tick`, cron, queue consumer, optional DO alarms, with
    Design E as the documented fallback.
-6. **Cron source and the Runs view fields** of S14.
+6. **Cron source and the Runs view fields** of S14. A cron schedule row is a
+   `kind = 'cron'` row of `workflow_execution_schedule`, and it names neither an
+   Execution nor an inbox row, so it needs a subject column of its own (the
+   `workflow_schedules` row it fires). Adding that column takes a migration on
+   both backends that rewrites `workflow_execution_schedule_subject_check`, which
+   today admits only a `run` row naming an Execution and a `delivery` row naming
+   an inbox row, and widens `workflow_execution_schedule_kind_check` to the new
+   kind. The pass's kind descriptors (`PASS_KINDS` in `executor/pass.ts`) and the
+   claimed-row union fail to compile until the kind has an entry in each.
 
 ## 12. Decisions
 

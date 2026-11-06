@@ -2,7 +2,7 @@
 (***************************************************************************)
 (* One arrival delivered to several workflows, under the executor proposed *)
 (* in docs/internal/plans/separate-event-intake-from-durable-execution.md. *)
-(* Section 7.2 runs today's runEventListener as a durable delivery body:   *)
+(* Section 7.2 runs the delivery fan-out as a durable delivery body:       *)
 (* per subscribing workflow, a lifecycle step, then every page of Wait     *)
 (* candidates saved, then each saved page offered the arrival.             *)
 (*                                                                         *)

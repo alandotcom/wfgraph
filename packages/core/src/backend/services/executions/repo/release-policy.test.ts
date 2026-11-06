@@ -3,7 +3,7 @@ import {
   countStepFailure,
   decideRelease,
   exitWakeForClaim,
-  runRetriesSpent,
+  retriesSpent,
   STEP_RETRY_LIMIT,
   sweptStepFailures,
   UNDATED_PARK_WAKE_AT,
@@ -41,10 +41,10 @@ describe("countStepFailure", () => {
   });
 });
 
-describe("runRetriesSpent", () => {
-  it("spends the run's retries past the same limit a step has", () => {
-    expect(runRetriesSpent(STEP_RETRY_LIMIT)).toBe(false);
-    expect(runRetriesSpent(STEP_RETRY_LIMIT + 1)).toBe(true);
+describe("retriesSpent", () => {
+  it("spends a schedule row's own retries past the same limit a step has", () => {
+    expect(retriesSpent(STEP_RETRY_LIMIT)).toBe(false);
+    expect(retriesSpent(STEP_RETRY_LIMIT + 1)).toBe(true);
   });
 });
 
@@ -95,10 +95,10 @@ describe("decideRelease", () => {
     ).toMatchObject({ state: "queued", wakeAt: NOW, attempt: 0 });
   });
 
-  it("counts a failure no step owns against the run, and resets the count on every other outcome", () => {
+  it("counts a failure no step owns against the schedule row, and resets the count on every other outcome", () => {
     expect(
       decideRelease({
-        outcome: { kind: "run_failed", error: "boom", backoffMs: 1_000 },
+        outcome: { kind: "body_failed", error: "boom", backoffMs: 1_000 },
         attempt: 2,
         now: NOW,
         parks: [],

@@ -35,6 +35,7 @@ import {
   requestExitWrite,
 } from "#src/backend/services/executions/repo/runs";
 import {
+  makeParkWrites,
   makePassWrites,
   resolveOpenParks,
   writeFenced,
@@ -53,6 +54,7 @@ export function makeFencedWrites(
 ): (fence: RunFence) => FencedExecutionWrites {
   return (fence) => ({
     ...makePassWrites(database, fence),
+    ...makeParkWrites(database, fence),
     ...guardStoreWrites(fence, {
       openNodeLog: (input) =>
         writeFenced(database, fence, openNodeLogWrite(input)),

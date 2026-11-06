@@ -1,41 +1,34 @@
 /**
  * The pass body of a `delivery` schedule row: load the arrival's inbox row,
- * tell which catalog Event it is, gate its data through that Event's schema,
- * and fan it out with `runEventListener`, whose steps run on the pass's step
- * memo. A delivery that ran to its end marks the inbox row `delivered`. One
- * whose row names no Event, whose data the Event refuses, or whose step spent
- * its retries marks the row `failed` with the reason, so the poll never
- * schedules it again. Each settling write deletes the schedule row.
+ * tell which catalog Event it is (`ExtensionSet.resolveArrival`, read from
+ * the `Extensions` service), gate its data through that Event's schema, and
+ * fan it out with `fanOutDelivery` on the pass's step port. A delivery that
+ * ran to its end marks the inbox row `delivered` and writes the delivery's
+ * one record. One whose row names no Event, whose data the Event refuses, or
+ * whose step spent its retries marks the row `failed` with the reason, so the
+ * poll never schedules it again. Each settling write deletes the schedule row.
  */
 
 import { Effect } from "effect";
-import { failureFromUnknown } from "#src/backend/engine/engine-failure";
 import { payloadRejectionFields } from "#src/backend/extensions/define-event";
-import type { ExtensionSet } from "#src/backend/extensions/extension-set";
 import type {
   DatabaseError,
   LeaseLost,
 } from "#src/backend/lib/effect/database";
+import { Extensions } from "#src/backend/lib/effect/extensions";
 import {
-  defaultDeliverPorts,
-  type EventListenerDeliverPorts,
-  runEventListener,
-} from "#src/backend/executor/event-listener";
-import type { WfGraphRuntime } from "#src/backend/runtime";
-import type {
-  DeliveryPass,
-  OpenedBody,
-  PassBody,
+  decodeArrival,
+  deliverEventPorts,
+  fanOutDelivery,
+} from "#src/backend/executor/delivery-fanout";
+import {
+  type DeliveryPass,
+  type OpenedBody,
+  type PassBody,
+  passAnnotations,
 } from "#src/backend/executor/pass";
+import type { PassSteps } from "#src/backend/executor/runtime";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
-
-/** What a delivery body needs beyond the repository it runs on. */
-export type DeliverySettings = {
-  /** Which catalog Event an inbox row is: `ExtensionSet.resolveArrival`. */
-  resolveArrival: ExtensionSet["resolveArrival"];
-  /** The app's Layer graph, which runs the services a delivery's steps call. */
-  runtime: WfGraphRuntime;
-};
 
 /**
  * One settling write of the pass. A refusal stops the pass as a lost lease,
@@ -54,24 +47,31 @@ function watchedSettle(
   );
 }
 
-export function deliveryBody(
-  input: DeliverySettings & {
-    /** The fan-out's halves. Defaults to the services `deliver-event.ts` exports. */
-    deliver?: EventListenerDeliverPorts | undefined;
-  }
-): PassBody<DeliveryPass, ExecutionRepo> {
-  const deliver = input.deliver ?? defaultDeliverPorts;
+/**
+ * Every service a delivery's pass reads: the inbox and the catalog, and what
+ * its fan-out reads through `deliverEventPorts`.
+ */
+export type DeliveryServices =
+  | ExecutionRepo
+  | Extensions
+  | Effect.Services<ReturnType<typeof fanOutDelivery>>;
 
+export function deliveryBody(): PassBody<DeliveryPass, DeliveryServices> {
   return {
     open: (pass) =>
       Effect.gen(function* () {
         const executions = yield* ExecutionRepo;
+        const extensions = yield* Extensions;
         const { fence } = pass;
         const failDelivery = (error: string) =>
           watchedSettle(
             pass,
             executions.failDelivery({ fence, error, now: pass.now() })
           );
+        const finishDelivery = watchedSettle(
+          pass,
+          executions.finishDelivery({ fence, now: pass.now() })
+        );
 
         const inbox = yield* executions.findInboxEvent(fence.inboxId);
         // The schedule row goes with its inbox row by cascade, so a row the
@@ -80,18 +80,32 @@ export function deliveryBody(
           return {
             kind: "unavailable",
             reason: "missing_inbox_event",
+            severity: "info",
             settle: Effect.void,
-          } satisfies OpenedBody<never>;
+          } satisfies OpenedBody<never, never>;
         }
         if (inbox.status !== "pending") {
           return {
             kind: "unavailable",
             reason: "inbox_event_settled",
+            severity: "info",
             settle: pass.passWrites.dropSchedule(),
-          } satisfies OpenedBody<never>;
+          } satisfies OpenedBody<never, never>;
         }
 
-        const match = input.resolveArrival(inbox);
+        // How the row's name resolved, and to which catalog Event. A name that
+        // resolves to none stays off the span, since its sender wrote it.
+        const match = extensions.resolveArrival(inbox);
+        yield* Effect.annotateCurrentSpan(
+          "wfgraph.event.match",
+          match.kind === "event" ? `by_${match.via}` : match.kind
+        );
+        if (match.kind === "event") {
+          yield* Effect.annotateCurrentSpan(
+            "wfgraph.event.name",
+            match.event.name
+          );
+        }
         if (match.kind === "unknown") {
           const error =
             inbox.connectionId === null
@@ -100,73 +114,69 @@ export function deliveryBody(
           return {
             kind: "unavailable",
             reason: "unknown_event",
+            severity: "warn",
             settle: failDelivery(error),
             detail: error,
-          } satisfies OpenedBody<never>;
+          } satisfies OpenedBody<never, never>;
         }
         if (match.kind === "unmatched_source") {
           return {
             kind: "unavailable",
             reason: "unmatched_source",
-            settle: watchedSettle(
-              pass,
-              executions.finishDelivery({ fence, now: pass.now() })
-            ),
-          } satisfies OpenedBody<never>;
+            severity: "info",
+            settle: finishDelivery,
+          } satisfies OpenedBody<never, never>;
         }
 
         const { event } = match;
-        const decoded = yield* event.decodePayloadValue(inbox.data).pipe(
-          Effect.match({
-            onSuccess: (value) => ({ accepted: true as const, value }),
-            onFailure: (rejection) => ({ accepted: false as const, rejection }),
-          })
+        const decoded = yield* decodeArrival(event, inbox.data).pipe(
+          Effect.result
         );
         // A refusal is final: the same data fails the same way on every
         // attempt. The row keeps the sender's sentence, which quotes nothing
         // of the data, and the pass's record carries the issue count and paths.
-        if (!decoded.accepted) {
-          const { rejection } = decoded;
+        if (decoded._tag === "Failure") {
+          const rejection = decoded.failure;
           const { issues, paths } = payloadRejectionFields(rejection);
           return {
             kind: "unavailable",
             reason: "payload_refused",
+            severity: "warn",
             settle: failDelivery(
               `Payload refused for Event "${event.name}": ${rejection.error}`
             ),
             detail: `${issues} payload issue(s) at: ${paths.join(", ")}`,
-          } satisfies OpenedBody<never>;
+          } satisfies OpenedBody<never, never>;
         }
 
         return {
           kind: "ready",
-          run: (steps) =>
-            Effect.tryPromise({
-              try: () =>
-                runEventListener({
-                  event,
-                  payload: inbox.data,
-                  validatedPayload: decoded.value,
-                  inboxId: inbox.id,
-                  connectionId: inbox.connectionId ?? undefined,
-                  runtime: input.runtime,
-                  step: { run: (id, fn) => steps.run({ id }, fn) },
-                  deliver,
-                }),
-              // The pass tells a step's spent retries from other failures by
-              // the identity of what the step threw, which `failureFromUnknown`
-              // keeps for a value that is already an engine failure.
-              catch: failureFromUnknown,
-            }).pipe(
-              Effect.andThen(
-                watchedSettle(
-                  pass,
-                  executions.finishDelivery({ fence, now: pass.now() })
-                )
-              ),
-              Effect.as({ kind: "ended" as const })
-            ),
-        } satisfies OpenedBody<ExecutionRepo>;
+          run: (steps: PassSteps) =>
+            Effect.gen(function* () {
+              const summary = yield* fanOutDelivery({
+                arrival: decoded.success,
+                inboxId: inbox.id,
+                connectionId: inbox.connectionId,
+                steps,
+                ports: deliverEventPorts,
+              });
+              yield* finishDelivery;
+              // The delivery's one record, written once its row has settled.
+              yield* Effect.logInfo("Delivered an event").pipe(
+                Effect.annotateLogs({
+                  ...passAnnotations(pass.claimed, pass.workerId),
+                  event: { name: event.name },
+                  outcome: {
+                    workflows: summary.workflows,
+                    started: summary.started,
+                    canceled: summary.canceled,
+                    resumedWaits: summary.resumedWaits,
+                  },
+                })
+              );
+              return { kind: "ended" as const };
+            }),
+        } satisfies OpenedBody<PassSteps, DeliveryServices>;
       }),
     fail: (pass, error) =>
       Effect.gen(function* () {

@@ -121,7 +121,8 @@ option stays required. Loop defaults and the `runner` fields: `docs/embedding.md
   default 1), so a long run holding every run slot does not delay a Cancel.
 - The loop deletes settled inbox rows older than `events.retentionMs` (default
   seven days, a positive integer or startup refuses). It never deletes a
-  pending row. A runner process applies its own `events.retentionMs`.
+  pending row. Every process running a loop sweeps with its own
+  `events.retentionMs`, so set the same window in the app and every runner.
 - `dispose()` stops the loop and waits up to ten seconds for passes in flight.
 - Runs that an earlier release left in Inngest have no schedule row and never
   advance. Drain them before upgrading.

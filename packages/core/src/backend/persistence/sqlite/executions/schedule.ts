@@ -10,7 +10,7 @@
  */
 
 import { Effect } from "effect";
-import { and, asc, eq, inArray, type SQL, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, or, type SQL, sql } from "drizzle-orm";
 import { generateId } from "@wfgraph/shared/utils/id";
 import type {
   DatabaseError,
@@ -18,11 +18,11 @@ import type {
 } from "#src/backend/lib/effect/database";
 import type {
   CountedStepFailure,
-  OwnerFence,
   ParkWake,
+  PassFence,
+  RunFence,
   ScheduleRowKey,
 } from "#src/backend/services/executions/repo/contracts";
-import type { AnyFence } from "#src/backend/services/executions/repo/schedule";
 import { ownershipLost } from "#src/backend/services/executions/repo/fencing";
 import {
   claimAttempt,
@@ -32,6 +32,7 @@ import {
   dueSchedule,
   type DueSchedule,
   LEASE_EXPIRED_ERROR,
+  leasedUnderFence,
   openPark,
   overduePark,
   parkResolution,
@@ -42,6 +43,7 @@ import {
   TIMEOUT_WAKE,
 } from "#src/backend/services/executions/repo/release-policy";
 import type {
+  ParkWrites,
   PassWrites,
   ScheduleRepoMethods,
 } from "#src/backend/services/executions/repo/schedule";
@@ -60,23 +62,11 @@ import {
   sqliteExecutionSchedule,
 } from "#src/backend/persistence/sqlite/executions/rows";
 
-function holdsLease(database: SqliteExecutor, fence: AnyFence) {
+function holdsLease(database: SqliteExecutor, fence: PassFence) {
   return database
     .select({ id: workflowExecutionSchedule.id })
     .from(workflowExecutionSchedule)
-    .where(
-      and(
-        eq(workflowExecutionSchedule.id, fence.scheduleId),
-        fence.executionId === undefined
-          ? undefined
-          : eq(workflowExecutionSchedule.executionId, fence.executionId),
-        fence.inboxId === undefined
-          ? undefined
-          : eq(workflowExecutionSchedule.inboxId, fence.inboxId),
-        eq(workflowExecutionSchedule.state, "leased"),
-        eq(workflowExecutionSchedule.ownerToken, fence.ownerToken)
-      )
-    )
+    .where(leasedUnderFence(workflowExecutionSchedule, fence))
     .get()
     .pipe(Effect.map((row) => row !== undefined));
 }
@@ -86,12 +76,12 @@ type Owned<A> = { owned: true; value: A } | { owned: false };
 /**
  * Runs one write of a pass in the write transaction, after checking that the
  * pass's schedule row is still leased under its token and still names the
- * fence's run or inbox row when the fence names one. Nothing runs when it is
- * not, which answers `LeaseLost`.
+ * fence's run or inbox row (`leasedUnderFence`). Nothing runs when it is not,
+ * which answers `LeaseLost`.
  */
 export function writeFenced<A>(
   store: SqliteDatabase,
-  fence: AnyFence,
+  fence: PassFence,
   write: (database: SqliteExecutor) => Effect.Effect<A, unknown>
 ): Effect.Effect<A, DatabaseError | LeaseLost> {
   return store
@@ -340,6 +330,10 @@ export function makeSqliteScheduleMethods(
         .write((database) =>
           Effect.gen(function* () {
             const now = input.now.getTime();
+            const lanes = input.lanes.filter((lane) => lane.limit > 0);
+            if (lanes.length === 0) return [];
+            // One select reads every lane, each lane a subquery limited to
+            // its own rows.
             const due = yield* database
               .select({
                 id: workflowExecutionSchedule.id,
@@ -348,16 +342,28 @@ export function makeSqliteScheduleMethods(
               })
               .from(workflowExecutionSchedule)
               .where(
-                dueSchedule(workflowExecutionSchedule, {
-                  kind: input.kind,
-                  now,
-                })
-              )
-              .orderBy(
-                asc(workflowExecutionSchedule.wakeAt),
-                asc(workflowExecutionSchedule.id)
-              )
-              .limit(input.limit);
+                or(
+                  ...lanes.map((lane) =>
+                    inArray(
+                      workflowExecutionSchedule.id,
+                      database
+                        .select({ id: workflowExecutionSchedule.id })
+                        .from(workflowExecutionSchedule)
+                        .where(
+                          dueSchedule(workflowExecutionSchedule, {
+                            kind: lane.kind,
+                            now,
+                          })
+                        )
+                        .orderBy(
+                          asc(workflowExecutionSchedule.wakeAt),
+                          asc(workflowExecutionSchedule.id)
+                        )
+                        .limit(lane.limit)
+                    )
+                  )
+                )
+              );
             if (due.length === 0) return [];
 
             const claimed = yield* database
@@ -452,10 +458,10 @@ export function makeSqliteScheduleMethods(
   };
 }
 
-/** Builds the writes only a pass makes, fenced on `fence`. */
+/** Builds the writes every pass makes, fenced on `fence`. */
 export function makeSqlitePassWrites(
   store: SqliteDatabase,
-  fence: OwnerFence
+  fence: PassFence
 ): PassWrites {
   const { scheduleId } = fence;
   const thisSchedule = eq(workflowExecutionSchedule.id, scheduleId);
@@ -504,27 +510,6 @@ export function makeSqlitePassWrites(
             .where(thisSchedule);
         })
       ),
-
-    recordParkStep: (input) =>
-      writeFenced(store, fence, (database) =>
-        database
-          .update(workflowWaitStates)
-          .set({ parkStepId: input.parkStepId })
-          .where(
-            and(
-              eq(workflowWaitStates.id, input.waitStateId),
-              inArray(
-                workflowWaitStates.executionId,
-                database
-                  .select({
-                    executionId: workflowExecutionSchedule.executionId,
-                  })
-                  .from(workflowExecutionSchedule)
-                  .where(thisSchedule)
-              )
-            )
-          )
-      ).pipe(Effect.asVoid),
 
     releasePass: (input) =>
       writeFenced(store, fence, (database) =>
@@ -603,6 +588,31 @@ export function makeSqlitePassWrites(
     dropSchedule: () =>
       writeFenced(store, fence, (database) =>
         database.delete(workflowExecutionSchedule).where(thisSchedule)
+      ).pipe(Effect.asVoid),
+  };
+}
+
+/**
+ * Builds the write a pass over a `run` row makes when a Wait parks. The fence
+ * holds the schedule row to the fence's Execution, so the wait row is held to
+ * the same run.
+ */
+export function makeSqliteParkWrites(
+  store: SqliteDatabase,
+  fence: RunFence
+): ParkWrites {
+  return {
+    recordParkStep: (input) =>
+      writeFenced(store, fence, (database) =>
+        database
+          .update(workflowWaitStates)
+          .set({ parkStepId: input.parkStepId })
+          .where(
+            and(
+              eq(workflowWaitStates.id, input.waitStateId),
+              eq(workflowWaitStates.executionId, fence.executionId)
+            )
+          )
       ).pipe(Effect.asVoid),
   };
 }

@@ -1,11 +1,12 @@
 /**
  * One leased pass over one claimed schedule row: fence every write on the
- * claim's owner token, load the step memo, run the row's body against a replay
- * runtime while a heartbeat renews the lease, and release the row by how the
- * body ended. The caller claims the row first (`ExecutionRepo.claimDue`), and
- * the pass picks the body by the row's `kind`. What every kind shares, the
- * lease, the memo, the release and the retry policy, is the pass core; a run's
- * pass adds the engine's fenced store writes on top. A pass that loses its
+ * claim's owner token, load the step memo, run the row's body against the
+ * port its kind runs through while a heartbeat renews the lease, and release
+ * the row by how the body ended. The caller claims the row first
+ * (`ExecutionRepo.claimDue`), and `PASS_KINDS` holds what the pass needs to
+ * know about each kind of row. What every kind shares, the lease, the memo,
+ * the release and the retry policy, is the pass core; a run's pass adds the
+ * engine's fenced store writes and its parks on top. A pass that loses its
  * lease writes nothing after the write that found it out, its release
  * included. An interrupted pass releases its row due at once, counting no
  * failure.
@@ -24,9 +25,12 @@ import type {
 } from "#src/backend/lib/effect/database";
 import {
   createExecutorRuntime,
+  createPassSteps,
   createPassState,
-  type ParkAccess,
   type PassState,
+  type PassSteps,
+  type RunPassWrites,
+  watchParkWrites,
   watchPassOnlyWrites,
   watchStoreWrites,
 } from "#src/backend/executor/runtime";
@@ -36,7 +40,6 @@ import {
   type ClaimedSchedule,
   type DeliveryFence,
   ExecutionRepo,
-  type FencedExecutionWrites,
   type PassOutcome,
   type PassWrites,
   type ReleasedPass,
@@ -44,8 +47,8 @@ import {
   type StepMemo,
 } from "#src/backend/services/executions/repo";
 import {
+  retriesSpent,
   retryBackoffMs,
-  runRetriesSpent,
 } from "#src/backend/services/executions/repo/release-policy";
 import type { RunInputUnavailable } from "#src/backend/services/executions/run-input";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
@@ -65,6 +68,13 @@ export type UnavailableReason =
   | "payload_refused";
 
 /**
+ * How loudly the pass's record reports a row with nothing to run: `info` for
+ * a row whose subject simply ended elsewhere, `warn` for one the operator
+ * should look at, such as a refused payload.
+ */
+export type UnavailableSeverity = "info" | "warn";
+
+/**
  * What one pass did with its row.
  *
  * - `ended`: the body ended its row's subject: a run's terminal record, or a
@@ -80,10 +90,10 @@ export type UnavailableReason =
  * - `retries_spent`: a step threw past its retries. The release made that
  *   step's memo row `failed`, so the next pass fails the step's node and the
  *   rest of the run goes on, or fails the delivery.
- * - `run_failed`: the row's subject has no retries left: the row's own failure
- *   count passed the limit, or a step outside any node failed past its
- *   retries. The pass ended the subject failed, a run's terminal record or a
- *   delivery's `failed` inbox row, which deleted the schedule row.
+ * - `subject_failed`: the row's subject has no retries left: the row's own
+ *   failure count passed the limit, or a step outside any node failed past
+ *   its retries. The pass ended the subject failed, a run's terminal record or
+ *   a delivery's `failed` inbox row, which deleted the schedule row.
  * - `fence_refused` on `version`: the engine reported a version fence refused
  *   a write, because a Migration moved the run off the version this pass
  *   loaded. The release re-queued it and counted nothing.
@@ -96,8 +106,8 @@ export type UnavailableReason =
  *   gone. For a delivery, the pass marked the inbox row `failed` when it names
  *   no Event or its payload is refused, marked it `delivered` when no Event on
  *   the source it names accepts its data, and deleted the schedule row of a
- *   row already settled. `detail` is what the pass's record tells the
- *   operator.
+ *   row already settled. `severity` and `detail` are what the pass's record
+ *   tells the operator.
  * - `unavailable` with `ending: "failed"`: the database failed that write
  *   with `error`. The release counted a failure against the row and re-queued
  *   it after a backoff, so a later pass tries the write again.
@@ -107,13 +117,14 @@ export type PassResult =
   | { kind: "parked"; schedule: ReleasedSchedule }
   | { kind: "retry"; error: string; schedule: ReleasedSchedule }
   | { kind: "retries_spent"; stepId: string; schedule: ReleasedSchedule }
-  | { kind: "run_failed"; error: string }
+  | { kind: "subject_failed"; error: string }
   | { kind: "fence_refused"; fence: "version"; schedule: ReleasedSchedule }
   | { kind: "fence_refused"; fence: "owner" }
   | {
       kind: "unavailable";
       reason: UnavailableReason;
       ending: "written";
+      severity: UnavailableSeverity;
       detail?: string | undefined;
     }
   | {
@@ -134,11 +145,14 @@ export type PassRelease =
 
 /**
  * What every pass over a claimed row shares, whatever the row runs: the
- * lease, the memo, the step runtime and the release, each fenced on the
- * claim's owner token and watched by `state`.
+ * lease, the memo, the release, and `port`, which builds what the body runs
+ * its steps through. Each write is fenced on the claim's owner token and
+ * watched by `state`.
  */
-export type PassCore<C extends ClaimedSchedule> = {
+export type PassCore<C extends ClaimedSchedule, Port> = {
   claimed: C;
+  /** The worker the claim leased the row to. */
+  workerId: string;
   state: PassState;
   /** The pass's own writes, each watched by `state`; see `watchPassOnlyWrites`. */
   passWrites: PassWrites;
@@ -149,14 +163,15 @@ export type PassCore<C extends ClaimedSchedule> = {
   /** Every memo row of the claimed schedule row, keyed by step id. */
   loadMemo: Effect.Effect<Map<string, StepMemo>, DatabaseError>;
   /**
-   * The replay runtime the body runs against. `runEffect` runs each of the
-   * runtime's own reads and writes; the leased pass hands it one tied to the
-   * body's scope, so ending the pass interrupts whatever it still runs.
+   * Builds the port the body runs its steps through, over the memo the pass
+   * loaded. `runEffect` runs one of a Promise port's own reads and writes;
+   * the leased pass hands it one tied to the body's scope, so ending the pass
+   * interrupts whatever it still runs.
    */
-  runtime: (input: {
+  port: (input: {
     memo: ReadonlyMap<string, StepMemo>;
     runEffect: <A, E>(effect: Effect.Effect<A, E>) => Promise<A>;
-  }) => WorkflowExecutionRuntime;
+  }) => Port;
   /** Writes the release `outcome` decides, stamped with the pass's clock. */
   release: (outcome: PassOutcome) => Effect.Effect<PassRelease, DatabaseError>;
   /**
@@ -166,29 +181,34 @@ export type PassCore<C extends ClaimedSchedule> = {
   heartbeat: (everyMs: number) => Effect.Effect<void>;
 };
 
+/** A pass over any kind of claimed row. */
+type AnyPass = PassCore<ClaimedSchedule, unknown>;
+
 /**
- * A pass over a claimed `run` row. Its runtime parks Waits, and its store
- * writes replay a workflow run.
+ * A pass over a claimed `run` row. Its port is the engine's runtime, which
+ * parks Waits, and its store writes replay a workflow run.
  */
-export type RunPass = PassCore<ClaimedRun> & {
+export type RunPass = PassCore<ClaimedRun, WorkflowExecutionRuntime> & {
   /**
    * The engine's store writes beside the pass's own. While the pass runs, each
    * is fenced on the owner token and on the row still running the claimed
    * Execution, and a refusal stops the pass; see `watchStoreWrites`.
    */
-  writes: FencedExecutionWrites;
+  writes: RunPassWrites;
 };
 
 /**
- * A pass over a claimed `delivery` row. Its runtime runs steps and parks
+ * A pass over a claimed `delivery` row. Its port runs Effect steps and parks
  * nothing, and `fence` is what the inbox row's settling write carries.
  */
-export type DeliveryPass = PassCore<ClaimedDelivery> & {
+export type DeliveryPass = PassCore<ClaimedDelivery, PassSteps> & {
   fence: DeliveryFence;
 };
 
 type PassOpening = {
   executions: ExecutionRepo["Service"];
+  /** The worker the claim leased the row to. */
+  workerId: string;
   /** The clock every lease, memo and release write is stamped with. */
   now: () => Date;
   /** How long a memo write or a heartbeat renews the lease for. */
@@ -197,28 +217,31 @@ type PassOpening = {
 
 /**
  * Opens the core of a pass over a row the caller just claimed, over `fenced`,
- * the pass's own writes fenced on the claim. `findPark` gives the runtime its
- * Waits; a pass that parks nothing leaves it out. Nothing is read or written
+ * the pass's own writes fenced on the claim. `port` builds the body's port
+ * from the memo and the pass's watched writes. Nothing is read or written
  * until the caller runs one of the answered Effects.
  */
-function openPassCore<C extends ClaimedSchedule>(
+function openPassCore<C extends ClaimedSchedule, Port>(
   input: PassOpening & {
     claimed: C;
     fenced: PassWrites;
-    findPark?: ParkAccess["findPark"] | undefined;
+    port: (input: {
+      memo: ReadonlyMap<string, StepMemo>;
+      runEffect: <A, E>(effect: Effect.Effect<A, E>) => Promise<A>;
+      state: PassState;
+      passWrites: PassWrites;
+      leaseExpiresAt: () => Date;
+    }) => Port;
   }
-): PassCore<C> {
-  const { claimed, executions, now, leaseMs, findPark } = input;
+): PassCore<C, Port> {
+  const { claimed, executions, now, leaseMs } = input;
   const state = createPassState();
   const passWrites = watchPassOnlyWrites({ fenced: input.fenced, state });
   const leaseExpiresAt = () => new Date(now().getTime() + leaseMs);
-  const parks: ParkAccess | undefined =
-    findPark === undefined
-      ? undefined
-      : { findPark, recordParkStep: passWrites.recordParkStep };
 
   return {
     claimed,
+    workerId: input.workerId,
     state,
     passWrites,
     now,
@@ -231,15 +254,8 @@ function openPassCore<C extends ClaimedSchedule>(
             new Map(entries.map(({ stepId, ...entry }) => [stepId, entry]))
         )
       ),
-    runtime: ({ memo, runEffect }) =>
-      createExecutorRuntime({
-        memo,
-        writeStepMemo: passWrites.writeStepMemo,
-        parks,
-        state,
-        leaseExpiresAt,
-        runEffect,
-      }),
+    port: ({ memo, runEffect }) =>
+      input.port({ memo, runEffect, state, passWrites, leaseExpiresAt }),
     release: (outcome) =>
       passWrites.releasePass({ outcome, now: now() }).pipe(
         Effect.map((released): PassRelease => ({ owned: true, released })),
@@ -272,7 +288,18 @@ export function openRunPass(
   const core = openPassCore({
     ...input,
     fenced,
-    findPark: executions.findPark,
+    port: ({ memo, runEffect, state, passWrites, leaseExpiresAt }) =>
+      createExecutorRuntime({
+        memo,
+        writeStepMemo: passWrites.writeStepMemo,
+        parks: {
+          findPark: executions.findPark,
+          ...watchParkWrites({ fenced, state }),
+        },
+        state,
+        leaseExpiresAt,
+        runEffect,
+      }),
   });
   return {
     ...core,
@@ -298,6 +325,13 @@ export function openDeliveryPass(
   const core = openPassCore({
     ...input,
     fenced: executions.fencedDelivery(fence),
+    port: ({ memo, state, passWrites, leaseExpiresAt }) =>
+      createPassSteps({
+        memo,
+        writeStepMemo: passWrites.writeStepMemo,
+        state,
+        leaseExpiresAt,
+      }),
   });
   return { ...core, fence };
 }
@@ -308,34 +342,32 @@ export type BodyEnd = { kind: "ended" } | { kind: "parked" };
 /**
  * What a body's `open` found.
  *
- * - `ready`: `run` runs the body once over the runtime the pass built.
+ * - `ready`: `run` runs the body once over the port the pass built.
  * - `unavailable`: there is nothing to run. `settle` is the write that ends
  *   the row, such as a terminal record, a failed inbox row or the schedule
- *   row's deletion, which the pass makes and answers for. `detail` is what
- *   the pass's record tells the operator about why.
+ *   row's deletion, which the pass makes and answers for. `severity` and
+ *   `detail` are what the pass's record tells the operator about why.
  */
-export type OpenedBody<R> =
+export type OpenedBody<Port, R> =
   | {
       kind: "ready";
-      run: (
-        runtime: WorkflowExecutionRuntime
-      ) => Effect.Effect<BodyEnd, unknown, R>;
+      run: (port: Port) => Effect.Effect<BodyEnd, unknown, R>;
     }
   | {
       kind: "unavailable";
       reason: UnavailableReason;
+      severity: UnavailableSeverity;
       settle: Effect.Effect<void, DatabaseError | LeaseLost, R>;
       detail?: string | undefined;
     };
 
-/**
- * What a pass runs for one kind of schedule row. The pass owns the lease,
- * the memo, the heartbeat, the release and the retry policy; the body owns
- * what it loads, what it runs, and how its subject ends failed.
- */
-export type PassBody<P, R> = {
+/** The port a pass hands its body. */
+type PortOf<P> = P extends PassCore<ClaimedSchedule, infer Port> ? Port : never;
+
+/** `PassBody`, with the port its pass hands it spelled out. */
+type BodyOver<P, Port, R> = {
   /** Loads what the body runs, writing through the pass's watched writes. */
-  open: (pass: P) => Effect.Effect<OpenedBody<R>, DatabaseError, R>;
+  open: (pass: P) => Effect.Effect<OpenedBody<Port, R>, DatabaseError, R>;
   /**
    * Ends the row's subject failed with `error`, for a row whose retries are
    * spent. The write deletes the schedule row.
@@ -346,11 +378,88 @@ export type PassBody<P, R> = {
   ) => Effect.Effect<void, DatabaseError | LeaseLost, R>;
 };
 
+/**
+ * What a pass runs for one kind of schedule row. The pass owns the lease,
+ * the memo, the heartbeat, the release and the retry policy; the body owns
+ * what it loads, what it runs, and how its subject ends failed.
+ */
+export type PassBody<P, R> = BodyOver<P, PortOf<P>, R>;
+
+/** What kind of row a claim leased. */
+type ScheduleKind = ClaimedSchedule["kind"];
+
+/** The claimed row of one kind. */
+type ClaimedOf<K extends ScheduleKind> = Extract<ClaimedSchedule, { kind: K }>;
+
+/** The pass a claimed row of one kind opens. */
+type PassOf<K extends ScheduleKind> = K extends "run"
+  ? RunPass
+  : K extends "delivery"
+    ? DeliveryPass
+    : never;
+
 /** The body for each kind of schedule row a claim can lease. */
 export type PassBodies<R> = {
-  run: PassBody<RunPass, R>;
-  delivery: PassBody<DeliveryPass, R>;
+  readonly [K in ScheduleKind]: PassBody<PassOf<K>, R>;
 };
+
+/** What a pass needs to know about one kind of schedule row. */
+type PassKind<K extends ScheduleKind> = {
+  /**
+   * Opens the pass over a row of this kind the caller just claimed, and runs
+   * the body `bodies` names for the kind to a release.
+   */
+  run: <R>(
+    opening: PassOpening & { claimed: ClaimedOf<K> },
+    bodies: PassBodies<R>,
+    options: LeasedPassOptions
+  ) => Effect.Effect<PassResult, DatabaseError, R>;
+  /** The span attributes that name the row's subject. */
+  spanAttributes: (claimed: ClaimedOf<K>) => Record<string, string>;
+  /** The log group that names the row's subject. */
+  logSubject: (claimed: ClaimedOf<K>) => Record<string, Record<string, string>>;
+};
+
+/**
+ * One descriptor per kind of schedule row. A kind added to `ClaimedSchedule`
+ * fails to compile here, in `PassOf` and in `withPassKind` until it has an
+ * entry in each.
+ */
+const PASS_KINDS: { readonly [K in ScheduleKind]: PassKind<K> } = {
+  run: {
+    run: (opening, bodies, options) =>
+      runOpenedPass(openRunPass(opening), bodies.run, options),
+    spanAttributes: (claimed) => ({
+      "wfgraph.execution.id": claimed.executionId,
+    }),
+    logSubject: (claimed) => ({ run: { execution: claimed.executionId } }),
+  },
+  delivery: {
+    run: (opening, bodies, options) =>
+      runOpenedPass(openDeliveryPass(opening), bodies.delivery, options),
+    spanAttributes: (claimed) => ({ "wfgraph.inbox.id": claimed.inboxId }),
+    logSubject: (claimed) => ({ delivery: { inbox: claimed.inboxId } }),
+  },
+};
+
+/** Calls `apply` with the descriptor of `claimed`'s kind and the row itself. */
+function withPassKind<A>(
+  claimed: ClaimedSchedule,
+  apply: <K extends ScheduleKind>(kind: PassKind<K>, claimed: ClaimedOf<K>) => A
+): A {
+  switch (claimed.kind) {
+    case "run":
+      return apply(PASS_KINDS.run, claimed);
+    case "delivery":
+      return apply(PASS_KINDS.delivery, claimed);
+    default:
+      return unknownKind(claimed);
+  }
+}
+
+function unknownKind(claimed: never): never {
+  throw new Error(`No pass runs a schedule row of kind ${String(claimed)}`);
+}
 
 export type LeasedPassOptions = {
   /** The worker the claim leased the row to, which the pass's records name. */
@@ -394,9 +503,7 @@ export const leasedPass = Effect.fn("wfgraph.executor.pass")(function* <R>(
   yield* Effect.annotateCurrentSpan({
     "wfgraph.executor.schedule": claimed.scheduleId,
     "wfgraph.executor.kind": claimed.kind,
-    ...(claimed.kind === "run"
-      ? { "wfgraph.execution.id": claimed.executionId }
-      : { "wfgraph.inbox.id": claimed.inboxId }),
+    ...withPassKind(claimed, (kind, row) => kind.spanAttributes(row)),
     "wfgraph.executor.attempt": claimed.attempt,
     "wfgraph.executor.worker": options.workerId,
   });
@@ -426,26 +533,18 @@ const runPassBody = Effect.fnUntraced(function* <R>(
 ): Effect.fn.Return<PassResult, DatabaseError, ExecutionRepo | R> {
   const opening: PassOpening = {
     executions: yield* ExecutionRepo,
+    workerId: options.workerId,
     now: options.now,
     leaseMs: options.leaseMs,
   };
-  if (claimed.kind === "run") {
-    return yield* runOpenedPass(
-      openRunPass({ ...opening, claimed }),
-      bodies.run,
-      options
-    );
-  }
-  return yield* runOpenedPass(
-    openDeliveryPass({ ...opening, claimed }),
-    bodies.delivery,
-    options
+  return yield* withPassKind(claimed, (kind, row) =>
+    kind.run({ ...opening, claimed: row }, bodies, options)
   );
 });
 
-function runOpenedPass<P extends PassCore<ClaimedSchedule>, R>(
+function runOpenedPass<Port, P extends PassCore<ClaimedSchedule, Port>, R>(
   pass: P,
-  body: PassBody<P, R>,
+  body: BodyOver<P, Port, R>,
   options: LeasedPassOptions
 ): Effect.Effect<PassResult, DatabaseError, R> {
   return settlePass(pass, body, options).pipe(
@@ -459,9 +558,7 @@ function runOpenedPass<P extends PassCore<ClaimedSchedule>, R>(
  * finds the fence refused, and writes nothing. A release the database fails is
  * logged, and the row is swept once its lease expires.
  */
-function releaseInterrupted(
-  pass: PassCore<ClaimedSchedule>
-): Effect.Effect<void> {
+function releaseInterrupted(pass: AnyPass): Effect.Effect<void> {
   return pass.release({ kind: "interrupted" }).pipe(
     Effect.asVoid,
     Effect.catchTag("DatabaseError", (error) =>
@@ -474,11 +571,12 @@ function releaseInterrupted(
 
 /** Runs the opened pass's body and writes the release its ending decides. */
 const settlePass = Effect.fnUntraced(function* <
-  P extends PassCore<ClaimedSchedule>,
+  Port,
+  P extends PassCore<ClaimedSchedule, Port>,
   R,
 >(
   pass: P,
-  body: PassBody<P, R>,
+  body: BodyOver<P, Port, R>,
   options: LeasedPassOptions
 ): Effect.fn.Return<PassResult, DatabaseError, R> {
   const { claimed } = pass;
@@ -496,13 +594,13 @@ const settlePass = Effect.fnUntraced(function* <
       );
   const endFailed = (error: string) =>
     body.fail(pass, error).pipe(
-      Effect.as<PassResult>({ kind: "run_failed", error }),
+      Effect.as<PassResult>({ kind: "subject_failed", error }),
       Effect.catchTag("LeaseLost", () => Effect.succeed(OWNER_REFUSED))
     );
 
   const opened = yield* body.open(pass);
   if (opened.kind === "unavailable") {
-    const { reason, detail } = opened;
+    const { reason, severity, detail } = opened;
     // A row whose ending write failed is released for a retry, so the row is
     // not left leased until its lease runs out.
     return yield* opened.settle.pipe(
@@ -510,6 +608,7 @@ const settlePass = Effect.fnUntraced(function* <
         kind: "unavailable",
         reason,
         ending: "written",
+        severity,
         detail,
       }),
       Effect.catchTags({
@@ -517,7 +616,7 @@ const settlePass = Effect.fnUntraced(function* <
         DatabaseError: (error) =>
           pass
             .release({
-              kind: "run_failed",
+              kind: "body_failed",
               error: "The pass could not write the end of a row it cannot run",
               backoffMs: backoffMs(claimed.attempt),
             })
@@ -538,7 +637,7 @@ const settlePass = Effect.fnUntraced(function* <
     );
   }
 
-  if (runRetriesSpent(claimed.attempt)) {
+  if (retriesSpent(claimed.attempt)) {
     return yield* endFailed(
       "The workers running it stopped renewing their lease too many times"
     );
@@ -546,7 +645,7 @@ const settlePass = Effect.fnUntraced(function* <
 
   const memo = yield* pass.loadMemo;
   const { heartbeatMs } = options;
-  // The body's scope holds the fibers that run the runtime's own reads and
+  // The body's scope holds the fibers that run a Promise port's own reads and
   // writes, and the heartbeat. Closing it, when the body ends or the pass is
   // interrupted, interrupts them before the release is written.
   const ran = yield* Effect.scoped(
@@ -561,7 +660,7 @@ const settlePass = Effect.fnUntraced(function* <
             )
         );
       }
-      return yield* Effect.exit(opened.run(pass.runtime({ memo, runEffect })));
+      return yield* Effect.exit(opened.run(pass.port({ memo, runEffect })));
     })
   );
 
@@ -580,7 +679,7 @@ const settlePass = Effect.fnUntraced(function* <
 
   if (failure === undefined) {
     // No step threw and the body raised nothing, so the body's own answer
-    // says whether this pass ended the run or parked it.
+    // says whether this pass ended its subject or parked it.
     if (Exit.isSuccess(ran) && ran.value.kind === "ended") {
       return { kind: "ended" };
     }
@@ -591,7 +690,7 @@ const settlePass = Effect.fnUntraced(function* <
   }
 
   // A step outside any node has no node to fail, so once its retries are
-  // spent the body fails on it every pass. The run ends failed instead.
+  // spent the body fails on it every pass. The subject ends failed instead.
   if (failure.kind === "body") {
     const spent = pass.state.spentStepBehind(
       Option.getOrUndefined(Cause.findErrorOption(failure.cause))
@@ -607,20 +706,15 @@ const settlePass = Effect.fnUntraced(function* <
     attempt: claimed.attempt,
     backoffMs,
   });
-  if (outcome.kind === "run_failed" && runRetriesSpent(claimed.attempt + 1)) {
+  if (outcome.kind === "body_failed" && retriesSpent(claimed.attempt + 1)) {
     return yield* endFailed(outcome.error);
   }
   return yield* releaseFailed(outcome);
 });
 
-/**
- * The log field that names what a claimed row runs: for a `run` row its
- * Execution, and for a `delivery` row its inbox row.
- */
+/** The log group that names what a claimed row runs. */
 function subjectAnnotation(claimed: ClaimedSchedule) {
-  return claimed.kind === "run"
-    ? { run: { execution: claimed.executionId } }
-    : { delivery: { inbox: claimed.inboxId } };
+  return withPassKind(claimed, (kind, row) => kind.logSubject(row));
 }
 
 /**
@@ -675,6 +769,11 @@ type PassRecord = {
   error?: unknown;
 };
 
+const RECORD_LEVEL: Record<UnavailableSeverity, PassRecord["level"]> = {
+  info: "Info",
+  warn: "Warn",
+};
+
 /** The record a pass writes for `result`, or null for none. */
 function passRecord(result: PassResult): PassRecord | null {
   switch (result.kind) {
@@ -689,7 +788,7 @@ function passRecord(result: PassResult): PassRecord | null {
         level: "Warn",
         outcome: { kind: result.kind, step: result.stepId },
       };
-    case "run_failed":
+    case "subject_failed":
       return {
         level: "Error",
         outcome: { kind: result.kind },
@@ -702,7 +801,7 @@ function passRecord(result: PassResult): PassRecord | null {
     case "unavailable":
       return result.ending === "written"
         ? {
-            level: result.detail === undefined ? "Info" : "Warn",
+            level: RECORD_LEVEL[result.severity],
             outcome: { kind: result.kind, reason: result.reason },
             error: result.detail,
           }
@@ -723,7 +822,7 @@ function passRecord(result: PassResult): PassRecord | null {
 }
 
 /**
- * Whether the pass still owes its run a release, and so still needs its
+ * Whether the pass still owes its row a release, and so still needs its
  * lease: it is running, or a step threw and the body is winding down.
  */
 function needsLease(state: PassState): boolean {
@@ -736,10 +835,10 @@ function needsLease(state: PassState): boolean {
 
 /**
  * How one heartbeat ended: the lease moved, the database failed the write,
- * the fence refused it with the run still scheduled, or the fence refused it
- * because the run's schedule row is gone.
+ * the fence refused it with the row still scheduled, or the fence refused it
+ * because the schedule row is gone.
  */
-type Beat = "renewed" | "failed" | "refused" | "run_ended";
+type Beat = "renewed" | "failed" | "refused" | "subject_ended";
 
 /**
  * The pass's heartbeat: every `everyMs` while the pass needs its lease, move
@@ -776,7 +875,7 @@ const renewLeaseWhileRunning = Effect.fnUntraced(function* (input: {
       );
     if (renewal === "renewed") return renewal;
     if ((yield* input.findSchedule({ scheduleId })) === null) {
-      return "run_ended" as const;
+      return "subject_ended" as const;
     }
     state.leaseLost();
     return renewal;
@@ -794,14 +893,14 @@ const renewLeaseWhileRunning = Effect.fnUntraced(function* (input: {
     yield* Effect.sleep(input.everyMs);
     if (!needsLease(state)) return;
     const renewal = yield* beat;
-    if (renewal === "refused" || renewal === "run_ended") return;
+    if (renewal === "refused" || renewal === "subject_ended") return;
   }
 });
 
 /** The outcomes of a pass whose body failed. */
 type FailedPassOutcome = Extract<
   PassOutcome,
-  { kind: "step_failed" | "run_failed" | "fence_refused" }
+  { kind: "step_failed" | "body_failed" | "fence_refused" }
 >;
 
 /** What a failed pass answers for the release it wrote. */
@@ -826,7 +925,7 @@ function passResultOf(
  * The release a failed pass writes. A version fence the engine reports refused
  * is the run having moved, so nothing failed and nothing is counted. A step
  * that threw counts against its own memo row, and its backoff grows with the
- * failures that row holds. A failure no step owns counts against the run.
+ * failures that row holds. A failure no step owns counts against the row.
  */
 function decideFailedPass(input: {
   failure: Failure;
@@ -851,7 +950,7 @@ function decideFailedPass(input: {
     };
   }
   return {
-    kind: "run_failed",
+    kind: "body_failed",
     error: engineFailure.message,
     backoffMs: input.backoffMs(input.attempt),
   };

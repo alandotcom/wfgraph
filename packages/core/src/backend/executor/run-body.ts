@@ -19,10 +19,8 @@ import type {
   DatabaseError,
   LeaseLost,
 } from "#src/backend/lib/effect/database";
-import {
-  ExecutionRepo,
-  type FencedExecutionWrites,
-} from "#src/backend/services/executions/repo";
+import type { RunPassWrites } from "#src/backend/executor/runtime";
+import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import {
   createRunVersionCache,
   loadPersistedRunInput,
@@ -59,6 +57,7 @@ export function runBody(input: {
           return {
             kind: "unavailable",
             reason: loaded.reason,
+            severity: "info",
             settle: endUnavailableRun(writes, executionId, loaded),
           } as const;
         }
@@ -82,7 +81,7 @@ export function runBody(input: {
  * took its schedule and memo rows with it.
  */
 function endUnavailableRun(
-  writes: FencedExecutionWrites,
+  writes: RunPassWrites,
   executionId: string,
   unavailable: RunInputUnavailable
 ): Effect.Effect<void, DatabaseError | LeaseLost> {
@@ -102,11 +101,7 @@ function endUnavailableRun(
  * Cancel or Exit claim refuses `failed`, so it ends in the status its claim
  * names instead, carrying the same error.
  */
-function failRun(
-  writes: FencedExecutionWrites,
-  executionId: string,
-  error: string
-) {
+function failRun(writes: RunPassWrites, executionId: string, error: string) {
   return Effect.gen(function* () {
     const written = yield* writes.finishRun({
       executionId,

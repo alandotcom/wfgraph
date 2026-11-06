@@ -4,7 +4,7 @@
  * published workflow with one Execution scheduled to run.
  */
 
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
 import type {
@@ -13,8 +13,11 @@ import type {
 } from "@wfgraph/shared/graph/types";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import type { DatabaseError } from "#src/backend/lib/effect/database";
-import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
-import type { DeliverySettings } from "#src/backend/executor/delivery-body";
+import {
+  SilentAppLoggerLayer,
+  stubExecutionDriver,
+  stubExtensions,
+} from "#src/backend/lib/effect/test-layers";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import { cancelArrival } from "#src/backend/persistence/conformance/support";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
@@ -24,13 +27,25 @@ export const START_EVENT = "app/appointment.created";
 export const CANCEL_EVENT = "app/appointment.canceled";
 
 /**
- * The delivery settings of a loop or pass that delivers no inbox row: no
- * catalog Events, and a runtime whose services a delivery would never reach.
+ * The services a loop or pass over a backend's repositories needs besides
+ * them, for one that delivers no inbox row: a catalog with no Events, a
+ * silent logger, and a driver no delivery reaches.
  */
-export const noDeliveries: DeliverySettings = {
-  resolveArrival: () => ({ kind: "unknown" }),
-  runtime: stubWfGraphRuntime(),
-};
+export const noDeliveryServices = Layer.mergeAll(
+  SilentAppLoggerLayer,
+  stubExtensions(),
+  stubExecutionDriver()
+);
+
+/**
+ * The loop settings a host's `createWfGraphApp` resolves when it sets none,
+ * for a case that runs a loop or a tick and has no reason to choose.
+ */
+export const LOOP_SETTINGS = {
+  concurrency: 10,
+  deliveryConcurrency: 1,
+  retentionMs: 7 * 24 * 60 * 60 * 1000,
+} as const;
 
 export function lifecycleNode(config: JsonObject = {}): WorkflowNode {
   return {

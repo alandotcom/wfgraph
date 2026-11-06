@@ -18,7 +18,7 @@ import {
   actionNode,
   edge,
   lifecycleNode,
-  noDeliveries,
+  noDeliveryServices,
   publishWorkflow,
   startScheduledRun,
 } from "#src/backend/executor/testing/run-fixtures";
@@ -85,7 +85,7 @@ describe("runBody", () => {
 
       const bodies = {
         run: runBody({ actions: () => actions }),
-        delivery: deliveryBody(noDeliveries),
+        delivery: deliveryBody(),
       };
       // Counts the version reads that reach the database.
       let versionReads = 0;
@@ -101,9 +101,8 @@ describe("runBody", () => {
           });
           const executions = yield* ExecutionRepo;
           const claimed = yield* executions.claimDue({
-            kind: "run",
+            lanes: [{ kind: "run", limit: 2 }],
             workerId: "worker_1",
-            limit: 2,
             leaseMs: 60_000,
             now: new Date(),
           });
@@ -114,7 +113,7 @@ describe("runBody", () => {
               leaseMs: 60_000,
             }).pipe(Effect.provideService(WorkflowRepo, counted))
           );
-        })
+        }).pipe(Effect.provide(noDeliveryServices))
       );
 
       expect(results.map((result) => result.kind)).toEqual(["ended", "ended"]);

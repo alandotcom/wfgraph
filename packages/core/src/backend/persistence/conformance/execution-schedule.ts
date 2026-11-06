@@ -85,9 +85,8 @@ export function describeExecutionScheduleConformance({
           yield* scheduledRun(at(3_000));
           const fresh = yield* scheduledRun(at(1_500));
           const claimed = yield* executions.claimDue({
-            kind: "run",
+            lanes: [{ kind: "run", limit: 1 }],
             workerId: "worker_a",
-            limit: 1,
             leaseMs: LEASE_MS,
             now: at(5_000),
           });
@@ -113,9 +112,8 @@ export function describeExecutionScheduleConformance({
             T0
           );
           const beforeExpiry = yield* executions.claimDue({
-            kind: "run",
+            lanes: [{ kind: "run", limit: 10 }],
             workerId: "worker_2",
-            limit: 10,
             leaseMs: LEASE_MS,
             now: at(LEASE_MS - 1),
           });
@@ -253,7 +251,7 @@ export function describeExecutionScheduleConformance({
               backoffMs: 30_000,
             }),
             runFailed: yield* release({
-              kind: "run_failed",
+              kind: "body_failed",
               error: "the body failed outside any step",
               backoffMs: 30_000,
             }),

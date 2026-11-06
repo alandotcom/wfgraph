@@ -41,6 +41,18 @@ on machine routes so host `auth` does not consume the body. The vendor
 signature is the credential. The Connection id travels as delivery metadata,
 not as a payload field.
 
+**Event inbox**:
+The table every Event arrival is recorded in before anything acts on it
+(`workflow_event_inbox`). Every source writes one row per arrival: a host's
+`app.events.send`, `POST {basePath}/api/events`, Webhook intake, the Inngest
+forwarders, and a host's own insert in its own transaction. The row's id is
+the delivery id of every run the arrival opens. The database executor delivers
+each `pending` row once and marks it `delivered` or `failed`, and a sweep
+deletes settled rows past the retention window, which is also the window an
+idempotency key deduplicates within.
+_Avoid_: queue, outbox (the inbox is the arrival's record, which a host may
+fill from its own transaction)
+
 **Correlation Path**:
 The payload path on an Event where its Entity Value sits. The Event Author
 declares one as the default; the Workflow Builder sets the path their own

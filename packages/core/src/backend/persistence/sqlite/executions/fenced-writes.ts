@@ -24,6 +24,7 @@ import {
   requestExitWrite,
 } from "#src/backend/persistence/sqlite/executions/runs";
 import {
+  makeSqliteParkWrites,
   makeSqlitePassWrites,
   resolveOpenParks,
   writeFenced,
@@ -40,6 +41,7 @@ export function makeSqliteFencedWrites(
 ): (fence: RunFence) => FencedExecutionWrites {
   return (fence) => ({
     ...makeSqlitePassWrites(store, fence),
+    ...makeSqliteParkWrites(store, fence),
     ...guardStoreWrites(fence, {
       openNodeLog: (input) =>
         writeFenced(store, fence, openNodeLogWrite(input)),

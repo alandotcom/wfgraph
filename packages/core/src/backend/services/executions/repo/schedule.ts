@@ -12,7 +12,7 @@
  * commits.
  */
 
-import { and, asc, eq, inArray, type SQL, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, or, type SQL, sql } from "drizzle-orm";
 import { Effect } from "effect";
 import {
   workflowExecutionSchedule,
@@ -31,11 +31,12 @@ import {
 } from "#src/backend/lib/effect/database";
 import type {
   ClaimedSchedule,
+  ClaimLane,
   CountedStepFailure,
   ExecutionSchedule,
-  OwnerFence,
   ParkResolution,
   ParkWake,
+  PassFence,
   PassOutcome,
   ReleasedPass,
   RunFence,
@@ -50,6 +51,7 @@ import {
   dueSchedule,
   type DueSchedule,
   LEASE_EXPIRED_ERROR,
+  leasedUnderFence,
   openPark,
   overduePark,
   parkResolution,
@@ -60,7 +62,6 @@ import {
   TIMEOUT_WAKE,
 } from "#src/backend/services/executions/repo/release-policy";
 import { ownershipLost } from "#src/backend/services/executions/repo/fencing";
-import type { ExecutionScheduleKind } from "@wfgraph/shared/lifecycle/execution-schedule";
 import type { JsonValue } from "@wfgraph/shared/types/json";
 
 type Executor = WfGraphDatabase | WfGraphTransaction;
@@ -69,37 +70,8 @@ type Executor = WfGraphDatabase | WfGraphTransaction;
 export type LeaseLock = "share" | "update";
 
 /**
- * A fence as a fenced write reads it: a `RunFence` also names the Execution
- * its schedule row must still run, and a `DeliveryFence` the inbox row its
- * schedule row must still deliver.
- */
-export type AnyFence = OwnerFence & {
-  executionId?: string | undefined;
-  inboxId?: string | undefined;
-};
-
-/**
- * The schedule row a fence names, while it is still leased under the fence's
- * token and still names the fence's Execution or inbox row when the fence
- * names one.
- */
-function leasedUnder(fence: AnyFence): SQL | undefined {
-  return and(
-    eq(workflowExecutionSchedule.id, fence.scheduleId),
-    fence.executionId === undefined
-      ? undefined
-      : eq(workflowExecutionSchedule.executionId, fence.executionId),
-    fence.inboxId === undefined
-      ? undefined
-      : eq(workflowExecutionSchedule.inboxId, fence.inboxId),
-    eq(workflowExecutionSchedule.state, "leased"),
-    eq(workflowExecutionSchedule.ownerToken, fence.ownerToken)
-  );
-}
-
-/**
  * Takes the pass's schedule row when it is still leased under the fence's
- * token (`leasedUnder`), answering whether it was.
+ * token (`leasedUnderFence`), answering whether it was.
  *
  * `share` lets the pass's concurrent writes stand on the row together while a
  * claim, a release, a producer or a terminal write waits for them. `update` is
@@ -107,13 +79,13 @@ function leasedUnder(fence: AnyFence): SQL | undefined {
  */
 async function holdsLease(
   tx: Executor,
-  fence: AnyFence,
+  fence: PassFence,
   lock: LeaseLock
 ): Promise<boolean> {
   const [row] = await tx
     .select({ id: workflowExecutionSchedule.id })
     .from(workflowExecutionSchedule)
-    .where(leasedUnder(fence))
+    .where(leasedUnderFence(workflowExecutionSchedule, fence))
     .for(lock);
   return row !== undefined;
 }
@@ -133,7 +105,7 @@ function answerOwned<A>(result: Owned<A>): Effect.Effect<A, LeaseLost> {
  */
 export function writeFenced<A>(
   database: Database["Service"],
-  fence: AnyFence,
+  fence: PassFence,
   write: (db: Executor) => Promise<A>,
   lock: LeaseLock = "share"
 ): Effect.Effect<A, DatabaseError | LeaseLost> {
@@ -317,13 +289,14 @@ export type ScheduleRepoMethods = {
     row: ScheduleRowKey
   ) => Effect.Effect<ExecutionSchedule | null, DatabaseError>;
   /**
-   * Lease up to `limit` due rows of one `kind` to one worker, oldest `wake_at`
-   * first. A worker loop claims each kind in a lane of its own, so runs and
-   * deliveries never wait for each other's slots.
+   * Lease to one worker, for each of `lanes`, up to the lane's `limit` due
+   * rows of the lane's kind, oldest `wake_at` first, and answer every leased
+   * row oldest `wake_at` first. One statement reads the due rows of every
+   * lane, so a claim costs one round trip however many lanes it has.
    *
-   * A row is due as `dueSchedule` decides: of `kind`, and `queued` or
-   * `waiting` with `wake_at` at or before `now`, or `leased` with a lease that
-   * expired by `now`. Each claimed row gets
+   * A row is due as `dueSchedule` decides: of the lane's kind, and `queued`
+   * or `waiting` with `wake_at` at or before `now`, or `leased` with a lease
+   * that expired by `now`. Each claimed row gets
    * a new owner token and a lease ending `leaseMs` after `now`. A row queued by
    * a wake or a release spends nothing. Sweeping an expired lease counts one
    * failure against the step the row recorded as running, or against the run's
@@ -335,9 +308,8 @@ export type ScheduleRepoMethods = {
    * once never lease the same row.
    */
   readonly claimDue: (input: {
-    kind: ExecutionScheduleKind;
+    lanes: readonly ClaimLane[];
     workerId: string;
-    limit: number;
     leaseMs: number;
     now: Date;
   }) => Effect.Effect<ClaimedSchedule[], DatabaseError>;
@@ -367,8 +339,9 @@ export type ScheduleRepoMethods = {
 };
 
 /**
- * The writes only a pass makes, each fenced on the pass. `ExecutionRepo.fenced`
- * offers them beside the fenced store writes.
+ * The writes every pass makes, whatever its row runs, each fenced on the
+ * pass. `ExecutionRepo.fenced` offers them beside the fenced store writes and
+ * `ParkWrites`, and `ExecutionRepo.fencedDelivery` offers them alone.
  */
 export type PassWrites = {
   /**
@@ -391,13 +364,8 @@ export type PassWrites = {
     value: JsonValue;
     leaseExpiresAt: Date;
   }) => Effect.Effect<void, DatabaseError | LeaseLost>;
-  /** Record which durable step parked on a wait row of the run the pass's row runs. */
-  readonly recordParkStep: (input: {
-    waitStateId: string;
-    parkStepId: string;
-  }) => Effect.Effect<void, DatabaseError | LeaseLost>;
   /**
-   * Hand the row back after a pass that wrote no terminal record. See
+   * Hand the row back after a pass that did not end its row's subject. See
    * `PassOutcome` for what each outcome writes. The schedule row is locked
    * before the wait rows of the run it runs are read, so a wake that lands
    * during the pass is never missed. The owner token, lease and running step
@@ -409,9 +377,18 @@ export type PassWrites = {
   }) => Effect.Effect<ReleasedPass, DatabaseError | LeaseLost>;
   /**
    * Delete the pass's schedule row, and its step memo with it, for a pass that
-   * found its run no longer in flight: nothing will run it again.
+   * found its subject already ended: nothing will run it again.
    */
   readonly dropSchedule: () => Effect.Effect<void, DatabaseError | LeaseLost>;
+};
+
+/** The write a pass over a `run` row makes when one of its Waits parks. */
+export type ParkWrites = {
+  /** Record which durable step parked on a wait row of the run the pass's row runs. */
+  readonly recordParkStep: (input: {
+    waitStateId: string;
+    parkStepId: string;
+  }) => Effect.Effect<void, DatabaseError | LeaseLost>;
 };
 
 /** The schedule row a `ScheduleRowKey` names. */
@@ -540,6 +517,11 @@ export function makeScheduleMethods(
       database
         .query((db) =>
           db.transaction(async (tx) => {
+            const lanes = input.lanes.filter((lane) => lane.limit > 0);
+            if (lanes.length === 0) return [];
+            // One select reads every lane: each lane is a locking subquery
+            // limited to its own rows, because PostgreSQL refuses `for update`
+            // on a union.
             const due = await tx
               .select({
                 id: workflowExecutionSchedule.id,
@@ -548,17 +530,29 @@ export function makeScheduleMethods(
               })
               .from(workflowExecutionSchedule)
               .where(
-                dueSchedule(workflowExecutionSchedule, {
-                  kind: input.kind,
-                  now: input.now,
-                })
-              )
-              .orderBy(
-                asc(workflowExecutionSchedule.wakeAt),
-                asc(workflowExecutionSchedule.id)
-              )
-              .limit(input.limit)
-              .for("update", { skipLocked: true });
+                or(
+                  ...lanes.map((lane) =>
+                    inArray(
+                      workflowExecutionSchedule.id,
+                      tx
+                        .select({ id: workflowExecutionSchedule.id })
+                        .from(workflowExecutionSchedule)
+                        .where(
+                          dueSchedule(workflowExecutionSchedule, {
+                            kind: lane.kind,
+                            now: input.now,
+                          })
+                        )
+                        .orderBy(
+                          asc(workflowExecutionSchedule.wakeAt),
+                          asc(workflowExecutionSchedule.id)
+                        )
+                        .limit(lane.limit)
+                        .for("update", { skipLocked: true })
+                    )
+                  )
+                )
+              );
             if (due.length === 0) return [];
 
             const claimed = await tx
@@ -650,10 +644,10 @@ function memoJson(value: JsonValue): SQL {
   return sql`${JSON.stringify(value)}::text::jsonb`;
 }
 
-/** Builds the writes only a pass makes, fenced on `fence`. */
+/** Builds the writes every pass makes, fenced on `fence`. */
 export function makePassWrites(
   database: Database["Service"],
-  fence: OwnerFence
+  fence: PassFence
 ): PassWrites {
   const { scheduleId } = fence;
   const thisSchedule = eq(workflowExecutionSchedule.id, scheduleId);
@@ -709,27 +703,6 @@ export function makePassWrites(
         },
         "update"
       ),
-
-    recordParkStep: (input) =>
-      writeFenced(database, fence, async (tx) => {
-        await tx
-          .update(workflowWaitStates)
-          .set({ parkStepId: input.parkStepId })
-          .where(
-            and(
-              eq(workflowWaitStates.id, input.waitStateId),
-              inArray(
-                workflowWaitStates.executionId,
-                tx
-                  .select({
-                    executionId: workflowExecutionSchedule.executionId,
-                  })
-                  .from(workflowExecutionSchedule)
-                  .where(thisSchedule)
-              )
-            )
-          );
-      }),
 
     releasePass: (input) =>
       writeFenced(
@@ -811,5 +784,30 @@ export function makePassWrites(
         },
         "update"
       ),
+  };
+}
+
+/**
+ * Builds the write a pass over a `run` row makes when a Wait parks. The fence
+ * holds the schedule row to the fence's Execution, so the wait row is held to
+ * the same run.
+ */
+export function makeParkWrites(
+  database: Database["Service"],
+  fence: RunFence
+): ParkWrites {
+  return {
+    recordParkStep: (input) =>
+      writeFenced(database, fence, async (tx) => {
+        await tx
+          .update(workflowWaitStates)
+          .set({ parkStepId: input.parkStepId })
+          .where(
+            and(
+              eq(workflowWaitStates.id, input.waitStateId),
+              eq(workflowWaitStates.executionId, fence.executionId)
+            )
+          );
+      }),
   };
 }

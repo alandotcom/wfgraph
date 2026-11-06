@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { JsonObject } from "#src/types/json";
+import type { JsonObject } from "@wfgraph/shared/types/json";
 import {
   type EventSourceFilter,
   matchesSourceFilter,
-} from "#src/lifecycle/event-source-filter";
+} from "#src/backend/extensions/event-source-filter";
 
 /** Filters, and payloads around each. */
 const cases: { when: EventSourceFilter; data: JsonObject; matches: boolean }[] =

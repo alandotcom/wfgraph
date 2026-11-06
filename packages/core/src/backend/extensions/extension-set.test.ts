@@ -688,10 +688,12 @@ describe("assembleExtensions checks", () => {
     expect(resolve("appointment.created", "anything")).toEqual({
       kind: "event",
       event: created,
+      via: "name",
     });
     expect(resolve("app/appointment.updated", "created")).toEqual({
       kind: "event",
       event: created,
+      via: "source",
     });
     expect(resolve("app/appointment.updated", "moved")).toEqual({
       kind: "unmatched_source",
@@ -998,7 +1000,7 @@ describe("assembleExtensions and an integration definition", () => {
         data: delivered,
         connectionId: "conn_1",
       })
-    ).toEqual({ kind: "event", event });
+    ).toEqual({ kind: "event", event, via: "source" });
   });
 
   it("refuses one Event object claimed by two integrations", () => {

@@ -25,7 +25,8 @@ import {
   delay,
   edge,
   lifecycleNode,
-  noDeliveries,
+  LOOP_SETTINGS,
+  noDeliveryServices,
   publishWorkflow,
   START_EVENT,
   waitNode,
@@ -284,11 +285,14 @@ function appOn(connection: ConformanceConnection): App {
           };
           yield* runWorkerLoop({
             actions: () => actions,
-            delivery: noDeliveries,
+            ...LOOP_SETTINGS,
             signal: controller.signal,
             pollMs: LONG_POLL_MS,
             wake: worker.wake,
-          }).pipe(Effect.provideService(ExecutionRepo, observed));
+          }).pipe(
+            Effect.provideService(ExecutionRepo, observed),
+            Effect.provide(noDeliveryServices)
+          );
         })
       );
       return {
@@ -314,9 +318,8 @@ function appOn(connection: ConformanceConnection): App {
 /** Claims every due row for one worker, as a loop's drain step would. */
 const claimAll = Effect.flatMap(ExecutionRepo, (executions) =>
   executions.claimDue({
-    kind: "run",
+    lanes: [{ kind: "run", limit: 10 }],
     workerId: "worker_case",
-    limit: 10,
     leaseMs: 60_000,
     now: new Date(),
   })

@@ -157,3 +157,20 @@ An integration-owned Event arrives only through its integration's webhook, with 
 Connection. One resolver on the extension set decides which Event an arrival is for a send
 and for the delivery body, and assembly refuses an Event named after another Event's
 umbrella name.
+
+## Amendment: One claim answers every lane, and the sweep runs beside the claims
+
+Date: 2026-11-05
+
+The loop made one claim per lane on every iteration. A claim now takes a limit per lane and
+reads the due rows of every lane in one statement, so an iteration costs one claim whatever
+its lanes. On SQLite at a run concurrency of 10, the claims a loop made while it drained 200
+runs fell from about 765 to about 370. The event-loop delay's 99th percentile stayed
+between 26 and 28 ms and its maximum between 27 and 28 ms, so the passes, which did not
+change, account for that stall.
+
+The retention sweep ran inline before the claims, so an hourly delete held back both lanes.
+It now runs beside them, and a stopped loop drains it with its passes. `tick` sweeps too,
+on every invocation, with a retention window of its own, so a host that runs only the tick
+driver keeps no settled row forever. Every process that runs a loop or a tick sweeps with
+its own window.

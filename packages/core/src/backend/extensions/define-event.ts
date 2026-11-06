@@ -27,7 +27,7 @@ import {
   type StandardSchema,
 } from "@wfgraph/shared/types/schema";
 import type { ReferenceField } from "@wfgraph/shared/graph/node-references";
-import { sourceFilterSegments } from "@wfgraph/shared/lifecycle/event-source-filter";
+import { sourceFilterSegments } from "#src/backend/extensions/event-source-filter";
 import { requireOutputFieldsFromSchema } from "@wfgraph/shared/graph/output-fields";
 import {
   isSafeRecordKey,

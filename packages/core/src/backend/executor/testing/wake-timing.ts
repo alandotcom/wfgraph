@@ -25,25 +25,27 @@ import {
   CANCELABLE,
   cancelEntity,
   delay,
-  noDeliveries,
+  LOOP_SETTINGS,
+  noDeliveryServices,
   edge,
   lifecycleNode,
   publishWorkflow,
   startScheduledRun,
   waitNode,
 } from "#src/backend/executor/testing/run-fixtures";
+import { sleep } from "#src/backend/executor/testing/waiting";
 import { runWorkerLoop } from "#src/backend/executor/worker-loop";
 import {
   createWorkerWake,
   type WorkerWake,
 } from "#src/backend/executor/worker-wake";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
-import type { WorkflowRepo } from "#src/backend/services/workflows/repo";
+import type { WfGraphRepositories } from "#src/backend/runtime";
 import type { WfGraphPersistenceInstance } from "#src/backend/persistence/types";
 
 /** Runs one repository Effect against the database being measured. */
 export type RunOnRepositories = <A, E>(
-  effect: Effect.Effect<A, E, ExecutionRepo | WorkflowRepo>
+  effect: Effect.Effect<A, E, WfGraphRepositories>
 ) => Promise<A>;
 
 export type WakeTimingDurations = {
@@ -245,9 +247,6 @@ function scenarios(durations: WakeTimingDurations): Scenario[] {
   ];
 }
 
-const sleep = (ms: number) =>
-  new Promise<void>((resolve) => setTimeout(resolve, ms));
-
 /**
  * `measureWakeTimings` on an open persistence instance. The instance stays
  * open; the caller closes it.
@@ -312,11 +311,14 @@ export async function measureWakeTimings(input: {
   const loop = run(
     runWorkerLoop({
       actions: () => actions,
-      delivery: noDeliveries,
+      ...LOOP_SETTINGS,
       signal: controller.signal,
       wake,
       pollMs: input.pollMs,
-    }).pipe(Effect.provideService(References.MinimumLogLevel, "Warn"))
+    }).pipe(
+      Effect.provide(noDeliveryServices),
+      Effect.provideService(References.MinimumLogLevel, "Warn")
+    )
   );
 
   const measurements: WakeMeasurement[] = [];

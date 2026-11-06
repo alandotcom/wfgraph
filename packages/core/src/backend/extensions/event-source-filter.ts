@@ -1,11 +1,11 @@
 /**
  * An Event's `source.when` filter, read in process: one payload path compared
- * against one string. The executor's delivery body evaluates it to tell which
- * Event on a shared source an arrival is.
+ * against one string. Resolving an arrival (`arrival-resolution.ts`) evaluates
+ * it to tell which Event on a shared source an arrival is.
  */
 
 import { compact } from "es-toolkit/array";
-import { isJsonObject, type JsonObject } from "#src/types/json";
+import { isJsonObject, type JsonObject } from "@wfgraph/shared/types/json";
 
 /** A source filter: the payload path to read and the string it must equal. */
 export type EventSourceFilter = {

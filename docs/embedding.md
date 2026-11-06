@@ -727,17 +727,18 @@ const wfgraph = await createWfGraphApp({
 `events.retentionMs` sets how long an inbox row is kept after its Event arrived, once its
 delivery has settled. It defaults to 604,800,000, which is seven days, and must be a positive
 integer; a zero, negative or fractional value fails at startup. Once an hour, the loop
-deletes up to 1,000 `delivered` or `failed` rows that arrived earlier than the window; when a
-sweep reaches that limit, the next one runs at the loop's next poll. A `pending` row is
-never deleted.
+deletes up to 1,000 `delivered` or `failed` rows that arrived earlier than the window,
+beside its claims rather than ahead of them; when a sweep reaches that limit, the next one
+runs a poll interval later. A `pending` row is never deleted.
 
 The window is also the deduplication window. A send whose idempotency key matches a row
 still kept is answered with that row and starts nothing, and once the sweep has deleted the
 row, the same key is a new arrival. The `delivery_id` of an Execution names its inbox row
 as plain text, so a run outlives the row it started from.
 
-The sweep runs in the process that runs the loop, with that process's window. When the
-loop runs under `createWfGraphRunner`, set `events.retentionMs` there.
+Every process that runs a loop sweeps with its own window: an app with its own loop, and
+each `createWfGraphRunner`. Set the same `events.retentionMs` in every one of them, or the
+process with the shortest window decides how long rows are kept.
 
 ```ts
 const wfgraph = await createWfGraphApp({

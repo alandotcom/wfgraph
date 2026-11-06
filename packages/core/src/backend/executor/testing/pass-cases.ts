@@ -32,7 +32,7 @@ import {
   delay,
   edge,
   lifecycleNode,
-  noDeliveries,
+  noDeliveryServices,
   onEvent,
   publishWorkflow,
   startScheduledRun,
@@ -263,9 +263,8 @@ function describeCases(
             const repo = yield* ExecutionRepo;
             const worker = options.wrap?.(repo) ?? repo;
             const [claimed] = yield* worker.claimDue({
-              kind: "run",
+              lanes: [{ kind: "run", limit: 1 }],
               workerId: options.workerId ?? "worker_1",
-              limit: 1,
               leaseMs: LEASE_MS,
               now: now(),
             });
@@ -274,7 +273,7 @@ function describeCases(
               claimed,
               {
                 run: runBody({ actions: () => actions }),
-                delivery: deliveryBody(noDeliveries),
+                delivery: deliveryBody(),
               },
               {
                 workerId: options.workerId ?? "worker_1",
@@ -283,7 +282,10 @@ function describeCases(
                 heartbeatMs: options.heartbeatMs,
                 backoffMs: () => 0,
               }
-            ).pipe(Effect.provideService(ExecutionRepo, worker));
+            ).pipe(
+              Effect.provideService(ExecutionRepo, worker),
+              Effect.provide(noDeliveryServices)
+            );
           })
         ),
       publishSecondVersion: async (secondGraph) =>
@@ -1018,9 +1020,8 @@ function describeCases(
         Effect.gen(function* () {
           const executions = yield* ExecutionRepo;
           const [claimed] = yield* executions.claimDue({
-            kind: "run",
+            lanes: [{ kind: "run", limit: 1 }],
             workerId: "worker_live",
-            limit: 1,
             leaseMs: LEASE_MS,
             now: now(),
           });
@@ -1130,7 +1131,7 @@ function describeCases(
       "retry",
       "retry",
       "retries_spent",
-      "run_failed",
+      "subject_failed",
     ]);
     expect(results[4]).toMatchObject({ stepId: "workflow-run-completed" });
     const run = await readRun(harness);
@@ -1171,6 +1172,7 @@ function describeCases(
       kind: "unavailable",
       reason: "not_in_flight",
       ending: "written",
+      severity: "info",
     });
     expect((await readRun(harness)).schedule).toBeNull();
   });

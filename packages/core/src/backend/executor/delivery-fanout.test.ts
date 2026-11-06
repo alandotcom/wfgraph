@@ -3,15 +3,20 @@ import { describe, expect, it, vi } from "vitest";
 import { DatabaseError } from "#src/backend/lib/effect/database";
 import {
   SilentAppLoggerLayer,
+  stubExecutionDriver,
+  stubExecutionRepo,
+  stubExtensions,
+  stubIntegrationRepo,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
 import { defineEvent } from "#src/backend/extensions/define-event";
 import {
-  type EventListenerDeliverPorts,
-  runEventListener,
-} from "#src/backend/executor/event-listener";
+  type DecodedArrival,
+  type DeliveryFanOutPorts,
+  fanOutDelivery,
+} from "#src/backend/executor/delivery-fanout";
+import type { PassSteps } from "#src/backend/executor/runtime";
 import type { WaitCandidatePage } from "#src/backend/services/workflows/lifecycle/deliver-event";
-import type { WfGraphRuntime } from "#src/backend/runtime";
 import type { EventSubscriber } from "#src/backend/services/workflows/repo";
 
 const appointmentCreated = defineEvent({
@@ -36,57 +41,67 @@ const transformedEvent = defineEvent({
   }),
 });
 
+/** An arrival of `appointmentCreated` carrying `payload`. */
+const created: DecodedArrival = {
+  event: appointmentCreated,
+  payload,
+  validated: payload,
+};
+
 /** The steps a delivery took, in the order it took them. */
-function recordingStep() {
+function recordingStep(): { ids: string[]; steps: PassSteps } {
   const ids: string[] = [];
   return {
     ids,
-    step: {
-      run: async <T>(id: string, fn: () => Promise<T>): Promise<T> => {
-        ids.push(id);
-        return await fn();
-      },
+    steps: {
+      run: (id, step) =>
+        Effect.sync(() => ids.push(id)).pipe(Effect.andThen(step)),
     },
   };
 }
 
 /** A small stand-in for the step memo answering a step that succeeded, on retry. */
-function memoizedStep() {
+function memoizedStep(): { ids: string[]; steps: PassSteps } {
   const ids: string[] = [];
   const outputs = new Map<string, unknown>();
   return {
     ids,
-    step: {
-      run: async <T>(id: string, fn: () => Promise<T>): Promise<T> => {
-        ids.push(id);
-        if (outputs.has(id)) {
-          return outputs.get(id) as T;
-        }
-        try {
-          const output = await fn();
-          outputs.set(id, output);
-          return output;
-        } catch (error) {
-          outputs.delete(id);
-          throw error;
-        }
-      },
+    steps: {
+      run: <A, E, R>(id: string, step: Effect.Effect<A, E, R>) =>
+        Effect.suspend(() => {
+          ids.push(id);
+          if (outputs.has(id)) {
+            return Effect.succeed(outputs.get(id) as A);
+          }
+          return step.pipe(
+            Effect.tap((output) => Effect.sync(() => outputs.set(id, output)))
+          );
+        }),
     },
   };
 }
 
 /**
- * The runtime the fan-out runs its services on, which is the seam this stands
- * on: the delivery body hands the app's in, and here it provides the logger
- * plus whatever a case needs.
+ * Runs one fan-out. The ports it is handed are fakes, so the services its
+ * type names are stubs that die if anything reaches them.
  */
-function testRuntime(services = Layer.empty): WfGraphRuntime {
-  return {
-    runPromise: (effect: Effect.Effect<unknown, unknown>) =>
-      Effect.runPromise(
-        Effect.provide(effect, Layer.mergeAll(SilentAppLoggerLayer, services))
-      ),
-  } as unknown as WfGraphRuntime;
+function runFanOut(
+  input: Omit<Parameters<typeof fanOutDelivery>[0], "connectionId">
+) {
+  return Effect.runPromise(
+    fanOutDelivery({ connectionId: null, ...input }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          SilentAppLoggerLayer,
+          stubWorkflowRepo(),
+          stubExecutionRepo(),
+          stubIntegrationRepo(),
+          stubExtensions(),
+          stubExecutionDriver()
+        )
+      )
+    )
+  );
 }
 
 function subscriber(overrides: Partial<EventSubscriber> = {}): EventSubscriber {
@@ -101,10 +116,10 @@ function subscriber(overrides: Partial<EventSubscriber> = {}): EventSubscriber {
 
 /**
  * What this file is about is the order and the boundaries of the two halves,
- * so the halves themselves are fakes injected through `deliver`;
+ * so the halves themselves are fakes passed as the fan-out's ports;
  * `deliver-event.test.ts` covers what each one does.
  */
-function fakeDeliver(): EventListenerDeliverPorts & {
+function fakeDeliver(): DeliveryFanOutPorts & {
   applyLifecycle: ReturnType<typeof vi.fn>;
   listWaitCandidates: ReturnType<typeof vi.fn>;
   deliverWaitCandidates: ReturnType<typeof vi.fn>;
@@ -132,7 +147,7 @@ function fakeDeliver(): EventListenerDeliverPorts & {
   };
 }
 
-describe("runEventListener", () => {
+describe("fanOutDelivery", () => {
   // An inbox row names one arrival in both halves, so the lifecycle's committed
   // decision and every wake carry the same id.
   it("keys the lifecycle decision and the wakes of an inbox arrival by the inbox id", async () => {
@@ -141,14 +156,11 @@ describe("runEventListener", () => {
       Effect.succeed([subscriber({ roles: ["start", "wait"] })])
     );
 
-    await runEventListener({
-      event: appointmentCreated,
-      payload,
-      validatedPayload: payload,
+    await runFanOut({
+      arrival: created,
       inboxId: "inbox_1",
-      runtime: testRuntime(),
-      step: recordingStep().step,
-      deliver,
+      steps: recordingStep().steps,
+      ports: deliver,
     });
 
     expect(deliver.applyLifecycle.mock.calls[0]?.[0].deliveryId).toBe(
@@ -180,14 +192,11 @@ describe("runEventListener", () => {
     );
     const recorder = recordingStep();
 
-    const result = await runEventListener({
-      event: appointmentCreated,
-      payload,
-      validatedPayload: payload,
+    const result = await runFanOut({
+      arrival: created,
       inboxId: "inbox_1",
-      runtime: testRuntime(),
-      step: recorder.step,
-      deliver,
+      steps: recorder.steps,
+      ports: deliver,
     });
 
     expect(recorder.ids).toEqual([
@@ -199,7 +208,12 @@ describe("runEventListener", () => {
       "wait-candidates-wf_2-0",
       "waits-wf_2-0",
     ]);
-    expect(result.workflows).toHaveLength(2);
+    expect(result).toEqual({
+      workflows: 2,
+      started: 2,
+      canceled: 0,
+      resumedWaits: 0,
+    });
 
     // The run just started and the run it displaced both take no wait: one is
     // ending, and the other has parked nothing yet.
@@ -216,14 +230,15 @@ describe("runEventListener", () => {
     const recorder = recordingStep();
     const wirePayload = { appointment: { id: "  appt_1  " } };
 
-    await runEventListener({
-      event: transformedEvent,
-      payload: wirePayload,
-      validatedPayload: { appointment: { id: "appt_1" } },
+    await runFanOut({
+      arrival: {
+        event: transformedEvent,
+        payload: wirePayload,
+        validated: { appointment: { id: "appt_1" } },
+      },
       inboxId: "inbox_1",
-      runtime: testRuntime(),
-      step: recorder.step,
-      deliver,
+      steps: recorder.steps,
+      ports: deliver,
     });
 
     expect(
@@ -253,14 +268,11 @@ describe("runEventListener", () => {
     );
     const recorder = recordingStep();
 
-    await runEventListener({
-      event: appointmentCreated,
-      payload,
-      validatedPayload: payload,
+    await runFanOut({
+      arrival: created,
       inboxId: "inbox_1",
-      runtime: testRuntime(),
-      step: recorder.step,
-      deliver,
+      steps: recorder.steps,
+      ports: deliver,
     });
 
     expect(recorder.ids).toEqual([
@@ -284,14 +296,11 @@ describe("runEventListener", () => {
     );
     const recorder = recordingStep();
 
-    await runEventListener({
-      event: appointmentCreated,
-      payload,
-      validatedPayload: payload,
+    await runFanOut({
+      arrival: created,
       inboxId: "inbox_1",
-      runtime: testRuntime(),
-      step: recorder.step,
-      deliver,
+      steps: recorder.steps,
+      ports: deliver,
     });
 
     expect(recorder.ids).toEqual([
@@ -312,14 +321,11 @@ describe("runEventListener", () => {
     );
     const recorder = recordingStep();
 
-    const result = await runEventListener({
-      event: appointmentCreated,
-      payload,
-      validatedPayload: payload,
+    const result = await runFanOut({
+      arrival: created,
       inboxId: "inbox_1",
-      runtime: testRuntime(),
-      step: recorder.step,
-      deliver,
+      steps: recorder.steps,
+      ports: deliver,
     });
 
     expect(recorder.ids).toEqual([
@@ -327,7 +333,7 @@ describe("runEventListener", () => {
       "lifecycle-wf_1",
     ]);
     expect(deliver.deliverWaitCandidates.mock.calls).toHaveLength(0);
-    expect(result.workflows[0]?.resumedWaits).toBe(0);
+    expect(result.resumedWaits).toBe(0);
   });
 
   // A refused start is not a refused delivery. Under first-wins the run already
@@ -349,14 +355,11 @@ describe("runEventListener", () => {
     );
     const recorder = recordingStep();
 
-    const result = await runEventListener({
-      event: appointmentCreated,
-      payload,
-      validatedPayload: payload,
+    const result = await runFanOut({
+      arrival: created,
       inboxId: "inbox_9",
-      runtime: testRuntime(),
-      step: recorder.step,
-      deliver,
+      steps: recorder.steps,
+      ports: deliver,
     });
 
     expect(recorder.ids).toEqual([
@@ -371,7 +374,12 @@ describe("runEventListener", () => {
     expect(deliver.deliverWaitCandidates.mock.calls[0]?.[0].deliveryId).toBe(
       "inbox_9"
     );
-    expect(result.workflows).toEqual([{ lifecycle: refused, resumedWaits: 1 }]);
+    expect(result).toEqual({
+      workflows: 1,
+      started: 0,
+      canceled: 0,
+      resumedWaits: 1,
+    });
 
     // The arrival travels with the delivery, so the audit row a start or a
     // refusal writes names the arrival it answered.
@@ -439,16 +447,13 @@ describe("runEventListener", () => {
     );
     const recorder = memoizedStep();
     const input = {
-      event: appointmentCreated,
-      payload,
-      validatedPayload: payload,
+      arrival: created,
       inboxId: "inbox_early",
-      runtime: testRuntime(),
-      step: recorder.step,
-      deliver,
+      steps: recorder.steps,
+      ports: deliver,
     };
 
-    await expect(runEventListener(input)).rejects.toBeInstanceOf(DatabaseError);
+    await expect(runFanOut(input)).rejects.toBeInstanceOf(DatabaseError);
 
     // The original Wait's action parks a second Wait before the delivery runs
     // this step again. The saved step result keeps the later row outside
@@ -459,7 +464,7 @@ describe("runEventListener", () => {
       hasMore: false,
     };
 
-    const result = await runEventListener(input);
+    const result = await runFanOut(input);
 
     expect(candidatePagesBeforeFirstDelivery).toBe(2);
     expect(deliver.listWaitCandidates).toHaveBeenCalledTimes(2);
@@ -479,12 +484,12 @@ describe("runEventListener", () => {
       "waits-wf_1-0",
       "waits-wf_1-1",
     ]);
-    expect(result.workflows).toEqual([
-      {
-        lifecycle: { kind: "waits_only", workflowId: "wf_1" },
-        resumedWaits: 2,
-      },
-    ]);
+    expect(result).toEqual({
+      workflows: 1,
+      started: 0,
+      canceled: 0,
+      resumedWaits: 2,
+    });
   });
 
   it("delivers no waits to a workflow that is gone", async () => {
@@ -499,14 +504,11 @@ describe("runEventListener", () => {
     );
     const recorder = recordingStep();
 
-    await runEventListener({
-      event: appointmentCreated,
-      payload,
-      validatedPayload: payload,
+    await runFanOut({
+      arrival: created,
       inboxId: "inbox_1",
-      runtime: testRuntime(),
-      step: recorder.step,
-      deliver,
+      steps: recorder.steps,
+      ports: deliver,
     });
 
     expect(recorder.ids).toEqual([
@@ -528,14 +530,11 @@ describe("runEventListener", () => {
       )
     );
 
-    const failure = await runEventListener({
-      event: appointmentCreated,
-      payload,
-      validatedPayload: payload,
+    const failure = await runFanOut({
+      arrival: created,
       inboxId: "inbox_1",
-      runtime: testRuntime(stubWorkflowRepo()),
-      step: recordingStep().step,
-      deliver,
+      steps: recordingStep().steps,
+      ports: deliver,
     }).then(
       () => undefined,
       (error: unknown) => error

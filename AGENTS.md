@@ -233,8 +233,9 @@ in `packages/shared/src/lifecycle/lifecycle-rules.ts` with the fan-out beside it
 engine resolves templates into every declared config key and a blank field arrives holding
 `undefined`. Build every CEL literal with `celStringLiteral`
 (`packages/shared/src/conditions/cel-string-literal.ts`): hand-rolling the escape is how a
-value carrying a newline gets past a test and fails at Inngest, where the failure is a run
-that never triggers.
+value carrying a newline gets past a test and then fails to parse when cel-js evaluates the
+condition, where the failure is a filter that refuses every arrival or a Wait that never
+matches.
 
 **A service returns an Effect whose error channel names a domain failure, never an HTTP
 status.** `backend/lib/effect/failures.ts` holds a tagged class per kind
@@ -311,7 +312,7 @@ active keeps the mocked import for every later file in that worker. Prefer:
 - catalog-as-argument on pure helpers, and `ExtensionCatalogProvider` /
   `useExtensionCatalog()` for React (fixtures wrap the provider; only
   `extensions.test.ts` stubs `fetch` to exercise hydrate)
-- required DI ports at construction (`runEventListener`'s `deliver`,
+- required DI ports at construction (`fanOutDelivery`'s `ports`,
   `runBody`'s `actions`, `createInngestSurface`'s `connect`)
 - injected SDK factories (`createLinear(createClient)`) rather than `vi.spyOn` of
   thin wrappers
@@ -503,6 +504,12 @@ separate read and write transactions. The Hyperdrive backend requires
 query caching disabled and verifies that the origin role's default
 `search_path` resolves to the configured schema. PostgreSQL migrations for a
 Worker deployment run out of band through `@wfgraph/core/migrate`.
+
+**The event inbox is a SQL contract.** A host that shares the database inserts into
+`workflow_event_inbox` inside its own transaction, with the statement documented at
+`workflowEventInbox` in `packages/core/src/backend/lib/db/schema.ts`. Its columns, their
+defaults and its idempotency index are therefore public on both backends, and a change to
+any of them is a breaking change for adopters.
 
 ## API client
 

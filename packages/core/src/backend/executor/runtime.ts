@@ -1,20 +1,20 @@
 /**
- * The database executor's `WorkflowExecutionRuntime` for one pass of one
- * schedule row.
+ * The ports a database executor pass runs its body through, over the step
+ * memo it loaded when it claimed its schedule row.
  *
- * A pass replays the body against the step memo it loaded when it claimed the
- * row. `run` answers a step whose memo row `succeeded` with its value, fails a
- * step whose row is `failed`, and otherwise runs the step and records its
- * value. For a run, `waitForEvent` answers the wake on the park's wait row and
- * otherwise records the parking step and answers `parked`, which ends the
- * branch for this pass; a delivery parks nothing. Every write is fenced on the
- * pass's owner token until the pass writes the run's terminal record. Once the
- * pass stops, because a step threw or the lease was lost, it starts no step
- * and writes nothing more: each attempt fails with `LeaseLost`, which ends the
- * body. The caller reads `PassState` to decide the release.
+ * A step whose memo row `succeeded` answers its value, a step whose row is
+ * `failed` fails, and any other step runs and records its value. A run's pass
+ * runs the engine over `createExecutorRuntime`, whose `waitForEvent` answers
+ * the wake on the park's wait row and otherwise records the parking step and
+ * answers `parked`, which ends the branch for this pass. A delivery's pass
+ * runs its steps through `createPassSteps`, which parks nothing. Every write
+ * is fenced on the pass's owner token until the pass ends its row's subject.
+ * Once the pass stops, because a step threw or the lease was lost, it starts
+ * no step and writes nothing more: each attempt fails with `LeaseLost`, which
+ * ends the body. The caller reads `PassState` to decide the release.
  */
 
-import { Effect, Schema } from "effect";
+import { Cause, Effect, Schema } from "effect";
 import type {
   DurableStepRef,
   WaitAnswer,
@@ -31,9 +31,9 @@ import {
   LeaseLost,
 } from "#src/backend/lib/effect/database";
 import type {
-  FencedExecutionWrites,
   ParkState,
   ParkWake,
+  ParkWrites,
   PassWrites,
   StepMemo,
   StoreWrites,
@@ -189,7 +189,7 @@ function watchedPassWrite<I>(
 }
 
 /**
- * The writes only a pass makes, each watched by `state`. The release and the
+ * The writes every pass makes, each watched by `state`. The release and the
  * schedule row's deletion are passed through unwatched: a pass whose step
  * threw still writes its release, and a pass that found its subject gone
  * deletes its row before it runs anything.
@@ -202,11 +202,26 @@ export function watchPassOnlyWrites(input: {
   return {
     renewLease: watchedPassWrite(fenced.renewLease, state),
     writeStepMemo: watchedPassWrite(fenced.writeStepMemo, state),
-    recordParkStep: watchedPassWrite(fenced.recordParkStep, state),
     releasePass: fenced.releasePass,
     dropSchedule: fenced.dropSchedule,
   };
 }
+
+/**
+ * One of a run pass's park writes, watched by `state` as `watchPassOnlyWrites`
+ * watches the pass's own writes.
+ */
+export function watchParkWrites(input: {
+  fenced: ParkWrites;
+  state: PassState;
+}): ParkWrites {
+  return {
+    recordParkStep: watchedPassWrite(input.fenced.recordParkStep, input.state),
+  };
+}
+
+/** A run pass's writes: the engine's store writes beside the pass's own. */
+export type RunPassWrites = StoreWrites & PassWrites;
 
 /**
  * A run pass's writes: the store writes the engine reaches, each watched by
@@ -219,7 +234,7 @@ export function watchStoreWrites(input: {
   unfenced: StoreWrites;
   passWrites: PassWrites;
   state: PassState;
-}): FencedExecutionWrites {
+}): RunPassWrites {
   const { fenced, unfenced, passWrites, state } = input;
   const store = buildStoreWrites((name) =>
     watchedStoreWrite(fenced[name], unfenced[name], state)
@@ -275,8 +290,8 @@ function memoValue(value: unknown): JsonValue {
 }
 
 /**
- * How a run's pass reads and marks its parks. A pass with none, a delivery's,
- * answers a Wait with a defect, since nothing it runs parks.
+ * How a pass reads and marks its parks. Only a run's pass builds one, from
+ * `ExecutionRepo.fenced`, so a pass over any other kind cannot park.
  */
 export type ParkAccess = {
   /** Reads one park's row. */
@@ -284,28 +299,145 @@ export type ParkAccess = {
     waitStateId: string
   ) => Effect.Effect<ParkState | null, DatabaseError>;
   /** Records the parking step on a park's row, watched by the pass's state. */
-  recordParkStep: PassWrites["recordParkStep"];
+  recordParkStep: ParkWrites["recordParkStep"];
 };
 
-export type ExecutorRuntimeInput = {
+/** What every port over a pass's step memo is built from. */
+export type StepMemoInput = {
   /** Every memo row of the schedule row, loaded once at the claim, keyed by step id. */
   memo: ReadonlyMap<string, StepMemo>;
   /** Records a step's value, watched by `state`. */
   writeStepMemo: PassWrites["writeStepMemo"];
-  /** How a Wait parks, or undefined for a pass that parks nothing. */
-  parks: ParkAccess | undefined;
   state: PassState;
   /** Where the lease ends if renewed now, which every memo write renews to. */
   leaseExpiresAt: () => Date;
+};
+
+/**
+ * What the memo says about a step before it runs: the value it stored, a
+ * refusal (its retries are spent, or the pass has stopped and starts no
+ * step), or that the step runs.
+ */
+type MemoAnswer =
+  | { kind: "value"; value: JsonValue }
+  | { kind: "refused"; failure: EngineFailure | LeaseLost }
+  | { kind: "run" };
+
+/**
+ * One pass's step memo: what it answers for a step, and the write that
+ * records a step's value, which also updates the memo this pass reads.
+ */
+function stepMemoBook(input: StepMemoInput) {
+  const { state } = input;
+  const memo = new Map(input.memo);
+  return {
+    memo,
+    answer: (stepId: string): MemoAnswer => {
+      const stored = memo.get(stepId);
+      if (stored?.status === "succeeded") {
+        return { kind: "value", value: stored.value };
+      }
+      if (stored?.status === "failed") {
+        return {
+          kind: "refused",
+          failure: state.spentStep(stepId, stored.error),
+        };
+      }
+      if (isStopped(state)) return { kind: "refused", failure: passStopped() };
+      return { kind: "run" };
+    },
+    /**
+     * Records `value` as the step's memo row. A write that fails stops the
+     * pass as a failure of that step would, unless a lost lease stopped it
+     * first.
+     */
+    remember: (stepId: string, value: JsonValue) =>
+      input
+        .writeStepMemo({
+          stepId,
+          value,
+          leaseExpiresAt: input.leaseExpiresAt(),
+        })
+        .pipe(
+          Effect.tapError((error) =>
+            Effect.sync(() => state.stepThrew(stepId, error))
+          ),
+          Effect.tap(() =>
+            Effect.sync(() => {
+              memo.set(stepId, {
+                status: "succeeded",
+                failures: memo.get(stepId)?.failures ?? 0,
+                value,
+              });
+            })
+          )
+        ),
+  };
+}
+
+/** What a step run through `PassSteps` may fail with besides its own error. */
+export type PassStepFailure = EngineFailure | DatabaseError | LeaseLost;
+
+/**
+ * The step port of a pass whose body is written as Effects: a delivery's.
+ * Its steps run in the pass's own fiber, so interrupting the pass interrupts
+ * the step it is running, and the step's spans open under the pass's span.
+ */
+export type PassSteps = {
+  /**
+   * Runs `step` as the durable step `id`, or answers its memoized value. The
+   * attempt that ran the step gets the value it produced and every replay
+   * gets the stored JSON, so the value must round-trip through JSON. A step
+   * that fails stops the pass, with the step's own failure or the memo
+   * write's.
+   */
+  readonly run: <A, E, R>(
+    id: string,
+    step: Effect.Effect<A, E, R>
+  ) => Effect.Effect<A, E | PassStepFailure, R>;
+};
+
+export function createPassSteps(input: StepMemoInput): PassSteps {
+  const { state } = input;
+  const book = stepMemoBook(input);
+  return {
+    run: <A, E, R>(id: string, step: Effect.Effect<A, E, R>) =>
+      Effect.suspend((): Effect.Effect<A, E | PassStepFailure, R> => {
+        const answer = book.answer(id);
+        if (answer.kind === "value") {
+          // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- a step id always maps back to that step's own result type
+          return Effect.succeed(answer.value as A);
+        }
+        if (answer.kind === "refused") return Effect.fail(answer.failure);
+        state.stepStarted(id);
+        return step.pipe(
+          Effect.tapCause((cause) =>
+            Effect.sync(() => {
+              if (!Cause.hasInterruptsOnly(cause)) {
+                state.stepThrew(id, Cause.squash(cause));
+              }
+            })
+          ),
+          Effect.tap((value) => book.remember(id, memoValue(value))),
+          Effect.ensuring(Effect.sync(() => state.stepFinished(id)))
+        );
+      }),
+  };
+}
+
+export type ExecutorRuntimeInput = StepMemoInput & {
+  /** How the run's Waits park. */
+  parks: ParkAccess;
   /** Runs one repository Effect, rejecting with its failure. */
   runEffect: <A, E>(effect: Effect.Effect<A, E>) => Promise<A>;
 };
 
+/** The engine's runtime for one pass over a `run` row. */
 export function createExecutorRuntime(
   input: ExecutorRuntimeInput
 ): WorkflowExecutionRuntime {
   const { state, runEffect, parks } = input;
-  const memo = new Map(input.memo);
+  const book = stepMemoBook(input);
 
   /**
    * Runs one of the runtime's own reads or writes for `stepId`. A failure
@@ -321,34 +453,14 @@ export function createExecutorRuntime(
     }
   }
 
-  async function remember(stepId: string, value: JsonValue): Promise<void> {
-    await runEffect(
-      input.writeStepMemo({
-        stepId,
-        value,
-        leaseExpiresAt: input.leaseExpiresAt(),
-      })
-    );
-    memo.set(stepId, {
-      status: "succeeded",
-      failures: memo.get(stepId)?.failures ?? 0,
-      value,
-    });
-  }
-
   return {
     run: async <T>(step: DurableStepRef, fn: () => Promise<T>): Promise<T> => {
-      const stored = memo.get(step.id);
-      if (stored?.status === "succeeded") {
+      const answer = book.answer(step.id);
+      if (answer.kind === "value") {
         // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- a step id always maps back to that step's own result type
-        return stored.value as T;
+        return answer.value as T;
       }
-      if (stored?.status === "failed") {
-        throw state.spentStep(step.id, stored.error);
-      }
-      if (isStopped(state)) {
-        throw passStopped();
-      }
+      if (answer.kind === "refused") throw answer.failure;
 
       state.stepStarted(step.id);
       try {
@@ -361,7 +473,7 @@ export function createExecutorRuntime(
         }
         // The attempt that ran the step gets the value it returned and every
         // replay gets the stored JSON.
-        await forStep(step.id, remember(step.id, memoValue(value)));
+        await runEffect(book.remember(step.id, memoValue(value)));
         return value;
       } finally {
         state.stepFinished(step.id);
@@ -372,7 +484,7 @@ export function createExecutorRuntime(
       step: DurableStepRef,
       options: WaitForEventOptions
     ): Promise<WaitAnswer> => {
-      const stored = memo.get(step.id);
+      const stored = book.memo.get(step.id);
       // A park step whose retries are spent fails the Wait as a step would.
       // It never reads as a wake.
       if (stored?.status === "failed") {
@@ -391,11 +503,6 @@ export function createExecutorRuntime(
       // A stopped pass halts the branch where it stands, writing nothing.
       if (isStopped(state)) {
         return { kind: "parked" };
-      }
-      if (parks === undefined) {
-        throw new Error(
-          `Step ${step.id} parks, and this pass runs nothing that parks`
-        );
       }
       const { waitStateId } = options;
       const park = await forStep(
@@ -416,7 +523,7 @@ export function createExecutorRuntime(
       // attempt still has to read what woke it.
       if (park.wake) {
         const wake = waitWakeOf(park.wake);
-        await forStep(step.id, remember(step.id, wake));
+        await runEffect(book.remember(step.id, wake));
         return { kind: "woke", wake };
       }
       if (park.parkStepId !== step.id) {

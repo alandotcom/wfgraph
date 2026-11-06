@@ -45,14 +45,30 @@ const sendLogger = Effect.map(AppLogger, (appLogger) =>
   appLogger.get("events")
 );
 
+/** Why a send was refused, as its span records it. */
+type SendRefusal =
+  | "invalid_send"
+  | "unknown_event"
+  | "unmatched_source"
+  | "payload_refused";
+
+/** Records on the send's span why it was refused. */
+function refused(reason: SendRefusal) {
+  return Effect.annotateCurrentSpan("wfgraph.event.refused", reason);
+}
+
 /**
  * Accept one Event into the inbox and wake the worker loops. Answers the inbox
  * row's id, and whether an earlier send with the same id already holds it.
+ * The span carries the catalog Event's name once the send resolves to one,
+ * and then the refusal reason or the inbox row's id and `duplicate`; a name
+ * that resolves to no Event stays off the span, since the sender wrote it.
  */
 export const sendEvent = Effect.fn("wfgraph.event.send")(
   function* (input: unknown) {
     const parsed = readEventSend(input);
     if (Result.isFailure(parsed)) {
+      yield* refused("invalid_send");
       return yield* new InvalidInput({
         error: formatSchemaFailure(parsed.failure.issue),
       });
@@ -64,17 +80,20 @@ export const sendEvent = Effect.fn("wfgraph.event.send")(
     const extensions = yield* Extensions;
     const match = extensions.resolveArrival({ name, data, connectionId: null });
     if (match.kind === "unknown") {
+      yield* refused("unknown_event");
       return yield* new InvalidInput({
         error: "name: No host Event has this name or arrives under it",
       });
     }
     if (match.kind === "unmatched_source") {
+      yield* refused("unmatched_source");
       return yield* new InvalidInput({
         error:
           "data: No Event arriving under this name accepts this payload's source filter value",
       });
     }
     const { event } = match;
+    yield* Effect.annotateCurrentSpan("wfgraph.event.name", event.name);
 
     const refusal = yield* event.decodePayloadValue(data).pipe(
       Effect.match({
@@ -83,6 +102,7 @@ export const sendEvent = Effect.fn("wfgraph.event.send")(
       })
     );
     if (refusal !== undefined) {
+      yield* refused("payload_refused");
       const logger = yield* sendLogger;
       yield* logger.warn("Refused an Event send", {
         event: { name: event.name, keys: Object.keys(data).length },
@@ -99,6 +119,10 @@ export const sendEvent = Effect.fn("wfgraph.event.send")(
       data,
       connectionId: null,
       idempotencyKey: id ?? null,
+    });
+    yield* Effect.annotateCurrentSpan({
+      "wfgraph.inbox.id": received.inboxId,
+      "wfgraph.event.duplicate": received.duplicate,
     });
     return { id: received.inboxId, duplicate: received.duplicate };
   },

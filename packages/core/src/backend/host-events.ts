@@ -12,6 +12,29 @@ import type { WfGraphRuntime } from "#src/backend/runtime";
 import { sendEvent } from "#src/backend/services/executions/send-event";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 
+/** How Events reach this app's event inbox, and how long the inbox keeps them. */
+export type WfGraphEventsOptions = {
+  /**
+   * The shared key that mounts `POST {basePath}/api/events`. A sender
+   * presents it as `Authorization: Bearer <key>`, so it holds no
+   * whitespace. Absent, the route is not
+   * mounted, and `app.events.send` stays the only way in besides Inngest and
+   * webhook intake. Treat it as a secret, like `encryption.key`.
+   */
+  key?: string | undefined;
+  /**
+   * How long a delivered or failed inbox row is kept after it arrived, in
+   * milliseconds. Defaults to seven days. This is also the deduplication
+   * window: a send whose idempotency key matches a row still kept answers
+   * with that row, and once the sweep has deleted the row the same key is a
+   * new arrival. Every process that runs a worker loop sweeps with its own
+   * window, so a host running loops in more than one process, such as an
+   * app beside `createWfGraphRunner`, sets the same window in each. A pending
+   * row is never deleted.
+   */
+  retentionMs?: number | undefined;
+};
+
 /** One Event as a host raises it. */
 export type WfGraphEventInput = {
   /** The name of an Event in the app's catalog. */

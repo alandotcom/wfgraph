@@ -14,7 +14,10 @@ import type { AuditRepoMethods } from "#src/backend/services/executions/repo/aud
 import type { RunFence } from "#src/backend/services/executions/repo/contracts";
 import type { NodeLogsRepoMethods } from "#src/backend/services/executions/repo/node-logs";
 import type { RunsRepoMethods } from "#src/backend/services/executions/repo/runs";
-import type { PassWrites } from "#src/backend/services/executions/repo/schedule";
+import type {
+  ParkWrites,
+  PassWrites,
+} from "#src/backend/services/executions/repo/schedule";
 import type { WaitsRepoMethods } from "#src/backend/services/executions/repo/waits";
 
 /**
@@ -55,11 +58,10 @@ export const STORE_WRITE_NAMES = [
 ] as const;
 export type StoreWriteName = (typeof STORE_WRITE_NAMES)[number];
 
-/** The writes only a pass makes, beside the store writes. */
+/** The writes every pass makes, beside the store writes. */
 export const PASS_WRITE_NAMES = [
   "renewLease",
   "writeStepMemo",
-  "recordParkStep",
   "releasePass",
   "dropSchedule",
 ] as const satisfies readonly (keyof PassWrites)[];
@@ -97,8 +99,8 @@ type StoreWriteOf<Name extends StoreWriteName> = (
   DatabaseError | LeaseLost
 >;
 
-/** What `ExecutionRepo.fenced` answers for one pass. */
-export type FencedExecutionWrites = StoreWrites & PassWrites;
+/** What `ExecutionRepo.fenced` answers for one pass over a `run` row. */
+export type FencedExecutionWrites = StoreWrites & PassWrites & ParkWrites;
 
 type PartialStoreWrites = {
   [Name in StoreWriteName]?: StoreWriteOf<Name>;

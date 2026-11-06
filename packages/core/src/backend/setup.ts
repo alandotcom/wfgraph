@@ -1,10 +1,11 @@
 /**
- * What `createWfGraphApp` and `createWfGraphRunner` both stand on: logging,
- * the cipher, the extension surface, the opened persistence backend, the
- * app's run wakes, the runtime whose `ExecutionDriver` announces to them, and
- * the host's Event send over that runtime.
- * A failure while opening gives back whatever was acquired. `close` disposes
- * the runtime and then closes the backend, so the runner must stop first.
+ * What `createWfGraphApp` and `createWfGraphRunner` both stand on: the worker
+ * loop's settings, logging, the cipher, the extension surface, the opened
+ * persistence backend, the app's run wakes, the runtime whose
+ * `ExecutionDriver` announces to them, and the host's Event send over that
+ * runtime. The loop's options are refused before anything opens. A failure
+ * while opening gives back whatever was acquired. `close` disposes the
+ * runtime and then closes the backend, so the runner must stop first.
  */
 
 import type { AgentSettings } from "#src/backend/agent/config";
@@ -14,6 +15,7 @@ import {
   type WfGraphExtensions,
 } from "#src/backend/extensions/extension-set";
 import {
+  assertValidRunnerOptions,
   type InProcessRunner,
   resolveRunnerSettings,
   startInProcessRunner,
@@ -53,6 +55,12 @@ export type WfGraphSetupOptions = {
   /** The normalized public origin, absent when OAuth is unavailable. */
   publicUrl?: string | undefined;
   agent: AgentSettings;
+  /** The function the host called, which a refused option's message names. */
+  caller: string;
+  /** The host's `runner` option, or `false` for a process that runs no loop. */
+  runner: WfGraphRunnerOptions | false | undefined;
+  /** The host's `events.retentionMs`. */
+  retentionMs: number | undefined;
 };
 
 export type WfGraphSetup = {
@@ -62,15 +70,11 @@ export type WfGraphSetup = {
   /** The host's in-process Event send, on this setup's runtime. */
   readonly events: WfGraphEvents;
   /**
-   * Resolves the worker loop's settings, throwing for a backend that runs no
-   * long-lived loop, and answers how to start that loop in this process on
-   * the setup's runtime and wakes. `retentionMs` is the host's
-   * `events.retentionMs`.
+   * Starts the worker loop in this process on the setup's runtime and wakes,
+   * with the settings resolved when the setup opened, or undefined for a
+   * setup opened with `runner: false`.
    */
-  readonly prepareRunner: (options: {
-    runner: WfGraphRunnerOptions;
-    retentionMs: number | undefined;
-  }) => () => InProcessRunner;
+  readonly startRunner: (() => InProcessRunner) | undefined;
   /** Disposes the runtime, then closes the backend. */
   readonly close: () => Promise<void>;
 };
@@ -78,6 +82,7 @@ export type WfGraphSetup = {
 export async function openWfGraphSetup(
   options: WfGraphSetupOptions
 ): Promise<WfGraphSetup> {
+  assertValidRunnerOptions(options);
   if (options.logger) {
     configureLoggingWithBridge(options.logger);
   } else {
@@ -119,20 +124,27 @@ export async function openWfGraphSetup(
       wakes: wakes.sinks,
     });
 
+    // Resolved now, so a backend that runs no long-lived loop is refused
+    // before the app starts serving.
+    const settings =
+      options.runner === false
+        ? undefined
+        : resolveRunnerSettings(
+            capabilities,
+            options.runner ?? {},
+            options.retentionMs
+          );
+
     return {
       runtime,
       extensions,
       capabilities,
       events: createHostEvents(runtime),
-      prepareRunner: ({ runner, retentionMs }) => {
-        const settings = resolveRunnerSettings(
-          capabilities,
-          runner,
-          retentionMs
-        );
-        return () =>
-          startInProcessRunner({ runtime, extensions, wakes, settings });
-      },
+      startRunner:
+        settings === undefined
+          ? undefined
+          : () =>
+              startInProcessRunner({ runtime, extensions, wakes, settings }),
       close: () =>
         closeInOrder([
           () => runtime.dispose(),
