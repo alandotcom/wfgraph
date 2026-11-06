@@ -42,7 +42,8 @@ each failed at least one of the other two backends.
 ## Decision
 
 Workflow Graph runs workflows on an executor it owns, stored in the database the
-`persistence` option names. Inngest delivers Events and runs no workflow body.
+`persistence` option names. Inngest runs no workflow body. Events reach the same executor
+through an inbox in that database, which ADR-0022 records.
 
 **A park is a value.** The engine kept its replay model and changed one behaviour.
 `waitForEvent` on `WorkflowExecutionRuntime` answers either a wake or that the park is
@@ -132,7 +133,8 @@ design document's section 12.
 
 `createWfGraphApp` takes a `runner` option. Left out, the app runs one loop with the
 backend's defaults: concurrency 10 and a 1-second poll on PostgreSQL, concurrency 1 and a
-250 ms poll on SQLite, a 60-second lease and a 20-second heartbeat on both. `false` runs
+250 ms poll on SQLite, a 60-second lease and a 20-second heartbeat on both, and one slot for
+Event deliveries beside the run slots (ADR-0022). `false` runs
 no loop in that process, so some other process on the same database has to run one:
 `createWfGraphRunner` runs the loop with no HTTP app, on PostgreSQL, and a SQLite app
 refuses `false` because no other process can share its file safely. Disposing the app stops its loop and waits up to ten seconds for the passes in
@@ -149,9 +151,10 @@ process. `wfWorker` refuses to start until phase 5 of the design document builds
 driver that a Cron Trigger and a Queue consumer call. Design E stays that backend's
 fallback.
 
-Events stay on Inngest until the event inbox of phase 3. The `inngest` option is still
-required, and each catalog Event still registers a listener function, which opens and
-schedules the run in the application database. Inngest leaves the core in phase 4.
+Events arrive through the event inbox, and the executor delivers them (ADR-0022). The
+`inngest` option is still required, because Workflow Graph registers an Inngest function per
+name a host Event arrives under, which records each `inngest.send` in the inbox and delivers
+nothing itself. Inngest leaves the core in phase 4.
 
 The Inngest functions that ran workflows were deleted, with the run request, cancel,
 branch-kill and wait-signal events and the run id Inngest assigned, which the execution

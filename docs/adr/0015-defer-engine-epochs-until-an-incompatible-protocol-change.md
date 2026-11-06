@@ -118,3 +118,25 @@ to epoch-specific Inngest functions. That traffic is now rows the executor reads
 future epoch would be a stamp a pass reads to choose the engine that replays the run. The
 terminal write deletes a run's memo rows, so only in-flight runs hold memoized state, and
 Version Usage's report of in-flight runs remains the evidence for retiring an epoch.
+
+## Amendment (2026-11-05, event inbox)
+
+ADR-0022 moved Event delivery onto the same executor, so the listener ids that
+`toListenerFunctionId` made are no longer part of the boundary. The Inngest functions that
+remain record an `inngest.send` in the inbox in one step and hold no delivery state, so a
+forwarder invocation that spans a deploy only records its Event once more under the same
+idempotency key.
+
+The boundary gains the delivery body's durable step ids (`subscribers-*`, `lifecycle-*`,
+`wait-candidates-*` and `waits-*`) and the values their memo rows hold, and the inbox id as
+the `deliveryId` a run and a wake carry. These are compatible during a rolling deploy only if
+both builds read them alike, as the run's step ids are. A delivery's memo is deleted when the
+delivery settles, so only a pending delivery holds memoized state, and a delivery pins no
+workflow version: it reads the published versions as they stand when it runs. A future epoch
+therefore has no version to stamp a delivery from. An incompatible change to the delivery
+body drains pending deliveries before the deploy instead, which takes seconds, where a run
+can stay parked for months.
+
+The inbox table itself is a contract a host's own SQL insert depends on, which no epoch
+covers. A change to it is a breaking change for adopters, released as one. The engine-epoch
+mechanism remains deferred.
