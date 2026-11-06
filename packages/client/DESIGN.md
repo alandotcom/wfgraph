@@ -141,7 +141,7 @@ Each signal is one token carrying both the fill and the text form. On Paper, eve
 
 - **Signal Red** (oklch(0.577 0.245 27.325)): Destructive actions and failed runs. `--destructive`.
 - **Signal Green** (oklch(0.526 0.148 149.58)): Successful runs. `--success`.
-- **Signal Amber** (oklch(0.546 0.12 70.08)): Waiting runs, a step the executor is retrying, a run no worker has claimed for a minute, test recipients (a Published mode of Test, and every Draft run), and unmet prerequisites. Nothing else uses it; a paused workflow is graphite. `--warning`.
+- **Signal Amber** (oklch(0.546 0.12 70.08)): Waiting runs, a step the executor is retrying, an Unclaimed run (one no worker has picked up within its host's threshold, a minute for a worker loop at its default poll), test recipients (a Published mode of Test, and every Draft run), and unmet prerequisites. Nothing else uses it; a paused workflow is graphite. `--warning`.
 - **Signal Blue** (oklch(0.482 0.18 259.8)): Work in progress, including the running-node border sweep, and live template variables. `--info`.
 - **Selection Blue** (oklch(0.56 0.21 264), oklch(0.72 0.17 264) in dark): The persistent outer halo on the selected canvas object. `--selection`. It stays separate from Signal Blue so selection never reads as execution state, and it leaves the node surface unchanged.
 - **Signal Slate** (oklch(0.52 0.046 257.417)): Cancelled and superseded runs. `--cancelled`.

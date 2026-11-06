@@ -300,6 +300,7 @@ describe("applyExecutionStatusToLogs", () => {
     duration: null,
     error: null,
     retries: 0,
+    retryLimit: 4,
   };
 
   it("leaves in-flight logs alone while the run is still going", () => {

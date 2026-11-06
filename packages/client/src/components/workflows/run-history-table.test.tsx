@@ -157,7 +157,7 @@ describe("RunHistoryTable", () => {
     );
 
     expect(view.getByText("Retrying Send reminder")).toBeTruthy();
-    expect(view.getByText("Not claimed for 3 min").className).toContain(
+    expect(view.getByText("Unclaimed for 3 min").className).toContain(
       "text-warning"
     );
   });

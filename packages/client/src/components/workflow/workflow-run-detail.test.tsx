@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render } from "@testing-library/react";
+import { fireEvent, render, within } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
@@ -171,11 +171,11 @@ describe("WorkflowRunDetail", () => {
       expect(section.textContent).toContain("Retrying “Send reminder” at");
       expect(section.textContent).toContain("try 2 of 5");
       expect(section.textContent).toContain("Twilio answered 503");
-      expect(section.textContent).not.toContain("Run failures");
+      expect(section.textContent).not.toContain("Run tries");
 
       fireEvent.click(view.getByRole("button", { name: "Executor details" }));
-      expect(section.textContent).toContain("Run failures");
-      expect(section.textContent).toContain("0 of 4");
+      expect(section.textContent).toContain("Run tries");
+      expect(section.textContent).toContain("1 of 5");
     });
 
     it("says nothing new for a run asleep on its parks, or for a run that ended", () => {
@@ -357,6 +357,7 @@ describe("WorkflowRunDetail", () => {
         output: {},
         error: null,
         retries: 0,
+        retryLimit: 4,
       },
     ];
     const onSelectLog = vi.fn();
@@ -372,6 +373,59 @@ describe("WorkflowRunDetail", () => {
     fireEvent.click(entry);
     expect(onSelectLog).toHaveBeenCalledWith(logs[0]);
     expect(view.queryByText(/invoiceId/)).toBeNull();
+  });
+
+  // A step that failed closes its node's log as `error` before the executor
+  // tries it again, so the header and the journey read the node as retrying,
+  // as the canvas chip does, while the schedule lists the step as failing.
+  it("reads a node with a failing step as retrying in the header and the journey", () => {
+    const logs: WorkflowRunDetailLogs = [
+      {
+        id: "log_send",
+        nodeId: "send",
+        nodeName: "Send reminder",
+        nodeType: "action",
+        status: "error",
+        startedAt: new Date("2026-02-22T10:00:00Z"),
+        completedAt: new Date("2026-02-22T10:00:01Z"),
+        duration: "1000",
+        error: "Twilio answered 503",
+        retries: 0,
+        retryLimit: 4,
+      },
+    ];
+    const view = renderDetail(BASE_EXECUTION, {
+      logs,
+      executor: {
+        receivedAtMs: Date.now(),
+        schedule: {
+          observedAt: "2026-02-22T10:05:00.000Z",
+          overdueAfterMs: 60_000,
+          activity: null,
+          state: "leased",
+          wakeAt: "2026-02-22T10:05:00.000Z",
+          attempt: 0,
+          retryLimit: 4,
+          runningStepId: null,
+          leaseExpiresAt: "2026-02-22T10:06:00.000Z",
+          workerId: "worker-a1",
+          failingSteps: [
+            {
+              nodeId: "send",
+              failures: 1,
+              error: "Twilio answered 503",
+              nextTryAt: null,
+            },
+          ],
+        },
+      },
+    });
+
+    expect(view.getByText("Retrying Send reminder")).toBeTruthy();
+    const entry = view.getByRole("button", { name: "Send reminder, Retrying" });
+    expect(within(entry).getByText("Retrying").className).toContain(
+      "text-warning"
+    );
   });
 
   // Cancel paints the list row first and stops the logs poll. The journey and
@@ -390,6 +444,7 @@ describe("WorkflowRunDetail", () => {
         duration: "1000",
         error: null,
         retries: 0,
+        retryLimit: 4,
       },
       {
         id: "log_wait",
@@ -402,6 +457,7 @@ describe("WorkflowRunDetail", () => {
         duration: null,
         error: null,
         retries: 0,
+        retryLimit: 4,
       },
     ];
 

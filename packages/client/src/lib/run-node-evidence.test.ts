@@ -50,6 +50,7 @@ function log(
     duration: null,
     error: null,
     retries: 0,
+    retryLimit: 4,
   };
 }
 

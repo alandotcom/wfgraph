@@ -69,7 +69,7 @@ describe("WorkflowRunSummaryRow", () => {
       />
     );
 
-    expect(view.getByText("Not claimed for 3 min").className).toContain(
+    expect(view.getByText("Unclaimed for 3 min").className).toContain(
       "text-warning"
     );
     expect(view.queryByText("Running")).toBeNull();
@@ -83,7 +83,7 @@ describe("WorkflowRunSummaryRow", () => {
         runNumber={2}
       />
     );
-    expect(view.queryByText(/Not claimed/)).toBeNull();
+    expect(view.queryByText(/Unclaimed/)).toBeNull();
     expect(view.getByText("Running")).toBeTruthy();
   });
 
@@ -217,6 +217,7 @@ describe("WorkflowRunSummaryRow", () => {
       duration: "1000",
       error: "Request failed",
       retries: 0,
+      retryLimit: 4,
     };
 
     expect(
@@ -230,6 +231,22 @@ describe("WorkflowRunSummaryRow", () => {
         { ...failedLog, nodeName: "Send reminder", status: "running" },
       ])
     ).toBe("Running Send reminder");
+    // A node with a step the executor will run again reads as retrying while
+    // the run is in progress, and as its own status once the run has ended.
+    expect(
+      getRunOutcome(
+        { ...BASE_EXECUTION, status: "running", duration: null },
+        [failedLog],
+        ["send_1"]
+      )
+    ).toBe("Retrying Send confirmation");
+    expect(
+      getRunOutcome(
+        { ...BASE_EXECUTION, status: "failed" },
+        [failedLog],
+        ["send_1"]
+      )
+    ).toBe("Failed at Send confirmation");
     expect(getRunOutcome({ ...BASE_EXECUTION, status: "superseded" }, [])).toBe(
       "Replaced by a newer start"
     );

@@ -34,7 +34,9 @@ function copyOf(
 }
 
 describe("executorActivityCopy", () => {
-  it("names the node a worker is running, or says it is between steps", () => {
+  // The node is the one the worker's last lease renewal recorded, so a run
+  // just claimed names none yet.
+  it("names the node a worker is running, or only the worker", () => {
     expect(
       copyOf({
         kind: "running",
@@ -54,22 +56,28 @@ describe("executorActivityCopy", () => {
         nodeName: null,
         workerId: "worker-a1",
       })?.headline
-    ).toBe("Running on worker-a1, between steps");
+    ).toBe("Running on worker-a1");
   });
 
   it("says when a worker stopped renewing its lease and what happens next", () => {
-    expect(
-      copyOf({
-        kind: "lease_expired",
-        nodeId: "send",
-        nodeName: null,
-        since: localAt(14, 32, 5),
-      })
-    ).toEqual({
+    const stalled = {
+      kind: "lease_expired",
+      nodeId: "send",
+      nodeName: null,
+      since: localAt(14, 32, 5),
+    } as const;
+    expect(copyOf(stalled)).toEqual({
       headline:
-        "The worker running “send” stopped renewing its lease at 14:32:05.",
+        "Stalled at “send”: its worker stopped renewing the lease at 14:32:05",
       detail:
         "The next worker to claim the run will count a failure against the step and try it again.",
+      tone: "default",
+    });
+    // Between steps there is no step to count a failure against.
+    expect(copyOf({ ...stalled, nodeId: null })).toEqual({
+      headline:
+        "Stalled between steps: the worker stopped renewing the lease at 14:32:05",
+      detail: null,
       tone: "default",
     });
   });
@@ -124,7 +132,7 @@ describe("executorActivityCopy", () => {
     );
     expect(atThreshold).toEqual({
       headline:
-        "Queued since 14:39:00. No worker has claimed this run for 1 min.",
+        "Unclaimed for 1 min: no worker has picked up this run since 14:39:00",
       detail:
         "Runs are claimed by the worker loop of createWfGraphApp or createWfGraphRunner, or by the Worker's Cron Trigger. Check that one of them is running against this database.",
       tone: "warning",
@@ -166,7 +174,7 @@ describe("executorActivityCopy", () => {
     expect(
       copyOf({ ...resuming, wake: "resume", wokenAt: localAt(14, 39, 50) })
         ?.headline
-    ).toBe("Resuming: resumed at 14:39:50");
+    ).toBe("Resuming: resume requested at 14:39:50");
     expect(
       copyOf({ ...resuming, wake: "timeout", deadline: localAt(14, 39, 0) })
         ?.headline
@@ -178,7 +186,7 @@ describe("executorActivityCopy", () => {
       "Exiting: Entity eligibility no longer passes"
     );
     expect(copyOf({ ...resuming, wake: "migrate" })?.headline).toBe(
-      "Moving to the new version"
+      "Migrating to the new version"
     );
   });
 
@@ -230,7 +238,7 @@ describe("executorDetails", () => {
   it("shows a queued run's due time and leaves out the facts it lacks", () => {
     expect(executorDetails({ schedule, nowMs: NOW_MS })).toEqual([
       { term: "Schedule", value: "Queued, due 14:41:30", mono: false },
-      { term: "Run failures", value: "0 of 4", mono: false },
+      { term: "Run tries", value: "1 of 5", mono: false },
     ]);
   });
 
@@ -245,7 +253,7 @@ describe("executorDetails", () => {
     };
     expect(executorDetails({ schedule: leased, nowMs: NOW_MS })).toEqual([
       { term: "Schedule", value: "Leased", mono: false },
-      { term: "Run failures", value: "1 of 4", mono: false },
+      { term: "Run tries", value: "2 of 5", mono: false },
       { term: "Lease expires", value: "14:40:22 (in 22 s)", mono: false },
       { term: "Worker", value: "worker-a1", mono: false },
       { term: "Running step", value: "node:send:dispatch", mono: true },
@@ -327,9 +335,9 @@ describe("listActivityLabel", () => {
       observedAt: dueSince,
       overdueAfterMs: OVERDUE_MS,
     } as const;
-    expect(label(stopped)?.text).toBe("Worker stopped during send");
+    expect(label(stopped)?.text).toBe("Stalled at send");
     expect(label({ ...stopped, nodeId: null })?.text).toBe(
-      "Worker stopped during the run"
+      "Stalled between steps"
     );
   });
 
@@ -350,12 +358,12 @@ describe("listActivityLabel", () => {
 
     expect(at(unclaimed("2026-03-01T10:00:50.000Z"), 9_999)).toBeNull();
     expect(at(unclaimed("2026-03-01T10:00:50.000Z"), 10_000)).toEqual({
-      text: "Not claimed for 1 min",
+      text: "Unclaimed for 1 min",
       warns: true,
     });
     // A row from an older page keeps its own reading.
     expect(at(unclaimed("2026-03-01T10:02:00.000Z"), 0)?.text).toBe(
-      "Not claimed for 2 min"
+      "Unclaimed for 2 min"
     );
     expect(at(unclaimed(dueSince, 120_000), 90_000)).toBeNull();
     expect(label(null)).toBeNull();
@@ -380,14 +388,14 @@ describe("listActivityLabel", () => {
 });
 
 describe("nodeRetrySummary", () => {
-  it("counts a step's failures and its next try", () => {
+  it("says when the step runs next and which try that is, then its failures", () => {
     expect(
       nodeRetrySummary({
         failures: 2,
         retryLimit: 4,
         nextTryAt: localAt(14, 41, 30),
       })
-    ).toBe("Failed 2 times. Next try at 14:41:30, try 3 of 5.");
+    ).toBe("Retrying at 14:41:30, try 3 of 5. Failed 2 times.");
     expect(
       nodeRetrySummary({ failures: 1, retryLimit: 4, nextTryAt: null })
     ).toBe("Failed 1 time.");
@@ -395,21 +403,21 @@ describe("nodeRetrySummary", () => {
 });
 
 describe("finishedRetriesSummary", () => {
-  it("says how many retries a finished execution took", () => {
-    expect(finishedRetriesSummary({ status: "success", retries: 1 })).toBe(
-      "Succeeded after 1 retry"
-    );
-    expect(finishedRetriesSummary({ status: "success", retries: 3 })).toBe(
-      "Succeeded after 3 retries"
-    );
-    expect(finishedRetriesSummary({ status: "error", retries: 4 })).toBe(
-      "Failed after 4 retries"
-    );
+  it("says which try a finished execution ended on", () => {
     expect(
-      finishedRetriesSummary({ status: "success", retries: 0 })
+      finishedRetriesSummary({ status: "success", retries: 1, retryLimit: 4 })
+    ).toBe("Succeeded on try 2");
+    expect(
+      finishedRetriesSummary({ status: "success", retries: 3, retryLimit: 4 })
+    ).toBe("Succeeded on try 4");
+    expect(
+      finishedRetriesSummary({ status: "error", retries: 4, retryLimit: 4 })
+    ).toBe("Failed on try 5 of 5");
+    expect(
+      finishedRetriesSummary({ status: "success", retries: 0, retryLimit: 4 })
     ).toBeNull();
     expect(
-      finishedRetriesSummary({ status: "cancelled", retries: 2 })
+      finishedRetriesSummary({ status: "cancelled", retries: 2, retryLimit: 4 })
     ).toBeNull();
   });
 });

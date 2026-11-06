@@ -6,13 +6,19 @@ import {
   formatDuration,
   nodeStatusLabel,
   nodeStatusTone,
+  runNodeEvidenceLabel,
   statusToneDotClass,
   statusToneTextClass,
 } from "./workflow-run-shared";
 
+/** No node ids, as one stable array. */
+const NO_NODES: readonly string[] = [];
+
 /**
  * A run's node journey: one entry per recorded node execution, in start order,
- * and the Entity eligibility exit when the run exited. Choosing an entry calls
+ * and the Entity eligibility exit when the run exited. A node among
+ * `retryingNodeIds` reads "Retrying" in the warning token, whatever its log's
+ * status. Choosing an entry calls
  * `onSelect`. `focusLogId` names an entry to focus once it renders; focusing
  * keeps the scroll the journey already has, and `onFocusRestored` follows.
  */
@@ -22,12 +28,15 @@ export function WorkflowRunNodeIndex({
   focusLogId,
   onFocusRestored,
   onSelect,
+  retryingNodeIds = NO_NODES,
 }: {
   logs: ExecutionLog[];
   exit?: { nodeLabel: string } | undefined;
   focusLogId?: string | null | undefined;
   onFocusRestored?: (() => void) | undefined;
   onSelect: (log: ExecutionLog) => void;
+  /** The nodes with a step the executor will run again, read as "Retrying". */
+  retryingNodeIds?: readonly string[] | undefined;
 }) {
   const rowRefs = useRef(new Map<string, HTMLButtonElement>());
 
@@ -51,68 +60,73 @@ export function WorkflowRunNodeIndex({
     <section>
       <h3 className="mb-1 font-semibold text-sm">Node journey</h3>
       <ol>
-        {logs.map((log, index) => (
-          <li className="relative pl-5" key={log.id}>
-            {index < logs.length - 1 || exit ? (
+        {logs.map((log, index) => {
+          const status = retryingNodeIds.includes(log.nodeId)
+            ? runNodeEvidenceLabel("retrying")
+            : {
+                text: nodeStatusLabel(log.status),
+                tone: nodeStatusTone(log.status),
+              };
+          return (
+            <li className="relative pl-5" key={log.id}>
+              {index < logs.length - 1 || exit ? (
+                <span
+                  aria-hidden="true"
+                  className="absolute top-4 bottom-[-1rem] left-[0.4375rem] w-px bg-border"
+                />
+              ) : null}
               <span
                 aria-hidden="true"
-                className="absolute top-4 bottom-[-1rem] left-[0.4375rem] w-px bg-border"
+                className={cn(
+                  "absolute top-[1.125rem] left-1 size-2 rounded-full ring-2 ring-background",
+                  log.status === "running" &&
+                    "ring-info/20 motion-safe:animate-pulse",
+                  statusToneDotClass(status.tone)
+                )}
               />
-            ) : null}
-            <span
-              aria-hidden="true"
-              className={cn(
-                "absolute top-[1.125rem] left-1 size-2 rounded-full ring-2 ring-background",
-                log.status === "running" &&
-                  "ring-info/20 motion-safe:animate-pulse",
-                statusToneDotClass(nodeStatusTone(log.status))
-              )}
-            />
-            <button
-              aria-label={`${log.nodeName || log.nodeType}, ${nodeStatusLabel(log.status)}`}
-              className="grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 rounded-sm px-2 py-1.5 text-left transition-colors duration-100 hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
-              data-run-node-id={log.nodeId}
-              data-run-log-id={log.id}
-              onClick={() => onSelect(log)}
-              ref={(element) => {
-                if (element) {
-                  rowRefs.current.set(log.id, element);
-                } else {
-                  rowRefs.current.delete(log.id);
-                }
-              }}
-              type="button"
-            >
-              <span className="min-w-0">
-                <span className="block truncate font-medium text-sm">
-                  {log.nodeName || log.nodeType}
-                </span>
-                {log.error ? (
-                  <span className="block truncate text-destructive text-xs">
-                    {log.error}
+              <button
+                aria-label={`${log.nodeName || log.nodeType}, ${status.text}`}
+                className="grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 rounded-sm px-2 py-1.5 text-left transition-colors duration-100 hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+                data-run-node-id={log.nodeId}
+                data-run-log-id={log.id}
+                onClick={() => onSelect(log)}
+                ref={(element) => {
+                  if (element) {
+                    rowRefs.current.set(log.id, element);
+                  } else {
+                    rowRefs.current.delete(log.id);
+                  }
+                }}
+                type="button"
+              >
+                <span className="min-w-0">
+                  <span className="block truncate font-medium text-sm">
+                    {log.nodeName || log.nodeType}
                   </span>
-                ) : log.status === "running" ? (
-                  <span className="block text-info text-xs">In progress</span>
-                ) : null}
-              </span>
-              <span className="flex shrink-0 items-baseline gap-2">
-                <span
-                  className={cn(
-                    "text-xs",
-                    statusToneTextClass(nodeStatusTone(log.status))
-                  )}
-                >
-                  {nodeStatusLabel(log.status)}
+                  {log.error ? (
+                    <span className="block truncate text-destructive text-xs">
+                      {log.error}
+                    </span>
+                  ) : log.status === "running" ? (
+                    <span className="block text-info text-xs">In progress</span>
+                  ) : null}
                 </span>
-                {log.duration ? (
-                  <span className="font-mono text-muted-foreground text-xs tabular-nums">
-                    {formatDuration(log.duration)}
+                <span className="flex shrink-0 items-baseline gap-2">
+                  <span
+                    className={cn("text-xs", statusToneTextClass(status.tone))}
+                  >
+                    {status.text}
                   </span>
-                ) : null}
-              </span>
-            </button>
-          </li>
-        ))}
+                  {log.duration ? (
+                    <span className="font-mono text-muted-foreground text-xs tabular-nums">
+                      {formatDuration(log.duration)}
+                    </span>
+                  ) : null}
+                </span>
+              </button>
+            </li>
+          );
+        })}
         {exit ? (
           <li className="relative pl-5">
             <span

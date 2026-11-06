@@ -108,7 +108,7 @@ function resumingHeadline(
           ? ""
           : ` at ${clockTimeWithSeconds(activity.wokenAt)}`;
       return activity.eventName === null
-        ? `Resuming: resumed${at}`
+        ? `Resuming: resume requested${at}`
         : `Resuming: ${activity.eventName} arrived${at}`;
     }
     case "timeout":
@@ -120,7 +120,7 @@ function resumingHeadline(
     case "exit":
       return "Exiting: Entity eligibility no longer passes";
     default:
-      return "Moving to the new version";
+      return "Migrating to the new version";
   }
 }
 
@@ -141,22 +141,30 @@ export function executorActivityCopy(input: {
     case "running": {
       const node = nameOf(activity);
       const on = activity.workerId === null ? "" : ` on ${activity.workerId}`;
+      // The node is the one the worker's last lease renewal recorded, so a run
+      // just claimed names none yet, and the headline does not guess where it is.
       return {
         headline:
-          node === null
-            ? `Running${on}, between steps`
-            : `Running ${quoted(node)}${on}`,
+          node === null ? `Running${on}` : `Running ${quoted(node)}${on}`,
         detail: null,
         tone: "default",
       };
     }
     case "lease_expired": {
       const node = nameOf(activity);
-      return {
-        headline: `The worker running ${node === null ? "the run" : quoted(node)} stopped renewing its lease at ${clockTimeWithSeconds(activity.since)}.`,
-        detail: LEASE_EXPIRED_HELP,
-        tone: "default",
-      };
+      const since = clockTimeWithSeconds(activity.since);
+      // Between steps there is no step to count a failure against.
+      return node === null
+        ? {
+            headline: `Stalled between steps: the worker stopped renewing the lease at ${since}`,
+            detail: null,
+            tone: "default",
+          }
+        : {
+            headline: `Stalled at ${quoted(node)}: its worker stopped renewing the lease at ${since}`,
+            detail: LEASE_EXPIRED_HELP,
+            tone: "default",
+          };
     }
     case "retrying": {
       const node = nameOf(activity);
@@ -177,7 +185,7 @@ export function executorActivityCopy(input: {
             tone: "default",
           }
         : {
-            headline: `Queued since ${since}. No worker has claimed this run for ${shortDuration(waited)}.`,
+            headline: `Unclaimed for ${shortDuration(waited)}: no worker has picked up this run since ${since}`,
             detail: NO_WORKER_HELP,
             tone: "warning",
           };
@@ -236,8 +244,8 @@ export function executorDetails(input: {
       mono: false,
     },
     {
-      term: "Run failures",
-      value: `${schedule.attempt} of ${schedule.retryLimit}`,
+      term: "Run tries",
+      value: `${schedule.attempt + 1} of ${schedule.retryLimit + 1}`,
       mono: false,
     },
     schedule.leaseExpiresAt === null
@@ -322,7 +330,7 @@ export function listActivityLabel(input: {
     );
     return waited < activity.overdueAfterMs
       ? null
-      : { text: `Not claimed for ${shortDuration(waited)}`, warns: true };
+      : { text: `Unclaimed for ${shortDuration(waited)}`, warns: true };
   }
   const node = activity.nodeName ?? activity.nodeId;
   if (activity.kind === "retrying") {
@@ -332,10 +340,7 @@ export function listActivityLabel(input: {
     };
   }
   return {
-    text:
-      node === null
-        ? "Worker stopped during the run"
-        : `Worker stopped during ${node}`,
+    text: node === null ? "Stalled between steps" : `Stalled at ${node}`,
     warns: false,
   };
 }
@@ -345,15 +350,11 @@ function times(count: number): string {
   return count === 1 ? "1 time" : `${count} times`;
 }
 
-/** `1 retry`, `2 retries`. */
-function retries(count: number): string {
-  return count === 1 ? "1 retry" : `${count} retries`;
-}
-
 /**
- * A node's failing step in one sentence: how often it failed, and when the run
- * tries it next and which try that is. A run a worker holds has no next try
- * time, so the sentence stops at the failures.
+ * A node's failing step in one sentence: when the run tries it next and which
+ * try that is, then how often it failed. A run with no next try time, as one
+ * a worker holds, gets the failures alone. A step's try `N of M` counts its
+ * failures plus one against its retry limit plus one.
  */
 export function nodeRetrySummary(retry: {
   failures: number;
@@ -363,24 +364,27 @@ export function nodeRetrySummary(retry: {
   const failed = `Failed ${times(retry.failures)}.`;
   return retry.nextTryAt === null
     ? failed
-    : `${failed} Next try at ${clockTimeWithSeconds(retry.nextTryAt)}, try ${retry.failures + 1} of ${retry.retryLimit + 1}.`;
+    : `Retrying at ${clockTimeWithSeconds(retry.nextTryAt)}, try ${retry.failures + 1} of ${retry.retryLimit + 1}. ${failed}`;
 }
 
 /**
- * How a finished execution's retries read, or null for an execution that
- * needed none or did not finish with success or failure.
+ * Which try a finished execution ended on, or null for an execution that
+ * needed only one or did not finish with success or failure. A failure says
+ * the try out of the most it could have had.
  */
 export function finishedRetriesSummary(execution: {
   status: string;
   retries: number;
+  retryLimit: number;
 }): string | null {
   if (execution.retries === 0) {
     return null;
   }
+  const tryNumber = execution.retries + 1;
   if (execution.status === "success") {
-    return `Succeeded after ${retries(execution.retries)}`;
+    return `Succeeded on try ${tryNumber}`;
   }
   return execution.status === "error"
-    ? `Failed after ${retries(execution.retries)}`
+    ? `Failed on try ${tryNumber} of ${execution.retryLimit + 1}`
     : null;
 }

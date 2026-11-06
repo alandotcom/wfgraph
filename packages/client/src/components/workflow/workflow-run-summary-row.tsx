@@ -6,6 +6,7 @@ import { cn } from "@wfgraph/shared/utils";
 import { getRelativeTime } from "@wfgraph/shared/utils/time";
 import {
   type ExecutionLog,
+  isRunInProgress,
   type WorkflowExecution,
 } from "#src/lib/execution-logs";
 import {
@@ -71,10 +72,33 @@ function relevantLog(logs: ExecutionLog[], status: ExecutionLog["status"]) {
   return logs.findLast((log) => log.status === status);
 }
 
+/**
+ * The latest log of a node among `retryingNodeIds`, the nodes with a step the
+ * executor will run again, or undefined for none.
+ */
+export function retryingLog(
+  logs: ExecutionLog[],
+  retryingNodeIds: readonly string[]
+): ExecutionLog | undefined {
+  return logs.findLast((log) => retryingNodeIds.includes(log.nodeId));
+}
+
+/**
+ * A run's outcome in a few words. While the run is in progress and a node
+ * among `retryingNodeIds` has a log, it reads "Retrying" that node, as the
+ * canvas chip does.
+ */
 export function getRunOutcome(
   execution: WorkflowExecution,
-  logs: ExecutionLog[]
+  logs: ExecutionLog[],
+  retryingNodeIds: readonly string[] = []
 ): string {
+  const retrying = isRunInProgress(execution.status)
+    ? retryingLog(logs, retryingNodeIds)
+    : undefined;
+  if (retrying !== undefined) {
+    return `Retrying ${retrying.nodeName || retrying.nodeType}`;
+  }
   switch (execution.status) {
     case "completed":
       return execution.duration

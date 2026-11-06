@@ -365,11 +365,6 @@ describe("Runs Focus node evidence", () => {
     expect(
       within(evidence()).getByRole("heading", { name: "Execution 1 of 2" })
     ).toBeTruthy();
-    expect(
-      within(evidence()).getByText(
-        "Retries inside one execution are shown as that execution's final outcome."
-      )
-    ).toBeTruthy();
     const scroller = evidence().parentElement;
     if (!scroller) {
       throw new Error("the evidence has no scroll container");

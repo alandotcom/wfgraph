@@ -30,8 +30,10 @@ import { ConditionSummary } from "./config/condition-summary";
 import { CollapsibleSection } from "./workflow-run-shared";
 import {
   getRunOutcome,
+  retryingLog,
   WorkflowRunSummaryRow,
 } from "./workflow-run-summary-row";
+import { compact } from "es-toolkit/array";
 import { WorkflowRunNodeIndex } from "./workflow-run-timeline";
 
 export type WorkflowRunDetailProps = {
@@ -249,11 +251,18 @@ export function WorkflowRunDetail({
       : (nodeName ??
         executionGraph?.nodes.find((node) => node.id === nodeId)?.data.label ??
         nodeId);
+  // The nodes with a step the executor will run again, which the header and
+  // the journey call retrying, as the canvas does.
+  const retryingNodeIds = isRunInProgress(execution.status)
+    ? compact(executor?.schedule.failingSteps.map((step) => step.nodeId) ?? [])
+    : [];
   const primaryWait = activeWaits[0];
   const outcome =
-    execution.status === "waiting" && primaryWait
+    execution.status === "waiting" &&
+    primaryWait &&
+    retryingLog(sortedLogs, retryingNodeIds) === undefined
       ? `Waiting at ${primaryWait.nodeName}`
-      : getRunOutcome(execution, sortedLogs);
+      : getRunOutcome(execution, sortedLogs, retryingNodeIds);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -388,6 +397,7 @@ export function WorkflowRunDetail({
             focusLogId={focusLogId}
             logs={sortedLogs}
             onFocusRestored={onFocusRestored}
+            retryingNodeIds={retryingNodeIds}
             onSelect={onSelectLog}
           />
 

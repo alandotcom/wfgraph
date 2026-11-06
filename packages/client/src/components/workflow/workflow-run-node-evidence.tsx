@@ -117,8 +117,8 @@ function ExecutionList({
  * The recorded evidence of one node in one run: its executions, timing, error or
  * cancellation, a step the executor is retrying, the wait it holds with
  * Resume, its activity, result, input, output, and configuration. An execution
- * is one time the run reached the node, and retries inside it show as its
- * final outcome, with how many retries a finished execution took. Notices say
+ * is one time the run reached the node; a finished one says which try it
+ * ended on when its steps were retried. Notices say
  * when the node is gone from the pinned graph, when that graph is loading or
  * unavailable, and when the run is still polling. Choosing an execution calls
  * `onChooseExecution` and nothing else.
@@ -228,10 +228,6 @@ export function WorkflowRunNodeEvidence({
             {retriesSummary === null ? null : (
               <p className="text-sm">{retriesSummary}</p>
             )}
-            <p className="text-muted-foreground text-xs">
-              Retries inside one execution are shown as that execution&apos;s
-              final outcome.
-            </p>
           </Section>
 
           {shown.status === "error" && shown.error ? (

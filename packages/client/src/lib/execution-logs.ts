@@ -42,6 +42,11 @@ export type ExecutionLog = {
    * execution finished. Zero while it is unfinished.
    */
   retries: number;
+  /**
+   * How many retries the executor gives each step of the node, which
+   * `retries` counts against, from the run's logs answer.
+   */
+  retryLimit: number;
 };
 
 export type WorkflowExecution = {
@@ -351,6 +356,7 @@ function toExecutionLogs(payload: ExecutionLogsResult): ExecutionLog[] {
       output: log.output,
       error: log.error,
       retries: log.retries,
+      retryLimit: payload.retryLimit,
     })),
     payload.execution.status
   );
