@@ -56,11 +56,12 @@ export type GroupRunSummary = {
 
 /**
  * The run status of the Group `groupId`. Any failed member makes it Failed, then
- * Canceled, Retrying, Waiting and Running in that order. With no member reached it is
- * Idle. A Group is Successful once a step it continues to has evidence, or once
- * the run completed with evidence at a member where a path ends inside the
- * Group, including a Condition's True or False outlet that nothing leaves by.
- * A Group with no continuation edge is also Successful once the run completed. Every other reached Group is Reached.
+ * Canceled, Retrying, Waiting and Running in that order. With no member
+ * reached it is Idle. A Group is Successful once a step it continues to has
+ * evidence, or once the run completed with evidence at a member where a path
+ * ends inside the Group, including a Condition's True or False outlet that
+ * nothing leaves by. A Group with no continuation edge is also Successful once
+ * the run completed. Every other reached Group is Reached.
  */
 export function summarizeGroupRun(input: {
   groupId: string;

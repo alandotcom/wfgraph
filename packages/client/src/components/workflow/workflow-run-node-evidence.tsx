@@ -118,9 +118,9 @@ function ExecutionList({
  * cancellation, a step the executor is retrying, the wait it holds with
  * Resume, its activity, result, input, output, and configuration. An execution
  * is one time the run reached the node, and retries inside it show as its
- * final outcome, with how many retries a finished execution took. Notices say when the node is
- * gone from the pinned graph, when that graph is loading or unavailable, and
- * when the run is still polling. Choosing an execution calls
+ * final outcome, with how many retries a finished execution took. Notices say
+ * when the node is gone from the pinned graph, when that graph is loading or
+ * unavailable, and when the run is still polling. Choosing an execution calls
  * `onChooseExecution` and nothing else.
  */
 export function WorkflowRunNodeEvidence({

@@ -437,10 +437,10 @@ progress and refreshing. A Group records nothing in a run, so a Group card has
 no evidence. On a run's canvas the card shows the Group's run status and counts
 of its steps, such as "3 of 5 steps reached, 1 failed", and never a percentage.
 The status is Failed, Canceled, Retrying, Waiting, or Running when any step
-is, in that order. With no step reached it is Idle. A Group is Successful once a step it
-continues to has evidence, or once the run completed with evidence at one of its
-steps where a path ends inside it, such as a Condition branch with no step after
-it. A Group with no step after it is also Successful once the run completed.
+is, in that order. With no step reached it is Idle. A Group is Successful once
+a step it continues to has evidence, or once the run completed with evidence at
+one of its steps where a path ends inside it, such as a Condition branch with
+no step after it. A Group with no step after it is also Successful once the run completed.
 Otherwise it is Reached, and its border carries only Successful, Failed, and
 Canceled. The card, its summary, and the step cards read one status per step,
 so a step's chip and the Group's counts always agree. Selecting the card opens
