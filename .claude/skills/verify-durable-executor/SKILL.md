@@ -26,8 +26,8 @@ Find out whether the verification is stale before you trust it:
 
 ```sh
 git diff --stat -- docs/internal/plans/separate-event-intake-from-durable-execution.md
-git log --oneline a02b7338.. -- docs/internal/plans/separate-event-intake-from-durable-execution.md
-git log --oneline 656f05d5.. -- \
+git log --oneline cc15941e.. -- docs/internal/plans/separate-event-intake-from-durable-execution.md
+git log --oneline dc6c486a.. -- \
   packages/core/src/backend/executor \
   packages/core/src/backend/services/executions/driver.ts \
   packages/core/src/backend/services/workflows/lifecycle \
@@ -59,15 +59,15 @@ git log --oneline 656f05d5.. -- \
   packages/core/src/backend/services/workflows/lifecycle/deliver-event.ts \
   packages/core/src/backend/services/workflows/lifecycle/resume-waits.ts \
   packages/core/src/backend/executor/event-listener.ts \
+  packages/core/src/backend/services/executions/send-event.ts \
+  packages/core/src/backend/services/integrations/webhook-intake.ts \
   packages/core/src/backend/lib/inngest/event-forwarder.ts \
   packages/core/src/backend/services/workflows/migration/migrate.ts
 ```
 
 The first command shows an edit you have not committed yet. Output from the
 other two means the models may no longer describe the design. Read each listed
-commit against the coverage record before you rely on a pass. The `Migration`
-model is confirmed against an older commit of the design doc than the other
-models; "Last confirmed against" in the coverage record says which and why.
+commit against the coverage record before you rely on a pass.
 
 ## Run it
 
@@ -221,7 +221,10 @@ One workflow and one Entity. The host raises two Start Events and a Cancel
 Event, and sends one Start twice with the same idempotency key. An arrival
 enters the inbox through `app.events.send`, which writes its delivery's schedule
 row in the same transaction, or inside the host's own transaction, which leaves
-the poll to schedule the delivery. A delivery's lifecycle write and its memo
+the poll to schedule the delivery. The Bearer-key route, webhook intake and the
+Inngest forwarder write the same way `app.events.send` does, each with its own
+idempotency key: the sender's `id`, the message id an integration's webhook reads, per Connection, and
+the Inngest event id. A delivery's lifecycle write and its memo
 row are separate transactions, so a crash between them runs the delivery again.
 Both Concurrency modes, newest wins and first wins, are checked. Admission
 Entity Eligibility decides before Concurrency, and the host's resolver is asked
@@ -336,6 +339,12 @@ atomic. Its ticker is the `node` driver's poll.
   producer's `select ... for update` on the schedule row is what makes a wake
   one step against a release; without it, the producer's conditional update can
   miss a release in flight.
+- No model bounds a loop's slots: a due row is claimed at the next poll. The
+  worker loop claims runs and deliveries in separate lanes, each with slots of
+  its own (`runner.concurrency` and `runner.deliveryConcurrency`), so runs
+  holding every run slot never keep a delivery, such as a Cancel, from its
+  claim, and deliveries never keep a run from its claim. Within one lane, a
+  due row waits for a free slot, which the models do not check.
 - `NOTIFY` is not modelled. The design treats it as a latency optimisation and
   relies on the poll for correctness, which is what the models check: a worker
   finds every due row by polling.
@@ -348,19 +357,18 @@ atomic. Its ticker is the `node` driver's poll.
 Each guard the design depends on is a named operator in its model, so a reader
 can find it and a mutation can remove it.
 
-The last column names the code that implements each model part. Phase 1 built
-the executor's claim, pass, release, fenced writes and parked Waits. A part phase
-1 did not build names today's code, which the design reuses: the Event delivery,
-inbox and Arrivals rows stay on the Inngest path until phase 3. A design doc
-section stays in the middle column where the code alone does not explain the
-rule. Paths are under `packages/core/src/backend`, with `repo/` for
+The last column names the code that implements each model part. Runs and
+Event deliveries both execute on the executor, and every part the models cover
+runs there; the Timing model's `worker` driver alone has no code until the tick
+driver of phase 5. A design doc section stays in the middle column where the
+code alone does not explain the rule. Paths are under `packages/core/src/backend`, with `repo/` for
 `services/executions/repo/`, `sqlite/` for `persistence/sqlite/executions/`,
 `executions/` for `services/executions/`, and `lifecycle/` and `migration/` for
 the directories of those names under `services/workflows/`.
 
 | Model part | Design doc section | Code |
 | --- | --- | --- |
-| `DurableExecutor`: `Claim`, `ClaimWhenDue`, `ParkIsDue` | | `claimDue` in `repo/schedule.ts` and `sqlite/schedule.ts`, which resolves each claimed run's overdue `waiting` parks with `TIMEOUT_WAKE` in the claim's transaction (`resolveOverdueParks`); `claimAttempt` in `repo/release-policy.ts`, which counts nothing for a row a wake or a release queued |
+| `DurableExecutor`: `Claim`, `ClaimWhenDue`, `ParkIsDue` | | `claimDue` in `repo/schedule.ts` and `sqlite/schedule.ts`, which leases the due rows of one kind (`dueSchedule` in `repo/release-policy.ts`) and resolves each claimed run's overdue `waiting` parks with `TIMEOUT_WAKE` in the claim's transaction (`resolveOverdueParks`); `claimAttempt` in `repo/release-policy.ts`, which counts nothing for a row a wake or a release queued |
 | `LeaseHeldBy`, `Fenced` (all models) | | `holdsLease` and `writeFenced` in `repo/schedule.ts` and `sqlite/schedule.ts`; `watchPassOnlyWrites` and `watchStoreWrites` in `executor/runtime.ts`, which stop the pass at the first write the fence refuses with `LeaseLost`, and `watchedSettle` in `executor/delivery-body.ts` for a delivery's settling write |
 | `VisitStarted`, `VisitCanceled`, `RunsPast`, `RunsOutlet` | | `waitForEvent` in `executor/runtime.ts`, which answers `{ kind: "woke" }` from the wait row's `wake`, or records the parking step (`recordParkStep`) and answers `{ kind: "parked" }`; `runWaitAttempt` in `engine/wait.ts`, which halts the branch on `parked`; `settle` and `PassParked` in `engine/scheduler.ts` and `endParked` in `engine/core.ts`, the pass's one parked exit; the `openResume` and `createWaitState` fences in `engine/wait.ts`; `startWait` in `repo/waits.ts` |
 | `StartedSideAdmits`, `CanceledSideAdmits` | CONTEXT.md "Canceled Branch" | `claimAdmits` in `repo/runs.ts` and `sqlite/runs.ts` |
@@ -377,7 +385,7 @@ the directories of those names under `services/workflows/`.
 | `Migration`: `Prepare`, `Park`, `StillPinned` | "Migration" | the `createWaitState`, `reparkWaitState` and `markExecutionRunning` fences in `engine/wait.ts`; `readMissedWake` in `engine/wait.ts`, which answers an Event or claim wake from the wait row's `wake` column (`readWaitState` in `engine/db-store.ts`) when a re-park finds the row already woken, the `Park` action's `event` arm after the pass re-prepares under the version it loaded |
 | `Migration`: `Release`, `FenceRefusalCountsNoAttempt` | | `versionRefused` in `engine/wait.ts`, which fails with the `version_refused` kind; `decideFailedPass` in `executor/pass.ts`, which releases that failure as `fence_refused`; `decideRelease` in `repo/release-policy.ts`, which re-queues the run due at once and counts nothing |
 | `Intake`: `SendViaApp`, `SendInHostTransaction`, `PollInbox`, `InboxKeyIsUnique` | Section 7.1 and 7.3 | `insertInboxEvent` in `repo/inbox.ts` and `sqlite/inbox.ts`, which inserts the inbox row and its `delivery` schedule row in one transaction and writes nothing for a key the unique index `workflow_event_inbox_idempotency_uidx` already holds (`InboxKeyIsUnique`); the host's insert documented at `workflowEventInbox` in `lib/db/schema.ts` (`SendInHostTransaction`); `scheduleUnscheduledInbox`, whose rows `awaitsSchedule` in `repo/inbox-policy.ts` picks, called once per poll by `runWorkerLoop` and once per `tick` (`scheduleHostInsertedInbox` in `executor/worker-loop.ts`), which is `PollInbox`. Every source reaches it through the driver's `receiveEvent` (`executions/driver.ts`), which is `SendViaApp`: `sendEvent` (`executions/send-event.ts`), webhook intake (`integrations/webhook-intake.ts`), and the Inngest forwarder (`forwardInngestEvent` in `lib/inngest/event-forwarder.ts`), which keys the row by the Inngest event id. |
-| `Intake`: `ClaimDelivery`, `LifecycleStep`, `RecordMemo`, `FinishDelivery` | Section 7.2 | The claim leases `delivery` rows (`CLAIMED_SCHEDULE_KINDS` and `claimedSchedule` in `repo/release-policy.ts`), and `leasedPass` opens them with `openDeliveryPass` in `executor/pass.ts`, whose writes are fenced on the owner token and the inbox row (`ExecutionRepo.fencedDelivery`). `deliveryBody` in `executor/delivery-body.ts` runs `runEventListener` (`executor/event-listener.ts`) on the pass's step memo, then `finishDelivery`; a refused payload, a row naming no Event, or a step past its retries ends in `failDelivery`. Both, in `repo/inbox.ts` and `sqlite/inbox.ts`, settle the inbox row and delete its schedule row and step memo in one transaction fenced on the owner token (`FinishDelivery`, `FailRecordsTheRow`). |
+| `Intake`: `ClaimDelivery`, `LifecycleStep`, `RecordMemo`, `FinishDelivery` | Section 7.2 | A claim for the `delivery` kind leases them (`dueSchedule` and `claimedSchedule` in `repo/release-policy.ts`), in the worker loop's delivery lane (`lanesFor` in `executor/worker-loop.ts`), and `leasedPass` opens them with `openDeliveryPass` in `executor/pass.ts`, whose writes are fenced on the owner token and the inbox row (`ExecutionRepo.fencedDelivery`). `deliveryBody` in `executor/delivery-body.ts` runs `runEventListener` (`executor/event-listener.ts`) on the pass's step memo, then `finishDelivery`; a refused payload, a row naming no Event, or a step past its retries ends in `failDelivery`. A row a forwarder or webhook intake recorded under an umbrella source name is resolved to the Event whose `source.when` accepts its data (`inboxEventResolver` in `executor/delivery-body.ts`); a row no Event on its source accepts is owed nothing and ends in `finishDelivery` (`unmatched_source`). The model has one Event per arrival, so each of its arrivals is a row that resolution has already named. Both, in `repo/inbox.ts` and `sqlite/inbox.ts`, settle the inbox row and delete its schedule row and step memo in one transaction fenced on the owner token (`FinishDelivery`, `FailRecordsTheRow`). |
 | `Intake`: `StartWrite`, `DeliveryIdIsUnique`, `ExecutionAndScheduleTogether` | Section 7.1; scenario S13 | `answerFromCommittedDecision` in `lifecycle/deliver-event.ts`; `startForEntity` in `repo/index.ts` and `sqlite/executions/index.ts`, behind the driver's `startRun` (`executions/driver.ts`): the transaction that inserts the Execution also inserts its schedule row (`insertRunSchedule`) and its "run started" entry, which is `ExecutionAndScheduleTogether`; a start answered with the row its delivery already committed writes neither again. |
 | `Intake`: Concurrency in `StartWrite`, `SupersedeDropsSchedule` | CONTEXT.md "Concurrency", "Superseded" | `startWithConcurrency` in `lifecycle/concurrency.ts` |
 | `Intake`: `CancelWrite` | "Cancellation" | `requestCancelForEntity` in `repo/claims.ts` and `sqlite/claims.ts`, which records the arrival's delivery id in `cancel_delivery_id` |
@@ -399,17 +407,15 @@ the directories of those names under `services/workflows/`.
 | `Timing`: `WorkerLease`, `WorkerCron`, `WorkerBudget`, `QueueMaxDelay`, `Kill`, `WorkerUsesCron` | Section 8, "Cloudflare Worker over Hyperdrive" | |
 | `Timing`: `ClaimWaitsForTheDeadline` | | the `wake_at <= now` condition on `queued` and `waiting` rows in `claimDue` |
 
-Last confirmed against: the design doc at `a02b7338` and the code at
-`656f05d5` (`feat/durable-executor`), for every model. Two behaviours of the
+Last confirmed against: the design doc at `cc15941e` and the code at
+`dc6c486a` (`feat/durable-executor`) with the delivery lane and the inbox
+retention sweep beside it, for every model. Two behaviours of the
 code have no model counterpart: a producer pulling a `queued` row's `wake_at`
 forward to now (only `Timing` has a clock, and it models no backoff), and a
 pass interrupted by dispose's drain releasing its row with nothing counted (no
 model has a graceful stop; it acts as a crash whose lease is swept at once). Move these commits
 forward only after you have read the covered sections and files at the new
-commit and confirmed that the models still describe them. When phase 2 or
-phase 3 moves a part onto
-the executor, replace its Inngest-path code in the last column with the code
-that implements it.
+commit and confirmed that the models still describe them.
 
 ## Telling a real bug from a modelling error
 
@@ -488,5 +494,12 @@ back to show the rule still catches it:
 - More than one Execution inside the run model. Concurrency is checked in
   `Intake`, with each run reduced to one step.
 - A delivery's retry count. `Intake` lets a delivery fail for good at most once per row and records it (`FailDelivery`); how many retries come first is the Handler model's per-step count.
+- The inbox retention sweep. `Intake` keeps every inbox row, so
+  `DuplicateSendIsOneArrival` holds within `events.retentionMs`; a resend after
+  the sweep deleted the first row is a new arrival by design (ADR-0022). The
+  sweep deletes only `delivered` and `failed` rows (`sweepableInbox` in
+  `repo/inbox-policy.ts`, run by the worker loop's `sweepSettledInbox`), whose
+  schedule rows their settling write already deleted, so no rule about a
+  pending delivery depends on it.
 - Retry backoff timing, `NOTIFY` latency, database failover, and real clock
   values. `Timing` checks the design's ratios.
