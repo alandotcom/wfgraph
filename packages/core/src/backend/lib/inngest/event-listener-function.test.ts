@@ -562,7 +562,6 @@ describe("createInngestEventListenerFunction", () => {
   type BuiltOptions = {
     opts: {
       triggers: { event: string; if?: string }[];
-      throttle?: { key?: string } | undefined;
     };
   };
 
@@ -610,20 +609,5 @@ describe("createInngestEventListenerFunction", () => {
 
     expect(trigger?.event).toBe("vendor/webhook");
     expect(trigger?.if).toBeUndefined();
-  });
-
-  // `rewriteInngestOptions` prefixes the key against the payload; what this
-  // pins is that its answer reaches the function rather than being computed and
-  // dropped.
-  it("carries the Event's flow control onto the function", () => {
-    const options = build(
-      defineEvent({
-        name: "vendor/webhook",
-        schema: vendorPayload,
-        inngest: { throttle: { limit: 2, period: "1m", key: "type" } },
-      })
-    );
-
-    expect(options.throttle?.key).toBe("event.data.type");
   });
 });

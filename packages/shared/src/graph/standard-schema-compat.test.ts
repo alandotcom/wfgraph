@@ -2,13 +2,8 @@ import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import { type } from "arktype";
 import { z } from "zod";
-import {
-  asStandardSchema,
-  extractSchemaKeys,
-  toStandardSchema,
-} from "#src/types/schema";
+import { asStandardSchema, toStandardSchema } from "#src/types/schema";
 import { requireOutputFieldsFromSchema } from "#src/graph/output-fields";
-import { rewriteCelExpression } from "#src/lifecycle/inngest-event-data";
 import {
   jsonSchemaLibraryOptions,
   parseWorkflowSchemaFieldsOrJsonSchema,
@@ -258,36 +253,10 @@ describe("toStandardSchema with Effect Schema", () => {
  * live in `packages/core` beside that function.
  */
 describe("the derivations over a bridged schema", () => {
-  it("reads the field names of an open Effect payload schema", () => {
-    // A payload that admits keys it did not name is a `Schema.StructWithRest`,
-    // which carries neither Zod's `shape` nor `Schema.Struct`'s `fields`: the
-    // struct it wraps is under `schema`. Those names are what a `priority.run`
-    // expression is checked against, so reading them is the difference between a
-    // typo being caught where it was written and being sent to Inngest.
-    const schema = Schema.StructWithRest(
-      Schema.Struct({ event: Schema.String, entityId: Schema.String }),
-      [Schema.Record(Schema.String, Schema.String)]
-    );
-
-    expect(
-      rewriteCelExpression(
-        "entityId == 'x' ? 100 : 0",
-        extractSchemaKeys(schema)
-      )
-    ).toBe("event.data.entityId == 'x' ? 100 : 0");
-
-    expect(() =>
-      rewriteCelExpression(
-        "entitId == 'x' ? 100 : 0",
-        extractSchemaKeys(schema)
-      )
-    ).toThrow('Invalid identifier "entitId"');
-  });
-
   it("reads an action's output schema down to the picker's list", () => {
-    // The other half of the same seam. An integration's action declares its output
-    // as a schema and assembly derives what the editor's autocomplete offers, so
-    // this is that derivation over the shapes a schema library gives it. The
+    // An integration's action declares its output as a schema and assembly derives
+    // what the editor's autocomplete offers, so this is that derivation over the
+    // shapes a schema library gives it. The
     // description an annotation carries is the field's description; `annotate` goes
     // before `check`, or the check owns it and nests it out of the reader's sight.
     const output = Schema.Struct({

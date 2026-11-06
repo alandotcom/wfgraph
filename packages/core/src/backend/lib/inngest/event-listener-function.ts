@@ -9,9 +9,9 @@
  *
  * Per Event rather than per source name, even though several Events may share a
  * source. A function then knows which Event it is without inspecting the payload,
- * its own flow control is the function's, and Inngest's ten-trigger ceiling is out
- * of reach. The narrowing stays Inngest's own: each function's single trigger
- * carries that Event's compiled `source.when`.
+ * and Inngest's ten-trigger ceiling is out of reach. The narrowing stays
+ * Inngest's own: each function's single trigger carries that Event's compiled
+ * `source.when`.
  */
 
 import { Effect } from "effect";
@@ -308,7 +308,6 @@ export function createInngestEventListenerFunction(input: {
 
   return client.createFunction(
     {
-      ...event.inngestFunctionOptions,
       id: toListenerFunctionId(event.name),
       name: `Event listener: ${event.name}`,
       triggers: [

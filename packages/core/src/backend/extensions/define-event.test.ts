@@ -300,20 +300,6 @@ describe("defineEvent payload fields", () => {
   });
 });
 
-// The one option case that belongs to defineEvent: an Event that authored
-// nothing carries nothing.
-describe("defineEvent Inngest options", () => {
-  it("holds no options when the Event declares none", () => {
-    const event = defineEvent({
-      name: "app/plain",
-      schema: appointmentPayload,
-      correlationPath: "appointment.id",
-    });
-
-    expect(event.inngestFunctionOptions).toBeUndefined();
-  });
-});
-
 // A `source.when` that cannot become a CEL expression fails at definition rather
 // than at sync time, which is what this covers here; the compiler's own escaping
 // is `inngest-event-data.test.ts`.

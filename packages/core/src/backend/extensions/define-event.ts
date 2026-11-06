@@ -13,10 +13,6 @@
 
 import { Effect, Schema } from "effect";
 import { uniq } from "es-toolkit/array";
-import {
-  type InngestEventOptions,
-  rewriteInngestOptions,
-} from "#src/backend/extensions/inngest-options";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import type { AnyEntityDefinition } from "#src/backend/extensions/define-entity";
 import type { StringPath } from "@wfgraph/shared/types/payload-path";
@@ -106,12 +102,6 @@ export type EventDefinition<
    */
   readonly correlationPath?: string | undefined;
   readonly source: EventSource;
-  /**
-   * The authored flow control in the form Inngest's `createFunction` takes, as
-   * `rewriteInngestOptions` translates it. The authored form is not kept, because
-   * nothing downstream has a use for a path Inngest would reject.
-   */
-  readonly inngestFunctionOptions?: Record<string, unknown> | undefined;
   /** Derived once, at definition. What the editor lists. */
   readonly payloadFields: readonly ReferenceField[];
   /** Named ways this Event identifies host-owned Entities. */
@@ -338,7 +328,6 @@ export type DefineEventInput<
           | undefined;
       }
     | undefined;
-  readonly inngest?: InngestEventOptions<TPayload> | undefined;
 };
 
 /**
@@ -391,10 +380,6 @@ export function defineEvent<TPayload extends JsonObject, TValidated = TPayload>(
     compileEventDataEquals(when);
   }
 
-  const inngestFunctionOptions = input.inngest
-    ? rewriteInngestOptions(name, input.inngest, schema)
-    : undefined;
-
   const decodePayloadValue = buildPayloadGate(name, input.schema, schema);
   const entities = normalizeEntityBindings<TValidated>(name, input.entities);
 
@@ -407,7 +392,6 @@ export function defineEvent<TPayload extends JsonObject, TValidated = TPayload>(
     decodePayloadValue,
     correlationPath,
     source: when ? { event: sourceEvent, when } : { event: sourceEvent },
-    inngestFunctionOptions,
     payloadFields: requireOutputFieldsFromSchema(`Event "${name}"`, schema),
     entities,
   };
