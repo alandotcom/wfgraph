@@ -26,8 +26,8 @@ Find out whether the verification is stale before you trust it:
 
 ```sh
 git diff --stat -- docs/internal/plans/separate-event-intake-from-durable-execution.md
-git log --oneline cc15941e.. -- docs/internal/plans/separate-event-intake-from-durable-execution.md
-git log --oneline dc6c486a.. -- \
+git log --oneline e5b80a51.. -- docs/internal/plans/separate-event-intake-from-durable-execution.md
+git log --oneline e5b80a51.. -- \
   packages/core/src/backend/executor \
   packages/core/src/backend/services/executions/driver.ts \
   packages/core/src/backend/services/workflows/lifecycle \
@@ -409,9 +409,10 @@ the directories of those names under `services/workflows/`.
 | `Timing`: `WorkerLease`, `WorkerCron`, `WorkerBudget`, `QueueMaxDelay`, `Kill`, `WorkerUsesCron` | Section 8, "Cloudflare Worker over Hyperdrive" | |
 | `Timing`: `ClaimWaitsForTheDeadline` | | the `wake_at <= now` condition on `queued` and `waiting` rows in `claimDue` |
 
-Last confirmed against: the design doc at `cc15941e` and the code at
-`dc6c486a` (`feat/durable-executor`) with the delivery lane and the inbox
-retention sweep beside it, for every model. Two behaviours of the
+Last confirmed against: the design doc and the code at `e5b80a51`
+(`feat/durable-executor`), the end of phase 3 and its review fixes, with the
+delivery lane, one claim for both lanes, and the inbox retention sweep beside
+them, for every model. Two behaviours of the
 code have no model counterpart: a producer pulling a `queued` row's `wake_at`
 forward to now (only `Timing` has a clock, and it models no backoff), and a
 pass interrupted by dispose's drain releasing its row with nothing counted (no
