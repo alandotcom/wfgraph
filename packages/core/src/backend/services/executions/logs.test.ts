@@ -3,6 +3,7 @@
 import { assert, describe, layer } from "@effect/vitest";
 import { Effect, Layer } from "effect";
 import { TestClock } from "effect/testing";
+import { makeAppContextLayer } from "#src/backend/lib/effect/app-context";
 import {
   SilentAppLoggerLayer,
   stubExecutionRepo,
@@ -57,7 +58,12 @@ function makeRepos(
 }
 
 describe("getExecutionLogs", () => {
-  layer(SilentAppLoggerLayer)((it) => {
+  layer(
+    Layer.mergeAll(
+      SilentAppLoggerLayer,
+      makeAppContextLayer({ apiBasePath: "/api" })
+    )
+  )((it) => {
     // The graph itself rides `getVersionGraph` now (#37); this payload still
     // has to carry the version id that procedure is keyed by, or the client
     // has nothing to fetch the graph with.
@@ -225,6 +231,7 @@ describe("getExecutionLogs", () => {
         const reposFor = (held: ExecutorState) =>
           Layer.mergeAll(
             SilentAppLoggerLayer,
+            makeAppContextLayer({ apiBasePath: "/api" }),
             stubExecutionRepo({
               findSummaryById: () =>
                 Effect.succeed(
@@ -257,6 +264,7 @@ describe("getExecutionLogs", () => {
 
         assert.deepStrictEqual(result.schedule, {
           observedAt: "2026-03-01T10:05:00.000Z",
+          overdueAfterMs: 60_000,
           activity: {
             kind: "resuming",
             nodeId: "approval",
@@ -272,31 +280,25 @@ describe("getExecutionLogs", () => {
           attempt: 0,
           retryLimit: 4,
           runningStepId: null,
-          runningNodeId: null,
-          runningNodeName: null,
           leaseExpiresAt: null,
           workerId: null,
-          lastError: "token=[REDACTED]",
+          // The run is resuming, not waiting out a retry, so no step has a
+          // next try time.
           failingSteps: [
             {
-              stepId: "node:send:dispatch",
               nodeId: "send",
-              nodeName: "Send reminder",
               failures: 2,
               error: "Authorization: [REDACTED]",
-            },
-          ],
-          unconsumedWakes: [
-            {
-              waitStateId: "wait_1",
-              nodeId: "approval",
-              nodeName: "Approval",
-              kind: "resume",
-              eventName: "app/approved",
-              wokenAt: "2026-03-01T10:04:00.000Z",
+              nextTryAt: null,
             },
           ],
         });
+        // While the run waits out its retry, every failing step's next try is
+        // the run's next pass.
+        assert.deepStrictEqual(
+          retrying.schedule?.failingSteps.map((step) => step.nextTryAt),
+          ["2026-03-01T10:06:00.000Z"]
+        );
 
         const ended = yield* getExecutionLogs("exec_1").pipe(
           Effect.provide(makeRepos(summary()))

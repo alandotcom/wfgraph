@@ -102,7 +102,12 @@ function RunExecutorSection({
   const copy =
     schedule.activity === null
       ? null
-      : executorActivityCopy({ activity: schedule.activity, nameOf, nowMs });
+      : executorActivityCopy({
+          activity: schedule.activity,
+          nameOf,
+          nowMs,
+          overdueAfterMs: schedule.overdueAfterMs,
+        });
   if (copy === null) {
     return null;
   }

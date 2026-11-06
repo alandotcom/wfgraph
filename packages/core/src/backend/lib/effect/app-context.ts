@@ -9,7 +9,17 @@ export type OAuthTopology = {
   readonly metadataDocumentUrl: (integrationType: string) => string;
 };
 
-/** Stable host URLs that background services cannot derive from a request. */
+/**
+ * How long a due run may wait for a worker before the Runs view says no worker
+ * has claimed it, for a host that names no value of its own: a minute, which
+ * is what a worker loop at its default poll gives.
+ */
+export const DEFAULT_OVERDUE_AFTER_MS = 60_000;
+
+/**
+ * Stable host facts that background services cannot derive from a request:
+ * its URLs, and how often its workers look for due runs.
+ */
 export type WfGraphAppContextValue = {
   /** The normalized public origin. OAuth remains unavailable when it is absent. */
   readonly publicUrl?: string | undefined;
@@ -17,11 +27,18 @@ export type WfGraphAppContextValue = {
   readonly apiBasePath: `/${string}`;
   /** Every URL and cookie decision shared by the OAuth service and routes. */
   readonly oauth?: OAuthTopology | undefined;
+  /**
+   * How long a due run may wait for a worker on this host before the Runs
+   * view says no worker has claimed it (`overdueAfterMs` in
+   * `services/executions/executor-state.ts`). `DEFAULT_OVERDUE_AFTER_MS` when
+   * left out.
+   */
+  readonly overdueAfterMs?: number | undefined;
 };
 
 export class WfGraphAppContext extends Context.Service<
   WfGraphAppContext,
-  WfGraphAppContextValue
+  WfGraphAppContextValue & { readonly overdueAfterMs: number }
 >()("@wfgraph/core/WfGraphAppContext") {}
 
 export function makeAppContextLayer(
@@ -42,5 +59,6 @@ export function makeAppContextLayer(
   return Layer.succeed(WfGraphAppContext, {
     ...value,
     oauth,
+    overdueAfterMs: value.overdueAfterMs ?? DEFAULT_OVERDUE_AFTER_MS,
   });
 }

@@ -35,8 +35,11 @@ import {
 } from "#src/components/ui/dropdown-menu";
 import { CreateWorkflowDialog } from "#src/components/workflow/create-workflow-dialog";
 import { RunHistorySearch } from "#src/components/workflows/run-history-search";
-import { RunHistoryTable } from "#src/components/workflows/run-history-table";
-import type { WorkflowExecutionsGlobalResult } from "#src/lib/rpc-client";
+import {
+  RunHistoryTable,
+  type RunHistoryTableRow,
+} from "#src/components/workflows/run-history-table";
+import { withExecutorReading } from "#src/lib/run-executor-activity";
 import type { WorkflowSummaryPayload } from "@wfgraph/shared/graph/api-contracts";
 import {
   filterRuns,
@@ -55,7 +58,7 @@ import { publishedModeWord } from "#src/lib/workflow-run-labels";
 import { getRelativeTime } from "@wfgraph/shared/utils/time";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
-type GlobalExecutionItem = WorkflowExecutionsGlobalResult["items"][number];
+type GlobalExecutionItem = RunHistoryTableRow;
 
 type RunsCursor = {
   startedAt: string;
@@ -195,8 +198,16 @@ export default function WorkflowsPage() {
     enabled: canOpenGlobalRuns,
   });
 
+  // Each row keeps the reading of the page it arrived on, so a row from an
+  // older page measures its wait from its own answer.
   const runs: GlobalExecutionItem[] = useMemo(
-    () => runsQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    () =>
+      runsQuery.data?.pages.flatMap((page) =>
+        page.items.map((item) => ({
+          ...item,
+          activity: withExecutorReading(item.activity, page),
+        }))
+      ) ?? [],
     [runsQuery.data]
   );
   const visibleRuns = useMemo(

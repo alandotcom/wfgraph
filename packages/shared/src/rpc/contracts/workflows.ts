@@ -183,23 +183,26 @@ const leaseExpiredActivitySchema = Schema.Struct({
   since: executorInstant,
 });
 
+/** The run has been due since `dueSince` and no worker has claimed it. */
+const unclaimedActivitySchema = Schema.Struct({
+  kind: Schema.Literal("unclaimed"),
+  dueSince: executorInstant,
+});
+
 /**
  * What the database executor is doing about an in-progress run, as a runs list
  * shows it beside the run, or null when there is nothing to show: `retrying`,
- * `lease_expired`, or `unclaimed`, which says the run has been due since
- * `dueSince` and no worker has claimed it. `observedAt` is the server's clock
- * when it answered, which is what to measure how long it has waited against.
- * The run's overview reads the same decision from `executionScheduleSchema`.
+ * `lease_expired` or `unclaimed`. The run's overview reads the same decision
+ * from `executorStateSchema`.
  */
-const executionActivitySchema = Schema.Union([
+const runListActivitySchema = Schema.Union([
   retryingActivitySchema,
   leaseExpiredActivitySchema,
-  Schema.Struct({
-    kind: Schema.Literal("unclaimed"),
-    dueSince: executorInstant,
-    observedAt: executorInstant,
-  }),
+  unclaimedActivitySchema,
 ]);
+
+/** See `runListActivitySchema`. */
+export type RunListActivityView = (typeof runListActivitySchema)["Type"];
 
 /**
  * What the database executor is doing about an in-progress run, as the run's
@@ -213,10 +216,10 @@ const executionActivitySchema = Schema.Union([
  *   lease on the run.
  * - `lease_expired`: as in a runs list.
  * - `running`: a worker, `workerId`, holds a live lease, running a step of the
- *   named node, or between steps when the node is null.
+ *   named node. The node is the one the worker's last lease renewal recorded,
+ *   so it is null between steps and for a while after a claim.
  * - `retrying`: as in a runs list.
- * - `unclaimed`: the run has been due since `dueSince` and no worker has
- *   claimed it.
+ * - `unclaimed`: as in a runs list.
  * - `waiting`: the run is asleep on its parks and not yet due.
  */
 const scheduleActivitySchema = Schema.Union([
@@ -237,12 +240,22 @@ const scheduleActivitySchema = Schema.Union([
     workerId: Schema.NullOr(Schema.String),
   }),
   retryingActivitySchema,
-  Schema.Struct({
-    kind: Schema.Literal("unclaimed"),
-    dueSince: executorInstant,
-  }),
+  unclaimedActivitySchema,
   Schema.Struct({ kind: Schema.Literal("waiting") }),
 ]);
+
+/**
+ * The server's clock and threshold an answer carrying executor activity is
+ * read against. `observedAt` is the server's clock when it answered, which is
+ * what to measure how long a run has waited against. `overdueAfterMs` is how
+ * long a due run may wait for a worker on this host before the Runs view
+ * says no worker has claimed it, which depends on how often the host's
+ * workers look for due runs.
+ */
+const executorReadingFields = {
+  observedAt: executorInstant,
+  overdueAfterMs: positiveInteger,
+};
 
 /**
  * A run as the two list procedures carry it.
@@ -280,8 +293,8 @@ const workflowExecutionFields = {
   cancelledAt: Schema.NullOr(Schema.String),
   completedAt: Schema.NullOr(Schema.String),
   duration: Schema.NullOr(Schema.String),
-  /** See `executionActivitySchema`. Null for every run that is not in progress. */
-  activity: Schema.NullOr(executionActivitySchema),
+  /** See `runListActivitySchema`. Null for every run that is not in progress. */
+  activity: Schema.NullOr(runListActivitySchema),
 };
 
 const workflowExecutionSchema = Schema.Struct(workflowExecutionFields);
@@ -354,50 +367,39 @@ const executionWaitSchema = Schema.Struct({
  *
  * `state` is `queued` (due at `wakeAt`), `leased` (a worker, `workerId`, is
  * running it until `leaseExpiresAt` unless it renews its lease, and
- * `runningStepId` is the step it is running, of the node named beside it), or
- * `waiting` (asleep on its parks until `wakeAt`). `attempt` counts failures
- * of the run outside any step, and `lastError` is the last failure a release
- * recorded. `failingSteps` are the steps that failed and will run again, most
- * failures first, and `unconsumedWakes` the parks a producer resolved that no
- * pass has read yet, each with the Event a resume carries and when an Event or
- * a manual resume claimed it. A step or the run body gets `retryLimit` retries.
+ * `runningStepId` is the step its last renewal recorded), or `waiting`
+ * (asleep on its parks until `wakeAt`). `attempt` counts failures of the run
+ * outside any step. `failingSteps` are the steps that failed and will run
+ * again, most failures first, each with its node (null for a step of no
+ * node) and, while the run waits out a retry, `nextTryAt`, the time the run
+ * tries every failing step again; it is null while a worker holds the run or
+ * the run is due. A step or the run body gets `retryLimit` retries.
  * `activity` is the server's decision about the run, null for a run queued
- * with no failure and not yet due.
- * `observedAt` is the server's clock when it answered, which is what to compare
- * every other instant here against.
+ * with no failure and not yet due. See `executorReadingFields` for
+ * `observedAt` and `overdueAfterMs`.
  */
-const executionScheduleSchema = Schema.Struct({
-  observedAt: executorInstant,
+const executorStateSchema = Schema.Struct({
+  ...executorReadingFields,
   activity: Schema.NullOr(scheduleActivitySchema),
   state: Schema.Literals(EXECUTION_SCHEDULE_STATES),
   wakeAt: executorInstant,
   attempt: nonNegativeInteger,
   retryLimit: positiveInteger,
   runningStepId: Schema.NullOr(Schema.String),
-  runningNodeId: Schema.NullOr(Schema.String),
-  runningNodeName: Schema.NullOr(Schema.String),
   leaseExpiresAt: Schema.NullOr(executorInstant),
   workerId: Schema.NullOr(Schema.String),
-  lastError: Schema.NullOr(Schema.String),
   failingSteps: listOf(
     Schema.Struct({
-      stepId: Schema.String,
-      ...executorNodeFields,
+      nodeId: Schema.NullOr(Schema.String),
       failures: positiveInteger,
       error: Schema.String,
-    })
-  ),
-  unconsumedWakes: listOf(
-    Schema.Struct({
-      waitStateId: idSchema,
-      nodeId: Schema.String,
-      nodeName: Schema.String,
-      kind: parkWakeKindSchema,
-      eventName: Schema.NullOr(Schema.String),
-      wokenAt: Schema.NullOr(executorInstant),
+      nextTryAt: Schema.NullOr(executorInstant),
     })
   ),
 });
+
+/** See `executorStateSchema`. */
+export type ExecutorStateView = (typeof executorStateSchema)["Type"];
 
 /** The authoritative Entity Eligibility boundary stored on an exited run. */
 const executionExitSchema = Schema.Struct({
@@ -736,6 +738,8 @@ export const workflowContract = {
       contractSchema(
         Schema.Struct({
           items: listOf(workflowExecutionSchema),
+          /** Read each row's `activity` against these. See `executorReadingFields`. */
+          ...executorReadingFields,
           supersededCount: Schema.Finite,
           /**
            * Up to 50 recent starts that opened no run. Concurrency, a missing
@@ -778,6 +782,8 @@ export const workflowContract = {
       contractSchema(
         Schema.Struct({
           items: listOf(workflowGlobalExecutionSchema),
+          /** Read each row's `activity` against these. See `executorReadingFields`. */
+          ...executorReadingFields,
           nextCursor: Schema.NullOr(workflowGlobalExecutionsCursorSchema),
         })
       )
@@ -824,10 +830,10 @@ export const workflowContract = {
           waits: listOf(executionWaitSchema),
           exit: Schema.NullOr(executionExitSchema),
           /**
-           * See `executionScheduleSchema`. Null once the run has ended, when
+           * See `executorStateSchema`. Null once the run has ended, when
            * the executor no longer holds it.
            */
-          schedule: Schema.NullOr(executionScheduleSchema),
+          schedule: Schema.NullOr(executorStateSchema),
         })
       )
     ),

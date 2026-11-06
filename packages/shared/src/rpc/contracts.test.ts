@@ -149,12 +149,19 @@ describe("integration RPC input contracts", () => {
   );
 });
 
+/** The server's clock and threshold every answer carrying executor activity has. */
+const reading = {
+  observedAt: "2026-03-01T09:02:00.000Z",
+  overdueAfterMs: 60_000,
+};
+
 describe("workflow executions RPC output contract", () => {
   it("carries cancellation delivery failures separately from refused starts", async () => {
     const decode = getOutputDecoder(rpcContract.workflow.getExecutions);
 
     const result = await decode({
       items: [],
+      ...reading,
       supersededCount: 0,
       refusedStarts: [
         {
@@ -221,15 +228,12 @@ describe("workflow executions RPC output contract", () => {
         nodeName: null,
         since: "2026-03-01T09:00:30.000Z",
       },
-      {
-        kind: "unclaimed",
-        dueSince: "2026-03-01T09:00:00.000Z",
-        observedAt: "2026-03-01T09:02:00.000Z",
-      },
+      { kind: "unclaimed", dueSince: "2026-03-01T09:00:00.000Z" },
     ];
 
     const result = await decode({
       items: activities.map((activity) => ({ ...listItem, activity })),
+      ...reading,
       supersededCount: 0,
       refusedStarts: [],
       cancelNotDelivered: [],
@@ -247,13 +251,10 @@ describe("workflow executions RPC output contract", () => {
           ...listItem,
           workflowName: "Onboarding",
           workflowIsPaused: false,
-          activity: {
-            kind: "unclaimed",
-            dueSince: "yesterday",
-            observedAt: "2026-03-01T09:02:00.000Z",
-          },
+          activity: { kind: "unclaimed", dueSince: "yesterday" },
         },
       ],
+      ...reading,
       nextCursor: null,
     });
 
@@ -305,7 +306,7 @@ describe("workflow execution logs RPC output contract", () => {
   it("carries the executor's hold on an in-progress run, and null once it ended", async () => {
     const decode = getOutputDecoder(rpcContract.workflow.getExecutionLogs);
     const schedule = {
-      observedAt: "2026-03-01T09:02:00.000Z",
+      ...reading,
       activity: {
         kind: "running",
         nodeId: "send",
@@ -317,29 +318,10 @@ describe("workflow execution logs RPC output contract", () => {
       attempt: 0,
       retryLimit: 4,
       runningStepId: "node:send:dispatch",
-      runningNodeId: "send",
-      runningNodeName: "Send reminder",
       leaseExpiresAt: "2026-03-01T09:03:00.000Z",
       workerId: "worker_1",
-      lastError: "send is down",
       failingSteps: [
-        {
-          stepId: "node:send:dispatch",
-          nodeId: "send",
-          nodeName: "Send reminder",
-          failures: 1,
-          error: "send is down",
-        },
-      ],
-      unconsumedWakes: [
-        {
-          waitStateId: "wait_1",
-          nodeId: "approval",
-          nodeName: "Approval",
-          kind: "resume",
-          eventName: "app/approved",
-          wokenAt: "2026-03-01T09:01:30.000Z",
-        },
+        { nodeId: "send", failures: 1, error: "send is down", nextTryAt: null },
       ],
     };
 
@@ -385,20 +367,16 @@ describe("workflow execution logs RPC output contract", () => {
 
     for (const activity of activities) {
       const schedule = {
-        observedAt: "2026-03-01T09:02:00.000Z",
+        ...reading,
         activity,
         state: "queued",
         wakeAt: "2026-03-01T09:01:00.000Z",
         attempt: 0,
         retryLimit: 4,
         runningStepId: null,
-        runningNodeId: null,
-        runningNodeName: null,
         leaseExpiresAt: null,
         workerId: null,
-        lastError: null,
         failingSteps: [],
-        unconsumedWakes: [],
       };
       expect(await decode({ ...payload, schedule })).toHaveProperty("value");
     }

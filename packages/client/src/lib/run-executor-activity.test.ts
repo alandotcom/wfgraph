@@ -11,8 +11,10 @@ import {
   type ScheduleActivity,
   serverNowMs,
   shortDuration,
-  UNCLAIMED_WARNING_MS,
 } from "#src/lib/run-executor-activity";
+
+/** The server's `overdueAfterMs` for a host running a worker loop at its default poll. */
+const OVERDUE_MS = 60_000;
 
 /** An instant at a local clock reading, so the expected text is the same in every timezone. */
 function localAt(hours: number, minutes: number, seconds: number): string {
@@ -24,8 +26,12 @@ const NOW_MS = Date.parse(localAt(14, 40, 0));
 /** The executor's own name for a node, and otherwise the node id. */
 const nameOf: NodeNamer = ({ nodeId, nodeName }) => nodeName ?? nodeId;
 
-function copyOf(activity: ScheduleActivity, nowMs = NOW_MS) {
-  return executorActivityCopy({ activity, nameOf, nowMs });
+function copyOf(
+  activity: ScheduleActivity,
+  nowMs = NOW_MS,
+  overdueAfterMs = OVERDUE_MS
+) {
+  return executorActivityCopy({ activity, nameOf, nowMs, overdueAfterMs });
 }
 
 describe("executorActivityCopy", () => {
@@ -106,7 +112,7 @@ describe("executorActivityCopy", () => {
     const dueSince = localAt(14, 39, 0);
     const justUnder = copyOf(
       { kind: "unclaimed", dueSince },
-      Date.parse(dueSince) + UNCLAIMED_WARNING_MS - 1
+      Date.parse(dueSince) + OVERDUE_MS - 1
     );
     expect(justUnder).toEqual({
       headline: "Queued for a worker since 14:39:00",
@@ -115,7 +121,7 @@ describe("executorActivityCopy", () => {
     });
     const atThreshold = copyOf(
       { kind: "unclaimed", dueSince },
-      Date.parse(dueSince) + UNCLAIMED_WARNING_MS
+      Date.parse(dueSince) + OVERDUE_MS
     );
     expect(atThreshold).toEqual({
       headline:
@@ -124,6 +130,20 @@ describe("executorActivityCopy", () => {
         "Runs are claimed by the worker loop of createWfGraphApp or createWfGraphRunner, or by the Worker's Cron Trigger. Check that one of them is running against this database.",
       tone: "warning",
     });
+  });
+
+  // A Worker host's Cron Trigger looks for due runs once a minute, so its
+  // server sends a longer threshold, and the copy waits for it.
+  it("warns about an unclaimed run only once the server's threshold has passed", () => {
+    const dueSince = localAt(14, 39, 0);
+    const at = (waitedMs: number) =>
+      copyOf(
+        { kind: "unclaimed", dueSince },
+        Date.parse(dueSince) + waitedMs,
+        120_000
+      );
+    expect(at(90_000)?.tone).toBe("default");
+    expect(at(120_000)?.tone).toBe("warning");
   });
 
   it("names what woke a parked run", () => {
@@ -176,11 +196,11 @@ describe("executorActivityCopy", () => {
       unclaimedSince: wokenAt,
     };
     expect(
-      copyOf(resuming, Date.parse(wokenAt) + UNCLAIMED_WARNING_MS - 1)?.headline
+      copyOf(resuming, Date.parse(wokenAt) + OVERDUE_MS - 1)?.headline
     ).toBe("Canceling: a Cancel Event claimed this run");
-    expect(
-      copyOf(resuming, Date.parse(wokenAt) + UNCLAIMED_WARNING_MS)?.headline
-    ).toBe("Canceling: a Cancel Event claimed this run, waiting for a worker");
+    expect(copyOf(resuming, Date.parse(wokenAt) + OVERDUE_MS)?.headline).toBe(
+      "Canceling: a Cancel Event claimed this run, waiting for a worker"
+    );
     // A worker holds the run, so it is not waiting for one however old the wake.
     expect(
       copyOf({ ...resuming, unclaimedSince: null }, NOW_MS + 3_600_000)
@@ -196,19 +216,16 @@ describe("executorActivityCopy", () => {
 describe("executorDetails", () => {
   const schedule: ExecutorSchedule = {
     observedAt: localAt(14, 40, 0),
+    overdueAfterMs: OVERDUE_MS,
     activity: null,
     state: "queued",
     wakeAt: localAt(14, 41, 30),
     attempt: 0,
     retryLimit: 4,
     runningStepId: null,
-    runningNodeId: null,
-    runningNodeName: null,
     leaseExpiresAt: null,
     workerId: null,
-    lastError: null,
     failingSteps: [],
-    unconsumedWakes: [],
   };
 
   it("shows a queued run's due time and leaves out the facts it lacks", () => {
@@ -287,6 +304,8 @@ describe("listActivityLabel", () => {
       failures: 1,
       retryLimit: 4,
       error: null,
+      observedAt: dueSince,
+      overdueAfterMs: OVERDUE_MS,
     } as const;
     expect(listActivityLabel(retrying, null)).toEqual({
       text: "Retrying Send reminder",
@@ -304,6 +323,8 @@ describe("listActivityLabel", () => {
       nodeId: "send",
       nodeName: null,
       since: dueSince,
+      observedAt: dueSince,
+      overdueAfterMs: OVERDUE_MS,
     } as const;
     expect(listActivityLabel(stopped, null)?.text).toBe(
       "Worker stopped during send"
@@ -318,12 +339,11 @@ describe("listActivityLabel", () => {
       kind: "unclaimed",
       dueSince,
       observedAt: dueSince,
+      overdueAfterMs: OVERDUE_MS,
     } as const;
     const due = Date.parse(dueSince);
-    expect(
-      listActivityLabel(unclaimed, due + UNCLAIMED_WARNING_MS - 1)
-    ).toBeNull();
-    expect(listActivityLabel(unclaimed, due + UNCLAIMED_WARNING_MS)).toEqual({
+    expect(listActivityLabel(unclaimed, due + OVERDUE_MS - 1)).toBeNull();
+    expect(listActivityLabel(unclaimed, due + OVERDUE_MS)).toEqual({
       text: "Not claimed for 1 min",
       warns: true,
     });
@@ -334,7 +354,12 @@ describe("listActivityLabel", () => {
 describe("listServerNowMs", () => {
   it("reads the newest server clock among unclaimed rows, and none without one", () => {
     const unclaimed = (observedAt: string) =>
-      ({ kind: "unclaimed", dueSince: observedAt, observedAt }) as const;
+      ({
+        kind: "unclaimed",
+        dueSince: observedAt,
+        observedAt,
+        overdueAfterMs: OVERDUE_MS,
+      }) as const;
     expect(
       listServerNowMs({
         activities: [

@@ -8,9 +8,9 @@ import {
 } from "#src/backend/lib/utils/redact";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import {
+  executorReading,
   heldByExecutor,
-  observedNow,
-  toExecutionSchedule,
+  toExecutorStateView,
 } from "#src/backend/services/executions/executor-state";
 
 function toIso(value: Date | null): string | null {
@@ -59,7 +59,7 @@ export const getExecutionLogs = Effect.fn("getExecutionLogs")(
             checkedAt: exitClaim.requestedAt.toISOString(),
           }
         : null;
-    const observedAt = yield* observedNow;
+    const { now, reading } = yield* executorReading;
 
     return {
       execution: {
@@ -109,7 +109,7 @@ export const getExecutionLogs = Effect.fn("getExecutionLogs")(
       schedule:
         executorState === null
           ? null
-          : toExecutionSchedule(executorState, observedAt),
+          : toExecutorStateView({ state: executorState, now, reading }),
     };
   },
   (effect, executionId) =>

@@ -144,6 +144,8 @@ export async function answerWorkflowRunRpc(
           activity: null,
           ...item,
         })),
+        observedAt: "2026-03-01T10:00:00.000Z",
+        overdueAfterMs: 60_000,
         supersededCount: served.supersededCount,
         refusedStarts: served.refusedStarts ?? [],
         cancelNotDelivered: served.cancelNotDelivered ?? [],

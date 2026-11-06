@@ -45,6 +45,8 @@ const workflowPayload = {
 
 const runsPayload = {
   items: [],
+  observedAt: "2026-03-01T10:00:00.000Z",
+  overdueAfterMs: 60_000,
   supersededCount: 0,
   refusedStarts: [],
   cancelNotDelivered: [],

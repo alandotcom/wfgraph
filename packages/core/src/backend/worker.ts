@@ -53,6 +53,7 @@ import {
 } from "#src/backend/agent/config";
 import type { WfGraphRuntime } from "#src/backend/runtime";
 import { openWfGraphRuntime } from "#src/backend/setup";
+import { overdueAfterMs } from "#src/backend/services/executions/executor-state";
 import type {
   WfGraphPersistence,
   WfGraphRunCapabilities,
@@ -263,7 +264,12 @@ export function wfWorker<Env>(
     const { runtime, close } = await openWfGraphRuntime({
       persistence,
       extensions,
-      appContext: { publicUrl, apiBasePath: `${basePath}/api` },
+      appContext: {
+        publicUrl,
+        apiBasePath: `${basePath}/api`,
+        // A Worker runs no polling loop: its Cron Trigger runs a tick.
+        overdueAfterMs: overdueAfterMs(undefined),
+      },
       agent,
       wakes: wake === undefined ? [] : [wake],
       // A wake whose send the close cut off would be lost.

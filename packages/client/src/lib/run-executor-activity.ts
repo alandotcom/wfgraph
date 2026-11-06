@@ -22,13 +22,6 @@ export type ExecutorSchedule = NonNullable<ExecutionLogsResult["schedule"]>;
 /** The server's decision about a run, as the run overview reads it. */
 export type ScheduleActivity = NonNullable<ExecutorSchedule["activity"]>;
 
-/**
- * How long a run may sit due without a worker claiming it before the Runs view
- * says so as a problem. A worker loop polls far more often than this, so a run
- * still unclaimed after a minute means no worker is reaching this database.
- */
-export const UNCLAIMED_WARNING_MS = 60_000;
-
 /** The server's clock, as the browser estimates it from the last answer. */
 export function serverNowMs(input: {
   /** The server's clock when it answered, as an ISO string. */
@@ -141,8 +134,10 @@ export function executorActivityCopy(input: {
   activity: ScheduleActivity;
   nameOf: NodeNamer;
   nowMs: number;
+  /** The schedule's `overdueAfterMs`: how long a due run waits before it is a problem. */
+  overdueAfterMs: number;
 }): ExecutorActivityCopy | null {
-  const { activity, nameOf, nowMs } = input;
+  const { activity, nameOf, nowMs, overdueAfterMs } = input;
   switch (activity.kind) {
     case "running": {
       const node = nameOf(activity);
@@ -176,7 +171,7 @@ export function executorActivityCopy(input: {
     case "unclaimed": {
       const since = clockTimeWithSeconds(activity.dueSince);
       const waited = elapsedMs(activity.dueSince, nowMs);
-      return waited < UNCLAIMED_WARNING_MS
+      return waited < overdueAfterMs
         ? {
             headline: `Queued for a worker since ${since}`,
             detail: null,
@@ -191,7 +186,7 @@ export function executorActivityCopy(input: {
     case "resuming": {
       const waitingForWorker =
         activity.unclaimedSince !== null &&
-        elapsedMs(activity.unclaimedSince, nowMs) >= UNCLAIMED_WARNING_MS;
+        elapsedMs(activity.unclaimedSince, nowMs) >= overdueAfterMs;
       return {
         headline: `${resumingHeadline(activity)}${waitingForWorker ? ", waiting for a worker" : ""}`,
         detail: null,
@@ -263,12 +258,34 @@ export function executorDetails(input: {
 }
 
 /**
- * The server's decision about a run, as both runs lists carry it on a row:
- * `retrying`, `lease_expired` or `unclaimed`.
+ * The server's clock and threshold a runs list page was answered with: its
+ * `observedAt` and `overdueAfterMs`.
+ */
+export type ExecutorReading = { observedAt: string; overdueAfterMs: number };
+
+/**
+ * The server's decision about a run, as both runs lists carry it on a row
+ * (`retrying`, `lease_expired` or `unclaimed`), with the reading of the page
+ * the row arrived on, so a row from an older page keeps its own clock.
  */
 export type ListActivity = NonNullable<
   WorkflowExecutionsGlobalResult["items"][number]["activity"]
->;
+> &
+  ExecutorReading;
+
+/** A row's `activity` with its page's reading, or null for none. */
+export function withExecutorReading(
+  activity: WorkflowExecutionsGlobalResult["items"][number]["activity"],
+  reading: ExecutorReading
+): ListActivity | null {
+  return activity === null
+    ? null
+    : {
+        ...activity,
+        observedAt: reading.observedAt,
+        overdueAfterMs: reading.overdueAfterMs,
+      };
+}
 
 /**
  * The server's clock for a runs list: the newest `observedAt` among its
@@ -291,9 +308,10 @@ export function listServerNowMs(input: {
 
 /**
  * What a runs list row says about `activity` in place of its usual outcome,
- * or null to keep that outcome. An unclaimed run is said only from 60 seconds
- * past due on `nowMs`, the list's server clock, and `warns` draws it in the
- * warning token. A node without a recorded name is named by its id.
+ * or null to keep that outcome. An unclaimed run is said only once it has
+ * waited the activity's `overdueAfterMs` on `nowMs`, the list's server clock,
+ * and `warns` draws it in the warning token. A node without a recorded name
+ * is named by its id.
  */
 export function listActivityLabel(
   activity: ListActivity | null,
@@ -322,7 +340,7 @@ export function listActivityLabel(
     }
     default: {
       const waited = nowMs === null ? 0 : elapsedMs(activity.dueSince, nowMs);
-      return waited < UNCLAIMED_WARNING_MS
+      return waited < activity.overdueAfterMs
         ? null
         : { text: `Not claimed for ${shortDuration(waited)}`, warns: true };
     }

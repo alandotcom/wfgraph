@@ -271,38 +271,34 @@ describe("buildRunNodeEvidence", () => {
   });
 
   // The schedule lists failing steps most failures first, so the node's first
-  // is the one it is retrying hardest.
-  it("names the node's failing step and when the queued run tries again", () => {
+  // is the one it is retrying hardest. The server says when the run tries it
+  // again, and the evidence reads that as it is.
+  it("names the node's failing step and when the server says the run tries again", () => {
     const schedule: ExecutorSchedule = {
       observedAt: "2026-03-01T10:00:10.000Z",
+      overdueAfterMs: 60_000,
       activity: null,
       state: "queued",
       wakeAt: "2026-03-01T10:00:40.000Z",
       attempt: 0,
       retryLimit: 4,
       runningStepId: null,
-      runningNodeId: null,
-      runningNodeName: null,
       leaseExpiresAt: null,
       workerId: null,
-      lastError: null,
       failingSteps: [
         {
-          stepId: "node:step:send",
           nodeId: "step",
-          nodeName: "Step",
           failures: 2,
           error: "Twilio answered 503",
+          nextTryAt: "2026-03-01T10:00:40.000Z",
         },
         {
-          stepId: "node:step:lookup",
           nodeId: "step",
-          nodeName: "Step",
           failures: 1,
           error: "timeout",
+          nextTryAt: "2026-03-01T10:00:40.000Z",
         },
       ],
-      unconsumedWakes: [],
     };
     const build = (
       execution: WorkflowExecution,
@@ -327,8 +323,15 @@ describe("buildRunNodeEvidence", () => {
       nextTryAt: "2026-03-01T10:00:40.000Z",
       error: "Twilio answered 503",
     });
+    // A queued run already due has no next try time, whatever its wake time.
     expect(
-      build(running, { ...schedule, state: "leased" }).retry?.nextTryAt
+      build(running, {
+        ...schedule,
+        failingSteps: schedule.failingSteps.map((step) => ({
+          ...step,
+          nextTryAt: null,
+        })),
+      }).retry?.nextTryAt
     ).toBeNull();
     expect(build(EXECUTION, schedule).retry).toBeNull();
     expect(build(running, null).retry).toBeNull();

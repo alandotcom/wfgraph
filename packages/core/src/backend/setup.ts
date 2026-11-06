@@ -42,6 +42,7 @@ import {
   type WfGraphRuntime,
   type WfGraphRuntimeParts,
 } from "#src/backend/runtime";
+import { overdueAfterMs } from "#src/backend/services/executions/executor-state";
 import {
   createIntegrationCipher,
   type EncryptionRuntimeConfig,
@@ -153,12 +154,18 @@ export async function openWfGraphSetup(
 
   const { capabilities } = persistence;
   const wakes = createAppRunWakes(capabilities.broadcast);
+  // A process that runs no loop of its own serves the Runs view for loops
+  // elsewhere, which this process cannot see, so it assumes their default.
+  const pollMs =
+    (options.runner === false ? undefined : options.runner?.pollMs) ??
+    capabilities.loopDefaults.pollMs;
   const { runtime, close } = await openWfGraphRuntime({
     persistence,
     extensions,
     appContext: {
       publicUrl: options.publicUrl,
       apiBasePath: `${options.basePath}/api`,
+      overdueAfterMs: overdueAfterMs(pollMs),
     },
     agent: options.agent,
     wakes: wakes.sinks,

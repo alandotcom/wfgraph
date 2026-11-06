@@ -14,9 +14,10 @@ import type {
 } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { WorkflowVersionKind } from "@wfgraph/shared/graph/version-kinds";
 import {
-  type ExecutionActivity,
-  readExecutionActivities,
+  executorReading,
+  readRunListActivities,
 } from "#src/backend/services/executions/executor-state";
+import type { RunListActivityView } from "@wfgraph/shared/rpc/contracts/workflows";
 
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
@@ -53,7 +54,7 @@ type GlobalExecutionItem = {
   cancelledAt: string | null;
   completedAt: string | null;
   duration: string | null;
-  activity: ExecutionActivity | null;
+  activity: RunListActivityView | null;
 };
 
 type WorkflowExecutionsGlobalInput = {
@@ -79,7 +80,7 @@ function resolveLimit(limit: number | undefined): number | null {
 
 function toGlobalExecutionItem(
   row: GlobalExecutionRow,
-  activity: ExecutionActivity | null
+  activity: RunListActivityView | null
 ): GlobalExecutionItem {
   return {
     id: row.id,
@@ -164,12 +165,14 @@ export const getWorkflowExecutionsGlobal = Effect.fn(
 
     const hasMore = rows.length > requestedLimit;
     const pageRows = hasMore ? rows.slice(0, requestedLimit) : rows;
-    const activities = yield* readExecutionActivities(pageRows);
+    const { now, reading } = yield* executorReading;
+    const activities = yield* readRunListActivities(pageRows, now);
 
     return {
       items: pageRows.map((row) =>
         toGlobalExecutionItem(row, activities.get(row.id) ?? null)
       ),
+      ...reading,
       nextCursor: buildNextCursor({ hasMore, pageRows }),
     };
   },

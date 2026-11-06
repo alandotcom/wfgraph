@@ -3,6 +3,7 @@
 import { assert, describe, layer } from "@effect/vitest";
 import { Effect, Layer } from "effect";
 import { TestClock } from "effect/testing";
+import { makeAppContextLayer } from "#src/backend/lib/effect/app-context";
 import type { WorkflowExecutionListRow } from "#src/backend/services/executions/repo";
 import {
   SilentAppLoggerLayer,
@@ -59,7 +60,12 @@ function makeRepos(rows: WorkflowExecutionListRow[]) {
 }
 
 describe("getWorkflowExecutions", () => {
-  layer(SilentAppLoggerLayer)((it) => {
+  layer(
+    Layer.mergeAll(
+      SilentAppLoggerLayer,
+      makeAppContextLayer({ apiBasePath: "/api" })
+    )
+  )((it) => {
     // The count is answered whether or not the rows are: a builder deciding
     // whether to look at them needs the number first.
     it.effect("answers the count of superseded runs it left out", () =>
@@ -139,15 +145,11 @@ describe("getWorkflowExecutions", () => {
         assert.deepStrictEqual(asked, [["exec_1"]]);
         assert.deepStrictEqual(
           result.items.map((item) => item.activity),
-          [
-            {
-              kind: "unclaimed",
-              dueSince: "2026-03-01T10:00:00.000Z",
-              observedAt: "2026-03-01T10:02:00.000Z",
-            },
-            null,
-          ]
+          [{ kind: "unclaimed", dueSince: "2026-03-01T10:00:00.000Z" }, null]
         );
+        // The answer carries the server's clock and the host's threshold once.
+        assert.strictEqual(result.observedAt, "2026-03-01T10:02:00.000Z");
+        assert.strictEqual(result.overdueAfterMs, 60_000);
       })
     );
 

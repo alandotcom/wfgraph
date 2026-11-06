@@ -1,20 +1,21 @@
 /**
  * The database executor's hold on a run as the Runs view's procedures answer
- * it: `toExecutionSchedule` for one run's logs, `toExecutionActivity` for a
- * runs list row, each classified here by `executorActivityOf`. The list reads
- * no wake rows, so it never decides `resuming`. Every instant is an ISO
- * string, `observedAt` is the server's clock the client measures a wait
- * against, and error text passes through the same redaction as a node log's.
+ * it, in the wire shapes `@wfgraph/shared/rpc/contracts/workflows` declares:
+ * `toExecutorStateView` for one run's logs and `readRunListActivities` for a
+ * runs list page, each classified here by `executorActivityOf`. The list reads
+ * no wake rows, so it never decides `resuming`.
  */
 
 import { Clock, Effect } from "effect";
+import {
+  DEFAULT_OVERDUE_AFTER_MS,
+  WfGraphAppContext,
+} from "#src/backend/lib/effect/app-context";
 import { redactSensitiveText } from "#src/backend/lib/utils/redact";
 import {
   ExecutionRepo,
-  type ExecutionScheduleState,
   type ExecutorActivity,
   type ExecutorState,
-  type ParkWake,
 } from "#src/backend/services/executions/repo";
 import { executorActivityOf } from "#src/backend/services/executions/repo/executor-activity";
 import { STEP_RETRY_LIMIT } from "#src/backend/services/executions/repo/release-policy";
@@ -22,74 +23,36 @@ import {
   IN_FLIGHT_EXECUTION_STATUSES,
   type WorkflowExecutionStatus,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
+import type {
+  ExecutorStateView,
+  RunListActivityView,
+} from "@wfgraph/shared/rpc/contracts/workflows";
 import { encodeIsoTimestamp } from "@wfgraph/shared/types/timestamp";
 
-/** The node a schedule or an activity names. */
-type ExecutorNode = { nodeId: string | null; nodeName: string | null };
+/** What the overview's activity can be: one case of `ExecutorStateView`. */
+type ScheduleActivityView = NonNullable<ExecutorStateView["activity"]>;
 
 /**
- * What the executor is doing about one run, as `ExecutorActivity` describes
- * each case, with every instant an ISO string and a retry carrying the
- * executor's retry limit.
+ * How often the Worker host's Cron Trigger runs a tick. A Queue wakes a run a
+ * producer made due at once, but a park's deadline is found only by the Cron
+ * Trigger's tick, so the Worker host waits for two of them either way.
  */
-export type ScheduleActivity =
-  | {
-      kind: "resuming";
-      nodeId: string;
-      nodeName: string;
-      wake: ParkWake["kind"];
-      eventName: string | null;
-      wokenAt: string | null;
-      deadline: string | null;
-      unclaimedSince: string | null;
-    }
-  | (ExecutorNode & { kind: "lease_expired"; since: string })
-  | (ExecutorNode & { kind: "running"; workerId: string | null })
-  | (ExecutorNode & {
-      kind: "retrying";
-      nextTryAt: string;
-      failures: number;
-      retryLimit: number;
-      error: string | null;
-    })
-  | { kind: "unclaimed"; dueSince: string }
-  | { kind: "waiting" };
-
-/** One run's executor state as `getExecutionLogs` carries it. */
-export type ExecutionSchedule = {
-  observedAt: string;
-  activity: ScheduleActivity | null;
-  state: ExecutionScheduleState;
-  wakeAt: string;
-  attempt: number;
-  retryLimit: number;
-  runningStepId: string | null;
-  runningNodeId: string | null;
-  runningNodeName: string | null;
-  leaseExpiresAt: string | null;
-  workerId: string | null;
-  lastError: string | null;
-  failingSteps: Array<
-    ExecutorNode & { stepId: string; failures: number; error: string }
-  >;
-  unconsumedWakes: Array<{
-    waitStateId: string;
-    nodeId: string;
-    nodeName: string;
-    kind: ParkWake["kind"];
-    eventName: string | null;
-    wokenAt: string | null;
-  }>;
-};
+const WORKER_CRON_INTERVAL_MS = 60_000;
 
 /**
- * One run's activity as the two list procedures carry it: the three cases a
- * runs list row shows, with `observedAt` on `unclaimed` so the client can
- * measure how long the run has waited against the server's clock.
+ * How long a due run may wait for a worker on a host before the Runs view
+ * says no worker has claimed it. `pollMs` is how often the host's worker loop
+ * polls, and undefined for the Worker host, whose Cron Trigger runs a tick a
+ * minute. Two polls or two ticks, and never under `DEFAULT_OVERDUE_AFTER_MS`,
+ * since a worker loop at its default poll looks for due runs many times in a
+ * minute.
  */
-export type ExecutionActivity =
-  | Extract<ScheduleActivity, { kind: "retrying" | "lease_expired" }>
-  | { kind: "unclaimed"; dueSince: string; observedAt: string };
+export function overdueAfterMs(pollMs: number | undefined): number {
+  return Math.max(
+    DEFAULT_OVERDUE_AFTER_MS,
+    2 * (pollMs ?? WORKER_CRON_INTERVAL_MS)
+  );
+}
 
 const IN_FLIGHT: ReadonlySet<WorkflowExecutionStatus> = new Set(
   IN_FLIGHT_EXECUTION_STATUSES
@@ -103,17 +66,25 @@ export function heldByExecutor(status: WorkflowExecutionStatus): boolean {
   return IN_FLIGHT.has(status);
 }
 
-/** The server's clock, which every executor read is decided and reported at. */
-export const observedNow = Effect.map(
-  Clock.currentTimeMillis,
-  (millis) => new Date(millis)
-);
+/**
+ * The server's clock, which every executor read is decided at, and the reading
+ * an answer carries beside the activities it decided: that clock as an ISO
+ * string and the host's `overdueAfterMs`.
+ */
+export const executorReading = Effect.gen(function* () {
+  const { overdueAfterMs: overdue } = yield* WfGraphAppContext;
+  const now = new Date(yield* Clock.currentTimeMillis);
+  return {
+    now,
+    reading: { observedAt: encodeIsoTimestamp(now), overdueAfterMs: overdue },
+  };
+});
 
 function optionalInstant(value: Date | null): string | null {
   return value === null ? null : encodeIsoTimestamp(value);
 }
 
-function toScheduleActivity(activity: ExecutorActivity): ScheduleActivity {
+function toScheduleActivity(activity: ExecutorActivity): ScheduleActivityView {
   switch (activity.kind) {
     case "resuming":
       return {
@@ -143,99 +114,90 @@ function toScheduleActivity(activity: ExecutorActivity): ScheduleActivity {
   }
 }
 
-export function toExecutionSchedule(
-  state: ExecutorState,
-  observedAt: Date
-): ExecutionSchedule {
+/** `state` as `getExecutionLogs` answers it, decided at `now`. */
+export function toExecutorStateView(input: {
+  state: ExecutorState;
+  now: Date;
+  reading: { observedAt: string; overdueAfterMs: number };
+}): ExecutorStateView {
+  const { state, now, reading } = input;
   const activity = executorActivityOf({
     hold: state,
     wakes: state.unconsumedWakes,
-    now: observedAt,
+    now,
   });
+  // Every failing step runs again on the run's next pass, so while the run
+  // waits out a retry, that pass is each step's next try.
+  const nextTryAt =
+    activity?.kind === "retrying"
+      ? encodeIsoTimestamp(activity.nextTryAt)
+      : null;
   return {
-    observedAt: encodeIsoTimestamp(observedAt),
+    ...reading,
     activity: activity === null ? null : toScheduleActivity(activity),
     state: state.state,
     wakeAt: encodeIsoTimestamp(state.wakeAt),
     attempt: state.attempt,
     retryLimit: STEP_RETRY_LIMIT,
     runningStepId: state.runningStepId,
-    runningNodeId: state.runningNodeId,
-    runningNodeName: state.runningNodeName,
     leaseExpiresAt: optionalInstant(state.leaseExpiresAt),
     workerId: state.workerId,
-    lastError: redactSensitiveText(state.lastError),
     failingSteps: state.failingSteps.map((step) => ({
-      stepId: step.stepId,
       nodeId: step.nodeId,
-      nodeName: step.nodeName,
       failures: step.failures,
       error: redactSensitiveText(step.error),
-    })),
-    unconsumedWakes: state.unconsumedWakes.map((wake) => ({
-      waitStateId: wake.waitStateId,
-      nodeId: wake.nodeId,
-      nodeName: wake.nodeName,
-      kind: wake.kind,
-      eventName: wake.eventName,
-      wokenAt: optionalInstant(wake.wokenAt),
+      nextTryAt,
     })),
   };
 }
-
-/**
- * The activity of each run among `rows` the executor holds, as the list
- * procedures carry it, keyed by execution id: one repository read for the
- * page, decided at the server's clock. A run with no activity, or with one a
- * list row does not show, is absent.
- */
-export const readExecutionActivities = Effect.fn("readExecutionActivities")(
-  function* (
-    rows: ReadonlyArray<{ id: string; status: WorkflowExecutionStatus }>
-  ) {
-    const executionIds = rows
-      .filter((row) => heldByExecutor(row.status))
-      .map((row) => row.id);
-    // A page of ended runs has nothing the executor holds to ask about.
-    if (executionIds.length === 0) return new Map<string, ExecutionActivity>();
-    const repo = yield* ExecutionRepo;
-    const observedAt = yield* observedNow;
-    const holds = yield* repo.listExecutorHolds(executionIds);
-    return new Map(
-      [...holds].flatMap(([executionId, hold]) => {
-        // The list reads no wake rows, so it never decides `resuming`: a
-        // producer that resolves a park also makes the run due, and the run
-        // reads as `unclaimed` until a worker claims it.
-        const activity = executorActivityOf({
-          hold,
-          wakes: [],
-          now: observedAt,
-        });
-        const shown =
-          activity === null ? null : toExecutionActivity(activity, observedAt);
-        return shown === null ? [] : [[executionId, shown] as const];
-      })
-    );
-  }
-);
 
 /**
  * `activity` as a runs list row carries it, and null for a case the row does
  * not show (`running`, `waiting`, and `resuming`, which the list's read never
  * decides).
  */
-export function toExecutionActivity(
-  activity: ExecutorActivity,
-  observedAt: Date
-): ExecutionActivity | null {
+function toRunListActivity(
+  activity: ExecutorActivity
+): RunListActivityView | null {
   const shown = toScheduleActivity(activity);
   switch (shown.kind) {
     case "retrying":
     case "lease_expired":
-      return shown;
     case "unclaimed":
-      return { ...shown, observedAt: encodeIsoTimestamp(observedAt) };
+      return shown;
     default:
       return null;
   }
 }
+
+/**
+ * The activity of each run among `rows` the executor holds, as the list
+ * procedures carry it, keyed by execution id: one repository read for the
+ * page, decided at `now`. A run with no activity, or with one a list row does
+ * not show, is absent.
+ */
+export const readRunListActivities = Effect.fn("readRunListActivities")(
+  function* (
+    rows: ReadonlyArray<{ id: string; status: WorkflowExecutionStatus }>,
+    now: Date
+  ) {
+    const executionIds = rows
+      .filter((row) => heldByExecutor(row.status))
+      .map((row) => row.id);
+    // A page of ended runs has nothing the executor holds to ask about.
+    if (executionIds.length === 0)
+      return new Map<string, RunListActivityView>();
+    const repo = yield* ExecutionRepo;
+    const holds = yield* repo.listExecutorHolds(executionIds);
+    return new Map(
+      [...holds].flatMap(([executionId, hold]) => {
+        // The list reads no wake rows, so it never decides `resuming`: a
+        // producer that resolves a park also makes the run due, and the run
+        // reads as `unclaimed` until a worker claims it.
+        const activity = executorActivityOf({ hold, wakes: [], now });
+        const shown = activity === null ? null : toRunListActivity(activity);
+        return shown === null ? [] : [[executionId, shown] as const];
+      })
+    );
+  }
+);

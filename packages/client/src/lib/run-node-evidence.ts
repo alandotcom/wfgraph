@@ -125,7 +125,10 @@ export type NodeRetry = {
   failures: number;
   /** The retries a step gets, so the next try is `failures + 1` of `retryLimit + 1`. */
   retryLimit: number;
-  /** When the run is queued to try again, or null while a worker holds it. */
+  /**
+   * When the run tries the step again, as the server decided it, or null
+   * while a worker holds the run or the run is due.
+   */
   nextTryAt: string | null;
   /** The step's last failure. */
   error: string;
@@ -147,7 +150,7 @@ function nodeRetryOf(
   return {
     failures: step.failures,
     retryLimit: schedule.retryLimit,
-    nextTryAt: schedule.state === "queued" ? schedule.wakeAt : null,
+    nextTryAt: step.nextTryAt,
     error: step.error,
   };
 }

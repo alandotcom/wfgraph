@@ -138,6 +138,8 @@ describe("RunHistoryTable", () => {
               failures: 1,
               retryLimit: 4,
               error: "down",
+              observedAt: "2026-08-22T10:00:30.000Z",
+              overdueAfterMs: 60_000,
             },
           }),
           run({
@@ -148,6 +150,7 @@ describe("RunHistoryTable", () => {
               kind: "unclaimed",
               dueSince: "2026-08-22T10:00:00.000Z",
               observedAt: "2026-08-22T10:03:00.000Z",
+              overdueAfterMs: 60_000,
             },
           }),
         ]}

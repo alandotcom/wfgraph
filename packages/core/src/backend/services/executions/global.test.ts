@@ -1,8 +1,9 @@
 // `it` comes from the `layer` callback below, typed with the services that layer
 // provides, so nothing here imports the bare one.
 import { assert, describe, layer } from "@effect/vitest";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import { TestClock } from "effect/testing";
+import { makeAppContextLayer } from "#src/backend/lib/effect/app-context";
 import { InvalidInput } from "#src/backend/lib/effect/failures";
 import {
   SilentAppLoggerLayer,
@@ -123,7 +124,12 @@ function makeExecutionRepo(rows: GlobalExecutionRow[]) {
 }
 
 describe("getWorkflowExecutionsGlobal", () => {
-  layer(SilentAppLoggerLayer)((it) => {
+  layer(
+    Layer.mergeAll(
+      SilentAppLoggerLayer,
+      makeAppContextLayer({ apiBasePath: "/api" })
+    )
+  )((it) => {
     it.effect("returns paginated global workflow executions with cursor", () =>
       Effect.gen(function* () {
         const repo = makeExecutionRepo(page);

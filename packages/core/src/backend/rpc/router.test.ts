@@ -710,7 +710,15 @@ describe("workflow execution RPC", () => {
           state: "queued",
           wakeAt: "2026-03-01T09:01:00.000Z",
           retryLimit: 4,
-          failingSteps: [failingStep],
+          // The run is due, so no step waits out a retry.
+          failingSteps: [
+            {
+              nodeId: "send",
+              failures: 1,
+              error: "send is down",
+              nextTryAt: null,
+            },
+          ],
         },
       },
     });

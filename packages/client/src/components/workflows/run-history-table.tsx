@@ -21,7 +21,10 @@ import {
   statusToneBadgeClass,
 } from "#src/components/workflow/workflow-run-shared";
 import type { WorkflowExecutionsGlobalResult } from "#src/lib/rpc-client";
-import { listActivityLabel } from "#src/lib/run-executor-activity";
+import {
+  type ListActivity,
+  listActivityLabel,
+} from "#src/lib/run-executor-activity";
 import { useRunListClock } from "#src/components/workflow/use-run-list-clock";
 import {
   runGraphLabel,
@@ -30,8 +33,11 @@ import {
 import { getRelativeTime } from "@wfgraph/shared/utils/time";
 import { cn } from "@wfgraph/shared/utils";
 
-export type RunHistoryTableRow =
-  WorkflowExecutionsGlobalResult["items"][number];
+/** A run as the global history lists it, its activity read with its page's reading. */
+export type RunHistoryTableRow = Omit<
+  WorkflowExecutionsGlobalResult["items"][number],
+  "activity"
+> & { activity: ListActivity | null };
 
 const runHistoryTableFeatures = tableFeatures({
   rowSortingFeature,

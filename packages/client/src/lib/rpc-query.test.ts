@@ -85,6 +85,8 @@ beforeEach(() => {
   queryClient.setQueryData(workflowKey("a"), aWorkflow("a"));
   queryClient.setQueryData(workflowRunsKey("a"), {
     items: [],
+    observedAt: "2026-03-01T10:00:00.000Z",
+    overdueAfterMs: 60_000,
     supersededCount: 0,
     refusedStarts: [],
     cancelNotDelivered: [],
@@ -134,7 +136,14 @@ beforeEach(() => {
     .build(queryClient, { queryKey: configOptionsKey("integration_b") });
   for (const statuses of [undefined, ["failed"] satisfies ["failed"]]) {
     queryClient.setQueryData(runHistoryKey(statuses), {
-      pages: [{ items: [], nextCursor: null }],
+      pages: [
+        {
+          items: [],
+          observedAt: "2026-03-01T10:00:00.000Z",
+          overdueAfterMs: 60_000,
+          nextCursor: null,
+        },
+      ],
       pageParams: [undefined],
     });
   }

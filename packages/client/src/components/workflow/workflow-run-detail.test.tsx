@@ -126,19 +126,16 @@ describe("WorkflowRunDetail", () => {
   describe("executor section", () => {
     const schedule: ExecutorSchedule = {
       observedAt: "2026-02-22T10:05:00.000Z",
+      overdueAfterMs: 60_000,
       activity: null,
       state: "queued",
       wakeAt: "2026-02-22T10:06:00.000Z",
       attempt: 0,
       retryLimit: 4,
       runningStepId: null,
-      runningNodeId: null,
-      runningNodeName: null,
       leaseExpiresAt: null,
       workerId: null,
-      lastError: null,
       failingSteps: [],
-      unconsumedWakes: [],
     };
 
     // The executor names a node it has no log row for by id, and the pinned

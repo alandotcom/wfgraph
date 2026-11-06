@@ -35,6 +35,8 @@ describe("toWorkflowExecutions", () => {
   it("keeps the run list and both workflow audit categories", () => {
     const result = toWorkflowExecutions({
       items: [rawExecution],
+      observedAt: "2026-03-01T10:00:10.000Z",
+      overdueAfterMs: 60_000,
       supersededCount: 3,
       refusedStarts: [
         {
@@ -67,11 +69,40 @@ describe("toWorkflowExecutions", () => {
     );
   });
 
+  // The answer carries the server's clock and threshold once, and each row's
+  // activity is read against them.
+  it("gives a row's activity the reading its answer carries", () => {
+    const result = toWorkflowExecutions({
+      items: [
+        {
+          ...rawExecution,
+          status: "running",
+          completedAt: null,
+          activity: { kind: "unclaimed", dueSince: "2026-03-01T10:00:00.000Z" },
+        },
+      ],
+      observedAt: "2026-03-01T10:00:10.000Z",
+      overdueAfterMs: 120_000,
+      supersededCount: 0,
+      refusedStarts: [],
+      cancelNotDelivered: [],
+    });
+
+    expect(result.executions[0]?.activity).toEqual({
+      kind: "unclaimed",
+      dueSince: "2026-03-01T10:00:00.000Z",
+      observedAt: "2026-03-01T10:00:10.000Z",
+      overdueAfterMs: 120_000,
+    });
+  });
+
   // A run that never waited or was cancelled carries nulls, and a Date built from
   // one would be an Invalid Date the row would then format.
   it("leaves an absent timestamp absent", () => {
     const result = toWorkflowExecutions({
       items: [{ ...rawExecution, completedAt: null }],
+      observedAt: "2026-03-01T10:00:10.000Z",
+      overdueAfterMs: 60_000,
       supersededCount: 0,
       refusedStarts: [],
       cancelNotDelivered: [],

@@ -7,8 +7,14 @@ import {
 } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { ExecutionLogEntry } from "@wfgraph/shared/graph/types";
 import type { WorkflowVersionKind } from "@wfgraph/shared/graph/version-kinds";
-import type { ExecutionLogsResult } from "#src/lib/rpc-client";
-import type { ListActivity } from "#src/lib/run-executor-activity";
+import type {
+  ExecutionLogsResult,
+  WorkflowExecutionsGlobalResult,
+} from "#src/lib/rpc-client";
+import {
+  type ListActivity,
+  withExecutorReading,
+} from "#src/lib/run-executor-activity";
 
 /**
  * The shapes a workflow run takes on the client, and the pure functions that
@@ -141,6 +147,8 @@ export function shouldPollExecutionDetail(
  */
 export function toWorkflowExecutions(payload: {
   readonly items: readonly RawExecution[];
+  readonly observedAt: string;
+  readonly overdueAfterMs: number;
   readonly supersededCount: number;
   readonly refusedStarts: readonly RawRefusedStart[];
   readonly cancelNotDelivered: readonly RawRefusedStart[];
@@ -162,6 +170,7 @@ export function toWorkflowExecutions(payload: {
     })),
     executions: payload.items.map((execution) => ({
       ...execution,
+      activity: withExecutorReading(execution.activity, payload),
       startedAt: new Date(execution.startedAt),
       waitingAt: execution.waitingAt ? new Date(execution.waitingAt) : null,
       cancelledAt: execution.cancelledAt
@@ -318,12 +327,13 @@ export function toExecutionEvents(
 
 type RawExecution = Omit<
   WorkflowExecution,
-  "startedAt" | "waitingAt" | "cancelledAt" | "completedAt"
+  "startedAt" | "waitingAt" | "cancelledAt" | "completedAt" | "activity"
 > & {
   startedAt: string;
   waitingAt: string | null;
   cancelledAt: string | null;
   completedAt: string | null;
+  activity: WorkflowExecutionsGlobalResult["items"][number]["activity"];
 };
 
 function toExecutionLogs(payload: ExecutionLogsResult): ExecutionLog[] {

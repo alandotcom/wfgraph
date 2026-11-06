@@ -9,9 +9,10 @@ import {
 } from "#src/backend/services/executions/repo";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import {
-  type ExecutionActivity,
-  readExecutionActivities,
+  executorReading,
+  readRunListActivities,
 } from "#src/backend/services/executions/executor-state";
+import type { RunListActivityView } from "@wfgraph/shared/rpc/contracts/workflows";
 import type {
   WorkflowExecutionStartSource,
   WorkflowExecutionStatus,
@@ -34,7 +35,7 @@ type WorkflowExecutionItem = {
   cancelledAt: string | null;
   completedAt: string | null;
   duration: string | null;
-  activity: ExecutionActivity | null;
+  activity: RunListActivityView | null;
 };
 
 function toIso(value: Date | null): string | null {
@@ -43,7 +44,7 @@ function toIso(value: Date | null): string | null {
 
 function toWorkflowExecutionItem(
   row: WorkflowExecutionListRow,
-  activity: ExecutionActivity | null
+  activity: RunListActivityView | null
 ): WorkflowExecutionItem {
   return {
     id: row.id,
@@ -136,12 +137,14 @@ export const getWorkflowExecutions = Effect.fn("getWorkflowExecutions")(
         ],
         { concurrency: 4 }
       );
-    const activities = yield* readExecutionActivities(executions);
+    const { now, reading } = yield* executorReading;
+    const activities = yield* readRunListActivities(executions, now);
 
     return {
       items: executions.map((row) =>
         toWorkflowExecutionItem(row, activities.get(row.id) ?? null)
       ),
+      ...reading,
       supersededCount,
       refusedStarts: refusedStarts.map(toWorkflowAuditItem),
       cancelNotDelivered: cancelNotDelivered.map(toWorkflowAuditItem),
