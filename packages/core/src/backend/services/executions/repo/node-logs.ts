@@ -179,9 +179,8 @@ export function closeNodeLogWrite(input: CloseNodeLogInput, fence?: RunFence) {
       .update(workflowExecutionLogs)
       .set({
         status: input.status,
-        // Null when the memo holds no row of this node, as after the run
-        // ended. Drizzle leaves an undefined key out of the update, so the
-        // row keeps the count it holds.
+        // Undefined when the memo holds no row of this node, which leaves the
+        // key out of the update, so the row keeps the count it holds.
         retries: retries ?? undefined,
         // Drizzle leaves an undefined key out of the update, so an absent
         // payload is written as null to clear what an earlier close wrote.

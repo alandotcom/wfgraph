@@ -601,17 +601,15 @@ function runOpenedPass<Port, P extends PassCore<ClaimedSchedule, Port>, R>(
       );
       if (exit !== undefined) return yield* exit;
       const running = pass.state.runningStep();
+      const stepId = running?.stepId ?? null;
       interruption = {
         kind: "interrupted",
         by: "budget",
-        stepId: running?.stepId ?? null,
+        stepId,
         nodeId: running?.nodeId ?? null,
       };
       yield* Fiber.interrupt(fiber);
-      const cut: PassResult = {
-        kind: "budget_cut",
-        stepId: running?.stepId ?? null,
-      };
+      const cut: PassResult = { kind: "budget_cut", stepId };
       return cut;
     })
   );

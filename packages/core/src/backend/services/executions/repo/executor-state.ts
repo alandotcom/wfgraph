@@ -139,7 +139,7 @@ export function executorActivityOf(
   }
   const due = hold.wakeAt.getTime() <= at;
   if (hold.state === "queued" && !due) {
-    const failing = maxBy([...hold.failingSteps], (step) => step.failures);
+    const failing = maxBy(hold.failingSteps, (step) => step.failures);
     if (failing !== undefined) {
       return {
         kind: "retrying",

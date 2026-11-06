@@ -311,8 +311,6 @@ describe("workflow engine replay safety", () => {
     expect(memo.has("wait-resume-wait_1-0")).toBe(true);
   });
 
-  // The database executor stores `nodeId` beside each memo row, which is how
-  // the Runs view names the node of a retrying step without parsing its id.
   it("names the node on every step that does work for one, and on no step of the run's own", async () => {
     const runtime = createReplayRuntime(new Map());
     const refs: DurableStepRef[] = [];
@@ -333,8 +331,7 @@ describe("workflow engine replay safety", () => {
     expect(new Set(named.map((ref) => ref.nodeId))).toEqual(
       new Set(["lifecycle_1", "email_1", "wait_1", "followup_1"])
     );
-    // Every node-owned step id carries its node's id in some shape, which is
-    // what the stored node id saves a reader from having to parse.
+    // Every step id that names a node contains that node's id.
     expect(
       named
         .filter((ref) => !ref.id.includes(ref.nodeId ?? ""))
