@@ -6,7 +6,7 @@
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
-    "prepare": "effect-tsgo patch",
+    "prepare": "effect-tsgo patch --tsrs",
     "dev": "tsx scripts/dev.ts",
     "dev:app": "pnpm --filter @wfgraph/example-app dev",
     "build": "pnpm -r build",

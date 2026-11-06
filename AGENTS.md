@@ -80,12 +80,13 @@ pnpm run fix          # oxfmt, must leave the tree clean
 Do not leave the repo with a failing check. `pnpm run lint` printing nothing means it
 passed; oxlint has no summary line on success.
 
-**Type-check and lint run on tsrs**, a Rust port of the TypeScript 7 compiler that tracks the
-TypeScript 7.1 beta. `effect-tsgo tsrs` runs the Effect-patched build `@effect/tsgo` ships
-for the installed `tsrs` version, so the two pins move together: a `tsrs` that release does
-not ship falls back to an older tsrs. oxlint finds `tsrs-lint` in `node_modules/.bin`. The
-`typescript` package stays for tsdown's declaration output and for the editor, which
-`prepare` patches with the Effect plugin and which still checks against TypeScript 7.0.
+**Type-check, lint and the editor run on tsrs**, a Rust port of the TypeScript 7 compiler
+that tracks the TypeScript 7.1 beta. `effect-tsgo tsrs` runs the Effect-patched build
+`@effect/tsgo` ships for the installed `tsrs` version, so the two pins move together: a `tsrs`
+that release does not ship falls back to an older tsrs. `prepare` patches the installed tsrs
+with that same build, which is the language server `.vscode/settings.json` starts through
+`node_modules/tsrs/tsdk`. oxlint finds `tsrs-lint` in `node_modules/.bin`. The `typescript`
+package stays for tsdown's declaration output alone.
 
 `pnpm run test:postgres` is the live PostgreSQL suite, and it skips every case unless
 `WFGRAPH_TEST_DATABASE_URL` names a server, so a green `pnpm run test` on a machine with no
