@@ -26,9 +26,12 @@ Find out whether the verification is stale before you trust it:
 
 ```sh
 git diff --stat -- docs/internal/plans/separate-event-intake-from-durable-execution.md
-git log --oneline e02009e3.. -- docs/internal/plans/separate-event-intake-from-durable-execution.md
-git log --oneline ba704be1.. -- \
+git log --oneline a02b7338.. -- docs/internal/plans/separate-event-intake-from-durable-execution.md
+git log --oneline 656f05d5.. -- \
   packages/core/src/backend/executor \
+  packages/core/src/backend/services/executions/driver.ts \
+  packages/core/src/backend/services/workflows/lifecycle \
+  packages/core/src/backend/services/workflows/migration/migrate.ts \
   packages/core/src/backend/services/executions/repo/schedule.ts \
   packages/core/src/backend/services/executions/repo/fenced-writes.ts \
   packages/core/src/backend/services/executions/repo/fencing.ts \
@@ -392,8 +395,12 @@ the directories of those names under `services/workflows/`.
 | `Timing`: `WorkerLease`, `WorkerCron`, `WorkerBudget`, `QueueMaxDelay`, `Kill`, `WorkerUsesCron` | Section 8, "Cloudflare Worker over Hyperdrive" | |
 | `Timing`: `ClaimWaitsForTheDeadline` | | the `wake_at <= now` condition on `queued` and `waiting` rows in `claimDue` |
 
-Last confirmed against: the design doc at `e02009e3` and the code at
-`ba704be1` (`feat/durable-executor`), for every model. Move these commits
+Last confirmed against: the design doc at `a02b7338` and the code at
+`656f05d5` (`feat/durable-executor`), for every model. Two behaviours of the
+code have no model counterpart: a producer pulling a `queued` row's `wake_at`
+forward to now (only `Timing` has a clock, and it models no backoff), and a
+pass interrupted by dispose's drain releasing its row with nothing counted (no
+model has a graceful stop; it acts as a crash whose lease is swept at once). Move these commits
 forward only after you have read the covered sections and files at the new
 commit and confirmed that the models still describe them. When phase 2 or
 phase 3 moves a part onto
