@@ -213,6 +213,7 @@ export function sqliteExecutionLog(
     completedAt: row.completedAt === null ? null : new Date(row.completedAt),
     duration: row.duration,
     timestamp: new Date(row.timestamp),
+    retries: row.retries,
   };
 }
 
@@ -263,6 +264,7 @@ export function sqliteExecutionSchedule(
     wakeAt: new Date(row.wakeAt),
     attempt: row.attempt,
     runningStepId: row.runningStepId,
+    runningNodeId: row.runningNodeId,
     leaseExpiresAt:
       row.leaseExpiresAt === null ? null : new Date(row.leaseExpiresAt),
     ownerToken: row.ownerToken,

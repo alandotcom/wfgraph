@@ -31,7 +31,6 @@ import {
   decideRelease,
   dueSchedule,
   type DueSchedule,
-  LEASE_EXPIRED_ERROR,
   leasedUnderFence,
   openPark,
   overduePark,
@@ -39,6 +38,7 @@ import {
   requeuedByWake,
   requeuedWakeAt,
   stepFailureOf,
+  type StepFailure,
   stepMemoOf,
   sweptStepFailures,
   TIMEOUT_WAKE,
@@ -240,6 +240,7 @@ function scheduleRow(key: ScheduleRowKey): SQL {
 
 const memoColumns = {
   stepId: workflowExecutionSteps.stepId,
+  nodeId: workflowExecutionSteps.nodeId,
   status: workflowExecutionSteps.status,
   failures: workflowExecutionSteps.failures,
   value: workflowExecutionSteps.value,
@@ -263,11 +264,12 @@ function sqliteStepMemo(row: {
 
 /**
  * Counts one failure against a step's memo row, as `countStepFailure`
- * decides, answering the row it wrote.
+ * decides, answering the row it wrote. A row this creates carries the step's
+ * node id.
  */
 function countFailureOnStep(
   database: SqliteExecutor,
-  input: { scheduleId: string; stepId: string; error: string }
+  input: StepFailure & { scheduleId: string }
 ): Effect.Effect<CountedStepFailure | null, unknown> {
   return Effect.gen(function* () {
     const row = yield* database
@@ -290,6 +292,7 @@ function countFailureOnStep(
       .values({
         scheduleId: input.scheduleId,
         stepId: input.stepId,
+        nodeId: input.nodeId,
         status: counted.status,
         failures: counted.failures,
         error: counted.error,
@@ -340,6 +343,7 @@ export function makeSqliteScheduleMethods(
                 id: workflowExecutionSchedule.id,
                 state: workflowExecutionSchedule.state,
                 runningStepId: workflowExecutionSchedule.runningStepId,
+                runningNodeId: workflowExecutionSchedule.runningNodeId,
               })
               .from(workflowExecutionSchedule)
               .where(
@@ -376,6 +380,7 @@ export function makeSqliteScheduleMethods(
                 workerId: input.workerId,
                 attempt: claimAttempt(workflowExecutionSchedule),
                 runningStepId: null,
+                runningNodeId: null,
               })
               .where(
                 inArray(
@@ -386,10 +391,7 @@ export function makeSqliteScheduleMethods(
               .returning();
 
             for (const swept of sweptStepFailures(due)) {
-              yield* countFailureOnStep(database, {
-                ...swept,
-                error: LEASE_EXPIRED_ERROR,
-              });
+              yield* countFailureOnStep(database, swept);
             }
             const claimedRuns = claimed.flatMap((row) =>
               row.executionId === null ? [] : [row.executionId]
@@ -451,6 +453,7 @@ export function makeSqliteScheduleMethods(
             Effect.map((rows) =>
               rows.map((row) => ({
                 stepId: row.stepId,
+                nodeId: row.nodeId,
                 ...sqliteStepMemo(row),
               }))
             )
@@ -474,6 +477,7 @@ export function makeSqlitePassWrites(
           .set({
             leaseExpiresAt: input.leaseExpiresAt.getTime(),
             runningStepId: input.runningStepId,
+            runningNodeId: input.runningNodeId,
           })
           .where(thisSchedule)
       ).pipe(Effect.asVoid),
@@ -486,6 +490,7 @@ export function makeSqlitePassWrites(
             .values({
               scheduleId,
               stepId: input.stepId,
+              nodeId: input.nodeId,
               status: "succeeded",
               value: encodeJson(input.value),
               createdAt: Date.now(),
@@ -507,6 +512,8 @@ export function makeSqlitePassWrites(
             .set({
               leaseExpiresAt: input.leaseExpiresAt.getTime(),
               runningStepId: sql`nullif(${workflowExecutionSchedule.runningStepId}, ${input.stepId})`,
+              // Both sides read the row as it stood before this update.
+              runningNodeId: sql`case when ${workflowExecutionSchedule.runningStepId} = ${input.stepId} then null else ${workflowExecutionSchedule.runningNodeId} end`,
             })
             .where(thisSchedule);
         })
@@ -570,6 +577,7 @@ export function makeSqlitePassWrites(
               attempt: released.attempt,
               lastError: released.lastError,
               runningStepId: null,
+              runningNodeId: null,
               leaseExpiresAt: null,
               ownerToken: null,
               workerId: null,

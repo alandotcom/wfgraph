@@ -172,6 +172,7 @@ describe("getExecutionLogs", () => {
                 completedAt: new Date("2026-03-01T10:00:01.000Z"),
                 duration: "1000",
                 timestamp: new Date("2026-03-01T10:00:00.000Z"),
+                retries: 0,
               },
             ])
           )

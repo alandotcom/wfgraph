@@ -50,7 +50,6 @@ import {
   decideRelease,
   dueSchedule,
   type DueSchedule,
-  LEASE_EXPIRED_ERROR,
   leasedUnderFence,
   openPark,
   overduePark,
@@ -58,6 +57,7 @@ import {
   requeuedByWake,
   requeuedWakeAt,
   stepFailureOf,
+  type StepFailure,
   stepMemoOf,
   sweptStepFailures,
   TIMEOUT_WAKE,
@@ -352,16 +352,20 @@ export type PassWrites = {
   readonly renewLease: (input: {
     leaseExpiresAt: Date;
     runningStepId: string | null;
+    /** The node `runningStepId` does work for, or null. */
+    runningNodeId: string | null;
   }) => Effect.Effect<void, DatabaseError | LeaseLost>;
   /**
    * Record one step's value and renew the lease to `leaseExpiresAt`, in one
    * transaction holding the schedule row for update. A step already
    * `succeeded` or `failed` keeps its row; a `failing` step's row becomes
    * `succeeded` with this value and keeps its failure count. The schedule row
-   * stops naming the step as running.
+   * stops naming the step as running. A row this write creates carries
+   * `nodeId`, the node the step does work for, or null for a step of no node.
    */
   readonly writeStepMemo: (input: {
     stepId: string;
+    nodeId: string | null;
     value: JsonValue;
     leaseExpiresAt: Date;
   }) => Effect.Effect<void, DatabaseError | LeaseLost>;
@@ -448,6 +452,7 @@ export async function resolveOpenParks(
 
 const memoColumns = {
   stepId: workflowExecutionSteps.stepId,
+  nodeId: workflowExecutionSteps.nodeId,
   status: workflowExecutionSteps.status,
   failures: workflowExecutionSteps.failures,
   value: workflowExecutionSteps.value,
@@ -456,11 +461,12 @@ const memoColumns = {
 
 /**
  * Counts one failure against a step's memo row, as `countStepFailure`
- * decides, answering the row it wrote. The caller holds the schedule row.
+ * decides, answering the row it wrote. A row this creates carries the step's
+ * node id. The caller holds the schedule row.
  */
 async function countFailureOnStep(
   tx: Executor,
-  input: { scheduleId: string; stepId: string; error: string }
+  input: StepFailure & { scheduleId: string }
 ): Promise<CountedStepFailure | null> {
   const [row] = await tx
     .select(memoColumns)
@@ -481,6 +487,7 @@ async function countFailureOnStep(
     .values({
       scheduleId: input.scheduleId,
       stepId: input.stepId,
+      nodeId: input.nodeId,
       status: counted.status,
       failures: counted.failures,
       error: counted.error,
@@ -528,6 +535,7 @@ export function makeScheduleMethods(
                 id: workflowExecutionSchedule.id,
                 state: workflowExecutionSchedule.state,
                 runningStepId: workflowExecutionSchedule.runningStepId,
+                runningNodeId: workflowExecutionSchedule.runningNodeId,
               })
               .from(workflowExecutionSchedule)
               .where(
@@ -565,6 +573,7 @@ export function makeScheduleMethods(
                 workerId: input.workerId,
                 attempt: claimAttempt(workflowExecutionSchedule),
                 runningStepId: null,
+                runningNodeId: null,
               })
               .where(
                 inArray(
@@ -576,10 +585,7 @@ export function makeScheduleMethods(
 
             for (const swept of sweptStepFailures(due)) {
               // eslint-disable-next-line eslint/no-await-in-loop -- one transaction runs one statement at a time
-              await countFailureOnStep(tx, {
-                ...swept,
-                error: LEASE_EXPIRED_ERROR,
-              });
+              await countFailureOnStep(tx, swept);
             }
             await resolveOverdueParks(
               tx,
@@ -630,7 +636,11 @@ export function makeScheduleMethods(
             eq(workflowExecutionSchedule.id, workflowExecutionSteps.scheduleId)
           )
           .where(scheduleRow(key));
-        return rows.map((row) => ({ stepId: row.stepId, ...stepMemoOf(row) }));
+        return rows.map((row) => ({
+          stepId: row.stepId,
+          nodeId: row.nodeId,
+          ...stepMemoOf(row),
+        }));
       }),
   };
 }
@@ -663,6 +673,7 @@ export function makePassWrites(
             .set({
               leaseExpiresAt: input.leaseExpiresAt,
               runningStepId: input.runningStepId,
+              runningNodeId: input.runningNodeId,
             })
             .where(thisSchedule);
         },
@@ -679,6 +690,7 @@ export function makePassWrites(
             .values({
               scheduleId,
               stepId: input.stepId,
+              nodeId: input.nodeId,
               status: "succeeded",
               value: memoJson(input.value),
             })
@@ -699,6 +711,8 @@ export function makePassWrites(
             .set({
               leaseExpiresAt: input.leaseExpiresAt,
               runningStepId: sql`nullif(${workflowExecutionSchedule.runningStepId}, ${input.stepId})`,
+              // Both sides read the row as it stood before this update.
+              runningNodeId: sql`case when ${workflowExecutionSchedule.runningStepId} = ${input.stepId} then null else ${workflowExecutionSchedule.runningNodeId} end`,
             })
             .where(thisSchedule);
         },
@@ -756,6 +770,7 @@ export function makePassWrites(
               attempt: released.attempt,
               lastError: released.lastError,
               runningStepId: null,
+              runningNodeId: null,
               leaseExpiresAt: null,
               ownerToken: null,
               workerId: null,

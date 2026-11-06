@@ -189,4 +189,15 @@ export const sqliteMigrations = [
     hash: "70cef4bda12225ed66e96c43d7c2755f6886fe36bcd674f3324be03bfce80893",
     name: "20261106062051_real_alex_wilder",
   },
+  {
+    sql: [
+      "ALTER TABLE `workflow_execution_logs` ADD `retries` integer DEFAULT 0 NOT NULL;",
+      "\nALTER TABLE `workflow_execution_schedule` ADD `running_node_id` text;",
+      "\nALTER TABLE `workflow_execution_steps` ADD `node_id` text;",
+    ],
+    bps: true,
+    folderMillis: 1793985619000,
+    hash: "92c4e5f63026b45af2a902297391afd75410f27ff0aae51b6f841b15210b00a5",
+    name: "20261106172019_superb_selene",
+  },
 ] satisfies readonly MigrationMeta[];

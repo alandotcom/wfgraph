@@ -354,6 +354,7 @@ function stepMemoBook(input: StepMemoInput) {
     remember: (stepId: string, value: JsonValue) =>
       input
         .writeStepMemo({
+          nodeId: null,
           stepId,
           value,
           leaseExpiresAt: input.leaseExpiresAt(),

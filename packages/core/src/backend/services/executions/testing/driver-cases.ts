@@ -543,6 +543,7 @@ function describeCases(
           .releasePass({
             outcome: {
               kind: "step_failed",
+              nodeId: null,
               stepId: "step_1",
               error: "vendor timed out",
               backoffMs: 60 * 60 * 1000,

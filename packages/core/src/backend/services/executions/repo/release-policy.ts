@@ -58,23 +58,37 @@ export const LEASE_EXPIRED_ERROR =
 export const BUDGET_CUT_ERROR =
   "The worker's time budget ran out while this step ran";
 
+/** A failure a release or a claim counts on one step's memo row. */
+export type StepFailure = {
+  stepId: string;
+  /** The node the step does work for, written on a memo row it creates. */
+  nodeId: string | null;
+  error: string;
+};
+
 /**
  * The step failure a release counts for `outcome`: the step that threw for a
  * `step_failed` outcome, the step that was running for a budget cut, and
  * otherwise none.
  */
-export function stepFailureOf(
-  outcome: PassOutcome
-): { stepId: string; error: string } | null {
+export function stepFailureOf(outcome: PassOutcome): StepFailure | null {
   if (outcome.kind === "step_failed") {
-    return { stepId: outcome.stepId, error: outcome.error };
+    return {
+      stepId: outcome.stepId,
+      nodeId: outcome.nodeId,
+      error: outcome.error,
+    };
   }
   if (
     outcome.kind === "interrupted" &&
     outcome.by === "budget" &&
     outcome.stepId !== null
   ) {
-    return { stepId: outcome.stepId, error: BUDGET_CUT_ERROR };
+    return {
+      stepId: outcome.stepId,
+      nodeId: outcome.nodeId,
+      error: BUDGET_CUT_ERROR,
+    };
   }
   return null;
 }
@@ -116,6 +130,22 @@ export function countStepFailure(
     failures,
     error,
   };
+}
+
+/** The memo row columns `nodeRetries` reads. */
+type RetryColumns = { status: Column; failures: Column };
+
+/**
+ * How many retries a set of memo rows records, as an aggregate over them:
+ * each counted failure that another try of its step followed. A `failed`
+ * row's last failure was followed by none, so a step that spent its retries
+ * counts `STEP_RETRY_LIMIT`. Null over no rows, so a caller can tell a node
+ * with no memo rows from one whose steps never failed.
+ */
+export function nodeRetries(columns: RetryColumns): SQL<number | null> {
+  return sql<
+    number | null
+  >`cast(sum(${columns.failures} - case when ${columns.status} = 'failed' then 1 else 0 end) as integer)`;
 }
 
 /**
@@ -309,6 +339,7 @@ export type DueRow = {
   id: string;
   state: string;
   runningStepId: string | null;
+  runningNodeId: string | null;
 };
 
 /**
@@ -317,10 +348,17 @@ export type DueRow = {
  */
 export function sweptStepFailures(
   rows: readonly DueRow[]
-): { scheduleId: string; stepId: string }[] {
+): (StepFailure & { scheduleId: string })[] {
   return rows.flatMap((row) =>
     row.state === "leased" && row.runningStepId !== null
-      ? [{ scheduleId: row.id, stepId: row.runningStepId }]
+      ? [
+          {
+            scheduleId: row.id,
+            stepId: row.runningStepId,
+            nodeId: row.runningNodeId,
+            error: LEASE_EXPIRED_ERROR,
+          },
+        ]
       : []
   );
 }

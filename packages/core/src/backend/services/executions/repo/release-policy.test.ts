@@ -4,6 +4,7 @@ import {
   countStepFailure,
   decideRelease,
   exitWakeForClaim,
+  LEASE_EXPIRED_ERROR,
   retriesSpent,
   STEP_RETRY_LIMIT,
   stepFailureOf,
@@ -54,11 +55,33 @@ describe("sweptStepFailures", () => {
   it("counts an expired lease against the step its row recorded, and nothing for a row that was not leased", () => {
     expect(
       sweptStepFailures([
-        { id: "sched_1", state: "leased", runningStepId: "step_a" },
-        { id: "sched_2", state: "leased", runningStepId: null },
-        { id: "sched_3", state: "queued", runningStepId: null },
+        {
+          id: "sched_1",
+          state: "leased",
+          runningStepId: "step_a",
+          runningNodeId: "node_a",
+        },
+        {
+          id: "sched_2",
+          state: "leased",
+          runningStepId: null,
+          runningNodeId: null,
+        },
+        {
+          id: "sched_3",
+          state: "queued",
+          runningStepId: null,
+          runningNodeId: null,
+        },
       ])
-    ).toEqual([{ scheduleId: "sched_1", stepId: "step_a" }]);
+    ).toEqual([
+      {
+        scheduleId: "sched_1",
+        stepId: "step_a",
+        nodeId: "node_a",
+        error: LEASE_EXPIRED_ERROR,
+      },
+    ]);
   });
 });
 
@@ -67,16 +90,27 @@ describe("stepFailureOf", () => {
     expect(
       stepFailureOf({
         kind: "step_failed",
+        nodeId: "node_a",
         stepId: "step_a",
         error: "down",
         backoffMs: 1_000,
       })
-    ).toEqual({ stepId: "step_a", error: "down" });
+    ).toEqual({ stepId: "step_a", nodeId: "node_a", error: "down" });
     expect(
-      stepFailureOf({ kind: "interrupted", by: "budget", stepId: "step_a" })
-    ).toEqual({ stepId: "step_a", error: BUDGET_CUT_ERROR });
+      stepFailureOf({
+        kind: "interrupted",
+        by: "budget",
+        nodeId: null,
+        stepId: "step_a",
+      })
+    ).toEqual({ stepId: "step_a", nodeId: null, error: BUDGET_CUT_ERROR });
     expect(
-      stepFailureOf({ kind: "interrupted", by: "budget", stepId: null })
+      stepFailureOf({
+        kind: "interrupted",
+        by: "budget",
+        nodeId: null,
+        stepId: null,
+      })
     ).toBeNull();
     expect(stepFailureOf({ kind: "interrupted", by: "drain" })).toBeNull();
   });
@@ -88,6 +122,7 @@ describe("decideRelease", () => {
   it("waits out a failing step's backoff, and re-queues a failed step at once", () => {
     const outcome = {
       kind: "step_failed",
+      nodeId: null,
       stepId: "step_a",
       error: "down",
       backoffMs: 2_000,
@@ -155,7 +190,12 @@ describe("decideRelease", () => {
     ).toEqual({ state: "queued", wakeAt: NOW, attempt: 2, lastError: null });
     expect(
       decideRelease({
-        outcome: { kind: "interrupted", by: "budget", stepId: "step_a" },
+        outcome: {
+          kind: "interrupted",
+          by: "budget",
+          nodeId: null,
+          stepId: "step_a",
+        },
         attempt: 2,
         now: NOW,
         parks: [],

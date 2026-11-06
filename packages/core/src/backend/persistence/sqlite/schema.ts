@@ -208,6 +208,7 @@ export const workflowExecutionLogs = sqliteTable(
     completedAt: integer("completed_at"),
     duration: text("duration"),
     timestamp: integer("timestamp").notNull(),
+    retries: integer("retries").notNull().default(0),
     releasedOutlet: text("released_outlet"),
   },
   (table) => [
@@ -370,6 +371,7 @@ export const workflowExecutionSchedule = sqliteTable(
     wakeAt: integer("wake_at").notNull(),
     attempt: integer("attempt").notNull().default(0),
     runningStepId: text("running_step_id"),
+    runningNodeId: text("running_node_id"),
     leaseExpiresAt: integer("lease_expires_at"),
     ownerToken: text("owner_token"),
     workerId: text("worker_id"),
@@ -411,6 +413,7 @@ export const workflowExecutionSteps = sqliteTable(
       .notNull()
       .references(() => workflowExecutionSchedule.id, { onDelete: "cascade" }),
     stepId: text("step_id").notNull(),
+    nodeId: text("node_id"),
     status: text("status").notNull(),
     failures: integer("failures").notNull().default(0),
     value: text("value"),

@@ -1,0 +1,2373 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "id": "61ddb86e-bc3f-4699-9c87-ee868a3e950e",
+  "prevIds": ["6e984460-0f37-447b-9962-883f2a0ef25d"],
+  "ddl": [
+    {
+      "name": "integrations",
+      "entityType": "tables"
+    },
+    {
+      "name": "oauth_authorization_attempts",
+      "entityType": "tables"
+    },
+    {
+      "name": "workflow_cancel_decisions",
+      "entityType": "tables"
+    },
+    {
+      "name": "workflow_event_inbox",
+      "entityType": "tables"
+    },
+    {
+      "name": "workflow_event_subscriptions",
+      "entityType": "tables"
+    },
+    {
+      "name": "workflow_execution_events",
+      "entityType": "tables"
+    },
+    {
+      "name": "workflow_execution_logs",
+      "entityType": "tables"
+    },
+    {
+      "name": "workflow_execution_schedule",
+      "entityType": "tables"
+    },
+    {
+      "name": "workflow_execution_steps",
+      "entityType": "tables"
+    },
+    {
+      "name": "workflow_executions",
+      "entityType": "tables"
+    },
+    {
+      "name": "workflow_versions",
+      "entityType": "tables"
+    },
+    {
+      "name": "workflow_wait_states",
+      "entityType": "tables"
+    },
+    {
+      "name": "workflows",
+      "entityType": "tables"
+    },
+    {
+      "table": "integrations",
+      "name": "id",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "integrations",
+      "name": "name",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "integrations",
+      "name": "type",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "integrations",
+      "name": "config",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "integrations",
+      "name": "is_managed",
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": "0",
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "integrations",
+      "name": "refresh_state",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "'idle'",
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "integrations",
+      "name": "config_revision",
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "0",
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "integrations",
+      "name": "refresh_claim_id",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "integrations",
+      "name": "refresh_claimed_at",
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "integrations",
+      "name": "created_at",
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "integrations",
+      "name": "updated_at",
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "oauth_authorization_attempts",
+      "name": "state_hash",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "oauth_authorization_attempts",
+      "name": "integration_id",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "oauth_authorization_attempts",
+      "name": "expires_at",
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "oauth_authorization_attempts",
+      "name": "browser_binding_hash",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "oauth_authorization_attempts",
+      "name": "encrypted_payload",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "oauth_authorization_attempts",
+      "name": "mode",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "oauth_authorization_attempts",
+      "name": "status",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "oauth_authorization_attempts",
+      "name": "result_integration_id",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "oauth_authorization_attempts",
+      "name": "created_at",
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "oauth_authorization_attempts",
+      "name": "updated_at",
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_cancel_decisions",
+      "name": "delivery_id",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_cancel_decisions",
+      "name": "workflow_id",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_cancel_decisions",
+      "name": "decided_at",
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_event_inbox",
+      "name": "id",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": "(lower(hex(randomblob(16))))",
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_event_inbox",
+      "name": "name",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_event_inbox",
+      "name": "data",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_event_inbox",
+      "name": "connection_id",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_event_inbox",
+      "name": "idempotency_key",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_event_inbox",
+      "name": "received_at",
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "(cast(unixepoch('subsec') * 1000 as integer))",
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_event_inbox",
+      "name": "status",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "'pending'",
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_event_inbox",
+      "name": "error",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_event_inbox",
+      "name": "settled_at",
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_event_subscriptions",
+      "name": "workflow_id",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_event_subscriptions",
+      "name": "event_name",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_event_subscriptions",
+      "name": "role",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_event_subscriptions",
+      "name": "correlation_path",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_event_subscriptions",
+      "name": "connection_id",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_events",
+      "name": "id",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_events",
+      "name": "workflow_id",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_events",
+      "name": "execution_id",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_events",
+      "name": "event_type",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_events",
+      "name": "message",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_events",
+      "name": "metadata",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_events",
+      "name": "created_at",
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_logs",
+      "name": "id",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_logs",
+      "name": "execution_id",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_logs",
+      "name": "node_id",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_logs",
+      "name": "node_name",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_logs",
+      "name": "node_type",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_logs",
+      "name": "status",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_logs",
+      "name": "input",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_logs",
+      "name": "output",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_logs",
+      "name": "error",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_logs",
+      "name": "started_at",
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_logs",
+      "name": "completed_at",
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_logs",
+      "name": "duration",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_logs",
+      "name": "timestamp",
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_logs",
+      "name": "retries",
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "0",
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_logs",
+      "name": "released_outlet",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_schedule",
+      "name": "id",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_schedule",
+      "name": "kind",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_schedule",
+      "name": "execution_id",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_schedule",
+      "name": "inbox_id",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_schedule",
+      "name": "state",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_schedule",
+      "name": "wake_at",
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_schedule",
+      "name": "attempt",
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "0",
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_schedule",
+      "name": "running_step_id",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_schedule",
+      "name": "running_node_id",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_schedule",
+      "name": "lease_expires_at",
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_schedule",
+      "name": "owner_token",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_schedule",
+      "name": "worker_id",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_schedule",
+      "name": "last_error",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_steps",
+      "name": "schedule_id",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_steps",
+      "name": "step_id",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_steps",
+      "name": "node_id",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_steps",
+      "name": "status",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_steps",
+      "name": "failures",
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "0",
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_steps",
+      "name": "value",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_steps",
+      "name": "error",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_execution_steps",
+      "name": "created_at",
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "id",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "workflow_id",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "workflow_version_id",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "status",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "start_source",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "delivery_id",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "run_mode",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "'live'",
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "start_event_name",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "entity_value",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "entity_type",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "entity_id",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "input",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "output",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "error",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "started_at",
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "waiting_at",
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "cancelled_at",
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "completed_at",
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "duration",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "termination_kind",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "termination_requested_at",
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "termination_reason",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "termination_node_id",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "cancel_event_name",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "cancel_payload",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "cancel_delivery_id",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_versions",
+      "name": "id",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_versions",
+      "name": "workflow_id",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_versions",
+      "name": "version",
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_versions",
+      "name": "kind",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "'published'",
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_versions",
+      "name": "graph",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_versions",
+      "name": "catalog_fingerprint",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_versions",
+      "name": "graph_digest",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_versions",
+      "name": "published_at",
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_wait_states",
+      "name": "id",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_wait_states",
+      "name": "execution_id",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_wait_states",
+      "name": "workflow_id",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_wait_states",
+      "name": "node_id",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_wait_states",
+      "name": "node_name",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_wait_states",
+      "name": "wait_type",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_wait_states",
+      "name": "status",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_wait_states",
+      "name": "resume_token",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_wait_states",
+      "name": "wait_until",
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_wait_states",
+      "name": "subscribed_events",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "'[]'",
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_wait_states",
+      "name": "metadata",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_wait_states",
+      "name": "created_at",
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_wait_states",
+      "name": "resumed_at",
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_wait_states",
+      "name": "cancelled_at",
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_wait_states",
+      "name": "park_step_id",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflow_wait_states",
+      "name": "wake",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflows",
+      "name": "id",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflows",
+      "name": "name",
+      "type": "text COLLATE NOCASE",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflows",
+      "name": "description",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflows",
+      "name": "graph",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflows",
+      "name": "draft_revision",
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "1",
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflows",
+      "name": "is_paused",
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "0",
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflows",
+      "name": "mode",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "'live'",
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflows",
+      "name": "visibility",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "'private'",
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflows",
+      "name": "published_version_id",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflows",
+      "name": "created_at",
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workflows",
+      "name": "updated_at",
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "integrations",
+      "name": "integrations_type_idx",
+      "columns": [
+        {
+          "value": "type",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "entityType": "indexes"
+    },
+    {
+      "table": "oauth_authorization_attempts",
+      "name": "oauth_attempts_integration_idx",
+      "columns": [
+        {
+          "value": "integration_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "entityType": "indexes"
+    },
+    {
+      "table": "oauth_authorization_attempts",
+      "name": "oauth_attempts_expires_at_idx",
+      "columns": [
+        {
+          "value": "expires_at",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "entityType": "indexes"
+    },
+    {
+      "table": "workflow_event_inbox",
+      "name": "inbox_idempotency_uidx",
+      "columns": [
+        {
+          "value": "name",
+          "isExpression": false
+        },
+        {
+          "value": "coalesce(\"connection_id\", '')",
+          "isExpression": true
+        },
+        {
+          "value": "idempotency_key",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": "\"workflow_event_inbox\".\"idempotency_key\" is not null",
+      "origin": "manual",
+      "entityType": "indexes"
+    },
+    {
+      "table": "workflow_event_inbox",
+      "name": "inbox_pending_idx",
+      "columns": [
+        {
+          "value": "received_at",
+          "isExpression": false
+        },
+        {
+          "value": "id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": "\"workflow_event_inbox\".\"status\" = 'pending'",
+      "origin": "manual",
+      "entityType": "indexes"
+    },
+    {
+      "table": "workflow_event_inbox",
+      "name": "inbox_settled_idx",
+      "columns": [
+        {
+          "value": "received_at",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": "\"workflow_event_inbox\".\"status\" <> 'pending'",
+      "origin": "manual",
+      "entityType": "indexes"
+    },
+    {
+      "table": "workflow_event_subscriptions",
+      "name": "subscriptions_event_idx",
+      "columns": [
+        {
+          "value": "event_name",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "entityType": "indexes"
+    },
+    {
+      "table": "workflow_execution_events",
+      "name": "events_execution_created_idx",
+      "columns": [
+        {
+          "value": "execution_id",
+          "isExpression": false
+        },
+        {
+          "value": "created_at",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "entityType": "indexes"
+    },
+    {
+      "table": "workflow_execution_events",
+      "name": "events_workflow_type_created_idx",
+      "columns": [
+        {
+          "value": "workflow_id",
+          "isExpression": false
+        },
+        {
+          "value": "event_type",
+          "isExpression": false
+        },
+        {
+          "value": "created_at",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "entityType": "indexes"
+    },
+    {
+      "table": "workflow_execution_logs",
+      "name": "logs_execution_timestamp_idx",
+      "columns": [
+        {
+          "value": "execution_id",
+          "isExpression": false
+        },
+        {
+          "value": "timestamp",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "entityType": "indexes"
+    },
+    {
+      "table": "workflow_execution_schedule",
+      "name": "schedule_execution_uidx",
+      "columns": [
+        {
+          "value": "execution_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "entityType": "indexes"
+    },
+    {
+      "table": "workflow_execution_schedule",
+      "name": "schedule_inbox_uidx",
+      "columns": [
+        {
+          "value": "inbox_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "entityType": "indexes"
+    },
+    {
+      "table": "workflow_execution_schedule",
+      "name": "schedule_due_idx",
+      "columns": [
+        {
+          "value": "wake_at",
+          "isExpression": false
+        },
+        {
+          "value": "id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": "\"workflow_execution_schedule\".\"state\" in ('queued', 'waiting')",
+      "origin": "manual",
+      "entityType": "indexes"
+    },
+    {
+      "table": "workflow_execution_schedule",
+      "name": "schedule_lease_idx",
+      "columns": [
+        {
+          "value": "lease_expires_at",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": "\"workflow_execution_schedule\".\"state\" = 'leased'",
+      "origin": "manual",
+      "entityType": "indexes"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "workflow_executions_workflow_id_delivery_id_uidx",
+      "columns": [
+        {
+          "value": "workflow_id",
+          "isExpression": false
+        },
+        {
+          "value": "delivery_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "entityType": "indexes"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "executions_workflow_started_idx",
+      "columns": [
+        {
+          "value": "workflow_id",
+          "isExpression": false
+        },
+        {
+          "value": "started_at",
+          "isExpression": false
+        },
+        {
+          "value": "id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "entityType": "indexes"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "executions_started_idx",
+      "columns": [
+        {
+          "value": "started_at",
+          "isExpression": false
+        },
+        {
+          "value": "id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "entityType": "indexes"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "executions_entity_idx",
+      "columns": [
+        {
+          "value": "workflow_id",
+          "isExpression": false
+        },
+        {
+          "value": "entity_value",
+          "isExpression": false
+        },
+        {
+          "value": "run_mode",
+          "isExpression": false
+        },
+        {
+          "value": "status",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "entityType": "indexes"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "executions_typed_entity_idx",
+      "columns": [
+        {
+          "value": "workflow_id",
+          "isExpression": false
+        },
+        {
+          "value": "entity_type",
+          "isExpression": false
+        },
+        {
+          "value": "entity_id",
+          "isExpression": false
+        },
+        {
+          "value": "run_mode",
+          "isExpression": false
+        },
+        {
+          "value": "status",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "entityType": "indexes"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "executions_workflow_in_flight_version_started_idx",
+      "columns": [
+        {
+          "value": "workflow_id",
+          "isExpression": false
+        },
+        {
+          "value": "workflow_version_id",
+          "isExpression": false
+        },
+        {
+          "value": "started_at",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": "\"workflow_executions\".\"status\" in ('pending', 'running', 'waiting')",
+      "origin": "manual",
+      "entityType": "indexes"
+    },
+    {
+      "table": "workflow_versions",
+      "name": "workflow_versions_workflow_id_version_uidx",
+      "columns": [
+        {
+          "value": "workflow_id",
+          "isExpression": false
+        },
+        {
+          "value": "version",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "entityType": "indexes"
+    },
+    {
+      "table": "workflow_wait_states",
+      "name": "waits_execution_status_idx",
+      "columns": [
+        {
+          "value": "execution_id",
+          "isExpression": false
+        },
+        {
+          "value": "status",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "entityType": "indexes"
+    },
+    {
+      "table": "workflow_wait_states",
+      "name": "waits_workflow_status_idx",
+      "columns": [
+        {
+          "value": "workflow_id",
+          "isExpression": false
+        },
+        {
+          "value": "status",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "entityType": "indexes"
+    },
+    {
+      "table": "oauth_authorization_attempts",
+      "name": "fk_oauth_authorization_attempts_integration_id_integrations_id_fk",
+      "columns": ["integration_id"],
+      "tableTo": "integrations",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "entityType": "fks"
+    },
+    {
+      "table": "workflow_cancel_decisions",
+      "name": "fk_workflow_cancel_decisions_delivery_id_workflow_event_inbox_id_fk",
+      "columns": ["delivery_id"],
+      "tableTo": "workflow_event_inbox",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "entityType": "fks"
+    },
+    {
+      "table": "workflow_event_subscriptions",
+      "name": "fk_workflow_event_subscriptions_workflow_id_workflows_id_fk",
+      "columns": ["workflow_id"],
+      "tableTo": "workflows",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "entityType": "fks"
+    },
+    {
+      "table": "workflow_execution_events",
+      "name": "fk_workflow_execution_events_workflow_id_workflows_id_fk",
+      "columns": ["workflow_id"],
+      "tableTo": "workflows",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "entityType": "fks"
+    },
+    {
+      "table": "workflow_execution_events",
+      "name": "fk_workflow_execution_events_execution_id_workflow_executions_id_fk",
+      "columns": ["execution_id"],
+      "tableTo": "workflow_executions",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "entityType": "fks"
+    },
+    {
+      "table": "workflow_execution_logs",
+      "name": "fk_workflow_execution_logs_execution_id_workflow_executions_id_fk",
+      "columns": ["execution_id"],
+      "tableTo": "workflow_executions",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "entityType": "fks"
+    },
+    {
+      "table": "workflow_execution_schedule",
+      "name": "fk_workflow_execution_schedule_execution_id_workflow_executions_id_fk",
+      "columns": ["execution_id"],
+      "tableTo": "workflow_executions",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "entityType": "fks"
+    },
+    {
+      "table": "workflow_execution_schedule",
+      "name": "fk_workflow_execution_schedule_inbox_id_workflow_event_inbox_id_fk",
+      "columns": ["inbox_id"],
+      "tableTo": "workflow_event_inbox",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "entityType": "fks"
+    },
+    {
+      "table": "workflow_execution_steps",
+      "name": "fk_workflow_execution_steps_schedule_id_workflow_execution_schedule_id_fk",
+      "columns": ["schedule_id"],
+      "tableTo": "workflow_execution_schedule",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "entityType": "fks"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "fk_workflow_executions_workflow_id_workflows_id_fk",
+      "columns": ["workflow_id"],
+      "tableTo": "workflows",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "entityType": "fks"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "fk_workflow_executions_workflow_version_id_workflow_versions_id_fk",
+      "columns": ["workflow_version_id"],
+      "tableTo": "workflow_versions",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "entityType": "fks"
+    },
+    {
+      "table": "workflow_versions",
+      "name": "fk_workflow_versions_workflow_id_workflows_id_fk",
+      "columns": ["workflow_id"],
+      "tableTo": "workflows",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "entityType": "fks"
+    },
+    {
+      "table": "workflow_wait_states",
+      "name": "fk_workflow_wait_states_execution_id_workflow_executions_id_fk",
+      "columns": ["execution_id"],
+      "tableTo": "workflow_executions",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "entityType": "fks"
+    },
+    {
+      "table": "workflow_wait_states",
+      "name": "fk_workflow_wait_states_workflow_id_workflows_id_fk",
+      "columns": ["workflow_id"],
+      "tableTo": "workflows",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "entityType": "fks"
+    },
+    {
+      "table": "workflows",
+      "name": "fk_workflows_published_version_id_workflow_versions_id_fk",
+      "columns": ["published_version_id"],
+      "tableTo": "workflow_versions",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "nameExplicit": false,
+      "entityType": "fks"
+    },
+    {
+      "table": "workflow_cancel_decisions",
+      "name": "workflow_cancel_decisions_pk",
+      "columns": ["delivery_id", "workflow_id"],
+      "nameExplicit": false,
+      "entityType": "pks"
+    },
+    {
+      "table": "workflow_event_subscriptions",
+      "name": "workflow_event_subscriptions_pk",
+      "columns": ["workflow_id", "event_name", "role"],
+      "nameExplicit": false,
+      "entityType": "pks"
+    },
+    {
+      "table": "workflow_execution_steps",
+      "name": "workflow_execution_steps_pk",
+      "columns": ["schedule_id", "step_id"],
+      "nameExplicit": false,
+      "entityType": "pks"
+    },
+    {
+      "table": "integrations",
+      "name": "integrations_pk",
+      "columns": ["id"],
+      "nameExplicit": false,
+      "entityType": "pks"
+    },
+    {
+      "table": "oauth_authorization_attempts",
+      "name": "oauth_authorization_attempts_pk",
+      "columns": ["state_hash"],
+      "nameExplicit": false,
+      "entityType": "pks"
+    },
+    {
+      "table": "workflow_event_inbox",
+      "name": "workflow_event_inbox_pk",
+      "columns": ["id"],
+      "nameExplicit": false,
+      "entityType": "pks"
+    },
+    {
+      "table": "workflow_execution_events",
+      "name": "workflow_execution_events_pk",
+      "columns": ["id"],
+      "nameExplicit": false,
+      "entityType": "pks"
+    },
+    {
+      "table": "workflow_execution_logs",
+      "name": "workflow_execution_logs_pk",
+      "columns": ["id"],
+      "nameExplicit": false,
+      "entityType": "pks"
+    },
+    {
+      "table": "workflow_execution_schedule",
+      "name": "workflow_execution_schedule_pk",
+      "columns": ["id"],
+      "nameExplicit": false,
+      "entityType": "pks"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "workflow_executions_pk",
+      "columns": ["id"],
+      "nameExplicit": false,
+      "entityType": "pks"
+    },
+    {
+      "table": "workflow_versions",
+      "name": "workflow_versions_pk",
+      "columns": ["id"],
+      "nameExplicit": false,
+      "entityType": "pks"
+    },
+    {
+      "table": "workflow_wait_states",
+      "name": "workflow_wait_states_pk",
+      "columns": ["id"],
+      "nameExplicit": false,
+      "entityType": "pks"
+    },
+    {
+      "table": "workflows",
+      "name": "workflows_pk",
+      "columns": ["id"],
+      "nameExplicit": false,
+      "entityType": "pks"
+    },
+    {
+      "table": "workflow_wait_states",
+      "name": "workflow_wait_states_resume_token_unique",
+      "columns": ["resume_token"],
+      "nameExplicit": false,
+      "entityType": "uniques"
+    },
+    {
+      "table": "workflows",
+      "name": "workflows_name_unique",
+      "columns": ["name"],
+      "nameExplicit": false,
+      "entityType": "uniques"
+    },
+    {
+      "table": "integrations",
+      "name": "integrations_is_managed_check",
+      "value": "\"is_managed\" is null or \"is_managed\" in (0, 1)",
+      "entityType": "checks"
+    },
+    {
+      "table": "integrations",
+      "name": "integrations_refresh_state_check",
+      "value": "\"refresh_state\" in ('idle', 'refreshing', 'reauthorization_required')",
+      "entityType": "checks"
+    },
+    {
+      "table": "oauth_authorization_attempts",
+      "name": "oauth_authorization_attempts_mode_check",
+      "value": "\"mode\" in ('create', 'reconnect')",
+      "entityType": "checks"
+    },
+    {
+      "table": "oauth_authorization_attempts",
+      "name": "oauth_authorization_attempts_status_check",
+      "value": "\"status\" in ('pending', 'processing', 'succeeded', 'failed')",
+      "entityType": "checks"
+    },
+    {
+      "table": "workflow_event_inbox",
+      "name": "workflow_event_inbox_status_check",
+      "value": "\"status\" in ('pending', 'delivered', 'failed')",
+      "entityType": "checks"
+    },
+    {
+      "table": "workflow_event_inbox",
+      "name": "workflow_event_inbox_settled_check",
+      "value": "(\"status\" = 'pending' and \"settled_at\" is null and \"error\" is null) or (\"status\" = 'delivered' and \"settled_at\" is not null and \"error\" is null) or (\"status\" = 'failed' and \"settled_at\" is not null and \"error\" is not null)",
+      "entityType": "checks"
+    },
+    {
+      "table": "workflow_event_inbox",
+      "name": "workflow_event_inbox_data_json_check",
+      "value": "json_valid(\"data\") and json_type(\"data\") = 'object'",
+      "entityType": "checks"
+    },
+    {
+      "table": "workflow_event_subscriptions",
+      "name": "workflow_event_subscriptions_role_check",
+      "value": "\"role\" in ('start', 'cancel', 'wait')",
+      "entityType": "checks"
+    },
+    {
+      "table": "workflow_execution_events",
+      "name": "workflow_execution_events_metadata_json_check",
+      "value": "\"metadata\" is null or (json_valid(\"metadata\") and json_type(\"metadata\") = 'object')",
+      "entityType": "checks"
+    },
+    {
+      "table": "workflow_execution_logs",
+      "name": "workflow_execution_logs_status_check",
+      "value": "\"status\" in ('pending', 'running', 'success', 'error', 'cancelled')",
+      "entityType": "checks"
+    },
+    {
+      "table": "workflow_execution_logs",
+      "name": "workflow_execution_logs_input_json_check",
+      "value": "\"input\" is null or json_valid(\"input\")",
+      "entityType": "checks"
+    },
+    {
+      "table": "workflow_execution_logs",
+      "name": "workflow_execution_logs_output_json_check",
+      "value": "\"output\" is null or json_valid(\"output\")",
+      "entityType": "checks"
+    },
+    {
+      "table": "workflow_execution_schedule",
+      "name": "workflow_execution_schedule_kind_check",
+      "value": "\"kind\" in ('run', 'delivery')",
+      "entityType": "checks"
+    },
+    {
+      "table": "workflow_execution_schedule",
+      "name": "workflow_execution_schedule_state_check",
+      "value": "\"state\" in ('queued', 'leased', 'waiting')",
+      "entityType": "checks"
+    },
+    {
+      "table": "workflow_execution_schedule",
+      "name": "workflow_execution_schedule_subject_check",
+      "value": "(\"kind\" = 'run' and \"execution_id\" is not null and \"inbox_id\" is null) or (\"kind\" = 'delivery' and \"inbox_id\" is not null and \"execution_id\" is null)",
+      "entityType": "checks"
+    },
+    {
+      "table": "workflow_execution_steps",
+      "name": "workflow_execution_steps_status_check",
+      "value": "\"status\" in ('succeeded', 'failing', 'failed')",
+      "entityType": "checks"
+    },
+    {
+      "table": "workflow_execution_steps",
+      "name": "workflow_execution_steps_error_check",
+      "value": "(\"status\" = 'succeeded') = (\"error\" is null)",
+      "entityType": "checks"
+    },
+    {
+      "table": "workflow_execution_steps",
+      "name": "workflow_execution_steps_value_json_check",
+      "value": "\"value\" is null or json_valid(\"value\")",
+      "entityType": "checks"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "workflow_executions_status_check",
+      "value": "\"status\" in ('pending', 'running', 'waiting', 'completed', 'failed', 'canceled', 'exited', 'superseded')",
+      "entityType": "checks"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "workflow_executions_entity_identity_pair_check",
+      "value": "(\"entity_type\" is null and \"entity_id\" is null) or (\"entity_type\" is not null and \"entity_id\" is not null)",
+      "entityType": "checks"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "workflow_executions_termination_check",
+      "value": "(\"termination_kind\" is null and \"termination_requested_at\" is null and \"termination_reason\" is null and \"termination_node_id\" is null) or (\"termination_kind\" = 'cancel' and \"termination_requested_at\" is not null and \"termination_reason\" is null and \"termination_node_id\" is null) or (\"termination_kind\" = 'exit' and \"termination_requested_at\" is not null and \"termination_reason\" in ('entity_condition_not_met', 'entity_not_found') and \"termination_node_id\" is not null)",
+      "entityType": "checks"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "workflow_executions_start_source_check",
+      "value": "\"start_source\" in ('event', 'manual', 'schedule')",
+      "entityType": "checks"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "workflow_executions_run_mode_check",
+      "value": "\"run_mode\" in ('live', 'test')",
+      "entityType": "checks"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "workflow_executions_input_json_check",
+      "value": "\"input\" is null or json_valid(\"input\")",
+      "entityType": "checks"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "workflow_executions_output_json_check",
+      "value": "\"output\" is null or json_valid(\"output\")",
+      "entityType": "checks"
+    },
+    {
+      "table": "workflow_executions",
+      "name": "workflow_executions_cancel_payload_json_check",
+      "value": "\"cancel_payload\" is null or json_valid(\"cancel_payload\")",
+      "entityType": "checks"
+    },
+    {
+      "table": "workflow_versions",
+      "name": "workflow_versions_kind_check",
+      "value": "\"kind\" in ('published', 'draft_snapshot')",
+      "entityType": "checks"
+    },
+    {
+      "table": "workflow_wait_states",
+      "name": "workflow_wait_states_wait_type_check",
+      "value": "\"wait_type\" in ('delay', 'event')",
+      "entityType": "checks"
+    },
+    {
+      "table": "workflow_wait_states",
+      "name": "workflow_wait_states_status_check",
+      "value": "\"status\" in ('waiting', 'resuming', 'resumed', 'timed_out', 'cancelled')",
+      "entityType": "checks"
+    },
+    {
+      "table": "workflow_wait_states",
+      "name": "workflow_wait_states_subscribed_events_json_check",
+      "value": "json_valid(\"subscribed_events\") and json_type(\"subscribed_events\") = 'array'",
+      "entityType": "checks"
+    },
+    {
+      "table": "workflow_wait_states",
+      "name": "workflow_wait_states_metadata_json_check",
+      "value": "\"metadata\" is null or (json_valid(\"metadata\") and json_type(\"metadata\") = 'object')",
+      "entityType": "checks"
+    },
+    {
+      "table": "workflows",
+      "name": "workflows_is_paused_check",
+      "value": "\"is_paused\" in (0, 1)",
+      "entityType": "checks"
+    },
+    {
+      "table": "workflows",
+      "name": "workflows_mode_check",
+      "value": "\"mode\" in ('live', 'test')",
+      "entityType": "checks"
+    },
+    {
+      "table": "workflows",
+      "name": "workflows_visibility_check",
+      "value": "\"visibility\" in ('private', 'public')",
+      "entityType": "checks"
+    }
+  ],
+  "renames": []
+}

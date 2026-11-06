@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
 import type { Effect } from "effect";
-import { workflowExecutionLogs } from "#src/backend/lib/db/schema";
+import {
+  workflowExecutionLogs,
+  workflowExecutionSchedule,
+  workflowExecutionSteps,
+} from "#src/backend/lib/db/schema";
 import type {
   WfGraphDatabase,
   WfGraphTransaction,
@@ -11,6 +15,7 @@ import type {
   RunFence,
   WorkflowExecutionLog,
 } from "#src/backend/services/executions/repo/contracts";
+import { nodeRetries } from "#src/backend/services/executions/repo/release-policy";
 import type { JsonValue } from "@wfgraph/shared/types/json";
 
 type Executor = WfGraphDatabase | WfGraphTransaction;
@@ -63,6 +68,9 @@ export type NodeLogsRepoMethods = {
    * Close a row `openNodeLog` opened, whatever it holds, which is how a retry
    * corrects the verdict an earlier attempt wrote. The fenced close
    * (`ExecutionRepo.fenced`) closes only a row that is `running` or `error`.
+   * The close also writes the row's `retries` from the step memo rows of its
+   * run that carry its node id (`nodeRetries`), and leaves the count as it
+   * was when the run has no such rows, as after the run ended.
    */
   readonly closeNodeLog: (
     input: CloseNodeLogInput
@@ -129,6 +137,35 @@ export function openNodeLogWrite(input: OpenNodeLogInput) {
 }
 
 /**
+ * The retries the step memo of a log row's run records against the row's
+ * node, or null when the memo holds no row of that node.
+ */
+async function readNodeRetries(
+  db: Executor,
+  logId: string
+): Promise<number | null> {
+  const [row] = await db
+    .select({ retries: nodeRetries(workflowExecutionSteps) })
+    .from(workflowExecutionSteps)
+    .innerJoin(
+      workflowExecutionSchedule,
+      eq(workflowExecutionSchedule.id, workflowExecutionSteps.scheduleId)
+    )
+    .innerJoin(
+      workflowExecutionLogs,
+      and(
+        eq(
+          workflowExecutionLogs.executionId,
+          workflowExecutionSchedule.executionId
+        ),
+        eq(workflowExecutionLogs.nodeId, workflowExecutionSteps.nodeId)
+      )
+    )
+    .where(eq(workflowExecutionLogs.id, logId));
+  return row?.retries ?? null;
+}
+
+/**
  * The update behind `closeNodeLog`. Given a fence, it closes only a row of the
  * fenced Execution that is `running` or `error`. `runWithStepLog` closes a row
  * as `error` before it rethrows a retriable error, so a later attempt of the
@@ -137,10 +174,15 @@ export function openNodeLogWrite(input: OpenNodeLogInput) {
  */
 export function closeNodeLogWrite(input: CloseNodeLogInput, fence?: RunFence) {
   return async (db: Executor): Promise<void> => {
+    const retries = await readNodeRetries(db, input.logId);
     await db
       .update(workflowExecutionLogs)
       .set({
         status: input.status,
+        // Null when the memo holds no row of this node, as after the run
+        // ended. Drizzle leaves an undefined key out of the update, so the
+        // row keeps the count it holds.
+        retries: retries ?? undefined,
         // Drizzle leaves an undefined key out of the update, so an absent
         // payload is written as null to clear what an earlier close wrote.
         output: input.output ?? null,

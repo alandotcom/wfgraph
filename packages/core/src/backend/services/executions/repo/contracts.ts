@@ -89,6 +89,8 @@ export type ExecutionSchedule = {
   attempt: number;
   /** The step the leased pass last recorded as running, or null. */
   runningStepId: string | null;
+  /** The node `runningStepId` does work for, or null for a step of no node. */
+  runningNodeId: string | null;
   leaseExpiresAt: Date | null;
   ownerToken: string | null;
   workerId: string | null;
@@ -158,10 +160,10 @@ export type ClaimLane = { kind: ExecutionScheduleKind; limit: number };
  *   when a park holds a wake the pass did not consume, and otherwise puts it to
  *   sleep until its earliest park deadline.
  * - `step_failed`: the step `stepId` threw a retriable error. The release
- *   counts one failure on that step's memo row. A step still within its
- *   retries is re-queued after `backoffMs`; a step whose count passed the
- *   limit becomes `failed` and the run is re-queued at once, so the step fails
- *   its node and the rest of the run goes on.
+ *   counts one failure on that step's memo row, which carries `nodeId`. A
+ *   step still within its retries is re-queued after `backoffMs`; a step whose
+ *   count passed the limit becomes `failed` and the run is re-queued at once,
+ *   so the step fails its node and the rest of the run goes on.
  * - `body_failed`: the body failed outside any step. The release counts one
  *   failure against the row's own count and re-queues the row after
  *   `backoffMs`.
@@ -175,18 +177,29 @@ export type ClaimLane = { kind: ExecutionScheduleKind; limit: number };
  * - `interrupted` with `by: "budget"`: the pass was still running when its
  *   host's time budget ran out, as a Worker tick's does. The release re-queues
  *   the row at once and counts one failure on the memo row of `stepId`, the
- *   step the pass was running, as a claim counts one against a step whose
- *   lease expired under it, so a step that outlasts every budget spends its
- *   retries and fails its node. A pass cut between steps (`stepId` null)
- *   counts nothing.
+ *   step the pass was running, which carries `nodeId`, as a claim counts one
+ *   against a step whose lease expired under it, so a step that outlasts
+ *   every budget spends its retries and fails its node. A pass cut between
+ *   steps (`stepId` null) counts nothing.
  */
 export type PassOutcome =
   | { kind: "parked" }
-  | { kind: "step_failed"; stepId: string; error: string; backoffMs: number }
+  | {
+      kind: "step_failed";
+      stepId: string;
+      nodeId: string | null;
+      error: string;
+      backoffMs: number;
+    }
   | { kind: "body_failed"; error: string; backoffMs: number }
   | { kind: "fence_refused" }
   | { kind: "interrupted"; by: "drain" }
-  | { kind: "interrupted"; by: "budget"; stepId: string | null };
+  | {
+      kind: "interrupted";
+      by: "budget";
+      stepId: string | null;
+      nodeId: string | null;
+    };
 
 /** The schedule row a release left behind. */
 export type ReleasedSchedule = {
@@ -210,8 +223,14 @@ export type CountedStepFailure = Extract<
   { status: "failing" | "failed" }
 >;
 
-/** One memo row of a schedule row's body. */
-export type StepMemoEntry = StepMemo & { stepId: string };
+/**
+ * One memo row of a schedule row's body, with the node its step does work
+ * for, or null for a step of no node.
+ */
+export type StepMemoEntry = StepMemo & {
+  stepId: string;
+  nodeId: string | null;
+};
 
 /** What a release wrote. */
 export type ReleasedPass = {

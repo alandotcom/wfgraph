@@ -509,6 +509,7 @@ function describeCases(
     expect(memo.filter((entry) => entry.status !== "succeeded")).toEqual([
       {
         stepId: "node:work:dispatch",
+        nodeId: null,
         status: "failing",
         failures: 1,
         error: BUDGET_CUT_ERROR,

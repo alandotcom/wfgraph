@@ -1,0 +1,115 @@
+{
+  "type": "diff",
+  "version": "9",
+  "dialect": "postgres",
+  "id": "5373e36a-5849-4475-a4b5-c497d18ab292",
+  "prevIds": [
+    "fac243a6-9cd3-46e0-8eb4-d5eb7383d8ed"
+  ],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "workflow_execution_logs",
+        "retries"
+      ],
+      "writes": [
+        "s|col|public.workflow_execution_logs.retries",
+        "n|col|public.workflow_execution_logs.retries",
+        "e|col|public.workflow_execution_logs.retries"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_execution_logs",
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "workflow_execution_schedule",
+        "running_node_id"
+      ],
+      "writes": [
+        "s|col|public.workflow_execution_schedule.running_node_id",
+        "n|col|public.workflow_execution_schedule.running_node_id",
+        "e|col|public.workflow_execution_schedule.running_node_id"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_execution_schedule",
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "workflow_execution_steps",
+        "node_id"
+      ],
+      "writes": [
+        "s|col|public.workflow_execution_steps.node_id",
+        "n|col|public.workflow_execution_steps.node_id",
+        "e|col|public.workflow_execution_steps.node_id"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_execution_steps",
+        "n|sch|public"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_execution_logs",
+        "name": "retries",
+        "type": "integer",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "0",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_execution_schedule",
+        "name": "running_node_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_execution_steps",
+        "name": "node_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

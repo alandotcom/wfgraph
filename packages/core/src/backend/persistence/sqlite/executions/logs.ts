@@ -14,7 +14,12 @@ import type {
 } from "#src/backend/persistence/sqlite/database";
 import { encodeJson } from "#src/backend/persistence/sqlite/database";
 import { sqliteExecutionLog } from "#src/backend/persistence/sqlite/executions/rows";
-import { workflowExecutionLogs } from "#src/backend/persistence/sqlite/schema";
+import {
+  workflowExecutionLogs,
+  workflowExecutionSchedule,
+  workflowExecutionSteps,
+} from "#src/backend/persistence/sqlite/schema";
+import { nodeRetries } from "#src/backend/services/executions/repo/release-policy";
 
 /** The insert behind `openNodeLog`; see its comment for the derived id. */
 export function openNodeLogWrite(input: OpenNodeLogInput) {
@@ -40,31 +45,65 @@ export function openNodeLogWrite(input: OpenNodeLogInput) {
 }
 
 /**
+ * The retries the step memo of a log row's run records against the row's
+ * node, or null when the memo holds no row of that node.
+ */
+function readNodeRetries(database: SqliteExecutor, logId: string) {
+  return database
+    .select({ retries: nodeRetries(workflowExecutionSteps) })
+    .from(workflowExecutionSteps)
+    .innerJoin(
+      workflowExecutionSchedule,
+      eq(workflowExecutionSchedule.id, workflowExecutionSteps.scheduleId)
+    )
+    .innerJoin(
+      workflowExecutionLogs,
+      and(
+        eq(
+          workflowExecutionLogs.executionId,
+          workflowExecutionSchedule.executionId
+        ),
+        eq(workflowExecutionLogs.nodeId, workflowExecutionSteps.nodeId)
+      )
+    )
+    .where(eq(workflowExecutionLogs.id, logId))
+    .get()
+    .pipe(Effect.map((row) => row?.retries ?? null));
+}
+
+/**
  * The update behind `closeNodeLog`. Given a fence, it closes only a row of the
- * fenced Execution that is `running` or `error`, as the PostgreSQL write does.
+ * fenced Execution that is `running` or `error`, and it writes the row's
+ * `retries` from the memo, keeping the count when the memo holds no row of the
+ * node, as the PostgreSQL write does.
  */
 export function closeNodeLogWrite(input: CloseNodeLogInput, fence?: RunFence) {
   return (database: SqliteExecutor) =>
-    database
-      .update(workflowExecutionLogs)
-      .set({
-        status: input.status,
-        output: encodeJson(input.output),
-        error: input.error ?? null,
-        completedAt: Date.now(),
-        duration: String(input.durationMs),
-      })
-      .where(
-        and(
-          eq(workflowExecutionLogs.id, input.logId),
-          fence === undefined
-            ? undefined
-            : and(
-                eq(workflowExecutionLogs.executionId, fence.executionId),
-                inArray(workflowExecutionLogs.status, ["running", "error"])
-              )
-        )
-      );
+    readNodeRetries(database, input.logId).pipe(
+      Effect.flatMap((retries) =>
+        database
+          .update(workflowExecutionLogs)
+          .set({
+            status: input.status,
+            retries: retries ?? undefined,
+            output: encodeJson(input.output),
+            error: input.error ?? null,
+            completedAt: Date.now(),
+            duration: String(input.durationMs),
+          })
+          .where(
+            and(
+              eq(workflowExecutionLogs.id, input.logId),
+              fence === undefined
+                ? undefined
+                : and(
+                    eq(workflowExecutionLogs.executionId, fence.executionId),
+                    inArray(workflowExecutionLogs.status, ["running", "error"])
+                  )
+            )
+          )
+      )
+    );
 }
 
 export function makeSqliteNodeLogsMethods(

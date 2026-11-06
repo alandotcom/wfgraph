@@ -36,6 +36,7 @@ export function describeExecutionFencingConformance({
           const waitStateId = yield* park(executionId, "wait_1", at(90_000));
           const live = executions.fenced(fence);
           yield* live.writeStepMemo({
+            nodeId: "a",
             stepId: "node:a:log-open",
             value: { logId: "log_a" },
             leaseExpiresAt: at(LEASE_MS * 2),
@@ -55,6 +56,7 @@ export function describeExecutionFencingConformance({
           return {
             memo: yield* Effect.flip(
               stale.writeStepMemo({
+                nodeId: null,
                 stepId: "node:b:log-open",
                 value: null,
                 leaseExpiresAt: at(LEASE_MS * 2),
@@ -96,6 +98,7 @@ export function describeExecutionFencingConformance({
       expect(result.memoRows).toEqual([
         {
           stepId: "node:a:log-open",
+          nodeId: "a",
           status: "succeeded",
           failures: 0,
           value: { logId: "log_a" },
@@ -239,6 +242,7 @@ export function describeExecutionFencingConformance({
           const { fence } = yield* claimRun(executionId, T0);
           const pass = executions.fenced(fence);
           yield* pass.writeStepMemo({
+            nodeId: null,
             stepId: "step_1",
             value: "sent",
             leaseExpiresAt: at(LEASE_MS),
@@ -252,6 +256,7 @@ export function describeExecutionFencingConformance({
             cancelled,
             staleMemo: yield* refusalOf(
               pass.writeStepMemo({
+                nodeId: null,
                 stepId: "step_2",
                 value: "stale",
                 leaseExpiresAt: at(LEASE_MS),
@@ -335,6 +340,7 @@ export function describeExecutionFencingConformance({
             ),
             crossedMemo: yield* refusalOf(
               crossed.writeStepMemo({
+                nodeId: null,
                 stepId: "step_1",
                 value: null,
                 leaseExpiresAt: at(LEASE_MS),

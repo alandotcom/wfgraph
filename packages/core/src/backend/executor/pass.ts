@@ -600,7 +600,12 @@ function runOpenedPass<Port, P extends PassCore<ClaimedSchedule, Port>, R>(
       );
       if (exit !== undefined) return yield* exit;
       const stepId = pass.state.runningStep();
-      interruption = { kind: "interrupted", by: "budget", stepId };
+      interruption = {
+        kind: "interrupted",
+        by: "budget",
+        nodeId: null,
+        stepId,
+      };
       yield* Fiber.interrupt(fiber);
       const cut: PassResult = { kind: "budget_cut", stepId };
       return cut;
@@ -950,6 +955,7 @@ const renewLeaseWhileRunning = Effect.fnUntraced(function* (input: {
       .renewLease({
         leaseExpiresAt: input.leaseExpiresAt(),
         runningStepId: state.runningStep(),
+        runningNodeId: null,
       })
       .pipe(
         Effect.as("renewed" as const),
@@ -1026,6 +1032,7 @@ function decideFailedPass(input: {
   if (failure.kind === "step") {
     return {
       kind: "step_failed",
+      nodeId: null,
       stepId: failure.stepId,
       error: engineFailure.message,
       backoffMs: input.backoffMs(input.memo.get(failure.stepId)?.failures ?? 0),

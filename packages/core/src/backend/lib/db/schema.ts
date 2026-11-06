@@ -459,6 +459,13 @@ export const workflowExecutionLogs = pgTable(
     duration: text("duration"),
     timestamp: timestamp("timestamp").notNull().default(utcNow()),
     /**
+     * How many times the database executor retried the node's durable steps
+     * before the row closed: each retriable failure of one of them that
+     * another try followed. Written when the row closes, from the step memo
+     * rows carrying this node's id, and zero while the row is open.
+     */
+    retries: integer("retries").notNull().default(0),
+    /**
      * The outlet handle a completed node released its outgoing edges through,
      * so a row can say which branch the run took below it. Null while the node
      * runs, for a node that released every edge, and for one that released none.
@@ -722,6 +729,12 @@ export const workflowExecutionSchedule = pgTable(
      * failure against this step's memo row.
      */
     runningStepId: text("running_step_id"),
+    /**
+     * The node `running_step_id` does work for, recorded beside it, and null
+     * between steps or for a step of no node. A lease that expires counts its
+     * failure on a memo row carrying this node id.
+     */
+    runningNodeId: text("running_node_id"),
     leaseExpiresAt: timestamp("lease_expires_at"),
     /**
      * The fencing token of the pass holding the lease, minted per claim. Every
@@ -774,6 +787,13 @@ export const workflowExecutionSteps = pgTable(
       .notNull()
       .references(() => workflowExecutionSchedule.id, { onDelete: "cascade" }),
     stepId: text("step_id").notNull(),
+    /**
+     * The node the step does work for, as the engine named it when the step
+     * ran, and null for a step of no node, such as a delivery's step or a
+     * run-level step. Step ids are not parsed for it, because their shapes
+     * differ by the code that names them.
+     */
+    nodeId: text("node_id"),
     status: text("status").notNull().$type<StepMemoStatus>(),
     /**
      * The retriable failures counted against this step: each time it threw,
