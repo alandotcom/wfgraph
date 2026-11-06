@@ -272,7 +272,7 @@ function createCanceledWaitGraph(waitConfig: Record<string, unknown>) {
 }
 
 /** The wake an arriving `billing/payment.settled` Event resumes the Wait with. */
-const SETTLED_SIGNAL: WaitWake = {
+const SETTLED_WAKE: WaitWake = {
   kind: "resume",
   eventName: "billing/payment.settled",
   payload: { invoiceId: "inv_1" },
@@ -295,7 +295,7 @@ export function defineCancelReplayCases(executor: ReplayExecutor): void {
           claimBeforeOutcomeRead(store),
           actions
         ),
-      { executor }
+      { executor, waitRows: store }
     );
 
     expect(run.value.status).toBe("canceled");
@@ -328,7 +328,7 @@ export function defineCancelReplayCases(executor: ReplayExecutor): void {
           claimAtTerminalWrite(store),
           actions
         ),
-      { executor }
+      { executor, waitRows: store }
     );
 
     expect(run.value.status).toBe("canceled");
@@ -402,7 +402,7 @@ export function defineCancelReplayCases(executor: ReplayExecutor): void {
           claimAtTerminalWrite(store),
           actions
         ),
-      { executor }
+      { executor, waitRows: store }
     );
 
     expect(run.value.status).toBe("canceled");
@@ -440,7 +440,7 @@ export function defineCancelReplayCases(executor: ReplayExecutor): void {
 
     return driveWithReplay(
       (runtime) => executeWorkflow(input, runtime, claiming, actions),
-      { events, executor }
+      { events, executor, waitRows: store }
     );
   }
 
@@ -475,7 +475,7 @@ export function defineCancelReplayCases(executor: ReplayExecutor): void {
         waitFor: [{ event: "billing/payment.settled" }],
         waitTimeout: "7d",
       },
-      { "wait-park-grace_1-0": SETTLED_SIGNAL }
+      { "wait-park-grace_1-0": SETTLED_WAKE }
     );
 
     const parked = store.callsOf("createWaitState")[0];

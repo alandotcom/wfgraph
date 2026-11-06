@@ -3,8 +3,9 @@
  *
  * A park, a re-park and a resume each name the side of the Lifecycle Node their
  * Wait sits on: a Cancel claim admits the Canceled side and refuses the Started
- * one. An Exit claim refuses both, which is what the claim and listing guards
- * still test, because a wait row does not record which side parked it.
+ * one. An Exit claim refuses both, which is what the listing guard here and the
+ * resume claim in `claims.ts` test, because a wait row does not record which
+ * side parked it.
  */
 
 import {
@@ -16,7 +17,6 @@ import {
   getColumns,
   gt,
   inArray,
-  isNull,
   notInArray,
   type SQL,
   sql,
@@ -51,51 +51,19 @@ import {
   inFlightExecution,
   notExitClaimed,
 } from "#src/backend/services/executions/repo/runs";
-import { wakeExecutions } from "#src/backend/services/executions/repo/schedule";
+import {
+  arrivalOfWake,
+  reparkablePark,
+} from "#src/backend/services/executions/repo/release-policy";
 import type {
-  OwnerFence,
+  RunFence,
   ParkState,
-  ParkWake,
   SettledWaitStatus,
   StoreWrite,
   WorkflowWaitState,
 } from "#src/backend/services/executions/repo/contracts";
 
 type Executor = WfGraphDatabase | WfGraphTransaction;
-
-/**
- * A park an Event or a manual resume claimed, with the wake the claim wrote on
- * it. `requeued` says whether the claim made the run due (`wakeExecutions`),
- * which is when the caller wakes a worker loop.
- */
-export type WaitResumeClaim = {
-  waitState: WorkflowWaitState;
-  requeued: boolean;
-};
-
-/** The wake an Event or a manual resume writes onto the park it claimed. */
-export function resumeWakeOf(arrival: WaitArrival): ParkWake {
-  return {
-    kind: "resume",
-    eventName: arrival.eventName,
-    payload: arrival.payload,
-    deliveryId: arrival.deliveryId ?? null,
-  };
-}
-
-/**
- * The arrival a `resume` wake carries, or null for any other wake. The wake
- * column is the one record of a resume, so this is how a timeout learns that a
- * resume won the park first.
- */
-export function arrivalOfWake(wake: ParkWake | null): WaitArrival | null {
-  if (wake?.kind !== "resume") return null;
-  return {
-    eventName: wake.eventName,
-    payload: wake.payload,
-    deliveryId: wake.deliveryId ?? undefined,
-  };
-}
 
 /**
  * Why a re-park wrote no row.
@@ -191,8 +159,8 @@ export type WaitsRepoMethods = {
    * Close out one wait row, answering whether it was still active.
    *
    * Every settled status is accepted from `waiting` and from `resuming`, so the
-   * run that consumed a wake can close the row whether or not the producer that
-   * sent the signal settled its own claim. A row closed this way no longer
+   * run that consumed a wake can close the row whichever of the two states the
+   * producer's claim left it in. A row closed this way no longer
    * carries a claim, so no later wake can reclaim it at any lease age.
    */
   readonly markWaitStatus: StoreWrite<
@@ -239,45 +207,6 @@ export type WaitsRepoMethods = {
     /** Runs this delivery already settled, filtered in SQL rather than after. */
     excludingExecutionIds?: string[] | undefined;
   }) => Effect.Effect<WorkflowWaitState[], DatabaseError>;
-  /**
-   * Claim the event park one resume token addresses, for a manual resume, and
-   * resolve it with the arrival as a `resume` wake. See `claimWaitState` for
-   * what a claim writes and which rows it takes.
-   *
-   * Only an event wait is claimable. A delay wait answers no resume, so a row
-   * a Migration turned into a delay park keeps counting down rather than
-   * consuming a manual resume.
-   */
-  readonly claimWaitingStateByToken: (input: {
-    resumeToken: string;
-    arrival: WaitArrival;
-    /** When the run becomes due, if the claim re-queues it. */
-    now: Date;
-  }) => Effect.Effect<WaitResumeClaim | null, DatabaseError>;
-  /**
-   * Claim one candidate an Event delivery selected, and resolve it with the
-   * arrival as a `resume` wake. The execution may already be running because a
-   * sibling wait resumed first.
-   *
-   * The claim repeats the candidate's event name and park token because a
-   * Migration can re-park the row between selection and this write. The row
-   * must still be an event wait, hold the selected token and subscribe to
-   * `eventName`.
-   *
-   * The arrival's `deliveryId` is the retry identity: a row whose `resume`
-   * wake that same delivery already wrote answers as claimed, with `requeued:
-   * false` and nothing written, so a retried delivery counts it.
-   */
-  readonly claimWaitingStateById: (input: {
-    waitStateId: string;
-    /** The token on the candidate row, fencing a candidate from an earlier park. */
-    resumeToken: string | null;
-    /** The Event being delivered, which the row must still subscribe to. */
-    eventName: string;
-    arrival: WaitArrival;
-    /** When the run becomes due, if the claim re-queues it. */
-    now: Date;
-  }) => Effect.Effect<WaitResumeClaim | null, DatabaseError>;
   /** Every wait one run is currently parked on, for the Runs view. */
   readonly listWaitingStates: (
     executionId: string
@@ -309,7 +238,7 @@ type MarkWaitStatusInput = Parameters<WaitsRepoMethods["markWaitStatus"]>[0];
  * Every column of a wait row but the database executor's two, which is the
  * shape `WorkflowWaitState` names. `findPark` reads the other two.
  */
-const WAIT_STATE_COLUMNS = omit(getColumns(workflowWaitStates), [
+export const WAIT_STATE_COLUMNS = omit(getColumns(workflowWaitStates), [
   "parkStepId",
   "wake",
 ]);
@@ -391,22 +320,11 @@ export function startWaitWrite(input: StartWaitInput) {
 }
 
 /**
- * A wait row a re-park may write over: one still `waiting`, or one the
- * database executor resolved with a wake the re-park supersedes. A `migrate`
- * wake is the instruction to prepare again, and a `timeout` wake read under a
- * version the run has since left is discarded the same way. Any other wake is
- * an Event or a claim the Wait still has to act on.
- */
-function reparkableWait(): SQL {
-  return sql`(${workflowWaitStates.status} = 'waiting' or (${workflowWaitStates.status} = 'resuming' and ${workflowWaitStates.wake}->>'kind' in ('migrate', 'timeout')))`;
-}
-
-/**
  * The re-park behind `reparkWait`. Given a fence, it reaches only a wait row of
  * the fenced Execution. The row goes back to `waiting` with no wake and no
  * park step, so the next `waitForEvent` parks on it afresh.
  */
-export function reparkWaitWrite(input: ReparkWaitInput, fence?: OwnerFence) {
+export function reparkWaitWrite(input: ReparkWaitInput, fence?: RunFence) {
   return (db: Executor) =>
     db.transaction(async (tx): Promise<ReparkWaitOutcome> => {
       // Migration and startWait lock the execution before its Wait rows. A
@@ -445,7 +363,7 @@ export function reparkWaitWrite(input: ReparkWaitInput, fence?: OwnerFence) {
           and(
             eq(workflowWaitStates.id, input.waitStateId),
             ofFencedExecution(fence),
-            reparkableWait(),
+            reparkablePark(workflowWaitStates),
             pinsVersionAndAdmits(tx, input.workflowVersionId, input.side)
           )
         )
@@ -460,7 +378,7 @@ export function reparkWaitWrite(input: ReparkWaitInput, fence?: OwnerFence) {
       // sends the caller to the wake the row would record.
       const [row] = await tx
         .select({
-          reparkable: sql<boolean>`${reparkableWait()}`,
+          reparkable: sql<boolean>`${reparkablePark(workflowWaitStates)}`,
           pinnedVersionId: workflowExecutions.workflowVersionId,
         })
         .from(workflowWaitStates)
@@ -485,7 +403,7 @@ export function reparkWaitWrite(input: ReparkWaitInput, fence?: OwnerFence) {
  */
 export function markWaitStatusWrite(
   input: MarkWaitStatusInput,
-  fence?: OwnerFence
+  fence?: RunFence
 ) {
   return async (db: Executor): Promise<boolean> => {
     const now = new Date();
@@ -514,10 +432,7 @@ export function markWaitStatusWrite(
  * transaction. Given a fence, it reaches only a wait row of the fenced
  * Execution.
  */
-export function settleWaitTimeoutWrite(
-  waitStateId: string,
-  fence?: OwnerFence
-) {
+export function settleWaitTimeoutWrite(waitStateId: string, fence?: RunFence) {
   return async (tx: WfGraphTransaction): Promise<WaitArrival | null> => {
     const [row] = await tx
       .select({
@@ -632,36 +547,6 @@ export function makeWaitsMethods(
           .limit(input.limit)
       ),
 
-    claimWaitingStateByToken: (input) =>
-      database.query((db) =>
-        claimWaitState(db, {
-          identity: and(
-            eq(workflowWaitStates.resumeToken, input.resumeToken),
-            eq(workflowWaitStates.waitType, "event")
-          ),
-          arrival: input.arrival,
-          now: input.now,
-        })
-      ),
-
-    claimWaitingStateById: (input) =>
-      database.query((db) =>
-        claimWaitState(db, {
-          identity: and(
-            eq(workflowWaitStates.id, input.waitStateId),
-            eq(workflowWaitStates.waitType, "event"),
-            input.resumeToken === null
-              ? isNull(workflowWaitStates.resumeToken)
-              : eq(workflowWaitStates.resumeToken, input.resumeToken),
-            arrayContains(workflowWaitStates.subscribedEvents, [
-              input.eventName,
-            ])
-          ),
-          arrival: input.arrival,
-          now: input.now,
-        })
-      ),
-
     listWaitingStates: (executionId) =>
       database.query((db) =>
         db.query.workflowWaitStates.findMany({
@@ -720,7 +605,7 @@ export function makeWaitsMethods(
  * Narrows a fenced write to the wait rows of the Execution its pass runs, so a
  * fenced write addressed by wait row id cannot reach another run's row.
  */
-function ofFencedExecution(fence: OwnerFence | undefined): SQL | undefined {
+function ofFencedExecution(fence: RunFence | undefined): SQL | undefined {
   return fence === undefined
     ? undefined
     : eq(workflowWaitStates.executionId, fence.executionId);
@@ -751,109 +636,4 @@ function pinsVersionAndAdmits(
         )
       )
   );
-}
-
-/**
- * Whether an Event or a manual resume may claim this row: one still `waiting`,
- * or one whose pending wake is a Migration's `migrate` wake. An Event that
- * arrives while that wake is pending replaces it, and the next pass reads the
- * Event and resumes the Wait under the version the run was moved to. Any other
- * wake has already won the park.
- */
-function claimableWait(): SQL {
-  return sql`(${workflowWaitStates.status} = 'waiting' or (${workflowWaitStates.status} = 'resuming' and ${workflowWaitStates.wake}->>'kind' = 'migrate'))`;
-}
-
-/**
- * Whether this delivery's own claim already resolved the row: `resuming` with
- * the `resume` wake the claim wrote, naming `deliveryId`. A delivery that
- * crashed after its claim committed finds its row in this state.
- */
-function claimedByDelivery(deliveryId: string): SQL {
-  return sql`(${workflowWaitStates.status} = 'resuming' and ${workflowWaitStates.wake}->>'kind' = 'resume' and ${workflowWaitStates.wake}->>'deliveryId' = ${deliveryId})`;
-}
-
-/**
- * Claims one row for an Event or a manual resume, through `wakeExecutions`.
- *
- * The claim writes the `resume` wake and `resuming`, which is the one record
- * of the resume, and the run is made due.
- *
- * `identity` is everything about the row the caller requires, which is more than
- * its id: a Migration can re-park the row between a candidate read and this
- * write, so the claim re-states the properties the candidate was chosen for.
- * The run must still be in flight and hold no Exit claim.
- *
- * An arrival with a `deliveryId` may be a retry of its own delivery. A row
- * whose `resume` wake that delivery already wrote answers as claimed with
- * `requeued: false`, and the claim writes nothing.
- */
-async function claimWaitState(
-  db: WfGraphDatabase,
-  input: {
-    identity: SQL | undefined;
-    arrival: WaitArrival;
-    now: Date;
-  }
-): Promise<WaitResumeClaim | null> {
-  const { identity, arrival, now } = input;
-  const { result, due } = await wakeExecutions(
-    db,
-    {
-      now,
-      candidates: async (tx) => {
-        const [candidate] = await tx
-          .select({ executionId: workflowWaitStates.executionId })
-          .from(workflowWaitStates)
-          .where(identity)
-          .limit(1);
-        return candidate === undefined ? [] : [candidate.executionId];
-      },
-    },
-    async (tx, candidateIds) => {
-      if (candidateIds.length === 0) return { result: null, woken: [] };
-      const [waitState] = await tx
-        .update(workflowWaitStates)
-        .set({
-          status: "resuming",
-          resumedAt: now,
-          wake: resumeWakeOf(arrival),
-        })
-        .where(
-          and(
-            identity,
-            inArray(workflowWaitStates.executionId, [...candidateIds]),
-            claimableWait(),
-            exists(
-              tx
-                .select({ id: workflowExecutions.id })
-                .from(workflowExecutions)
-                .where(
-                  and(
-                    eq(workflowExecutions.id, workflowWaitStates.executionId),
-                    inArray(workflowExecutions.status, [
-                      ...IN_FLIGHT_EXECUTION_STATUSES,
-                    ]),
-                    notExitClaimed
-                  )
-                )
-            )
-          )
-        )
-        .returning(WAIT_STATE_COLUMNS);
-      if (waitState) {
-        return { result: waitState, woken: [waitState.executionId] };
-      }
-      if (arrival.deliveryId === undefined) return { result: null, woken: [] };
-      const [ownClaim] = await tx
-        .select(WAIT_STATE_COLUMNS)
-        .from(workflowWaitStates)
-        .where(and(identity, claimedByDelivery(arrival.deliveryId)))
-        .limit(1);
-      return { result: ownClaim ?? null, woken: [] };
-    }
-  );
-  return result === null
-    ? null
-    : { waitState: result, requeued: due.length > 0 };
 }

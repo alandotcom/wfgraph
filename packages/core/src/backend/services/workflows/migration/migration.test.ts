@@ -20,6 +20,7 @@ import type {
   InFlightExecutionRow,
   WorkflowWaitState,
 } from "#src/backend/services/executions/repo";
+import { decideRelease } from "#src/backend/services/executions/repo/release-policy";
 import { migrateExecutions } from "#src/backend/services/workflows/migration/migrate";
 import { previewMigration } from "#src/backend/services/workflows/migration/preview";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
@@ -1455,6 +1456,44 @@ describe("previewMigration", () => {
           },
         ]);
       })
+    );
+
+    // The refusal's reason, from the release's side. Migrating such a run
+    // would write a migrate wake onto both parks, and a pass under the target
+    // graph re-parks the upper Wait and cannot reach the lower one, whose wake
+    // stays unread (`core-wait-migrate.replay-cases.ts`). The release re-queues
+    // that run at once rather than letting it sleep until the upper deadline.
+    it.effect(
+      "re-queues at once a run whose lower Wait holds a wake the pass could not reach",
+      () =>
+        Effect.sync(() => {
+          const now = new Date("2026-11-05T12:00:00.000Z");
+          const released = decideRelease({
+            outcome: { kind: "parked" },
+            attempt: 0,
+            now,
+            parks: [
+              {
+                status: "waiting",
+                waitUntil: new Date(now.getTime() + 60 * 60 * 1000),
+                woken: false,
+              },
+              {
+                status: "resuming",
+                waitUntil: new Date(now.getTime() + 2 * 60 * 60 * 1000),
+                woken: true,
+              },
+            ],
+            countedStep: null,
+          });
+
+          assert.deepStrictEqual(released, {
+            state: "queued",
+            wakeAt: now,
+            attempt: 0,
+            lastError: null,
+          });
+        })
     );
 
     it.effect("accepts two Waits on branches beside each other", () =>

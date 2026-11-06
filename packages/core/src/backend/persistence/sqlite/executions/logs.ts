@@ -6,7 +6,7 @@ import type {
   NodeLogsRepoMethods,
   OpenNodeLogInput,
 } from "#src/backend/services/executions/repo/node-logs";
-import type { OwnerFence } from "#src/backend/services/executions/repo/contracts";
+import type { RunFence } from "#src/backend/services/executions/repo/contracts";
 import { nodeLogId } from "#src/backend/services/executions/repo/node-logs";
 import type {
   SqliteDatabase,
@@ -43,10 +43,7 @@ export function openNodeLogWrite(input: OpenNodeLogInput) {
  * The update behind `closeNodeLog`. Given a fence, it closes only a row of the
  * fenced Execution that is `running` or `error`, as the PostgreSQL write does.
  */
-export function closeNodeLogWrite(
-  input: CloseNodeLogInput,
-  fence?: OwnerFence
-) {
+export function closeNodeLogWrite(input: CloseNodeLogInput, fence?: RunFence) {
   return (database: SqliteExecutor) =>
     database
       .update(workflowExecutionLogs)

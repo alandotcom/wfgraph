@@ -105,13 +105,13 @@ describePostgres("createWfGraphApp runner on PostgreSQL", () => {
     });
     await observed.listening;
 
-    // Another process on the same schema announces a run it made due.
+    // Another process on the same schema announces a row it made due.
     const other = await wfPostgres({ url, schema }).open(
       createIntegrationCipher(ENCRYPTION)
     );
     try {
       if (other.wakes.kind !== "notify") throw new Error("Expected notify");
-      other.wakes.broadcast.announce("exec_elsewhere");
+      other.wakes.broadcast.announce();
       await vi.waitFor(() => expect(observed.heard()).toBe(1), {
         timeout: 2_000,
       });

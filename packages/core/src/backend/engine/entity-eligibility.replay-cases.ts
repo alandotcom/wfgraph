@@ -21,8 +21,8 @@ import {
   type ReplayExecutor,
 } from "#src/backend/engine/testing/replay-runtime";
 import {
-  waitMigrateSignal,
-  waitResumeSignal,
+  migrateWake,
+  resumeWake,
 } from "#src/backend/engine/testing/wait-fixtures";
 
 export const condition = JSON.stringify({
@@ -233,10 +233,11 @@ export function defineEntityEligibilityReplayCases(
       },
       {
         events: {
-          "wait-park-wait_1-0": waitMigrateSignal(),
-          "wait-park-wait_1-1": waitResumeSignal({}, "appointment.ready"),
+          "wait-park-wait_1-0": migrateWake(),
+          "wait-park-wait_1-1": resumeWake({}, "appointment.ready"),
         },
         executor,
+        waitRows: store,
       }
     );
 

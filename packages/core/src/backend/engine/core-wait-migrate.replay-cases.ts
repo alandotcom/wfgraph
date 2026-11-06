@@ -5,6 +5,7 @@
  */
 
 import { beforeEach, expect, it } from "vitest";
+import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import { executeTestWorkflow as executeWorkflow } from "#src/backend/engine/test-execution";
 import type { WaitWake } from "#src/backend/engine/runtime";
@@ -21,10 +22,12 @@ import {
 import type { ExecutionTerminationState } from "#src/backend/engine/store";
 import {
   claimOnceParked,
+  createLifecycleNode,
   createWaitGraph,
-  waitMigrateSignal,
+  createWaitNode,
+  migrateWake,
   waitOutput,
-  waitResumeSignal,
+  resumeWake,
 } from "#src/backend/engine/testing/wait-fixtures";
 
 /**
@@ -69,12 +72,48 @@ function runMigratedWait(options: {
         noWorkflowActions
       );
     },
-    { events: options.events, executor: options.executor }
+    {
+      events: options.events,
+      executor: options.executor,
+      waitRows: options.store,
+    }
   );
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
+const MINUTE_MS = 60 * 1000;
+
+/**
+ * Two delay Waits on the Started outlet: `upper` for an hour and `lower` for
+ * two. Side by side, or with `lower` behind `upper` when `nested`, which is
+ * the target graph a Migration refuses with `waits_nested`.
+ */
+function twoWaitsGraph(nested: boolean) {
+  return createSerializedWorkflowGraph({
+    nodes: [
+      createLifecycleNode("lifecycle_1"),
+      createWaitNode("upper", { waitMode: "delay", waitDuration: "1h" }),
+      createWaitNode("lower", { waitMode: "delay", waitDuration: "2h" }),
+    ],
+    edges: [
+      {
+        id: "edge_upper",
+        source: "lifecycle_1",
+        sourceHandle: "started",
+        target: "upper",
+      },
+      nested
+        ? { id: "edge_lower", source: "upper", target: "lower" }
+        : {
+            id: "edge_lower",
+            source: "lifecycle_1",
+            sourceHandle: "started",
+            target: "lower",
+          },
+    ],
+  });
+}
 
 export function defineWaitMigrateReplayCases(executor: ReplayExecutor): void {
   let store: RecordingWorkflowStore;
@@ -89,7 +128,7 @@ export function defineWaitMigrateReplayCases(executor: ReplayExecutor): void {
       store,
       parked: { waitMode: "delay", waitDuration: "1h" },
       migrated: { waitMode: "delay", waitDuration: "3d" },
-      events: { "wait-park-wait_1-0": waitMigrateSignal() },
+      events: { "wait-park-wait_1-0": migrateWake() },
     });
 
     // One row, written over rather than joined by a second.
@@ -170,8 +209,8 @@ export function defineWaitMigrateReplayCases(executor: ReplayExecutor): void {
         waitTimeout: "7d",
       },
       events: {
-        "wait-park-wait_1-0": waitMigrateSignal(),
-        "wait-park-wait_1-1": waitResumeSignal(
+        "wait-park-wait_1-0": migrateWake(),
+        "wait-park-wait_1-1": resumeWake(
           { id: "pay_1" },
           "billing/payment.settled"
         ),
@@ -232,8 +271,8 @@ export function defineWaitMigrateReplayCases(executor: ReplayExecutor): void {
         waitTimeout: "7d",
       },
       events: {
-        "wait-park-wait_1-0": waitMigrateSignal(),
-        "wait-park-wait_1-1": waitResumeSignal({ approved: true }),
+        "wait-park-wait_1-0": migrateWake(),
+        "wait-park-wait_1-1": resumeWake({ approved: true }),
       },
     });
     const created = store.callsOf("createWaitState")[0];
@@ -261,8 +300,8 @@ export function defineWaitMigrateReplayCases(executor: ReplayExecutor): void {
         waitTimeout: "7d",
       },
       events: {
-        "wait-park-wait_1-0": waitMigrateSignal(),
-        "wait-park-wait_1-1": waitResumeSignal(
+        "wait-park-wait_1-0": migrateWake(),
+        "wait-park-wait_1-1": resumeWake(
           { id: "pay_1" },
           "billing/payment.failed"
         ),
@@ -304,7 +343,7 @@ export function defineWaitMigrateReplayCases(executor: ReplayExecutor): void {
         waitDuration: "-1h",
         waitGateMode: "require_actual_wait",
       },
-      events: { "wait-park-wait_1-0": waitMigrateSignal() },
+      events: { "wait-park-wait_1-0": migrateWake() },
     });
 
     // The gate asks whether this Wait ever waited, and the first attempt waited
@@ -334,7 +373,7 @@ export function defineWaitMigrateReplayCases(executor: ReplayExecutor): void {
         waitGateMode: "max_lateness",
         waitMaxLateness: "6h",
       },
-      events: { "wait-park-wait_1-0": waitMigrateSignal() },
+      events: { "wait-park-wait_1-0": migrateWake() },
     });
 
     expect(run.value.results.after_wait).toBeDefined();
@@ -370,7 +409,7 @@ export function defineWaitMigrateReplayCases(executor: ReplayExecutor): void {
         waitFor: [{ event: "billing/payment.settled" }],
         waitTimeout: "7d",
       },
-      events: { "wait-park-wait_1-0": waitMigrateSignal() },
+      events: { "wait-park-wait_1-0": migrateWake() },
     });
 
     expect(store.callsOf("readWaitState")).toEqual([
@@ -409,7 +448,7 @@ export function defineWaitMigrateReplayCases(executor: ReplayExecutor): void {
       },
       migrated: { waitMode: "delay", waitDuration: "1h" },
       events: {
-        "wait-park-wait_1-0": waitResumeSignal({ id: "pay_1" }),
+        "wait-park-wait_1-0": resumeWake({ id: "pay_1" }),
       },
       startEventName: "app/appointment.created",
       startPayload: { id: "appt_1" },
@@ -459,7 +498,7 @@ export function defineWaitMigrateReplayCases(executor: ReplayExecutor): void {
         waitFor: [{ event: "billing/payment.settled" }],
         waitTimeout: "7d",
       },
-      events: { "wait-park-wait_1-0": waitMigrateSignal() },
+      events: { "wait-park-wait_1-0": migrateWake() },
     });
 
     expect(store.callsOf("markWaitStateStatus").at(-1)?.status).toBe(
@@ -498,7 +537,7 @@ export function defineWaitMigrateReplayCases(executor: ReplayExecutor): void {
         waitFor: [{ event: "billing/payment.settled" }],
         waitTimeout: "7d",
       },
-      events: { "wait-park-wait_1-0": waitMigrateSignal() },
+      events: { "wait-park-wait_1-0": migrateWake() },
     });
 
     expect(run.value.results.wait_1?.success).toBe(true);
@@ -536,7 +575,7 @@ export function defineWaitMigrateReplayCases(executor: ReplayExecutor): void {
         waitFor: [{ event: "billing/payment.settled" }],
         waitTimeout: "7d",
       },
-      events: { "wait-park-wait_1-0": waitMigrateSignal() },
+      events: { "wait-park-wait_1-0": migrateWake() },
     });
 
     expect(run.value.results.wait_1?.success).toBe(false);
@@ -567,7 +606,7 @@ export function defineWaitMigrateReplayCases(executor: ReplayExecutor): void {
           store,
           noWorkflowActions
         ),
-      { events: {}, executor }
+      { events: {}, executor, waitRows: store }
     );
 
     await expect(run).rejects.toMatchObject({
@@ -594,7 +633,7 @@ export function defineWaitMigrateReplayCases(executor: ReplayExecutor): void {
           store,
           noWorkflowActions
         ),
-      { events: {}, executor }
+      { events: {}, executor, waitRows: store }
     );
 
     await expect(run).rejects.toMatchObject({
@@ -613,7 +652,7 @@ export function defineWaitMigrateReplayCases(executor: ReplayExecutor): void {
       store,
       parked: { waitMode: "delay", waitDuration: "1h" },
       migrated: { waitMode: "delay", waitDuration: "3d" },
-      events: { "wait-park-wait_1-0": waitMigrateSignal() },
+      events: { "wait-park-wait_1-0": migrateWake() },
     });
 
     await expect(run).rejects.toMatchObject({
@@ -644,11 +683,12 @@ export function defineWaitMigrateReplayCases(executor: ReplayExecutor): void {
         events: Object.fromEntries(
           Array.from({ length: 60 }, (_unused, attempt) => [
             `wait-park-wait_1-${attempt}`,
-            waitMigrateSignal(),
+            migrateWake(),
           ])
         ),
         maxInvocations: 400,
         executor,
+        waitRows: store,
       }
     );
 
@@ -667,5 +707,73 @@ export function defineWaitMigrateReplayCases(executor: ReplayExecutor): void {
       status: "error",
       error: expect.stringContaining("without resuming"),
     });
+  });
+
+  // Why a Migration refuses a run whose parked Waits the target graph nests.
+  // The Migration writes a migrate wake onto every park of the run, and a pass
+  // under the target graph reaches `lower` only once `upper` resumes. Until
+  // then each pass ends parked with `lower`'s wake unread, and the release
+  // re-queues a run whose park holds an unread wake at once, so the run would
+  // be claimed pass after pass for the hour `upper` still waits
+  // (`migration.test.ts` checks that release).
+  it("leaves a lower Wait's migrate wake unread until the upper Wait resumes when the target graph nests them", async () => {
+    let migrated = false;
+    const run = await driveWithReplay(
+      (runtime) =>
+        executeWorkflow(
+          {
+            graph: twoWaitsGraph(migrated),
+            executionId: "exec_wait",
+            workflowId: "workflow_wait",
+            workflowVersionId: migrated ? "ver_2" : "ver_1",
+          },
+          runtime,
+          store,
+          noWorkflowActions
+        ),
+      {
+        waitRows: store,
+        executor: {
+          ...executor,
+          resolveOpenParksAt: {
+            atMs: 10 * MINUTE_MS,
+            wake: migrateWake(),
+            write: () => {
+              migrated = true;
+            },
+          },
+        },
+      }
+    );
+
+    expect(run.value.status).toBe("completed");
+    // The recording store numbers rows in the order they open.
+    expect(store.callsOf("createWaitState").map((call) => call.nodeId)).toEqual(
+      ["upper", "lower"]
+    );
+    const upperRow = "wait_state_1";
+    const lowerRow = "wait_state_2";
+
+    // The pass at the Migration re-parks `upper` alone. `lower` reads its wake
+    // and re-parks only after `upper` has resumed, an hour later.
+    const upperResumed = store.calls.findIndex(
+      (call) =>
+        call.method === "markWaitStateStatus" &&
+        call.input.waitStateId === upperRow
+    );
+    const lowerReparked = store.calls.findIndex(
+      (call) =>
+        call.method === "reparkWaitState" && call.input.waitStateId === lowerRow
+    );
+    expect(
+      store.callsOf("reparkWaitState").map((call) => call.waitStateId)
+    ).toEqual([upperRow, lowerRow]);
+    expect(upperResumed).toBeGreaterThanOrEqual(0);
+    expect(lowerReparked).toBeGreaterThan(upperResumed);
+
+    const lowerReprepared = run.executed.find(
+      (step) => step.stepId === "wait-prepare-lower-1"
+    );
+    expect(lowerReprepared?.at).toBeGreaterThan(59 * MINUTE_MS);
   });
 }

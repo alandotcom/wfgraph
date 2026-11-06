@@ -323,8 +323,8 @@ function describeCases(
           })),
           events: events.map((event) => event.eventType),
           waits: yield* executions.listWaitingStates(executionId),
-          schedule: yield* executions.findSchedule(executionId),
-          memo: yield* executions.listStepMemo(executionId),
+          schedule: yield* executions.findSchedule({ executionId }),
+          memo: yield* executions.listStepMemo({ executionId }),
         };
       })
     );
@@ -550,8 +550,9 @@ function describeCases(
     let migrated = false;
     const migrateOnLoad: RepoWrap = (repo) => ({
       ...repo,
-      listStepMemo: (executionId) =>
+      listStepMemo: (key) =>
         Effect.gen(function* () {
+          const { executionId } = harness;
           const [wait] = yield* repo.listWaitingStates(executionId);
           if (!wait) throw new Error("No parked Wait to migrate");
           const repinned = yield* repo.repinVersion({
@@ -564,7 +565,7 @@ function describeCases(
             now: now(),
           });
           migrated = repinned.moved;
-          return yield* repo.listStepMemo(executionId);
+          return yield* repo.listStepMemo(key);
         }),
     });
     expect(await harness.pass({ wrap: migrateOnLoad })).toMatchObject({
@@ -644,8 +645,9 @@ function describeCases(
     let migrated = false;
     const migrateOnLoad: RepoWrap = (repo) => ({
       ...failPark(repo),
-      listStepMemo: (executionId) =>
+      listStepMemo: (key) =>
         Effect.gen(function* () {
+          const { executionId } = harness;
           const [wait] = yield* repo.listWaitingStates(executionId);
           if (!wait) throw new Error("No parked Wait to migrate");
           const repinned = yield* repo.repinVersion({
@@ -658,7 +660,7 @@ function describeCases(
             now: now(),
           });
           migrated = repinned.moved;
-          return yield* repo.listStepMemo(executionId);
+          return yield* repo.listStepMemo(key);
         }),
     });
     expect(await harness.pass({ wrap: migrateOnLoad })).toMatchObject({
@@ -924,7 +926,7 @@ function describeCases(
           const executions = yield* ExecutionRepo;
           const { executionId } = harness;
           const logs = yield* executions.listLogs(executionId);
-          const schedule = yield* executions.findSchedule(executionId);
+          const schedule = yield* executions.findSchedule({ executionId });
           // A write transaction of its own: one timeline entry.
           yield* executions.recordAuditEvent({
             workflowId: "wf_1",
@@ -968,7 +970,9 @@ function describeCases(
       harness.connection.run(
         Effect.gen(function* () {
           const executions = yield* ExecutionRepo;
-          return yield* executions.findSchedule(harness.executionId);
+          return yield* executions.findSchedule({
+            executionId: harness.executionId,
+          });
         })
       );
 
@@ -1026,7 +1030,9 @@ function describeCases(
             const memo = await harness.connection.run(
               Effect.gen(function* () {
                 const executions = yield* ExecutionRepo;
-                return yield* executions.listStepMemo(harness.executionId);
+                return yield* executions.listStepMemo({
+                  executionId: harness.executionId,
+                });
               })
             );
             return { claimed, memo };

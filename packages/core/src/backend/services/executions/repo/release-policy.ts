@@ -1,17 +1,31 @@
 /**
  * The database executor's scheduling decisions, made once for both backends:
- * how many failures a step or a run may have, what a claim counts when it
- * sweeps an expired lease, what a release writes back, which wake the winner
- * of an Exit claim gives the run's other parks, and what a terminal write
- * closes. Each backend runs the statements these decisions call for inside its
+ * which rows a claim leases, how many failures a step or a run may have, what
+ * a claim counts when it sweeps an expired lease, which parks it times out,
+ * what a release writes back, which runs a producer's wake re-queues, which
+ * parks an Event, a re-park or a terminal write may take, which wake the
+ * winner of an Exit claim gives the run's other parks, and what each producer
+ * answers. A decision a statement makes is a Drizzle `sql` builder over the
+ * columns each backend passes in. Each backend runs the statements inside its
  * own transaction, holding the schedule row first.
  */
 
+import { countBy, sortBy } from "es-toolkit/array";
+import { Effect } from "effect";
 import { type Column, type SQL, sql } from "drizzle-orm";
-import type { ParkWake } from "@wfgraph/shared/lifecycle/execution-schedule";
 import type {
+  ExecutionScheduleKind,
+  ParkWake,
+} from "@wfgraph/shared/lifecycle/execution-schedule";
+import type { JsonValue } from "@wfgraph/shared/types/json";
+import type { WaitArrival } from "@wfgraph/shared/lifecycle/wait-signal";
+import type {
+  CanceledOutletClaim,
+  ClaimedSchedule,
   CountedStepFailure,
+  ExecutionSchedule,
   ExecutionTerminationState,
+  ParkResolution,
   PassOutcome,
   ReleasedSchedule,
   StepMemo,
@@ -76,6 +90,141 @@ export function countStepFailure(
 /** Whether the run's own failure count has passed the limit, which ends the run failed. */
 export function runRetriesSpent(attempt: number): boolean {
   return attempt > STEP_RETRY_LIMIT;
+}
+
+/**
+ * An instant as a backend binds it against one of its time columns: a `Date`
+ * on PostgreSQL, epoch milliseconds on SQLite. Each builder binds it through
+ * the column it is compared with, so the column's own encoding applies.
+ */
+export type BoundInstant = Date | number;
+
+function instantOf(column: Column, now: BoundInstant): SQL {
+  return sql`${sql.param(now, column)}`;
+}
+
+/**
+ * The kinds of schedule row the claim leases, one per pass body. A `delivery`
+ * row is left alone until a body runs it.
+ */
+const CLAIMED_SCHEDULE_KINDS = [
+  "run",
+] as const satisfies readonly ExecutionScheduleKind[];
+
+function sqlLiterals(values: readonly string[]): SQL {
+  return sql.raw(values.map((value) => `'${value}'`).join(", "));
+}
+
+/** The schedule row columns the claim and the producers' re-queue read. */
+type ScheduleColumns = {
+  kind: Column;
+  state: Column;
+  wakeAt: Column;
+  leaseExpiresAt: Column;
+};
+
+/**
+ * Whether a lease expired by `now`: the row is `leased` and its lease ends at
+ * or before `now`, so the worker that held it stopped renewing it.
+ */
+function expiredLease(
+  columns: Pick<ScheduleColumns, "state" | "leaseExpiresAt">,
+  now: BoundInstant
+): SQL {
+  return sql`(${columns.state} = 'leased' and ${columns.leaseExpiresAt} <= ${instantOf(columns.leaseExpiresAt, now)})`;
+}
+
+/**
+ * Whether the claim leases this row at `now`: its kind has a pass body, and it
+ * is `queued` or `waiting` with `wake_at` at or before `now`, or its lease
+ * expired (`expiredLease`).
+ */
+export function dueSchedule(columns: ScheduleColumns, now: BoundInstant): SQL {
+  return sql`(${columns.kind} in (${sqlLiterals(CLAIMED_SCHEDULE_KINDS)}) and ((${columns.state} in ('queued', 'waiting') and ${columns.wakeAt} <= ${instantOf(columns.wakeAt, now)}) or ${expiredLease(columns, now)}))`;
+}
+
+/**
+ * Whether a producer's wake re-queues this row at `now`: it is `waiting`, or
+ * `queued` and not due until after `now`, so a run in a retry backoff is woken
+ * at once. A `leased` row is left for its release, which reads the wakes, and
+ * a row already due is left as it is.
+ */
+export function requeuedByWake(
+  columns: Pick<ScheduleColumns, "state" | "wakeAt">,
+  now: BoundInstant
+): SQL {
+  return sql`(${columns.state} = 'waiting' or (${columns.state} = 'queued' and ${columns.wakeAt} > ${instantOf(columns.wakeAt, now)}))`;
+}
+
+/** The `wake_at` a re-queued row takes: `now`, or its own when that is earlier. */
+export function requeuedWakeAt(
+  columns: Pick<ScheduleColumns, "wakeAt">,
+  now: BoundInstant
+): SQL {
+  return sql`case when ${columns.wakeAt} > ${instantOf(columns.wakeAt, now)} then ${instantOf(columns.wakeAt, now)} else ${columns.wakeAt} end`;
+}
+
+/** The wait row columns the park decisions read. */
+type ParkColumns = {
+  status: Column;
+  waitUntil: Column;
+  wake: Column;
+};
+
+/** The kind of the wake a wait row holds, read from its JSON in either backend. */
+function wakeKind(columns: Pick<ParkColumns, "wake">): SQL {
+  return sql`(${columns.wake} ->> 'kind')`;
+}
+
+/** Whether a park's deadline passed by `now` while it was still `waiting`. */
+export function overduePark(
+  columns: Pick<ParkColumns, "status" | "waitUntil">,
+  now: BoundInstant
+): SQL {
+  return sql`(${columns.status} = 'waiting' and ${columns.waitUntil} <= ${instantOf(columns.waitUntil, now)})`;
+}
+
+/** Whether a park is open as `OPEN_PARK_STATUSES` describes, which a terminal write cancels. */
+export function openPark(columns: Pick<ParkColumns, "status">): SQL {
+  return sql`${columns.status} in (${sqlLiterals(OPEN_PARK_STATUSES)})`;
+}
+
+/**
+ * Whether an Event or a manual resume may claim this park: one still
+ * `waiting`, or one whose pending wake is a Migration's `migrate` wake. An
+ * Event that arrives while that wake is pending replaces it, and the next pass
+ * reads the Event and resumes the Wait under the version the run was moved
+ * to. Any other wake has already won the park.
+ */
+export function claimablePark(
+  columns: Pick<ParkColumns, "status" | "wake">
+): SQL {
+  return sql`(${columns.status} = 'waiting' or (${columns.status} = 'resuming' and ${wakeKind(columns)} = 'migrate'))`;
+}
+
+/**
+ * Whether this delivery's own claim already resolved the park: `resuming` with
+ * the `resume` wake the claim wrote, naming `deliveryId`. A delivery that
+ * crashed after its claim committed finds its park in this state.
+ */
+export function claimedByDelivery(
+  columns: Pick<ParkColumns, "status" | "wake">,
+  deliveryId: string
+): SQL {
+  return sql`(${columns.status} = 'resuming' and ${wakeKind(columns)} = 'resume' and (${columns.wake} ->> 'deliveryId') = ${deliveryId})`;
+}
+
+/**
+ * Whether a re-park may write over this park: one still `waiting`, or one the
+ * executor resolved with a wake the re-park supersedes. A `migrate` wake is
+ * the instruction to prepare again, and a `timeout` wake read under a version
+ * the run has since left is discarded the same way. Any other wake is an Event
+ * or a claim the Wait still has to act on.
+ */
+export function reparkablePark(
+  columns: Pick<ParkColumns, "status" | "wake">
+): SQL {
+  return sql`(${columns.status} = 'waiting' or (${columns.status} = 'resuming' and ${wakeKind(columns)} in ('migrate', 'timeout')))`;
 }
 
 /** The schedule row columns the claim's counting rule reads. */
@@ -203,6 +352,144 @@ function decideParkedRelease(
     attempt: 0,
     lastError: null,
   };
+}
+
+/** What `wakePark` answers, from whether it set the wake and the rows it made due. */
+export function parkResolution(produced: {
+  result: boolean;
+  due: readonly unknown[];
+}): ParkResolution {
+  return { resolved: produced.result, requeued: produced.due.length > 0 };
+}
+
+/**
+ * Whether a run's open parks are exactly the Waits a Migration classified, each
+ * still `waiting` under the resume token it was classified with. A wake, a
+ * re-park or a newly parked branch changes the set, which refuses the repin.
+ */
+export function matchesClassification(
+  parked: readonly { id: string; resumeToken: string | null; status: string }[],
+  classified: readonly { id: string; resumeToken: string | null }[]
+): boolean {
+  const expected = new Map(
+    classified.map((wait) => [wait.id, wait.resumeToken])
+  );
+  return (
+    expected.size === classified.length &&
+    parked.length === expected.size &&
+    parked.every(
+      (wait) =>
+        wait.status === "waiting" &&
+        expected.has(wait.id) &&
+        expected.get(wait.id) === wait.resumeToken
+    )
+  );
+}
+
+/** The wake an Event or a manual resume writes onto the park it claimed. */
+export function resumeWakeOf(arrival: WaitArrival): ParkWake {
+  return {
+    kind: "resume",
+    eventName: arrival.eventName,
+    payload: arrival.payload,
+    deliveryId: arrival.deliveryId ?? null,
+  };
+}
+
+/**
+ * The arrival a `resume` wake carries, or null for any other wake. The wake
+ * column is the one record of a resume, so this is how a timeout learns that a
+ * resume won the park first.
+ */
+export function arrivalOfWake(wake: ParkWake | null): WaitArrival | null {
+  if (wake?.kind !== "resume") return null;
+  return {
+    eventName: wake.eventName,
+    payload: wake.payload,
+    deliveryId: wake.deliveryId ?? undefined,
+  };
+}
+
+/** A schedule row a producer made due, with the run it schedules. */
+export type DueSchedule = { scheduleId: string; executionId: string | null };
+
+/**
+ * What `requestCancelForEntity` answers, from the runs its claim flagged, the
+ * run of each park its `cancel` wake resolved, and the rows it made due.
+ */
+export function canceledOutletClaims(produced: {
+  result: { flagged: readonly string[]; resolved: readonly string[] };
+  due: readonly DueSchedule[];
+}): CanceledOutletClaim[] {
+  const parksByRun = countBy(produced.result.resolved, (id) => id);
+  const due = new Set(produced.due.map((row) => row.executionId));
+  return produced.result.flagged.map((executionId) => ({
+    executionId,
+    resolvedParks: parksByRun[executionId] ?? 0,
+    requeued: due.has(executionId),
+  }));
+}
+
+/**
+ * A row the claim just leased, as its pass sees it. The claim wrote the token
+ * and the lease expiry and leases only the kinds `CLAIMED_SCHEDULE_KINDS`
+ * names, and a `run` row always names its Execution, so a row missing any of
+ * them is a defect.
+ */
+function claimedSchedule(
+  row: ExecutionSchedule
+): Effect.Effect<ClaimedSchedule> {
+  const { ownerToken, leaseExpiresAt, executionId } = row;
+  if (
+    row.kind === "run" &&
+    ownerToken !== null &&
+    leaseExpiresAt !== null &&
+    executionId !== null
+  ) {
+    return Effect.succeed({
+      kind: row.kind,
+      scheduleId: row.id,
+      executionId,
+      ownerToken,
+      attempt: row.attempt,
+      leaseExpiresAt,
+    });
+  }
+  return Effect.die(
+    new Error(
+      `The claimed schedule row ${row.id} carries no lease, or runs nothing a pass runs`
+    )
+  );
+}
+
+/** The rows a claim leased, oldest `wake_at` first, as their passes see them. */
+export function claimedSchedules(
+  rows: readonly ExecutionSchedule[]
+): Effect.Effect<ClaimedSchedule[]> {
+  return Effect.forEach(
+    sortBy(rows, [(row) => row.wakeAt.getTime(), (row) => row.id]),
+    claimedSchedule
+  );
+}
+
+/** A memo row's columns, as both backends read them back. */
+export type StepMemoColumns = {
+  status: string;
+  failures: number;
+  value: JsonValue | null;
+  error: string | null;
+};
+
+/** A memo row's columns as a `StepMemo`. The table's checks keep them consistent. */
+export function stepMemoOf(row: StepMemoColumns): StepMemo {
+  const { status, failures, error } = row;
+  if (status === "succeeded") {
+    return { status, failures, value: row.value ?? null };
+  }
+  if ((status === "failing" || status === "failed") && error !== null) {
+    return { status, failures, error };
+  }
+  throw new Error(`A step memo row holds the invalid status ${status}`);
 }
 
 /**

@@ -16,6 +16,7 @@ import {
 import {
   defineReplayRuntimeCases,
   isParked,
+  PARK_ROWS,
   PARKED_PASS,
   park,
 } from "#src/backend/engine/testing/replay-runtime.replay-cases";
@@ -43,7 +44,7 @@ describe("driveWithReplay backends", () => {
     const run = await driveWithReplay(
       async (runtime) =>
         isParked(await park(runtime, "nap", 1_000)) ? PARKED_PASS : "done",
-      { executor: { openBackend: () => backend } }
+      { executor: { openBackend: () => backend }, waitRows: PARK_ROWS }
     );
 
     expect(run.value).toBe("done");
@@ -55,6 +56,7 @@ describe("driveWithReplay backends", () => {
     const runtime = await createInMemoryReplayBackend().runtimeForPass({
       invocation: 0,
       now: 0,
+      parkDeadline: () => 1_000,
     });
 
     await expect(park(runtime, "nap", 1_000)).resolves.toEqual({

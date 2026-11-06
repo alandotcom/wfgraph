@@ -36,12 +36,35 @@ export type ReplayExecution = {
  */
 export type ReplayCases = (executor: ReplayExecutor) => void;
 
+/**
+ * The wait rows a body's parks stand on, as the drive reads their deadlines.
+ * A body that runs the engine passes the store the engine wrote its wait rows
+ * through.
+ */
+export type ReplayWaitRows = {
+  /**
+   * The deadline the wait row holds, or undefined when the drive cannot find
+   * the row, which parks it for `REPLAY_FALLBACK_TIMEOUT_MS`.
+   */
+  waitUntilOf: (waitStateId: string) => Date | undefined;
+  /**
+   * The clock the deadlines were written against, in epoch milliseconds. Left
+   * out, `Date.now`, which is the clock the engine writes them against.
+   */
+  now?: (() => number) | undefined;
+};
+
 export type ReplayRunOptions = {
   /**
    * The wake that ends a park, keyed by the park's step id. A park with no
    * entry here runs to its timeout.
    */
   events?: Record<string, WaitWake> | undefined;
+  /**
+   * Where each park's deadline is read, by the wait row it parks on. Left out,
+   * every park runs for `REPLAY_FALLBACK_TIMEOUT_MS`.
+   */
+  waitRows?: ReplayWaitRows | undefined;
   /** Pass ceiling, which turns a non-converging graph into a failure. */
   maxInvocations?: number | undefined;
   /** How the executor is set up. Left out, an in-memory backend. */
@@ -57,7 +80,7 @@ export type ReplayPass = {
    * the wait rows does in the middle of a pass, such as the store write that
    * wins an Exit claim.
    */
-  signalOpenParks: (wake: WaitWake) => Promise<void>;
+  resolveOpenParks: (wake: WaitWake) => Promise<void>;
 };
 
 /** The run's body, called once per pass. */
@@ -91,11 +114,14 @@ export type ReplayDatabaseBackend = {
    * the wake `wakePark` recorded for that step id, or `parked` while none is
    * recorded. The harness reads only `run`, `waitForEvent` and `attempt` from
    * it. `now` is the virtual clock in milliseconds, which a backend over a real
-   * database hands its claim.
+   * database hands its claim. `parkDeadline` answers the deadline the drive
+   * fixed for a park, by its step id, on the virtual clock; it is known by the
+   * time the harness calls the runtime's `waitForEvent` for that step.
    */
   runtimeForPass: (pass: {
     invocation: number;
     now: number;
+    parkDeadline: (stepId: string) => number;
   }) => WorkflowExecutionRuntime | Promise<WorkflowExecutionRuntime>;
   /**
    * Records the wake a park resolved with, keyed by the step id it parked
@@ -134,9 +160,9 @@ export type ReplayExecutor = {
    * parked, the way a Cancel Event's handler does. `write` makes the producer's
    * own writes, such as the claim on the execution row, and then every park
    * still open resolves with `wake`. Parks reached after that moment are not
-   * signaled.
+   * resolved.
    */
-  signalOpenParksAt?:
+  resolveOpenParksAt?:
     | {
         atMs: number;
         wake: WaitWake;
@@ -146,8 +172,8 @@ export type ReplayExecutor = {
 };
 
 /**
- * An event wait the engine left unbounded still has to end somewhere. A
- * backend that records a park's deadline gives such a park this one too.
+ * The deadline of a park whose wait row the drive cannot read. A backend that
+ * records a park's deadline gives such a park this one too.
  */
 export const REPLAY_FALLBACK_TIMEOUT_MS = 365 * 24 * 60 * 60 * 1000;
 
@@ -209,7 +235,8 @@ function endedParked(value: unknown): boolean {
  * parked.
  *
  * Between passes the run sleeps until the earliest of its open parks reaches
- * its deadline, or until `signalOpenParksAt` fires. A park resolves at its
+ * its deadline, or until `resolveOpenParksAt` fires. A park's deadline is
+ * read from its wait row through `waitRows` the first time it parks. A park resolves at its
  * deadline with its entry in `events`, or with a timeout. A wake
  * that lands during a pass, after the pass read that park as parked, runs the
  * body again at once without moving the clock.
@@ -223,6 +250,7 @@ export async function driveWithReplay<T>(
 ): Promise<ReplayRun<T>> {
   const {
     events = {},
+    waitRows,
     maxInvocations = DEFAULT_MAX_INVOCATIONS,
     executor = {},
   } = options;
@@ -235,7 +263,7 @@ export async function driveWithReplay<T>(
   const openParks = new Set<string>();
   /** Parks resolved during the running pass whose wake that pass has not read. */
   const unreadWakes = new Set<string>();
-  let pendingSignal = executor.signalOpenParksAt;
+  let pendingResolution = executor.resolveOpenParksAt;
   let passRunning = false;
   let now = 0;
 
@@ -247,12 +275,12 @@ export async function driveWithReplay<T>(
     await backend.wakePark(stepId, wake, { now });
   }
 
-  async function signalOpenParks(wake: WaitWake) {
+  async function resolveOpenParks(wake: WaitWake) {
     // The producer writes to the parks open when it runs. A sibling branch of
     // the running pass can park while these writes are awaited, and that park
     // was not open yet, so the list is taken before the first write.
-    const signaled = Array.from(openParks);
-    for (const stepId of signaled) {
+    const resolving = Array.from(openParks);
+    for (const stepId of resolving) {
       // eslint-disable-next-line eslint/no-await-in-loop -- one write per park, in a stable order, as a producer makes them
       await wakePark(stepId, wake);
     }
@@ -267,8 +295,8 @@ export async function driveWithReplay<T>(
       const deadline = deadlines.get(stepId);
       return deadline === undefined ? [] : [deadline];
     });
-    if (pendingSignal && openParks.size > 0) {
-      targets.push(pendingSignal.atMs);
+    if (pendingResolution && openParks.size > 0) {
+      targets.push(pendingResolution.atMs);
     }
     if (targets.length === 0) {
       return false;
@@ -286,19 +314,46 @@ export async function driveWithReplay<T>(
       }
     }
 
-    const signal = pendingSignal;
-    if (signal && signal.atMs <= now) {
-      pendingSignal = undefined;
-      signal.write?.();
-      await signalOpenParks(signal.wake);
+    const producer = pendingResolution;
+    if (producer && producer.atMs <= now) {
+      pendingResolution = undefined;
+      producer.write?.();
+      await resolveOpenParks(producer.wake);
     }
 
     return true;
   }
 
+  /**
+   * Fixes a park's deadline on the virtual clock the first time it parks: the
+   * time its wait row's deadline leaves on the clock the row was written
+   * against, and at least a millisecond, from the moment of the park.
+   */
+  function fixDeadline(stepId: string, waitStateId: string) {
+    if (deadlines.has(stepId)) return;
+    const waitUntil = waitRows?.waitUntilOf(waitStateId);
+    const leftMs =
+      waitUntil === undefined
+        ? REPLAY_FALLBACK_TIMEOUT_MS
+        : Math.max(waitUntil.getTime() - (waitRows?.now ?? Date.now)(), 1);
+    deadlines.set(stepId, now + leftMs);
+  }
+
+  function parkDeadline(stepId: string): number {
+    const deadline = deadlines.get(stepId);
+    if (deadline === undefined) {
+      throw new Error(`The drive fixed no deadline for the park ${stepId}`);
+    }
+    return deadline;
+  }
+
   for (let invocation = 0; invocation < maxInvocations; invocation += 1) {
     // eslint-disable-next-line eslint/no-await-in-loop -- each pass runs against the runtime the backend opens for it
-    const inner = await backend.runtimeForPass({ invocation, now });
+    const inner = await backend.runtimeForPass({
+      invocation,
+      now,
+      parkDeadline,
+    });
     let stepFailure: { error: unknown } | undefined;
 
     const runtime: WorkflowExecutionRuntime = {
@@ -322,13 +377,9 @@ export async function driveWithReplay<T>(
           }
         }),
       waitForEvent: async (step, waitOptions) => {
+        fixDeadline(step.id, waitOptions.waitStateId);
         const answer = await inner.waitForEvent(step, waitOptions);
         if (answer.kind === "parked") {
-          if (!deadlines.has(step.id)) {
-            const timeoutMs =
-              waitOptions.timeoutMs ?? REPLAY_FALLBACK_TIMEOUT_MS;
-            deadlines.set(step.id, now + Math.max(timeoutMs, 0));
-          }
           openParks.add(step.id);
         } else {
           unreadWakes.delete(step.id);
@@ -341,8 +392,9 @@ export async function driveWithReplay<T>(
     passRunning = true;
     let settled: { value: T } | { error: unknown };
     try {
+      const pass = { invocation, resolveOpenParks };
       // eslint-disable-next-line eslint/no-await-in-loop -- one pass at a time is what gives the virtual clock a single reader
-      settled = { value: await body(runtime, { invocation, signalOpenParks }) };
+      settled = { value: await body(runtime, pass) };
     } catch (error) {
       settled = { error };
     } finally {

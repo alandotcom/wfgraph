@@ -597,8 +597,12 @@ export function describeExecutionConformance({
           return {
             refused,
             superseded: newer.supersededExecutionIds,
-            firstSchedule: yield* executions.findSchedule(firstId),
-            newerSchedule: yield* executions.findSchedule(newerId),
+            firstSchedule: yield* executions.findSchedule({
+              executionId: firstId,
+            }),
+            newerSchedule: yield* executions.findSchedule({
+              executionId: newerId,
+            }),
             newerEntries: yield* executions.listEvents(newerId),
           };
         })

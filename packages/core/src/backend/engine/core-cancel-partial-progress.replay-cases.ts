@@ -165,9 +165,10 @@ export function defineCancelPartialProgressReplayCases(
         (runtime) =>
           executeTestWorkflow(executionInput, runtime, store, actions),
         {
+          waitRows: store,
           executor: {
             ...executor,
-            signalOpenParksAt: {
+            resolveOpenParksAt: {
               atMs: 5_000,
               wake: CANCEL_WAKE,
               write: () => {

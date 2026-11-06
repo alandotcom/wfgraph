@@ -80,15 +80,15 @@ export class StepFailure extends Schema.TaggedError<
 /**
  * How a handler remembers work across a replay.
  *
- * A durable runtime re-runs the whole workflow function every time a run
- * resumes, so anything with a side effect goes inside `run` or it happens again
- * on every attempt. Workflow Graph wraps no handler body for you: that is Inngest's model,
- * and an author who reaches a system twice is an author who did not say so here.
+ * The database executor replays the whole workflow body on every pass of a run,
+ * so anything with a side effect goes inside `run` or it happens again on every
+ * pass. Workflow Graph wraps no handler body for you (ADR-0009), and an author
+ * who reaches a system twice is an author who did not say so here.
  *
  * The Effect overload is the internal shape: integrations yield it and memoize
  * through a `RememberedStep` envelope so a `StepFailure` fails once. The Promise
  * overload is a thin adapter for a host's `defineAction`: it memoizes the bare
- * value, and a throw leaves no stored entry so a function-level retry re-runs.
+ * value, and a throw leaves no stored value, so the executor retries the step.
  *
  * What `run` answers round-trips through JSON on its way into the runtime's
  * storage, and `JsonSafe` is the compiler holding both forms to that. A `Date`,
@@ -113,7 +113,7 @@ type RememberedStep<A> =
   | { ok: false; message: string };
 
 /**
- * Inngest's `run`, without a second `JsonSafe` check on a value that already
+ * The durable runtime's `run`, without a second `JsonSafe` check on a value that already
  * passed at the author's `step.run` call. Comparing two generic signatures
  * applies the check again to something that is no longer the author's type.
  */
@@ -128,8 +128,9 @@ type DurableRemember = <T>(
  * Effect is the primary execution shape: work runs to a `RememberedStep`
  * envelope so a `StepFailure` is stored once and re-raised on replay rather
  * than retried. The Promise overload is a thin adapter for host `defineAction`:
- * it memoizes the bare value, and a throw escapes without a stored entry so a
- * function-level retry re-runs the step (Inngest's model for transient errors).
+ * it memoizes the bare value, and a throw escapes without a stored value, so
+ * the executor counts a failure against the step and runs it again after a
+ * backoff, the way it treats any transient error.
  */
 export function nodeStepApi(steps: NodeSteps | undefined): NodeStepApi {
   // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- JsonSafe was enforced on the author's value at `run`
@@ -192,8 +193,9 @@ export function nodeStepApi(steps: NodeSteps | undefined): NodeStepApi {
       | (() => Promise<A>)
   ): Effect.Effect<A, StepFailure, HttpClient.HttpClient> | Promise<A> {
     if (typeof work === "function") {
-      // Bare-value memoization: a throw must not leave a stored entry, or a
-      // function-level retry would replay the failure instead of re-running.
+      // Bare-value memoization: a throw must not leave a stored value, or the
+      // executor's retry would replay the failure instead of running the step
+      // again.
       return remember(stepId, work);
     }
 

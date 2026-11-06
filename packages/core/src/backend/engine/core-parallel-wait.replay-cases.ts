@@ -201,7 +201,7 @@ export function runGraph(
   graph: ReturnType<typeof createSerializedWorkflowGraph>,
   executor: ReplayExecutor,
   options: {
-    store?: WorkflowStore;
+    store?: RecordingWorkflowStore;
     storeForPass?: (store: WorkflowStore, pass: ReplayPass) => WorkflowStore;
     entities?: WorkflowEntities;
     guarded?: boolean;
@@ -233,7 +233,7 @@ export function runGraph(
         actions,
         entities
       ),
-    { executor }
+    { executor, waitRows: store }
   );
 }
 
@@ -529,7 +529,7 @@ function exitWakesOpenParks(
     requestExit: (input) =>
       Effect.tap(passStore.requestExit(input), (claimed) =>
         claimed?.didWrite && claimed.claim?.kind === "exit"
-          ? Effect.promise(async () => await pass.signalOpenParks(EXIT_WAKE))
+          ? Effect.promise(async () => await pass.resolveOpenParks(EXIT_WAKE))
           : Effect.void
       ),
   };
@@ -722,7 +722,7 @@ export function defineParallelWaitReplayCases(executor: ReplayExecutor): void {
       cancelableWaitGraph(),
       {
         ...executor,
-        signalOpenParksAt: {
+        resolveOpenParksAt: {
           atMs: 30_000,
           wake: CANCEL_WAKE,
           write: () => landCancelClaim(store),
@@ -760,7 +760,7 @@ export function defineParallelWaitReplayCases(executor: ReplayExecutor): void {
       siblingWaitsGraph("20s", "90s", { canceledOutlet: true }),
       {
         ...executor,
-        signalOpenParksAt: {
+        resolveOpenParksAt: {
           atMs: 10_000,
           wake: CANCEL_WAKE,
           write: () => landCancelClaim(store),

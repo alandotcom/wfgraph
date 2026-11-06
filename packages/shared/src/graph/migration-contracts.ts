@@ -17,9 +17,9 @@
  *   outside every parked Wait's descendants with no node log row in this run.
  *   Waking would execute work before or beside a parked Wait.
  * - `waits_nested`: the run is parked on two Waits, and the target graph places
- *   one of them below the other. Each parked Wait wakes its own branch run, and
- *   the branch entered at the upper Wait would run down to the lower one and
- *   park a second time on a row the other branch already holds.
+ *   one of them below the other. The Migration wakes both parks, and the run
+ *   cannot reach the lower Wait to read its wake until the upper one resumes,
+ *   so it would be claimed again pass after pass until then.
  * - `unresolved_reference`: a node at or below a parked Wait references a node
  *   that has no recorded output and is not upstream of the consuming node in
  *   the target graph. A template token inside the target Wait's own

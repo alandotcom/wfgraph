@@ -1,8 +1,8 @@
 /**
  * Which Events a workflow's graph cares about, and in which role.
  *
- * The Inngest listener set is app-wide and comes from the catalog, so a
- * delivered Event needs an index to find its workflows rather than a scan of
+ * The Events the app listens for are app-wide and come from the catalog, so
+ * a delivered Event needs an index to find its workflows rather than a scan of
  * every stored graph. These rows are that index: derived here from a graph the
  * save already validated, and written by the repository in the same transaction
  * as the graph itself.

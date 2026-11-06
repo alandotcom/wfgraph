@@ -292,10 +292,11 @@ function pairParkedWaits(
  * The parked Wait the target graph places another parked Wait below, if there is
  * one.
  *
- * Each parked Wait wakes a branch run of its own. A branch entered at the upper
- * Wait runs down to the lower Wait and parks a second time on the row the other
- * branch already holds, so the two branches then race for the same row. The id
- * answered is the upper Wait's.
+ * A Migration writes a migrate wake onto every park of the run. Under the
+ * target graph a pass reaches the lower Wait only once the upper one resumes,
+ * so until then each pass ends with the lower Wait's wake unread, and the
+ * release re-queues such a run at once: the run would be claimed pass after
+ * pass until the upper Wait's deadline. The id answered is the upper Wait's.
  */
 function nestedWaitNodeId(parked: readonly ParkedWait[]): string | undefined {
   const parkedNodeIds = new Set(parked.map((entry) => entry.waitState.nodeId));

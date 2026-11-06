@@ -61,7 +61,7 @@ async function waitForSuspension(
   const observed = await eventually(
     `durable suspension on ${label}`,
     async () => ({
-      schedule: await host.run(host.repo.findSchedule(executionId)),
+      schedule: await host.run(host.repo.findSchedule({ executionId })),
       waits: await host.run(host.repo.listWaitingStates(executionId)),
     }),
     ({ schedule, waits }) => schedule?.state === "waiting" && accept(waits)
@@ -144,8 +144,8 @@ export async function expectSettledExecution(
   await eventually(
     "schedule row and step memo deleted",
     async () => ({
-      schedule: await host.run(host.repo.findSchedule(executionId)),
-      stepMemo: await host.run(host.repo.listStepMemo(executionId)),
+      schedule: await host.run(host.repo.findSchedule({ executionId })),
+      stepMemo: await host.run(host.repo.listStepMemo({ executionId })),
     }),
     ({ schedule, stepMemo }) => schedule === null && stepMemo.length === 0
   );

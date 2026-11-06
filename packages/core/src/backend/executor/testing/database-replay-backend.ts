@@ -23,10 +23,7 @@ import type {
   WaitWake,
   WorkflowExecutionRuntime,
 } from "#src/backend/engine/runtime";
-import {
-  REPLAY_FALLBACK_TIMEOUT_MS,
-  type ReplayDatabaseBackend,
-} from "#src/backend/engine/testing/replay-runtime";
+import type { ReplayDatabaseBackend } from "#src/backend/engine/testing/replay-runtime";
 import { type OpenPass, openPass } from "#src/backend/executor/pass";
 import type { ConformanceConnection } from "#src/backend/persistence/conformance/support";
 import {
@@ -136,20 +133,19 @@ export function openDatabaseReplayBackend(
 
     /**
      * The mirror row a park stands on, opened at its first park and re-parked
-     * when a later attempt of the same Wait parks on it again.
+     * when a later attempt of the same Wait parks on it again. Its deadline is
+     * the one the harness fixed for the park on the virtual clock.
      */
     async function mirrorPark(
       step: DurableStepRef,
       options: WaitForEventOptions,
-      nowMs: number
+      deadlineMs: number
     ): Promise<string> {
       const known = rowsByStep.get(step.id);
       if (known !== undefined) return known;
 
       const parkKey = options.waitStateId;
-      const waitUntil = virtual(
-        nowMs + Math.max(options.timeoutMs ?? REPLAY_FALLBACK_TIMEOUT_MS, 0)
-      );
+      const waitUntil = virtual(deadlineMs);
       const existing = rowsByPark.get(parkKey);
       if (existing === undefined) {
         const opened = await run(
@@ -192,7 +188,7 @@ export function openDatabaseReplayBackend(
     }
 
     return {
-      runtimeForPass: async ({ now }) => {
+      runtimeForPass: async ({ now, parkDeadline }) => {
         const claimed = await run(
           repo.claimDue({
             workerId: "replay",
@@ -228,7 +224,11 @@ export function openDatabaseReplayBackend(
           attempt: runtime.attempt,
           run: runtime.run,
           waitForEvent: async (step, options) => {
-            const waitStateId = await mirrorPark(step, options, now);
+            const waitStateId = await mirrorPark(
+              step,
+              options,
+              parkDeadline(step.id)
+            );
             return await runtime.waitForEvent(step, {
               ...options,
               waitStateId,
@@ -264,7 +264,7 @@ export function openDatabaseReplayBackend(
         const pass = holder();
         const { writes } = pass;
         const memo = new Set(
-          (await run(repo.listStepMemo(executionId))).flatMap((entry) =>
+          (await run(repo.listStepMemo({ executionId }))).flatMap((entry) =>
             entry.status === "succeeded" ? [entry.stepId] : []
           )
         );

@@ -59,7 +59,7 @@ export type GroupScenario = {
   /** Whether the Group also holds the record the shape continues to. */
   groupSuffix: boolean;
   /** The durable write that fails once and is retried. */
-  fault: "none" | "completion" | "settlement";
+  fault: "none" | "completion" | "claim";
 };
 
 /** A wake Event and the payload marker the driver sends with it. */
@@ -479,9 +479,9 @@ export function buildGroupScenario(
     stages: builder.stages,
     expectedSideEffects: builder.sideEffects().toSorted(),
     expectedLoggedNodeIds: builder.reached.toSorted(),
-    // Only a woken event Wait settles a wake claim; otherwise fail the completion write.
+    // Only a woken event Wait takes a delivery's claim; otherwise fail the completion write.
     fault:
-      scenario.fault === "settlement" && !hasEventWake
+      scenario.fault === "claim" && !hasEventWake
         ? "completion"
         : scenario.fault,
   };
@@ -542,9 +542,5 @@ export const groupScenarios: fc.Arbitrary<GroupScenario> = fc.record({
   shape: groupShapes,
   groupPrefix: fc.boolean(),
   groupSuffix: fc.boolean(),
-  fault: fc.constantFrom<GroupScenario["fault"]>(
-    "none",
-    "completion",
-    "settlement"
-  ),
+  fault: fc.constantFrom<GroupScenario["fault"]>("none", "completion", "claim"),
 });

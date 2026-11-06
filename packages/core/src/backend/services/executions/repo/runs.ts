@@ -8,7 +8,6 @@
 
 import {
   and,
-  asc,
   count,
   desc,
   eq,
@@ -34,12 +33,7 @@ import type {
   WfGraphTransaction,
 } from "#src/backend/lib/db/index";
 import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
-import {
-  canceledOutletClaims,
-  endExecutions,
-  resolveOpenParks,
-  wakeExecutions,
-} from "#src/backend/services/executions/repo/schedule";
+import { endExecutions } from "#src/backend/services/executions/repo/schedule";
 import {
   IN_FLIGHT_EXECUTION_STATUSES,
   type EntityEligibilityReason,
@@ -48,7 +42,6 @@ import {
 } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { JsonObject, JsonValue } from "@wfgraph/shared/types/json";
 import type {
-  ExecutionEntitySelector,
   StoreWrite,
   ExecutionPageQuery,
   ExecutionStatusRow,
@@ -58,8 +51,6 @@ import type {
   InFlightExecutionRow,
   NewTerminalExecution,
   PendingCancel,
-  CanceledOutletClaim,
-  RepinOutcome,
   WorkflowExecution,
   WorkflowExecutionListRow,
 } from "#src/backend/services/executions/repo/contracts";
@@ -306,28 +297,6 @@ export type RunsRepoMethods = {
     input: NewTerminalExecution
   ) => Effect.Effect<WorkflowExecution, DatabaseError>;
   /**
-   * The Migration producer: move a parked run's pinned version pointer,
-   * answering whether a row moved and whether the run was made due. In the
-   * same transaction every park is resolved with a `migrate` wake and the run
-   * is made due (`wakeExecutions`); a leased run's release reads the wakes
-   * instead. The next pass loads the version the run now pins and prepares
-   * each Wait again.
-   *
-   * The version, status, and exact parked Wait set must still match the
-   * classification. A wake, repark, or newly parked branch invalidates it, so
-   * a run that is running or holds a woken Wait is refused: the work below a
-   * Wait then stays on the version the run pinned when the Wait resumed. The
-   * run's schedule row is locked before its execution row, the order the
-   * release and every producer take them in.
-   */
-  readonly repinVersion: (input: {
-    executionId: string;
-    fromVersionId: string;
-    toVersionId: string;
-    expectedWaitStates: readonly { id: string; resumeToken: string | null }[];
-    now: Date;
-  }) => Effect.Effect<RepinOutcome, DatabaseError>;
-  /**
    * Move a run back from "waiting" to "running" under the version the caller
    * loaded, answering whether a row moved.
    *
@@ -380,30 +349,6 @@ export type RunsRepoMethods = {
     status: "canceled" | "superseded";
     error?: string | undefined;
   }) => Effect.Effect<ExecutionTerminationState | null, DatabaseError>;
-  /**
-   * The Cancel producer: flag every in-flight run of this workflow about this
-   * entity for the Canceled outlet, answering what the claim did to each run
-   * it flagged.
-   *
-   * One transaction through `wakeExecutions`, which locks the candidates'
-   * schedule rows first, and the flag is written only on a candidate still in
-   * flight with no claim, so a run that reached a verdict in between is not
-   * flagged. A run already flagged is skipped, so the first Cancel Event owns
-   * the payload the Canceled branch runs against. Each flagged run's parks
-   * still `waiting` are resolved with a `cancel` wake and the run is made due,
-   * so the next pass reads the claim at its `lifecycle-check` step and routes
-   * the Canceled outlet. The rows keep their status: the run ends itself once
-   * its outlet has run.
-   */
-  readonly requestCancelForEntity: (
-    input: {
-      workflowId: string;
-      runMode: WorkflowExecution["runMode"];
-      eventName: string;
-      payload: JsonObject;
-      now: Date;
-    } & ExecutionEntitySelector
-  ) => Effect.Effect<CanceledOutletClaim[], DatabaseError>;
   /**
    * Atomically claims an execution-wide Entity Eligibility exit and returns the
    * authoritative stored boundary, including an earlier competing outcome.
@@ -636,82 +581,6 @@ export function makeRunsMethods(
         return execution;
       }),
 
-    repinVersion: (input) =>
-      database.query(async (db): Promise<RepinOutcome> => {
-        // The schedule row first, as every other writer of a run takes it. A
-        // release then either commits before this repin reads the wait rows,
-        // or reads the migrate wakes this repin writes.
-        const { result: moved, due } = await wakeExecutions(
-          db,
-          { now: input.now, candidates: async () => [input.executionId] },
-          async (tx) => {
-            const refused = { result: false, woken: [] };
-            // startWait takes this lock before inserting a row. Lock Wait rows
-            // next so delivery cannot change the classified set during the
-            // move.
-            const [execution] = await tx
-              .select({ id: workflowExecutions.id })
-              .from(workflowExecutions)
-              .where(
-                and(
-                  eq(workflowExecutions.id, input.executionId),
-                  eq(workflowExecutions.status, "waiting"),
-                  eq(workflowExecutions.workflowVersionId, input.fromVersionId),
-                  isNull(workflowExecutions.terminationKind)
-                )
-              )
-              .for("update");
-            if (!execution) return refused;
-
-            const parked = await tx
-              .select({
-                id: workflowWaitStates.id,
-                resumeToken: workflowWaitStates.resumeToken,
-                status: workflowWaitStates.status,
-              })
-              .from(workflowWaitStates)
-              .where(
-                and(
-                  eq(workflowWaitStates.executionId, input.executionId),
-                  inArray(workflowWaitStates.status, ["waiting", "resuming"])
-                )
-              )
-              .orderBy(asc(workflowWaitStates.id))
-              .for("update");
-            const expected = new Map(
-              input.expectedWaitStates.map((wait) => [
-                wait.id,
-                wait.resumeToken,
-              ])
-            );
-            if (
-              expected.size !== input.expectedWaitStates.length ||
-              parked.length !== expected.size ||
-              parked.some(
-                (wait) =>
-                  wait.status !== "waiting" ||
-                  !expected.has(wait.id) ||
-                  expected.get(wait.id) !== wait.resumeToken
-              )
-            ) {
-              return refused;
-            }
-
-            await tx
-              .update(workflowExecutions)
-              .set({ workflowVersionId: input.toVersionId })
-              .where(eq(workflowExecutions.id, input.executionId));
-            await resolveOpenParks(tx, [input.executionId], {
-              kind: "migrate",
-            });
-            return { result: true, woken: [input.executionId] };
-          }
-        );
-        return moved
-          ? { moved: true, requeued: due.length > 0 }
-          : { moved: false };
-      }),
-
     markRunning: (input) => database.query(markRunningWrite(input)),
 
     markWaitingIfParked: (input) =>
@@ -736,68 +605,6 @@ export function makeRunsMethods(
           return await endedBy(tx, input.executionId, written);
         })
       ),
-
-    requestCancelForEntity: (input) =>
-      database.query(async (db) => {
-        const entityPredicate =
-          input.entityType === undefined
-            ? eq(workflowExecutions.entityValue, input.entityValue)
-            : and(
-                eq(workflowExecutions.entityType, input.entityType),
-                eq(workflowExecutions.entityId, input.entityId)
-              );
-        const claimable = and(
-          eq(workflowExecutions.workflowId, input.workflowId),
-          entityPredicate,
-          eq(workflowExecutions.runMode, input.runMode),
-          inArray(workflowExecutions.status, [...IN_FLIGHT_EXECUTION_STATUSES]),
-          // The first boundary claim owns the run. A second Cancel Event or a
-          // concurrent exit cannot replace its kind or payload.
-          isNull(workflowExecutions.terminationKind)
-        );
-        const produced = await wakeExecutions(
-          db,
-          {
-            now: input.now,
-            candidates: async (tx) => {
-              const candidates = await tx
-                .select({ id: workflowExecutions.id })
-                .from(workflowExecutions)
-                .where(claimable);
-              return candidates.map((row) => row.id);
-            },
-          },
-          async (tx, candidateIds) => {
-            if (candidateIds.length === 0) {
-              return { result: { flagged: [], resolved: [] }, woken: [] };
-            }
-            const flagged = await tx
-              .update(workflowExecutions)
-              .set({
-                terminationKind: "cancel",
-                terminationRequestedAt: input.now,
-                cancelEventName: input.eventName,
-                cancelPayload: input.payload,
-              })
-              .where(
-                and(
-                  inArray(workflowExecutions.id, [...candidateIds]),
-                  claimable
-                )
-              )
-              .returning({ id: workflowExecutions.id });
-            const flaggedIds = flagged.map((row) => row.id);
-            const resolved = await resolveOpenParks(tx, flaggedIds, {
-              kind: "cancel",
-            });
-            return {
-              result: { flagged: flaggedIds, resolved },
-              woken: flaggedIds,
-            };
-          }
-        );
-        return canceledOutletClaims(produced);
-      }),
 
     requestExit: (input) => database.query(requestExitWrite(input)),
 

@@ -11,7 +11,7 @@ import {
   LeaseLost,
 } from "#src/backend/lib/effect/database";
 import type { AuditRepoMethods } from "#src/backend/services/executions/repo/audit";
-import type { OwnerFence } from "#src/backend/services/executions/repo/contracts";
+import type { RunFence } from "#src/backend/services/executions/repo/contracts";
 import type { NodeLogsRepoMethods } from "#src/backend/services/executions/repo/node-logs";
 import type { RunsRepoMethods } from "#src/backend/services/executions/repo/runs";
 import type { PassWrites } from "#src/backend/services/executions/repo/schedule";
@@ -160,7 +160,7 @@ const addressedRun: {
  * reaches the database.
  */
 export function guardStoreWrites(
-  fence: OwnerFence,
+  fence: RunFence,
   writes: StoreWrites
 ): StoreWrites {
   return buildStoreWrites((name) => (input) => {

@@ -218,7 +218,7 @@ function describeCases(
     const schedule = (executionId: string) =>
       connection.run(
         Effect.flatMap(ExecutionRepo, (executions) =>
-          executions.findSchedule(executionId)
+          executions.findSchedule({ executionId })
         )
       );
 
@@ -391,7 +391,7 @@ function describeCases(
         });
         return {
           claimed,
-          memo: yield* executions.listStepMemo(executionId),
+          memo: yield* executions.listStepMemo({ executionId }),
         };
       })
     );
@@ -420,13 +420,19 @@ function describeCases(
       // when the process hits a bug: nothing releases the row.
       wrap: (repo) => ({
         ...repo,
-        listStepMemo: (executionId) =>
-          executionId === failing && failures === 0
-            ? Effect.suspend(() => {
-                failures += 1;
-                return Effect.die(new Error("The memo could not be decoded"));
-              })
-            : repo.listStepMemo(executionId),
+        listStepMemo: (key) =>
+          repo.findSchedule(key).pipe(
+            Effect.flatMap((schedule) =>
+              schedule?.executionId === failing && failures === 0
+                ? Effect.suspend(() => {
+                    failures += 1;
+                    return Effect.die(
+                      new Error("The memo could not be decoded")
+                    );
+                  })
+                : repo.listStepMemo(key)
+            )
+          ),
       }),
     });
 
@@ -438,12 +444,12 @@ function describeCases(
     const errors = captured.lines.filter(
       (line) =>
         line.message ===
-        "A pass failed; its run is claimed again once its lease expires"
+        "A pass failed; its row is claimed again once its lease expires"
     );
     expect(errors).toHaveLength(1);
     expect(errors[0]?.annotations).toMatchObject({
       run: { execution: failing },
-      pass: { attempt: 0 },
+      pass: { schedule: expect.any(String), attempt: 0 },
     });
   });
 

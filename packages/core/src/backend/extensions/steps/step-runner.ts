@@ -3,8 +3,8 @@
  *
  * A step is written and dispatched as an Effect. The app supplies the
  * credentials of whichever integration a node named when it builds the
- * engine's action port; the outer Inngest handler runs the whole engine
- * invocation on the app runtime.
+ * engine's action port, and the database executor runs each pass of the
+ * engine on the app runtime.
  */
 
 import type { Effect } from "effect";

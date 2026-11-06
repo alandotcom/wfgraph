@@ -91,6 +91,12 @@ export type RecordingWorkflowStore = WorkflowStore & {
   waitingIfParkedAnswer: boolean;
   /** Shared execution boundary state used by node-admission and exit tests. */
   terminationState: ExecutionTerminationState | null;
+  /**
+   * The deadline the last accepted park or re-park wrote on a wait row this
+   * store opened, by the id it answered for the row. `driveWithReplay` reads a park's
+   * deadline here (`ReplayWaitRows`).
+   */
+  waitUntilOf(waitStateId: string): Date | undefined;
   reset(): void;
 };
 
@@ -125,6 +131,18 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
     completeRun: [],
   };
 
+  const waitUntilById = new Map<string, Date>();
+  const recordWaitUntil = (
+    waitStateId: string,
+    waitUntilIso: string | null | undefined
+  ) => {
+    if (waitUntilIso === null || waitUntilIso === undefined) {
+      waitUntilById.delete(waitStateId);
+    } else {
+      waitUntilById.set(waitStateId, new Date(waitUntilIso));
+    }
+  };
+
   const store: RecordingWorkflowStore = {
     calls,
 
@@ -138,8 +156,11 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
     waitingIfParkedAnswer: false,
     terminationState: null,
 
+    waitUntilOf: (waitStateId) => waitUntilById.get(waitStateId),
+
     reset() {
       calls.length = 0;
+      waitUntilById.clear();
       for (const recordedInputs of Object.values(byMethod)) {
         recordedInputs.length = 0;
       }
@@ -172,12 +193,15 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
       return Effect.sync(() => {
         calls.push({ method: "createWaitState", input });
         byMethod.createWaitState.push(input);
-        if (store.createWaitStateAnswer !== "open") {
-          return store.createWaitStateAnswer;
+        const answer = store.createWaitStateAnswer;
+        if (answer !== "open") {
+          if (answer) recordWaitUntil(answer.waitStateId, input.waitUntilIso);
+          return answer;
         }
-        return claimAdmits(store.terminationState, input.side)
-          ? { waitStateId: `wait_state_${byMethod.createWaitState.length}` }
-          : undefined;
+        if (!claimAdmits(store.terminationState, input.side)) return undefined;
+        const waitStateId = `wait_state_${byMethod.createWaitState.length}`;
+        recordWaitUntil(waitStateId, input.waitUntilIso);
+        return { waitStateId };
       });
     },
 
@@ -185,6 +209,9 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
       return Effect.sync(() => {
         calls.push({ method: "reparkWaitState", input });
         byMethod.reparkWaitState.push(input);
+        if (store.reparkAnswer.ok) {
+          recordWaitUntil(input.waitStateId, input.waitUntilIso);
+        }
         return store.reparkAnswer;
       });
     },

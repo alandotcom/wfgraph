@@ -7,7 +7,7 @@
 import { Effect } from "effect";
 import type {
   FencedExecutionWrites,
-  OwnerFence,
+  RunFence,
 } from "#src/backend/services/executions/repo";
 import { guardStoreWrites } from "#src/backend/services/executions/repo/fencing";
 import { exitWakeForClaim } from "#src/backend/services/executions/repo/release-policy";
@@ -37,7 +37,7 @@ import {
 
 export function makeSqliteFencedWrites(
   store: SqliteDatabase
-): (fence: OwnerFence) => FencedExecutionWrites {
+): (fence: RunFence) => FencedExecutionWrites {
   return (fence) => ({
     ...makeSqlitePassWrites(store, fence),
     ...guardStoreWrites(fence, {

@@ -53,10 +53,10 @@ import {
 /**
  * How long one attempt may take before the system counts as unreachable.
  *
- * There was no timeout here at all before, which left a hung connection holding
- * a workflow run open until something upstream gave up. Ten seconds is longer
- * than any of these APIs takes to answer and short enough that a retry still
- * fits inside an Inngest step.
+ * Without one, a hung connection would hold a workflow run open until something
+ * upstream gave up. Ten seconds is longer than any of these APIs takes to
+ * answer and short enough that a retry still finishes inside the pass that
+ * runs the step.
  */
 const ATTEMPT_TIMEOUT = Duration.seconds(10);
 
@@ -72,9 +72,10 @@ const ATTEMPT_TIMEOUT = Duration.seconds(10);
  * This is the inner policy and it is deliberately short: it exists for the
  * hiccup that is over in a second, a rate limit the system already told us how
  * long to wait out, and a connection that never opened. Everything else is the
- * engine's business, where Inngest's function-level retry re-runs the whole
- * step minutes later with a much longer reach than anything sensible to hold a
- * socket open for.
+ * executor's business: a step that fails is counted against its retry limit
+ * (`STEP_RETRY_LIMIT`) and runs again on a later pass, after a backoff of up to
+ * a minute, which reaches further than anything sensible to hold a socket open
+ * for.
  */
 const RETRY_ATTEMPTS = 2;
 const RETRY_BASE_DELAY = Duration.millis(500);
@@ -92,7 +93,7 @@ const RETRY_AFTER_CEILING_SECONDS = 10;
  * How long the loop may already have been running when it decides to go again.
  *
  * Three attempts of ten seconds with two `Retry-After` waits at the ceiling
- * between them is fifty seconds, far longer than an Inngest step should stay
+ * between them is fifty seconds, far longer than a step should hold its pass
  * open for a hiccup. `Schedule.upTo` measures elapsed time from the first
  * failure and reads it at the moment the next failure arrives, so the budget
  * bounds the time already spent rather than the time still to come. Ten

@@ -2,7 +2,7 @@
  * The PostgreSQL `RunWakeBroadcast`: `NOTIFY` and `LISTEN` on one channel. A
  * transaction that issued `NOTIFY` serializes on a database-wide lock at commit,
  * so producers' writes commit without it, and one notification per flush
- * interval in a transaction of its own carries every run made due in it.
+ * interval in a transaction of its own carries every row made due in it.
  */
 
 import type { Sql } from "postgres";
@@ -50,28 +50,28 @@ export function createPostgresRunWakes(input: {
   // producers already woke its loop directly.
   const sender = generateId();
   const payload = `${schema} ${sender}`;
-  // The runs made due since the last flush, by Execution id.
-  const pending = new Set<string>();
+  // How many writes made rows due since the last flush.
+  let pending = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   const flush = async () => {
     timer = undefined;
-    if (pending.size === 0) return;
-    const runs = pending.size;
-    pending.clear();
+    if (pending === 0) return;
+    const writes = pending;
+    pending = 0;
     try {
       await client.notify(CHANNEL, payload);
     } catch (error) {
       logger.warn(
-        "Could not notify other processes of due runs; their poll finds them",
-        { wake: { runs }, error }
+        "Could not notify other processes of due rows; their poll finds them",
+        { wake: { writes }, error }
       );
     }
   };
 
   return {
-    announce: (executionId) => {
-      pending.add(executionId);
+    announce: () => {
+      pending += 1;
       if (timer !== undefined) return;
       timer = setTimeout(() => void flush(), FLUSH_MS);
       // A wake waiting to be sent never keeps the process alive.

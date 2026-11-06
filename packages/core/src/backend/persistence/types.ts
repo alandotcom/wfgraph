@@ -3,18 +3,19 @@ import type { IntegrationCipher } from "#src/backend/services/integrations/ciphe
 import type { WfGraphRepositories } from "#src/backend/runtime";
 
 /**
- * Tells the worker loops in other processes that this process made runs due.
- * A backend whose database can carry a notification between processes
- * supplies one.
+ * Tells the worker loops in other processes that this process made schedule
+ * rows due. A backend whose database can carry a notification between
+ * processes supplies one.
  */
 export type RunWakeBroadcast = {
   /**
-   * Notes that a write this process committed made the run `executionId` due.
-   * Notes are collected and sent as one notification at most every few tens of
-   * milliseconds, in a transaction of their own, so the write that made the run
-   * due commits without waiting for the notification.
+   * Notes that a write this process committed made schedule rows due. The
+   * notification names no row, since a loop that hears it claims whatever is
+   * due. Notes are collected and sent as one notification at most every few
+   * tens of milliseconds, in a transaction of their own, so the write that made
+   * the rows due commits without waiting for the notification.
    */
-  readonly announce: (executionId: string) => void;
+  readonly announce: () => void;
   /**
    * Calls `onWake` for every notification another process sends, on a
    * connection held for listening alone. Resolves once that connection

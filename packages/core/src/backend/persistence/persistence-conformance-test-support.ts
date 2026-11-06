@@ -15,6 +15,8 @@ import { describeWorkflowConformance } from "#src/backend/persistence/conformanc
 import { describeExecutionConformance } from "#src/backend/persistence/conformance/executions";
 import { describeExecutionWaitConformance } from "#src/backend/persistence/conformance/execution-waits";
 import { describeExecutionScheduleConformance } from "#src/backend/persistence/conformance/execution-schedule";
+import { describeExecutionFencingConformance } from "#src/backend/persistence/conformance/execution-fencing";
+import { describeExecutionProducerConformance } from "#src/backend/persistence/conformance/execution-producers";
 import { describeIntegrationConformance } from "#src/backend/persistence/conformance/integrations";
 
 // Re-exported so a backend harness and the PostgreSQL-only files have one
@@ -61,6 +63,8 @@ export function describePersistenceConformance(
     describeExecutionConformance(registry);
     describeExecutionWaitConformance(registry);
     describeExecutionScheduleConformance(registry);
+    describeExecutionFencingConformance(registry);
+    describeExecutionProducerConformance(registry);
     describeIntegrationConformance(registry);
   });
 }

@@ -14,11 +14,10 @@
 import type { JsonObject } from "@wfgraph/shared/types/json";
 
 export type WaitForEventOptions = {
-  /** Milliseconds until the park's deadline, from when the park ran. */
-  timeoutMs?: number | undefined;
   /**
    * The wait row this park is written on. The database executor reads the
-   * park's wake from that row and records the parking step on it.
+   * park's wake from that row and records the parking step on it, and the
+   * row's `wait_until` is the park's deadline.
    */
   waitStateId: string;
 };
@@ -27,8 +26,8 @@ export type WaitForEventOptions = {
  * How the engine names one durable step to the runtime.
  *
  * `id` is the memoization key and nothing else: change it and a run in flight
- * repeats the work it already did. `name` is what a durable runtime's UI prints
- * for the step, carries no meaning to the runtime, and may be reworded at any
+ * repeats the work it already did. `name` is a label for a person reading the
+ * engine's code or a test. No runtime reads it, so it may be reworded at any
  * time. The two are split because an id has to survive a rename of the node it
  * belongs to, while the label a person reads should follow that rename.
  */
@@ -154,9 +153,9 @@ export function createInMemoryWorkflowRuntime(
       return Promise.resolve(waitAnswer);
     },
 
-    // The display name is dropped rather than recorded: it is a label for a
-    // durable runtime's UI, and a test asserting on one would be asserting on
-    // wording no behaviour reads.
+    // The display name is dropped rather than recorded: no runtime reads it,
+    // and a test asserting on one would be asserting on wording no behaviour
+    // reads.
     run: async <T>(step: DurableStepRef, fn: () => Promise<T>): Promise<T> => {
       if (memo.has(step.id)) {
         // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- a step id always maps back to that step's own result type

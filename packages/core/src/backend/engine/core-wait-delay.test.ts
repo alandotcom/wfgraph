@@ -10,7 +10,7 @@ import {
   expectHaltedByClaim,
   runWait,
   waitOutput,
-  waitResumeSignal,
+  resumeWake,
   waitStepLogs,
 } from "#src/backend/engine/testing/wait-fixtures";
 
@@ -42,12 +42,14 @@ describe("wait node - delay mode", () => {
     expect(created[0]?.nodeId).toBe("wait_1");
     expect(created[0]?.executionId).toBe("exec_wait");
 
-    // The park's timeout is what is left of the delay: roughly an hour,
+    // The row's deadline is the end of the delay: roughly an hour away,
     // allowing for the milliseconds the run itself took.
-    const park = runtime.waits.find(
-      (wait) => wait.stepId === "wait-park-wait_1-0"
+    expect(
+      Date.parse(created[0]?.waitUntilIso ?? "") - Date.now()
+    ).toBeGreaterThan(3_500_000);
+    expect(runtime.waits.map((wait) => wait.stepId)).toContain(
+      "wait-park-wait_1-0"
     );
-    expect(park?.options.timeoutMs).toBeGreaterThan(3_500_000);
 
     // One park, so the row is written once and never re-parked.
     expect(store.callsOf("reparkWaitState")).toHaveLength(0);
@@ -335,7 +337,7 @@ describe("wait node - delay mode", () => {
       const { execution } = runWait({
         config: { waitMode: "delay", waitDuration: "1h" },
         store,
-        wake: waitResumeSignal({ orderId: "ord_1" }),
+        wake: resumeWake({ orderId: "ord_1" }),
         claimOnPark: claimedRun(kind),
       });
 

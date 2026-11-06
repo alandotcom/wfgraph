@@ -153,7 +153,7 @@ export function defineMigrationSnapshotReplayCases(
             actions
           );
         },
-        { executor }
+        { executor, waitRows: store }
       );
 
       expect(run.value.results.after).toMatchObject({

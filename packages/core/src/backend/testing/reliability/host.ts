@@ -34,12 +34,12 @@ export type ReliabilityHost = ReturnType<typeof fixtureExtensions> & {
    * `startForEntity` commits a Start's run, so the delivery loses the answer
    * and Inngest retries it. `completion` fires before a `completed` terminal
    * write and `terminal` before any other, whether a pass makes it fenced or
-   * after it ended the run. `settlement` fires after an Event delivery's claim
+   * after it ended the run. `claim` fires after an Event delivery's claim
    * of a parked Wait commits, which resolves the park and re-queues the run in
    * the same write, so the delivery retries a claim that already landed.
    */
   faults: Record<
-    "admission" | "completion" | "terminal" | "settlement",
+    "admission" | "completion" | "terminal" | "claim",
     ReturnType<typeof boundary>
   >;
   repo: ExecutionRepo["Service"];
@@ -62,7 +62,7 @@ export async function createHost(backend: Backend): Promise<ReliabilityHost> {
     admission: boundary(),
     completion: boundary(),
     terminal: boundary(),
-    settlement: boundary(),
+    claim: boundary(),
   };
   const cleanup: Array<() => Promise<void>> = [
     () => rm(directory, { recursive: true, force: true }),
@@ -253,7 +253,7 @@ function injectRepositoryFaults(
           };
         },
         claimWaitingStateById: (input) =>
-          faults.settlement.apply(repo.claimWaitingStateById(input), "after"),
+          faults.claim.apply(repo.claimWaitingStateById(input), "after"),
       };
       return {
         ...instance,
@@ -286,8 +286,12 @@ async function snapshotWorkflows(
             ...row,
             summary: await Effect.runPromise(repo.findSummaryById(row.id)),
             waits: await Effect.runPromise(repo.listWaitingStates(row.id)),
-            schedule: await Effect.runPromise(repo.findSchedule(row.id)),
-            stepMemo: await Effect.runPromise(repo.listStepMemo(row.id)),
+            schedule: await Effect.runPromise(
+              repo.findSchedule({ executionId: row.id })
+            ),
+            stepMemo: await Effect.runPromise(
+              repo.listStepMemo({ executionId: row.id })
+            ),
             logs: await Effect.runPromise(repo.listLogs(row.id)),
             events: await Effect.runPromise(repo.listEvents(row.id)),
           }))

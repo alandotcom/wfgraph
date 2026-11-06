@@ -289,8 +289,8 @@ export const workflowExecutions = pgTable(
       .notNull()
       .$type<WorkflowExecutionStartSource>(),
     // The arrival this run answers, which is what makes opening it idempotent:
-    // the lifecycle step is an Inngest step and a retry re-runs it, so a second
-    // attempt re-claims this row instead of opening a second run for one Event.
+    // a retried delivery re-runs its lifecycle step, and that attempt re-claims
+    // this row instead of opening a second run for one Event.
     // Null for a manual or scheduled start, which no retry loop replays.
     deliveryId: text("delivery_id"),
     runMode: text("run_mode").notNull().default("live").$type<WorkflowMode>(),
@@ -433,9 +433,9 @@ export const workflowExecutionLogs = pgTable(
     nodeId: text("node_id").notNull(),
     nodeName: text("node_name").notNull(),
     nodeType: text("node_type").notNull(),
-    // `cancelled` is written by the sweep that closes what a killed branch run
-    // left open, and read by the status poll, which maps an open row of a
-    // terminal run onto the same word. The column is text with no check
+    // No write stores `cancelled`. The status poll answers it for a row still
+    // open on a stopped run, mapping an open row of a terminal run onto that
+    // word. The column is text with no check
     // constraint, so the vocabulary widens without a migration.
     status: text("status")
       .notNull()

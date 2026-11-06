@@ -8,7 +8,7 @@ import type {
 } from "#src/backend/lib/db/index";
 import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
 import type {
-  OwnerFence,
+  RunFence,
   WorkflowExecutionLog,
 } from "#src/backend/services/executions/repo/contracts";
 import type { JsonValue } from "@wfgraph/shared/types/json";
@@ -70,9 +70,10 @@ export type NodeLogsRepoMethods = {
   /**
    * What each node of one run that succeeded left behind, by node id.
    *
-   * This is how a branch run reads the outputs above the node it starts at. A
-   * node that failed or is still going is absent, and a node with several rows
-   * answers with its newest.
+   * A Migration reads this to check that each reference the target version
+   * makes to a node the run already passed resolves against that node's
+   * output. A node that failed or is still going is absent, and a node with
+   * several rows answers with its newest.
    */
   readonly readNodeOutputs: (
     executionId: string
@@ -134,10 +135,7 @@ export function openNodeLogWrite(input: OpenNodeLogInput) {
  * node can still correct that verdict, while a row closed with any other
  * status keeps it.
  */
-export function closeNodeLogWrite(
-  input: CloseNodeLogInput,
-  fence?: OwnerFence
-) {
+export function closeNodeLogWrite(input: CloseNodeLogInput, fence?: RunFence) {
   return async (db: Executor): Promise<void> => {
     await db
       .update(workflowExecutionLogs)

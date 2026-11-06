@@ -24,7 +24,6 @@ import type {
   GlobalExecutionRow,
   InFlightExecutionRow,
   NewExecution,
-  RepinOutcome,
   WorkflowExecution,
 } from "#src/backend/services/executions/repo";
 import type {
@@ -45,12 +44,7 @@ import {
   sqliteVersionKind,
   type SqliteExecutionListRow,
 } from "#src/backend/persistence/sqlite/executions/rows";
-import {
-  endExecutions,
-  resolveOpenParks,
-  wakeExecutions,
-} from "#src/backend/persistence/sqlite/executions/schedule";
-import { canceledOutletClaims } from "#src/backend/services/executions/repo/schedule";
+import { endExecutions } from "#src/backend/persistence/sqlite/executions/schedule";
 
 const WORKFLOW_EXECUTIONS_LIMIT = 50;
 
@@ -471,72 +465,6 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
       store.write((database) =>
         insertExecution(database, input, input.status, input)
       ),
-    // The write transaction holds the one writer from its first statement, so
-    // the repin takes the run's schedule row, execution row and wait rows
-    // together, and a release runs wholly before or after it.
-    repinVersion: (input) =>
-      store.write((database) =>
-        Effect.gen(function* () {
-          const refused: RepinOutcome = { moved: false };
-          const parked = yield* database
-            .select({
-              id: workflowWaitStates.id,
-              resumeToken: workflowWaitStates.resumeToken,
-              status: workflowWaitStates.status,
-            })
-            .from(workflowWaitStates)
-            .where(
-              and(
-                eq(workflowWaitStates.executionId, input.executionId),
-                inArray(workflowWaitStates.status, ["waiting", "resuming"])
-              )
-            );
-          const expected = new Map(
-            input.expectedWaitStates.map((wait) => [wait.id, wait.resumeToken])
-          );
-          if (
-            expected.size !== input.expectedWaitStates.length ||
-            parked.length !== expected.size ||
-            parked.some(
-              (wait) =>
-                wait.status !== "waiting" ||
-                !expected.has(wait.id) ||
-                expected.get(wait.id) !== wait.resumeToken
-            )
-          ) {
-            return refused;
-          }
-          const moved = yield* database
-            .update(workflowExecutions)
-            .set({ workflowVersionId: input.toVersionId })
-            .where(
-              and(
-                eq(workflowExecutions.id, input.executionId),
-                eq(workflowExecutions.status, "waiting"),
-                eq(workflowExecutions.workflowVersionId, input.fromVersionId),
-                isNull(workflowExecutions.terminationKind)
-              )
-            )
-            .returning({ id: workflowExecutions.id });
-          if (moved.length === 0) return refused;
-          const { due } = yield* wakeExecutions(
-            database,
-            input.now,
-            Effect.as(
-              resolveOpenParks(database, [input.executionId], {
-                kind: "migrate",
-              }),
-              { result: undefined, woken: [input.executionId] }
-            )
-          );
-          const repinned: RepinOutcome = {
-            moved: true,
-            requeued: due.length > 0,
-          };
-          return repinned;
-        })
-      ),
-
     markRunning: (input) => store.write(markRunningWrite(input)),
     markWaitingIfParked: (input) =>
       store.write(markWaitingIfParkedWrite(input)),
@@ -569,53 +497,6 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
             return yield* endedBy(database, input.executionId, written);
           })
         )
-      ),
-    // The write transaction holds the one writer from its first statement, so
-    // the claim, the cancel wakes and the re-queues land together and a
-    // release runs wholly before or after them (`wakeExecutions`).
-    requestCancelForEntity: (input) =>
-      store.write((database) =>
-        Effect.gen(function* () {
-          const entityPredicate =
-            input.entityType === undefined
-              ? eq(workflowExecutions.entityValue, input.entityValue)
-              : and(
-                  eq(workflowExecutions.entityType, input.entityType),
-                  eq(workflowExecutions.entityId, input.entityId)
-                );
-          const where = and(
-            eq(workflowExecutions.workflowId, input.workflowId),
-            entityPredicate,
-            eq(workflowExecutions.runMode, input.runMode),
-            inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES),
-            isNull(workflowExecutions.terminationKind)
-          );
-          const produced = yield* wakeExecutions(
-            database,
-            input.now,
-            Effect.gen(function* () {
-              const flagged = yield* database
-                .update(workflowExecutions)
-                .set({
-                  terminationKind: "cancel",
-                  terminationRequestedAt: input.now.getTime(),
-                  cancelEventName: input.eventName,
-                  cancelPayload: encodeJson(input.payload),
-                })
-                .where(where)
-                .returning({ id: workflowExecutions.id });
-              const flaggedIds = flagged.map((row) => row.id);
-              const resolved = yield* resolveOpenParks(database, flaggedIds, {
-                kind: "cancel",
-              });
-              return {
-                result: { flagged: flaggedIds, resolved },
-                woken: flaggedIds,
-              };
-            })
-          );
-          return canceledOutletClaims(produced);
-        })
       ),
     requestExit: (input) => store.write(requestExitWrite(input)),
     canAdmitNode: (executionId) =>

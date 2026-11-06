@@ -34,17 +34,22 @@ export type {
 } from "@wfgraph/shared/lifecycle/execution-schedule";
 
 /**
- * The pass a write is made for: the schedule row its claim leased, the
- * fencing token that claim minted, and the Execution the row runs. A write
- * carrying a fence commits only while that schedule row is still `leased`
- * under that token and still names that Execution, and a fenced write that
- * addresses another Execution is refused.
+ * The pass a write is made for: the schedule row its claim leased and the
+ * fencing token that claim minted. A write carrying a fence commits only while
+ * that schedule row is still `leased` under that token.
  */
 export type OwnerFence = {
   scheduleId: string;
-  executionId: string;
   ownerToken: string;
 };
+
+/**
+ * The fence of a pass over a `run` row, with the Execution the row runs. The
+ * engine's store writes carry it: each also checks that its schedule row still
+ * names that Execution, and a write that addresses another Execution is
+ * refused.
+ */
+export type RunFence = OwnerFence & { executionId: string };
 
 /**
  * A write the engine's store makes, unfenced, so it is never refused for
@@ -73,22 +78,38 @@ export type ExecutionSchedule = {
   lastError: string | null;
 };
 
-/** A run's schedule row a claim leased to one worker's pass. */
-export type ClaimedExecution = {
-  /** What the row runs, which picks its pass's body. A claim leases only runs. */
-  kind: Extract<ExecutionScheduleKind, "run">;
+/**
+ * How a read names one schedule row: by its own id, or, for a `run` row, by
+ * the Execution it runs, which at most one row names.
+ */
+export type ScheduleRowKey = { scheduleId: string } | { executionId: string };
+
+/** What every leased schedule row carries, whatever it runs. */
+type ScheduleLease = {
   scheduleId: string;
-  executionId: string;
   /** The fencing token every write of this pass carries. */
   ownerToken: string;
   /**
-   * The run's own failure count after the claim. It is one higher than before
+   * The row's own failure count after the claim. It is one higher than before
    * only when the claim swept a lease that expired with no step recorded as
-   * running. A count past `STEP_RETRY_LIMIT` ends the run failed.
+   * running. A count past `STEP_RETRY_LIMIT` ends the row's subject failed.
    */
   attempt: number;
   leaseExpiresAt: Date;
 };
+
+/** A `run` row a claim leased: one workflow run, which names its Execution. */
+export type ClaimedRun = ScheduleLease & {
+  kind: "run";
+  executionId: string;
+};
+
+/**
+ * A schedule row a claim leased to one worker's pass, by what the row runs.
+ * `kind` picks the pass's body, and each kind the claim leases is one member
+ * of this union. `CLAIMED_SCHEDULE_KINDS` names the kinds the claim leases.
+ */
+export type ClaimedSchedule = ClaimedRun;
 
 /**
  * How a pass that wrote no terminal record ended, which decides the schedule
@@ -166,6 +187,16 @@ export type ParkResolution = {
    * by the write's `now`. Only a wake this call set makes the run due, and a
    * `leased` row is left for its release.
    */
+  requeued: boolean;
+};
+
+/**
+ * A park an Event or a manual resume claimed, with the wake the claim wrote on
+ * it. `requeued` says whether the claim made the run due (`wakeExecutions`),
+ * which is when the caller wakes a worker loop.
+ */
+export type WaitResumeClaim = {
+  waitState: WorkflowWaitState;
   requeued: boolean;
 };
 
@@ -468,7 +499,9 @@ export type ExecutionTerminationClaim =
 /**
  * The authoritative execution boundary after a claim or terminal write.
  *
- * A claim may coexist with an in-flight status while the parent run cleans up.
+ * A claim may coexist with an in-flight status while the run's next pass
+ * routes it: a Cancel claim runs the Canceled outlet first, and an Exit claim
+ * halts the run's other branches.
  * A terminal status has no pending claim unless it is the finalized result of
  * that same cancel or exit request.
  */

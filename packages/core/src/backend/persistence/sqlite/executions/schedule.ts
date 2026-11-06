@@ -10,8 +10,7 @@
  */
 
 import { Effect } from "effect";
-import { and, asc, eq, gt, inArray, lte, or, sql } from "drizzle-orm";
-import { compact } from "es-toolkit/array";
+import { and, asc, eq, inArray, type SQL, sql } from "drizzle-orm";
 import { generateId } from "@wfgraph/shared/utils/id";
 import type {
   DatabaseError,
@@ -21,23 +20,29 @@ import type {
   CountedStepFailure,
   OwnerFence,
   ParkWake,
+  ScheduleRowKey,
 } from "#src/backend/services/executions/repo/contracts";
 import { ownershipLost } from "#src/backend/services/executions/repo/fencing";
 import {
   claimAttempt,
+  claimedSchedules,
   countStepFailure,
   decideRelease,
+  dueSchedule,
+  type DueSchedule,
   LEASE_EXPIRED_ERROR,
-  OPEN_PARK_STATUSES,
+  openPark,
+  overduePark,
+  parkResolution,
+  requeuedByWake,
+  requeuedWakeAt,
+  stepMemoOf,
   sweptStepFailures,
   TIMEOUT_WAKE,
 } from "#src/backend/services/executions/repo/release-policy";
-import {
-  claimedExecutions,
-  parkResolution,
-  type PassWrites,
-  type ScheduleRepoMethods,
-  stepMemoOf,
+import type {
+  PassWrites,
+  ScheduleRepoMethods,
 } from "#src/backend/services/executions/repo/schedule";
 import type {
   SqliteDatabase,
@@ -54,14 +59,22 @@ import {
   sqliteExecutionSchedule,
 } from "#src/backend/persistence/sqlite/executions/rows";
 
-function holdsLease(database: SqliteExecutor, fence: OwnerFence) {
+/**
+ * A fence as a fenced write reads it: a `RunFence` also names the Execution
+ * its schedule row must still run.
+ */
+type AnyFence = OwnerFence & { executionId?: string | undefined };
+
+function holdsLease(database: SqliteExecutor, fence: AnyFence) {
   return database
     .select({ id: workflowExecutionSchedule.id })
     .from(workflowExecutionSchedule)
     .where(
       and(
         eq(workflowExecutionSchedule.id, fence.scheduleId),
-        eq(workflowExecutionSchedule.executionId, fence.executionId),
+        fence.executionId === undefined
+          ? undefined
+          : eq(workflowExecutionSchedule.executionId, fence.executionId),
         eq(workflowExecutionSchedule.state, "leased"),
         eq(workflowExecutionSchedule.ownerToken, fence.ownerToken)
       )
@@ -74,12 +87,12 @@ type Owned<A> = { owned: true; value: A } | { owned: false };
 
 /**
  * Runs one write of a pass in the write transaction, after checking that the
- * pass's schedule row is still leased under its token and still names its
- * run. Nothing runs when it is not, which answers `LeaseLost`.
+ * pass's schedule row is still leased under its token and, for a `RunFence`,
+ * still names its run. Nothing runs when it is not, which answers `LeaseLost`.
  */
 export function writeFenced<A>(
   store: SqliteDatabase,
-  fence: OwnerFence,
+  fence: AnyFence,
   write: (database: SqliteExecutor) => Effect.Effect<A, unknown>
 ): Effect.Effect<A, DatabaseError | LeaseLost> {
   return store
@@ -121,7 +134,7 @@ function settleEndedExecutions(
       .where(
         and(
           inArray(workflowWaitStates.executionId, ids),
-          inArray(workflowWaitStates.status, [...OPEN_PARK_STATUSES])
+          openPark(workflowWaitStates)
         )
       );
     yield* database
@@ -190,40 +203,45 @@ export function resolveOpenParks(
 
 /**
  * Runs a producer's write inside the caller's write transaction, then makes
- * due the runs it woke, as the PostgreSQL backend's `wakeExecutions` does. The
- * transaction holds the one writer from its first statement, so no release
- * reads the wait rows between the write and the re-queue, and nothing needs
- * locking first. Answers the write's result and the runs it made due.
+ * due the schedule rows of the runs it woke, as the PostgreSQL backend's
+ * `wakeExecutions` does. The transaction holds the one writer from its first
+ * statement, so no release reads the wait rows between the write and the
+ * re-queue, and nothing needs locking first. Answers the write's result and
+ * the schedule rows it made due.
  */
 export function wakeExecutions<A, E>(
   database: SqliteExecutor,
   now: Date,
   write: Effect.Effect<{ result: A; woken: readonly string[] }, E>
-): Effect.Effect<{ result: A; due: string[] }, unknown> {
+): Effect.Effect<{ result: A; due: DueSchedule[] }, unknown> {
   return Effect.gen(function* () {
     const { result, woken } = yield* write;
     if (woken.length === 0) return { result, due: [] };
-    const requeued = yield* database
+    const due = yield* database
       .update(workflowExecutionSchedule)
       .set({
         state: "queued",
-        wakeAt: sql`min(${workflowExecutionSchedule.wakeAt}, ${now.getTime()})`,
+        wakeAt: requeuedWakeAt(workflowExecutionSchedule, now.getTime()),
       })
       .where(
         and(
           inArray(workflowExecutionSchedule.executionId, [...woken]),
-          or(
-            eq(workflowExecutionSchedule.state, "waiting"),
-            and(
-              eq(workflowExecutionSchedule.state, "queued"),
-              gt(workflowExecutionSchedule.wakeAt, now.getTime())
-            )
-          )
+          requeuedByWake(workflowExecutionSchedule, now.getTime())
         )
       )
-      .returning({ executionId: workflowExecutionSchedule.executionId });
-    return { result, due: compact(requeued.map((row) => row.executionId)) };
+      .returning({
+        scheduleId: workflowExecutionSchedule.id,
+        executionId: workflowExecutionSchedule.executionId,
+      });
+    return { result, due };
   });
+}
+
+/** The schedule row a `ScheduleRowKey` names. */
+function scheduleRow(key: ScheduleRowKey): SQL {
+  return "scheduleId" in key
+    ? eq(workflowExecutionSchedule.id, key.scheduleId)
+    : eq(workflowExecutionSchedule.executionId, key.executionId);
 }
 
 const memoColumns = {
@@ -302,12 +320,12 @@ export function makeSqliteScheduleMethods(
   store: SqliteDatabase
 ): ScheduleRepoMethods {
   return {
-    findSchedule: (executionId) =>
+    findSchedule: (key) =>
       store.read((database) =>
         database
           .select()
           .from(workflowExecutionSchedule)
-          .where(eq(workflowExecutionSchedule.executionId, executionId))
+          .where(scheduleRow(key))
           .get()
           .pipe(
             Effect.map((row) => (row ? sqliteExecutionSchedule(row) : null))
@@ -326,24 +344,7 @@ export function makeSqliteScheduleMethods(
                 runningStepId: workflowExecutionSchedule.runningStepId,
               })
               .from(workflowExecutionSchedule)
-              .where(
-                and(
-                  eq(workflowExecutionSchedule.kind, "run"),
-                  or(
-                    and(
-                      inArray(workflowExecutionSchedule.state, [
-                        "queued",
-                        "waiting",
-                      ]),
-                      lte(workflowExecutionSchedule.wakeAt, now)
-                    ),
-                    and(
-                      eq(workflowExecutionSchedule.state, "leased"),
-                      lte(workflowExecutionSchedule.leaseExpiresAt, now)
-                    )
-                  )
-                )
-              )
+              .where(dueSchedule(workflowExecutionSchedule, now))
               .orderBy(
                 asc(workflowExecutionSchedule.wakeAt),
                 asc(workflowExecutionSchedule.id)
@@ -385,15 +386,14 @@ export function makeSqliteScheduleMethods(
                 .where(
                   and(
                     inArray(workflowWaitStates.executionId, claimedRuns),
-                    eq(workflowWaitStates.status, "waiting"),
-                    lte(workflowWaitStates.waitUntil, now)
+                    overduePark(workflowWaitStates, now)
                   )
                 );
             }
             return claimed.map(sqliteExecutionSchedule);
           })
         )
-        .pipe(Effect.flatMap(claimedExecutions)),
+        .pipe(Effect.flatMap(claimedSchedules)),
 
     wakePark: (input) =>
       store
@@ -422,7 +422,7 @@ export function makeSqliteScheduleMethods(
         )
         .pipe(Effect.map(parkResolution)),
 
-    listStepMemo: (executionId) =>
+    listStepMemo: (key) =>
       store.read((database) =>
         database
           .select(memoColumns)
@@ -431,7 +431,7 @@ export function makeSqliteScheduleMethods(
             workflowExecutionSchedule,
             eq(workflowExecutionSchedule.id, workflowExecutionSteps.scheduleId)
           )
-          .where(eq(workflowExecutionSchedule.executionId, executionId))
+          .where(scheduleRow(key))
           .pipe(
             Effect.map((rows) =>
               rows.map((row) => ({
@@ -449,7 +449,7 @@ export function makeSqlitePassWrites(
   store: SqliteDatabase,
   fence: OwnerFence
 ): PassWrites {
-  const { scheduleId, executionId } = fence;
+  const { scheduleId } = fence;
   const thisSchedule = eq(workflowExecutionSchedule.id, scheduleId);
   return {
     renewLease: (input) =>
@@ -505,7 +505,15 @@ export function makeSqlitePassWrites(
           .where(
             and(
               eq(workflowWaitStates.id, input.waitStateId),
-              eq(workflowWaitStates.executionId, executionId)
+              inArray(
+                workflowWaitStates.executionId,
+                database
+                  .select({
+                    executionId: workflowExecutionSchedule.executionId,
+                  })
+                  .from(workflowExecutionSchedule)
+                  .where(thisSchedule)
+              )
             )
           )
       ).pipe(Effect.asVoid),
@@ -514,23 +522,30 @@ export function makeSqlitePassWrites(
       writeFenced(store, fence, (database) =>
         Effect.gen(function* () {
           const schedule = yield* database
-            .select({ attempt: workflowExecutionSchedule.attempt })
+            .select({
+              attempt: workflowExecutionSchedule.attempt,
+              executionId: workflowExecutionSchedule.executionId,
+            })
             .from(workflowExecutionSchedule)
             .where(thisSchedule)
             .get();
-          const parks = yield* database
-            .select({
-              status: workflowWaitStates.status,
-              waitUntil: workflowWaitStates.waitUntil,
-              wake: workflowWaitStates.wake,
-            })
-            .from(workflowWaitStates)
-            .where(
-              and(
-                eq(workflowWaitStates.executionId, executionId),
-                inArray(workflowWaitStates.status, [...OPEN_PARK_STATUSES])
-              )
-            );
+          const executionId = schedule?.executionId ?? null;
+          const parks =
+            executionId === null
+              ? []
+              : yield* database
+                  .select({
+                    status: workflowWaitStates.status,
+                    waitUntil: workflowWaitStates.waitUntil,
+                    wake: workflowWaitStates.wake,
+                  })
+                  .from(workflowWaitStates)
+                  .where(
+                    and(
+                      eq(workflowWaitStates.executionId, executionId),
+                      openPark(workflowWaitStates)
+                    )
+                  );
           const { outcome } = input;
           const countedStep =
             outcome.kind === "step_failed"

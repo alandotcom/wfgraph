@@ -26,7 +26,8 @@ import {
   watchPassWrites,
 } from "#src/backend/executor/runtime";
 import {
-  type ClaimedExecution,
+  type ClaimedRun,
+  type ClaimedSchedule,
   ExecutionRepo,
   type FencedExecutionWrites,
   type PassOutcome,
@@ -102,9 +103,12 @@ export type PassRelease =
   | { owned: true; released: ReleasedPass }
   | { owned: false };
 
-/** One claimed row with its writes fenced on the claim and watched by `state`. */
+/**
+ * One claimed `run` row with its writes fenced on the claim and watched by
+ * `state`. The runtime and the store writes it offers replay a workflow run.
+ */
 export type OpenPass = {
-  claimed: ClaimedExecution;
+  claimed: ClaimedRun;
   state: PassState;
   /**
    * The pass's writes. While the pass runs, each is fenced on the owner token
@@ -113,7 +117,7 @@ export type OpenPass = {
   writes: FencedExecutionWrites;
   /** Where the lease ends if renewed now, which every memo write renews to. */
   leaseExpiresAt: () => Date;
-  /** Every memo row of the claimed run, keyed by step id. */
+  /** Every memo row of the claimed schedule row, keyed by step id. */
   loadMemo: Effect.Effect<Map<string, StepMemo>, DatabaseError>;
   /**
    * The replay runtime the body runs against. `runEffect` runs each of the
@@ -138,7 +142,7 @@ export type OpenPass = {
  * until the caller runs one of the answered Effects.
  */
 export function openPass(input: {
-  claimed: ClaimedExecution;
+  claimed: ClaimedRun;
   executions: ExecutionRepo["Service"];
   /** The clock every lease, memo and release write is stamped with. */
   now: () => Date;
@@ -162,7 +166,7 @@ export function openPass(input: {
     writes,
     leaseExpiresAt,
     loadMemo: executions
-      .listStepMemo(executionId)
+      .listStepMemo({ scheduleId: claimed.scheduleId })
       .pipe(
         Effect.map(
           (entries) =>
@@ -191,7 +195,7 @@ export function openPass(input: {
       renewLeaseWhileRunning({
         fenced,
         findSchedule: executions.findSchedule,
-        executionId,
+        scheduleId: claimed.scheduleId,
         state,
         everyMs,
         leaseExpiresAt,
@@ -242,7 +246,7 @@ export type PassBody<R> = {
 };
 
 /** The body for each kind of schedule row a claim can lease. */
-export type PassBodies<R> = Record<ClaimedExecution["kind"], PassBody<R>>;
+export type PassBodies<R> = Record<ClaimedSchedule["kind"], PassBody<R>>;
 
 export type LeasedPassOptions = {
   /** The worker the claim leased the row to, which the pass's records name. */
@@ -278,11 +282,13 @@ const OWNER_REFUSED = { kind: "fence_refused", fence: "owner" } as const;
  * gracefully spends no retry of the step it was running.
  */
 export const leasedPass = Effect.fn("wfgraph.executor.pass")(function* <R>(
-  claimed: ClaimedExecution,
+  claimed: ClaimedSchedule,
   body: PassBody<R>,
   options: LeasedPassOptions
 ): Effect.fn.Return<PassResult, DatabaseError, ExecutionRepo | R> {
   yield* Effect.annotateCurrentSpan({
+    "wfgraph.executor.schedule": claimed.scheduleId,
+    "wfgraph.executor.kind": claimed.kind,
     "wfgraph.execution.id": claimed.executionId,
     "wfgraph.executor.attempt": claimed.attempt,
     "wfgraph.executor.worker": options.workerId,
@@ -306,7 +312,7 @@ function withExecutorLogCategory<A, E, R>(
 }
 
 const runPassBody = Effect.fnUntraced(function* <R>(
-  claimed: ClaimedExecution,
+  claimed: ClaimedSchedule,
   body: PassBody<R>,
   options: LeasedPassOptions
 ): Effect.fn.Return<PassResult, DatabaseError, ExecutionRepo | R> {
@@ -334,12 +340,7 @@ function releaseInterrupted(pass: OpenPass): Effect.Effect<void> {
     Effect.catchTag("DatabaseError", (error) =>
       Effect.logWarning(
         "Could not release an interrupted pass; its run is claimed again once its lease expires"
-      ).pipe(
-        Effect.annotateLogs({
-          run: { execution: pass.claimed.executionId },
-          error,
-        })
-      )
+      ).pipe(Effect.annotateLogs({ ...subjectAnnotation(pass.claimed), error }))
     )
   );
 }
@@ -477,11 +478,26 @@ const settlePass = Effect.fnUntraced(function* <R>(
   return yield* releaseFailed(outcome);
 });
 
-/** The log fields that name a pass: its run, its worker and its attempt. */
-function passAnnotations(claimed: ClaimedExecution, workerId: string) {
+/**
+ * The log field that names what a claimed row runs: for a `run` row, the
+ * Execution.
+ */
+function subjectAnnotation(claimed: ClaimedSchedule) {
+  return { run: { execution: claimed.executionId } };
+}
+
+/**
+ * The log fields that name a pass: its schedule row, its worker, its attempt,
+ * and what the row runs.
+ */
+export function passAnnotations(claimed: ClaimedSchedule, workerId: string) {
   return {
-    run: { execution: claimed.executionId },
-    pass: { worker: workerId, attempt: claimed.attempt },
+    ...subjectAnnotation(claimed),
+    pass: {
+      schedule: claimed.scheduleId,
+      worker: workerId,
+      attempt: claimed.attempt,
+    },
   };
 }
 
@@ -492,7 +508,7 @@ function passAnnotations(claimed: ClaimedExecution, workerId: string) {
  * to the engine.
  */
 function logPassRecord(input: {
-  claimed: ClaimedExecution;
+  claimed: ClaimedSchedule;
   workerId: string;
   ms: number;
   result: PassResult;
@@ -604,12 +620,12 @@ type Beat = "renewed" | "failed" | "refused" | "run_ended";
 const renewLeaseWhileRunning = Effect.fnUntraced(function* (input: {
   fenced: FencedExecutionWrites;
   findSchedule: ExecutionRepo["Service"]["findSchedule"];
-  executionId: string;
+  scheduleId: string;
   state: PassState;
   everyMs: number;
   leaseExpiresAt: () => Date;
 }) {
-  const { state, executionId } = input;
+  const { state, scheduleId } = input;
   const beat: Effect.Effect<Beat> = Effect.gen(function* () {
     const renewal = yield* input.fenced
       .renewLease({
@@ -621,7 +637,7 @@ const renewLeaseWhileRunning = Effect.fnUntraced(function* (input: {
         Effect.catchTag("LeaseLost", () => Effect.succeed("refused" as const))
       );
     if (renewal === "renewed") return renewal;
-    if ((yield* input.findSchedule(executionId)) === null) {
+    if ((yield* input.findSchedule({ scheduleId })) === null) {
       return "run_ended" as const;
     }
     state.leaseLost();

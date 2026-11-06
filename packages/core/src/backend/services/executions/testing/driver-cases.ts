@@ -322,7 +322,7 @@ function describeCases(
       Effect.gen(function* () {
         const executions = yield* ExecutionRepo;
         const executionId = yield* startOn(workflow, "delivery_1");
-        const queued = yield* executions.findSchedule(executionId);
+        const queued = yield* executions.findSchedule({ executionId });
         const wakesAfterStart = app.worker.calls();
         const [claimed] = yield* claimAll;
         const retried = yield* startOn(workflow, "delivery_1");
@@ -332,7 +332,7 @@ function describeCases(
           wakesAfterStart,
           claimed,
           retried,
-          again: yield* executions.findSchedule(executionId),
+          again: yield* executions.findSchedule({ executionId }),
         };
       })
     );
@@ -358,7 +358,7 @@ function describeCases(
         (
           await app.connection.run(
             Effect.flatMap(ExecutionRepo, (executions) =>
-              executions.findSchedule(run.executionId)
+              executions.findSchedule({ executionId: run.executionId })
             )
           )
         )?.state === "waiting",
@@ -427,7 +427,9 @@ function describeCases(
           resolution,
           wakes: app.worker.calls() - wakesBefore,
           park: yield* executions.findPark(wait.waitStateId),
-          schedule: yield* executions.findSchedule(run.executionId),
+          schedule: yield* executions.findSchedule({
+            executionId: run.executionId,
+          }),
         };
       })
     );
@@ -473,7 +475,9 @@ function describeCases(
             },
             now: new Date(),
           });
-        const backoff = yield* executions.findSchedule(run.executionId);
+        const backoff = yield* executions.findSchedule({
+          executionId: run.executionId,
+        });
         const wakesBefore = app.worker.calls();
         const claims = yield* driver.requestCanceledOutlet({
           workflowId: run.workflowId,
@@ -486,7 +490,9 @@ function describeCases(
           backoff,
           claims,
           wakes: app.worker.calls() - wakesBefore,
-          schedule: yield* executions.findSchedule(run.executionId),
+          schedule: yield* executions.findSchedule({
+            executionId: run.executionId,
+          }),
         };
       })
     );

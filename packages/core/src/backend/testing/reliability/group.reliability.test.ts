@@ -29,7 +29,7 @@ const examples: GroupScenario[] = [
     shape: { kind: "chain", steps: ["record", "event", "delay", "record"] },
     groupPrefix: false,
     groupSuffix: false,
-    fault: "settlement",
+    fault: "claim",
   },
   {
     shape: {
@@ -59,7 +59,7 @@ const examples: GroupScenario[] = [
     },
     groupPrefix: false,
     groupSuffix: false,
-    fault: "settlement",
+    fault: "claim",
   },
   // Parallel members continue to one shared step outside the Group, which is
   // one continuation. The step runs once, after both branches, with both
@@ -96,7 +96,7 @@ const examples: GroupScenario[] = [
     shape: { kind: "join", waitBeforeSplit: "event", armLengths: [2, 1] },
     groupPrefix: false,
     groupSuffix: true,
-    fault: "settlement",
+    fault: "claim",
   },
 ];
 

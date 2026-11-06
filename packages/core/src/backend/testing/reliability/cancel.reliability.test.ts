@@ -26,7 +26,7 @@ import { groupLayoutProperty } from "#src/backend/testing/reliability/property";
 type CleanupMode = "direct" | "event" | "delay";
 type CancellationScenario = {
   cleanupMode: CleanupMode;
-  failurePoint: "none" | "terminal-write" | "wait-settlement";
+  failurePoint: "none" | "terminal-write" | "wait-claim";
   cancelDeliveries: number;
   cancelMarker: string;
   groupedSide: "started" | "canceled";
@@ -38,7 +38,7 @@ const cancellationScenarios = fc
     failurePoint: fc.constantFrom<CancellationScenario["failurePoint"]>(
       "none",
       "terminal-write",
-      "wait-settlement"
+      "wait-claim"
     ),
     cancelDeliveries: fc.integer({ min: 1, max: 3 }),
     cancelMarker: fc.string({ minLength: 1, maxLength: 12 }),
@@ -51,7 +51,7 @@ const cancellationScenarios = fc
     ...value,
     // Only an event Wait is claimed by an Event delivery; other modes exercise the terminal write.
     failurePoint:
-      value.failurePoint === "wait-settlement" && value.cleanupMode !== "event"
+      value.failurePoint === "wait-claim" && value.cleanupMode !== "event"
         ? "terminal-write"
         : value.failurePoint,
     // A direct cleanup is one step, and a Group holds at least two.
@@ -70,7 +70,7 @@ groupLayoutProperty(
     },
     {
       cleanupMode: "event",
-      failurePoint: "wait-settlement",
+      failurePoint: "wait-claim",
       cancelDeliveries: 2,
       cancelMarker: "cancel",
       groupedSide: "canceled",
@@ -98,8 +98,8 @@ groupLayoutProperty(
     host.faults.completion.arm({ fail: false, hold: true });
     if (scenario.failurePoint === "terminal-write")
       host.faults.terminal.arm({ fail: true, hold: false });
-    if (scenario.failurePoint === "wait-settlement")
-      host.faults.settlement.arm({ fail: true, hold: false });
+    if (scenario.failurePoint === "wait-claim")
+      host.faults.claim.arm({ fail: true, hold: false });
     await host.runtime.send(START, { entityId: "subject", marker: "start" });
     await eventually(
       "completion boundary",
@@ -149,8 +149,8 @@ groupLayoutProperty(
     ]);
     if (scenario.failurePoint === "terminal-write")
       expect(host.faults.terminal.hits).toBe(1);
-    if (scenario.failurePoint === "wait-settlement")
-      expect(host.faults.settlement.hits).toBe(1);
+    if (scenario.failurePoint === "wait-claim")
+      expect(host.faults.claim.hits).toBe(1);
     return observeExecution(host, executionId);
   }
 );

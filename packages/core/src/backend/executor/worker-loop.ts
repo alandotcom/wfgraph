@@ -26,12 +26,13 @@ import type { WorkflowEntities } from "#src/backend/engine/entities";
 import { withAppLogCategory } from "#src/backend/lib/effect/app-logger";
 import {
   leasedPass,
+  passAnnotations,
   type PassBodies,
   type PassResult,
 } from "#src/backend/executor/pass";
 import { runBody } from "#src/backend/executor/run-body";
 import {
-  type ClaimedExecution,
+  type ClaimedSchedule,
   ExecutionRepo,
 } from "#src/backend/services/executions/repo";
 import { UNDATED_PARK_WAKE_AT } from "#src/backend/services/executions/repo/release-policy";
@@ -72,9 +73,9 @@ export type DrainOptions<R> = {
  *   It released its row due at once, counting no failure.
  */
 export type DrainedPass =
-  | { kind: "passed"; claimed: ClaimedExecution; result: PassResult }
-  | { kind: "failed"; claimed: ClaimedExecution }
-  | { kind: "interrupted"; claimed: ClaimedExecution };
+  | { kind: "passed"; claimed: ClaimedSchedule; result: PassResult }
+  | { kind: "failed"; claimed: ClaimedSchedule }
+  | { kind: "interrupted"; claimed: ClaimedSchedule };
 
 /**
  * One drain step: claims up to `limit` due rows and starts one pass over each
@@ -142,7 +143,7 @@ const claimDue = Effect.fn("wfgraph.executor.claim")(function* (input: {
  */
 const drainPass = Effect.fnUntraced(function* <R>(
   options: DrainOptions<R>,
-  claimed: ClaimedExecution,
+  claimed: ClaimedSchedule,
   deadline: Date | undefined
 ): Effect.fn.Return<DrainedPass, never, ExecutionRepo | R> {
   const startedAt = yield* Clock.currentTimeMillis;
@@ -169,16 +170,13 @@ const drainPass = Effect.fnUntraced(function* <R>(
         ? interrupted
         : Effect.gen(function* () {
             const ms = (yield* Clock.currentTimeMillis) - startedAt;
+            const annotations = passAnnotations(claimed, options.workerId);
             yield* Effect.logError(
-              "A pass failed; its run is claimed again once its lease expires"
+              "A pass failed; its row is claimed again once its lease expires"
             ).pipe(
               Effect.annotateLogs({
-                run: { execution: claimed.executionId },
-                pass: {
-                  worker: options.workerId,
-                  attempt: claimed.attempt,
-                  ms,
-                },
+                ...annotations,
+                pass: { ...annotations.pass, ms },
                 error: Cause.squash(cause),
               })
             );
@@ -250,8 +248,8 @@ export function runWorkerLoop(
     now,
   };
 
-  // When each run a pass of this loop released is next due, by Execution id.
-  // The loop claims at the earliest of these when it comes before the next
+  // When each row a pass of this loop released is next due, by schedule row
+  // id. The loop claims at the earliest of these when it comes before the next
   // poll, so a Wait it parked resumes at its deadline. An entry is dropped once
   // its moment has come, and a release with no deadline holds none.
   const releasedWakes = new Map<string, number>();
@@ -268,23 +266,23 @@ export function runWorkerLoop(
   };
 
   /**
-   * Notes when a run a pass released is due again, waking the loop if that is
-   * sooner than anything noted. A run released with no deadline, or ended,
+   * Notes when a row a pass released is due again, waking the loop if that is
+   * sooner than anything noted. A row released with no deadline, or deleted,
    * holds no entry.
    */
   const noteRelease = (drained: DrainedPass) => {
     if (drained.kind !== "passed") return;
-    const { executionId } = drained.claimed;
+    const { scheduleId } = drained.claimed;
     const wakeAt =
       "schedule" in drained.result
         ? drained.result.schedule.wakeAt.getTime()
         : undefined;
     if (wakeAt === undefined || wakeAt >= UNDATED_PARK_WAKE_AT.getTime()) {
-      releasedWakes.delete(executionId);
+      releasedWakes.delete(scheduleId);
       return;
     }
     const soonest = earliest(releasedWakes);
-    releasedWakes.set(executionId, wakeAt);
+    releasedWakes.set(scheduleId, wakeAt);
     if (soonest === undefined || wakeAt < soonest) wakeNow();
   };
 
@@ -309,8 +307,8 @@ export function runWorkerLoop(
     while (!signal.aborted) {
       wakeLoop = Deferred.makeUnsafe<void>();
       const claimAt = now().getTime();
-      for (const [executionId, wakeAt] of releasedWakes) {
-        if (wakeAt <= claimAt) releasedWakes.delete(executionId);
+      for (const [scheduleId, wakeAt] of releasedWakes) {
+        if (wakeAt <= claimAt) releasedWakes.delete(scheduleId);
       }
 
       const free = concurrency - running;

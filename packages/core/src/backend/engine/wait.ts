@@ -936,21 +936,7 @@ function parkOnSignal(
             stage: park.waitType === "delay" ? "delay" : "wait for event",
           }),
         },
-        {
-          waitStateId: input.waitStateId,
-          // Resolution retains the target, not the time left when it ran.
-          // Keep this step reachable on replay even after the target passes:
-          // the row may already hold its wake. A positive minimum keeps the
-          // duration from reading as no park at all.
-          timeoutMs:
-            park.waitUntilIso === null
-              ? park.timeoutMs
-              : Math.max(
-                  decodeIsoTimestampOrThrow(park.waitUntilIso).getTime() -
-                    Date.now(),
-                  1
-                ),
-        }
+        { waitStateId: input.waitStateId }
       )
     )
   );

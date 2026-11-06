@@ -223,10 +223,10 @@ export function expectHaltedByClaim(
 }
 
 /**
- * The wake a resume signal carries: the arriving Event's name, or null for a
- * resume that named none, and its payload.
+ * The wake an Event arrival or a manual resume writes onto a park: the
+ * arriving Event's name, or null for a resume that named none, and its payload.
  */
-export function waitResumeSignal(
+export function resumeWake(
   payload: JsonObject,
   eventType: string | null = "billing/payment.settled"
 ): WaitWake {
@@ -234,10 +234,10 @@ export function waitResumeSignal(
 }
 
 /**
- * A Migration's wake, which the service that moves an Execution to another
- * Workflow Version sends.
+ * The wake a Migration writes onto a park when it moves the run to another
+ * Workflow Version.
  */
-export function waitMigrateSignal(): WaitWake {
+export function migrateWake(): WaitWake {
   return { kind: "migrate" };
 }
 

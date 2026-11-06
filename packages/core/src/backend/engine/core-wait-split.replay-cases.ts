@@ -10,13 +10,13 @@ import { eventSplitOutlet } from "@wfgraph/shared/lifecycle/event-split";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import { noWorkflowActions } from "#src/backend/engine/actions";
 import { executionData } from "#src/backend/engine/contracts";
-import type { WaitWake } from "#src/backend/engine/runtime";
 import { executeTestWorkflow as executeWorkflow } from "#src/backend/engine/test-execution";
 import {
   driveWithReplay,
   type ReplayExecutor,
 } from "#src/backend/engine/testing/replay-runtime";
 import { createRecordingWorkflowStore } from "#src/backend/engine/recording-store";
+import { resumeWake } from "#src/backend/engine/testing/wait-fixtures";
 
 export const SETTLED = "billing/payment.settled";
 export const FAILED = "billing/payment.failed";
@@ -54,13 +54,6 @@ export function createConditionNode(
       },
     },
   };
-}
-
-export function waitResumeSignal(
-  eventType: string,
-  payload: Record<string, string>
-): WaitWake {
-  return { kind: "resume", eventName: eventType, payload };
 }
 
 export function createWaitSplitGraph() {
@@ -143,9 +136,10 @@ export function defineWaitSplitReplayCases(executor: ReplayExecutor): void {
       (runtime) => executeWorkflow(input, runtime, store, noWorkflowActions),
       {
         events: {
-          "wait-park-wait_1-0": waitResumeSignal(SETTLED, { amount: "40" }),
+          "wait-park-wait_1-0": resumeWake({ amount: "40" }, SETTLED),
         },
         executor,
+        waitRows: store,
       }
     );
 

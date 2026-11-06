@@ -20,6 +20,10 @@ import {
   type EntityEligibilityReason,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
 import {
+  type ClaimsRepoMethods,
+  makeClaimsMethods,
+} from "#src/backend/services/executions/repo/claims";
+import {
   type AuditRepoMethods,
   makeAuditMethods,
   recordAuditEventWrite,
@@ -46,7 +50,7 @@ import { makeFencedWrites } from "#src/backend/services/executions/repo/fenced-w
 import type { FencedExecutionWrites } from "#src/backend/services/executions/repo/fencing";
 import type {
   EntityStartOutcome,
-  OwnerFence,
+  RunFence,
   StartAdmissionDecision,
   StartForEntityInput,
   WorkflowExecution,
@@ -118,8 +122,8 @@ type CrossTableRepoMethods = {
    * The caller wakes the worker loops once this has committed.
    *
    * Idempotent per arrival: a row this delivery already opened is answered with
-   * rather than joined by a second, because the caller is an Inngest step whose
-   * retry re-runs this whole call.
+   * rather than joined by a second, because the delivery that calls it may be
+   * retried, and a retry re-runs this whole call.
    */
   readonly startForEntity: (
     input: StartForEntityInput
@@ -153,7 +157,7 @@ type CrossTableRepoMethods = {
    * `fenced-writes.ts`. A pass that has written its run's terminal record makes
    * the unfenced writes of the same names.
    */
-  readonly fenced: (fence: OwnerFence) => FencedExecutionWrites;
+  readonly fenced: (fence: RunFence) => FencedExecutionWrites;
 };
 
 /**
@@ -164,10 +168,11 @@ type CrossTableRepoMethods = {
  * different lifetime: a workflow is edited, its runs accumulate and are swept.
  * The four polling endpoints the editor keeps open ask only through here.
  *
- * The shape is assembled from five slices, one file each beside this one
- * (`runs.ts`, `node-logs.ts`, `waits.ts`, `audit.ts`, and `schedule.ts` for
- * the database executor's schedule rows and step memo), plus the cross-table
- * methods above that only this file can implement.
+ * The shape is assembled from six slices, one file each beside this one
+ * (`runs.ts`, `node-logs.ts`, `waits.ts`, `audit.ts`, `schedule.ts` for the
+ * database executor's schedule rows and step memo, and `claims.ts` for the
+ * producers that claim a run's parks), plus the cross-table methods above
+ * that only this file can implement.
  */
 export class ExecutionRepo extends Context.Service<
   ExecutionRepo,
@@ -176,6 +181,7 @@ export class ExecutionRepo extends Context.Service<
     WaitsRepoMethods &
     AuditRepoMethods &
     ScheduleRepoMethods &
+    ClaimsRepoMethods &
     CrossTableRepoMethods
 >()("@wfgraph/core/ExecutionRepo") {}
 
@@ -191,6 +197,7 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
         ...makeWaitsMethods(database),
         ...makeAuditMethods(database),
         ...makeScheduleMethods(database),
+        ...makeClaimsMethods(database),
         fenced: makeFencedWrites(database),
 
         startForEntity: ({

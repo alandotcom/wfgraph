@@ -206,7 +206,9 @@ describePostgres("PostgreSQL concurrency", () => {
             ...notYetDue,
           });
           if (started.status !== "started") throw new Error("Start refused");
-          const schedule = yield* executions.findSchedule(started.execution.id);
+          const schedule = yield* executions.findSchedule({
+            executionId: started.execution.id,
+          });
           if (!schedule) throw new Error("The run has no schedule row");
           return {
             executionId: started.execution.id,
@@ -735,7 +737,9 @@ describePostgres("PostgreSQL concurrency", () => {
       const schedule = await releaser.run(
         Effect.gen(function* () {
           const executions = yield* ExecutionRepo;
-          return yield* executions.findSchedule(run.executionId);
+          return yield* executions.findSchedule({
+            executionId: run.executionId,
+          });
         })
       );
 
@@ -791,7 +795,9 @@ describePostgres("PostgreSQL concurrency", () => {
         Effect.gen(function* () {
           const executions = yield* ExecutionRepo;
           return {
-            schedule: yield* executions.findSchedule(run.executionId),
+            schedule: yield* executions.findSchedule({
+              executionId: run.executionId,
+            }),
             parks: yield* Effect.forEach(classified, (wait) =>
               executions.findPark(wait.id)
             ),

@@ -33,8 +33,8 @@ import {
   defineWaitSplitReplayCases,
   FAILED,
   SETTLED,
-  waitResumeSignal,
 } from "#src/backend/engine/core-wait-split.replay-cases";
+import { resumeWake } from "#src/backend/engine/testing/wait-fixtures";
 
 function eventNameEqualsModel(eventName: string): ConditionModel {
   return {
@@ -93,7 +93,7 @@ describe("executeWorkflow Event Split after Wait", () => {
       createInMemoryWorkflowRuntime({
         waitAnswer: {
           kind: "woke",
-          wake: waitResumeSignal(SETTLED, { amount: "40" }),
+          wake: resumeWake({ amount: "40" }, SETTLED),
         },
       }),
       store,

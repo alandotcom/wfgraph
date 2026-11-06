@@ -13,7 +13,7 @@ import {
   expectHaltedByClaim,
   runWait,
   waitOutput,
-  waitResumeSignal,
+  resumeWake,
   waitStepLogs,
 } from "#src/backend/engine/testing/wait-fixtures";
 
@@ -44,12 +44,9 @@ describe("wait node - event mode", () => {
     store = createRecordingWorkflowStore();
   });
 
-  it.each([
-    { elapsedMs: 30_000, remainingMs: 270_000 },
-    { elapsedMs: 360_000, remainingMs: 1 },
-  ])(
+  it.each([{ elapsedMs: 30_000 }, { elapsedMs: 360_000 }])(
     "preserves preparation after a lost response and $elapsedMs ms retry",
-    async ({ elapsedMs, remainingMs }) => {
+    async ({ elapsedMs }) => {
       vi.useFakeTimers({ toFake: ["Date"] });
       const startedAt = new Date("2026-09-22T12:00:00Z");
       vi.setSystemTime(startedAt);
@@ -77,7 +74,12 @@ describe("wait node - event mode", () => {
         const { runtime, execution } = runWait({ store, config, memo });
         await execution;
         expect(store.callsOf("createWaitState")).toEqual([first, first]);
-        expect(runtime.waits[0]?.options.timeoutMs).toBe(remainingMs);
+        // The deadline is the one prepared before the lost response, measured
+        // from the first attempt, and the retry still parks on it.
+        expect(first?.waitUntilIso).toBe(
+          new Date(startedAt.getTime() + 5 * 60_000).toISOString()
+        );
+        expect(runtime.waits).toHaveLength(1);
       } finally {
         vi.useRealTimers();
       }
@@ -163,7 +165,7 @@ describe("wait node - event mode", () => {
         waitTimeout: "7d",
       },
       store,
-      wake: waitResumeSignal({ approved: true }),
+      wake: resumeWake({ approved: true }),
     });
     const result = await execution;
 
@@ -186,7 +188,6 @@ describe("wait node - event mode", () => {
     const wait = runtime.waits.at(0);
     expect(wait?.stepId).toBe("wait-park-wait_1-0");
     expect(wait?.options.waitStateId).toBe("wait_state_1");
-    expect(wait?.options.timeoutMs).toBeGreaterThan(0);
 
     expect(store.callsOf("createWaitState")[0]).toMatchObject({
       waitType: "event",
@@ -221,7 +222,7 @@ describe("wait node - event mode", () => {
         waitTimeout: "7d",
       },
       store,
-      wake: waitResumeSignal({ approved: true }),
+      wake: resumeWake({ approved: true }),
     });
     await execution;
 
@@ -238,7 +239,7 @@ describe("wait node - event mode", () => {
         waitTimeout: "7d",
       },
       store,
-      wake: waitResumeSignal({ approved: true }, null),
+      wake: resumeWake({ approved: true }, null),
     });
     await execution;
 
@@ -265,7 +266,7 @@ describe("wait node - event mode", () => {
         waitTimeout: "7d",
       },
       store,
-      wake: waitResumeSignal({ orderId: "ord_7" }),
+      wake: resumeWake({ orderId: "ord_7" }),
     });
     const result = await execution;
 
@@ -292,7 +293,7 @@ describe("wait node - event mode", () => {
         waitTimeout: "7d",
       },
       store,
-      wake: waitResumeSignal({ id: "pay_1" }, "billing/payment.failed"),
+      wake: resumeWake({ id: "pay_1" }, "billing/payment.failed"),
     });
     const result = await execution;
 
@@ -439,7 +440,7 @@ describe("wait node - event mode", () => {
           waitTimeout: "7d",
         },
         store,
-        wake: waitResumeSignal({ orderId: "ord_1" }),
+        wake: resumeWake({ orderId: "ord_1" }),
         claimOnPark: claimedRun(kind),
       });
 
@@ -457,7 +458,7 @@ describe("wait node - event mode", () => {
       waitFor: [{ event: "billing/payment.settled" }],
       waitTimeout: "7d",
     };
-    const wake = waitResumeSignal({ orderId: "ord_1" });
+    const wake = resumeWake({ orderId: "ord_1" });
     const claimOnPark = claimedRun("exit");
 
     await runWait({ config, store, wake, memo, claimOnPark }).execution;
@@ -471,7 +472,7 @@ describe("wait node - event mode", () => {
   // A wait with no end is an immortal run, so the timeout the editor writes is
   // applied here too rather than being left to whatever the runtime would pick.
   it("falls back to the default timeout when the config names none", async () => {
-    const { runtime, execution } = runWait({
+    const { execution } = runWait({
       config: {
         waitMode: "event",
         waitFor: [{ event: "billing/payment.settled" }],
@@ -481,7 +482,9 @@ describe("wait node - event mode", () => {
     });
     await execution;
 
-    expect(runtime.waits.at(0)?.options.timeoutMs).toBeGreaterThan(0);
+    expect(
+      Date.parse(store.callsOf("createWaitState")[0]?.waitUntilIso ?? "")
+    ).toBeGreaterThan(Date.now());
     expect(store.callsOf("createWaitState")[0]?.metadata).toMatchObject({
       waitTimeout: "7d",
       waitTimeoutBehavior: "continue",

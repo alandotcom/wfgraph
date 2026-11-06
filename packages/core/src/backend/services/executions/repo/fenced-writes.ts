@@ -17,7 +17,7 @@
  */
 
 import type { Database } from "#src/backend/lib/effect/database";
-import type { OwnerFence } from "#src/backend/services/executions/repo/contracts";
+import type { RunFence } from "#src/backend/services/executions/repo/contracts";
 import { recordAuditEventWrite } from "#src/backend/services/executions/repo/audit";
 import {
   type FencedExecutionWrites,
@@ -50,7 +50,7 @@ import {
 /** Builds `ExecutionRepo.fenced` over one PostgreSQL database. */
 export function makeFencedWrites(
   database: Database["Service"]
-): (fence: OwnerFence) => FencedExecutionWrites {
+): (fence: RunFence) => FencedExecutionWrites {
   return (fence) => ({
     ...makePassWrites(database, fence),
     ...guardStoreWrites(fence, {

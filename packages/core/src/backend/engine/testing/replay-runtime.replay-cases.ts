@@ -12,6 +12,7 @@ import type {
 import {
   driveWithReplay,
   type ReplayExecutor,
+  type ReplayWaitRows,
 } from "#src/backend/engine/testing/replay-runtime";
 import { CANCEL_WAKE } from "#src/backend/engine/testing/wait-fixtures";
 
@@ -24,20 +25,33 @@ export const PARKED_PASS = { kind: "parked" } as const;
  */
 export const stepRef = (id: string) => ({ id });
 
+/** The deadline `park` last wrote on each wait row, by the row's id. */
+const parkDeadlines = new Map<string, Date>();
+
+/**
+ * The wait rows `park` writes, as a drive reads them. Their deadlines are
+ * written against a clock that stands at zero, so the time a park's row leaves
+ * is exactly the timeout the case gave it.
+ */
+export const PARK_ROWS: ReplayWaitRows = {
+  waitUntilOf: (waitStateId) => parkDeadlines.get(waitStateId),
+  now: () => 0,
+};
+
 /**
  * A park with no answer, which the driver ends at its timeout. The Wait node is
  * the only thing that suspends a run, so a park is how these cases hold one.
- * Each park stands on a wait row of its own, named after its step.
+ * Each park stands on a wait row of its own, named after its step, whose
+ * deadline `timeoutMs` sets. A drive reads it through `PARK_ROWS`.
  */
 export const park = (
   runtime: WorkflowExecutionRuntime,
   id: string,
   timeoutMs: number
-): Promise<WaitAnswer> =>
-  runtime.waitForEvent(stepRef(id), {
-    timeoutMs,
-    waitStateId: id,
-  });
+): Promise<WaitAnswer> => {
+  parkDeadlines.set(id, new Date(timeoutMs));
+  return runtime.waitForEvent(stepRef(id), { waitStateId: id });
+};
 
 /** Whether a park is still open, which ends the pass. */
 export const isParked = (answer: WaitAnswer): boolean =>
@@ -55,7 +69,7 @@ export function defineReplayRuntimeCases(executor: ReplayExecutor): void {
         );
         return second;
       },
-      { executor }
+      { executor, waitRows: PARK_ROWS }
     );
 
     expect(run.value).toBe(2);
@@ -76,7 +90,7 @@ export function defineReplayRuntimeCases(executor: ReplayExecutor): void {
           Promise.resolve("done")
         );
       },
-      { executor }
+      { executor, waitRows: PARK_ROWS }
     );
 
     expect(run.value).toBe("done");
@@ -97,7 +111,7 @@ export function defineReplayRuntimeCases(executor: ReplayExecutor): void {
         const answer = await park(runtime, "signal", 1_000);
         return answer.kind === "parked" ? PARKED_PASS : answer.wake;
       },
-      { executor, events: { signal: resume } }
+      { executor, events: { signal: resume }, waitRows: PARK_ROWS }
     );
 
     expect(run.value).toEqual(resume);
@@ -110,7 +124,7 @@ export function defineReplayRuntimeCases(executor: ReplayExecutor): void {
         const answer = await park(runtime, "signal", 2_000);
         return answer.kind === "parked" ? PARKED_PASS : answer.wake;
       },
-      { executor }
+      { executor, waitRows: PARK_ROWS }
     );
 
     expect(run.value).toEqual({ kind: "timeout" });
@@ -132,7 +146,7 @@ export function defineReplayRuntimeCases(executor: ReplayExecutor): void {
           Promise.resolve("done")
         );
       },
-      { executor }
+      { executor, waitRows: PARK_ROWS }
     );
 
     expect(run.value).toBe("done");
@@ -163,7 +177,7 @@ export function defineReplayRuntimeCases(executor: ReplayExecutor): void {
         ]);
         return ends.includes("parked") ? PARKED_PASS : "done";
       },
-      { executor }
+      { executor, waitRows: PARK_ROWS }
     );
 
     expect(run.executed.map((step) => `${step.stepId}@${step.at}`)).toEqual([
@@ -181,7 +195,7 @@ export function defineReplayRuntimeCases(executor: ReplayExecutor): void {
         const answer = await park(runtime, "nap", 3_000 - pass.invocation);
         return answer.kind === "parked" ? PARKED_PASS : answer.wake;
       },
-      { executor }
+      { executor, waitRows: PARK_ROWS }
     );
 
     expect(run.value).toEqual({ kind: "timeout" });
@@ -196,10 +210,10 @@ export function defineReplayRuntimeCases(executor: ReplayExecutor): void {
         if (answer.kind === "woke") {
           return answer.wake;
         }
-        await pass.signalOpenParks(CANCEL_WAKE);
+        await pass.resolveOpenParks(CANCEL_WAKE);
         return PARKED_PASS;
       },
-      { executor }
+      { executor, waitRows: PARK_ROWS }
     );
 
     expect(run.value).toEqual(CANCEL_WAKE);
@@ -207,7 +221,7 @@ export function defineReplayRuntimeCases(executor: ReplayExecutor): void {
     expect(run.invocations).toBe(2);
   });
 
-  it("signals every park open at the producer's moment, after its own writes", async () => {
+  it("resolves every park open at the producer's moment, after its own writes", async () => {
     const writes: number[] = [];
     const run = await driveWithReplay(
       async (runtime) => {
@@ -220,9 +234,10 @@ export function defineReplayRuntimeCases(executor: ReplayExecutor): void {
           : answers.map((answer) => answer.kind === "woke" && answer.wake);
       },
       {
+        waitRows: PARK_ROWS,
         executor: {
           ...executor,
-          signalOpenParksAt: {
+          resolveOpenParksAt: {
             atMs: 30_000,
             wake: CANCEL_WAKE,
             write: () => writes.push(writes.length),
@@ -244,7 +259,7 @@ export function defineReplayRuntimeCases(executor: ReplayExecutor): void {
           await runtime.run(stepRef("broken"), () =>
             Promise.reject(new Error("the step failed"))
           ),
-        { executor }
+        { executor, waitRows: PARK_ROWS }
       )
     ).rejects.toThrow("the step failed");
   });

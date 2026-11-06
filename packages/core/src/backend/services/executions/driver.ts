@@ -1,9 +1,9 @@
 /**
  * `ExecutionDriver`: what a producer asks of the durable executor, by intent.
  * Each method commits its row write through `ExecutionRepo` in one
- * transaction, then follows one rule: when the write made a run due, it wakes
- * this process's worker loop and announces the run to other processes. A lost
- * wake costs at most one poll interval.
+ * transaction, then follows one rule: when the write made a schedule row due,
+ * it wakes this process's worker loop and announces the wake to other
+ * processes. A lost wake costs at most one poll interval.
  */
 
 import { Clock, Context, Effect, Layer, Schema } from "effect";
@@ -16,9 +16,9 @@ import {
   type ExecutionEntitySelector,
   ExecutionRepo,
   type StartForEntityInput,
+  type WaitResumeClaim,
   type WorkflowExecution,
 } from "#src/backend/services/executions/repo";
-import type { WaitResumeClaim } from "#src/backend/services/executions/repo/waits";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 
 /**
@@ -131,17 +131,15 @@ export function makeExecutionDriverLayer(
   wakes: ExecutionDriverWakes
 ): Layer.Layer<ExecutionDriver, never, ExecutionRepo> {
   /**
-   * Runs once the write that made `executionIds` due has committed, and does
-   * nothing when it made none due.
+   * Runs once a write has committed, and wakes the loops when `madeDue` says
+   * it made a schedule row due.
    */
-  const runDue = (executionIds: readonly string[]) =>
+  const runDue = (madeDue: boolean) =>
     Effect.sync(() => {
-      if (executionIds.length === 0) return;
+      if (!madeDue) return;
       wakes.worker.wake();
       if (wakes.persistence.kind === "notify") {
-        for (const executionId of executionIds) {
-          wakes.persistence.broadcast.announce(executionId);
-        }
+        wakes.persistence.broadcast.announce();
       }
     });
 
@@ -157,7 +155,7 @@ export function makeExecutionDriverLayer(
           // A start answered with the row an earlier attempt committed wakes
           // the loops again, which costs one claim that may lease nothing.
           if (outcome.status === "started") {
-            yield* runDue([outcome.execution.id]);
+            yield* runDue(true);
           }
           return outcome;
         }),
@@ -185,9 +183,7 @@ export function makeExecutionDriverLayer(
                     now: at,
                   })
             ).pipe(Effect.mapError(driverError));
-            yield* runDue(
-              claim?.requeued === true ? [claim.waitState.executionId] : []
-            );
+            yield* runDue(claim?.requeued === true);
             return claim;
           }
         ),
@@ -198,11 +194,7 @@ export function makeExecutionDriverLayer(
           const claims = yield* executions
             .requestCancelForEntity({ ...input, now: yield* now })
             .pipe(Effect.mapError(driverError));
-          yield* runDue(
-            claims
-              .filter((claim) => claim.requeued)
-              .map((claim) => claim.executionId)
-          );
+          yield* runDue(claims.some((claim) => claim.requeued));
           return claims;
         }),
 
@@ -210,9 +202,7 @@ export function makeExecutionDriverLayer(
           const repinned = yield* executions
             .repinVersion({ ...input, now: yield* now })
             .pipe(Effect.mapError(driverError));
-          yield* runDue(
-            repinned.moved && repinned.requeued ? [input.executionId] : []
-          );
+          yield* runDue(repinned.moved && repinned.requeued);
           return repinned.moved;
         }),
       });

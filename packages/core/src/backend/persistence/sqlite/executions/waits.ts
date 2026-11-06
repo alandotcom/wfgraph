@@ -5,13 +5,12 @@ import {
   eq,
   gt,
   inArray,
-  isNull,
   notInArray,
   sql,
   type SQL,
 } from "drizzle-orm";
 import { generateId } from "@wfgraph/shared/utils/id";
-import { readJsonObject, toJsonObject } from "@wfgraph/shared/types/json";
+import { toJsonObject } from "@wfgraph/shared/types/json";
 import {
   claimKindAdmits,
   IN_FLIGHT_EXECUTION_STATUSES,
@@ -20,18 +19,17 @@ import {
   claimAdmits,
   notExitClaimed,
 } from "#src/backend/persistence/sqlite/executions/runs";
-import type { WaitArrival } from "@wfgraph/shared/lifecycle/wait-signal";
+import type {
+  ReparkWaitOutcome,
+  ReparkWaitRefusal,
+  WaitsRepoMethods,
+} from "#src/backend/services/executions/repo/waits";
 import {
   arrivalOfWake,
-  type ReparkWaitOutcome,
-  type ReparkWaitRefusal,
-  resumeWakeOf,
-  type WaitResumeClaim,
-  type WaitsRepoMethods,
-} from "#src/backend/services/executions/repo/waits";
-import { wakeExecutions } from "#src/backend/persistence/sqlite/executions/schedule";
+  reparkablePark,
+} from "#src/backend/services/executions/repo/release-policy";
 import type {
-  OwnerFence,
+  RunFence,
   WorkflowWaitState,
 } from "#src/backend/services/executions/repo";
 import type {
@@ -45,7 +43,6 @@ import {
 } from "#src/backend/persistence/sqlite/schema";
 import {
   optionalJsonObject,
-  optionalJsonValue,
   sqliteParkState,
   sqliteParkWake,
   sqliteWaitState,
@@ -55,7 +52,7 @@ import {
  * Whether a wait row's `subscribed_events` still lists this Event name. The
  * column holds a JSON array, so the test walks it with `json_each`.
  */
-function subscribedTo(eventName: string): SQL {
+export function subscribedTo(eventName: string): SQL {
   return sql`exists (
     select 1 from json_each(${workflowWaitStates.subscribedEvents}) j
     where j.value = ${eventName}
@@ -84,89 +81,6 @@ const waitStateSelection = {
   cancelledAt: workflowWaitStates.cancelledAt,
 };
 
-/**
- * Whether an Event or a manual resume may claim this row, as the PostgreSQL
- * backend's `claimableWait` decides: one still `waiting`, or one whose pending
- * wake is a Migration's `migrate` wake, which the Event replaces.
- */
-function claimableWait(): SQL {
-  return sql`(${workflowWaitStates.status} = 'waiting' or (${workflowWaitStates.status} = 'resuming' and json_extract(${workflowWaitStates.wake}, '$.kind') = 'migrate'))`;
-}
-
-/**
- * Whether this delivery's own claim already resolved the row, as the PostgreSQL
- * backend's `claimedByDelivery` decides: `resuming` with a `resume` wake naming
- * `deliveryId`.
- */
-function claimedByDelivery(deliveryId: string): SQL {
-  return sql`(${workflowWaitStates.status} = 'resuming' and json_extract(${workflowWaitStates.wake}, '$.kind') = 'resume' and json_extract(${workflowWaitStates.wake}, '$.deliveryId') = ${deliveryId})`;
-}
-
-/**
- * Claims one row for an Event or a manual resume through `wakeExecutions`, as
- * the PostgreSQL backend's `claimWaitState` does: the `resume` wake and
- * `resuming`, then the run made due. A row whose `resume` wake the arrival's
- * own delivery already wrote answers as claimed, unwritten and not re-queued.
- */
-function claimWait(
-  database: SqliteExecutor,
-  input: {
-    identity: SQL | undefined;
-    arrival: WaitArrival;
-    now: Date;
-  }
-): Effect.Effect<WaitResumeClaim | null, unknown> {
-  const { identity, arrival, now } = input;
-  const claim = Effect.gen(function* () {
-    const unclaimed = { result: null, woken: [] };
-    const candidate = yield* database
-      .select({ id: workflowWaitStates.id })
-      .from(workflowWaitStates)
-      .innerJoin(
-        workflowExecutions,
-        eq(workflowExecutions.id, workflowWaitStates.executionId)
-      )
-      .where(
-        and(
-          identity,
-          claimableWait(),
-          inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES),
-          notExitClaimed
-        )
-      )
-      .get();
-    if (!candidate) {
-      if (arrival.deliveryId === undefined) return unclaimed;
-      const ownClaim = yield* database
-        .select()
-        .from(workflowWaitStates)
-        .where(and(identity, claimedByDelivery(arrival.deliveryId)))
-        .get();
-      return {
-        result: ownClaim ? sqliteWaitState(ownClaim) : null,
-        woken: [],
-      };
-    }
-    const [claimed] = yield* database
-      .update(workflowWaitStates)
-      .set({
-        status: "resuming",
-        resumedAt: now.getTime(),
-        wake: encodeJson(resumeWakeOf(arrival)),
-      })
-      .where(
-        and(eq(workflowWaitStates.id, candidate.id), identity, claimableWait())
-      )
-      .returning();
-    if (!claimed) return unclaimed;
-    const waitState = sqliteWaitState(claimed);
-    return { result: waitState, woken: [waitState.executionId] };
-  });
-  return Effect.map(wakeExecutions(database, now, claim), ({ result, due }) =>
-    result === null ? null : { waitState: result, requeued: due.length > 0 }
-  );
-}
-
 type StartWaitInput = Parameters<WaitsRepoMethods["startWait"]>[0];
 type ReparkWaitInput = Parameters<WaitsRepoMethods["reparkWait"]>[0];
 type MarkWaitStatusInput = Parameters<WaitsRepoMethods["markWaitStatus"]>[0];
@@ -175,7 +89,7 @@ type MarkWaitStatusInput = Parameters<WaitsRepoMethods["markWaitStatus"]>[0];
  * Narrows a fenced write to the wait rows of the Execution its pass runs, so a
  * fenced write addressed by wait row id cannot reach another run's row.
  */
-function ofFencedExecution(fence: OwnerFence | undefined): SQL | undefined {
+function ofFencedExecution(fence: RunFence | undefined): SQL | undefined {
   return fence === undefined
     ? undefined
     : eq(workflowWaitStates.executionId, fence.executionId);
@@ -250,31 +164,20 @@ export function startWaitWrite(input: StartWaitInput) {
 }
 
 /**
- * Whether a re-park may write over this row, as the PostgreSQL backend's
- * `reparkableWait` decides: still `waiting`, or resolved by the database
- * executor with a `migrate` or `timeout` wake the re-park supersedes.
- */
-function isReparkable(row: { status: string; wake: string | null }): boolean {
-  if (row.status === "waiting") return true;
-  if (row.status !== "resuming") return false;
-  const kind = readJsonObject(optionalJsonValue(row.wake, "wake"))?.kind;
-  return kind === "migrate" || kind === "timeout";
-}
-
-/**
  * The re-park behind `reparkWait`. Given a fence, it reaches only a wait row of
  * the fenced Execution. The row goes back to `waiting` with no wake and no park
  * step, so the next `waitForEvent` parks on it afresh.
  */
-export function reparkWaitWrite(input: ReparkWaitInput, fence?: OwnerFence) {
+export function reparkWaitWrite(input: ReparkWaitInput, fence?: RunFence) {
   return (database: SqliteExecutor) =>
     Effect.gen(function* () {
       // The read and the write share one `BEGIN IMMEDIATE`, so the status and
       // the pinned version this reads are the ones the write sees.
       const [row] = yield* database
         .select({
-          status: workflowWaitStates.status,
-          wake: workflowWaitStates.wake,
+          reparkable: sql`${reparkablePark(workflowWaitStates)}`.mapWith(
+            Boolean
+          ),
           pinnedVersionId: workflowExecutions.workflowVersionId,
           terminationKind: workflowExecutions.terminationKind,
           metadata: workflowWaitStates.metadata,
@@ -292,7 +195,7 @@ export function reparkWaitWrite(input: ReparkWaitInput, fence?: OwnerFence) {
         )
         .limit(1);
 
-      if (!row || !isReparkable(row)) {
+      if (!row?.reparkable) {
         return refusedRepark("not_waiting");
       }
       if (row.pinnedVersionId !== input.workflowVersionId) {
@@ -330,7 +233,7 @@ export function reparkWaitWrite(input: ReparkWaitInput, fence?: OwnerFence) {
  */
 export function markWaitStatusWrite(
   input: MarkWaitStatusInput,
-  fence?: OwnerFence
+  fence?: RunFence
 ) {
   return (database: SqliteExecutor) => {
     const now = Date.now();
@@ -357,10 +260,7 @@ export function markWaitStatusWrite(
  * The transition behind `settleWaitTimeout`. Given a fence, it reaches only a
  * wait row of the fenced Execution.
  */
-export function settleWaitTimeoutWrite(
-  waitStateId: string,
-  fence?: OwnerFence
-) {
+export function settleWaitTimeoutWrite(waitStateId: string, fence?: RunFence) {
   return (database: SqliteExecutor) =>
     Effect.gen(function* () {
       const [row] = yield* database
@@ -473,32 +373,6 @@ export function makeSqliteWaitsMethods(
           .limit(input.limit)
           .pipe(Effect.map((rows) => rows.map(sqliteWaitState)));
       }),
-    claimWaitingStateByToken: (input) =>
-      store.write((database) =>
-        claimWait(database, {
-          identity: and(
-            eq(workflowWaitStates.resumeToken, input.resumeToken),
-            eq(workflowWaitStates.waitType, "event")
-          ),
-          arrival: input.arrival,
-          now: input.now,
-        })
-      ),
-    claimWaitingStateById: (input) =>
-      store.write((database) =>
-        claimWait(database, {
-          identity: and(
-            eq(workflowWaitStates.id, input.waitStateId),
-            eq(workflowWaitStates.waitType, "event"),
-            input.resumeToken === null
-              ? isNull(workflowWaitStates.resumeToken)
-              : eq(workflowWaitStates.resumeToken, input.resumeToken),
-            subscribedTo(input.eventName)
-          ),
-          arrival: input.arrival,
-          now: input.now,
-        })
-      ),
     listWaitingStates: (executionId) =>
       store.read((database) =>
         database
