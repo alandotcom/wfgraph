@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { formatClockTime, formatDayAndTime } from "#src/utils/time";
+import {
+  formatClockTime,
+  formatClockTimeWithSeconds,
+  formatDayAndTime,
+} from "#src/utils/time";
 
 /**
  * Local-time constructors throughout: both formatters read the viewer's own
@@ -17,6 +21,14 @@ describe("formatClockTime", () => {
 
   it("calls the first minute of the day 00:00", () => {
     expect(formatClockTime(new Date(2026, 7, 12, 0, 0))).toBe("00:00");
+  });
+});
+
+describe("formatClockTimeWithSeconds", () => {
+  it("adds the padded seconds to the clock reading", () => {
+    expect(formatClockTimeWithSeconds(new Date(2026, 7, 12, 14, 32, 5))).toBe(
+      "14:32:05"
+    );
   });
 });
 

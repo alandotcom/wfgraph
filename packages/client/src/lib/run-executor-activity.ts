@@ -9,7 +9,7 @@
  * answer, so a browser whose clock is off does not misreport a wait.
  */
 
-import { formatClockTime } from "@wfgraph/shared/utils/time";
+import { formatClockTimeWithSeconds } from "@wfgraph/shared/utils/time";
 import { compact } from "es-toolkit/array";
 import type {
   ExecutionLogsResult,
@@ -36,10 +36,9 @@ export function serverNowMs(input: {
   );
 }
 
-/** A local wall clock reading with seconds, as `14:32:05`. */
-export function clockTimeWithSeconds(instant: string): string {
-  const date = new Date(instant);
-  return `${formatClockTime(date)}:${date.getSeconds().toString().padStart(2, "0")}`;
+/** An instant the server reported, as a local clock reading with seconds. */
+function clockTimeWithSeconds(instant: string): string {
+  return formatClockTimeWithSeconds(new Date(instant));
 }
 
 /**

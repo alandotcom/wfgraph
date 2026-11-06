@@ -62,13 +62,22 @@ function twoDigits(value: number): string {
 /**
  * A wall clock reading in the viewer's own timezone, as `14:32`.
  *
- * Assembled by hand rather than through `Intl`, because the strings these two
- * build sit in a fixed-height status strip: a locale that renders `2:32 PM`
- * changes the width of a line that is measured, and a test asserting the output
- * would be asserting whichever locale the machine running it happens to have.
+ * Assembled by hand rather than through `Intl`, because the strings this
+ * module's clock formatters build sit in a fixed-height status strip: a
+ * locale that renders `2:32 PM` changes the width of a line that is measured,
+ * and a test asserting the output would be asserting whichever locale the
+ * machine running it happens to have.
  */
 export function formatClockTime(date: Date): string {
   return `${twoDigits(date.getHours())}:${twoDigits(date.getMinutes())}`;
+}
+
+/**
+ * The same clock reading with seconds, as `14:32:05`, for an instant a person
+ * compares against a ticking wait, such as when a run fell due.
+ */
+export function formatClockTimeWithSeconds(date: Date): string {
+  return `${formatClockTime(date)}:${twoDigits(date.getSeconds())}`;
 }
 
 /**
