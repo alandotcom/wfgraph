@@ -11,7 +11,7 @@
 
 import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import type { Effect } from "effect";
+import { type Effect, Schema } from "effect";
 import { compact, maxBy } from "es-toolkit/array";
 import { omit } from "es-toolkit/object";
 import {
@@ -28,6 +28,8 @@ import type {
   ParkWake,
   UnconsumedWake,
 } from "#src/backend/services/executions/repo/contracts";
+import { PARK_WAKE_KINDS } from "@wfgraph/shared/lifecycle/execution-schedule";
+import { readAs } from "@wfgraph/shared/types/schema";
 
 /** The executor-state slice of `ExecutionRepo`. */
 export type ExecutorStateRepoMethods = {
@@ -210,13 +212,7 @@ export function failingOf(row: {
       });
 }
 
-const WAKE_KINDS: readonly ParkWake["kind"][] = [
-  "timeout",
-  "migrate",
-  "cancel",
-  "exit",
-  "resume",
-];
+const readParkWakeKind = readAs(Schema.Literals(PARK_WAKE_KINDS));
 
 /**
  * A `failing` memo row's columns with the error narrowed to a string. The
@@ -234,7 +230,7 @@ export function failingStepOf<Row extends { error: string | null }>(
 
 /** A wake's `kind` as the JSON column holds it. The producers write only these. */
 export function parkWakeKind(kind: string | null): ParkWake["kind"] {
-  const known = WAKE_KINDS.find((candidate) => candidate === kind);
+  const known = readParkWakeKind(kind);
   if (known === undefined) {
     throw new Error("A wait row holds a wake of no known kind");
   }

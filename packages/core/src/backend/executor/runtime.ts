@@ -40,6 +40,7 @@ import type {
 } from "#src/backend/services/executions/repo";
 import { buildStoreWrites } from "#src/backend/services/executions/repo/fencing";
 import { jsonObjectSchema, type JsonValue } from "@wfgraph/shared/types/json";
+import { BARE_PARK_WAKE_KINDS } from "@wfgraph/shared/lifecycle/execution-schedule";
 import { readAs } from "@wfgraph/shared/types/schema";
 
 /**
@@ -285,7 +286,7 @@ function waitWakeOf(wake: ParkWake): WaitWake {
 const readMemoizedWake = readAs(
   Schema.Union([
     Schema.Struct({
-      kind: Schema.Literals(["timeout", "migrate", "cancel", "exit"]),
+      kind: Schema.Literals(BARE_PARK_WAKE_KINDS),
     }),
     Schema.Struct({
       kind: Schema.Literal("resume"),

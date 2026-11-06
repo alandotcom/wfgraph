@@ -10,6 +10,17 @@
 
 import type { JsonObject } from "#src/types/json";
 
+/** The kinds of `ParkWake` that carry nothing beside their kind. */
+export const BARE_PARK_WAKE_KINDS = [
+  "timeout",
+  "migrate",
+  "cancel",
+  "exit",
+] as const;
+
+/** Every kind of `ParkWake`. */
+export const PARK_WAKE_KINDS = [...BARE_PARK_WAKE_KINDS, "resume"] as const;
+
 /**
  * How a park ended, as `workflow_wait_states.wake` stores it.
  *
@@ -20,10 +31,7 @@ import type { JsonObject } from "#src/types/json";
  * the version the run now pins.
  */
 export type ParkWake =
-  | { kind: "timeout" }
-  | { kind: "migrate" }
-  | { kind: "cancel" }
-  | { kind: "exit" }
+  | { kind: (typeof BARE_PARK_WAKE_KINDS)[number] }
   | {
       kind: "resume";
       /** The Event that arrived, and null for a resume that named none. */

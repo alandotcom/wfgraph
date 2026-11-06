@@ -25,7 +25,10 @@ import {
   WORKFLOW_EXECUTION_START_SOURCES,
   WORKFLOW_EXECUTION_STATUSES,
 } from "#src/lifecycle/execution-contracts";
-import { EXECUTION_SCHEDULE_STATES } from "#src/lifecycle/execution-schedule";
+import {
+  EXECUTION_SCHEDULE_STATES,
+  PARK_WAKE_KINDS,
+} from "#src/lifecycle/execution-schedule";
 import { jsonObjectSchema } from "#src/types/json";
 import {
   listOf,
@@ -152,13 +155,7 @@ const executorNodeFields = {
 };
 
 /** The wake a producer wrote onto a park. See `ParkWake`. */
-const parkWakeKindSchema = Schema.Literals([
-  "timeout",
-  "migrate",
-  "cancel",
-  "exit",
-  "resume",
-]);
+const parkWakeKindSchema = Schema.Literals(PARK_WAKE_KINDS);
 
 /**
  * The run waits until `nextTryAt` after a failure. A step's failure names the
