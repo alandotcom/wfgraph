@@ -60,7 +60,13 @@ function useLatestEvent<Args extends unknown[], Result>(
   return useCallback((...args: Args) => latest.current(...args), []);
 }
 
-type AbortableSubscriptionInput<T> = {
+/**
+ * Own an async subscription and close it when its key changes or it unmounts.
+ * The input's type is written inline: TypeScript 7.1 infers `T` from
+ * `subscribe` for an inline object type, and leaves `onValue`'s value
+ * `unknown` when the same type is a named alias or interface.
+ */
+export function useAbortableSubscription<T>(input: {
   /** Recreate the subscription when this value changes. */
   key: unknown;
   /** Skip the subscription while false. Defaults to true. */
@@ -71,12 +77,7 @@ type AbortableSubscriptionInput<T> = {
   onValue: (value: T) => void;
   /** Handle a terminal error that did not come from cancellation. */
   onError: (error: unknown) => void;
-};
-
-/** Own an async subscription and close it when its key changes or it unmounts. */
-export function useAbortableSubscription<T>(
-  input: AbortableSubscriptionInput<T>
-): void {
+}): void {
   const subscribe = useLatestEvent(input.subscribe);
   const onValue = useLatestEvent(input.onValue);
   const onError = useLatestEvent(input.onError);

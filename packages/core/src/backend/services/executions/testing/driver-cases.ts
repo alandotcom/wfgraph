@@ -261,7 +261,8 @@ function appOn(connection: ConformanceConnection): App {
       const executionId = await drive(startOn(workflow));
       return { ...workflow, executionId };
     },
-    loop: ({ onClaim } = {}) => {
+    loop: (options) => {
+      const onClaim = options?.onClaim;
       const controller = new AbortController();
       const done = connection.run(
         Effect.gen(function* () {
