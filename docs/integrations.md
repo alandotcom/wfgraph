@@ -145,8 +145,8 @@ to learn.
 
 ## What is remembered across a replay
 
-A durable runtime re-runs the whole workflow function every time a run resumes, after a
-sleep, after a wait, after a retry. **Workflow Graph wraps no handler body.** Work with a side effect
+The executor runs a workflow in passes, and every pass replays the run from its trigger:
+after a Wait resumes, after a retry, after a worker restarts. **Workflow Graph wraps no handler body.** Work with a side effect
 goes inside `step.run` or it happens again on every attempt:
 
 ```ts
@@ -730,7 +730,8 @@ validation, refresh fencing, callback conflicts, and disconnect ordering.
 Keep the same action id when an in-progress run should resume without failing decode
 and completed steps should keep their memoized results. Published workflows pin a
 catalog fingerprint that hashes action ids and config/output **keys**, not handler
-bodies or field types; Inngest replays completed `step.run` calls from stored JSON.
+bodies or field types; a replay answers completed `step.run` calls from the stored JSON
+in the run's step memo.
 
 **Safe under one id:**
 

@@ -217,7 +217,9 @@ whether that Event changes a run in one workflow.
 ## The intake gate
 
 Send an Event with an Inngest client. The listener of that Event delivers it, so the run is
-durable from the moment the send returns.
+durable from the moment the send returns. The listener opens each run the Event starts in
+your database, and the worker loop in your application's process executes the run. For more
+information, see Workflow runs in `docs/embedding.md`.
 
 ```ts
 inngest.send({ name: "app/appointment.created", data: { appointment } });

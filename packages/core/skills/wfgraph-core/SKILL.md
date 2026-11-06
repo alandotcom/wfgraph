@@ -95,9 +95,27 @@ the editor.
   files are schema-agnostic and would land in `public`.
 - SQLite: `wfSqlite({ filename })` or `wfSqlite()` (in-memory, dies with the
   process).
-- Cloudflare Workers: `@wfgraph/core/worker` (`wfWorker` / `wfHyperdrive`),
-  not `createWfGraphApp`. Disable Hyperdrive query caching. Set the origin
-  role's default `search_path`. Migrate out of band. Enable `nodejs_compat`.
+- Cloudflare Workers: `wfWorker` throws when called. A Worker has no
+  long-lived process for the worker loop, so it runs no workflows until its
+  tick driver ships. Run `createWfGraphApp` on Node.
+
+## Workflow runs
+
+Runs execute in the host's process on a worker loop that `createWfGraphApp`
+starts, with their schedule and step memo in the `persistence` database.
+Inngest delivers Events and runs no workflow, so the `inngest` option stays
+required. Loop defaults and the `runner` fields: `docs/embedding.md`
+("Workflow runs").
+
+- `runner` left out runs one loop. `runner: false` runs none in that process;
+  some process on the same database must run one.
+- SQLite runs every pass on the host's main thread (`node:sqlite` is
+  synchronous). Concurrency defaults to 1 there.
+- `runner.heartbeatMs` must be shorter than `runner.leaseMs`; startup refuses
+  otherwise.
+- `dispose()` stops the loop and waits up to ten seconds for passes in flight.
+- Runs that an earlier release left in Inngest have no schedule row and never
+  advance. Drain them before upgrading.
 
 ## Common mistakes
 
@@ -149,6 +167,17 @@ Wrong: `psql $DATABASE_URL -f node_modules/@wfgraph/core/drizzle/...`
 Correct: `migrateWfGraphDatabase` or `wfPostgres({ migrations: { runOnStartup: true } })`.
 
 Source: alandotcom/wfgraph:docs/embedding.md (PostgreSQL migrations)
+
+### CRITICAL No process runs the worker loop
+
+Wrong: `createWfGraphApp({ ..., runner: false })` in every process.
+
+Correct: leave `runner` out (or pass an object) in at least one process
+connected to the same database.
+
+Runs open and never advance: nothing claims their schedule rows.
+
+Source: alandotcom/wfgraph:docs/embedding.md (Workflow runs)
 
 ### HIGH Hyperdrive with query caching
 

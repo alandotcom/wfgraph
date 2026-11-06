@@ -13,7 +13,8 @@ editor.
 | **Event Author**     | The developer who embeds  | Defines Events, actions, and which integrations to turn on  |
 | **Workflow Builder** | Their less technical team | Builds the graph and declares Lifecycle Rules in the editor |
 
-Workflow Graph runs on your infrastructure (Node, PostgreSQL or SQLite, and Inngest).
+Workflow Graph runs on your infrastructure. Workflow runs execute in your Node process and
+keep their state in your PostgreSQL or SQLite database, and Inngest delivers Events.
 
 ## Run locally
 

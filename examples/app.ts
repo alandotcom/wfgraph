@@ -270,9 +270,10 @@ const wfgraph = await createWfGraphApp({
     signingKeyFallback: process.env.INNGEST_SIGNING_KEY_FALLBACK,
     serveOrigin: process.env.INNGEST_SERVE_ORIGIN,
     servePath: process.env.INNGEST_SERVE_PATH,
-    // Long-running Node dials out over Connect so Inngest can push executions
-    // here without reaching this process over HTTP. Serverless hosts leave this
-    // unset and keep `/api/inngest` for Inngest to call back.
+    // Long-running Node dials out over Connect so Inngest can push Event
+    // deliveries here without reaching this process over HTTP. Workflow runs
+    // execute in this process's worker loop (the `runner` option), which needs a
+    // long-lived process.
     connect: true,
     instanceId: process.env.INNGEST_INSTANCE_ID,
     gatewayUrl: process.env.INNGEST_CONNECT_GATEWAY_URL,

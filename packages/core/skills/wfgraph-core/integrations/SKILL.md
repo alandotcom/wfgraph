@@ -63,8 +63,9 @@ outside packages today.
 
 ## HTTP and replay
 
-Workflow Graph wraps no handler body. A durable runtime re-runs the whole
-function after a sleep, wait, or retry. Work with a side effect goes in
+Workflow Graph wraps no handler body. The executor replays the whole run from
+the top on every pass, after a Wait resolves and after a retry, and answers
+each completed `step.run` from the step memo. Work with a side effect goes in
 `step.run` or it happens again.
 
 - Integration handlers are Effect; connection `test` and OAuth token writes are
@@ -75,8 +76,8 @@ function after a sleep, wait, or retry. Work with a side effect goes in
   GraphQL, Svix webhook signatures). Do not wrap Twilio/Slack/Resend-style HTTP
   SDKs.
 - What `step.run` answers must be JSON. Carry timestamps as ISO strings.
-- `StepFailure` travels as a value, so a refused call fails the node once
-  rather than burning function-level retries.
+- `StepFailure` travels as a value, so a refused call fails the node once.
+  A throw is retried: each step gets its own four retries.
 - A handler that wraps nothing still opens one memoized log row.
 
 ## OAuth

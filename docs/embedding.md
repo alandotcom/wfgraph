@@ -446,8 +446,8 @@ const wfgraph = await createWfGraphApp({
 ```
 
 The endpoint is `${basePath}/api/mcp`. With the default `basePath`, the endpoint
-is `/api/mcp`. The `mcp` option is disabled by default and works with both
-`createWfGraphApp` and `wfWorker`.
+is `/api/mcp`. The `mcp` option is disabled by default and works with
+`createWfGraphApp`. It also works with `wfWorker` once the Worker host runs workflows again.
 
 List hostnames only, with no scheme or port. Every request must have an allowed
 `Host` header. Browser requests must also have an allowed `Origin` hostname.
@@ -658,7 +658,84 @@ file, open the file with an earlier Workflow Graph release before upgrading. It
 refuses a journal from a newer release or a physical schema that does not match
 the journal instead of attempting a downgrade or repairing altered tables.
 
+## Workflow runs
+
+`createWfGraphApp` executes workflow runs in your application's process. A worker loop
+claims each run that is due from the database that `persistence` names, runs it until it
+finishes or until each of its branches is parked at a Wait, and records each completed step
+in that database. A parked run is due again when the Wait's deadline passes, or when an
+Event, a Cancel, an Exit, or a Migration resolves the Wait.
+
+Inngest delivers Events to Workflow Graph and runs no workflow, so the `inngest` option is
+still required. Each Event in `extensions.events` registers an Inngest listener, and that
+listener opens and schedules the run in your database.
+
+The loop keeps its state in two tables beside the other Workflow Graph tables.
+`workflow_execution_schedule` holds one row per run in flight, and
+`workflow_execution_steps` holds the result of each completed step, including what an
+action returned. A run's rows in both tables are deleted when the run ends, so the tables
+hold only runs in flight. Your database's backups and access controls cover them.
+
+### Configure the runner
+
+The `runner` option controls the loop:
+
+- To run one loop with the persistence backend's defaults, leave `runner` out.
+- To change some of the defaults, pass an object. A field you leave out keeps its default.
+- To run no loop in a process, pass `false`. Use it for a process that only serves requests.
+  At least one process connected to the same database must run a loop, or runs open and
+  never advance.
+
+| Field         | PostgreSQL default | SQLite default | Description                                                                                |
+| ------------- | ------------------ | -------------- | ------------------------------------------------------------------------------------------ |
+| `concurrency` | 10                 | 1              | How many runs the loop advances at once                                                    |
+| `pollMs`      | 1,000              | 250            | How long the loop waits between checks for due runs when nothing wakes it, in milliseconds |
+| `leaseMs`     | 60,000             | 60,000         | How long the loop holds a run before another loop can take it over, in milliseconds        |
+| `heartbeatMs` | 20,000             | 20,000         | How often the loop renews its hold while a step runs, in milliseconds                      |
+
+Each field must be a positive integer, and `heartbeatMs` must be shorter than `leaseMs`.
+`createWfGraphApp` refuses any other value at startup.
+
+```ts
+const wfgraph = await createWfGraphApp({
+  // auth, persistence, encryption, inngest, extensions
+  runner: { concurrency: 20, pollMs: 500 },
+});
+```
+
+### How runs behave
+
+- **A change wakes the loop in its own process at once.** When a service in your process
+  writes a wake, such as an Event arrival or a Cancel, it wakes that process's loop
+  directly. On PostgreSQL it also notifies the loops in other processes through `LISTEN`
+  and `NOTIFY`. The poll finds Wait deadlines and any notification that was lost.
+- **PostgreSQL loops in several processes share the work.** A claim locks the rows it
+  takes with `SKIP LOCKED`, so two loops never advance the same run at once. When a process
+  stops in the middle of a run, another loop takes the run over after its lease expires and
+  resumes it from its last completed step.
+- **SQLite runs workflows on your application's main thread.** `node:sqlite` is
+  synchronous, so each statement blocks the event loop, and action handlers share that
+  event loop with your HTTP requests. A loop on SQLite hears wakes from its own process
+  only, so a run that another process makes due waits for the next poll.
+- **A step that throws is retried.** Each step gets four retries, with a backoff that
+  starts at one second and doubles up to one minute. A step that still fails fails its
+  node, and the run's other branches continue.
+- **`dispose()` drains the loop.** It stops claiming runs and waits up to ten seconds for
+  the runs in progress. A run still in progress after that resumes from its last completed
+  step when a loop claims it after its lease expires.
+- **Drain in-flight runs before you upgrade from a release that ran workflows on Inngest.**
+  A run that Inngest held has no row for the loop to claim, so it never advances. Let each
+  run finish, or cancel it, before you upgrade.
+
+`docs/adr/0021` records why runs execute in the application database.
+
 ## Cloudflare Workers and Hyperdrive
+
+The Worker host does not run workflows until it has a tick driver that Cloudflare's
+scheduled triggers call, because a Worker invocation has no long-lived process to run the
+worker loop in. Until then, `wfWorker` throws when it is called. Run Workflow Graph with
+`createWfGraphApp` on Node. The rest of this section describes the configuration that the
+Worker host takes.
 
 Workers use the dedicated entry, not the Node app entry:
 
@@ -769,7 +846,8 @@ into whichever bundle needs it. `@wfgraph/core` and `@wfgraph/plugins` also incl
 
 `createWfGraphApp` is the Node host. `wfWorker` is the Cloudflare
 Worker host and serves the API while the platform's Assets binding or the
-application's router serves static files.
+application's router serves static files. The Worker host does not run workflows yet; see
+Cloudflare Workers and Hyperdrive.
 
 ## createWfGraphApp options
 
@@ -780,8 +858,9 @@ application's router serves static files.
 | `auth`                    | Yes      | Authentication callback returning a request-scoped access policy or `null`                                                                                                                                            |
 | `persistence`             | Yes      | A backend from `@wfgraph/core/postgres` or `@wfgraph/core/sqlite`                                                                                                                                                     |
 | `encryption.key`          | Yes      | 64-character hex string. It encrypts the integration secrets                                                                                                                                                          |
-| `inngest.id`              | Yes      | Inngest application ID                                                                                                                                                                                                |
+| `inngest.id`              | Yes      | Inngest application ID. Inngest delivers Events; it runs no workflow                                                                                                                                                  |
 | `inngest.*`               | No       | isDev, baseUrl, eventKey, env, signingKey, signingKeyFallback, serveOrigin, servePath, connect, instanceId, gatewayUrl, maxWorkerConcurrency, connectTimeoutMs                                                        |
+| `runner`                  | No       | The worker loop that runs workflows in this process. Omit it for the defaults, pass an object to tune it, or pass `false` to run none. See Workflow runs                                                              |
 | `extensions.events`       | No       | `defineEvent` values                                                                                                                                                                                                  |
 | `extensions.actions`      | No       | `defineAction` values                                                                                                                                                                                                 |
 | `extensions.integrations` | No       | `defineIntegration` values                                                                                                                                                                                            |
@@ -818,7 +897,7 @@ Read these once:
   `/api/inngest` sits outside the gate because Inngest signs its callbacks, and
   that holds with a configured signing key alone. Without one the SDK runs in
   dev mode and skips the signature check, so an anonymous POST to that path can
-  execute a workflow function with a payload of its choice. With Connect, the
+  deliver an Event with a payload of its choice, which can start or wake runs. With Connect, the
   same key authenticates the worker to the gateway. Workflow Graph logs an error at
   start-up when no key is set for the path in use.
 - **A mount under a sub-path takes `basePath`.** Workflow Graph builds its API prefix, the
@@ -831,9 +910,10 @@ Read these once:
   `inngest` option below, and still builds its own Hono app inside; `createWfGraphApp`
   answers with `fetch`, `basePath`, `dispose`, and `[Symbol.asyncDispose]` alone, so neither
   library appears in what it hands back.
-- **Running Inngest is the job of the consumer**, self-hosted or cloud. `pnpm run dev` here
-  starts it as a separate process. Long-running hosts set `inngest.connect: true` so
-  executions arrive over a Connect WebSocket and `/api/inngest` is not mounted.
+- **Running Inngest is the job of the consumer**, self-hosted or cloud. Inngest delivers
+  Events; workflow runs execute in your process (see Workflow runs). `pnpm run dev` here
+  starts Inngest as a separate process. Long-running hosts set `inngest.connect: true` so
+  Event deliveries arrive over a Connect WebSocket and `/api/inngest` is not mounted.
   Local `pnpm run dev` sets `INNGEST_CONNECT_GATEWAY_URL=ws://localhost:8390/v0/connect`
   because the CLI's Connect gateway listens on 8390. Pass `inngest.instanceId`,
   `inngest.gatewayUrl`, or `inngest.maxWorkerConcurrency` when the worker needs
@@ -847,7 +927,8 @@ Read these once:
 - `createWfGraphApp` answers `{ fetch, basePath, dispose, [Symbol.asyncDispose] }`. For a
   lexical lifetime, declare the app with `await using`. For a long-running host, call
   `await dispose()` from its shutdown handler. Both forms run the same idempotent shutdown:
-  they drain an open Connect worker, finalize the Effect runtime, and close persistence.
+  they drain an open Connect worker, stop the worker loop and wait up to ten seconds for
+  the runs it is advancing, finalize the Effect runtime, and close persistence.
   One Workflow Graph per process remains the supported arrangement; each app owns its
   persistence instance, Inngest client, encryption key, and assembled surface.
 
@@ -904,7 +985,8 @@ its output calls one of the three first.
 **A record is one unit of work.** One HTTP request writes one record naming the method,
 the path, the status, the elapsed time, the RPC procedure it addressed and, when it was
 refused, the reason. One node execution writes one record naming the node, what it ran,
-how it ended and how long it took. A run writes one when it starts and one when it ends.
+how it ended and how long it took. Each pass of a run writes one record when it starts
+and one when it ends, which says whether the run parked at a Wait or finished.
 No payload is logged: a request body, a response body and an Event payload are all stored
 where they can be read whole, and printing them buries the line beside them.
 
@@ -922,16 +1004,15 @@ per span, so a host may register before or after `createWfGraphApp`, and a host 
 registers nothing gets no-op spans.
 
 Every span name below is a stable contract, and all of them arrive under the
-`wfgraph-workflows` instrumentation scope. Five come from the engine, one per unit
+`wfgraph-workflows` instrumentation scope. Four come from the engine, one per unit
 of work inside a run:
 
-| Span                              | Opened for                        | Attributes                                                                                           |
-| --------------------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `wfgraph.workflow.execution`      | one run                           | `wfgraph.workflow.id`, `wfgraph.workflow.name`, `wfgraph.execution.id`, `wfgraph.execution.run_mode` |
-| `wfgraph.workflow.branch`         | one branch run released by a Wait | the same, plus `wfgraph.branch.entry_node_id`                                                        |
-| `wfgraph.workflow.node.execute`   | each node                         | `wfgraph.node.id`, `wfgraph.node.name`, `wfgraph.node.type`, and `wfgraph.action.type` on an action  |
-| `wfgraph.workflow.action.execute` | the action inside a node          | `wfgraph.action.type`, `wfgraph.node.id`, `wfgraph.node.name`                                        |
-| `wfgraph.workflow.wait`           | a Wait node                       | `wfgraph.wait.type` (`delay` or `event`), `wfgraph.node.id`, `wfgraph.node.name`                     |
+| Span                              | Opened for               | Attributes                                                                                           |
+| --------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------- |
+| `wfgraph.workflow.execution`      | one pass of a run        | `wfgraph.workflow.id`, `wfgraph.workflow.name`, `wfgraph.execution.id`, `wfgraph.execution.run_mode` |
+| `wfgraph.workflow.node.execute`   | each node                | `wfgraph.node.id`, `wfgraph.node.name`, `wfgraph.node.type`, and `wfgraph.action.type` on an action  |
+| `wfgraph.workflow.action.execute` | the action inside a node | `wfgraph.action.type`, `wfgraph.node.id`, `wfgraph.node.name`                                        |
+| `wfgraph.workflow.wait`           | a Wait node              | `wfgraph.wait.type` (`delay` or `event`), `wfgraph.node.id`, `wfgraph.node.name`                     |
 
 Twelve more come from the services behind the API, one per request the editor or a
 host makes. Each carries the identifiers it is about, and a span nested inside
@@ -962,9 +1043,10 @@ and one outcome word are the whole of it. A graph, a request body, an Event
 payload, a step output and a credential are stored where they can be read whole,
 and a trace backend shows an attribute to everyone who can read the trace.
 
-**A Wait ends the trace.** Inngest parks the invocation and wakes a separate one, and
-nothing carries the trace context across that boundary, so each branch run opens a root
-span of its own.
+**A Wait ends the trace.** A run executes in passes: a pass ends when every branch has
+finished or parked at a Wait, and a later pass resumes the run when a Wait is resolved.
+Each pass opens a root `wfgraph.workflow.execution` span of its own, because nothing
+carries the trace context from one pass to the next.
 
 ### Sentry
 
