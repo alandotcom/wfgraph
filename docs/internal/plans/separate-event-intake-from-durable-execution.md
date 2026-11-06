@@ -1033,10 +1033,39 @@ keeps compatibility machinery alive for the next one.
      written onto a row whose version has since moved is not lost.
    - A pass that finds its run no longer in flight deletes the run's schedule
      and memo rows.
-3. **The inbox.** `workflow_event_inbox`, delivery bodies on the executor, the
-   Inngest source entry, `app.events.send`, the HTTP route, webhook intake
-   rewired. `defineEvent` loses its `inngest` option and
-   `extensions/inngest-options.ts` is deleted (section 7.4).
+3. **The inbox.** Seven units, committed in order:
+   - `defineEvent` loses its `inngest` option and
+     `extensions/inngest-options.ts` is deleted (section 7.4).
+   - `workflow_event_inbox` in both schemas. A send inserts the inbox row and its
+     delivery schedule row in one transaction, with on-conflict-do-nothing on the
+     idempotency key, whose uniqueness includes the Connection. A poll schedules
+     a row a host inserted through the SQL contract. The row records `delivered`
+     or `failed` with its error, so a delivery that fails for good is never
+     scheduled again. A sweep deletes delivered rows past the retention window.
+   - A delivery body on the executor: the claimed-schedule union gains a
+     `delivery` member keyed by the inbox row, the pass splits into an
+     owner-fenced core and the run's store writes, and the delivery body runs
+     `runEventListener` against the executor's step memo. The body evaluates a
+     source's `when` filter in process, since it no longer compiles to an
+     Inngest trigger.
+   - `app.events.send({ name, data, id? })` and `POST {basePath}/api/events`,
+     authenticated by `Authorization: Bearer <key>` with the key from a new
+     `events: { key }` option; the route is off unless the key is set. It
+     answers 202 `{ id, duplicate }`, 400 for a refused payload, and 401 for a
+     bad key.
+   - Webhook intake writes to the inbox, and `catalog-connection.ts`,
+     `sendCatalogEvent` and `InngestClient` are deleted.
+   - The Inngest listener functions become forwarders into the inbox, keyed by
+     the Inngest event id, so a host on Inngest keeps `inngest.send`.
+     `deliveryId` becomes the inbox id. The reliability suite runs on the
+     inbox and is compared with `main`.
+   - `events.retentionMs` on `createWfGraphApp` and `createWfGraphRunner`,
+     default seven days, with the runner sweeping delivered rows hourly; the
+     docs, the skills, an ADR and the TLA+ models.
+
+   A delivery that fails for good is recorded on its inbox row with its error
+   and logged once; the editor shows nothing new in this phase.
+
 4. **Inngest leaves the core.** The Inngest source entry is the only Inngest
    code left; `inngest` leaves `createWfGraphApp` and the core's peer
    dependencies; `scripts/dev.ts` drops the CLI; `docs/events.md`, both
@@ -1063,11 +1092,10 @@ keeps compatibility machinery alive for the next one.
    contract, for a host with no Inngest. The SQL contract is what lets a host
    raise an Event inside its own transaction (section 7.3). A host on Inngest is
    unaffected, since it keeps `inngest.send` through the Inngest source.
-7. How long a delivered inbox row is kept, which is also how long a resent
-   idempotency key is refused (section 7.1). Inngest's equivalent window is 24
-   hours. Recommendation: a configurable window on `createWfGraphApp`
-   defaulting to seven days, so that a host retrying a send over a weekend
-   still deduplicates.
+7. Decided: a delivered inbox row is kept for `events.retentionMs`, an option on
+   `createWfGraphApp` and `createWfGraphRunner` defaulting to seven days, so a
+   host retrying a send over a weekend still deduplicates (section 7.1).
+   Inngest's equivalent window is 24 hours.
 8. Whether the library prunes run history. `workflow_executions`,
    `workflow_execution_logs`, `workflow_execution_events` and closed
    `workflow_wait_states` rows grow with every run today, and nothing deletes
