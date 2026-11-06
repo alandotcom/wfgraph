@@ -38,7 +38,7 @@
   "devDependencies": {
     "@changesets/changelog-github": "1.0.1",
     "@changesets/cli": "3.0.3",
-    "@effect/tsgo": "0.67.3",
+    "@effect/tsgo": "0.67.4",
     "@effect/vitest": "catalog:",
     "@oxlint/plugins": "^1.90.0",
     "@tanstack/intent": "^0.5.6",
@@ -59,7 +59,7 @@
     "oxlint": "^1.92.0",
     "pkg-pr-new": "^0.0.92",
     "tsdown": "^0.23.3",
-    "tsrs": "0.21.0-ts7.1.0-beta",
+    "tsrs": "0.22.0-ts7.1.0-beta",
     "tsx": "catalog:",
     "typescript": "^7.0.2",
     "vite": "catalog:",
