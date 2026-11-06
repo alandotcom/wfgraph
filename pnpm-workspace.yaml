@@ -123,6 +123,13 @@ overrides:
   # @opentelemetry/auto-instrumentations-node > @opentelemetry/resource-detector-gcp
   # > gcp-metadata > gaxios.
   "gcp-metadata>gaxios": "7.3.1"
+  # GHSA-g3hv-75wg-m249 (a `**/..` pattern grows its glob parts without bound,
+  # then compares them pairwise) affects minimatch 10.2.6 and is fixed only in
+  # 11.0.1. eslint's @eslint/config-array and shadcn's @ts-morph/common ask for
+  # ^10. Both only construct a matcher and call `match`, which minimatch 11 keeps;
+  # what 11 removed is `makeRe`, `Minimatch#regexp`, the `AST` class and the
+  # `debug` option.
+  "minimatch@^10": "11.0.4"
 
 # pnpm refuses to run a dependency's install scripts until the dependency is
 # named here, so a package that gains a postinstall arrives as a warning rather
