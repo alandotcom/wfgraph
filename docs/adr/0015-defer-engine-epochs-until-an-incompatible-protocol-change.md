@@ -92,3 +92,29 @@ mechanism remains deferred; nothing in ADR-0019 stamps or routes an epoch.
 An adopter running a version before ADR-0019 drains its parked runs before
 upgrading. A run parked under the old Wait step ids resumes into a handler that
 has none of them.
+
+## Amendment (2026-11-05)
+
+ADR-0021 moved workflow runs off Inngest onto an executor in the application database,
+which is the second incompatible change to the durable protocol this ADR named. The
+function ids that ran workflows, the run, cancellation, branch-kill and wait-signal events,
+their payload schemas, the branch ids and results, and the Inngest invocation metadata no
+longer exist. The project accepted the break under the no-backwards-compatibility
+convention in AGENTS.md, as it accepted ADR-0019's, and the engine-epoch mechanism remains
+deferred. An adopter drains its in-flight runs before upgrading, because a run that Inngest
+held has no schedule row for the executor to claim.
+
+The compatibility boundary is now smaller and lives in the adopter's database. It is the
+durable step ids, including `workflow-run-completed`, `workflow-run-failed`, the
+`lifecycle-check` ids, node log ids and Wait ids; the JSON values the step memo holds in
+`workflow_execution_steps`; the wake a producer writes onto a wait row; and, for Event
+delivery alone until the event inbox, the listener ids that `toListenerFunctionId` makes.
+During a rolling deploy, worker loops from both builds claim passes of the same run, so a
+change to one of those ids or value shapes is incompatible during the deploy in the way a
+payload schema change was.
+
+The epoch mechanism this ADR described routed run, wait, cancellation and branch traffic
+to epoch-specific Inngest functions. That traffic is now rows the executor reads, so a
+future epoch would be a stamp a pass reads to choose the engine that replays the run. The
+terminal write deletes a run's memo rows, so only in-flight runs hold memoized state, and
+Version Usage's report of in-flight runs remains the evidence for retiring an epoch.

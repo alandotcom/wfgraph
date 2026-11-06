@@ -77,3 +77,12 @@ and picks which one. Hono stays an implementation detail either way. No `dist/*.
 a Hono type, so nothing about the published surface changed. `@hono/node-server` stays a
 plain dependency, because it names `hono: ^4` as its own peer and therefore binds to
 whichever copy the host resolved.
+
+**Amendment, 2026-11-05.** Superseded by ADR-0021. Workflow runs execute on an executor
+that Workflow Graph owns, stored in the application database, and Inngest delivers Events
+until the event inbox replaces it. The 2026-08-03 amendment named the obstacle to a
+substrate swap: Inngest's wake policy required ADR-0011's branch hand-off. ADR-0021 removed
+that obstacle by making a Wait's park a value, so a run wakes when any one park resolves.
+`effect/unstable/workflow` stayed rejected, for the unstable marker this ADR gave and for
+reasons ADR-0021 records. `inngest` stays a peer dependency of `@wfgraph/core` while the
+core delivers Events through it.

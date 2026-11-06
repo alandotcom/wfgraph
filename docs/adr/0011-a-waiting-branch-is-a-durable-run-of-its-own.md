@@ -200,3 +200,26 @@ This replaces `releasedNodeIds` in the strict branch invocation schema. The
 project accepts the protocol change under the no-backwards-compatibility rule
 in AGENTS.md, as with ADR-0019; engine epochs remain deferred. An existing
 installation must drain invocations using the previous payload before upgrading.
+
+## Amendment: A waiting branch stays in its Execution's one run
+
+Date: 2026-11-05
+
+ADR-0021 moved workflow runs onto an executor in the application database, and this
+decision no longer holds. A waiting branch needed a run of its own because Inngest resumed
+an invocation at the last of its outstanding pauses. On the executor a park is a value: a
+parked Wait halts its branch, the pass ends with its parks open, and the run is due again
+when any one park resolves. Every Wait is entered in place in the Execution's one run, and
+a short Wait beside a long one resumes at its own target.
+
+The branch machinery was deleted: the invoke-only branch function and its invoke payload
+and schema, the branch-kill event, the parent's sweep of a killed child's rows, the read of
+upstream outputs back from run-log rows, the released edges on the wire, the claim a
+Canceled-side branch carried, and the branch-run tests. A Cancel Event now resolves each
+open Started-side park with a cancel wake, and the next pass reads the Cancel claim and
+routes the Canceled outlet.
+
+The node behind two Waits in different branches, which the 2026-08-19 amendment left
+unanswered, now runs. Each park resolves in a pass of its own, each pass rebuilds one
+traversal from the step memo, and the AND-join becomes ready in the pass that completes its
+second predecessor.
