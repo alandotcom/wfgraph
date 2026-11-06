@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `logs_execution_node_uidx` ON `workflow_execution_logs` (`execution_id`,`node_id`);

@@ -200,4 +200,13 @@ export const sqliteMigrations = [
     hash: "92c4e5f63026b45af2a902297391afd75410f27ff0aae51b6f841b15210b00a5",
     name: "20261106172019_superb_selene",
   },
+  {
+    sql: [
+      "CREATE UNIQUE INDEX `logs_execution_node_uidx` ON `workflow_execution_logs` (`execution_id`,`node_id`);",
+    ],
+    bps: true,
+    folderMillis: 1793991994000,
+    hash: "e5c54c3101a4a96d5c757674f47ed71ebccd1060122b74fe6056064ecc644d1f",
+    name: "20261106190634_tranquil_eddie_brock",
+  },
 ] satisfies readonly MigrationMeta[];

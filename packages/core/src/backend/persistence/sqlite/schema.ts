@@ -216,6 +216,7 @@ export const workflowExecutionLogs = sqliteTable(
       table.executionId,
       table.timestamp
     ),
+    uniqueIndex("logs_execution_node_uidx").on(table.executionId, table.nodeId),
     check(
       "workflow_execution_logs_status_check",
       sql`${table.status} in ('pending', 'running', 'success', 'error', 'cancelled')`

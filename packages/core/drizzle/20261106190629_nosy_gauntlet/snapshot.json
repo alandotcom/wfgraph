@@ -1,0 +1,65 @@
+{
+  "type": "diff",
+  "version": "9",
+  "dialect": "postgres",
+  "id": "c059cc01-1504-45d6-9256-c1d959a6bba7",
+  "prevIds": [
+    "5373e36a-5849-4475-a4b5-c497d18ab292"
+  ],
+  "footprints": [
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "workflow_execution_logs",
+        "workflow_execution_logs_execution_node_uidx"
+      ],
+      "writes": [
+        "s|idx|public.workflow_execution_logs_execution_node_uidx",
+        "n|idx|public.workflow_execution_logs_execution_node_uidx",
+        "e|idx|public.workflow_execution_logs_execution_node_uidx",
+        "n|rel|public.workflow_execution_logs_execution_node_uidx"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_execution_logs",
+        "n|sch|public",
+        "n|col|public.workflow_execution_logs.execution_id",
+        "n|col|public.workflow_execution_logs.node_id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_execution_logs",
+        "name": "workflow_execution_logs_execution_node_uidx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "execution_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "node_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": true,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "concurrently": false,
+        "entityType": "indexes"
+      }
+    }
+  ]
+}
