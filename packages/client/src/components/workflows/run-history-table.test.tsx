@@ -24,6 +24,7 @@ function run(
     completedAt: "2026-08-22T10:00:01.000Z",
     duration: "1000",
     activity: null,
+    receivedAtMs: Date.now(),
     ...overrides,
   };
 }
@@ -98,7 +99,6 @@ describe("RunHistoryTable", () => {
         isLoadingMore={false}
         onLoadMore={() => undefined}
         onOpenRun={() => undefined}
-        receivedAtMs={0}
         runs={ROWS}
       />
     );
@@ -125,7 +125,6 @@ describe("RunHistoryTable", () => {
         isLoadingMore={false}
         onLoadMore={() => undefined}
         onOpenRun={() => undefined}
-        receivedAtMs={Date.now()}
         runs={[
           run({
             id: "exec_retry",
@@ -171,7 +170,6 @@ describe("RunHistoryTable", () => {
         isLoadingMore={false}
         onLoadMore={() => undefined}
         onOpenRun={() => undefined}
-        receivedAtMs={0}
         runs={ROWS}
       />
     );
@@ -203,7 +201,6 @@ describe("RunHistoryTable", () => {
         isLoadingMore={false}
         onLoadMore={() => undefined}
         onOpenRun={() => undefined}
-        receivedAtMs={0}
         runs={rows}
       />
     );
@@ -229,7 +226,6 @@ describe("RunHistoryTable", () => {
         isLoadingMore={false}
         onLoadMore={() => undefined}
         onOpenRun={onOpenRun}
-        receivedAtMs={0}
         runs={ROWS}
       />
     );
@@ -246,7 +242,6 @@ describe("RunHistoryTable", () => {
         isLoadingMore={false}
         onLoadMore={() => undefined}
         onOpenRun={() => undefined}
-        receivedAtMs={0}
         runs={ROWS}
       />
     );
@@ -269,7 +264,6 @@ describe("RunHistoryTable", () => {
         isLoadingMore={false}
         onLoadMore={() => undefined}
         onOpenRun={() => undefined}
-        receivedAtMs={0}
         runs={[]}
       />
     );
@@ -286,7 +280,6 @@ describe("RunHistoryTable", () => {
         isLoadingMore={false}
         onLoadMore={onLoadMore}
         onOpenRun={() => undefined}
-        receivedAtMs={0}
         runs={ROWS}
       />
     );
@@ -304,7 +297,6 @@ describe("RunHistoryTable", () => {
         isLoadingMore={false}
         onLoadMore={onLoadMore}
         onOpenRun={() => undefined}
-        receivedAtMs={0}
         runs={ROWS}
       />
     );

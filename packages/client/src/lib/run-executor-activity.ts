@@ -287,64 +287,58 @@ export function withExecutorReading(
       };
 }
 
-/**
- * The server's clock for a runs list: the newest `observedAt` among its
- * unclaimed rows, plus the time since the list arrived. A list whose older
- * pages were fetched earlier still measures every row against the newest
- * reading. Null when no row is unclaimed, since no other row needs a clock.
- */
-export function listServerNowMs(input: {
-  activities: ReadonlyArray<ListActivity | null>;
-  receivedAtMs: number;
-  nowMs: number;
-}): number | null {
-  const readings = input.activities.flatMap((activity) =>
-    activity?.kind === "unclaimed" ? [Date.parse(activity.observedAt)] : []
-  );
-  return readings.length === 0
-    ? null
-    : Math.max(...readings) + Math.max(0, input.nowMs - input.receivedAtMs);
-}
+/** What a runs list row says in place of its status word, ready to render. */
+export type ListActivityLabel = {
+  text: string;
+  /** Whether the text is drawn in the warning token. */
+  warns: boolean;
+};
 
 /**
  * What a runs list row says about `activity` in place of its usual outcome,
  * or null to keep that outcome. An unclaimed run is said only once it has
- * waited the activity's `overdueAfterMs` on `nowMs`, the list's server clock,
- * and `warns` draws it in the warning token. A node without a recorded name
- * is named by its id.
+ * waited the activity's `overdueAfterMs`, measured on the server's clock from
+ * the activity's own `observedAt`, `receivedAtMs` and `nowMs`; with no
+ * `receivedAtMs`, as for rows the list shows while it loads, it is not said.
+ * A node without a recorded name is named by its id.
  */
-export function listActivityLabel(
-  activity: ListActivity | null,
-  nowMs: number | null
-): { text: string; warns: boolean } | null {
+export function listActivityLabel(input: {
+  activity: ListActivity | null;
+  /** The browser's clock when the row's page arrived, or null when unknown. */
+  receivedAtMs: number | null;
+  /** The browser's clock now. */
+  nowMs: number;
+}): ListActivityLabel | null {
+  const { activity, receivedAtMs, nowMs } = input;
   if (activity === null) {
     return null;
   }
-  switch (activity.kind) {
-    case "retrying": {
-      const node = activity.nodeName ?? activity.nodeId;
-      return {
-        text: node === null ? "Retrying the run" : `Retrying ${node}`,
-        warns: false,
-      };
+  if (activity.kind === "unclaimed") {
+    if (receivedAtMs === null) {
+      return null;
     }
-    case "lease_expired": {
-      const node = activity.nodeName ?? activity.nodeId;
-      return {
-        text:
-          node === null
-            ? "Worker stopped during the run"
-            : `Worker stopped during ${node}`,
-        warns: false,
-      };
-    }
-    default: {
-      const waited = nowMs === null ? 0 : elapsedMs(activity.dueSince, nowMs);
-      return waited < activity.overdueAfterMs
-        ? null
-        : { text: `Not claimed for ${shortDuration(waited)}`, warns: true };
-    }
+    const waited = elapsedMs(
+      activity.dueSince,
+      serverNowMs({ observedAt: activity.observedAt, receivedAtMs, nowMs })
+    );
+    return waited < activity.overdueAfterMs
+      ? null
+      : { text: `Not claimed for ${shortDuration(waited)}`, warns: true };
   }
+  const node = activity.nodeName ?? activity.nodeId;
+  if (activity.kind === "retrying") {
+    return {
+      text: node === null ? "Retrying the run" : `Retrying ${node}`,
+      warns: false,
+    };
+  }
+  return {
+    text:
+      node === null
+        ? "Worker stopped during the run"
+        : `Worker stopped during ${node}`,
+    warns: false,
+  };
 }
 
 /** `1 time`, `2 times`. */

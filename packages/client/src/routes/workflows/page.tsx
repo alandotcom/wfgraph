@@ -40,6 +40,8 @@ import {
   type RunHistoryTableRow,
 } from "#src/components/workflows/run-history-table";
 import { withExecutorReading } from "#src/lib/run-executor-activity";
+import { isRunInProgress } from "#src/lib/execution-logs";
+import { RUN_POLL_MS } from "#src/components/workflow/use-workflow-runs";
 import type { WorkflowSummaryPayload } from "@wfgraph/shared/graph/api-contracts";
 import {
   filterRuns,
@@ -196,19 +198,31 @@ export default function WorkflowsPage() {
       meta: { errorMessage: "Failed to load workflow runs" },
     }),
     enabled: canOpenGlobalRuns,
+    // A loaded run the executor is holding is re-read as the Runs tab reads
+    // its runs, so what its row says about the executor stays current.
+    refetchInterval: (query) =>
+      query.state.data?.pages.some((page) =>
+        page.items.some(
+          (item) => isRunInProgress(item.status) && item.activity !== null
+        )
+      )
+        ? RUN_POLL_MS
+        : false,
   });
 
   // Each row keeps the reading of the page it arrived on, so a row from an
-  // older page measures its wait from its own answer.
+  // older page measures its wait from its own answer. The query refetches
+  // every page together, so their arrival is the query's.
   const runs: GlobalExecutionItem[] = useMemo(
     () =>
       runsQuery.data?.pages.flatMap((page) =>
         page.items.map((item) => ({
           ...item,
           activity: withExecutorReading(item.activity, page),
+          receivedAtMs: runsQuery.dataUpdatedAt,
         }))
       ) ?? [],
-    [runsQuery.data]
+    [runsQuery.data, runsQuery.dataUpdatedAt]
   );
   const visibleRuns = useMemo(
     () => filterRuns(runs, { query: runQuery, filters: runFilters }),
@@ -750,7 +764,6 @@ export default function WorkflowsPage() {
                   void runsQuery.fetchNextPage();
                 }}
                 onOpenRun={openRun}
-                receivedAtMs={runsQuery.dataUpdatedAt}
                 runs={visibleRuns}
               />
             </section>

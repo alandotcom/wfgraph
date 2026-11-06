@@ -97,8 +97,11 @@ export type WorkflowRunsScreen =
       kind: "list";
       executions: WorkflowExecution[];
       settled: boolean;
-      /** The browser's clock when the rows arrived. */
-      receivedAtMs: number;
+      /**
+       * The browser's clock when the rows arrived, or null while they are
+       * placeholders kept from another query, whose arrival time is unknown.
+       */
+      receivedAtMs: number | null;
     }
   | { kind: "run-loading" }
   | { kind: "run-unavailable"; retry: () => void }
@@ -361,7 +364,11 @@ export function useWorkflowRuns(): WorkflowRunsState {
       kind: "list",
       executions,
       settled: !executionsQuery.isPlaceholderData,
-      receivedAtMs: executionsQuery.dataUpdatedAt,
+      // A placeholder reports a `dataUpdatedAt` of 0, which no wait may be
+      // measured from.
+      receivedAtMs: executionsQuery.isPlaceholderData
+        ? null
+        : executionsQuery.dataUpdatedAt,
     };
   };
 

@@ -47,11 +47,24 @@ describe("WorkflowRunSummaryRow", () => {
     expect(onClick).toHaveBeenCalledTimes(1);
   });
 
+  // The row measures the wait from the server's clock in its own answer,
+  // which was three minutes past due when the list arrived.
   it("says what the executor is doing in place of the status word", () => {
+    const receivedAtMs = Date.now();
+    const execution: WorkflowExecution = {
+      ...BASE_EXECUTION,
+      status: "running",
+      activity: {
+        kind: "unclaimed",
+        dueSince: "2026-02-22T10:00:00.000Z",
+        observedAt: "2026-02-22T10:03:00.000Z",
+        overdueAfterMs: 60_000,
+      },
+    };
     const view = render(
       <WorkflowRunSummaryRow
-        activityLabel={{ text: "Not claimed for 3 min", warns: true }}
-        execution={{ ...BASE_EXECUTION, status: "running" }}
+        execution={execution}
+        receivedAtMs={receivedAtMs}
         runNumber={2}
       />
     );
@@ -60,6 +73,18 @@ describe("WorkflowRunSummaryRow", () => {
       "text-warning"
     );
     expect(view.queryByText("Running")).toBeNull();
+
+    // Rows kept from an earlier answer have no arrival time to measure from,
+    // so they keep their status word.
+    view.rerender(
+      <WorkflowRunSummaryRow
+        execution={execution}
+        receivedAtMs={null}
+        runNumber={2}
+      />
+    );
+    expect(view.queryByText(/Not claimed/)).toBeNull();
+    expect(view.getByText("Running")).toBeTruthy();
   });
 
   // A draft-snapshot run pinned a graph that was never published, so its label

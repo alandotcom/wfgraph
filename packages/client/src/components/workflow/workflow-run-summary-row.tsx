@@ -20,6 +20,7 @@ import {
   statusToneDotClass,
   statusToneTextClass,
 } from "./workflow-run-shared";
+import { useListActivityLabel } from "./use-list-activity-label";
 
 type WorkflowRunSummaryRowProps = {
   execution: WorkflowExecution;
@@ -31,10 +32,11 @@ type WorkflowRunSummaryRowProps = {
   isCanceling?: boolean | undefined;
   focusOnMount?: boolean | undefined;
   /**
-   * What a list row says in place of its status word: what the database
-   * executor is doing about the run, from `listActivityLabel`.
+   * The browser's clock when a list row's page arrived, which the row's
+   * `activity` measures an unclaimed run's wait from, or null while the list
+   * shows rows it kept from an earlier answer.
    */
-  activityLabel?: { text: string; warns: boolean } | null | undefined;
+  receivedAtMs?: number | null | undefined;
 };
 
 export function getRunIdentity(
@@ -115,13 +117,15 @@ export function getRunOutcome(
 function ListSummary({
   execution,
   runNumber,
-  activityLabel,
+  receivedAtMs,
 }: {
   execution: WorkflowExecution;
   runNumber: number;
-  activityLabel: { text: string; warns: boolean } | null;
+  receivedAtMs: number | null;
 }) {
   const identity = getRunIdentity(execution, runNumber);
+  // What the executor is doing about the run, said in place of the status word.
+  const activityLabel = useListActivityLabel(execution.activity, receivedAtMs);
 
   return (
     <div className="grid min-w-0 grid-cols-[0.75rem_minmax(0,1fr)] gap-2">
@@ -296,7 +300,7 @@ export function WorkflowRunSummaryRow({
   onCancel,
   isCanceling = false,
   focusOnMount = false,
-  activityLabel = null,
+  receivedAtMs = null,
 }: WorkflowRunSummaryRowProps) {
   if (variant === "header") {
     return (
@@ -321,8 +325,8 @@ export function WorkflowRunSummaryRow({
       type="button"
     >
       <ListSummary
-        activityLabel={activityLabel}
         execution={execution}
+        receivedAtMs={receivedAtMs}
         runNumber={runNumber}
       />
     </button>

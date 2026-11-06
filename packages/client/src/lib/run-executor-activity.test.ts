@@ -5,7 +5,6 @@ import {
   executorDetails,
   finishedRetriesSummary,
   listActivityLabel,
-  listServerNowMs,
   type NodeNamer,
   nodeRetrySummary,
   type ScheduleActivity,
@@ -294,6 +293,9 @@ describe("shortDuration", () => {
 
 describe("listActivityLabel", () => {
   const dueSince = "2026-03-01T10:00:00.000Z";
+  const label = (
+    activity: Parameters<typeof listActivityLabel>[0]["activity"]
+  ) => listActivityLabel({ activity, receivedAtMs: 0, nowMs: 0 });
 
   it("names the retried node, or the run when there is none", () => {
     const retrying = {
@@ -307,14 +309,13 @@ describe("listActivityLabel", () => {
       observedAt: dueSince,
       overdueAfterMs: OVERDUE_MS,
     } as const;
-    expect(listActivityLabel(retrying, null)).toEqual({
+    expect(label(retrying)).toEqual({
       text: "Retrying Send reminder",
       warns: false,
     });
-    expect(
-      listActivityLabel({ ...retrying, nodeId: null, nodeName: null }, null)
-        ?.text
-    ).toBe("Retrying the run");
+    expect(label({ ...retrying, nodeId: null, nodeName: null })?.text).toBe(
+      "Retrying the run"
+    );
   });
 
   it("names the node a stopped worker was running", () => {
@@ -326,53 +327,54 @@ describe("listActivityLabel", () => {
       observedAt: dueSince,
       overdueAfterMs: OVERDUE_MS,
     } as const;
-    expect(listActivityLabel(stopped, null)?.text).toBe(
-      "Worker stopped during send"
-    );
-    expect(listActivityLabel({ ...stopped, nodeId: null }, null)?.text).toBe(
+    expect(label(stopped)?.text).toBe("Worker stopped during send");
+    expect(label({ ...stopped, nodeId: null })?.text).toBe(
       "Worker stopped during the run"
     );
   });
 
-  it("says an unclaimed run waits only from 60 seconds past due", () => {
-    const unclaimed = {
-      kind: "unclaimed",
-      dueSince,
-      observedAt: dueSince,
-      overdueAfterMs: OVERDUE_MS,
-    } as const;
-    const due = Date.parse(dueSince);
-    expect(listActivityLabel(unclaimed, due + OVERDUE_MS - 1)).toBeNull();
-    expect(listActivityLabel(unclaimed, due + OVERDUE_MS)).toEqual({
+  // The wait is measured on the server's clock: the row's own `observedAt`
+  // plus the time since its page arrived.
+  it("says an unclaimed run waits only once the server's threshold has passed", () => {
+    const unclaimed = (observedAt: string, overdueAfterMs = OVERDUE_MS) =>
+      ({ kind: "unclaimed", dueSince, observedAt, overdueAfterMs }) as const;
+    const at = (
+      activity: ReturnType<typeof unclaimed>,
+      sinceArrivalMs: number
+    ) =>
+      listActivityLabel({
+        activity,
+        receivedAtMs: 1_000,
+        nowMs: 1_000 + sinceArrivalMs,
+      });
+
+    expect(at(unclaimed("2026-03-01T10:00:50.000Z"), 9_999)).toBeNull();
+    expect(at(unclaimed("2026-03-01T10:00:50.000Z"), 10_000)).toEqual({
       text: "Not claimed for 1 min",
       warns: true,
     });
-    expect(listActivityLabel(null, due)).toBeNull();
+    // A row from an older page keeps its own reading.
+    expect(at(unclaimed("2026-03-01T10:02:00.000Z"), 0)?.text).toBe(
+      "Not claimed for 2 min"
+    );
+    expect(at(unclaimed(dueSince, 120_000), 90_000)).toBeNull();
+    expect(label(null)).toBeNull();
   });
-});
 
-describe("listServerNowMs", () => {
-  it("reads the newest server clock among unclaimed rows, and none without one", () => {
-    const unclaimed = (observedAt: string) =>
-      ({
-        kind: "unclaimed",
-        dueSince: observedAt,
-        observedAt,
-        overdueAfterMs: OVERDUE_MS,
-      }) as const;
+  // Placeholder rows report no arrival time, and a wait measured from none
+  // would read as decades.
+  it("says nothing about an unclaimed run whose page has no arrival time", () => {
     expect(
-      listServerNowMs({
-        activities: [
-          unclaimed("2026-03-01T10:00:00.000Z"),
-          null,
-          unclaimed("2026-03-01T10:00:30.000Z"),
-        ],
-        receivedAtMs: 1_000,
-        nowMs: 3_000,
+      listActivityLabel({
+        activity: {
+          kind: "unclaimed",
+          dueSince,
+          observedAt: "2026-03-01T10:05:00.000Z",
+          overdueAfterMs: OVERDUE_MS,
+        },
+        receivedAtMs: null,
+        nowMs: Date.now(),
       })
-    ).toBe(Date.parse("2026-03-01T10:00:32.000Z"));
-    expect(
-      listServerNowMs({ activities: [null], receivedAtMs: 0, nowMs: 0 })
     ).toBeNull();
   });
 });

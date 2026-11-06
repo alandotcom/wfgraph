@@ -21,11 +21,8 @@ import {
   statusToneBadgeClass,
 } from "#src/components/workflow/workflow-run-shared";
 import type { WorkflowExecutionsGlobalResult } from "#src/lib/rpc-client";
-import {
-  type ListActivity,
-  listActivityLabel,
-} from "#src/lib/run-executor-activity";
-import { useRunListClock } from "#src/components/workflow/use-run-list-clock";
+import type { ListActivity } from "#src/lib/run-executor-activity";
+import { useListActivityLabel } from "#src/components/workflow/use-list-activity-label";
 import {
   runGraphLabel,
   runRecipientsLabel,
@@ -33,11 +30,48 @@ import {
 import { getRelativeTime } from "@wfgraph/shared/utils/time";
 import { cn } from "@wfgraph/shared/utils";
 
-/** A run as the global history lists it, its activity read with its page's reading. */
+/**
+ * A run as the global history lists it, its activity read with its page's
+ * reading. `receivedAtMs` is the browser's clock when the row's page arrived,
+ * or null when unknown, which the activity measures an unclaimed run's wait
+ * from.
+ */
 export type RunHistoryTableRow = Omit<
   WorkflowExecutionsGlobalResult["items"][number],
   "activity"
-> & { activity: ListActivity | null };
+> & { activity: ListActivity | null; receivedAtMs: number | null };
+
+/**
+ * A run's status badge, with what the executor is doing about the run beneath
+ * it. Its own clock ticks while the run is unclaimed, so the table's columns
+ * stay as they were built.
+ */
+function RunHistoryStatus({ run }: { run: RunHistoryTableRow }) {
+  const activity = useListActivityLabel(run.activity, run.receivedAtMs);
+  return (
+    <div className="min-w-0">
+      <span
+        className={cn(
+          "inline-flex rounded border px-2 py-0.5 font-medium text-xs",
+          statusToneBadgeClass(runStatusTone(run.status))
+        )}
+      >
+        {runStatusLabel(run.status)}
+      </span>
+      {activity === null ? null : (
+        <div
+          className={cn(
+            "truncate text-xs",
+            activity.warns ? "text-warning" : "text-muted-foreground"
+          )}
+          title={activity.text}
+        >
+          {activity.text}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const runHistoryTableFeatures = tableFeatures({
   rowSortingFeature,
@@ -122,14 +156,7 @@ function durationMs(duration: string | null): number {
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
-/**
- * The table's columns. `serverNowMs` is the list's server clock, which the
- * Status column measures an unclaimed run's wait against.
- */
-function createRunHistoryColumns(
-  onOpenRun: (run: RunHistoryTableRow) => void,
-  serverNowMs: number | null
-) {
+function createRunHistoryColumns(onOpenRun: (run: RunHistoryTableRow) => void) {
   return columnHelper.columns([
     columnHelper.accessor("workflowName", {
       header: "Workflow",
@@ -157,35 +184,7 @@ function createRunHistoryColumns(
     columnHelper.accessor("status", {
       header: "Status",
       sortFn: "alphanumeric",
-      cell: (info) => {
-        const activity = listActivityLabel(
-          info.row.original.activity,
-          serverNowMs
-        );
-        return (
-          <div className="min-w-0">
-            <span
-              className={cn(
-                "inline-flex rounded border px-2 py-0.5 font-medium text-xs",
-                statusToneBadgeClass(runStatusTone(info.getValue()))
-              )}
-            >
-              {runStatusLabel(info.getValue())}
-            </span>
-            {activity === null ? null : (
-              <div
-                className={cn(
-                  "truncate text-xs",
-                  activity.warns ? "text-warning" : "text-muted-foreground"
-                )}
-                title={activity.text}
-              >
-                {activity.text}
-              </div>
-            )}
-          </div>
-        );
-      },
+      cell: (info) => <RunHistoryStatus run={info.row.original} />,
     }),
     columnHelper.accessor("runMode", {
       header: "Recipients",
@@ -247,8 +246,6 @@ type RunHistoryTableProps = {
   hasNextPage: boolean;
   onLoadMore: () => void;
   onOpenRun: (run: RunHistoryTableRow) => void;
-  /** The browser's clock when `runs` arrived. */
-  receivedAtMs: number;
 };
 
 export function RunHistoryTable({
@@ -258,18 +255,11 @@ export function RunHistoryTable({
   hasNextPage,
   onLoadMore,
   onOpenRun,
-  receivedAtMs,
 }: RunHistoryTableProps) {
   const data = runs.length === 0 ? EMPTY_RUNS : [...runs];
-  // Null unless a row is unclaimed, so the columns are rebuilt each second
-  // only while a row's wait is counting.
-  const serverNowMs = useRunListClock({
-    activities: runs.map((run) => run.activity),
-    receivedAtMs,
-  });
   const columns = useMemo(
-    () => createRunHistoryColumns(onOpenRun, serverNowMs),
-    [onOpenRun, serverNowMs]
+    () => createRunHistoryColumns(onOpenRun),
+    [onOpenRun]
   );
 
   const table = useTable(
