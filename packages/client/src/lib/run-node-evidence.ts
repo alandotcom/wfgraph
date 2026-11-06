@@ -236,11 +236,6 @@ export function buildRunNodeEvidence(input: {
   };
 }
 
-/** Whether a log status is an execution that has not finished. */
-function unfinished(status: ExecutionLog["status"]): boolean {
-  return status === "pending" || status === "running";
-}
-
 /**
  * The evidence status of each node a run status read names, in the order the
  * read lists them, while the run is in progress: an unfinished node with a
@@ -260,16 +255,19 @@ export function runNodeEvidenceStatuses(input: {
   const parked = new Set(inProgress ? input.parkedNodeIds : []);
   const retrying = new Set(inProgress ? input.retryingNodeIds : []);
   const named = new Set(input.nodeStatuses.map(({ nodeId }) => nodeId));
+  const evidenceStatus = (
+    nodeId: string,
+    status: ExecutionLog["status"]
+  ): RunNodeEvidenceStatus => {
+    if (status !== "pending" && status !== "running") return status;
+    if (retrying.has(nodeId)) return "retrying";
+    if (parked.has(nodeId)) return "waiting";
+    return status;
+  };
   return [
     ...input.nodeStatuses.map(({ nodeId, status }) => ({
       nodeId,
-      status: !unfinished(status)
-        ? status
-        : retrying.has(nodeId)
-          ? ("retrying" as const)
-          : parked.has(nodeId)
-            ? ("waiting" as const)
-            : status,
+      status: evidenceStatus(nodeId, status),
     })),
     ...[...retrying]
       .filter((nodeId) => !named.has(nodeId))
