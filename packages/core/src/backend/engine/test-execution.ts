@@ -1,8 +1,6 @@
 import { Effect, Layer } from "effect";
 import {
   executeWorkflow,
-  executeWorkflowBranch,
-  type WorkflowBranchInput,
   type WorkflowExecutionInput,
 } from "#src/backend/engine/core";
 import type { WorkflowActions } from "#src/backend/engine/actions";
@@ -33,31 +31,6 @@ export function executeTestWorkflow(
       {
         // Match the live catalog by default so drift is opt-in for the cases
         // that assert it, rather than failing every host-action suite.
-        catalogFingerprint: actions.catalogFingerprint(),
-        workflowVersionId: "ver_test",
-        ...input,
-      },
-      runtime,
-      store,
-      actions,
-      entities
-    ).pipe(Effect.provide(EngineTestLayer))
-  );
-}
-
-export function executeTestWorkflowBranch(
-  input: Omit<WorkflowBranchInput, "catalogFingerprint" | "workflowVersionId"> &
-    Partial<
-      Pick<WorkflowBranchInput, "catalogFingerprint" | "workflowVersionId">
-    >,
-  runtime: WorkflowExecutionRuntime,
-  store: WorkflowStore,
-  actions: WorkflowActions,
-  entities?: WorkflowEntities
-) {
-  return Effect.runPromise(
-    executeWorkflowBranch(
-      {
         catalogFingerprint: actions.catalogFingerprint(),
         workflowVersionId: "ver_test",
         ...input,

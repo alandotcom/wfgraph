@@ -19,9 +19,9 @@ import type {
 } from "#src/backend/services/executions/repo/contracts";
 
 /**
- * How many retries a failing step gets before it fails its node, the count the
- * Inngest path gives the same step. The fifth failure of one step makes its
- * memo row `failed`. The run's own failure count is held to the same limit.
+ * How many retries a failing step gets before it fails its node. The fifth
+ * failure of one step makes its memo row `failed`. The run's own failure count
+ * is held to the same limit.
  */
 export const STEP_RETRY_LIMIT = 4;
 

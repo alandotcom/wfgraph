@@ -229,11 +229,8 @@ function injectRepositoryFaults(
           input.status === "completed"
             ? faults.completion.apply(repo.finishRun(input), "before")
             : faults.terminal.apply(repo.finishRun(input), "before"),
-        settleWaitingStateClaim: (input) =>
-          faults.settlement.apply(
-            repo.settleWaitingStateClaim(input),
-            "before"
-          ),
+        claimWaitingStateById: (input) =>
+          faults.settlement.apply(repo.claimWaitingStateById(input), "after"),
       };
       return {
         ...instance,

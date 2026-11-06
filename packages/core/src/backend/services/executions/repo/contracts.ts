@@ -46,9 +46,9 @@ export type OwnerFence = {
 };
 
 /**
- * A write the engine's store makes, as the Inngest path calls it: unfenced, so
- * it is never refused for ownership. `ExecutionRepo.fenced` offers the same
- * write fenced on a pass.
+ * A write the engine's store makes, unfenced, so it is never refused for
+ * ownership: a pass makes it this way once it has written the run's terminal
+ * record. `ExecutionRepo.fenced` offers the same write fenced on a pass.
  */
 export type StoreWrite<Input, Output> = (
   input: Input
@@ -162,19 +162,20 @@ export type ParkResolution = {
 };
 
 /**
- * What a Migration's repin does to the parks it moved the run under, inside
- * the repin's own transaction.
- *
- * - `leave_parked`: every park stays `waiting`, and the caller wakes each one
- *   itself, as the Inngest runtime needs a signal sent to the parked body.
- * - `requeue`: every park is resolved with a `migrate` wake, the way
- *   `resolvePark` resolves one, and a `waiting` schedule row moves to `queued`
- *   at `now`. A leased run's release reads the wakes instead. This is the
- *   database executor's Migration producer.
+ * A run a Cancel Event claimed for its Canceled outlet, and what the claim did
+ * to the run's parks in the same transaction.
  */
-export type RepinParks =
-  | { kind: "leave_parked" }
-  | { kind: "requeue"; now: Date };
+export type CanceledOutletClaim = {
+  executionId: string;
+  /**
+   * How many parks the claim resolved with a `cancel` wake. Every park open
+   * when the claim landed is on the Started side, since a Canceled-side Wait
+   * parks only under a Cancel claim.
+   */
+  resolvedParks: number;
+  /** Whether the claim moved the run's schedule row from `waiting` to `queued`. */
+  requeued: boolean;
+};
 
 /** One row of `workflow_executions`, as the Runs view and the engine see it. */
 export type WorkflowExecution = typeof workflowExecutions.$inferSelect;

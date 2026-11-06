@@ -26,7 +26,7 @@ import type {
 import {
   REPLAY_FALLBACK_TIMEOUT_MS,
   type ReplayDatabaseBackend,
-} from "#src/backend/engine/testing/replay-database-executor";
+} from "#src/backend/engine/testing/replay-runtime";
 import { type OpenPass, openPass } from "#src/backend/executor/pass";
 import type { ConformanceConnection } from "#src/backend/persistence/conformance/support";
 import {

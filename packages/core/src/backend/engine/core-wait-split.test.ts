@@ -21,7 +21,6 @@ import { noWorkflowActions } from "#src/backend/engine/actions";
 import { executionData } from "#src/backend/engine/contracts";
 import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
 import { executeTestWorkflow as executeWorkflow } from "#src/backend/engine/test-execution";
-import { IN_PLACE_EXECUTORS } from "#src/backend/engine/testing/replay-runtime";
 import {
   createRecordingWorkflowStore,
   type RecordingWorkflowStore,
@@ -284,8 +283,7 @@ describe("executeWorkflow Event Split after Wait", () => {
     expect(result.outputs.lifecycle_1?.data).toEqual({});
   });
 
-  describe.each(IN_PLACE_EXECUTORS)(
-    "under the $kind executor",
-    defineWaitSplitReplayCases
-  );
+  describe("under the replay driver", () => {
+    defineWaitSplitReplayCases({});
+  });
 });

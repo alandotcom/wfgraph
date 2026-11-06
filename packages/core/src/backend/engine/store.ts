@@ -6,11 +6,7 @@
  * store call sits inside a memoized step that round-trips through that runtime.
  */
 
-import type {
-  JsonObject,
-  JsonObjectDraft,
-  JsonValue,
-} from "@wfgraph/shared/types/json";
+import type { JsonObject, JsonObjectDraft } from "@wfgraph/shared/types/json";
 import type { WaitArrival } from "@wfgraph/shared/lifecycle/wait-signal";
 import type {
   EntityEligibilityReason,
@@ -26,9 +22,8 @@ import type {
 } from "#src/backend/lib/effect/database";
 
 /**
- * Why a store call failed: the database failed the query, or, under the
- * database executor, the pass making the write no longer acts on the run
- * (`LeaseLost`). The Inngest path writes unfenced and never sees `LeaseLost`.
+ * Why a store call failed: the database failed the query, or the pass making
+ * the write no longer acts on the run (`LeaseLost`).
  */
 export type StoreFailure = DatabaseError | LeaseLost;
 
@@ -75,15 +70,6 @@ export type CompleteStepLogInput = {
   status: "success" | "error";
   output?: unknown;
   error?: string | undefined;
-};
-
-/** A completed node attempt the run can recover after a child branch is killed. */
-export type CompletedNodeProgress = {
-  nodeId: string;
-  nodeName: string;
-  status: "success" | "error";
-  output: JsonValue;
-  error: string | null;
 };
 
 export type RecordAuditEventInput = {
@@ -177,11 +163,9 @@ export type WaitStateStatus =
  * the Wait parked on it.
  *
  * A Migration's repin can leave the row `waiting` until the Wait parks again
- * under the new version, so a resume can resolve the row in that window. Each
- * runtime records the resolution in its own place: under Inngest a resume
- * claim records its `arrival` in the row's metadata, and under the database
- * executor a producer records its `wake` in the row's `wake` column. `wake` is
- * always null under Inngest.
+ * under the new version, so a resume can resolve the row in that window. A
+ * producer records its `wake` in the row's `wake` column, and a resume claim
+ * also records its `arrival` in the row's metadata.
  */
 export type WaitStateSnapshot = {
   status: WaitStateStatus;
@@ -308,10 +292,10 @@ export type WorkflowStore = {
    * Moves a "running" execution back to "waiting" when it still holds a waiting
    * wait row, answering whether a row moved.
    *
-   * A branch run resumes its own Wait and marks the execution running, so a
-   * branch that finishes while a sibling branch is still parked would leave the
-   * run reading running with nothing executing. The guard is what makes the
-   * write safe to issue at the end of every branch run.
+   * A pass that resumes one Wait marks the execution running, so a pass that
+   * ends while a sibling Wait is still parked would leave the run reading
+   * running with nothing executing. The guard is what makes the write safe to
+   * issue at the end of every parked pass.
    */
   markExecutionWaitingIfParked(input: {
     executionId: string;
@@ -344,39 +328,11 @@ export type WorkflowStore = {
    * `didWrite` identifies this call as the compare-and-set winner, and `null`
    * means no execution row exists. A database refusal remains in the error
    * channel; terminal-record policy logs it and fails the durable step, so
-   * Inngest retries the write.
+   * the executor retries the write.
    */
   completeRun(
     input: CompleteRunInput
   ): Effect.Effect<ExecutionTerminationState | null, StoreFailure>;
-  /**
-   * What the nodes of this run that have already finished left behind, keyed by
-   * node id. A branch run starts partway down the graph, so this is how the
-   * templates behind a Wait reach the outputs above it. A node absent here
-   * either has not run or produced nothing, and both read the same downstream.
-   */
-  readNodeOutputs(
-    executionId: string
-  ): Effect.Effect<Record<string, JsonValue>, StoreFailure>;
-  /**
-   * The newest completed node attempt per node, in newest-first order.
-   *
-   * A killed child cannot return its partial traversal. The surviving run reads
-   * these existing log rows to recover completed outputs and errors before it
-   * enters the Canceled outlet.
-   */
-  readCompletedNodeProgress(
-    executionId: string
-  ): Effect.Effect<CompletedNodeProgress[], StoreFailure>;
-  /**
-   * Closes every node row still open and every wait still waiting, as cancelled.
-   *
-   * The caller states when this is safe: nothing may still be writing to those
-   * rows. See `NodeScheduler.sweepKilledBranchWork`, its one call site.
-   */
-  cancelOpenWork(input: {
-    executionId: string;
-  }): Effect.Effect<void, StoreFailure>;
 };
 
 /**
@@ -400,7 +356,4 @@ export const noopWorkflowStore: WorkflowStore = {
   readPendingCancel: () => Effect.succeed(null),
   completeRun: (input) =>
     Effect.succeed({ status: input.status, claim: null, didWrite: true }),
-  readNodeOutputs: () => Effect.succeed({}),
-  readCompletedNodeProgress: () => Effect.succeed([]),
-  cancelOpenWork: () => Effect.void,
 };

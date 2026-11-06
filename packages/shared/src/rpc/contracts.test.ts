@@ -201,7 +201,7 @@ describe("workflow migration RPC contracts", () => {
       targetVersionId: "version_2",
       targetVersionNumber: 2,
       outcomes: [
-        { executionId: "exec_1", status: "migrated", signaled: true },
+        { executionId: "exec_1", status: "migrated" },
         {
           executionId: "exec_2",
           status: "refused",

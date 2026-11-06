@@ -1,29 +1,24 @@
 /**
  * Durability port for the workflow engine.
  *
- * A durable runtime (Inngest in production) re-runs the whole workflow function
- * body every time a run resumes - after a sleep, after a hook wait, after a
- * retry. Only work handed to `step` is remembered; everything else happens
- * again on each replay. This interface is the engine's entire view of that
- * machinery, so the engine module never imports Inngest.
+ * A durable runtime (the database executor in `executor/` in production)
+ * re-runs the whole workflow body on every pass of a run: after a park
+ * resolves, after a retry. Only work handed to `step` is remembered; everything
+ * else happens again on each replay. This interface is the engine's entire
+ * view of that machinery, so the engine never imports the executor.
  *
  * Sibling port: `WorkflowStore` in ./store covers persistence. Nothing here may
  * know about database rows, and nothing there may know about replay.
  */
 
-import type { BranchHandoff } from "#src/backend/engine/branch";
-import type { ReleasedEdge } from "#src/backend/engine/contracts";
-import type { ExecutionSide } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 
 export type WaitForEventOptions = {
-  event: string;
+  /** Milliseconds until the park's deadline, from when the park ran. */
   timeoutMs?: number | undefined;
-  ifExpression?: string | undefined;
   /**
    * The wait row this park is written on. The database executor reads the
-   * park's wake from that row and records the parking step on it. Inngest
-   * matches its signal on `ifExpression` and ignores the row.
+   * park's wake from that row and records the parking step on it.
    */
   waitStateId: string;
 };
@@ -65,14 +60,12 @@ export type WaitWake =
  * A runtime that answers `parked` runs the body again once the park resolves.
  * The engine halts the Wait's branch with the node unfinished, runs every other
  * branch as far as it can, and returns a parked result with no terminal record.
- * The Inngest runtime never answers `parked`, because Inngest suspends the
- * invocation at a park.
  */
 export type WaitAnswer = { kind: "woke"; wake: WaitWake } | { kind: "parked" };
 
 export type WorkflowExecutionRuntime = {
   /**
-   * Parks the Wait on a wait signal matching `options` and answers why the park
+   * Parks the Wait on the wait row `options` names and answers why the park
    * ended, or that it has not ended yet.
    */
   waitForEvent: (
@@ -99,38 +92,6 @@ export type WorkflowExecutionRuntime = {
    * check to a value that already passed it.
    */
   run: <T>(step: DurableStepRef, fn: () => Promise<T>) => Promise<T>;
-  /**
-   * Hands the branch below one node to a durable run of its own (ADR-0011), and
-   * parks the caller until that run ends.
-   *
-   * `releasedEdges` are the outgoing edges this run selected, so a child inherits
-   * the same join readiness without releasing an unselected outlet.
-   * `side` is which side of the Lifecycle Node the entry node sits on, which the
-   * branch cannot work out for itself: it routes no cancellation, so it has no
-   * boundary of its own to ask. A runtime that starts no durable runs leaves
-   * this method out, and the engine then enters the Wait where it stands.
-   */
-  startBranch?:
-    | ((
-        step: DurableStepRef,
-        input: {
-          entryNodeId: string;
-          releasedEdges: readonly ReleasedEdge[];
-          side: ExecutionSide;
-        }
-      ) => Promise<BranchHandoff>)
-    | undefined;
-  /**
-   * Sends a `lifecycle-exit` wait signal to every Wait of this Execution that is
-   * still parked, which is how the run that claimed an Exit ends the sibling
-   * branches waiting beside it. The caller runs it inside a durable step, and a
-   * rejection means at least one signal was refused.
-   *
-   * The Waits of this run and of the runs that started it have already resumed,
-   * so the read of parked Waits never names them. A runtime that starts no
-   * durable runs leaves this out, since every Wait then parks in the one run.
-   */
-  wakeParkedWaits?: (() => Promise<void>) | undefined;
   /**
    * Zero-indexed retry counter for the current attempt, which holds across every
    * replay within that attempt and rises when the runtime retries the body. A
@@ -160,16 +121,16 @@ export type InMemoryWorkflowRuntime = WorkflowExecutionRuntime & {
 };
 
 /**
- * Runtime adapter for everything that is not Inngest: the engine's own default
- * and the one tests drive.
+ * A runtime with no storage behind it: the engine's own default and the one
+ * tests drive.
  *
  * Stored values round-trip through JSON exactly like a durable runtime persists
  * them, so a step returning something unserializable behaves here the way it
  * would in production rather than quietly working in tests only.
  *
  * The attempt that ran a step gets the value the step returned, and every replay
- * after it gets the JSON that was stored. That asymmetry is Inngest's, and copying
- * it is what makes a value whose type differs between the two visible here: a live
+ * after it gets the JSON that was stored. That asymmetry is the database
+ * executor's, and copying it is what makes a value whose type differs between the two visible here: a live
  * `Date` read back as a string on the replay alone is the failure mode the engine
  * is least able to survive, and a runtime that round-tripped eagerly would hand
  * both passes the string and hide it.

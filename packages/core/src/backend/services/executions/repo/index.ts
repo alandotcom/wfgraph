@@ -157,8 +157,8 @@ type CrossTableRepoMethods = {
    * rather than joined by a second, because the caller is an Inngest step whose
    * retry re-runs this whole call.
    *
-   * The Inngest sends stay outside: this answers what the rows now say, and the
-   * caller tells the bus about it.
+   * The run's schedule row is written outside: this answers what the rows now
+   * say, and the caller schedules the run (`enqueueStartedRun`).
    */
   readonly startForEntity: (input: {
     /**
@@ -198,8 +198,8 @@ type CrossTableRepoMethods = {
   ) => Effect.Effect<number, DatabaseError>;
   /**
    * The writes of one database executor pass, fenced on its owner token. See
-   * `fenced-writes.ts`. The Inngest path makes the unfenced writes of the same
-   * names.
+   * `fenced-writes.ts`. A pass that has written its run's terminal record makes
+   * the unfenced writes of the same names.
    */
   readonly fenced: (fence: OwnerFence) => FencedExecutionWrites;
 };

@@ -55,10 +55,7 @@ function slowStep() {
   return { calls, extensions };
 }
 
-/**
- * What a disposed runtime does to a step. A dispose that lands while a step body
- * runs is covered where the invocation runs, in `workflow-function.test.ts`.
- */
+/** What a disposed runtime does to a step. */
 describe("the step the app runs", () => {
   it("rejects a step dispatched after the runtime was disposed", async () => {
     const { calls, extensions } = slowStep();

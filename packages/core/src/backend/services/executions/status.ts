@@ -3,11 +3,23 @@ import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
 import { NotFound } from "#src/backend/lib/effect/failures";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
+import type { WorkflowExecutionStatus } from "@wfgraph/shared/lifecycle/execution-contracts";
 
 type NodeStatus = {
   nodeId: string;
   status: "pending" | "running" | "success" | "error" | "cancelled";
 };
+
+/**
+ * The run statuses that stop a run from outside its nodes, leaving any node it
+ * had not finished open. A run ends `failed` from outside its nodes when its
+ * own retries run out, and `canceled` or `superseded` when a policy ends it.
+ */
+const STOPPED_RUN_STATUSES: ReadonlySet<WorkflowExecutionStatus> = new Set([
+  "canceled",
+  "superseded",
+  "failed",
+]);
 
 /** This module's logger, as the Effect that produces it (see `services/workflows/workflow.ts`). */
 const loggerFor = (executionId: string) =>
@@ -38,8 +50,7 @@ export const getExecutionStatus = Effect.fn("getExecutionStatus")(
     const nodeStatuses: NodeStatus[] = logs.map((log) => ({
       nodeId: log.nodeId,
       status:
-        (execution.status === "canceled" ||
-          execution.status === "superseded") &&
+        STOPPED_RUN_STATUSES.has(execution.status) &&
         (log.status === "pending" || log.status === "running")
           ? "cancelled"
           : log.status,

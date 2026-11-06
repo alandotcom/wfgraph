@@ -145,9 +145,10 @@ export function endExecutions<A, E>(
 }
 
 /**
- * Resolves every park of one run still `waiting` with `wake`, as the
- * PostgreSQL backend's `resolveOpenParks` does. It runs inside the caller's
- * write transaction, which already holds the one writer.
+ * Resolves every park of one run still `waiting` with `wake`, answering how
+ * many it resolved, as the PostgreSQL backend's `resolveOpenParks` does. It
+ * runs inside the caller's write transaction, which already holds the one
+ * writer.
  */
 export function resolveOpenParks(
   database: SqliteExecutor,
@@ -162,7 +163,9 @@ export function resolveOpenParks(
         eq(workflowWaitStates.executionId, executionId),
         eq(workflowWaitStates.status, "waiting")
       )
-    );
+    )
+    .returning({ id: workflowWaitStates.id })
+    .pipe(Effect.map((resolved) => resolved.length));
 }
 
 /**

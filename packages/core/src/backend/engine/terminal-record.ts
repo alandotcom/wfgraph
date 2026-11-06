@@ -149,7 +149,7 @@ function refusingCancelClaim(
 /**
  * Writes the status a standing Cancel or Exit claim selected, after the run's
  * own verdict was refused. A store failure is logged and fails the enclosing
- * durable step, so Inngest retries the step.
+ * durable step, so the executor retries the step.
  */
 function writeClaimedStatus(input: {
   store: WorkflowStore;
@@ -176,7 +176,7 @@ function writeClaimedStatus(input: {
  * A racing Cancel claim is returned unwritten, still in flight, because the
  * caller takes the Canceled outlet for that claim before it records canceled.
  * A store failure from either write is logged and fails the enclosing
- * durable step, so Inngest retries the step. `null` means the store found no
+ * durable step, so the executor retries the step. `null` means the store found no
  * execution row.
  */
 function finalizeRun(input: {

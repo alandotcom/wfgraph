@@ -8,15 +8,15 @@ import type {
   Workflow,
 } from "#src/backend/lib/db/schema";
 import { DatabaseError } from "#src/backend/lib/effect/database";
-import type { InngestClient } from "#src/backend/lib/effect/inngest-client";
 import {
   SilentAppLoggerLayer,
+  stubExecutionDriver,
   stubExecutionRepo,
   stubExtensionCatalog,
-  stubInngestClient,
   stubIntegrationRepo,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
+import type { ExecutionDriver } from "#src/backend/services/executions/driver";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import { serializeConditionModel } from "@wfgraph/shared/conditions/conditions";
 import { LIFECYCLE_STARTED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
@@ -35,41 +35,16 @@ import {
 } from "#src/backend/services/workflows/lifecycle/deliver-event";
 
 type Repo = ExecutionRepo["Service"];
+type Driver = ExecutionDriver["Service"];
 
 const startForEntityMock = vi.fn<Repo["startForEntity"]>();
-const requestCancelForEntityMock = vi.fn<Repo["requestCancelForEntity"]>();
-const listWaitingStatesForExecutionsMock =
-  vi.fn<Repo["listWaitingStatesForExecutions"]>();
 const listWaitsForEventMock = vi.fn<Repo["listWaitsForEvent"]>();
 const recordAuditEventMock = vi.fn<Repo["recordAuditEvent"]>(() => Effect.void);
 const CLAIMED_AT = new Date("2026-03-01T00:01:00.000Z");
-const claimWaitingStateByIdMock = vi.fn<Repo["claimWaitingStateById"]>(() =>
-  Effect.succeed({
-    waitState: parkedWait("claimed.event", {
-      status: "resuming",
-      resumedAt: CLAIMED_AT,
-    }),
-    claimedAt: CLAIMED_AT,
-  })
-);
-const settleWaitingStateClaimMock = vi.fn<Repo["settleWaitingStateClaim"]>(() =>
-  Effect.succeed(true)
-);
-const releaseWaitingStateClaimMock = vi.fn<Repo["releaseWaitingStateClaim"]>(
-  () => Effect.succeed(true)
-);
-const sendRunRequestedMock = vi.fn<
-  InngestClient["Service"]["sendRunRequested"]
->(() => Effect.succeed({ eventId: "evt_1" }));
-const sendCancelRequestedMock = vi.fn<
-  InngestClient["Service"]["sendCancelRequested"]
->(() => Effect.void);
-const sendWaitSignalMock = vi.fn<InngestClient["Service"]["sendWaitSignal"]>(
-  () => Effect.void
-);
-const sendBranchKillMock = vi.fn<InngestClient["Service"]["sendBranchKill"]>(
-  () => Effect.void
-);
+const enqueueRunMock = vi.fn<Driver["enqueueRun"]>(() => Effect.void);
+const stopRunMock = vi.fn<Driver["stopRun"]>(() => Effect.void);
+const requestCanceledOutletMock = vi.fn<Driver["requestCanceledOutlet"]>();
+const resolveParkMock = vi.fn<Driver["resolvePark"]>();
 
 // The catalog the save rules are checked against, which preflight reads off the
 // runtime the delivery runs on.
@@ -337,22 +312,20 @@ function parkedWait(
 /**
  * The ports `applyLifecycleRules` reaches through its real neighbours.
  *
- * Cancel's nudge and supersede signalling are stubbed quiet (empty waits, a
- * succeeding cancel send); their own suites own those behaviours.
+ * The executor's writes go through a stubbed `ExecutionDriver`: the Cancel
+ * claim answers one claimed run, and an enqueue or a stop succeeds. Their own
+ * suites own those writes.
  */
 const lifecyclePorts = Layer.mergeAll(
   stubExecutionRepo({
     startForEntity: startForEntityMock,
-    requestCancelForEntity: requestCancelForEntityMock,
-    listWaitingStatesForExecutions: listWaitingStatesForExecutionsMock,
     recordAuditEvent: recordAuditEventMock,
     markEnqueued: () => Effect.void,
   }),
-  stubInngestClient({
-    sendRunRequested: sendRunRequestedMock,
-    sendCancelRequested: sendCancelRequestedMock,
-    sendWaitSignal: sendWaitSignalMock,
-    sendBranchKill: sendBranchKillMock,
+  stubExecutionDriver({
+    enqueueRun: enqueueRunMock,
+    stopRun: stopRunMock,
+    requestCanceledOutlet: requestCanceledOutletMock,
   }),
   stubIntegrationRepo({
     typesByIds: (integrationIds) =>
@@ -365,56 +338,41 @@ const lifecyclePorts = Layer.mergeAll(
 const waitPorts = Layer.mergeAll(
   stubExecutionRepo({
     listWaitsForEvent: listWaitsForEventMock,
-    claimWaitingStateById: claimWaitingStateByIdMock,
-    settleWaitingStateClaim: settleWaitingStateClaimMock,
-    releaseWaitingStateClaim: releaseWaitingStateClaimMock,
     recordAuditEvent: recordAuditEventMock,
   }),
-  stubInngestClient({
-    sendWaitSignal: sendWaitSignalMock,
+  stubExecutionDriver({
+    resolvePark: resolveParkMock,
   })
 );
 
 beforeEach(() => {
   startForEntityMock.mockReset();
-  requestCancelForEntityMock.mockReset();
-  listWaitingStatesForExecutionsMock.mockReset();
   listWaitsForEventMock.mockReset();
   recordAuditEventMock.mockReset();
-  claimWaitingStateByIdMock.mockReset();
-  settleWaitingStateClaimMock.mockReset();
-  releaseWaitingStateClaimMock.mockReset();
-  sendRunRequestedMock.mockReset();
-  sendCancelRequestedMock.mockReset();
-  sendWaitSignalMock.mockReset();
-  sendBranchKillMock.mockReset();
+  enqueueRunMock.mockReset();
+  stopRunMock.mockReset();
+  requestCanceledOutletMock.mockReset();
+  resolveParkMock.mockReset();
 
   startForEntityMock.mockImplementation(() => Effect.succeed(startedOutcome));
-  requestCancelForEntityMock.mockImplementation(() =>
-    Effect.succeed(["exec_running"])
-  );
-  listWaitingStatesForExecutionsMock.mockImplementation(() =>
-    Effect.succeed(new Map())
-  );
   listWaitsForEventMock.mockImplementation(() => Effect.succeed([]));
   recordAuditEventMock.mockImplementation(() => Effect.void);
-  claimWaitingStateByIdMock.mockImplementation(() =>
+  enqueueRunMock.mockImplementation(() => Effect.void);
+  stopRunMock.mockImplementation(() => Effect.void);
+  requestCanceledOutletMock.mockImplementation(() =>
+    Effect.succeed([
+      { executionId: "exec_running", resolvedParks: 0, requeued: false },
+    ])
+  );
+  resolveParkMock.mockImplementation(() =>
     Effect.succeed({
       waitState: parkedWait("claimed.event", {
         status: "resuming",
         resumedAt: CLAIMED_AT,
       }),
-      claimedAt: CLAIMED_AT,
+      requeued: true,
     })
   );
-  settleWaitingStateClaimMock.mockImplementation(() => Effect.succeed(true));
-  releaseWaitingStateClaimMock.mockImplementation(() => Effect.succeed(true));
-  sendRunRequestedMock.mockImplementation(() =>
-    Effect.succeed({ eventId: "evt_1" })
-  );
-  sendCancelRequestedMock.mockImplementation(() => Effect.void);
-  sendWaitSignalMock.mockImplementation(() => Effect.void);
-  sendBranchKillMock.mockImplementation(() => Effect.void);
 });
 
 describe("applyLifecycleRules", () => {
@@ -449,7 +407,7 @@ describe("applyLifecycleRules", () => {
           startForEntityMock.mock.calls[0]?.[0].execution.workflowVersionId,
           "ver_1"
         );
-        assert.deepStrictEqual(sendRunRequestedMock.mock.calls[0]?.[0], {
+        assert.deepStrictEqual(enqueueRunMock.mock.calls[0]?.[0], {
           executionId: "exec_new",
         });
       })
@@ -726,7 +684,7 @@ describe("applyLifecycleRules", () => {
           workflowId: "wf_1",
           reason: "concurrency_first_wins",
         });
-        assert.strictEqual(sendRunRequestedMock.mock.calls.length, 0);
+        assert.strictEqual(enqueueRunMock.mock.calls.length, 0);
       })
     );
 
@@ -750,7 +708,7 @@ describe("applyLifecycleRules", () => {
           workflowId: "wf_1",
           canceledExecutionIds: ["exec_running"],
         });
-        assert.deepStrictEqual(requestCancelForEntityMock.mock.calls[0]?.[0], {
+        assert.deepStrictEqual(requestCanceledOutletMock.mock.calls[0]?.[0], {
           workflowId: "wf_1",
           entityValue: "appt_8813",
           runMode: "live",
@@ -789,7 +747,7 @@ describe("applyLifecycleRules", () => {
         );
 
         assert.strictEqual(outcome.kind, "canceled");
-        assert.strictEqual(requestCancelForEntityMock.mock.calls.length, 1);
+        assert.strictEqual(requestCanceledOutletMock.mock.calls.length, 1);
       })
     );
 
@@ -828,7 +786,7 @@ describe("applyLifecycleRules", () => {
             workflowId: "wf_1",
             reason: "cancel_filter_not_met",
           });
-          assert.strictEqual(requestCancelForEntityMock.mock.calls.length, 0);
+          assert.strictEqual(requestCanceledOutletMock.mock.calls.length, 0);
           assert.deepInclude(recordAuditEventMock.mock.calls[0]?.[0], {
             workflowId: "wf_1",
             eventType: "cancel_not_delivered",
@@ -874,7 +832,7 @@ describe("applyLifecycleRules", () => {
             workflowId: "wf_1",
             reason: "cancel_filter_not_met",
           });
-          assert.strictEqual(requestCancelForEntityMock.mock.calls.length, 0);
+          assert.strictEqual(requestCanceledOutletMock.mock.calls.length, 0);
         })
     );
 
@@ -909,7 +867,7 @@ describe("applyLifecycleRules", () => {
           workflowId: "wf_1",
           reason: "cancel_filter_unevaluable",
         });
-        assert.strictEqual(requestCancelForEntityMock.mock.calls.length, 0);
+        assert.strictEqual(requestCanceledOutletMock.mock.calls.length, 0);
       })
     );
 
@@ -949,7 +907,7 @@ describe("applyLifecycleRules", () => {
           );
 
           assert.strictEqual(
-            requestCancelForEntityMock.mock.calls[0]?.[0].entityValue,
+            requestCanceledOutletMock.mock.calls[0]?.[0].entityValue,
             "pat_42"
           );
         })
@@ -978,7 +936,7 @@ describe("applyLifecycleRules", () => {
                     recorded.push(input);
                   }),
               }),
-              stubInngestClient(),
+              stubExecutionDriver(),
               stubIntegrationRepo()
             )
           )
@@ -989,7 +947,7 @@ describe("applyLifecycleRules", () => {
           workflowId: "wf_1",
           reason: "entity_value_missing",
         });
-        assert.strictEqual(requestCancelForEntityMock.mock.calls.length, 0);
+        assert.strictEqual(requestCanceledOutletMock.mock.calls.length, 0);
         assert.deepStrictEqual(recorded, [
           {
             workflowId: "wf_1",
@@ -1030,7 +988,7 @@ describe("applyLifecycleRules", () => {
           kind: "waits_only",
           workflowId: "wf_1",
         });
-        assert.strictEqual(requestCancelForEntityMock.mock.calls.length, 0);
+        assert.strictEqual(requestCanceledOutletMock.mock.calls.length, 0);
       })
     );
 
@@ -1250,11 +1208,11 @@ describe("wait candidate delivery", () => {
         }).pipe(Effect.provide(stubWorkflowRepo({})));
 
         assert.strictEqual(outcome.resumedWaits, 1);
-        assert.strictEqual(sendWaitSignalMock.mock.calls.length, 1);
-        assert.strictEqual(
-          sendWaitSignalMock.mock.calls[0]?.[0].executionId,
-          "exec_parked"
-        );
+        assert.strictEqual(resolveParkMock.mock.calls.length, 1);
+        assert.deepInclude(resolveParkMock.mock.calls[0]?.[0].target, {
+          kind: "wait_state",
+          waitStateId: "wait_1",
+        });
       })
     );
 
@@ -1268,7 +1226,7 @@ describe("wait candidate delivery", () => {
         }).pipe(Effect.provide(stubWorkflowRepo({})));
 
         assert.strictEqual(outcome.resumedWaits, 1);
-        assert.strictEqual(sendWaitSignalMock.mock.calls.length, 1);
+        assert.strictEqual(resolveParkMock.mock.calls.length, 1);
       })
     );
 
@@ -1282,7 +1240,7 @@ describe("wait candidate delivery", () => {
         }).pipe(Effect.provide(stubWorkflowRepo({})));
 
         assert.strictEqual(outcome.resumedWaits, 0);
-        assert.strictEqual(sendWaitSignalMock.mock.calls.length, 0);
+        assert.strictEqual(resolveParkMock.mock.calls.length, 0);
       })
     );
   });

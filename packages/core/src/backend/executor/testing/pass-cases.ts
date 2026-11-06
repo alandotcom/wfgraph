@@ -408,6 +408,7 @@ function describeCases(
           entityValue: ENTITY,
           eventName: CANCEL_EVENT,
           payload: { reason: "customer left" },
+          now: now(),
         });
       })
     );
@@ -516,7 +517,7 @@ function describeCases(
             expectedWaitStates: [
               { id: wait.id, resumeToken: wait.resumeToken },
             ],
-            parks: { kind: "requeue", now: now() },
+            now: now(),
           });
           return yield* repo.listStepMemo(executionId);
         }),
@@ -609,7 +610,7 @@ function describeCases(
             expectedWaitStates: [
               { id: wait.id, resumeToken: wait.resumeToken },
             ],
-            parks: { kind: "requeue", now: now() },
+            now: now(),
           });
           return yield* repo.listStepMemo(executionId);
         }),
@@ -625,13 +626,14 @@ function describeCases(
     });
   });
 
-  // A repin that leaves the parked row `waiting` lets an Event take the row
-  // before the next pass re-parks it. That pass loads the new version, finds
-  // the Wait's first preparation came from the old one and prepares it again.
-  // The re-park is refused because the row holds the Event's wake, and the
-  // Wait resumes from that wake under the new version, as the TLA+ Migration
-  // model's `ReachEventResumesAcrossAModeChange` state has it.
-  it("resumes from an Event wake written after a repin and before the re-park", async () => {
+  // An Event that arrives while a Migration's `migrate` wake is still pending
+  // replaces that wake (the TLA+ Migration model's `EventReplacesMigrateWake`).
+  // The next pass loads the new version, finds the Wait's first preparation
+  // came from the old one and prepares it again. The re-park is refused
+  // because the row holds the Event's wake, and the Wait resumes from that
+  // wake under the new version, as the model's
+  // `ReachEventResumesAcrossAModeChange` state has it.
+  it("resumes from an Event wake that replaced a pending migrate wake", async () => {
     const harness = await startRun(
       createSerializedWorkflowGraph({
         nodes: [
@@ -672,25 +674,36 @@ function describeCases(
           fromVersionId: "ver_1",
           toVersionId: "ver_2",
           expectedWaitStates: [{ id: wait.id, resumeToken: wait.resumeToken }],
-          parks: { kind: "leave_parked" },
+          now: now(),
         });
-        const resolved = yield* repo.resolvePark({
-          executionId,
+        const claim = yield* repo.claimWaitingStateById({
           waitStateId: wait.id,
-          wake: {
-            kind: "resume",
+          resumeToken: wait.resumeToken,
+          eventName: "app/approved",
+          arrival: {
+            signalType: "wait-resume",
             eventName: "app/approved",
             payload: { approvedBy: "dana" },
-            deliveryId: null,
           },
           now: now(),
         });
-        return { migrated, resolved };
+        return {
+          migrated,
+          wake: (yield* repo.findPark(wait.id))?.wake,
+          // The repin already re-queued the run.
+          requeued: claim?.requeued,
+        };
       })
     );
     expect(wake).toEqual({
       migrated: true,
-      resolved: { resolved: true, requeued: true },
+      wake: {
+        kind: "resume",
+        eventName: "app/approved",
+        payload: { approvedBy: "dana" },
+        deliveryId: null,
+      },
+      requeued: false,
     });
 
     expect(await harness.pass()).toEqual({ kind: "ended" });

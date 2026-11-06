@@ -256,9 +256,11 @@ result. ADR-0002 has the Effect plan, ADR-0005 the data layer.
 
 **The run engine is three ports and speaks Effect.** `executeWorkflow` (`backend/engine/`)
 takes a durability runtime, an Effect-native store for the run's trace, and a
-`WorkflowActions` for what an action id dispatches to; `lib/inngest/workflow-function.ts`
-fills all three and runs the resulting Effect on the app runtime. The engine imports neither
-the database, the assembled surface, Inngest, nor Drizzle.
+`WorkflowActions` for what an action id dispatches to. `runBody` (`backend/executor/run-body.ts`)
+fills all three for one pass of the database executor, and `runWorkerLoop`
+(`backend/executor/worker-loop.ts`) runs the passes; `createWfGraphApp` starts that loop in
+its own process. The engine imports neither the database, the assembled surface, Inngest,
+nor Drizzle.
 
 **The host configures logtape, and a record is one unit of work** (ADR-0013).
 `backend/lib/logger.ts` is `getAppLogger` and the `wfgraph` root, and it calls no
@@ -309,7 +311,7 @@ active keeps the mocked import for every later file in that worker. Prefer:
   `useExtensionCatalog()` for React (fixtures wrap the provider; only
   `extensions.test.ts` stubs `fetch` to exercise hydrate)
 - required DI ports at construction (`runEventListener`'s `deliver`,
-  `WorkflowFunctionPorts.execute*`, `createInngestSurface`'s `connect`)
+  `runBody`'s `actions`, `createInngestSurface`'s `connect`)
 - injected SDK factories (`createLinear(createClient)`) rather than `vi.spyOn` of
   thin wrappers
 - fetch stubs that read `globalThis` per call (see `RPCLink`'s `fetch`)
@@ -329,35 +331,34 @@ against the first case's stub. `ExternalTransport`
 explicitly, with a function reading the global per call, which is what makes fetch stubbing
 work at all.
 
-**Inngest shapes the workflow engine.** `step.*` inside `step.run()` is a runtime error, so
-a Wait node suspends outside any step. Workflow Graph wraps no handler body (ADR-0009): work with a
+**A pass replays the run against its step memo.** The database executor memoizes each durable
+step's value as JSON and runs the body again from the top on every pass, answering a step
+that already ran from the memo. Workflow Graph wraps no handler body (ADR-0009): work with a
 side effect goes in the handler's own `step.run`, and a `StepFailure` travels back as a
-value so a refused call fails the node once rather than four times. Retries are
-function-level, each step carrying its own counter. Step results round-trip through JSON, and
-`JsonSafe` (`packages/shared/src/types/json.ts`) is the compiler holding `step.run` to it: a
-`Date`, `Map` or `Set` in the answer is refused at the field that holds it.
+value so a refused call fails the node once rather than four times. Each step counts its own
+failures against `STEP_RETRY_LIMIT` (`services/executions/repo/release-policy.ts`).
+`JsonSafe` (`packages/shared/src/types/json.ts`) is the compiler holding `step.run` to JSON:
+a `Date`, `Map` or `Set` in the answer is refused at the field that holds it.
 
-**An Inngest suspension abandons the parked Effect invocation.** A Layer on the app's
-`ManagedRuntime` outlives every run, so it must never hold the per-invocation action surface
-or credentials. Finalizers above a suspension do not run, and a fork there leaks; keep
-end-of-run work as an explicit durable call and do not use `Effect.fork` in the engine. A
-timeout or race around `runtime.run`, `waitForEvent`, or `startBranch` turns
-Inngest's intentionally unsettled Promise into a failure, so those calls get neither.
+**A park is a value, and a pass ends where it parks.** A Wait's `waitForEvent` answers
+`parked` while its wait row holds no wake, the branch halts, and the pass ends with its parks
+open; one run per Execution holds every branch. A Layer on the app's `ManagedRuntime`
+outlives every pass, so it must never hold the per-pass action surface or credentials. Every
+write a pass makes is fenced on its lease (`writeFenced` in `services/executions/repo/schedule.ts`),
+and a pass that lost its lease stops at its next write. A forked fiber could outlive its
+pass, so the engine uses no `Effect.fork`.
 
-**A suspension holds the run, and a branch is given a run.** Inngest parks a whole function
-invocation on a sleep and wakes it once, at the last of its outstanding pauses, so each
-waiting branch is a durable run of its own (ADR-0011). `NodeScheduler` holds every Wait back
-and `drainDeferredWaits` hands it to `workflow-branch` through `runtime.startBranch`, which
-is `step.invoke`. The branch run inherits the outputs above its entry node from the store and
-its released node ids from the invoke payload, and leaves the terminal record to the run that
-started it. A cancellation kills a Started-side branch where it stands; that run observes the
-kill, sweeps the rows it left open, and routes the Execution. The Canceled-side Waits it then
-reaches are handed off the same way, and each of those branch runs carries the side on its
-invoke payload and takes the parent's claim on through `CancelBoundary.carryClaim`, which is
-why the kill event carries `side` and the branch's `cancelOn` compares it. A runtime offering
-no `startBranch` enters the Wait in place. `driveWithReplay`
-(`engine/testing/replay-runtime.ts`) is how a test sees any of this: it owns a set of runs and
-keeps the measured wake policy per run.
+**A producer resolves a park and re-queues the run in one transaction.** The Event or manual
+resume claim (`claimWaitingStateById`, `claimWaitingStateByToken`), the Cancel claim
+(`requestCancelForEntity`), the Migration repin (`repinVersion`) and the Exit claim (the
+fenced `requestExit`) each write their wake onto the wait rows and move a sleeping schedule
+row to `queued`, locking the schedule row before anything else. `ExecutionDriver`
+(`services/executions/driver.ts`) is what a service calls, and it wakes the worker loop after
+the write. A pass's release (`releasePass`) takes the same lock and re-queues a run whose park
+holds a wake no pass consumed. The TLA+ models in `.claude/skills/verify-durable-executor`
+check every order of these writes; run its `check.sh` after changing one. `driveWithReplay`
+(`engine/testing/replay-runtime.ts`) is how a test sees a run pass by pass: it wakes the run
+on a virtual clock when any one of its parks resolves.
 
 **happy-dom belongs to the client project alone.** The root `vitest.config.ts` declares
 three projects: `client` covers `packages/client`, runs in happy-dom, and is the only one

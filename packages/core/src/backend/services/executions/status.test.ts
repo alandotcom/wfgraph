@@ -43,5 +43,41 @@ describe("getExecutionStatus", () => {
         });
       })
     );
+
+    // A run whose own retries ran out ends `failed` with the node it was on
+    // still open, the way a canceled or superseded run leaves its nodes. A
+    // node that failed keeps its own error.
+    it.effect.each(["failed", "canceled", "superseded"] as const)(
+      "answers a %s run's open nodes as cancelled",
+      (status) =>
+        Effect.gen(function* () {
+          const result = yield* getExecutionStatus("exec_1").pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                SilentAppLoggerLayer,
+                stubExecutionRepo({
+                  findStatusById: () =>
+                    Effect.succeed({ id: "exec_1", status }),
+                  listNodeStatuses: () =>
+                    Effect.succeed([
+                      { nodeId: "send", status: "success" },
+                      { nodeId: "read", status: "error" },
+                      { nodeId: "join", status: "running" },
+                      { nodeId: "next", status: "pending" },
+                    ]),
+                  listOpenWaitNodeIds: () => Effect.succeed([]),
+                })
+              )
+            )
+          );
+
+          assert.deepStrictEqual(result.nodeStatuses, [
+            { nodeId: "send", status: "success" },
+            { nodeId: "read", status: "error" },
+            { nodeId: "join", status: "cancelled" },
+            { nodeId: "next", status: "cancelled" },
+          ]);
+        })
+    );
   });
 });

@@ -1,11 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Inngest } from "inngest";
 import { CONNECTION_STAMP_KEY } from "#src/backend/lib/inngest/catalog-connection";
-import {
-  sendCatalogEvent,
-  sendWorkflowWaitSignal,
-} from "#src/backend/lib/inngest/runtime-events";
-import { workflowWaitSignal } from "#src/backend/lib/inngest/events";
+import { sendCatalogEvent } from "#src/backend/lib/inngest/runtime-events";
 
 /** As much of an Inngest send as these cases read. */
 type SentEvent = { name: string; data: unknown; id?: string };
@@ -84,40 +80,5 @@ describe("sendCatalogEvent", () => {
       name: "resend/webhook",
       data: { ...envelope, [CONNECTION_STAMP_KEY]: "conn_1" },
     });
-  });
-});
-
-describe("sendWorkflowWaitSignal", () => {
-  // Every reason a parked run is woken. A schema that admitted fewer would
-  // refuse the send rather than the wait, so this is checked where it is built.
-  it.each([
-    "wait-resume",
-    "lifecycle-cancel",
-    "lifecycle-exit",
-    "version-migrate",
-  ] as const)("accepts a %s signal", async (signalType) => {
-    const { send, client } = clientSpy();
-
-    await sendWorkflowWaitSignal(client, {
-      executionId: "exec_1",
-      nodeId: "wait_1",
-      signalType,
-    });
-
-    expect(send).toHaveBeenCalledTimes(1);
-    const sent = send.mock.calls[0]?.[0] as { data: { signalType: string } };
-    expect(sent.data.signalType).toBe(signalType);
-  });
-
-  // Inngest validates the payload through this schema on send, which is where a
-  // reason no wait admits is stopped.
-  it("refuses a reason the wait expressions do not admit", async () => {
-    const validated = await workflowWaitSignal.schema["~standard"].validate({
-      executionId: "exec_1",
-      nodeId: "wait_1",
-      signalType: "made-up",
-    });
-
-    expect(validated.issues).toBeDefined();
   });
 });

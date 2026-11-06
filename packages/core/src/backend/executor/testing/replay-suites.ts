@@ -1,13 +1,13 @@
 /**
- * The eight replay suites' database-executor cases, with every drive run
- * through one persistence backend: each pass is claimed with `claimDue`,
+ * The eight replay suites' cases, with every drive run through one persistence
+ * backend: each pass is claimed with `claimDue`,
  * replayed over the memo rows, woken through `resolvePark`, and released with
  * `releasePass`, all at the harness's virtual clock.
  *
  * Each suite declares those cases in a `*.replay-cases.ts` module as a function
- * of the executor, which the suite file calls for both executors in memory and
- * this runner calls with a database executor over the backend. A case holds
- * the same assertions on every backend as it does in memory.
+ * of the executor, which the suite file calls with an in-memory backend and
+ * this runner calls with a backend over the database. A case holds the same
+ * assertions on every backend as it does in memory.
  */
 
 import { afterAll, describe, expect, it } from "vitest";
@@ -64,7 +64,7 @@ export function describeReplaySuites(
 
   if (harness.skip !== undefined) {
     describe.skip(`${title} (${harness.skip})`, () => {
-      it("runs every database-executor case of the replay suites", () => {
+      it("runs every case of the replay suites", () => {
         // Skipped: there is no database to run them on.
       });
     });
@@ -99,7 +99,6 @@ export function describeReplaySuites(
 
       describe(suite, () => {
         cases({
-          kind: "database",
           openBackend: openDatabaseReplayBackend(
             registry.openConnection,
             recordDrive

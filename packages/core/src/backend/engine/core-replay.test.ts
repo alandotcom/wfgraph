@@ -1,8 +1,8 @@
 /**
  * Regression tests for durable replay.
  *
- * A durable runtime (Inngest) re-runs the whole workflow function body every
- * time a run resumes after a wait. Only work handed to `runtime.step` is
+ * The database executor re-runs the whole workflow body on every pass of a
+ * run, after a wait resolves or a step is retried. Only work handed to `runtime.step` is
  * remembered, so anything else would fire its side effect again on every
  * resume. These tests model that with a fake runtime whose `step` memoizes by
  * id, then drive the engine twice against the same memo: the second pass is the
@@ -354,8 +354,7 @@ describe("workflow engine replay safety", () => {
    * The node's row carries the second verdict, because its close is an UPDATE by
    * id that no memo covers. The run's terminal row carries the first and cannot
    * be moved: that write is a memoized step, and `finishRun` updates an in-flight
-   * row alone, so the correction is refused twice over. That is the whole reason
-   * `workflow-function.ts` ends a failed run non-retriably.
+   * row alone, so the correction is refused twice over.
    */
   it("closes a node's row with the later verdict and returns the first terminal verdict", async () => {
     let attempts = 0;
@@ -383,8 +382,8 @@ describe("workflow engine replay safety", () => {
       store,
       flakyActions
     );
-    // The node failed, so what follows is Inngest retrying the body rather than
-    // replaying it, and the attempt rises with it.
+    // The node failed, so what follows is the executor retrying the body rather
+    // than replaying it, and the attempt rises with it.
     const second = await executeWorkflow(
       waitGraphInput,
       createReplayRuntime(memo, 1),
@@ -586,7 +585,7 @@ describe("workflow engine replay safety", () => {
 
 /**
  * A node output holding a `Date` is the worst thing this engine can carry: it
- * survives JSONB and Inngest's own serialization by accident, through
+ * survives JSONB and the step memo's serialization by accident, through
  * `Date.prototype.toJSON`, and comes back a string on replay. The same memoized
  * step would then hand template resolution and CEL a `Date` on the attempt that
  * ran it and a string on every attempt after.

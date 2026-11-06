@@ -1,15 +1,10 @@
 import { Effect, Layer, ManagedRuntime } from "effect";
-import { expect, it, vi } from "vitest";
+import { expect, it } from "vitest";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import { createWorkerWake } from "#src/backend/executor/worker-wake";
 import { wfSqlite } from "#src/backend/persistence/sqlite";
-import {
-  SilentAppLoggerLayer,
-  stubInngestClient,
-} from "#src/backend/lib/effect/test-layers";
-import {
-  InngestError,
-  type InngestClient,
-} from "#src/backend/lib/effect/inngest-client";
+import { SilentAppLoggerLayer } from "#src/backend/lib/effect/test-layers";
+import { makeExecutionDriverLayer } from "#src/backend/services/executions/driver";
 import { createIntegrationCipher } from "#src/backend/services/integrations/cipher";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
@@ -18,22 +13,25 @@ import {
   listWaitCandidatePage,
 } from "#src/backend/services/workflows/lifecycle/deliver-event";
 
+// The claim and the wake are one write on a real SQLite database, through the
+// real `ExecutionDriver`. A park taken by one arrival holds that arrival, so a
+// second arrival takes nothing, and a retry of the first counts the run it
+// already woke without writing a second wake. With a rotated token the saved
+// candidate is stale, and the delivery re-reads the row and claims it under the
+// token it holds now.
 it.each([false, true])(
-  "preserves another arrival and retries its owner with a rotated token: %s",
+  "claims a park once for its first arrival, with a rotated token: %s",
   async (rotateToken) => {
     const instance = await wfSqlite().open(
       createIntegrationCipher({ key: "c".repeat(64) })
     );
-    const send = vi
-      .fn<InngestClient["Service"]["sendWaitSignal"]>(() => Effect.void)
-      .mockImplementationOnce(() =>
-        Effect.fail(new InngestError({ cause: "send failed" }))
-      );
     const runtime = ManagedRuntime.make(
       Layer.mergeAll(
-        instance.repositories,
         SilentAppLoggerLayer,
-        stubInngestClient({ sendWaitSignal: send })
+        makeExecutionDriverLayer({
+          worker: createWorkerWake(),
+          persistence: instance.wakes,
+        }).pipe(Layer.provideMerge(instance.repositories))
       )
     );
     try {
@@ -117,18 +115,23 @@ it.each([false, true])(
               deliveryId,
             });
 
-          const first = yield* deliver("owner").pipe(Effect.flip);
-          expect(first).toBeInstanceOf(InngestError);
+          expect((yield* deliver("owner")).resumedWaits).toBe(1);
           expect((yield* deliver("other")).resumedWaits).toBe(0);
-          const pending = yield* executions.findWaitStateById(wait.waitStateId);
-          expect(pending?.metadata?.arrival).toMatchObject({
+          expect((yield* deliver("owner")).resumedWaits).toBe(1);
+
+          const claimed = yield* executions.findWaitStateById(wait.waitStateId);
+          expect(claimed?.status).toBe("resuming");
+          expect(claimed?.metadata?.arrival).toMatchObject({
             deliveryId: "owner",
             payload: { owner: "owner" },
           });
-          expect((yield* deliver("owner")).resumedWaits).toBe(1);
-          expect(send).toHaveBeenCalledTimes(2);
-          const settled = yield* executions.findWaitStateById(wait.waitStateId);
-          expect(settled?.status).toBe("resumed");
+          const park = yield* executions.findPark(wait.waitStateId);
+          expect(park?.wake).toEqual({
+            kind: "resume",
+            eventName: "approval",
+            payload: { owner: "owner" },
+            deliveryId: "owner",
+          });
         })
       );
     } finally {

@@ -82,9 +82,10 @@ type StoreWriteSignatures = {
 
 /**
  * The repository writes the engine's `WorkflowStore` reaches, as
- * `createDbWorkflowStore` binds them. The unfenced methods of `ExecutionRepo`
- * fill it on the Inngest path, and `ExecutionRepo.fenced` on a pass of the
- * database executor, where a write may also answer `LeaseLost`.
+ * `createDbWorkflowStore` binds them. `ExecutionRepo.fenced` fills it on a pass
+ * of the database executor, where a write may also answer `LeaseLost`. The
+ * unfenced methods of `ExecutionRepo` fill it once the pass has written the
+ * run's terminal record (`watchPassWrites` in `executor/runtime.ts`).
  */
 export type StoreWrites = {
   readonly [Name in StoreWriteName]: StoreWriteOf<Name>;

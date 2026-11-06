@@ -187,11 +187,7 @@ describe("wait node - event mode", () => {
 
     const wait = runtime.waits.at(0);
     expect(wait?.stepId).toBe("wait-park-wait_1-0");
-    expect(wait?.options.event).toBe("workflow/wait.signal");
-    expect(wait?.options.ifExpression).toContain(`"${resumeToken}"`);
-    expect(wait?.options.ifExpression).toContain(
-      'async.data.nodeId == "wait_1"'
-    );
+    expect(wait?.options.waitStateId).toBe("wait_state_1");
     expect(wait?.options.timeoutMs).toBeGreaterThan(0);
 
     expect(store.callsOf("createWaitState")[0]).toMatchObject({
@@ -328,13 +324,12 @@ describe("wait node - event mode", () => {
     expect(waitOutput(result).payload).toEqual({});
   });
 
-  // A Cancel Event wakes a parked run through the same envelope. The wake closes
-  // the wait as cancelled, hands back no resume payload, and stops the branch
-  // where it stands: the run's verdict is the flag on its execution row, and a
-  // branch run reads no flag of its own (ADR-0011), so anything below this node
-  // would be work done for a run already ending.
+  // A Cancel Event wakes a parked run with a `cancel` wake. The wake closes the
+  // wait as cancelled, hands back no resume payload, and stops the branch where
+  // it stands: the run's verdict is the flag on its execution row, so anything
+  // below this node would be work done for a run already ending.
   it("closes the wait as cancelled when a lifecycle cancel wakes it", async () => {
-    const { runtime, execution } = runWait({
+    const { execution } = runWait({
       config: {
         waitMode: "event",
         waitFor: [{ event: "billing/payment.settled" }],
@@ -355,9 +350,6 @@ describe("wait node - event mode", () => {
     // node names none.
     expect(waitOutput(result)).not.toHaveProperty("event");
     expect(store.callsOf("markWaitStateStatus")[0]?.status).toBe("cancelled");
-    expect(runtime.waits.at(0)?.options.ifExpression).toContain(
-      'async.data.signalType == "lifecycle-cancel"'
-    );
     // Nothing below the wait ran: the entry node and the wait are the whole of
     // what opened a row.
     expect(store.callsOf("startStepLog").map((open) => open.nodeId)).toEqual([
@@ -366,10 +358,10 @@ describe("wait node - event mode", () => {
     ]);
   });
 
-  // An Exit claimed by another branch of the run wakes an event wait through the
-  // same envelope, and the wake halts the branch as a cancel wake does.
+  // An Exit claimed by another branch of the run wakes an event wait, and the
+  // wake halts the branch as a cancel wake does.
   it("closes the wait as cancelled when an Exit wakes it", async () => {
-    const { runtime, execution } = runWait({
+    const { execution } = runWait({
       config: {
         waitMode: "event",
         waitFor: [{ event: "billing/payment.settled" }],
@@ -387,9 +379,6 @@ describe("wait node - event mode", () => {
     });
     expect(waitOutput(result)).not.toHaveProperty("payload");
     expect(waitOutput(result)).not.toHaveProperty("event");
-    expect(runtime.waits.at(0)?.options.ifExpression).toContain(
-      'async.data.signalType == "lifecycle-exit"'
-    );
     expect(store.callsOf("markWaitStateStatus")).toEqual([
       { waitStateId: "wait_state_1", status: "cancelled" },
     ]);
@@ -482,7 +471,7 @@ describe("wait node - event mode", () => {
   });
 
   // A wait with no end is an immortal run, so the timeout the editor writes is
-  // applied here too rather than being left to whatever Inngest would pick.
+  // applied here too rather than being left to whatever the runtime would pick.
   it("falls back to the default timeout when the config names none", async () => {
     const { runtime, execution } = runWait({
       config: {

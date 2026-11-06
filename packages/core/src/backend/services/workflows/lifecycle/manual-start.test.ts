@@ -10,7 +10,7 @@ import {
   SilentAppLoggerLayer,
   stubExecutionRepo,
   stubExtensions,
-  stubInngestClient,
+  stubExecutionDriver,
   stubIntegrationRepo,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
@@ -187,8 +187,8 @@ function makeRepo(overrides: Partial<ExecutionRepo["Service"]> = {}) {
           }),
         ...overrides,
       }),
-      stubInngestClient({
-        sendRunRequested: () => Effect.succeed({ eventId: "evt_1" }),
+      stubExecutionDriver({
+        enqueueRun: () => Effect.void,
       })
     ),
   };
@@ -437,7 +437,6 @@ describe("postWorkflowExecute", () => {
         assert.deepStrictEqual(response, {
           status: "running",
           executionId: "exec_new",
-          runId: "evt_1",
           runMode: "live",
         });
       })
@@ -882,7 +881,7 @@ describe("postWorkflowExecute", () => {
 
         assert.strictEqual(response.status, "running");
         assert.strictEqual(response.runMode, "test");
-        // The row and the Inngest event carry the same run mode as the response.
+        // The row carries the same run mode as the response.
         assert.strictEqual(repo.starts[0]?.execution.runMode, "test");
         assert.strictEqual(workflows.snapshots.length, 1);
       })

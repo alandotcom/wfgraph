@@ -2,14 +2,14 @@
  * Concurrency: how many Executions may exist per Entity Value.
  *
  * A start always starts, and this is what decides what happens to the runs
- * already going (ADR-0007). Workflow Graph owns it rather than Inngest because two of the
- * three answers have to be recorded: newest-wins ends the displaced run with a
- * status, and first-wins refuses a start and says so in run history.
+ * already going (ADR-0007). Two of the three answers have to be recorded:
+ * newest-wins ends the displaced run with a status, and first-wins refuses a
+ * start and says so in run history.
  *
  * The decision itself is one locked transaction in `ExecutionRepo.startForEntity`,
  * because a candidate read followed by an insert is not a decision two arrivals
- * can share. What is left here is what a transaction must not do: tell the bus,
- * and write the timeline.
+ * can share. What is left here follows that transaction: schedule the run on
+ * the executor, stop the runs it displaced, and write the timeline.
  */
 
 import { Effect } from "effect";

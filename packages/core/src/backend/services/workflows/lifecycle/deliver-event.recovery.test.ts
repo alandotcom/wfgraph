@@ -7,15 +7,15 @@ import type {
   PublishedWorkflowVersion,
   Workflow,
 } from "#src/backend/lib/db/schema";
-import type { InngestClient } from "#src/backend/lib/effect/inngest-client";
 import {
   SilentAppLoggerLayer,
+  stubExecutionDriver,
   stubExecutionRepo,
   stubExtensionCatalog,
-  stubInngestClient,
   stubIntegrationRepo,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
+import type { ExecutionDriver } from "#src/backend/services/executions/driver";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import { LIFECYCLE_STARTED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import { defineEntity } from "#src/backend/extensions/define-entity";
@@ -48,20 +48,18 @@ import {
 
 type Repo = ExecutionRepo["Service"];
 
+type Driver = ExecutionDriver["Service"];
+
 const startForEntityMock = vi.fn<Repo["startForEntity"]>();
-const requestCancelForEntityMock = vi.fn<Repo["requestCancelForEntity"]>();
+const requestCanceledOutletMock = vi.fn<Driver["requestCanceledOutlet"]>();
 const findAdmissionRefusalMock = vi.fn<Repo["findAdmissionRefusal"]>();
 const recordAdmissionRefusalMock = vi.fn<Repo["recordAdmissionRefusal"]>();
 const findByDeliveryMock = vi.fn<Repo["findByDelivery"]>();
 const markEnqueuedMock = vi.fn<Repo["markEnqueued"]>(() => Effect.void);
 const findVersionByIdMock = vi.fn<WorkflowRepo["Service"]["findVersionById"]>();
 const recordAuditEventMock = vi.fn<Repo["recordAuditEvent"]>(() => Effect.void);
-const sendRunRequestedMock = vi.fn<
-  InngestClient["Service"]["sendRunRequested"]
->(() => Effect.succeed({ eventId: "evt_1" }));
-const sendCancelRequestedMock = vi.fn<
-  InngestClient["Service"]["sendCancelRequested"]
->(() => Effect.void);
+const enqueueRunMock = vi.fn<Driver["enqueueRun"]>(() => Effect.void);
+const stopRunMock = vi.fn<Driver["stopRun"]>(() => Effect.void);
 const resolveEntityMock = vi.fn(
   async (): Promise<{ status: string; remindersEnabled: boolean } | null> => ({
     status: "scheduled",
@@ -321,7 +319,7 @@ const startedOutcome: EntityStartOutcome = {
 
 /**
  * The Execution an earlier attempt of a delivery committed. `enqueuedAt` is
- * null when that attempt died before the send.
+ * null when that attempt died before the enqueue.
  */
 function winnerExecution(input: {
   deliveryId: string;
@@ -418,17 +416,16 @@ function subscriber(): EventSubscriber {
 const lifecyclePorts = Layer.mergeAll(
   stubExecutionRepo({
     startForEntity: startForEntityMock,
-    requestCancelForEntity: requestCancelForEntityMock,
     findAdmissionRefusal: findAdmissionRefusalMock,
     recordAdmissionRefusal: recordAdmissionRefusalMock,
     findByDelivery: findByDeliveryMock,
     recordAuditEvent: recordAuditEventMock,
-    listWaitingStatesForExecutions: () => Effect.succeed(new Map()),
     markEnqueued: markEnqueuedMock,
   }),
-  stubInngestClient({
-    sendRunRequested: sendRunRequestedMock,
-    sendCancelRequested: sendCancelRequestedMock,
+  stubExecutionDriver({
+    enqueueRun: enqueueRunMock,
+    requestCanceledOutlet: requestCanceledOutletMock,
+    stopRun: stopRunMock,
   }),
   stubIntegrationRepo()
 );
@@ -443,15 +440,15 @@ function workflowWith(rules: LifecycleRules) {
 
 beforeEach(() => {
   startForEntityMock.mockReset();
-  requestCancelForEntityMock.mockReset();
+  requestCanceledOutletMock.mockReset();
   findAdmissionRefusalMock.mockReset();
   recordAdmissionRefusalMock.mockReset();
   findByDeliveryMock.mockReset();
   markEnqueuedMock.mockReset();
   findVersionByIdMock.mockReset();
   recordAuditEventMock.mockReset();
-  sendRunRequestedMock.mockReset();
-  sendCancelRequestedMock.mockReset();
+  enqueueRunMock.mockReset();
+  stopRunMock.mockReset();
   resolveEntityMock.mockReset();
   selectEntityIdMock.mockClear();
   selectCanceledEntityIdMock.mockClear();
@@ -461,7 +458,7 @@ beforeEach(() => {
     remindersEnabled: true,
   });
   startForEntityMock.mockImplementation(() => Effect.succeed(startedOutcome));
-  requestCancelForEntityMock.mockImplementation(() => Effect.succeed([]));
+  requestCanceledOutletMock.mockImplementation(() => Effect.succeed([]));
   findAdmissionRefusalMock.mockImplementation(() => Effect.succeed(null));
   recordAdmissionRefusalMock.mockImplementation((input) =>
     Effect.succeed({ kind: "refused", reason: input.reason })
@@ -472,19 +469,18 @@ beforeEach(() => {
     Effect.succeed(publishedVersion(createWorkflow({ rules: startRules })))
   );
   recordAuditEventMock.mockImplementation(() => Effect.void);
-  sendRunRequestedMock.mockImplementation(() =>
-    Effect.succeed({ eventId: "evt_1" })
-  );
-  sendCancelRequestedMock.mockImplementation(() => Effect.void);
+  enqueueRunMock.mockImplementation(() => Effect.void);
+  stopRunMock.mockImplementation(() => Effect.void);
 });
 
 /**
  * What every case here has in common: the workflow changed between the first
  * attempt at this delivery and the retry, and the Execution the first attempt
- * committed still has to reach the bus. Nothing sweeps a row left between its
- * commit and its send, so a gate that answered the retry from the workflow as
- * it stands now would strand that row in flight forever. The one case that
- * sends nothing is the row whose run has already reached a verdict.
+ * committed still has to be scheduled on the executor. Nothing sweeps a row
+ * left between its commit and its enqueue, so a gate that answered the retry
+ * from the workflow as it stands now would strand that row in flight forever.
+ * The one case that enqueues nothing is the row whose run has already reached
+ * a verdict.
  */
 describe("a delivery retried after its Execution was committed", () => {
   const committedOutcome: LifecycleDeliveryOutcome = {
@@ -502,9 +498,9 @@ describe("a delivery retried after its Execution was committed", () => {
     concurrency: "unlimited",
   };
 
-  function assertResentTheCommittedRow() {
+  function assertEnqueuedTheCommittedRow() {
     assert.deepStrictEqual(
-      sendRunRequestedMock.mock.calls.map(([data]) => data),
+      enqueueRunMock.mock.calls.map(([data]) => data),
       [{ executionId: "exec_winner" }]
     );
     assert.strictEqual(startForEntityMock.mock.calls.length, 0);
@@ -513,7 +509,7 @@ describe("a delivery retried after its Execution was committed", () => {
 
   layer(Layer.merge(SilentAppLoggerLayer, catalogLayer))((it) => {
     it.effect(
-      "resends the committed Execution when the workflow has since been unpublished",
+      "enqueues the committed Execution when the workflow has since been unpublished",
       () =>
         Effect.gen(function* () {
           const workflow = createWorkflow({
@@ -546,7 +542,7 @@ describe("a delivery retried after its Execution was committed", () => {
           );
 
           assert.deepStrictEqual(outcome, committedOutcome);
-          assertResentTheCommittedRow();
+          assertEnqueuedTheCommittedRow();
           // The published graph is where the Entity bindings are read from, and
           // there is no published graph here.
           assert.strictEqual(resolveEntityMock.mock.calls.length, 0);
@@ -554,7 +550,7 @@ describe("a delivery retried after its Execution was committed", () => {
     );
 
     it.effect(
-      "resends when a republish dropped the Event from the Start Events",
+      "enqueues when a republish dropped the Event from the Start Events",
       () =>
         Effect.gen(function* () {
           findByDeliveryMock.mockImplementation(() =>
@@ -571,16 +567,16 @@ describe("a delivery retried after its Execution was committed", () => {
           }).pipe(Effect.provide(workflowWith(noStartEventRules)));
 
           assert.deepStrictEqual(outcome, committedOutcome);
-          assertResentTheCommittedRow();
+          assertEnqueuedTheCommittedRow();
         })
     );
 
     // An earlier attempt committed the Execution and the step died before the
-    // send. On retry the host resolver fails, and the delivery still has to
-    // reach the bus. The committed row is read before selection and the
+    // enqueue. On retry the host resolver fails, and the delivery still has to
+    // schedule the run. The committed row is read before selection and the
     // resolver, so neither runs.
     it.effect(
-      "sends the Execution an earlier attempt committed without selecting or resolving the Entity again",
+      "enqueues the Execution an earlier attempt committed without selecting or resolving the Entity again",
       () =>
         Effect.gen(function* () {
           resolveEntityMock.mockRejectedValue(new Error("host unavailable"));
@@ -610,7 +606,7 @@ describe("a delivery retried after its Execution was committed", () => {
           assert.strictEqual(startForEntityMock.mock.calls.length, 0);
           assert.strictEqual(recordAdmissionRefusalMock.mock.calls.length, 0);
           assert.deepStrictEqual(
-            sendRunRequestedMock.mock.calls.map(([data]) => data),
+            enqueueRunMock.mock.calls.map(([data]) => data),
             [{ executionId: "exec_winner" }]
           );
           const started = recordAuditEventMock.mock.calls.find(
@@ -623,7 +619,7 @@ describe("a delivery retried after its Execution was committed", () => {
         })
     );
 
-    it.effect("resends when tracking was removed from the rules", () =>
+    it.effect("enqueues when tracking was removed from the rules", () =>
       Effect.gen(function* () {
         findByDeliveryMock.mockImplementation(() =>
           Effect.succeed(
@@ -639,9 +635,9 @@ describe("a delivery retried after its Execution was committed", () => {
         }).pipe(Effect.provide(workflowWith(startRules)));
 
         assert.deepStrictEqual(outcome, committedOutcome);
-        assertResentTheCommittedRow();
+        assertEnqueuedTheCommittedRow();
         // The row carries the typed identity Concurrency serialized it on, and
-        // the resend reads that identity off the row rather than selecting it
+        // the enqueue reads that identity off the row rather than selecting it
         // from the payload again.
         assert.strictEqual(selectEntityIdMock.mock.calls.length, 0);
       })
@@ -672,14 +668,14 @@ describe("a delivery retried after its Execution was committed", () => {
           });
           assert.strictEqual(findByDeliveryMock.mock.calls.length, 0);
           assert.strictEqual(startForEntityMock.mock.calls.length, 0);
-          assert.strictEqual(sendRunRequestedMock.mock.calls.length, 0);
+          assert.strictEqual(enqueueRunMock.mock.calls.length, 0);
         })
     );
 
     // Preflight reads the graph published now, and the committed row pins the
     // graph it was opened against, which the run is executing regardless.
     it.effect(
-      "resends when the published graph no longer passes preflight",
+      "enqueues when the published graph no longer passes preflight",
       () =>
         Effect.gen(function* () {
           findByDeliveryMock.mockImplementation(() =>
@@ -735,7 +731,7 @@ describe("a delivery retried after its Execution was committed", () => {
           );
 
           assert.deepStrictEqual(outcome, committedOutcome);
-          assertResentTheCommittedRow();
+          assertEnqueuedTheCommittedRow();
         })
     );
 
@@ -743,7 +739,7 @@ describe("a delivery retried after its Execution was committed", () => {
     // already opened one, so the filter has nothing left to decide and writing
     // a Refused Start row would contradict the run that is about to execute.
     it.effect(
-      "resends an untracked Execution although the Start Filter now refuses the payload",
+      "enqueues an untracked Execution although the Start Filter now refuses the payload",
       () =>
         Effect.gen(function* () {
           findByDeliveryMock.mockImplementation(() =>
@@ -779,7 +775,7 @@ describe("a delivery retried after its Execution was committed", () => {
           );
 
           assert.deepStrictEqual(outcome, committedOutcome);
-          assertResentTheCommittedRow();
+          assertEnqueuedTheCommittedRow();
           assert.strictEqual(
             recordAuditEventMock.mock.calls.filter(
               ([event]) => event.eventType === "run_refused"
@@ -790,9 +786,9 @@ describe("a delivery retried after its Execution was committed", () => {
     );
 
     // The run the committed Execution opened has already reached a verdict. A
-    // resend would move `workflow_run_id` and `enqueued_at` on a terminal row
-    // and file "run started" after the entry that closed the run.
-    it.effect("sends nothing for a committed row whose run has ended", () =>
+    // second enqueue would move `enqueued_at` on a terminal row and file "run
+    // started" after the entry that closed the run.
+    it.effect("enqueues nothing for a committed row whose run has ended", () =>
       Effect.gen(function* () {
         findByDeliveryMock.mockImplementation(() =>
           Effect.succeed({
@@ -816,16 +812,16 @@ describe("a delivery retried after its Execution was committed", () => {
         );
 
         assert.deepStrictEqual(outcome, committedOutcome);
-        assert.strictEqual(sendRunRequestedMock.mock.calls.length, 0);
+        assert.strictEqual(enqueueRunMock.mock.calls.length, 0);
         assert.strictEqual(markEnqueuedMock.mock.calls.length, 0);
         assert.strictEqual(recordAuditEventMock.mock.calls.length, 0);
       })
     );
 
-    // The earlier attempt sent the run, and the run is parked in a Wait. A
-    // second send could only fail into the compensation, which would stop a
+    // The earlier attempt scheduled the run, and the run is parked in a Wait. A
+    // second enqueue could only fail into the compensation, which would stop a
     // healthy run, so the retry answers from the row.
-    it.effect("sends nothing for a committed row the bus already took", () =>
+    it.effect("enqueues nothing for a committed row already scheduled", () =>
       Effect.gen(function* () {
         findByDeliveryMock.mockImplementation(() =>
           Effect.succeed({
@@ -849,7 +845,7 @@ describe("a delivery retried after its Execution was committed", () => {
         );
 
         assert.deepStrictEqual(outcome, committedOutcome);
-        assert.strictEqual(sendRunRequestedMock.mock.calls.length, 0);
+        assert.strictEqual(enqueueRunMock.mock.calls.length, 0);
         assert.strictEqual(markEnqueuedMock.mock.calls.length, 0);
         assert.strictEqual(recordAuditEventMock.mock.calls.length, 0);
       })
@@ -926,7 +922,7 @@ describe("a delivery retried after its Execution was committed", () => {
           assert.include(started?.message ?? "", "run of v1 started");
           assert.deepInclude(started?.metadata, { versionNumber: 1 });
           assert.deepStrictEqual(
-            sendRunRequestedMock.mock.calls.map(([data]) => data),
+            enqueueRunMock.mock.calls.map(([data]) => data),
             [{ executionId: "exec_winner" }]
           );
         })

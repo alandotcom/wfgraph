@@ -14,38 +14,21 @@ import {
 import * as runtimeEventsModule from "#src/backend/lib/inngest/runtime-events";
 
 /**
- * The three envelope builders the live Layer delegates to, replaced so a send
- * never reaches a dev server.
+ * The envelope builder the live Layer delegates to, replaced so a send never
+ * reaches a dev server.
  *
- * What the Layer adds over them is the error channel, and that is the whole of
+ * What the Layer adds over it is the error channel, and that is the whole of
  * what these tests are about: a rejected promise becomes an `InngestError`
  * keeping whatever was thrown, and a resolution travels through untouched.
- * spyOn + restore keeps isolate:false from leaving these stubs on the shared
+ * spyOn + restore keeps isolate:false from leaving the stub on the shared
  * registry.
  */
 const runtimeEvents = vi.hoisted(() => ({
-  sendWorkflowRunRequested: vi.fn(),
-  sendWorkflowCancelRequested: vi.fn(),
-  sendWorkflowWaitSignal: vi.fn(),
   sendCatalogEvent: vi.fn(),
 }));
 
 beforeEach(() => {
-  runtimeEvents.sendWorkflowRunRequested.mockReset();
-  runtimeEvents.sendWorkflowCancelRequested.mockReset();
-  runtimeEvents.sendWorkflowWaitSignal.mockReset();
   runtimeEvents.sendCatalogEvent.mockReset();
-
-  vi.spyOn(runtimeEventsModule, "sendWorkflowRunRequested").mockImplementation(
-    runtimeEvents.sendWorkflowRunRequested
-  );
-  vi.spyOn(
-    runtimeEventsModule,
-    "sendWorkflowCancelRequested"
-  ).mockImplementation(runtimeEvents.sendWorkflowCancelRequested);
-  vi.spyOn(runtimeEventsModule, "sendWorkflowWaitSignal").mockImplementation(
-    runtimeEvents.sendWorkflowWaitSignal
-  );
   vi.spyOn(runtimeEventsModule, "sendCatalogEvent").mockImplementation(
     runtimeEvents.sendCatalogEvent
   );
@@ -56,117 +39,46 @@ afterEach(() => {
 });
 
 // A real client, because constructing one opens nothing: the mocked envelope
-// builders take it as their first argument and none of them calls it.
+// builder takes it as its first argument and does not call it.
 const testClient = new Inngest({ id: "inngest-client-test", isDev: true });
 const TestInngestClientLayer = makeInngestClientLayer(testClient);
 
-const runRequest = {
-  graph: { nodes: [], edges: [] },
-  workflowVersionId: "ver_1",
-  catalogFingerprint: "fp",
-  executionId: "exec_1",
-  workflowId: "wf_1",
-};
-
-const cancelRequest = {
-  executionId: "exec_1",
-  workflowId: "wf_1",
-  reason: "Replaced by webhook event order.updated",
-  requestedBy: "webhook",
-};
-
-const waitSignal = {
-  executionId: "exec_1",
-  nodeId: "node_wait",
-  token: "resume_token_1",
-  signalType: "wait-resume" as const,
+const catalogEvent = {
+  name: "resend/webhook",
+  data: { type: "email.delivered" },
+  connectionId: "conn_1",
 };
 
 describe("TestInngestClientLayer", () => {
   layer(TestInngestClientLayer)((it) => {
-    it.effect("hands back the event id an accepted run answered with", () =>
+    it.effect("passes an accepted Event through on the app's client", () =>
       Effect.gen(function* () {
-        runtimeEvents.sendWorkflowRunRequested.mockResolvedValue({
-          eventId: "evt_1",
-        });
+        runtimeEvents.sendCatalogEvent.mockResolvedValue({ ids: ["evt_1"] });
 
         const inngest = yield* InngestClient;
-        const sent = yield* inngest.sendRunRequested(runRequest);
+        yield* inngest.sendCatalogEvent(catalogEvent);
 
-        assert.deepStrictEqual(sent, { eventId: "evt_1" });
+        // The client is the first argument of the send, which is what says the
+        // Layer passes on the one it was built with.
+        assert.deepStrictEqual(runtimeEvents.sendCatalogEvent.mock.lastCall, [
+          testClient,
+          catalogEvent,
+        ]);
       })
     );
 
-    it.effect("keeps what a refused run threw", () =>
+    it.effect("keeps what a refused Event threw", () =>
       Effect.gen(function* () {
         const thrown = new Error("inngest dev server unreachable");
-        runtimeEvents.sendWorkflowRunRequested.mockRejectedValue(thrown);
+        runtimeEvents.sendCatalogEvent.mockRejectedValue(thrown);
 
         const inngest = yield* InngestClient;
         const failure = yield* inngest
-          .sendRunRequested(runRequest)
+          .sendCatalogEvent(catalogEvent)
           .pipe(Effect.flip);
 
         assert.instanceOf(failure, InngestError);
         assert.strictEqual(failure.cause, thrown);
-      })
-    );
-
-    it.effect("keeps what a refused cancel threw", () =>
-      Effect.gen(function* () {
-        const thrown = new Error("cancel rejected");
-        runtimeEvents.sendWorkflowCancelRequested.mockRejectedValue(thrown);
-
-        const inngest = yield* InngestClient;
-        const failure = yield* inngest
-          .sendCancelRequested(cancelRequest)
-          .pipe(Effect.flip);
-
-        assert.instanceOf(failure, InngestError);
-        assert.strictEqual(failure.cause, thrown);
-      })
-    );
-
-    it.effect("keeps what a refused wait signal threw", () =>
-      Effect.gen(function* () {
-        const thrown = new Error("wait signal rejected");
-        runtimeEvents.sendWorkflowWaitSignal.mockRejectedValue(thrown);
-
-        const inngest = yield* InngestClient;
-        const failure = yield* inngest
-          .sendWaitSignal(waitSignal)
-          .pipe(Effect.flip);
-
-        assert.instanceOf(failure, InngestError);
-        assert.strictEqual(failure.cause, thrown);
-      })
-    );
-
-    // The two void sends discard what the SDK answered, so what an accepted one
-    // proves is only that it reached the builder and came back succeeding.
-    it.effect("passes an accepted cancel and wait signal through", () =>
-      Effect.gen(function* () {
-        runtimeEvents.sendWorkflowCancelRequested.mockResolvedValue({
-          ids: ["evt_2"],
-        });
-        runtimeEvents.sendWorkflowWaitSignal.mockResolvedValue({
-          ids: ["evt_3"],
-        });
-
-        const inngest = yield* InngestClient;
-        yield* inngest.sendCancelRequested(cancelRequest);
-        yield* inngest.sendWaitSignal(waitSignal);
-
-        // The client is the first argument of every send, which is what says
-        // the Layer passes on the one it was built with.
-        assert.deepStrictEqual(
-          runtimeEvents.sendWorkflowCancelRequested.mock.lastCall,
-          [testClient, cancelRequest]
-        );
-        assert.deepStrictEqual(
-          runtimeEvents.sendWorkflowWaitSignal.mock.lastCall,
-          [testClient, waitSignal]
-        );
       })
     );
   });

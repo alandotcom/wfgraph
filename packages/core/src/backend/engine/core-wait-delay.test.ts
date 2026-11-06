@@ -42,17 +42,11 @@ describe("wait node - delay mode", () => {
     expect(created[0]?.nodeId).toBe("wait_1");
     expect(created[0]?.executionId).toBe("exec_wait");
 
-    // The park is a signal wait whose timeout is what is left of the delay:
-    // roughly an hour, allowing for the milliseconds the run itself took.
+    // The park's timeout is what is left of the delay: roughly an hour, allowing for the milliseconds the run itself took.
     const park = runtime.waits.find(
       (wait) => wait.stepId === "wait-park-wait_1-0"
     );
     expect(park?.options.timeoutMs).toBeGreaterThan(3_500_000);
-    // A delay wait answers to a Migration and to nothing else.
-    expect(park?.options.ifExpression).toContain(
-      'async.data.signalType == "version-migrate"'
-    );
-    expect(park?.options.ifExpression).not.toContain("wait-resume");
 
     // One park, so the row is written once and never re-parked.
     expect(store.callsOf("reparkWaitState")).toHaveLength(0);
@@ -264,7 +258,7 @@ describe("wait node - delay mode", () => {
   // halts the branch, closes the row as cancelled, and skips the running write,
   // which a claimed run refuses.
   it("halts the branch and closes the wait as cancelled when an Exit wakes it", async () => {
-    const { runtime, execution } = runWait({
+    const { execution } = runWait({
       config: { waitMode: "delay", waitDuration: "1h" },
       store,
       wake: { kind: "exit" },
@@ -272,9 +266,6 @@ describe("wait node - delay mode", () => {
     const result = await execution;
 
     expect(result.results.after_wait).toBeUndefined();
-    expect(runtime.waits.at(0)?.options.ifExpression).toContain(
-      'async.data.signalType == "lifecycle-exit"'
-    );
     expect(store.callsOf("markWaitStateStatus")).toEqual([
       { waitStateId: "wait_state_1", status: "cancelled" },
     ]);

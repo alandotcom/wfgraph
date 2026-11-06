@@ -6,14 +6,14 @@ import type {
   PublishedWorkflowVersion,
   Workflow,
 } from "#src/backend/lib/db/schema";
-import type { InngestClient } from "#src/backend/lib/effect/inngest-client";
 import {
+  stubExecutionDriver,
   stubExecutionRepo,
   stubExtensionCatalog,
-  stubInngestClient,
   stubIntegrationRepo,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
+import type { ExecutionDriver } from "#src/backend/services/executions/driver";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import { defineEntity } from "#src/backend/extensions/define-entity";
 import { defineEvent } from "#src/backend/extensions/define-event";
@@ -42,10 +42,11 @@ import type {
  */
 
 type Repo = ExecutionRepo["Service"];
+type Driver = ExecutionDriver["Service"];
 
 export const startForEntityMock = vi.fn<Repo["startForEntity"]>();
-export const requestCancelForEntityMock =
-  vi.fn<Repo["requestCancelForEntity"]>();
+export const requestCanceledOutletMock =
+  vi.fn<Driver["requestCanceledOutlet"]>();
 export const findAdmissionRefusalMock = vi.fn<Repo["findAdmissionRefusal"]>();
 export const recordAdmissionRefusalMock =
   vi.fn<Repo["recordAdmissionRefusal"]>();
@@ -55,12 +56,8 @@ export const findVersionByIdMock =
 export const recordAuditEventMock = vi.fn<Repo["recordAuditEvent"]>(
   () => Effect.void
 );
-export const sendRunRequestedMock = vi.fn<
-  InngestClient["Service"]["sendRunRequested"]
->(() => Effect.succeed({ eventId: "evt_1" }));
-export const sendCancelRequestedMock = vi.fn<
-  InngestClient["Service"]["sendCancelRequested"]
->(() => Effect.void);
+export const enqueueRunMock = vi.fn<Driver["enqueueRun"]>(() => Effect.void);
+export const stopRunMock = vi.fn<Driver["stopRun"]>(() => Effect.void);
 
 export const resolveEntityMock = vi.fn(
   async (): Promise<{ status: string; remindersEnabled: boolean } | null> => ({
@@ -474,17 +471,16 @@ export function subscriber(): EventSubscriber {
 export const lifecyclePorts = Layer.mergeAll(
   stubExecutionRepo({
     startForEntity: startForEntityMock,
-    requestCancelForEntity: requestCancelForEntityMock,
     findAdmissionRefusal: findAdmissionRefusalMock,
     recordAdmissionRefusal: recordAdmissionRefusalMock,
     findByDelivery: findByDeliveryMock,
     recordAuditEvent: recordAuditEventMock,
-    listWaitingStatesForExecutions: () => Effect.succeed(new Map()),
     markEnqueued: () => Effect.void,
   }),
-  stubInngestClient({
-    sendRunRequested: sendRunRequestedMock,
-    sendCancelRequested: sendCancelRequestedMock,
+  stubExecutionDriver({
+    enqueueRun: enqueueRunMock,
+    requestCanceledOutlet: requestCanceledOutletMock,
+    stopRun: stopRunMock,
   }),
   stubIntegrationRepo()
 );
@@ -505,14 +501,14 @@ export function workflowWith(rules: LifecycleRules) {
  */
 export function resetGuardedStartMocks(): void {
   startForEntityMock.mockReset();
-  requestCancelForEntityMock.mockReset();
+  requestCanceledOutletMock.mockReset();
   findAdmissionRefusalMock.mockReset();
   recordAdmissionRefusalMock.mockReset();
   findByDeliveryMock.mockReset();
   findVersionByIdMock.mockReset();
   recordAuditEventMock.mockReset();
-  sendRunRequestedMock.mockReset();
-  sendCancelRequestedMock.mockReset();
+  enqueueRunMock.mockReset();
+  stopRunMock.mockReset();
   resolveEntityMock.mockReset();
   selectEntityIdMock.mockClear();
   selectCanceledEntityIdMock.mockClear();
@@ -522,7 +518,7 @@ export function resetGuardedStartMocks(): void {
     remindersEnabled: true,
   });
   startForEntityMock.mockImplementation(() => Effect.succeed(startedOutcome));
-  requestCancelForEntityMock.mockImplementation(() => Effect.succeed([]));
+  requestCanceledOutletMock.mockImplementation(() => Effect.succeed([]));
   findAdmissionRefusalMock.mockImplementation(() => Effect.succeed(null));
   recordAdmissionRefusalMock.mockImplementation((input) =>
     Effect.succeed({ kind: "refused", reason: input.reason })
@@ -532,8 +528,6 @@ export function resetGuardedStartMocks(): void {
     Effect.succeed(publishedVersion(createWorkflow({ rules: startRules })))
   );
   recordAuditEventMock.mockImplementation(() => Effect.void);
-  sendRunRequestedMock.mockImplementation(() =>
-    Effect.succeed({ eventId: "evt_1" })
-  );
-  sendCancelRequestedMock.mockImplementation(() => Effect.void);
+  enqueueRunMock.mockImplementation(() => Effect.void);
+  stopRunMock.mockImplementation(() => Effect.void);
 }

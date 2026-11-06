@@ -27,6 +27,9 @@ const EVENT_ARRIVAL = {
   payload: { approved: true },
 } as const;
 
+/** When a claim or a Cancel claim writes, which a re-queue is due at. */
+const NOW = new Date("2026-01-01T00:00:00.000Z");
+
 /** The first-wins start that the race cases in this file make. */
 const startFirstWins = (
   connection: ConformanceConnection,
@@ -356,6 +359,7 @@ export function describeExecutionConformance({
             nodeId: "node_check_2",
           });
           const cancel = yield* executions.requestCancelForEntity({
+            now: NOW,
             workflowId: "wf_1",
             entityType: "appointment",
             entityId: "appt_8813",
@@ -475,6 +479,7 @@ export function describeExecutionConformance({
         Effect.gen(function* () {
           const executions = yield* ExecutionRepo;
           const cancel = yield* executions.requestCancelForEntity({
+            now: NOW,
             workflowId: "wf_1",
             entityType: "appointment",
             entityId: "appointment_1",
@@ -508,7 +513,13 @@ export function describeExecutionConformance({
         eventName: "appointment/cancelled",
         payload: { reason: "host request" },
       } as const;
-      expect(result.cancel).toEqual([started.execution.id]);
+      expect(result.cancel).toEqual([
+        {
+          executionId: started.execution.id,
+          resolvedParks: 0,
+          requeued: false,
+        },
+      ]);
       expect(result.exit).toMatchObject({
         status: "running",
         claim: expectedClaim,
@@ -558,6 +569,7 @@ export function describeExecutionConformance({
         Effect.gen(function* () {
           const executions = yield* ExecutionRepo;
           yield* executions.requestCancelForEntity({
+            now: NOW,
             workflowId: "wf_1",
             entityType: "appointment",
             entityId: "appt_cancel",
@@ -887,24 +899,21 @@ export function describeExecutionConformance({
             "appointment/approved"
           );
           const firstClaim = yield* executions.claimWaitingStateByToken({
+            now: NOW,
             resumeToken: "resume_1",
             arrival: EVENT_ARRIVAL,
           });
           if (!firstClaim) throw new Error("Wait claim was refused");
-          const released = yield* executions.releaseWaitingStateClaim({
-            waitStateId: wait.waitStateId,
-            claimedAt: firstClaim.claimedAt,
-          });
           const secondClaim = yield* executions.claimWaitingStateById({
+            now: NOW,
             waitStateId: wait.waitStateId,
             resumeToken: "resume_1",
             eventName: EVENT_ARRIVAL.eventName,
             arrival: EVENT_ARRIVAL,
           });
-          if (!secondClaim) throw new Error("Released wait was not claimable");
-          const settled = yield* executions.settleWaitingStateClaim({
+          const settled = yield* executions.markWaitStatus({
             waitStateId: wait.waitStateId,
-            claimedAt: secondClaim.claimedAt,
+            status: "resumed",
           });
           yield* executions.markRunning({
             side: "started",
@@ -913,6 +922,7 @@ export function describeExecutionConformance({
           });
 
           const cancelled = yield* executions.requestCancelForEntity({
+            now: NOW,
             workflowId: "wf_1",
             entityValue: "appointment_1",
             runMode: "live",
@@ -937,7 +947,7 @@ export function describeExecutionConformance({
             executionId,
             waitsForEvent,
             subscribers,
-            released,
+            secondClaim,
             settled,
             cancelled,
             pendingCancel,
@@ -962,9 +972,12 @@ export function describeExecutionConformance({
       expect(result.subscribers).toMatchObject([
         { id: "wf_1", roles: ["wait"] },
       ]);
-      expect(result.released).toBe(true);
+      // A claimed row holds its wake until the run closes it.
+      expect(result.secondClaim).toBeNull();
       expect(result.settled).toBe(true);
-      expect(result.cancelled).toEqual([result.executionId]);
+      expect(result.cancelled).toEqual([
+        { executionId: result.executionId, resolvedParks: 0, requeued: false },
+      ]);
       expect(result.pendingCancel).toEqual({
         eventName: "appointment/cancelled",
         payload: { reason: "host request" },
@@ -1022,6 +1035,7 @@ export function describeExecutionConformance({
 
           const cancel = (reason: string) =>
             executions.requestCancelForEntity({
+              now: NOW,
               workflowId: "wf_1",
               entityValue: "appointment_1",
               runMode: "live",

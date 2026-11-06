@@ -3,9 +3,9 @@
  *
  * It is the only place that knows both the engine's persistence port and the
  * repository behind it, which is what keeps the engine module free of database
- * imports. The caller supplies the reads and writes: the Inngest path passes
- * the repository's unfenced writes, and a pass of the database executor passes
- * `ExecutionRepo.fenced` for its own owner token. Every method remains an
+ * imports. The caller supplies the reads and writes: a pass of the database
+ * executor passes the writes of `ExecutionRepo.fenced` for its own owner token,
+ * and a test may pass the repository's unfenced writes. Every method remains an
  * Effect for the engine to compose. Database failures, and the `LeaseLost` a
  * fenced write answers once the pass no longer holds the run, remain in the
  * error channel for the engine policy at the call site to interpret.
@@ -22,7 +22,6 @@ import type {
 import type { WaitWake } from "#src/backend/engine/runtime";
 import { decodeIsoTimestampOrThrow } from "@wfgraph/shared/types/timestamp";
 import type {
-  CompletedNodeProgress,
   CompleteRunInput,
   ExecutionTerminationState,
   StoreFailure,
@@ -51,14 +50,7 @@ function readWaitUntil(
     : Effect.succeed(undefined);
 }
 
-/**
- * The wake a resume claim recorded on the row, or null when it recorded none.
- *
- * The row's metadata is written by two parties: the park writes the wait's own
- * parameters and a claim adds its arrival under one key. Anything that does not
- * read back as an arrival is treated as none, because the alternative is a run
- * failing on a row a future version wrote a different shape into.
- */
+/** A stored claim and status as the engine's port reads them, with ISO timestamps. */
 function engineTerminationState(
   state: StoredTerminationState
 ): ExecutionTerminationState {
@@ -85,6 +77,14 @@ function engineTerminationState(
   };
 }
 
+/**
+ * The arrival a resume claim recorded on the row, or null when it recorded none.
+ *
+ * The row's metadata is written by two parties: the park writes the wait's own
+ * parameters and a claim adds its arrival under one key. Anything that does not
+ * read back as an arrival is treated as none, because the alternative is a run
+ * failing on a row a future version wrote a different shape into.
+ */
 function readWaitArrival(metadata: JsonObject | null): WaitArrival | null {
   const arrival = readJsonObject(metadata?.[WAIT_ARRIVAL_METADATA_KEY]);
   if (!arrival || !isWaitSignalType(arrival.signalType)) {
@@ -122,8 +122,6 @@ export type StoreReads = Pick<
   | "canAdmitNode"
   | "findTerminationState"
   | "findPendingCancel"
-  | "readNodeOutputs"
-  | "listLogs"
 >;
 
 export function createDbWorkflowStore(bound: {
@@ -225,46 +223,6 @@ export function createDbWorkflowStore(bound: {
         ),
 
     readPendingCancel: (executionId) => reads.findPendingCancel(executionId),
-
-    readNodeOutputs: (executionId) => reads.readNodeOutputs(executionId),
-
-    readCompletedNodeProgress: (executionId) =>
-      reads.listLogs(executionId).pipe(
-        Effect.map((logs) => {
-          const latestByNode = new Map<string, CompletedNodeProgress>();
-          for (const log of logs) {
-            if (
-              latestByNode.has(log.nodeId) ||
-              (log.status !== "success" && log.status !== "error")
-            ) {
-              continue;
-            }
-
-            latestByNode.set(log.nodeId, {
-              nodeId: log.nodeId,
-              nodeName: log.nodeName,
-              status: log.status,
-              output: log.output ?? null,
-              error: log.error,
-            });
-          }
-          return [...latestByNode.values()];
-        })
-      ),
-
-    // Two statements, because the rows a killed branch leaves open are of two
-    // kinds and each table decides for itself which of its rows are still open.
-    // Neither reads the other, so they go together rather than in an order.
-    cancelOpenWork: ({ executionId }) =>
-      Effect.asVoid(
-        Effect.all(
-          [
-            writes.cancelOpenNodeLogs(executionId),
-            writes.cancelWaitsForExecution(executionId),
-          ],
-          { concurrency: 2 }
-        )
-      ),
 
     completeRun,
   };

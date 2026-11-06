@@ -26,12 +26,6 @@ export type CancelBoundaryInput = {
   runtime: WorkflowExecutionRuntime;
   store: WorkflowStore;
   executionId: string;
-  /**
-   * Whether this run may take the Canceled outlet itself. A branch run may not:
-   * the run that started it is the one that routes a cancellation, so a second
-   * reader of the flag would put two runs on the outlet.
-   */
-  routesCancellation: boolean;
 };
 
 /**
@@ -50,9 +44,9 @@ export class CancelBoundary {
   /**
    * A Cancel Event is the only thing that ever stamps the flag the boundary read
    * asks for, so a graph declaring none can never be flagged and buys neither
-   * the durable step nor the query at any node. The answer comes from this run's
-   * own graph, which the run carries in its Inngest event: a Cancel Event added
-   * mid-run reaches the runs that start after it, not the ones already walking.
+   * the durable step nor the query at any node. The answer comes from the graph
+   * of the version this run pins, so a Cancel Event added in a later version
+   * reaches a run only once it runs on that version.
    */
   private readonly canBeCanceled: boolean;
 
@@ -79,28 +73,12 @@ export class CancelBoundary {
    */
   private cancelEventName: string | null = null;
 
-  /**
-   * A boundary for a branch run (ADR-0011), which routes no cancellation of its
-   * own: `settle` answers nothing at every node, so the run that started the
-   * branch stays the one thing that takes the Canceled outlet.
-   *
-   * It keeps the graph-derived node set, because a branch still has to know
-   * which side each of its nodes sits on: that is what a Canceled-side Wait's
-   * park write is guarded with, and what holds a Started-side node back once
-   * `carryClaim` has been called.
-   */
-  static forBranch(input: Omit<CancelBoundaryInput, "routesCancellation">) {
-    return new CancelBoundary({ ...input, routesCancellation: false });
-  }
-
   constructor(input: CancelBoundaryInput) {
     this.input = input;
 
-    this.canBeCanceled =
-      input.routesCancellation &&
-      input.lifecycleNodes.some((node) =>
-        configDeclaresCancelEvent(node.data.config)
-      );
+    this.canBeCanceled = input.lifecycleNodes.some((node) =>
+      configDeclaresCancelEvent(node.data.config)
+    );
 
     this.canceledBranchNodeIds = nodesBehindOutlet({
       entryNodeIds: new Set(input.lifecycleNodes.map((node) => node.id)),
@@ -176,19 +154,8 @@ export class CancelBoundary {
   }
 
   /**
-   * Takes on the Cancel claim the run that started this branch already routed.
-   *
-   * Nothing is scheduled and nothing is logged: the run that started the branch
-   * already did both.
-   */
-  carryClaim(claim: PendingCancel): void {
-    this.adoptClaim(claim);
-  }
-
-  /**
    * Records the claim this run is now on and writes its payload over the entry
-   * nodes' outputs, which is everything both the routing run and a branch run do
-   * with a claim.
+   * nodes' outputs.
    *
    * A node below the Canceled outlet addresses the entry node in its templates,
    * and on that side the entry node's output is the payload the canceling Event
@@ -212,7 +179,7 @@ export class CancelBoundary {
    * Takes the Canceled outlet for a Cancel claim the caller has already read,
    * and answers with the branch's first nodes.
    *
-   * A root run reads its claim once more after its Started branch has run out,
+   * A run reads its claim once more after its Started branch has run out,
    * and a claim that landed after the last boundary read reaches the outlet
    * through here. A boundary already crossed answers with no nodes, because the
    * outlet's nodes went to whichever node crossed it.

@@ -1,5 +1,5 @@
 /**
- * The Migration cases the Wait-migrate suite runs under each executor: a Wait
+ * The Migration cases the Wait-migrate suite runs under the replay driver: a Wait
  * whose config changes once the run is parked, re-parked, resumed or failed on
  * the attempt that loads the later Workflow Version.
  */
@@ -547,12 +547,12 @@ export function defineWaitMigrateReplayCases(executor: ReplayExecutor): void {
     );
   });
 
-  // The pointer can move after Inngest has resolved the park and before the
+  // The pointer can move after a producer has resolved the park and before the
   // resume step runs, which would let the attempt carry on under the graph this
   // body loaded. The resume's own guarded write is that fence: it moves the run
   // back to running only while the row still pins the version this body loaded,
-  // so a refused write fails the step and Inngest retries the body against the
-  // version the row now names.
+  // so a refused write ends the pass and the next pass runs the body against
+  // the version the row now names.
   it("fails its step when the run has been moved to another workflow version", async () => {
     store.markRunningAnswer = false;
 

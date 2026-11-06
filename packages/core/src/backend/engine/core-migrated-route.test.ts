@@ -5,10 +5,6 @@ import {
   toWorkflowGraphData,
 } from "@wfgraph/shared/graph/graph";
 import { validateWorkflowGraph } from "#src/backend/services/workflows/validation/workflow-graph";
-import { executeTestWorkflowBranch } from "#src/backend/engine/test-execution";
-import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
-import { createRecordingWorkflowStore } from "#src/backend/engine/recording-store";
-import { noWorkflowActions } from "#src/backend/engine/actions";
 import { Traversal } from "#src/backend/engine/traversal";
 import { stubExecutionRepo } from "#src/backend/lib/effect/test-layers";
 import { classifyMigrationCandidates } from "#src/backend/services/workflows/migration/classify";
@@ -18,12 +14,9 @@ import {
   createWaitNode,
 } from "#src/backend/engine/testing/wait-fixtures";
 
-it.each([
-  { outlet: "false", joinRuns: false },
-  { outlet: "true", joinRuns: true },
-])(
-  "restores a selected route across migration to $outlet (join runs: $joinRuns)",
-  async ({ outlet, joinRuns }) => {
+it.each([{ outlet: "false" }, { outlet: "true" }])(
+  "classifies a parked run whose completed route a Migration rewires to $outlet as eligible",
+  async ({ outlet }) => {
     const condition = (id: string) => ({ ...createAfterWaitNode(), id });
     const oldGraph = createSerializedWorkflowGraph({
       nodes: [
@@ -185,36 +178,6 @@ it.each([
       )
     );
 
-    const store = createRecordingWorkflowStore();
-    const result = await executeTestWorkflowBranch(
-      {
-        graph: newGraph,
-        executionId: "exec",
-        workflowId: "wf",
-        workflowVersionId: "new",
-        entryNodeId: "wait",
-        side: "started",
-        releasedEdges: oldTraversal.releasedEdges,
-      },
-      createInMemoryWorkflowRuntime(),
-      {
-        ...store,
-        readNodeOutputs: () =>
-          Effect.succeed({
-            life: {},
-            condition_1: { condition: true },
-            condition_2: { condition: true },
-          }),
-      },
-      noWorkflowActions
-    );
-
     expect(classification[0]?.kind).toBe("eligible");
-    expect(result.results.condition_1).toBeUndefined();
-    expect(result.results.branch?.success).toBe(true);
-    expect(result.results.wait?.success).toBe(true);
-    expect(result.results.join).toEqual(
-      joinRuns ? expect.objectContaining({ success: true }) : undefined
-    );
   }
 );

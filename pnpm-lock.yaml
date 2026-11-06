@@ -425,9 +425,6 @@ importers:
       '@fastify/middie':
         specifier: ^9.3.6
         version: 9.3.6
-      '@inngest/test':
-        specifier: ^1.0.0
-        version: 1.0.0(inngest@4.26.1(@opentelemetry/core@3.0.0(@opentelemetry/api@1.9.1))(express@5.3.0(supports-color@10.2.2))(fastify@5.12.7)(hono@4.13.14)(react@19.3.1)(supports-color@10.2.2)(typescript@7.0.2)(zod@4.6.7))
       '@modelcontextprotocol/client':
         specifier: 2.4.0
         version: 2.4.0
@@ -1325,11 +1322,6 @@ packages:
 
   '@inngest/ai@0.1.8':
     resolution: {integrity: sha512-DiZ6r3R5FiS0h2p4pzoUIHdjukEDZpDXuG9Z+4s1beOcUn0pBAEovBdlokFCzMLVECXfrkqWWxZEQvgiY6a2ew==}
-
-  '@inngest/test@1.0.0':
-    resolution: {integrity: sha512-T3K6w0o/AHk34zzYhh1lC183ziQUCTEmY+G7ZOFwR5q4vXkbmZpXzbRecuG+Om/mixJnJCjZbt43e6OMR3QAnQ==}
-    peerDependencies:
-      inngest: ^4.0.0
 
   '@isaacs/cliui@8.0.2':
     resolution: {integrity: sha512-O8jcjabXaleOG9DQ0+ARXWZBTfnP4WNAqzuiJK7ll44AmxGKv/J2M4TPjxjY3znBCfvBXFzucm1twdyFybFqEA==}
@@ -6663,10 +6655,6 @@ packages:
     resolution: {integrity: sha512-jBrmx4lYmaC9k/mgPbylxs7kBUxHtD8256up+HjLaDFfXScKJQyil+SWXSvhAtT7XHo+yTVlpB81PGmHP8oLSQ==}
     engines: {node: ^20.0.0 || >=22.0.0}
 
-  tinyspy@3.0.2:
-    resolution: {integrity: sha512-n1cw8k1k0x4pgA2+9XrOkFydTerNcJ1zWCO5Nn9scWHTD+5tp8dghT2x1uduQePZTZgd3Tupf+x9BxJjeJi77Q==}
-    engines: {node: '>=14.0.0'}
-
   to-regex-range@5.0.1:
     resolution: {integrity: sha512-65P7iz6X5yEr1cwcgvQxbbIw7Uk3gOy5dIdtZ4rDveLqhrdJP+Li/Hx6tyK0NEb+2GCyneCMJiGqrADCSNk8sQ==}
     engines: {node: '>=8.0'}
@@ -7986,12 +7974,6 @@ snapshots:
   '@humanwhocodes/retry@0.4.3': {}
 
   '@inngest/ai@0.1.8': {}
-
-  '@inngest/test@1.0.0(inngest@4.26.1(@opentelemetry/core@3.0.0(@opentelemetry/api@1.9.1))(express@5.3.0(supports-color@10.2.2))(fastify@5.12.7)(hono@4.13.14)(react@19.3.1)(supports-color@10.2.2)(typescript@7.0.2)(zod@4.6.7))':
-    dependencies:
-      inngest: 4.26.1(@opentelemetry/core@3.0.0(@opentelemetry/api@1.9.1))(express@5.3.0(supports-color@10.2.2))(fastify@5.12.7)(hono@4.13.14)(react@19.3.1)(supports-color@10.2.2)(typescript@7.0.2)(zod@4.6.7)
-      tinyspy: 3.0.2
-      ulid: 2.4.0
 
   '@isaacs/cliui@8.0.2':
     dependencies:
@@ -13378,8 +13360,6 @@ snapshots:
       picomatch: 4.0.7
 
   tinypool@2.2.0: {}
-
-  tinyspy@3.0.2: {}
 
   to-regex-range@5.0.1:
     dependencies:

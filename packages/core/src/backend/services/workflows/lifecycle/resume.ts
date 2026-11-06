@@ -30,9 +30,7 @@ export const resumeWaitByToken = Effect.fn("resumeWaitByToken")(
       payload: input.body,
     });
 
-    // `raced` is a run that resumed on this call's signal and had its claim
-    // settled by another writer, so the caller gets the success it earned. Only
-    // a wake that claimed nothing is a wait the caller cannot reach.
+    // A wake that claimed nothing is a wait the caller cannot reach.
     if (result.status === "unclaimed") {
       const logger = yield* resumeLogger;
       yield* logger.warn("Wait not found or no longer active");

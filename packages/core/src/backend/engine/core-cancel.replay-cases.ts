@@ -1,7 +1,7 @@
 /**
- * The Canceled-outlet fixtures, and the cases the cancel suite runs under each
- * executor: a Cancel claim that lands after the last boundary read, and a
- * Canceled-side Wait, which a branch run or the one run walks.
+ * The Canceled-outlet fixtures, and the cases the cancel suite runs under the
+ * replay driver: a Cancel claim that lands after the last boundary read, and a
+ * Canceled-side Wait the run parks on.
  */
 
 import { Effect, Schema } from "effect";
@@ -14,10 +14,7 @@ import { unknownRest } from "@wfgraph/shared/types/schema";
 import { defineAction } from "#src/backend/extensions/define-action";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
-import {
-  executeTestWorkflow as executeWorkflow,
-  executeTestWorkflowBranch as executeWorkflowBranch,
-} from "#src/backend/engine/test-execution";
+import { executeTestWorkflow as executeWorkflow } from "#src/backend/engine/test-execution";
 import {
   createRecordingWorkflowStore,
   type RecordingWorkflowStore,
@@ -26,9 +23,7 @@ import type { WaitWake } from "#src/backend/engine/runtime";
 import type { PendingCancel, WorkflowStore } from "#src/backend/engine/store";
 import {
   driveWithReplay,
-  perExecutor,
   type ReplayExecutor,
-  withBranchRuns,
 } from "#src/backend/engine/testing/replay-runtime";
 
 const PRODUCER_ACTION_ID = "test/cancel-producer";
@@ -247,10 +242,7 @@ export function rowsOpenedFor(store: RecordingWorkflowStore, nodeId: string) {
     .length;
 }
 
-/**
- * The Canceled outlet, opening with one Wait and one Recorder behind it, which
- * a branch run or the one run walks.
- */
+/** The Canceled outlet, opening with one Wait and one Recorder behind it. */
 function createCanceledWaitGraph(waitConfig: Record<string, unknown>) {
   return createSerializedWorkflowGraph({
     nodes: [
@@ -432,11 +424,9 @@ export function defineCancelReplayCases(executor: ReplayExecutor): void {
   });
 
   /**
-   * Drives a graph whose Canceled outlet opens with a Wait. Under the Inngest
-   * executor the root run takes the outlet and hands the Wait to a branch run,
-   * and both write to the one store, which is how the branch reads the outputs
-   * above it. Under the database executor the run that took the outlet parks
-   * on the Wait where it stands and runs again once the park resolves.
+   * Drives a graph whose Canceled outlet opens with a Wait. The run that took
+   * the outlet parks on the Wait where it stands and runs again once the park
+   * resolves.
    */
   function driveCanceledWait(
     waitConfig: Record<string, unknown>,
@@ -450,45 +440,22 @@ export function defineCancelReplayCases(executor: ReplayExecutor): void {
 
     return driveWithReplay(
       (runtime) => executeWorkflow(input, runtime, claiming, actions),
-      {
-        events,
-        executor: withBranchRuns(executor, (runtime, branchInput) =>
-          executeWorkflowBranch(
-            { ...input, ...branchInput },
-            runtime,
-            claiming,
-            actions
-          )
-        ),
-      }
+      { events, executor }
     );
   }
 
-  // A branch run routes no cancellation, so it takes the claim on from the
-  // execution row before it walks anything. The one run already holds the
-  // claim. Either way the node below the Wait addresses the canceling payload
-  // as the entry node's output.
+  // The run already holds the claim, so the node below the Wait addresses the
+  // canceling payload as the entry node's output.
   it("parks a Canceled-side Wait and reads the canceling payload below it", async () => {
     const run = await driveCanceledWait({
       waitMode: "delay",
       waitDuration: "1h",
     });
 
-    // The root run and the branch run the Wait was handed to, or the one run.
-    expect(run.runs).toBe(perExecutor(executor, { inngest: 2, database: 1 }));
     expect(store.callsOf("createWaitState")[0]?.side).toBe("canceled");
     expect(store.callsOf("markExecutionRunning")[0]?.side).toBe("canceled");
-    // A branch run reads the claim in a durable step of its own, under its own
-    // run. The one run reads no claim it already holds.
-    expect(
-      run.executed.find((step) => step.stepId === "branch-claim-grace_1")?.run
-    ).toBe(
-      perExecutor(executor, { inngest: "branch-grace_1", database: undefined })
-    );
     // The entry node's output on this side is the payload the Cancel Event
-    // carried. The outputs a branch run inherits hold the Start Event's
-    // instead, because that is what the entry node's row recorded before the
-    // claim.
+    // carried.
     expect(recorded.Cleanup).toMatchObject({ reason: "customer left" });
     expect(run.value.status).toBe("canceled");
     expect(store.callsOf("completeRun").map((call) => call.status)).toEqual([
@@ -521,6 +488,5 @@ export function defineCancelReplayCases(executor: ReplayExecutor): void {
     expect(recorded.Cleanup).toMatchObject({ invoiceId: "inv_1" });
     expect(run.value.status).toBe("canceled");
     expect(cancelledAudits(store)).toHaveLength(1);
-    expect(run.runs).toBe(perExecutor(executor, { inngest: 2, database: 1 }));
   });
 }

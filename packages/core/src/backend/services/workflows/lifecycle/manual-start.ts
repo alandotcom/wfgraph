@@ -147,9 +147,8 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
     body: {
       /**
        * The manual-run payload. It stands in for an Event payload, follows the
-       * same path onto the Inngest event and into the JSONB
-       * `workflow_executions.input` column, and so carries the same JSON-only
-       * contract.
+       * same path into the JSONB `workflow_executions.input` column, and so
+       * carries the same JSON-only contract.
        */
       input?: JsonObject | undefined;
       /**
@@ -455,8 +454,8 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
       outcome: response.status,
     })
   ),
-  // A rejected query and a refused Inngest send both leave the caller with the
-  // same nothing, and the operator with the same line to grep for.
+  // A rejected query and a refused enqueue both leave the caller with the same
+  // nothing, and the operator with the same line to grep for.
   (effect, workflowId) =>
     effect.pipe(
       catchSeamFailures(

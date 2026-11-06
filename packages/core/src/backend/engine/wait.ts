@@ -1,7 +1,7 @@
 /**
  * The Wait node: the one action the engine runs itself and never wraps in a
- * step, because Inngest forbids a sleep or an event wait inside one. This module
- * memoizes its own persistence segments around those boundaries instead, and
+ * step, because a park is a durable step of its own and steps do not nest.
+ * This module memoizes its own persistence segments around the park instead, and
  * `executeWaitAction` is the whole of what the traversal calls. The loop below
  * drives both Wait modes, re-reading the mode from the config on every attempt.
  */
@@ -9,10 +9,7 @@
 import { Effect } from "effect";
 import { readWaitConfig } from "@wfgraph/shared/lifecycle/wait-subscription";
 import { claimKindAdmits } from "@wfgraph/shared/lifecycle/execution-contracts";
-import {
-  WAIT_ANCHOR_METADATA_KEY,
-  WAIT_SIGNAL_EVENT,
-} from "@wfgraph/shared/lifecycle/wait-signal";
+import { WAIT_ANCHOR_METADATA_KEY } from "@wfgraph/shared/lifecycle/wait-signal";
 import type { JsonObjectDraft } from "@wfgraph/shared/types/json";
 import { decodeIsoTimestampOrThrow } from "@wfgraph/shared/types/timestamp";
 import { closeStepLog, openStepLog } from "#src/backend/engine/step-log";
@@ -38,7 +35,6 @@ import {
   type WaitPark,
   type WaitPreparation,
   type WaitResumeWake,
-  waitSignalMatch,
   waitStepIds,
   waitStepName,
 } from "#src/backend/engine/wait-shared";
@@ -58,7 +54,7 @@ export type {
  * a parked run costs an attempt, and a run parked for a week can be migrated
  * many times, so the cap is high. What it is there for is a `version-migrate`
  * wake that keeps arriving without the target ever moving, which would
- * otherwise spin the body against Inngest forever.
+ * otherwise re-queue the run forever.
  */
 const WAIT_ATTEMPT_LIMIT = 50;
 
@@ -458,8 +454,8 @@ function prepareWaitAttempt<Prepared>(
           waitStateId,
           anchorAtIso,
         };
-        // The row is visible before Inngest registers the listener. A wake that
-        // already claimed it is durable input, even if its signal was missed.
+        // A producer can resolve the row between its write and this park. A
+        // wake already on the row is durable input for this attempt.
         const missed = yield* readMissedWake(branch, waitStateId);
         if (missed !== null) {
           return {
@@ -522,12 +518,10 @@ function prepareWaitAttempt<Prepared>(
         }
 
         // With no claim, the refusal is a Migration that landed inside this
-        // step or a policy cancel that ended the run. Failing the step covers
-        // both: Inngest retries the body, which reloads the graph from the
-        // pointer the row now names, and a run Inngest is already killing never
-        // reaches that retry. Under the database executor a run's terminal
-        // write deletes the schedule row this write is fenced on, so a pass
-        // reaches this refusal only for a Migration.
+        // step. A run's terminal write deletes the schedule row this write is
+        // fenced on, so a policy cancel ends the pass before it reaches here.
+        // The pass ends, and the next one reloads the graph from the pointer
+        // the row now names.
         return yield* Effect.fail(
           versionRefused(
             `This run would not accept a park under workflow version ${branch.workflowVersionId}: it has ended, or it has been moved to another version.`
@@ -597,9 +591,9 @@ function prepareWaitAttempt<Prepared>(
 /**
  * The failure a Wait raises when a version fence refused one of its writes,
  * because a Migration moved the run off the Workflow Version this body loaded.
- * Inngest retries the step, and the retried body reloads the graph from the
- * version the row now names. The database executor ends the pass and re-queues
- * the run without counting an attempt, since nothing failed.
+ * The executor ends the pass and re-queues the run without counting an
+ * attempt, since nothing failed, and the next pass reloads the graph from the
+ * version the row now names.
  */
 function versionRefused(message: string): EngineFailure {
   return engineFailure("version_refused", message);
@@ -660,12 +654,10 @@ function markRunningUnderLoadedVersion(
  * fence, the wait row, and the run's one timeline entry for this wake. It
  * answers the wake the resume acts on.
  *
- * Only this engine invocation knows it consumed the wake, so it owns the
- * Execution's running status, that entry, and the row it woke from, whichever
- * producer sent the signal. A producer settles its own claim as well, and
- * whichever write lands first wins; what matters is that a row the run has
- * consumed holds no claim, so no later wake can reclaim it at any lease age and
- * signal a park this node has left.
+ * Only this pass knows it consumed the wake, so it owns the Execution's
+ * running status, that entry, and the row it woke from, whichever producer
+ * wrote the wake. A row the run has consumed leaves `resuming`, so no later
+ * wake can claim a park this node has left.
  *
  * A claim wake (a Cancel or an Exit) skips the version fence, because the
  * running write refuses a claimed run. A claimed run cannot be migrated either,
@@ -673,13 +665,13 @@ function markRunningUnderLoadedVersion(
  * this body loaded is still the pinned one.
  *
  * Any other wake can arrive after a claim: a resume producer can take the row
- * before a claim and have its signal reach the park first. When the fence
+ * before a claim and the pass can read that wake first. When the fence
  * refuses such a wake, the run's claim is read, and a Cancel or Exit claim
  * replaces the wake, so the Wait halts as that claim wake would. A refusal with
  * no claim is a Migration that moved the version between the wake and this
- * write, and the step fails; Inngest retries the body, which reloads the graph
- * from the new pointer and prepares the Wait again. The fence runs first, so the
- * wait row is untouched for that retry to re-park.
+ * write, and the pass ends; the next pass reloads the graph from the new
+ * pointer and prepares the Wait again. The fence runs first, so the wait row
+ * is untouched for that pass to re-park.
  */
 function openResume(
   branch: WaitBranchContext,
@@ -832,15 +824,14 @@ function failPreparation<Prepared>(
  * records none. This also covers the first preparation before registration.
  *
  * Between a Migration's repin and the next park the row can still be
- * `waiting`, so a resume can resolve it while nothing is parked on it. Under
- * the database executor the producer writes its wake into the row's `wake`
- * column, and an Event or claim wake there is answered whatever version the
- * row was parked from: the TLA+ Migration model resumes a Wait from an Event
- * taken before the re-park, under the version the run then pins. Under
- * Inngest the resume claim writes its arrival into the row's metadata instead,
- * and a failed send can release the claim back to `waiting` without erasing
- * that arrival. A cancelled row is the Cancel Event having claimed the run in
- * the same window.
+ * `waiting`, so a resume can resolve it while nothing is parked on it. The
+ * producer writes its wake into the row's `wake` column, and an Event or claim
+ * wake there is answered whatever version the row was parked from: the TLA+
+ * Migration model resumes a Wait from an Event taken before the re-park, under
+ * the version the run then pins. A resume claim also records its arrival in
+ * the row's metadata, which answers when the `wake` column holds none. A
+ * cancelled row is the Cancel Event having claimed the run in the same
+ * window.
  */
 function readMissedWake(
   branch: WaitBranchContext,
@@ -932,12 +923,9 @@ function recordWaiting(
 }
 
 /**
- * Parks on this Wait's row and answers the wake that ended the park. Inngest
- * suspends here until a signal addressed to the park arrives or the timeout
- * passes; a runtime that ends the pass at a park answers `parked` instead.
- *
- * Inngest waits on Workflow Graph's own signal envelope rather than on the
- * business Event: Workflow Graph decides which runs an arrival concerns first.
+ * Parks on this Wait's row and answers the wake that ended the park, or
+ * `parked` while the row holds no wake, which ends this branch for the pass.
+ * A producer resolves the park by writing its wake onto the row.
  */
 function parkOnSignal(
   branch: WaitBranchContext,
@@ -964,12 +952,11 @@ function parkOnSignal(
           }),
         },
         {
-          event: WAIT_SIGNAL_EVENT,
           waitStateId: input.waitStateId,
           // Resolution retains the target, not the time left when it ran.
           // Keep this step reachable on replay even after the target passes:
-          // the runtime may already hold its event. A positive minimum also
-          // avoids an empty duration at the Inngest boundary (1s precision).
+          // the row may already hold its wake. A positive minimum keeps the
+          // duration from reading as no park at all.
           timeoutMs:
             park.waitUntilIso === null
               ? park.timeoutMs
@@ -978,11 +965,6 @@ function parkOnSignal(
                     Date.now(),
                   1
                 ),
-          ifExpression: waitSignalMatch({
-            nodeId: context.nodeId,
-            resumeToken: park.resumeToken ?? undefined,
-            signalTypes: park.signalTypes,
-          }),
         }
       )
     )

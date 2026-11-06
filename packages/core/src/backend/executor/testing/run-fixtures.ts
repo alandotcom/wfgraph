@@ -177,8 +177,9 @@ export function startScheduledRun(input: {
 
 /**
  * Writes a Cancel Event the way its producer does: the Cancel claim on every
- * in-flight run of the entity, then a `cancel` wake on each of their parks
- * still waiting, which re-queues each run. Answers the claimed Execution ids.
+ * in-flight run of the entity, with a `cancel` wake on each of their parks
+ * still waiting and each run re-queued, in one transaction. Answers the
+ * claimed Execution ids.
  */
 export function cancelEntity(input: {
   workflowId: string;
@@ -187,24 +188,14 @@ export function cancelEntity(input: {
 }): Effect.Effect<string[], DatabaseError, ExecutionRepo> {
   return Effect.gen(function* () {
     const executions = yield* ExecutionRepo;
-    const claimed = yield* executions.requestCancelForEntity({
+    const claims = yield* executions.requestCancelForEntity({
       workflowId: input.workflowId,
       runMode: "live",
       entityValue: input.entityValue,
       eventName: CANCEL_EVENT,
       payload: {},
+      now: input.now,
     });
-    for (const executionId of claimed) {
-      const waits = yield* executions.listActiveWaitStates(executionId);
-      for (const wait of waits) {
-        yield* executions.resolvePark({
-          executionId,
-          waitStateId: wait.id,
-          wake: { kind: "cancel" },
-          now: input.now,
-        });
-      }
-    }
-    return claimed;
+    return claims.map((claim) => claim.executionId);
   });
 }

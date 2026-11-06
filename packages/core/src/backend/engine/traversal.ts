@@ -3,7 +3,7 @@
  * behind, and how far round the graph the run has got.
  *
  * Holding it in one value is what lets `markReadyForDownstream` state the rule a
- * scheduler has to follow. The scheduler itself is in `core.ts`.
+ * scheduler has to follow. The scheduler itself is in `scheduler.ts`.
  *
  * A node with one predecessor runs as soon as that node releases it. A node
  * with several is an AND-join: `isReadyToRun` is true only once every
@@ -12,7 +12,6 @@
  * branches, Started↔Canceled).
  */
 
-import { omit } from "es-toolkit/object";
 import { Effect } from "effect";
 import { normalizeConditionBranch } from "@wfgraph/shared/conditions/condition-branch";
 import { isLifecycleNode } from "@wfgraph/shared/graph/node-config";
@@ -22,16 +21,12 @@ import type {
   WorkflowNode,
 } from "@wfgraph/shared/graph/types";
 import { eventSplitOutletEvent } from "@wfgraph/shared/lifecycle/event-split";
-import type { JsonValue } from "@wfgraph/shared/types/json";
 import type { LifecycleOutlet } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
-import type { BranchRunResult } from "#src/backend/engine/branch";
 import {
   type ExecutionResult,
   executionData,
   executionFailure,
   type NodeOutputs,
-  type ReleasedEdge,
-  wrapStoredOutput,
 } from "#src/backend/engine/contracts";
 import type { EngineFailure } from "#src/backend/engine/engine-failure";
 
@@ -69,7 +64,11 @@ export type TraversalRoute =
   | { kind: "outlet"; outlet: LifecycleOutlet }
   | { kind: "event"; eventName: string | null };
 
-function releasedEdgeKey(edge: WorkflowEdge | ReleasedEdge): string {
+/**
+ * Identifies an edge by its endpoints and source outlet, so a released edge is
+ * still found when a Migration recreates it under another id.
+ */
+function releasedEdgeKey(edge: WorkflowEdge): string {
   return JSON.stringify([edge.source, edge.target, edge.sourceHandle ?? null]);
 }
 
@@ -82,10 +81,9 @@ export class Traversal {
   private readonly edgesBySource = new Map<string, WorkflowEdge[]>();
   private readonly edgesByTarget = new Map<string, WorkflowEdge[]>();
   private readonly completedNodes = new Set<string>();
-  private readonly inheritedOutputKeys = new Set<string>();
   private readonly inProgressNodes = new Set<string>();
   private readonly parkedNodes = new Set<string>();
-  private readonly downstreamReadyEdges = new Map<string, ReleasedEdge>();
+  private readonly downstreamReadyEdges = new Set<string>();
 
   constructor(nodes: readonly WorkflowNode[], edges: readonly WorkflowEdge[]) {
     this.nodes = nodes;
@@ -105,8 +103,7 @@ export class Traversal {
   /**
    * Every finished node's output, which templates and CEL conditions read.
    *
-   * Read-only to everyone outside, so `setOutput`, `setOwnOutput`, and
-   * `markCompleted` stay the only way a node's output is written and the run's
+   * Read-only to everyone outside, so `setOutput` and `markCompleted` stay the only way a node's output is written and the run's
    * state has one author.
    */
   get outputs(): Readonly<NodeOutputs> {
@@ -219,21 +216,10 @@ export class Traversal {
    */
   markReadyForDownstream(nodeId: string, route: TraversalRoute): string[] {
     const edges = this.nextEdges(nodeId, route);
-    this.releaseEdges(
-      edges.map(({ source, target, sourceHandle }) => ({
-        source,
-        target,
-        sourceHandle: sourceHandle ?? null,
-      }))
-    );
-    return edges.map((edge) => edge.target);
-  }
-
-  /** Restores the parent's selected edges without selecting any new outlet. */
-  releaseEdges(edges: readonly ReleasedEdge[]): void {
     for (const edge of edges) {
-      this.downstreamReadyEdges.set(releasedEdgeKey(edge), { ...edge });
+      this.downstreamReadyEdges.add(releasedEdgeKey(edge));
     }
+    return edges.map((edge) => edge.target);
   }
 
   /**
@@ -279,19 +265,6 @@ export class Traversal {
   }
 
   /**
-   * Writes a node's output as this run's own, even when the node was inherited.
-   *
-   * A branch run inherits the entry node's Start Event payload, then an
-   * event-mode Wait overwrites it with the Event that woke the Wait. Without
-   * taking ownership, `ownOutputs` would omit the write and the parent run
-   * would keep the payload it already has.
-   */
-  setOwnOutput(nodeId: string, output: NodeOutputs[string]) {
-    writeNodeValue(this.nodeOutputs, nodeId, output);
-    this.inheritedOutputKeys.delete(outputKey(nodeId));
-  }
-
-  /**
    * The entry nodes of this graph, whose output is the Arriving Event payload.
    */
   get lifecycleNodes(): readonly WorkflowNode[] {
@@ -299,73 +272,6 @@ export class Traversal {
       (node) =>
         isLifecycleNode(node) && this.predecessorIds(node.id).length === 0
     );
-  }
-
-  /**
-   * Records a node this run inherited rather than ran, which is how a branch run
-   * sees the graph above the node it starts at.
-   *
-   * The node is closed, so this run never walks it again, and its output is
-   * readable by the templates behind it. Two things it does not get. No result:
-   * what this run answers for is what it did itself. And no release, which is
-   * carried separately, because a node that halted its branch has an output and
-   * released nothing, and the two cannot be told apart from a stored row.
-   */
-  inheritCompleted(nodeId: string, output: NodeOutputs[string]) {
-    const key = outputKey(nodeId);
-    writeNodeValue(this.nodeOutputs, nodeId, output);
-    this.inheritedOutputKeys.add(key);
-    this.completedNodes.add(nodeId);
-  }
-
-  /** Inherits stored work without replacing this branch's own completed outputs. */
-  inheritStoredOutputs(
-    outputs: Record<string, JsonValue>,
-    entryNodeId: string
-  ) {
-    for (const [nodeId, data] of Object.entries(outputs)) {
-      const node = this.nodeMap.get(nodeId);
-      if (
-        !node ||
-        nodeId === entryNodeId ||
-        this.isCompleted(nodeId) ||
-        Object.hasOwn(this.nodeOutputs, nodeId)
-      ) {
-        continue;
-      }
-      this.inheritCompleted(nodeId, {
-        label: node.data.label || nodeId,
-        data: wrapStoredOutput(data),
-      });
-    }
-  }
-
-  /** Selected endpoints and outlets, stable when a migration recreates an edge ID. */
-  get releasedEdges(): ReleasedEdge[] {
-    return [...this.downstreamReadyEdges.values()].map((edge) => ({ ...edge }));
-  }
-
-  /**
-   * The outputs this run produced, which is what it hands back to the run that
-   * started it. What it inherited is left out: that run has those already, and
-   * an HTTP Request step's response body sent back up is the cost the store read
-   * exists to avoid.
-   */
-  get ownOutputs(): NodeOutputs {
-    return omit(this.nodeOutputs, [...this.inheritedOutputKeys]);
-  }
-
-  /**
-   * Takes on what a branch run did, so the run that handed the branch off
-   * answers for those nodes as if it had walked them.
-   */
-  absorbBranch(branch: BranchRunResult) {
-    for (const [nodeId, result] of Object.entries(branch.results)) {
-      writeNodeValue(this.nodeResults, nodeId, result);
-    }
-    for (const [nodeId, output] of Object.entries(branch.outputs)) {
-      writeNodeValue(this.nodeOutputs, nodeId, output);
-    }
   }
 
   get resultCount(): number {

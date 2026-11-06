@@ -572,7 +572,7 @@ describe("run persistence through the store port", () => {
   });
 
   // The opposite half of the same policy: nothing has happened when the row is
-  // opened, so a refused write there fails the node and Inngest's retry of it
+  // opened, so a refused write there fails the node and the executor's retry of it
   // costs one wasted call.
   it("fails a node when the write opening its row fails", async () => {
     const result = await executeWorkflow(

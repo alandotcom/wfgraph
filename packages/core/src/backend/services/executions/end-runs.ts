@@ -2,22 +2,23 @@
  * Ending a run from outside it, which happens two ways and in two orders.
  *
  * A cancel decides and then acts: the row flips behind a compare-and-set, then
- * the signal goes out, and a run that finished or claimed termination first keeps
- * its own outcome. A supersede has already been decided --
- * `ExecutionRepo.startForEntity` flips those
- * rows inside the lock that made room for the newer start -- so all that is left
- * is telling the runs to stop and saying why on their timelines.
+ * the executor is told to stop the run, and a run that finished or claimed
+ * termination first keeps its own outcome. A supersede has already been
+ * decided -- `ExecutionRepo.startForEntity` flips those rows inside the lock
+ * that made room for the newer start -- so all that is left is stopping the
+ * runs and saying why on their timelines.
  *
- * Either way a run can outlive the attempt: a signal that does not land leaves it
- * live against a terminal row, and both halves below report the ids that happened
- * to.
+ * The terminal write itself cancels the run's open wait rows and deletes its
+ * schedule row, so a pass holding the run has its next fenced write refused.
+ * `stopRun` covers a schedule row the terminal write did not see. A stop the
+ * database refuses is reported in the ids each half below returns.
  */
 
 import { Effect } from "effect";
 import { groupBy, uniq } from "es-toolkit/array";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
-import { InngestClient } from "#src/backend/lib/effect/inngest-client";
+import { ExecutionDriver } from "#src/backend/services/executions/driver";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 
 /** This module's logger, as the Effect that produces it (see `list.ts`). */
@@ -44,7 +45,10 @@ export type CancelInFlightRunsInput = {
 export type EndedRunsSummary = {
   /** The runs this call ended, which are the runs an event no longer reaches. */
   endedExecutionIds: string[];
-  /** The runs no signal reached, which may still be live against a dead row. */
+  /**
+   * The runs this call could not end, or ended without stopping or recording,
+   * which an operator reads on each run's timeline.
+   */
   failedExecutionIds: string[];
   /**
    * The runs an earlier Cancel or Exit claim already owns. Each is still in
@@ -58,8 +62,8 @@ export type EndedRunsSummary = {
 /**
  * How ending one run went. A run can reach its terminal write, lose to a
  * terminal result, remain owned by an earlier termination claim, or be left
- * unreachable by a signal or write failure. The union prevents contradictory
- * outcome combinations.
+ * unreachable by a refused write. The union prevents contradictory outcome
+ * combinations.
  */
 type RunEndOutcome =
   | { kind: "ended"; executionId: string }
@@ -75,12 +79,13 @@ function runEndOutcome(
 }
 
 /**
- * Sends one run's cancel signal, and says on its timeline when the send failed.
+ * Stops a run whose terminal record is already written, and says on its
+ * timeline when the stop was refused.
  *
- * Each workflow function's `cancelOn` stops the run between steps and interrupts
- * sleeps and waits; a step already executing runs to completion, which is why
- * every completion write carries its own terminal-status guard. The signal for a
- * run that has already finished is a no-op at Inngest.
+ * A pass already running a step finishes that step, which is why every write
+ * a pass makes is fenced on its lease and every completion write carries its
+ * own terminal-status guard. Stopping a run with no schedule row changes
+ * nothing.
  */
 export const signalRunToStop = Effect.fn("signalRunToStop")(function* (input: {
   workflowId: string;
@@ -88,40 +93,32 @@ export const signalRunToStop = Effect.fn("signalRunToStop")(function* (input: {
   reason: string;
   eventName?: string | undefined;
 }) {
-  const inngest = yield* InngestClient;
+  const driver = yield* ExecutionDriver;
   const logger = yield* loggerFor;
 
-  return yield* inngest
-    .sendCancelRequested({
-      executionId: input.executionId,
-      workflowId: input.workflowId,
-      reason: input.reason,
-      requestedBy: input.workflowId,
-      eventType: input.eventName,
-    })
-    .pipe(
-      Effect.as(true),
-      Effect.catch((error) =>
-        Effect.gen(function* () {
-          yield* logger.error("Failed to send cancel signal for execution", {
-            workflowId: input.workflowId,
-            executionId: input.executionId,
-            eventName: input.eventName,
-            error,
-          });
+  return yield* driver.stopRun({ executionId: input.executionId }).pipe(
+    Effect.as(true),
+    Effect.catch((error) =>
+      Effect.gen(function* () {
+        yield* logger.error("Failed to stop an ended execution", {
+          workflowId: input.workflowId,
+          executionId: input.executionId,
+          eventName: input.eventName,
+          error,
+        });
 
-          yield* recordEndingFailure({
-            workflowId: input.workflowId,
-            executionId: input.executionId,
-            message: `${input.reason}: the cancel signal failed to send, so the run may still be live`,
-            eventName: input.eventName,
-            outcome: "send_failed",
-          });
+        yield* recordEndingFailure({
+          workflowId: input.workflowId,
+          executionId: input.executionId,
+          message: `${input.reason}: the run could not be stopped, so a step already running may still finish`,
+          eventName: input.eventName,
+          outcome: "stop_failed",
+        });
 
-          return false;
-        })
-      )
-    );
+        return false;
+      })
+    )
+  );
 });
 
 /**
@@ -137,7 +134,7 @@ const recordEndingFailure = Effect.fn("recordEndingFailure")(function* (input: {
   executionId: string;
   message: string;
   eventName?: string | undefined;
-  outcome: "send_failed" | "write_failed";
+  outcome: "stop_failed" | "write_failed";
 }) {
   const repo = yield* ExecutionRepo;
   const logger = yield* loggerFor;
@@ -197,8 +194,8 @@ const recordRunEnded = Effect.fn("recordRunEnded")(function* (input: {
 
 /**
  * Cancels every in-flight execution named: claim the terminal row behind a
- * compare-and-set, then signal the run this call ended. A repeated request also
- * repairs a canceled row whose earlier signal or audit failed.
+ * compare-and-set, then stop the run this call ended. A repeated request also
+ * repairs a canceled row whose earlier stop or audit failed.
  *
  * An execution that completed between the caller's candidate query and this write
  * loses nothing: the CAS fails, the row keeps its terminal status, no audit event
@@ -206,8 +203,8 @@ const recordRunEnded = Effect.fn("recordRunEnded")(function* (input: {
  * because a prior partly-failed attempt can leave a terminal execution with a
  * still-waiting row and this is the path that heals it (`cancelWaits` guards on
  * `waiting`, so a legitimately resumed wait is untouched). An in-flight Cancel
- * or Exit claim remains owned by its durable run; this call neither signals that
- * run nor cleans its waits.
+ * or Exit claim remains owned by its run, which ends itself; this call neither
+ * stops that run nor cleans its waits.
  *
  * Every failure is contained per execution, so one of them never discards the
  * summary or skips the cleanup for the executions that did end.
@@ -235,7 +232,7 @@ export const cancelInFlightRuns = Effect.fn("cancelInFlightRuns")(function* (
 
   // A run this call ended and a run that reached a terminal status first are
   // both over, so both have their wait rows cleaned. The two that are not are a
-  // run the signal never reached and a run another claim still owns.
+  // run whose ending was refused and a run another claim still owns.
   yield* repo.cancelWaits(
     waitStateIdsFor(input.waitStates, [
       ...executionIdsOf("ended"),
@@ -278,7 +275,7 @@ const endOneRun = Effect.fn("endOneRun")(function* (input: {
           yield* recordEndingFailure({
             workflowId,
             executionId,
-            message: `${input.reason}: the status could not be written, so no cancel signal was sent`,
+            message: `${input.reason}: the status could not be written, so the run was not stopped`,
             eventName: input.eventName,
             outcome: "write_failed",
           });
@@ -318,13 +315,13 @@ const endOneRun = Effect.fn("endOneRun")(function* (input: {
     }
   }
 
-  const signalled = yield* signalRunToStop({
+  const stopped = yield* signalRunToStop({
     workflowId,
     executionId,
     reason: input.reason,
     eventName: input.eventName,
   });
-  if (!signalled) {
+  if (!stopped) {
     return runEndOutcome("unreachable", executionId);
   }
 
@@ -339,7 +336,7 @@ const endOneRun = Effect.fn("endOneRun")(function* (input: {
 });
 
 /**
- * Tells runs whose rows a serialized start already flipped to stop, and records what
+ * Stops runs whose rows a serialized start already flipped, and records what
  * ended them.
  *
  * Those rows and their wait rows were both written inside the lock that made room
@@ -357,7 +354,7 @@ const announceEndedRuns = Effect.fn("announceEndedRuns")(function* (input: {
     uniq(input.executionIds),
     (executionId) =>
       Effect.gen(function* () {
-        const signalled = yield* signalRunToStop({
+        const stopped = yield* signalRunToStop({
           workflowId: input.workflowId,
           executionId,
           reason: input.reason,
@@ -371,7 +368,7 @@ const announceEndedRuns = Effect.fn("announceEndedRuns")(function* (input: {
           eventName: input.eventName,
         });
 
-        return { executionId, failed: !(signalled && recorded) };
+        return { executionId, failed: !(stopped && recorded) };
       }),
     { concurrency: "unbounded" }
   );
@@ -392,12 +389,12 @@ export const announceSupersededRuns = (input: {
 }) => announceEndedRuns({ ...input, eventType: "run_superseded" });
 
 /**
- * Announces the runs a start found stuck between their row and the bus.
+ * Announces the runs a start found stuck between their row and the executor.
  *
- * The signal is what makes the row's `failed` status honest: the stamp those rows
- * are missing can also go missing on a run Inngest really did take, so a run that
- * turns out to be live is stopped rather than left executing against a row that
- * says it failed.
+ * The stop is what makes the row's `failed` status honest: the stamp those rows
+ * are missing can also go missing on a run the executor really did take, so a
+ * run that turns out to be live is stopped rather than left executing against a
+ * row that says it failed.
  */
 export const announceReclaimedRuns = (input: {
   workflowId: string;

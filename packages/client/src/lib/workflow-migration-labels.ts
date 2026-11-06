@@ -7,7 +7,6 @@
  * runs were asked to move to.
  */
 
-import { compact } from "es-toolkit/array";
 import type { WorkflowMigrationOutcome } from "@wfgraph/shared/graph/migration-contracts";
 
 /** One refused run, as the preview or a migrate outcome reports it. */
@@ -61,12 +60,6 @@ export type MigrationOutcomeCounts = {
   /** The runs whose version pointer moved to the target version. */
   migrated: number;
   /**
-   * The runs inside `migrated` whose wake signal was refused. They are pinned
-   * to the target version and wake under it at the target their park already
-   * holds.
-   */
-  unsignaled: number;
-  /**
    * The runs that stayed where they were: the refused runs, the runs whose
    * writes failed, and the runs already on the target version.
    */
@@ -79,14 +72,8 @@ export function migrationOutcomeToast(counts: MigrationOutcomeCounts): {
   description?: string;
 } {
   const title = `Migrated ${runCountLabel(counts.migrated)}`;
-  const lines = compact([
-    counts.notMoved > 0
-      ? `${runCountLabel(counts.notMoved)} did not move.`
-      : undefined,
-    counts.unsignaled > 0
-      ? `${runCountLabel(counts.unsignaled)} moved but ${counts.unsignaled === 1 ? "was" : "were"} not woken, and will pick up the new version at the next wake.`
-      : undefined,
-  ]);
 
-  return lines.length > 0 ? { title, description: lines.join(" ") } : { title };
+  return counts.notMoved > 0
+    ? { title, description: `${runCountLabel(counts.notMoved)} did not move.` }
+    : { title };
 }

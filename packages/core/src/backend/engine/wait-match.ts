@@ -6,8 +6,8 @@
  * not arrived yet, compared against a value this run already holds. Only the run
  * side can be resolved while the run is here, so it is resolved at park time and
  * the comparison is compiled to a CEL string with literals in it. What the row
- * stores is JSON, which is what lets it cross the JSONB column and Inngest's
- * memoization and still mean the same thing when the Event finally arrives.
+ * stores is JSON, which is what lets it cross the JSONB column and the step
+ * memo and still mean the same thing when the Event finally arrives.
  */
 
 import { Schema } from "effect";

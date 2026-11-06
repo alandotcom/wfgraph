@@ -3,8 +3,7 @@
  *
  * One `NodeScheduler` is built per run and holds that run's ports and identity,
  * which is what every node is executed against. Node work is a strategy table
- * (`strategies/`); this class owns deferral, drain, branch hand-off, and
- * cancel routing. What each node left behind is `Traversal`'s, and where a
+ * (`strategies/`); this class owns deferral, drain and cancel routing. What each node left behind is `Traversal`'s, and where a
  * cancellation routes the run is `CancelBoundary`'s.
  */
 
@@ -40,7 +39,6 @@ import type {
   WorkflowEntities,
 } from "#src/backend/engine/entities";
 import type { CancelBoundary } from "#src/backend/engine/cancel-boundary";
-import { restoreCompletedNodeProgress } from "#src/backend/engine/branch-progress";
 import {
   executionData,
   executionError,
@@ -59,11 +57,7 @@ import {
   type EngineFailure,
   failureFromCause,
 } from "#src/backend/engine/engine-failure";
-import {
-  fromUnknownPromise,
-  runDurable,
-  runDurableUnit,
-} from "#src/backend/engine/durable";
+import { runDurable } from "#src/backend/engine/durable";
 
 /** What the run log and the trace call a node. */
 function getNodeName(node: WorkflowNode, actions: WorkflowActions): string {
@@ -146,12 +140,6 @@ export type NodeSchedulerInput = {
         conditionId: string;
       }
     | undefined;
-  /**
-   * The Wait node this run was handed, on a run that is itself a branch. It is
-   * the one Wait this run enters in place rather than hands on again, which is
-   * what stops a branch from handing itself off forever.
-   */
-  branchEntryNodeId?: string | undefined;
 };
 
 type NodeAdmission =
@@ -218,17 +206,13 @@ export class NodeScheduler {
 
   /**
    * Wait nodes whose dependencies are met, held back until every other branch
-   * has run as far as it can. A durable runtime suspends the run rather than the
-   * branch: Inngest parks the whole function invocation on a sleep and drives no
-   * other branch forward until the timer fires, so a Wait entered early makes
-   * every sibling wait with it.
+   * has run as far as it can. A Wait entered after the fan-out settles parks
+   * only its own branch, and every branch that parks nothing has already run
+   * by then.
    */
   private readonly deferredWaits = new Set<string>();
 
-  /**
-   * Wait nodes the drain has dealt with, which are no longer held back. How
-   * each is then entered is `entersInPlace` below.
-   */
+  /** Wait nodes the drain has dealt with, which are no longer held back. */
   private readonly drainedWaits = new Set<string>();
 
   /**
@@ -242,22 +226,6 @@ export class NodeScheduler {
   constructor(input: NodeSchedulerInput) {
     this.input = input;
     this.arrivingEventName = input.startEventName;
-    if (input.branchEntryNodeId) {
-      this.drainedWaits.add(input.branchEntryNodeId);
-    }
-  }
-
-  /**
-   * Whether this Wait is entered here rather than handed to a run of its own.
-   *
-   * Two nodes are. The Wait a branch run was handed, which is the whole of what
-   * that run exists to enter, and every Wait at all when the runtime starts no
-   * durable runs.
-   */
-  private entersInPlace(nodeId: string): boolean {
-    return (
-      !this.input.runtime.startBranch || nodeId === this.input.branchEntryNodeId
-    );
   }
 
   /**
@@ -296,11 +264,7 @@ export class NodeScheduler {
     node: WorkflowNode,
     nodeName: string
   ): Effect.Effect<NodeAdmission, EngineFailure> {
-    if (
-      node.data.enabled === false ||
-      node.data.type !== "action" ||
-      (isWaitNode(node) && !this.entersInPlace(node.id))
-    ) {
+    if (node.data.enabled === false || node.data.type !== "action") {
       return Effect.succeed({ admitted: true });
     }
 
@@ -368,7 +332,7 @@ export class NodeScheduler {
 
         if (resolution.decision.outcome === "exit") {
           const decision = resolution.decision;
-          const claimed = yield* runDurable(
+          yield* runDurable(
             runtime,
             {
               id: `entity-exit:${node.id}`,
@@ -382,31 +346,9 @@ export class NodeScheduler {
             })
           );
 
-          // The run that wins the Exit claim wakes the Waits parked in sibling
-          // branch runs, so each halts and returns to the run that started it.
-          // A refused wake leaves those siblings parked until their own Waits
-          // end. It does not fail this node, which was never admitted.
-          const wakeParkedWaits = runtime.wakeParkedWaits;
-          if (
-            claimed?.didWrite &&
-            claimed.claim?.kind === "exit" &&
-            wakeParkedWaits
-          ) {
-            yield* runDurableUnit(
-              runtime,
-              {
-                id: `entity-exit-wake-waits:${node.id}`,
-                name: `${nodeName} (wake parked Waits)`,
-              },
-              fromUnknownPromise(wakeParkedWaits)
-            ).pipe(
-              Effect.catch((failure) =>
-                Effect.logError(
-                  "Failed to wake parked Waits after an Exit"
-                ).pipe(Effect.annotateLogs({ error: failure.message }))
-              )
-            );
-          }
+          // The claim that wins resolves every other park of the run with an
+          // `exit` wake in the same write, so a parked sibling branch halts on
+          // the next pass.
           return { admitted: false } as const;
         }
 
@@ -450,8 +392,7 @@ export class NodeScheduler {
    *
    * The entry node's output becomes that payload, matching a Cancel Event. A
    * clear writes an empty payload, so Start Event fields are not what a node
-   * below the Wait addresses. `setOwnOutput` is what lets a branch run hand
-   * the overwrite back to the run that started it.
+   * below the Wait addresses.
    */
   private applyArrival(
     arrivingEvent: { eventName: string; payload: JsonObject } | null
@@ -460,7 +401,7 @@ export class NodeScheduler {
     const payload = arrivingEvent?.payload ?? {};
     const { traversal } = this.input;
     for (const lifecycleNode of traversal.lifecycleNodes) {
-      traversal.setOwnOutput(lifecycleNode.id, {
+      traversal.setOutput(lifecycleNode.id, {
         label: lifecycleNode.data.label || lifecycleNode.id,
         data: payload,
       });
@@ -481,13 +422,7 @@ export class NodeScheduler {
         // AND-join: a node with several predecessors waits until each has
         // released it. The predecessor that finishes first schedules us early
         // and we no-op; the last one finds us ready.
-        // The parent already released this branch's entry Wait. Migration can
-        // rewire its completed predecessors, but resumes from the Wait downward.
-        // Every other node still requires its actual incoming edge releases.
-        if (
-          nodeId !== this.input.branchEntryNodeId &&
-          !traversal.isReadyToRun(nodeId)
-        ) {
+        if (!traversal.isReadyToRun(nodeId)) {
           return;
         }
 
@@ -587,8 +522,8 @@ export class NodeScheduler {
   /**
    * The node's own work: resolve a strategy and run it.
    *
-   * It schedules no downstream node. A handler's own `step.run` calls are steps,
-   * and Inngest forbids nesting one step inside another, so what the traversal
+   * It schedules no downstream node. A handler's own `step.run` calls are
+   * durable steps, and a step never runs inside another, so what the traversal
    * needs afterwards travels back in the returned outcome.
    */
   private runNodeWork(
@@ -642,134 +577,10 @@ export class NodeScheduler {
           catalogFingerprint: this.input.catalogFingerprint,
           workflowVersionId: this.input.workflowVersionId,
           side: this.sideOf(node.id),
-          entersInPlace: this.entersInPlace(node.id),
-          handOffBranch: () => this.handOffBranch(node, nodeName),
         };
 
         return yield* strategy.run(ctx);
       }.bind(this)
-    );
-  }
-
-  /**
-   * Hands one Wait node and everything behind it to a durable run of its own,
-   * and takes on what that run did.
-   *
-   * The branch was walked by the run that comes back, so nothing below this node
-   * is scheduled here and `haltBranch` is how the traversal is told. The node's
-   * own outcome is the one that run recorded for it, which is what keeps a Wait
-   * that failed reading as a failure on either side of the hand-off.
-   *
-   * Only `entersInPlace` reaches this, and it answers false for a runtime with
-   * no `startBranch`, which is why the port method is read without a check.
-   */
-  private handOffBranch(
-    node: WorkflowNode,
-    nodeName: string
-  ): Effect.Effect<NodeWorkOutcome, EngineFailure> {
-    return Effect.gen(
-      function* (this: NodeScheduler) {
-        const { traversal, runtime } = this.input;
-
-        yield* Effect.logInfo(
-          "Handing the branch below this wait to its own run"
-        );
-        const startBranch = runtime.startBranch;
-        if (!startBranch) {
-          return yield* Effect.die(
-            new Error(
-              `Node "${node.id}" was handed off to a branch run by a runtime that starts none.`
-            )
-          );
-        }
-        const handoff = yield* fromUnknownPromise(() =>
-          startBranch(
-            { id: `branch-${node.id}`, name: `${nodeName} (branch)` },
-            {
-              entryNodeId: node.id,
-              releasedEdges: traversal.releasedEdges,
-              side: this.sideOf(node.id),
-            }
-          )
-        );
-
-        if (handoff.status === "killed") {
-          // The cancellation killed the branch where it stood. Its rows are closed
-          // here, and the boundary read below this node is what routes the run.
-          // A child cannot return its partial traversal, so restore what its
-          // completed log rows say before a Canceled-side template can read it.
-          yield* this.sweepKilledBranchWork();
-          const progress = yield* runDurable(
-            runtime,
-            {
-              id: `branch-kill-progress-${node.id}`,
-              name: "Restore completed branch progress",
-            },
-            this.input.store.readCompletedNodeProgress(this.input.executionId)
-          );
-          restoreCompletedNodeProgress(traversal, progress);
-          yield* Effect.logInfo("Branch run was cancelled");
-          return {
-            status: "settled" as const,
-            result: Object.hasOwn(traversal.results, node.id)
-              ? traversal.results[node.id]
-              : {
-                  success: true as const,
-                  data: { branchCancelled: true },
-                },
-            haltBranch: true,
-          };
-        }
-
-        traversal.absorbBranch(handoff.result);
-        if (handoff.result.exit) {
-          return {
-            status: "settled" as const,
-            result: { success: true as const, data: null },
-            haltBranch: true,
-            executionExited: true,
-          };
-        }
-
-        const own = handoff.result.results[node.id] ?? {
-          success: true as const,
-          data: null,
-        };
-        // The branch run walked everything below this node, so this run schedules
-        // none of it. A Wait that failed keeps reading as a failure on both sides.
-        return {
-          status: "settled" as const,
-          result: own,
-          haltBranch: own.success,
-        };
-      }.bind(this)
-    );
-  }
-
-  /**
-   * Closes every row of this run still open, which is what a killed branch
-   * leaves behind: its node rows and its wait states.
-   *
-   * The ordering is the whole of what makes this safe, so it is stated here.
-   * It runs after the kill has been observed, when no branch run is alive to
-   * write to those rows, and before the Canceled outlet is entered, because a
-   * Canceled branch opening with a one-week Wait would otherwise leave a killed
-   * node reading Running for a week. One event kills every branch of a run at
-   * once, which is why closing all of them at the first observed kill closes
-   * nothing that is still going.
-   *
-   * Two killed branches resolving in one pass both reach this, because neither
-   * has been memoized yet. The write is idempotent, and the step id keeps a
-   * later replay from repeating it.
-   */
-  private sweepKilledBranchWork(): Effect.Effect<void, EngineFailure> {
-    const { runtime, store, executionId } = this.input;
-    return Effect.asVoid(
-      runDurableUnit(
-        runtime,
-        { id: "branch-kill-sweep", name: "Branch kill sweep" },
-        store.cancelOpenWork({ executionId })
-      )
     );
   }
 
@@ -848,8 +659,8 @@ export class NodeScheduler {
           return;
         }
 
-        // A step result crosses Inngest's memoization boundary as JSON, so this is
-        // where it becomes JSON again for the template resolver and the CEL
+        // A step result crosses the step memo as JSON, so this is where it
+        // becomes JSON again for the template resolver and the CEL
         // context to walk.
         const payload = executionData(result);
         const outputData = readJsonValue(payload);
@@ -892,21 +703,6 @@ export class NodeScheduler {
 
         if (!result.success || outcome.haltBranch) {
           return;
-        }
-
-        if (nodeId === this.input.branchEntryNodeId && isWaitNode(node)) {
-          // Capture sibling work after this Wait finishes, including when a
-          // Migration returns to a version whose initial snapshot is older.
-          // The resume snapshot is replayed before any downstream work.
-          const outputs = yield* runDurable(
-            this.input.runtime,
-            {
-              id: `branch-resumed-${nodeId}`,
-              name: "Inherit completed outputs after Wait",
-            },
-            this.input.store.readNodeOutputs(this.input.executionId)
-          );
-          traversal.inheritStoredOutputs(outputs, nodeId);
         }
 
         const route = routeAfterStrategy(
@@ -976,15 +772,11 @@ export class NodeScheduler {
 
   /**
    * Enters the Wait nodes `executeNode` held back, and keeps going until none
-   * are left. Call it once the fan-out has settled: the run is about to suspend,
-   * so anything still runnable has to have run by now.
+   * are left. Call it once the fan-out has settled, so anything still runnable
+   * has run by now.
    *
-   * This is where a branch is handed off. A runtime that starts durable runs
-   * gets one per waiting branch, which is how a short wait stops costing what a
-   * long sibling costs; a runtime that starts none enters the wait in place, and
-   * the batch is entered side by side so two sibling timers still overlap. A
-   * Wait the runtime answers as parked halts its own branch alone and the rest
-   * of the batch carries on. Each
+   * The batch is entered side by side. A Wait the runtime answers as parked
+   * halts its own branch alone, and the rest of the batch carries on. Each
    * round may reach further waits, and the loop terminates because a wait the
    * drain has dealt with never returns to the queue.
    *
@@ -993,7 +785,7 @@ export class NodeScheduler {
    * and a wait held back since before the crossing would otherwise park the run
    * on a branch it has left.
    */
-  drainDeferredWaits(): Effect.Effect<void, EngineFailure> {
+  private drainDeferredWaits(): Effect.Effect<void, EngineFailure> {
     return Effect.gen(
       function* (this: NodeScheduler) {
         const { cancelBoundary } = this.input;

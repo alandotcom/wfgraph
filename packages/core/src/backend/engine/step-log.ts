@@ -143,7 +143,7 @@ function closeStepLogQuietly(
  * happened between the two attempts, a wait included.
  *
  * The two have opposite failure policies. A refused open fails the node,
- * because nothing has happened yet and Inngest's retry of it costs one wasted
+ * because nothing has happened yet and the executor's retry of it costs one wasted
  * call. A refused close is swallowed inside its own step, because a run that
  * did its work has not failed because a row could not be closed. The price is a
  * row left open, which the Runs view shows.

@@ -1,37 +1,10 @@
-import { Hono } from "hono";
-import { createApiApp } from "#src/backend/api-app";
-import {
-  assembleExtensions,
-  type WfGraphExtensions,
-} from "#src/backend/extensions/extension-set";
-import { readEntityResolverTimeoutMs } from "#src/backend/extensions/entity-resolution";
-import {
-  assertValidEncryptionKey,
-  createIntegrationCipher,
-  type EncryptionRuntimeConfig,
-} from "#src/backend/services/integrations/cipher";
-import { resolveAuth, type WfGraphAuth } from "#src/backend/lib/http/authorize";
-import { normalizeBasePath } from "#src/backend/lib/http/mount-path";
-import {
-  createInngestSurface,
-  type InngestSurfaceDeps,
-  type WfGraphInngestConfig,
-} from "#src/backend/lib/inngest/client";
-import { buildInngestFunctions } from "#src/backend/lib/inngest/functions";
-import {
-  configureLoggingWithBridge,
-  warnWhenLoggingUnconfigured,
-} from "#src/backend/lib/log-config";
-import {
-  readAgentSettings,
-  type WfGraphAgentConfig,
-} from "#src/backend/agent/config";
-import { createWfGraphRuntime } from "#src/backend/runtime";
+import type { WfGraphExtensions } from "#src/backend/extensions/extension-set";
+import type { EncryptionRuntimeConfig } from "#src/backend/services/integrations/cipher";
+import type { WfGraphAuth } from "#src/backend/lib/http/authorize";
+import type { WfGraphInngestConfig } from "#src/backend/lib/inngest/client";
+import type { WfGraphAgentConfig } from "#src/backend/agent/config";
 import type { WfGraphPersistence } from "#src/backend/persistence/types";
 import type { WfGraphLogger } from "@wfgraph/shared/types/logger";
-import { runWithResponseClose } from "#src/backend/lib/close-in-order";
-import { resolvePublicUrl } from "#src/backend/lib/http/public-url";
-import { createWorkerWake } from "#src/backend/executor/worker-wake";
 import type { WfGraphMcpOptions } from "#src/backend/agent/mcp-server";
 
 export type { WfGraphMcpOptions } from "#src/backend/agent/mcp-server";
@@ -73,90 +46,18 @@ export type WfGraphWorker<Env> = {
   fetch: (request: Request, env: Env) => Promise<Response>;
 };
 
-const refuseConnect: InngestSurfaceDeps["connect"] = () => {
-  throw new Error("Inngest Connect is unavailable in the Worker host");
-};
+/** What `wfWorker` throws, naming why a Worker cannot run workflows yet. */
+const WORKER_RUNS_UNAVAILABLE =
+  "wfWorker cannot start: workflow runs execute on the database executor's worker loop, which needs a long-lived process, and the Cloudflare Worker backend runs it once its tick driver ships. Run Workflow Graph with createWfGraphApp on Node until then.";
 
 /**
- * Build a Cloudflare Worker fetch handler with request-scoped persistence.
- *
- * This entry serves Workflow Graph's API and Inngest callback. Static assets stay
- * with the Worker's Assets binding or the host's own router.
+ * The Cloudflare Worker host. It refuses to start, at the module evaluation
+ * that builds the handler, because a Worker invocation has no long-lived
+ * process to run the database executor's worker loop in. Workflow runs on the
+ * Worker backend arrive with its tick driver.
  */
 export function wfWorker<Env>(
-  options: WfGraphWorkerOptions<Env>
+  _options: WfGraphWorkerOptions<Env>
 ): WfGraphWorker<Env> {
-  const basePath = normalizeBasePath(options.basePath ?? "/");
-  const publicUrl = resolvePublicUrl(options.publicUrl);
-  const entityResolverTimeoutMs = readEntityResolverTimeoutMs(
-    options.entityResolverTimeoutMs
-  );
-  const extensionsOption = options.extensions;
-  const extensionResolver =
-    typeof extensionsOption === "function" ? extensionsOption : undefined;
-  const staticExtensions =
-    typeof extensionsOption === "function"
-      ? undefined
-      : assembleExtensions(extensionsOption ?? {}, {
-          entityResolverTimeoutMs,
-        });
-
-  if (options.logger) configureLoggingWithBridge(options.logger);
-  else warnWhenLoggingUnconfigured();
-
-  return {
-    fetch: async (request, env) => {
-      const config = options.request(env);
-      if (config.inngest.connect === true) {
-        throw new Error("wfWorker does not support inngest.connect");
-      }
-      if (!config.inngest.id?.trim()) {
-        throw new Error("wfWorker requires inngest.id");
-      }
-      assertValidEncryptionKey(config.encryption.key);
-
-      const extensions =
-        staticExtensions ??
-        assembleExtensions(extensionResolver?.(env) ?? {}, {
-          entityResolverTimeoutMs,
-        });
-
-      const auth = resolveAuth(config.auth);
-      const cipher = createIntegrationCipher(config.encryption);
-      const persistence = await config.persistence.open(cipher);
-      let runtime: ReturnType<typeof createWfGraphRuntime> | undefined;
-
-      return runWithResponseClose(async () => {
-        const inngest = createInngestSurface(config.inngest, {
-          connect: refuseConnect,
-        });
-        runtime = createWfGraphRuntime({
-          inngest,
-          extensions,
-          appContext: {
-            publicUrl,
-            apiBasePath: `${basePath}/api`,
-          },
-          agent: readAgentSettings(config.agent),
-          repositories: persistence.repositories,
-          // No worker loop runs in a request, so the in-process wake reaches
-          // no one.
-          wakes: { worker: createWorkerWake(), persistence: persistence.wakes },
-        });
-        const functions = await buildInngestFunctions(inngest.client, runtime);
-        const app = new Hono();
-        app.route(
-          "/",
-          createApiApp({
-            basePath: `${basePath}/api`,
-            auth,
-            runtime,
-            mcp: options.mcp,
-            inngestHandler: inngest.serve(functions),
-          })
-        );
-        return await app.fetch(request);
-      }, [async () => await runtime?.dispose(), persistence.close]);
-    },
-  };
+  throw new Error(WORKER_RUNS_UNAVAILABLE);
 }

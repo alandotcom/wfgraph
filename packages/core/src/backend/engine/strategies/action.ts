@@ -140,10 +140,6 @@ function runAction(context: NodeWorkContext) {
     };
 
     if (actionType === BUILT_IN_ACTION_IDS.wait) {
-      if (!context.entersInPlace) {
-        return yield* context.handOffBranch();
-      }
-
       const waitOutcome = yield* executeWaitAction({
         config: processedConfig,
         context: stepContext,

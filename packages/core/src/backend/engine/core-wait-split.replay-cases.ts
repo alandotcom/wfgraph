@@ -1,7 +1,6 @@
 /**
- * The Event Split graph the Wait-split suite drives, and the case it runs under
- * each executor: a Wait woken by an Event hands that Event's payload to the
- * entry node, whether a branch run or the one run walked the Wait.
+ * The Event Split graph the Wait-split suite drives, and its case: a Wait woken
+ * by an Event hands that Event's payload to the entry node.
  */
 
 import { expect, it } from "vitest";
@@ -12,15 +11,10 @@ import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import { noWorkflowActions } from "#src/backend/engine/actions";
 import { executionData } from "#src/backend/engine/contracts";
 import type { WaitWake } from "#src/backend/engine/runtime";
-import {
-  executeTestWorkflow as executeWorkflow,
-  executeTestWorkflowBranch as executeWorkflowBranch,
-} from "#src/backend/engine/test-execution";
+import { executeTestWorkflow as executeWorkflow } from "#src/backend/engine/test-execution";
 import {
   driveWithReplay,
-  perExecutor,
   type ReplayExecutor,
-  withBranchRuns,
 } from "#src/backend/engine/testing/replay-runtime";
 import { createRecordingWorkflowStore } from "#src/backend/engine/recording-store";
 
@@ -133,9 +127,8 @@ export function createWaitSplitGraph() {
 }
 
 export function defineWaitSplitReplayCases(executor: ReplayExecutor): void {
-  // A branch run hands the overwritten entry payload back to the run that
-  // started it. In one run the pass that resumes the Wait overwrites it in its
-  // own traversal. Either way the run's result carries the Wait's Event.
+  // The pass that resumes the Wait overwrites the entry payload in its own
+  // traversal, so the run's result carries the Wait's Event.
   it("overwrites the entry payload so the run's result carries the Wait's Event", async () => {
     const store = createRecordingWorkflowStore();
     const input = {
@@ -152,14 +145,7 @@ export function defineWaitSplitReplayCases(executor: ReplayExecutor): void {
         events: {
           "wait-park-wait_1-0": waitResumeSignal(SETTLED, { amount: "40" }),
         },
-        executor: withBranchRuns(executor, (runtime, branchInput) =>
-          executeWorkflowBranch(
-            { ...input, ...branchInput },
-            runtime,
-            store,
-            noWorkflowActions
-          )
-        ),
+        executor,
       }
     );
 
@@ -173,7 +159,5 @@ export function defineWaitSplitReplayCases(executor: ReplayExecutor): void {
       data: { event: SETTLED },
     });
     expect(result.outputs.lifecycle_1?.data).toEqual({ amount: "40" });
-    // The root run and the branch run its Wait was handed to, or the one run.
-    expect(run.runs).toBe(perExecutor(executor, { inngest: 2, database: 1 }));
   });
 }

@@ -1,79 +1,45 @@
 import type { Inngest, InngestFunction } from "inngest";
-import { Effect } from "effect";
 import { Extensions } from "#src/backend/lib/effect/extensions";
-import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
-import { createWorkflowEntities } from "#src/backend/extensions/workflow-entities";
-import { createDbWorkflowStore } from "#src/backend/engine/db-store";
-import {
-  executeWorkflow,
-  executeWorkflowBranch,
-} from "#src/backend/engine/core";
-import type { WfGraphRuntime } from "#src/backend/runtime";
-import { ExecutionRepo } from "#src/backend/services/executions/repo";
 // Static, now that the id helper the app assembly needs has moved to a leaf of
 // its own: this import is the only reason the delivery stack loads, and this
 // module is on the path of a request that serves it anyway.
 import { createInngestEventListenerFunction } from "#src/backend/lib/inngest/event-listener-function";
-import {
-  createWorkflowBranchFunction,
-  createWorkflowRunFunction,
-} from "#src/backend/lib/inngest/workflow-function";
+import type { WfGraphRuntime } from "#src/backend/runtime";
 import { findEvent } from "@wfgraph/shared/extensions/catalog";
 
 /**
- * Everything this app registers with Inngest: the run function, the branch
- * function each waiting branch of a run gets its own invocation of, and one
- * listener per Event in the catalog.
+ * Everything this app registers with Inngest: one listener per Event in the
+ * catalog. Workflow runs execute on the database executor, so Inngest delivers
+ * Events and runs no workflow body.
  *
- * Neither half depends on a saved graph, so the list is the same for the life of
- * the process. Creating, saving or deleting a workflow changes nothing here and
- * needs no re-sync.
+ * Nothing here depends on a saved graph, so the list is the same for the life
+ * of the process. Creating, saving or deleting a workflow changes nothing here
+ * and needs no re-sync.
  *
- * The runtime is a parameter rather than something the caller holds, because the
- * Layer graph takes the surface this is built for: constructing one before the
- * other is what keeps that from being a cycle. `createWfGraphApp` builds the list
- * once after the runtime exists and hands it to either Connect or HTTP serve.
+ * The runtime is a parameter rather than something the caller holds, because
+ * the Layer graph takes the surface this is built for: constructing one before
+ * the other is what keeps that from being a cycle. `createWfGraphApp` builds the
+ * list once after the runtime exists and hands it to either Connect or HTTP
+ * serve.
  *
- * v4 encodes the trigger tuple in a function's type, so the run function and the
- * listeners have no common specific type and this names the general one.
- * `serve()` and `connect()` take that same type.
+ * v4 encodes the trigger tuple in a function's type, so the listeners have no
+ * common specific type and this names the general one. `serve()` and
+ * `connect()` take that same type.
  */
 export async function buildInngestFunctions(
   client: Inngest,
   runtime: WfGraphRuntime
 ): Promise<InngestFunction.Any[]> {
-  const { extensions, executionRepo } = await runtime.runPromise(
-    Effect.gen(function* () {
-      return {
-        extensions: yield* Extensions,
-        executionRepo: yield* ExecutionRepo,
-      };
+  const extensions = await runtime.runPromise(Extensions);
+
+  return extensions.events.map((event) =>
+    createInngestEventListenerFunction({
+      client,
+      event,
+      runtime,
+      connectionStamped: Boolean(
+        findEvent(extensions.catalog, event.name)?.integration
+      ),
     })
   );
-  const ports = {
-    actions: () => createWorkflowActions(extensions, runtime),
-    entities: () => createWorkflowEntities(extensions),
-    store: createDbWorkflowStore({
-      reads: executionRepo,
-      writes: executionRepo,
-    }),
-    appRuntime: runtime,
-    executeWorkflow,
-    executeWorkflowBranch,
-  };
-
-  return [
-    createWorkflowRunFunction(client, ports),
-    createWorkflowBranchFunction(client, ports),
-    ...extensions.events.map((event) =>
-      createInngestEventListenerFunction({
-        client,
-        event,
-        runtime,
-        connectionStamped: Boolean(
-          findEvent(extensions.catalog, event.name)?.integration
-        ),
-      })
-    ),
-  ];
 }

@@ -1,6 +1,6 @@
 /**
- * The partial-progress graph the cancel suite drives, and its case under the
- * database executor: a Cancel claim that halts a parked Wait keeps the outputs
+ * The partial-progress graph the cancel suite drives, and its case: a Cancel
+ * claim that halts a parked Wait keeps the outputs
  * and failures earlier passes recorded.
  */
 
@@ -16,13 +16,15 @@ import { assembleExtensions } from "#src/backend/extensions/extension-set";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
 import { executeTestWorkflow } from "#src/backend/engine/test-execution";
 import { createRecordingWorkflowStore } from "#src/backend/engine/recording-store";
-import type { DatabaseReplayExecutor } from "#src/backend/engine/testing/replay-database-executor";
-import { driveWithReplay } from "#src/backend/engine/testing/replay-runtime";
+import {
+  driveWithReplay,
+  type ReplayExecutor,
+} from "#src/backend/engine/testing/replay-runtime";
 import { CANCEL_WAKE } from "#src/backend/engine/testing/wait-fixtures";
 import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
 
 const START_EVENT = "test/start";
-export const CANCEL_EVENT = "test/cancel";
+const CANCEL_EVENT = "test/cancel";
 const RECORD_ACTION_ID = "test/partial-progress-recorder";
 
 const cancelRules: JsonObject = {
@@ -34,7 +36,7 @@ const cancelRules: JsonObject = {
   },
 };
 
-export const actions = createWorkflowActions(
+const actions = createWorkflowActions(
   assembleExtensions({
     actions: [
       defineAction({
@@ -100,7 +102,7 @@ function waitNode(id: string, duration: string): WorkflowNode {
  * fails, with a twelve-second Wait further down the first. The Canceled outlet
  * addresses an output the first branch left behind.
  */
-export const executionInput = {
+const executionInput = {
   graph: createSerializedWorkflowGraph({
     nodes: [
       lifecycleNode("entry"),
@@ -148,7 +150,7 @@ export const executionInput = {
 };
 
 export function defineCancelPartialProgressReplayCases(
-  executor: DatabaseReplayExecutor
+  executor: ReplayExecutor
 ): void {
   describe("a canceled run whose Waits are parked in the one run", () => {
     // Nothing is killed in one run. The Cancel Event at five seconds writes its
@@ -203,10 +205,9 @@ export function defineCancelPartialProgressReplayCases(
         data: { marker: "output-a" },
       });
       expect(run.elapsedMs).toBe(5_000);
-      expect(run.runs).toBe(1);
 
       // The nested Wait parked and its row closed on the cancel wake before the
-      // Canceled outlet opened a row. No sweep and no read-back were needed.
+      // Canceled outlet opened a row.
       expect(
         store.callsOf("createWaitState").map((call) => call.nodeId)
       ).toContain("nested-wait");
@@ -222,8 +223,6 @@ export function defineCancelPartialProgressReplayCases(
       );
       expect(closedAt).toBeGreaterThanOrEqual(0);
       expect(canceledActionStart).toBeGreaterThan(closedAt);
-      expect(store.callsOf("cancelOpenWork")).toHaveLength(0);
-      expect(store.callsOf("readCompletedNodeProgress")).toHaveLength(0);
     });
   });
 }

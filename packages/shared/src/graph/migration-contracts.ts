@@ -117,15 +117,14 @@ export const workflowMigrationInputSchema = Schema.Struct({
 });
 
 /**
- * What happened to one requested run. `signaled` is false when the pointer moved
- * but the wake signal was refused: the run still wakes under the target graph at
- * the target its own row already holds.
+ * What happened to one requested run. A `migrated` run had its version pointer
+ * moved and its parks woken in the same write, so its next pass runs the
+ * target version.
  */
 export const workflowMigrationOutcomeSchema = Schema.Union([
   Schema.Struct({
     executionId: NonEmptyTrimmedString,
     status: Schema.Literal("migrated"),
-    signaled: Schema.Boolean,
   }),
   Schema.Struct({
     executionId: NonEmptyTrimmedString,

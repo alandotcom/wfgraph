@@ -1,17 +1,16 @@
 import { Effect, Layer } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppLogger } from "#src/backend/lib/effect/app-logger";
-import { DatabaseError } from "#src/backend/lib/effect/database";
-import {
-  InngestError,
-  type InngestClient,
-} from "#src/backend/lib/effect/inngest-client";
 import {
   makeRecordingLogger,
   SilentAppLoggerLayer,
+  stubExecutionDriver,
   stubExecutionRepo,
-  stubInngestClient,
 } from "#src/backend/lib/effect/test-layers";
+import {
+  DriverError,
+  type ExecutionDriver,
+} from "#src/backend/services/executions/driver";
 import { getAppLogger } from "#src/backend/lib/logger";
 import type { ExecutionRepo } from "#src/backend/services/executions/repo";
 import type { WorkflowWaitState } from "#src/backend/services/executions/repo/contracts";
@@ -24,51 +23,50 @@ const { loggerErrorMock } = vi.hoisted(() => ({
 
 type Repo = ExecutionRepo["Service"];
 
-const sendWaitSignalMock = vi.fn<InngestClient["Service"]["sendWaitSignal"]>(
-  () => Effect.void
-);
 const CLAIMED_AT = new Date("2026-03-01T00:01:00.000Z");
-const claimWaitingStateByIdMock = vi.fn<Repo["claimWaitingStateById"]>(
-  ({ waitStateId: id }) =>
-    Effect.succeed({
-      claimedAt: CLAIMED_AT,
-      waitState: {
-        id,
-        executionId: `exec_${id}`,
-        workflowId: "workflow_1",
-        runId: `run_${id}`,
-        nodeId: `node_${id}`,
-        nodeName: `Wait ${id}`,
-        waitType: "event",
-        status: "resuming",
-        resumeToken: `token_${id}`,
-        waitUntil: null,
-        subscribedEvents: ["event.update"],
-        metadata: null,
-        createdAt: new Date("2026-03-01T00:00:00.000Z"),
-        resumedAt: CLAIMED_AT,
-        cancelledAt: null,
-      },
-    })
-);
+
+/**
+ * The resume claim as the driver answers it: the park the target names,
+ * claimed and resolved with the arrival, and its run re-queued.
+ */
+function claimedPark(
+  input: Parameters<ExecutionDriver["Service"]["resolvePark"]>[0]
+) {
+  const id =
+    input.target.kind === "wait_state"
+      ? input.target.waitStateId
+      : input.target.token;
+  return Effect.succeed({
+    requeued: true,
+    waitState: {
+      id,
+      executionId: `exec_${id}`,
+      workflowId: "workflow_1",
+      runId: `run_${id}`,
+      nodeId: `node_${id}`,
+      nodeName: `Wait ${id}`,
+      waitType: "event" as const,
+      status: "resuming" as const,
+      resumeToken: `token_${id}`,
+      waitUntil: null,
+      subscribedEvents: ["event.update"],
+      metadata: null,
+      createdAt: new Date("2026-03-01T00:00:00.000Z"),
+      resumedAt: CLAIMED_AT,
+      cancelledAt: null,
+    },
+  });
+}
+
+const resolveParkMock =
+  vi.fn<ExecutionDriver["Service"]["resolvePark"]>(claimedPark);
 const findWaitStateByIdMock = vi.fn<Repo["findWaitStateById"]>(() =>
   Effect.succeed(null)
 );
-const settleWaitingStateClaimMock = vi.fn<Repo["settleWaitingStateClaim"]>(() =>
-  Effect.succeed(true)
-);
-const releaseWaitingStateClaimMock = vi.fn<Repo["releaseWaitingStateClaim"]>(
-  () => Effect.succeed(true)
-);
 
 const services = Layer.mergeAll(
-  stubExecutionRepo({
-    claimWaitingStateById: claimWaitingStateByIdMock,
-    findWaitStateById: findWaitStateByIdMock,
-    settleWaitingStateClaim: settleWaitingStateClaimMock,
-    releaseWaitingStateClaim: releaseWaitingStateClaimMock,
-  }),
-  stubInngestClient({ sendWaitSignal: sendWaitSignalMock })
+  stubExecutionRepo({ findWaitStateById: findWaitStateByIdMock }),
+  stubExecutionDriver({ resolvePark: resolveParkMock })
 );
 
 type Subscription = {
@@ -149,7 +147,7 @@ function createPersistedWaitState(
 /**
  * The subject on its stub services.
  *
- * Every case sends and writes through the same stubs, so only what varies is
+ * Every case claims and reads through the same stubs, so only what varies is
  * written at a call site. The logger defaults to silent; a case that asserts
  * on a log line hands over `makeRecordingLogger().layer` instead.
  */
@@ -167,11 +165,8 @@ function resumeWaits(
 describe("resumeWaitsMatchingEvent", () => {
   beforeEach(() => {
     loggerErrorMock.mockReset();
-    sendWaitSignalMock.mockReset();
-    claimWaitingStateByIdMock.mockReset();
+    resolveParkMock.mockReset();
     findWaitStateByIdMock.mockReset();
-    settleWaitingStateClaimMock.mockReset();
-    releaseWaitingStateClaimMock.mockReset();
 
     // `wait-match` captured the logger at module load, so spy the same category
     // instance's `error` rather than replacing `getAppLogger`. This module's
@@ -183,32 +178,8 @@ describe("resumeWaitsMatchingEvent", () => {
       loggerErrorMock(message);
     }) as typeof waitMatchLogger.error);
 
-    sendWaitSignalMock.mockImplementation(() => Effect.void);
-    claimWaitingStateByIdMock.mockImplementation(({ waitStateId: id }) =>
-      Effect.succeed({
-        claimedAt: CLAIMED_AT,
-        waitState: {
-          id,
-          executionId: `exec_${id}`,
-          workflowId: "workflow_1",
-          runId: `run_${id}`,
-          nodeId: `node_${id}`,
-          nodeName: `Wait ${id}`,
-          waitType: "event",
-          status: "resuming",
-          resumeToken: `token_${id}`,
-          waitUntil: null,
-          subscribedEvents: ["event.update"],
-          metadata: null,
-          createdAt: new Date("2026-03-01T00:00:00.000Z"),
-          resumedAt: CLAIMED_AT,
-          cancelledAt: null,
-        },
-      })
-    );
+    resolveParkMock.mockImplementation(claimedPark);
     findWaitStateByIdMock.mockImplementation(() => Effect.succeed(null));
-    settleWaitingStateClaimMock.mockImplementation(() => Effect.succeed(true));
-    releaseWaitingStateClaimMock.mockImplementation(() => Effect.succeed(true));
   });
 
   afterEach(() => {
@@ -224,7 +195,7 @@ describe("resumeWaitsMatchingEvent", () => {
     });
 
     expect(result).toBe(0);
-    expect(sendWaitSignalMock).not.toHaveBeenCalled();
+    expect(resolveParkMock).not.toHaveBeenCalled();
   });
 
   it("returns 0 when eventType is empty string", async () => {
@@ -236,7 +207,7 @@ describe("resumeWaitsMatchingEvent", () => {
     });
 
     expect(result).toBe(0);
-    expect(sendWaitSignalMock).not.toHaveBeenCalled();
+    expect(resolveParkMock).not.toHaveBeenCalled();
   });
 
   it("returns 0 for empty waitStates array", async () => {
@@ -264,7 +235,7 @@ describe("resumeWaitsMatchingEvent", () => {
     });
 
     expect(result).toBe(0);
-    expect(sendWaitSignalMock).not.toHaveBeenCalled();
+    expect(resolveParkMock).not.toHaveBeenCalled();
   });
 
   it("wakes a wait when the arrival is the Connection it named", async () => {
@@ -281,7 +252,7 @@ describe("resumeWaitsMatchingEvent", () => {
     });
 
     expect(result).toBe(1);
-    expect(sendWaitSignalMock).toHaveBeenCalledTimes(1);
+    expect(resolveParkMock).toHaveBeenCalledTimes(1);
   });
 
   // A row with no token can never be woken by an Event, so it is a defect in
@@ -303,7 +274,7 @@ describe("resumeWaitsMatchingEvent", () => {
     );
 
     expect(result).toBe(0);
-    expect(sendWaitSignalMock).not.toHaveBeenCalled();
+    expect(resolveParkMock).not.toHaveBeenCalled();
     expect(recorder.warnLines).toHaveLength(2);
     expect(recorder.warnLines[0]).toEqual({
       message: "Parked wait carries no resume token",
@@ -323,18 +294,20 @@ describe("resumeWaitsMatchingEvent", () => {
     });
 
     expect(result).toBe(1);
-    expect(sendWaitSignalMock).toHaveBeenCalledTimes(1);
-    expect(sendWaitSignalMock).toHaveBeenCalledWith({
-      executionId: "exec_1",
-      nodeId: "node_1",
-      token: "token_1",
-      eventType: "event.update",
-      payload: { key: "value" },
-      signalType: "wait-resume",
-    });
-    expect(settleWaitingStateClaimMock).toHaveBeenCalledWith({
-      waitStateId: "1",
-      claimedAt: CLAIMED_AT,
+    // One write claims the park and resolves it with the arrival.
+    expect(resolveParkMock).toHaveBeenCalledExactlyOnceWith({
+      target: {
+        kind: "wait_state",
+        waitStateId: "1",
+        token: "token_1",
+        eventName: "event.update",
+        allowSameDeliveryRetry: true,
+      },
+      arrival: {
+        signalType: "wait-resume",
+        eventName: "event.update",
+        payload: { key: "value" },
+      },
     });
   });
 
@@ -351,8 +324,7 @@ describe("resumeWaitsMatchingEvent", () => {
     });
 
     expect(result).toBe(3);
-    expect(sendWaitSignalMock).toHaveBeenCalledTimes(3);
-    expect(settleWaitingStateClaimMock).toHaveBeenCalledTimes(3);
+    expect(resolveParkMock).toHaveBeenCalledTimes(3);
   });
 
   it("wakes nothing for a row whose metadata holds no subscriptions", async () => {
@@ -367,7 +339,7 @@ describe("resumeWaitsMatchingEvent", () => {
     });
 
     expect(result).toBe(0);
-    expect(sendWaitSignalMock).not.toHaveBeenCalled();
+    expect(resolveParkMock).not.toHaveBeenCalled();
   });
 
   // A candidate row reached the matcher because its own `subscribed_events`
@@ -387,14 +359,14 @@ describe("resumeWaitsMatchingEvent", () => {
     });
 
     expect(result).toBe(0);
-    expect(sendWaitSignalMock).not.toHaveBeenCalled();
+    expect(resolveParkMock).not.toHaveBeenCalled();
     expect(loggerErrorMock).toHaveBeenCalledWith(
       "Parked wait holds subscriptions that will not decode"
     );
   });
 
   it("returns 0 for a wait state when the wait row had already moved on", async () => {
-    claimWaitingStateByIdMock.mockImplementation(() => Effect.succeed(null));
+    resolveParkMock.mockImplementation(() => Effect.succeed(null));
 
     const result = await resumeWaits({
       workflowId: "workflow_1",
@@ -404,14 +376,11 @@ describe("resumeWaitsMatchingEvent", () => {
     });
 
     expect(result).toBe(0);
-    expect(sendWaitSignalMock).not.toHaveBeenCalled();
-    expect(settleWaitingStateClaimMock).not.toHaveBeenCalled();
+    expect(resolveParkMock).toHaveBeenCalledTimes(1);
   });
 
   it("re-reads and resumes the same still-matching Wait after its token rotates", async () => {
-    claimWaitingStateByIdMock.mockImplementationOnce(() =>
-      Effect.succeed(null)
-    );
+    resolveParkMock.mockImplementationOnce(() => Effect.succeed(null));
     findWaitStateByIdMock.mockImplementationOnce(() =>
       Effect.succeed(
         createPersistedWaitState("1", "exec_1", {
@@ -432,22 +401,12 @@ describe("resumeWaitsMatchingEvent", () => {
     expect(result).toBe(1);
     expect(findWaitStateByIdMock).toHaveBeenCalledExactlyOnceWith("1");
     expect(
-      claimWaitingStateByIdMock.mock.calls.map(([claim]) => claim.resumeToken)
+      resolveParkMock.mock.calls.map(([claim]) => claim.target.token)
     ).toEqual(["token_1_v1", "token_1_v2"]);
-    expect(sendWaitSignalMock).toHaveBeenCalledExactlyOnceWith({
-      executionId: "exec_1",
-      nodeId: "node_1",
-      token: "token_1_v2",
-      eventType: "event.update",
-      payload: { key: "value" },
-      signalType: "wait-resume",
-    });
   });
 
   it("revalidates the current Event subscription before refreshing a token", async () => {
-    claimWaitingStateByIdMock.mockImplementationOnce(() =>
-      Effect.succeed(null)
-    );
+    resolveParkMock.mockImplementationOnce(() => Effect.succeed(null));
     findWaitStateByIdMock.mockImplementationOnce(() =>
       Effect.succeed(
         createPersistedWaitState("1", "exec_1", {
@@ -467,14 +426,11 @@ describe("resumeWaitsMatchingEvent", () => {
     });
 
     expect(result).toBe(0);
-    expect(claimWaitingStateByIdMock).toHaveBeenCalledTimes(1);
-    expect(sendWaitSignalMock).not.toHaveBeenCalled();
+    expect(resolveParkMock).toHaveBeenCalledTimes(1);
   });
 
   it("revalidates the current Connection before refreshing a token", async () => {
-    claimWaitingStateByIdMock.mockImplementationOnce(() =>
-      Effect.succeed(null)
-    );
+    resolveParkMock.mockImplementationOnce(() => Effect.succeed(null));
     findWaitStateByIdMock.mockImplementationOnce(() =>
       Effect.succeed(
         createPersistedWaitState("1", "exec_1", {
@@ -502,8 +458,7 @@ describe("resumeWaitsMatchingEvent", () => {
     });
 
     expect(result).toBe(0);
-    expect(claimWaitingStateByIdMock).toHaveBeenCalledTimes(1);
-    expect(sendWaitSignalMock).not.toHaveBeenCalled();
+    expect(resolveParkMock).toHaveBeenCalledTimes(1);
   });
 
   it("revalidates the current payload filter before refreshing a token", async () => {
@@ -511,9 +466,7 @@ describe("resumeWaitsMatchingEvent", () => {
       event: "event.update",
       match: { expression: 'payload.account == "old"', timestampPaths: [] },
     };
-    claimWaitingStateByIdMock.mockImplementationOnce(() =>
-      Effect.succeed(null)
-    );
+    resolveParkMock.mockImplementationOnce(() => Effect.succeed(null));
     findWaitStateByIdMock.mockImplementationOnce(() =>
       Effect.succeed(
         createPersistedWaitState("1", "exec_1", {
@@ -544,12 +497,11 @@ describe("resumeWaitsMatchingEvent", () => {
     });
 
     expect(result).toBe(0);
-    expect(claimWaitingStateByIdMock).toHaveBeenCalledTimes(1);
-    expect(sendWaitSignalMock).not.toHaveBeenCalled();
+    expect(resolveParkMock).toHaveBeenCalledTimes(1);
   });
 
   it("keeps retrying only the same Wait across more than three token rotations", async () => {
-    claimWaitingStateByIdMock
+    resolveParkMock
       .mockImplementationOnce(() => Effect.succeed(null))
       .mockImplementationOnce(() => Effect.succeed(null))
       .mockImplementationOnce(() => Effect.succeed(null))
@@ -601,7 +553,7 @@ describe("resumeWaitsMatchingEvent", () => {
       ["1"],
     ]);
     expect(
-      claimWaitingStateByIdMock.mock.calls.map(([claim]) => claim.resumeToken)
+      resolveParkMock.mock.calls.map(([claim]) => claim.target.token)
     ).toEqual([
       "token_1_v1",
       "token_1_v2",
@@ -609,15 +561,10 @@ describe("resumeWaitsMatchingEvent", () => {
       "token_1_v4",
       "token_1_v5",
     ]);
-    expect(sendWaitSignalMock).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ token: "token_1_v5" })
-    );
   });
 
   it("does not refresh a recorded arrival when the delivery has no id", async () => {
-    claimWaitingStateByIdMock.mockImplementationOnce(() =>
-      Effect.succeed(null)
-    );
+    resolveParkMock.mockImplementationOnce(() => Effect.succeed(null));
     findWaitStateByIdMock.mockImplementationOnce(() =>
       Effect.succeed(
         createPersistedWaitState("1", "exec_1", {
@@ -644,15 +591,12 @@ describe("resumeWaitsMatchingEvent", () => {
     });
 
     expect(result).toBe(0);
-    expect(claimWaitingStateByIdMock).toHaveBeenCalledTimes(1);
-    expect(sendWaitSignalMock).not.toHaveBeenCalled();
+    expect(resolveParkMock).toHaveBeenCalledTimes(1);
   });
 
   it("retries its own recorded arrival after token rotation", async () => {
     const deliveryId = "delivery_1";
-    claimWaitingStateByIdMock.mockImplementationOnce(() =>
-      Effect.succeed(null)
-    );
+    resolveParkMock.mockImplementationOnce(() => Effect.succeed(null));
     findWaitStateByIdMock.mockImplementationOnce(() =>
       Effect.succeed(
         createPersistedWaitState("1", "exec_1", {
@@ -681,27 +625,24 @@ describe("resumeWaitsMatchingEvent", () => {
     });
 
     expect(result).toBe(1);
-    expect(claimWaitingStateByIdMock).toHaveBeenCalledTimes(2);
-    expect(claimWaitingStateByIdMock.mock.calls[1]?.[0]).toMatchObject({
-      waitStateId: "1",
-      resumeToken: "token_1_v2",
-      eventName: "event.update",
-      allowSameDeliveryRetry: true,
+    expect(resolveParkMock).toHaveBeenCalledTimes(2);
+    expect(resolveParkMock.mock.calls[1]?.[0]).toMatchObject({
+      target: {
+        waitStateId: "1",
+        token: "token_1_v2",
+        eventName: "event.update",
+        allowSameDeliveryRetry: true,
+      },
       arrival: {
         deliveryId,
         eventName: "event.update",
         payload: { key: "value" },
       },
     });
-    expect(sendWaitSignalMock).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ token: "token_1_v2" })
-    );
   });
 
   it("does not replace an arrival owned by a different Event delivery", async () => {
-    claimWaitingStateByIdMock.mockImplementationOnce(() =>
-      Effect.succeed(null)
-    );
+    resolveParkMock.mockImplementationOnce(() => Effect.succeed(null));
     findWaitStateByIdMock.mockImplementationOnce(() =>
       Effect.succeed(
         createPersistedWaitState("1", "exec_1", {
@@ -730,15 +671,14 @@ describe("resumeWaitsMatchingEvent", () => {
     });
 
     expect(result).toBe(0);
-    expect(claimWaitingStateByIdMock).toHaveBeenCalledTimes(1);
-    expect(sendWaitSignalMock).not.toHaveBeenCalled();
+    expect(resolveParkMock).toHaveBeenCalledTimes(1);
   });
 
   it("does not bypass a termination claim when the refreshed token is unclaimable", async () => {
     const current = createPersistedWaitState("1", "exec_1", {
       resumeToken: "token_1_v2",
     });
-    claimWaitingStateByIdMock
+    resolveParkMock
       .mockImplementationOnce(() => Effect.succeed(null))
       .mockImplementationOnce(() => Effect.succeed(null));
     findWaitStateByIdMock
@@ -755,14 +695,13 @@ describe("resumeWaitsMatchingEvent", () => {
     });
 
     expect(result).toBe(0);
-    expect(claimWaitingStateByIdMock).toHaveBeenCalledTimes(2);
+    expect(resolveParkMock).toHaveBeenCalledTimes(2);
     expect(findWaitStateByIdMock).toHaveBeenCalledTimes(2);
-    expect(sendWaitSignalMock).not.toHaveBeenCalled();
   });
 
   it("propagates a transient database failure while claiming a wait", async () => {
-    claimWaitingStateByIdMock.mockImplementationOnce(() =>
-      Effect.fail(new DatabaseError({ cause: new Error("connection reset") }))
+    resolveParkMock.mockImplementationOnce(() =>
+      Effect.fail(new DriverError({ cause: new Error("connection reset") }))
     );
 
     const failure = await resumeWaits(
@@ -778,17 +717,16 @@ describe("resumeWaitsMatchingEvent", () => {
       (error: unknown) => error
     );
 
-    expect(failure).toBeInstanceOf(DatabaseError);
-    expect(sendWaitSignalMock).not.toHaveBeenCalled();
+    expect(failure).toBeInstanceOf(DriverError);
   });
 
   it("propagates failed resumes after attempting every candidate", async () => {
-    sendWaitSignalMock
-      .mockImplementationOnce(() => Effect.void)
+    resolveParkMock
+      .mockImplementationOnce(claimedPark)
       .mockImplementationOnce(() =>
-        Effect.fail(new InngestError({ cause: "signal failed" }))
+        Effect.fail(new DriverError({ cause: "claim refused" }))
       )
-      .mockImplementationOnce(() => Effect.void);
+      .mockImplementationOnce(claimedPark);
 
     const failure = await Effect.runPromise(
       resumeWaitsMatchingEvent({
@@ -806,47 +744,8 @@ describe("resumeWaitsMatchingEvent", () => {
       (error: unknown) => error
     );
 
-    expect(failure).toBeInstanceOf(InngestError);
-    expect(sendWaitSignalMock).toHaveBeenCalledTimes(3);
-    expect(releaseWaitingStateClaimMock).toHaveBeenCalledTimes(1);
-  });
-
-  // The signal is with the durable runtime before the settle is attempted, so a
-  // database failure here is a run that woke and a row the run itself closes.
-  // Counting it as unsent would tell the delivery nothing reached that run.
-  it("counts a wake whose settle write failed as sent", async () => {
-    settleWaitingStateClaimMock.mockImplementationOnce(() =>
-      Effect.fail(new DatabaseError({ cause: new Error("connection reset") }))
-    );
-
-    const result = await resumeWaits({
-      workflowId: "workflow_1",
-      eventType: "event.update",
-      payload: {},
-      waitStates: [createWaitState("1", "exec_1")],
-    });
-
-    expect(result).toBe(1);
-    expect(sendWaitSignalMock).toHaveBeenCalledTimes(1);
-    expect(releaseWaitingStateClaimMock).not.toHaveBeenCalled();
-  });
-
-  it("counts only fenced claims that settle", async () => {
-    settleWaitingStateClaimMock
-      .mockImplementationOnce(() => Effect.succeed(true))
-      .mockImplementationOnce(() => Effect.succeed(false));
-
-    const result = await resumeWaits({
-      workflowId: "workflow_1",
-      eventType: "event.update",
-      payload: {},
-      waitStates: [
-        createWaitState("1", "exec_1"),
-        createWaitState("2", "exec_2"),
-      ],
-    });
-
-    expect(result).toBe(1);
+    expect(failure).toBeInstanceOf(DriverError);
+    expect(resolveParkMock).toHaveBeenCalledTimes(3);
   });
 
   describe("the stored match decides", () => {
@@ -876,10 +775,10 @@ describe("resumeWaitsMatchingEvent", () => {
       });
 
       expect(result).toBe(1);
-      expect(sendWaitSignalMock).toHaveBeenCalledTimes(1);
-      expect(sendWaitSignalMock).toHaveBeenCalledWith(
-        expect.objectContaining({ executionId: "exec_1" })
-      );
+      expect(resolveParkMock).toHaveBeenCalledTimes(1);
+      expect(resolveParkMock.mock.calls[0]?.[0].target).toMatchObject({
+        waitStateId: "1",
+      });
     });
 
     // A rejection that wrote nothing leaves an operator with a count of zero
@@ -910,7 +809,7 @@ describe("resumeWaitsMatchingEvent", () => {
       );
 
       expect(result).toBe(0);
-      expect(sendWaitSignalMock).not.toHaveBeenCalled();
+      expect(resolveParkMock).not.toHaveBeenCalled();
       expect(recorder.debugLines).toHaveLength(1);
       expect(recorder.debugLines[0]?.message).toBe(
         "Wait match rejected an arrival"
@@ -1040,7 +939,7 @@ describe("resumeWaitsMatchingEvent", () => {
       });
 
       expect(result).toBe(0);
-      expect(sendWaitSignalMock).not.toHaveBeenCalled();
+      expect(resolveParkMock).not.toHaveBeenCalled();
     });
 
     it("reads only the subscriptions naming the arriving Event", async () => {

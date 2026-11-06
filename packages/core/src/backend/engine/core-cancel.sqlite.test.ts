@@ -172,6 +172,7 @@ describe("a Canceled-side Wait over native SQLite", () => {
             runMode: "live",
             eventName: "app/appointment.canceled",
             payload: { reason: "customer left" },
+            now: new Date(),
           });
 
           return started.execution.id;

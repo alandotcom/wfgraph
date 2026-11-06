@@ -127,7 +127,6 @@ test("two predecessors admit and execute their join only once", async () => {
     runtime,
     store,
     executionId: "execution",
-    routesCancellation: true,
   });
   const firstFinished = Promise.withResolvers<void>();
   let resolutions = 0;

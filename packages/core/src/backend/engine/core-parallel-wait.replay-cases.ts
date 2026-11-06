@@ -1,8 +1,7 @@
 /**
- * The graphs the parallel-Wait suite drives, and its cases under each executor:
- * what a Wait node costs the branches beside it. The Inngest executor hands
- * each Wait to a branch run of its own (ADR-0011); the database executor parks
- * every Wait in the one run, which wakes when any one park resolves.
+ * The graphs the parallel-Wait suite drives, and its cases: what a Wait node
+ * costs the branches beside it. Every Wait parks in the one run, which wakes
+ * when any one park resolves.
  */
 
 import { expect, it } from "vitest";
@@ -19,20 +18,15 @@ import { assembleExtensions } from "#src/backend/extensions/extension-set";
 import { defineAction } from "#src/backend/extensions/define-action";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
 import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
-import {
-  executeTestWorkflow as executeWorkflow,
-  executeTestWorkflowBranch as executeWorkflowBranch,
-} from "#src/backend/engine/test-execution";
+import { executeTestWorkflow as executeWorkflow } from "#src/backend/engine/test-execution";
 import {
   createRecordingWorkflowStore,
   type RecordingWorkflowStore,
 } from "#src/backend/engine/recording-store";
 import {
   driveWithReplay,
-  perExecutor,
   type ReplayExecutor,
   type ReplayPass,
-  withBranchRuns,
 } from "#src/backend/engine/testing/replay-runtime";
 import {
   CANCEL_WAKE,
@@ -196,16 +190,12 @@ export function dispatchClock(
 }
 
 /**
- * Drives one graph the way a live run goes under `executor`. The Inngest
- * executor runs a root run and one branch run per Wait the root hands off,
- * and every run writes to the one store, which is how a branch reads the
- * outputs of the nodes above it. The database executor runs one run per
- * Execution, enters every Wait where it stands, and runs the body again from
- * the top whenever one of its parks resolves.
+ * Drives one graph the way a live run goes under `executor`: one run per
+ * Execution, which enters every Wait where it stands and runs the body again
+ * from the top whenever one of its parks resolves.
  *
- * `storeForPass` wraps the store the root run's pass writes through, for a
- * case whose store write is also a producer that resolves parks during the
- * pass. Only the database executor's pass offers `signalOpenParks`.
+ * `storeForPass` wraps the store a pass writes through, for a case whose store
+ * write is also a producer that resolves parks during the pass.
  */
 export function runGraph(
   graph: ReturnType<typeof createSerializedWorkflowGraph>,
@@ -243,17 +233,7 @@ export function runGraph(
         actions,
         entities
       ),
-    {
-      executor: withBranchRuns(executor, (runtime, branchInput) =>
-        executeWorkflowBranch(
-          { ...input, ...branchInput },
-          runtime,
-          store,
-          actions,
-          entities
-        )
-      ),
-    }
+    { executor }
   );
 }
 
@@ -538,9 +518,7 @@ function exitAtAfterShort() {
 
 /**
  * The store write that wins an Exit claim, which also resolves every park
- * still open with an Exit wake inside the pass that claimed it. Under the
- * Inngest executor the pass offers no `signalOpenParks`, and the claim wakes
- * the sibling branch run through `wakeParkedWaits` instead.
+ * still open with an Exit wake inside the pass that claimed it.
  */
 function exitWakesOpenParks(
   passStore: WorkflowStore,
@@ -551,7 +529,7 @@ function exitWakesOpenParks(
     requestExit: (input) =>
       Effect.tap(passStore.requestExit(input), (claimed) =>
         claimed?.didWrite && claimed.claim?.kind === "exit"
-          ? Effect.promise(async () => await pass.signalOpenParks?.(EXIT_WAKE))
+          ? Effect.promise(async () => await pass.signalOpenParks(EXIT_WAKE))
           : Effect.void
       ),
   };
@@ -564,14 +542,10 @@ export function defineParallelWaitReplayCases(executor: ReplayExecutor): void {
     expect(run.value).toMatchObject({ kind: "ended", success: true });
     expect(dispatchClock(run.executed, "scheduled_sms")).toBe(0);
     expect(dispatchClock(run.executed, "reminder")).toBeGreaterThan(25_000);
-    expect(run.runs).toBe(perExecutor(executor, { inngest: 2, database: 1 }));
   });
 
-  // A run wakes once, at the last of its outstanding pauses, so both Waits on
-  // one Inngest run would put the 30-second branch nine and a half minutes
-  // late. Each waiting branch holds its own run there, and the database
-  // executor's one run wakes when any one park resolves, so either way the
-  // short branch lands on its own target.
+  // The run wakes when any one park resolves, so the short branch lands on its
+  // own target while the long sibling stays parked.
   it("runs a short branch at its own target while a long sibling is still parked", async () => {
     const run = await runGraph(siblingWaitsGraph("30s", "10m"), executor);
 
@@ -582,12 +556,9 @@ export function defineParallelWaitReplayCases(executor: ReplayExecutor): void {
       9 * 60 * 1000
     );
     expect(dispatchClock(run.executed, "after_short")).toBeLessThan(60_000);
-    // The root and one run per waiting branch, or the one run.
-    expect(run.runs).toBe(perExecutor(executor, { inngest: 3, database: 1 }));
   });
 
-  // The Exit claim wakes the sibling parked on its Wait: a branch run that
-  // wins it wakes the sibling branch run, and in one run the store write that
+  // The Exit claim wakes the sibling parked on its Wait: the store write that
   // wins it resolves every park still open. The sibling halts at its Wait, and
   // the run ends `exited` at the short Wait's 30 seconds rather than at the
   // sibling Wait's ten-minute target.
@@ -630,23 +601,16 @@ export function defineParallelWaitReplayCases(executor: ReplayExecutor): void {
         .callsOf("markWaitStateStatus")
         .filter((call) => call.status === "cancelled")
     ).toHaveLength(1);
-    // Each Wait closed its own rows: a branch run before it returned, and the
-    // one run in the pass that read the Exit wake. Nothing is left for the
-    // kill sweep, which never runs.
-    expect(store.callsOf("cancelOpenWork")).toHaveLength(0);
     expect(store.callsOf("completeRun").map((call) => call.status)).toEqual([
       "exited",
     ]);
-    expect(run.runs).toBe(perExecutor(executor, { inngest: 3, database: 1 }));
   });
 
   // Only a park writes "waiting", and the short branch's resume writes
   // "running". The long sibling is still parked when that branch finishes, so
-  // the run is offered back to the repository, whose guard decides. Under the
-  // Inngest executor each branch run makes one offer and the root none, since
-  // the root ends the run with its terminal record. Under the database
-  // executor each pass that ends parked makes one: the pass that parks both
-  // Waits, and the pass whose short branch resumed and finished.
+  // the run is offered back to the repository, whose guard decides. Each pass
+  // that ends parked makes one offer: the pass that parks both Waits, and the
+  // pass whose short branch resumed and finished.
   it("offers the run back to waiting when a branch finishes beside a parked sibling", async () => {
     const store = createRecordingWorkflowStore();
     await runGraph(siblingWaitsGraph("30s", "10m"), executor, { store });
@@ -664,13 +628,10 @@ export function defineParallelWaitReplayCases(executor: ReplayExecutor): void {
     expect(dispatchClock(run.executed, "notify")).toBe(0);
     // Two waits in a row, so the branch behind them costs both.
     expect(dispatchClock(run.executed, "follow_up")).toBeGreaterThan(55_000);
-    expect(run.runs).toBe(perExecutor(executor, { inngest: 3, database: 1 }));
   });
 
-  // A branch run walked none of the graph above its entry node, so the value
-  // comes back out of the store. In one run the pass that runs the node behind
-  // the Wait replays the node above it from the memo, so the template reads
-  // the output that pass's traversal rebuilt.
+  // The pass that runs the node behind the Wait replays the node above it from
+  // the memo, so the template reads the output that pass's traversal rebuilt.
   it("resolves a template behind the wait against a node above it", async () => {
     echoedConfig = undefined;
 
@@ -688,9 +649,9 @@ export function defineParallelWaitReplayCases(executor: ReplayExecutor): void {
    * envelope around it, and every reader steps through one envelope. A payload
    * that is itself `{ success, data }` is where that difference shows: read
    * back bare, it would be stepped through twice and the template would
-   * resolve against the wrong object. A branch run reads the row back, and one
-   * run reads the output its traversal rebuilt from the memo, which must still
-   * be stepped through once after it round-tripped through that memo.
+   * resolve against the wrong object. The run reads the output its traversal
+   * rebuilt from the memo, which must still be stepped through once after it
+   * round-tripped through that memo.
    */
   it("reads an output above the wait the way the run that produced it did", async () => {
     echoedConfig = undefined;
@@ -715,13 +676,7 @@ export function defineParallelWaitReplayCases(executor: ReplayExecutor): void {
     expect(run.value.results.broken?.success).toBe(false);
     expect(run.value.results.wait_before?.success).toBe(true);
     expect(run.value.results.elsewhere?.success).toBe(true);
-    expect(run.runs).toBe(perExecutor(executor, { inngest: 2, database: 1 }));
   });
-
-  // The rest is the database executor's own: the timings of one run's passes,
-  // and a Cancel Event that resolves parks instead of killing branch runs. The
-  // Inngest executor's kill sweep is a case in `core-parallel-wait.test.ts`.
-  if (executor.kind !== "database") return;
 
   // One pass parks every Wait it reaches, and each pass after it runs what one
   // resolution released. Two siblings take one pass to park both, one for the
@@ -739,8 +694,8 @@ export function defineParallelWaitReplayCases(executor: ReplayExecutor): void {
     expect(run.invocations).toBe(3);
   });
 
-  // The timings ADR-0011 measured with a run per branch. The delay derives its
-  // remaining time from Date.now(), so each park can land a millisecond early.
+  // The delay derives its remaining time from Date.now(), so each park can land
+  // a millisecond early.
   it("acts on sibling Waits of 20 and 90 seconds at their own targets", async () => {
     const run = await runGraph(siblingWaitsGraph("20s", "90s"), executor);
 
@@ -755,13 +710,11 @@ export function defineParallelWaitReplayCases(executor: ReplayExecutor): void {
     );
     // One pass parks both, one runs the short branch, one the long.
     expect(run.invocations).toBe(3);
-    expect(run.runs).toBe(1);
   });
 
-  // In one run nothing is killed. The Cancel Event writes its claim and
-  // resolves the parked Wait with a cancel wake, so the Wait closes its own
-  // rows in the next pass before the Canceled outlet opens one, and no sweep
-  // is needed.
+  // The Cancel Event writes its claim and resolves the parked Wait with a
+  // cancel wake, so the Wait closes its own rows in the next pass before the
+  // Canceled outlet opens one.
   it("closes a parked Wait's rows on the cancel wake before taking the Canceled outlet", async () => {
     const store = createRecordingWorkflowStore();
 
@@ -780,7 +733,6 @@ export function defineParallelWaitReplayCases(executor: ReplayExecutor): void {
 
     expect(dispatchClock(run.executed, "reminder")).toBeUndefined();
     expect(dispatchClock(run.executed, "canceled_sms")).toBe(30_000);
-    expect(store.callsOf("cancelOpenWork")).toHaveLength(0);
 
     const closedAt = store.calls.findIndex(
       (call) =>
@@ -796,7 +748,6 @@ export function defineParallelWaitReplayCases(executor: ReplayExecutor): void {
     expect(store.callsOf("completeRun").map((call) => call.status)).toEqual([
       "canceled",
     ]);
-    expect(run.runs).toBe(1);
   });
 
   // A Cancel Event while both sibling Waits are parked resolves both parks in
@@ -838,6 +789,5 @@ export function defineParallelWaitReplayCases(executor: ReplayExecutor): void {
     ]);
     // One pass parks both Waits, and the pass after the Cancel Event ends it.
     expect(run.invocations).toBe(2);
-    expect(run.runs).toBe(1);
   });
 }

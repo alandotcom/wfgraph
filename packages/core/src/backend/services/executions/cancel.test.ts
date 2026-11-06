@@ -3,11 +3,11 @@ import { Effect, Layer } from "effect";
 // The mocks API has to be the one vitest itself exports; reaching it through the
 // `@effect/vitest` re-export leaves it unable to find the module registry.
 import { beforeEach, vi } from "vitest";
-import { InngestError } from "#src/backend/lib/effect/inngest-client";
+import { DriverError } from "#src/backend/services/executions/driver";
 import {
   SilentAppLoggerLayer,
   stubExecutionRepo,
-  stubInngestClient,
+  stubExecutionDriver,
 } from "#src/backend/lib/effect/test-layers";
 import type {
   ExecutionRepo,
@@ -36,9 +36,7 @@ const endInFlight = vi.fn<Repo["endInFlight"]>(() =>
   })
 );
 const cancelWaits = vi.fn<Repo["cancelWaits"]>(() => Effect.succeed([]));
-const sendCancelRequested = vi.fn(
-  () => Effect.void as Effect.Effect<void, InngestError>
-);
+const stopRun = vi.fn(() => Effect.void as Effect.Effect<void, DriverError>);
 
 /** A run parked on a wait, as `listWaitingStates` hands one over. */
 function createWaitState(
@@ -81,7 +79,7 @@ beforeEach(() => {
     })
   );
   cancelWaits.mockImplementation(() => Effect.succeed([]));
-  sendCancelRequested.mockImplementation(() => Effect.void);
+  stopRun.mockImplementation(() => Effect.void);
 });
 
 const services = Layer.mergeAll(
@@ -94,7 +92,7 @@ const services = Layer.mergeAll(
     endInFlight,
     cancelWaits,
   }),
-  stubInngestClient({ sendCancelRequested })
+  stubExecutionDriver({ stopRun })
 );
 
 describe("postExecutionCancel", () => {
@@ -145,7 +143,7 @@ describe("postExecutionCancel", () => {
     })
   );
 
-  it.effect("retries a cancel signal after its terminal write succeeded", () =>
+  it.effect("retries a stop after its terminal write succeeded", () =>
     Effect.gen(function* () {
       findStatusById
         .mockImplementationOnce(() =>
@@ -174,9 +172,9 @@ describe("postExecutionCancel", () => {
             didWrite: false,
           })
         );
-      sendCancelRequested
+      stopRun
         .mockImplementationOnce(() =>
-          Effect.fail(new InngestError({ cause: "no route" }))
+          Effect.fail(new DriverError({ cause: "connection lost" }))
         )
         .mockImplementationOnce(() => Effect.void);
 
@@ -195,7 +193,7 @@ describe("postExecutionCancel", () => {
         cancelledWaitStates: 1,
       });
       assert.strictEqual(endInFlight.mock.calls.length, 2);
-      assert.strictEqual(sendCancelRequested.mock.calls.length, 2);
+      assert.strictEqual(stopRun.mock.calls.length, 2);
       assert.deepStrictEqual(cancelWaits.mock.calls, [[[]], [["wait_1"]]]);
       assert.strictEqual(
         recordAuditEvent.mock.calls.filter(
@@ -249,7 +247,7 @@ describe("postExecutionCancel", () => {
 
       assert.strictEqual(failure._tag, "Conflict");
       assert.strictEqual(failure.error, "Execution is already canceling");
-      assert.strictEqual(sendCancelRequested.mock.calls.length, 0);
+      assert.strictEqual(stopRun.mock.calls.length, 0);
       // The run is already on its way out under the earlier claim, so this call
       // leaves no request on its timeline.
       assert.deepStrictEqual(

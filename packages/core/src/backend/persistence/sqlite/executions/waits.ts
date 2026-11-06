@@ -6,7 +6,6 @@ import {
   gt,
   inArray,
   isNull,
-  lte,
   notInArray,
   or,
   sql,
@@ -32,12 +31,14 @@ import {
   WAIT_ARRIVAL_METADATA_KEY,
   type WaitArrival,
 } from "@wfgraph/shared/lifecycle/wait-signal";
-import type {
-  ReparkWaitOutcome,
-  ReparkWaitRefusal,
-  WaitResumeClaim,
-  WaitsRepoMethods,
+import {
+  type ReparkWaitOutcome,
+  type ReparkWaitRefusal,
+  resumeWakeOf,
+  type WaitResumeClaim,
+  type WaitsRepoMethods,
 } from "#src/backend/services/executions/repo/waits";
+import { requeueWaitingRun } from "#src/backend/persistence/sqlite/executions/schedule";
 import type {
   OwnerFence,
   WorkflowWaitState,
@@ -57,8 +58,6 @@ import {
   sqliteParkState,
   sqliteWaitState,
 } from "#src/backend/persistence/sqlite/executions/rows";
-
-const WAIT_RESUME_CLAIM_LEASE_MS = 5 * 60 * 1000;
 
 /**
  * Whether a wait row's `subscribed_events` still lists this Event name. The
@@ -126,25 +125,42 @@ const waitStateSelection = {
 };
 
 /**
- * Claims one row and records the wake on it, so a run between two parks can
- * read back the signal it was not listening for.
+ * Whether an Event or a manual resume may claim this row, as the PostgreSQL
+ * backend's `claimableWait` decides: one still `waiting`, or one whose pending
+ * wake is a Migration's `migrate` wake, which the Event replaces.
+ */
+function claimableWait(): SQL {
+  return sql`(${workflowWaitStates.status} = 'waiting' or (${workflowWaitStates.status} = 'resuming' and json_extract(${workflowWaitStates.wake}, '$.kind') = 'migrate'))`;
+}
+
+/**
+ * Whether this delivery's own claim already resolved the row, as the PostgreSQL
+ * backend's `claimedByDelivery` decides: `resuming` with a `resume` wake and the
+ * arrival naming `deliveryId`.
+ */
+function claimedByDelivery(deliveryId: string): SQL {
+  return sql`(${workflowWaitStates.status} = 'resuming' and json_extract(${workflowWaitStates.wake}, '$.kind') = 'resume' and json_extract(${workflowWaitStates.metadata}, ${`$.${WAIT_ARRIVAL_METADATA_KEY}.deliveryId`}) = ${deliveryId})`;
+}
+
+/**
+ * Claims one row for an Event or a manual resume, as the PostgreSQL backend's
+ * `claimWaitState` does: the `resume` wake, `resuming`, and the arrival in the
+ * row's metadata, then a `waiting` schedule row moved to `queued` at `now`. The
+ * caller's write transaction holds the one writer, so no release can read the
+ * wait rows between the claim and the re-queue. A row the `retryDeliveryId`
+ * delivery's own claim resolved answers as claimed, unwritten and not re-queued.
  */
 function claimWait(
   database: SqliteExecutor,
-  identity: SQL | undefined,
-  arrival: WaitArrival
+  input: {
+    identity: SQL | undefined;
+    retryDeliveryId?: string | undefined;
+    arrival: WaitArrival;
+    now: Date;
+  }
 ): Effect.Effect<WaitResumeClaim | null, unknown> {
+  const { identity, retryDeliveryId, arrival, now } = input;
   return Effect.gen(function* () {
-    const claimedAt = new Date();
-    const claimedAtMs = claimedAt.getTime();
-    const staleBefore = claimedAtMs - WAIT_RESUME_CLAIM_LEASE_MS;
-    const claimable = or(
-      eq(workflowWaitStates.status, "waiting"),
-      and(
-        eq(workflowWaitStates.status, "resuming"),
-        lte(workflowWaitStates.resumedAt, staleBefore)
-      )
-    );
     const candidate = yield* database
       .select({
         id: workflowWaitStates.id,
@@ -158,27 +174,44 @@ function claimWait(
       .where(
         and(
           identity,
-          claimable,
+          claimableWait(),
           inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES),
           notExitClaimed
         )
       )
       .get();
-    if (!candidate) return null;
+    if (!candidate) {
+      if (retryDeliveryId === undefined) return null;
+      const ownClaim = yield* database
+        .select()
+        .from(workflowWaitStates)
+        .where(and(identity, claimedByDelivery(retryDeliveryId)))
+        .get();
+      return ownClaim
+        ? { waitState: sqliteWaitState(ownClaim), requeued: false }
+        : null;
+    }
     const [claimed] = yield* database
       .update(workflowWaitStates)
       .set({
         status: "resuming",
-        resumedAt: claimedAtMs,
+        resumedAt: now.getTime(),
+        wake: encodeJson(resumeWakeOf(arrival)),
         metadata: encodeJson({
           ...optionalJsonObject(candidate.metadata, "metadata"),
           [WAIT_ARRIVAL_METADATA_KEY]: omitUndefined(arrival),
         }),
       })
-      .where(and(eq(workflowWaitStates.id, candidate.id), identity, claimable))
+      .where(
+        and(eq(workflowWaitStates.id, candidate.id), identity, claimableWait())
+      )
       .returning();
     if (!claimed) return null;
-    return { waitState: sqliteWaitState(claimed), claimedAt };
+    const waitState = sqliteWaitState(claimed);
+    return {
+      waitState,
+      requeued: yield* requeueWaitingRun(database, waitState.executionId, now),
+    };
   });
 }
 
@@ -529,20 +562,19 @@ export function makeSqliteWaitsMethods(
       }),
     claimWaitingStateByToken: (input) =>
       store.write((database) =>
-        claimWait(
-          database,
-          and(
+        claimWait(database, {
+          identity: and(
             eq(workflowWaitStates.resumeToken, input.resumeToken),
             eq(workflowWaitStates.waitType, "event")
           ),
-          input.arrival
-        )
+          arrival: input.arrival,
+          now: input.now,
+        })
       ),
     claimWaitingStateById: (input) =>
       store.write((database) =>
-        claimWait(
-          database,
-          and(
+        claimWait(database, {
+          identity: and(
             eq(workflowWaitStates.id, input.waitStateId),
             eq(workflowWaitStates.waitType, "event"),
             input.resumeToken === null
@@ -553,38 +585,12 @@ export function makeSqliteWaitsMethods(
               ? arrivalAbsentOrSameDelivery(input.arrival)
               : undefined
           ),
-          input.arrival
-        )
-      ),
-    settleWaitingStateClaim: (input) =>
-      store.write((database) =>
-        database
-          .update(workflowWaitStates)
-          .set({ status: "resumed", resumedAt: Date.now() })
-          .where(
-            and(
-              eq(workflowWaitStates.id, input.waitStateId),
-              eq(workflowWaitStates.status, "resuming"),
-              eq(workflowWaitStates.resumedAt, input.claimedAt.getTime())
-            )
-          )
-          .returning({ id: workflowWaitStates.id })
-          .pipe(Effect.map((rows) => rows.length > 0))
-      ),
-    releaseWaitingStateClaim: (input) =>
-      store.write((database) =>
-        database
-          .update(workflowWaitStates)
-          .set({ status: "waiting", resumedAt: null })
-          .where(
-            and(
-              eq(workflowWaitStates.id, input.waitStateId),
-              eq(workflowWaitStates.status, "resuming"),
-              eq(workflowWaitStates.resumedAt, input.claimedAt.getTime())
-            )
-          )
-          .returning({ id: workflowWaitStates.id })
-          .pipe(Effect.map((rows) => rows.length > 0))
+          retryDeliveryId: input.allowSameDeliveryRetry
+            ? input.arrival.deliveryId
+            : undefined,
+          arrival: input.arrival,
+          now: input.now,
+        })
       ),
     listWaitingStates: (executionId) =>
       store.read((database) =>

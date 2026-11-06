@@ -7,7 +7,6 @@
  * opened the row.
  */
 
-import { type JsonValue, readJsonValue } from "@wfgraph/shared/types/json";
 import {
   claimKindAdmits,
   type ExecutionSide,
@@ -15,7 +14,6 @@ import {
 import { Effect } from "effect";
 import type { WaitArrival } from "@wfgraph/shared/lifecycle/wait-signal";
 import type {
-  CompletedNodeProgress,
   CompleteRunInput,
   CompleteStepLogInput,
   CreateWaitStateInput,
@@ -51,9 +49,6 @@ type StoreCallInputs = {
   readTerminationState: { executionId: string };
   readPendingCancel: { executionId: string };
   completeRun: CompleteRunInput;
-  readNodeOutputs: { executionId: string };
-  readCompletedNodeProgress: { executionId: string };
-  cancelOpenWork: { executionId: string };
 };
 
 type StoreMethod = keyof StoreCallInputs;
@@ -90,8 +85,8 @@ export type RecordingWorkflowStore = WorkflowStore & {
    */
   markRunningAnswer: boolean;
   /**
-   * What `markExecutionWaitingIfParked` answers. True models a run whose sibling
-   * branch is still parked when this branch finishes.
+   * What `markExecutionWaitingIfParked` answers. True models a pass that ends
+   * with a Wait of the run still parked.
    */
   waitingIfParkedAnswer: boolean;
   /** Shared execution boundary state used by node-admission and exit tests. */
@@ -112,13 +107,6 @@ function claimAdmits(
 
 export function createRecordingWorkflowStore(): RecordingWorkflowStore {
   const calls: RecordedStoreCall[] = [];
-  /** Which node each open row belongs to, so a close can be attributed. */
-  const nodeOfLog = new Map<string, string>();
-  const nodeNameOfLog = new Map<string, string>();
-  /** What each node that succeeded left, which is what a branch run reads back. */
-  const nodeOutputs: Record<string, JsonValue> = {};
-  /** Latest completed row per node, as a canceled parent recovers it. */
-  const completedNodeProgress = new Map<string, CompletedNodeProgress>();
   const byMethod: { [M in StoreMethod]: StoreCallInputs[M][] } = {
     startStepLog: [],
     completeStepLog: [],
@@ -135,9 +123,6 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
     readTerminationState: [],
     readPendingCancel: [],
     completeRun: [],
-    readNodeOutputs: [],
-    readCompletedNodeProgress: [],
-    cancelOpenWork: [],
   };
 
   const store: RecordingWorkflowStore = {
@@ -165,8 +150,6 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
         calls.push({ method: "startStepLog", input });
         byMethod.startStepLog.push(input);
         const logId = `log_${byMethod.startStepLog.length}`;
-        nodeOfLog.set(logId, input.nodeId);
-        nodeNameOfLog.set(logId, input.nodeName);
         return { logId, startTime: Date.now() };
       });
     },
@@ -175,26 +158,6 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
       return Effect.sync(() => {
         calls.push({ method: "completeStepLog", input });
         byMethod.completeStepLog.push(input);
-        const nodeId = nodeOfLog.get(input.logId);
-        if (nodeId) {
-          const output = readJsonValue(input.output);
-          completedNodeProgress.delete(nodeId);
-          completedNodeProgress.set(nodeId, {
-            nodeId,
-            nodeName: nodeNameOfLog.get(input.logId) ?? nodeId,
-            status: input.status,
-            output,
-            error: input.error ?? null,
-          });
-          if (input.status === "success") {
-            Object.defineProperty(nodeOutputs, nodeId, {
-              configurable: true,
-              enumerable: true,
-              value: output,
-              writable: true,
-            });
-          }
-        }
       });
     },
 
@@ -347,34 +310,6 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
           didWrite: true,
         };
         return store.terminationState;
-      });
-    },
-
-    // Answered from the rows this adapter was asked to close, which is the
-    // database's own answer in miniature: a branch run reads what the run above
-    // it wrote, and a node whose row never closed is absent here too.
-    readNodeOutputs(executionId) {
-      return Effect.sync(() => {
-        const input = { executionId };
-        calls.push({ method: "readNodeOutputs", input });
-        byMethod.readNodeOutputs.push(input);
-        return { ...nodeOutputs };
-      });
-    },
-
-    readCompletedNodeProgress(executionId) {
-      return Effect.sync(() => {
-        const input = { executionId };
-        calls.push({ method: "readCompletedNodeProgress", input });
-        byMethod.readCompletedNodeProgress.push(input);
-        return [...completedNodeProgress.values()].toReversed();
-      });
-    },
-
-    cancelOpenWork(input) {
-      return Effect.sync(() => {
-        calls.push({ method: "cancelOpenWork", input });
-        byMethod.cancelOpenWork.push(input);
       });
     },
   };

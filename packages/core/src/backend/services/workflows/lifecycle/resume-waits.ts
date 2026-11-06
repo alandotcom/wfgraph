@@ -1,10 +1,10 @@
 /**
  * Waking the runs an arriving Event was the thing they parked for.
  *
- * Claim and delivery are one unit: a run is counted once its durable signal is
- * accepted and no other writer has taken over its claim. The claim stops two
- * deliveries from waking one node, while the resumed engine records the
- * consumed wake and closes the row it woke from.
+ * Claim and wake are one write: a run is counted once its park is claimed and
+ * resolved with the arrival. The claim stops two deliveries from waking one
+ * node, while the resumed engine records the consumed wake and closes the row
+ * it woke from.
  */
 
 import { Effect } from "effect";
@@ -32,7 +32,12 @@ export type WaitDeliveryCandidate = {
 /** Whether the row matched, and the error from every subscription that could not be evaluated. */
 type WaitMatchResult = { matched: boolean; unevaluated: string[] };
 
-/** Whether a reread still names the same open Event Wait and current park. */
+/**
+ * Whether a reread still names the same Event Wait under a newer park token,
+ * either still `waiting` with no arrival or this delivery's, or `resuming` on
+ * this delivery's own arrival. The second is a retried delivery whose earlier
+ * attempt claimed the row under the newer token; its claim answers as claimed.
+ */
 function canRefreshWaitCandidate(input: {
   candidate: WaitDeliveryCandidate;
   current: WorkflowWaitState;
@@ -55,11 +60,12 @@ function canRefreshWaitCandidate(input: {
     current.executionId === candidate.executionId &&
     current.nodeId === candidate.nodeId &&
     current.waitType === "event" &&
-    current.status === "waiting" &&
     current.resumeToken !== null &&
     current.resumeToken !== candidate.resumeToken &&
     current.subscribedEvents?.includes(input.eventType) === true &&
-    (arrivalIsAbsent || arrivalIsThisDelivery)
+    ((current.status === "waiting" &&
+      (arrivalIsAbsent || arrivalIsThisDelivery)) ||
+      (current.status === "resuming" && arrivalIsThisDelivery))
   );
 }
 
@@ -132,12 +138,12 @@ export const resumeWaitsMatchingEvent = Effect.fn("resumeWaitsMatchingEvent")(
       return 0;
     }
 
-    // Bounded because each woken run costs a send and three writes, and the
-    // parked population this walks is not bounded by anything: an event wait
-    // defaults to a 7-day timeout, so one arrival can find a week's runs.
-    // Finish every candidate in the saved page before failing the durable
-    // delivery step. Successful sends remain fenced by their wait claims; a
-    // refused send releases its claim so Inngest can retry this same page.
+    // Bounded because each woken run costs a claim transaction, and the parked
+    // population this walks is not bounded by anything: an event wait defaults
+    // to a 7-day timeout, so one arrival can find a week's runs. Finish every
+    // candidate in the saved page before failing the durable delivery step. A
+    // claim that committed holds its arrival, so a retry of this same page
+    // counts that park as woken and writes no second wake on it.
     const results = yield* Effect.forEach(
       input.waitStates,
       (waitState) =>
@@ -172,8 +178,8 @@ export const resumeWaitsMatchingEvent = Effect.fn("resumeWaitsMatchingEvent")(
 /**
  * One wait, woken or left alone, answering 1 or 0 so the caller can add them up.
  *
- * A missing row is an ordinary race. Database and Inngest failures escape to
- * the durable page step so the same saved candidates can be retried.
+ * A missing row is an ordinary race. A database failure escapes to the
+ * durable page step so the same saved candidates can be retried.
  */
 const resumeOneWait = Effect.fn("resumeOneWait")(function* (input: {
   workflowId: string;
@@ -258,10 +264,8 @@ const resumeOneWait = Effect.fn("resumeOneWait")(function* (input: {
     );
 
   const firstOutcome = yield* wakeCandidate(waitState, resumeToken);
-  if (firstOutcome.status !== "unclaimed") {
-    // A raced settle is not counted here; that is either a second wake counting
-    // it or the woken run closing the row it consumed.
-    return firstOutcome.status === "resumed" ? 1 : 0;
+  if (firstOutcome.status === "resumed") {
+    return 1;
   }
 
   // The durable candidate page stays fixed for this delivery. A migration can
@@ -319,8 +323,8 @@ const resumeOneWait = Effect.fn("resumeOneWait")(function* (input: {
       currentCandidate,
       current.resumeToken
     );
-    if (refreshedOutcome.status !== "unclaimed") {
-      return refreshedOutcome.status === "resumed" ? 1 : 0;
+    if (refreshedOutcome.status === "resumed") {
+      return 1;
     }
     previousCandidate = currentCandidate;
   }

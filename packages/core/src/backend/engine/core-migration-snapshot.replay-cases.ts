@@ -1,6 +1,6 @@
 /**
- * The Migration graph the migration-snapshot suite drives, and its case under
- * the database executor: the node behind a migrated Wait reads an output a
+ * The Migration graph the migration-snapshot suite drives, and its case: the
+ * node behind a migrated Wait reads an output a
  * pass under the earlier version produced.
  */
 
@@ -10,8 +10,10 @@ import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import { executeTestWorkflow } from "#src/backend/engine/test-execution";
 import { createRecordingWorkflowStore } from "#src/backend/engine/recording-store";
-import { driveWithReplay } from "#src/backend/engine/testing/replay-runtime";
-import type { DatabaseReplayExecutor } from "#src/backend/engine/testing/replay-database-executor";
+import {
+  driveWithReplay,
+  type ReplayExecutor,
+} from "#src/backend/engine/testing/replay-runtime";
 import {
   createLifecycleNode,
   createWaitNode,
@@ -98,7 +100,7 @@ export function migrationGraph(migrated: boolean, returnToOriginal: boolean) {
 }
 
 /** An action that answers with the `subject` it was handed. */
-export const actions: WorkflowActions = {
+const actions: WorkflowActions = {
   stepFor: () => (input) =>
     Effect.succeed({ success: true, data: { subject: input.subject } }),
   metadataFor: () => ({
@@ -110,9 +112,7 @@ export const actions: WorkflowActions = {
 };
 
 /** Whether the `source` node's run-log row has been opened and closed. */
-export function sourceDone(
-  store: ReturnType<typeof createRecordingWorkflowStore>
-) {
+function sourceDone(store: ReturnType<typeof createRecordingWorkflowStore>) {
   const index = store
     .callsOf("startStepLog")
     .findIndex((call) => call.nodeId === "source");
@@ -125,14 +125,13 @@ export function sourceDone(
 }
 
 export function defineMigrationSnapshotReplayCases(
-  executor: DatabaseReplayExecutor
+  executor: ReplayExecutor
 ): void {
-  // One run inherits nothing, so the question becomes whether the node behind a
-  // migrated Wait reads the output of a node a pass under the earlier version ran.
-  // Each pass loads the version the run is pinned to, and the traversal it
+  // The node behind a migrated Wait reads the output of a node a pass under
+  // the earlier version ran. Each pass loads the version the run is pinned to, and the traversal it
   // rebuilds from the memo holds `source`'s output under either graph.
   it.each([false, true])(
-    "reads an output from before the migration behind the migrated Wait, in one run (return to original version: %s)",
+    "reads an output from before the migration behind the migrated Wait (return to original version: %s)",
     async (returnToOriginal) => {
       const store = createRecordingWorkflowStore();
       const run = await driveWithReplay(
@@ -164,8 +163,6 @@ export function defineMigrationSnapshotReplayCases(
         store.callsOf("startStepLog").filter((call) => call.nodeId === "source")
       ).toHaveLength(1);
       expect(store.callsOf("reparkWaitState").length).toBeGreaterThan(0);
-      expect(store.callsOf("readNodeOutputs")).toHaveLength(0);
-      expect(run.runs).toBe(1);
     }
   );
 }

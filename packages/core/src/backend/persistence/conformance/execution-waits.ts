@@ -29,6 +29,9 @@ const EVENT_ARRIVAL = {
   payload: { approved: true },
 } as const;
 
+/** When a claim, a Cancel claim or a repin writes, which a re-queue is due at. */
+const NOW = new Date("2026-01-01T00:00:00.000Z");
+
 function startEventWait(
   connection: ConformanceConnection,
   resumeToken: string
@@ -92,14 +95,15 @@ export function describeExecutionWaitConformance({
               change === "replaced"
             ) {
               const claim = yield* executions.claimWaitingStateByToken({
+                now: NOW,
                 resumeToken: "classified-token",
                 arrival: EVENT_ARRIVAL,
               });
               if (!claim) throw new Error("Claim was refused");
               if (change !== "claimed") {
-                yield* executions.settleWaitingStateClaim({
+                yield* executions.markWaitStatus({
                   waitStateId,
-                  claimedAt: claim.claimedAt,
+                  status: "resumed",
                 });
               }
             }
@@ -133,7 +137,7 @@ export function describeExecutionWaitConformance({
               fromVersionId: "ver_1",
               toVersionId: "ver_2",
               expectedWaitStates,
-              parks: { kind: "leave_parked" },
+              now: NOW,
             });
             return {
               moved,
@@ -146,7 +150,7 @@ export function describeExecutionWaitConformance({
       }
     );
 
-    it("reuses a committed preparation and preserves an accepted wake on retry", async () => {
+    it("reuses a committed preparation and keeps an accepted wake from a retry or a re-park", async () => {
       const database = await openConnection();
       await seedPublishedWorkflow(database);
       const waitStateId = await startEventWait(database, "stable-token");
@@ -173,6 +177,7 @@ export function describeExecutionWaitConformance({
           });
           expect(repeated).toEqual([{ waitStateId }, { waitStateId }]);
           const claim = yield* executions.claimWaitingStateById({
+            now: NOW,
             waitStateId,
             resumeToken: "stable-token",
             eventName: EVENT_ARRIVAL.eventName,
@@ -184,25 +189,27 @@ export function describeExecutionWaitConformance({
           expect(yield* executions.findWaitStateById(waitStateId)).toEqual(
             claimed
           );
-          if (!claim) throw new Error("claim refused");
-          yield* executions.releaseWaitingStateClaim({
-            waitStateId,
-            claimedAt: claim.claimedAt,
-          });
-          yield* retry();
-          yield* executions.reparkWait({
-            waitStateId,
-            workflowVersionId: "ver_1",
-            side: "started",
-            waitType: "event",
-            waitUntil: null,
-            subscribedEvents: [EVENT_ARRIVAL.eventName],
-            resumeToken: "next-park",
-            metadata: {},
-          });
+          // A re-park writes over a `waiting` row or a `migrate` or `timeout`
+          // wake, never over an Event's wake.
+          expect(
+            yield* executions.reparkWait({
+              waitStateId,
+              workflowVersionId: "ver_1",
+              side: "started",
+              waitType: "event",
+              waitUntil: null,
+              subscribedEvents: [EVENT_ARRIVAL.eventName],
+              resumeToken: "next-park",
+              metadata: {},
+            })
+          ).toEqual({ ok: false, reason: "not_waiting" });
           expect(
             (yield* executions.findWaitStateById(waitStateId))?.metadata
           ).toMatchObject({ arrival: EVENT_ARRIVAL });
+          expect(yield* executions.findPark(waitStateId)).toMatchObject({
+            status: "resuming",
+            wake: { kind: "resume", eventName: EVENT_ARRIVAL.eventName },
+          });
         })
       );
     });
@@ -267,6 +274,7 @@ export function describeExecutionWaitConformance({
           Effect.gen(function* () {
             const executions = yield* ExecutionRepo;
             return yield* executions.claimWaitingStateById({
+              now: NOW,
               waitStateId: waitStateIds.first,
               resumeToken: "resume_1",
               eventName: EVENT_ARRIVAL.eventName,
@@ -286,9 +294,9 @@ export function describeExecutionWaitConformance({
       const siblingClaim = await database.run(
         Effect.gen(function* () {
           const executions = yield* ExecutionRepo;
-          const settled = yield* executions.settleWaitingStateClaim({
-            waitStateId: waitStateIds.first,
-            claimedAt: firstClaim.claimedAt,
+          const settled = yield* executions.markWaitStatus({
+            waitStateId: firstClaim.waitState.id,
+            status: "resumed",
           });
           if (!settled) throw new Error("Claimed wait did not settle");
           yield* executions.markRunning({
@@ -297,6 +305,7 @@ export function describeExecutionWaitConformance({
             workflowVersionId: "ver_1",
           });
           return yield* executions.claimWaitingStateById({
+            now: NOW,
             waitStateId: waitStateIds.sibling,
             resumeToken: "resume_2",
             eventName: EVENT_ARRIVAL.eventName,
@@ -319,6 +328,7 @@ export function describeExecutionWaitConformance({
         Effect.gen(function* () {
           const executions = yield* ExecutionRepo;
           return yield* executions.claimWaitingStateById({
+            now: NOW,
             waitStateId,
             resumeToken: "resume_race",
             eventName: EVENT_ARRIVAL.eventName,
@@ -345,58 +355,13 @@ export function describeExecutionWaitConformance({
       if (claimResult) {
         expect(timeoutArrival).toEqual(EVENT_ARRIVAL);
         expect(row?.status).toBe("resumed");
-        const release = await database.run(
-          Effect.gen(function* () {
-            const executions = yield* ExecutionRepo;
-            return yield* executions.releaseWaitingStateClaim({
-              waitStateId,
-              claimedAt: claimResult.claimedAt,
-            });
-          })
-        );
-        expect(release).toBe(false);
       } else {
         expect(timeoutArrival).toBeNull();
         expect(row?.status).toBe("timed_out");
       }
     });
 
-    it("recovers an arrival after a refused sender releases its claim", async () => {
-      const database = await openConnection();
-      await seedPublishedWorkflow(database);
-      const waitStateId = await startEventWait(database, "resume_released");
-
-      const result = await database.run(
-        Effect.gen(function* () {
-          const executions = yield* ExecutionRepo;
-          const claim = yield* executions.claimWaitingStateById({
-            waitStateId,
-            resumeToken: "resume_released",
-            eventName: EVENT_ARRIVAL.eventName,
-            arrival: EVENT_ARRIVAL,
-          });
-          if (!claim) throw new Error("wait claim refused");
-          const released = yield* executions.releaseWaitingStateClaim({
-            waitStateId,
-            claimedAt: claim.claimedAt,
-          });
-          const arrival = yield* executions.settleWaitTimeout(waitStateId);
-          const retriedArrival =
-            yield* executions.settleWaitTimeout(waitStateId);
-          const row = yield* executions.findWaitStateById(waitStateId);
-          return { released, arrival, retriedArrival, status: row?.status };
-        })
-      );
-
-      expect(result).toEqual({
-        released: true,
-        arrival: EVENT_ARRIVAL,
-        retriedArrival: EVENT_ARRIVAL,
-        status: "resumed",
-      });
-    });
-
-    it("preserves another delivery's arrival between the refresh read and claim", async () => {
+    it("keeps another delivery's claim between the refresh read and a retried claim", async () => {
       const database = await openConnection();
       await seedPublishedWorkflow(database);
       const waitStateId = await startEventWait(database, "resume_claim_race");
@@ -412,17 +377,15 @@ export function describeExecutionWaitConformance({
           const refreshedRead =
             yield* executions.findWaitStateById(waitStateId);
           const competingClaim = yield* executions.claimWaitingStateById({
+            now: NOW,
             waitStateId,
             resumeToken: "resume_claim_race",
             eventName: EVENT_ARRIVAL.eventName,
             arrival: competingArrival,
           });
           if (!competingClaim) throw new Error("competing claim refused");
-          const released = yield* executions.releaseWaitingStateClaim({
-            waitStateId,
-            claimedAt: competingClaim.claimedAt,
-          });
           const refreshedClaim = yield* executions.claimWaitingStateById({
+            now: NOW,
             waitStateId,
             resumeToken: "resume_claim_race",
             eventName: EVENT_ARRIVAL.eventName,
@@ -432,7 +395,6 @@ export function describeExecutionWaitConformance({
           const current = yield* executions.findWaitStateById(waitStateId);
           return {
             arrivalAtRefreshRead: refreshedRead?.metadata?.arrival ?? null,
-            released,
             refreshedClaim,
             arrivalAfterClaim: current?.metadata?.arrival,
           };
@@ -441,68 +403,8 @@ export function describeExecutionWaitConformance({
 
       expect(result).toEqual({
         arrivalAtRefreshRead: null,
-        released: true,
         refreshedClaim: null,
         arrivalAfterClaim: competingArrival,
-      });
-    });
-
-    it("retries only the same Event delivery after a refreshed claim is released", async () => {
-      const database = await openConnection();
-      await seedPublishedWorkflow(database);
-      const waitStateId = await startEventWait(database, "resume_delivery_id");
-      const firstArrival = { ...EVENT_ARRIVAL, deliveryId: "delivery_first" };
-      const differentArrival = {
-        ...EVENT_ARRIVAL,
-        deliveryId: "delivery_different",
-      };
-
-      const result = await database.run(
-        Effect.gen(function* () {
-          const executions = yield* ExecutionRepo;
-          const firstClaim = yield* executions.claimWaitingStateById({
-            waitStateId,
-            resumeToken: "resume_delivery_id",
-            eventName: EVENT_ARRIVAL.eventName,
-            arrival: firstArrival,
-          });
-          if (!firstClaim) throw new Error("initial claim refused");
-          const released = yield* executions.releaseWaitingStateClaim({
-            waitStateId,
-            claimedAt: firstClaim.claimedAt,
-          });
-          const differentDeliveryClaim =
-            yield* executions.claimWaitingStateById({
-              waitStateId,
-              resumeToken: "resume_delivery_id",
-              eventName: EVENT_ARRIVAL.eventName,
-              arrival: differentArrival,
-              allowSameDeliveryRetry: true,
-            });
-          const rowAfterDifferentDelivery =
-            yield* executions.findWaitStateById(waitStateId);
-          const sameDeliveryClaim = yield* executions.claimWaitingStateById({
-            waitStateId,
-            resumeToken: "resume_delivery_id",
-            eventName: EVENT_ARRIVAL.eventName,
-            arrival: firstArrival,
-            allowSameDeliveryRetry: true,
-          });
-          return {
-            released,
-            differentDeliveryClaim,
-            arrivalAfterDifferentDelivery:
-              rowAfterDifferentDelivery?.metadata?.arrival,
-            sameDeliveryClaim: sameDeliveryClaim?.waitState.metadata?.arrival,
-          };
-        })
-      );
-
-      expect(result).toEqual({
-        released: true,
-        differentDeliveryClaim: null,
-        arrivalAfterDifferentDelivery: firstArrival,
-        sameDeliveryClaim: firstArrival,
       });
     });
 
@@ -532,6 +434,7 @@ export function describeExecutionWaitConformance({
             },
           });
           const staleClaim = yield* executions.claimWaitingStateById({
+            now: NOW,
             waitStateId,
             resumeToken: "resume_previous",
             eventName: EVENT_ARRIVAL.eventName,
@@ -541,6 +444,7 @@ export function describeExecutionWaitConformance({
             yield* executions.settleWaitTimeout(waitStateId);
           const retryArrival = yield* executions.settleWaitTimeout(waitStateId);
           const claimAfterTimeout = yield* executions.claimWaitingStateById({
+            now: NOW,
             waitStateId,
             resumeToken: "resume_current",
             eventName: EVENT_ARRIVAL.eventName,
@@ -614,6 +518,7 @@ export function describeExecutionWaitConformance({
               limit: 10,
             }),
             claimed: yield* executions.claimWaitingStateById({
+              now: NOW,
               waitStateId: firstWait.waitStateId,
               resumeToken: "resume_exit",
               eventName: EVENT_ARRIVAL.eventName,
@@ -681,13 +586,16 @@ export function describeExecutionWaitConformance({
           if (started.status !== "started") throw new Error("start refused");
           const executionId = started.execution.id;
 
-          const claimedIds = yield* executions.requestCancelForEntity({
+          const cancelClaims = yield* executions.requestCancelForEntity({
+            now: NOW,
             workflowId: "wf_1",
             entityValue: "appointment_canceled_side",
             runMode: "live",
             eventName: "appointment/cancelled",
             payload: { reason: "customer left" },
           });
+
+          const claimedIds = cancelClaims.map((claim) => claim.executionId);
 
           const startedSidePark = yield* executions.startWait({
             side: "started",
@@ -747,15 +655,16 @@ export function describeExecutionWaitConformance({
           })).map((row) => row.id);
 
           const claim = yield* executions.claimWaitingStateById({
+            now: NOW,
             waitStateId,
             resumeToken: "resume_canceled_side",
             eventName: EVENT_ARRIVAL.eventName,
             arrival: EVENT_ARRIVAL,
           });
           if (!claim) throw new Error("Canceled-side claim refused");
-          const settled = yield* executions.settleWaitingStateClaim({
+          const settled = yield* executions.markWaitStatus({
             waitStateId: claim.waitState.id,
-            claimedAt: claim.claimedAt,
+            status: "resumed",
           });
 
           // A second Canceled-side Wait parks beside the branch that just woke,
@@ -893,6 +802,7 @@ export function describeExecutionWaitConformance({
             }),
             listedIds: listed.map((row) => row.id),
             claimed: yield* executions.claimWaitingStateById({
+              now: NOW,
               waitStateId: parked.waitStateId,
               resumeToken: "resume_after_exit",
               eventName: EVENT_ARRIVAL.eventName,
@@ -1051,133 +961,10 @@ export function describeExecutionWaitConformance({
       });
     });
 
-    // A resume producer can hold a row in `resuming` when the Exit claim lands.
-    // The Exit wake still has to find that row, and a release of the claim after
-    // the Exit must not reopen a row the woken Wait has already closed.
-    it("lists claimed waits for the Exit wake and fences a release against a closed row", async () => {
-      const database = await openConnection();
-      await seedPublishedWorkflow(database);
-
-      const result = await database.run(
-        Effect.gen(function* () {
-          const executions = yield* ExecutionRepo;
-          const started = yield* executions.startForEntity({
-            execution: {
-              workflowId: "wf_1",
-              workflowVersionId: "ver_1",
-              startSource: "manual",
-              runMode: "live",
-              input: {},
-            },
-            concurrency: "unlimited",
-            supersededReason: "newer start",
-          });
-          if (started.status !== "started") {
-            throw new Error("Start was refused");
-          }
-          const executionId = started.execution.id;
-
-          const parkAndClaim = (nodeId: string, resumeToken: string) =>
-            Effect.gen(function* () {
-              const wait = yield* executions.startWait({
-                side: "started",
-                executionId,
-                workflowId: "wf_1",
-                runId: "run_1",
-                nodeId,
-                nodeName: nodeId,
-                workflowVersionId: "ver_1",
-                waitType: "event",
-                resumeToken,
-                subscribedEvents: [EVENT_ARRIVAL.eventName],
-              });
-              if (!wait) throw new Error("Wait was refused");
-              const claim = yield* executions.claimWaitingStateByToken({
-                resumeToken,
-                arrival: EVENT_ARRIVAL,
-              });
-              if (!claim) throw new Error("Wait claim was refused");
-              return {
-                waitStateId: wait.waitStateId,
-                claimedAt: claim.claimedAt,
-              };
-            });
-
-          // Both rows are claimed before the Exit, because a claim is refused
-          // once the run holds one.
-          const released = yield* parkAndClaim("wait_released", "resume_a");
-          const closed = yield* parkAndClaim("wait_closed", "resume_b");
-
-          yield* executions.requestExit({
-            executionId,
-            reason: "entity_condition_not_met",
-            nodeId: "checkpoint_1",
-          });
-
-          const listedAfterExit =
-            yield* executions.listActiveWaitStates(executionId);
-
-          // The resume send for the first row failed, so its producer releases it.
-          const releasedAfterExit =
-            yield* executions.releaseWaitingStateClaim(released);
-          const listedAfterRelease =
-            yield* executions.listActiveWaitStates(executionId);
-
-          // The Exit signal woke the second row's Wait, which closed its row,
-          // and that row's producer then tries to release its claim.
-          const closedByWait = yield* executions.markWaitStatus({
-            waitStateId: closed.waitStateId,
-            status: "cancelled",
-          });
-          const releasedAfterClose =
-            yield* executions.releaseWaitingStateClaim(closed);
-
-          return {
-            releasedId: released.waitStateId,
-            closedId: closed.waitStateId,
-            listedAfterExit: listedAfterExit.map((row) => [row.id, row.status]),
-            releasedAfterExit,
-            listedAfterRelease: listedAfterRelease.map((row) => [
-              row.id,
-              row.status,
-            ]),
-            closedByWait,
-            releasedAfterClose,
-            closedRow: (yield* executions.findWaitStateById(closed.waitStateId))
-              ?.status,
-            listedAfterClose: (yield* executions.listActiveWaitStates(
-              executionId
-            )).map((row) => row.id),
-          };
-        })
-      );
-
-      expect(result.listedAfterExit).toEqual(
-        expect.arrayContaining([
-          [result.releasedId, "resuming"],
-          [result.closedId, "resuming"],
-        ])
-      );
-      expect(result.listedAfterExit).toHaveLength(2);
-      expect(result.releasedAfterExit).toBe(true);
-      expect(result.listedAfterRelease).toEqual(
-        expect.arrayContaining([
-          [result.releasedId, "waiting"],
-          [result.closedId, "resuming"],
-        ])
-      );
-      expect(result.listedAfterRelease).toHaveLength(2);
-      expect(result.closedByWait).toBe(true);
-      expect(result.releasedAfterClose).toBe(false);
-      expect(result.closedRow).toBe("cancelled");
-      expect(result.listedAfterClose).toEqual([result.releasedId]);
-    });
-
-    // A resume producer claims the row and sends the signal, then its settle
-    // write fails. The woken run closes the row instead, which is what keeps a
-    // claim nobody settled from being handed to a second wake once its lease
-    // expires.
-    it("lets the run settle a claimed row its producer never settled", async () => {
+    // A resume producer's claim writes the wake and leaves the row `resuming`.
+    // The pass that consumes the wake closes the row, and a closed row takes no
+    // second claim by id or by token.
+    it("lets the run close a row a claim resolved, which then takes no second claim", async () => {
       const database = await openConnection();
       await seedPublishedWorkflow(database);
 
@@ -1213,6 +1000,7 @@ export function describeExecutionWaitConformance({
           });
           if (!wait) throw new Error("Wait was refused");
           const claim = yield* executions.claimWaitingStateById({
+            now: NOW,
             waitStateId: wait.waitStateId,
             resumeToken: "resume_a",
             eventName: EVENT_ARRIVAL.eventName,
@@ -1230,22 +1018,16 @@ export function describeExecutionWaitConformance({
             status: (yield* executions.findWaitStateById(wait.waitStateId))
               ?.status,
             reclaimedById: yield* executions.claimWaitingStateById({
+              now: NOW,
               waitStateId: wait.waitStateId,
               resumeToken: "resume_a",
               eventName: EVENT_ARRIVAL.eventName,
               arrival: EVENT_ARRIVAL,
             }),
             reclaimedByToken: yield* executions.claimWaitingStateByToken({
+              now: NOW,
               resumeToken: "resume_a",
               arrival: EVENT_ARRIVAL,
-            }),
-            settledByProducer: yield* executions.settleWaitingStateClaim({
-              waitStateId: wait.waitStateId,
-              claimedAt: claim.claimedAt,
-            }),
-            releasedByProducer: yield* executions.releaseWaitingStateClaim({
-              waitStateId: wait.waitStateId,
-              claimedAt: claim.claimedAt,
             }),
           };
         })
@@ -1255,8 +1037,6 @@ export function describeExecutionWaitConformance({
       expect(result.status).toBe("resumed");
       expect(result.reclaimedById).toBeNull();
       expect(result.reclaimedByToken).toBeNull();
-      expect(result.settledByProducer).toBe(false);
-      expect(result.releasedByProducer).toBe(false);
     });
 
     it("refuses a first park resolved from a version the run has left", async () => {
@@ -1304,7 +1084,7 @@ export function describeExecutionWaitConformance({
             executionId,
             fromVersionId: "ver_1",
             toVersionId: "ver_2",
-            parks: { kind: "leave_parked" },
+            now: NOW,
           });
           if (!migrated) throw new Error("The migration was refused");
 
@@ -1547,6 +1327,7 @@ export function describeExecutionWaitConformance({
             }),
             // The token still addresses the same park after the re-park.
             claim: yield* executions.claimWaitingStateByToken({
+              now: NOW,
               resumeToken: "resume_1",
               arrival: EVENT_ARRIVAL,
             }),
@@ -1610,6 +1391,7 @@ export function describeExecutionWaitConformance({
           if (!wait) throw new Error("Wait was refused");
 
           const claim = yield* executions.claimWaitingStateByToken({
+            now: NOW,
             resumeToken: "resume_2",
             arrival: EVENT_ARRIVAL,
           });
@@ -1761,7 +1543,7 @@ export function describeExecutionWaitConformance({
             executionId,
             fromVersionId: "ver_1",
             toVersionId: "ver_2",
-            parks: { kind: "leave_parked" },
+            now: NOW,
           });
 
           const wait = yield* executions.startWait({
@@ -1783,7 +1565,7 @@ export function describeExecutionWaitConformance({
             executionId,
             fromVersionId: "ver_2",
             toVersionId: "ver_2",
-            parks: { kind: "leave_parked" },
+            now: NOW,
           });
           const whileWaiting = yield* executions.repinVersion({
             expectedWaitStates:
@@ -1791,7 +1573,7 @@ export function describeExecutionWaitConformance({
             executionId,
             fromVersionId: "ver_1",
             toVersionId: "ver_2",
-            parks: { kind: "leave_parked" },
+            now: NOW,
           });
 
           return {
@@ -1856,7 +1638,7 @@ export function describeExecutionWaitConformance({
             executionId,
             fromVersionId: "ver_1",
             toVersionId: "ver_2",
-            parks: { kind: "leave_parked" },
+            now: NOW,
           });
           if (!migrated) throw new Error("The migration was refused");
 
@@ -1935,7 +1717,7 @@ export function describeExecutionWaitConformance({
             executionId,
             fromVersionId: "ver_1",
             toVersionId: "ver_2",
-            parks: { kind: "leave_parked" },
+            now: NOW,
           });
           if (!migrated) throw new Error("The migration was refused");
 
@@ -1971,8 +1753,9 @@ export function describeExecutionWaitConformance({
         ok: false,
         reason: "version_moved",
       });
+      // The repin left the row `resuming` with its `migrate` wake.
       expect(result.afterTheRefusedWrite).toMatchObject({
-        status: "waiting",
+        status: "resuming",
         subscribedEvents: ["appointment/approved"],
         metadata: { waitTimeout: "7d" },
       });
@@ -2030,12 +1813,14 @@ export function describeExecutionWaitConformance({
 
           return {
             byId: yield* executions.claimWaitingStateById({
+              now: NOW,
               waitStateId: wait.waitStateId,
               resumeToken: "resume_1",
               eventName: "appointment/approved",
               arrival: EVENT_ARRIVAL,
             }),
             byToken: yield* executions.claimWaitingStateByToken({
+              now: NOW,
               resumeToken: "resume_1",
               arrival: EVENT_ARRIVAL,
             }),
@@ -2098,12 +1883,14 @@ export function describeExecutionWaitConformance({
 
           return {
             onTheDroppedEvent: yield* executions.claimWaitingStateById({
+              now: NOW,
               waitStateId: wait.waitStateId,
               resumeToken: "resume_1",
               eventName: "appointment/approved",
               arrival: EVENT_ARRIVAL,
             }),
             onTheEventItNowNames: yield* executions.claimWaitingStateById({
+              now: NOW,
               waitStateId: wait.waitStateId,
               resumeToken: "resume_1",
               eventName: "appointment/rescheduled",

@@ -1,6 +1,6 @@
 /**
  * The Entity Eligibility fixtures, and the case the Entity Eligibility suite
- * runs under each executor: checkpoints completed before a Migration keep their
+ * runs under the replay driver: checkpoints completed before a Migration keep their
  * rule, and the nodes after it are checked against the target version's.
  */
 

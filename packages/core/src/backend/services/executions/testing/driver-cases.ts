@@ -318,7 +318,7 @@ function describeCases(
     expect(app.worker.calls()).toBe(1);
   });
 
-  it("re-queues a waiting run when its park's wake lands and wakes an in-process loop well before its poll", async () => {
+  it("re-queues a waiting run when a Cancel claim resolves its park and wakes an in-process loop well before its poll", async () => {
     const app = appOn(await openConnection());
     const run = await app.startRun(cancelableWaitGraph);
     await app.drive(
@@ -343,55 +343,34 @@ function describeCases(
     await sleep(100);
     const wakesBefore = app.worker.calls();
 
-    const { waitStateId, resolution, wokenAt } = await app.drive(
-      Effect.gen(function* () {
-        const executions = yield* ExecutionRepo;
-        const driver = yield* ExecutionDriver;
-        yield* executions.requestCancelForEntity({
-          workflowId: run.workflowId,
-          runMode: "live",
-          entityValue: run.entityValue,
-          eventName: CANCEL_EVENT,
-          payload: {},
-        });
-        const [wait] = yield* executions.listActiveWaitStates(run.executionId);
-        if (wait === undefined) throw new Error("The run holds no park");
-        const resolved = yield* driver.resolvePark({
-          executionId: run.executionId,
-          waitStateId: wait.id,
-          wake: { kind: "cancel" },
-        });
-        return {
-          waitStateId: wait.id,
-          resolution: resolved,
-          wokenAt: Date.now(),
-        };
+    const cancel = Effect.flatMap(ExecutionDriver, (driver) =>
+      driver.requestCanceledOutlet({
+        workflowId: run.workflowId,
+        runMode: "live",
+        entityValue: run.entityValue,
+        eventName: CANCEL_EVENT,
+        payload: {},
       })
     );
+    const claims = await app.drive(cancel);
+    const wokenAt = Date.now();
 
     expect(await app.ended(run.executionId)).toBe("canceled");
     await loop.stop();
-    expect(resolution).toEqual({ resolved: true, requeued: true });
+    expect(claims).toEqual([
+      { executionId: run.executionId, resolvedParks: 1, requeued: true },
+    ]);
     expect(app.worker.calls()).toBe(wakesBefore + 1);
     // Well inside the poll, with a second of slack for a loaded machine.
     expect((marks.get("outlet") ?? Number.NaN) - wokenAt).toBeLessThan(1_000);
 
-    // The park took its one wake, so a second resolution neither lands nor
-    // wakes anyone.
-    const again = await app.drive(
-      Effect.flatMap(ExecutionDriver, (driver) =>
-        driver.resolvePark({
-          executionId: run.executionId,
-          waitStateId,
-          wake: { kind: "cancel" },
-        })
-      )
-    );
-    expect(again).toEqual({ resolved: false, requeued: false });
+    // The first Cancel Event owns the run, so a second claims nothing and
+    // wakes no one.
+    expect(await app.drive(cancel)).toEqual([]);
     expect(app.worker.calls()).toBe(wakesBefore + 1);
   }, 30_000);
 
-  it("leaves a leased run's row to its pass's release and wakes no loop when a park's wake lands", async () => {
+  it("leaves a leased run's row to its pass's release and wakes no loop when an Event claims its park", async () => {
     const app = appOn(await openConnection());
     const run = await app.startRun(markGraph);
 
@@ -417,20 +396,30 @@ function describeCases(
         if (!wait) throw new Error("The park was refused");
         const wakesBefore = app.worker.calls();
         const resolution = yield* driver.resolvePark({
-          executionId: run.executionId,
-          waitStateId: wait.waitStateId,
-          wake: { kind: "cancel" },
+          target: { kind: "resume_token", token: `${run.executionId}-wait` },
+          arrival: {
+            signalType: "wait-resume",
+            eventName: null,
+            payload: { approved: true },
+          },
         });
         return {
           resolution,
           wakes: app.worker.calls() - wakesBefore,
+          park: yield* executions.findPark(wait.waitStateId),
           schedule: yield* executions.findSchedule(run.executionId),
         };
       })
     );
 
-    expect(result.resolution).toEqual({ resolved: true, requeued: false });
+    expect(result.resolution).toMatchObject({
+      waitState: { status: "resuming" },
+      requeued: false,
+    });
     expect(result.wakes).toBe(0);
+    expect(result.park).toMatchObject({
+      wake: { kind: "resume", eventName: null, payload: { approved: true } },
+    });
     expect(result.schedule?.state).toBe("leased");
   });
 

@@ -98,7 +98,6 @@ function stubRpc(options: {
         outcomes: executionIds.map((executionId) => ({
           executionId,
           status: "migrated",
-          signaled: true,
         })),
       };
       return rpcJsonResponse(payload);

@@ -7,7 +7,6 @@
  */
 
 import type { StepResult } from "@wfgraph/shared/actions/step-result";
-import type { WorkflowEdge } from "@wfgraph/shared/graph/types";
 import type { JsonValue } from "@wfgraph/shared/types/json";
 import {
   type EngineFailure,
@@ -39,17 +38,12 @@ export function failedExecution(failure: EngineFailure): ExecutionResult {
  * What each finished node left behind, keyed by node id.
  *
  * `data` is JSON because it has already crossed a serialization boundary by the
- * time anything reads it: Inngest memoizes a step's return value between steps,
- * and a resumed run reads back what it decoded. Saying so here is what lets the
+ * time anything reads it: the step memo stores a step's return value as JSON,
+ * and a replayed pass reads back what it decoded. Saying so here is what lets the
  * template resolver and the CEL context walk a value with plain language checks
  * rather than a hand-rolled shape predicate.
  */
 export type NodeOutputs = Record<string, { label: string; data: JsonValue }>;
-
-/** An outgoing edge a completed node actually selected, retained across branches. */
-export type ReleasedEdge = Pick<WorkflowEdge, "source" | "target"> & {
-  sourceHandle: string | null;
-};
 
 /** The sentence a failed node left, or nothing for a node that succeeded. */
 export function executionError(
@@ -79,7 +73,7 @@ export function executionData(result: ExecutionResult | undefined): unknown {
  * own payload, while the traversal holds the `{ success, data }` envelope around
  * it and every reader steps through that envelope with `unwrapStepOutput`. A row
  * read back is therefore wrapped again, so one shape reaches a template whether
- * the node ran in this run or in the one that handed this branch off. A payload
+ * the node ran in this pass or was read from its stored row. A payload
  * that is itself `{ success, data }` is what makes the difference visible: read
  * bare, it would be unwrapped a second time and a template would resolve against
  * the wrong object.

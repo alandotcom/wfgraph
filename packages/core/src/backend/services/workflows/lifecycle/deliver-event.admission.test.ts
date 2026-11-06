@@ -19,11 +19,11 @@ import {
   guardedRules,
   recordAdmissionRefusalMock,
   recordAuditEventMock,
-  requestCancelForEntityMock,
+  requestCanceledOutletMock,
   resetGuardedStartMocks,
   resolveEntityMock,
   selectCanceledEntityIdMock,
-  sendRunRequestedMock,
+  enqueueRunMock,
   startForEntityMock,
   subscriber,
   videoPayload,
@@ -186,7 +186,7 @@ describe("applyLifecycleRules and Admission Entity Eligibility", () => {
           supersededExecutionIds: [],
           failedToSupersede: [],
         });
-        assert.strictEqual(sendRunRequestedMock.mock.calls.length, 0);
+        assert.strictEqual(enqueueRunMock.mock.calls.length, 0);
       })
     );
 
@@ -236,7 +236,7 @@ describe("applyLifecycleRules and Admission Entity Eligibility", () => {
             entityId: "appt_8813",
           });
           assert.deepStrictEqual(
-            sendRunRequestedMock.mock.calls.map(([data]) => data),
+            enqueueRunMock.mock.calls.map(([data]) => data),
             [{ executionId: "exec_winner" }]
           );
         })
@@ -483,13 +483,13 @@ describe("applyLifecycleRules and Admission Entity Eligibility", () => {
         }).pipe(Effect.provide(workflowWith(guardedCancelRules())));
 
         assert.strictEqual(outcome.kind, "canceled");
-        assert.deepInclude(requestCancelForEntityMock.mock.calls[0]?.[0], {
+        assert.deepInclude(requestCanceledOutletMock.mock.calls[0]?.[0], {
           workflowId: "wf_1",
           entityType: "appointment",
           entityId: "appt_8813",
         });
         assert.notProperty(
-          requestCancelForEntityMock.mock.calls[0]?.[0] ?? {},
+          requestCanceledOutletMock.mock.calls[0]?.[0] ?? {},
           "entityValue"
         );
       })
@@ -518,7 +518,7 @@ describe("applyLifecycleRules and Admission Entity Eligibility", () => {
 
         assert.strictEqual(outcome.kind, "refused");
         assert.strictEqual(selectCanceledEntityIdMock.mock.calls.length, 0);
-        assert.strictEqual(requestCancelForEntityMock.mock.calls.length, 0);
+        assert.strictEqual(requestCanceledOutletMock.mock.calls.length, 0);
       })
     );
   });

@@ -49,8 +49,8 @@ export const postExecutionCancel = Effect.fn("wfgraph.execution.cancel")(
         (status) => status === execution.status
       );
 
-    // A canceled row can be a half-finished earlier request whose Inngest signal
-    // failed. Let the operation retry its signal, wait cleanup, and final audit.
+    // A canceled row can be a half-finished earlier request whose stop failed.
+    // Let the operation retry its stop, wait cleanup, and final audit.
     if (!isInFlight && execution?.status !== "canceled") {
       yield* logger.warn("Execution is not in flight and cannot be cancelled");
       yield* annotateServiceSpan({ outcome: "already_finished" });

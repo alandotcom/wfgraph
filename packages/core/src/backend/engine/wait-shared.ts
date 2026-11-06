@@ -14,12 +14,7 @@
 import { Effect } from "effect";
 import type { WaitConfig } from "@wfgraph/shared/lifecycle/wait-subscription";
 import type { ExecutionSide } from "@wfgraph/shared/lifecycle/execution-contracts";
-import {
-  isWaitSignalType,
-  type WaitSignalType,
-} from "@wfgraph/shared/lifecycle/wait-signal";
-import { celStringLiteral } from "@wfgraph/shared/conditions/cel-string-literal";
-import { type JsonObject, readJsonObject } from "@wfgraph/shared/types/json";
+import type { JsonObject } from "@wfgraph/shared/types/json";
 import type { ExecutionResult } from "#src/backend/engine/contracts";
 import type {
   WaitWake,
@@ -132,39 +127,6 @@ export function readWaitGateMode(config: WaitConfig): WaitGateMode {
 }
 
 /**
- * The CEL that admits a wait signal addressed to this parked node.
- *
- * Both modes park on one envelope, so the match is what separates their runs
- * from each other: the execution, the node, the reasons the mode answers to,
- * and for an event wait the token that names this park. A delay wait has no
- * token, because the execution and the node already address it and a token on
- * its row would offer the Runs view a manual resume the delay cannot honour.
- */
-export function waitSignalMatch(input: {
-  nodeId: string;
-  resumeToken?: string | undefined;
-  signalTypes: readonly WaitSignalType[];
-}): string {
-  const clauses = [
-    "async.data.executionId == event.data.executionId",
-    `async.data.nodeId == ${celStringLiteral(input.nodeId)}`,
-  ];
-
-  if (input.resumeToken !== undefined) {
-    clauses.push(`async.data.token == ${celStringLiteral(input.resumeToken)}`);
-  }
-
-  const reasons = input.signalTypes
-    .map(
-      (signalType) => `async.data.signalType == ${celStringLiteral(signalType)}`
-    )
-    .join(" || ");
-  clauses.push(`(${reasons})`);
-
-  return clauses.join(" && ");
-}
-
-/**
  * Whether a wake comes from an execution-wide claim, a Cancel or an Exit.
  *
  * A claim wake halts the branch where it stands and closes the wait row as
@@ -187,50 +149,10 @@ export function isClaimWake(
 export type WaitResumeWake = Exclude<WaitWake, { kind: "migrate" }>;
 
 /**
- * Reads the wake out of what Inngest's `step.waitForEvent` resolved to, which
- * the Inngest runtime does before it answers `waitForEvent`.
- *
- * A wake resolves to the whole Inngest event object, and Workflow Graph's own
- * `workflow/wait.signal` envelope is the `data` inside it. Reading it once here
- * is what keeps that envelope out of the engine: a builder addresses the
- * Event's payload, not the transport it travelled in. A timeout resolves to
- * null. A signal naming no reason this build knows reads as a resume, because a
- * resume is what a wake with a payload and no verdict is.
- */
-export function readWaitWake(resumeEvent: unknown): WaitWake {
-  if (resumeEvent === null) {
-    return { kind: "timeout" };
-  }
-
-  const signal = readJsonObject(readJsonObject(resumeEvent)?.data);
-  const signalType = signal?.signalType;
-  if (isWaitSignalType(signalType)) {
-    if (signalType === "version-migrate") {
-      return { kind: "migrate" };
-    }
-    if (signalType === "lifecycle-cancel") {
-      return { kind: "cancel" };
-    }
-    if (signalType === "lifecycle-exit") {
-      return { kind: "exit" };
-    }
-  }
-
-  const eventName = signal?.eventType;
-  return {
-    kind: "resume",
-    eventName: typeof eventName === "string" ? eventName : null,
-    payload: readJsonObject(signal?.payload) ?? {},
-  };
-}
-
-/**
- * Suspends the run, closing the Wait's step-log row if the run unwinds instead
- * of waking.
- *
- * A failure at a suspension means the run is being torn down (cancellation
- * surfaces this way), so the closing row is written directly rather than as a
- * durable step, which the unwinding run would never reach.
+ * Runs the park, closing the Wait's step-log row if the park fails instead of
+ * answering. A park that fails ends the pass, so the closing row is written
+ * directly rather than as a durable step. The next pass that resumes the Wait
+ * closes the row again with its own verdict.
  */
 export function parkUntil<A>(
   branch: WaitBranchContext,
@@ -247,10 +169,7 @@ export function parkUntil<A>(
   );
 }
 
-/**
- * What one attempt of a Wait node parks with: the row it writes and the
- * suspension it registers, which are two readings of the same decision.
- */
+/** What one attempt of a Wait node parks with: the row it writes and its deadline. */
 export type WaitPark = {
   waitType: "delay" | "event";
   /** Target timestamp as ISO 8601: a delay's end, or an event wait's timeout. */
@@ -262,8 +181,6 @@ export type WaitPark = {
   metadata: JsonObject;
   /** Milliseconds left until the target. Zero or less parks nothing. */
   timeoutMs: number;
-  /** Which signals this park answers to. */
-  signalTypes: readonly WaitSignalType[];
 };
 
 /** The attempt a mode is resolving, and what the attempts before it settled. */
@@ -340,7 +257,7 @@ export type WaitMode<Prepared, Resumed> = {
  * has to replay the attempts already on the run: an id carrying the mode would
  * miss every one of them, so the driver would start attempt 0 again with an
  * empty carry and open a second wait row beside the one still parked. The mode
- * appears in the step *name* instead, which the Inngest UI shows and no replay
+ * appears in the step *name* instead, which a trace shows and no replay
  * reads.
  */
 export function waitStepIds(input: { nodeId: string; attempt: number }): {

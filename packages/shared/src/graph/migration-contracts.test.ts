@@ -69,7 +69,6 @@ describe("workflow migration contracts", () => {
         decode({
           executionId: "execution_1",
           status: "migrated",
-          signaled: false,
         })
       )
     ).toBe(true);
@@ -92,7 +91,11 @@ describe("workflow migration contracts", () => {
     ).toBe(true);
     expect(
       Result.isFailure(
-        decode({ executionId: "execution_1", status: "migrated" })
+        decode({
+          executionId: "execution_1",
+          status: "migrated",
+          reason: "not_requested_version",
+        })
       )
     ).toBe(true);
   });

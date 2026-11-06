@@ -28,7 +28,6 @@ import {
 } from "#src/backend/engine/recording-store";
 import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
 import type { PendingCancel, WorkflowStore } from "#src/backend/engine/store";
-import { IN_PLACE_EXECUTORS } from "#src/backend/engine/testing/replay-runtime";
 import {
   actions,
   CANCEL,
@@ -342,9 +341,9 @@ describe("a run claimed for the Canceled outlet", () => {
     expect(store.callsOf("completeRun")[0]?.status).toBe("canceled");
   });
 
-  // A parked run reaches no boundary of its own, so a Cancel Event nudges it
-  // awake through the wait signal. The nudge closes the wait row as "cancelled";
-  // where the run goes next is the boundary read's answer, like every other node.
+  // A parked run reaches no boundary of its own, so a Cancel Event resolves its
+  // park with a `cancel` wake. The Wait closes its row as "cancelled"; where the
+  // run goes next is the boundary read's answer, like every other node.
   it("routes a Wait woken by a cancel nudge to the Canceled branch", async () => {
     const graph = createSerializedWorkflowGraph({
       nodes: [
@@ -402,13 +401,9 @@ describe("a Cancel claim that lands after the last boundary read", () => {
     clearRecorded();
   });
 
-  // A run that enters every Wait where it stands holds both executors to the
-  // same assertions. The Canceled-side Wait cases hand the Wait to a branch run
-  // under the Inngest executor.
-  describe.each(IN_PLACE_EXECUTORS)(
-    "under the $kind executor",
-    defineCancelReplayCases
-  );
+  describe("under the replay driver", () => {
+    defineCancelReplayCases({});
+  });
 
   it("runs the Canceled outlet once when a failed terminal write is retried into the claim", async () => {
     const memo = new Map<string, unknown>();
@@ -428,7 +423,8 @@ describe("a Cancel claim that lands after the last boundary read", () => {
     expect(memo.has("workflow-run-completed")).toBe(false);
     expect(rowsOpenedFor(store, "cleanup_1")).toBe(0);
 
-    // Inngest retries the failed step: the body runs again over the same memo.
+    // The executor retries the failed step: the body runs again over the same
+    // memo.
     const retried = await executeWorkflow(
       cancelInput,
       createInMemoryWorkflowRuntime({ memo }),

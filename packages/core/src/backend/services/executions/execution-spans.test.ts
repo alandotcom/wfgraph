@@ -18,7 +18,7 @@ import {
   SilentAppLoggerLayer,
   stubExecutionRepo,
   stubExtensions,
-  stubInngestClient,
+  stubExecutionDriver,
   stubIntegrationRepo,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
@@ -143,9 +143,7 @@ const startRepo = Layer.mergeAll(
     markEnqueued: () => Effect.void,
     recordAuditEvent: () => Effect.void,
   }),
-  stubInngestClient({
-    sendRunRequested: () => Effect.succeed({ eventId: "e" }),
-  })
+  stubExecutionDriver({ enqueueRun: () => Effect.void })
 );
 
 const shared = Layer.mergeAll(
@@ -244,7 +242,7 @@ describe("execution start and cancel spans", () => {
           }),
         cancelWaits: () => Effect.succeed([]),
       }),
-      stubInngestClient({ sendCancelRequested: () => Effect.void })
+      stubExecutionDriver({ stopRun: () => Effect.void })
     );
 
     await Effect.runPromise(

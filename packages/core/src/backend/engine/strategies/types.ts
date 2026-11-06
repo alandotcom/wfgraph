@@ -84,13 +84,6 @@ export type NodeWorkContext = {
    * is what lets a Wait behind the Canceled outlet park after a Cancel claim.
    */
   side: ExecutionSide;
-  /**
-   * Whether this Wait is entered here rather than handed to a branch run.
-   * Only the wait strategy reads it.
-   */
-  entersInPlace: boolean;
-  /** Hand a Wait to a durable branch run. Only the wait strategy calls it. */
-  handOffBranch: () => Effect.Effect<NodeWorkOutcome, EngineFailure>;
 };
 
 export type NodeStrategy = {

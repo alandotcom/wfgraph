@@ -6,12 +6,12 @@ import type {
 } from "#src/backend/services/executions/repo";
 import { DatabaseError } from "#src/backend/lib/effect/database";
 import { InternalFailure } from "#src/backend/lib/effect/failures";
-import { InngestError } from "#src/backend/lib/effect/inngest-client";
+import { DriverError } from "#src/backend/services/executions/driver";
 import {
   makeRecordingLogger,
   SilentAppLoggerLayer,
   stubExecutionRepo,
-  stubInngestClient,
+  stubExecutionDriver,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
 import type { WorkflowVersion } from "#src/backend/lib/db/schema";
@@ -185,10 +185,11 @@ describe("buildIgnoredRunAuditMessage", () => {
 // apart from it rather than shadowing it.
 describe("enqueueStartedRun", () => {
   layer(SilentAppLoggerLayer)((serviceIt) => {
-    serviceIt.effect("stores the event id the enqueue answered with", () =>
+    serviceIt.effect("schedules the run and stamps the row", () =>
       Effect.gen(function* () {
         const calls = {
-          runIds: [] as Array<{ executionId: string; runId: string | null }>,
+          enqueued: [] as Array<{ executionId: string }>,
+          stamped: [] as Array<{ executionId: string; runId: string | null }>,
         };
 
         // The row is opened by `ExecutionRepo.startForEntity`, under the lock that
@@ -204,12 +205,15 @@ describe("enqueueStartedRun", () => {
               stubExecutionRepo({
                 markEnqueued: (input) =>
                   Effect.sync(() => {
-                    calls.runIds.push(input);
+                    calls.stamped.push(input);
                   }),
                 recordAuditEvent: () => Effect.void,
               }),
-              stubInngestClient({
-                sendRunRequested: () => Effect.succeed({ eventId: "evt_1" }),
+              stubExecutionDriver({
+                enqueueRun: (input) =>
+                  Effect.sync(() => {
+                    calls.enqueued.push(input);
+                  }),
               })
             )
           )
@@ -217,18 +221,18 @@ describe("enqueueStartedRun", () => {
 
         assert.deepStrictEqual(started, {
           executionId: "exec_1",
-          runId: "evt_1",
           runMode: "live",
         });
-        assert.deepStrictEqual(calls.runIds, [
-          { executionId: "exec_1", runId: "evt_1" },
+        assert.deepStrictEqual(calls.enqueued, [{ executionId: "exec_1" }]);
+        assert.deepStrictEqual(calls.stamped, [
+          { executionId: "exec_1", runId: null },
         ]);
       })
     );
 
     // Every field of the entry comes off the committed row, which is what lets a
-    // retried delivery send a row an earlier attempt opened and never sent
-    // without rebuilding the start it was opened from.
+    // retried delivery schedule a row an earlier attempt opened and never
+    // scheduled without rebuilding the start it was opened from.
     serviceIt.effect(
       "writes the opening timeline entry from the row alone",
       () =>
@@ -258,9 +262,7 @@ describe("enqueueStartedRun", () => {
                       calls.audits.push(input);
                     }),
                 }),
-                stubInngestClient({
-                  sendRunRequested: () => Effect.succeed({ eventId: "evt_1" }),
-                })
+                stubExecutionDriver({ enqueueRun: () => Effect.void })
               )
             )
           );
@@ -281,7 +283,6 @@ describe("enqueueStartedRun", () => {
             eventName: "app/appointment.created",
             entityType: "appointment",
             deliveryId: "dlv_1",
-            runId: "evt_1",
           });
         })
     );
@@ -329,9 +330,7 @@ describe("enqueueStartedRun", () => {
                       calls.audits.push(input);
                     }),
                 }),
-                stubInngestClient({
-                  sendRunRequested: () => Effect.succeed({ eventId: "evt_1" }),
-                })
+                stubExecutionDriver({ enqueueRun: () => Effect.void })
               )
             )
           );
@@ -347,30 +346,28 @@ describe("enqueueStartedRun", () => {
         })
     );
 
-    // A retried delivery hands back the row an earlier attempt already sent, and
-    // that run may be parked in a Wait. Sending again could only fail into the
-    // compensation, which would stop a healthy run, and a second `markEnqueued`
+    // A retried delivery hands back the row an earlier attempt already
+    // scheduled, and that run may be parked in a Wait. A second `markEnqueued`
     // and "run started" entry would misdate it.
     serviceIt.effect(
-      "sends nothing and writes nothing for an enqueued row",
+      "schedules nothing and writes nothing for an enqueued row",
       () =>
         Effect.gen(function* () {
           const recorder = makeRecordingLogger();
 
-          // Every repository method and Inngest call is left refusing, so any
-          // send, stamp, timeline entry or version read kills the test.
+          // Every repository and driver method is left refusing, so any enqueue,
+          // stamp, timeline entry or version read kills the test.
           const started = yield* enqueueStartedRun({
             execution: createExecution({
               status: "waiting",
               enqueuedAt: new Date("2026-03-01T00:00:01.000Z"),
-              workflowRunId: "evt_first",
             }),
           }).pipe(
             Effect.provide(
               Layer.mergeAll(
                 stubWorkflowRepo(),
                 stubExecutionRepo(),
-                stubInngestClient(),
+                stubExecutionDriver(),
                 recorder.layer
               )
             )
@@ -378,23 +375,21 @@ describe("enqueueStartedRun", () => {
 
           assert.deepStrictEqual(started, {
             executionId: "exec_1",
-            runId: "evt_first",
+            runId: undefined,
             runMode: "live",
           });
           assert.deepStrictEqual(recorder.infoLines, [
             {
-              message: "Skipped the send for a run the bus already took",
-              properties: {
-                run: { executionId: "exec_1", runId: "evt_first" },
-              },
+              message: "Skipped the enqueue for a run already scheduled",
+              properties: { run: { executionId: "exec_1" } },
             },
           ]);
         })
     );
 
     // The version row cascades with the run it belongs to, so a row pointing at
-    // a version that is gone is an invariant break. Sending the run anyway would
-    // enqueue a run nothing can name.
+    // a version that is gone is an invariant break. Scheduling the run anyway
+    // would enqueue a run nothing can name.
     serviceIt.effect("fails when the version the row pins is gone", () =>
       Effect.gen(function* () {
         const failure = yield* enqueueStartedRun({
@@ -402,10 +397,10 @@ describe("enqueueStartedRun", () => {
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
-              // Every Inngest call is left refusing: nothing may reach the bus.
+              // Every driver method is left refusing: nothing may be scheduled.
               stubWorkflowRepo({ findVersionById: () => Effect.succeed(null) }),
               stubExecutionRepo(),
-              stubInngestClient()
+              stubExecutionDriver()
             )
           ),
           Effect.flip
@@ -423,8 +418,8 @@ describe("enqueueStartedRun", () => {
           closed: [] as Array<{ executionId: string; error: string }>,
         };
 
-        // `markEnqueued` is left refusing: no run reached the bus, and stamping
-        // one as though it had would be the bug.
+        // `markEnqueued` is left refusing: the run was not scheduled, and
+        // stamping it as though it had been would be the bug.
         const failure = yield* enqueueStartedRun({
           execution: createExecution(),
         }).pipe(
@@ -438,23 +433,23 @@ describe("enqueueStartedRun", () => {
                     return true;
                   }),
               }),
-              stubInngestClient({
-                sendRunRequested: () =>
+              stubExecutionDriver({
+                enqueueRun: () =>
                   Effect.fail(
-                    new InngestError({
-                      cause: new Error("inngest dev server unreachable"),
+                    new DriverError({
+                      cause: new Error("database unreachable"),
                     })
                   ),
-                sendCancelRequested: () => Effect.succeed({ eventId: "c_1" }),
+                stopRun: () => Effect.void,
               })
             )
           ),
           Effect.flip
         );
 
-        assert.instanceOf(failure, InngestError);
+        assert.instanceOf(failure, DriverError);
         assert.deepStrictEqual(calls.closed, [
-          { executionId: "exec_1", error: "inngest dev server unreachable" },
+          { executionId: "exec_1", error: "database unreachable" },
         ]);
       })
     );
@@ -480,10 +475,10 @@ describe("enqueueStartedRun", () => {
                       return true;
                     }),
                 }),
-                stubInngestClient({
-                  sendRunRequested: () =>
-                    Effect.fail(new InngestError({ cause: "connection lost" })),
-                  sendCancelRequested: () => Effect.succeed({ eventId: "c_1" }),
+                stubExecutionDriver({
+                  enqueueRun: () =>
+                    Effect.fail(new DriverError({ cause: "connection lost" })),
+                  stopRun: () => Effect.void,
                 })
               )
             ),
@@ -497,11 +492,10 @@ describe("enqueueStartedRun", () => {
     );
 
     // The close refuses a row holding a Cancel or Exit claim, a row another
-    // attempt's send stamped, and a row that reached a verdict. The run behind
-    // each of them is the one that must finish it, and a stop signal would kill
-    // that run. `sendCancelRequested` is left refusing, so a signal kills the
-    // test.
-    serviceIt.effect("sends no stop signal when the close is refused", () =>
+    // attempt's enqueue stamped, and a row that reached a verdict. The run
+    // behind each of them is the one that must finish it. `stopRun` is left
+    // refusing, so a stop kills the test.
+    serviceIt.effect("stops nothing when the close is refused", () =>
       Effect.gen(function* () {
         const recorder = makeRecordingLogger();
 
@@ -514,10 +508,10 @@ describe("enqueueStartedRun", () => {
               stubExecutionRepo({
                 markEnqueueFailed: () => Effect.succeed(false),
               }),
-              stubInngestClient({
-                sendRunRequested: () =>
+              stubExecutionDriver({
+                enqueueRun: () =>
                   Effect.fail(
-                    new InngestError({ cause: new Error("gateway timeout") })
+                    new DriverError({ cause: new Error("gateway timeout") })
                   ),
               }),
               recorder.layer
@@ -526,11 +520,11 @@ describe("enqueueStartedRun", () => {
           Effect.flip
         );
 
-        assert.instanceOf(failure, InngestError);
+        assert.instanceOf(failure, DriverError);
         assert.deepStrictEqual(recorder.infoLines, [
           {
             message:
-              "Enqueue reported failure, but the row holds a claim, was enqueued by another attempt, or has ended, so no stop signal was sent",
+              "Enqueue reported failure, but the row holds a claim, was enqueued by another attempt, or has ended, so the run was not stopped",
             properties: { run: { executionId: "exec_1" } },
           },
         ]);
@@ -538,52 +532,51 @@ describe("enqueueStartedRun", () => {
     );
 
     // A close the database refused says nothing about whether the row holds a
-    // claim, so the signal stays unsent and the unstamped row is left for
-    // `reclaimStuckRuns`. The caller still sees the refused send.
-    serviceIt.effect(
-      "sends no stop signal when the close cannot be written",
-      () =>
-        Effect.gen(function* () {
-          const recorder = makeRecordingLogger();
+    // claim, so the run is not stopped and the unstamped row is left for
+    // `reclaimStuckRuns`. The caller still sees the refused enqueue.
+    serviceIt.effect("stops nothing when the close cannot be written", () =>
+      Effect.gen(function* () {
+        const recorder = makeRecordingLogger();
 
-          const failure = yield* enqueueStartedRun({
-            execution: createExecution(),
-          }).pipe(
-            Effect.provide(
-              Layer.mergeAll(
-                pinnedVersionLayer(),
-                stubExecutionRepo({
-                  markEnqueueFailed: () =>
-                    Effect.fail(
-                      new DatabaseError({ cause: new Error("connection lost") })
-                    ),
-                }),
-                stubInngestClient({
-                  sendRunRequested: () =>
-                    Effect.fail(
-                      new InngestError({ cause: new Error("gateway timeout") })
-                    ),
-                }),
-                recorder.layer
-              )
-            ),
-            Effect.flip
-          );
+        const failure = yield* enqueueStartedRun({
+          execution: createExecution(),
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              pinnedVersionLayer(),
+              stubExecutionRepo({
+                markEnqueueFailed: () =>
+                  Effect.fail(
+                    new DatabaseError({ cause: new Error("connection lost") })
+                  ),
+              }),
+              stubExecutionDriver({
+                enqueueRun: () =>
+                  Effect.fail(
+                    new DriverError({ cause: new Error("gateway timeout") })
+                  ),
+              }),
+              recorder.layer
+            )
+          ),
+          Effect.flip
+        );
 
-          assert.instanceOf(failure, InngestError);
-          assert.deepStrictEqual(
-            recorder.lines.map((line) => line.message),
-            [
-              "Enqueue reported failure, and the database refused to close the row, so no stop signal was sent",
-            ]
-          );
-        })
+        assert.instanceOf(failure, DriverError);
+        assert.deepStrictEqual(
+          recorder.lines.map((line) => line.message),
+          [
+            "Enqueue reported failure, and the database refused to close the row, so the run was not stopped",
+          ]
+        );
+      })
     );
 
     // The close decides whether the compensation may touch the row, and only a
-    // row it closed has its run told to stop. A run Inngest accepted a moment
-    // ago is then stopped, and its own writes meet the terminal status.
-    serviceIt.effect("closes the row before telling the run to stop", () =>
+    // row it closed has its run stopped. A schedule row that committed before
+    // the failure was reported is then stopped, and the run's own writes meet
+    // the terminal status.
+    serviceIt.effect("closes the row before stopping the run", () =>
       Effect.gen(function* () {
         const order: string[] = [];
 
@@ -602,15 +595,14 @@ describe("enqueueStartedRun", () => {
                     return true;
                   }),
               }),
-              stubInngestClient({
-                sendRunRequested: () =>
+              stubExecutionDriver({
+                enqueueRun: () =>
                   Effect.fail(
-                    new InngestError({ cause: new Error("gateway timeout") })
+                    new DriverError({ cause: new Error("gateway timeout") })
                   ),
-                sendCancelRequested: () =>
+                stopRun: () =>
                   Effect.sync(() => {
-                    order.push("cancel");
-                    return { eventId: "c_1" };
+                    order.push("stop");
                   }),
               })
             )
@@ -618,15 +610,15 @@ describe("enqueueStartedRun", () => {
           Effect.flip
         );
 
-        assert.deepStrictEqual(order, ["close", "cancel"]);
+        assert.deepStrictEqual(order, ["close", "stop"]);
       })
     );
 
-    // The enqueue is irreversible, so failing here would put the caller's Inngest
-    // step into a retry that enqueues nothing new and re-runs everything around
-    // it -- exactly how one arrival could open two Executions.
+    // The enqueue is irreversible, so failing here would put the caller's
+    // delivery step into a retry that enqueues nothing new and re-runs
+    // everything around it -- exactly how one arrival could open two Executions.
     serviceIt.effect(
-      "reports the run as started when the writes after the send are refused",
+      "reports the run as started when the writes after the enqueue are refused",
       () =>
         Effect.gen(function* () {
           const recorder = makeRecordingLogger();
@@ -647,9 +639,7 @@ describe("enqueueStartedRun", () => {
                       new DatabaseError({ cause: new Error("connection lost") })
                     ),
                 }),
-                stubInngestClient({
-                  sendRunRequested: () => Effect.succeed({ eventId: "evt_1" }),
-                }),
+                stubExecutionDriver({ enqueueRun: () => Effect.void }),
                 recorder.layer
               )
             )
@@ -657,14 +647,13 @@ describe("enqueueStartedRun", () => {
 
           assert.deepStrictEqual(started, {
             executionId: "exec_1",
-            runId: "evt_1",
             runMode: "live",
           });
           assert.deepStrictEqual(
             recorder.lines.map((line) => line.message),
             [
-              "The run is enqueued, but the database refused to record that the bus took the run",
-              "The run is enqueued, but the database refused to write the run's opening timeline entry",
+              "The run is scheduled, but the database refused to record that the run was scheduled",
+              "The run is scheduled, but the database refused to write the run's opening timeline entry",
             ]
           );
         })

@@ -400,15 +400,16 @@ async function resolveOverdueParks(
 
 /**
  * Resolves every park of one run still `waiting` with `wake`, the way a
- * producer resolves one park. The caller holds the run's schedule row, so a
- * release reads these wakes once this transaction commits.
+ * producer resolves one park, answering how many it resolved. The caller holds
+ * the run's schedule row, so a release reads these wakes once this transaction
+ * commits.
  */
 export async function resolveOpenParks(
   tx: Executor,
   executionId: string,
   wake: ParkWake
-): Promise<void> {
-  await tx
+): Promise<number> {
+  const resolved = await tx
     .update(workflowWaitStates)
     .set({ wake, status: "resuming" })
     .where(
@@ -416,7 +417,9 @@ export async function resolveOpenParks(
         eq(workflowWaitStates.executionId, executionId),
         eq(workflowWaitStates.status, "waiting")
       )
-    );
+    )
+    .returning({ id: workflowWaitStates.id });
+  return resolved.length;
 }
 
 /**

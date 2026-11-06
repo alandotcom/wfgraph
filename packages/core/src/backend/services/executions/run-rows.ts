@@ -6,11 +6,11 @@ import {
 } from "#src/backend/lib/effect/app-logger";
 import type { DatabaseError } from "#src/backend/lib/effect/database";
 import { InternalFailure } from "#src/backend/lib/effect/failures";
-import {
-  InngestClient,
-  type InngestError,
-} from "#src/backend/lib/effect/inngest-client";
 import type { RunScopedAuditEventType } from "@wfgraph/shared/lifecycle/audit-event-types";
+import {
+  type DriverError,
+  ExecutionDriver,
+} from "#src/backend/services/executions/driver";
 import { signalRunToStop } from "#src/backend/services/executions/end-runs";
 import {
   ExecutionRepo,
@@ -110,14 +110,15 @@ function workflowRunIdentity(start: WorkflowRunStart) {
 
 export type EnqueueStartedRunInput = {
   /**
-   * The committed `workflow_executions` row: the run to send, and every column
-   * the bus message and the timeline entry are written from.
+   * The committed `workflow_executions` row: the run to schedule, and every
+   * column the timeline entry is written from.
    */
   execution: WorkflowExecution;
 };
 
 export type StartedWorkflowRun = {
   executionId: string;
+  /** The row's `workflow_run_id`, which the executor leaves unset. */
   runId?: string | undefined;
   runMode: WorkflowMode;
 };
@@ -369,54 +370,51 @@ const loggerFor = (workflowId: string) =>
   );
 
 /**
- * Tells the bus about a run whose row already exists, and records the timeline
- * entry.
+ * Gives a run whose row already exists its schedule row on the database
+ * executor, and records the timeline entry.
  *
  * The row is opened by `ExecutionRepo.startForEntity`, under the lock that makes
- * Concurrency a decision rather than a race, and the send stays out here because
- * a transaction has no business waiting on Inngest.
+ * Concurrency a decision rather than a race, and `ExecutionDriver.enqueueRun`
+ * writes the schedule row due now and wakes the worker loop.
  *
  * The version the timeline entry names is read here from the id on the row, so
  * no caller can label a run with a version other than the one that run pinned.
  * An attempt answering a delivery another attempt committed is handed that other
  * attempt's row, which may pin an older version than this attempt loaded.
  *
- * The version read and the send are the two steps that may fail the caller, and
- * the ordering says why. Before the send, nothing irreversible has happened, so
- * a refusal travels back for the caller's step to retry and a refused send can
- * close the row. After the send the run exists and this call is bookkeeping, so
- * a refused write is logged and the run is reported as started: failing would
- * put the caller's Inngest step into a retry that enqueues nothing new and
- * re-runs everything around it.
+ * The version read and the enqueue are the two steps that may fail the caller,
+ * and the ordering says why. Before the enqueue, nothing irreversible has
+ * happened, so a refusal travels back for the caller's step to retry and a
+ * refused enqueue can close the row. After the enqueue the run exists and this
+ * call is bookkeeping, so a refused write is logged and the run is reported as
+ * started: failing would put the caller's delivery step into a retry that
+ * enqueues nothing new and re-runs everything around it.
  *
- * Everything the bus message and the timeline entry need is on the row or on the
- * version it pins, so an attempt that finds an Execution a previous attempt
- * committed and never sent sends it with nothing recomputed.
+ * Everything the schedule row and the timeline entry need is on the row or on
+ * the version it pins, so an attempt that finds an Execution a previous attempt
+ * committed and never scheduled schedules it with nothing recomputed.
  *
- * A row whose `enqueuedAt` is set was already taken by the bus, so it is
- * answered from the row: no send, no second `markEnqueued`, and no second
- * "run started" entry. `enqueuedAt` only moves from null to set, so a row read
- * with a stale null costs one resend, which Inngest drops by idempotency key.
+ * A row whose `enqueuedAt` is set was already scheduled, so it is answered from
+ * the row: no second enqueue, no second `markEnqueued`, and no second "run
+ * started" entry. `enqueuedAt` only moves from null to set, so a row read with
+ * a stale null costs one more `enqueueRun`, which leaves the existing schedule
+ * row as it stands.
  */
 export const enqueueStartedRun = Effect.fn("enqueueStartedRun")(function* (
   input: EnqueueStartedRunInput
 ) {
   const repo = yield* ExecutionRepo;
   const workflowRepo = yield* WorkflowRepo;
-  const inngest = yield* InngestClient;
+  const driver = yield* ExecutionDriver;
   const { execution } = input;
   const logger = yield* loggerFor(execution.workflowId);
 
   if (execution.enqueuedAt !== null) {
-    yield* logger.info("Skipped the send for a run the bus already took", {
-      run: {
-        executionId: execution.id,
-        runId: execution.workflowRunId,
-      },
+    yield* logger.info("Skipped the enqueue for a run already scheduled", {
+      run: { executionId: execution.id },
     });
     const alreadyStarted: StartedWorkflowRun = {
       executionId: execution.id,
-      // `markEnqueued` stores null when the bus answered with no event id.
       runId: execution.workflowRunId ?? undefined,
       runMode: execution.runMode,
     };
@@ -440,20 +438,15 @@ export const enqueueStartedRun = Effect.fn("enqueueStartedRun")(function* (
     number: pinned.version,
   };
 
-  const run = yield* inngest
-    .sendRunRequested({
-      executionId: execution.id,
-    })
+  yield* driver
+    .enqueueRun({ executionId: execution.id })
     .pipe(Effect.tapError((failure) => closeRefusedEnqueue(input, failure)));
 
   yield* bookkeeping(
     logger,
-    "record that the bus took the run",
+    "record that the run was scheduled",
     execution.id,
-    repo.markEnqueued({
-      executionId: execution.id,
-      runId: run.eventId ?? null,
-    })
+    repo.markEnqueued({ executionId: execution.id, runId: null })
   );
 
   yield* bookkeeping(
@@ -481,14 +474,12 @@ export const enqueueStartedRun = Effect.fn("enqueueStartedRun")(function* (
         entityValue: execution.entityValue ?? undefined,
         entityType: execution.entityType ?? undefined,
         deliveryId: execution.deliveryId ?? undefined,
-        runId: run.eventId,
       }),
     })
   );
 
   const started: StartedWorkflowRun = {
     executionId: execution.id,
-    runId: run.eventId,
     runMode: execution.runMode,
   };
   return started;
@@ -509,42 +500,45 @@ const bookkeeping = <A>(
 ) =>
   write.pipe(
     Effect.catchTag("DatabaseError", (error) =>
-      logger.error(`The run is enqueued, but the database refused to ${what}`, {
-        executionId,
-        error,
-      })
+      logger.error(
+        `The run is scheduled, but the database refused to ${what}`,
+        {
+          executionId,
+          error,
+        }
+      )
     )
   );
 
 /**
- * Undoes a start whose send was refused: the row is closed, and only a run
- * whose row this call closed is told to stop.
+ * Undoes a start whose enqueue was refused: the row is closed, and only a run
+ * whose row this call closed is stopped.
  *
- * A refused send is ambiguous, because Inngest may have taken the event and
- * failed on the way back, leaving the run already executing. `markEnqueueFailed`
- * is the decision: it closes only an in-flight row with no Cancel or Exit claim
- * and no `enqueuedAt`. A run behind a row it closed is stopped by the signal,
- * and its own writes are refused by the terminal status; a signal for a run
- * that never started is a no-op at Inngest. Every other row is left to the run
- * that must finish it, which the signal would kill: a claim is finished by the
- * run holding it, and a stamped row belongs to the send that landed.
+ * A refused enqueue is ambiguous, because the schedule row may have committed
+ * before the database connection failed, leaving the run already due.
+ * `markEnqueueFailed` is the decision: it closes only an in-flight row with no
+ * Cancel or Exit claim and no `enqueuedAt`, and the same transaction deletes
+ * any schedule row the run has. A run behind a row it closed is stopped, and
+ * its own writes are refused by its fence and its terminal status. Every other
+ * row is left to the run that must finish it: a claim is finished by the run
+ * holding it, and a stamped row belongs to the enqueue that landed.
  *
- * One case stays open. A Cancel claim can land on a row whose first send was
- * refused, and that row may have no run behind it. The retry of the Event
- * delivery sends such a row again, and the run then reads the claim at its
+ * One case stays open. A Cancel claim can land on a row whose first enqueue
+ * was refused, and that row may have no schedule row. The retry of the Event
+ * delivery enqueues such a row again, and the run then reads the claim at its
  * first boundary and takes the Canceled outlet. A row started by hand has no
  * delivery to retry, and neither has a delivery that meets the same refusal on
  * every attempt, so a row in one of those two cases stays in flight.
  *
- * A close the database refuses sends no signal either, since the row may hold
- * a claim this call cannot see. The row stays in flight and unstamped, so the
+ * A close the database refuses stops nothing either, since the row may hold a
+ * claim this call cannot see. The row stays in flight and unstamped, so the
  * next start for its entity can close it through `reclaimStuckRuns` once it is
- * past `UNSENT_RUN_GRACE_MS`. The Inngest failure travels on to the caller in
+ * past `UNSENT_RUN_GRACE_MS`. The driver's failure travels on to the caller in
  * every case.
  */
 const closeRefusedEnqueue = Effect.fn("closeRefusedEnqueue")(function* (
   input: EnqueueStartedRunInput,
-  failure: InngestError
+  failure: DriverError
 ) {
   const repo = yield* ExecutionRepo;
   const { execution } = input;
@@ -560,7 +554,7 @@ const closeRefusedEnqueue = Effect.fn("closeRefusedEnqueue")(function* (
       Effect.catchTag("DatabaseError", (databaseError) =>
         Effect.as(
           logger.error(
-            "Enqueue reported failure, and the database refused to close the row, so no stop signal was sent",
+            "Enqueue reported failure, and the database refused to close the row, so the run was not stopped",
             { run: { executionId: execution.id }, error: databaseError }
           ),
           null
@@ -574,7 +568,7 @@ const closeRefusedEnqueue = Effect.fn("closeRefusedEnqueue")(function* (
 
   if (!closed) {
     yield* logger.info(
-      "Enqueue reported failure, but the row holds a claim, was enqueued by another attempt, or has ended, so no stop signal was sent",
+      "Enqueue reported failure, but the row holds a claim, was enqueued by another attempt, or has ended, so the run was not stopped",
       { run: { executionId: execution.id } }
     );
     return;

@@ -4,21 +4,22 @@ import { assert, describe, layer } from "@effect/vitest";
 import { beforeEach, vi } from "vitest";
 import { Effect, Layer } from "effect";
 import {
-  InngestError,
-  type InngestClient,
-} from "#src/backend/lib/effect/inngest-client";
-import {
   makeRecordingLogger,
   SilentAppLoggerLayer,
+  stubExecutionDriver,
   stubExecutionRepo,
-  stubInngestClient,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
+import {
+  DriverError,
+  type ExecutionDriver,
+} from "#src/backend/services/executions/driver";
 import type { WorkflowVersion } from "#src/backend/lib/db/schema";
-import type {
-  EntityStartOutcome,
-  ExecutionRepo,
-  WorkflowExecution,
+import {
+  type EntityStartOutcome,
+  type ExecutionRepo,
+  UNSENT_RUN_RECLAIM_REASON,
+  type WorkflowExecution,
 } from "#src/backend/services/executions/repo";
 import type { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { startWithConcurrency } from "#src/backend/services/workflows/lifecycle/concurrency";
@@ -27,12 +28,12 @@ type Repo = ExecutionRepo["Service"];
 
 const recordAuditEventMock = vi.fn<Repo["recordAuditEvent"]>(() => Effect.void);
 const findVersionByIdMock = vi.fn<WorkflowRepo["Service"]["findVersionById"]>();
-const sendCancelRequestedMock = vi.fn<
-  InngestClient["Service"]["sendCancelRequested"]
->(() => Effect.void);
-const sendRunRequestedMock = vi.fn<
-  InngestClient["Service"]["sendRunRequested"]
->(() => Effect.succeed({ eventId: "evt_1" }));
+const stopRunMock = vi.fn<ExecutionDriver["Service"]["stopRun"]>(
+  () => Effect.void
+);
+const enqueueRunMock = vi.fn<ExecutionDriver["Service"]["enqueueRun"]>(
+  () => Effect.void
+);
 
 const workflow = {
   id: "wf_1",
@@ -120,9 +121,9 @@ function stubStart(outcome: EntityStartOutcome) {
         markEnqueued: () => Effect.void,
         recordAuditEvent: recordAuditEventMock,
       }),
-      stubInngestClient({
-        sendRunRequested: sendRunRequestedMock,
-        sendCancelRequested: sendCancelRequestedMock,
+      stubExecutionDriver({
+        enqueueRun: enqueueRunMock,
+        stopRun: stopRunMock,
       }),
       stubWorkflowRepo({ findVersionById: findVersionByIdMock })
     ),
@@ -139,22 +140,20 @@ const startedOutcome: EntityStartOutcome = {
 beforeEach(() => {
   recordAuditEventMock.mockReset();
   findVersionByIdMock.mockReset();
-  sendCancelRequestedMock.mockReset();
-  sendRunRequestedMock.mockReset();
+  stopRunMock.mockReset();
+  enqueueRunMock.mockReset();
 
   recordAuditEventMock.mockImplementation(() => Effect.void);
   findVersionByIdMock.mockImplementation(() =>
     Effect.succeed(versionRow({ id: "ver_1", version: 3 }))
   );
-  sendCancelRequestedMock.mockImplementation(() => Effect.void);
-  sendRunRequestedMock.mockImplementation(() =>
-    Effect.succeed({ eventId: "evt_1" })
-  );
+  stopRunMock.mockImplementation(() => Effect.void);
+  enqueueRunMock.mockImplementation(() => Effect.void);
 });
 
 describe("startWithConcurrency", () => {
   layer(SilentAppLoggerLayer)((it) => {
-    it.effect("starts and hands the run to the bus", () =>
+    it.effect("starts and hands the run to the executor", () =>
       Effect.gen(function* () {
         const repo = stubStart(startedOutcome);
 
@@ -170,14 +169,17 @@ describe("startWithConcurrency", () => {
         assert.deepStrictEqual(outcome, {
           status: "started",
           executionId: "exec_new",
-          runId: "evt_1",
+          runId: undefined,
           supersededExecutionIds: [],
           failedToSupersede: [],
         });
         assert.strictEqual(repo.calls[0]?.concurrency, "unlimited");
         assert.strictEqual(repo.calls[0]?.execution.entityValue, "appt_8813");
         assert.strictEqual(repo.calls[0]?.execution.workflowVersionId, "ver_1");
-        assert.strictEqual(sendCancelRequestedMock.mock.calls.length, 0);
+        assert.deepStrictEqual(enqueueRunMock.mock.calls, [
+          [{ executionId: "exec_new" }],
+        ]);
+        assert.strictEqual(stopRunMock.mock.calls.length, 0);
       })
     );
 
@@ -243,7 +245,7 @@ describe("startWithConcurrency", () => {
           Effect.provide(
             Layer.mergeAll(
               stubExecutionRepo({ recordAuditEvent: recordAuditEventMock }),
-              stubInngestClient(),
+              stubExecutionDriver(),
               // The version read is left refusing as well: no row is opened
               // here, so nothing has a pinned version to be named by.
               stubWorkflowRepo()
@@ -282,22 +284,21 @@ describe("startWithConcurrency", () => {
       })
     );
 
-    // Supersede-then-start: the rows the transaction flipped are told to stop
-    // before the new run is announced, and their ids come back so the caller
-    // knows not to deliver this Event to their waits. Announcing is `end-runs`'
-    // own; here it is the cancel signal that proves the real neighbour ran.
+    // Supersede-then-start: the rows the transaction flipped are stopped before
+    // the new run is scheduled, and their ids come back so the caller knows not
+    // to deliver this Event to their waits. Announcing is `end-runs`' own; here
+    // it is the stop that proves the real neighbour ran.
     it.effect("announces the runs the transaction superseded", () =>
       Effect.gen(function* () {
         const order: string[] = [];
-        sendCancelRequestedMock.mockImplementation(() =>
+        stopRunMock.mockImplementation(() =>
           Effect.sync(() => {
             order.push("announce");
           })
         );
-        sendRunRequestedMock.mockImplementation(() =>
+        enqueueRunMock.mockImplementation(() =>
           Effect.sync(() => {
             order.push("enqueue");
-            return { eventId: "evt_1" };
           })
         );
 
@@ -325,9 +326,9 @@ describe("startWithConcurrency", () => {
                 markEnqueued: () => Effect.void,
                 recordAuditEvent: recordAuditEventMock,
               }),
-              stubInngestClient({
-                sendCancelRequested: sendCancelRequestedMock,
-                sendRunRequested: sendRunRequestedMock,
+              stubExecutionDriver({
+                stopRun: stopRunMock,
+                enqueueRun: enqueueRunMock,
               }),
               stubWorkflowRepo({ findVersionById: findVersionByIdMock })
             )
@@ -338,16 +339,17 @@ describe("startWithConcurrency", () => {
         assert.deepStrictEqual(outcome, {
           status: "started",
           executionId: "exec_new",
-          runId: "evt_1",
+          runId: undefined,
           supersededExecutionIds: ["exec_old"],
           failedToSupersede: [],
         });
-        assert.deepStrictEqual(sendCancelRequestedMock.mock.calls[0]?.[0], {
+        assert.deepStrictEqual(stopRunMock.mock.calls[0]?.[0], {
           executionId: "exec_old",
-          workflowId: "wf_1",
-          reason: "Superseded by a newer start from app/appointment.created",
-          requestedBy: "wf_1",
-          eventType: "app/appointment.created",
+        });
+        assert.deepInclude(recordAuditEventMock.mock.calls[0]?.[0], {
+          executionId: "exec_old",
+          eventType: "run_superseded",
+          message: "Superseded by a newer start from app/appointment.created",
         });
       })
     );
@@ -405,9 +407,10 @@ describe("startWithConcurrency", () => {
       })
     );
 
-    // Those rows now say `failed` and only the signal can make that true of the
-    // runs: the stamp they are missing can go missing on a run Inngest took.
-    it.effect("signals the runs it reclaimed from before the bus", () =>
+    // Those rows now say `failed` and only the stop can make that true of the
+    // runs: the stamp they are missing can go missing on a run the executor
+    // took.
+    it.effect("stops the runs it reclaimed before they were scheduled", () =>
       Effect.gen(function* () {
         const recorder = makeRecordingLogger();
 
@@ -429,13 +432,13 @@ describe("startWithConcurrency", () => {
           )
         );
 
-        assert.deepStrictEqual(sendCancelRequestedMock.mock.calls[0]?.[0], {
+        assert.deepStrictEqual(stopRunMock.mock.calls[0]?.[0], {
           executionId: "exec_stuck",
-          workflowId: "wf_1",
-          reason:
-            "The run was opened but never reached the bus, so a later start for this entity closed it",
-          requestedBy: "wf_1",
-          eventType: "app/appointment.created",
+        });
+        assert.deepInclude(recordAuditEventMock.mock.calls[0]?.[0], {
+          executionId: "exec_stuck",
+          eventType: "run_failed",
+          message: UNSENT_RUN_RECLAIM_REASON,
         });
         assert.deepStrictEqual(recorder.infoLines, [
           {
@@ -446,12 +449,13 @@ describe("startWithConcurrency", () => {
       })
     );
 
-    // A signal that did not land leaves a live run against a superseded row, so
-    // the caller hears about it rather than reading one clean new run.
+    // A stop the database refused can leave a step already running to finish
+    // against a superseded row, so the caller hears about it rather than
+    // reading one clean new run.
     it.effect("carries a half-failed supersede back to the caller", () =>
       Effect.gen(function* () {
-        sendCancelRequestedMock.mockReturnValue(
-          Effect.fail(new InngestError({ cause: "no route" }))
+        stopRunMock.mockReturnValue(
+          Effect.fail(new DriverError({ cause: "connection lost" }))
         );
 
         const outcome = yield* startWithConcurrency({
@@ -476,9 +480,9 @@ describe("startWithConcurrency", () => {
           outcome.status === "started" ? outcome.failedToSupersede : [],
           ["exec_old"]
         );
-        assert.strictEqual(sendCancelRequestedMock.mock.calls.length, 1);
+        assert.strictEqual(stopRunMock.mock.calls.length, 1);
         assert.strictEqual(
-          sendCancelRequestedMock.mock.calls[0]?.[0].executionId,
+          stopRunMock.mock.calls[0]?.[0].executionId,
           "exec_old"
         );
       })

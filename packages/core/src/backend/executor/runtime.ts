@@ -340,7 +340,7 @@ export function createExecutorRuntime(
           throw error;
         }
         // The attempt that ran the step gets the value it returned and every
-        // replay gets the stored JSON, as Inngest hands them back.
+        // replay gets the stored JSON.
         await forStep(step.id, remember(step.id, memoValue(value)));
         return value;
       } finally {

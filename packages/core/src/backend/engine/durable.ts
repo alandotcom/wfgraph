@@ -1,5 +1,5 @@
 /**
- * The Effect↔Promise bridge at every Inngest durability boundary.
+ * The Effect↔Promise bridge at every durability boundary of the runtime.
  *
  * A durable callback is Promise-shaped, so an Effect that must run inside one
  * has to cross without losing its cause or the invocation context that owns
@@ -42,16 +42,4 @@ export function runDurable<A, E>(
       )
     );
   });
-}
-
-/**
- * Like `runDurable`, but the memoized step value is `null` so a void Effect
- * stays JSON-safe across Inngest's replay boundary.
- */
-export function runDurableUnit<E>(
-  runtime: WorkflowExecutionRuntime,
-  step: DurableStepRef,
-  effect: Effect.Effect<void, E>
-): Effect.Effect<null, EngineFailure> {
-  return runDurable(runtime, step, Effect.as(effect, null));
 }

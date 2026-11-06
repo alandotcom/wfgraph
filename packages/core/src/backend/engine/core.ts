@@ -16,16 +16,14 @@ import type { JsonObject } from "@wfgraph/shared/types/json";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { Cause, Effect } from "effect";
 import type { WorkflowActions } from "#src/backend/engine/actions";
-import type { BranchRunResult } from "#src/backend/engine/branch";
 import {
   noWorkflowEntities,
   type WorkflowEntities,
 } from "#src/backend/engine/entities";
 import { CancelBoundary } from "#src/backend/engine/cancel-boundary";
-import {
-  type ExecutionResult,
-  type NodeOutputs,
-  type ReleasedEdge,
+import type {
+  ExecutionResult,
+  NodeOutputs,
 } from "#src/backend/engine/contracts";
 import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
 import {
@@ -46,17 +44,15 @@ import { Traversal } from "#src/backend/engine/traversal";
 import {
   endsPass,
   type EngineFailure,
-  engineFailure,
   failureFromCause,
   failureFromUnknown,
 } from "#src/backend/engine/engine-failure";
-import { runDurable, runDurableUnit } from "#src/backend/engine/durable";
+import { runDurable } from "#src/backend/engine/durable";
 import { withAppLogCategory } from "#src/backend/lib/effect/app-logger";
 import { entityEligibilityConditionId } from "#src/backend/lib/entity-eligibility";
 import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import type {
   EntityEligibilityReason,
-  ExecutionSide,
   WorkflowExecutionStatus,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
 
@@ -74,9 +70,9 @@ export type WorkflowExecutionInput = {
    */
   catalogFingerprint: string;
   /**
-   * The payload that set this run going: a manual-run input, or the data on the
-   * Inngest event a Start Event arrived as. It reached the engine as JSON and is
-   * written back out as JSON into `workflow_executions.input`.
+   * The payload that set this run going: a manual-run input, or the payload a
+   * Start Event arrived with. It reached the engine as JSON and is written back
+   * out as JSON into `workflow_executions.input`.
    */
   startPayload?: JsonObject | undefined;
   /**
@@ -102,26 +98,6 @@ export type WorkflowExecutionInput = {
   entityId?: string | undefined;
   workflowRunId?: string | undefined;
   runMode?: "live" | "test" | undefined;
-};
-
-/**
- * A run of the branch below one Wait node, which is a durable run of its own.
- *
- * Everything above the entry node ran in whichever run handed the branch off.
- * Its outputs reach this run through the store, and `releasedEdges` carries the
- * outgoing edges those nodes selected. Stored outputs alone do not identify
- * which outgoing edges a Condition or Event Split released.
- */
-export type WorkflowBranchInput = WorkflowExecutionInput & {
-  entryNodeId: string;
-  releasedEdges: readonly ReleasedEdge[];
-  /**
-   * Which side of the Lifecycle Node the entry node sits on. The branch cannot
-   * work it out on its own, because it routes no cancellation and so reads the
-   * claim at no node boundary. A Canceled-side branch takes its parent's claim
-   * on before it walks anything.
-   */
-  side: ExecutionSide;
 };
 
 /** What one call of the engine builds before it can execute a node. */
@@ -202,21 +178,14 @@ function parsedGraph(graph: SerializedWorkflowGraph): {
 /**
  * Builds the traversal, the cancel boundary and the scheduler one run walks
  * with.
- *
- * A branch run names its entry node, and that is the whole of the difference
- * here: its cancel boundary routes nothing, because the run that started the
- * branch is the one that routes a cancellation. It still answers which side each
- * node sits on, which is what guards a Canceled-side Wait's park.
  */
 function prepareRun(
-  input: WorkflowExecutionInput | WorkflowBranchInput,
+  input: WorkflowExecutionInput,
   runtime: WorkflowExecutionRuntime,
   store: WorkflowStore,
   actions: WorkflowActions,
   entities: WorkflowEntities
 ): PreparedRun {
-  const branchEntryNodeId =
-    "entryNodeId" in input ? input.entryNodeId : undefined;
   const {
     graph,
     startPayload = {},
@@ -249,17 +218,14 @@ function prepareRun(
       }
     : undefined;
 
-  const boundaryInput = {
+  const cancelBoundary = new CancelBoundary({
     edges,
     traversal,
     runtime,
     store,
     executionId,
     lifecycleNodes,
-  };
-  const cancelBoundary = branchEntryNodeId
-    ? CancelBoundary.forBranch(boundaryInput)
-    : new CancelBoundary({ ...boundaryInput, routesCancellation: true });
+  });
 
   const scheduler = new NodeScheduler({
     traversal,
@@ -278,7 +244,6 @@ function prepareRun(
     workflowVersionId: input.workflowVersionId,
     trackedEntity,
     entityEligibility,
-    branchEntryNodeId,
   });
 
   return {
@@ -305,7 +270,7 @@ function prepareRun(
  * terminal. The full one is written once, on the record that opens the run.
  */
 function runLogAnnotations(
-  input: WorkflowExecutionInput | WorkflowBranchInput,
+  input: WorkflowExecutionInput,
   runtime: WorkflowExecutionRuntime
 ): Record<string, unknown> {
   return {
@@ -317,7 +282,7 @@ function runLogAnnotations(
 }
 
 function runIdentity(
-  input: WorkflowExecutionInput | WorkflowBranchInput,
+  input: WorkflowExecutionInput,
   runtime: WorkflowExecutionRuntime
 ): Record<string, unknown> {
   return {
@@ -327,13 +292,12 @@ function runIdentity(
       execution: input.executionId,
       id: input.workflowRunId || runtime.runId || input.executionId,
       mode: input.runMode ?? "live",
-      branchEntry: "entryNodeId" in input ? input.entryNodeId : null,
     },
   };
 }
 
 function workflowSpanAttributes(
-  input: WorkflowExecutionInput | WorkflowBranchInput
+  input: WorkflowExecutionInput
 ): Record<string, string> {
   return omitUndefined({
     "wfgraph.workflow.id": input.workflowId,
@@ -348,8 +312,8 @@ function workflowSpanAttributes(
  * `store` decides where the run's trace is written, and `actions` decides what
  * an action id dispatches to. None of them defaults, because a port that
  * silently does nothing reads to the caller as a working run: omitting `store`
- * would complete green having persisted nothing. The Inngest adapter in
- * lib/inngest/workflow-function.ts is where a real run picks up all three.
+ * would complete green having persisted nothing. The executor's run body in
+ * `executor/run-body.ts` is where a real run picks up all three.
  */
 export function executeWorkflow(
   input: WorkflowExecutionInput,
@@ -479,13 +443,13 @@ function executeWorkflowInner(
           })
         );
 
-        // An interrupted invocation is one the durability runtime retries, and
-        // the retry replays the memoized steps, reads the claim at the terminal
-        // read and runs the Canceled outlet from there. A terminal status
-        // written by this dying attempt would leave that retry reading a row
-        // that is no longer in flight, so the attempt ends the way it was
-        // interrupted and writes nothing. A pass that lost its lease ends the
-        // same way, leaving the run to the owner that holds it now.
+        // An interrupted pass is one the executor runs again, and that pass
+        // replays the memoized steps, reads the claim at the terminal read and
+        // runs the Canceled outlet from there. A terminal status written by
+        // this dying pass would leave the next one reading a row that is no
+        // longer in flight, so the pass ends the way it was interrupted and
+        // writes nothing. A pass that lost its lease ends the same way, leaving
+        // the run to the owner that holds it now.
         if (endsPass(failure)) {
           return yield* Effect.failCause(outcome.cause);
         }
@@ -682,8 +646,8 @@ function endParked(input: {
  * Both terminal paths reach this, so both treat a dying outlet the same way. An
  * outlet that raises a defect still ends the run: `record` is called with
  * `failed` and the audit row says the outlet died partway. An interrupt is no
- * outlet failure: the cause is re-raised, the attempt ends with nothing
- * written, and the retry the durability runtime starts runs the outlet. A lost
+ * outlet failure: the cause is re-raised, the pass ends with nothing written,
+ * and the next pass the executor runs takes the outlet. A lost
  * lease and an outlet that left a Wait parked are re-raised the same way, and
  * end the pass before the record.
  *
@@ -720,164 +684,5 @@ function runCanceledOutletThenRecord<A, E>(input: {
       { id: "workflow-run-canceled", name: "Run canceled" },
       input.record(outlet)
     );
-  });
-}
-
-/**
- * Walks the branch below one Wait node, as a durable run of its own (ADR-0011).
- *
- * What it did travels back to the run that started the branch in the returned
- * value, and that run is where the Execution ends, where a cancellation routes,
- * and where a fatal error here is attributed, so this one lets an error escape.
- */
-export function executeWorkflowBranch(
-  input: WorkflowBranchInput,
-  runtime: WorkflowExecutionRuntime,
-  store: WorkflowStore,
-  actions: WorkflowActions,
-  entities: WorkflowEntities = noWorkflowEntities
-): Effect.Effect<BranchRunResult, EngineFailure> {
-  const execute = executeWorkflowBranchInner(
-    input,
-    runtime,
-    store,
-    actions,
-    entities
-  ).pipe(
-    Effect.annotateLogs(runLogAnnotations(input, runtime)),
-    Effect.withSpan("wfgraph.workflow.branch", {
-      attributes: {
-        ...workflowSpanAttributes(input),
-        "wfgraph.branch.entry_node_id": input.entryNodeId,
-      },
-    })
-  );
-  return withAppLogCategory(execute, "engine");
-}
-
-function executeWorkflowBranchInner(
-  input: WorkflowBranchInput,
-  runtime: WorkflowExecutionRuntime,
-  store: WorkflowStore,
-  actions: WorkflowActions,
-  entities: WorkflowEntities
-): Effect.Effect<BranchRunResult, EngineFailure> {
-  return Effect.gen(function* () {
-    const { entryNodeId, executionId } = input;
-    const { traversal, scheduler, cancelBoundary } = prepareRun(
-      input,
-      runtime,
-      store,
-      actions,
-      entities
-    );
-
-    // Templates behind the Wait address the nodes above it, which this run never
-    // walked. The store holds that view rather than the invoke payload, because an
-    // HTTP Request step's response body is what makes those outputs large. The
-    // cost is that a row whose close was refused leaves its template unresolved.
-    // A Migration takes a fresh snapshot: another branch may have completed
-    // outputs the new graph now references while this branch was parked.
-    const upstream = yield* runDurable(
-      runtime,
-      {
-        id: `branch-upstream-${entryNodeId}-${input.workflowVersionId}`,
-        name: "Inherit upstream outputs",
-      },
-      store.readNodeOutputs(executionId)
-    );
-
-    traversal.inheritStoredOutputs(upstream, entryNodeId);
-
-    traversal.releaseEdges(input.releasedEdges);
-
-    // A branch below the Canceled outlet takes its parent's claim on before it
-    // walks anything: the claim names the Event this branch arrived on and
-    // carries the payload its templates address the entry node for. The read is
-    // durable so a replay of this body takes on the same claim, and it runs
-    // after the inherited outputs above, which hold the Start Event's payload
-    // for the entry node and would otherwise be the answer.
-    if (input.side === "canceled") {
-      const claim = yield* runDurable(
-        runtime,
-        {
-          id: `branch-claim-${entryNodeId}`,
-          name: "Read the Cancel claim this branch carries",
-        },
-        store.readPendingCancel(executionId)
-      );
-      if (!claim) {
-        return yield* Effect.fail(
-          engineFailure(
-            "failure",
-            "Branch started on the Canceled side of a run holding no Cancel claim"
-          )
-        );
-      }
-      cancelBoundary.carryClaim(claim);
-    }
-
-    const branchStartTime = Date.now();
-    yield* Effect.logInfo(`Branch started at ${entryNodeId}`).pipe(
-      Effect.annotateLogs({
-        ...runIdentity(input, runtime),
-        branch: { entry: entryNodeId, inherited: Object.keys(upstream).length },
-      })
-    );
-
-    yield* scheduler.runAll([entryNodeId]);
-    // A wait further down this branch is handed off in turn, so this run holds
-    // one pause of its own and the branch below that one holds its own.
-    yield* scheduler.drainDeferredWaits();
-
-    // This branch resumed its own Wait and moved the Execution to "running". A
-    // sibling branch may still be parked, and only a park writes "waiting", so
-    // the run would read as executing with nothing executing until that sibling
-    // woke. The repository write is guarded on the run still holding a waiting
-    // wait row, so a branch that left nothing parked writes nothing. The run
-    // that started this branch is the one that ends the Execution.
-    yield* runDurableUnit(
-      runtime,
-      {
-        id: `branch-park-check-${entryNodeId}`,
-        name: "Re-park the run if a sibling wait is open",
-      },
-      Effect.asVoid(store.markExecutionWaitingIfParked({ executionId }))
-    );
-
-    const termination = yield* runDurable(
-      runtime,
-      {
-        id: `branch-termination-${entryNodeId}`,
-        name: "Read branch outcome",
-      },
-      store.readTerminationState(executionId)
-    );
-    const exit =
-      termination?.claim?.kind === "exit"
-        ? {
-            reason: termination.claim.reason,
-            nodeId: termination.claim.nodeId,
-            checkedAt: termination.claim.requestedAt,
-          }
-        : undefined;
-
-    yield* Effect.logInfo(
-      `Branch at ${entryNodeId} ${exit ? "exited" : "completed"} in ${Date.now() - branchStartTime}ms`
-    ).pipe(
-      Effect.annotateLogs({
-        branch: {
-          entry: entryNodeId,
-          nodes: traversal.resultCount,
-          ms: Date.now() - branchStartTime,
-        },
-      })
-    );
-
-    return {
-      results: { ...traversal.results },
-      outputs: traversal.ownOutputs,
-      ...(exit ? { exit } : {}),
-    };
   });
 }

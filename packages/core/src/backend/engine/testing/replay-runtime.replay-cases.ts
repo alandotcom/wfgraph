@@ -1,8 +1,6 @@
 /**
- * The driver cases the replay-runtime suite runs under the database executor:
- * four both executors answer alike, and the database executor's own policy,
- * where a parked pass ends the body and the run wakes when any one of its parks
- * resolves.
+ * The replay driver's own cases: a parked pass ends the body, and the run wakes
+ * when any one of its parks resolves.
  */
 
 import { expect, it } from "vitest";
@@ -37,12 +35,11 @@ export const park = (
   timeoutMs: number
 ): Promise<WaitAnswer> =>
   runtime.waitForEvent(stepRef(id), {
-    event: "workflow/wait.signal",
     timeoutMs,
     waitStateId: id,
   });
 
-/** Whether a park is still open, which ends a database executor's pass. */
+/** Whether a park is still open, which ends the pass. */
 export const isParked = (answer: WaitAnswer): boolean =>
   answer.kind === "parked";
 
@@ -120,10 +117,6 @@ export function defineReplayRuntimeCases(executor: ReplayExecutor): void {
     expect(run.elapsedMs).toBe(2_000);
   });
 
-  // The rest is the database executor's own policy, which the Inngest
-  // executor's cases in `replay-runtime.test.ts` state their own way.
-  if (executor.kind !== "database") return;
-
   it("runs a parked body again once its park resolves, answering earlier steps from the memo", async () => {
     let calls = 0;
     const run = await driveWithReplay(
@@ -146,15 +139,14 @@ export function defineReplayRuntimeCases(executor: ReplayExecutor): void {
     expect(calls).toBe(1);
     // The first pass ran its step inline and parked; the second ran the rest.
     expect(run.invocations).toBe(2);
-    expect(run.runs).toBe(1);
     expect(run.executed).toEqual([
       { run: "root", invocation: 0, at: 0, stepId: "before" },
       { run: "root", invocation: 1, at: 5_000, stepId: "after" },
     ]);
   });
 
-  // The policy that replaces the Inngest one above: a 20s park beside a 90s
-  // park resolves on its own, so the branch behind it is not held for the other.
+  // A 20s park beside a 90s park resolves on its own, so the branch behind it
+  // is not held for the other.
   it("wakes the run when any one park resolves, each on a pass of its own", async () => {
     const run = await driveWithReplay(
       async (runtime) => {
@@ -204,7 +196,7 @@ export function defineReplayRuntimeCases(executor: ReplayExecutor): void {
         if (answer.kind === "woke") {
           return answer.wake;
         }
-        await pass.signalOpenParks?.(CANCEL_WAKE);
+        await pass.signalOpenParks(CANCEL_WAKE);
         return PARKED_PASS;
       },
       { executor }
@@ -243,22 +235,6 @@ export function defineReplayRuntimeCases(executor: ReplayExecutor): void {
     expect(writes).toEqual([0]);
     expect(run.elapsedMs).toBe(30_000);
     expect(run.invocations).toBe(2);
-  });
-
-  it("offers no branch hand-off, so every Wait enters where it stands", async () => {
-    const run = await driveWithReplay(
-      (runtime) =>
-        Promise.resolve({
-          startBranch: runtime.startBranch,
-          wakeParkedWaits: runtime.wakeParkedWaits,
-        }),
-      { executor }
-    );
-
-    expect(run.value).toEqual({
-      startBranch: undefined,
-      wakeParkedWaits: undefined,
-    });
   });
 
   it("ends the drive with what a step threw", async () => {

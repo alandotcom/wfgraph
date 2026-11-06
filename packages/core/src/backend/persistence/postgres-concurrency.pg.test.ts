@@ -674,14 +674,15 @@ describePostgres("PostgreSQL concurrency", () => {
             ownerToken: own.ownerToken,
           },
           wokenWaitStateId: woken.waitStateId,
+          wokenResumeToken: `${executionId}-wait_a`,
         };
       })
     );
 
-  // The release and the producer both lock the schedule row before anything
-  // else. Without that, a release could read the wait rows before the wake
-  // committed, the producer could find the row still leased and leave it, and
-  // the run would sleep until another Wait's deadline with a woken branch
+  // The release and an Event's claim both lock the schedule row before
+  // anything else. Without that, a release could read the wait rows before the
+  // wake committed, the claim could find the row still leased and leave it,
+  // and the run would sleep until another Wait's deadline with a woken branch
   // nobody runs.
   it("never leaves a run waiting while a park holds a wake no pass consumed", async () => {
     const [releaser, producer] = await openRacers(2);
@@ -702,11 +703,13 @@ describePostgres("PostgreSQL concurrency", () => {
         producer.run(
           Effect.gen(function* () {
             const executions = yield* ExecutionRepo;
-            return yield* executions.resolvePark({
-              executionId: run.executionId,
+            return yield* executions.claimWaitingStateById({
               waitStateId: run.wokenWaitStateId,
-              wake: {
-                kind: "resume",
+              resumeToken: run.wokenResumeToken,
+              eventName: "appointment/approved",
+              allowSameDeliveryRetry: true,
+              arrival: {
+                signalType: "wait-resume",
                 eventName: "appointment/approved",
                 payload: {},
                 deliveryId: `delivery_${round}`,
@@ -766,7 +769,7 @@ describePostgres("PostgreSQL concurrency", () => {
               fromVersionId: "ver_1",
               toVersionId: "ver_2",
               expectedWaitStates: classified,
-              parks: { kind: "requeue", now },
+              now,
             });
           })
         ),

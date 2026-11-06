@@ -375,11 +375,11 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
   listWaitsForEvent: refuse("listWaitsForEvent"),
   claimWaitingStateByToken: refuse("claimWaitingStateByToken"),
   claimWaitingStateById: refuse("claimWaitingStateById"),
-  settleWaitingStateClaim: refuse("settleWaitingStateClaim"),
-  releaseWaitingStateClaim: refuse("releaseWaitingStateClaim"),
+  listActiveWaitStates: refuse("listActiveWaitStates"),
+
   listWaitingStates: refuse("listWaitingStates"),
   listOpenWaitNodeIds: refuse("listOpenWaitNodeIds"),
-  listActiveWaitStates: refuse("listActiveWaitStates"),
+
   listWaitingStatesForExecutions: refuse("listWaitingStatesForExecutions"),
   listLoggedNodeIdsForExecutions: refuse("listLoggedNodeIdsForExecutions"),
   listLogs: refuse("listLogs"),
@@ -444,10 +444,6 @@ export function stubIntegrationRepo(
 }
 
 const inngestClientStubs: InngestClient["Service"] = {
-  sendRunRequested: refuse("sendRunRequested"),
-  sendCancelRequested: refuse("sendCancelRequested"),
-  sendWaitSignal: refuse("sendWaitSignal"),
-  sendBranchKill: refuse("sendBranchKill"),
   sendCatalogEvent: refuse("sendCatalogEvent"),
 };
 
@@ -463,6 +459,8 @@ export function stubInngestClient(
 const executionDriverStubs: ExecutionDriver["Service"] = {
   enqueueRun: refuse("enqueueRun"),
   resolvePark: refuse("resolvePark"),
+  requestCanceledOutlet: refuse("requestCanceledOutlet"),
+  migrateRun: refuse("migrateRun"),
   stopRun: refuse("stopRun"),
 };
 

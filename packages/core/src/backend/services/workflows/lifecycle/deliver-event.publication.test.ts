@@ -6,7 +6,7 @@ import { wfSqlite } from "#src/backend/persistence/sqlite";
 import {
   SilentAppLoggerLayer,
   stubExtensionCatalog,
-  stubInngestClient,
+  stubExecutionDriver,
 } from "#src/backend/lib/effect/test-layers";
 import { createIntegrationCipher } from "#src/backend/services/integrations/cipher";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
@@ -66,9 +66,7 @@ describe("published Event metadata on native SQLite", () => {
             },
           ],
         }),
-        stubInngestClient({
-          sendRunRequested: () => Effect.succeed({ eventId: "evt_1" }),
-        })
+        stubExecutionDriver({ enqueueRun: () => Effect.void })
       )
     );
 

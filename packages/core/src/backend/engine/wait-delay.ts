@@ -1,16 +1,15 @@
 /**
  * Delay-mode Wait: park until a wall-clock target, then resume.
  *
- * The park is a wait on the `workflow/wait.signal` envelope whose timeout is
- * what is left of the delay, so a Migration can reach a sleeping run. Each
- * attempt resolves its target from the instant the first one resolved against,
- * so a Migration changes the target without restarting the clock. A timeout is
- * the ordinary end of the delay.
+ * The park's deadline is what is left of the delay, and a Migration can still
+ * reach a sleeping run with a `migrate` wake. Each attempt resolves its target
+ * from the instant the first one resolved against, so a Migration changes the
+ * target without restarting the clock. A timeout is the ordinary end of the
+ * delay.
  *
- * The match admits `version-migrate` and `lifecycle-exit`. A delay wait carries
- * no resume token, so no Event and no manual resume can wake it. A Cancel Event
- * reaches it through the function-level `cancelOn` and the sweep the run above
- * it does, and an Exit claimed by another branch wakes it through the signal.
+ * A delay wait carries no resume token and is no event wait, so no Event and
+ * no manual resume can wake it. A Cancel Event's `cancel` wake and an Exit
+ * claimed by another branch (`exit`) wake it like any other park.
  */
 
 import { encodeIsoTimestamp } from "@wfgraph/shared/types/timestamp";
@@ -223,7 +222,6 @@ const prepareDelayWait = Effect.fn("prepareDelayWait")(function* (
         waitTimezone: plan.waitTimezone ?? null,
       },
       timeoutMs: plan.plannedWaitMs,
-      signalTypes: ["version-migrate", "lifecycle-exit"],
     },
     prepared: { waitUntilIso: plan.waitUntilIso },
   };

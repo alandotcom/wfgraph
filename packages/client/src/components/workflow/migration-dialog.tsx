@@ -42,13 +42,7 @@ import type { WorkflowMigrationPayload } from "@wfgraph/shared/graph/migration-c
  */
 const RUN_ID_SUFFIX_LENGTH = 8;
 
-/**
- * Counts one migrate call's outcomes.
- *
- * A run whose pointer moved and whose wake signal was refused is a migrated run
- * with `signaled: false`, and it is counted as `unsignaled` as well as
- * `migrated`.
- */
+/** Counts one migrate call's outcomes. */
 function migrationOutcomeCounts(
   payload: WorkflowMigrationPayload
 ): MigrationOutcomeCounts {
@@ -57,9 +51,6 @@ function migrationOutcomeCounts(
 
   return {
     migrated,
-    unsignaled: payload.outcomes.filter(
-      (outcome) => outcome.status === "migrated" && !outcome.signaled
-    ).length,
     notMoved: payload.outcomes.length - migrated,
   };
 }

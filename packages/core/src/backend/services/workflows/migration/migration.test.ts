@@ -4,16 +4,16 @@ import { assert, describe, layer } from "@effect/vitest";
 import { Effect, Layer } from "effect";
 import { DatabaseError } from "#src/backend/lib/effect/database";
 import {
-  InngestError,
-  type InngestClient,
-} from "#src/backend/lib/effect/inngest-client";
-import {
   SilentAppLoggerLayer,
+  stubExecutionDriver,
   stubExecutionRepo,
   stubExtensions,
-  stubInngestClient,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
+import {
+  DriverError,
+  type ExecutionDriver,
+} from "#src/backend/services/executions/driver";
 import type { PublishedWorkflowVersion } from "#src/backend/lib/db/schema";
 import type {
   ExecutionRepo,
@@ -327,8 +327,7 @@ function makeMigrationSeams(input: {
     | undefined;
   nodeLogNodeIds?: string[] | undefined;
   repinned?: boolean | undefined;
-  repinVersion?: ExecutionRepo["Service"]["repinVersion"] | undefined;
-  sendWaitSignal?: InngestClient["Service"]["sendWaitSignal"] | undefined;
+  migrateRun?: ExecutionDriver["Service"]["migrateRun"] | undefined;
   recordAuditEvent?: ExecutionRepo["Service"]["recordAuditEvent"] | undefined;
   /** The workflow each run outside the in-flight list belongs to, by run id. */
   workflowIdByExecution?: Record<string, string | null> | undefined;
@@ -351,11 +350,10 @@ function makeMigrationSeams(input: {
     outputReads: [] as string[],
     loggedNodeIdReads: [] as string[][],
     workflowIdReads: [] as string[],
-    repins: [] as Parameters<ExecutionRepo["Service"]["repinVersion"]>[0][],
+    repins: [] as Parameters<ExecutionDriver["Service"]["migrateRun"]>[0][],
     auditEvents: [] as Parameters<
       ExecutionRepo["Service"]["recordAuditEvent"]
     >[0][],
-    signals: [] as Parameters<InngestClient["Service"]["sendWaitSignal"]>[0][],
   };
 
   return {
@@ -407,14 +405,6 @@ function makeMigrationSeams(input: {
               ])
             );
           }),
-        repinVersion: (repin) =>
-          Effect.suspend(() => {
-            calls.order.push("repin");
-            calls.repins.push(repin);
-            return input.repinVersion
-              ? input.repinVersion(repin)
-              : Effect.succeed(input.repinned ?? true);
-          }),
         recordAuditEvent: (event) =>
           Effect.suspend(() => {
             calls.order.push("audit");
@@ -429,14 +419,14 @@ function makeMigrationSeams(input: {
             return input.workflowIdByExecution?.[executionId] ?? null;
           }),
       }),
-      stubInngestClient({
-        sendWaitSignal: (signal) =>
+      stubExecutionDriver({
+        migrateRun: (repin) =>
           Effect.suspend(() => {
-            calls.order.push("signal");
-            calls.signals.push(signal);
-            return input.sendWaitSignal
-              ? input.sendWaitSignal(signal)
-              : Effect.void;
+            calls.order.push("repin");
+            calls.repins.push(repin);
+            return input.migrateRun
+              ? input.migrateRun(repin)
+              : Effect.succeed(input.repinned ?? true);
           }),
       })
     ),
@@ -1536,7 +1526,7 @@ describe("previewMigration", () => {
                 findByIdWithPublishedVersionForRun: () => Effect.succeed(null),
               }),
               stubExecutionRepo(),
-              stubInngestClient()
+              stubExecutionDriver()
             )
           ),
           Effect.flip
@@ -1574,7 +1564,7 @@ describe("previewMigration", () => {
                   }),
               }),
               stubExecutionRepo(),
-              stubInngestClient()
+              stubExecutionDriver()
             )
           ),
           Effect.flip
@@ -1588,63 +1578,60 @@ describe("previewMigration", () => {
 
 describe("migrateExecutions", () => {
   layer(SilentAppLoggerLayer)((it) => {
-    it.effect("moves the pointer, signals, then records the audit row", () =>
-      Effect.gen(function* () {
-        const seams = makeMigrationSeams({
-          executions: [inFlightRow({ id: "exec_1" })],
-          waitStates: [
-            waitRow({
-              id: "wait_row_1",
-              executionId: "exec_1",
-              waitType: "event",
-              resumeToken: "resume_1",
-            }),
-          ],
-          nodeOutputs: { before_1: { value: "ok" } },
-        });
+    // The repin is one write: the pointer, a `migrate` wake on each park, and
+    // the run re-queued. The audit row follows it.
+    it.effect(
+      "moves the pointer and its parks, then records the audit row",
+      () =>
+        Effect.gen(function* () {
+          const seams = makeMigrationSeams({
+            executions: [inFlightRow({ id: "exec_1" })],
+            waitStates: [
+              waitRow({
+                id: "wait_row_1",
+                executionId: "exec_1",
+                waitType: "event",
+                resumeToken: "resume_1",
+              }),
+            ],
+            nodeOutputs: { before_1: { value: "ok" } },
+          });
 
-        const result = yield* migrateExecutions({
-          workflowId: WORKFLOW_ID,
-          targetVersionId: TARGET_VERSION_ID,
-          executionIds: ["exec_1"],
-        }).pipe(Effect.provide(seams.layer));
-
-        assert.deepStrictEqual(result.outcomes, [
-          { executionId: "exec_1", status: "migrated", signaled: true },
-        ]);
-        assert.deepStrictEqual(seams.calls.order, ["repin", "signal", "audit"]);
-        assert.deepStrictEqual(seams.calls.repins, [
-          {
-            executionId: "exec_1",
-            fromVersionId: OLD_VERSION_ID,
-            toVersionId: TARGET_VERSION_ID,
-            expectedWaitStates: [{ id: "wait_row_1", resumeToken: "resume_1" }],
-            parks: { kind: "leave_parked" },
-          },
-        ]);
-        assert.deepStrictEqual(seams.calls.auditEvents, [
-          {
+          const result = yield* migrateExecutions({
             workflowId: WORKFLOW_ID,
-            executionId: "exec_1",
-            eventType: "run_migrated",
-            message: "Run migrated to version 2",
-            metadata: {
+            targetVersionId: TARGET_VERSION_ID,
+            executionIds: ["exec_1"],
+          }).pipe(Effect.provide(seams.layer));
+
+          assert.deepStrictEqual(result.outcomes, [
+            { executionId: "exec_1", status: "migrated" },
+          ]);
+          assert.deepStrictEqual(seams.calls.order, ["repin", "audit"]);
+          assert.deepStrictEqual(seams.calls.repins, [
+            {
+              executionId: "exec_1",
               fromVersionId: OLD_VERSION_ID,
-              fromVersionNumber: 1,
               toVersionId: TARGET_VERSION_ID,
-              toVersionNumber: 2,
+              expectedWaitStates: [
+                { id: "wait_row_1", resumeToken: "resume_1" },
+              ],
             },
-          },
-        ]);
-        assert.deepStrictEqual(seams.calls.signals, [
-          {
-            executionId: "exec_1",
-            nodeId: "wait_1",
-            token: "resume_1",
-            signalType: "version-migrate",
-          },
-        ]);
-      })
+          ]);
+          assert.deepStrictEqual(seams.calls.auditEvents, [
+            {
+              workflowId: WORKFLOW_ID,
+              executionId: "exec_1",
+              eventType: "run_migrated",
+              message: "Run migrated to version 2",
+              metadata: {
+                fromVersionId: OLD_VERSION_ID,
+                fromVersionNumber: 1,
+                toVersionId: TARGET_VERSION_ID,
+                toVersionNumber: 2,
+              },
+            },
+          ]);
+        })
     );
 
     it.effect(
@@ -1679,51 +1666,7 @@ describe("migrateExecutions", () => {
             [500, 1]
           );
           assert.strictEqual(seams.calls.repins.length, 501);
-          assert.strictEqual(seams.calls.signals.length, 501);
         })
-    );
-
-    it.effect("sends no token for a delay park", () =>
-      Effect.gen(function* () {
-        const seams = makeMigrationSeams({
-          executions: [inFlightRow({ id: "exec_1" })],
-          waitStates: [waitRow({ id: "wait_row_1", executionId: "exec_1" })],
-          nodeOutputs: { before_1: { value: "ok" } },
-        });
-
-        yield* migrateExecutions({
-          workflowId: WORKFLOW_ID,
-          targetVersionId: TARGET_VERSION_ID,
-          executionIds: ["exec_1"],
-        }).pipe(Effect.provide(seams.layer));
-
-        assert.strictEqual(seams.calls.signals[0]?.token, null);
-      })
-    );
-
-    it.effect("reports a refused signal as an unsignaled migration", () =>
-      Effect.gen(function* () {
-        const seams = makeMigrationSeams({
-          executions: [inFlightRow({ id: "exec_1" })],
-          waitStates: [waitRow({ id: "wait_row_1", executionId: "exec_1" })],
-          nodeOutputs: { before_1: { value: "ok" } },
-          sendWaitSignal: () =>
-            Effect.fail(
-              new InngestError({ cause: new Error("temporarily offline") })
-            ),
-        });
-
-        const result = yield* migrateExecutions({
-          workflowId: WORKFLOW_ID,
-          targetVersionId: TARGET_VERSION_ID,
-          executionIds: ["exec_1"],
-        }).pipe(Effect.provide(seams.layer));
-
-        assert.deepStrictEqual(result.outcomes, [
-          { executionId: "exec_1", status: "migrated", signaled: false },
-        ]);
-        assert.strictEqual(seams.calls.auditEvents.length, 1);
-      })
     );
 
     it.effect("refuses a run whose guarded pointer move changed no row", () =>
@@ -1771,9 +1714,9 @@ describe("migrateExecutions", () => {
         }).pipe(Effect.provide(seams.layer));
 
         assert.deepStrictEqual(result.outcomes, [
-          { executionId: "exec_1", status: "migrated", signaled: true },
+          { executionId: "exec_1", status: "migrated" },
         ]);
-        assert.deepStrictEqual(seams.calls.order, ["repin", "signal", "audit"]);
+        assert.deepStrictEqual(seams.calls.order, ["repin", "audit"]);
       })
     );
 
@@ -1795,7 +1738,7 @@ describe("migrateExecutions", () => {
           }).pipe(Effect.provide(seams.layer));
 
           assert.deepStrictEqual(result.outcomes, [
-            { executionId: "exec_1", status: "migrated", signaled: true },
+            { executionId: "exec_1", status: "migrated" },
             {
               executionId: "exec_ended",
               status: "refused",
@@ -1819,10 +1762,10 @@ describe("migrateExecutions", () => {
               waitRow({ id: "wait_row_2", executionId: "exec_2" }),
             ],
             nodeOutputs: { before_1: { value: "ok" } },
-            repinVersion: (repin) =>
+            migrateRun: (repin) =>
               repin.executionId === "exec_1"
                 ? Effect.fail(
-                    new DatabaseError({ cause: new Error("write failed") })
+                    new DriverError({ cause: new Error("write failed") })
                   )
                 : Effect.succeed(true),
           });
@@ -1835,20 +1778,18 @@ describe("migrateExecutions", () => {
 
           assert.deepStrictEqual(result.outcomes, [
             { executionId: "exec_1", status: "failed" },
-            { executionId: "exec_2", status: "migrated", signaled: true },
+            { executionId: "exec_2", status: "migrated" },
           ]);
-          assert.deepStrictEqual(seams.calls.signals, [
-            {
-              executionId: "exec_2",
-              nodeId: "wait_1",
-              token: null,
-              signalType: "version-migrate",
-            },
-          ]);
+          assert.deepStrictEqual(
+            seams.calls.repins.map((repin) => repin.executionId),
+            ["exec_1", "exec_2"]
+          );
         })
     );
 
-    it.effect("signals a run already on the target that is still parked", () =>
+    // The repin that moved the run woke its parks in the same write, so a
+    // run already on the target has nothing left to wake.
+    it.effect("leaves a parked run already on the target alone", () =>
       Effect.gen(function* () {
         const seams = makeMigrationSeams({
           executions: [
@@ -1870,7 +1811,7 @@ describe("migrateExecutions", () => {
         assert.deepStrictEqual(result.outcomes, [
           { executionId: "exec_1", status: "already_current" },
         ]);
-        assert.deepStrictEqual(seams.calls.order, ["signal"]);
+        assert.deepStrictEqual(seams.calls.order, []);
         assert.deepStrictEqual(seams.calls.repins, []);
       })
     );

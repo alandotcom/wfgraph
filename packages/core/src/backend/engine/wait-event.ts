@@ -101,7 +101,7 @@ const prepareEventWait = Effect.fn("prepareEventWait")(function* (
         (subscription) => subscription.event
       ),
       resumeToken,
-      // Everything here crosses the JSONB column and Inngest's memoization, so a
+      // Everything here crosses the JSONB column and the step memo, so a
       // compiled string and a literal are what the match is reduced to.
       metadata: {
         waitTimeout: timeout,
@@ -112,14 +112,6 @@ const prepareEventWait = Effect.fn("prepareEventWait")(function* (
         waitTimeoutResolution.waitUntil.getTime() - Date.now(),
         0
       ),
-      // A Cancel Event, an Exit claimed by another branch, and a Migration each
-      // wake a parked run through the same envelope the resume uses.
-      signalTypes: [
-        "wait-resume",
-        "lifecycle-cancel",
-        "lifecycle-exit",
-        "version-migrate",
-      ],
     },
     prepared: { resumeToken, timeoutBehavior },
   };
@@ -208,10 +200,9 @@ export const eventWaitMode: WaitMode<EventPrepared, EventResumed> = {
             : { eventName: arrival.eventName, payload: arrival.payload };
 
     // A Cancel or Exit wake halts the branch as a timeout skip does. The run is
-    // claimed, so nothing below this node is work it still wants: a run walking
-    // its own graph is sent to the Canceled outlet by the boundary read at this
-    // node, which happens before the halt is consulted, and a branch run has no
-    // boundary of its own and would otherwise carry on for a run already ending.
+    // claimed, so nothing below this node is work it still wants: a Cancel
+    // claim sends the run to the Canceled outlet by the boundary read at this
+    // node, which happens before the halt is consulted.
     return {
       status: "settled",
       result: { success: true, data: resumed.output },

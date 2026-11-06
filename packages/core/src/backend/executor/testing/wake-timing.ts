@@ -385,7 +385,7 @@ async function observeRun(input: {
         const summary = yield* executions.findSummaryById(executionId);
         return {
           status: summary?.status,
-          waits: yield* executions.listActiveWaitStates(executionId),
+          waits: yield* executions.listWaitingStates(executionId),
         };
       })
     );

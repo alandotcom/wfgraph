@@ -51,59 +51,6 @@ describe("Traversal.withNodeInProgress", () => {
   );
 });
 
-describe("Traversal.setOwnOutput", () => {
-  it.effect(
-    "takes ownership of an inherited output so ownOutputs includes the write",
-    () =>
-      Effect.sync(() => {
-        const node: WorkflowNode = {
-          id: "lifecycle_1",
-          type: "lifecycle",
-          position: { x: 0, y: 0 },
-          data: { label: "Lifecycle", type: "lifecycle", config: {} },
-        };
-        const traversal = new Traversal([node], []);
-        traversal.inheritCompleted("lifecycle_1", {
-          label: "Lifecycle",
-          data: { appointmentId: "appt_1" },
-        });
-        assert.deepStrictEqual(traversal.ownOutputs, {});
-        traversal.setOwnOutput("lifecycle_1", {
-          label: "Lifecycle",
-          data: { amount: "40" },
-        });
-        assert.deepStrictEqual(traversal.ownOutputs.lifecycle_1?.data, {
-          amount: "40",
-        });
-      })
-  );
-});
-
-describe("Traversal.inheritStoredOutputs", () => {
-  it.effect("preserves an Arriving Event already owned by the branch", () =>
-    Effect.sync(() => {
-      const node: WorkflowNode = {
-        id: "lifecycle_1",
-        type: "lifecycle",
-        position: { x: 0, y: 0 },
-        data: { label: "Lifecycle", type: "lifecycle", config: {} },
-      };
-      const traversal = new Traversal([node], []);
-      traversal.setOwnOutput(node.id, {
-        label: "Lifecycle",
-        data: { event: "current" },
-      });
-      traversal.inheritStoredOutputs(
-        { lifecycle_1: { event: "stale" } },
-        "wait_1"
-      );
-      assert.deepStrictEqual(traversal.ownOutputs.lifecycle_1?.data, {
-        event: "current",
-      });
-    })
-  );
-});
-
 describe("Traversal.deterministicTerminalOutput", () => {
   function node(id: string): WorkflowNode {
     return {
@@ -136,7 +83,7 @@ describe("Traversal.deterministicTerminalOutput", () => {
 
 describe("Traversal result keys", () => {
   it.effect(
-    "keeps a __proto__ failure enumerable through every result merge",
+    "keeps a __proto__ failure enumerable through every result write",
     () =>
       Effect.sync(() => {
         const failure = {
@@ -155,18 +102,15 @@ describe("Traversal result keys", () => {
 
         const completed = new Traversal([], []);
         completed.markCompleted("__proto__", failure);
-        const branchResult = {
-          results: { ...completed.results },
-          outputs: {},
-        };
-        const parent = new Traversal([], []);
-        parent.absorbBranch(branchResult);
 
-        assert.isTrue(Object.hasOwn(parent.results, "__proto__"));
-        assert.equal(Object.getPrototypeOf(parent.results), Object.prototype);
-        assert.equal(parent.resultCount, 1);
-        assert.isFalse(parent.allSucceeded());
-        assert.deepStrictEqual(parent.firstFailure(), failure.error);
+        assert.isTrue(Object.hasOwn(completed.results, "__proto__"));
+        assert.equal(
+          Object.getPrototypeOf(completed.results),
+          Object.prototype
+        );
+        assert.equal(completed.resultCount, 1);
+        assert.isFalse(completed.allSucceeded());
+        assert.deepStrictEqual(completed.firstFailure(), failure.error);
       })
   );
 });
