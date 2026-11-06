@@ -459,7 +459,12 @@ outlet's work never ran. Today a run whose step keeps failing is marked failed
 by Inngest and its execution row reads `running` forever, so either behaviour is
 new.
 
-**Cancellation.** A Cancel Event writes the claim on the execution row (exists),
+**Cancellation.** A Cancel delivery records its decision per workflow and
+delivery in the transaction that writes its claims, even when it claims no
+run, and a re-run of that step after a crash answers from the recorded
+decision. Without the record, a re-run would claim a run that opened after the
+first attempt, so one arrival would cancel a run it came before; the TLA+
+Intake model's `CancelClaimsOnlyEarlierRuns` checks this. A Cancel Event writes the claim on the execution row (exists),
 resolves every open park on the Started side as `{ kind: "cancel" }` and
 re-queues (replaces `sendBranchKill` plus `signalParkedWaits`). The replayed body
 reads the claim at its next `lifecycle-check` step and routes the Canceled
@@ -727,6 +732,10 @@ same key is accepted as a new arrival with a new inbox id, so the
 either, and new runs start. Inngest has the same property today: an event `id`
 deduplicates for 24 hours, and after that the same id triggers functions again.
 The window length is a decision (section 12). Undelivered rows are never swept.
+A send whose key holds a `failed` row resets that row to `pending` and schedules
+its delivery again, so a vendor resending a webhook that failed during an
+outage is delivered; a `pending` or `delivered` row answers the send as a
+duplicate.
 
 Whether `workflow_executions.delivery_id` becomes a foreign key to the inbox
 decides how the sweep works. As a foreign key, the sweep has to keep every inbox
