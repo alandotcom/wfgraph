@@ -198,13 +198,12 @@ export default function WorkflowsPage() {
       meta: { errorMessage: "Failed to load workflow runs" },
     }),
     enabled: canOpenGlobalRuns,
-    // A loaded run the executor is holding is re-read as the Runs tab reads
-    // its runs, so what its row says about the executor stays current.
+    // While a loaded run is in progress the history is re-read as the Runs tab
+    // reads its runs, so what its row says about the executor stays current,
+    // including a run that starts retrying or stalls after it loaded.
     refetchInterval: (query) =>
       query.state.data?.pages.some((page) =>
-        page.items.some(
-          (item) => isRunInProgress(item.status) && item.activity !== null
-        )
+        page.items.some((item) => isRunInProgress(item.status))
       )
         ? RUN_POLL_MS
         : false,
