@@ -292,6 +292,25 @@ export function describeExecutionFencingConformance({
     // A count kept for the whole run would hand each later step the retries
     // its predecessors spent.
 
+    // The Runs view formats a duration made of digits alone as milliseconds,
+    // and prints any other string as it was stored.
+    it("writes a finished run's duration as whole milliseconds", async () => {
+      const connection = await seeded(await openConnection());
+      const summary = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const executionId = yield* scheduledRun(T0);
+          const { fence } = yield* claimRun(executionId, T0);
+          yield* executions
+            .fenced(fence)
+            .finishRun({ executionId, status: "completed" });
+          return yield* executions.findSummaryById(executionId);
+        })
+      );
+
+      expect(summary?.duration).toMatch(/^\d+$/);
+    });
+
     it("refuses a fenced write that addresses a run the fence does not name", async () => {
       const connection = await seeded(await openConnection());
       const result = await connection.run(

@@ -676,7 +676,9 @@ export function finishRunWrite(input: FinishRunInput) {
             waitingAt: null,
             cancelledAt: input.status === "canceled" ? now : null,
             completedAt: now,
-            duration: sql`cast(${now} - ${workflowExecutions.startedAt} as text)`,
+            // node:sqlite binds a JS number as REAL, so the difference is cast
+            // to an integer first, or the text would read "5.0".
+            duration: sql`cast(cast(${now} - ${workflowExecutions.startedAt} as integer) as text)`,
           })
           .where(
             and(
