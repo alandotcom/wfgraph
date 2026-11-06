@@ -1,14 +1,14 @@
 /**
- * How an integration receives a vendor POST and turns it into an Event send.
+ * How an integration receives a vendor POST and turns it into an Event arrival.
  *
  * `verify` runs on the raw body, because Svix and every HMAC scheme are
  * sensitive to a single byte of re-serialization. `receive` then sees the
  * parsed JSON. The route reads the body once and hands both halves what they
  * need; nothing here consumes the Request.
  *
- * The Inngest source lives on the webhook, not on each `receive` return, so a
- * payload this integration chose to model cannot be sent under a name no Event
- * listens to. An ignored payload is `undefined`, which the route answers 200
+ * The source name lives on the webhook, not on each `receive` return, so a
+ * payload this integration chose to model cannot be recorded under a name no
+ * Event listens to. An ignored payload is `undefined`, which the route answers 200
  * rather than an error, so a vendor retry storm does not follow a subtype this
  * integration chose not to model.
  */
@@ -30,10 +30,13 @@ export class SignatureRejected extends Schema.TaggedError<
   error: Schema.String,
 }) {}
 
-/** An accepted payload, as `inngest.send` takes its `data` and idempotency key. */
+/** An accepted payload: the event inbox row's `data` and idempotency key. */
 export type WebhookAccepted = {
   readonly data: JsonObject;
-  /** Inngest idempotency key. Resend sets this from `svix-id`. */
+  /**
+   * The vendor's id for the message, which deduplicates a vendor retry through
+   * the same Connection. Resend sets this from `svix-id`.
+   */
   readonly id?: string | undefined;
 };
 
@@ -53,8 +56,8 @@ export type IntegrationWebhook<
   >,
 > = {
   /**
-   * The Inngest event name `receive` maps onto. Catalog Events listen on this
-   * and narrow with `source.when`.
+   * The name every accepted payload is recorded under in the event inbox.
+   * Catalog Events listen on this and narrow with `source.when`.
    */
   readonly source: string;
   /**

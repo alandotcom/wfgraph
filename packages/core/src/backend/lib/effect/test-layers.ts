@@ -16,7 +16,6 @@ import {
   type LogProperties,
 } from "#src/backend/lib/effect/app-logger";
 import { Database, DatabaseError } from "#src/backend/lib/effect/database";
-import { InngestClient } from "#src/backend/lib/effect/inngest-client";
 import {
   Extensions,
   makeExtensionsLayer,
@@ -446,24 +445,12 @@ export function stubIntegrationRepo(
   });
 }
 
-const inngestClientStubs: InngestClient["Service"] = {
-  sendCatalogEvent: refuse("sendCatalogEvent"),
-};
-
-export function stubInngestClient(
-  overrides: Partial<InngestClient["Service"]> = {}
-): Layer.Layer<InngestClient> {
-  return Layer.succeed(InngestClient, {
-    ...inngestClientStubs,
-    ...overrides,
-  });
-}
-
 const executionDriverStubs: ExecutionDriver["Service"] = {
   startRun: refuse("startRun"),
   resolvePark: refuse("resolvePark"),
   requestCanceledOutlet: refuse("requestCanceledOutlet"),
   migrateRun: refuse("migrateRun"),
+  receiveEvent: refuse("receiveEvent"),
 };
 
 export function stubExecutionDriver(
@@ -493,7 +480,6 @@ export function stubWfGraphRuntime(
     workflowRepo?: Partial<WorkflowRepo["Service"]> | undefined;
     executionRepo?: Partial<ExecutionRepo["Service"]> | undefined;
     integrationRepo?: Partial<IntegrationRepo["Service"]> | undefined;
-    inngestClient?: Partial<InngestClient["Service"]> | undefined;
     executionDriver?: Partial<ExecutionDriver["Service"]> | undefined;
     /** The build agent is off unless a test turns it on. */
     agent?: AgentSettings | undefined;
@@ -515,7 +501,6 @@ export function stubWfGraphRuntime(
       stubIntegrationRepo(overrides.integrationRepo),
       makeAgentConfigLayer(overrides.agent ?? { enabled: false }),
       makeAgentRunnerLayer(disabledAgentRunner),
-      stubInngestClient(overrides.inngestClient),
       stubExecutionDriver(overrides.executionDriver)
     )
   );

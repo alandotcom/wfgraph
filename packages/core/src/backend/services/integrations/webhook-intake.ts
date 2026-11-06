@@ -1,5 +1,7 @@
 /**
- * Connection-addressed webhook intake: verify, receive, send.
+ * Connection-addressed webhook intake: verify, receive, and record the arrival
+ * in the event inbox under the webhook's source name, with the Connection in
+ * the row's `connection_id` and the vendor's message id as its idempotency key.
  *
  * Path params name the integration type and the Connection. Host `auth` does
  * not run; the vendor signature is the credential. The raw body is what
@@ -10,7 +12,6 @@
 import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { Extensions } from "#src/backend/lib/effect/extensions";
-import { InngestClient } from "#src/backend/lib/effect/inngest-client";
 import {
   catchSeamFailures,
   internalFailureFromCause,
@@ -20,6 +21,7 @@ import {
   NotFound,
   Unauthorized,
 } from "#src/backend/lib/effect/failures";
+import { ExecutionDriver } from "#src/backend/services/executions/driver";
 import { IntegrationRepo } from "#src/backend/services/integrations/repo";
 import {
   credentialsFromConfig,
@@ -40,7 +42,7 @@ export const receiveWebhook = Effect.fn("receiveWebhook")(
   }) {
     const extensions = yield* Extensions;
     const repo = yield* IntegrationRepo;
-    const inngest = yield* InngestClient;
+    const driver = yield* ExecutionDriver;
     const logger = (yield* webhookLogger).with({
       webhook: {
         type: input.type,
@@ -97,23 +99,32 @@ export const receiveWebhook = Effect.fn("receiveWebhook")(
       return { kind: "ignored" as const };
     }
 
-    yield* inngest.sendCatalogEvent({
+    // The inbox's idempotency key is unique per name and Connection, so two
+    // Connections on one vendor account each keep the message the vendor
+    // delivered to both under one id.
+    const inserted = yield* driver.receiveEvent({
       name: webhook.source,
       data: received.data,
       connectionId: input.connectionId,
-      id: received.id,
+      idempotencyKey: received.id ?? null,
     });
 
-    yield* logger.info("Forwarded a webhook as an Event", {
+    yield* logger.info("Received a webhook into the event inbox", {
       webhook: {
         type: input.type,
         connectionId: input.connectionId,
         event: webhook.source,
         bytes: input.rawBody.length,
       },
+      inbox: { id: inserted.inboxId, duplicate: inserted.duplicate },
     });
 
-    return { kind: "sent" as const, event: webhook.source };
+    return {
+      kind: "received" as const,
+      event: webhook.source,
+      inboxId: inserted.inboxId,
+      duplicate: inserted.duplicate,
+    };
   },
   (effect) =>
     effect.pipe(

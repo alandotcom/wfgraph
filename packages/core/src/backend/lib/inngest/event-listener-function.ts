@@ -31,7 +31,6 @@ import {
 import { type JsonObject, readJsonObject } from "@wfgraph/shared/types/json";
 import { compileEventDataEquals } from "@wfgraph/shared/lifecycle/inngest-event-data";
 import { toListenerFunctionId } from "#src/backend/lib/inngest/listener-function-id";
-import { splitCatalogEventData } from "#src/backend/lib/inngest/catalog-connection";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 const logger = getAppLogger("events");
@@ -318,13 +317,8 @@ export function createInngestEventListenerFunction(input: {
    * services on the same repositories and logger the HTTP side does.
    */
   runtime: WfGraphRuntime;
-  /**
-   * Whether `sendCatalogEvent` stamped `connectionId` onto this Event's data.
-   * Host Events never stamp; a payload key of that name stays on the envelope.
-   */
-  connectionStamped: boolean;
 }): InngestFunction.Any {
-  const { client, event, runtime, connectionStamped } = input;
+  const { client, event, runtime } = input;
   const when = event.source.when;
 
   return client.createFunction(
@@ -341,15 +335,12 @@ export function createInngestEventListenerFunction(input: {
       ],
     },
     async ({ event: delivered, step, runId }) => {
-      const { payload, connectionId } = splitCatalogEventData(
-        toEventPayload(delivered.data),
-        { connectionStamped }
-      );
+      // An Inngest send carries no Connection: webhook intake records an
+      // integration Event in the event inbox with its Connection.
       return await listenToInngestEvent({
         event,
-        payload,
+        payload: toEventPayload(delivered.data),
         arrival: { kind: "inngest", eventId: delivered.id, runId },
-        connectionId,
         runtime,
         step,
         deliver: defaultDeliverPorts,

@@ -41,6 +41,8 @@ import {
 } from "#src/backend/executor/in-process-runner";
 import { openWfGraphSetup, type WfGraphSetup } from "#src/backend/setup";
 import type { WfGraphMcpOptions } from "#src/backend/agent/mcp-server";
+import type { WfGraphEvents } from "#src/backend/host-events";
+import { isBlank } from "@wfgraph/shared/types/string";
 
 export type { EncryptionRuntimeConfig } from "#src/backend/services/integrations/cipher";
 export type { WfGraphInngestConfig } from "#src/backend/lib/inngest/client";
@@ -56,6 +58,23 @@ export type { WfGraphExtensions } from "#src/backend/extensions/extension-set";
 export type { WfGraphPersistence } from "#src/backend/persistence/types";
 export type { WfGraphMcpOptions } from "#src/backend/agent/mcp-server";
 export type { WfGraphRunnerOptions } from "#src/backend/executor/in-process-runner";
+export {
+  WfGraphEventRefused,
+  type WfGraphEventInput,
+  type WfGraphEventReceipt,
+  type WfGraphEvents,
+} from "#src/backend/host-events";
+
+/** How Events reach this app's event inbox from outside its process. */
+export type WfGraphEventsOptions = {
+  /**
+   * The shared key that mounts `POST {basePath}/api/events`. A sender
+   * presents it as `Authorization: Bearer <key>`. Absent, the route is not
+   * mounted, and `app.events.send` stays the only way in besides Inngest and
+   * webhook intake. Treat it as a secret, like `encryption.key`.
+   */
+  key?: string | undefined;
+};
 
 export type WfGraphAppOptions = {
   /**
@@ -75,8 +94,9 @@ export type WfGraphAppOptions = {
    * Required everywhere rather than only in production, because the check that
    * would tell the two apart reads an environment variable that says
    * "production" and misses "prod" and an unset one. Covers everything Workflow
-   * Graph serves except machine routes (`/webhooks/:type/:connectionId` and
-   * `/inngest` when HTTP serve is mounted) and public OAuth client metadata at
+   * Graph serves except machine routes (`/webhooks/:type/:connectionId`,
+   * `/inngest` when HTTP serve is mounted, and `/events` when `events.key` is
+   * set) and public OAuth client metadata at
    * `/integrations/oauth/clients/:integrationType`.
    */
   auth: WfGraphAuth;
@@ -94,6 +114,8 @@ export type WfGraphAppOptions = {
   entityResolverTimeoutMs?: number | undefined;
   encryption: EncryptionRuntimeConfig;
   inngest: WfGraphInngestConfig;
+  /** Event intake over HTTP. See `WfGraphEventsOptions`. */
+  events?: WfGraphEventsOptions | undefined;
   /**
    * The worker loop that advances workflow runs stored in `persistence`.
    *
@@ -156,6 +178,8 @@ export type WfGraphApp = {
    * what lets an adapter tell a mount-point mismatch from an ordinary 404.
    */
   basePath: "" | `/${string}`;
+  /** Raises an Event into this app's event inbox from the host's own code. */
+  events: WfGraphEvents;
   /**
    * Give back everything this app holds. Awaiting it waits for the Effect
    * runtime's Layers to finalize; a host that fires and forgets still releases
@@ -188,6 +212,12 @@ export async function createWfGraphApp(
 
   assertValidEncryptionKey(options.encryption.key);
   assertValidRunnerOptions(options.runner);
+  const eventsKey = options.events?.key;
+  if (eventsKey !== undefined && isBlank(eventsKey)) {
+    throw new Error(
+      "createWfGraphApp's events.key is blank. Pass a secret to mount POST /api/events, or leave the key out to keep that route off."
+    );
+  }
 
   // One value for the Inngest client this app sends on, built before the
   // runtime because the Layer graph takes it. Functions are registered once
@@ -205,7 +235,6 @@ export async function createWfGraphApp(
     basePath,
     publicUrl,
     agent: readAgentSettings(options.agent),
-    inngest: inngest.client,
   });
 
   // Everything past this point can fail with persistence already open, and
@@ -276,6 +305,7 @@ async function assembleWfGraphApp(
     auth,
     runtime,
     mcp: options.mcp,
+    eventsKey: options.events?.key,
     // Connect dials out; mounting `/inngest` would advertise a callback Inngest
     // cannot reach on a private network and is not how Connect syncs.
     inngestHandler: useConnect ? undefined : inngest.serve(functions),
@@ -355,6 +385,7 @@ async function assembleWfGraphApp(
   return {
     fetch: async (request) => await fullApp.fetch(request),
     basePath,
+    events: setup.events,
     dispose,
     [Symbol.asyncDispose]: dispose,
   };

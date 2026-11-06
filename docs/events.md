@@ -1,6 +1,6 @@
 # Defining Events and Entities
 
-How an Event Author declares Events, current Entity State, umbrella sources, the intake gate, and how that fits the Lifecycle model.
+How an Event Author declares Events, current Entity State, umbrella sources, how an application sends an Event, the intake gate, and how that fits the Lifecycle model.
 
 An Event is a named payload shape that your application raises.
 
@@ -214,16 +214,64 @@ workflow writes a Start Filter or Cancel Filter on the Lifecycle Node. These fil
 serve different scopes: `when` identifies the Event, and a lifecycle filter decides
 whether that Event changes a run in one workflow.
 
-## The intake gate
+## Sending an Event
 
-Send an Event with an Inngest client. The listener of that Event delivers it, so the run is
-durable from the moment the send returns. The listener opens each run the Event starts in
-your database, and the worker loop in your application's process executes the run. For more
-information, see Workflow runs in `docs/embedding.md`.
+An application sends an Event in one of three ways. Each one ends with the worker loop
+opening every run the Event starts, in your database. For more information, see Workflow
+runs in `docs/embedding.md`.
+
+**From the application's own code**, call `events.send` on the value `createWfGraphApp`
+returns. The same method is on the value `createWfGraphRunner` returns.
+
+```ts
+const { id, duplicate } = await app.events.send({
+  name: "app/appointment.created",
+  data: { appointmentId: "appt_123" },
+  id: "appointment-created-appt_123",
+});
+```
+
+- `name` is the name of an Event in `extensions.events` or of an integration-owned Event.
+- `data` must pass the schema of that Event before the send resolves.
+- `id` is optional. It is the idempotency key: a second send with the same `name` and `id`
+  resolves with `duplicate: true` and the `id` of the first send, and it starts nothing.
+  The key holds while the first send's record exists.
+- The promise resolves once the Event is stored in the event inbox, so a send that
+  resolved survives a crash. The run starts in the worker loop shortly after.
+- The promise rejects with `WfGraphEventRefused`, exported from `@wfgraph/core`, for an
+  unknown name, a refused payload, or a malformed argument. Its message names the field
+  and the rule and never repeats the value that was sent. Any other rejection is a storage
+  failure, with the underlying error as its `cause`.
+
+**From another process**, set `events: { key }` on `createWfGraphApp`. The app then accepts
+`POST {basePath}/api/events`. The route is not mounted when `events.key` is unset.
+
+```sh
+curl -X POST https://app.example.com/api/events \
+  -H "Authorization: Bearer $WFGRAPH_EVENTS_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"app/appointment.created","data":{"appointmentId":"appt_123"},"id":"appointment-created-appt_123"}'
+```
+
+The body is `{ name, data, id? }`, with the same meaning as the arguments of `events.send`.
+The route is a machine route: host `auth` does not run, and the key is the credential.
+The route compares the key in constant time.
+
+| Status | Body                | When                                                                 |
+| ------ | ------------------- | -------------------------------------------------------------------- |
+| 202    | `{ id, duplicate }` | The Event is stored. `duplicate` is true for a repeated `id`         |
+| 400    | `{ error }`         | The body is not JSON, the name is unknown, or the payload is refused |
+| 401    | `{ error }`         | The `Authorization` header is missing or holds another key           |
+| 413    | `{ error }`         | The body is larger than 1 MiB                                        |
+
+**Through Inngest**, send the Event with an Inngest client. The Inngest listener of that
+Event delivers it.
 
 ```ts
 inngest.send({ name: "app/appointment.created", data: { appointment } });
 ```
+
+## The intake gate
 
 **The gate is open by design.** Workflow Graph validates the declared fields and ignores a key that
 the schema never heard of.
@@ -232,8 +280,9 @@ the schema never heard of.
   an additive change upstream must not stop intake.
 - This is the one boundary in the repository that decodes this way. A declared field that
   drifts fails loudly, and an extra key passes in silence by choice.
-- Workflow Graph logs a refusal and stops there, because a second attempt meets the same malformed
-  payload.
+- `events.send` and `POST /api/events` refuse a payload the gate refuses before storing it.
+  An Inngest send is checked when its listener runs, and Workflow Graph logs a refusal and
+  stops there, because a second attempt meets the same malformed payload.
 
 Workflow Graph carries the raw JSON into the workflow. The decoded value is used only by a
 typed Entity ID selector and then discarded. A transform rewriting what the sender sent
@@ -257,7 +306,7 @@ Arriving Event, Concurrency, Precedence, Refused Start, and Execution status in 
 An integration may declare Events on `defineIntegration`. They are ordinary Events:
 name identity, payload schema, Correlation Path, optional umbrella `source`. The
 catalog stamps the owner so the editor offers a Connection picker. Publish requires
-a Connection for a Start, Cancel, or Wait that names one of these. Host Events still
-arrive through `inngest.send` with no Connection. The webhook route that produces
-integration Events is on machine routes; see `docs/embedding.md` and
-`docs/integrations.md`.
+a Connection for a Start, Cancel, or Wait that names one of these. An Event sent with
+`events.send`, `POST /api/events`, or `inngest.send` arrives with no Connection. The
+webhook route that produces integration Events records each one with the Connection it
+arrived through; see `docs/embedding.md` and `docs/integrations.md`.

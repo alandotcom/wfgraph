@@ -358,6 +358,58 @@ function describeCases(
     });
   });
 
+  it("records an arrival with its delivery schedule row due now, wakes the loop once it commits, and wakes nothing for a duplicate", async () => {
+    const app = appOn(await openConnection());
+    const arrival = {
+      name: START_EVENT,
+      data: { appointmentId: "appt_1" },
+      connectionId: "conn_1",
+      idempotencyKey: "vendor_1",
+    };
+
+    const result = await app.drive(
+      Effect.gen(function* () {
+        const driver = yield* ExecutionDriver;
+        const executions = yield* ExecutionRepo;
+        const first = yield* driver.receiveEvent(arrival);
+        const wakesAfterFirst = app.worker.calls();
+        const again = yield* driver.receiveEvent(arrival);
+        // The same vendor id through another Connection is its own arrival.
+        const otherConnection = yield* driver.receiveEvent({
+          ...arrival,
+          connectionId: "conn_2",
+        });
+        return {
+          first,
+          wakesAfterFirst,
+          again,
+          otherConnection,
+          wakesAfterAll: app.worker.calls(),
+          queued: yield* executions.findSchedule({ inboxId: first.inboxId }),
+          inbox: yield* executions.findInboxEvent(first.inboxId),
+        };
+      })
+    );
+
+    expect(result.first.duplicate).toBe(false);
+    expect(result.wakesAfterFirst).toBe(1);
+    expect(result.again).toEqual({
+      duplicate: true,
+      inboxId: result.first.inboxId,
+    });
+    expect(result.otherConnection.duplicate).toBe(false);
+    expect(result.otherConnection.inboxId).not.toBe(result.first.inboxId);
+    expect(result.wakesAfterAll).toBe(2);
+    expect(result.queued).toMatchObject({ kind: "delivery", state: "queued" });
+    expect(result.queued?.wakeAt.getTime()).toBeLessThanOrEqual(Date.now());
+    expect(result.inbox).toMatchObject({
+      status: "pending",
+      name: START_EVENT,
+      connectionId: "conn_1",
+      idempotencyKey: "vendor_1",
+    });
+  });
+
   it("re-queues a waiting run when a Cancel claim resolves its park and wakes an in-process loop well before its poll", async () => {
     const app = appOn(await openConnection());
     const run = await app.startRun(cancelableWaitGraph);

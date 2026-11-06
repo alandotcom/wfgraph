@@ -16,14 +16,8 @@ import {
   Extensions,
   makeExtensionsLayer,
 } from "#src/backend/lib/effect/extensions";
-import {
-  InngestClient,
-  makeInngestClientLayer,
-  unavailableInngestClientLayer,
-} from "#src/backend/lib/effect/inngest-client";
 import { TracerBridgeLayer } from "#src/backend/lib/effect/tracer";
 import type { ExtensionSet } from "#src/backend/extensions/extension-set";
-import type { Inngest } from "inngest";
 import { IntegrationRepo } from "#src/backend/services/integrations/repo";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import {
@@ -59,8 +53,7 @@ export type WfGraphServices =
   | IntegrationRepo
   | WorkflowRepo
   | ExecutionRepo
-  | ExecutionDriver
-  | InngestClient;
+  | ExecutionDriver;
 
 /** The storage-facing services supplied by one persistence backend. */
 export type WfGraphRepositories =
@@ -70,18 +63,12 @@ export type WfGraphRepositories =
 
 /** Everything the app hands the Layer graph, as the app itself holds it. */
 export type WfGraphRuntimeParts = {
-  /**
-   * The Inngest client Events are forwarded on. `createWfGraphRunner` serves
-   * no route that forwards one, so it passes none.
-   */
-  inngest?: Inngest | undefined;
   extensions: ExtensionSet;
   /** Stable host URLs used by request handlers and background credential refreshes. */
   appContext: WfGraphAppContextValue;
   /**
    * The build agent's model settings, or the off state. It carries a credential
-   * and no per-request state, so it belongs on the runtime the way the Inngest
-   * client does.
+   * and no per-request state, so it belongs on the runtime.
    */
   agent: AgentSettings;
   /** One backend's complete implementation of the repository contracts. */
@@ -115,10 +102,7 @@ function buildWfGraphLayer(
     // repositories it was built on are offered to the services beside it.
     makeExecutionDriverLayer(parts.wakes).pipe(
       Layer.provideMerge(parts.repositories)
-    ),
-    parts.inngest === undefined
-      ? unavailableInngestClientLayer
-      : makeInngestClientLayer(parts.inngest)
+    )
   );
 }
 

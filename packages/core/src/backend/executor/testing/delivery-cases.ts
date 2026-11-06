@@ -1,6 +1,7 @@
 /**
  * Event deliveries on the database executor, on one persistence backend: an
- * inbox row delivered by the worker loop, a duplicate send, a row a host
+ * inbox row delivered by the worker loop, a duplicate send, a host send
+ * through `sendEvent`, webhook intake through two Connections, a row a host
  * inserted itself, a webhook source told apart by its `source.when` filter, a
  * refused payload, a lifecycle step that spends its retries, and a crash
  * between a step and its memo row, alone and under a Cancel claim. A runner per
@@ -18,8 +19,10 @@ import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { JsonObject } from "@wfgraph/shared/types/json";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { defineAction } from "#src/backend/extensions/define-action";
 import { defineEvent } from "#src/backend/extensions/define-event";
+import { defineIntegration } from "#src/backend/extensions/define-integration";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
 import { DatabaseError } from "#src/backend/lib/effect/database";
@@ -62,10 +65,17 @@ import {
 } from "#src/backend/services/executions/repo";
 import { ownershipLost } from "#src/backend/services/executions/repo/fencing";
 import type { WorkflowRepo } from "#src/backend/services/workflows/repo";
+import { sendEvent } from "#src/backend/services/executions/send-event";
+import { IntegrationRepo } from "#src/backend/services/integrations/repo";
+import { receiveWebhook } from "#src/backend/services/integrations/webhook-intake";
 
 const LEASE_MS = 60_000;
 const WEBHOOK_SOURCE = "vendor/webhook";
 const VENDOR_BOOKED = "vendor/booked";
+const ACME_WEBHOOK = "acme/webhook";
+const ACME_BOOKED = "acme/booked";
+/** The header the `acme` webhook reads the vendor's message id from. */
+const ACME_MESSAGE_ID = "x-acme-message-id";
 
 /** The `test/mark` nodes that ran, by node id, in the order they ran. */
 let marks: string[] = [];
@@ -110,6 +120,33 @@ const extensions = assembleExtensions({
       },
     }),
   ],
+  // An integration whose webhook accepts every signature and records each
+  // message under the vendor's id.
+  integrations: [
+    defineIntegration({
+      type: "acme",
+      label: "Acme",
+      description: "Books appointments",
+      credentials: {},
+      actions: {},
+      events: [
+        defineEvent({
+          name: ACME_BOOKED,
+          schema: appointment,
+          correlationPath: "appointmentId",
+          source: { event: ACME_WEBHOOK },
+        }),
+      ],
+      webhook: {
+        source: ACME_WEBHOOK,
+        verify: () => Effect.void,
+        receive: (body, headers) => ({
+          data: body,
+          id: headers.get(ACME_MESSAGE_ID) ?? undefined,
+        }),
+      },
+    }),
+  ],
   actions: [
     defineAction({
       id: "test/send",
@@ -142,22 +179,35 @@ const catalogFingerprint = createWorkflowActions(
   stubWfGraphRuntime()
 ).catalogFingerprint();
 
-/** Lifecycle Rules that start on `startEvent` and cancel on `CANCEL_EVENT`. */
-function rules(startEvent: string): JsonObject {
+/**
+ * Lifecycle Rules that start on `startEvent` and cancel on `CANCEL_EVENT`,
+ * with the Connection each integration Event must arrive through.
+ */
+function rules(
+  startEvent: string,
+  connectionIds?: Record<string, string>
+): JsonObject {
   return {
-    lifecycleRules: {
+    lifecycleRules: omitUndefined({
       concurrency: "unlimited",
       startEvents: [startEvent],
       cancelEvents: [CANCEL_EVENT],
       allowManualStart: true,
-    },
+      connectionIds,
+    }),
   };
 }
 
 /** Entry, then one action that completes the run. */
-function startsAndSends(startEvent: string): SerializedWorkflowGraph {
+function startsAndSends(
+  startEvent: string,
+  connectionIds?: Record<string, string>
+): SerializedWorkflowGraph {
   return createSerializedWorkflowGraph({
-    nodes: [lifecycleNode(rules(startEvent)), actionNode("send", "test/send")],
+    nodes: [
+      lifecycleNode(rules(startEvent, connectionIds)),
+      actionNode("send", "test/send"),
+    ],
     edges: [edge("entry", "send", "started")],
   });
 }
@@ -279,6 +329,20 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
       data: JsonObject;
       idempotencyKey?: string | undefined;
     }) => Promise<{ inboxId: string; duplicate: boolean }>;
+    /** Sends an Event as a host does, through `sendEvent` on the app's runtime. */
+    sendEvent: (input: {
+      name: string;
+      data: JsonObject;
+      id?: string | undefined;
+    }) => Promise<{ id: string; duplicate: boolean }>;
+    /** Stores an `acme` Connection, answering its id. */
+    addConnection: (name: string) => Promise<string>;
+    /** Posts `data` to one `acme` Connection's webhook under a vendor id. */
+    webhook: (input: {
+      connectionId: string;
+      vendorId: string;
+      data: JsonObject;
+    }) => Promise<{ inboxId: string; duplicate: boolean }>;
     inbox: (inboxId: string) => Promise<InboxEvent | null>;
     /** Every run of one workflow, newest first. */
     runs: (workflowId: string) => Promise<{ id: string; status: string }[]>;
@@ -375,6 +439,29 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
             })
           )
         ),
+      sendEvent: (input) => app.runPromise(sendEvent(input)),
+      addConnection: (name) =>
+        connection.run(
+          Effect.flatMap(IntegrationRepo, (integrations) =>
+            integrations
+              .insert({ name, type: "acme", config: {} })
+              .pipe(Effect.map((stored) => stored.id))
+          )
+        ),
+      webhook: async (input) => {
+        const received = await app.runPromise(
+          receiveWebhook({
+            type: "acme",
+            connectionId: input.connectionId,
+            rawBody: JSON.stringify(input.data),
+            headers: new Headers({ [ACME_MESSAGE_ID]: input.vendorId }),
+          })
+        );
+        if (received.kind !== "received") {
+          throw new Error("The acme webhook ignored a message");
+        }
+        return { inboxId: received.inboxId, duplicate: received.duplicate };
+      },
       inbox: (inboxId) =>
         connection.run(
           Effect.flatMap(ExecutionRepo, (executions) =>
@@ -522,6 +609,104 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
 
     expect(second).toEqual({ duplicate: true, inboxId: first.inboxId });
     expect(await harness.runs("wf_start")).toHaveLength(1);
+  });
+
+  it("records a host send through sendEvent, delivers it to a run that completes, and answers a repeated id with the first row", async () => {
+    const harness = await open();
+    await harness.publish("wf_start", startsAndSends(START_EVENT));
+    const send = {
+      name: START_EVENT,
+      data: { appointmentId: "appt_sent" },
+      id: "booking_sent",
+    };
+    const first = await harness.sendEvent(send);
+    const again = await harness.sendEvent(send);
+    const loop = harness.loop();
+
+    const row = await settled(harness, first.id);
+    const runId = await endedRun(harness, "wf_start");
+    await loop.stop();
+
+    expect(first.duplicate).toBe(false);
+    expect(again).toEqual({ id: first.id, duplicate: true });
+    expect(row).toMatchObject({
+      status: "delivered",
+      name: START_EVENT,
+      data: { appointmentId: "appt_sent" },
+      connectionId: null,
+      idempotencyKey: "booking_sent",
+    });
+    expect(await harness.runs("wf_start")).toEqual([
+      { id: runId, status: "completed" },
+    ]);
+    expect(await harness.runOf("wf_start", first.id)).toMatchObject({
+      id: runId,
+    });
+  });
+
+  it("records one inbox row per vendor id per Connection from webhook intake, and delivers each with its Connection", async () => {
+    const harness = await open();
+    const bound = await harness.addConnection("Acme bound");
+    const other = await harness.addConnection("Acme other");
+    // The workflow starts only on bookings that arrive through `bound`.
+    await harness.publish(
+      "wf_acme",
+      startsAndSends(ACME_BOOKED, { [ACME_BOOKED]: bound })
+    );
+    const envelope = { appointmentId: "appt_hook" };
+    const fromBound = await harness.webhook({
+      connectionId: bound,
+      vendorId: "msg_1",
+      data: envelope,
+    });
+    const retried = await harness.webhook({
+      connectionId: bound,
+      vendorId: "msg_1",
+      data: envelope,
+    });
+    // The vendor delivered the same message to a second Connection.
+    const fromOther = await harness.webhook({
+      connectionId: other,
+      vendorId: "msg_1",
+      data: envelope,
+    });
+    const loop = harness.loop();
+
+    const boundRow = await settled(harness, fromBound.inboxId);
+    const otherRow = await settled(harness, fromOther.inboxId);
+    const runId = await endedRun(harness, "wf_acme");
+    await loop.stop();
+
+    expect(fromBound.duplicate).toBe(false);
+    expect(retried).toEqual({ inboxId: fromBound.inboxId, duplicate: true });
+    expect(fromOther.duplicate).toBe(false);
+    expect(fromOther.inboxId).not.toBe(fromBound.inboxId);
+    // The row keeps the vendor's envelope as sent, and the Connection in its
+    // own column.
+    expect(boundRow).toMatchObject({
+      status: "delivered",
+      name: ACME_WEBHOOK,
+      data: envelope,
+      connectionId: bound,
+      idempotencyKey: "msg_1",
+    });
+    expect(otherRow).toMatchObject({
+      status: "delivered",
+      connectionId: other,
+    });
+    expect(await harness.runs("wf_acme")).toEqual([
+      { id: runId, status: "completed" },
+    ]);
+    expect(await harness.runOf("wf_acme", fromBound.inboxId)).toMatchObject({
+      id: runId,
+    });
+    expect(await harness.runOf("wf_acme", fromOther.inboxId)).toBeNull();
+    const run = await harness.connection.run(
+      Effect.flatMap(ExecutionRepo, (executions) =>
+        executions.findSummaryById(runId)
+      )
+    );
+    expect(run?.startEventName).toBe(ACME_BOOKED);
   });
 
   it("picks up a row a host inserted in its own transaction on the loop's poll", async () => {

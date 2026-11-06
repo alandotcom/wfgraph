@@ -4,7 +4,6 @@ import { findIntegration } from "@wfgraph/shared/extensions/catalog";
 import { defineAction } from "#src/backend/extensions/define-action";
 import { defineEvent } from "#src/backend/extensions/define-event";
 import { defineEntity } from "#src/backend/extensions/define-entity";
-import { CONNECTION_STAMP_KEY } from "#src/backend/lib/inngest/catalog-connection";
 import {
   defineIntegration,
   type IntegrationDefinition,
@@ -938,48 +937,6 @@ describe("assembleExtensions and an integration definition", () => {
     ).toThrow(
       /Event "shared\/email.delivered" is declared by integrations "resend" and "postmark"/
     );
-  });
-
-  it("refuses an integration Event declaring a field at the Connection stamp key", () => {
-    // The stamp is written onto `data` on the way out and removed on the way
-    // in, so a field declared there would never reach a condition or template.
-    expect(() =>
-      assembleExtensions({
-        integrations: [
-          defineIntegration({
-            type: "resend",
-            label: "Resend",
-            description: "Sends email",
-            credentials: {},
-            actions: {},
-            events: [
-              defineEvent({
-                name: "resend/email.delivered",
-                schema: Schema.Struct({
-                  [CONNECTION_STAMP_KEY]: Schema.String,
-                }),
-              }),
-            ],
-          }),
-        ],
-      })
-    ).toThrow(
-      /reserves for the Connection an integration Event arrived through/
-    );
-  });
-
-  it("leaves a host Event free to declare that key", () => {
-    // Nothing stamps a host Event, so the key carries no meaning there.
-    const set = assembleExtensions({
-      events: [
-        defineEvent({
-          name: "app/anything",
-          schema: Schema.Struct({ [CONNECTION_STAMP_KEY]: Schema.String }),
-        }),
-      ],
-    });
-
-    expect(set.catalog.events[0]?.name).toBe("app/anything");
   });
 
   it("refuses an integration Event whose name collides with a different host Event", () => {

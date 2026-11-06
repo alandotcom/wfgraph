@@ -5,7 +5,6 @@ import { Extensions } from "#src/backend/lib/effect/extensions";
 // module is on the path of a request that serves it anyway.
 import { createInngestEventListenerFunction } from "#src/backend/lib/inngest/event-listener-function";
 import type { WfGraphRuntime } from "#src/backend/runtime";
-import { findEvent } from "@wfgraph/shared/extensions/catalog";
 
 /**
  * Everything this app registers with Inngest: one listener per Event in the
@@ -37,9 +36,6 @@ export async function buildInngestFunctions(
       client,
       event,
       runtime,
-      connectionStamped: Boolean(
-        findEvent(extensions.catalog, event.name)?.integration
-      ),
     })
   );
 }

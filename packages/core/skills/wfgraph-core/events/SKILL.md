@@ -3,7 +3,8 @@ name: events
 description: >
   defineEvent and defineEntity: Event schemas, typed Entity bindings, current-state
   resolvers, Lifecycle Entity Eligibility, correlationPath, umbrella source filters,
-  and inngest.send intake. Load when declaring host Events or Entities, choosing
+  and intake through app.events.send, POST /api/events, or inngest.send. Load when
+  declaring host Events or Entities, sending Events, choosing
   Lifecycle start/cancel behavior, or deciding between payload and current-state rules.
 metadata:
   type: sub-skill
@@ -109,15 +110,20 @@ receive either arrival.
 
 ### Intake
 
-`inngest.send({ name, data })`. The gate validates declared fields and ignores
-unknown keys. Workflow Graph uses the decoded value only for an Entity ID selector and carries
+`app.events.send({ name, data, id? })` from the host's code, `POST
+{basePath}/api/events` with `Authorization: Bearer <events.key>` from another
+process (off unless `events.key` is set), or `inngest.send({ name, data })`.
+`id` is the idempotency key. A send that names no catalog Event, or whose data
+the Event's schema refuses, is refused before anything is stored. The gate
+validates declared fields and ignores unknown keys. Workflow Graph uses the decoded value only for an Entity ID selector and carries
 the raw JSON on. Do not transform the workflow payload: a `Date` round-trip
 breaks Wait matches captured at park time.
 
 ### Integration-owned Events
 
 Pass `events` on `defineIntegration`. Identity stays the Event name. A webhook
-is intake. Publish requires a Connection. Host Events have no Connection.
+is intake, and it records each arrival with the Connection it came through.
+Publish requires a Connection. A host send carries no Connection.
 
 ## Common Mistakes
 

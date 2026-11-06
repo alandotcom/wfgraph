@@ -10,10 +10,9 @@ import { getErrorMessage } from "@wfgraph/shared/utils";
  * What a service answers when one of its seams refused it: the underlying error
  * in the log for whoever operates this, and a sentence for whoever called.
  *
- * The seams are the database (`DatabaseError`), Inngest (`InngestError`) and
- * the durable executor (`DriverError`), and all three carry the same `cause`,
- * which is why the handlers below are written against that field rather than
- * against any one class.
+ * The seams are the database (`DatabaseError`) and the durable executor
+ * (`DriverError`), and both carry the same `cause`, which is why the handlers
+ * below are written against that field rather than against either class.
  */
 
 /**
@@ -56,8 +55,7 @@ export const internalFailure =
  *
  * The cause stays in the operator log and on the non-serialized failure object.
  * The caller gets only `callerMessage`: database errors can contain query text
- * and bound values, while Inngest errors can contain request details, and none
- * of those are a public error contract.
+ * and bound values, which are not a public error contract.
  */
 export const internalFailureFromCause =
   (
@@ -81,15 +79,12 @@ export const internalFailureFromCause =
     });
 
 /** The `_tag` of each seam failure a service may meet. */
-type SeamFailureTag = "DatabaseError" | "InngestError" | "DriverError";
+type SeamFailureTag = "DatabaseError" | "DriverError";
 
 type SeamFailure = { readonly _tag: SeamFailureTag; readonly cause: unknown };
 
 const hasSeamFailureTag = Predicate.or(
-  Predicate.or(
-    Predicate.isTagged("DatabaseError"),
-    Predicate.isTagged("InngestError")
-  ),
+  Predicate.isTagged("DatabaseError"),
   Predicate.isTagged("DriverError")
 );
 

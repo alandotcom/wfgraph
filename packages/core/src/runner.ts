@@ -12,6 +12,7 @@ import {
   assertValidEncryptionKey,
   type EncryptionRuntimeConfig,
 } from "#src/backend/services/integrations/cipher";
+import type { WfGraphEvents } from "#src/backend/host-events";
 import { openWfGraphSetup } from "#src/backend/setup";
 import type { WfGraphLogger } from "@wfgraph/shared/types/logger";
 
@@ -37,6 +38,8 @@ export type CreateWfGraphRunnerOptions = {
 };
 
 export type WfGraphRunner = {
+  /** Raises an Event into the event inbox, as `app.events` does. */
+  events: WfGraphEvents;
   /**
    * Stops the loop, waiting up to ten seconds for the runs it is advancing,
    * then disposes the runtime and closes the database.
@@ -88,5 +91,5 @@ export async function createWfGraphRunner(
   };
   let disposal: Promise<void> | undefined;
   const dispose = (): Promise<void> => (disposal ??= disposeOnce());
-  return { dispose, [Symbol.asyncDispose]: dispose };
+  return { events: setup.events, dispose, [Symbol.asyncDispose]: dispose };
 }

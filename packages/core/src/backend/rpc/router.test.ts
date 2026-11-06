@@ -21,7 +21,6 @@ import {
   stubExecutionRepo,
   stubIntegrationRepo,
   stubExecutionDriver,
-  stubInngestClient,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
 import { resetSync } from "@logtape/logtape";
@@ -72,7 +71,6 @@ function createStubRuntime({
       stubExecutionRepo(),
       makeAgentConfigLayer({ enabled: false }),
       makeAgentRunnerLayer(disabledAgentRunner),
-      stubInngestClient(),
       stubExecutionDriver()
     )
   );

@@ -408,9 +408,10 @@ Three route classes have different authorization behavior:
 
 - Operator routes authenticate through the host. Protected RPC, REST, and OAuth operations
   call the returned policy's `allows` method.
-- Machine routes bypass host authentication because they carry a vendor signature or
-  Inngest credential. These routes are connection webhook intake and the Inngest HTTP
-  callback when HTTP serve is enabled.
+- Machine routes bypass host authentication because they carry a credential of their own:
+  a vendor signature, an Inngest signature, or the app's events key. These routes are
+  connection webhook intake, the Inngest HTTP callback when HTTP serve is enabled, and
+  `POST /api/events` when `events.key` is set.
 - The OAuth client metadata endpoint is public provider-discovery data and bypasses host
   authentication.
 
@@ -668,7 +669,9 @@ Event, a Cancel, an Exit, or a Migration resolves the Wait.
 
 Inngest delivers Events to Workflow Graph and runs no workflow, so the `inngest` option is
 still required. Each Event in `extensions.events` registers an Inngest listener, and that
-listener opens and schedules the run in your database.
+listener opens and schedules the run in your database. An Event sent with `app.events.send`,
+`POST /api/events`, or a Connection's webhook is stored in the `workflow_event_inbox`
+table, and the worker loop delivers it. For how to send one, see `docs/events.md`.
 
 The loop keeps its state in two tables beside the other Workflow Graph tables.
 `workflow_execution_schedule` holds one row per run in flight, and
@@ -737,8 +740,9 @@ process.once("SIGTERM", () => void runner.dispose());
 | `logger`                  | No       | As on `createWfGraphApp`                                                                      |
 | `runner`                  | No       | The loop's settings, as in the table under Configure the runner                               |
 
-It answers `{ dispose, [Symbol.asyncDispose] }`. `dispose()` drains the loop the way the
-app's does, then closes the database. Run one Workflow Graph per process: an app and a
+It answers `{ events, dispose, [Symbol.asyncDispose] }`. `events.send` raises an Event the
+way the app's does. `dispose()` drains the loop the way the app's does, then closes the
+database. Run one Workflow Graph per process: an app and a
 runner in the same process are not supported.
 
 ### How runs behave
@@ -902,6 +906,7 @@ Cloudflare Workers and Hyperdrive.
 | `encryption.key`          | Yes      | 64-character hex string. It encrypts the integration secrets                                                                                                                                                          |
 | `inngest.id`              | Yes      | Inngest application ID. Inngest delivers Events; it runs no workflow                                                                                                                                                  |
 | `inngest.*`               | No       | isDev, baseUrl, eventKey, env, signingKey, signingKeyFallback, serveOrigin, servePath, connect, instanceId, gatewayUrl, maxWorkerConcurrency, connectTimeoutMs                                                        |
+| `events.key`              | No       | Shared secret that mounts `POST /api/events`. A sender presents it as `Authorization: Bearer <key>`. Unset, the route is not mounted. A blank value fails at startup. See `docs/events.md`                            |
 | `runner`                  | No       | The worker loop that runs workflows in this process. Omit it for the defaults, pass an object to tune it, or pass `false` to run none beside a `createWfGraphRunner` process. See Workflow runs                       |
 | `extensions.events`       | No       | `defineEvent` values                                                                                                                                                                                                  |
 | `extensions.actions`      | No       | `defineAction` values                                                                                                                                                                                                 |
@@ -923,11 +928,12 @@ Read these once:
   contract, see [Authentication and authorization](#authentication-and-authorization).
 - **Three route classes define exposure.** Operator routes use `auth`. The
   Connection-addressed webhook intake
-  (`POST /api/webhooks/{type}/{connectionId}`) and the Inngest HTTP callback are
-  machine routes that carry their own credentials. The OAuth client metadata
-  route is public discovery data. Webhook intake is always available outside the
-  gate, and the Inngest HTTP callback is available only when `inngest.connect` is
-  unset. Workflow Graph applies the host authentication predicate route by route.
+  (`POST /api/webhooks/{type}/{connectionId}`), the Inngest HTTP callback, and
+  Event intake (`POST /api/events`) are machine routes that carry their own
+  credentials. The OAuth client metadata route is public discovery data. Webhook
+  intake is always available outside the gate, the Inngest HTTP callback is
+  available only when `inngest.connect` is unset, and Event intake is available
+  only when `events.key` is set. Workflow Graph applies the host authentication predicate route by route.
   Connect mode mounts no `/api/inngest`; the worker dials out, so a private network
   that Inngest cannot call into still runs.
 - **Set `publicUrl` when an integration offers OAuth or a webhook.** Use the
@@ -950,8 +956,8 @@ Read these once:
   durable-execution runtime in the process, even when the application drives Inngest
   functions of its own. Workflow Graph still builds its own Inngest client out of the
   `inngest` option below, and still builds its own Hono app inside; `createWfGraphApp`
-  answers with `fetch`, `basePath`, `dispose`, and `[Symbol.asyncDispose]` alone, so neither
-  library appears in what it hands back.
+  answers with `fetch`, `basePath`, `events`, `dispose`, and `[Symbol.asyncDispose]`
+  alone, so neither library appears in what it hands back.
 - **Running Inngest is the job of the consumer**, self-hosted or cloud. Inngest delivers
   Events; workflow runs execute in your process (see Workflow runs). `pnpm run dev` here
   starts Inngest as a separate process. Long-running hosts set `inngest.connect: true` so
@@ -966,7 +972,8 @@ Read these once:
   back, so an unreachable gateway would otherwise hang boot with nothing
   logged. Workflow Graph races it against `inngest.connectTimeoutMs` (default 30
   seconds) and fails boot with an error naming the gateway once that elapses.
-- `createWfGraphApp` answers `{ fetch, basePath, dispose, [Symbol.asyncDispose] }`. For a
+- `createWfGraphApp` answers `{ fetch, basePath, events, dispose, [Symbol.asyncDispose] }`.
+  `events.send` raises an Event from your own code; see `docs/events.md`. For a
   lexical lifetime, declare the app with `await using`. For a long-running host, call
   `await dispose()` from its shutdown handler. Both forms run the same idempotent shutdown:
   they drain an open Connect worker, stop the worker loop and wait up to ten seconds for

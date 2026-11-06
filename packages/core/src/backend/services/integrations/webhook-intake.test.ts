@@ -7,13 +7,13 @@ import {
 } from "#src/backend/api-app";
 import type { IntegrationWebhook } from "#src/backend/extensions/integration-webhook";
 import { SignatureRejected } from "#src/backend/extensions/integration-webhook";
-import type { InngestClient } from "#src/backend/lib/effect/inngest-client";
 import { MAX_REQUEST_BODY_BYTES } from "#src/backend/lib/http/capped-body";
 import {
   defineWfGraphAuth,
   resolveAuth,
 } from "#src/backend/lib/http/authorize";
 import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
+import type { ExecutionDriver } from "#src/backend/services/executions/driver";
 import type { DecryptedIntegration } from "#src/backend/services/integrations/repo";
 import { receiveWebhook } from "#src/backend/services/integrations/webhook-intake";
 import {
@@ -69,17 +69,23 @@ function webhook(
   };
 }
 
-function runtimeFor(
-  input: {
-    webhook?: IntegrationWebhook | undefined;
-    send?: InngestClient["Service"]["sendCatalogEvent"] | undefined;
-  } = {}
-) {
-  const sendCatalogEvent = vi.fn<InngestClient["Service"]["sendCatalogEvent"]>(
-    input.send ?? (() => Effect.void)
+type ReceiveEvent = ExecutionDriver["Service"]["receiveEvent"];
+
+/** A driver's `receiveEvent` that answers every arrival as a new inbox row. */
+function recordedReceive() {
+  return vi.fn<ReceiveEvent>(() =>
+    Effect.succeed({
+      duplicate: false,
+      inboxId: "inbox_1",
+      scheduleId: "schedule_1",
+    })
   );
+}
+
+function runtimeFor(input: { webhook?: IntegrationWebhook | undefined } = {}) {
+  const receiveEvent = recordedReceive();
   return {
-    sendCatalogEvent,
+    receiveEvent,
     runtime: stubWfGraphRuntime({
       extensions: {
         catalog: {
@@ -93,7 +99,7 @@ function runtimeFor(
         findById: (id) =>
           Effect.succeed(id === connection.id ? connection : null),
       },
-      inngestClient: { sendCatalogEvent },
+      executionDriver: { receiveEvent },
     }),
   };
 }
@@ -160,8 +166,8 @@ describe("receiveWebhook", () => {
     }
   });
 
-  it("answers 200 and sends nothing when receive ignores the type", async () => {
-    const { runtime, sendCatalogEvent } = runtimeFor({
+  it("answers 200 and records nothing when receive ignores the type", async () => {
+    const { runtime, receiveEvent } = runtimeFor({
       webhook: webhook({ receive: () => undefined }),
     });
     try {
@@ -174,15 +180,15 @@ describe("receiveWebhook", () => {
         })
       );
       expect(result).toEqual({ kind: "ignored" });
-      expect(sendCatalogEvent).not.toHaveBeenCalled();
+      expect(receiveEvent).not.toHaveBeenCalled();
     } finally {
       await runtime.dispose();
     }
   });
 
-  it("sends the catalog Event with connectionId and the raw-body id", async () => {
+  it("records the source name, the Connection and the vendor id in the inbox", async () => {
     const seen: { rawBody?: string } = {};
-    const { runtime, sendCatalogEvent } = runtimeFor({
+    const { runtime, receiveEvent } = runtimeFor({
       webhook: webhook({
         verify: ({ rawBody }) => {
           seen.rawBody = rawBody;
@@ -200,13 +206,20 @@ describe("receiveWebhook", () => {
           headers: new Headers({ "svix-id": "msg_1" }),
         })
       );
-      expect(result).toEqual({ kind: "sent", event: "resend/webhook" });
+      expect(result).toEqual({
+        kind: "received",
+        event: "resend/webhook",
+        inboxId: "inbox_1",
+        duplicate: false,
+      });
       expect(seen.rawBody).toBe(rawBody);
-      expect(sendCatalogEvent).toHaveBeenCalledWith({
+      // The envelope is recorded as the vendor sent it: the Connection travels
+      // in its own column, so nothing is added to `data`.
+      expect(receiveEvent).toHaveBeenCalledWith({
         name: "resend/webhook",
         data: envelope,
         connectionId: connection.id,
-        id: "msg_1",
+        idempotencyKey: "msg_1",
       });
     } finally {
       await runtime.dispose();
@@ -233,9 +246,9 @@ describe("receiveWebhook", () => {
 
 describe("webhook HTTP route", () => {
   it("is a machine route even when Inngest HTTP serve is off", () => {
-    expect(machineRoutes({ serveInngest: false })).toContain(
-      "/webhooks/:type/:connectionId"
-    );
+    expect(
+      machineRoutes({ serveInngest: false, acceptEvents: false })
+    ).toContain("/webhooks/:type/:connectionId");
   });
 
   it("redacts the Connection id from request log paths", () => {
@@ -245,7 +258,7 @@ describe("webhook HTTP route", () => {
   });
 
   it("answers without host auth", async () => {
-    const { runtime, sendCatalogEvent } = runtimeFor();
+    const { runtime, receiveEvent } = runtimeFor();
     const app = createApiApp({
       basePath: "/api",
       auth: resolveAuth(defineWfGraphAuth(() => null)),
@@ -262,7 +275,7 @@ describe("webhook HTTP route", () => {
       );
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({ ok: true });
-      expect(sendCatalogEvent).toHaveBeenCalled();
+      expect(receiveEvent).toHaveBeenCalled();
     } finally {
       await runtime.dispose();
     }
@@ -297,9 +310,7 @@ describe("webhook HTTP route", () => {
 
   it("answers 413 for a body over the ceiling, before the Connection is read", async () => {
     let lookups = 0;
-    const sendCatalogEvent = vi.fn<
-      InngestClient["Service"]["sendCatalogEvent"]
-    >(() => Effect.void);
+    const receiveEvent = recordedReceive();
     await using runtime = stubWfGraphRuntime({
       extensions: {
         catalog: { ...emptyExtensionCatalog, integrations: [resendMeta] },
@@ -312,7 +323,7 @@ describe("webhook HTTP route", () => {
             return id === connection.id ? connection : null;
           }),
       },
-      inngestClient: { sendCatalogEvent },
+      executionDriver: { receiveEvent },
     });
     const app = createApiApp({
       basePath: "/api",
@@ -331,7 +342,7 @@ describe("webhook HTTP route", () => {
       error: "Request body is too large",
     });
     expect(lookups).toBe(0);
-    expect(sendCatalogEvent).not.toHaveBeenCalled();
+    expect(receiveEvent).not.toHaveBeenCalled();
   });
 
   it("answers 404 for an unknown Connection", async () => {

@@ -11,6 +11,7 @@ import {
 import { Extensions } from "#src/backend/lib/effect/extensions";
 import { responseFromServiceFailure } from "#src/backend/lib/http/failure-response";
 import { readCappedText } from "#src/backend/lib/http/capped-body";
+import { bearerKeyMatches } from "#src/backend/lib/http/bearer-key";
 import type { InngestServeHandler } from "#src/backend/lib/inngest/client";
 import { getAppLogger } from "#src/backend/lib/logger";
 import { createRequestEvent } from "#src/backend/lib/http/request-event";
@@ -28,6 +29,7 @@ import {
 import { rpcRouter } from "#src/backend/rpc/router";
 import { getWorkflows } from "#src/backend/services/workflows/list";
 import { receiveWebhook } from "#src/backend/services/integrations/webhook-intake";
+import { sendEvent } from "#src/backend/services/executions/send-event";
 import { executeDraftTool } from "#src/backend/services/agent/draft-tool";
 import { postWorkflowsCreate } from "#src/backend/services/workflows/create";
 import { WfGraphAppContext } from "#src/backend/lib/effect/app-context";
@@ -175,17 +177,25 @@ export type CreateApiAppOptions = {
   inngestHandler?: InngestServeHandler | undefined;
   /** Enables and secures the authenticated stateless MCP authoring endpoint. */
   mcp?: true | WfGraphMcpOptions | undefined;
+  /**
+   * The shared key `POST /events` accepts as `Authorization: Bearer <key>`.
+   * Absent, the route is not mounted.
+   */
+  eventsKey?: string | undefined;
 };
 
 const WEBHOOK_ROUTE = "/webhooks/:type/:connectionId";
 
 const INNGEST_SERVE_ROUTE = "/inngest";
 
+const EVENTS_ROUTE = "/events";
+
 /**
  * Routes reached by machines, each carrying a credential of its own: Inngest
- * signs its HTTP callback when that route is mounted, and a webhook carries the
- * vendor's signature. A session check would break both routes. Host `auth` must
- * not consume the webhook body.
+ * signs its HTTP callback when that route is mounted, a webhook carries the
+ * vendor's signature, and an Event send carries the app's shared events key
+ * when that route is mounted. A session check would break each of them. Host
+ * `auth` must not consume the webhook body.
  *
  * Written as the exception, so a route added to this file is gated by default
  * and opening one is an edit here with a reason attached. Listing what to gate
@@ -201,10 +211,13 @@ const INNGEST_SERVE_ROUTE = "/inngest";
  */
 export function machineRoutes(options: {
   serveInngest: boolean;
+  acceptEvents: boolean;
 }): readonly string[] {
-  return options.serveInngest
-    ? [INNGEST_SERVE_ROUTE, WEBHOOK_ROUTE]
-    : [WEBHOOK_ROUTE];
+  return [
+    ...(options.serveInngest ? [INNGEST_SERVE_ROUTE] : []),
+    WEBHOOK_ROUTE,
+    ...(options.acceptEvents ? [EVENTS_ROUTE] : []),
+  ];
 }
 
 /** OAuth client metadata is provider-discovery data, so it reaches no host auth. */
@@ -247,11 +260,19 @@ export function requestLogPath(path: string): string {
 }
 
 export function createApiApp(options: CreateApiAppOptions) {
-  const { basePath, auth, runtime, inngestHandler, mcp = false } = options;
+  const {
+    basePath,
+    auth,
+    runtime,
+    inngestHandler,
+    mcp = false,
+    eventsKey,
+  } = options;
   const app = new Hono<WfGraphHonoEnv>().basePath(basePath);
   const rpcHandler = new RPCHandler<RpcContext>(rpcRouter);
   const ungatedRoutes = machineRoutes({
     serveInngest: inngestHandler !== undefined,
+    acceptEvents: eventsKey !== undefined,
   });
 
   // One record per request, written once the answer is known. Everything the
@@ -641,6 +662,31 @@ export function createApiApp(options: CreateApiAppOptions) {
       )
     );
   });
+
+  if (eventsKey !== undefined) {
+    routes.post(EVENTS_ROUTE, async (c) => {
+      if (!bearerKeyMatches(c.req.header("authorization"), eventsKey)) {
+        return c.json(UNAUTHORIZED_BODY, 401);
+      }
+      const rawBody = await readCappedText(c.req.raw);
+      if (!rawBody.ok) {
+        return c.json(TOO_LARGE_BODY, 413);
+      }
+      const body = parseJsonBody(rawBody.text);
+      if (body === undefined) {
+        return c.json({ error: "Request body must be valid JSON" }, 400);
+      }
+
+      return await runtime.runPromise(
+        sendEvent(body).pipe(
+          Effect.match({
+            onSuccess: (sent) => Response.json(sent, { status: 202 }),
+            onFailure: (failure) => responseFromServiceFailure(failure),
+          })
+        )
+      );
+    });
+  }
 
   routes.notFound((c) => c.json({ error: "Not found" }, 404));
 

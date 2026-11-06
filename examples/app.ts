@@ -113,7 +113,9 @@ const patientEntity = defineEntity({
  *
  * Send one from your app:
  *
- *   inngest.send({ name: "app/appointment.created", data: { appointment, occurredAt } });
+ *   await wfgraph.events.send({ name: "app/appointment.created", data: { appointment, occurredAt } });
+ *
+ * or from another process with `POST /api/events` and the events key below.
  */
 const occurredAt = z.iso.datetime();
 
@@ -260,6 +262,11 @@ const wfgraph = await createWfGraphApp({
   // The example exposes the authoring tools to local MCP clients. The same
   // demo session used by the editor authenticates every tool request.
   mcp: true,
+  // Another process sends Events with `POST /api/events` and this key as a
+  // bearer token. Without the variable the route stays off.
+  events: {
+    key: process.env.WFGRAPH_EVENTS_KEY?.trim() || undefined,
+  },
   inngest: {
     id: process.env.INNGEST_APP_ID ?? "notifications-workflow",
     isDev: !isProduction,

@@ -1,12 +1,12 @@
 /**
  * What `createWfGraphApp` and `createWfGraphRunner` both stand on: logging,
  * the cipher, the extension surface, the opened persistence backend, the
- * app's run wakes, and the runtime whose `ExecutionDriver` announces to them.
+ * app's run wakes, the runtime whose `ExecutionDriver` announces to them, and
+ * the host's Event send over that runtime.
  * A failure while opening gives back whatever was acquired. `close` disposes
  * the runtime and then closes the backend, so the runner must stop first.
  */
 
-import type { Inngest } from "inngest";
 import type { AgentSettings } from "#src/backend/agent/config";
 import {
   assembleExtensions,
@@ -20,6 +20,7 @@ import {
   type WfGraphRunnerOptions,
 } from "#src/backend/executor/in-process-runner";
 import { createAppRunWakes } from "#src/backend/executor/worker-wake";
+import { createHostEvents, type WfGraphEvents } from "#src/backend/host-events";
 import { closeInOrder, failAfterClose } from "#src/backend/lib/close-in-order";
 import {
   configureLoggingWithBridge,
@@ -52,14 +53,14 @@ export type WfGraphSetupOptions = {
   /** The normalized public origin, absent when OAuth is unavailable. */
   publicUrl?: string | undefined;
   agent: AgentSettings;
-  /** The client Events are forwarded on, for the app that serves webhooks. */
-  inngest?: Inngest | undefined;
 };
 
 export type WfGraphSetup = {
   readonly runtime: WfGraphRuntime;
   readonly extensions: ExtensionSet;
   readonly capabilities: WfGraphRunCapabilities;
+  /** The host's in-process Event send, on this setup's runtime. */
+  readonly events: WfGraphEvents;
   /**
    * Resolves the worker loop's settings, throwing for a backend that runs no
    * long-lived loop, and answers how to start that loop in this process on
@@ -106,7 +107,6 @@ export async function openWfGraphSetup(
     // Built on the first Effect it runs, so opening the setup opens nothing
     // more than the backend did.
     const runtime = createWfGraphRuntime({
-      inngest: options.inngest,
       extensions,
       appContext: {
         publicUrl: options.publicUrl,
@@ -121,6 +121,7 @@ export async function openWfGraphSetup(
       runtime,
       extensions,
       capabilities,
+      events: createHostEvents(runtime),
       prepareRunner: (runner) => {
         const settings = resolveRunnerSettings(capabilities, runner);
         return () =>

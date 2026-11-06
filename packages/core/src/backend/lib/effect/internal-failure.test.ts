@@ -1,7 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect } from "effect";
 import { DatabaseError } from "#src/backend/lib/effect/database";
-import { InngestError } from "#src/backend/lib/effect/inngest-client";
 import { InternalFailure, NotFound } from "#src/backend/lib/effect/failures";
 import {
   catchSeamFailures,
@@ -104,14 +103,14 @@ describe("internalFailureFromCause", () => {
 
   // One policy covers both seams, which is why it reads `cause` rather than
   // naming the class it came from.
-  it.effect("answers a refused Inngest send the same way", () =>
+  it.effect("answers a refused executor write the same way", () =>
     Effect.gen(function* () {
       const recorder = makeRecordingLogger();
-      const cause = new Error("inngest dev server unreachable");
+      const cause = new Error("schedule row refused");
 
-      const failure = yield* Effect.fail(new InngestError({ cause })).pipe(
+      const failure = yield* Effect.fail(new DriverError({ cause })).pipe(
         Effect.catchTag(
-          "InngestError",
+          "DriverError",
           internalFailureFromCause(
             Effect.succeed(recorder.logger),
             "Failed to cancel execution"
@@ -124,7 +123,7 @@ describe("internalFailureFromCause", () => {
       assert.strictEqual(failure.error, "Failed to cancel execution");
       assert.strictEqual(
         recorder.lines[0]?.message,
-        "Failed to cancel execution: inngest dev server unreachable"
+        "Failed to cancel execution: schedule row refused"
       );
     })
   );

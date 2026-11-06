@@ -20,9 +20,11 @@ import {
   defineEvent,
   trustWfGraphUpstream,
   WfGraphAccess,
+  WfGraphEventRefused,
   WfGraphOperationIds,
   WfGraphOperations,
 } from "#src/index";
+import { readJsonObject } from "@wfgraph/shared/types/json";
 import { defineIntegration } from "#src/backend/extensions/define-integration";
 import { createWfGraphApp, type WfGraphApp } from "#src/app";
 import { createWfGraphRunner } from "#src/runner";
@@ -382,7 +384,6 @@ describe("createWfGraphApp with host authentication", () => {
       })
     );
     const runtime = createWfGraphRuntime({
-      inngest: inngest.client,
       extensions: assembleExtensions({}),
       appContext: { apiBasePath: "/wfgraph/api" },
       agent: { enabled: false },
@@ -397,12 +398,13 @@ describe("createWfGraphApp with host authentication", () => {
         basePath: "/wfgraph/api",
         auth: resolveAuth(trustWfGraphUpstream()),
         runtime,
+        eventsKey: "events-key",
         inngestHandler: inngest.serve(
           await buildInngestFunctions(inngest.client, runtime)
         ),
       });
       const machinePaths = new Set(
-        machineRoutes({ serveInngest: true }).map(
+        machineRoutes({ serveInngest: true, acceptEvents: true }).map(
           (route) => `/wfgraph/api${route}`
         )
       );
@@ -993,5 +995,137 @@ describe("createWfGraphApp runner", () => {
     await expect(
       createWfGraphApp({ ...BASE_OPTIONS, runner: { leaseMs: 10_000 } })
     ).rejects.toThrow("must be shorter than runner.leaseMs");
+  });
+});
+
+describe("createWfGraphApp events", () => {
+  const EVENTS_KEY = "events-key-0123456789";
+  const appointmentCreated = defineEvent({
+    name: "app/appointment.created",
+    schema: Schema.Struct({ appointmentId: Schema.String }),
+    correlationPath: "appointmentId",
+  });
+  const sendAction = defineAction({
+    id: "test/send",
+    label: "Send",
+    description: "Runs one durable step",
+    input: Schema.Struct({}),
+    handler: async ({ step }) => {
+      await step.run("dispatch", () => Promise.resolve(null));
+      return {};
+    },
+  });
+  const extensions = {
+    events: [appointmentCreated],
+    actions: [sendAction],
+  };
+
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "wfgraph-events-"));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("refuses a blank events.key", async () => {
+    await expect(
+      createWfGraphApp({ ...BASE_OPTIONS, events: { key: "  " } })
+    ).rejects.toThrow("events.key is blank");
+  });
+
+  it("opens a run that completes from app.events.send and from POST /api/events", async () => {
+    const filename = join(dir, "wfgraph.sqlite");
+    // A connection of the case's own publishes the workflow before the app
+    // opens and reads the runs back while it runs.
+    const instance = await wfSqlite({ filename }).open(
+      createIntegrationCipher(BASE_OPTIONS.encryption)
+    );
+    const seed = ManagedRuntime.make(instance.repositories);
+    try {
+      await seed.runPromise(
+        publishWorkflow({
+          workflowId: "wf_events",
+          versionId: "ver_events",
+          graph: createSerializedWorkflowGraph({
+            nodes: [
+              lifecycleNode({
+                lifecycleRules: {
+                  concurrency: "unlimited",
+                  startEvents: [appointmentCreated.name],
+                  cancelEvents: [],
+                  allowManualStart: true,
+                },
+              }),
+              actionNode("send", "test/send"),
+            ],
+            edges: [edge("entry", "send", "started")],
+          }),
+          catalogFingerprint: catalogFingerprint(
+            assembleExtensions(extensions).catalog
+          ),
+          subscribe: true,
+        })
+      );
+      const runOf = (deliveryId: string) =>
+        seed.runPromise(
+          Effect.flatMap(ExecutionRepo, (executions) =>
+            executions.findByDelivery({ workflowId: "wf_events", deliveryId })
+          )
+        );
+      const completed = async (deliveryId: string) => {
+        const giveUpAt = Date.now() + 10_000;
+        // eslint-disable-next-line eslint/no-await-in-loop -- one read per tick until the run ends
+        while ((await runOf(deliveryId))?.status !== "completed") {
+          if (Date.now() > giveUpAt) {
+            throw new Error(`No completed run for ${deliveryId}`);
+          }
+          // eslint-disable-next-line eslint/no-await-in-loop -- one read per tick until the run ends
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+      };
+
+      await using app = await createWfGraphApp({
+        ...BASE_OPTIONS,
+        persistence: wfSqlite({ filename }),
+        extensions,
+        events: { key: EVENTS_KEY },
+      });
+
+      const sent = await app.events.send({
+        name: appointmentCreated.name,
+        data: { appointmentId: "appt_in_process" },
+      });
+      const posted = await app.fetch(
+        new Request("http://localhost/api/events", {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${EVENTS_KEY}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            name: appointmentCreated.name,
+            data: { appointmentId: "appt_over_http" },
+            id: "booking_http",
+          }),
+        })
+      );
+      expect(posted.status).toBe(202);
+      const receipt = readJsonObject(await posted.json());
+      expect(receipt).toEqual({ id: expect.any(String), duplicate: false });
+      const postedId = String(receipt?.id);
+
+      await completed(sent.id);
+      await completed(postedId);
+      expect(sent.duplicate).toBe(false);
+      await expect(
+        app.events.send({ name: "app/never.declared", data: {} })
+      ).rejects.toThrow(WfGraphEventRefused);
+    } finally {
+      await seed.dispose();
+      await instance.close();
+    }
   });
 });

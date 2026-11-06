@@ -121,18 +121,18 @@ must declare a webhook; an integration that only sends omits `webhook`.
 Export `defineEvent` from `@wfgraph/core/plugin`. An integration-owned Start, Cancel,
 or Wait Event must name a Connection at Publish.
 
-**`webhook` is the ungated intake** that verifies a vendor POST and maps it onto
-the webhook's `source` name for `inngest.send`. Catalog Events listen on that source
-and narrow with `source.when`. `receive` returns `{ data, id? }`; the route sends
-`source`. `verify` sees the raw body (`c.req.text()`), because HMAC schemes are
-sensitive to a single byte of re-serialization. `receive` sees the parsed JSON. An
-ignored payload is `undefined` (200, no send). `SignatureRejected` is 401. The
-Connection id is stamped on Inngest event `data` as `__wfgraphConnectionId` (v4
-does not persist `event.user`) and stripped before decode, so the payload the
-graph sees is the vendor envelope, including any `connectionId` the vendor sends
-of its own. Assembly refuses an integration Event declaring a payload field at
-the reserved key. Matching is the stored Connection on Lifecycle Rules and
-Wait Subscriptions, not a CEL field.
+**`webhook` is the ungated intake** that verifies a vendor POST and records it in
+the event inbox under the webhook's `source` name. Catalog Events listen on that
+source and narrow with `source.when`. `receive` returns `{ data, id? }`. `verify`
+sees the raw body (`c.req.text()`), because HMAC schemes are sensitive to a single
+byte of re-serialization. `receive` sees the parsed JSON. An ignored payload is
+`undefined` (200, nothing recorded). `SignatureRejected` is 401. The record keeps
+`data` as `receive` returned it and holds the Connection in a column of its own, so
+the payload the graph sees is the vendor envelope, including any `connectionId` the
+vendor sends of its own. `id` is the vendor's message id: a vendor retry of one
+message through one Connection is recorded once, and the same message delivered to
+two Connections is recorded once for each. Matching is the stored Connection on
+Lifecycle Rules and Wait Subscriptions, not a CEL field.
 `helpText` is shown under the copyable URL on the Lifecycle Node, Wait node, and
 Connection dialog. `secret` names the Connection credential `verify` reads; the
 editor uses it to tell a filled secret from a send-only Connection.

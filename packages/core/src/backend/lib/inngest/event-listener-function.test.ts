@@ -613,7 +613,6 @@ describe("createInngestEventListenerFunction", () => {
       client,
       event,
       runtime: testRuntime(stubWorkflowRepo()),
-      connectionStamped: false,
     });
 
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion

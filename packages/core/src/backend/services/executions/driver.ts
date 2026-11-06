@@ -15,6 +15,8 @@ import {
   type EntityStartOutcome,
   type ExecutionEntitySelector,
   ExecutionRepo,
+  type InboxInsert,
+  type NewInboxEvent,
   type StartForEntityInput,
   type WaitResumeClaim,
   type WorkflowExecution,
@@ -115,6 +117,14 @@ export class ExecutionDriver extends Context.Service<
       toVersionId: string;
       expectedWaitStates: readonly { id: string; resumeToken: string | null }[];
     }) => Effect.Effect<boolean, DriverError>;
+    /**
+     * Record an arrival in the event inbox with its delivery schedule row, due
+     * now, as `ExecutionRepo.insertInboxEvent` describes, and wake the worker
+     * loops once a new arrival has committed. A duplicate wakes nothing.
+     */
+    readonly receiveEvent: (
+      input: NewInboxEvent
+    ) => Effect.Effect<InboxInsert, DriverError>;
   }
 >()("@wfgraph/core/ExecutionDriver") {}
 
@@ -237,6 +247,21 @@ export function makeExecutionDriverLayer(
           yield* runDue(repinned.moved && repinned.requeued);
           return repinned.moved;
         }),
+
+        receiveEvent: Effect.fn("wfgraph.driver.receive_event")(
+          function* (input) {
+            yield* Effect.annotateCurrentSpan("wfgraph.event.name", input.name);
+            const inserted = yield* executions
+              .insertInboxEvent({ ...input, now: yield* now })
+              .pipe(Effect.mapError(driverError));
+            yield* Effect.annotateCurrentSpan({
+              "wfgraph.inbox.id": inserted.inboxId,
+              "wfgraph.inbox.duplicate": inserted.duplicate,
+            });
+            yield* runDue(!inserted.duplicate);
+            return inserted;
+          }
+        ),
       });
     })
   );
