@@ -65,6 +65,8 @@ let heldStep = createGate();
 let flakyCalls = 0;
 /** How many times the `test/throws-once` step has run in the current case. */
 let throwsOnceCalls = 0;
+/** How many times the `test/fails-twice` step has run in the current case. */
+let failsTwiceCalls = 0;
 /** Settles once the `flaky` node's log close is memoized. */
 let flakyClosed = Promise.withResolvers<void>();
 
@@ -119,6 +121,21 @@ const actions = createWorkflowActions(
               throw new Error("The vendor is down");
             }
             return null;
+          });
+          return { sent: true };
+        },
+      }),
+      defineAction({
+        id: "test/fails-twice",
+        label: "Fails twice",
+        description: "Runs one durable step that throws on its first two calls",
+        input: Schema.Struct({}),
+        handler: async ({ step }) => {
+          await step.run("dispatch", () => {
+            failsTwiceCalls += 1;
+            return failsTwiceCalls <= 2
+              ? Promise.reject(new Error("The vendor is down"))
+              : Promise.resolve(null);
           });
           return { sent: true };
         },
@@ -235,6 +252,7 @@ function describeCases(
     heldStep = createGate();
     flakyCalls = 0;
     throwsOnceCalls = 0;
+    failsTwiceCalls = 0;
     flakyClosed = Promise.withResolvers<void>();
     const connection = await openConnection();
     const executionId = await connection.run(
@@ -329,6 +347,7 @@ function describeCases(
             status: log.status,
             output: log.output,
             error: log.error,
+            retries: log.retries,
           })),
           events: events.map((event) => event.eventType),
           waits: yield* executions.listWaitingStates(executionId),
@@ -867,6 +886,62 @@ function describeCases(
     ]);
   });
 
+  it("closes a node's log with the retries its step spent, and keeps the count when a later pass replays the node", async () => {
+    const harness = await startRun(
+      createSerializedWorkflowGraph({
+        nodes: [
+          lifecycleNode(),
+          actionNode("retried", "test/fails-twice"),
+          waitNode("pause", delay("10s")),
+          actionNode("after_pause", "test/send"),
+        ],
+        edges: [
+          edge("entry", "retried", "started"),
+          edge("retried", "pause"),
+          edge("pause", "after_pause"),
+        ],
+      })
+    );
+
+    // Two passes each count one failure on the step; the third succeeds,
+    // closes the node's log, and parks on the delay.
+    const results: Array<PassResult | null> = [];
+    for (let pass = 1; pass <= 3; pass += 1) {
+      // eslint-disable-next-line eslint/no-await-in-loop -- each pass follows the one before it
+      results.push(await harness.pass());
+    }
+    expect(results.map((result) => result?.kind)).toEqual([
+      "retry",
+      "retry",
+      "parked",
+    ]);
+    const parked = await readRun(harness);
+    expect(
+      parked.memo.find((entry) => entry.stepId === "node:retried:dispatch")
+    ).toEqual({
+      stepId: "node:retried:dispatch",
+      nodeId: "retried",
+      status: "succeeded",
+      failures: 2,
+      value: null,
+    });
+    expect(await logsOf(harness, "retried")).toMatchObject([
+      { status: "success", retries: 2 },
+    ]);
+
+    // The pass after the delay replays the node from its memo, which answers
+    // the log close without writing the row again.
+    offsetMs += 11_000;
+    expect(await harness.pass()).toEqual({ kind: "ended" });
+    expect(failsTwiceCalls).toBe(3);
+    expect(await logsOf(harness, "retried")).toMatchObject([
+      { status: "success", retries: 2 },
+    ]);
+    expect(await logsOf(harness, "after_pause")).toMatchObject([
+      { status: "success", retries: 0 },
+    ]);
+  });
+
   it("keeps one log row when the lease is lost between a log open and its memo row", async () => {
     const harness = await startRun(
       createSerializedWorkflowGraph({
@@ -1002,7 +1077,10 @@ function describeCases(
           // eslint-disable-next-line eslint/no-await-in-loop -- polls until the heartbeat lands
           const schedule = await readSchedule();
           if (schedule?.runningStepId === "node:held:dispatch") {
-            return schedule.runningStepId;
+            return {
+              stepId: schedule.runningStepId,
+              nodeId: schedule.runningNodeId,
+            };
           }
           // eslint-disable-next-line eslint/no-await-in-loop -- polls until the heartbeat lands
           await new Promise((resolve) => setTimeout(resolve, 5));
@@ -1053,11 +1131,16 @@ function describeCases(
       })()
     ).finally(() => heldStep.release());
     expect(await stale).toEqual({ kind: "fence_refused", fence: "owner" });
-    expect(recorded).toBe("node:held:dispatch");
+    expect(recorded).toEqual({
+      stepId: "node:held:dispatch",
+      nodeId: "held",
+    });
     expect(swept.claimed?.attempt).toBe(0);
+    // The step never wrote a memo row of its own, so the node id on the row
+    // the claim created is the one the heartbeat recorded.
     expect(
       swept.memo.find((entry) => entry.stepId === "node:held:dispatch")
-    ).toMatchObject({ status: "failing", failures: 1 });
+    ).toMatchObject({ nodeId: "held", status: "failing", failures: 1 });
   });
 
   it("fails a Wait whose park step spent its retries rather than reading the step as a wake", async () => {
@@ -1096,7 +1179,10 @@ function describeCases(
     ]);
     const run = await readRun(harness);
     expect(run.status).toBe("failed");
-    expect(await logsOf(harness, "hold")).toMatchObject([{ status: "error" }]);
+    // Four failures were each followed by another try; the fifth was not.
+    expect(await logsOf(harness, "hold")).toMatchObject([
+      { status: "error", retries: 4 },
+    ]);
     expect(await logsOf(harness, "after_hold")).toEqual([]);
     expect(run.schedule).toBeNull();
   });

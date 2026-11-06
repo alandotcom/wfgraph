@@ -52,6 +52,7 @@ export function runPluginActionStep(input: ActionStepInput) {
         runtime.run(
           {
             id: `node:${context.nodeId}:${stepId}`,
+            nodeId: context.nodeId,
             name: `${context.nodeName}: ${stepId}`,
           },
           work

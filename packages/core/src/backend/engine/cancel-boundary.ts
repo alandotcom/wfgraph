@@ -135,7 +135,7 @@ export class CancelBoundary {
           runtime,
           // No node name reaches this class, and every check reads the same row,
           // so the label names the question rather than the node asking it.
-          { id: `lifecycle-check-${nodeId}`, name: "Cancel check" },
+          { id: `lifecycle-check-${nodeId}`, nodeId, name: "Cancel check" },
           store.readPendingCancel(executionId)
         );
 

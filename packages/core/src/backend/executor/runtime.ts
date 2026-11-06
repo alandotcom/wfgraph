@@ -43,6 +43,17 @@ import { jsonObjectSchema, type JsonValue } from "@wfgraph/shared/types/json";
 import { readAs } from "@wfgraph/shared/types/schema";
 
 /**
+ * A step as a pass records it: the id it is memoized under, and the node it
+ * does work for (`DurableStepRef.nodeId`), or null for a step of no node.
+ */
+export type PassStep = { stepId: string; nodeId: string | null };
+
+/** The `PassStep` the engine names with `step`. */
+function passStepOf(step: DurableStepRef): PassStep {
+  return { stepId: step.id, nodeId: step.nodeId ?? null };
+}
+
+/**
  * Why a pass stopped before its body ended on its own.
  *
  * - `step_threw`: a step body threw. The release counts a failure against
@@ -52,7 +63,7 @@ import { readAs } from "@wfgraph/shared/types/schema";
  *   run now, so the pass writes nothing, not even its release.
  */
 export type PassStop =
-  | { kind: "step_threw"; stepId: string; error: unknown }
+  | { kind: "step_threw"; step: PassStep; error: unknown }
   | { kind: "lease_lost" };
 
 /**
@@ -76,13 +87,13 @@ export type SpentStep = { stepId: string; failure: EngineFailure };
 export type PassState = {
   readonly phase: () => PassPhase;
   /** Records the first step that threw. A pass already stopped keeps its stop. */
-  readonly stepThrew: (stepId: string, error: unknown) => void;
+  readonly stepThrew: (step: PassStep, error: unknown) => void;
   /** Records a lost lease, which outranks a step that threw. */
   readonly leaseLost: () => void;
   /** Records that this pass wrote the run's terminal record. */
   readonly ended: () => void;
   /** Records that a step body started running. */
-  readonly stepStarted: (stepId: string) => void;
+  readonly stepStarted: (step: PassStep) => void;
   /** Records that a step body and its memo write are done, either way. */
   readonly stepFinished: (stepId: string) => void;
   /**
@@ -90,7 +101,7 @@ export type PassState = {
    * steps still running, since parallel branches run steps side by side, and
    * null between steps.
    */
-  readonly runningStep: () => string | null;
+  readonly runningStep: () => PassStep | null;
   /**
    * Answers a step whose memo row is `failed` with the failure the step
    * throws, and remembers that failure, so `spentStepBehind` can tell the
@@ -107,13 +118,13 @@ export type PassState = {
 
 export function createPassState(): PassState {
   let phase: PassPhase = { kind: "running" };
-  const running: string[] = [];
+  const running: PassStep[] = [];
   const spent: SpentStep[] = [];
   return {
     phase: () => phase,
-    stepThrew: (stepId, error) => {
+    stepThrew: (step, error) => {
       if (phase.kind === "stopped") return;
-      phase = { kind: "stopped", stop: { kind: "step_threw", stepId, error } };
+      phase = { kind: "stopped", stop: { kind: "step_threw", step, error } };
     },
     leaseLost: () => {
       phase = { kind: "stopped", stop: { kind: "lease_lost" } };
@@ -121,11 +132,11 @@ export function createPassState(): PassState {
     ended: () => {
       if (phase.kind === "running") phase = { kind: "ended" };
     },
-    stepStarted: (stepId) => {
-      running.push(stepId);
+    stepStarted: (step) => {
+      running.push(step);
     },
     stepFinished: (stepId) => {
-      const index = running.indexOf(stepId);
+      const index = running.findIndex((step) => step.stepId === stepId);
       if (index >= 0) running.splice(index, 1);
     },
     runningStep: () => running[0] ?? null,
@@ -351,23 +362,23 @@ function stepMemoBook(input: StepMemoInput) {
      * pass as a failure of that step would, unless a lost lease stopped it
      * first.
      */
-    remember: (stepId: string, value: JsonValue) =>
+    remember: (step: PassStep, value: JsonValue) =>
       input
         .writeStepMemo({
-          nodeId: null,
-          stepId,
+          stepId: step.stepId,
+          nodeId: step.nodeId,
           value,
           leaseExpiresAt: input.leaseExpiresAt(),
         })
         .pipe(
           Effect.tapError((error) =>
-            Effect.sync(() => state.stepThrew(stepId, error))
+            Effect.sync(() => state.stepThrew(step, error))
           ),
           Effect.tap(() =>
             Effect.sync(() => {
-              memo.set(stepId, {
+              memo.set(step.stepId, {
                 status: "succeeded",
-                failures: memo.get(stepId)?.failures ?? 0,
+                failures: memo.get(step.stepId)?.failures ?? 0,
                 value,
               });
             })
@@ -398,6 +409,10 @@ export type PassSteps = {
   ) => Effect.Effect<A, E | PassStepFailure, R>;
 };
 
+/**
+ * The step port of a pass whose steps belong to no node, such as a
+ * delivery's: every step it records names no node.
+ */
 export function createPassSteps(input: StepMemoInput): PassSteps {
   const { state } = input;
   const book = stepMemoBook(input);
@@ -410,16 +425,17 @@ export function createPassSteps(input: StepMemoInput): PassSteps {
           return Effect.succeed(answer.value as A);
         }
         if (answer.kind === "refused") return Effect.fail(answer.failure);
-        state.stepStarted(id);
+        const passStep: PassStep = { stepId: id, nodeId: null };
+        state.stepStarted(passStep);
         return step.pipe(
           Effect.tapCause((cause) =>
             Effect.sync(() => {
               if (!Cause.hasInterruptsOnly(cause)) {
-                state.stepThrew(id, Cause.squash(cause));
+                state.stepThrew(passStep, Cause.squash(cause));
               }
             })
           ),
-          Effect.tap((value) => book.remember(id, memoValue(value))),
+          Effect.tap((value) => book.remember(passStep, memoValue(value))),
           Effect.ensuring(Effect.sync(() => state.stepFinished(id)))
         );
       }),
@@ -441,15 +457,15 @@ export function createExecutorRuntime(
   const book = stepMemoBook(input);
 
   /**
-   * Runs one of the runtime's own reads or writes for `stepId`. A failure
+   * Runs one of the runtime's own reads or writes for `step`. A failure
    * stops the pass as a failure of that step would, unless a lost lease
    * stopped it first.
    */
-  async function forStep<A>(stepId: string, work: Promise<A>): Promise<A> {
+  async function forStep<A>(step: PassStep, work: Promise<A>): Promise<A> {
     try {
       return await work;
     } catch (error) {
-      state.stepThrew(stepId, error);
+      state.stepThrew(step, error);
       throw error;
     }
   }
@@ -463,18 +479,19 @@ export function createExecutorRuntime(
       }
       if (answer.kind === "refused") throw answer.failure;
 
-      state.stepStarted(step.id);
+      const passStep = passStepOf(step);
+      state.stepStarted(passStep);
       try {
         let value: T;
         try {
           value = await fn();
         } catch (error) {
-          state.stepThrew(step.id, error);
+          state.stepThrew(passStep, error);
           throw error;
         }
         // The attempt that ran the step gets the value it returned and every
         // replay gets the stored JSON.
-        await runEffect(book.remember(step.id, memoValue(value)));
+        await runEffect(book.remember(passStep, memoValue(value)));
         return value;
       } finally {
         state.stepFinished(step.id);
@@ -506,15 +523,16 @@ export function createExecutorRuntime(
         return { kind: "parked" };
       }
       const { waitStateId } = options;
+      const passStep = passStepOf(step);
       const park = await forStep(
-        step.id,
+        passStep,
         runEffect(parks.findPark(waitStateId))
       );
       if (!park) {
         const gone = new Error(
           `Step ${step.id} parks on a wait row that is gone`
         );
-        state.stepThrew(step.id, gone);
+        state.stepThrew(passStep, gone);
         throw gone;
       }
 
@@ -524,12 +542,12 @@ export function createExecutorRuntime(
       // attempt still has to read what woke it.
       if (park.wake) {
         const wake = waitWakeOf(park.wake);
-        await runEffect(book.remember(step.id, wake));
+        await runEffect(book.remember(passStep, wake));
         return { kind: "woke", wake };
       }
       if (park.parkStepId !== step.id) {
         await forStep(
-          step.id,
+          passStep,
           runEffect(parks.recordParkStep({ waitStateId, parkStepId: step.id }))
         );
       }

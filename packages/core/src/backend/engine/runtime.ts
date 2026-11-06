@@ -30,8 +30,17 @@ export type WaitForEventOptions = {
  * engine's code or a test. No runtime reads it, so it may be reworded at any
  * time. The two are split because an id has to survive a rename of the node it
  * belongs to, while the label a person reads should follow that rename.
+ *
+ * `nodeId` is the node the step does work for, and is left out for a step of
+ * no node, such as the run's terminal record. The database executor stores it
+ * beside the step's memo row, which is how the Runs view names the node of a
+ * retrying step: step ids take several shapes, so no reader parses one.
  */
-export type DurableStepRef = { id: string; name?: string };
+export type DurableStepRef = {
+  id: string;
+  name?: string;
+  nodeId?: string | undefined;
+};
 
 /**
  * Why a park ended.

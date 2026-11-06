@@ -26,7 +26,11 @@ import {
   createRecordingWorkflowStore,
   type RecordingWorkflowStore,
 } from "#src/backend/engine/recording-store";
-import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
+import {
+  createInMemoryWorkflowRuntime,
+  type DurableStepRef,
+  type WorkflowExecutionRuntime,
+} from "#src/backend/engine/runtime";
 import { validateGraphSaveShape } from "#src/backend/services/workflows/graph-save";
 
 const EMAIL_ACTION_ID = "test/replay-email";
@@ -305,6 +309,40 @@ describe("workflow engine replay safety", () => {
     expect(memo.has("node:wait_1:log-open")).toBe(false);
     expect(memo.has("wait-prepare-wait_1-0")).toBe(true);
     expect(memo.has("wait-resume-wait_1-0")).toBe(true);
+  });
+
+  // The database executor stores `nodeId` beside each memo row, which is how
+  // the Runs view names the node of a retrying step without parsing its id.
+  it("names the node on every step that does work for one, and on no step of the run's own", async () => {
+    const runtime = createReplayRuntime(new Map());
+    const refs: DurableStepRef[] = [];
+    const recording: WorkflowExecutionRuntime = {
+      run: (step, fn) => {
+        refs.push(step);
+        return runtime.run(step, fn);
+      },
+      waitForEvent: (step, options) => {
+        refs.push(step);
+        return runtime.waitForEvent(step, options);
+      },
+    };
+
+    await executeWorkflow(waitGraphInput, recording, store, actions);
+
+    const named = refs.filter((ref) => ref.nodeId !== undefined);
+    expect(new Set(named.map((ref) => ref.nodeId))).toEqual(
+      new Set(["lifecycle_1", "email_1", "wait_1", "followup_1"])
+    );
+    // Every node-owned step id carries its node's id in some shape, which is
+    // what the stored node id saves a reader from having to parse.
+    expect(
+      named
+        .filter((ref) => !ref.id.includes(ref.nodeId ?? ""))
+        .map((ref) => ref.id)
+    ).toEqual([]);
+    expect(
+      refs.filter((ref) => ref.nodeId === undefined).map((ref) => ref.id)
+    ).toEqual(["execution-termination-final", "workflow-run-completed"]);
   });
 
   // The other half of the contract, and the trap worth knowing: Workflow Graph wraps no

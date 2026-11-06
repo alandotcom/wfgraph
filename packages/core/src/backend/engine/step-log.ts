@@ -168,6 +168,7 @@ export function runWithStepLog<T extends StepResult, E, R>(
       runtime,
       {
         id: `node:${context.nodeId}:log-open`,
+        nodeId: context.nodeId,
         name: `${context.nodeName} (open)`,
       },
       openStepLog(target)
@@ -183,6 +184,7 @@ export function runWithStepLog<T extends StepResult, E, R>(
         runtime,
         {
           id: `node:${context.nodeId}:log-close:${close.status}`,
+          nodeId: context.nodeId,
           name: `${context.nodeName} (close)`,
         },
         Effect.as(

@@ -300,6 +300,7 @@ export class NodeScheduler {
             runtime,
             {
               id: `node-boundary:${node.id}`,
+              nodeId: node.id,
               name: `${nodeName} (boundary)`,
             },
             store.admitNode(executionId)
@@ -316,6 +317,7 @@ export class NodeScheduler {
               paths.length > 0
                 ? `entity-context:${node.id}`
                 : `entity-eligibility:${node.id}`,
+            nodeId: node.id,
             name: `${nodeName} (Entity)`,
           },
           entities.resolveNode(
@@ -336,6 +338,7 @@ export class NodeScheduler {
             runtime,
             {
               id: `entity-exit:${node.id}`,
+              nodeId: node.id,
               name: `${nodeName} (Exit)`,
             },
             store.requestExit({
@@ -367,6 +370,7 @@ export class NodeScheduler {
           runtime,
           {
             id: `node-admission:${node.id}`,
+            nodeId: node.id,
             name: `${nodeName} (admit)`,
           },
           store.admitNode(executionId)

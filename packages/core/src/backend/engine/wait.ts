@@ -111,6 +111,7 @@ function executeWaitActionInner(
         runtime,
         {
           id: `wait-invalid-config-${context.nodeId}`,
+          nodeId: context.nodeId,
           name: `${context.nodeName} (invalid config)`,
         },
         Effect.gen(function* () {
@@ -138,6 +139,7 @@ function executeWaitActionInner(
       runtime,
       {
         id: `wait-start-log-${context.nodeId}`,
+        nodeId: context.nodeId,
         name: `${context.nodeName} (open)`,
       },
       openStepLog({
@@ -284,6 +286,7 @@ function runWaitAttempt<Prepared, Resumed>(
         runtime,
         {
           id: `wait-anchor-${context.nodeId}`,
+          nodeId: context.nodeId,
           name: `${context.nodeName} (anchor)`,
         },
         Effect.sync(() => new Date().toISOString())
@@ -298,6 +301,7 @@ function runWaitAttempt<Prepared, Resumed>(
       runtime,
       {
         id: `wait-resolve-${context.nodeId}-${attempt}-${branch.workflowVersionId}`,
+        nodeId: context.nodeId,
         name: waitStepName({
           nodeName: context.nodeName,
           attempt,
@@ -310,6 +314,7 @@ function runWaitAttempt<Prepared, Resumed>(
       runtime,
       {
         id: stepIds.prepare,
+        nodeId: context.nodeId,
         name: waitStepName({
           nodeName: context.nodeName,
           attempt,
@@ -387,6 +392,7 @@ function runWaitAttempt<Prepared, Resumed>(
       runtime,
       {
         id: stepIds.resume,
+        nodeId: context.nodeId,
         name: waitStepName({
           nodeName: context.nodeName,
           attempt,
@@ -930,6 +936,7 @@ function parkOnSignal(
       runtime.waitForEvent(
         {
           id: input.stepId,
+          nodeId: context.nodeId,
           name: waitStepName({
             nodeName: context.nodeName,
             attempt: input.attempt,

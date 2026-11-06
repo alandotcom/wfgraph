@@ -29,6 +29,7 @@ import {
   createPassSteps,
   createPassState,
   type PassState,
+  type PassStep,
   type PassSteps,
   type RunPassWrites,
   watchParkWrites,
@@ -502,7 +503,7 @@ const INTERRUPTED_RELEASE_TIMEOUT_MS = 10_000;
 
 /** Why a body that did not end on its own stopped, as the release reads it. */
 type Failure =
-  | { kind: "step"; stepId: string; error: unknown }
+  | { kind: "step"; step: PassStep; error: unknown }
   | { kind: "body"; cause: Cause.Cause<unknown> };
 
 const OWNER_REFUSED = { kind: "fence_refused", fence: "owner" } as const;
@@ -599,15 +600,18 @@ function runOpenedPass<Port, P extends PassCore<ClaimedSchedule, Port>, R>(
         })
       );
       if (exit !== undefined) return yield* exit;
-      const stepId = pass.state.runningStep();
+      const running = pass.state.runningStep();
       interruption = {
         kind: "interrupted",
         by: "budget",
-        nodeId: null,
-        stepId,
+        stepId: running?.stepId ?? null,
+        nodeId: running?.nodeId ?? null,
       };
       yield* Fiber.interrupt(fiber);
-      const cut: PassResult = { kind: "budget_cut", stepId };
+      const cut: PassResult = {
+        kind: "budget_cut",
+        stepId: running?.stepId ?? null,
+      };
       return cut;
     })
   );
@@ -751,7 +755,7 @@ const settlePass = Effect.fnUntraced(function* <
 
   const failure: Failure | undefined =
     stop?.kind === "step_threw"
-      ? { kind: "step", stepId: stop.stepId, error: stop.error }
+      ? { kind: "step", step: stop.step, error: stop.error }
       : Exit.isFailure(ran)
         ? { kind: "body", cause: ran.cause }
         : undefined;
@@ -951,11 +955,12 @@ const renewLeaseWhileRunning = Effect.fnUntraced(function* (input: {
 }) {
   const { state, scheduleId } = input;
   const beat: Effect.Effect<Beat> = Effect.gen(function* () {
+    const running = state.runningStep();
     const renewal = yield* input
       .renewLease({
         leaseExpiresAt: input.leaseExpiresAt(),
-        runningStepId: state.runningStep(),
-        runningNodeId: null,
+        runningStepId: running?.stepId ?? null,
+        runningNodeId: running?.nodeId ?? null,
       })
       .pipe(
         Effect.as("renewed" as const),
@@ -1030,12 +1035,13 @@ function decideFailedPass(input: {
     return { kind: "fence_refused" };
   }
   if (failure.kind === "step") {
+    const { stepId, nodeId } = failure.step;
     return {
       kind: "step_failed",
-      nodeId: null,
-      stepId: failure.stepId,
+      stepId,
+      nodeId,
       error: engineFailure.message,
-      backoffMs: input.backoffMs(input.memo.get(failure.stepId)?.failures ?? 0),
+      backoffMs: input.backoffMs(input.memo.get(stepId)?.failures ?? 0),
     };
   }
   return {
