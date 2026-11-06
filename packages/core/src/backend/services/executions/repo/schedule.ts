@@ -56,6 +56,7 @@ import {
   parkResolution,
   requeuedByWake,
   requeuedWakeAt,
+  runningAfterMemo,
   stepFailureOf,
   type StepFailure,
   stepMemoOf,
@@ -710,9 +711,7 @@ export function makePassWrites(
             .update(workflowExecutionSchedule)
             .set({
               leaseExpiresAt: input.leaseExpiresAt,
-              runningStepId: sql`nullif(${workflowExecutionSchedule.runningStepId}, ${input.stepId})`,
-              // Both sides read the row as it stood before this update.
-              runningNodeId: sql`case when ${workflowExecutionSchedule.runningStepId} = ${input.stepId} then null else ${workflowExecutionSchedule.runningNodeId} end`,
+              ...runningAfterMemo(workflowExecutionSchedule, input.stepId),
             })
             .where(thisSchedule);
         },

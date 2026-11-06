@@ -334,6 +334,22 @@ export function claimAttempt(columns: ClaimColumns): SQL {
   return sql`case when ${columns.state} = 'leased' and ${columns.runningStepId} is null then ${columns.attempt} + 1 else ${columns.attempt} end`;
 }
 
+/**
+ * The running-step columns a memo write for `stepId` sets on its schedule row:
+ * both cleared when the row names `stepId` as running, and both kept when it
+ * names another step a parallel branch is running. Each value reads the row
+ * as it stood before the update.
+ */
+export function runningAfterMemo(
+  columns: { runningStepId: Column; runningNodeId: Column },
+  stepId: string
+): { runningStepId: SQL; runningNodeId: SQL } {
+  return {
+    runningStepId: sql`nullif(${columns.runningStepId}, ${stepId})`,
+    runningNodeId: sql`case when ${columns.runningStepId} = ${stepId} then null else ${columns.runningNodeId} end`,
+  };
+}
+
 /** A due row as the claim reads it before leasing it. */
 export type DueRow = {
   id: string;
