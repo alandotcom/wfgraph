@@ -235,6 +235,7 @@ happens inside one. About 195,000 states.
 | `OneLiveRunPerEntity` | Under one-at-a-time Concurrency, at most one run per Entity is live. | Two reminder sequences run for one appointment. |
 | `EveryOpenRunIsScheduled` | Every open Execution has a schedule row. | A run is opened that nothing will ever execute. |
 | `SupersededRunsStop` | A superseded run does no more work. | A rescheduled appointment gets the old reminders too. |
+| `FailedArrivalStaysSettled` | A delivery that failed for good (a refused payload or spent retries) is never scheduled again. | The poll reads a failed row as one a host inserted and delivers it forever. |
 | `EveryArrivalIsDelivered` (liveness) | Every arrival in the inbox is eventually delivered. | An Event the host sent never reaches a workflow. |
 | `EveryRunEnds` (liveness) | Every opened run eventually ends. | A claimed run never reaches its outlet. |
 
@@ -483,7 +484,6 @@ back to show the rule still catches it:
   Connection filter is a further condition of the same kind.
 - More than one Execution inside the run model. Concurrency is checked in
   `Intake`, with each run reduced to one step.
-- A delivery's attempt limit. `Intake` re-runs a delivery after a crash or an
-  expired lease, and never gives up on one.
+- A delivery's retry count. `Intake` lets a delivery fail for good at most once per row and records it (`FailDelivery`); how many retries come first is the Handler model's per-step count.
 - Retry backoff timing, `NOTIFY` latency, database failover, and real clock
   values. `Timing` checks the design's ratios.
