@@ -8,6 +8,10 @@ import {
   type WorkflowExecutionListRow,
 } from "#src/backend/services/executions/repo";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
+import {
+  type ExecutionActivity,
+  readExecutionActivities,
+} from "#src/backend/services/executions/executor-state";
 import type {
   WorkflowExecutionStartSource,
   WorkflowExecutionStatus,
@@ -30,6 +34,7 @@ type WorkflowExecutionItem = {
   cancelledAt: string | null;
   completedAt: string | null;
   duration: string | null;
+  activity: ExecutionActivity | null;
 };
 
 function toIso(value: Date | null): string | null {
@@ -37,7 +42,8 @@ function toIso(value: Date | null): string | null {
 }
 
 function toWorkflowExecutionItem(
-  row: WorkflowExecutionListRow
+  row: WorkflowExecutionListRow,
+  activity: ExecutionActivity | null
 ): WorkflowExecutionItem {
   return {
     id: row.id,
@@ -55,6 +61,7 @@ function toWorkflowExecutionItem(
     cancelledAt: toIso(row.cancelledAt),
     completedAt: toIso(row.completedAt),
     duration: row.duration,
+    activity,
   };
 }
 
@@ -129,9 +136,12 @@ export const getWorkflowExecutions = Effect.fn("getWorkflowExecutions")(
         ],
         { concurrency: 4 }
       );
+    const activities = yield* readExecutionActivities(executions);
 
     return {
-      items: executions.map(toWorkflowExecutionItem),
+      items: executions.map((row) =>
+        toWorkflowExecutionItem(row, activities.get(row.id) ?? null)
+      ),
       supersededCount,
       refusedStarts: refusedStarts.map(toWorkflowAuditItem),
       cancelNotDelivered: cancelNotDelivered.map(toWorkflowAuditItem),

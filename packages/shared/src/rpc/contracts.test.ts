@@ -174,6 +174,200 @@ describe("workflow executions RPC output contract", () => {
 
     expect(result).toHaveProperty("value");
   });
+
+  const listItem = {
+    id: "exec_1",
+    workflowId: "wf_1",
+    status: "running",
+    startSource: "manual",
+    runMode: "live",
+    startEventName: null,
+    entityValue: null,
+    versionKind: "published",
+    versionNumber: 1,
+    error: null,
+    startedAt: "2026-03-01T09:00:00.000Z",
+    waitingAt: null,
+    cancelledAt: null,
+    completedAt: null,
+    duration: null,
+  };
+
+  it("carries each kind of executor activity on a list row, and none", async () => {
+    const decode = getOutputDecoder(rpcContract.workflow.getExecutions);
+    const activities = [
+      null,
+      {
+        kind: "retrying",
+        nodeId: "send",
+        nodeName: "Send reminder",
+        nextTryAt: "2026-03-01T09:01:00.000Z",
+        failures: 2,
+        retryLimit: 4,
+      },
+      {
+        kind: "retrying",
+        nodeId: null,
+        nodeName: null,
+        nextTryAt: "2026-03-01T09:01:00.000Z",
+        failures: 1,
+        retryLimit: 4,
+      },
+      {
+        kind: "lease_expired",
+        nodeId: "send",
+        nodeName: null,
+        since: "2026-03-01T09:00:30.000Z",
+      },
+      {
+        kind: "unclaimed",
+        dueSince: "2026-03-01T09:00:00.000Z",
+        observedAt: "2026-03-01T09:02:00.000Z",
+      },
+    ];
+
+    const result = await decode({
+      items: activities.map((activity) => ({ ...listItem, activity })),
+      supersededCount: 0,
+      refusedStarts: [],
+      cancelNotDelivered: [],
+    });
+
+    expect(result).toHaveProperty("value");
+  });
+
+  it("refuses an activity instant that is not an ISO timestamp", async () => {
+    const decode = getOutputDecoder(rpcContract.workflow.getExecutionsGlobal);
+
+    const result = await decode({
+      items: [
+        {
+          ...listItem,
+          workflowName: "Onboarding",
+          workflowIsPaused: false,
+          activity: {
+            kind: "unclaimed",
+            dueSince: "yesterday",
+            observedAt: "2026-03-01T09:02:00.000Z",
+          },
+        },
+      ],
+      nextCursor: null,
+    });
+
+    expect(result).toHaveProperty("issues");
+  });
+});
+
+describe("workflow execution logs RPC output contract", () => {
+  const payload = {
+    execution: {
+      id: "exec_1",
+      workflowId: "wf_1",
+      workflowVersionId: "ver_1",
+      versionKind: "published",
+      versionNumber: 1,
+      status: "running",
+      startSource: "manual",
+      runMode: "live",
+      startEventName: null,
+      entityValue: null,
+      input: {},
+      output: null,
+      error: null,
+      startedAt: "2026-03-01T09:00:00.000Z",
+      completedAt: null,
+      duration: null,
+    },
+    logs: [
+      {
+        id: "log_1",
+        executionId: "exec_1",
+        nodeId: "send",
+        nodeName: "Send reminder",
+        nodeType: "action",
+        status: "success",
+        input: {},
+        output: {},
+        error: null,
+        startedAt: "2026-03-01T09:00:00.000Z",
+        completedAt: "2026-03-01T09:00:05.000Z",
+        duration: "5000",
+        retries: 2,
+      },
+    ],
+    waits: [],
+    exit: null,
+  };
+
+  it("carries the executor's hold on an in-progress run, and null once it ended", async () => {
+    const decode = getOutputDecoder(rpcContract.workflow.getExecutionLogs);
+    const schedule = {
+      observedAt: "2026-03-01T09:02:00.000Z",
+      state: "leased",
+      wakeAt: "2026-03-01T09:01:00.000Z",
+      attempt: 0,
+      retryLimit: 4,
+      runningStepId: "node:send:dispatch",
+      runningNodeId: "send",
+      runningNodeName: "Send reminder",
+      leaseExpiresAt: "2026-03-01T09:03:00.000Z",
+      workerId: "worker_1",
+      lastError: "send is down",
+      failingSteps: [
+        {
+          stepId: "node:send:dispatch",
+          nodeId: "send",
+          nodeName: "Send reminder",
+          failures: 1,
+          error: "send is down",
+        },
+      ],
+      unconsumedWakes: [
+        {
+          waitStateId: "wait_1",
+          nodeId: "approval",
+          nodeName: "Approval",
+          kind: "resume",
+          eventName: "app/approved",
+          wokenAt: "2026-03-01T09:01:30.000Z",
+        },
+      ],
+    };
+
+    expect(await decode({ ...payload, schedule })).toHaveProperty("value");
+    expect(await decode({ ...payload, schedule: null })).toHaveProperty(
+      "value"
+    );
+  });
+
+  it("refuses a node log without its retry count", async () => {
+    const decode = getOutputDecoder(rpcContract.workflow.getExecutionLogs);
+    const [log] = payload.logs;
+
+    const result = await decode({
+      ...payload,
+      logs: [{ ...log, retries: undefined }],
+      schedule: null,
+    });
+
+    expect(result).toHaveProperty("issues");
+  });
+});
+
+describe("workflow execution status RPC output contract", () => {
+  it("carries the retrying nodes beside the open waits", async () => {
+    const decode = getOutputDecoder(rpcContract.workflow.getExecutionStatus);
+
+    const result = await decode({
+      status: "running",
+      nodeStatuses: [{ nodeId: "send", status: "running" }],
+      openWaitNodeIds: [],
+      retryingNodeIds: ["send"],
+    });
+
+    expect(result).toHaveProperty("value");
+  });
 });
 
 describe("workflow migration RPC contracts", () => {

@@ -52,12 +52,14 @@ function createStubRuntime({
   startupLayer,
   integrationRepo,
   workflowRepo,
+  executionRepo,
 }: {
   appContext?: Parameters<typeof makeAppContextLayer>[0] | undefined;
   effectLoggerLayer?: Layer.Layer<never> | undefined;
   startupLayer?: Layer.Layer<never> | undefined;
   integrationRepo?: Parameters<typeof stubIntegrationRepo>[0] | undefined;
   workflowRepo?: Parameters<typeof stubWorkflowRepo>[0] | undefined;
+  executionRepo?: Parameters<typeof stubExecutionRepo>[0] | undefined;
 } = {}): WfGraphRuntime {
   return ManagedRuntime.make(
     Layer.mergeAll(
@@ -68,7 +70,7 @@ function createStubRuntime({
       stubExtensions(),
       stubIntegrationRepo(integrationRepo),
       stubWorkflowRepo(workflowRepo),
-      stubExecutionRepo(),
+      stubExecutionRepo(executionRepo),
       makeAgentConfigLayer({ enabled: false }),
       makeAgentRunnerLayer(disabledAgentRunner),
       stubExecutionDriver()
@@ -624,6 +626,96 @@ describe("integration OAuth RPC", () => {
     );
 
     assert.strictEqual(response.status, 404);
+  });
+});
+
+describe("workflow execution RPC", () => {
+  // The procedures' answers pass the contract's output schemas, which is what
+  // the client decodes them against.
+  it("answers an in-progress run's logs and status with the executor's hold on it", async () => {
+    const failingStep = {
+      stepId: "node:send:dispatch",
+      nodeId: "send",
+      nodeName: "Send reminder",
+      failures: 1,
+      error: "send is down",
+    };
+    await using runtime = createStubRuntime({
+      executionRepo: {
+        findSummaryById: () =>
+          Effect.succeed({
+            id: "exec_1",
+            workflowId: "wf_1",
+            workflowVersionId: "ver_1",
+            versionKind: "published",
+            versionNumber: 1,
+            status: "running",
+            startSource: "manual",
+            runMode: "live",
+            startEventName: null,
+            entityValue: null,
+            entityType: null,
+            entityId: null,
+            input: {},
+            output: null,
+            error: null,
+            startedAt: new Date("2026-03-01T09:00:00.000Z"),
+            completedAt: null,
+            duration: null,
+          }),
+        findStatusById: () =>
+          Effect.succeed({ id: "exec_1", status: "running" }),
+        listLogs: () => Effect.succeed([]),
+        listWaitingStates: () => Effect.succeed([]),
+        listNodeStatuses: () => Effect.succeed([]),
+        listOpenWaitNodeIds: () => Effect.succeed([]),
+        findExecutorState: () =>
+          Effect.succeed({
+            state: "queued",
+            wakeAt: new Date("2026-03-01T09:01:00.000Z"),
+            attempt: 0,
+            runningStepId: null,
+            runningNodeId: null,
+            runningNodeName: null,
+            leaseExpiresAt: null,
+            workerId: null,
+            lastError: "send is down",
+            failingSteps: [failingStep],
+            unconsumedWakes: [],
+          }),
+      },
+    });
+    const app = createApiApp({
+      basePath: "/api",
+      auth: resolveAuth(defineWfGraphAuth(() => WfGraphAccess.all)),
+      runtime,
+    });
+    const call = async (procedure: string) => {
+      const response = await app.fetch(
+        new Request(`http://localhost/api/rpc/workflow/${procedure}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ json: { executionId: "exec_1" } }),
+        })
+      );
+      assert.strictEqual(response.status, 200);
+      const body: unknown = await response.json();
+      return body;
+    };
+
+    expect(await call("getExecutionLogs")).toMatchObject({
+      json: {
+        schedule: {
+          state: "queued",
+          wakeAt: "2026-03-01T09:01:00.000Z",
+          retryLimit: 4,
+          failingSteps: [failingStep],
+        },
+      },
+    });
+    expect(await call("getExecutionStatus")).toMatchObject({
+      json: { retryingNodeIds: ["send"] },
+    });
   });
 });
 

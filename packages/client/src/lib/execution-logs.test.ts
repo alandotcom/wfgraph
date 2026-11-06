@@ -184,6 +184,7 @@ describe("toPinnedRunSummary", () => {
     logs: [],
     waits: [],
     exit: null,
+    schedule: null,
   };
 
   it("carries the pinned run's version and run mode", () => {
@@ -241,6 +242,7 @@ describe("toExecutionDetail", () => {
         nodeId: "send-reminder",
         checkedAt: "2026-03-01T10:00:05.000Z",
       },
+      schedule: null,
     });
 
     expect(detail.exit).toEqual({

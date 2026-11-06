@@ -1,8 +1,10 @@
 import { Effect } from "effect";
+import { compact, uniq } from "es-toolkit/array";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
 import { NotFound } from "#src/backend/lib/effect/failures";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
+import { heldByExecutor } from "#src/backend/services/executions/executor-state";
 import type { WorkflowExecutionStatus } from "@wfgraph/shared/lifecycle/execution-contracts";
 
 type NodeStatus = {
@@ -41,6 +43,12 @@ export const getExecutionStatus = Effect.fn("getExecutionStatus")(
 
     const logs = yield* repo.listNodeStatuses(executionId);
     const openWaitNodeIds = yield* repo.listOpenWaitNodeIds(executionId);
+    const executorState = heldByExecutor(execution.status)
+      ? yield* repo.findExecutorState(executionId)
+      : null;
+    const retryingNodeIds = uniq(
+      compact(executorState?.failingSteps.map((step) => step.nodeId) ?? [])
+    );
 
     // A run that stopped leaves its unfinished nodes recorded as pending or
     // running, because nothing writes to them once the run stops. The editor
@@ -60,6 +68,7 @@ export const getExecutionStatus = Effect.fn("getExecutionStatus")(
       status: execution.status,
       nodeStatuses,
       openWaitNodeIds,
+      retryingNodeIds,
     };
   },
   (effect, executionId) =>

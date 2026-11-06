@@ -90,7 +90,12 @@ const AUTHORIZATION_CREDENTIAL =
   /(\b[a-z0-9_-]*authorization[a-z0-9_-]*\b\s*[:=]\s*)(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi;
 const URI_CREDENTIAL = /([a-z][a-z0-9+.-]*:\/\/[^:\s/@]+:)[^@\s/]+(@)/gi;
 
-/** Scrub credentials embedded in an otherwise free-form error or log line. */
+/**
+ * Scrub credentials embedded in an otherwise free-form error or log line. Text
+ * comes back as text, and null as null.
+ */
+export function redactSensitiveText(value: string): string;
+export function redactSensitiveText(value: string | null): string | null;
 export function redactSensitiveText(value: string | null): string | null {
   if (value === null) {
     return null;

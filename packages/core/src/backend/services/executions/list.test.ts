@@ -2,6 +2,7 @@
 // provides, so nothing here imports the bare one.
 import { assert, describe, layer } from "@effect/vitest";
 import { Effect, Layer } from "effect";
+import { TestClock } from "effect/testing";
 import type { WorkflowExecutionListRow } from "#src/backend/services/executions/repo";
 import {
   SilentAppLoggerLayer,
@@ -92,6 +93,66 @@ describe("getWorkflowExecutions", () => {
         assert.deepStrictEqual(repos.listCalls, [
           { workflowId: "wf_1", includeSuperseded: true },
         ]);
+      })
+    );
+
+    // A run due and never claimed carries the server's clock beside the time
+    // it fell due, so the panel measures the wait against the server.
+    it.effect("answers an unclaimed run's activity at the server's clock", () =>
+      Effect.gen(function* () {
+        yield* TestClock.setTime(Date.parse("2026-03-01T10:02:00.000Z"));
+        const asked: Array<{ executionIds: readonly string[]; now: Date }> = [];
+        const result = yield* getWorkflowExecutions({
+          workflowId: "wf_1",
+          includeSuperseded: false,
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              SilentAppLoggerLayer,
+              stubWorkflowRepo({ existsById: () => Effect.succeed(true) }),
+              stubExecutionRepo({
+                listByWorkflow: () =>
+                  Effect.succeed([
+                    execution("exec_1", "running"),
+                    execution("exec_2", "completed"),
+                  ]),
+                countSuperseded: () => Effect.succeed(0),
+                listWorkflowEvents: () => Effect.succeed([]),
+                listExecutorActivity: (input) =>
+                  Effect.sync(() => {
+                    asked.push(input);
+                    return new Map([
+                      [
+                        "exec_1",
+                        {
+                          kind: "unclaimed" as const,
+                          dueSince: new Date("2026-03-01T10:00:00.000Z"),
+                        },
+                      ],
+                    ]);
+                  }),
+              })
+            )
+          )
+        );
+
+        assert.deepStrictEqual(asked, [
+          {
+            executionIds: ["exec_1"],
+            now: new Date("2026-03-01T10:02:00.000Z"),
+          },
+        ]);
+        assert.deepStrictEqual(
+          result.items.map((item) => item.activity),
+          [
+            {
+              kind: "unclaimed",
+              dueSince: "2026-03-01T10:00:00.000Z",
+              observedAt: "2026-03-01T10:02:00.000Z",
+            },
+            null,
+          ]
+        );
       })
     );
 

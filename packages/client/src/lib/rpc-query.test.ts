@@ -111,12 +111,14 @@ beforeEach(() => {
     logs: [],
     waits: [],
     exit: null,
+    schedule: null,
   });
   queryClient.setQueryData(executionEventsKey("exec_a"), { events: [] });
   queryClient.setQueryData(executionStatusKey("exec_a"), {
     status: "waiting",
     nodeStatuses: [],
     openWaitNodeIds: [],
+    retryingNodeIds: [],
   });
   queryClient.setQueryData(workflowVersionHistoryKey("a"), {
     pages: [{ items: [], nextCursor: null }],

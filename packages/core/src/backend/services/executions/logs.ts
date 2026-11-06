@@ -7,6 +7,11 @@ import {
   redactSensitiveText,
 } from "#src/backend/lib/utils/redact";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
+import {
+  heldByExecutor,
+  observedNow,
+  toExecutionSchedule,
+} from "#src/backend/services/executions/executor-state";
 
 function toIso(value: Date | null): string | null {
   return value?.toISOString() ?? null;
@@ -47,6 +52,10 @@ export const getExecutionLogs = Effect.fn("getExecutionLogs")(
             checkedAt: exitClaim.requestedAt.toISOString(),
           }
         : null;
+    const executorState = heldByExecutor(execution.status)
+      ? yield* repo.findExecutorState(executionId)
+      : null;
+    const observedAt = yield* observedNow;
 
     return {
       execution: {
@@ -82,6 +91,7 @@ export const getExecutionLogs = Effect.fn("getExecutionLogs")(
         startedAt: log.startedAt.toISOString(),
         completedAt: toIso(log.completedAt),
         duration: log.duration,
+        retries: log.retries,
       })),
       waits: waits.map((wait) => ({
         id: wait.id,
@@ -92,6 +102,10 @@ export const getExecutionLogs = Effect.fn("getExecutionLogs")(
         waitUntil: toIso(wait.waitUntil),
       })),
       exit,
+      schedule:
+        executorState === null
+          ? null
+          : toExecutionSchedule(executorState, observedAt),
     };
   },
   (effect, executionId) =>

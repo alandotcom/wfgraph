@@ -25,8 +25,14 @@ import {
   WORKFLOW_EXECUTION_START_SOURCES,
   WORKFLOW_EXECUTION_STATUSES,
 } from "#src/lifecycle/execution-contracts";
+import { EXECUTION_SCHEDULE_STATES } from "#src/lifecycle/execution-schedule";
 import { jsonObjectSchema } from "#src/types/json";
-import { listOf, NonEmptyTrimmedString } from "#src/types/schema";
+import {
+  listOf,
+  NonEmptyTrimmedString,
+  nonNegativeInteger,
+  positiveInteger,
+} from "#src/types/schema";
 import { isoTimestampString } from "#src/types/timestamp";
 import {
   contractSchema,
@@ -132,6 +138,55 @@ const workflowExecutionStatusSchema = Schema.Literals(
   WORKFLOW_EXECUTION_STATUSES
 );
 
+/** An instant the database executor reports, as an ISO 8601 string. */
+const executorInstant = isoTimestampString();
+
+/**
+ * The node the database executor names in a run's activity or state. The id
+ * is null for a step of no node, and the name is null when the run has no log
+ * row for the node yet, in which case the pinned graph names it.
+ */
+const executorNodeFields = {
+  nodeId: Schema.NullOr(Schema.String),
+  nodeName: Schema.NullOr(Schema.String),
+};
+
+/**
+ * What the database executor is doing about an in-progress run, as a runs list
+ * shows it beside the run, or null when there is nothing to say.
+ *
+ * - `retrying`: the run waits until `nextTryAt` after a failure. A step's
+ *   failure names the step's node and counts that step's failures; a failure
+ *   outside any step names no node and counts the run's own. A step gets
+ *   `retryLimit` retries, so the next try is try `failures + 1` of
+ *   `retryLimit + 1`.
+ * - `lease_expired`: the worker running the run stopped renewing its lease at
+ *   `since`, while running a step of the named node, and another worker will
+ *   take the run over.
+ * - `unclaimed`: the run has been due since `dueSince` and no worker has
+ *   claimed it. `observedAt` is the server's clock when it answered, which is
+ *   what to measure how long it has waited against.
+ */
+const executionActivitySchema = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("retrying"),
+    ...executorNodeFields,
+    nextTryAt: executorInstant,
+    failures: positiveInteger,
+    retryLimit: positiveInteger,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("lease_expired"),
+    ...executorNodeFields,
+    since: executorInstant,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("unclaimed"),
+    dueSince: executorInstant,
+    observedAt: executorInstant,
+  }),
+]);
+
 /**
  * A run as the two list procedures carry it.
  *
@@ -168,6 +223,8 @@ const workflowExecutionFields = {
   cancelledAt: Schema.NullOr(Schema.String),
   completedAt: Schema.NullOr(Schema.String),
   duration: Schema.NullOr(Schema.String),
+  /** See `executionActivitySchema`. Null for every run that is not in progress. */
+  activity: Schema.NullOr(executionActivitySchema),
 };
 
 const workflowExecutionSchema = Schema.Struct(workflowExecutionFields);
@@ -191,6 +248,11 @@ const executionLogSchema = Schema.Struct({
   startedAt: Schema.String,
   completedAt: Schema.NullOr(Schema.String),
   duration: Schema.NullOr(Schema.String),
+  /**
+   * How many times the database executor retried the node's steps before the
+   * row closed. Zero while the row is open.
+   */
+  retries: nonNegativeInteger,
 });
 
 const executionSummarySchema = Schema.Struct({
@@ -227,6 +289,54 @@ const executionWaitSchema = Schema.Struct({
   resumeToken: Schema.NullOr(Schema.String),
   subscribedEvents: listOf(Schema.String),
   waitUntil: Schema.NullOr(Schema.String),
+});
+
+/**
+ * Where the database executor holds an in-progress run: what a person reads
+ * to learn why the run has not moved and when it will move next.
+ *
+ * `state` is `queued` (due at `wakeAt`), `leased` (a worker, `workerId`, is
+ * running it until `leaseExpiresAt` unless it renews its lease, and
+ * `runningStepId` is the step it is running, of the node named beside it), or
+ * `waiting` (asleep on its parks until `wakeAt`). `attempt` counts failures
+ * of the run outside any step, and `lastError` is the last failure a release
+ * recorded. `failingSteps` are the steps that failed and will run again, most
+ * failures first, and `unconsumedWakes` the parks a producer resolved that no
+ * pass has read yet, each with the Event a resume carries and when an Event or
+ * a manual resume claimed it. A step or the run body gets `retryLimit` retries.
+ * `observedAt` is the server's clock when it answered, which is what to compare
+ * every other instant here against.
+ */
+const executionScheduleSchema = Schema.Struct({
+  observedAt: executorInstant,
+  state: Schema.Literals(EXECUTION_SCHEDULE_STATES),
+  wakeAt: executorInstant,
+  attempt: nonNegativeInteger,
+  retryLimit: positiveInteger,
+  runningStepId: Schema.NullOr(Schema.String),
+  runningNodeId: Schema.NullOr(Schema.String),
+  runningNodeName: Schema.NullOr(Schema.String),
+  leaseExpiresAt: Schema.NullOr(executorInstant),
+  workerId: Schema.NullOr(Schema.String),
+  lastError: Schema.NullOr(Schema.String),
+  failingSteps: listOf(
+    Schema.Struct({
+      stepId: Schema.String,
+      ...executorNodeFields,
+      failures: positiveInteger,
+      error: Schema.String,
+    })
+  ),
+  unconsumedWakes: listOf(
+    Schema.Struct({
+      waitStateId: idSchema,
+      nodeId: Schema.String,
+      nodeName: Schema.String,
+      kind: Schema.Literals(["timeout", "migrate", "cancel", "exit", "resume"]),
+      eventName: Schema.NullOr(Schema.String),
+      wokenAt: Schema.NullOr(executorInstant),
+    })
+  ),
 });
 
 /** The authoritative Entity Eligibility boundary stored on an exited run. */
@@ -653,6 +763,11 @@ export const workflowContract = {
           logs: listOf(executionLogSchema),
           waits: listOf(executionWaitSchema),
           exit: Schema.NullOr(executionExitSchema),
+          /**
+           * See `executionScheduleSchema`. Null once the run has ended, when
+           * the executor no longer holds it.
+           */
+          schedule: Schema.NullOr(executionScheduleSchema),
         })
       )
     ),
@@ -745,6 +860,11 @@ export const workflowContract = {
            * run is in progress.
            */
           openWaitNodeIds: listOf(Schema.String),
+          /**
+           * The nodes with a step that failed and will run again, which the
+           * editor shows as retrying while the run is in progress.
+           */
+          retryingNodeIds: listOf(Schema.String),
         })
       )
     ),

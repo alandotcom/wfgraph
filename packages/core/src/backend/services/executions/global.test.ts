@@ -9,6 +9,7 @@ import {
 } from "#src/backend/lib/effect/test-layers";
 import type {
   ExecutionPageQuery,
+  ExecutorActivity,
   GlobalExecutionRow,
 } from "#src/backend/services/executions/repo";
 import { getWorkflowExecutionsGlobal } from "#src/backend/services/executions/global";
@@ -79,14 +80,32 @@ const page = [
 function makeExecutionRepo(rows: GlobalExecutionRow[]) {
   const calls = {
     pages: [] as ExecutionPageQuery[],
+    activities: [] as string[][],
   };
 
-  // The runs list reads nothing else, so every other method refuses.
+  // The runs list reads nothing else, so every other method refuses. The
+  // executor holds `exec_3`, whose worker stopped renewing its lease, and
+  // `exec_2`, which is asleep on its parks and has no activity.
   const repoLayer = stubExecutionRepo({
     listPage: (query) =>
       Effect.sync(() => {
         calls.pages.push(query);
         return rows.slice(0, query.limit);
+      }),
+    listExecutorActivity: ({ executionIds }) =>
+      Effect.sync(() => {
+        calls.activities.push([...executionIds]);
+        return new Map<string, ExecutorActivity>([
+          [
+            "exec_3",
+            {
+              kind: "lease_expired",
+              nodeId: "send",
+              nodeName: "Send reminder",
+              since: new Date("2026-02-18T19:41:00.000Z"),
+            },
+          ],
+        ]);
       }),
   });
 
@@ -110,6 +129,32 @@ describe("getWorkflowExecutionsGlobal", () => {
           startedAt: "2026-02-18T19:39:00.000Z",
           id: "exec_2",
         });
+      })
+    );
+
+    // One read for the page, asking only about the runs still in progress.
+    it.effect("answers each in-progress run's executor activity", () =>
+      Effect.gen(function* () {
+        const repo = makeExecutionRepo(page);
+
+        const result = yield* getWorkflowExecutionsGlobal({}).pipe(
+          Effect.provide(repo.layer)
+        );
+
+        assert.deepStrictEqual(repo.calls.activities, [["exec_3", "exec_2"]]);
+        assert.deepStrictEqual(
+          result.items.map((item) => item.activity),
+          [
+            {
+              kind: "lease_expired",
+              nodeId: "send",
+              nodeName: "Send reminder",
+              since: "2026-02-18T19:41:00.000Z",
+            },
+            null,
+            null,
+          ]
+        );
       })
     );
 

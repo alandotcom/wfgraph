@@ -2,6 +2,7 @@
 // provides, so nothing here imports the bare one.
 import { assert, describe, layer } from "@effect/vitest";
 import { Effect, Layer } from "effect";
+import { TestClock } from "effect/testing";
 import {
   SilentAppLoggerLayer,
   stubExecutionRepo,
@@ -9,6 +10,7 @@ import {
 import type {
   ExecutionSummary,
   ExecutionTerminationState,
+  ExecutorState,
   WorkflowExecutionLog,
 } from "#src/backend/services/executions/repo";
 import { getExecutionLogs } from "#src/backend/services/executions/logs";
@@ -180,6 +182,98 @@ describe("getExecutionLogs", () => {
 
         assert.notInclude(result.execution.error ?? "", "execution-secret");
         assert.notInclude(result.logs[0]?.error ?? "", "node-secret");
+      })
+    );
+
+    // A run the executor holds answers where it stands, with every instant an
+    // ISO string and the server's clock beside them; an ended run answers null
+    // without asking.
+    it.effect("answers an in-progress run's executor state", () =>
+      Effect.gen(function* () {
+        yield* TestClock.setTime(Date.parse("2026-03-01T10:05:00.000Z"));
+        const state: ExecutorState = {
+          state: "queued",
+          wakeAt: new Date("2026-03-01T10:06:00.000Z"),
+          attempt: 0,
+          runningStepId: null,
+          runningNodeId: null,
+          runningNodeName: null,
+          leaseExpiresAt: null,
+          workerId: null,
+          lastError: "token=step-secret",
+          failingSteps: [
+            {
+              stepId: "node:send:dispatch",
+              nodeId: "send",
+              nodeName: "Send reminder",
+              failures: 2,
+              error: "Authorization: Bearer step-secret",
+            },
+          ],
+          unconsumedWakes: [
+            {
+              waitStateId: "wait_1",
+              nodeId: "approval",
+              nodeName: "Approval",
+              kind: "resume",
+              eventName: "app/approved",
+              wokenAt: new Date("2026-03-01T10:04:00.000Z"),
+            },
+          ],
+        };
+        const repos = Layer.mergeAll(
+          SilentAppLoggerLayer,
+          stubExecutionRepo({
+            findSummaryById: () =>
+              Effect.succeed(summary({ status: "running", completedAt: null })),
+            findTerminationState: () => Effect.succeed(null),
+            listLogs: () => Effect.succeed([]),
+            listWaitingStates: () => Effect.succeed([]),
+            findExecutorState: () => Effect.succeed(state),
+          })
+        );
+
+        const result = yield* getExecutionLogs("exec_1").pipe(
+          Effect.provide(repos)
+        );
+
+        assert.deepStrictEqual(result.schedule, {
+          observedAt: "2026-03-01T10:05:00.000Z",
+          state: "queued",
+          wakeAt: "2026-03-01T10:06:00.000Z",
+          attempt: 0,
+          retryLimit: 4,
+          runningStepId: null,
+          runningNodeId: null,
+          runningNodeName: null,
+          leaseExpiresAt: null,
+          workerId: null,
+          lastError: "token=[REDACTED]",
+          failingSteps: [
+            {
+              stepId: "node:send:dispatch",
+              nodeId: "send",
+              nodeName: "Send reminder",
+              failures: 2,
+              error: "Authorization: [REDACTED]",
+            },
+          ],
+          unconsumedWakes: [
+            {
+              waitStateId: "wait_1",
+              nodeId: "approval",
+              nodeName: "Approval",
+              kind: "resume",
+              eventName: "app/approved",
+              wokenAt: "2026-03-01T10:04:00.000Z",
+            },
+          ],
+        });
+
+        const ended = yield* getExecutionLogs("exec_1").pipe(
+          Effect.provide(makeRepos(summary()))
+        );
+        assert.strictEqual(ended.schedule, null);
       })
     );
 

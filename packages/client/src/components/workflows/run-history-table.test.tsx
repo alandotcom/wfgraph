@@ -23,6 +23,7 @@ function run(
     cancelledAt: null,
     completedAt: "2026-08-22T10:00:01.000Z",
     duration: "1000",
+    activity: null,
     ...overrides,
   };
 }
