@@ -43,7 +43,7 @@
   },
   "dependencies": {
     "@clerk/backend": "^3.27.0",
-    "@linear/sdk": "^99.0.0",
+    "@linear/sdk": "^101.1.0",
     "effect": "catalog:",
     "es-toolkit": "catalog:",
     "svix": "^2.9.1"
