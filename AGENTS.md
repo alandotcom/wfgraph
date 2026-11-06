@@ -68,8 +68,8 @@ shipping an install script, or the install ends with `ERR_PNPM_IGNORED_BUILDS`.
 ## Required checks before finishing
 
 ```bash
-pnpm run type-check   # tsc --noEmit, TypeScript 7
-pnpm run lint         # oxlint --type-aware, prints nothing when clean
+pnpm run type-check   # effect-tsgo tsrs --noEmit --fast, with the Effect diagnostics
+pnpm run lint         # oxlint --type-aware on tsrs-lint, prints nothing when clean
 pnpm run test         # vitest, one project per environment; postgres skips with no database
 pnpm run build        # pnpm -r build, each package building itself
 pnpm run knip         # unused files, exports, dependencies
@@ -79,6 +79,13 @@ pnpm run fix          # oxfmt, must leave the tree clean
 
 Do not leave the repo with a failing check. `pnpm run lint` printing nothing means it
 passed; oxlint has no summary line on success.
+
+**Type-check and lint run on tsrs**, a Rust port of the TypeScript 7 compiler that tracks the
+TypeScript 7.1 beta. `effect-tsgo tsrs` runs the Effect-patched build `@effect/tsgo` ships
+for the installed `tsrs` version, so the two pins move together: a `tsrs` that release does
+not ship falls back to an older tsrs. oxlint finds `tsrs-lint` in `node_modules/.bin`. The
+`typescript` package stays for tsdown's declaration output and for the editor, which
+`prepare` patches with the Effect plugin and which still checks against TypeScript 7.0.
 
 `pnpm run test:postgres` is the live PostgreSQL suite, and it skips every case unless
 `WFGRAPH_TEST_DATABASE_URL` names a server, so a green `pnpm run test` on a machine with no

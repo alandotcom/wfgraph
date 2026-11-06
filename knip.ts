@@ -51,6 +51,10 @@ const config: KnipConfig = {
         // patched TypeScript-Go binary. The plugin keeps this historical name
         // in tsconfig even though there is no separate package to declare.
         "@effect/language-service",
+        // No script names tsrs: oxlint finds its `tsrs-lint` in
+        // node_modules/.bin, and `effect-tsgo tsrs` runs the Effect build of the
+        // installed tsrs version.
+        "tsrs",
       ],
 
       // drizzle-kit is a root dev dependency, so knip looks for the Drizzle

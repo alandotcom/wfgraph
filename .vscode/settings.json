@@ -43,10 +43,11 @@
   "[yaml]": {
     "editor.defaultFormatter": "oxc.oxc-vscode"
   },
-  // Points the editor's language server at the TypeScript 7.0.2 this repo pins,
-  // so hovers and errors in the editor agree with what `pnpm run type-check`
-  // reports. TypeScript 7's lib directory holds no tsserver.js, which makes this
-  // path look dead; it is live. The TypeScript 7 extension
+  // Points the editor's language server at the TypeScript 7.0.2 this repo pins
+  // for its build. `pnpm run type-check` runs tsrs, which tracks the TypeScript
+  // 7.1 beta, so the two can disagree where 7.1 changed inference. TypeScript
+  // 7's lib directory holds no tsserver.js, which makes this path look dead; it
+  // is live. The TypeScript 7 extension
   // (TypeScriptTeam.native-preview) reads `typescript.tsdk`, walks one level up
   // to the package root, and launches the platform binary from
   // @typescript/typescript-<platform>-<arch>/lib with `--lsp`. A tsdk carrying no
