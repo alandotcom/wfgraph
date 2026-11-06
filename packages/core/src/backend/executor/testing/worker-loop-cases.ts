@@ -365,6 +365,65 @@ function describeCases(
     expect(await harness.ended(second, 0)).toBe("completed");
   });
 
+  // The Worker's tick runs one run at a time on Hyperdrive's one connection,
+  // so it drains a backlog in successive drain steps within its budget.
+  it("drains due runs in successive drain steps at concurrency 1 and returns under its budget", async () => {
+    const harness = await open();
+    const executionIds = [
+      await harness.start(oneActionThenMark("test/send")),
+      await harness.start(oneActionThenMark("test/send")),
+      await harness.start(oneActionThenMark("test/send")),
+    ];
+    const budgetMs = 10_000;
+    const startedAt = Date.now();
+
+    const outcome = await harness.connection.run(
+      tick({
+        actions: () => actions,
+        ...LOOP_SETTINGS,
+        concurrency: 1,
+        budgetMs,
+      }).pipe(Effect.provide(noDeliveryServices))
+    );
+
+    expect(Date.now() - startedAt).toBeLessThan(budgetMs);
+    expect(outcome).toEqual({ passed: 3, failed: 0, interrupted: 0 });
+    for (const executionId of executionIds) {
+      // eslint-disable-next-line eslint/no-await-in-loop -- one read per run
+      expect(await harness.ended(executionId, 0)).toBe("completed");
+    }
+  });
+
+  it("stops claiming once its claim window has passed, leaving later rows due", async () => {
+    const harness = await open();
+    const first = await harness.start(oneActionThenMark("test/send"));
+    const second = await harness.start(oneActionThenMark("test/send"));
+
+    const outcome = await harness.connection.run(
+      tick({
+        actions: () => actions,
+        ...LOOP_SETTINGS,
+        concurrency: 1,
+        budgetMs: 10_000,
+        // The first drain step always starts, and the window has passed by
+        // the time its pass ends.
+        claimWindowMs: 1,
+      }).pipe(Effect.provide(noDeliveryServices))
+    );
+
+    expect(outcome).toEqual({ passed: 1, failed: 0, interrupted: 0 });
+    const ended = [
+      await harness.ended(first, 0).catch(() => undefined),
+      await harness.ended(second, 0).catch(() => undefined),
+    ];
+    expect(ended.filter((status) => status === "completed")).toHaveLength(1);
+    const waiting = ended[0] === "completed" ? second : first;
+    expect(await harness.schedule(waiting)).toMatchObject({
+      state: "queued",
+      workerId: null,
+    });
+  });
+
   it("interrupts a tick's pass still running when its budget runs out, and releases the run due at once", async () => {
     const harness = await open();
     const held = await harness.start(oneActionThenMark("test/held"));

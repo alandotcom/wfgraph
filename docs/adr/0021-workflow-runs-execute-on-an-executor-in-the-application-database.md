@@ -147,9 +147,14 @@ was missed. SQLite loops poll alone, and they run on the host's main thread, bec
 `node:sqlite` is synchronous.
 
 The Cloudflare Worker host cannot run a loop, since a Worker invocation has no long-lived
-process. `wfWorker` refuses to start until phase 5 of the design document builds a tick
-driver that a Cron Trigger and a Queue consumer call. Design E stays that backend's
-fallback.
+process. It runs `tick` instead: drain steps under a budget, one run's pass at a time on
+Hyperdrive's one connection. A Cron Trigger every minute runs a tick, which finds park
+deadlines with a one-minute resolution, and an optional Queue runs one at once when a
+producer's write makes a run due, through a `RunWakeSink` that sends a message. A tick claims
+for 10 minutes and interrupts its passes at 14, under the 15-minute wall time of a Cron
+Trigger or Queue consumer invocation, and holds its rows under a 5-minute lease renewed
+every minute. A Durable Object alarm per run would give sub-minute deadlines and was not
+built. Design E stays that backend's fallback.
 
 Events arrive through the event inbox, and the executor delivers them (ADR-0022). The
 `inngest` option is still required, because Workflow Graph registers an Inngest function per

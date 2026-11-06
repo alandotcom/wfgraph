@@ -11,6 +11,7 @@ import { Cause, Exit, Option } from "effect";
 import type { WfGraphRuntime } from "#src/backend/runtime";
 import { sendEvent } from "#src/backend/services/executions/send-event";
 import type { JsonObject } from "@wfgraph/shared/types/json";
+import { isBlank } from "@wfgraph/shared/types/string";
 
 /** How Events reach this app's event inbox, and how long the inbox keeps them. */
 export type WfGraphEventsOptions = {
@@ -72,6 +73,28 @@ export type WfGraphEvents = {
  */
 export class WfGraphEventRefused extends Error {
   override readonly name = "WfGraphEventRefused";
+}
+
+/**
+ * Refuses an `events.key` no sender could present: a blank key, or one
+ * holding whitespace, which a single Bearer token cannot carry. `caller`
+ * names the function the host called.
+ */
+export function assertValidEventsKey(
+  key: string | undefined,
+  caller: string
+): void {
+  if (key === undefined) return;
+  if (isBlank(key)) {
+    throw new Error(
+      `${caller}'s events.key is blank. Pass a secret to mount POST /api/events, or leave the key out to keep that route off.`
+    );
+  }
+  if (/\s/u.test(key)) {
+    throw new Error(
+      `${caller}'s events.key contains whitespace, which an Authorization: Bearer header cannot carry. Pass a key without spaces, tabs or line breaks.`
+    );
+  }
 }
 
 export function createHostEvents(runtime: WfGraphRuntime): WfGraphEvents {

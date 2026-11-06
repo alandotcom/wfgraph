@@ -1,6 +1,6 @@
 /**
  * The database executor's worker loop, the drain step it repeats, and `tick`,
- * one drain step within a budget for a host with no long-lived process. A
+ * drain steps within a budget for a host with no long-lived process. A
  * drain step claims due schedule rows in lanes, one lane per kind, each with
  * its own slots (`concurrency` for runs, `deliveryConcurrency` for
  * deliveries), so a long run never holds back an Event's delivery; one claim
@@ -477,6 +477,14 @@ export type TickOptions = DrainSettings & {
    * platform's own limit.
    */
   budgetMs: number;
+  /**
+   * How long after the tick starts it may begin another drain step, in
+   * milliseconds, at most `budgetMs`, which is its default. The first drain
+   * step always starts. A shorter window leaves a pass claimed late in the
+   * tick the difference to finish in before the budget interrupts it part way
+   * through a step.
+   */
+  claimWindowMs?: number | undefined;
 };
 
 /** What the passes of one tick came to, by `DrainedPass` kind. */
@@ -494,23 +502,33 @@ function lanesFor(settings: DrainSettings): Lane[] {
 }
 
 /**
- * One drain step within a budget, for a host whose platform invokes it, such
- * as a Cron Trigger or a Queue consumer on a Cloudflare Worker: polls the
- * inbox, starts the retention sweep beside the passes, claims up to
- * `deliveryConcurrency` due deliveries and up to `concurrency` due runs, runs
- * one pass over each, and succeeds once every pass and the sweep have ended
- * or the budget has run out. It sleeps for nothing, so the platform's next
- * invocation is what finds the rows due later.
+ * Drain steps within a budget, for a host whose platform invokes it, such as
+ * a Cron Trigger or a Queue consumer on a Cloudflare Worker. It polls the
+ * inbox and starts the retention sweep beside the passes, then repeats a drain
+ * step: one claim of up to `deliveryConcurrency` due deliveries and up to
+ * `concurrency` due runs, and one pass over each, all of which end before the
+ * next claim. It stops claiming once a claim finds nothing due or the claim
+ * window has passed, and succeeds once every pass and the sweep have ended or
+ * the budget has run out. A row a pass of the tick made due, such as a run an
+ * Event's delivery started, is claimed by the next drain step. It sleeps for
+ * nothing, so the platform's next invocation is what finds the rows due later.
  */
 export function tick(
   options: TickOptions
 ): Effect.Effect<TickOutcome, never, ExecutorServices> {
   const drain = drainOptionsFor(options);
+  const lanes = lanesFor(options).map((lane) => ({
+    kind: lane.kind,
+    limit: lane.concurrency,
+  }));
   return withExecutorLogCategory(
     Effect.scoped(
       Effect.gen(function* () {
         const startedAt = drain.now();
         const deadline = new Date(startedAt.getTime() + options.budgetMs);
+        const claimUntil =
+          startedAt.getTime() +
+          Math.min(options.claimWindowMs ?? options.budgetMs, options.budgetMs);
         const upkeep = inboxUpkeep({
           pollMs: 0,
           retentionMs: options.retentionMs,
@@ -519,16 +537,16 @@ export function tick(
         const sweep = upkeep.sweepDue(startedAt);
         const sweeping =
           sweep === undefined ? undefined : yield* Effect.forkScoped(sweep);
-        const passes = yield* drainOnce(drain, {
-          lanes: lanesFor(options).map((lane) => ({
-            kind: lane.kind,
-            limit: lane.concurrency,
-          })),
-          deadline,
-        });
-        const drained = yield* Effect.forEach(passes, (pass) =>
-          Fiber.join(pass.fiber)
-        );
+        const drained: DrainedPass[] = [];
+        for (;;) {
+          const passes = yield* drainOnce(drain, { lanes, deadline });
+          if (passes.length === 0) break;
+          const step = yield* Effect.forEach(passes, (pass) =>
+            Fiber.join(pass.fiber)
+          );
+          drained.push(...step);
+          if (drain.now().getTime() >= claimUntil) break;
+        }
         if (sweeping !== undefined) {
           // Closing the tick's scope interrupts a sweep that outlasts it.
           yield* Fiber.await(sweeping).pipe(

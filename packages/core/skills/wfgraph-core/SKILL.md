@@ -3,7 +3,8 @@ name: wfgraph-core
 description: >
   Embed Workflow Graph with createWfGraphApp: fetch handler, createRequestListener,
   auth, INTEGRATION_ENCRYPTION_KEY, clientBundle, publicUrl, basePath,
-  MCP authoring, configureWfGraphLogging, wfPostgres, wfSqlite, wfWorker,
+  MCP authoring, configureWfGraphLogging, wfPostgres, wfSqlite, wfWorker with
+  its Cron Trigger and wake Queue,
   migrateWfGraphDatabase, and createWfGraphRunner for a process that only runs
   workflows, plus @wfgraph/core/inngest for a host that keeps inngest.send.
   Load when mounting the host app or choosing persistence. Not for defineEvent,
@@ -99,9 +100,21 @@ its own `serve` or `connect`: see wfgraph-core/events.
   files are schema-agnostic and would land in `public`.
 - SQLite: `wfSqlite({ filename })` or `wfSqlite()` (in-memory, dies with the
   process).
-- Cloudflare Workers: `wfWorker` throws when called. A Worker has no
-  long-lived process for the worker loop, so it runs no workflows until its
-  tick driver ships. Run `createWfGraphApp` on Node.
+- Cloudflare Workers: `wfWorker` from `@wfgraph/core/worker` with
+  `wfHyperdrive(env.HYPERDRIVE)`, the module's default export. Its `fetch`
+  serves the API, and its `scheduled` and `queue` handlers each run a tick
+  that advances the due runs and deliveries. A Worker runs no `runner` loop and
+  `createWfGraphRunner` refuses Hyperdrive.
+- The Worker needs a Cron Trigger every minute (`[triggers] crons = ["* * * * *"]`);
+  without it nothing advances. A Queue is optional: pass its producer binding as
+  `request(env).wakeQueue` and make the same Worker its consumer, and a write
+  that makes a run due starts a tick at once. Without the Queue, Events are
+  delivered up to a minute late. A Wait's deadline resumes on the Cron
+  Trigger, within a minute, with or without the Queue.
+- A tick claims for 10 minutes and interrupts passes at 14, under the
+  15-minute wall limit of a Cron Trigger or Queue consumer, with a 5-minute
+  lease. Heavy ticks may need `limits.cpu_ms` raised past the 30-second
+  default.
 
 ## Workflow runs
 
@@ -201,6 +214,19 @@ connected to the same database, or run `createWfGraphRunner` beside the apps.
 Runs open and never advance: nothing claims their schedule rows.
 
 Source: alandotcom/wfgraph:docs/embedding.md (Workflow runs)
+
+### CRITICAL A Worker with no Cron Trigger
+
+Wrong: deploying `wfWorker` with only a Queue consumer, or with neither.
+
+Correct: `[triggers] crons = ["* * * * *"]` in the Wrangler configuration,
+and the Queue beside it when Events must be delivered at once.
+
+The Cron Trigger's tick is what finds a Wait's deadline, a run whose
+invocation was cut short, and Events a host inserted itself. Without it those
+runs never advance.
+
+Source: alandotcom/wfgraph:docs/embedding.md (Cloudflare Workers and Hyperdrive)
 
 ### HIGH Hyperdrive with query caching
 

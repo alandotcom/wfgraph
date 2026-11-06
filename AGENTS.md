@@ -261,8 +261,11 @@ takes a durability runtime, an Effect-native store for the run's trace, and a
 fills all three for one pass of the database executor, and `runWorkerLoop`
 (`backend/executor/worker-loop.ts`) runs the passes; `createWfGraphApp` starts that loop in
 its own process, and `createWfGraphRunner` starts it in a process that serves no HTTP. Both
-stand on `openWfGraphSetup` (`backend/setup.ts`). The engine imports neither the database,
-the assembled surface, nor Drizzle.
+stand on `openWfGraphSetup` (`backend/setup.ts`). The Worker (`backend/worker.ts`) runs no
+loop: its `scheduled` and `queue` handlers each open persistence and a runtime of their own
+and run one `tick` (`backend/executor/worker-loop.ts`), and its producers wake it through a Queue
+(`backend/executor/queue-wake.ts`). The engine imports neither the database, the assembled
+surface, nor Drizzle.
 
 **The host configures logtape, and a record is one unit of work** (ADR-0013).
 `backend/lib/logger.ts` is `getAppLogger` and the `wfgraph` root, and it calls no
@@ -480,9 +483,12 @@ runtime sees only the four aggregate repository services; backend-specific
 connection, schema, migration, query, and concurrency code stays under
 `backend/persistence/`. `@wfgraph/core/postgres` is the long-lived Node
 PostgreSQL backend and `@wfgraph/core/sqlite` is native Node SQLite.
-`@wfgraph/core/worker` holds the Hyperdrive backend and `wfWorker`, which refuses
-to start until the tick driver of phase 5 ships, since a Worker has no
-long-lived process to run the worker loop in. A new backend implements the
+`@wfgraph/core/worker` holds the Hyperdrive backend and `wfWorker`. A Worker has
+no long-lived process for the worker loop, so a Cron Trigger and an optional
+Queue invoke its ticks, and the tick's budget, claim window, lease and heartbeat
+are constants in `backend/worker.ts` sized to Cloudflare's 15-minute invocation
+wall time; the `Timing` model of `.claude/skills/verify-durable-executor` holds
+their ratios. A new backend implements the
 repository contracts rather than adding a database handle to `WfGraphServices`,
 and states what it offers the worker loops as `WfGraphRunCapabilities`.
 

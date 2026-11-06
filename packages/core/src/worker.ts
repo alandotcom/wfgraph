@@ -2,10 +2,17 @@
 
 export {
   wfWorker,
+  type WfGraphScheduledController,
+  type WfGraphWakeBatch,
   type WfGraphWorker,
   type WfGraphWorkerOptions,
   type WfGraphWorkerRequestConfig,
 } from "#src/backend/worker";
+export type {
+  WfGraphWakeMessage,
+  WfGraphWakeQueue,
+} from "#src/backend/executor/queue-wake";
+export type { WfGraphEventsOptions } from "#src/backend/host-events";
 export {
   defineWfGraphAuth,
   trustWfGraphUpstream,

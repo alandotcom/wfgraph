@@ -34,11 +34,11 @@ import type {
 } from "#src/backend/executor/in-process-runner";
 import { openWfGraphSetup, type WfGraphSetup } from "#src/backend/setup";
 import type { WfGraphMcpOptions } from "#src/backend/agent/mcp-server";
-import type {
-  WfGraphEvents,
-  WfGraphEventsOptions,
+import {
+  assertValidEventsKey,
+  type WfGraphEvents,
+  type WfGraphEventsOptions,
 } from "#src/backend/host-events";
-import { isBlank } from "@wfgraph/shared/types/string";
 
 export type { EncryptionRuntimeConfig } from "#src/backend/services/integrations/cipher";
 export {
@@ -189,19 +189,7 @@ export async function createWfGraphApp(
   const auth = resolveAuth(options.auth);
 
   assertValidEncryptionKey(options.encryption.key);
-  const eventsKey = options.events?.key;
-  if (eventsKey !== undefined && isBlank(eventsKey)) {
-    throw new Error(
-      "createWfGraphApp's events.key is blank. Pass a secret to mount POST /api/events, or leave the key out to keep that route off."
-    );
-  }
-  // A sender presents the key as one Bearer token, which holds no whitespace,
-  // so a key with any could never be presented.
-  if (eventsKey !== undefined && /\s/u.test(eventsKey)) {
-    throw new Error(
-      "createWfGraphApp's events.key contains whitespace, which an Authorization: Bearer header cannot carry. Pass a key without spaces, tabs or line breaks."
-    );
-  }
+  assertValidEventsKey(options.events?.key, "createWfGraphApp");
 
   const setup = await openWfGraphSetup({
     logger: options.logger,

@@ -28,10 +28,11 @@ export function hyperdrivePostgresClientOptions() {
 }
 
 /**
- * Configure request-scoped PostgreSQL through a Cloudflare Hyperdrive binding.
+ * Configure per-invocation PostgreSQL through a Cloudflare Hyperdrive binding.
  *
- * The Worker host opens this backend once per request and closes it after the
- * response. The schema check makes a misconfigured origin role fail before an
+ * The Worker host opens this backend once per invocation and closes it when
+ * the invocation ends: after a request's response, or after a Cron Trigger's
+ * or a Queue message's tick. The schema check makes a misconfigured origin role fail before an
  * unqualified repository query can land in `public`.
  */
 export function wfHyperdrive(
@@ -68,8 +69,9 @@ export function wfHyperdrive(
 
         return {
           repositories: makePostgresRepositories(database, cipher),
-          // Hyperdrive pools one connection per request, which cannot hold a
-          // `LISTEN` open, and a tick runs its passes one at a time on it.
+          // Hyperdrive pools one connection per invocation, which cannot hold
+          // a `LISTEN` open, and a tick runs one run's pass at a time on it,
+          // beside one delivery's.
           capabilities: {
             connectionLimit: 1,
             processes: "many",

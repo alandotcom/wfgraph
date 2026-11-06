@@ -452,7 +452,7 @@ const wfgraph = await createWfGraphApp({
 
 The endpoint is `${basePath}/api/mcp`. With the default `basePath`, the endpoint
 is `/api/mcp`. The `mcp` option is disabled by default and works with
-`createWfGraphApp`. It also works with `wfWorker` once the Worker host runs workflows again.
+`createWfGraphApp` and `wfWorker`.
 
 List hostnames only, with no scheme or port. Every request must have an allowed
 `Host` header. Browser requests must also have an allowed `Origin` hostname.
@@ -821,20 +821,29 @@ runner in the same process are not supported.
 
 ## Cloudflare Workers and Hyperdrive
 
-The Worker host does not run workflows until it has a tick driver that Cloudflare's
-scheduled triggers call, because a Worker invocation has no long-lived process to run the
-worker loop in. Until then, `wfWorker` throws when it is called. Run Workflow Graph with
-`createWfGraphApp` on Node. The rest of this section describes the configuration that the
-Worker host takes.
+`@wfgraph/core/worker` runs Workflow Graph on a Cloudflare Worker with PostgreSQL through
+Hyperdrive. A Worker invocation has no long-lived process for the worker loop, so the Worker
+advances runs in ticks instead. A tick claims the due runs and Event deliveries, runs each
+one until it finishes or parks at a Wait, and returns. Three handlers share one default
+export:
 
-Workers use the dedicated entry, not the Node app entry:
+- `fetch` serves the API, as `createWfGraphApp` does.
+- `scheduled` runs a tick for a Cron Trigger. Configure one that fires every minute.
+- `queue` runs a tick when a run wake arrives on a Queue you configure. The Queue is
+  optional.
 
 ```ts
-import { wfHyperdrive, wfWorker } from "@wfgraph/core/worker";
+import {
+  wfHyperdrive,
+  wfWorker,
+  type WfGraphWakeQueue,
+} from "@wfgraph/core/worker";
 
 type Env = {
   HYPERDRIVE: { connectionString: string };
+  WFGRAPH_WAKES: WfGraphWakeQueue;
   INTEGRATION_ENCRYPTION_KEY: string;
+  WFGRAPH_EVENTS_KEY: string;
   SLACK_CLIENT_ID: string;
   SLACK_CLIENT_SECRET: string;
 };
@@ -845,6 +854,8 @@ export default wfWorker<Env>({
     auth,
     persistence: wfHyperdrive(env.HYPERDRIVE),
     encryption: { key: env.INTEGRATION_ENCRYPTION_KEY },
+    events: { key: env.WFGRAPH_EVENTS_KEY },
+    wakeQueue: env.WFGRAPH_WAKES,
   }),
   extensions: (env) => ({
     events,
@@ -861,17 +872,110 @@ export default wfWorker<Env>({
 });
 ```
 
+The Wrangler configuration that matches this Worker:
+
+```toml
+compatibility_flags = ["nodejs_compat"]
+
+[[hyperdrive]]
+binding = "HYPERDRIVE"
+id = "<your Hyperdrive configuration id>"
+
+[triggers]
+crons = ["* * * * *"]
+
+[[queues.producers]]
+queue = "wfgraph-wakes"
+binding = "WFGRAPH_WAKES"
+
+[[queues.consumers]]
+queue = "wfgraph-wakes"
+```
+
 `wfWorker` has one type parameter for the Worker environment. Host session state stays inside
 the authentication callback and its returned access-policy closure.
 
-The Worker opens and closes the PostgreSQL client inside each request. Configure
-the Hyperdrive binding with query caching disabled: Hyperdrive does not
-invalidate cached reads after Workflow Graph writes. Set the PostgreSQL origin
-role's default `search_path` to put `_workflows` first (or the `schema` passed to
-the factory); startup checks `current_schema()` and refuses a mismatch. Apply
-PostgreSQL migrations outside the Worker with `@wfgraph/core/migrate`. Enable
-Cloudflare's `nodejs_compat` compatibility flag; the runtime uses Node crypto
-and the PostgreSQL driver relies on the Node compatibility APIs.
+### Worker options
+
+`request` resolves bindings and secrets from the environment. `wfWorker` calls it once per
+invocation of each handler, and it answers these fields:
+
+| Field                | Required | Description                                                                                                                                  |
+| -------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `auth`               | Yes      | As on `createWfGraphApp`. Only `fetch` reads it                                                                                              |
+| `persistence`        | Yes      | `wfHyperdrive(env.HYPERDRIVE)`, opened and closed once per invocation                                                                        |
+| `encryption.key`     | Yes      | As on `createWfGraphApp`                                                                                                                     |
+| `events.key`         | No       | Mounts `POST /api/events`, as on `createWfGraphApp`. A blank value, or one holding whitespace, fails the invocation before persistence opens |
+| `events.retentionMs` | No       | How long a settled inbox row is kept, as on `createWfGraphApp`. Every tick sweeps with it                                                    |
+| `wakeQueue`          | No       | The Queue producer binding that carries run wakes. Its consumer must be this Worker. See Wake runs through a Queue                           |
+| `agent`              | No       | As on `createWfGraphApp`                                                                                                                     |
+
+The options passed to `wfWorker` itself are `basePath`, `publicUrl`, `entityResolverTimeoutMs`,
+`mcp`, `logger`, and `extensions`, each as on `createWfGraphApp`. `extensions` also takes a
+function of the environment.
+
+`wfWorker` answers `{ fetch, scheduled, queue }`. A Worker that serves other routes, crons or
+queues of its own calls these from its own handlers: `fetch(request, env)`,
+`scheduled(controller, env)`, and `queue(batch, env)`. The `queue` handler treats every
+message in a batch as a run wake, so route only the wake Queue's batches to it, by
+`batch.queue`.
+
+### Wake runs through a Queue
+
+Without a Queue, the Cron Trigger's tick each minute is the only tick. An Event sent to the
+Worker is delivered at the next tick, up to a minute later, and the runs it starts run in the
+same tick.
+
+With `wakeQueue`, a write that makes a run or a delivery due also sends a message, and the
+Queue starts the Worker's `queue` handler, which runs a tick at once. Such writes include an
+Event's arrival, a Cancel, a manual resume, a Migration, and a run that an Event's delivery
+starts. Each invocation sends one message for the first such write, and one more for all the
+writes made while that send was in flight. A message names no run, since a tick claims every
+due row. A send the Queue refuses is logged, and the next Cron Trigger finds the run.
+
+The Cron Trigger is still required with a Queue. A Wait's deadline stays a row in the
+database, which the Cron Trigger's tick finds, so a Wait resumes within a minute of its
+deadline however long it waits; a Queue can delay a message by 24 hours at most. The Cron
+Trigger's tick also claims a run whose invocation was cut short, and polls for the Events
+your own transactions inserted.
+
+### Ticks and the platform limits
+
+A tick runs one run's pass at a time, beside one Event delivery's, on Hyperdrive's one
+connection. It keeps claiming due rows until a claim finds none, so one tick works through a
+backlog in turn. These limits apply to each tick:
+
+- **Wall time.** Cloudflare ends a Cron Trigger or Queue consumer invocation after 15
+  minutes. A tick claims new rows for its first 10 minutes and interrupts any pass still
+  running at 14 minutes. An interrupted pass hands its run back, due at once with no retry
+  counted, and the next tick resumes it from its last completed step.
+- **Leases.** A tick holds each run it claims under a five-minute lease and renews it every
+  minute while a step runs. When the platform ends an invocation before its tick can hand a
+  run back, a later tick claims the run once its lease expires, about six minutes later at
+  most.
+- **CPU time.** Workers on the Paid plan get 30 seconds of CPU time per Cron Trigger or Queue
+  consumer invocation by default. Time spent waiting on the database or on an action's
+  requests is not counted. When ticks reach the limit, raise `limits.cpu_ms` in the Wrangler
+  configuration, up to 300,000.
+- **Statements.** Hyperdrive ends any statement after 60 seconds. Each statement a tick makes
+  is short, and no transaction is held across a step.
+
+A Durable Object per run, whose alarm fires at the run's next deadline, would give Waits a
+resolution under a minute. Workflow Graph does not provide one. If ticks prove too slow for a
+Worker host, the alternative recorded in `docs/adr/0021` is to run the engine on Cloudflare
+Workflows for that backend.
+
+### Hyperdrive
+
+Each invocation opens and closes its own PostgreSQL client. Configure
+the Hyperdrive binding with query caching disabled (`wrangler hyperdrive create` takes
+`--caching-disabled`): Hyperdrive does not invalidate cached reads after Workflow Graph
+writes. Set the PostgreSQL origin role's default `search_path` to put `_workflows` first (or
+the `schema` passed to the factory); each invocation checks `current_schema()` and refuses a
+mismatch. Apply PostgreSQL migrations outside the Worker with `@wfgraph/core/migrate`. Node.js
+compatibility must be on: the runtime uses `node:crypto` and the PostgreSQL driver relies on
+the Node compatibility APIs. A compatibility date of `2026-08-04` or later turns it on by
+default; an earlier date needs the `nodejs_compat` flag.
 
 ## PostgreSQL migrations
 
@@ -915,7 +1019,7 @@ different migration tool puts the tables in `public`. This repository's
 | `@wfgraph/core`          | The host-facing entry. It exports the authoring vocabulary, application and authorization contracts, `createWfGraphApp`, `createWfGraphRunner` for a process that runs workflows and serves no HTTP, and `createRequestListener` |
 | `@wfgraph/core/postgres` | `wfPostgres` for a Node PostgreSQL pool                                                                                                                                                                                          |
 | `@wfgraph/core/sqlite`   | `wfSqlite` for native Node SQLite                                                                                                                                                                                                |
-| `@wfgraph/core/worker`   | `wfWorker`, `wfHyperdrive`, and request-scoped PostgreSQL through Hyperdrive                                                                                                                                                     |
+| `@wfgraph/core/worker`   | `wfWorker`, the Worker host with its `fetch`, `scheduled` and `queue` handlers, and `wfHyperdrive`, per-invocation PostgreSQL through Hyperdrive                                                                                 |
 | `@wfgraph/core/plugin`   | What an integration package builds against                                                                                                                                                                                       |
 | `@wfgraph/core/testing`  | `runAction`, `actionData` and `actionError`, for that package's own suite                                                                                                                                                        |
 | `@wfgraph/core/migrate`  | `migrateWfGraphDatabase`, for migrations without an application                                                                                                                                                                  |
@@ -932,8 +1036,8 @@ into whichever bundle needs it. `@wfgraph/core` and `@wfgraph/plugins` also incl
 
 `createWfGraphApp` is the Node host, and `createWfGraphRunner` is the Node process that only
 runs workflows. `wfWorker` is the Cloudflare
-Worker host and serves the API while the platform's Assets binding or the
-application's router serves static files. The Worker host does not run workflows yet; see
+Worker host: it serves the API and runs workflows on a Cron Trigger and an optional Queue,
+while the platform's Assets binding or the application's router serves static files. See
 Cloudflare Workers and Hyperdrive.
 
 ## createWfGraphApp options

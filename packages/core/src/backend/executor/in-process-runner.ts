@@ -63,14 +63,14 @@ export type WfGraphRunnerOptions = {
 };
 
 /** How many deliveries the loop runs at once when the host sets none. */
-const DEFAULT_DELIVERY_CONCURRENCY = 1;
+export const DEFAULT_DELIVERY_CONCURRENCY = 1;
 
 /**
  * How long a settled inbox row is kept after it arrived when the host sets no
  * `events.retentionMs`: seven days, so a host retrying a send over a weekend
  * still finds its first row.
  */
-const DEFAULT_INBOX_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+export const DEFAULT_INBOX_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** How long `stop` waits for passes in flight before it interrupts them. */
 const RUNNER_DRAIN_MS = 10_000;
@@ -160,7 +160,7 @@ export function resolveRunnerSettings(
   const pollMs = options.pollMs ?? loopDefaults.pollMs;
   if (pollMs === undefined) {
     throw new Error(
-      "This persistence backend runs no long-lived worker loop; its runs advance through the tick driver"
+      "This persistence backend runs no long-lived worker loop; its runs advance through the ticks that wfWorker's scheduled and queue handlers run"
     );
   }
   return {
