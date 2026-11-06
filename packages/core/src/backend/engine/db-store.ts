@@ -41,7 +41,7 @@ function readWaitUntil(
         try: () => decodeIsoTimestampOrThrow(waitUntilIso),
         catch: (cause) => new DatabaseError({ cause }),
       })
-    : Effect.succeed(undefined);
+    : Effect.undefined;
 }
 
 /** A stored claim and status as the engine's port reads them, with ISO timestamps. */

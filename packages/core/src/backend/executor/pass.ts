@@ -596,7 +596,7 @@ function runOpenedPass<Port, P extends PassCore<ClaimedSchedule, Port>, R>(
             0,
             budgetEndsAt.getTime() - options.now().getTime()
           ),
-          orElse: () => Effect.succeed(undefined),
+          orElse: () => Effect.undefined,
         })
       );
       if (exit !== undefined) return yield* exit;

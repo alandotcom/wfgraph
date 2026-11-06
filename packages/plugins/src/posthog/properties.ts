@@ -62,7 +62,7 @@ function readKeyValueProperties(
     }
 
     console.error("[PostHog] Failed to parse properties JSON:", error);
-    return Effect.succeed(undefined);
+    return Effect.undefined;
   }
 
   const result = decodePropertyEntries(parsed);
@@ -80,7 +80,7 @@ function readKeyValueProperties(
       "[PostHog] Properties must be a list of { name, value } entries:",
       result.failure.message
     );
-    return Effect.succeed(undefined);
+    return Effect.undefined;
   }
 
   return Effect.succeed(namedEntries(result.success));
@@ -104,7 +104,7 @@ function readJsonProperties(
     }
 
     console.error("[PostHog] Failed to parse the properties JSON box:", error);
-    return Effect.succeed(undefined);
+    return Effect.undefined;
   }
 
   const json = readJsonValue(parsed);
@@ -122,7 +122,7 @@ function readJsonProperties(
     console.error(
       "[PostHog] The properties JSON box must hold a JSON object of property names to values."
     );
-    return Effect.succeed(undefined);
+    return Effect.undefined;
   }
 
   return Effect.succeed(json);

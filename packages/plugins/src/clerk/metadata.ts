@@ -24,7 +24,7 @@ export function parseClerkMetadata(
   fieldName: "publicMetadata" | "privateMetadata"
 ): Effect.Effect<Record<string, unknown> | undefined, StepFailure> {
   if (!value) {
-    return Effect.succeed(undefined);
+    return Effect.undefined;
   }
 
   let parsed: unknown;
