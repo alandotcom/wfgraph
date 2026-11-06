@@ -21,9 +21,9 @@ export const PARKED_PASS = { kind: "parked" } as const;
 
 /**
  * A step reference from its id alone. These cases are about when the driver
- * wakes a run, so none of them has a display name to state.
+ * wakes a run, so none of them has a display name or a node to state.
  */
-export const stepRef = (id: string) => ({ id });
+export const stepRef = (id: string) => ({ id, nodeId: null });
 
 /** The deadline `park` last wrote on each wait row, by the row's id. */
 const parkDeadlines = new Map<string, Date>();

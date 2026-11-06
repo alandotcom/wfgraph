@@ -51,7 +51,7 @@ export type PassStep = { stepId: string; nodeId: string | null };
 
 /** The `PassStep` the engine names with `step`. */
 function passStepOf(step: DurableStepRef): PassStep {
-  return { stepId: step.id, nodeId: step.nodeId ?? null };
+  return { stepId: step.id, nodeId: step.nodeId };
 }
 
 /**
@@ -96,7 +96,7 @@ export type PassState = {
   /** Records that a step body started running. */
   readonly stepStarted: (step: PassStep) => void;
   /** Records that a step body and its memo write are done, either way. */
-  readonly stepFinished: (stepId: string) => void;
+  readonly stepFinished: (step: PassStep) => void;
   /**
    * The step the heartbeat records as running: the earliest started of the
    * steps still running, since parallel branches run steps side by side, and
@@ -136,8 +136,8 @@ export function createPassState(): PassState {
     stepStarted: (step) => {
       running.push(step);
     },
-    stepFinished: (stepId) => {
-      const index = running.findIndex((step) => step.stepId === stepId);
+    stepFinished: (step) => {
+      const index = running.indexOf(step);
       if (index >= 0) running.splice(index, 1);
     },
     runningStep: () => running[0] ?? null,
@@ -437,7 +437,7 @@ export function createPassSteps(input: StepMemoInput): PassSteps {
             })
           ),
           Effect.tap((value) => book.remember(passStep, memoValue(value))),
-          Effect.ensuring(Effect.sync(() => state.stepFinished(id)))
+          Effect.ensuring(Effect.sync(() => state.stepFinished(passStep)))
         );
       }),
   };
@@ -495,7 +495,7 @@ export function createExecutorRuntime(
         await runEffect(book.remember(passStep, memoValue(value)));
         return value;
       } finally {
-        state.stepFinished(step.id);
+        state.stepFinished(passStep);
       }
     },
 

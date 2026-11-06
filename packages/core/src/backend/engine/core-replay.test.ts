@@ -327,7 +327,7 @@ describe("workflow engine replay safety", () => {
 
     await executeWorkflow(waitGraphInput, recording, store, actions);
 
-    const named = refs.filter((ref) => ref.nodeId !== undefined);
+    const named = refs.filter((ref) => ref.nodeId !== null);
     expect(new Set(named.map((ref) => ref.nodeId))).toEqual(
       new Set(["lifecycle_1", "email_1", "wait_1", "followup_1"])
     );
@@ -338,7 +338,7 @@ describe("workflow engine replay safety", () => {
         .map((ref) => ref.id)
     ).toEqual([]);
     expect(
-      refs.filter((ref) => ref.nodeId === undefined).map((ref) => ref.id)
+      refs.filter((ref) => ref.nodeId === null).map((ref) => ref.id)
     ).toEqual(["execution-termination-final", "workflow-run-completed"]);
   });
 

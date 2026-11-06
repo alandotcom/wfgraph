@@ -361,7 +361,11 @@ function executeWorkflowInner(
 
       const termination = yield* runDurable(
         runtime,
-        { id: "execution-termination-final", name: "Read run outcome" },
+        {
+          id: "execution-termination-final",
+          name: "Read run outcome",
+          nodeId: null,
+        },
         store.readTerminationState(executionId)
       );
       // A Cancel claim that landed after the last node's boundary read found no
@@ -456,7 +460,7 @@ function executeWorkflowInner(
         // another traversal failure.
         const failedRecord = yield* runDurable(
           runtime,
-          { id: "workflow-run-failed", name: "Run failed" },
+          { id: "workflow-run-failed", name: "Run failed", nodeId: null },
           recordFailure(
             cancelled
               ? { kind: "canceled", outlet: "entered" }
@@ -516,7 +520,7 @@ function executeWorkflowInner(
       // refusal escapes the traversal catch above and lets this step retry.
       const completed = yield* runDurable(
         runtime,
-        { id: "workflow-run-completed", name: "Run completed" },
+        { id: "workflow-run-completed", name: "Run completed", nodeId: null },
         recordCompletion(outcome.value.terminalStatus)
       );
 
@@ -655,7 +659,7 @@ function runCanceledOutletThenRecord<A, E>(input: {
     );
     return yield* runDurable(
       input.runtime,
-      { id: "workflow-run-canceled", name: "Run canceled" },
+      { id: "workflow-run-canceled", name: "Run canceled", nodeId: null },
       input.record(outlet)
     );
   });
