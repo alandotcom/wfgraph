@@ -14,6 +14,7 @@ import type {
 import {
   attemptStart,
   emptyGraph,
+  notYetDue,
   seedPublishedWorkflow,
 } from "#src/backend/persistence/conformance/support";
 
@@ -542,148 +543,86 @@ export function describeExecutionConformance({
       });
     });
 
-    // A refused send closes a row only when no run could still need it: a
-    // claimed row is finished by the run holding the claim, and a stamped row
-    // was taken by the bus through another attempt's send.
-    it("closes a refused enqueue only for an unclaimed row the bus never took", async () => {
+    // The Intake model's `ExecutionAndScheduleTogether`: an open run always has
+    // a schedule row, because one write inserts both, and a start Concurrency
+    // refuses or displaces leaves no schedule row behind.
+    it("opens a run with its schedule row and its opening entry, and leaves no schedule row on a run it refuses or displaces", async () => {
       const database = await openConnection();
       await seedPublishedWorkflow(database);
-
-      const startFor = async (entityId: string) => {
-        const started = await attemptStart(database, {
-          deliveryId: `delivery_${entityId}`,
-          entityType: "appointment",
-          entityId,
-        });
-        if (started.status !== "started") {
-          throw new Error("The unlimited start was refused");
-        }
-        return started.execution.id;
-      };
-      const cancelClaimed = await startFor("appt_cancel");
-      const exitClaimed = await startFor("appt_exit");
-      const enqueued = await startFor("appt_enqueued");
-      const unsent = await startFor("appt_unsent");
+      const dueAt = new Date("2026-03-01T09:00:00.000Z");
 
       const result = await database.run(
         Effect.gen(function* () {
           const executions = yield* ExecutionRepo;
-          yield* executions.requestCancelForEntity({
-            now: NOW,
-            workflowId: "wf_1",
-            entityType: "appointment",
-            entityId: "appt_cancel",
-            runMode: "live",
-            eventName: "appointment/cancelled",
-            payload: {},
-          });
-          yield* executions.requestExit({
-            executionId: exitClaimed,
-            reason: "entity_condition_not_met",
-            nodeId: "node_check",
-          });
-          yield* executions.markEnqueued({
-            executionId: enqueued,
-            runId: "run_enqueued",
-          });
+          const start = (input: {
+            deliveryId: string;
+            concurrency: "first-wins" | "newest-wins";
+          }) =>
+            executions.startForEntity({
+              execution: {
+                workflowId: "wf_1",
+                workflowVersionId: "ver_1",
+                startSource: "event",
+                runMode: "live",
+                entityValue: "appointment_1",
+                deliveryId: input.deliveryId,
+                input: {},
+              },
+              concurrency: input.concurrency,
+              supersededReason: "newer start",
+              startedEntry: {
+                message: "Event-triggered run of v1 started",
+                metadata: { startSource: "event" },
+              },
+              now: dueAt,
+            });
 
-          const close = (executionId: string) =>
-            executions.markEnqueueFailed({ executionId, error: "refused" });
-          const closed = {
-            cancelClaimed: yield* close(cancelClaimed),
-            exitClaimed: yield* close(exitClaimed),
-            enqueued: yield* close(enqueued),
-            unsent: yield* close(unsent),
-            unsentAgain: yield* close(unsent),
+          const first = yield* start({
+            deliveryId: "delivery_1",
+            concurrency: "first-wins",
+          });
+          const refused = yield* start({
+            deliveryId: "delivery_2",
+            concurrency: "first-wins",
+          });
+          const newer = yield* start({
+            deliveryId: "delivery_3",
+            concurrency: "newest-wins",
+          });
+          if (first.status !== "started" || newer.status !== "started") {
+            throw new Error("Start was refused");
+          }
+          const firstId = first.execution.id;
+          const newerId = newer.execution.id;
+          return {
+            refused,
+            superseded: newer.supersededExecutionIds,
+            firstSchedule: yield* executions.findSchedule(firstId),
+            newerSchedule: yield* executions.findSchedule(newerId),
+            newerEntries: yield* executions.listEvents(newerId),
           };
-
-          const statusOf = (executionId: string) =>
-            Effect.map(
-              executions.findSummaryById(executionId),
-              (summary) => summary?.status
-            );
-          const statuses = {
-            cancelClaimed: yield* statusOf(cancelClaimed),
-            exitClaimed: yield* statusOf(exitClaimed),
-            enqueued: yield* statusOf(enqueued),
-            unsent: yield* statusOf(unsent),
-          };
-          return { closed, statuses };
         })
       );
 
-      expect(result.closed).toEqual({
-        cancelClaimed: false,
-        exitClaimed: false,
-        enqueued: false,
-        unsent: true,
-        unsentAgain: false,
+      expect(result.refused.status).toBe("refused");
+      expect(result.superseded).toHaveLength(1);
+      expect(result.firstSchedule).toBeNull();
+      expect(result.newerSchedule).toMatchObject({
+        kind: "run",
+        state: "queued",
+        wakeAt: dueAt,
+        attempt: 0,
       });
-      expect(result.statuses).toEqual({
-        cancelClaimed: "running",
-        exitClaimed: "running",
-        enqueued: "running",
-        unsent: "failed",
-      });
+      expect(result.newerEntries).toMatchObject([
+        {
+          eventType: "run_started",
+          message: "Event-triggered run of v1 started",
+          metadata: { startSource: "event" },
+        },
+      ]);
     });
 
-    // A row can be `waiting` with no `enqueuedAt` when the send landed and the
-    // `markEnqueued` write was refused. Closing it leaves no parked time on a
-    // terminal row, the same as every other terminal write.
-    it("clears the parked time on a waiting row a refused enqueue closes", async () => {
-      const database = await openConnection();
-      await seedPublishedWorkflow(database);
-      const started = await attemptStart(database, {
-        deliveryId: "delivery_waiting",
-        entityType: "appointment",
-        entityId: "appt_waiting",
-      });
-      if (started.status !== "started") {
-        throw new Error("The unlimited start was refused");
-      }
-      const executionId = started.execution.id;
-
-      const result = await database.run(
-        Effect.gen(function* () {
-          const executions = yield* ExecutionRepo;
-          const wait = yield* executions.startWait({
-            executionId,
-            workflowId: "wf_1",
-            runId: "run_waiting",
-            nodeId: "wait_1",
-            nodeName: "Wait a day",
-            workflowVersionId: "ver_1",
-            side: "started",
-            waitType: "delay",
-            waitUntil: new Date("2026-10-20T15:00:00.000Z"),
-          });
-          if (!wait) throw new Error("Wait was refused");
-
-          const readRow = executions.findByDelivery({
-            workflowId: "wf_1",
-            deliveryId: "delivery_waiting",
-          });
-          const parked = yield* readRow;
-          const closed = yield* executions.markEnqueueFailed({
-            executionId,
-            error: "refused",
-          });
-          const after = yield* readRow;
-          return { parked, closed, after };
-        })
-      );
-
-      expect(result.parked?.status).toBe("waiting");
-      expect(result.parked?.enqueuedAt).toBeNull();
-      expect(result.parked?.waitingAt).toBeInstanceOf(Date);
-      expect(result.closed).toBe(true);
-      expect(result.after).toMatchObject({
-        status: "failed",
-        waitingAt: null,
-      });
-    });
-
-    it("enforces workflow-name and workflow-run uniqueness", async () => {
+    it("enforces workflow-name uniqueness", async () => {
       const database = await openConnection();
       await database.run(
         Effect.gen(function* () {
@@ -700,18 +639,6 @@ export function describeExecutionConformance({
             graph: emptyGraph,
             eventSubscriptions: [],
           });
-          yield* workflows.insertPublishedVersion({
-            workflowId: "wf_1",
-            versionId: "ver_1",
-            version: 1,
-            expectedPublishedVersionId: null,
-            expectedDraftRevision: 1,
-            graph: emptyGraph,
-            draftGraph: emptyGraph,
-            catalogFingerprint: "catalog",
-            graphDigest: "graph",
-            eventSubscriptions: [],
-          });
         })
       );
 
@@ -725,54 +652,6 @@ export function describeExecutionConformance({
                 name: "appointments",
                 updatedAt: new Date(),
               },
-            });
-          })
-        )
-      ).rejects.toBeDefined();
-
-      const executionIds = await database.run(
-        Effect.gen(function* () {
-          const executions = yield* ExecutionRepo;
-          const first = yield* executions.startForEntity({
-            execution: {
-              workflowId: "wf_1",
-              workflowVersionId: "ver_1",
-              startSource: "manual",
-              runMode: "live",
-              input: {},
-            },
-            concurrency: "unlimited",
-            supersededReason: "newer start",
-          });
-          const second = yield* executions.startForEntity({
-            execution: {
-              workflowId: "wf_1",
-              workflowVersionId: "ver_1",
-              startSource: "manual",
-              runMode: "live",
-              input: {},
-            },
-            concurrency: "unlimited",
-            supersededReason: "newer start",
-          });
-          if (first.status !== "started" || second.status !== "started") {
-            throw new Error("Unlimited start was refused");
-          }
-          yield* executions.markEnqueued({
-            executionId: first.execution.id,
-            runId: "run_1",
-          });
-          return [first.execution.id, second.execution.id];
-        })
-      );
-
-      await expect(
-        database.run(
-          Effect.gen(function* () {
-            const executions = yield* ExecutionRepo;
-            yield* executions.markEnqueued({
-              executionId: executionIds[1],
-              runId: "run_1",
             });
           })
         )
@@ -799,6 +678,7 @@ export function describeExecutionConformance({
             },
             concurrency: "first-wins",
             supersededReason: "newer start",
+            ...notYetDue,
           });
           if (start.status !== "started") throw new Error("Start was refused");
           const executionId = start.execution.id;
@@ -851,10 +731,10 @@ export function describeExecutionConformance({
             },
             concurrency: "first-wins",
             supersededReason: "newer start",
+            ...notYetDue,
           });
           if (start.status !== "started") throw new Error("Start was refused");
           const executionId = start.execution.id;
-          yield* executions.markEnqueued({ executionId, runId: "run_1" });
 
           const successfulLog = yield* executions.openNodeLog({
             executionId,
@@ -880,7 +760,6 @@ export function describeExecutionConformance({
             side: "started",
             executionId,
             workflowId: "wf_1",
-            runId: "run_1",
             nodeId: "wait_1",
             nodeName: "Wait for approval",
             workflowVersionId: "ver_1",
@@ -1004,7 +883,10 @@ export function describeExecutionConformance({
         "success",
       ]);
       expect(result.outputs).toEqual({ node_1: { taskId: "task_1" } });
-      expect(result.events).toMatchObject([{ message: "Completed" }]);
+      expect(result.events).toMatchObject([
+        { message: "Completed" },
+        { eventType: "run_started", message: notYetDue.startedEntry.message },
+      ]);
       expect(result.deleted).toBe(1);
       expect(result.existsAfterDelete).toBe(false);
     });
@@ -1028,6 +910,7 @@ export function describeExecutionConformance({
             },
             concurrency: "unlimited",
             supersededReason: "newer start",
+            ...notYetDue,
           });
           if (started.status !== "started") {
             throw new Error("Start was refused");
@@ -1080,6 +963,7 @@ export function describeExecutionConformance({
             },
             concurrency: "unlimited",
             supersededReason: "newer start",
+            ...notYetDue,
           });
           if (started.status !== "started") {
             throw new Error("Start was refused");
@@ -1126,6 +1010,7 @@ export function describeExecutionConformance({
       ).toEqual(["cancel_not_delivered", "run_refused"]);
       expect(result.runEvents.map((event) => event.eventType)).toEqual([
         "run_completed",
+        "run_started",
       ]);
     });
 
@@ -1147,6 +1032,7 @@ export function describeExecutionConformance({
             },
             concurrency: "unlimited",
             supersededReason: "newer start",
+            ...notYetDue,
           });
           if (started.status !== "started") {
             throw new Error("Start was refused");
@@ -1183,10 +1069,12 @@ export function describeExecutionConformance({
         })
       );
 
+      // The oldest is the opening entry the start wrote beside its row.
       expect(result.map((event) => event.message)).toEqual([
         "Resumed",
         "Waiting",
         "Started",
+        notYetDue.startedEntry.message,
       ]);
     });
 

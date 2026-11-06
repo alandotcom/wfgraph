@@ -22,7 +22,6 @@ function execution(
     runMode: "live",
     startEventName: "app/appointment.created",
     entityValue: "appt_1",
-    workflowRunId: null,
     versionKind: "published",
     versionNumber: 1,
     error: null,

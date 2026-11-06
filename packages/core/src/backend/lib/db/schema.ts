@@ -284,7 +284,6 @@ export const workflowExecutions = pgTable(
     workflowVersionId: text("workflow_version_id")
       .notNull()
       .references(() => workflowVersions.id, { onDelete: "cascade" }),
-    workflowRunId: text("workflow_run_id"),
     status: text("status").notNull().$type<WorkflowExecutionStatus>(),
     startSource: text("start_source")
       .notNull()
@@ -294,10 +293,6 @@ export const workflowExecutions = pgTable(
     // attempt re-claims this row instead of opening a second run for one Event.
     // Null for a manual or scheduled start, which no retry loop replays.
     deliveryId: text("delivery_id"),
-    // When the bus was told about this run. Null means the row was opened and
-    // the send has not been confirmed, which is the one window a crash can leave
-    // an in-flight row behind that nothing will ever finish.
-    enqueuedAt: timestamp("enqueued_at"),
     runMode: text("run_mode").notNull().default("live").$type<WorkflowMode>(),
     startEventName: text("start_event_name"),
     entityValue: text("entity_value"),
@@ -334,9 +329,6 @@ export const workflowExecutions = pgTable(
     check(
       "workflow_executions_termination_check",
       sql`(${table.terminationKind} is null and ${table.terminationRequestedAt} is null and ${table.terminationReason} is null and ${table.terminationNodeId} is null) or (${table.terminationKind} = 'cancel' and ${table.terminationRequestedAt} is not null and ${table.terminationReason} is null and ${table.terminationNodeId} is null) or (${table.terminationKind} = 'exit' and ${table.terminationRequestedAt} is not null and ${table.terminationReason} in ('entity_condition_not_met', 'entity_not_found') and ${table.terminationNodeId} is not null)`
-    ),
-    uniqueIndex("workflow_executions_workflow_run_id_uidx").on(
-      table.workflowRunId
     ),
     // One run per arrival per workflow. Postgres treats nulls as distinct in a
     // unique index, so the manual and scheduled starts that carry no delivery id
@@ -486,7 +478,6 @@ export const workflowWaitStates = pgTable(
     workflowId: text("workflow_id")
       .notNull()
       .references(() => workflows.id, { onDelete: "cascade" }),
-    runId: text("run_id").notNull(),
     nodeId: text("node_id").notNull(),
     nodeName: text("node_name").notNull(),
     waitType: text("wait_type").notNull().$type<"delay" | "event">(),

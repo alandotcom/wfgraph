@@ -69,7 +69,6 @@ export type RunHistorySearchRow = {
   startSource: WorkflowExecutionStartSource | null;
   startEventName: string | null;
   entityValue: string | null;
-  workflowRunId: string | null;
   error: string | null;
 };
 
@@ -279,7 +278,6 @@ function runSearchText(run: RunHistorySearchRow): string {
     run.startSource,
     run.startEventName,
     run.entityValue,
-    run.workflowRunId,
     run.error,
   ]
     .filter((value): value is string => value !== null && value !== "")

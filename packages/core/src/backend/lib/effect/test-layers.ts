@@ -348,8 +348,6 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
   findAdmissionRefusal: refuse("findAdmissionRefusal"),
   recordAdmissionRefusal: refuse("recordAdmissionRefusal"),
   insertTerminal: refuse("insertTerminal"),
-  markEnqueued: refuse("markEnqueued"),
-  markEnqueueFailed: refuse("markEnqueueFailed"),
   repinVersion: refuse("repinVersion"),
   markRunning: refuse("markRunning"),
   markWaitingIfParked: refuse("markWaitingIfParked"),
@@ -388,7 +386,6 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
   listWorkflowEvents: refuse("listWorkflowEvents"),
   deleteAllForWorkflow: refuse("deleteAllForWorkflow"),
   findPark: refuse("findPark"),
-  scheduleExecution: refuse("scheduleExecution"),
   findSchedule: refuse("findSchedule"),
   claimDue: refuse("claimDue"),
   resolvePark: refuse("resolvePark"),
@@ -457,7 +454,7 @@ export function stubInngestClient(
 }
 
 const executionDriverStubs: ExecutionDriver["Service"] = {
-  enqueueRun: refuse("enqueueRun"),
+  startRun: refuse("startRun"),
   resolvePark: refuse("resolvePark"),
   requestCanceledOutlet: refuse("requestCanceledOutlet"),
   migrateRun: refuse("migrateRun"),

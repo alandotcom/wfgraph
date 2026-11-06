@@ -145,6 +145,23 @@ export function endExecutions<A, E>(
 }
 
 /**
+ * Gives a run its schedule row, `queued` and due at `wakeAt`, inside the write
+ * transaction that inserts the run's execution row (`startForEntity`).
+ */
+export function insertRunSchedule(
+  database: SqliteExecutor,
+  input: { executionId: string; wakeAt: Date }
+) {
+  return database.insert(workflowExecutionSchedule).values({
+    id: generateId(),
+    kind: "run",
+    executionId: input.executionId,
+    state: "queued",
+    wakeAt: input.wakeAt.getTime(),
+  });
+}
+
+/**
  * Resolves every park of one run still `waiting` with `wake`, answering how
  * many it resolved, as the PostgreSQL backend's `resolveOpenParks` does. It
  * runs inside the caller's write transaction, which already holds the one
@@ -268,22 +285,6 @@ export function makeSqliteScheduleMethods(
   store: SqliteDatabase
 ): ScheduleRepoMethods {
   return {
-    scheduleExecution: (input) =>
-      store.write((database) =>
-        database
-          .insert(workflowExecutionSchedule)
-          .values({
-            id: generateId(),
-            kind: input.kind,
-            executionId: input.executionId,
-            state: "queued",
-            wakeAt: input.wakeAt.getTime(),
-          })
-          .onConflictDoNothing()
-          .returning({ id: workflowExecutionSchedule.id })
-          .pipe(Effect.map((rows) => rows.length > 0))
-      ),
-
     findSchedule: (executionId) =>
       store.read((database) =>
         database

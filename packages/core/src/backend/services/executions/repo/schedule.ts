@@ -201,6 +201,22 @@ export function endExecutions<A>(
 }
 
 /**
+ * Gives a run its schedule row, `queued` and due at `wakeAt`, inside the
+ * transaction that inserts the run's execution row (`startForEntity`).
+ */
+export async function insertRunSchedule(
+  tx: WfGraphTransaction,
+  input: { executionId: string; wakeAt: Date }
+): Promise<void> {
+  await tx.insert(workflowExecutionSchedule).values({
+    executionId: input.executionId,
+    kind: "run",
+    state: "queued",
+    wakeAt: input.wakeAt,
+  });
+}
+
+/**
  * A row the claim just leased, as its pass sees it. The claim wrote the token
  * and the lease expiry and claims only `run` rows, so a row missing any of
  * them is a defect.
@@ -260,16 +276,6 @@ export function stepMemoOf(row: StepMemoColumns): StepMemo {
 
 /** The schedule and step memo slice of `ExecutionRepo`. */
 export type ScheduleRepoMethods = {
-  /**
-   * Give a run a schedule row, `queued` and due at `wakeAt`, answering whether
-   * this call inserted it. A second call for the same run leaves the row as it
-   * stands.
-   */
-  readonly scheduleExecution: (input: {
-    executionId: string;
-    kind: "run";
-    wakeAt: Date;
-  }) => Effect.Effect<boolean, DatabaseError>;
   /** One run's schedule row, or null when it has none. */
   readonly findSchedule: (
     executionId: string
@@ -503,21 +509,6 @@ export function makeScheduleMethods(
   database: Database["Service"]
 ): ScheduleRepoMethods {
   return {
-    scheduleExecution: (input) =>
-      database.query(async (db) => {
-        const inserted = await db
-          .insert(workflowExecutionSchedule)
-          .values({
-            executionId: input.executionId,
-            kind: input.kind,
-            state: "queued",
-            wakeAt: input.wakeAt,
-          })
-          .onConflictDoNothing()
-          .returning({ id: workflowExecutionSchedule.id });
-        return inserted.length > 0;
-      }),
-
     findSchedule: (executionId) =>
       database.query(async (db) => {
         const [row] = await db

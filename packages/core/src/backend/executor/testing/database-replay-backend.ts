@@ -110,15 +110,12 @@ export function openDatabaseReplayBackend(
           },
           concurrency: "unlimited",
           supersededReason: "newer start",
+          startedEntry: { message: "Manual run started", metadata: {} },
+          now: virtual(0),
         });
         if (started.status !== "started") {
           throw new Error("The replay Execution was refused");
         }
-        yield* executions.scheduleExecution({
-          executionId: started.execution.id,
-          kind: "run",
-          wakeAt: virtual(0),
-        });
         return started.execution.id;
       })
     );
@@ -160,7 +157,6 @@ export function openDatabaseReplayBackend(
             executionId,
             workflowId,
             workflowVersionId,
-            runId: executionId,
             nodeId: parkKey,
             nodeName: parkKey,
             side: "started",
@@ -230,7 +226,6 @@ export function openDatabaseReplayBackend(
 
         const passRuntime: WorkflowExecutionRuntime = {
           attempt: runtime.attempt,
-          runId: runtime.runId,
           run: runtime.run,
           waitForEvent: async (step, options) => {
             const waitStateId = await mirrorPark(step, options, now);

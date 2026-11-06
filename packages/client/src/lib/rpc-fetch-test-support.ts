@@ -83,7 +83,6 @@ export function extractRpcProcedurePath(url: string): string {
 type RawExecution = {
   id: string;
   workflowId: string;
-  workflowRunId: string;
   status: string;
   startedAt: string;
   completedAt: string | null;

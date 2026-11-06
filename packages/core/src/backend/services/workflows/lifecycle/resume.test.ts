@@ -19,7 +19,6 @@ const liveWaitState: WorkflowWaitState = {
   id: "wait_1",
   executionId: "exec_1",
   workflowId: "wf_1",
-  runId: "run_1",
   nodeId: "node_wait",
   nodeName: "Wait for approval",
   waitType: "event",

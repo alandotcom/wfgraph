@@ -113,7 +113,6 @@ export type NodeSchedulerInput = {
   workflowId: string;
   /** The Workflow Version whose graph this run is walking. */
   workflowVersionId: string;
-  workflowRunId: string;
   runMode: "live" | "test";
   /** What the entry node hands on: see `WorkflowExecutionInput.startPayload`. */
   startPayload: JsonObject;
@@ -540,7 +539,6 @@ export class NodeScheduler {
           actions,
           executionId,
           workflowId,
-          workflowRunId,
           runMode,
           startPayload,
         } = this.input;
@@ -569,7 +567,6 @@ export class NodeScheduler {
           actions,
           executionId,
           workflowId,
-          workflowRunId,
           runMode,
           startPayload,
           entityContext,

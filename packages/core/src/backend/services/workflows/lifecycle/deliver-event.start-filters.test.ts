@@ -14,7 +14,7 @@ import {
   resolveEntityMock,
   selectEntityIdMock,
   stopRunMock,
-  startForEntityMock,
+  startRunMock,
   startRules,
   subscriber,
   videoPayload,
@@ -91,7 +91,7 @@ describe("applyLifecycleRules and Start Filters", () => {
           workflowId: "wf_1",
           reason: "start_filter_not_met",
         });
-        assert.strictEqual(startForEntityMock.mock.calls.length, 0);
+        assert.strictEqual(startRunMock.mock.calls.length, 0);
       })
     );
 
@@ -160,7 +160,7 @@ describe("applyLifecycleRules and Start Filters", () => {
           assert.strictEqual(outcome.kind, "refused");
           // `startForEntity` is where a newest-wins start supersedes, so never
           // reaching it is the assertion: nothing was displaced.
-          assert.strictEqual(startForEntityMock.mock.calls.length, 0);
+          assert.strictEqual(startRunMock.mock.calls.length, 0);
           assert.strictEqual(stopRunMock.mock.calls.length, 0);
         })
     );
@@ -193,7 +193,7 @@ describe("applyLifecycleRules and Start Filters", () => {
           workflowId: "wf_1",
           reason: "start_filter_unevaluable",
         });
-        assert.strictEqual(startForEntityMock.mock.calls.length, 0);
+        assert.strictEqual(startRunMock.mock.calls.length, 0);
         assert.strictEqual(
           recordAuditEventMock.mock.calls[0]?.[0].eventType,
           "run_refused"
@@ -228,7 +228,7 @@ describe("applyLifecycleRules and Start Filters", () => {
           assert.strictEqual(outcome.kind, "refused");
           assert.strictEqual(selectEntityIdMock.mock.calls.length, 0);
           assert.strictEqual(resolveEntityMock.mock.calls.length, 0);
-          assert.strictEqual(startForEntityMock.mock.calls.length, 0);
+          assert.strictEqual(startRunMock.mock.calls.length, 0);
         })
     );
 

@@ -352,7 +352,9 @@ pass, so the engine uses no `Effect.fork`.
 resume claim (`claimWaitingStateById`, `claimWaitingStateByToken`), the Cancel claim
 (`requestCancelForEntity`), the Migration repin (`repinVersion`) and the Exit claim (the
 fenced `requestExit`) each write their wake onto the wait rows and move a sleeping schedule
-row to `queued`, locking the schedule row before anything else. `ExecutionDriver`
+row to `queued`, locking the schedule row before anything else. A start writes the new
+run's schedule row and its "run started" entry in the transaction that inserts the
+Execution (`startForEntity`), so no open run is ever unscheduled. `ExecutionDriver`
 (`services/executions/driver.ts`) is what a service calls, and it wakes the worker loop after
 the write. A pass's release (`releasePass`) takes the same lock and re-queues a run whose park
 holds a wake no pass consumed. The TLA+ models in `.claude/skills/verify-durable-executor`

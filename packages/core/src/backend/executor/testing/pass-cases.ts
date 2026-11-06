@@ -830,14 +830,14 @@ function describeCases(
           const { executionId } = harness;
           const logs = yield* executions.listLogs(executionId);
           const schedule = yield* executions.findSchedule(executionId);
-          // A write transaction that finds the schedule row already there
-          // and changes nothing.
-          const scheduled = yield* executions.scheduleExecution({
+          // A write transaction of its own: one timeline entry.
+          yield* executions.recordAuditEvent({
+            workflowId: "wf_1",
             executionId,
-            kind: "run",
-            wakeAt: now(),
+            eventType: "run_started",
+            message: "Written while the step body was held",
           });
-          return { logs, schedule, scheduled };
+          return { logs, schedule };
         })
       )
     ).finally(() => heldStep.release());
@@ -852,7 +852,6 @@ function describeCases(
       state: "leased",
       workerId: "worker_1",
     });
-    expect(during.scheduled).toBe(false);
     expect((await readRun(harness)).status).toBe("completed");
   });
 

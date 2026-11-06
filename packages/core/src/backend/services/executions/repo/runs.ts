@@ -79,7 +79,6 @@ const EXECUTION_LIST_COLUMNS = {
   runMode: workflowExecutions.runMode,
   startEventName: workflowExecutions.startEventName,
   entityValue: workflowExecutions.entityValue,
-  workflowRunId: workflowExecutions.workflowRunId,
   versionKind: workflowVersions.kind,
   versionNumber: workflowVersions.version,
   error: workflowExecutions.error,
@@ -305,34 +304,6 @@ export type RunsRepoMethods = {
   readonly insertTerminal: (
     input: NewTerminalExecution
   ) => Effect.Effect<WorkflowExecution, DatabaseError>;
-  /**
-   * Record that the executor scheduled this run. `runId` fills
-   * `workflow_run_id`, which the executor leaves null.
-   *
-   * The stamp is what separates a run the executor holds from a row whose
-   * process died before its schedule row was written, which is the only thing
-   * that makes a stuck row recoverable: an unstamped row past
-   * `UNSENT_RUN_GRACE_MS` is one the next start for its entity may close.
-   */
-  readonly markEnqueued: (input: {
-    executionId: string;
-    runId: string | null;
-  }) => Effect.Effect<void, DatabaseError>;
-  /**
-   * Close a run whose enqueue was refused, answering whether a row was
-   * written. Without it the row sits in "running" with nothing behind it that
-   * could ever finish it.
-   *
-   * The guard is the whole compensation decision: only a row still in flight,
-   * holding no Cancel or Exit claim, and with no `enqueuedAt` is closed. A
-   * claimed row belongs to the run that must finish it, and a stamped row was
-   * taken by the bus through another attempt's send. The caller signals the
-   * run to stop only after this answers true.
-   */
-  readonly markEnqueueFailed: (input: {
-    executionId: string;
-    error: string;
-  }) => Effect.Effect<boolean, DatabaseError>;
   /**
    * The Migration producer: move a parked run's pinned version pointer,
    * answering whether a row moved. In the same transaction every park is
@@ -662,44 +633,6 @@ export function makeRunsMethods(
 
         return execution;
       }),
-
-    markEnqueued: (input) =>
-      database.query(async (db) => {
-        await db
-          .update(workflowExecutions)
-          .set({ workflowRunId: input.runId, enqueuedAt: new Date() })
-          .where(eq(workflowExecutions.id, input.executionId));
-      }),
-
-    markEnqueueFailed: (input) =>
-      database.query((db) =>
-        endExecutions(db, [input.executionId], async (tx) => {
-          const closed = await tx
-            .update(workflowExecutions)
-            .set({
-              status: "failed",
-              error: input.error,
-              completedAt: new Date(),
-              waitingAt: null,
-            })
-            .where(
-              and(
-                eq(workflowExecutions.id, input.executionId),
-                inArray(workflowExecutions.status, [
-                  ...IN_FLIGHT_EXECUTION_STATUSES,
-                ]),
-                isNull(workflowExecutions.terminationKind),
-                isNull(workflowExecutions.enqueuedAt)
-              )
-            )
-            .returning({ id: workflowExecutions.id });
-
-          return {
-            result: closed.length > 0,
-            ended: closed.map((row) => row.id),
-          };
-        })
-      ),
 
     repinVersion: (input) =>
       database.query((db) =>

@@ -37,11 +37,10 @@ import {
 type Repo = ExecutionRepo["Service"];
 type Driver = ExecutionDriver["Service"];
 
-const startForEntityMock = vi.fn<Repo["startForEntity"]>();
+const startRunMock = vi.fn<Driver["startRun"]>();
 const listWaitsForEventMock = vi.fn<Repo["listWaitsForEvent"]>();
 const recordAuditEventMock = vi.fn<Repo["recordAuditEvent"]>(() => Effect.void);
 const CLAIMED_AT = new Date("2026-03-01T00:01:00.000Z");
-const enqueueRunMock = vi.fn<Driver["enqueueRun"]>(() => Effect.void);
 const stopRunMock = vi.fn<Driver["stopRun"]>(() => Effect.void);
 const requestCanceledOutletMock = vi.fn<Driver["requestCanceledOutlet"]>();
 const resolveParkMock = vi.fn<Driver["resolvePark"]>();
@@ -163,9 +162,7 @@ function createExecution(
   return {
     id: "exec_new",
     workflowId: "wf_1",
-    workflowRunId: null,
     deliveryId: null,
-    enqueuedAt: null,
     status: "running",
     startSource: "event",
     runMode: "live",
@@ -196,7 +193,6 @@ const startedOutcome: EntityStartOutcome = {
   status: "started",
   execution: createExecution(),
   supersededExecutionIds: [],
-  reclaimedExecutionIds: [],
 };
 
 /** The entry node, carrying the rules under test and nothing else. */
@@ -262,7 +258,7 @@ function stubPublishedWorkflow(workflow: Workflow) {
         publishedVersion: publishedVersion(workflow),
       }),
     findPublishedVersion: () => Effect.succeed(publishedVersion(workflow)),
-    // The enqueue reads the version the opened row pins, because that is what
+    // A start reads the version the new row will pin, because that is what
     // the run's opening timeline entry names.
     findVersionById: () => Effect.succeed(publishedVersion(workflow)),
   });
@@ -293,7 +289,6 @@ function parkedWait(
     id: "wait_1",
     executionId: "exec_parked",
     workflowId: "wf_1",
-    runId: "run_1",
     nodeId: "node_wait",
     nodeName: "Wait",
     waitType: "event",
@@ -313,17 +308,15 @@ function parkedWait(
  * The ports `applyLifecycleRules` reaches through its real neighbours.
  *
  * The executor's writes go through a stubbed `ExecutionDriver`: the Cancel
- * claim answers one claimed run, and an enqueue or a stop succeeds. Their own
+ * claim answers one claimed run, and a start or a stop succeeds. Their own
  * suites own those writes.
  */
 const lifecyclePorts = Layer.mergeAll(
   stubExecutionRepo({
-    startForEntity: startForEntityMock,
     recordAuditEvent: recordAuditEventMock,
-    markEnqueued: () => Effect.void,
   }),
   stubExecutionDriver({
-    enqueueRun: enqueueRunMock,
+    startRun: startRunMock,
     stopRun: stopRunMock,
     requestCanceledOutlet: requestCanceledOutletMock,
   }),
@@ -346,18 +339,16 @@ const waitPorts = Layer.mergeAll(
 );
 
 beforeEach(() => {
-  startForEntityMock.mockReset();
+  startRunMock.mockReset();
   listWaitsForEventMock.mockReset();
   recordAuditEventMock.mockReset();
-  enqueueRunMock.mockReset();
   stopRunMock.mockReset();
   requestCanceledOutletMock.mockReset();
   resolveParkMock.mockReset();
 
-  startForEntityMock.mockImplementation(() => Effect.succeed(startedOutcome));
+  startRunMock.mockImplementation(() => Effect.succeed(startedOutcome));
   listWaitsForEventMock.mockImplementation(() => Effect.succeed([]));
   recordAuditEventMock.mockImplementation(() => Effect.void);
-  enqueueRunMock.mockImplementation(() => Effect.void);
   stopRunMock.mockImplementation(() => Effect.void);
   requestCanceledOutletMock.mockImplementation(() =>
     Effect.succeed([
@@ -400,16 +391,13 @@ describe("applyLifecycleRules", () => {
           failedToSupersede: [],
         });
         assert.strictEqual(
-          startForEntityMock.mock.calls[0]?.[0].execution.entityValue,
+          startRunMock.mock.calls[0]?.[0].execution.entityValue,
           "appt_8813"
         );
         assert.strictEqual(
-          startForEntityMock.mock.calls[0]?.[0].execution.workflowVersionId,
+          startRunMock.mock.calls[0]?.[0].execution.workflowVersionId,
           "ver_1"
         );
-        assert.deepStrictEqual(enqueueRunMock.mock.calls[0]?.[0], {
-          executionId: "exec_new",
-        });
       })
     );
 
@@ -434,7 +422,7 @@ describe("applyLifecycleRules", () => {
           kind: "waits_only",
           workflowId: "wf_1",
         });
-        assert.strictEqual(startForEntityMock.mock.calls.length, 0);
+        assert.strictEqual(startRunMock.mock.calls.length, 0);
       })
     );
 
@@ -492,11 +480,11 @@ describe("applyLifecycleRules", () => {
 
           assert.strictEqual(outcome.kind, "started");
           assert.strictEqual(
-            startForEntityMock.mock.calls[0]?.[0].execution.entityValue,
+            startRunMock.mock.calls[0]?.[0].execution.entityValue,
             "current-entity"
           );
           assert.strictEqual(
-            startForEntityMock.mock.calls[0]?.[0].execution.workflowVersionId,
+            startRunMock.mock.calls[0]?.[0].execution.workflowVersionId,
             "ver_2"
           );
         })
@@ -526,7 +514,7 @@ describe("applyLifecycleRules", () => {
 
           assert.strictEqual(outcome.kind, "started");
           assert.strictEqual(
-            startForEntityMock.mock.calls[0]?.[0].execution.workflowVersionId,
+            startRunMock.mock.calls[0]?.[0].execution.workflowVersionId,
             "ver_2"
           );
         })
@@ -562,7 +550,7 @@ describe("applyLifecycleRules", () => {
             kind: "waits_only",
             workflowId: "wf_1",
           });
-          assert.strictEqual(startForEntityMock.mock.calls.length, 0);
+          assert.strictEqual(startRunMock.mock.calls.length, 0);
         })
     );
 
@@ -597,11 +585,11 @@ describe("applyLifecycleRules", () => {
 
         assert.strictEqual(outcome.kind, "started");
         assert.strictEqual(
-          startForEntityMock.mock.calls[0]?.[0].execution.startEventName,
+          startRunMock.mock.calls[0]?.[0].execution.startEventName,
           "app/appointment.canceled"
         );
         assert.strictEqual(
-          startForEntityMock.mock.calls[0]?.[0].concurrency,
+          startRunMock.mock.calls[0]?.[0].concurrency,
           "newest-wins"
         );
       })
@@ -625,7 +613,7 @@ describe("applyLifecycleRules", () => {
         );
 
         assert.strictEqual(
-          startForEntityMock.mock.calls[0]?.[0].execution.entityValue,
+          startRunMock.mock.calls[0]?.[0].execution.entityValue,
           "appt_8813"
         );
       })
@@ -653,13 +641,13 @@ describe("applyLifecycleRules", () => {
           kind: "waits_only",
           workflowId: "wf_1",
         });
-        assert.strictEqual(startForEntityMock.mock.calls.length, 0);
+        assert.strictEqual(startRunMock.mock.calls.length, 0);
       })
     );
 
     it.effect("carries a first-wins refusal back as refused", () =>
       Effect.gen(function* () {
-        startForEntityMock.mockReturnValue(
+        startRunMock.mockReturnValue(
           Effect.succeed({
             status: "refused",
             inFlightExecutionIds: ["exec_running"],
@@ -684,7 +672,6 @@ describe("applyLifecycleRules", () => {
           workflowId: "wf_1",
           reason: "concurrency_first_wins",
         });
-        assert.strictEqual(enqueueRunMock.mock.calls.length, 0);
       })
     );
 
@@ -715,7 +702,7 @@ describe("applyLifecycleRules", () => {
           eventName: "app/appointment.canceled",
           payload,
         });
-        assert.strictEqual(startForEntityMock.mock.calls.length, 0);
+        assert.strictEqual(startRunMock.mock.calls.length, 0);
       })
     );
 

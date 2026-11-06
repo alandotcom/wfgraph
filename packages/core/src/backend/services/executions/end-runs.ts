@@ -162,7 +162,7 @@ const recordEndingFailure = Effect.fn("recordEndingFailure")(function* (input: {
 const recordRunEnded = Effect.fn("recordRunEnded")(function* (input: {
   workflowId: string;
   executionId: string;
-  eventType: "run_cancelled" | "run_superseded" | "run_failed";
+  eventType: "run_cancelled" | "run_superseded";
   reason: string;
   eventName?: string | undefined;
 }) {
@@ -336,72 +336,50 @@ const endOneRun = Effect.fn("endOneRun")(function* (input: {
 });
 
 /**
- * Stops runs whose rows a serialized start already flipped, and records what
- * ended them.
+ * Stops the runs newest-wins Concurrency displaced, and records what ended
+ * them.
  *
  * Those rows and their wait rows were both written inside the lock that made room
  * for the newer start, so there is no compare-and-set here and no wait row to
  * clean: this is the announcement half of a decision already made.
  */
-const announceEndedRuns = Effect.fn("announceEndedRuns")(function* (input: {
-  workflowId: string;
-  executionIds: string[];
-  eventType: "run_superseded" | "run_failed";
-  reason: string;
-  eventName?: string | undefined;
-}) {
-  const outcomes = yield* Effect.forEach(
-    uniq(input.executionIds),
-    (executionId) =>
-      Effect.gen(function* () {
-        const stopped = yield* signalRunToStop({
-          workflowId: input.workflowId,
-          executionId,
-          reason: input.reason,
-          eventName: input.eventName,
-        });
-        const recorded = yield* recordRunEnded({
-          workflowId: input.workflowId,
-          executionId,
-          eventType: input.eventType,
-          reason: input.reason,
-          eventName: input.eventName,
-        });
+export const announceSupersededRuns = Effect.fn("announceSupersededRuns")(
+  function* (input: {
+    workflowId: string;
+    executionIds: string[];
+    reason: string;
+    eventName?: string | undefined;
+  }) {
+    const outcomes = yield* Effect.forEach(
+      uniq(input.executionIds),
+      (executionId) =>
+        Effect.gen(function* () {
+          const stopped = yield* signalRunToStop({
+            workflowId: input.workflowId,
+            executionId,
+            reason: input.reason,
+            eventName: input.eventName,
+          });
+          const recorded = yield* recordRunEnded({
+            workflowId: input.workflowId,
+            executionId,
+            eventType: "run_superseded",
+            reason: input.reason,
+            eventName: input.eventName,
+          });
 
-        return { executionId, failed: !(stopped && recorded) };
-      }),
-    { concurrency: "unbounded" }
-  );
+          return { executionId, failed: !(stopped && recorded) };
+        }),
+      { concurrency: "unbounded" }
+    );
 
-  return {
-    failedExecutionIds: outcomes
-      .filter((entry) => entry.failed)
-      .map((entry) => entry.executionId),
-  };
-});
-
-/** Announces the runs newest-wins Concurrency displaced. */
-export const announceSupersededRuns = (input: {
-  workflowId: string;
-  executionIds: string[];
-  reason: string;
-  eventName?: string | undefined;
-}) => announceEndedRuns({ ...input, eventType: "run_superseded" });
-
-/**
- * Announces the runs a start found stuck between their row and the executor.
- *
- * The stop is what makes the row's `failed` status honest: the stamp those rows
- * are missing can also go missing on a run the executor really did take, so a
- * run that turns out to be live is stopped rather than left executing against a
- * row that says it failed.
- */
-export const announceReclaimedRuns = (input: {
-  workflowId: string;
-  executionIds: string[];
-  reason: string;
-  eventName?: string | undefined;
-}) => announceEndedRuns({ ...input, eventType: "run_failed" });
+    return {
+      failedExecutionIds: outcomes
+        .filter((entry) => entry.failed)
+        .map((entry) => entry.executionId),
+    };
+  }
+);
 
 function waitStateIdsFor(
   waitStates: EndingWaitState[],

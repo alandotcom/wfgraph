@@ -12,6 +12,7 @@ import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import type { PersistenceTestRegistry } from "#src/backend/persistence/conformance/support";
 import {
   emptyGraph,
+  notYetDue,
   seedPublishedWorkflow,
 } from "#src/backend/persistence/conformance/support";
 
@@ -153,6 +154,7 @@ export function describeWorkflowConformance({
               },
               concurrency: "unlimited",
               supersededReason: "newer start",
+              ...notYetDue,
             });
           }
           yield* executions.startForEntity({
@@ -165,6 +167,7 @@ export function describeWorkflowConformance({
             },
             concurrency: "unlimited",
             supersededReason: "newer start",
+            ...notYetDue,
           });
           yield* executions.startForEntity({
             execution: {
@@ -176,6 +179,7 @@ export function describeWorkflowConformance({
             },
             concurrency: "unlimited",
             supersededReason: "newer start",
+            ...notYetDue,
           });
 
           // All three terminal outcomes are pinned to the current version. They
@@ -200,6 +204,7 @@ export function describeWorkflowConformance({
             },
             concurrency: "unlimited",
             supersededReason: "newer start",
+            ...notYetDue,
           });
           if (superseded.status !== "started") {
             throw new Error("Start was refused");
@@ -237,6 +242,7 @@ export function describeWorkflowConformance({
             },
             concurrency: "unlimited",
             supersededReason: "newer start",
+            ...notYetDue,
           });
 
           return yield* workflows.listVersionUsage("wf_1");
@@ -306,6 +312,7 @@ export function describeWorkflowConformance({
               },
               concurrency: "unlimited",
               supersededReason: "newer start",
+              ...notYetDue,
             });
           }
 
@@ -732,6 +739,7 @@ export function describeWorkflowConformance({
               },
               concurrency: "unlimited",
               supersededReason: "newer start",
+              ...notYetDue,
             });
             if (started.status !== "started") {
               throw new Error("Start was refused");
@@ -740,7 +748,6 @@ export function describeWorkflowConformance({
               side: "started",
               executionId: started.execution.id,
               workflowId: "wf_1",
-              runId: `run_${suffix}`,
               nodeId: "wait_1",
               nodeName: "Wait for approval",
               workflowVersionId: "ver_1",
@@ -833,6 +840,7 @@ export function describeWorkflowConformance({
             },
             concurrency: "unlimited",
             supersededReason: "newer start",
+            ...notYetDue,
           });
           if (started.status !== "started") {
             throw new Error("Start was refused");
@@ -841,7 +849,6 @@ export function describeWorkflowConformance({
             side: "started",
             executionId: started.execution.id,
             workflowId: "wf_1",
-            runId: "run_1",
             nodeId: "wait_1",
             nodeName: "Wait for approval",
             workflowVersionId: "ver_1",

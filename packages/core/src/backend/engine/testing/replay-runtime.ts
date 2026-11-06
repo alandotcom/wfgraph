@@ -89,8 +89,8 @@ export type ReplayDatabaseBackend = {
   /**
    * The runtime one pass of the body runs against. Its `waitForEvent` answers
    * the wake `resolvePark` recorded for that step id, or `parked` while none is
-   * recorded. The harness reads only `run`, `waitForEvent`, `attempt` and
-   * `runId` from it. `now` is the virtual clock in milliseconds, which a backend over a real
+   * recorded. The harness reads only `run`, `waitForEvent` and `attempt` from
+   * it. `now` is the virtual clock in milliseconds, which a backend over a real
    * database hands its claim.
    */
   runtimeForPass: (pass: {
@@ -156,7 +156,7 @@ export const TIMEOUT_WAKE: WaitWake = { kind: "timeout" };
 
 const DEFAULT_MAX_INVOCATIONS = 200;
 
-/** The id every pass of the one run reports as its `runId`. */
+/** The name every `ReplayExecution` gives the one run of the drive. */
 const RUN_ID = "root";
 
 /** The backend the database executor uses when a case supplies none. */
@@ -169,7 +169,6 @@ export function createInMemoryReplayBackend(): ReplayDatabaseBackend {
       const { run, attempt } = createInMemoryWorkflowRuntime({ memo });
       return {
         attempt,
-        runId: RUN_ID,
         run,
         waitForEvent: ({ id: stepId }) => {
           const wake = wakes.get(stepId);
@@ -304,7 +303,6 @@ export async function driveWithReplay<T>(
 
     const runtime: WorkflowExecutionRuntime = {
       attempt: inner.attempt,
-      runId: inner.runId,
       // The wrapper sees only a memo miss, because the backend calls `fn` for
       // a step it has no stored value for and for nothing else.
       run: (step, fn) =>

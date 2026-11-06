@@ -62,7 +62,6 @@ const executionListSelection = {
   runMode: workflowExecutions.runMode,
   startEventName: workflowExecutions.startEventName,
   entityValue: workflowExecutions.entityValue,
-  workflowRunId: workflowExecutions.workflowRunId,
   error: workflowExecutions.error,
   startedAt: workflowExecutions.startedAt,
   waitingAt: workflowExecutions.waitingAt,
@@ -470,45 +469,6 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
     insertTerminal: (input) =>
       store.write((database) =>
         insertExecution(database, input, input.status, input)
-      ),
-    markEnqueued: ({ executionId, runId }) =>
-      store.write((database) =>
-        database
-          .update(workflowExecutions)
-          .set({ workflowRunId: runId, enqueuedAt: Date.now() })
-          .where(eq(workflowExecutions.id, executionId))
-      ),
-    markEnqueueFailed: ({ executionId, error }) =>
-      store.write((database) =>
-        endExecutions(
-          database,
-          Effect.gen(function* () {
-            const closed = yield* database
-              .update(workflowExecutions)
-              .set({
-                status: "failed",
-                error,
-                completedAt: Date.now(),
-                waitingAt: null,
-              })
-              .where(
-                and(
-                  eq(workflowExecutions.id, executionId),
-                  inArray(
-                    workflowExecutions.status,
-                    IN_FLIGHT_EXECUTION_STATUSES
-                  ),
-                  isNull(workflowExecutions.terminationKind),
-                  isNull(workflowExecutions.enqueuedAt)
-                )
-              )
-              .returning({ id: workflowExecutions.id });
-            return {
-              result: closed.length > 0,
-              ended: closed.map((row) => row.id),
-            };
-          })
-        )
       ),
     // The write transaction holds the one writer from its first statement, so
     // the repin takes the run's schedule row, execution row and wait rows

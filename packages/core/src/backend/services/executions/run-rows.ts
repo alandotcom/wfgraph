@@ -1,20 +1,11 @@
 import { createHash } from "node:crypto";
 import { Effect } from "effect";
-import {
-  AppLogger,
-  type EffectLogger,
-} from "#src/backend/lib/effect/app-logger";
-import type { DatabaseError } from "#src/backend/lib/effect/database";
+import type { EffectLogger } from "#src/backend/lib/effect/app-logger";
 import { InternalFailure } from "#src/backend/lib/effect/failures";
 import type { RunScopedAuditEventType } from "@wfgraph/shared/lifecycle/audit-event-types";
 import {
-  type DriverError,
-  ExecutionDriver,
-} from "#src/backend/services/executions/driver";
-import { signalRunToStop } from "#src/backend/services/executions/end-runs";
-import {
   ExecutionRepo,
-  type WorkflowExecution,
+  type NewExecution,
 } from "#src/backend/services/executions/repo";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import type { JsonObject, JsonObjectDraft } from "@wfgraph/shared/types/json";
@@ -44,8 +35,8 @@ export type PinnedRunVersion = {
  * Identity of the workflow plus the version the run will execute.
  *
  * The version is named by id alone. How the timeline words it is read from the
- * `workflow_versions` row at the enqueue, so a start path cannot label a run
- * with a version other than the one its committed row pins.
+ * `workflow_versions` row as the run is opened (`runStartedEntry`), so a start
+ * path cannot label a run with a version other than the one its row pins.
  */
 export type WorkflowRunTarget = {
   id: string;
@@ -55,7 +46,7 @@ export type WorkflowRunTarget = {
   catalogFingerprint: string;
 };
 
-/** Build the run target every start path hands to concurrency / enqueue. */
+/** Build the run target every start path hands to `startWithConcurrency`. */
 export function toWorkflowRunTarget(input: {
   workflow: { id: string; name: string };
   versionId: string;
@@ -107,21 +98,6 @@ function workflowRunIdentity(start: WorkflowRunStart) {
     ? { entityValue: start.entityValue }
     : { entityType: start.entityType, entityId: start.entityId };
 }
-
-export type EnqueueStartedRunInput = {
-  /**
-   * The committed `workflow_executions` row: the run to schedule, and every
-   * column the timeline entry is written from.
-   */
-  execution: WorkflowExecution;
-};
-
-export type StartedWorkflowRun = {
-  executionId: string;
-  /** The row's `workflow_run_id`, which the executor leaves unset. */
-  runId?: string | undefined;
-  runMode: WorkflowMode;
-};
 
 export type RecordTerminalWorkflowRunInput = {
   workflowId: string;
@@ -363,74 +339,27 @@ export const recordStartRefusal = Effect.fn("recordStartRefusal")(function* (
   return admissionDecision;
 });
 
-/** This module's logger, as the Effect that produces it (see `services/workflows/workflow.ts`). */
-const loggerFor = (workflowId: string) =>
-  Effect.map(AppLogger, (appLogger) =>
-    appLogger.get("run-rows").with({ workflowId })
-  );
-
 /**
- * Gives a run whose row already exists its schedule row on the database
- * executor, and records the timeline entry.
+ * The "run started" timeline entry for a run about to be opened, which
+ * `ExecutionRepo.startForEntity` writes in the transaction that inserts the
+ * row.
  *
- * The row is opened by `ExecutionRepo.startForEntity`, under the lock that makes
- * Concurrency a decision rather than a race, and `ExecutionDriver.enqueueRun`
- * writes the schedule row due now and wakes the worker loop.
- *
- * The version the timeline entry names is read here from the id on the row, so
- * no caller can label a run with a version other than the one that run pinned.
- * An attempt answering a delivery another attempt committed is handed that other
- * attempt's row, which may pin an older version than this attempt loaded.
- *
- * The version read and the enqueue are the two steps that may fail the caller,
- * and the ordering says why. Before the enqueue, nothing irreversible has
- * happened, so a refusal travels back for the caller's step to retry and a
- * refused enqueue can close the row. After the enqueue the run exists and this
- * call is bookkeeping, so a refused write is logged and the run is reported as
- * started: failing would put the caller's delivery step into a retry that
- * enqueues nothing new and re-runs everything around it.
- *
- * Everything the schedule row and the timeline entry need is on the row or on
- * the version it pins, so an attempt that finds an Execution a previous attempt
- * committed and never scheduled schedules it with nothing recomputed.
- *
- * A row whose `enqueuedAt` is set was already scheduled, so it is answered from
- * the row: no second enqueue, no second `markEnqueued`, and no second "run
- * started" entry. `enqueuedAt` only moves from null to set, so a row read with
- * a stale null costs one more `enqueueRun`, which leaves the existing schedule
- * row as it stands.
+ * The version the entry names is read here from the id the row will pin, so
+ * no caller can label a run with a version other than the one that run
+ * pinned. A run's version row cascades with the run, so a start naming a
+ * version that is gone is an invariant break rather than a state a retry can
+ * recover from.
  */
-export const enqueueStartedRun = Effect.fn("enqueueStartedRun")(function* (
-  input: EnqueueStartedRunInput
+export const runStartedEntry = Effect.fn("runStartedEntry")(function* (
+  execution: NewExecution
 ) {
-  const repo = yield* ExecutionRepo;
   const workflowRepo = yield* WorkflowRepo;
-  const driver = yield* ExecutionDriver;
-  const { execution } = input;
-  const logger = yield* loggerFor(execution.workflowId);
-
-  if (execution.enqueuedAt !== null) {
-    yield* logger.info("Skipped the enqueue for a run already scheduled", {
-      run: { executionId: execution.id },
-    });
-    const alreadyStarted: StartedWorkflowRun = {
-      executionId: execution.id,
-      runId: execution.workflowRunId ?? undefined,
-      runMode: execution.runMode,
-    };
-    return alreadyStarted;
-  }
-
   const pinned = yield* workflowRepo.findVersionById(
     execution.workflowVersionId
   );
   if (!pinned) {
-    // A run's version row cascades with the run, so a committed Execution
-    // pointing at a version that is gone is an invariant break rather than a
-    // state a retry can recover from.
     return yield* new InternalFailure({
-      error:
-        "The Execution to enqueue pins a workflow version that no longer exists",
+      error: "The run to start pins a workflow version that no longer exists",
     });
   }
   const version: PinnedRunVersion = {
@@ -438,148 +367,26 @@ export const enqueueStartedRun = Effect.fn("enqueueStartedRun")(function* (
     number: pinned.version,
   };
 
-  yield* driver
-    .enqueueRun({ executionId: execution.id })
-    .pipe(Effect.tapError((failure) => closeRefusedEnqueue(input, failure)));
-
-  yield* bookkeeping(
-    logger,
-    "record that the run was scheduled",
-    execution.id,
-    repo.markEnqueued({ executionId: execution.id, runId: null })
-  );
-
-  yield* bookkeeping(
-    logger,
-    "write the run's opening timeline entry",
-    execution.id,
-    repo.recordAuditEvent({
-      workflowId: execution.workflowId,
-      executionId: execution.id,
-      eventType: "run_started",
-      message: buildRunStartedAuditMessage({
-        startSource: execution.startSource,
-        runMode: execution.runMode,
-        eventName: execution.startEventName ?? undefined,
-        version,
-      }),
-      // `entityId` stays off the timeline: it is the host's own record id, and
-      // the row that carries it is what an operator reads it from.
-      metadata: omitUndefined({
-        startSource: execution.startSource,
-        runMode: execution.runMode,
-        versionKind: version.kind,
-        versionNumber: version.number ?? undefined,
-        eventName: execution.startEventName ?? undefined,
-        entityValue: execution.entityValue ?? undefined,
-        entityType: execution.entityType ?? undefined,
-        deliveryId: execution.deliveryId ?? undefined,
-      }),
-    })
-  );
-
-  const started: StartedWorkflowRun = {
-    executionId: execution.id,
-    runMode: execution.runMode,
+  return {
+    message: buildRunStartedAuditMessage({
+      startSource: execution.startSource,
+      runMode: execution.runMode,
+      eventName: execution.startEventName,
+      version,
+    }),
+    // `entityId` stays off the timeline: it is the host's own record id, and
+    // the row that carries it is what an operator reads it from.
+    metadata: omitUndefined({
+      startSource: execution.startSource,
+      runMode: execution.runMode,
+      versionKind: version.kind,
+      versionNumber: version.number ?? undefined,
+      eventName: execution.startEventName,
+      entityValue: execution.entityValue,
+      entityType: execution.entityType,
+      deliveryId: execution.deliveryId,
+    }),
   };
-  return started;
-});
-
-/**
- * Runs a write whose side effect has already landed, so a refusal is a log line.
- *
- * The same policy `runWithStepLog` states for a node's closing log row: once the
- * irreversible thing is done, a bookkeeping failure may not cause it to be done
- * again.
- */
-const bookkeeping = <A>(
-  logger: EffectLogger,
-  what: string,
-  executionId: string,
-  write: Effect.Effect<A, DatabaseError>
-) =>
-  write.pipe(
-    Effect.catchTag("DatabaseError", (error) =>
-      logger.error(
-        `The run is scheduled, but the database refused to ${what}`,
-        {
-          executionId,
-          error,
-        }
-      )
-    )
-  );
-
-/**
- * Undoes a start whose enqueue was refused: the row is closed, and only a run
- * whose row this call closed is stopped.
- *
- * A refused enqueue is ambiguous, because the schedule row may have committed
- * before the database connection failed, leaving the run already due.
- * `markEnqueueFailed` is the decision: it closes only an in-flight row with no
- * Cancel or Exit claim and no `enqueuedAt`, and the same transaction deletes
- * any schedule row the run has. A run behind a row it closed is stopped, and
- * its own writes are refused by its fence and its terminal status. Every other
- * row is left to the run that must finish it: a claim is finished by the run
- * holding it, and a stamped row belongs to the enqueue that landed.
- *
- * One case stays open. A Cancel claim can land on a row whose first enqueue
- * was refused, and that row may have no schedule row. The retry of the Event
- * delivery enqueues such a row again, and the run then reads the claim at its
- * first boundary and takes the Canceled outlet. A row started by hand has no
- * delivery to retry, and neither has a delivery that meets the same refusal on
- * every attempt, so a row in one of those two cases stays in flight.
- *
- * A close the database refuses stops nothing either, since the row may hold a
- * claim this call cannot see. The row stays in flight and unstamped, so the
- * next start for its entity can close it through `reclaimStuckRuns` once it is
- * past `UNSENT_RUN_GRACE_MS`. The driver's failure travels on to the caller in
- * every case.
- */
-const closeRefusedEnqueue = Effect.fn("closeRefusedEnqueue")(function* (
-  input: EnqueueStartedRunInput,
-  failure: DriverError
-) {
-  const repo = yield* ExecutionRepo;
-  const { execution } = input;
-  const logger = yield* loggerFor(execution.workflowId);
-  const error =
-    failure.cause instanceof Error
-      ? failure.cause.message
-      : "Failed to enqueue run";
-
-  const closed = yield* repo
-    .markEnqueueFailed({ executionId: execution.id, error })
-    .pipe(
-      Effect.catchTag("DatabaseError", (databaseError) =>
-        Effect.as(
-          logger.error(
-            "Enqueue reported failure, and the database refused to close the row, so the run was not stopped",
-            { run: { executionId: execution.id }, error: databaseError }
-          ),
-          null
-        )
-      )
-    );
-
-  if (closed === null) {
-    return;
-  }
-
-  if (!closed) {
-    yield* logger.info(
-      "Enqueue reported failure, but the row holds a claim, was enqueued by another attempt, or has ended, so the run was not stopped",
-      { run: { executionId: execution.id } }
-    );
-    return;
-  }
-
-  yield* signalRunToStop({
-    workflowId: execution.workflowId,
-    executionId: execution.id,
-    reason: error,
-    eventName: execution.startEventName ?? undefined,
-  });
 });
 
 /**

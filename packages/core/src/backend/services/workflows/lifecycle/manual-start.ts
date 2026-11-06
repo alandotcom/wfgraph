@@ -432,7 +432,6 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
     const response: WorkflowExecuteResponse = omitUndefined({
       status: "running",
       executionId: started.executionId,
-      runId: started.runId,
       runMode,
       supersededExecutions:
         started.supersededExecutionIds.length > 0
@@ -454,8 +453,8 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
       outcome: response.status,
     })
   ),
-  // A rejected query and a refused enqueue both leave the caller with the same
-  // nothing, and the operator with the same line to grep for.
+  // A rejected query and a refused start write both leave the caller with the
+  // same nothing, and the operator with the same line to grep for.
   (effect, workflowId) =>
     effect.pipe(
       catchSeamFailures(

@@ -495,7 +495,6 @@ function serveRun(
       {
         id: "run_1",
         workflowId: "wf_1",
-        workflowRunId: "inngest_1",
         status,
         startedAt: "2026-03-01T10:00:00.000Z",
         completedAt: null,

@@ -41,7 +41,6 @@ type GlobalExecutionItem = {
   runMode: "live" | "test";
   startEventName: string | null;
   entityValue: string | null;
-  workflowRunId: string | null;
   versionKind: WorkflowVersionKind;
   versionNumber: number | null;
   error: string | null;
@@ -84,7 +83,6 @@ function toGlobalExecutionItem(row: GlobalExecutionRow): GlobalExecutionItem {
     runMode: row.runMode,
     startEventName: row.startEventName,
     entityValue: row.entityValue,
-    workflowRunId: row.workflowRunId,
     versionKind: row.versionKind,
     versionNumber: row.versionNumber,
     error: redactSensitiveText(row.error),

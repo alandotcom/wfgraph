@@ -69,7 +69,6 @@ const served: WorkflowRunRpcFixture = {
     {
       id: EXECUTION_ID,
       workflowId: WORKFLOW_ID,
-      workflowRunId: "run_1",
       status: "completed",
       startedAt: "2026-03-01T10:00:00.000Z",
       completedAt: "2026-03-01T10:00:30.000Z",

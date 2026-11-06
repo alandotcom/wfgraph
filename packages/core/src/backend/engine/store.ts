@@ -83,7 +83,6 @@ export type RecordAuditEventInput = {
 export type CreateWaitStateInput = {
   executionId: string;
   workflowId: string;
-  runId: string;
   nodeId: string;
   nodeName: string;
   /**

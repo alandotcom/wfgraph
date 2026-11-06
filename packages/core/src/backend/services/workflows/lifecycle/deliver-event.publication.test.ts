@@ -6,8 +6,9 @@ import { wfSqlite } from "#src/backend/persistence/sqlite";
 import {
   SilentAppLoggerLayer,
   stubExtensionCatalog,
-  stubExecutionDriver,
 } from "#src/backend/lib/effect/test-layers";
+import { createWorkerWake } from "#src/backend/executor/worker-wake";
+import { makeExecutionDriverLayer } from "#src/backend/services/executions/driver";
 import { createIntegrationCipher } from "#src/backend/services/integrations/cipher";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import { applyLifecycleRules } from "#src/backend/services/workflows/lifecycle/deliver-event";
@@ -66,7 +67,10 @@ describe("published Event metadata on native SQLite", () => {
             },
           ],
         }),
-        stubExecutionDriver({ enqueueRun: () => Effect.void })
+        makeExecutionDriverLayer({
+          worker: createWorkerWake(),
+          persistence: instance.wakes,
+        }).pipe(Layer.provide(instance.repositories))
       )
     );
 

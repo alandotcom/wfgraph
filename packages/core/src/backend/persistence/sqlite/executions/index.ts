@@ -1,19 +1,14 @@
 import { Effect } from "effect";
 import { and, eq, inArray, isNull } from "drizzle-orm";
-import { partition } from "es-toolkit/array";
 import {
   IN_FLIGHT_EXECUTION_STATUSES,
   isEntityEligibilityReason,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
-import type { Concurrency } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import type {
   EntityStartOutcome,
-  NewExecution,
-} from "#src/backend/services/executions/repo";
-import {
   ExecutionRepo,
-  UNSENT_RUN_GRACE_MS,
-  UNSENT_RUN_RECLAIM_REASON,
+  NewExecution,
+  StartForEntityInput,
 } from "#src/backend/services/executions/repo";
 import type {
   SqliteDatabase,
@@ -32,10 +27,14 @@ import {
 } from "#src/backend/persistence/sqlite/executions/runs";
 import { makeSqliteNodeLogsMethods } from "#src/backend/persistence/sqlite/executions/logs";
 import { makeSqliteWaitsMethods } from "#src/backend/persistence/sqlite/executions/waits";
-import { makeSqliteAuditMethods } from "#src/backend/persistence/sqlite/executions/audit";
+import {
+  makeSqliteAuditMethods,
+  recordAuditEventWrite,
+} from "#src/backend/persistence/sqlite/executions/audit";
 import { makeSqliteFencedWrites } from "#src/backend/persistence/sqlite/executions/fenced-writes";
 import {
   endExecutions,
+  insertRunSchedule,
   makeSqliteScheduleMethods,
 } from "#src/backend/persistence/sqlite/executions/schedule";
 import {
@@ -83,10 +82,10 @@ function findByDelivery(database: SqliteExecutor, execution: NewExecution) {
     .pipe(Effect.map((row) => (row ? sqliteExecution(row) : null)));
 }
 
-function endInFlightExecutions(
+function supersedeInFlightExecutions(
   database: SqliteExecutor,
   ids: string[],
-  update: { status: "failed" | "superseded"; error: string }
+  supersededReason: string
 ) {
   if (ids.length === 0) return Effect.succeed<string[]>([]);
   return endExecutions(
@@ -94,10 +93,10 @@ function endInFlightExecutions(
     database
       .update(workflowExecutions)
       .set({
-        status: update.status,
+        status: "superseded",
         waitingAt: null,
         completedAt: Date.now(),
-        error: update.error,
+        error: supersededReason,
       })
       .where(
         and(
@@ -116,13 +115,37 @@ function endInFlightExecutions(
   );
 }
 
+/**
+ * Inserts the run's execution row, its schedule row due at `input.now`, and
+ * its "run started" entry, in the caller's write transaction.
+ */
+function openRun(database: SqliteExecutor, input: StartForEntityInput) {
+  return Effect.gen(function* () {
+    const execution = yield* insertExecution(
+      database,
+      input.execution,
+      "running"
+    );
+    yield* insertRunSchedule(database, {
+      executionId: execution.id,
+      wakeAt: input.now,
+    });
+    yield* recordAuditEventWrite({
+      workflowId: execution.workflowId,
+      executionId: execution.id,
+      eventType: "run_started",
+      message: input.startedEntry.message,
+      metadata: input.startedEntry.metadata,
+    })(database);
+    return execution;
+  });
+}
+
 function startForEntity(
   database: SqliteExecutor,
-  execution: NewExecution,
-  concurrency: Concurrency,
-  supersededReason: string,
-  admissionDecisionId?: string
+  input: StartForEntityInput
 ): Effect.Effect<EntityStartOutcome, unknown> {
+  const { execution, concurrency, admissionDecisionId } = input;
   return Effect.gen(function* () {
     if (admissionDecisionId) {
       const refusal = yield* findAdmissionRefusal(database, {
@@ -134,13 +157,15 @@ function startForEntity(
       }
     }
 
+    // Whatever status the arrival's own row is in, it is the answer: the run
+    // may have finished while the step was being retried, and opening a
+    // second one would run the graph twice for one Event.
     const own = yield* findByDelivery(database, execution);
     if (own) {
       return {
         status: "started" as const,
         execution: own,
         supersededExecutionIds: [],
-        reclaimedExecutionIds: [],
       };
     }
     const entityPredicate =
@@ -155,18 +180,13 @@ function startForEntity(
     if (concurrency === "unlimited" || !entityPredicate) {
       return {
         status: "started" as const,
-        execution: yield* insertExecution(database, execution, "running"),
+        execution: yield* openRun(database, input),
         supersededExecutionIds: [],
-        reclaimedExecutionIds: [],
       };
     }
 
     const inFlight = yield* database
-      .select({
-        id: workflowExecutions.id,
-        enqueuedAt: workflowExecutions.enqueuedAt,
-        startedAt: workflowExecutions.startedAt,
-      })
+      .select({ id: workflowExecutions.id })
       .from(workflowExecutions)
       .where(
         and(
@@ -178,52 +198,34 @@ function startForEntity(
         )
       );
 
-    let reclaimedExecutionIds: string[] = [];
     if (inFlight.length > 0 && concurrency === "first-wins") {
-      const staleBefore = Date.now() - UNSENT_RUN_GRACE_MS;
-      const [stuck, live] = partition(
-        inFlight,
-        (candidate) =>
-          candidate.enqueuedAt === null && candidate.startedAt < staleBefore
-      );
-      if (live.length > 0) {
-        return {
-          status: "refused" as const,
-          inFlightExecutionIds: live.map((candidate) => candidate.id),
-        };
-      }
-      reclaimedExecutionIds = yield* endInFlightExecutions(
-        database,
-        stuck.map((candidate) => candidate.id),
-        { status: "failed", error: UNSENT_RUN_RECLAIM_REASON }
-      );
+      return {
+        status: "refused" as const,
+        inFlightExecutionIds: inFlight.map((candidate) => candidate.id),
+      };
     }
 
-    let supersededExecutionIds: string[] = [];
-    if (inFlight.length > 0 && concurrency !== "first-wins") {
-      supersededExecutionIds = yield* endInFlightExecutions(
-        database,
-        inFlight.map((row) => row.id),
-        { status: "superseded", error: supersededReason }
-      );
-      if (supersededExecutionIds.length > 0) {
-        yield* database
-          .update(workflowWaitStates)
-          .set({ status: "cancelled", cancelledAt: Date.now() })
-          .where(
-            and(
-              inArray(workflowWaitStates.executionId, supersededExecutionIds),
-              eq(workflowWaitStates.status, "waiting")
-            )
-          );
-      }
+    const supersededExecutionIds = yield* supersedeInFlightExecutions(
+      database,
+      inFlight.map((row) => row.id),
+      input.supersededReason
+    );
+    if (supersededExecutionIds.length > 0) {
+      yield* database
+        .update(workflowWaitStates)
+        .set({ status: "cancelled", cancelledAt: Date.now() })
+        .where(
+          and(
+            inArray(workflowWaitStates.executionId, supersededExecutionIds),
+            eq(workflowWaitStates.status, "waiting")
+          )
+        );
     }
 
     return {
       status: "started" as const,
-      execution: yield* insertExecution(database, execution, "running"),
+      execution: yield* openRun(database, input),
       supersededExecutionIds,
-      reclaimedExecutionIds,
     };
   });
 }
@@ -238,21 +240,8 @@ export function makeSqliteExecutionRepo(
     ...makeSqliteAuditMethods(store),
     ...makeSqliteScheduleMethods(store),
     fenced: makeSqliteFencedWrites(store),
-    startForEntity: ({
-      execution,
-      concurrency,
-      supersededReason,
-      admissionDecisionId,
-    }) =>
-      store.write((database) =>
-        startForEntity(
-          database,
-          execution,
-          concurrency,
-          supersededReason,
-          admissionDecisionId
-        )
-      ),
+    startForEntity: (input) =>
+      store.write((database) => startForEntity(database, input)),
     findAdmissionRefusal: (input) =>
       store.read((database) => findAdmissionRefusal(database, input)),
     recordAdmissionRefusal: (input) =>

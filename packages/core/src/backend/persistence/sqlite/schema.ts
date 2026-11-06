@@ -101,11 +101,9 @@ export const workflowExecutions = sqliteTable(
     workflowVersionId: text("workflow_version_id")
       .notNull()
       .references(() => workflowVersions.id, { onDelete: "cascade" }),
-    workflowRunId: text("workflow_run_id").unique(),
     status: text("status").notNull(),
     startSource: text("start_source").notNull(),
     deliveryId: text("delivery_id"),
-    enqueuedAt: integer("enqueued_at"),
     runMode: text("run_mode").notNull().default("live"),
     startEventName: text("start_event_name"),
     entityValue: text("entity_value"),
@@ -238,7 +236,6 @@ export const workflowWaitStates = sqliteTable(
     workflowId: text("workflow_id")
       .notNull()
       .references(() => workflows.id, { onDelete: "cascade" }),
-    runId: text("run_id").notNull(),
     nodeId: text("node_id").notNull(),
     nodeName: text("node_name").notNull(),
     waitType: text("wait_type").notNull(),

@@ -164,13 +164,10 @@ export function startScheduledRun(input: {
       },
       concurrency: "unlimited",
       supersededReason: "newer start",
+      startedEntry: { message: "Event-triggered run started", metadata: {} },
+      now: input.wakeAt,
     });
     if (started.status !== "started") throw new Error("Start refused");
-    yield* executions.scheduleExecution({
-      executionId: started.execution.id,
-      kind: "run",
-      wakeAt: input.wakeAt,
-    });
     return started.execution.id;
   });
 }

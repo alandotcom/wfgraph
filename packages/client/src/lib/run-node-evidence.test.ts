@@ -23,7 +23,6 @@ const EXECUTION: WorkflowExecution = {
   versionNumber: 3,
   startEventName: null,
   entityValue: null,
-  workflowRunId: null,
   startedAt: new Date("2026-03-01T10:00:00Z"),
   waitingAt: null,
   cancelledAt: null,

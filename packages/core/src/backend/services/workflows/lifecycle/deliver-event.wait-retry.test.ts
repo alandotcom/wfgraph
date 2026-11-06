@@ -71,6 +71,8 @@ it.each([false, true])(
             },
             concurrency: "unlimited",
             supersededReason: "replaced",
+            startedEntry: { message: "Manual run started", metadata: {} },
+            now: new Date(),
           });
           if (started.status !== "started") throw new Error("Start refused");
           const metadata = { waitFor: [{ event: "approval" }] };
@@ -78,7 +80,6 @@ it.each([false, true])(
             executionId: started.execution.id,
             workflowId: workflow.id,
             workflowVersionId: "wait-retry-v1",
-            runId: "branch",
             nodeId: "wait",
             nodeName: "Wait",
             side: "started",

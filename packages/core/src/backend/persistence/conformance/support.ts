@@ -28,6 +28,17 @@ export const emptyGraph = createSerializedWorkflowGraph({
   edges: [],
 });
 
+/**
+ * The two `startForEntity` inputs a case passes when it is not about the new
+ * run's opening entry or its schedule row: a fixed "run started" entry, and a
+ * due time later than every instant a case claims at, so no claim leases the
+ * run unless the case opened it due earlier.
+ */
+export const notYetDue = {
+  startedEntry: { message: "Run started", metadata: {} },
+  now: new Date("2100-01-01T00:00:00.000Z"),
+};
+
 /** The one key every backend seals with. */
 export const conformanceCipher = createIntegrationCipher({
   key: "c".repeat(64),
@@ -233,6 +244,7 @@ export function attemptStart(
         concurrency: options.concurrency ?? "unlimited",
         supersededReason: "newer start",
         admissionDecisionId: options.admissionDecisionId,
+        ...notYetDue,
       });
     })
   );

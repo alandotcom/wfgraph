@@ -43,7 +43,6 @@ import { WorkspaceRouteSync } from "./workspace-route-sync";
 type RawExecution = {
   id: string;
   workflowId: string;
-  workflowRunId: string;
   status: string;
   startedAt: string;
   completedAt: string | null;
@@ -114,7 +113,6 @@ function execution(
   return {
     id,
     workflowId,
-    workflowRunId: `run_${id}`,
     status,
     startedAt: "2026-03-01T10:00:00.000Z",
     completedAt: null,

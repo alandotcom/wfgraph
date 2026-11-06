@@ -14,7 +14,11 @@ import {
   stubIntegrationRepo,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
-import type { ExecutionRepo } from "#src/backend/services/executions/repo";
+import type { ExecutionDriver } from "#src/backend/services/executions/driver";
+import type {
+  EntityStartOutcome,
+  ExecutionRepo,
+} from "#src/backend/services/executions/repo";
 import type { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import type { WorkflowExecution } from "#src/backend/services/executions/repo/contracts";
 import { postWorkflowExecute } from "#src/backend/services/workflows/lifecycle/manual-start";
@@ -115,9 +119,7 @@ function executionRow(overrides: Partial<WorkflowExecution> = {}) {
   return {
     id: "exec_new",
     workflowId: "wf_1",
-    workflowRunId: null,
     deliveryId: null,
-    enqueuedAt: null,
     status: "running" as const,
     startSource: "manual" as const,
     runMode: "live" as const,
@@ -144,17 +146,25 @@ function executionRow(overrides: Partial<WorkflowExecution> = {}) {
   } satisfies WorkflowExecution;
 }
 
-type StartInput = Parameters<ExecutionRepo["Service"]["startForEntity"]>[0];
+type StartInput = Parameters<ExecutionDriver["Service"]["startRun"]>[0];
 type AuditInput = Parameters<ExecutionRepo["Service"]["recordAuditEvent"]>[0];
 type TerminalInput = Parameters<ExecutionRepo["Service"]["insertTerminal"]>[0];
 
 /**
- * The repository, keeping what the run was opened with.
+ * The repository and the executor's start, keeping what the run was opened
+ * with.
  *
- * `startForEntity` is where the entity decision becomes visible, and the audit
- * rows are where a refusal does. Built per test, so no case reads another's.
+ * The start is where the entity decision becomes visible, and the audit rows
+ * are where a refusal does. `outcome` is what the start answers. Built per
+ * test, so no case reads another's.
  */
-function makeRepo(overrides: Partial<ExecutionRepo["Service"]> = {}) {
+function makeRepo(
+  outcome: EntityStartOutcome = {
+    status: "started",
+    execution: executionRow(),
+    supersededExecutionIds: [],
+  }
+) {
   const starts: StartInput[] = [];
   const audits: AuditInput[] = [];
   const terminals: TerminalInput[] = [];
@@ -165,30 +175,22 @@ function makeRepo(overrides: Partial<ExecutionRepo["Service"]> = {}) {
     terminals,
     layer: Layer.mergeAll(
       stubExecutionRepo({
-        startForEntity: (input) =>
-          Effect.sync(() => {
-            starts.push(input);
-            return {
-              status: "started" as const,
-              execution: executionRow(),
-              supersededExecutionIds: [],
-              reclaimedExecutionIds: [],
-            };
-          }),
         insertTerminal: (input) =>
           Effect.sync(() => {
             terminals.push(input);
             return executionRow({ id: "exec_ignored", status: "completed" });
           }),
-        markEnqueued: () => Effect.void,
         recordAuditEvent: (input) =>
           Effect.sync(() => {
             audits.push(input);
           }),
-        ...overrides,
       }),
       stubExecutionDriver({
-        enqueueRun: () => Effect.void,
+        startRun: (input) =>
+          Effect.sync(() => {
+            starts.push(input);
+            return outcome;
+          }),
       })
     ),
   };
@@ -314,7 +316,7 @@ function makeDraftRepo(workflow: Workflow) {
     layer: stubWorkflowRepo({
       findByIdWithDraftGraphForRun: () =>
         Effect.succeed({ workflow, draftGraph: workflow.graph }),
-      // The enqueue reads the version the opened row pins, which for a draft run
+      // A start reads the version the new row pins, which for a draft run
       // is the snapshot it was frozen against.
       findVersionById: (versionId) =>
         Effect.succeed({
@@ -399,7 +401,7 @@ function workflowLayer(workflow: Workflow) {
     findByIdWithPublishedVersionForRun: () =>
       Effect.succeed({ workflow, publishedVersion: published }),
     findPublishedVersion: () => Effect.succeed(published),
-    // The enqueue reads the version the opened row pins, because that is what
+    // A start reads the version the new row pins, because that is what
     // the run's opening timeline entry names.
     findVersionById: () => Effect.succeed(published),
   });
@@ -957,11 +959,8 @@ describe("postWorkflowExecute", () => {
     it.effect("releases the snapshot when Concurrency refuses the start", () =>
       Effect.gen(function* () {
         const repo = makeRepo({
-          startForEntity: () =>
-            Effect.succeed({
-              status: "refused" as const,
-              inFlightExecutionIds: ["exec_running"],
-            }),
+          status: "refused",
+          inFlightExecutionIds: ["exec_running"],
         });
         const workflows = makeDraftRepo(workflowRow({ mode: "test" }));
 

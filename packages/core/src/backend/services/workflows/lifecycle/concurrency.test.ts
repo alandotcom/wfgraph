@@ -15,25 +15,20 @@ import {
   type ExecutionDriver,
 } from "#src/backend/services/executions/driver";
 import type { WorkflowVersion } from "#src/backend/lib/db/schema";
-import {
-  type EntityStartOutcome,
-  type ExecutionRepo,
-  UNSENT_RUN_RECLAIM_REASON,
-  type WorkflowExecution,
+import type {
+  EntityStartOutcome,
+  ExecutionRepo,
+  WorkflowExecution,
 } from "#src/backend/services/executions/repo";
 import type { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { startWithConcurrency } from "#src/backend/services/workflows/lifecycle/concurrency";
 
 type Repo = ExecutionRepo["Service"];
+type Driver = ExecutionDriver["Service"];
 
 const recordAuditEventMock = vi.fn<Repo["recordAuditEvent"]>(() => Effect.void);
 const findVersionByIdMock = vi.fn<WorkflowRepo["Service"]["findVersionById"]>();
-const stopRunMock = vi.fn<ExecutionDriver["Service"]["stopRun"]>(
-  () => Effect.void
-);
-const enqueueRunMock = vi.fn<ExecutionDriver["Service"]["enqueueRun"]>(
-  () => Effect.void
-);
+const stopRunMock = vi.fn<Driver["stopRun"]>(() => Effect.void);
 
 const workflow = {
   id: "wf_1",
@@ -51,9 +46,9 @@ const eventStart = {
 };
 
 /**
- * A `workflow_versions` row as `findVersionById` answers with it. The enqueue
- * reads the row an Execution's `workflowVersionId` names, and the timeline entry
- * it writes takes the version number from there.
+ * A `workflow_versions` row as `findVersionById` answers with it. A start reads
+ * the row the new Execution's `workflowVersionId` names, and the opening
+ * timeline entry takes the version number from there.
  */
 function versionRow(input: { id: string; version: number }): WorkflowVersion {
   return {
@@ -74,9 +69,7 @@ function createExecution(
   return {
     id: "exec_new",
     workflowId: "wf_1",
-    workflowRunId: null,
     deliveryId: null,
-    enqueuedAt: null,
     status: "running",
     startSource: "event",
     runMode: "live",
@@ -103,26 +96,22 @@ function createExecution(
   };
 }
 
-type StartForEntityInput = Parameters<Repo["startForEntity"]>[0];
+type StartRunInput = Parameters<Driver["startRun"]>[0];
 
 /** The locked transaction's answer, and what it was asked for. */
 function stubStart(outcome: EntityStartOutcome) {
-  const calls: StartForEntityInput[] = [];
+  const calls: StartRunInput[] = [];
 
   return {
     calls,
     layer: Layer.mergeAll(
-      stubExecutionRepo({
-        startForEntity: (input) =>
+      stubExecutionRepo({ recordAuditEvent: recordAuditEventMock }),
+      stubExecutionDriver({
+        startRun: (input) =>
           Effect.sync(() => {
             calls.push(input);
             return outcome;
           }),
-        markEnqueued: () => Effect.void,
-        recordAuditEvent: recordAuditEventMock,
-      }),
-      stubExecutionDriver({
-        enqueueRun: enqueueRunMock,
         stopRun: stopRunMock,
       }),
       stubWorkflowRepo({ findVersionById: findVersionByIdMock })
@@ -134,26 +123,25 @@ const startedOutcome: EntityStartOutcome = {
   status: "started",
   execution: createExecution(),
   supersededExecutionIds: [],
-  reclaimedExecutionIds: [],
 };
 
 beforeEach(() => {
   recordAuditEventMock.mockReset();
   findVersionByIdMock.mockReset();
   stopRunMock.mockReset();
-  enqueueRunMock.mockReset();
 
   recordAuditEventMock.mockImplementation(() => Effect.void);
   findVersionByIdMock.mockImplementation(() =>
     Effect.succeed(versionRow({ id: "ver_1", version: 3 }))
   );
   stopRunMock.mockImplementation(() => Effect.void);
-  enqueueRunMock.mockImplementation(() => Effect.void);
 });
 
 describe("startWithConcurrency", () => {
   layer(SilentAppLoggerLayer)((it) => {
-    it.effect("starts and hands the run to the executor", () =>
+    // The executor's start opens the row, schedules it and writes its opening
+    // entry in one transaction, so the entry is handed over with the row.
+    it.effect("starts the run on the executor with its opening entry", () =>
       Effect.gen(function* () {
         const repo = stubStart(startedOutcome);
 
@@ -169,16 +157,27 @@ describe("startWithConcurrency", () => {
         assert.deepStrictEqual(outcome, {
           status: "started",
           executionId: "exec_new",
-          runId: undefined,
           supersededExecutionIds: [],
           failedToSupersede: [],
         });
+        assert.strictEqual(repo.calls.length, 1);
         assert.strictEqual(repo.calls[0]?.concurrency, "unlimited");
         assert.strictEqual(repo.calls[0]?.execution.entityValue, "appt_8813");
         assert.strictEqual(repo.calls[0]?.execution.workflowVersionId, "ver_1");
-        assert.deepStrictEqual(enqueueRunMock.mock.calls, [
-          [{ executionId: "exec_new" }],
-        ]);
+        assert.strictEqual(
+          repo.calls[0]?.startedEntry.message,
+          "Event-triggered run of v3 started for app/appointment.created, to real recipients"
+        );
+        assert.deepStrictEqual(repo.calls[0]?.startedEntry.metadata, {
+          startSource: "event",
+          runMode: "live",
+          versionKind: "published",
+          versionNumber: 3,
+          eventName: "app/appointment.created",
+          entityValue: "appt_8813",
+          deliveryId: "dlv_4021",
+        });
+        assert.strictEqual(recordAuditEventMock.mock.calls.length, 0);
         assert.strictEqual(stopRunMock.mock.calls.length, 0);
       })
     );
@@ -284,24 +283,13 @@ describe("startWithConcurrency", () => {
       })
     );
 
-    // Supersede-then-start: the rows the transaction flipped are stopped before
-    // the new run is scheduled, and their ids come back so the caller knows not
-    // to deliver this Event to their waits. Announcing is `end-runs`' own; here
-    // it is the stop that proves the real neighbour ran.
+    // Supersede-then-start: the transaction that opened and scheduled the new
+    // run flipped the displaced rows, which are then stopped, and their ids come
+    // back so the caller knows not to deliver this Event to their waits.
+    // Announcing is `end-runs`' own; here it is the stop that proves the real
+    // neighbour ran.
     it.effect("announces the runs the transaction superseded", () =>
       Effect.gen(function* () {
-        const order: string[] = [];
-        stopRunMock.mockImplementation(() =>
-          Effect.sync(() => {
-            order.push("announce");
-          })
-        );
-        enqueueRunMock.mockImplementation(() =>
-          Effect.sync(() => {
-            order.push("enqueue");
-          })
-        );
-
         const outcome = yield* startWithConcurrency({
           workflow,
           concurrency: "newest-wins",
@@ -311,35 +299,17 @@ describe("startWithConcurrency", () => {
           logger: makeRecordingLogger().logger,
         }).pipe(
           Effect.provide(
-            Layer.mergeAll(
-              stubExecutionRepo({
-                startForEntity: () =>
-                  Effect.sync(() => {
-                    order.push("open");
-                    return {
-                      status: "started" as const,
-                      execution: createExecution(),
-                      supersededExecutionIds: ["exec_old"],
-                      reclaimedExecutionIds: [],
-                    };
-                  }),
-                markEnqueued: () => Effect.void,
-                recordAuditEvent: recordAuditEventMock,
-              }),
-              stubExecutionDriver({
-                stopRun: stopRunMock,
-                enqueueRun: enqueueRunMock,
-              }),
-              stubWorkflowRepo({ findVersionById: findVersionByIdMock })
-            )
+            stubStart({
+              status: "started",
+              execution: createExecution(),
+              supersededExecutionIds: ["exec_old"],
+            }).layer
           )
         );
 
-        assert.deepStrictEqual(order, ["open", "announce", "enqueue"]);
         assert.deepStrictEqual(outcome, {
           status: "started",
           executionId: "exec_new",
-          runId: undefined,
           supersededExecutionIds: ["exec_old"],
           failedToSupersede: [],
         });
@@ -354,21 +324,14 @@ describe("startWithConcurrency", () => {
       })
     );
 
-    // Two attempts of one delivery: the transaction answers this attempt with
-    // the row the other attempt committed, which pins the version that attempt
-    // loaded. The timeline entry has to name the graph the run is executing,
-    // which is that older pinned version rather than the one this attempt holds.
-    it.effect("names the version the committed row pins", () =>
+    // The opening entry names the graph the new row pins, read by the id the
+    // row will carry, so no start path can label a run with another version.
+    it.effect("names the version the new row pins in its opening entry", () =>
       Effect.gen(function* () {
         findVersionByIdMock.mockImplementation(() =>
-          Effect.succeed(versionRow({ id: "ver_1", version: 1 }))
+          Effect.succeed(versionRow({ id: "ver_2", version: 2 }))
         );
-        const repo = stubStart({
-          status: "started",
-          execution: createExecution({ workflowVersionId: "ver_1" }),
-          supersededExecutionIds: [],
-          reclaimedExecutionIds: [],
-        });
+        const repo = stubStart(startedOutcome);
 
         yield* startWithConcurrency({
           workflow: { ...workflow, versionId: "ver_2" },
@@ -379,12 +342,14 @@ describe("startWithConcurrency", () => {
           logger: makeRecordingLogger().logger,
         }).pipe(Effect.provide(repo.layer));
 
-        assert.deepStrictEqual(findVersionByIdMock.mock.calls, [["ver_1"]]);
-        const started = recordAuditEventMock.mock.calls.find(
-          ([event]) => event.eventType === "run_started"
-        )?.[0];
-        assert.include(started?.message ?? "", "run of v1 started");
-        assert.deepInclude(started?.metadata, { versionNumber: 1 });
+        assert.deepStrictEqual(findVersionByIdMock.mock.calls, [["ver_2"]]);
+        assert.include(
+          repo.calls[0]?.startedEntry.message ?? "",
+          "run of v2 started"
+        );
+        assert.deepInclude(repo.calls[0]?.startedEntry.metadata, {
+          versionNumber: 2,
+        });
       })
     );
 
@@ -404,48 +369,6 @@ describe("startWithConcurrency", () => {
         }).pipe(Effect.provide(repo.layer));
 
         assert.strictEqual(repo.calls[0]?.execution.deliveryId, "dlv_4021");
-      })
-    );
-
-    // Those rows now say `failed` and only the stop can make that true of the
-    // runs: the stamp they are missing can go missing on a run the executor
-    // took.
-    it.effect("stops the runs it reclaimed before they were scheduled", () =>
-      Effect.gen(function* () {
-        const recorder = makeRecordingLogger();
-
-        yield* startWithConcurrency({
-          workflow,
-          concurrency: "first-wins",
-          start: eventStart,
-          runMode: "live",
-          payload: {},
-          logger: recorder.logger,
-        }).pipe(
-          Effect.provide(
-            stubStart({
-              status: "started",
-              execution: createExecution(),
-              supersededExecutionIds: [],
-              reclaimedExecutionIds: ["exec_stuck"],
-            }).layer
-          )
-        );
-
-        assert.deepStrictEqual(stopRunMock.mock.calls[0]?.[0], {
-          executionId: "exec_stuck",
-        });
-        assert.deepInclude(recordAuditEventMock.mock.calls[0]?.[0], {
-          executionId: "exec_stuck",
-          eventType: "run_failed",
-          message: UNSENT_RUN_RECLAIM_REASON,
-        });
-        assert.deepStrictEqual(recorder.infoLines, [
-          {
-            message: "Closed runs that never reached the bus",
-            properties: { executionIds: ["exec_stuck"] },
-          },
-        ]);
       })
     );
 
@@ -471,7 +394,6 @@ describe("startWithConcurrency", () => {
               status: "started",
               execution: createExecution(),
               supersededExecutionIds: ["exec_old"],
-              reclaimedExecutionIds: [],
             }).layer
           )
         );

@@ -69,7 +69,6 @@ export type NodeWorkContext = {
   workflowId: string;
   /** The Workflow Version whose graph this run is walking. */
   workflowVersionId: string;
-  workflowRunId: string;
   runMode: "live" | "test";
   startPayload: JsonObject;
   /** Current Entity values referenced by this node, keyed by field path. */

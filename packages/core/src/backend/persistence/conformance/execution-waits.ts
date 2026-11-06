@@ -15,6 +15,7 @@ import type {
 } from "#src/backend/persistence/conformance/support";
 import {
   emptyGraph,
+  notYetDue,
   publishSecondVersion,
   seedPublishedWorkflow,
 } from "#src/backend/persistence/conformance/support";
@@ -49,13 +50,13 @@ function startEventWait(
         },
         concurrency: "unlimited",
         supersededReason: "newer start",
+        ...notYetDue,
       });
       if (started.status !== "started") throw new Error("start refused");
       const wait = yield* executions.startWait({
         side: "started",
         executionId: started.execution.id,
         workflowId: "wf_1",
-        runId: "run_1",
         nodeId: "wait_1",
         nodeName: "Approval",
         workflowVersionId: "ver_1",
@@ -124,7 +125,6 @@ export function describeExecutionWaitConformance({
                 executionId,
                 workflowId: "wf_1",
                 workflowVersionId: "ver_1",
-                runId: "run_1",
                 nodeId: "wait_2",
                 nodeName: "Downstream Wait",
                 side: "started",
@@ -163,7 +163,6 @@ export function describeExecutionWaitConformance({
             executions.startWait({
               executionId: original.executionId,
               workflowId: "wf_1",
-              runId: "run_1",
               nodeId: "wait_1",
               nodeName: "Approval",
               workflowVersionId: "ver_1",
@@ -233,13 +232,13 @@ export function describeExecutionWaitConformance({
             },
             concurrency: "unlimited",
             supersededReason: "newer start",
+            ...notYetDue,
           });
           if (started.status !== "started") throw new Error("start refused");
           const wait = yield* executions.startWait({
             side: "started",
             executionId: started.execution.id,
             workflowId: "wf_1",
-            runId: "run_1",
             nodeId: "node_1",
             nodeName: "Approval",
             workflowVersionId: "ver_1",
@@ -252,7 +251,6 @@ export function describeExecutionWaitConformance({
             side: "started",
             executionId: started.execution.id,
             workflowId: "wf_1",
-            runId: "run_1",
             nodeId: "node_2",
             nodeName: "Escalation",
             workflowVersionId: "ver_1",
@@ -487,6 +485,7 @@ export function describeExecutionWaitConformance({
             },
             concurrency: "unlimited",
             supersededReason: "newer start",
+            ...notYetDue,
           });
           if (started.status !== "started") {
             throw new Error("Start was refused");
@@ -495,7 +494,6 @@ export function describeExecutionWaitConformance({
             side: "started",
             executionId: started.execution.id,
             workflowId: "wf_1",
-            runId: "run_1",
             nodeId: "wait_1",
             nodeName: "Approval",
             workflowVersionId: "ver_1",
@@ -538,7 +536,6 @@ export function describeExecutionWaitConformance({
               side: "started",
               executionId: started.execution.id,
               workflowId: "wf_1",
-              runId: "run_1",
               nodeId: "wait_2",
               nodeName: "Second approval",
               workflowVersionId: "ver_1",
@@ -582,6 +579,7 @@ export function describeExecutionWaitConformance({
             },
             concurrency: "unlimited",
             supersededReason: "newer start",
+            ...notYetDue,
           });
           if (started.status !== "started") throw new Error("start refused");
           const executionId = started.execution.id;
@@ -601,7 +599,6 @@ export function describeExecutionWaitConformance({
             side: "started",
             executionId,
             workflowId: "wf_1",
-            runId: "run_1",
             nodeId: "wait_started",
             nodeName: "Reminder",
             workflowVersionId: "ver_1",
@@ -614,7 +611,6 @@ export function describeExecutionWaitConformance({
             side: "canceled",
             executionId,
             workflowId: "wf_1",
-            runId: "run_1",
             nodeId: "grace_1",
             nodeName: "Grace Period",
             workflowVersionId: "ver_1",
@@ -674,7 +670,6 @@ export function describeExecutionWaitConformance({
             side: "canceled",
             executionId,
             workflowId: "wf_1",
-            runId: "run_1",
             nodeId: "grace_2",
             nodeName: "Second grace period",
             workflowVersionId: "ver_1",
@@ -752,6 +747,7 @@ export function describeExecutionWaitConformance({
             },
             concurrency: "unlimited",
             supersededReason: "newer start",
+            ...notYetDue,
           });
           if (started.status !== "started") throw new Error("start refused");
           const executionId = started.execution.id;
@@ -760,7 +756,6 @@ export function describeExecutionWaitConformance({
             side: "started",
             executionId,
             workflowId: "wf_1",
-            runId: "run_2",
             nodeId: "wait_before_exit",
             nodeName: "Approval",
             workflowVersionId: "ver_1",
@@ -787,7 +782,6 @@ export function describeExecutionWaitConformance({
               side: "canceled",
               executionId,
               workflowId: "wf_1",
-              runId: "run_2",
               nodeId: "grace_1",
               nodeName: "Grace Period",
               workflowVersionId: "ver_1",
@@ -840,6 +834,7 @@ export function describeExecutionWaitConformance({
             },
             concurrency: "unlimited",
             supersededReason: "newer start",
+            ...notYetDue,
           });
           if (started.status !== "started") {
             throw new Error("Start was refused");
@@ -849,7 +844,6 @@ export function describeExecutionWaitConformance({
             side: "started",
             executionId,
             workflowId: "wf_1",
-            runId: "run_1",
             nodeId: "wait_1",
             nodeName: "Sibling delay",
             workflowVersionId: "ver_1",
@@ -910,6 +904,7 @@ export function describeExecutionWaitConformance({
               },
               concurrency: "unlimited",
               supersededReason: "newer start",
+              ...notYetDue,
             });
             if (started.status !== "started") {
               throw new Error("Start was refused");
@@ -922,7 +917,6 @@ export function describeExecutionWaitConformance({
                 side: "started",
                 executionId,
                 workflowId: "wf_1",
-                runId: `run_${executionId}`,
                 nodeId,
                 nodeName: nodeId,
                 workflowVersionId: "ver_1",
@@ -981,6 +975,7 @@ export function describeExecutionWaitConformance({
             },
             concurrency: "unlimited",
             supersededReason: "newer start",
+            ...notYetDue,
           });
           if (started.status !== "started") {
             throw new Error("Start was refused");
@@ -990,7 +985,6 @@ export function describeExecutionWaitConformance({
             side: "started",
             executionId: started.execution.id,
             workflowId: "wf_1",
-            runId: "run_1",
             nodeId: "wait_1",
             nodeName: "Wait for approval",
             workflowVersionId: "ver_1",
@@ -1057,6 +1051,7 @@ export function describeExecutionWaitConformance({
             },
             concurrency: "unlimited",
             supersededReason: "newer start",
+            ...notYetDue,
           });
           if (started.status !== "started")
             throw new Error("Start was refused");
@@ -1067,7 +1062,6 @@ export function describeExecutionWaitConformance({
               side: "started",
               executionId,
               workflowId: "wf_1",
-              runId: "run_1",
               nodeId: "wait_1",
               nodeName: "Wait for approval",
               workflowVersionId,
@@ -1122,6 +1116,7 @@ export function describeExecutionWaitConformance({
             },
             concurrency: "unlimited",
             supersededReason: "newer start",
+            ...notYetDue,
           });
           if (started.status !== "started")
             throw new Error("Start was refused");
@@ -1132,7 +1127,6 @@ export function describeExecutionWaitConformance({
               side: "started",
               executionId,
               workflowId: "wf_1",
-              runId: "run_1",
               nodeId,
               nodeName: nodeId,
               workflowVersionId: "ver_1",
@@ -1207,6 +1201,7 @@ export function describeExecutionWaitConformance({
               },
               concurrency: "unlimited",
               supersededReason: "newer start",
+              ...notYetDue,
             });
 
           const first = yield* start();
@@ -1280,6 +1275,7 @@ export function describeExecutionWaitConformance({
             },
             concurrency: "unlimited",
             supersededReason: "newer start",
+            ...notYetDue,
           });
           if (started.status !== "started")
             throw new Error("Start was refused");
@@ -1289,7 +1285,6 @@ export function describeExecutionWaitConformance({
             side: "started",
             executionId,
             workflowId: "wf_1",
-            runId: "run_1",
             nodeId: "wait_1",
             nodeName: "Wait for approval",
             workflowVersionId: "ver_1",
@@ -1370,6 +1365,7 @@ export function describeExecutionWaitConformance({
             },
             concurrency: "unlimited",
             supersededReason: "newer start",
+            ...notYetDue,
           });
           if (started.status !== "started")
             throw new Error("Start was refused");
@@ -1378,7 +1374,6 @@ export function describeExecutionWaitConformance({
             side: "started",
             executionId: started.execution.id,
             workflowId: "wf_1",
-            runId: "run_1",
             nodeId: "wait_1",
             nodeName: "Wait for approval",
             workflowVersionId: "ver_1",
@@ -1445,6 +1440,7 @@ export function describeExecutionWaitConformance({
             },
             concurrency: "unlimited",
             supersededReason: "newer start",
+            ...notYetDue,
           });
           if (open.status !== "started") throw new Error("Start was refused");
 
@@ -1458,6 +1454,7 @@ export function describeExecutionWaitConformance({
             },
             concurrency: "unlimited",
             supersededReason: "newer start",
+            ...notYetDue,
           });
           if (finished.status !== "started")
             throw new Error("Start was refused");
@@ -1478,6 +1475,7 @@ export function describeExecutionWaitConformance({
             },
             concurrency: "unlimited",
             supersededReason: "newer start",
+            ...notYetDue,
           });
 
           return {
@@ -1532,6 +1530,7 @@ export function describeExecutionWaitConformance({
             },
             concurrency: "unlimited",
             supersededReason: "newer start",
+            ...notYetDue,
           });
           if (started.status !== "started")
             throw new Error("Start was refused");
@@ -1550,7 +1549,6 @@ export function describeExecutionWaitConformance({
             side: "started",
             executionId,
             workflowId: "wf_1",
-            runId: "run_1",
             nodeId: "wait_1",
             nodeName: "Wait for approval",
             workflowVersionId: "ver_1",
@@ -1614,6 +1612,7 @@ export function describeExecutionWaitConformance({
             },
             concurrency: "unlimited",
             supersededReason: "newer start",
+            ...notYetDue,
           });
           if (started.status !== "started")
             throw new Error("Start was refused");
@@ -1623,7 +1622,6 @@ export function describeExecutionWaitConformance({
             side: "started",
             executionId,
             workflowId: "wf_1",
-            runId: "run_1",
             nodeId: "wait_1",
             nodeName: "Wait for approval",
             workflowVersionId: "ver_1",
@@ -1690,6 +1688,7 @@ export function describeExecutionWaitConformance({
             },
             concurrency: "unlimited",
             supersededReason: "newer start",
+            ...notYetDue,
           });
           if (started.status !== "started")
             throw new Error("Start was refused");
@@ -1699,7 +1698,6 @@ export function describeExecutionWaitConformance({
             side: "started",
             executionId,
             workflowId: "wf_1",
-            runId: "run_1",
             nodeId: "wait_1",
             nodeName: "Wait for approval",
             workflowVersionId: "ver_1",
@@ -1779,6 +1777,7 @@ export function describeExecutionWaitConformance({
             },
             concurrency: "unlimited",
             supersededReason: "newer start",
+            ...notYetDue,
           });
           if (started.status !== "started")
             throw new Error("Start was refused");
@@ -1787,7 +1786,6 @@ export function describeExecutionWaitConformance({
             side: "started",
             executionId: started.execution.id,
             workflowId: "wf_1",
-            runId: "run_1",
             nodeId: "wait_1",
             nodeName: "Wait for approval",
             workflowVersionId: "ver_1",
@@ -1851,6 +1849,7 @@ export function describeExecutionWaitConformance({
             },
             concurrency: "unlimited",
             supersededReason: "newer start",
+            ...notYetDue,
           });
           if (started.status !== "started")
             throw new Error("Start was refused");
@@ -1859,7 +1858,6 @@ export function describeExecutionWaitConformance({
             side: "started",
             executionId: started.execution.id,
             workflowId: "wf_1",
-            runId: "run_1",
             nodeId: "wait_1",
             nodeName: "Wait for approval",
             workflowVersionId: "ver_1",
@@ -1929,6 +1927,7 @@ export function describeExecutionWaitConformance({
               },
               concurrency: "unlimited",
               supersededReason: "newer start",
+              ...notYetDue,
             });
             if (started.status !== "started") {
               throw new Error("Start was refused");
@@ -1938,7 +1937,6 @@ export function describeExecutionWaitConformance({
               side: "started",
               executionId: started.execution.id,
               workflowId: "wf_1",
-              runId: `run_${suffix}`,
               nodeId: "wait_1",
               nodeName: "Wait for approval",
               workflowVersionId: "ver_1",

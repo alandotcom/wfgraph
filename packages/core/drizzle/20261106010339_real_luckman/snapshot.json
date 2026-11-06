@@ -1,0 +1,106 @@
+{
+  "type": "diff",
+  "version": "9",
+  "dialect": "postgres",
+  "id": "a3dea168-5c50-49cf-9733-8f673aade48c",
+  "prevIds": [
+    "5eba541c-c5e1-4183-b525-94c6589219d5"
+  ],
+  "footprints": [
+    {
+      "statementType": "drop_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "workflow_executions",
+        "workflow_executions_workflow_run_id_uidx"
+      ],
+      "writes": [
+        "s|idx|public.workflow_executions_workflow_run_id_uidx",
+        "n|idx|public.workflow_executions_workflow_run_id_uidx",
+        "e|idx|public.workflow_executions_workflow_run_id_uidx",
+        "n|rel|public.workflow_executions_workflow_run_id_uidx"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_executions",
+        "n|sch|public",
+        "e|col|public.workflow_executions.workflow_run_id"
+      ],
+      "sharedWrites": [
+        "e|uniqueness|public.workflow_executions.workflow_run_id"
+      ]
+    },
+    {
+      "statementType": "drop_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "workflow_executions",
+        "workflow_run_id"
+      ],
+      "writes": [
+        "s|col|public.workflow_executions.workflow_run_id",
+        "n|col|public.workflow_executions.workflow_run_id",
+        "e|col|public.workflow_executions.workflow_run_id"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_executions",
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "drop_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "workflow_executions",
+        "enqueued_at"
+      ],
+      "writes": [
+        "s|col|public.workflow_executions.enqueued_at",
+        "n|col|public.workflow_executions.enqueued_at",
+        "e|col|public.workflow_executions.enqueued_at"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_executions",
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "drop_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "workflow_wait_states",
+        "run_id"
+      ],
+      "writes": [
+        "s|col|public.workflow_wait_states.run_id",
+        "n|col|public.workflow_wait_states.run_id",
+        "e|col|public.workflow_wait_states.run_id"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_wait_states",
+        "n|sch|public"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"workflow_executions\",\"workflow_run_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"workflow_executions\",\"enqueued_at\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"workflow_wait_states\",\"run_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"workflow_executions_workflow_run_id_uidx\"]"
+    }
+  ]
+}

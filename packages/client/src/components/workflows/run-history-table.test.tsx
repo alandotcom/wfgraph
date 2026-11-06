@@ -15,7 +15,6 @@ function run(
     runMode: "live",
     startEventName: null,
     entityValue: null,
-    workflowRunId: null,
     versionKind: "published",
     versionNumber: 4,
     error: null,

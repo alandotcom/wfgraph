@@ -8,23 +8,19 @@
  *
  * The decision itself is one locked transaction in `ExecutionRepo.startForEntity`,
  * because a candidate read followed by an insert is not a decision two arrivals
- * can share. What is left here follows that transaction: schedule the run on
- * the executor, stop the runs it displaced, and write the timeline.
+ * can share. The same transaction schedules the new run on the executor and
+ * writes its "run started" entry. What is left here follows that transaction:
+ * stop the runs it displaced and write their timelines.
  */
 
 import { Effect } from "effect";
 import type { EffectLogger } from "#src/backend/lib/effect/app-logger";
-import {
-  announceReclaimedRuns,
-  announceSupersededRuns,
-} from "#src/backend/services/executions/end-runs";
-import {
-  ExecutionRepo,
-  UNSENT_RUN_RECLAIM_REASON,
-} from "#src/backend/services/executions/repo";
+import { ExecutionDriver } from "#src/backend/services/executions/driver";
+import { announceSupersededRuns } from "#src/backend/services/executions/end-runs";
+import type { NewExecution } from "#src/backend/services/executions/repo";
 import {
   recordStartRefusal,
-  enqueueStartedRun,
+  runStartedEntry,
   startAdmissionDecisionId,
   type WorkflowRunStart,
   type WorkflowRunTarget,
@@ -68,7 +64,6 @@ export type StartOutcome =
   | {
       status: "started";
       executionId: string;
-      runId?: string | undefined;
       supersededExecutionIds: string[];
       failedToSupersede: string[];
     }
@@ -81,7 +76,7 @@ export type StartOutcome =
 export const startWithConcurrency = Effect.fn("startWithConcurrency")(
   function* (input: StartWithConcurrencyInput) {
     const { workflow, start, runMode, payload, logger } = input;
-    const repo = yield* ExecutionRepo;
+    const driver = yield* ExecutionDriver;
 
     if (
       input.concurrency !== "unlimited" &&
@@ -102,23 +97,25 @@ export const startWithConcurrency = Effect.fn("startWithConcurrency")(
       start.entityType === undefined
         ? { entityValue: start.entityValue }
         : { entityType: start.entityType, entityId: start.entityId };
-    const opened = yield* repo.startForEntity({
-      execution: {
-        workflowId: workflow.id,
-        workflowVersionId: workflow.versionId,
-        startSource: start.source,
-        runMode,
-        startEventName: start.eventName,
-        input: payload,
-        deliveryId: start.deliveryId,
-        ...executionIdentity,
-      },
+    const execution: NewExecution = {
+      workflowId: workflow.id,
+      workflowVersionId: workflow.versionId,
+      startSource: start.source,
+      runMode,
+      startEventName: start.eventName,
+      input: payload,
+      deliveryId: start.deliveryId,
+      ...executionIdentity,
+    };
+    const opened = yield* driver.startRun({
+      execution,
       concurrency: input.concurrency,
       supersededReason: supersededReason(start.eventName),
       admissionDecisionId:
         start.source === "event" && start.entityType && start.deliveryId
           ? startAdmissionDecisionId(workflow.id, start.deliveryId)
           : undefined,
+      startedEntry: yield* runStartedEntry(execution),
     });
 
     if (opened.status === "admission_refused") {
@@ -154,30 +151,9 @@ export const startWithConcurrency = Effect.fn("startWithConcurrency")(
           })
         : { failedExecutionIds: [] as string[] };
 
-    // Rows a crash left between their commit and the send, which this start
-    // closed to get past first-wins. Announced the same way, because the row now
-    // says `failed` and only the signal can make that true of the run.
-    if (opened.reclaimedExecutionIds.length > 0) {
-      yield* logger.info("Closed runs that never reached the bus", {
-        executionIds: opened.reclaimedExecutionIds,
-      });
-
-      yield* announceReclaimedRuns({
-        workflowId: workflow.id,
-        executionIds: opened.reclaimedExecutionIds,
-        reason: UNSENT_RUN_RECLAIM_REASON,
-        eventName: start.eventName,
-      });
-    }
-
-    const started = yield* enqueueStartedRun({
-      execution: opened.execution,
-    });
-
     const outcome: StartOutcome = {
       status: "started",
-      executionId: started.executionId,
-      runId: started.runId,
+      executionId: opened.execution.id,
       supersededExecutionIds: opened.supersededExecutionIds,
       failedToSupersede: announced.failedExecutionIds,
     };

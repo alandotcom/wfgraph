@@ -29,7 +29,6 @@ function run(
     startSource: "manual",
     startEventName: null,
     entityValue: null,
-    workflowRunId: null,
     error: null,
     ...overrides,
   };

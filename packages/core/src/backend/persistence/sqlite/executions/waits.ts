@@ -110,7 +110,6 @@ const waitStateSelection = {
   id: workflowWaitStates.id,
   executionId: workflowWaitStates.executionId,
   workflowId: workflowWaitStates.workflowId,
-  runId: workflowWaitStates.runId,
   nodeId: workflowWaitStates.nodeId,
   nodeName: workflowWaitStates.nodeName,
   waitType: workflowWaitStates.waitType,
@@ -256,7 +255,6 @@ export function startWaitWrite(input: StartWaitInput) {
         .where(
           and(
             eq(workflowWaitStates.executionId, input.executionId),
-            eq(workflowWaitStates.runId, input.runId),
             eq(workflowWaitStates.nodeId, input.nodeId)
           )
         )
@@ -284,7 +282,6 @@ export function startWaitWrite(input: StartWaitInput) {
         id,
         executionId: input.executionId,
         workflowId: input.workflowId,
-        runId: input.runId,
         nodeId: input.nodeId,
         nodeName: input.nodeName,
         waitType: input.waitType,

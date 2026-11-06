@@ -159,6 +159,8 @@ describe("a Canceled-side Wait over native SQLite", () => {
             },
             concurrency: "unlimited",
             supersededReason: "newer start",
+            startedEntry: { message: "Run started", metadata: {} },
+            now: new Date(),
           });
           if (started.status !== "started") {
             throw new Error("Start was refused");

@@ -374,7 +374,7 @@ CancelEvent ==
                  failures, startedWorkAfterClaim, canceledWorkAfterExit, commitAfterEnd,
                  policyCanceled>>
 
-\* A policy cancel (the Runs view's cancel button, supersede, a refused enqueue):
+\* A policy cancel (the Runs view's cancel button, supersede):
 \* terminal status, schedule row deleted, owner_token cleared, parks cancelled.
 PolicyCancel ==
   /\ RunInFlight

@@ -46,7 +46,6 @@ import {
   WorkflowRepo,
 } from "#src/backend/services/workflows/repo";
 import {
-  enqueueStartedRun,
   recordStartRefusal,
   startAdmissionDecisionId,
   toWorkflowRunTarget,
@@ -59,10 +58,6 @@ import {
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { readCancelFilter } from "@wfgraph/shared/lifecycle/cancel-filters";
 import { readStartFilter } from "@wfgraph/shared/lifecycle/start-filters";
-import {
-  IN_FLIGHT_EXECUTION_STATUSES,
-  type WorkflowExecutionStatus,
-} from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { WorkflowMode } from "@wfgraph/shared/graph/types";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import { asNonEmptyString } from "@wfgraph/shared/types/string";
@@ -447,8 +442,8 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
       // A "started" decision means another attempt of this delivery committed
       // its Execution after this attempt's `findByDelivery` read, which two
       // attempts of one delivery running at once can do. That decision falls
-      // through to `startWithConcurrency`, which finds the row by delivery id
-      // and hands it to `enqueueStartedRun` under the run's idempotency key.
+      // through to `startWithConcurrency`, whose `startForEntity` finds the row
+      // by delivery id and answers with it, already scheduled.
       if (decision?.kind !== "started") {
         return {
           kind: "refused" as const,
@@ -499,20 +494,15 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
   }
 );
 
-function isInFlightStatus(status: WorkflowExecutionStatus): boolean {
-  return IN_FLIGHT_EXECUTION_STATUSES.some((inFlight) => inFlight === status);
-}
-
 /**
  * The decision an earlier attempt of this delivery committed, or `undefined`
  * where it committed none and this attempt owns the delivery.
  *
- * An attempt can die between committing its Execution and sending it to the
- * bus, and nothing sweeps a row left that way: it stays `pending` until a later
- * start for the same entity reclaims it, which for a workflow nothing else
- * starts is never. So the retry answers from what the first attempt recorded
- * rather than from the workflow as it stands now, and a Publish, an unpublish
- * or a catalog change between the two attempts cannot strand the row.
+ * The retry answers from what the first attempt recorded rather than from the
+ * workflow as it stands now, so a Publish, an unpublish or a catalog change
+ * between the two attempts cannot turn one arrival into a second decision. A
+ * committed Execution was scheduled in the transaction that opened it, so the
+ * retry has nothing left to send for it, whatever status it holds now.
  *
  * These are the two reads `ExecutionRepo.startForEntity` repeats inside its own
  * transaction, so one delivery's decision is honoured at either seam.
@@ -557,58 +547,22 @@ const answerFromCommittedDecision = Effect.fn("answerFromCommittedDecision")(
       return undefined;
     }
 
-    // The row is only worth resending while its run can still act on the send.
-    // `findByDelivery` reads whatever status the row holds now, and a run that
-    // has already reached a verdict would take a second `enqueued_at`, a second
-    // `workflow_run_id` and a "run started" entry filed after its own closing
-    // one.
-    if (!isInFlightStatus(committed.status)) {
-      yield* input.logger.info(
-        "Answered a retried delivery from an Execution that has already ended",
-        {
-          run: {
-            executionId: committed.id,
-            versionId: committed.workflowVersionId,
-            status: committed.status,
-          },
-          delivery: { id: input.deliveryId },
-        }
-      );
-
-      const ended: LifecycleDeliveryOutcome = {
-        kind: "started",
-        workflowId: input.workflowId,
-        executionId: committed.id,
-        supersededExecutionIds: [],
-        failedToSupersede: [],
-      };
-      return ended;
-    }
-
     yield* input.logger.info(
-      "Resent the Execution a retried delivery had already committed",
+      "Answered a retried delivery from the Execution it had already committed",
       {
         run: {
           executionId: committed.id,
           versionId: committed.workflowVersionId,
+          status: committed.status,
         },
         delivery: { id: input.deliveryId },
       }
     );
 
-    // A row the earlier attempt already sent carries `enqueuedAt`, and
-    // `enqueueStartedRun` answers it from the row without sending. A row the
-    // earlier attempt never sent is sent now, and its timeline entry names the
-    // version the committed row pinned, which a Publish since the first attempt
-    // may no longer have as the published one.
-    const sent = yield* enqueueStartedRun({
-      execution: committed,
-    });
-
     const started: LifecycleDeliveryOutcome = {
       kind: "started",
       workflowId: input.workflowId,
-      executionId: sent.executionId,
+      executionId: committed.id,
       supersededExecutionIds: [],
       failedToSupersede: [],
     };

@@ -25,6 +25,7 @@ import type {
   JsonValue,
 } from "@wfgraph/shared/types/json";
 import type { WorkflowVersionKind } from "@wfgraph/shared/graph/version-kinds";
+import type { Concurrency } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 
 export type {
   ExecutionScheduleKind,
@@ -264,6 +265,32 @@ export type NewExecution = {
 );
 
 /**
+ * What `ExecutionRepo.startForEntity` is asked to open.
+ *
+ * The transaction that inserts the execution row also writes the run's
+ * schedule row, due at `now`, and its "run started" timeline entry, so an
+ * open run always has both. A start answered with a row an earlier attempt of
+ * the same delivery committed writes neither again.
+ */
+export type StartForEntityInput = {
+  /**
+   * The row to open. Concurrency serializes on its typed Entity identity when
+   * present, otherwise on the legacy `entityValue`. A start with neither
+   * identity leaves Entity-scoped Concurrency out.
+   */
+  execution: NewExecution;
+  concurrency: Concurrency;
+  /** Stable key shared with an admission refusal for this Event delivery. */
+  admissionDecisionId?: string | undefined;
+  /** Written onto a displaced run's `error`, which run history shows. */
+  supersededReason: string;
+  /** The run's opening timeline entry, written as a `run_started` row. */
+  startedEntry: { message: string; metadata: JsonObject };
+  /** When the new run falls due: its schedule row's `wake_at`. */
+  now: Date;
+};
+
+/**
  * A run that reached its verdict without executing the graph. It starts and
  * completes at the same instant, which is what keeps it visible in the runs
  * list beside runs that did execute.
@@ -360,7 +387,6 @@ export type WorkflowExecutionListRow = Pick<
   | "runMode"
   | "startEventName"
   | "entityValue"
-  | "workflowRunId"
   | "error"
   | "startedAt"
   | "waitingAt"
@@ -402,13 +428,6 @@ export type EntityStartOutcome =
       execution: WorkflowExecution;
       /** Runs this start displaced, already `superseded` in the same transaction. */
       supersededExecutionIds: string[];
-      /**
-       * Runs this start found stuck between their row and the bus, already
-       * `failed` in the same transaction. The caller still signals each one,
-       * because a stamped `enqueued_at` that never landed would otherwise leave
-       * a live run against a failed row.
-       */
-      reclaimedExecutionIds: string[];
     }
   | { status: "refused"; inFlightExecutionIds: string[] }
   | {

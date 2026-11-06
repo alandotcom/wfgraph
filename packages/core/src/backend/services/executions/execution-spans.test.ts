@@ -93,7 +93,7 @@ function workflowRepoFor(workflow: Workflow) {
   return stubWorkflowRepo({
     findByIdWithPublishedVersionForRun: () =>
       Effect.succeed({ workflow, publishedVersion: published }),
-    // The enqueue reads the version the opened row pins, because that is what
+    // A start reads the version the new row pins, because that is what
     // the run's opening timeline entry names.
     findVersionById: () => Effect.succeed(published),
   });
@@ -103,9 +103,7 @@ function executionRow(): WorkflowExecution {
   return {
     id: "exec_new",
     workflowId: "wf_1",
-    workflowRunId: null,
     deliveryId: null,
-    enqueuedAt: null,
     status: "running",
     startSource: "manual",
     runMode: "live",
@@ -132,18 +130,15 @@ function executionRow(): WorkflowExecution {
 }
 
 const startRepo = Layer.mergeAll(
-  stubExecutionRepo({
-    startForEntity: () =>
+  stubExecutionRepo({ recordAuditEvent: () => Effect.void }),
+  stubExecutionDriver({
+    startRun: () =>
       Effect.succeed({
         status: "started" as const,
         execution: executionRow(),
         supersededExecutionIds: [],
-        reclaimedExecutionIds: [],
       }),
-    markEnqueued: () => Effect.void,
-    recordAuditEvent: () => Effect.void,
-  }),
-  stubExecutionDriver({ enqueueRun: () => Effect.void })
+  })
 );
 
 const shared = Layer.mergeAll(

@@ -313,9 +313,6 @@ export function createExecutorRuntime(
 
   return {
     attempt,
-    // A wait row is found by execution, run and node, so the run id has to be
-    // the same on every pass of the Execution.
-    runId: input.executionId,
 
     run: async <T>(step: DurableStepRef, fn: () => Promise<T>): Promise<T> => {
       const stored = memo.get(step.id);

@@ -23,8 +23,7 @@ import {
   resetGuardedStartMocks,
   resolveEntityMock,
   selectCanceledEntityIdMock,
-  enqueueRunMock,
-  startForEntityMock,
+  startRunMock,
   subscriber,
   videoPayload,
   winnerOutcome,
@@ -86,7 +85,7 @@ describe("applyLifecycleRules and Admission Entity Eligibility", () => {
             reason: "entity_condition_not_met",
           });
           assert.strictEqual(resolveEntityMock.mock.calls.length, 1);
-          assert.strictEqual(startForEntityMock.mock.calls.length, 0);
+          assert.strictEqual(startRunMock.mock.calls.length, 0);
           const audit = recordAdmissionRefusalMock.mock.calls[0]?.[0];
           assert.deepInclude(audit?.metadata, {
             reason: "entity_condition_not_met",
@@ -143,59 +142,17 @@ describe("applyLifecycleRules and Admission Entity Eligibility", () => {
           assert.strictEqual(replay.kind, "refused");
           assert.strictEqual(resolveEntityMock.mock.calls.length, 1);
           assert.strictEqual(recordAdmissionRefusalMock.mock.calls.length, 1);
-          assert.strictEqual(startForEntityMock.mock.calls.length, 0);
+          assert.strictEqual(startRunMock.mock.calls.length, 0);
         })
-    );
-
-    // The winner was already sent by the attempt that committed it, so the
-    // replayed start through `startWithConcurrency` answers from its row and
-    // sends nothing a second time.
-    it.effect("returns the start that won a racing admission refusal", () =>
-      Effect.gen(function* () {
-        resolveEntityMock.mockResolvedValue({
-          status: "cancelled",
-          remindersEnabled: false,
-        });
-        recordAdmissionRefusalMock.mockImplementation(() =>
-          Effect.succeed({ kind: "started", executionId: "exec_winner" })
-        );
-        startForEntityMock.mockImplementation(() =>
-          Effect.succeed(
-            winnerOutcome({
-              deliveryId: "evt_racing_start",
-              enqueuedAt: new Date("2026-03-01T00:00:01.000Z"),
-            })
-          )
-        );
-
-        const outcome = yield* applyLifecycleRules({
-          subscriber: subscriber(),
-          event: appointmentCreated,
-          payload: videoPayload,
-          deliveryId: "evt_racing_start",
-        }).pipe(
-          Effect.provide(
-            workflowWith(guardedRules({ checkpoints: ["before-execution"] }))
-          )
-        );
-
-        assert.deepStrictEqual(outcome, {
-          kind: "started",
-          workflowId: "wf_1",
-          executionId: "exec_winner",
-          supersededExecutionIds: [],
-          failedToSupersede: [],
-        });
-        assert.strictEqual(enqueueRunMock.mock.calls.length, 0);
-      })
     );
 
     // Another attempt of the same delivery found the Entity eligible and
     // committed the Execution after this attempt's `findByDelivery` read came
-    // back empty. This attempt reads the Entity as ineligible, and the delivery
-    // still has to reach the bus, or the row stays in flight with no run.
+    // back empty. This attempt reads the Entity as ineligible, and answers with
+    // that run: the start falls through to `startWithConcurrency`, whose
+    // `startForEntity` finds the committed row, already scheduled.
     it.effect(
-      "sends the Execution a concurrent attempt committed when this attempt finds the Entity ineligible",
+      "answers with the Execution a concurrent attempt committed when this attempt finds the Entity ineligible",
       () =>
         Effect.gen(function* () {
           resolveEntityMock.mockResolvedValue({
@@ -205,10 +162,8 @@ describe("applyLifecycleRules and Admission Entity Eligibility", () => {
           recordAdmissionRefusalMock.mockImplementation(() =>
             Effect.succeed({ kind: "started", executionId: "exec_winner" })
           );
-          startForEntityMock.mockImplementation(() =>
-            Effect.succeed(
-              winnerOutcome({ deliveryId: "evt_crashed", enqueuedAt: null })
-            )
+          startRunMock.mockImplementation(() =>
+            Effect.succeed(winnerOutcome({ deliveryId: "evt_crashed" }))
           );
 
           const outcome = yield* applyLifecycleRules({
@@ -229,16 +184,12 @@ describe("applyLifecycleRules and Admission Entity Eligibility", () => {
             supersededExecutionIds: [],
             failedToSupersede: [],
           });
-          assert.strictEqual(startForEntityMock.mock.calls.length, 1);
-          assert.deepInclude(startForEntityMock.mock.calls[0]?.[0].execution, {
+          assert.strictEqual(startRunMock.mock.calls.length, 1);
+          assert.deepInclude(startRunMock.mock.calls[0]?.[0].execution, {
             deliveryId: "evt_crashed",
             entityType: "appointment",
             entityId: "appt_8813",
           });
-          assert.deepStrictEqual(
-            enqueueRunMock.mock.calls.map(([data]) => data),
-            [{ executionId: "exec_winner" }]
-          );
         })
     );
 
@@ -260,7 +211,7 @@ describe("applyLifecycleRules and Admission Entity Eligibility", () => {
         if (outcome.kind === "refused") {
           assert.strictEqual(outcome.reason, "entity_not_found");
         }
-        assert.strictEqual(startForEntityMock.mock.calls.length, 0);
+        assert.strictEqual(startRunMock.mock.calls.length, 0);
       })
     );
 
@@ -280,12 +231,12 @@ describe("applyLifecycleRules and Admission Entity Eligibility", () => {
 
           assert.strictEqual(outcome.kind, "started");
           assert.strictEqual(resolveEntityMock.mock.calls.length, 0);
-          assert.deepInclude(startForEntityMock.mock.calls[0]?.[0].execution, {
+          assert.deepInclude(startRunMock.mock.calls[0]?.[0].execution, {
             entityType: "appointment",
             entityId: "appt_8813",
           });
           assert.notProperty(
-            startForEntityMock.mock.calls[0]?.[0].execution ?? {},
+            startRunMock.mock.calls[0]?.[0].execution ?? {},
             "entityValue"
           );
         })
@@ -321,7 +272,7 @@ describe("applyLifecycleRules and Admission Entity Eligibility", () => {
           assert.strictEqual(outcome.kind, "started");
           assert.strictEqual(selectUndefined.mock.calls.length, 1);
           assert.strictEqual(
-            startForEntityMock.mock.calls[0]?.[0].execution.entityId,
+            startRunMock.mock.calls[0]?.[0].execution.entityId,
             "appt_constant"
           );
         })
@@ -343,7 +294,7 @@ describe("applyLifecycleRules and Admission Entity Eligibility", () => {
 
           assert.strictEqual(outcome.kind, "started");
           assert.strictEqual(resolveEntityMock.mock.calls.length, 1);
-          assert.deepInclude(startForEntityMock.mock.calls[0]?.[0].execution, {
+          assert.deepInclude(startRunMock.mock.calls[0]?.[0].execution, {
             entityType: "appointment",
             entityId: "appt_8813",
           });
@@ -371,7 +322,7 @@ describe("applyLifecycleRules and Admission Entity Eligibility", () => {
           );
 
           assert.strictEqual(exit._tag, "Failure");
-          assert.strictEqual(startForEntityMock.mock.calls.length, 0);
+          assert.strictEqual(startRunMock.mock.calls.length, 0);
           assert.strictEqual(recordAuditEventMock.mock.calls.length, 0);
         })
     );
@@ -431,7 +382,7 @@ describe("applyLifecycleRules and Admission Entity Eligibility", () => {
             );
           }
           assert.strictEqual(resolveEntityMock.mock.calls.length, 0);
-          assert.strictEqual(startForEntityMock.mock.calls.length, 0);
+          assert.strictEqual(startRunMock.mock.calls.length, 0);
           assert.strictEqual(recordAdmissionRefusalMock.mock.calls.length, 0);
           assert.strictEqual(recordAuditEventMock.mock.calls.length, 0);
         })
@@ -468,7 +419,7 @@ describe("applyLifecycleRules and Admission Entity Eligibility", () => {
 
           const exit = yield* Fiber.join(fiber);
           assert.strictEqual(exit._tag, "Failure");
-          assert.strictEqual(startForEntityMock.mock.calls.length, 0);
+          assert.strictEqual(startRunMock.mock.calls.length, 0);
           assert.strictEqual(recordAuditEventMock.mock.calls.length, 0);
           assert.strictEqual(recordAdmissionRefusalMock.mock.calls.length, 0);
         })

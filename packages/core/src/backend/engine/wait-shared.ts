@@ -44,7 +44,6 @@ export type WaitActionInput = {
   workflowVersionId: string;
   /** Which side of the Lifecycle Node this Wait sits on. */
   side: ExecutionSide;
-  workflowRunId?: string | undefined;
   /** See `WaitBranchContext.resolveTemplates`. */
   resolveTemplates: ResolveTemplates;
 };
@@ -71,7 +70,6 @@ export type WaitBranchContext = {
    * the Canceled side and refuses the Started one.
    */
   side: ExecutionSide;
-  runId: string;
   /**
    * Resolves the `{{@nodeId:Label.field}}` references inside a match, which the
    * config-wide template pass does not reach: it walks the config's own string

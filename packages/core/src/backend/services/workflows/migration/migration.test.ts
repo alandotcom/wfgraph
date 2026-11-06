@@ -299,7 +299,6 @@ function waitRow(
 ): WorkflowWaitState {
   return {
     workflowId: WORKFLOW_ID,
-    runId: "run_1",
     nodeId: "wait_1",
     nodeName: "Wait for approval",
     waitType: "delay",

@@ -12,8 +12,10 @@ import type { DatabaseError } from "#src/backend/lib/effect/database";
 import type { WfGraphRunWakes } from "#src/backend/persistence/types";
 import {
   type CanceledOutletClaim,
+  type EntityStartOutcome,
   type ExecutionEntitySelector,
   ExecutionRepo,
+  type StartForEntityInput,
   type WorkflowExecution,
 } from "#src/backend/services/executions/repo";
 import type { WaitResumeClaim } from "#src/backend/services/executions/repo/waits";
@@ -63,12 +65,14 @@ export class ExecutionDriver extends Context.Service<
   ExecutionDriver,
   {
     /**
-     * Give a started run its schedule row, due now. A second call for the
-     * same run leaves the row as it stands, wherever the run has got to.
+     * Open a run with Concurrency applied, scheduled due now, as
+     * `ExecutionRepo.startForEntity` describes. The execution row, its
+     * schedule row and its "run started" entry commit together, and the
+     * worker loops are woken once they have.
      */
-    readonly enqueueRun: (input: {
-      executionId: string;
-    }) => Effect.Effect<void, DriverError>;
+    readonly startRun: (
+      input: Omit<StartForEntityInput, "now">
+    ) => Effect.Effect<EntityStartOutcome, DriverError>;
     /**
      * Claim the event park `target` addresses for an Event or a manual resume,
      * and resolve it with `arrival` as a `resume` wake, re-queueing its run.
@@ -146,15 +150,16 @@ export function makeExecutionDriverLayer(
     Effect.gen(function* () {
       const executions = yield* ExecutionRepo;
       return ExecutionDriver.of({
-        enqueueRun: Effect.fn("ExecutionDriver.enqueueRun")(function* (input) {
-          const inserted = yield* executions
-            .scheduleExecution({
-              executionId: input.executionId,
-              kind: "run",
-              wakeAt: yield* now,
-            })
+        startRun: Effect.fn("ExecutionDriver.startRun")(function* (input) {
+          const outcome = yield* executions
+            .startForEntity({ ...input, now: yield* now })
             .pipe(Effect.mapError(driverError));
-          if (inserted) yield* runDue(input.executionId);
+          // A start answered with the row an earlier attempt committed wakes
+          // the loops again, which costs one claim that may lease nothing.
+          if (outcome.status === "started") {
+            yield* runDue(outcome.execution.id);
+          }
+          return outcome;
         }),
 
         resolvePark: Effect.fn("ExecutionDriver.resolvePark")(

@@ -147,7 +147,6 @@ const workflowExecutionFields = {
   runMode: workflowRunModeSchema,
   startEventName: Schema.NullOr(Schema.String),
   entityValue: Schema.NullOr(Schema.String),
-  workflowRunId: Schema.NullOr(Schema.String),
   /**
    * The kind of version this run pinned. `draft_snapshot` means the run used the
    * graph on the canvas instead of the published graph. Run history reads this
@@ -268,7 +267,6 @@ const ignoredReasonSchema = Schema.Literals(WORKFLOW_EXECUTION_IGNORED_REASONS);
 const workflowExecutionRunningSchema = Schema.Struct({
   status: Schema.Literal("running"),
   executionId: Schema.String,
-  runId: Schema.optionalKey(Schema.String),
   runMode: workflowRunModeSchema,
   supersededExecutions: Schema.optionalKey(Schema.Finite),
   failedToSupersede: Schema.optionalKey(listOf(Schema.String)),

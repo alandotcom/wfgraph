@@ -128,7 +128,6 @@ it.each([{ outlet: "false" }, { outlet: "true" }])(
       id: "wait-row",
       workflowId: "wf",
       executionId: "exec",
-      runId: "run",
       nodeId: "wait",
       nodeName: "Wait",
       waitType: "delay" as const,

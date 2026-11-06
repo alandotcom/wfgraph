@@ -44,7 +44,7 @@ import type {
 type Repo = ExecutionRepo["Service"];
 type Driver = ExecutionDriver["Service"];
 
-export const startForEntityMock = vi.fn<Repo["startForEntity"]>();
+export const startRunMock = vi.fn<Driver["startRun"]>();
 export const requestCanceledOutletMock =
   vi.fn<Driver["requestCanceledOutlet"]>();
 export const findAdmissionRefusalMock = vi.fn<Repo["findAdmissionRefusal"]>();
@@ -56,7 +56,6 @@ export const findVersionByIdMock =
 export const recordAuditEventMock = vi.fn<Repo["recordAuditEvent"]>(
   () => Effect.void
 );
-export const enqueueRunMock = vi.fn<Driver["enqueueRun"]>(() => Effect.void);
 export const stopRunMock = vi.fn<Driver["stopRun"]>(() => Effect.void);
 
 export const resolveEntityMock = vi.fn(
@@ -321,9 +320,7 @@ export function createExecution(): WorkflowExecution {
   return {
     id: "exec_new",
     workflowId: "wf_1",
-    workflowRunId: null,
     deliveryId: null,
-    enqueuedAt: null,
     status: "running",
     startSource: "event",
     runMode: "live",
@@ -353,23 +350,14 @@ export const startedOutcome: EntityStartOutcome = {
   status: "started",
   execution: createExecution(),
   supersededExecutionIds: [],
-  reclaimedExecutionIds: [],
 };
 
-/**
- * The Execution an earlier attempt of a delivery committed. `enqueuedAt` is
- * null when that attempt died before the send.
- */
-export function winnerExecution(input: {
-  deliveryId: string;
-  enqueuedAt: Date | null;
-}): WorkflowExecution {
+/** The Execution an earlier attempt of a delivery committed. */
+function winnerExecution(input: { deliveryId: string }): WorkflowExecution {
   return {
     ...createExecution(),
     id: "exec_winner",
     deliveryId: input.deliveryId,
-    enqueuedAt: input.enqueuedAt,
-    workflowRunId: input.enqueuedAt ? "evt_winner" : null,
     entityValue: null,
     entityType: "appointment",
     entityId: "appt_8813",
@@ -382,13 +370,11 @@ export function winnerExecution(input: {
  */
 export function winnerOutcome(input: {
   deliveryId: string;
-  enqueuedAt: Date | null;
 }): EntityStartOutcome {
   return {
     status: "started",
     execution: winnerExecution(input),
     supersededExecutionIds: [],
-    reclaimedExecutionIds: [],
   };
 }
 
@@ -470,15 +456,13 @@ export function subscriber(): EventSubscriber {
 
 export const lifecyclePorts = Layer.mergeAll(
   stubExecutionRepo({
-    startForEntity: startForEntityMock,
     findAdmissionRefusal: findAdmissionRefusalMock,
     recordAdmissionRefusal: recordAdmissionRefusalMock,
     findByDelivery: findByDeliveryMock,
     recordAuditEvent: recordAuditEventMock,
-    markEnqueued: () => Effect.void,
   }),
   stubExecutionDriver({
-    enqueueRun: enqueueRunMock,
+    startRun: startRunMock,
     requestCanceledOutlet: requestCanceledOutletMock,
     stopRun: stopRunMock,
   }),
@@ -500,14 +484,13 @@ export function workflowWith(rules: LifecycleRules) {
  * file's own cases.
  */
 export function resetGuardedStartMocks(): void {
-  startForEntityMock.mockReset();
+  startRunMock.mockReset();
   requestCanceledOutletMock.mockReset();
   findAdmissionRefusalMock.mockReset();
   recordAdmissionRefusalMock.mockReset();
   findByDeliveryMock.mockReset();
   findVersionByIdMock.mockReset();
   recordAuditEventMock.mockReset();
-  enqueueRunMock.mockReset();
   stopRunMock.mockReset();
   resolveEntityMock.mockReset();
   selectEntityIdMock.mockClear();
@@ -517,7 +500,7 @@ export function resetGuardedStartMocks(): void {
     status: "scheduled",
     remindersEnabled: true,
   });
-  startForEntityMock.mockImplementation(() => Effect.succeed(startedOutcome));
+  startRunMock.mockImplementation(() => Effect.succeed(startedOutcome));
   requestCanceledOutletMock.mockImplementation(() => Effect.succeed([]));
   findAdmissionRefusalMock.mockImplementation(() => Effect.succeed(null));
   recordAdmissionRefusalMock.mockImplementation((input) =>
@@ -528,6 +511,5 @@ export function resetGuardedStartMocks(): void {
     Effect.succeed(publishedVersion(createWorkflow({ rules: startRules })))
   );
   recordAuditEventMock.mockImplementation(() => Effect.void);
-  enqueueRunMock.mockImplementation(() => Effect.void);
   stopRunMock.mockImplementation(() => Effect.void);
 }

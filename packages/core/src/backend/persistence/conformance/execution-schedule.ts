@@ -23,6 +23,7 @@ import type {
   PersistenceTestRegistry,
 } from "#src/backend/persistence/conformance/support";
 import {
+  notYetDue,
   publishSecondVersion,
   seedPublishedWorkflow,
 } from "#src/backend/persistence/conformance/support";
@@ -34,33 +35,33 @@ function at(offsetMs: number): Date {
   return new Date(T0.getTime() + offsetMs);
 }
 
-/** Opens one run against the seeded workflow and answers its id. */
-const openRun = Effect.gen(function* () {
-  const executions = yield* ExecutionRepo;
-  const started = yield* executions.startForEntity({
-    execution: {
-      workflowId: "wf_1",
-      workflowVersionId: "ver_1",
-      startSource: "manual",
-      runMode: "live",
-      input: {},
-    },
-    concurrency: "unlimited",
-    supersededReason: "newer start",
-  });
-  if (started.status !== "started") throw new Error("Start was refused");
-  return started.execution.id;
-});
-
-/** Opens a run and gives it a schedule row due at `wakeAt`. */
+/**
+ * Opens one run against the seeded workflow, with its schedule row due at
+ * `wakeAt`, and answers its id.
+ */
 function scheduledRun(wakeAt: Date) {
   return Effect.gen(function* () {
     const executions = yield* ExecutionRepo;
-    const executionId = yield* openRun;
-    yield* executions.scheduleExecution({ executionId, kind: "run", wakeAt });
-    return executionId;
+    const started = yield* executions.startForEntity({
+      execution: {
+        workflowId: "wf_1",
+        workflowVersionId: "ver_1",
+        startSource: "manual",
+        runMode: "live",
+        input: {},
+      },
+      concurrency: "unlimited",
+      supersededReason: "newer start",
+      startedEntry: notYetDue.startedEntry,
+      now: wakeAt,
+    });
+    if (started.status !== "started") throw new Error("Start was refused");
+    return started.execution.id;
   });
 }
+
+/** Opens one run that no claim in these cases leases, and answers its id. */
+const openRun = scheduledRun(notYetDue.now);
 
 /** Claims every due row at `now` and answers the one for `executionId`. */
 function claimRun(executionId: string, now: Date) {
@@ -91,7 +92,6 @@ function park(executionId: string, nodeId: string, waitUntil: Date) {
       side: "started",
       executionId,
       workflowId: "wf_1",
-      runId: "run_1",
       nodeId,
       nodeName: nodeId,
       workflowVersionId: "ver_1",
@@ -551,7 +551,10 @@ export function describeExecutionScheduleConformance({
       ]);
       expect(result.park).toMatchObject({ parkStepId: "wait:1", wake: null });
       expect(result.status?.status).toBe("waiting");
-      expect(result.events).toEqual([]);
+      // The run's opening entry, and nothing the stale pass wrote.
+      expect(result.events.map((event) => event.eventType)).toEqual([
+        "run_started",
+      ]);
       expect(result.schedule).toMatchObject({ state: "waiting" });
     });
 
@@ -598,7 +601,12 @@ export function describeExecutionScheduleConformance({
         id: result.firstId,
         status: "running",
       });
-      expect(result.events).toHaveLength(2);
+      // Both waiting entries, newest first, ahead of the run's opening entry.
+      expect(result.events.map((event) => event.eventType)).toEqual([
+        "run_waiting",
+        "run_waiting",
+        "run_started",
+      ]);
     });
 
     it("lets a later fenced close correct an error verdict and keeps a success", async () => {
@@ -810,7 +818,6 @@ export function describeExecutionScheduleConformance({
             side: "started",
             executionId,
             workflowId: "wf_1",
-            runId: "run_1",
             nodeId: "wait_after",
             nodeName: "wait_after",
             workflowVersionId: "ver_1",
@@ -924,17 +931,35 @@ export function describeExecutionScheduleConformance({
       });
     });
 
-    it("keys a run's schedule row by an id of its own, one row per run, and deletes it and its memo with the run", async () => {
+    it("keys a run's schedule row by an id of its own, writes it once per run, and deletes it and its memo with the run", async () => {
       const connection = await seeded(await openConnection());
       const result = await connection.run(
         Effect.gen(function* () {
           const executions = yield* ExecutionRepo;
-          const executionId = yield* scheduledRun(T0);
-          const again = yield* executions.scheduleExecution({
-            executionId,
-            kind: "run",
-            wakeAt: at(5_000),
-          });
+          // A retried delivery asks for the same run again, later.
+          const start = (now: Date) =>
+            executions.startForEntity({
+              execution: {
+                workflowId: "wf_1",
+                workflowVersionId: "ver_1",
+                startSource: "event",
+                runMode: "live",
+                deliveryId: "delivery_1",
+                input: {},
+              },
+              concurrency: "unlimited",
+              supersededReason: "newer start",
+              startedEntry: notYetDue.startedEntry,
+              now,
+            });
+          const first = yield* start(T0);
+          const retried = yield* start(at(5_000));
+          if (first.status !== "started" || retried.status !== "started") {
+            throw new Error("Start was refused");
+          }
+          const executionId = first.execution.id;
+          const again = retried.execution.id === executionId;
+          const entries = yield* executions.listEvents(executionId);
           const { claim, fence } = yield* claimRun(executionId, T0);
           yield* executions.fenced(fence).writeStepMemo({
             stepId: "step_1",
@@ -946,6 +971,7 @@ export function describeExecutionScheduleConformance({
           yield* executions.deleteAllForWorkflow("wf_1");
           return {
             again,
+            entries,
             claim,
             schedule,
             memo,
@@ -957,7 +983,10 @@ export function describeExecutionScheduleConformance({
         })
       );
 
-      expect(result.again).toBe(false);
+      expect(result.again).toBe(true);
+      expect(result.entries.map((entry) => entry.eventType)).toEqual([
+        "run_started",
+      ]);
       expect(result.schedule).toMatchObject({
         id: result.claim.scheduleId,
         kind: "run",
@@ -1029,7 +1058,7 @@ export function describeExecutionScheduleConformance({
             schedule: yield* executions.findSchedule(executionId),
             memo: yield* executions.listStepMemo(executionId),
             unscheduled: yield* executions.revokeLease({
-              executionId: yield* openRun,
+              executionId: "exec_without_a_schedule_row",
               now: at(1_000),
             }),
           };
@@ -1259,15 +1288,10 @@ export function describeExecutionScheduleConformance({
       const result = await connection.run(
         Effect.gen(function* () {
           const executions = yield* ExecutionRepo;
-          const ownId = yield* openRun;
           // The other run is leased to a pass of its own first.
           const otherId = yield* scheduledRun(T0);
           const { fence: otherFence } = yield* claimRun(otherId, T0);
-          yield* executions.scheduleExecution({
-            executionId: ownId,
-            kind: "run",
-            wakeAt: T0,
-          });
+          const ownId = yield* scheduledRun(T0);
           const { fence } = yield* claimRun(ownId, T0);
           const pass = executions.fenced(fence);
           // The pass's own token and schedule row, paired with the other run.
@@ -1331,7 +1355,9 @@ export function describeExecutionScheduleConformance({
       });
       expect(result.other?.status).toBe("running");
       expect(result.otherLogs).toEqual([]);
-      expect(result.otherEvents).toEqual([]);
+      expect(result.otherEvents.map((event) => event.eventType)).toEqual([
+        "run_started",
+      ]);
       expect(result.otherSchedule).toMatchObject({
         state: "leased",
         ownerToken: result.otherFence.ownerToken,
@@ -1830,15 +1856,11 @@ export function describeExecutionScheduleConformance({
               },
               concurrency: "unlimited",
               supersededReason: "newer start",
+              startedEntry: notYetDue.startedEntry,
+              now: T0,
             });
             if (started.status !== "started") throw new Error("Start refused");
-            const executionId = started.execution.id;
-            yield* executions.scheduleExecution({
-              executionId,
-              kind: "run",
-              wakeAt: T0,
-            });
-            return executionId;
+            return started.execution.id;
           });
 
           // A run whose pass released it to sleep on two parks.

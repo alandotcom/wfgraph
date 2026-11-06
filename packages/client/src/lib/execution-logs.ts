@@ -49,7 +49,6 @@ export type WorkflowExecution = {
   versionNumber: number | null;
   startEventName: string | null;
   entityValue: string | null;
-  workflowRunId: string | null;
   startedAt: Date;
   waitingAt: Date | null;
   cancelledAt: Date | null;
@@ -218,7 +217,6 @@ export function toWorkflowExecutionFromSummary(
     versionNumber: summary.versionNumber,
     startEventName: summary.startEventName,
     entityValue: summary.entityValue,
-    workflowRunId: null,
     startedAt: new Date(summary.startedAt),
     waitingAt: null,
     cancelledAt: null,

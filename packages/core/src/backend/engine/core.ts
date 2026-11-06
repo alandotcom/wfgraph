@@ -96,7 +96,6 @@ export type WorkflowExecutionInput = {
   /** Immutable typed identity selected when a guarded Execution was opened. */
   entityType?: string | undefined;
   entityId?: string | undefined;
-  workflowRunId?: string | undefined;
   runMode?: "live" | "test" | undefined;
 };
 
@@ -192,12 +191,9 @@ function prepareRun(
     startEventName = null,
     executionId,
     workflowId,
-    workflowRunId,
     runMode = "live",
   } = input;
   const { nodes, edges } = parsedGraph(graph);
-
-  const currentWorkflowRunId = workflowRunId || runtime.runId || executionId;
 
   const traversal = new Traversal(nodes, edges);
   const lifecycleNodes = traversal.lifecycleNodes;
@@ -236,7 +232,6 @@ function prepareRun(
     entities,
     executionId,
     workflowId,
-    workflowRunId: currentWorkflowRunId,
     runMode,
     startPayload,
     startEventName,
@@ -270,27 +265,17 @@ function prepareRun(
  * terminal. The full one is written once, on the record that opens the run.
  */
 function runLogAnnotations(
-  input: WorkflowExecutionInput,
-  runtime: WorkflowExecutionRuntime
+  input: WorkflowExecutionInput
 ): Record<string, unknown> {
-  return {
-    run: {
-      execution: input.executionId,
-      id: input.workflowRunId || runtime.runId || input.executionId,
-    },
-  };
+  return { run: { execution: input.executionId } };
 }
 
-function runIdentity(
-  input: WorkflowExecutionInput,
-  runtime: WorkflowExecutionRuntime
-): Record<string, unknown> {
+function runIdentity(input: WorkflowExecutionInput): Record<string, unknown> {
   return {
     run: {
       workflow: input.workflowId,
       workflowName: input.workflowName ?? null,
       execution: input.executionId,
-      id: input.workflowRunId || runtime.runId || input.executionId,
       mode: input.runMode ?? "live",
     },
   };
@@ -329,7 +314,7 @@ export function executeWorkflow(
     actions,
     entities
   ).pipe(
-    Effect.annotateLogs(runLogAnnotations(input, runtime)),
+    Effect.annotateLogs(runLogAnnotations(input)),
     Effect.withSpan("wfgraph.workflow.execution", {
       attributes: workflowSpanAttributes(input),
     })
@@ -369,7 +354,7 @@ function executeWorkflowInner(
         `Run started: ${input.workflowName ?? workflowId} (${nodes.length} nodes)`
       ).pipe(
         Effect.annotateLogs({
-          ...runIdentity(input, runtime),
+          ...runIdentity(input),
           graph: {
             nodes: nodes.length,
             edges: edgeCount,

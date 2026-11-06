@@ -151,7 +151,6 @@ export type WorkflowExecutionIgnoredReason =
 export type WorkflowExecutionRunningResponse = {
   status: "running";
   executionId: string;
-  runId?: string;
   runMode: "live" | "test";
   /**
    * How many in-flight runs newest-wins Concurrency ended to make room for this

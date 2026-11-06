@@ -10,11 +10,7 @@ import { expect, it, vi } from "vitest";
 import { Effect } from "effect";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
-import {
-  ExecutionRepo,
-  UNSENT_RUN_GRACE_MS,
-  UNSENT_RUN_RECLAIM_REASON,
-} from "#src/backend/services/executions/repo";
+import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import type { ConformanceConnection } from "#src/backend/persistence/persistence-conformance-test-support";
 import {
   seedPublishedWorkflow,
@@ -33,6 +29,7 @@ import { wfPostgres } from "#src/backend/persistence/postgres";
 import {
   connect,
   conformanceCipher,
+  notYetDue,
   publishSecondVersion,
 } from "#src/backend/persistence/conformance/support";
 
@@ -99,6 +96,7 @@ describePostgres("PostgreSQL concurrency", () => {
             },
             concurrency: "unlimited",
             supersededReason: "newer start",
+            ...notYetDue,
           });
           if (started.status !== "started") throw new Error("Start refused");
           const startedExecutionId = started.execution.id;
@@ -106,7 +104,6 @@ describePostgres("PostgreSQL concurrency", () => {
             executionId: startedExecutionId,
             workflowId: "wf_1",
             workflowVersionId: "ver_1",
-            runId: "run_1",
             nodeId: "wait_1",
             nodeName: "Approval",
             side: "started",
@@ -261,6 +258,7 @@ describePostgres("PostgreSQL concurrency", () => {
               },
               concurrency: "first-wins",
               supersededReason: "newer start",
+              ...notYetDue,
             });
           })
         )
@@ -310,6 +308,7 @@ describePostgres("PostgreSQL concurrency", () => {
               },
               concurrency: "newest-wins",
               supersededReason: "newer start",
+              ...notYetDue,
             });
           })
         )
@@ -485,6 +484,7 @@ describePostgres("PostgreSQL concurrency", () => {
               },
               concurrency: "unlimited",
               supersededReason: "newer start",
+              ...notYetDue,
             });
           })
         )
@@ -508,73 +508,6 @@ describePostgres("PostgreSQL concurrency", () => {
       })
     );
     expect(rows).toHaveLength(1);
-  });
-
-  // A crash between the commit and the send leaves a row in flight that nothing
-  // drives. `first-wins` would otherwise defer to it forever, so a start past
-  // the grace window closes it and goes. Only the clock moves here: the row's
-  // own `started_at` is what the window is measured from.
-  it("closes a run stuck before the bus, and defers to a live one beside it", async () => {
-    const [connection] = await openRacers(1);
-    await seedPublishedWorkflow(connection);
-
-    const start = (deliveryId: string) =>
-      connection.run(
-        Effect.gen(function* () {
-          const executions = yield* ExecutionRepo;
-          return yield* executions.startForEntity({
-            execution: {
-              workflowId: "wf_1",
-              workflowVersionId: "ver_1",
-              startSource: "event",
-              runMode: "live",
-              entityValue: "appointment_1",
-              deliveryId,
-              input: {},
-            },
-            concurrency: "first-wins",
-            supersededReason: "newer start",
-          });
-        })
-      );
-
-    const stuck = await start("delivery_stuck");
-    if (stuck.status !== "started") {
-      throw new Error("The first start was refused");
-    }
-
-    // Inside the window the stuck row still counts, so the next start defers.
-    expect((await start("delivery_early")).status).toBe("refused");
-
-    // Only `Date` is faked: the driver's own timers have to keep working, and
-    // the comparison is `Date.now() - startedAt` against a row the database
-    // stamped.
-    vi.useFakeTimers({ toFake: ["Date"] });
-    let afterGrace;
-    try {
-      vi.setSystemTime(new Date(Date.now() + UNSENT_RUN_GRACE_MS + 1000));
-      afterGrace = await start("delivery_late");
-    } finally {
-      vi.useRealTimers();
-    }
-
-    if (afterGrace.status !== "started") {
-      throw new Error("The start past the grace window was refused");
-    }
-    expect(afterGrace.reclaimedExecutionIds).toEqual([stuck.execution.id]);
-
-    const rows = await connection.run(
-      Effect.gen(function* () {
-        const executions = yield* ExecutionRepo;
-        return yield* executions.listByWorkflow({
-          workflowId: "wf_1",
-          includeSuperseded: true,
-        });
-      })
-    );
-    const reclaimed = rows.find((row) => row.id === stuck.execution.id);
-    expect(reclaimed?.status).toBe("failed");
-    expect(reclaimed?.error).toBe(UNSENT_RUN_RECLAIM_REASON);
   });
 
   // Concurrency serializes on one entity in one mode of one workflow. A start
@@ -606,6 +539,7 @@ describePostgres("PostgreSQL concurrency", () => {
             },
             concurrency: "first-wins",
             supersededReason: "newer start",
+            ...notYetDue,
           });
         })
       );
@@ -633,14 +567,11 @@ describePostgres("PostgreSQL concurrency", () => {
           },
           concurrency: "unlimited",
           supersededReason: "newer start",
+          startedEntry: notYetDue.startedEntry,
+          now,
         });
         if (started.status !== "started") throw new Error("Start refused");
         const executionId = started.execution.id;
-        yield* executions.scheduleExecution({
-          executionId,
-          kind: "run",
-          wakeAt: now,
-        });
         const claimed = yield* executions.claimDue({
           workerId: "worker_1",
           limit: 100,
@@ -654,7 +585,6 @@ describePostgres("PostgreSQL concurrency", () => {
             side: "started",
             executionId,
             workflowId: "wf_1",
-            runId: "run_1",
             nodeId,
             nodeName: nodeId,
             workflowVersionId: "ver_1",
@@ -818,13 +748,10 @@ describePostgres("PostgreSQL concurrency", () => {
             },
             concurrency: "unlimited",
             supersededReason: "newer start",
+            startedEntry: notYetDue.startedEntry,
+            now,
           });
           if (started.status !== "started") throw new Error("Start refused");
-          yield* executions.scheduleExecution({
-            executionId: started.execution.id,
-            kind: "run",
-            wakeAt: now,
-          });
           return started.execution.id;
         })
       );

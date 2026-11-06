@@ -4,14 +4,10 @@ import type {
   ExecutionRepo,
   WorkflowExecution,
 } from "#src/backend/services/executions/repo";
-import { DatabaseError } from "#src/backend/lib/effect/database";
 import { InternalFailure } from "#src/backend/lib/effect/failures";
-import { DriverError } from "#src/backend/services/executions/driver";
 import {
-  makeRecordingLogger,
   SilentAppLoggerLayer,
   stubExecutionRepo,
-  stubExecutionDriver,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
 import type { WorkflowVersion } from "#src/backend/lib/db/schema";
@@ -19,8 +15,8 @@ import type { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import {
   buildIgnoredRunAuditMessage,
   buildRunStartedAuditMessage,
-  enqueueStartedRun,
   recordPausedRunIgnored,
+  runStartedEntry,
 } from "#src/backend/services/executions/run-rows";
 
 function createExecution(
@@ -29,9 +25,7 @@ function createExecution(
   return {
     id: "exec_1",
     workflowId: "wf_1",
-    workflowRunId: null,
     deliveryId: null,
-    enqueuedAt: null,
     status: "running",
     startSource: "event",
     runMode: "live",
@@ -59,10 +53,8 @@ function createExecution(
 }
 
 /**
- * The `workflow_versions` row the fixture Execution's `workflowVersionId` names.
- *
- * The enqueue reads it to name the version on the timeline, so every case that
- * gets as far as the send provides one.
+ * The `workflow_versions` row a fixture start's `workflowVersionId` names,
+ * which `runStartedEntry` reads to name the version on the timeline.
  */
 function pinnedVersionLayer(
   version: Pick<WorkflowVersion, "id" | "version"> = {
@@ -183,99 +175,32 @@ describe("buildIgnoredRunAuditMessage", () => {
 // services that layer provides. The message builders above need no services and
 // use the plain one imported at the top, so the callback parameter is named
 // apart from it rather than shadowing it.
-describe("enqueueStartedRun", () => {
+describe("runStartedEntry", () => {
   layer(SilentAppLoggerLayer)((serviceIt) => {
-    serviceIt.effect("schedules the run and stamps the row", () =>
-      Effect.gen(function* () {
-        const calls = {
-          enqueued: [] as Array<{ executionId: string }>,
-          stamped: [] as Array<{ executionId: string; runId: string | null }>,
-        };
-
-        // The row is opened by `ExecutionRepo.startForEntity`, under the lock that
-        // makes Concurrency a decision; this is what happens after it exists.
-        // `markEnqueueFailed` is left refusing, so a compensation on the happy
-        // path would kill the test rather than pass unnoticed.
-        const started = yield* enqueueStartedRun({
-          execution: createExecution({ input: { order: "o1" } }),
-        }).pipe(
-          Effect.provide(
-            Layer.mergeAll(
-              pinnedVersionLayer(),
-              stubExecutionRepo({
-                markEnqueued: (input) =>
-                  Effect.sync(() => {
-                    calls.stamped.push(input);
-                  }),
-                recordAuditEvent: () => Effect.void,
-              }),
-              stubExecutionDriver({
-                enqueueRun: (input) =>
-                  Effect.sync(() => {
-                    calls.enqueued.push(input);
-                  }),
-              })
-            )
-          )
-        );
-
-        assert.deepStrictEqual(started, {
-          executionId: "exec_1",
-          runMode: "live",
-        });
-        assert.deepStrictEqual(calls.enqueued, [{ executionId: "exec_1" }]);
-        assert.deepStrictEqual(calls.stamped, [
-          { executionId: "exec_1", runId: null },
-        ]);
-      })
-    );
-
-    // Every field of the entry comes off the committed row, which is what lets a
-    // retried delivery schedule a row an earlier attempt opened and never
-    // scheduled without rebuilding the start it was opened from.
+    // Every field of the entry comes off the row about to be opened, so the
+    // entry `startForEntity` writes beside that row describes it exactly.
     serviceIt.effect(
-      "writes the opening timeline entry from the row alone",
+      "words the opening entry from the row it is opened with",
       () =>
         Effect.gen(function* () {
-          const calls = {
-            audits: [] as Array<
-              Parameters<ExecutionRepo["Service"]["recordAuditEvent"]>[0]
-            >,
-          };
+          const entry = yield* runStartedEntry({
+            workflowId: "wf_1",
+            workflowVersionId: "ver_1",
+            startSource: "event",
+            runMode: "test",
+            startEventName: "app/appointment.created",
+            entityType: "appointment",
+            entityId: "appt_8813",
+            deliveryId: "dlv_1",
+            input: {},
+          }).pipe(Effect.provide(pinnedVersionLayer()));
 
-          yield* enqueueStartedRun({
-            execution: createExecution({
-              runMode: "test",
-              startEventName: "app/appointment.created",
-              entityType: "appointment",
-              entityId: "appt_8813",
-              deliveryId: "dlv_1",
-            }),
-          }).pipe(
-            Effect.provide(
-              Layer.mergeAll(
-                pinnedVersionLayer(),
-                stubExecutionRepo({
-                  markEnqueued: () => Effect.void,
-                  recordAuditEvent: (input) =>
-                    Effect.sync(() => {
-                      calls.audits.push(input);
-                    }),
-                }),
-                stubExecutionDriver({ enqueueRun: () => Effect.void })
-              )
-            )
-          );
-
-          const audit = calls.audits[0];
-          assert.isDefined(audit);
-          assert.strictEqual(audit.eventType, "run_started");
           assert.strictEqual(
-            audit.message,
+            entry.message,
             "Event-triggered run of v3 started for app/appointment.created, to test recipients"
           );
           // `entityId` is the host's own record id and stays off the timeline.
-          assert.deepStrictEqual(audit.metadata, {
+          assert.deepStrictEqual(entry.metadata, {
             startSource: "event",
             runMode: "test",
             versionKind: "published",
@@ -287,376 +212,66 @@ describe("enqueueStartedRun", () => {
         })
     );
 
-    // Two attempts of one delivery hand this the same row, and the attempt that
-    // committed it may have loaded an older version than the one running now.
-    // The label is read from the row's own version id, so a caller has no way to
-    // name a version for a run it did not open.
-    serviceIt.effect(
-      "names the version the row pins, not the one the caller loaded",
-      () =>
-        Effect.gen(function* () {
-          const calls = {
-            versionIds: [] as string[],
-            audits: [] as Array<
-              Parameters<ExecutionRepo["Service"]["recordAuditEvent"]>[0]
-            >,
-          };
-
-          yield* enqueueStartedRun({
-            execution: createExecution({ workflowVersionId: "ver_1" }),
-          }).pipe(
-            Effect.provide(
-              Layer.mergeAll(
-                stubWorkflowRepo({
-                  findVersionById: (versionId) =>
-                    Effect.sync(() => {
-                      calls.versionIds.push(versionId);
-                      return {
-                        id: "ver_1",
-                        workflowId: "wf_1",
-                        version: 1,
-                        kind: "published" as const,
-                        graph: { nodes: [], edges: [] },
-                        catalogFingerprint: "fp",
-                        graphDigest: "digest",
-                        publishedAt: new Date("2026-03-01T00:00:00.000Z"),
-                      };
-                    }),
-                }),
-                stubExecutionRepo({
-                  markEnqueued: () => Effect.void,
-                  recordAuditEvent: (input) =>
-                    Effect.sync(() => {
-                      calls.audits.push(input);
-                    }),
-                }),
-                stubExecutionDriver({ enqueueRun: () => Effect.void })
-              )
-            )
-          );
-
-          assert.deepStrictEqual(calls.versionIds, ["ver_1"]);
-          const audit = calls.audits[0];
-          assert.isDefined(audit);
-          assert.strictEqual(
-            audit.message,
-            "Event-triggered run of v1 started, to real recipients"
-          );
-          assert.deepInclude(audit.metadata, { versionNumber: 1 });
-        })
-    );
-
-    // A retried delivery hands back the row an earlier attempt already
-    // scheduled, and that run may be parked in a Wait. A second `markEnqueued`
-    // and "run started" entry would misdate it.
-    serviceIt.effect(
-      "schedules nothing and writes nothing for an enqueued row",
-      () =>
-        Effect.gen(function* () {
-          const recorder = makeRecordingLogger();
-
-          // Every repository and driver method is left refusing, so any enqueue,
-          // stamp, timeline entry or version read kills the test.
-          const started = yield* enqueueStartedRun({
-            execution: createExecution({
-              status: "waiting",
-              enqueuedAt: new Date("2026-03-01T00:00:01.000Z"),
-            }),
-          }).pipe(
-            Effect.provide(
-              Layer.mergeAll(
-                stubWorkflowRepo(),
-                stubExecutionRepo(),
-                stubExecutionDriver(),
-                recorder.layer
-              )
-            )
-          );
-
-          assert.deepStrictEqual(started, {
-            executionId: "exec_1",
-            runId: undefined,
-            runMode: "live",
-          });
-          assert.deepStrictEqual(recorder.infoLines, [
-            {
-              message: "Skipped the enqueue for a run already scheduled",
-              properties: { run: { executionId: "exec_1" } },
-            },
-          ]);
-        })
-    );
-
-    // The version row cascades with the run it belongs to, so a row pointing at
-    // a version that is gone is an invariant break. Scheduling the run anyway
-    // would enqueue a run nothing can name.
-    serviceIt.effect("fails when the version the row pins is gone", () =>
+    // The label is read from the version id the row will pin, so a caller has
+    // no way to name a version other than the one its run pins.
+    serviceIt.effect("names the version the row will pin", () =>
       Effect.gen(function* () {
-        const failure = yield* enqueueStartedRun({
-          execution: createExecution(),
+        const versionIds: string[] = [];
+
+        const entry = yield* runStartedEntry({
+          workflowId: "wf_1",
+          workflowVersionId: "ver_7",
+          startSource: "manual",
+          runMode: "live",
+          input: {},
         }).pipe(
           Effect.provide(
-            Layer.mergeAll(
-              // Every driver method is left refusing: nothing may be scheduled.
-              stubWorkflowRepo({ findVersionById: () => Effect.succeed(null) }),
-              stubExecutionRepo(),
-              stubExecutionDriver()
-            )
+            stubWorkflowRepo({
+              findVersionById: (versionId) =>
+                Effect.sync(() => {
+                  versionIds.push(versionId);
+                  return {
+                    id: versionId,
+                    workflowId: "wf_1",
+                    version: 7,
+                    kind: "published" as const,
+                    graph: { nodes: [], edges: [] },
+                    catalogFingerprint: "fp",
+                    graphDigest: "digest",
+                    publishedAt: new Date("2026-03-01T00:00:00.000Z"),
+                  };
+                }),
+            })
+          )
+        );
+
+        assert.deepStrictEqual(versionIds, ["ver_7"]);
+        assert.strictEqual(
+          entry.message,
+          "Manual run of v7 started, to real recipients"
+        );
+      })
+    );
+
+    // A run's version row cascades with the run, so a start naming a version
+    // that is gone is an invariant break, and no row is opened for it.
+    serviceIt.effect("fails when the version the row would pin is gone", () =>
+      Effect.gen(function* () {
+        const failure = yield* runStartedEntry({
+          workflowId: "wf_1",
+          workflowVersionId: "ver_gone",
+          startSource: "manual",
+          runMode: "live",
+          input: {},
+        }).pipe(
+          Effect.provide(
+            stubWorkflowRepo({ findVersionById: () => Effect.succeed(null) })
           ),
           Effect.flip
         );
 
         assert.instanceOf(failure, InternalFailure);
       })
-    );
-
-    // The row is closed before the failure travels on, so a run is never left
-    // sitting in "running" with nothing behind it that could finish it.
-    serviceIt.effect("closes the row when the enqueue is refused", () =>
-      Effect.gen(function* () {
-        const calls = {
-          closed: [] as Array<{ executionId: string; error: string }>,
-        };
-
-        // `markEnqueued` is left refusing: the run was not scheduled, and
-        // stamping it as though it had been would be the bug.
-        const failure = yield* enqueueStartedRun({
-          execution: createExecution(),
-        }).pipe(
-          Effect.provide(
-            Layer.mergeAll(
-              pinnedVersionLayer(),
-              stubExecutionRepo({
-                markEnqueueFailed: (input) =>
-                  Effect.sync(() => {
-                    calls.closed.push(input);
-                    return true;
-                  }),
-              }),
-              stubExecutionDriver({
-                enqueueRun: () =>
-                  Effect.fail(
-                    new DriverError({
-                      cause: new Error("database unreachable"),
-                    })
-                  ),
-                stopRun: () => Effect.void,
-              })
-            )
-          ),
-          Effect.flip
-        );
-
-        assert.instanceOf(failure, DriverError);
-        assert.deepStrictEqual(calls.closed, [
-          { executionId: "exec_1", error: "database unreachable" },
-        ]);
-      })
-    );
-
-    serviceIt.effect(
-      "falls back to a fixed sentence when nothing was thrown",
-      () =>
-        Effect.gen(function* () {
-          const calls = {
-            closed: [] as Array<{ executionId: string; error: string }>,
-          };
-
-          yield* enqueueStartedRun({
-            execution: createExecution(),
-          }).pipe(
-            Effect.provide(
-              Layer.mergeAll(
-                pinnedVersionLayer(),
-                stubExecutionRepo({
-                  markEnqueueFailed: (input) =>
-                    Effect.sync(() => {
-                      calls.closed.push(input);
-                      return true;
-                    }),
-                }),
-                stubExecutionDriver({
-                  enqueueRun: () =>
-                    Effect.fail(new DriverError({ cause: "connection lost" })),
-                  stopRun: () => Effect.void,
-                })
-              )
-            ),
-            Effect.flip
-          );
-
-          assert.deepStrictEqual(calls.closed, [
-            { executionId: "exec_1", error: "Failed to enqueue run" },
-          ]);
-        })
-    );
-
-    // The close refuses a row holding a Cancel or Exit claim, a row another
-    // attempt's enqueue stamped, and a row that reached a verdict. The run
-    // behind each of them is the one that must finish it. `stopRun` is left
-    // refusing, so a stop kills the test.
-    serviceIt.effect("stops nothing when the close is refused", () =>
-      Effect.gen(function* () {
-        const recorder = makeRecordingLogger();
-
-        const failure = yield* enqueueStartedRun({
-          execution: createExecution(),
-        }).pipe(
-          Effect.provide(
-            Layer.mergeAll(
-              pinnedVersionLayer(),
-              stubExecutionRepo({
-                markEnqueueFailed: () => Effect.succeed(false),
-              }),
-              stubExecutionDriver({
-                enqueueRun: () =>
-                  Effect.fail(
-                    new DriverError({ cause: new Error("gateway timeout") })
-                  ),
-              }),
-              recorder.layer
-            )
-          ),
-          Effect.flip
-        );
-
-        assert.instanceOf(failure, DriverError);
-        assert.deepStrictEqual(recorder.infoLines, [
-          {
-            message:
-              "Enqueue reported failure, but the row holds a claim, was enqueued by another attempt, or has ended, so the run was not stopped",
-            properties: { run: { executionId: "exec_1" } },
-          },
-        ]);
-      })
-    );
-
-    // A close the database refused says nothing about whether the row holds a
-    // claim, so the run is not stopped and the unstamped row is left for
-    // `reclaimStuckRuns`. The caller still sees the refused enqueue.
-    serviceIt.effect("stops nothing when the close cannot be written", () =>
-      Effect.gen(function* () {
-        const recorder = makeRecordingLogger();
-
-        const failure = yield* enqueueStartedRun({
-          execution: createExecution(),
-        }).pipe(
-          Effect.provide(
-            Layer.mergeAll(
-              pinnedVersionLayer(),
-              stubExecutionRepo({
-                markEnqueueFailed: () =>
-                  Effect.fail(
-                    new DatabaseError({ cause: new Error("connection lost") })
-                  ),
-              }),
-              stubExecutionDriver({
-                enqueueRun: () =>
-                  Effect.fail(
-                    new DriverError({ cause: new Error("gateway timeout") })
-                  ),
-              }),
-              recorder.layer
-            )
-          ),
-          Effect.flip
-        );
-
-        assert.instanceOf(failure, DriverError);
-        assert.deepStrictEqual(
-          recorder.lines.map((line) => line.message),
-          [
-            "Enqueue reported failure, and the database refused to close the row, so the run was not stopped",
-          ]
-        );
-      })
-    );
-
-    // The close decides whether the compensation may touch the row, and only a
-    // row it closed has its run stopped. A schedule row that committed before
-    // the failure was reported is then stopped, and the run's own writes meet
-    // the terminal status.
-    serviceIt.effect("closes the row before stopping the run", () =>
-      Effect.gen(function* () {
-        const order: string[] = [];
-
-        yield* enqueueStartedRun({
-          execution: createExecution({
-            startEventName: "app/appointment.created",
-          }),
-        }).pipe(
-          Effect.provide(
-            Layer.mergeAll(
-              pinnedVersionLayer(),
-              stubExecutionRepo({
-                markEnqueueFailed: () =>
-                  Effect.sync(() => {
-                    order.push("close");
-                    return true;
-                  }),
-              }),
-              stubExecutionDriver({
-                enqueueRun: () =>
-                  Effect.fail(
-                    new DriverError({ cause: new Error("gateway timeout") })
-                  ),
-                stopRun: () =>
-                  Effect.sync(() => {
-                    order.push("stop");
-                  }),
-              })
-            )
-          ),
-          Effect.flip
-        );
-
-        assert.deepStrictEqual(order, ["close", "stop"]);
-      })
-    );
-
-    // The enqueue is irreversible, so failing here would put the caller's
-    // delivery step into a retry that enqueues nothing new and re-runs
-    // everything around it -- exactly how one arrival could open two Executions.
-    serviceIt.effect(
-      "reports the run as started when the writes after the enqueue are refused",
-      () =>
-        Effect.gen(function* () {
-          const recorder = makeRecordingLogger();
-
-          const started = yield* enqueueStartedRun({
-            execution: createExecution({ deliveryId: "dlv_1" }),
-          }).pipe(
-            Effect.provide(
-              Layer.mergeAll(
-                pinnedVersionLayer(),
-                stubExecutionRepo({
-                  markEnqueued: () =>
-                    Effect.fail(
-                      new DatabaseError({ cause: new Error("connection lost") })
-                    ),
-                  recordAuditEvent: () =>
-                    Effect.fail(
-                      new DatabaseError({ cause: new Error("connection lost") })
-                    ),
-                }),
-                stubExecutionDriver({ enqueueRun: () => Effect.void }),
-                recorder.layer
-              )
-            )
-          );
-
-          assert.deepStrictEqual(started, {
-            executionId: "exec_1",
-            runMode: "live",
-          });
-          assert.deepStrictEqual(
-            recorder.lines.map((line) => line.message),
-            [
-              "The run is scheduled, but the database refused to record that the run was scheduled",
-              "The run is scheduled, but the database refused to write the run's opening timeline entry",
-            ]
-          );
-        })
     );
   });
 });

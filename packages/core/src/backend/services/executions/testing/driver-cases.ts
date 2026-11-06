@@ -161,7 +161,9 @@ type App = {
   drive: <A, E>(
     effect: Effect.Effect<A, E, ExecutionDriver | ExecutionRepo>
   ) => Promise<A>;
-  /** Publishes `graph` as a new workflow and starts one run with no schedule row. */
+  /** Publishes `graph` as a new workflow, ready for a run to start. */
+  publish: (graph: SerializedWorkflowGraph) => Promise<PublishedWorkflow>;
+  /** Publishes `graph` and starts one run of it through this app's driver. */
   startRun: (graph: SerializedWorkflowGraph) => Promise<StartedRun>;
   /** Starts a loop on this connection that `worker` wakes. */
   loop: (options?: { onClaim?: (executionIds: string[]) => void }) => {
@@ -171,12 +173,41 @@ type App = {
   ended: (executionId: string) => Promise<string | undefined>;
 };
 
-type StartedRun = {
-  executionId: string;
+type PublishedWorkflow = {
   workflowId: string;
   versionId: string;
   entityValue: string;
 };
+
+type StartedRun = PublishedWorkflow & { executionId: string };
+
+/**
+ * Starts one run of `workflow` the way an Event delivery does, through the
+ * driver, and answers its id. A start naming the same `deliveryId` again is a
+ * retried delivery.
+ */
+function startOn(workflow: PublishedWorkflow, deliveryId?: string) {
+  return Effect.gen(function* () {
+    const driver = yield* ExecutionDriver;
+    const started = yield* driver.startRun({
+      execution: {
+        workflowId: workflow.workflowId,
+        workflowVersionId: workflow.versionId,
+        startSource: "event",
+        startEventName: START_EVENT,
+        runMode: "live",
+        entityValue: workflow.entityValue,
+        deliveryId,
+        input: {},
+      },
+      concurrency: "unlimited",
+      supersededReason: "newer start",
+      startedEntry: { message: "Event-triggered run started", metadata: {} },
+    });
+    if (started.status !== "started") throw new Error("Start refused");
+    return started.execution.id;
+  });
+}
 
 function appOn(connection: ConformanceConnection): App {
   marks = new Map();
@@ -192,42 +223,37 @@ function appOn(connection: ConformanceConnection): App {
       )
     );
 
+  const drive: App["drive"] = (effect) =>
+    connection.run(effect.pipe(Effect.provide(driver)));
+  const publish = async (
+    graph: SerializedWorkflowGraph
+  ): Promise<PublishedWorkflow> => {
+    workflows += 1;
+    const workflow = {
+      workflowId: `wf_driver_${workflows}`,
+      versionId: `ver_driver_${workflows}`,
+      entityValue: `entity_${workflows}`,
+    };
+    await connection.run(
+      publishWorkflow({
+        workflowId: workflow.workflowId,
+        versionId: workflow.versionId,
+        graph,
+        catalogFingerprint: actions.catalogFingerprint(),
+      })
+    );
+    return workflow;
+  };
+
   return {
     connection,
     worker,
-    drive: (effect) => connection.run(effect.pipe(Effect.provide(driver))),
+    drive,
+    publish,
     startRun: async (graph) => {
-      workflows += 1;
-      const workflowId = `wf_driver_${workflows}`;
-      const versionId = `ver_driver_${workflows}`;
-      const entityValue = `entity_${workflows}`;
-      const executionId = await connection.run(
-        Effect.gen(function* () {
-          yield* publishWorkflow({
-            workflowId,
-            versionId,
-            graph,
-            catalogFingerprint: actions.catalogFingerprint(),
-          });
-          const executions = yield* ExecutionRepo;
-          const started = yield* executions.startForEntity({
-            execution: {
-              workflowId,
-              workflowVersionId: versionId,
-              startSource: "event",
-              startEventName: START_EVENT,
-              runMode: "live",
-              entityValue,
-              input: {},
-            },
-            concurrency: "unlimited",
-            supersededReason: "newer start",
-          });
-          if (started.status !== "started") throw new Error("Start refused");
-          return started.execution.id;
-        })
-      );
-      return { executionId, workflowId, versionId, entityValue };
+      const workflow = await publish(graph);
+      const executionId = await drive(startOn(workflow));
+      return { ...workflow, executionId };
     },
     loop: ({ onClaim } = {}) => {
       const controller = new AbortController();
@@ -288,21 +314,24 @@ const claimAll = Effect.flatMap(ExecutionRepo, (executions) =>
 function describeCases(
   openConnection: () => Promise<ConformanceConnection>
 ): void {
-  it("schedules a run once, due now, and wakes the loop only for the call that scheduled it", async () => {
+  it("opens a run with its schedule row due now, wakes the loop once the start commits, and leaves the row alone on a retried delivery", async () => {
     const app = appOn(await openConnection());
-    const { executionId } = await app.startRun(markGraph);
+    const workflow = await app.publish(markGraph);
 
     const result = await app.drive(
       Effect.gen(function* () {
-        const driver = yield* ExecutionDriver;
         const executions = yield* ExecutionRepo;
-        yield* driver.enqueueRun({ executionId });
+        const executionId = yield* startOn(workflow, "delivery_1");
         const queued = yield* executions.findSchedule(executionId);
+        const wakesAfterStart = app.worker.calls();
         const [claimed] = yield* claimAll;
-        yield* driver.enqueueRun({ executionId });
+        const retried = yield* startOn(workflow, "delivery_1");
         return {
+          executionId,
           queued,
+          wakesAfterStart,
           claimed,
+          retried,
           again: yield* executions.findSchedule(executionId),
         };
       })
@@ -310,22 +339,19 @@ function describeCases(
 
     expect(result.queued).toMatchObject({ kind: "run", state: "queued" });
     expect(result.queued?.wakeAt.getTime()).toBeLessThanOrEqual(Date.now());
-    // The second call left the leased row as the claim wrote it.
+    expect(result.wakesAfterStart).toBe(1);
+    // The retry answered the same run and left the leased row as the claim
+    // wrote it.
+    expect(result.retried).toBe(result.executionId);
     expect(result.again).toMatchObject({
       state: "leased",
       ownerToken: result.claimed?.ownerToken,
     });
-    expect(app.worker.calls()).toBe(1);
   });
 
   it("re-queues a waiting run when a Cancel claim resolves its park and wakes an in-process loop well before its poll", async () => {
     const app = appOn(await openConnection());
     const run = await app.startRun(cancelableWaitGraph);
-    await app.drive(
-      Effect.flatMap(ExecutionDriver, (driver) =>
-        driver.enqueueRun({ executionId: run.executionId })
-      )
-    );
     const loop = app.loop();
     await waitUntil(
       async () =>
@@ -378,13 +404,11 @@ function describeCases(
       Effect.gen(function* () {
         const driver = yield* ExecutionDriver;
         const executions = yield* ExecutionRepo;
-        yield* driver.enqueueRun({ executionId: run.executionId });
         yield* claimAll;
         const wait = yield* executions.startWait({
           side: "started",
           executionId: run.executionId,
           workflowId: run.workflowId,
-          runId: "run_1",
           nodeId: "wait",
           nodeName: "wait",
           workflowVersionId: run.versionId,
@@ -426,19 +450,19 @@ function describeCases(
   it("stops a run by clearing its lease, so the pass holding it is refused its next write, and wakes the loop", async () => {
     const app = appOn(await openConnection());
     const run = await app.startRun(markGraph);
-    const unscheduled = await app.startRun(markGraph);
 
     const result = await app.drive(
       Effect.gen(function* () {
         const driver = yield* ExecutionDriver;
         const executions = yield* ExecutionRepo;
-        yield* driver.enqueueRun({ executionId: run.executionId });
-        const [claimed] = yield* claimAll;
+        const claimed = (yield* claimAll).find(
+          (row) => row.executionId === run.executionId
+        );
         if (claimed === undefined) throw new Error("The run was not claimed");
         yield* driver.stopRun({ executionId: run.executionId });
         const wakesAfterStop = app.worker.calls();
         // A run with no schedule row has nothing to stop.
-        yield* driver.stopRun({ executionId: unscheduled.executionId });
+        yield* driver.stopRun({ executionId: "exec_without_a_schedule_row" });
         const refused = yield* Effect.flip(
           executions
             .fenced({
@@ -467,7 +491,7 @@ function describeCases(
       ownerToken: null,
       leaseExpiresAt: null,
     });
-    // One wake for the enqueue, one for the stop, none for the run with no row.
+    // One wake for the start, one for the stop, none for the run with no row.
     expect(result.wakesAfterStop).toBe(2);
     expect(result.wakes).toBe(2);
   });
@@ -495,15 +519,21 @@ function describeCrossProcessCases(
 
   it("wakes a loop in another process within about 200 ms of a run made due, with a 30 s poll", async () => {
     const { producer, consumer, broadcast } = await twoApps();
-    const run = await producer.startRun(markGraph);
+    const workflow = await producer.publish(markGraph);
 
+    // The run is the only one on this workflow's database the loop can claim,
+    // so the first claim that leases anything leases it.
     let claims = 0;
     let claimedAt = Number.NaN;
+    const claimedIds: string[] = [];
     const listening = await broadcast.listen(() => consumer.worker.wake.wake());
     const loop = consumer.loop({
       onClaim: (executionIds) => {
         claims += 1;
-        if (executionIds.includes(run.executionId)) claimedAt = Date.now();
+        if (executionIds.length > 0 && claimedIds.length === 0) {
+          claimedAt = Date.now();
+        }
+        claimedIds.push(...executionIds);
       },
     });
     // The loop's first claim finds nothing due, and the loop then sleeps for
@@ -511,25 +541,22 @@ function describeCrossProcessCases(
     await waitUntil(() => claims > 0, "The loop never claimed");
     await sleep(100);
 
-    await producer.drive(
-      Effect.flatMap(ExecutionDriver, (driver) =>
-        driver.enqueueRun({ executionId: run.executionId })
-      )
-    );
-    const enqueuedAt = Date.now();
+    const executionId = await producer.drive(startOn(workflow));
+    const startedAt = Date.now();
 
-    expect(await consumer.ended(run.executionId)).toBe("completed");
+    expect(await consumer.ended(executionId)).toBe("completed");
     await loop.stop();
     await listening.stop();
+    expect(claimedIds[0]).toBe(executionId);
     // A 50 ms flush, the notification, and the claim, with slack for a loaded
     // machine running other files against the same server.
-    expect(claimedAt - enqueuedAt).toBeLessThan(250);
+    expect(claimedAt - startedAt).toBeLessThan(250);
   }, 30_000);
 
   it("sends a bounded number of notifications for a burst of 100 runs made due", async () => {
     const { producer, broadcast } = await twoApps();
-    const runs = await Promise.all(
-      Array.from({ length: 100 }, () => producer.startRun(markGraph))
+    const published = await Promise.all(
+      Array.from({ length: 100 }, () => producer.publish(markGraph))
     );
 
     let notifications = 0;
@@ -539,11 +566,7 @@ function describeCrossProcessCases(
     const startedAt = Date.now();
     // One at a time, so the burst outlasts more than one flush.
     await producer.drive(
-      Effect.forEach(runs, (run) =>
-        Effect.flatMap(ExecutionDriver, (driver) =>
-          driver.enqueueRun({ executionId: run.executionId })
-        )
-      )
+      Effect.forEach(published, (workflow) => startOn(workflow))
     );
     const burstMs = Date.now() - startedAt;
     // The last flush goes out 50 ms after the last run was made due.

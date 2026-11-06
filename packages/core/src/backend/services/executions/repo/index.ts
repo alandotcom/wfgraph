@@ -1,6 +1,5 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { Context, Effect, Layer } from "effect";
-import { partition } from "es-toolkit/array";
 import {
   workflowExecutionEvents,
   workflowExecutions,
@@ -19,10 +18,10 @@ import {
   isEntityEligibilityReason,
   type EntityEligibilityReason,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
-import type { Concurrency } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import {
   type AuditRepoMethods,
   makeAuditMethods,
+  recordAuditEventWrite,
 } from "#src/backend/services/executions/repo/audit";
 import {
   type NodeLogsRepoMethods,
@@ -38,6 +37,7 @@ import {
 } from "#src/backend/services/executions/repo/waits";
 import {
   endExecutions,
+  insertRunSchedule,
   makeScheduleMethods,
   type ScheduleRepoMethods,
 } from "#src/backend/services/executions/repo/schedule";
@@ -45,9 +45,10 @@ import { makeFencedWrites } from "#src/backend/services/executions/repo/fenced-w
 import type { FencedExecutionWrites } from "#src/backend/services/executions/repo/fencing";
 import type {
   EntityStartOutcome,
-  NewExecution,
   OwnerFence,
   StartAdmissionDecision,
+  StartForEntityInput,
+  WorkflowExecution,
 } from "#src/backend/services/executions/repo/contracts";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 
@@ -56,22 +57,6 @@ export type {
   FencedExecutionWrites,
   StoreWrites,
 } from "#src/backend/services/executions/repo/fencing";
-
-/**
- * How long a run may sit with its row committed and `enqueued_at` unstamped
- * before the next start for its entity treats it as one the bus was never told
- * about.
- *
- * The send follows the commit by milliseconds, so anything still unstamped after
- * this had its process die in between. The window is generous because the cost of
- * being wrong is a live run stamped `failed`, which is why the caller signals a
- * reclaimed run to stop rather than only relabelling it.
- */
-export const UNSENT_RUN_GRACE_MS = 5 * 60 * 1000;
-
-/** The sentence run history carries for a run that never reached the bus. */
-export const UNSENT_RUN_RECLAIM_REASON =
-  "The run was opened but never reached the bus, so a later start for this entity closed it";
 
 async function findAdmissionRefusal(
   database: WfGraphDatabase | WfGraphTransaction,
@@ -89,90 +74,55 @@ async function findAdmissionRefusal(
   return isEntityEligibilityReason(reason) ? reason : null;
 }
 
-function isStuckBeforeTheBus(row: {
-  enqueuedAt: Date | null;
-  startedAt: Date;
-}): boolean {
-  return (
-    row.enqueuedAt === null &&
-    Date.now() - row.startedAt.getTime() > UNSENT_RUN_GRACE_MS
-  );
-}
-
 /**
- * Closes the rows a crash left between their commit and the send, answering the
- * ones this call closed.
- *
- * The in-flight guard is what keeps a run that woke up and finished in the
- * meantime from being overwritten.
+ * A start's answer once it holds a row. An insert that conflicted on the
+ * delivery constraint always finds the row its delivery committed, so a
+ * missing row is a defect.
  */
-async function reclaimStuckRuns(
-  tx: WfGraphTransaction,
-  executionIds: string[]
-): Promise<string[]> {
-  if (executionIds.length === 0) {
-    return [];
+function started(
+  row: WorkflowExecution | undefined,
+  supersededExecutionIds: string[]
+): EntityStartOutcome {
+  if (!row) {
+    throw new Error(
+      "A start found neither a new row nor the row its delivery committed"
+    );
   }
-
-  const reclaimed = await tx
-    .update(workflowExecutions)
-    .set({
-      status: "failed",
-      waitingAt: null,
-      completedAt: new Date(),
-      error: UNSENT_RUN_RECLAIM_REASON,
-    })
-    .where(
-      and(
-        inArray(workflowExecutions.id, executionIds),
-        inArray(workflowExecutions.status, [...IN_FLIGHT_EXECUTION_STATUSES]),
-        isNull(workflowExecutions.terminationKind)
-      )
-    )
-    .returning({ id: workflowExecutions.id });
-
-  return reclaimed.map((row) => row.id);
+  return { status: "started", execution: row, supersededExecutionIds };
 }
 
 /**
  * The methods that touch more than one table in one transaction, which is the
  * reason `ExecutionRepo` is one service rather than several: `startForEntity`
- * writes `workflow_executions` and `workflow_wait_states` inside one serializable
- * transaction, `deleteAllForWorkflow` deletes the runs and the workflow-scoped
- * audit rows together, and every write `fenced` answers takes the run's
- * schedule row in the same transaction as the rows it writes. None can be split
- * across services without splitting a transaction.
+ * writes `workflow_executions`, `workflow_wait_states`, the new run's schedule
+ * row and its timeline entry inside one serializable transaction,
+ * `deleteAllForWorkflow` deletes the runs and the workflow-scoped audit rows
+ * together, and every write `fenced` answers takes the run's schedule row in
+ * the same transaction as the rows it writes. None can be split across
+ * services without splitting a transaction.
  */
 type CrossTableRepoMethods = {
   /**
-   * Open a run, with Concurrency applied to the entity it is about.
+   * Open a run, with Concurrency applied to the entity it is about, and
+   * schedule it on the database executor.
    *
    * One serializable transaction, because the candidate read and the insert have
    * to be one decision: two reschedules arriving together otherwise both read an
    * empty in-flight set and both start. PostgreSQL detects that predicate conflict
    * and aborts one decision, which this method retries. `unlimited` compares
-   * nothing, so it inserts straight away.
+   * nothing, so it inserts straight away, in a transaction of its own.
+   *
+   * The new row's schedule row and its "run started" entry commit with it, as
+   * `StartForEntityInput` describes, so no open run is ever left unscheduled.
+   * The caller wakes the worker loops once this has committed.
    *
    * Idempotent per arrival: a row this delivery already opened is answered with
    * rather than joined by a second, because the caller is an Inngest step whose
    * retry re-runs this whole call.
-   *
-   * The run's schedule row is written outside: this answers what the rows now
-   * say, and the caller schedules the run (`enqueueStartedRun`).
    */
-  readonly startForEntity: (input: {
-    /**
-     * The row to open. Concurrency serializes on its typed Entity identity when
-     * present, otherwise on the legacy `entityValue`. A start with neither
-     * identity leaves Entity-scoped Concurrency out.
-     */
-    execution: NewExecution;
-    concurrency: Concurrency;
-    /** Stable key shared with an admission refusal for this Event delivery. */
-    admissionDecisionId?: string | undefined;
-    /** Written onto a displaced run's `error`, which run history shows. */
-    supersededReason: string;
-  }) => Effect.Effect<EntityStartOutcome, DatabaseError>;
+  readonly startForEntity: (
+    input: StartForEntityInput
+  ) => Effect.Effect<EntityStartOutcome, DatabaseError>;
   /** Read a durable Entity admission refusal before repeating its resolver. */
   readonly findAdmissionRefusal: (input: {
     workflowId: string;
@@ -246,6 +196,8 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
           concurrency,
           supersededReason,
           admissionDecisionId,
+          startedEntry,
+          now,
         }) => {
           const entityPredicate =
             execution.entityType !== undefined &&
@@ -258,9 +210,7 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
                 ? undefined
                 : eq(workflowExecutions.entityValue, execution.entityValue);
 
-          const findByDelivery = async (
-            tx: WfGraphDatabase | WfGraphTransaction
-          ) => {
+          const findByDelivery = async (tx: WfGraphTransaction) => {
             if (!execution.deliveryId) {
               return undefined;
             }
@@ -276,9 +226,9 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
           // Whatever status the arrival's own row is in, it is the answer:
           // the run may have finished while the step was being retried, and
           // opening a second one would run the graph twice for one Event.
-          const insertRunning = async (
-            tx: WfGraphDatabase | WfGraphTransaction
-          ) => {
+          const openRun = async (
+            tx: WfGraphTransaction
+          ): Promise<WorkflowExecution | undefined> => {
             const [row] = await tx
               .insert(workflowExecutions)
               .values({
@@ -304,20 +254,30 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
 
             // The conflict fires when two attempts at one arrival reach here
             // together. `unlimited` has no entity decision to serialize, so
-            // the delivery constraint is its idempotency boundary.
-            return row ?? (await findByDelivery(tx));
+            // the delivery constraint is its idempotency boundary. The attempt
+            // that inserted the row also wrote its schedule row and entry.
+            if (!row) {
+              return await findByDelivery(tx);
+            }
+
+            await insertRunSchedule(tx, { executionId: row.id, wakeAt: now });
+            await recordAuditEventWrite({
+              workflowId: execution.workflowId,
+              executionId: row.id,
+              eventType: "run_started",
+              message: startedEntry.message,
+              metadata: startedEntry.metadata,
+            })(tx);
+            return row;
           };
 
           if (
             (concurrency === "unlimited" || !entityPredicate) &&
             !admissionDecisionId
           ) {
-            return database.query(async (db) => ({
-              status: "started" as const,
-              execution: await insertRunning(db),
-              supersededExecutionIds: [],
-              reclaimedExecutionIds: [],
-            }));
+            return database.query((db) =>
+              db.transaction(async (tx) => started(await openRun(tx), []))
+            );
           }
 
           return serializableTransaction(
@@ -340,29 +300,15 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
               // not a run to defer to or displace. It is this call's answer.
               const own = await findByDelivery(tx);
               if (own) {
-                return {
-                  status: "started" as const,
-                  execution: own,
-                  supersededExecutionIds: [],
-                  reclaimedExecutionIds: [],
-                };
+                return started(own, []);
               }
 
               if (concurrency === "unlimited" || !entityPredicate) {
-                return {
-                  status: "started" as const,
-                  execution: await insertRunning(tx),
-                  supersededExecutionIds: [],
-                  reclaimedExecutionIds: [],
-                };
+                return started(await openRun(tx), []);
               }
 
               const inFlight = await tx
-                .select({
-                  id: workflowExecutions.id,
-                  enqueuedAt: workflowExecutions.enqueuedAt,
-                  startedAt: workflowExecutions.startedAt,
-                })
+                .select({ id: workflowExecutions.id })
                 .from(workflowExecutions)
                 .where(
                   and(
@@ -376,36 +322,18 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
                   )
                 );
 
-              let reclaimedExecutionIds: string[] = [];
-
               if (inFlight.length > 0 && concurrency === "first-wins") {
-                const [unsent, live] = partition(inFlight, (row) =>
-                  isStuckBeforeTheBus(row)
-                );
-
-                if (live.length > 0) {
-                  return {
-                    status: "refused" as const,
-                    inFlightExecutionIds: live.map((row) => row.id),
-                  };
-                }
-
-                const unsentIds = unsent.map((row) => row.id);
-                reclaimedExecutionIds = await endExecutions(
-                  tx,
-                  unsentIds,
-                  async (inner) => {
-                    const reclaimed = await reclaimStuckRuns(inner, unsentIds);
-                    return { result: reclaimed, ended: reclaimed };
-                  }
-                );
+                return {
+                  status: "refused" as const,
+                  inFlightExecutionIds: inFlight.map((row) => row.id),
+                };
               }
 
               let supersededExecutionIds: string[] = [];
 
-              // Newest-wins only. First-wins either deferred to the runs it
-              // found or reclaimed them above, and displaces nothing.
-              if (inFlight.length > 0 && concurrency !== "first-wins") {
+              // Newest-wins only. First-wins deferred to the runs it found
+              // above, and displaces nothing.
+              if (inFlight.length > 0) {
                 const ids = inFlight.map((row) => row.id);
                 supersededExecutionIds = await endExecutions(
                   tx,
@@ -435,12 +363,7 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
                 );
               }
 
-              return {
-                status: "started" as const,
-                execution: await insertRunning(tx),
-                supersededExecutionIds,
-                reclaimedExecutionIds,
-              };
+              return started(await openRun(tx), supersededExecutionIds);
             }
           );
         },

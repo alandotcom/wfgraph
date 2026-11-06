@@ -78,7 +78,6 @@ export function execution(
   return {
     id,
     workflowId: "wf_1",
-    workflowRunId: `run_${id}`,
     status,
     startedAt: "2026-03-01T10:00:00.000Z",
     completedAt: null,

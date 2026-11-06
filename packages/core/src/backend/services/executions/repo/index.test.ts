@@ -16,11 +16,11 @@ import {
   ExecutionRepoLayer,
 } from "#src/backend/services/executions/repo/index";
 
-/** One row of the in-flight candidate query, in the order it selects columns. */
-type InFlightRow = [id: string, enqueuedAt: Date | null, startedAt: Date];
+/** One row of the in-flight candidate query, which selects the id alone. */
+type InFlightRow = [id: string];
 
 function isInFlightQuery(query: string): boolean {
-  return query.includes('"enqueued_at", "started_at"');
+  return query.startsWith("select") && query.includes('"run_mode" = ');
 }
 
 function isDeliveryLookup(query: string): boolean {
@@ -81,6 +81,11 @@ function harness(answers: {
           },
           concurrency,
           supersededReason: "Superseded by a newer start",
+          startedEntry: {
+            message: "Event-triggered run started",
+            metadata: {},
+          },
+          now: new Date("2026-03-01T09:00:00.000Z"),
         });
       }).pipe(
         Effect.provide(ExecutionRepoLayer.pipe(Layer.provide(databaseLayer)))

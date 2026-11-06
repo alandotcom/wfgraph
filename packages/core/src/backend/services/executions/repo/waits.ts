@@ -130,7 +130,7 @@ export type ReparkWaitOutcome =
 /** The `workflow_wait_states` slice of `ExecutionRepo`. */
 export type WaitsRepoMethods = {
   /**
-   * Park a run, reusing its execution/run/node row on retry.
+   * Park a run, reusing its row for the same execution and node on retry.
    *
    * The status flip runs first, behind the claim guard for this Wait's side and
    * the pinned version: a policy cancel can land between the run's last step and
@@ -144,7 +144,6 @@ export type WaitsRepoMethods = {
     {
       executionId: string;
       workflowId: string;
-      runId: string;
       nodeId: string;
       nodeName: string;
       /** The version the caller resolved this park from. */
@@ -382,7 +381,6 @@ export function startWaitWrite(input: StartWaitInput) {
         .where(
           and(
             eq(workflowWaitStates.executionId, input.executionId),
-            eq(workflowWaitStates.runId, input.runId),
             eq(workflowWaitStates.nodeId, input.nodeId)
           )
         )
@@ -412,7 +410,6 @@ export function startWaitWrite(input: StartWaitInput) {
         .values({
           executionId: input.executionId,
           workflowId: input.workflowId,
-          runId: input.runId,
           nodeId: input.nodeId,
           nodeName: input.nodeName,
           waitType: input.waitType,

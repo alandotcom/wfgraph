@@ -23,7 +23,6 @@ const BASE_EXECUTION: WorkflowExecution = {
   startSource: "event",
   waitingAt: null,
   workflowId: "wf_1",
-  workflowRunId: "run_1",
 };
 
 describe("WorkflowRunSummaryRow", () => {

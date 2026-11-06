@@ -97,11 +97,8 @@ function executeWaitActionInner(
       workflowId,
       workflowVersionId,
       side,
-      workflowRunId,
       resolveTemplates,
     } = input;
-
-    const runId = workflowRunId || runtime.runId || context.executionId;
 
     // The first schema this node has ever had, so a config written against the
     // retired shape (or an already-enqueued run that still carries it) stops
@@ -169,7 +166,6 @@ function executeWaitActionInner(
       workflowId,
       workflowVersionId,
       side,
-      runId,
       resolveTemplates,
       startLog,
     };
@@ -433,7 +429,7 @@ function prepareWaitAttempt<Prepared>(
   }
 ): Effect.Effect<WaitAttemptPreparation<Prepared>, EngineFailure> {
   return Effect.gen(function* () {
-    const { context, store, workflowId, runId } = branch;
+    const { context, store, workflowId } = branch;
 
     if (preparation.status !== "ready") {
       return preparation;
@@ -480,7 +476,6 @@ function prepareWaitAttempt<Prepared>(
         store.createWaitState({
           executionId: context.executionId,
           workflowId,
-          runId,
           nodeId: context.nodeId,
           nodeName: context.nodeName,
           workflowVersionId: branch.workflowVersionId,

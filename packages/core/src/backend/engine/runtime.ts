@@ -99,7 +99,6 @@ export type WorkflowExecutionRuntime = {
    * what an earlier one wrote.
    */
   attempt: number;
-  runId?: string | undefined;
 };
 
 export type InMemoryRuntimeOptions = {
