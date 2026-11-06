@@ -26,8 +26,8 @@ Find out whether the verification is stale before you trust it:
 
 ```sh
 git diff --stat -- docs/internal/plans/separate-event-intake-from-durable-execution.md
-git log --oneline e5b80a51.. -- docs/internal/plans/separate-event-intake-from-durable-execution.md
-git log --oneline e5b80a51.. -- \
+git log --oneline b014dc55.. -- docs/internal/plans/separate-event-intake-from-durable-execution.md
+git log --oneline b014dc55.. -- \
   packages/core/src/backend/executor \
   packages/core/src/backend/worker.ts \
   packages/core/src/backend/services/executions/driver.ts \
@@ -409,10 +409,11 @@ the directories of those names under `services/workflows/`.
 | `Timing`: `WorkerLease`, `WorkerCron`, `WorkerBudget`, `QueueMaxDelay`, `Kill`, `WorkerUsesCron` | Section 8, "Cloudflare Worker over Hyperdrive" | `WORKER_LEASE_MS` (5 minutes), `WORKER_HEARTBEAT_MS` (1 minute), `WORKER_TICK_BUDGET_MS` (14 minutes) and `WORKER_TICK_CLAIM_WINDOW_MS` (10 minutes) in `worker.ts`, whose `scheduled` handler is the host's one-minute Cron Trigger (`WorkerCron`, `WorkerUsesCron`) and whose `queue` handler is the Queue consumer; `tick` in `executor/worker-loop.ts`, which cuts a pass still running at the budget, releasing its row due at once with one failure counted against its running step, as the model's `Kill` followed by the lease sweep counts it. `Kill` is the platform ending the invocation at its 15-minute wall time, which the lease recovers; the model's `WorkerBudget` is that wall time, so the code's 5-minute lease over 15 minutes is the model's 2:6 ratio unscaled, and the tick's own 14-minute budget cuts its passes before the kill. The tick's pass limit (`WORKER_TICK_PASS_LIMIT`), which bounds its CPU time, ends a tick early, which the model's next cron or queue invocation covers. A wake message names no row and carries no delay (`createQueueWake` in `executor/queue-wake.ts`), so every deadline is the cron's, which is the model's `QueueMaxDelay` arm with the sleep longer than the cap. |
 | `Timing`: `ClaimWaitsForTheDeadline` | | the `wake_at <= now` condition on `queued` and `waiting` rows in `claimDue` |
 
-Last confirmed against: the design doc and the code at `e5b80a51`
-(`feat/durable-executor`), the end of phase 3 and its review fixes, with the
-delivery lane, one claim for both lanes, and the inbox retention sweep beside
-them, for every model. Two behaviours of the
+Last confirmed against: the design doc and the code at `b014dc55`
+(`feat/durable-executor`), the migration as it merges: runs and deliveries on
+the executor, the delivery lane and one claim for both lanes, the inbox
+retention sweep, Inngest only in `@wfgraph/core/inngest`, and the Worker's
+tick driver with its budget cut, for every model. Two behaviours of the
 code have no model counterpart: a producer pulling a `queued` row's `wake_at`
 forward to now (only `Timing` has a clock, and it models no backoff), and a
 pass interrupted by dispose's drain releasing its row with nothing counted (no
