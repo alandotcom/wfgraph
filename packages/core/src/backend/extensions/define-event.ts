@@ -113,8 +113,8 @@ export type EventDefinition<
    *
    * The type parameter earns its keep at the `defineEvent` call site rather than
    * here: it is what types `correlationPath` and `source.when.path` against the
-   * payload's own shape. Without this field TypeScript would
-   * have no occurrence to infer from and every definition would widen.
+   * payload's own shape. Without this field TypeScript would have no occurrence
+   * to infer from and every definition would widen.
    */
   readonly _payload?: TPayload | undefined;
   readonly _validatedPayload?: TValidated | undefined;

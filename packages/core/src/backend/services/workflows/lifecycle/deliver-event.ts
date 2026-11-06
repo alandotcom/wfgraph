@@ -578,8 +578,7 @@ export type WaitCandidatePage = {
 /**
  * Reads one bounded page of runs that were already parked on this Event.
  *
- * Only the fields the matcher and waker need cross Inngest's durable step
- * boundary. In particular, no database Dates cross it. The listener records
+ * Only the fields the matcher and waker need cross a step boundary. In particular, no database Dates cross it. The listener records
  * every page before it sends any wake so a retry cannot discover a later
  * sequential Wait created by a run this Event already resumed.
  */

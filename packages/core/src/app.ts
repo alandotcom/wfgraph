@@ -143,8 +143,8 @@ export type WfGraphAppOptions = {
    *
    * Nothing registers itself, so what is listed here is what this app has: an
    * integration brings its actions, its steps and its connection test with it, an
-   * Event brings its listener, and a `defineAction` brings its handler. Dropping
-   * a line is what turns something off.
+   * Event brings its payload schema, and a `defineAction` brings its handler.
+   * Dropping a line is what turns something off.
    */
   extensions?: WfGraphExtensions | undefined;
   /**

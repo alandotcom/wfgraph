@@ -115,8 +115,7 @@ export type DrainedPass =
 /**
  * One drain step: claims up to `limit` due rows of `kind` and starts one pass
  * over each in the caller's scope. Answers a fiber per claimed row, in claim
- * order, each
- * succeeding with what its pass came to. A pass still running at `deadline` is
+ * order, each succeeding with what its pass came to. A pass still running at `deadline` is
  * interrupted, and closing the caller's scope interrupts every pass still
  * running. A claim the database fails is logged and claims nothing, and so is
  * a claim still waiting on the database when `abandon` succeeds. A claim that

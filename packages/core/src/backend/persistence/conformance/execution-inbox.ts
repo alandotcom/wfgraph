@@ -3,8 +3,8 @@
  * is a duplicate, what the poll schedules, how a delivery settles under its
  * owner token, and what the retention sweep deletes.
  *
- * The claim leases only `run` rows, so a case that settles a delivery leases
- * its schedule row with one SQL update in the claim's place.
+ * A case that settles a delivery leases its schedule row with one SQL update
+ * that sets the owner token, so the case holds a fence with a token it chose.
  */
 
 import { describe, expect, it } from "vitest";

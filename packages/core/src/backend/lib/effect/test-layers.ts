@@ -469,8 +469,9 @@ export function stubExecutionDriver(
  *
  * Two app-owned boundaries take the runtime rather than a service: the dispatch
  * port's credential fetch and the Inngest function list, whose forwarders
- * write through the runtime's driver. A test of either is checking runtime ownership itself, so providing an
- * individual Layer would hide the behavior under test.
+ * write through the runtime's driver. A test of either is checking runtime
+ * ownership itself, so providing an individual Layer would hide the behavior
+ * under test.
  *
  * Every repository dies on an unnamed method, the same as the stub Layers do, so
  * a subject that reaches a query the test did not account for fails loudly.

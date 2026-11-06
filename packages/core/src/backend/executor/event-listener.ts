@@ -97,8 +97,7 @@ export async function runEventListener(input: {
   step: EventListenerSteps;
   deliver: EventListenerDeliverPorts;
 }): Promise<{ eventName: string; workflows: WorkflowDelivery[] }> {
-  const { event, payload, runtime, step, deliver } = input;
-  const { inboxId } = input;
+  const { event, payload, runtime, step, deliver, inboxId } = input;
   const arrivalLogger = logger.with({ eventName: event.name, inboxId });
 
   const deliveredEvent = {

@@ -400,7 +400,7 @@ export function checkIntegration(
  * Cross-integration uniqueness stays in `assembleExtensions`. What belongs here
  * is everything true of this definition on its own: a webhook with no Events, a
  * source name no Event listens on, a webhook secret that is not a credential,
- * two Events that cannot be told apart, two names that slug to one listener.
+ * and two Events that cannot be told apart.
  */
 function checkIntegrationEvents(integration: IntegrationDefinition): void {
   const events = integration.events ?? [];

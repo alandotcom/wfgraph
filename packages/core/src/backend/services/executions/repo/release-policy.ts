@@ -5,8 +5,8 @@
  * it times out, what a release writes back, which runs a producer's wake
  * re-queues, which parks an Event, a re-park or a terminal write may take,
  * which wake the winner of an Exit claim gives the run's other parks, and what
- * each producer answers. A decision a statement makes is a Drizzle `sql` builder over the
- * columns each backend passes in. Each backend runs the statements inside its
+ * each producer answers. A decision a statement makes is a Drizzle `sql`
+ * builder over the columns each backend passes in. Each backend runs the statements inside its
  * own transaction, holding the schedule row first.
  */
 
